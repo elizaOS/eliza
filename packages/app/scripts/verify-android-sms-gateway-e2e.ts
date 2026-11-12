@@ -56,7 +56,7 @@ const milestones = [
 
 function usage() {
   return [
-    "Usage: node packages/app/scripts/verify-android-sms-gateway-e2e.ts [options]",
+    "Usage: bun packages/app/scripts/verify-android-sms-gateway-e2e.ts [options]",
     "",
     "Options:",
     "  --serial <serial>       adb serial. Defaults to the only connected device.",
@@ -263,7 +263,7 @@ async function resolveSerial(args) {
   throw new Error(
     `Timed out waiting ${args.waitDeviceSeconds}s for an adb device.${services} ` +
       "Open Android Developer Options > Wireless debugging > Pair device with pairing code, then run: " +
-      "node packages/app/scripts/install-android-sms-gateway.ts --pair auto --wait-pair 300 --connect auto --wait-device 60 --grant-role --clear-logcat --watch-logs 60",
+      "bun packages/app/scripts/install-android-sms-gateway.ts --pair auto --wait-pair 300 --connect auto --wait-device 60 --grant-role --clear-logcat --watch-logs 60",
   );
 }
 

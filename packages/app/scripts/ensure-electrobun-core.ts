@@ -64,7 +64,7 @@ function parseArgs(argv) {
 }
 
 function printUsage() {
-  console.log(`Usage: node eliza/packages/app/scripts/ensure-electrobun-core.ts [options]
+  console.log(`Usage: bun eliza/packages/app/scripts/ensure-electrobun-core.ts [options]
 
 Options:
   --workspace <dir>    Workspace whose package.json resolves electrobun (default: cwd)

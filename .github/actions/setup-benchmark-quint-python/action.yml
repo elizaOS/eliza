@@ -13,7 +13,7 @@ runs:
       env:
         QUINT_SHARD: ${{ inputs.shard }}
       run: |
-        node --input-type=module -e '
+        bun -e '
           import { quintShardForFile } from "./packages/scripts/lib/quint-shards.ts";
           const selected = quintShardForFile("packages/benchmarks/quint/BenchmarkProcessOwner.qnt", 4) === Number(process.env.QUINT_SHARD);
           console.log(`needed=${selected}`);

@@ -200,15 +200,15 @@
   "author": "elizaOS",
   "license": "MIT",
   "scripts": {
-    "build": "node ../../packages/scripts/rm-path-recursive.ts dist && bun run check:android-manifest && tsc6 --noCheck -p tsconfig.build.json && node ../../packages/scripts/rewrite-dist-relative-imports-node-esm.ts plugins/plugin-native-inference && node ../../packages/scripts/copy-package-assets.ts plugins/plugin-native-inference src/model-catalog/bge src/model-gpu/profiles",
+    "build": "bun ../../packages/scripts/rm-path-recursive.ts dist && bun run check:android-manifest && tsc6 --noCheck -p tsconfig.build.json && bun ../../packages/scripts/rewrite-dist-relative-imports-node-esm.ts plugins/plugin-native-inference && bun ../../packages/scripts/copy-package-assets.ts plugins/plugin-native-inference src/model-catalog/bge src/model-gpu/profiles",
     "typecheck": "tsc --noEmit -p tsconfig.build.json",
-    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo node_modules",
+    "clean": "bun ../../packages/scripts/rm-path-recursive.ts dist .turbo node_modules",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "test": "bun run test:aosp && bun run test:mobile",
-    "check:android-manifest": "node ../../packages/scripts/plugins/plugin-native-inference/check-android-manifest.ts",
+    "check:android-manifest": "bun ../../packages/scripts/plugins/plugin-native-inference/check-android-manifest.ts",
     "test:aosp": "bun test __tests__",
     "test:mobile": "vitest run --config vitest.config.ts"
   },

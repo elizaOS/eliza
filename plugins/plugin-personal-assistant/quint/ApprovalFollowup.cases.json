@@ -1,0 +1,58 @@
+{
+  "sources": [
+    "plugins/plugin-personal-assistant/src/lifeops/scheduled-task/scheduler.ts",
+    "plugins/plugin-personal-assistant/src/lifeops/scheduled-task/scheduler.integration.test.ts",
+    "plugins/plugin-personal-assistant/quint/check-approval-followup.mjs",
+    "packages/scripts/lib/vitest-conformance.ts",
+    "packages/scripts/lib/test-output.ts"
+  ],
+  "conformance": "plugins/plugin-personal-assistant/quint/check-approval-followup.mjs",
+  "bounds": "The primary case has one owner-scoped approval and its existing scheduled or fired task. Reconciliation retires resolved approvals and their pending prompts before subsequent tick delivery. Read and cleanup failures hold the task and retry on a later tick. Weak fairness assumes eventual successful queue read and cleanup. A dispatch already admitted before a concurrent owner resolution may finish; this model does not claim a cross-store atomic cancellation fence. Live provider outcomes and physical notifications are external. Conformance exercises the real PGlite queue, scheduled store, runner, and tick for both scheduled and fired legacy tasks. Approved or executing requests hold their follow-up without retiring it, preserving a return to pending after execution preflight failure. Only done, rejected and expired requests retire the task. The separate budget case has two terminal owner-bound approvals, derived tasks and pending prompts, with cleanup limit one. Successful reconciliation holds every approval before the fire pass, retires at most one per tick and keeps the deferred prompt. Fair scanning and recurring ticks retire both. This budget projection assumes valid successful reads/cleanup; the primary case covers retry failures. Conformance checks a scheduled and a fired task for two real queued approvals across two production ticks at limit one, with no delivery or escalation.",
+  "cases": [
+    {
+      "name": "resolved-approval-followup",
+      "main": "ApprovalFollowup",
+      "init": "init",
+      "step": "step",
+      "invariants": ["ResolvedReadStopsDelivery", "CompletionRetiresPrompt"],
+      "temporal": ["EventuallyRetired"],
+      "temporalChecks": [
+        {
+          "property": "EventuallyRetired",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of a successful owner-scoped read and task cleanup."
+          ]
+        }
+      ],
+      "maxSteps": 12,
+      "samples": 300,
+      "deadlock": false
+    },
+    {
+      "name": "bounded-approval-cleanup",
+      "main": "ApprovalCleanupBudget",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "CleanupBudgetRespected",
+        "DeferredApprovalHeld",
+        "NoDeferredDelivery",
+        "PromptMatchesRetirement"
+      ],
+      "temporal": ["FairBudgetCleanup"],
+      "temporalChecks": [
+        {
+          "property": "FairBudgetCleanup",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of task scanning, finishing each tick and the next production tick. Both terminal owner-bound requests and their cleanup remain valid."
+          ]
+        }
+      ],
+      "maxSteps": 12,
+      "samples": 300,
+      "deadlock": false
+    }
+  ]
+}

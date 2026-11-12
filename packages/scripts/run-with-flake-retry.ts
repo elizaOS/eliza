@@ -9,7 +9,7 @@
  * Exit codes: the final attempt's own code, 127 when the command cannot
  * start, 2 on usage errors.
  *
- * usage: node packages/scripts/run-with-flake-retry.ts <signature-regex> -- <command> [args...]
+ * usage: bun packages/scripts/run-with-flake-retry.ts <signature-regex> -- <command> [args...]
  */
 import { spawn } from "node:child_process";
 
@@ -17,7 +17,7 @@ const argv = process.argv.slice(2);
 const signatureRaw = argv[0] ?? "";
 if (argv[1] !== "--" || !signatureRaw || argv.length < 3) {
   console.error(
-    "usage: node packages/scripts/run-with-flake-retry.ts <signature-regex> -- <command> [args...]",
+    "usage: bun packages/scripts/run-with-flake-retry.ts <signature-regex> -- <command> [args...]",
   );
   process.exit(2);
 }

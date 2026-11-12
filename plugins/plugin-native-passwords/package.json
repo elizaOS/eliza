@@ -29,15 +29,15 @@
     "url": "https://github.com/elizaOS/eliza.git"
   },
   "scripts": {
-    "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-passwords -- bun run build:unlocked",
+    "build": "bun ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-passwords -- bun run build:unlocked",
     "build:unlocked": "bun run clean && tsc6 && bunx rollup -c rollup.config.mjs",
-    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
+    "clean": "bun ../../packages/scripts/rm-path-recursive.ts dist",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "test": "node --test test/client.node.mjs test/native-host/policy.node.mjs test/native-host/transfer.node.mjs"
+    "test": "bun test --timeout=120000 ./test/client.node.mjs ./test/native-host/policy.node.mjs ./test/native-host/transfer.node.mjs"
   },
   "capacitor": {
     "android": {

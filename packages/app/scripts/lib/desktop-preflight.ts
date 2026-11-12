@@ -110,7 +110,7 @@ export function buildWindowsRepairSteps() {
     "2. Delete packages/app/platforms/electrobun/node_modules.",
     "3. Delete node_modules/.bun from the repo root.",
     "4. From repo root, run: bun install",
-    "5. Retry the desktop build with the subcommand you ran, e.g.: node packages/app/scripts/desktop-build.ts build",
+    "5. Retry the desktop build with the subcommand you ran, e.g.: bun packages/app/scripts/desktop-build.ts build",
   ];
 }
 

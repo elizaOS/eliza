@@ -22,7 +22,7 @@
  *     libraries; those remain signed and are still checked for forbidden keys.
  *
  * Usage:
- *   node mas-smoke.ts --app=path/to/Built.app
+ *   bun mas-smoke.ts --app=path/to/Built.app
  *                      [--launch]   # also run `open -W` and sniff sandbox logs (30s)
  *                      [--help]
  *
@@ -122,7 +122,7 @@ function parseArgs(argv) {
 }
 
 function printUsage() {
-  const usage = `Usage: node mas-smoke.ts --app=<path/to/Built.app> [options]
+  const usage = `Usage: bun mas-smoke.ts --app=<path/to/Built.app> [options]
 
 Verify that a built macOS .app bundle was signed with the tightened MAS
 entitlement set:

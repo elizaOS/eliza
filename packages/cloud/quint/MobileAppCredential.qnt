@@ -1,6 +1,8 @@
 // Source protocol for one issued mobile authorization code. Encryption and
 // policy admission are external awaits. SQL publication and acknowledgement
 // are atomic. Confirm checks fresh time after either encryption or decryption.
+// A code comes from a browser approval or from key renewal; issuance stamps
+// the sign-in time either way. MobileAppKeyRenewal models the renewal lineage.
 module MobileAppCredential {
   const Initial: str
   pure val Requests = Set(1, 2)

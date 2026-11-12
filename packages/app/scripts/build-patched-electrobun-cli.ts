@@ -64,7 +64,7 @@ function runAllowFailure(command, args, options = {}) {
 }
 
 function removePathRecursive(targetPath) {
-  const result = spawnSync("node", [cleanupHelperScript, targetPath], {
+  const result = spawnSync("bun", [cleanupHelperScript, targetPath], {
     cwd: repoRoot,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],

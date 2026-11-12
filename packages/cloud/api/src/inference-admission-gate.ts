@@ -2181,6 +2181,10 @@ export class InferenceAdmissionGate {
         this.release(body as LeaseIdentityRequest),
       );
     }
+    // Request routes count their rate in the isolate and never call these.
+    // The durable windows remain for the delegated-budget controller
+    // (`consumeRatePolicy`), which is their only caller; `/rate-limit-warm`
+    // is kept for the hosting probe.
     if (path === "/rate-limit" || path === "/rate-limit-warm") {
       return await this.serializeRateLimit(() =>
         path === "/rate-limit"

@@ -32,7 +32,7 @@ import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing"
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { createTransactionalAudit } from "@/api-app/services/audit-transactional";
+import { createTransactionalAudit } from "../../../src/services/audit-transactional";
 
 const consentSchema = z.object({
   purpose: z.enum(USER_CONSENT_PURPOSES),

@@ -104,6 +104,8 @@ together: a draft waits on the capture worker for the live source to close (`liv
 with `capture-replaced`); failed cleanup refuses a replacement,
 and a live capture that the user starts finishes the open draft (`recordingStopped`; the draft
 is kept). A cancelled queued start cannot clear this draft’s automatic-reopen fence.
+Separate live and draft owners in the same process share one microphone slot. A competing
+start is refused before it opens a source. Confirmed source cleanup releases that owner's slot.
 For a spoken conversation it also provides: `startLiveCapture` with
 `startMs`/`endHangoverMs` (the VAD start run and end hangover, whole 32 ms windows) and `bargeIn`
 (a `liveCaptureBargeIn` event when speech is sustained while the streamed reply is audible; the
@@ -289,7 +291,7 @@ With `spanish.enabled` (the default) it also converts and bundles the Spanish
 voice, which needs the `onnx` package; `--models-only` (desktop) never does.
 
 ```sh
-ANDROID_HOME=~/Library/Android/sdk node packages/app/scripts/paradee-voice/build-native.ts \
+ANDROID_HOME=~/Library/Android/sdk bun packages/app/scripts/paradee-voice/build-native.ts \
   --workspace /path/to/build/paradee-voice [--model-cache /path/to/models] [--python python3]
 ```
 

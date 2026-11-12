@@ -2,7 +2,7 @@
  * App-core Eliza runtime loader: the single boot chokepoint every app agent
  * process funnels through. Wraps `@elizaos/agent`'s startEliza / bootElizaRuntime
  * with app-shell concerns — installs the agent host bridge (vault, account pool,
- * wallet-key hydration, cloud-pair route), syncs brand env aliases, binds the
+ * wallet-key hydration, cloud-pair route), binds the
  * API server (bind-first, then background runtime boot), repairs the runtime,
  * and composes the focused startup modules that own autonomy, PGlite recovery,
  * local-model warmup, and post-ready contributor ordering.
@@ -21,7 +21,6 @@ import {
   bootElizaRuntime as upstreamBootElizaRuntime,
   startEliza as upstreamStartEliza,
 } from "@elizaos/agent";
-import { readAliasedEnv } from "@elizaos/host/protocol";
 import { ensureBundledFusedLibDir } from "./bundled-fused-lib.js";
 import { installAgentHostBridge } from "./install-agent-host-bridge.js";
 import {
@@ -148,7 +147,7 @@ export async function startEliza(
   installAgentHostBridge();
   const bootResources = createRuntimeBootResources();
   // Eliza app: load PTY / coding-swarm orchestration unless explicitly opted out.
-  const orchRaw = readAliasedEnv("ELIZA_AGENT_ORCHESTRATOR")?.toLowerCase();
+  const orchRaw = process.env.ELIZA_AGENT_ORCHESTRATOR?.trim().toLowerCase();
   if (orchRaw !== "0" && orchRaw !== "false" && orchRaw !== "no") {
     process.env.ELIZA_AGENT_ORCHESTRATOR = "1";
   }

@@ -314,6 +314,26 @@
       "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
       "classname": "test",
       "name": "legacy query completeness is unknown for both zero and 500 returned rows"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
+      "classname": "test",
+      "name": "a revoked folder listing is denied rather than empty"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
+      "classname": "test",
+      "name": "an unavailable access response is not a permission denial or an empty folder"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
+      "classname": "test",
+      "name": "a failed folder or Trash read exposes its error until a successful retry"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
+      "classname": "test",
+      "name": "unreadable secondary Trash keeps the visible list incomplete until it is read"
     }
   ],
   "assistant": {

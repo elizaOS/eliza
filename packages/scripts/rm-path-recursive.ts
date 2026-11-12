@@ -69,7 +69,7 @@ if (
   const rels = process.argv.slice(2);
   if (rels.length === 0) {
     console.error(
-      "usage: node packages/scripts/rm-path-recursive.ts <path> [path...]",
+      "usage: bun packages/scripts/rm-path-recursive.ts <path> [path...]",
     );
     process.exit(1);
   }

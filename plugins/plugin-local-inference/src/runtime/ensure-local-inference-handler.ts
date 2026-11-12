@@ -49,7 +49,6 @@ import {
 	timeInferenceSpan,
 	type UUID,
 } from "@elizaos/core";
-import { readAliasedEnv } from "@elizaos/host/protocol";
 import { renderMessageHandlerStablePrefix } from "@elizaos/plugin-assistant";
 import { LocalInferenceUnavailableError } from "../provider";
 import {
@@ -240,7 +239,7 @@ function getRuntimeMode(runtime: IAgentRuntime): string {
 		if (fromEnv) return fromEnv;
 	}
 	if (
-		readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1" ||
+		process.env.ELIZA_CLOUD_PROVISIONED?.trim() === "1" ||
 		process.env.ELIZAOS_CLOUD_ENABLED === "1"
 	) {
 		return "cloud";
@@ -1572,38 +1571,26 @@ function makeBionicImageDescriptionHandler(): ImageDescriptionHandler {
 /**
  * AOSP / generic-FFI path: load the fused `libelizainference.so` into the bun
  * process via `bun:ffi` (the AOSP plugin's loader; libllama is retired). The
- * loader stays inactive at runtime when neither `ELIZA_LOCAL_LLAMA === "1"`
- * (kept as the legacy opt-in env name) nor `process.arch === "riscv64"` is
- * true (see `isAospEnabled` in `@elizaos/plugin-native-inference`), so the
- * dynamic import below is safe on every platform; we only attempt registration
- * when one of the triggers fires.
- *
- * riscv64 rationale: `capacitor-llama` ships prebuilts only for
- * linux-{x64,arm64}, darwin-arm64, win-x64. Riscv64 hosts have no native NAPI
- * binding option; the cross-built fused `libelizainference.so` is the only
- * in-process llama.cpp path. The FFI loader satisfies the same
- * `localInferenceLoader` service contract, so the rest of the engine —
- * model handlers, embedding routing, response handler — works unchanged.
+ * loader stays inactive at runtime unless `ELIZA_LOCAL_LLAMA === "1"` (kept
+ * as the legacy opt-in env name; see `isAospEnabled` in
+ * `@elizaos/plugin-native-inference`), so the dynamic import below is safe on
+ * every platform; we only attempt registration when the trigger fires. The FFI
+ * loader satisfies the same `localInferenceLoader` service contract, so the
+ * rest of the engine — model handlers, embedding routing, response handler —
+ * works unchanged.
  *
  * The `try`/`catch` is justified because the AOSP build can ship the .so on
  * one ABI but be invoked on another (e.g. cuttlefish_x86_64 reporting both
  * x86_64 and arm64-v8a). When `ELIZA_LOCAL_LLAMA=1` is set but registration
  * fails, the loader logs at `error` level — we must NOT silently fall
  * through to the device-bridge or stock engine: the operator opted in and
- * deserves the failure surfaced clearly. The riscv64 auto-trigger uses the
- * same path; if the bundled `libelizainference.so` is missing the failure is
- * logged but inference falls through to Cloud routing (per CLAUDE.md deployment
- * topologies — local-only is supported but Cloud is an acceptable fallback
- * when the on-device backend is unavailable).
+ * deserves the failure surfaced clearly.
  */
 export function shouldAttemptAospLlamaLoader(
 	env: NodeJS.ProcessEnv = process.env,
-	arch: NodeJS.Architecture = process.arch,
 ): boolean {
 	if (env.ELIZA_DISABLE_FFI_LLAMA?.trim() === "1") return false;
-	if (env.ELIZA_LOCAL_LLAMA?.trim() === "1") return true;
-	if (arch === "riscv64") return true;
-	return false;
+	return env.ELIZA_LOCAL_LLAMA?.trim() === "1";
 }
 
 /**
@@ -1806,8 +1793,8 @@ export async function ensureLocalInferenceHandler(
 		// cloud clients must not activate local text, voice, or model loaders.
 		if (
 			runtimeMode === "cloud" &&
-			readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1" &&
-			readAliasedEnv("ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS") === "1" &&
+			process.env.ELIZA_CLOUD_PROVISIONED?.trim() === "1" &&
+			process.env.ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS?.trim() === "1" &&
 			process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS?.trim().toLowerCase() !==
 				"true" &&
 			!isLocalEmbeddingDisabledByEnv()

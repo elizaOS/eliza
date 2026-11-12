@@ -6,6 +6,7 @@ import type { Context } from "hono";
 import type { AppEnv } from "../../../types/cloud-worker-env";
 import { failureResponse } from "../../api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "../../auth/workers-hono-auth";
+import { getCloudDeployment } from "../../deployment/cloud-deployment";
 import { logger } from "../../utils/logger";
 import {
   isAllowanceFirstOrganization,
@@ -118,7 +119,7 @@ export async function handleDexscreenerProxyGet(c: Context<AppEnv>): Promise<Res
       return c.json(
         {
           error: "Insufficient credits",
-          topUpUrl: "https://cloud.eliza.app/cloud/billing",
+          topUpUrl: getCloudDeployment().billingUrl,
         },
         402,
       );

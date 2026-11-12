@@ -18,8 +18,8 @@ import {
   CartesiaSonicTtsAdapter,
   type CartesiaWebSocketFactory,
   type CartesiaWebSocketLike,
-} from "../../../../shared/src/lib/services/cartesia-sonic-tts";
-import { pcm16ChunksToWav } from "../../../../shared/src/lib/services/pcm16-wav";
+} from "@elizaos/cloud-shared/lib/services/cartesia-sonic-tts";
+import { pcm16ChunksToWav } from "@elizaos/cloud-shared/lib/services/pcm16-wav";
 
 const CARTESIA_BYTES_URL = "https://api.cartesia.ai/tts/bytes";
 const CARTESIA_REST_API_VERSION = "2025-04-16";
