@@ -9,7 +9,14 @@ export const SUBSCRIPTION_CHECKOUT_CANCEL_PATH = "/cloud/billing?subscription_ch
 const CHECKOUT_CANCEL_PATHS = ["/cloud/billing", SUBSCRIPTION_CHECKOUT_CANCEL_PATH] as const;
 /** Public, session-free page a shared-link payer returns to; it shows no account data. */
 export const SUBSCRIPTION_CHECKOUT_PAYER_PATH = "/api/v1/subscriptions/checkout/payer";
-export const SUBSCRIPTION_CHECKOUT_PRESENTATIONS = ["hosted", "embedded", "shared"] as const;
+export const SUBSCRIPTION_CHECKOUT_PRESENTATIONS = [
+  "hosted",
+  "embedded",
+  "shared",
+  "mobile",
+] as const;
+/** Path suffix of a registered native client's billing return (see `mobileBillingReturnUrl`). */
+export const MOBILE_CHECKOUT_RETURN_SUFFIX = "/billing/return";
 export type SubscriptionCheckoutPresentation = (typeof SUBSCRIPTION_CHECKOUT_PRESENTATIONS)[number];
 const identity = z
   .object({
@@ -28,7 +35,7 @@ export const checkoutContractSchema = z
     priceId: z.string().regex(/^price_[A-Za-z0-9]+$/),
     productId: z.string().regex(/^prod_[A-Za-z0-9]+$/),
     /** Absent means the original hosted checkout; persisted hosted contracts never carry it. */
-    presentation: z.enum(["embedded", "shared"]).optional(),
+    presentation: z.enum(["embedded", "shared", "mobile"]).optional(),
     params: z
       .object({
         mode: z.literal("subscription"),
@@ -92,6 +99,20 @@ export const checkoutContractSchema = z
       success.origin !== cancel.origin
     )
       return differ();
+    if (value.presentation === "mobile") {
+      // A hosted page opened from a first-party native app; both returns land on that app's
+      // registered billing return, which the route derives from server configuration.
+      const base = `${cancel.origin}${cancel.pathname}`;
+      if (
+        !cancel.pathname.endsWith(MOBILE_CHECKOUT_RETURN_SUFFIX) ||
+        /[%;*\\]/.test(cancel.pathname) ||
+        cancel.hash ||
+        p.success_url !== mobileCheckoutReturnUrl(base, "success") ||
+        p.cancel_url !== mobileCheckoutReturnUrl(base, "cancel")
+      )
+        differ();
+      return;
+    }
     if (value.presentation === "shared") {
       // A different person pays; both returns land on the public payer page without session ids.
       if (
@@ -110,6 +131,16 @@ export const checkoutContractSchema = z
   });
 export function sharedCheckoutReturnUrl(origin: string, outcome: "paid" | "canceled"): string {
   return `${origin}${SUBSCRIPTION_CHECKOUT_PAYER_PATH}?outcome=${outcome}`;
+}
+/**
+ * Return address for a native app's hosted checkout. Only the success return carries the
+ * provider session id (Stripe fills the template there); it is an identifier, never payment
+ * evidence, and `checkout/confirm` still reads the payment from the provider.
+ */
+export function mobileCheckoutReturnUrl(base: string, result: "success" | "cancel"): string {
+  return result === "success"
+    ? `${base}?session_id={CHECKOUT_SESSION_ID}&result=success`
+    : `${base}?result=cancel`;
 }
 export function checkoutPresentation(contract: CheckoutContract): SubscriptionCheckoutPresentation {
   return contract.presentation ?? "hosted";

@@ -4,12 +4,14 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
+  nativeBillingReturnFallback,
   nativeSignInCallbackFallback,
   onRequest,
 } from "../../app/functions/_middleware.ts";
 import {
   callbacks,
   prepareConfig,
+  verifyBillingReturns,
   verifyCallbacks,
 } from "./pages-native-auth-callbacks.ts";
 
@@ -373,6 +375,111 @@ describe("Pages native callback deployment", () => {
         return new Response(mutate(await response.text(), headers), { status: response.status, headers });
       })).rejects.toThrow();
     }
+  });
+
+  test("the derived billing return of each native callback is probed against the real middleware", async () => {
+    const alpha = {
+      redirectUri: "https://cloud-staging.eliza.app/alphaphone/auth/callback",
+      androidPackage: "ai.alphacompute.alphaphone",
+      appName: "AlphaPhone",
+    };
+    // `stage` has no `/auth/callback` suffix, so it has no billing return.
+    const { config } = prepareConfig(
+      canonical,
+      directory,
+      "staging",
+      JSON.stringify([stage, alpha]),
+      {},
+    );
+    const probed: URL[] = [];
+    const request = async (url: URL) => {
+      probed.push(url);
+      return onRequest({
+        request: new Request(url),
+        env: config.vars as Record<string, string>,
+        next: async () => new Response("Eliza SPA"),
+      });
+    };
+    expect(await verifyCallbacks(config, "staging", request)).toBe(2);
+    probed.length = 0;
+    expect(await verifyBillingReturns(config, "staging", request)).toBe(1);
+    expect(probed.map((url) => `${url.origin}${url.pathname}`)).toEqual([
+      "https://cloud-staging.eliza.app/alphaphone/billing/return",
+    ]);
+    // The served page forwards the session id and result, and nothing else.
+    const body = await (await request(probed[0])).text();
+    expect(body).toContain(
+      "intent://cloud-staging.eliza.app/alphaphone/billing/return?session_id=cs_test_nativeBillingReturnDeploymentProbe&amp;result=success#Intent;scheme=https;package=ai.alphacompute.alphaphone;end",
+    );
+    expect(body).not.toContain("deployment-probe.invalid");
+    expect(body).not.toContain("<script");
+
+    // A deployment that serves the SPA, another status, a weaker header or a
+    // page that echoes request data on the billing return fails verification.
+    const served = (
+      change: (body: string, headers: Headers) => string,
+      status = 200,
+    ) =>
+      verifyBillingReturns(config, "staging", async (url) => {
+        const response = nativeBillingReturnFallback(url, alpha);
+        const headers = new Headers(response.headers);
+        return new Response(change(await response.text(), headers), {
+          status,
+          headers,
+        });
+      });
+    expect(await served((text) => text)).toBe(1);
+    await expect(
+      verifyBillingReturns(
+        config,
+        "staging",
+        async () => new Response("Eliza SPA"),
+      ),
+    ).rejects.toThrow("native_billing_return_headers_mismatch");
+    await expect(served((text) => text, 302)).rejects.toThrow(
+      "native_billing_return_status_mismatch",
+    );
+    await expect(
+      served((text, headers) => {
+        headers.set(
+          "content-security-policy",
+          `${headers.get("content-security-policy")}; script-src 'unsafe-inline'`,
+        );
+        return text;
+      }),
+    ).rejects.toThrow("native_billing_return_headers_mismatch");
+    await expect(
+      served((text, headers) => {
+        headers.delete("cache-control");
+        return text;
+      }),
+    ).rejects.toThrow("native_billing_return_headers_mismatch");
+    for (const change of [
+      (text: string) =>
+        text.replace("&amp;result=success", "&amp;result=success&amp;next=x"),
+      (text: string) =>
+        text.replace("ai.alphacompute.alphaphone", "app.example.other"),
+      (text: string) => text.replace("</main>", "<script>1</script></main>"),
+      (text: string) =>
+        text.replace("to finish.", "to finish. Payment received."),
+    ]) {
+      await expect(served(change)).rejects.toThrow(
+        "native_billing_return_body_mismatch",
+      );
+    }
+    // No configured callback has a billing return: nothing is probed.
+    const none = prepareConfig(
+      canonical,
+      directory,
+      "staging",
+      JSON.stringify([stage]),
+      {},
+    );
+    expect(
+      await verifyBillingReturns(none.config, "staging", async () => {
+        throw new Error("unexpected probe");
+      }),
+    ).toBe(0);
   });
 
   test("production injection preserves preview and every other production binding", () => {
