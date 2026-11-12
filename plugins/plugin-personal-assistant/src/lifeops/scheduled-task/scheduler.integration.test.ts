@@ -126,7 +126,8 @@ describe("processDueScheduledTasks — production wiring", () => {
       const task = await seedScheduledTask(runtime, {
         kind: "approval",
         promptInstructions: "Approval needed",
-        trigger: { kind: "once", atIso: "2026-11-11T21:00:00Z" },
+        // A deferred approval must retire before its future retry becomes due.
+        trigger: { kind: "once", atIso: "2026-11-12T21:00:00Z" },
         priority: "high",
         respectsGlobalPause: false,
         source: "plugin",

@@ -589,13 +589,11 @@ export async function processDueScheduledTasks(
   const approvalQueue = createApprovalQueue(request.runtime, {
     agentId: request.agentId,
   });
-  const approvalTasks = new Map(
-    [...liveCandidates, ...timeoutCandidates].map((task) => [
-      task.taskId,
-      task,
-    ]),
-  );
-  for (const task of approvalTasks.values()) {
+  const approvalTasks = await repo.listScheduledTasks(request.agentId, {
+    kind: "approval",
+    status: ["scheduled", "fired"],
+  });
+  for (const task of approvalTasks) {
     const requestId = task.metadata?.approvalRequestId;
     if (task.kind !== "approval" || typeof requestId !== "string") continue;
     heldApprovalTaskIds.add(task.taskId);
