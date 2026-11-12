@@ -14,7 +14,7 @@ public final class CloudSignInRoutes {
  public static final Set<String> WRITES = Set.of(CloudSmsCode.SEND_PATH, CloudSmsCode.VERIFY_PATH, CloudEmailCode.SEND_PATH, CloudEmailCode.VERIFY_PATH,
   "/steward/auth/oauth/exchange", "/steward/auth/oauth/google/native/challenge", "/steward/auth/oauth/google/native/verify",
   "/steward/auth/mfa/totp/complete", "/steward/auth/mfa/sms/complete", "/steward/auth/logout",
-  "/api/v1/app-auth/connect", "/api/v1/app-auth/mobile/token", "/api/v1/app-auth/mobile/ack");
+  "/api/v1/app-auth/connect", "/api/v1/app-auth/mobile/token", "/api/v1/app-auth/mobile/ack", CloudKeyRenewal.PATH);
  public static final String SELF_REVOCATION = "/api/v1/api-keys/current";
 
  /** GETs carry no body; every POST carries a JSON body. */

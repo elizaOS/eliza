@@ -3,30 +3,31 @@ import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
-// Ship the same command implementation as Chromium. Published native packages
-// contain this generated asset and do not need the monorepo at Android build time.
-const target = new URL("../resources/control-channel.js", import.meta.url);
-
-// Slice each function from its file. Function.prototype.toString is not usable:
-// Bun returns the transpiled text, without comments and with merged declarations.
-async function functionSource(specifier, name) {
-  const text = await readFile(new URL(specifier, import.meta.url), "utf8");
-  const file = ts.createSourceFile(
-    specifier,
-    text,
+async function functionSource(path, name) {
+  const url = new URL(path, import.meta.url);
+  const module = ts.createSourceFile(
+    fileURLToPath(url),
+    await readFile(url, "utf8"),
     ts.ScriptTarget.Latest,
     true,
     ts.ScriptKind.JS,
   );
-  const declaration = file.statements.find(
-    (statement) =>
-      ts.isFunctionDeclaration(statement) && statement.name?.text === name,
+  const declarations = module.statements.filter(
+    (node) => ts.isFunctionDeclaration(node) && node.name?.text === name,
   );
-  const keyword = declaration
-    ?.getChildren(file)
-    .find((child) => child.kind === ts.SyntaxKind.FunctionKeyword);
-  if (!keyword) throw new Error(`${specifier} does not declare ${name}`);
-  return text.slice(keyword.getStart(file), declaration.end);
+  const declaration = declarations[0];
+  if (
+    module.parseDiagnostics.length ||
+    declarations.length !== 1 ||
+    !declaration.body ||
+    declaration.modifiers?.length !== 1 ||
+    declaration.modifiers[0].kind !== ts.SyntaxKind.ExportKeyword
+  )
+    throw new Error(`Expected one exported function ${name} in ${path}`);
+  // Function.toString() serializes Bun's transformed code, not the source bytes.
+  return module.text
+    .slice(declaration.modifiers[0].end, declaration.end)
+    .trim();
 }
 
 const [installControlChannel, pageCommand, pageGuidance] = await Promise.all([
@@ -40,6 +41,10 @@ const [installControlChannel, pageCommand, pageGuidance] = await Promise.all([
     "pageGuidance",
   ),
 ]);
+
+// Ship the same command implementation as Chromium. Published native packages
+// contain this generated asset and do not need the monorepo at Android build time.
+const target = new URL("../resources/control-channel.js", import.meta.url);
 const source = execFileSync(
   process.execPath,
   [

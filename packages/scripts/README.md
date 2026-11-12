@@ -42,6 +42,13 @@ Relative module imports resolve from their source file; operational outputs and
 repository configuration resolve from the checkout root. Keep those paths
 correct when moving tools between subdirectories.
 
+Main promotion runs complete Quint partitions in the main PR, merge queue and
+canonical main Full validation. Other branches skip hosted models; local model
+and owning conformance checks remain required before merge. Production effect
+consumers also verify the exact-source successful main Full manifest, its current
+run attempt and all source-bound rows, while retaining staging tree certification.
+The existing manifest and certificate formats are unchanged.
+
 ## Generated test output
 
 Audit and test artifacts belong in the ignored repository-root `test-results/`,

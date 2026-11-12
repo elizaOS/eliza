@@ -1,3 +1,4 @@
+import { NOTES_LIST_FILTER_CAPABILITY } from "@elizaos/contracts";
 import {
   isNativeNotesQuery,
   type NativeNotesQueryOperation,
@@ -160,6 +161,8 @@ export function deviceOperationSupportedByCapabilities(
       capabilities?.includes(NOTES_QUERY_CAPABILITY) === true &&
       capabilities.includes("notes.local-record.v1")
     );
+  if (type === "notes_list_filter")
+    return capabilities?.includes(NOTES_LIST_FILTER_CAPABILITY) === true;
   if (isNotesOrganizeType(type))
     return (
       capabilities?.includes(NOTES_ORGANIZE_CAPABILITY) === true &&
@@ -282,6 +285,7 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
         throw new DeviceActionError("Invalid Notes operation");
       }
     case "notes_filter":
+    case "notes_list_filter":
     case "notes_move":
     case "notes_folder_create":
     case "notes_restore":

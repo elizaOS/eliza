@@ -7,7 +7,6 @@ import {
 import { admitAppInferenceCacheOnly } from "@elizaos/cloud-shared/lib/services/app-inference-admission";
 import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
 import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import {
   executeImageGeneration,
   imageGenerationRequestSchema,
@@ -53,10 +52,6 @@ export async function handleGenerateImagePOST(
         rateLimitEndpoint: "strict",
         deferStrongCredentialCheck: pendingResponse === undefined,
       });
-    await using credentialGuard = deferredCredentialAdmissionGuard({
-      organizationId: () => user.organization_id,
-      credential: () => credential,
-    });
     if (pendingResponse) return pendingResponse;
     if (!requestResult.success) throw requestResult.error;
     const request = requestResult.data;
@@ -115,7 +110,7 @@ export async function handleGenerateImagePOST(
             affiliateCode: context.affiliateCode,
             executionCtx,
             admissionSnapshot,
-            credential: credentialGuard.credentialForAdmission(),
+            credential,
             atomicProviderBoundary: true,
             metadata: {
               endpoint: "apps.generate-image",
@@ -130,7 +125,6 @@ export async function handleGenerateImagePOST(
           apiKeyId,
           cost,
           admissionSnapshot,
-          credential: credentialGuard.credentialForAdmission(),
           atomicProviderBoundary: true,
         });
         return { kind: "organization" as const, admission };

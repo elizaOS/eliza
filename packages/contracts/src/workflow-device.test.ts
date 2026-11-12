@@ -669,7 +669,7 @@ test("a relative Calendar step reads the days of the run, and a stored absolute 
       true,
     );
   const specDigest = await workflowSha(canonical);
-  assert.equal(phoneWorkflowRequiredProtocol(canonical), 4);
+  assert.equal(phoneWorkflowRequiredProtocol(canonical), 5);
   assert.equal(
     phoneWorkflowRequiredProtocol({ steps: [canonical.steps[1]] }),
     1,
@@ -713,6 +713,48 @@ test("a relative Calendar step reads the days of the run, and a stored absolute 
   );
   const read = { type: "read_calendar_range", ...absolute };
   assertWorkflowOperation(review, binding("today"), device, read, first);
+  const anchoredReview = {
+    ...review,
+    calendarAnchorAt: new Date(first).toISOString(),
+  };
+  assertWorkflowOperation(
+    anchoredReview,
+    binding("today"),
+    device,
+    read,
+    second,
+  );
+  assert.equal(
+    await rejects(() =>
+      assertWorkflowOperation(
+        anchoredReview,
+        binding("today"),
+        device,
+        {
+          type: "read_calendar_range",
+          ...resolvePhoneCalendarRange(range, second),
+        },
+        second,
+      ),
+    ),
+    true,
+  );
+  assert.equal(
+    (await parseWorkflowPhoneReview(anchoredReview, expected)).calendarAnchorAt,
+    anchoredReview.calendarAnchorAt,
+  );
+  assert.equal(
+    await rejects(() =>
+      parseWorkflowPhoneReview(
+        {
+          ...anchoredReview,
+          calendarAnchorAt: "2026-10-08T18:00:00Z",
+        },
+        expected,
+      ),
+    ),
+    true,
+  );
   // Shortly after local midnight the request raised before it is still valid.
   const midnight = Date.parse(absolute.end);
   assertWorkflowOperation(

@@ -4,7 +4,6 @@
  */
 
 import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
-import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import type { EndpointType } from "@elizaos/cloud-shared/lib/services/org-rate-limits";
 import type { ProxyCombinedAdmission } from "@elizaos/cloud-shared/lib/services/proxy/engine";
 import {
@@ -82,10 +81,6 @@ export async function withGuardedPaidProxyAdmission(
       deferStrongCredentialCheck: options.deferStrongCredentialCheck ?? true,
       rateLimitEndpoint: options.rateLimitEndpoint ?? "standard",
     });
-    await using credentialGuard = deferredCredentialAdmissionGuard({
-      organizationId: () => caller.user.organization_id,
-      credential: () => caller.credential,
-    });
     const auth = {
       user: caller.user,
       ...(caller.apiKeyId ? { apiKey: { id: caller.apiKeyId } } : {}),
@@ -105,8 +100,7 @@ export async function withGuardedPaidProxyAdmission(
       ...(caller.admissionSnapshot
         ? { admissionSnapshot: caller.admissionSnapshot }
         : {}),
-      ...(caller.credential ? { credential: caller.credential } : {}),
-      credentialForAdmission: () => credentialGuard.credentialForAdmission(),
+      refreshAuthEntry: caller.refreshAuthEntry,
       executionCtx,
     });
   } catch (error) {

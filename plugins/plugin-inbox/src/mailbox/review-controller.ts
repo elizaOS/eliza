@@ -27,6 +27,7 @@ import {
   type InboxOperationRecord,
   type InboxOperationStore,
   type ReviewBinding,
+  renderReviewBinding,
   reviewBinding,
   reviewBindingRefusal,
 } from "./operation-journal.ts";
@@ -173,18 +174,17 @@ export function createMailReviewController(
     sentNote: ((source: MailSentSource) => string) | null = null;
 
   const currentSession = () => options.binding()?.sessionId;
-  const unsent = () => {
-    const record = operation?.snapshot();
-    return record &&
-      (record.phase === "review" || record.phase === "preparing") &&
-      composerKind(record.proposal.kind)
+  const unsent = (record = operation?.snapshot()) =>
+    record &&
+    (record.phase === "review" || record.phase === "preparing") &&
+    composerKind(record.proposal.kind)
       ? record
       : null;
-  };
-  const binding = (): ReviewBinding | "none" => {
-    const record = unsent();
-    return record && composer ? reviewBinding(record, composer()) : "none";
-  };
+  const binding = (
+    record = unsent(),
+    compare = reviewBinding,
+  ): ReviewBinding | "none" =>
+    record && composer ? compare(record, composer()) : "none";
   const replaced = (state = binding()): state is "edited" | "other" =>
     state === "edited" || state === "other";
 
@@ -630,7 +630,7 @@ export function createMailReviewController(
   function render() {
     const record = operation?.snapshot() ?? null,
       review = record?.review as Bag | null | undefined,
-      bound = binding(),
+      bound = binding(unsent(record), renderReviewBinding),
       stale = replaced(bound),
       absent = bound === "absent",
       sent = sentSource(record);

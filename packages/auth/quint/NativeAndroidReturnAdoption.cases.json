@@ -1,0 +1,34 @@
+{
+  "sources": [
+    "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java",
+    "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInFlow.java",
+    "plugins/plugin-native-secure-store/android-nativeonly/src/main/java/ai/eliza/plugins/securestore/nativeonly/CredentialIntentFence.java",
+    "packages/auth/android/test/native-sign-in.test.mjs",
+    "packages/auth/android/test/ai/eliza/auth/cloud/CloudSignInChainTest.java.txt",
+    "packages/auth/android/test/ai/eliza/auth/cloud/CredentialGenerationTest.java"
+  ],
+  "bounds": {
+    "domain": "One Android deployment and one pending browser record, written by a host with or without a durable credential generation. Up to three processes, three credential actions per process (each may also remove the record), one record expiry and any number of deliveries of the matching return.",
+    "assumptions": "Every credential action reserves an intent on the host's fence, and a host with a ledger records a new generation durably with each reservation: ledger writes succeed. The store's compare-and-remove of the pending record and the key write each run under the adopted intent's check. The returned state matches the record; a return with another state is ignored before this model begins.",
+    "limitations": "The model assumes ledger writes succeed. In the code a reservation whose generation cannot be written is tried once more and then clears the recorded value, so a later process adopts nothing; the JVM fixture runs that across processes. Only storage that accepts neither the write nor the clear until that process dies leaves the earlier generation recorded: a return could then be adopted although a credential action followed it. That window is bounded by the record's ten-minute life, is closed by a host that removes the pending slot in the action that reserved, and is outside this model. The Android authorization dialog, the Steward exchange, the acknowledgement of the new key, second-factor refusal and host wiring are outside it too. The JVM fixtures run the exact callback and adoption methods and the fence's generation methods."
+  },
+  "conformance": "packages/auth/quint/check-native-android-sign-in.mjs",
+  "cases": [
+    {
+      "name": "browser-return-in-a-new-process",
+      "main": "NativeAndroidReturnAdoption",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "CompletesOnlyWithoutNewerAction",
+        "SingleUse",
+        "NoLedgerNoCompletion",
+        "AdoptedOwnerBound",
+        "Bounds"
+      ],
+      "temporal": [],
+      "maxSteps": 20,
+      "samples": 1000
+    }
+  ]
+}

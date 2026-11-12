@@ -143,21 +143,21 @@ function completeTraceEvents({
       privateValue,
     }),
     event({
-      id: "rate-subrequest",
+      id: "lease-subrequest",
       traceId,
-      spanId: "span-rate-subrequest",
+      spanId: "span-lease-subrequest",
       parentSpanId: "span-root",
       spanName: "durable_object_subrequest",
       duration: 58.123,
       region: "ORD",
-      url: "https://inference-admission.internal/rate-limit",
+      url: "https://inference-admission.internal/lease-dispatched",
       privateValue,
     }),
     event({
-      id: "rate-root",
+      id: "lease-root",
       traceId,
-      spanId: "span-rate-root",
-      parentSpanId: "span-rate-subrequest",
+      spanId: "span-lease-root",
+      parentSpanId: "span-lease-subrequest",
       spanName: "fetch",
       duration: 4.5,
       region: "EWR",
@@ -171,31 +171,31 @@ function completeTraceEvents({
       privateValue,
     }),
     event({
-      id: "rate-storage",
+      id: "lease-storage",
       traceId,
-      spanId: "span-rate-storage",
-      parentSpanId: "span-rate-root",
+      spanId: "span-lease-storage",
+      parentSpanId: "span-lease-root",
       spanName: "durable_object_storage_kv_put",
       duration: 1.255,
       region: "EWR",
       privateValue,
     }),
     event({
-      id: "billing-subrequest",
+      id: "settle-subrequest",
       traceId,
-      spanId: "span-billing-subrequest",
+      spanId: "span-settle-subrequest",
       parentSpanId: "span-root",
       spanName: "durable_object_subrequest",
       duration: 49.987,
       region: "ORD",
-      url: "https://inference-admission.internal/lease-dispatched-authorized",
+      url: "https://inference-admission.internal/settle",
       privateValue,
     }),
     event({
-      id: "billing-root",
+      id: "settle-root",
       traceId,
-      spanId: "span-billing-root",
-      parentSpanId: "span-billing-subrequest",
+      spanId: "span-settle-root",
+      parentSpanId: "span-settle-subrequest",
       spanName: "fetch",
       duration: 5.5,
       region: "IAD",
@@ -209,20 +209,20 @@ function completeTraceEvents({
       privateValue,
     }),
     event({
-      id: "billing-storage-one",
+      id: "settle-storage-one",
       traceId,
-      spanId: "span-billing-storage-one",
-      parentSpanId: "span-billing-root",
+      spanId: "span-settle-storage-one",
+      parentSpanId: "span-settle-root",
       spanName: "durable_object_storage_kv_put",
       duration: 1.1,
       region: "IAD",
       privateValue,
     }),
     event({
-      id: "billing-storage-two",
+      id: "settle-storage-two",
       traceId,
-      spanId: "span-billing-storage-two",
-      parentSpanId: "span-billing-storage-one",
+      spanId: "span-settle-storage-two",
+      parentSpanId: "span-settle-storage-one",
       spanName: "durable_object_storage_alarms_setAlarm",
       duration: 0.25,
       region: "IAD",
@@ -440,9 +440,10 @@ test("sanitizer emits only phase, coarse colo, rounded duration, and coverage in
     ingressColo: "ORD",
     workerColo: "ORD",
     workerWallMs: 185,
-    phases: {
-      rate: {
-        phase: "rate",
+    requestGate: [],
+    accounting: [
+      {
+        phase: "lease",
         workerColo: "ORD",
         doColo: "EWR",
         subrequestMs: 58.12,
@@ -450,8 +451,8 @@ test("sanitizer emits only phase, coarse colo, rounded duration, and coverage in
         storageInclusiveSumMs: 1.26,
         storageSpans: 1,
       },
-      billing: {
-        phase: "billing",
+      {
+        phase: "settle",
         workerColo: "ORD",
         doColo: "IAD",
         subrequestMs: 49.99,
@@ -459,7 +460,7 @@ test("sanitizer emits only phase, coarse colo, rounded duration, and coverage in
         storageInclusiveSumMs: 1.35,
         storageSpans: 2,
       },
-    },
+    ],
   });
   const serialized = JSON.stringify(sample);
   assert.equal(serialized.includes(privateValue), false);
@@ -478,11 +479,115 @@ test("sanitizer emits only phase, coarse colo, rounded duration, and coverage in
   }
 });
 
+/** A gate subrequest with its Durable Object root, on the given path. */
+function gateCall(name, path, { subrequestMs = 12.5, region = "EWR" } = {}) {
+  return [
+    event({
+      id: `${name}-subrequest`,
+      spanId: `span-${name}-subrequest`,
+      parentSpanId: "span-root",
+      spanName: "durable_object_subrequest",
+      duration: subrequestMs,
+      region: "ORD",
+      url: `https://inference-admission.internal${path}`,
+    }),
+    event({
+      id: `${name}-root`,
+      spanId: `span-${name}-root`,
+      parentSpanId: `span-${name}-subrequest`,
+      spanName: "fetch",
+      duration: 3,
+      region,
+      workers: {
+        eventType: "fetch",
+        scriptName: "eliza-cloud-api-staging",
+        executionModel: "durableObject",
+        entrypoint: "InferenceAdmissionGate",
+        wallTimeMs: 2.5,
+      },
+    }),
+  ];
+}
+
+test("a request admitted from its cached entry shows only post-response accounting, in settlement order", () => {
+  const { references } = pairedGatewayTraceWindow(pairedRecords());
+  const sample = sanitizeTraceEvents(
+    [
+      ...completeTraceEvents(),
+      ...gateCall("standing", "/credential/check"),
+      ...gateCall("fence", "/settlement-fence"),
+      ...gateCall("publish", "/hydrate"),
+    ],
+    references,
+    STAGING_WORKER,
+  );
+  assert.deepEqual(sample.requestGate, []);
+  assert.deepEqual(
+    sample.accounting.map((phase) => phase.phase),
+    ["lease", "fence", "settle", "publish", "standing"],
+  );
+});
+
+test("a gate call only a request awaits is reported as a request-path call, never as accounting", () => {
+  const { references } = pairedGatewayTraceWindow(pairedRecords());
+  for (const [path, phase] of [
+    ["/rate-limit", "rate"],
+    ["/lease-dispatched-authorized", "lease_before_dispatch"],
+    ["/lease", "lease_before_dispatch"],
+  ]) {
+    const sample = sanitizeTraceEvents(
+      [...completeTraceEvents(), ...gateCall("inline", path)],
+      references,
+      STAGING_WORKER,
+    );
+    assert.deepEqual(
+      sample.requestGate.map((value) => value.phase),
+      [phase],
+    );
+    assert.deepEqual(
+      sample.accounting.map((value) => value.phase),
+      ["lease", "settle"],
+    );
+  }
+});
+
+test("a trace is inconclusive until its lease commit is visible, and with a repeated fence or settlement", () => {
+  const { references } = pairedGatewayTraceWindow(pairedRecords());
+  // The pre-branch shape: a rate window and no post-response lease commit.
+  const withoutLease = completeTraceEvents().filter(
+    (value) => !value.$metadata.id.startsWith("lease-"),
+  );
+  assert.equal(
+    sanitizeTraceEvents(
+      [...withoutLease, ...gateCall("rate", "/rate-limit")],
+      references,
+      STAGING_WORKER,
+    ),
+    null,
+  );
+  assert.equal(
+    sanitizeTraceEvents(
+      [...completeTraceEvents(), ...gateCall("again", "/settle")],
+      references,
+      STAGING_WORKER,
+    ),
+    null,
+  );
+  assert.equal(
+    sanitizeTraceEvents(
+      [...completeTraceEvents(), ...gateCall("again", "/lease-dispatched")],
+      references,
+      STAGING_WORKER,
+    ),
+    null,
+  );
+});
+
 test("unknown admission paths fail closed while missing sampled spans remain inconclusive", () => {
   const { references } = pairedGatewayTraceWindow(pairedRecords());
   const unknown = completeTraceEvents();
   unknown.find(
-    (value) => value.$metadata.id === "rate-subrequest",
+    (value) => value.$metadata.id === "lease-subrequest",
   ).$metadata.url = "https://inference-admission.internal/unreviewed-operation";
   assert.throws(
     () => sanitizeTraceEvents(unknown, references, STAGING_WORKER),
@@ -491,7 +596,7 @@ test("unknown admission paths fail closed while missing sampled spans remain inc
   assert.equal(
     sanitizeTraceEvents(
       completeTraceEvents().filter(
-        (value) => value.$metadata.id !== "billing-root",
+        (value) => value.$metadata.id !== "settle-root",
       ),
       references,
       STAGING_WORKER,
@@ -499,7 +604,7 @@ test("unknown admission paths fail closed while missing sampled spans remain inc
     null,
   );
   const missingUrl = completeTraceEvents();
-  delete missingUrl.find((value) => value.$metadata.id === "rate-subrequest")
+  delete missingUrl.find((value) => value.$metadata.id === "lease-subrequest")
     .$metadata.url;
   assert.equal(
     sanitizeTraceEvents(missingUrl, references, STAGING_WORKER),
@@ -611,7 +716,7 @@ for (const environment of ["staging", "production"]) {
                 "events",
                 sweepRound === 1
                   ? sliceEvents.filter(
-                      (value) => value.$metadata.id !== "billing-root",
+                      (value) => value.$metadata.id !== "settle-root",
                     )
                   : sliceEvents,
               ),
@@ -679,7 +784,7 @@ for (const environment of ["staging", "production"]) {
 test("collector reports a sampled trace with an unclassifiable URL as inconclusive", async () => {
   const directory = await mkdtemp(join(tmpdir(), "eliza-trace-boundary-"));
   const incomplete = completeTraceEvents();
-  delete incomplete.find((value) => value.$metadata.id === "rate-subrequest")
+  delete incomplete.find((value) => value.$metadata.id === "lease-subrequest")
     .$metadata.url;
   let eventCalls = 0;
   try {
@@ -993,7 +1098,12 @@ test("collector follows event cursors and rejects incomplete, repeated, or confl
       if (mode === "complete") {
         const result = await capture;
         assert.equal(result.status, "observed");
-        assert.equal(result.samples[0].phases.billing.doColo, "IAD");
+        assert.equal(
+          result.samples[0].accounting.find((phase) => phase.phase === "settle")
+            .doColo,
+          "IAD",
+        );
+        assert.equal(result.coverage.tracesWithRequestGateCalls, 0);
       } else if (mode === "conflicting") {
         await assert.rejects(capture, /conflicting/);
       } else {

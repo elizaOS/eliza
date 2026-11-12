@@ -126,6 +126,27 @@ public class TelecomCallPresentationTest {
         }
     }
 
+    public static class IconOwner extends TelecomCallService {
+        @Override protected TelecomCallConfiguration configuration() {
+            return new TelecomCallConfiguration("icon-test", "Call review", "reviewcall", Activity.class, android.R.drawable.ic_dialog_info);
+        }
+    }
+
+    @Test public void callNotificationUsesTheHostIconAndKeepsThePlatformGlyphWithoutOne() throws Exception {
+        int[] expected = {android.R.drawable.sym_action_call, android.R.drawable.ic_dialog_info};
+        List<Class<? extends TelecomCallService>> owners = Arrays.asList(CallOwner.class, IconOwner.class);
+        for (int i = 0; i < expected.length; i++) {
+            TelecomCallService owner = Robolectric.buildService(owners.get(i)).create().get();
+            try {
+                owner.onCallAdded(activeCall());
+                Notification notice = owner.getSystemService(NotificationManager.class).getActiveNotifications()[0].getNotification();
+                assertEquals(expected[i], notice.getSmallIcon().getResId());
+                // A call with no handle names nobody.
+                assertEquals("Unknown caller", notice.extras.getCharSequence(Notification.EXTRA_TITLE).toString());
+            } finally { owner.onDestroy(); }
+        }
+    }
+
     private static Call activeCall() throws Exception {
         // API 35's actual Call constructor initializes Android's callback registry.
         for (Constructor<?> constructor : Call.class.getDeclaredConstructors()) {
@@ -136,6 +157,82 @@ public class TelecomCallPresentationTest {
             return call;
         }
         throw new AssertionError("API 35 Call constructor not found");
+    }
+
+    public static final class HeldContacts extends android.content.ContentProvider {
+        static java.util.concurrent.CountDownLatch entered, release;
+        @Override public boolean onCreate() { return true; }
+        @Override public android.database.Cursor query(android.net.Uri uri, String[] columns, String selection, String[] args, String order) {
+            entered.countDown();
+            try { if (!release.await(10, java.util.concurrent.TimeUnit.SECONDS)) throw new AssertionError("Contact fixture was not released"); }
+            catch (InterruptedException stopped) { Thread.currentThread().interrupt(); return null; }
+            android.database.MatrixCursor rows = new android.database.MatrixCursor(columns);
+            rows.addRow(new Object[] {"Private contact name"}); return rows;
+        }
+        @Override public String getType(android.net.Uri uri) { return null; }
+        @Override public android.net.Uri insert(android.net.Uri uri, android.content.ContentValues values) { throw new UnsupportedOperationException(); }
+        @Override public int delete(android.net.Uri uri, String selection, String[] args) { throw new UnsupportedOperationException(); }
+        @Override public int update(android.net.Uri uri, android.content.ContentValues values, String selection, String[] args) { throw new UnsupportedOperationException(); }
+    }
+
+    private static Call contactCall() throws Exception {
+        Call call = activeCall();
+        for (Constructor<?> constructor : Call.Details.class.getDeclaredConstructors()) {
+            Object[] args = new Object[constructor.getParameterCount()];
+            Class<?>[] types = constructor.getParameterTypes();
+            for (int i = 0; i < types.length; i++) {
+                if (types[i] == int.class) args[i] = 0;
+                else if (types[i] == long.class) args[i] = 0L;
+                else if (types[i] == boolean.class) args[i] = false;
+            }
+            try {
+                constructor.setAccessible(true);
+                Call.Details details = (Call.Details) constructor.newInstance(args);
+                ReflectionHelpers.setField(details, "mHandle", android.net.Uri.parse("tel:+15555550100"));
+                ReflectionHelpers.setField(call, "mDetails", details); return call;
+            } catch (ReflectiveOperationException unavailable) { /* Try another framework constructor. */ }
+        }
+        throw new AssertionError("Android Call.Details constructor unavailable");
+    }
+
+    @Test public void revokedContactsPermissionFencesAnAlreadyRunningNameLookup() throws Exception { contactLookup("revoked"); }
+    @Test public void removedCallFencesAnAlreadyRunningNameLookup() throws Exception { contactLookup("removed"); }
+    @Test public void destroyedServiceFencesAnAlreadyRunningNameLookup() throws Exception { contactLookup("destroyed"); }
+    @Test public void cachedContactNameIsNotReusedAfterPermissionWithdrawal() throws Exception { contactLookup("cached"); }
+    private static void contactLookup(String retirement) throws Exception {
+        android.app.Application app = org.robolectric.RuntimeEnvironment.getApplication();
+        Shadows.shadowOf(app).grantPermissions(android.Manifest.permission.READ_CONTACTS);
+        HeldContacts.entered = new java.util.concurrent.CountDownLatch(1);
+        HeldContacts.release = new java.util.concurrent.CountDownLatch(1);
+        android.content.pm.ProviderInfo info = new android.content.pm.ProviderInfo(); info.authority = "com.android.contacts";
+        Robolectric.buildContentProvider(HeldContacts.class).create(info);
+        CallOwner owner = Robolectric.buildService(CallOwner.class).create().get();
+        boolean destroyed = false;
+        try {
+            Call call = contactCall(); owner.onCallAdded(call);
+            org.junit.Assert.assertTrue(HeldContacts.entered.await(10, java.util.concurrent.TimeUnit.SECONDS));
+            java.util.concurrent.ExecutorService worker = ReflectionHelpers.getField(owner, "lookups");
+            if (retirement.equals("revoked")) Shadows.shadowOf(app).denyPermissions(android.Manifest.permission.READ_CONTACTS);
+            if (retirement.equals("removed")) owner.onCallRemoved(call);
+            if (retirement.equals("destroyed")) { owner.onDestroy(); destroyed = true; }
+            HeldContacts.release.countDown();
+            if (!destroyed) worker.submit(() -> {}).get(10, java.util.concurrent.TimeUnit.SECONDS);
+            else org.junit.Assert.assertTrue(worker.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS));
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            if (retirement.equals("cached")) {
+                assertEquals("Private contact name", owner.getSystemService(NotificationManager.class).getActiveNotifications()[0].getNotification().extras.getCharSequence(Notification.EXTRA_TITLE).toString());
+                Shadows.shadowOf(app).denyPermissions(android.Manifest.permission.READ_CONTACTS);
+                queueState(call); Shadows.shadowOf(Looper.getMainLooper()).idle();
+            }
+            android.service.notification.StatusBarNotification[] notices = owner.getSystemService(NotificationManager.class).getActiveNotifications();
+            if (retirement.equals("revoked") || retirement.equals("cached")) {
+                assertEquals(1, notices.length);
+                assertEquals("+15555550100", notices[0].getNotification().extras.getCharSequence(Notification.EXTRA_TITLE).toString());
+            } else assertEquals(0, notices.length);
+        } finally {
+            HeldContacts.release.countDown();
+            if (!destroyed) owner.onDestroy();
+        }
     }
 
     private static void queueState(Call call) {

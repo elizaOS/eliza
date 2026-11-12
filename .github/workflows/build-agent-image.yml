@@ -386,6 +386,11 @@ jobs:
             exit 1
           }
 
+      - name: Restore source Docker ignore after local image verification
+        # The verified image is already loaded. Undo only this workflow's
+        # owned build-context copy so source admission still checks every byte.
+        run: git restore --source=HEAD -- .dockerignore
+
       - name: Push exact verified image
         id: push
         env:

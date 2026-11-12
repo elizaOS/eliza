@@ -1,4 +1,57 @@
 {
+  "plugins/plugin-assistant/quint/CanonicalNotesListFilter.qnt": [
+    {
+      "kind": "vitest",
+      "cwd": "plugins/plugin-assistant",
+      "config": "vitest.config.ts",
+      "file": "plugins/plugin-assistant/src/services/device-actions/device-admission.test.ts",
+      "required": [
+        "device Notes/Calendar admission admits canonical Notes filtering only from the authenticated live list",
+        "device Notes/Calendar admission admits every no-selection review the phone accepts on that screen",
+        "device Notes/Calendar admission admits notes_query from Home with no selection",
+        "device Notes/Calendar admission admits notes_named from Home with no selection",
+        "device Notes/Calendar admission admits calendar_named from Home with no selection",
+        "device Notes/Calendar admission admits calendar_availability from Home with no selection",
+        "device Notes/Calendar admission admits calendar_read_next from Home with no selection",
+        "device Notes/Calendar admission admits calendar_create_local from Home with no selection",
+        "device Notes/Calendar admission keeps Home reviews closed without their capability, with a canonical selection, or on a private screen",
+        "device Notes/Calendar admission still requires a phone selection for exact-target operations",
+        "device Notes/Calendar admission treats a reminder selection in Calendar as no Calendar selection",
+        "device Notes/Calendar admission treats a clock-draft selection in Calendar as no Calendar selection",
+        "device Notes/Calendar admission keeps a malformed Calendar selection unavailable"
+      ]
+    },
+    {
+      "kind": "vitest",
+      "cwd": "plugins/plugin-assistant",
+      "config": "vitest.config.ts",
+      "file": "plugins/plugin-assistant/src/services/device-actions/notes-organize-contract.test.ts",
+      "required": [
+        "notes organize contract carries no product name",
+        "notes organize contract recognises exactly the organise operation types",
+        "notes organize contract validates notes_filter",
+        "notes organize contract admits only text and kind on the canonical list capability",
+        "notes organize contract validates folder names without truncating",
+        "notes organize contract validates notes_move",
+        "notes organize contract validates notes_folder_create",
+        "notes organize contract validates notes_restore",
+        "notes organize contract validates notes_record",
+        "notes organize contract is admitted by the device contract and wraps its errors",
+        "notes organize contract is offered only when the phone negotiated notes.organize.v1",
+        "notes organize contract describes each change for the review card",
+        "notes organize contract allows review only on the unlocked phone in Home or Notes, recording only in Notes"
+      ]
+    },
+    {
+      "kind": "vitest",
+      "cwd": "plugins/plugin-assistant",
+      "config": "vitest.device-actions.config.ts",
+      "file": "plugins/plugin-assistant/test/canonical-notes-list-filter.e2e.test.ts",
+      "required": [
+        "registered canonical Notes filter admits one exact SQL proposal for the current list"
+      ]
+    }
+  ],
   "plugins/plugin-workflow/quint/ActivationVersionAdmission.qnt": [
     {
       "kind": "bun",
@@ -132,6 +185,13 @@
       "file": "plugins/plugin-workflow/__tests__/integration/phone-generation-http.test.ts",
       "required": [
         "registered typed generation HTTP route validates real enrollment and remains unsaved until explicit save"
+      ]
+    },
+    {
+      "kind": "bun",
+      "file": "plugins/plugin-workflow/__tests__/integration/typed-schedule-e2e.test.ts",
+      "required": [
+        "typed local-time schedules: reviewed arming, exact occurrences, missed, overlap and restart"
       ]
     }
   ]
