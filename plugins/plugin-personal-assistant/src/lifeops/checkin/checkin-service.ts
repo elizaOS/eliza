@@ -354,15 +354,20 @@ function assertSummaryReportDate(
     .filter(([, lead, keyword]) => {
       if (lead === undefined || /^today/i.test(keyword)) return true;
       const word = lead.toLowerCase();
+      // A hyphenated lead names the report through its last part
+      // ("Late-night check-in", "Mid-morning brief").
+      const labelsReport =
+        reportLabelLead.has(word) ||
+        reportLabelLead.has(word.slice(word.lastIndexOf("-") + 1));
       // "As of" after a word declares the report date only when that word
       // names the report ("Morning brief as of", "your update as of");
       // "overdue as of" dates a source event.
       if (/^as\s/i.test(keyword)) {
-        return reportKind.has(word) || reportLabelLead.has(word);
+        return reportKind.has(word) || labelsReport;
       }
       // A report label names this report only after a determiner or a
       // report kind ("your brief", "Morning briefing").
-      return reportLabelLead.has(word);
+      return labelsReport;
     })
     .map((claim) => claim[3]);
   if (claims.length === 0) return;
