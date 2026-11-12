@@ -1688,7 +1688,6 @@
       "devDependencies": {
         "@elizaos/plugin-sql": "workspace:*",
         "@types/jsdom": "^30.0.0",
-        "@types/linkify-it": "5.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
         "bun-types": "1.4.2",
         "jsdom": "^31.0.0",
