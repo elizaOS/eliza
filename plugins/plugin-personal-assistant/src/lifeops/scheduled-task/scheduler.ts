@@ -49,7 +49,6 @@ import {
 } from "../../providers/recent-task-states.js";
 import { recordProactiveDispatch } from "../anticipation/store.js";
 import {
-  ownerFactsToView,
   type ReminderIntensity,
   resolveOwnerFactStore,
 } from "../owner/fact-store.js";
@@ -517,7 +516,7 @@ export async function processDueScheduledTasks(
     now: () => request.now,
   });
   const ownerFactsRaw = await resolveOwnerFactStore(request.runtime).read();
-  const ownerFacts = ownerFactsToView(ownerFactsRaw, request.now);
+  const ownerFacts = await runner.resolveOwnerFacts();
   // Owner-wide reminder intensity shapes how persistently the no-reply loop
   // re-nudges (see `applyReminderIntensityToNoReplyPolicy`).
   const reminderIntensity = ownerFactsRaw.reminderIntensity?.value;
