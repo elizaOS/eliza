@@ -48,7 +48,7 @@ for (const file of readdirSync(directory)) {
     cases.set(fields.outcome, fields);
   }
 }
-assert.equal(cases.size, 5, "All five summary outcomes must reach conformance");
+assert.equal(cases.size, 6, "All six summary outcomes must reach conformance");
 const input = path.join(directory, "cases.json");
 writeFileSync(
   input,
@@ -80,8 +80,8 @@ const result = spawnSync(
 if (result.error) throw result.error;
 assert.equal(result.status, 0, "Summary runtime conformance failed");
 const summary = JSON.parse(readFileSync(report, "utf8"));
-assert.equal(summary.numPassedTests, 5);
+assert.equal(summary.numPassedTests, 6);
 assert.equal(summary.numFailedTests, 0);
 console.log(
-  "Five model-generated summary cases match the production service and report store",
+  "Six model-generated summary cases match the production service and report store",
 );
