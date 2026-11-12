@@ -6,7 +6,7 @@
  * graph plus the exact artifact actions.
  */
 
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -56,6 +56,82 @@ const workflowSha256 = "c".repeat(64);
 const artifactName = artifactNameForTree(treeSha);
 const issuedAt = "2026-08-16T12:00:00.000Z";
 const now = "2026-08-17T12:00:00.000Z";
+
+function createSourceAdmissionFixture() {
+  const fixtureRoot = mkdtempSync(resolve(tmpdir(), "source-admission-"));
+  try {
+    // Real workflow/action closure, graph, policies and Git inventory; no Docker or provider effects.
+    cpSync(
+      resolve(repoRoot, ".github/workflows"),
+      resolve(fixtureRoot, ".github/workflows"),
+      { recursive: true },
+    );
+    cpSync(
+      resolve(repoRoot, ".github/actions"),
+      resolve(fixtureRoot, ".github/actions"),
+      { recursive: true },
+    );
+    cpSync(
+      resolve(repoRoot, ".github/develop-surface-graph.json"),
+      resolve(fixtureRoot, ".github/develop-surface-graph.json"),
+    );
+    mkdirSync(resolve(fixtureRoot, "packages/fixture"), { recursive: true });
+    mkdirSync(resolve(fixtureRoot, "packages/app/deploy"), {
+      recursive: true,
+    });
+    writeFileSync(
+      resolve(fixtureRoot, "package.json"),
+      JSON.stringify({
+        name: "admission-fixture",
+        workspaces: ["packages/*"],
+      }),
+    );
+    writeFileSync(
+      resolve(fixtureRoot, "packages/fixture/package.json"),
+      JSON.stringify({ name: "@fixture/source" }),
+    );
+    writeFileSync(
+      resolve(fixtureRoot, "packages/fixture/source.ts"),
+      "export const value = 1;\n",
+    );
+    cpSync(
+      resolve(repoRoot, ".dockerignore"),
+      resolve(fixtureRoot, ".dockerignore"),
+    );
+    cpSync(
+      resolve(repoRoot, "packages/app/deploy/.dockerignore.ci"),
+      resolve(fixtureRoot, "packages/app/deploy/.dockerignore.ci"),
+    );
+    const git = (...args) => {
+      const child = spawnSync("git", args, {
+        cwd: fixtureRoot,
+        encoding: "utf8",
+      });
+      expect(child.status).toBe(0);
+      return child.stdout.trim();
+    };
+    git("init", "-q");
+    git("add", ".");
+    git(
+      "-c",
+      "user.name=Admission fixture",
+      "-c",
+      "user.email=ci@example.invalid",
+      "-c",
+      "commit.gpgsign=false",
+      "-c",
+      "core.hooksPath=/dev/null",
+      "commit",
+      "-qm",
+      "controlled source",
+    );
+    const head = git("rev-parse", "HEAD");
+    return { root: fixtureRoot, head };
+  } catch (error) {
+    rmSync(fixtureRoot, { recursive: true, force: true });
+    throw error;
+  }
+}
 
 function fixture() {
   const certification = createStagingReleaseCertification({
@@ -531,14 +607,23 @@ describe("deployed renderer compute consent", () => {
 });
 
 describe("exact-source main Full admission", () => {
-  function mainFixture() {
-    const expected = currentValidationManifest(repoRoot, sourceSha);
+  const sourceFixture = createSourceAdmissionFixture();
+  afterAll(() => rmSync(sourceFixture.root, { recursive: true, force: true }));
+
+  function mainFixture(
+    validationRepoRoot = repoRoot,
+    fixtureSourceSha = sourceSha,
+  ) {
+    const expected = currentValidationManifest(
+      validationRepoRoot,
+      fixtureSourceSha,
+    );
     const rows = expected.surfaces.map((surface) =>
       createEvidence(expected, surface.id, now, 168),
     );
     return {
       repository: "elizaOS/eliza",
-      sourceSha,
+      sourceSha: fixtureSourceSha,
       expected,
       now,
       run: {
@@ -549,22 +634,26 @@ describe("exact-source main Full admission", () => {
         status: "completed",
         conclusion: "success",
         event: "push",
-        head_sha: sourceSha,
+        head_sha: fixtureSourceSha,
         path: ".github/workflows/develop-full.yml",
         repository: { full_name: "elizaOS/eliza" },
       },
       artifact: {
         id: 801,
-        name: `develop-full-manifest-${sourceSha}`,
+        name: `develop-full-manifest-${fixtureSourceSha}`,
         expired: false,
         digest: `sha256:${"d".repeat(64)}`,
-        workflow_run: { id: 701, head_sha: sourceSha, head_branch: "main" },
+        workflow_run: {
+          id: 701,
+          head_sha: fixtureSourceSha,
+          head_branch: "main",
+        },
       },
       archive: {
         expected,
         observed: verifyCompleteManifest(expected, rows, now),
         results: {
-          headSha: sourceSha,
+          headSha: fixtureSourceSha,
           runId: "701",
           runAttempt: "2",
           results: Object.fromEntries(
@@ -578,6 +667,13 @@ describe("exact-source main Full admission", () => {
   // Compute the actual Git/workspace dependency closure once; mutations below are isolated copies.
   const original = mainFixture();
   const main = () => structuredClone(original);
+  // Keep the real monorepo happy admission below. Adversarial API orderings
+  // use the same real Git consumer with a small committed source fixture.
+  const controlledOriginal = mainFixture(
+    sourceFixture.root,
+    sourceFixture.head,
+  );
+  const controlledMain = () => structuredClone(controlledOriginal);
   test("admits the complete current source manifest and an exact main manual run", () => {
     const input = main();
     expect(verifyMainValidation(input).runAttempt).toBe(2);
@@ -703,7 +799,9 @@ describe("exact-source main Full admission", () => {
       "tied failure",
       "missing start",
     ]) {
-      const input = main();
+      const input = variant === "valid" ? main() : controlledMain();
+      const validationRepoRoot =
+        variant === "valid" ? repoRoot : sourceFixture.root;
       input.run.run_attempt = 1;
       input.archive.results.runAttempt = variant === "old attempt" ? "0" : "1";
       let other = {
@@ -828,8 +926,8 @@ describe("exact-source main Full admission", () => {
       const admission = requireMainValidation({
         api,
         repository: input.repository,
-        sourceSha,
-        repoRoot,
+        sourceSha: input.sourceSha,
+        repoRoot: validationRepoRoot,
         now,
       });
       if (["valid", "older ID success", "fresh recovery"].includes(variant)) {
@@ -901,7 +999,7 @@ describe("exact-source main Full admission", () => {
         "stage only",
         "main only",
       ]) {
-        const input = main();
+        const input = controlledMain();
         input.run.run_attempt = 1;
         input.archive.results.runAttempt = "1";
         const bytes = archiveBytes(input);
@@ -942,9 +1040,9 @@ describe("exact-source main Full admission", () => {
         const admission = requireProductionCertification({
           api,
           repository: input.repository,
-          sourceSha,
+          sourceSha: input.sourceSha,
           treeSha,
-          repoRoot,
+          repoRoot: sourceFixture.root,
           now,
         });
         if (variant === "both valid") {
@@ -1011,76 +1109,8 @@ describe("exact-source main Full admission", () => {
     );
     expect(imageSteps.indexOf(restore)).toBe(imageSteps.indexOf(push) - 1);
     expect(restore.run).toBe("git restore --source=HEAD -- .dockerignore");
-    const fixtureRoot = mkdtempSync(
-      resolve(tmpdir(), "image-source-admission-"),
-    );
+    const { root: fixtureRoot, head } = createSourceAdmissionFixture();
     try {
-      // Real workflow/action closure, graph, policies and Git inventory; no Docker or provider effects.
-      cpSync(
-        resolve(repoRoot, ".github/workflows"),
-        resolve(fixtureRoot, ".github/workflows"),
-        { recursive: true },
-      );
-      cpSync(
-        resolve(repoRoot, ".github/actions"),
-        resolve(fixtureRoot, ".github/actions"),
-        { recursive: true },
-      );
-      cpSync(
-        resolve(repoRoot, ".github/develop-surface-graph.json"),
-        resolve(fixtureRoot, ".github/develop-surface-graph.json"),
-      );
-      mkdirSync(resolve(fixtureRoot, "packages/fixture"), { recursive: true });
-      mkdirSync(resolve(fixtureRoot, "packages/app/deploy"), {
-        recursive: true,
-      });
-      writeFileSync(
-        resolve(fixtureRoot, "package.json"),
-        JSON.stringify({
-          name: "admission-fixture",
-          workspaces: ["packages/*"],
-        }),
-      );
-      writeFileSync(
-        resolve(fixtureRoot, "packages/fixture/package.json"),
-        JSON.stringify({ name: "@fixture/source" }),
-      );
-      writeFileSync(
-        resolve(fixtureRoot, "packages/fixture/source.ts"),
-        "export const value = 1;\n",
-      );
-      cpSync(
-        resolve(repoRoot, ".dockerignore"),
-        resolve(fixtureRoot, ".dockerignore"),
-      );
-      cpSync(
-        resolve(repoRoot, "packages/app/deploy/.dockerignore.ci"),
-        resolve(fixtureRoot, "packages/app/deploy/.dockerignore.ci"),
-      );
-      const git = (...args) => {
-        const child = spawnSync("git", args, {
-          cwd: fixtureRoot,
-          encoding: "utf8",
-        });
-        expect(child.status).toBe(0);
-        return child.stdout.trim();
-      };
-      git("init", "-q");
-      git("add", ".");
-      git(
-        "-c",
-        "user.name=Admission fixture",
-        "-c",
-        "user.email=ci@example.invalid",
-        "-c",
-        "commit.gpgsign=false",
-        "-c",
-        "core.hooksPath=/dev/null",
-        "commit",
-        "-qm",
-        "controlled source",
-      );
-      const head = git("rev-parse", "HEAD");
       const clean = currentValidationManifest(fixtureRoot, head);
       const rows = clean.surfaces.map((surface) =>
         createEvidence(clean, surface.id, now, 168),
