@@ -124,6 +124,7 @@ function fixture(basemap, effects = {}) {
     }
   }
   const box = {
+    setTimeout, clearTimeout,
     crypto: webcrypto,
     document: { createElement: element },
     MapLibre: ControlledMap,
@@ -163,6 +164,7 @@ function fixture(basemap, effects = {}) {
         routePadding: { top: 1, bottom: 1, left: 1, right: 1 },
         selectionPadding: effects.selectionPadding,
         onPin: effects.onPin,
+        onPoint: effects.onPoint,
         nativeRegion: effects.nativeRegion ?? (() => false),
         nativeRequest: async () => {
           nativeRequests++;
@@ -884,4 +886,27 @@ test("Cloud copyright replies retire on movement and map disposal", async () => 
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.equal(f.container.dataset.mapCopyright, undefined);
   assert.equal(f.errors, 0);
+});
+
+
+test("map point selection waits for a single tap and cancels zoom or retired gestures", async () => {
+  const points = [];
+  const f = fixture({ kind: "global", styleUrl: "https://tiles.example/style.json", attribution: "Example" }, { onPoint: (point) => points.push(point) });
+  const plane = f.plane;
+  const map = f.map;
+  const event = { lngLat: { lat: 10, lng: 20 }, originalEvent: { target: { closest: () => null } } };
+  map.events.click(event);
+  map.events.dblclick();
+  await new Promise(resolve => setTimeout(resolve, 280));
+  assert.equal(points.length, 0);
+  map.events.click(event);
+  await new Promise(resolve => setTimeout(resolve, 280));
+  assert.equal(points.length, 1);
+  assert.equal(points[0].latitude, 10);
+  assert.equal(points[0].longitude, 20);
+  map.events.click(event);
+  plane.destroy();
+  await new Promise(resolve => setTimeout(resolve, 280));
+  assert.equal(points.length, 1);
+  f.plane.destroy();
 });
