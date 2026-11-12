@@ -1,10 +1,7 @@
 /** iMessage account id normalization and default account selection. */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import {
-  normalizeAccountId,
-  resolveDefaultIMessageAccountId,
-} from "./accounts";
+import { normalizeAccountId, resolveDefaultIMessageAccountId } from "./accounts";
 
 describe("iMessage canonical account authoring facade", () => {
   it("preserves lowercase normalization and shared default selection", () => {
