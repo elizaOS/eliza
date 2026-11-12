@@ -248,6 +248,9 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
         }
         if (action === "copy") {
           const target = resolveTarget();
+          if (target && isBrowserWorkspacePrivateControl(target)) {
+            throw new Error("Password and hidden fields cannot be copied.");
+          }
           setBrowserWorkspaceClipboardText(
             target && "value" in (target as HTMLInputElement)
               ? String((target as HTMLInputElement).value ?? "")
@@ -938,7 +941,7 @@ function writeWebBrowserWorkspaceControl(
   element: Element,
   subaction: "fill" | "type",
   text: string,
-): { selector: string; value: string } {
+): { selector: string; value: string | null } {
   const control = ensureBrowserWorkspaceFormControlElement(element, subaction);
   if (control.matches(":disabled")) {
     throw new Error(`Eliza browser workspace ${subaction} target is disabled.`);
@@ -962,7 +965,7 @@ function writeWebBrowserWorkspaceControl(
   runtime.lastInteractedElement = new WeakRef(control);
   return {
     selector: buildBrowserWorkspaceElementSelector(control),
-    value: control.value,
+    value: isBrowserWorkspacePrivateControl(control) ? null : control.value,
   };
 }
 
@@ -1332,7 +1335,9 @@ export async function executeWebBrowserWorkspaceDomCommand(
           subaction: command.subaction,
           value: {
             selector: buildBrowserWorkspaceElementSelector(control),
-            value: control.value,
+            value: isBrowserWorkspacePrivateControl(control)
+              ? null
+              : control.value,
           },
         };
       }

@@ -195,4 +195,32 @@ it("never copies password or hidden input values out of the page in either backe
       ).value,
     ).toBe(value);
   }
+  // Writing to the field or copying it does not hand its value back either.
+  expect(
+    (
+      await executeBrowserWorkspaceCommand(
+        { id: tab.id, subaction: "type", selector: "#pw", value: "-typed" },
+        env,
+      )
+    ).value,
+  ).toMatchObject({ value: null });
+  expect(
+    (
+      await executeBrowserWorkspaceCommand(
+        { id: tab.id, subaction: "keyboardtype", value: "-keys" },
+        env,
+      )
+    ).value,
+  ).toMatchObject({ value: null });
+  await expect(
+    executeBrowserWorkspaceCommand(
+      {
+        id: tab.id,
+        subaction: "clipboard",
+        clipboardAction: "copy",
+        selector: "#pw",
+      },
+      env,
+    ),
+  ).rejects.toThrow("cannot be copied");
 });
