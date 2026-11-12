@@ -3,7 +3,6 @@
  * after the save used to remain, so the restored page still presented it.
  */
 import * as fsp from "node:fs/promises";
-import * as os from "node:os";
 import * as path from "node:path";
 import { JSDOM } from "jsdom";
 import { afterEach, expect, it } from "vitest";
@@ -54,9 +53,10 @@ it("drops cookies that were not in the saved workspace state", async () => {
     },
     webEnv,
   );
+  // The state command only writes inside the workspace root (process.cwd()).
   const filePath = path.join(
     process.cwd(),
-    `.bw-state-cookies-${os.pid}-${Date.now()}.json`,
+    `.bw-state-cookies-${process.pid}-${Date.now()}.json`,
   );
   files.push(filePath);
   await executeBrowserWorkspaceCommand(
@@ -122,4 +122,23 @@ it("leaves the cookie jar alone when the saved cookies are not a record", () => 
   });
 
   expect(readBrowserWorkspaceCookies(document)).toEqual({ session: "current" });
+});
+
+it("replaces __Host- and __Secure- cookies, which the jar accepts only with Secure", () => {
+  const { document } = new JSDOM("<!doctype html><title>Prefix</title>", {
+    url: "https://example.test/app",
+  }).window;
+  document.cookie = "__Host-session=saved; path=/; Secure";
+  document.cookie = "__Host-leak=after-save; path=/; Secure";
+  document.cookie = "__Secure-leak=after-save; path=/; Secure";
+  document.cookie = "__Host-session=mutated; path=/; Secure";
+
+  applyBrowserWorkspaceStateToWebDocument(document, {
+    cookies: { "__Host-session": "saved", "__Secure-token": "saved" },
+  });
+
+  expect(readBrowserWorkspaceCookies(document)).toEqual({
+    "__Host-session": "saved",
+    "__Secure-token": "saved",
+  });
 });

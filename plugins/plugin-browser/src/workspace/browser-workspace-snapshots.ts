@@ -174,6 +174,14 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * The jar refuses a `__Host-` or `__Secure-` cookie without `Secure`
+ * (RFC 6265bis §4.1.3), so writes for these names must carry it.
+ */
+function cookiePrefixAttributes(name: string): string {
+  return /^__(host|secure)-/i.test(name) ? "; Secure" : "";
+}
+
+/**
  * Expire a cookie for every path `document.cookie` can present it from: the
  * page's own default path (RFC 6265 §5.1.4), each ancestor directory and the
  * root. A cookie set from a sub-path is not removed by `path=/` alone.
@@ -182,7 +190,7 @@ export function expireBrowserWorkspaceCookie(
   document: Document,
   name: string,
 ): void {
-  const expired = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+  const expired = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT${cookiePrefixAttributes(name)}`;
   document.cookie = expired;
   const paths = new Set(["/"]);
   let prefix = "";
@@ -226,7 +234,7 @@ export function applyBrowserWorkspaceStateToWebDocument(
     }
     for (const [key, value] of Object.entries(cookies)) {
       if (!key) continue;
-      document.cookie = `${key}=${String(value ?? "")}; path=/`;
+      document.cookie = `${key}=${String(value ?? "")}; path=/${cookiePrefixAttributes(key)}`;
     }
   }
 }
