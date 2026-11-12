@@ -14,6 +14,13 @@ assert.equal(
 );
 const suites = new Map([
   [
+    "packages/cloud/api/__tests__/inference-single-store-call.test.ts",
+    [
+      "a gate fence (credential_revoked) met by the refresh replaces the entry with a denial while the primary still allows the key",
+      "a gate fence (subject_moderation_disabled) met by the refresh replaces the entry with a denial while the primary still allows the key",
+    ],
+  ],
+  [
     "packages/cloud/api/__tests__/inference-admission-gate.miniflare.test.ts",
     [
       "independent callers observe API-key revocation immediately",
@@ -33,9 +40,8 @@ const suites = new Map([
       "writer invalidation sends the next request to the primary, never a stale allow",
       "a cached key expiry denies locally with zero primary queries",
       "an entry is bound to its credential hash: another key's entry never authorizes",
-      "a cold gate reply remains authoritative when allowed=true",
-      "a cold gate reply remains authoritative when allowed=false",
-      "an unresponsive gate still fails closed without a primary fallback",
+      "no gate call precedes the decision, whatever the gate would answer",
+      "an unresponsive gate neither delays nor fails a warm request",
     ],
   ],
 ]);
