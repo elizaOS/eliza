@@ -1,6 +1,7 @@
 /** Exercises missing collectors, failed generation, and report persistence against real PGlite. No provider request is made. */
-import { createServer } from "node:http";
+
 import { readFileSync } from "node:fs";
+import { createServer } from "node:http";
 import { PGlite } from "@electric-sql/pglite";
 import { LIFEOPS_INBOX_CHANNELS, type LifeOpsInbox } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
