@@ -1324,17 +1324,23 @@ async function collectCalendarChangeSection(
   try {
     const rows = await executeRawSql(
       runtime,
-      `SELECT id, title, start_at, end_at, status, is_all_day, html_link, updated_at,
-              ${today} AS is_today
-         FROM app_calendar.life_calendar_events
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND side = 'owner'
-          AND (
-            ${today}
-            OR updated_at >= ${sqlQuote(sinceIso)}
-          )
+      `WITH calendar_items AS (
+         SELECT id, title, start_at, end_at, status, is_all_day, html_link,
+                CASE WHEN provider = 'google' THEN COALESCE(
+                  NULLIF(metadata_json::jsonb ->> 'updatedAt', ''),
+                  NULLIF(metadata_json::jsonb ->> 'updated', ''),
+                  NULLIF(metadata_json::jsonb ->> 'createdAt', '')
+                ) ELSE updated_at END AS source_changed_at
+           FROM app_calendar.life_calendar_events
+          WHERE agent_id = ${sqlQuote(agentId)} AND side = 'owner'
+       )
+       SELECT id, title, start_at, end_at, status, is_all_day, html_link,
+              source_changed_at AS updated_at, ${today} AS is_today
+         FROM calendar_items
+        WHERE ${today}
+           OR NULLIF(source_changed_at, '')::timestamptz >= ${sqlQuote(sinceIso)}::timestamptz
         ORDER BY
-          CASE WHEN updated_at >= ${sqlQuote(sinceIso)} THEN 0 ELSE 1 END,
+          CASE WHEN NULLIF(source_changed_at, '')::timestamptz >= ${sqlQuote(sinceIso)}::timestamptz THEN 0 ELSE 1 END,
           start_at ASC
         LIMIT 40`,
     );

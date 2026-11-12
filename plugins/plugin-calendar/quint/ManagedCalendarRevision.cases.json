@@ -3,9 +3,11 @@
     "packages/cloud/shared/src/lib/services/agent-google-connector/calendar.ts",
     "packages/cloud/shared/src/lib/services/agent-google-connector/calendar.etag.test.ts",
     "packages/app/src/runtime/managed-google-agent/managed-google-agent-host.ts",
-    "packages/app/test/native-host/managed-google-agent.test.mjs"
+    "packages/app/test/native-host/managed-google-agent.test.mjs",
+    "plugins/plugin-personal-assistant/src/lifeops/checkin/checkin-service.ts",
+    "plugins/plugin-personal-assistant/src/lifeops/checkin/checkin-availability.pglite.test.ts"
   ],
-  "bounds": "One Google event with two valid provider revision times and repeated cache refreshes. Missing provider timestamps retain the existing fallback and are outside the known-revision invariant. No provider mutation, wall-clock latency or fairness claim.",
+  "bounds": "One Google event, an unknown provider revision or two valid provider revision times, and repeated cache refreshes. The report uses provider edit or creation metadata for Google rows. Missing metadata cannot make a future event look recently changed. The host retains its existing fallback for storage; display provenance is checked separately. No provider mutation, wall-clock latency or fairness claim.",
   "conformance": "plugins/plugin-calendar/quint/check-managed-calendar-revision.mjs",
   "cases": [
     {

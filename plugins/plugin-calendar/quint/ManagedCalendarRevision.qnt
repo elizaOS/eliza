@@ -3,8 +3,9 @@ module ManagedCalendarRevision {
   var providerRevision: int
   var cachedRevision: int
   var synchronized: bool
-  action init = all {
-    providerRevision' = 10, cachedRevision' = -1, synchronized' = false
+  action init = {
+    nondet initialRevision = Set(-1, 10).oneOf()
+    all { providerRevision' = initialRevision, cachedRevision' = -1, synchronized' = false }
   }
   action refresh = all {
     providerRevision' = providerRevision,

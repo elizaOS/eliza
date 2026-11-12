@@ -15,6 +15,19 @@ const commands = [
     process.execPath,
     ["--test", "packages/app/test/native-host/managed-google-agent.test.mjs"],
   ],
+  [
+    process.execPath,
+    [
+      `${root}/node_modules/vitest/vitest.mjs`,
+      "run",
+      "--config",
+      "plugins/plugin-personal-assistant/vitest.config.ts",
+      "plugins/plugin-personal-assistant/src/lifeops/checkin/checkin-availability.pglite.test.ts",
+      "--maxWorkers=1",
+      "-t",
+      "old Google cache refreshes",
+    ],
+  ],
 ];
 for (const [binary, args] of commands) {
   const result = spawnSync(binary, args, { cwd: root, stdio: "inherit" });
