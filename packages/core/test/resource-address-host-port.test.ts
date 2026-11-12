@@ -15,6 +15,12 @@ describe("parseWebResourceAddress implicit host:port", () => {
 		["127.0.0.1:3000", "127.0.0.1", "3000", "/"],
 		["192.168.0.5:8080/path", "192.168.0.5", "8080", "/path"],
 		["[::1]:8080", "[::1]", "8080", "/"],
+		// `:443` is the default HTTPS port, so the URL parser strips it
+		// from `url.port` — the address is still recognized (see the
+		// review on this PR: the port is read from the authored text).
+		["localhost:443", "localhost", "", "/"],
+		["127.0.0.1:443", "127.0.0.1", "", "/"],
+		["[::1]:443", "[::1]", "", "/"],
 	])("recognizes %s as a web resource", (text, hostname, port, pathname) => {
 		const url = parseWebResourceAddress(text);
 		expect(url?.protocol).toBe("https:");

@@ -32,8 +32,14 @@ export function parseWebResourceAddress(value: string): URL | undefined {
 	// localhost, IPv4 literal, or IPv6 literal with an explicit port is a
 	// resource too ("open localhost:3000" names a destination, not a search).
 	if (!explicit && (labels.length < 2 || /^\d+$/u.test(labels.at(-1) ?? ""))) {
+		// Decide the port from the authored text, not the normalized URL:
+		// the URL parser strips a default port (for example `:443` on
+		// `https:`), so `url.port` is empty even when the author wrote one.
+		const hasExplicitPort = /^(?:\[[^\]\s]+\]|[^\s/:]+):\d+(?:[/?#].*)?$/u.test(
+			text,
+		);
 		const isHostPortAddress =
-			url.port !== "" &&
+			hasExplicitPort &&
 			(url.hostname === "localhost" ||
 				url.hostname.startsWith("[") ||
 				isIPv4Literal(url.hostname));
