@@ -1,5 +1,11 @@
 import { type Coordinate, coordinate, type Route } from "./contracts.ts";
-export type MapShare = { title: string; text: string; url?: string };
+export type MapShare = {
+  title: string;
+  text: string;
+  url?: string;
+  location?: Coordinate;
+  directions?: Pick<Route, "from" | "to" | "mode">;
+};
 const point = (value: Coordinate) => {
   const p = coordinate(value);
   return `${p.latitude}, ${p.longitude}`;
@@ -7,11 +13,12 @@ const point = (value: Coordinate) => {
 export function placeShare(label: string, value: Coordinate): MapShare {
   const p = coordinate(value);
   const url = `https://www.openstreetmap.org/?mlat=${p.latitude}&mlon=${p.longitude}#map=17/${p.latitude}/${p.longitude}`;
-  return { title: label, text: `${label}\n${point(p)}`, url };
+  return { title: label, text: `${label}\n${point(p)}`, url, location: p };
 }
 export function routeShare(label: string, route: Route): MapShare {
   return {
     title: `Route to ${label}`,
+    directions: { from: route.from, to: route.to, mode: route.mode },
     text: [
       `Route to ${label}`,
       `${route.mode}: ${point(route.from)} → ${point(route.to)}`,
