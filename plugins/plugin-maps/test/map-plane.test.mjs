@@ -765,6 +765,7 @@ test("a Cloud raster basemap draws Cloud tiles through its own protocol and repo
   assert.deepEqual(plain(f.map.options.center), [0, 20]);
   assert.equal(f.map.options.maxBounds, undefined);
   assert.equal(f.map.options.maxZoom, 20);
+  assert.equal(f.map.options.cancelPendingTileRequestsWhileZooming, false);
   const signal = new AbortController();
   const result = await handler({ url: `${name}://tiles/3/4/2.png` }, signal);
   assert.deepEqual([...new Uint8Array(result.data)], [1, 2, 3]);

@@ -164,6 +164,8 @@ export class MapPlane {
 
     const mapOptions: MapOptions = {
       container,
+      // Keep the preceding raster level while replacement tiles arrive during zoom.
+      cancelPendingTileRequestsWhileZooming: !raster,
       canvasContextAttributes: {
         preserveDrawingBuffer: options.preserveDrawingBuffer ?? false,
       },
