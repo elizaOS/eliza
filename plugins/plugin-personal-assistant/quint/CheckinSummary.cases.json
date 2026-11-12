@@ -1,0 +1,25 @@
+{
+  "sources": [
+    "plugins/plugin-personal-assistant/src/lifeops/checkin/checkin-service.ts",
+    "plugins/plugin-personal-assistant/src/lifeops/checkin/checkin-availability.pglite.test.ts"
+  ],
+  "conformance": "plugins/plugin-personal-assistant/quint/check-checkin-summary.mjs",
+  "bounds": "Six outcomes cover one morning summary with a valid model response, blank text, absent model, rejected generation, rejected report write, or an unsupported explicit current-day declaration. Date validation covers English named dates, ISO dates and US numeric dates in report-date declarations; ordinary source event dates remain allowed. The implementation check uses the real CheckinService and PGlite with controlled model and storage outcomes. Collector accuracy, provider output quality, scheduling, delivery and cancellation at the scheduler boundary remain separate checks. Safety is unconditional. Completion assumes collection, model resolution and storage resolution each eventually return.",
+  "cases": [
+    {
+      "name": "summary-generation-persistence",
+      "main": "CheckinSummary",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "ValidSummaryOnly",
+        "FailureKeepsStorage",
+        "SingleWrite",
+        "StoredDayMatches"
+      ],
+      "temporal": [],
+      "maxSteps": 5,
+      "samples": 300
+    }
+  ]
+}

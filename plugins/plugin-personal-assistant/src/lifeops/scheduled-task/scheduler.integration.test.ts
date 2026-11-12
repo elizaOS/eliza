@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 /**
  * Integration tests for the production `processDueScheduledTasks` wrapper.
  *
@@ -46,6 +47,28 @@ import { registerLifeOpsScheduledTaskSubjectStore } from "./runtime-wiring.ts";
 import { processDueScheduledTasks } from "./scheduler.ts";
 import { getScheduledTaskRunner } from "./service.ts";
 
+const ownerZoneCases: Array<{
+  ownerZone: number;
+  schedulingZone: number;
+  runtimeZone: number;
+  hostZone: number;
+  selectedZone: number;
+  hostTravel?: boolean;
+  tickTravel?: boolean;
+}> = process.env.ELIZA_OWNER_ZONE_MODEL_CASES
+  ? JSON.parse(readFileSync(process.env.ELIZA_OWNER_ZONE_MODEL_CASES, "utf8"))
+  : [
+      {
+        ownerZone: -1,
+        schedulingZone: -1,
+        runtimeZone: 1,
+        hostZone: 0,
+        selectedZone: 1,
+      },
+    ];
+const ownerZoneName = (zone: number) =>
+  zone === 1 ? "America/Los_Angeles" : "UTC";
+
 interface ScheduledTaskSeed
   extends Omit<ScheduledTask, "taskId" | "state" | "createdBy"> {
   taskId?: string;
@@ -91,6 +114,7 @@ describe("processDueScheduledTasks — production wiring", () => {
 
   afterEach(async () => {
     vi.useRealTimers();
+    vi.unstubAllEnvs();
     if (runtimeResult) {
       await runtimeResult.cleanup();
       runtimeResult = null;
@@ -388,13 +412,86 @@ describe("processDueScheduledTasks — production wiring", () => {
     expect(transitions).toContain("fired");
   });
 
+  it.each(ownerZoneCases)(
+    "resolves owner-local cron timezone priority $ownerZone/$schedulingZone/$runtimeZone/$hostZone",
+    async (zones) => {
+      runtimeResult = await createLifeOpsTestRuntime();
+      const { runtime } = runtimeResult;
+      vi.useFakeTimers({ toFake: ["Date"] });
+      const now = new Date("2026-11-12T16:01:00.000Z");
+      vi.setSystemTime(new Date("2026-11-11T16:01:00.000Z"));
+      vi.stubEnv("TZ", ownerZoneName(zones.hostZone));
+      runtime.getSetting = (key) => {
+        const selected =
+          key === "DEFAULT_TIMEZONE"
+            ? zones.schedulingZone
+            : key === "TIMEZONE"
+              ? zones.runtimeZone
+              : -1;
+        return selected >= 0 ? ownerZoneName(selected) : undefined;
+      };
+      const facts = resolveOwnerFactStore(runtime);
+      await facts.clear();
+      if (zones.ownerZone >= 0)
+        await facts.update(
+          { timezone: ownerZoneName(zones.ownerZone) },
+          { source: "profile_save", recordedAt: now.toISOString() },
+        );
+      if (zones.hostTravel || zones.tickTravel) {
+        const travelDay = zones.tickTravel ? "2026-11-12" : "2026-11-11";
+        await facts.setActiveTravel(
+          {
+            startIso: `${travelDay}T15:00:00.000Z`,
+            endIso: `${travelDay}T17:00:00.000Z`,
+            destinationTimezone: "America/Los_Angeles",
+          },
+          { source: "profile_save", recordedAt: "2026-11-10T00:00:00.000Z" },
+        );
+      }
+      expect(
+        (
+          await getScheduledTaskRunner(runtime, {
+            agentId: runtime.agentId,
+            now: () => now,
+          }).resolveOwnerFacts()
+        ).timezone,
+      ).toBe(ownerZoneName(zones.selectedZone));
+      const seed = await seedScheduledTask(runtime, {
+        kind: "reminder",
+        promptInstructions: "Morning timezone regression check.",
+        trigger: { kind: "cron", expression: "0 8 * * *", tz: "owner_local" },
+        priority: "medium",
+        respectsGlobalPause: true,
+        source: "user_chat",
+        ownerVisible: true,
+        state: {
+          status: "fired",
+          followupCount: 0,
+          firedAt: "2026-11-12T12:11:46.968Z",
+        },
+        metadata: { createdAtIso: "2026-11-12T11:47:19.264Z" },
+      });
+      const request = { runtime, agentId: runtime.agentId, now, limit: 5 };
+      const result = await processDueScheduledTasks(request);
+      expect(result.errors).toEqual([]);
+      expect(result.fires.map((fire) => fire.taskId)).toEqual(
+        zones.selectedZone === 1 ? [seed.taskId] : [],
+      );
+      if (zones.selectedZone === 1)
+        expect(result.fires[0]?.occurrenceAtIso).toBe(
+          "2026-11-12T16:00:00.000Z",
+        );
+      expect((await processDueScheduledTasks(request)).fires).toEqual([]);
+    },
+  );
+
   it("fires owner-local cron after travel changes the zone despite a future home-zone index", async () => {
     runtimeResult = await createLifeOpsTestRuntime();
     const { runtime } = runtimeResult;
-    // The scheduler preflight and runner must observe the same instant.
-    // Otherwise the runner correctly rechecks the cron against today's clock.
+    // A replayed tick inside travel must use its clock even when the host
+    // clock has advanced beyond that travel window.
     vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date("2026-10-11T00:01:00.000Z"));
+    vi.setSystemTime(new Date("2026-11-12T16:01:00.000Z"));
     const facts = resolveOwnerFactStore(runtime);
     const provenance = {
       source: "profile_save" as const,
