@@ -6,7 +6,6 @@
  */
 
 import {
-  readAliasedEnv,
   resolveAllowedOrigins,
   resolveRuntimePorts,
 } from "@elizaos/host/protocol";
@@ -33,12 +32,6 @@ export const CORS_ALLOWED_HEADERS = [
 /**
  * Build the set of localhost ports allowed for CORS.
  * Reads from env vars at call time so tests can override.
- *
- * Ports resolve through the alias-aware readers so a branded deployment's
- * `<PREFIX>_API_PORT` / `<PREFIX>_UI_PORT` / `<PREFIX>_PORT` /
- * `<PREFIX>_GATEWAY_PORT` / `<PREFIX>_HOME_PORT` are honoured from the alias
- * table, with the canonical `ELIZA_*` key still winning when present and nothing
- * written back to `process.env` (#13423).
  */
 export function buildCorsAllowedPorts(): Set<string> {
   const runtimePorts = resolveRuntimePorts(process.env);
@@ -46,8 +39,8 @@ export function buildCorsAllowedPorts(): Set<string> {
     String(runtimePorts.desktopApiPort),
     String(runtimePorts.desktopUiPort),
     String(runtimePorts.serverOnlyPort),
-    String(readAliasedEnv("ELIZA_GATEWAY_PORT") ?? "18789"),
-    String(readAliasedEnv("ELIZA_HOME_PORT") ?? "2142"),
+    String(process.env.ELIZA_GATEWAY_PORT?.trim() || "18789"),
+    String(process.env.ELIZA_HOME_PORT?.trim() || "2142"),
   ]);
   // Electrobun renderer static server picks a free port in the 5174–5200
   // range. Allow the full range so cross-origin fetches from WKWebView
@@ -63,8 +56,7 @@ export function buildCorsAllowedPorts(): Set<string> {
  */
 export function getAllowedRemoteOrigins(): Set<string> {
   // `resolveAllowedOrigins` reads `ELIZA_ALLOWED_ORIGINS` (and the `CORS_ORIGINS`
-  // fallback) alias-aware, already split/trimmed/filtered, so a branded
-  // `<PREFIX>_ALLOWED_ORIGINS` resolves without the mirror mutation (#13422).
+  // fallback), already split/trimmed/filtered.
   return new Set(
     resolveAllowedOrigins(process.env).map((origin) => {
       try {

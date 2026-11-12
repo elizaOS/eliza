@@ -213,14 +213,4 @@ export function exportPersistedTrajectories(params: {
   return serializeTrajectoryExport(trajectories, options);
 }
 
-export {
-  ensureArchiveDirectory,
-  resolvePreferredTrajectoryArchiveRoot,
-  resolveTrajectoryArchiveDirectory,
-  stringifyArchiveRow,
-  TRAJECTORY_ARCHIVE_DIRNAME,
-  toArchiveSafeTimestamp,
-  writeCompressedJsonlRows,
-} from "./trajectory-internals.ts";
-
 import { serializeTrajectoryExport } from "@elizaos/core";

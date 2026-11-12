@@ -39,9 +39,5 @@ export {
   collectPreparedKeywordTermMatches,
   prepareKeywordTerms,
 } from "@elizaos/core";
-export {
-  isAndroidMobile,
-  readAliasedEnv,
-  resolvePlatform,
-} from "@elizaos/host/protocol";
+export { isAndroidMobile, resolvePlatform } from "@elizaos/host/protocol";
 export * from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";

@@ -1,4 +1,4 @@
-/** Exercises host trajectory writes, both public read surfaces and the viewer HTTP formatter against real PGlite. The loopback harness supplies transport only; authentication and live-model generation are outside this storage contract. */
+/** Exercises host trajectory writes, the bridged read surface and the viewer HTTP formatter against real PGlite. The loopback harness supplies transport only; authentication and live-model generation are outside this storage contract. */
 import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -32,13 +32,12 @@ import {
   sqlQuote,
 } from "../src/runtime/trajectory-internals.ts";
 import {
-  DatabaseTrajectoryLogger,
+  type BridgedTrajectoryLogger,
   installDatabaseTrajectoryLogger,
 } from "../src/runtime/trajectory-storage.ts";
 
 let fixture: Awaited<ReturnType<typeof createTestRuntime>>;
-let direct: DatabaseTrajectoryLogger;
-let bridge: TrajectoriesService;
+let bridge: BridgedTrajectoryLogger & TrajectoriesService;
 let server: Server;
 let origin: string;
 
@@ -54,10 +53,8 @@ beforeAll(async () => {
     fixture.runtime.getService<TrajectoriesService>("trajectories");
   if (!registered) throw new Error("Trajectory service did not start");
   expect(runtimeTrajectoriesEnabled(fixture.runtime)).toBe(true);
-  bridge = registered;
   await installDatabaseTrajectoryLogger(fixture.runtime);
-  direct = new DatabaseTrajectoryLogger(fixture.runtime);
-  direct.setEnabled(true);
+  bridge = registered as BridgedTrajectoryLogger & TrajectoriesService;
   server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     const method = req.method ?? "GET";
@@ -104,18 +101,11 @@ afterAll(async () => {
       server.close((error) => (error ? reject(error) : resolve())),
     );
   }
-  if (direct) await direct.stop();
   if (fixture) await fixture.cleanup();
   vi.unstubAllEnvs();
 });
 
-it("reads complete persisted calls with the same filters and failures on both logger paths", async () => {
-  expect(await direct.getStats()).toEqual({
-    total: 0,
-    enabled: true,
-    byStatus: {},
-    bySource: {},
-  });
+it("reads complete persisted calls with filters and failures on the bridged logger", async () => {
   expect(await bridge.getStats()).toMatchObject({
     totalTrajectories: 0,
     byModel: {},
@@ -123,12 +113,12 @@ it("reads complete persisted calls with the same filters and failures on both lo
   });
   const roomId = randomUUID();
   const prompt = `complete original request ${"x".repeat(180_000)} FINAL-REQUEST`;
-  const trajectoryId = await direct.startTrajectory(fixture.runtime.agentId, {
+  const trajectoryId = await bridge.startTrajectory(fixture.runtime.agentId, {
     source: "read-acceptance",
     roomId,
   });
-  const stepId = direct.startStep(trajectoryId, { kind: "llm" });
-  direct.logLlmCall({
+  const stepId = bridge.startStep(trajectoryId, { kind: "llm" });
+  bridge.logLlmCall({
     stepId,
     model: "fixture",
     purpose: "action",
@@ -139,13 +129,13 @@ it("reads complete persisted calls with the same filters and failures on both lo
     promptTokens: 7,
     completionTokens: 3,
   });
-  await direct.flushWriteQueue(trajectoryId);
-  await direct.endTrajectory(trajectoryId, "completed");
-  const otherId = await direct.startTrajectory(fixture.runtime.agentId, {
+  await bridge.flushWriteQueue(trajectoryId);
+  await bridge.endTrajectory(trajectoryId, "completed");
+  const otherId = await bridge.startTrajectory(fixture.runtime.agentId, {
     source: "other-source",
     roomId: randomUUID(),
   });
-  await direct.endTrajectory(otherId, "completed");
+  await bridge.endTrajectory(otherId, "completed");
 
   const foreignId = randomUUID();
   const stamp = sqlQuote(new Date().toISOString());
@@ -169,26 +159,21 @@ it("reads complete persisted calls with the same filters and failures on both lo
   ).rejects.toMatchObject({
     code: "TRAJECTORY_EXPORT_INCOMPLETE",
   });
-  for (const reader of [direct, bridge]) {
-    const filtered = await reader.listTrajectories({
-      source: "read-acceptance",
-      roomId,
-      status: "completed",
-    });
-    expect(filtered.total).toBe(1);
-    expect(filtered.trajectories.map((row) => row.id)).toEqual([trajectoryId]);
-    const page = await reader.listTrajectories({ limit: 1, offset: 1 });
-    expect(page.total).toBe(2);
-    expect(page.trajectories).toHaveLength(1);
-    expect(await reader.getTrajectoryDetail(foreignId)).toBeNull();
-    expect(await reader.getTrajectoryDetail(randomUUID())).toBeNull();
-  }
-  expect(await direct.getStats()).toEqual({
-    total: 2,
-    enabled: true,
-    byStatus: { completed: 2 },
-    bySource: { "read-acceptance": 1, "other-source": 1 },
+  const filtered = await bridge.listTrajectories({
+    source: "read-acceptance",
+    roomId,
+    status: "completed",
   });
+  expect(filtered.total).toBe(1);
+  expect(filtered.trajectories.map((row) => row.id)).toEqual([trajectoryId]);
+  const page = await bridge.listTrajectories({ limit: 1, offset: 1 });
+  expect(page.total).toBe(2);
+  expect(page.trajectories).toHaveLength(1);
+  expect(await bridge.getTrajectoryDetail(foreignId)).toBeNull();
+  expect(await bridge.getTrajectoryDetail(randomUUID())).toBeNull();
+  expect((await bridge.listTrajectories({ status: "completed" })).total).toBe(
+    2,
+  );
   const statsResponse = await fetch(`${origin}/api/trajectories/stats`);
   expect(statsResponse.status).toBe(200);
   expect(await statsResponse.json()).toMatchObject({
@@ -205,8 +190,7 @@ it("reads complete persisted calls with the same filters and failures on both lo
     `UPDATE trajectories SET steps_json = '[]' WHERE id = ${sqlQuote(trajectoryId)}`,
   );
   expect(await bridge.getStats()).toMatchObject({ byModel: { fixture: 1 } });
-  const detail = await direct.getTrajectoryDetail(trajectoryId);
-  expect(detail).toEqual(await bridge.getTrajectoryDetail(trajectoryId));
+  const detail = await bridge.getTrajectoryDetail(trajectoryId);
   expect(
     detail?.steps
       ?.flatMap((step) => step.llmCalls ?? [])
@@ -226,7 +210,7 @@ it("reads complete persisted calls with the same filters and failures on both lo
     component: "acceptance",
   };
   expect(
-    await Promise.all([direct.applyReward(reward), bridge.applyReward(reward)]),
+    await Promise.all([bridge.applyReward(reward), bridge.applyReward(reward)]),
   ).toEqual([true, true]);
   expect(
     extractRequiredRows(
@@ -265,11 +249,9 @@ it("reads complete persisted calls with the same filters and failures on both lo
      WHERE id = ${sqlQuote(stepId)}`,
   );
   try {
-    for (const reader of [direct, bridge]) {
-      await expect(reader.getStats()).rejects.toMatchObject({
-        code: "TRAJECTORY_STORAGE_OPERATION_FAILED",
-      });
-    }
+    await expect(bridge.getStats()).rejects.toMatchObject({
+      code: "TRAJECTORY_STORAGE_OPERATION_FAILED",
+    });
     expect((await fetch(`${origin}/api/trajectories/stats`)).status).toBe(500);
   } finally {
     await executeRawSql(
@@ -297,24 +279,21 @@ it("reads complete persisted calls with the same filters and failures on both lo
     byModel: { fixture: 1 },
     totalPromptTokens: 2147483648,
   });
-  expect(await direct.getStats()).toMatchObject({
-    total: 2,
-    byStatus: { completed: 2 },
-  });
+  expect((await bridge.listTrajectories({ status: "completed" })).total).toBe(
+    2,
+  );
 
   await executeRawSql(
     fixture.runtime,
     "ALTER TABLE trajectories RENAME TO trajectories_unavailable",
   );
   try {
-    for (const reader of [direct, bridge]) {
-      await expect(reader.getStats()).rejects.toMatchObject({
-        code: "TRAJECTORY_STORAGE_OPERATION_FAILED",
-      });
-      await expect(reader.listTrajectories({})).rejects.toMatchObject({
-        code: "TRAJECTORY_STORAGE_OPERATION_FAILED",
-      });
-    }
+    await expect(bridge.getStats()).rejects.toMatchObject({
+      code: "TRAJECTORY_STORAGE_OPERATION_FAILED",
+    });
+    await expect(bridge.listTrajectories({})).rejects.toMatchObject({
+      code: "TRAJECTORY_STORAGE_OPERATION_FAILED",
+    });
     expect((await fetch(`${origin}/api/trajectories`)).status).toBe(500);
     expect((await fetch(`${origin}/api/trajectories/stats`)).status).toBe(500);
   } finally {
@@ -323,15 +302,15 @@ it("reads complete persisted calls with the same filters and failures on both lo
       "ALTER TABLE trajectories_unavailable RENAME TO trajectories",
     );
   }
-  expect((await direct.listTrajectories({})).total).toBe(2);
+  expect((await bridge.listTrajectories({})).total).toBe(2);
 }, 120_000);
 
 it("exports every owned match beyond viewer and archive page sizes", async () => {
-  const templateId = await direct.startTrajectory(fixture.runtime.agentId, {
+  const templateId = await bridge.startTrajectory(fixture.runtime.agentId, {
     source: "export-template",
   });
-  const templateStep = direct.startStep(templateId, { kind: "llm" });
-  direct.logLlmCall({
+  const templateStep = bridge.startStep(templateId, { kind: "llm" });
+  bridge.logLlmCall({
     stepId: templateStep,
     model: "export-fixture",
     purpose: "action",
@@ -340,8 +319,8 @@ it("exports every owned match beyond viewer and archive page sizes", async () =>
     userPrompt: "original request",
     response: "original response",
   });
-  await direct.flushWriteQueue(templateId);
-  await direct.endTrajectory(templateId, "completed");
+  await bridge.flushWriteQueue(templateId);
+  await bridge.endTrajectory(templateId, "completed");
   await executeRawSql(
     fixture.runtime,
     `UPDATE trajectories SET steps_json = (SELECT jsonb_agg(payload::jsonb ORDER BY ordinal)
@@ -387,7 +366,7 @@ it("exports every owned match beyond viewer and archive page sizes", async () =>
   } finally {
     await independent.stop();
   }
-  const archive = await direct.exportTrajectories({ format: "json" });
+  const archive = await bridge.exportTrajectories({ format: "json" });
   if (typeof archive.data !== "string")
     throw new Error("JSON export did not return text");
   const rows = JSON.parse(archive.data) as { trajectoryId: string }[];
@@ -617,12 +596,12 @@ it("retains the parent revision conflict before any child can be written", async
 });
 
 it("persists and reads complete planner stages with the canonical native proposal schema", async () => {
-  const trajectoryId = await direct.startTrajectory(fixture.runtime.agentId, {
+  const trajectoryId = await bridge.startTrajectory(fixture.runtime.agentId, {
     source: "semantic-schema-acceptance",
     roomId: randomUUID(),
   });
-  const stepId = direct.startStep(trajectoryId, { kind: "llm" });
-  await direct.flushWriteQueue(trajectoryId);
+  const stepId = bridge.startStep(trajectoryId, { kind: "llm" });
+  await bridge.flushWriteQueue(trajectoryId);
   const schema = actionToTool(proposeDeviceAction).function.parameters;
   const messages = [
     {
@@ -657,8 +636,6 @@ it("persists and reads complete planner stages with the canonical native proposa
     messages,
     providerOptions,
   });
-  const directDetail = await direct.getTrajectoryDetail(trajectoryId);
-  expect(directDetail).toEqual(detail);
   const response = await fetch(`${origin}/api/trajectories/${trajectoryId}`);
   expect(response.status).toBe(200);
   const read = await response.json();
@@ -736,12 +713,12 @@ it("records every planner, evaluator and concurrent provider model call with its
       "ledger-fixture",
     );
   }
-  const trajectoryId = await direct.startTrajectory(fixture.runtime.agentId, {
+  const trajectoryId = await bridge.startTrajectory(fixture.runtime.agentId, {
     source: "model-call-ledger",
     roomId: randomUUID(),
   });
-  const stepId = direct.startStep(trajectoryId, { kind: "llm" });
-  await direct.flushWriteQueue(trajectoryId);
+  const stepId = bridge.startStep(trajectoryId, { kind: "llm" });
+  await bridge.flushWriteQueue(trajectoryId);
   const prompts = [
     "first planner request",
     "second planner request, a little longer",
@@ -756,7 +733,7 @@ it("records every planner, evaluator and concurrent provider model call with its
     async () => {
       for (const prompt of prompts.slice(0, 2)) {
         // As in a real turn, a queued provider capture delays the call's write.
-        direct.logProviderAccess({
+        bridge.logProviderAccess({
           stepId,
           providerName: "LEDGER_PROVIDER",
           purpose: "compose",
@@ -793,9 +770,9 @@ it("records every planner, evaluator and concurrent provider model call with its
       ]);
     },
   );
-  await direct.flushWriteQueue(trajectoryId);
+  await bridge.flushWriteQueue(trajectoryId);
   const calls = (
-    await direct.getTrajectoryDetail(trajectoryId)
+    await bridge.getTrajectoryDetail(trajectoryId)
   )?.steps?.flatMap((step) => step.llmCalls ?? []);
   expect(
     calls?.map((call) => [
@@ -817,18 +794,18 @@ it("records every planner, evaluator and concurrent provider model call with its
       },
     });
   }
-  await direct.endTrajectory(trajectoryId, "completed");
+  await bridge.endTrajectory(trajectoryId, "completed");
 });
 
 it("redacts the text that a model-call update fills in as it redacts a call record", async () => {
-  const trajectoryId = await direct.startTrajectory(fixture.runtime.agentId, {
+  const trajectoryId = await bridge.startTrajectory(fixture.runtime.agentId, {
     source: "model-call-update-redaction",
     roomId: randomUUID(),
   });
-  const stepId = direct.startStep(trajectoryId, { kind: "llm" });
+  const stepId = bridge.startStep(trajectoryId, { kind: "llm" });
   const callId = randomUUID();
   const privateText = "write to ada@example.com, card 4111111111111111";
-  direct.logLlmCall({
+  bridge.logLlmCall({
     stepId,
     callId,
     model: "fixture",
@@ -838,7 +815,7 @@ it("redacts the text that a model-call update fills in as it redacts a call reco
     userPrompt: "",
     response: "",
   });
-  direct.updateLlmCall(stepId, callId, {
+  bridge.updateLlmCall(stepId, callId, {
     userPrompt: privateText,
     response: privateText,
     providerMetadata: {
@@ -846,9 +823,9 @@ it("redacts the text that a model-call update fills in as it redacts a call reco
       accessToken: "fixture-private-credential",
     },
   });
-  await direct.flushWriteQueue(trajectoryId);
+  await bridge.flushWriteQueue(trajectoryId);
   const [call] =
-    (await direct.getTrajectoryDetail(trajectoryId))?.steps?.flatMap(
+    (await bridge.getTrajectoryDetail(trajectoryId))?.steps?.flatMap(
       (step) => step.llmCalls ?? [],
     ) ?? [];
   expect([call?.systemPrompt, call?.userPrompt, call?.response]).toEqual(
@@ -858,7 +835,7 @@ it("redacts the text that a model-call update fills in as it redacts a call reco
     promptOptimization: { budgetTokens: 1000, outputReserveTokens: 100 },
     accessToken: "[REDACTED]",
   });
-  await direct.endTrajectory(trajectoryId, "completed");
+  await bridge.endTrajectory(trajectoryId, "completed");
 });
 
 it("serves the viewer's config, export and delete requests from the registered service", async () => {
@@ -892,11 +869,11 @@ it("serves the viewer's config, export and delete requests from the registered s
 
   const source = `management-${randomUUID()}`;
   const record = async (): Promise<string> => {
-    const id = await direct.startTrajectory(fixture.runtime.agentId, {
+    const id = await bridge.startTrajectory(fixture.runtime.agentId, {
       source,
     });
-    direct.logLlmCall({
-      stepId: direct.startStep(id, { kind: "llm" }),
+    bridge.logLlmCall({
+      stepId: bridge.startStep(id, { kind: "llm" }),
       model: "fixture",
       purpose: "action",
       actionType: "runtime.useModel",
@@ -906,8 +883,8 @@ it("serves the viewer's config, export and delete requests from the registered s
       promptTokens: 1,
       completionTokens: 1,
     });
-    await direct.flushWriteQueue(id);
-    await direct.endTrajectory(id, "completed");
+    await bridge.flushWriteQueue(id);
+    await bridge.endTrajectory(id, "completed");
     return id;
   };
   const kept = await record();

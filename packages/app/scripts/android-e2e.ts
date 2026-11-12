@@ -271,7 +271,6 @@ function buildAndroidApk(bundle, backend) {
     ELIZA_MOBILE_REPO_ROOT: elizaRoot,
     ELIZA_MOBILE_REQUIRED_RENDERER_COMMIT: currentHeadCommit(),
     ELIZA_WEBVIEW_DEBUG: "1",
-    ELIZA_BUN_RISCV64_OPTIONAL: "1",
   });
 }
 

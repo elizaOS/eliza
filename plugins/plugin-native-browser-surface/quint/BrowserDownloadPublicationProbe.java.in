@@ -1,0 +1,201 @@
+package ai.eliza.plugins.browsersurface;
+
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
+
+public final class BrowserDownloadPublicationProbe {
+  private static final long ID = -1;
+  private final BrowserDownloadPolicy.History history = new BrowserDownloadPolicy.History();
+  private final Context context = new Context();
+  private final DownloadManager manager = new DownloadManager();
+  private final Worker io = new Worker(), network = new Worker(), statusReader = new Worker();
+  private Runnable update;
+  private boolean closed;
+  private String notice;
+  // PRODUCTION_FIELDS
+
+  private static final class Uri {}
+  private static final class Environment {
+    static final String DIRECTORY_DOWNLOADS = "Download";
+  }
+  private static final class MediaStore {
+    static final class MediaColumns {
+      static final String DISPLAY_NAME = "name";
+      static final String MIME_TYPE = "mime";
+      static final String RELATIVE_PATH = "path";
+      static final String IS_PENDING = "pending";
+    }
+    static final class Downloads { static final Uri EXTERNAL_CONTENT_URI = new Uri(); }
+  }
+  private static final class ContentValues extends HashMap<String, Object> {}
+  private static final class Context {
+    final ContentResolver resolver = new ContentResolver();
+    ContentResolver getContentResolver() { return resolver; }
+  }
+  private static final class DownloadManager { void remove(long id) { throw new AssertionError(); } }
+  private static final class Worker { void shutdown() {} }
+  private static final class ContentResolver {
+    final Uri own = new Uri();
+    boolean exists, published;
+    int deletions, updates, guardedDeletes, rowsUpdated = 1;
+    Runnable beforeClose = () -> {};
+    Runnable duringUpdate = () -> {};
+    boolean throwOnUpdate, commitBeforeThrow;
+    Uri insert(Uri collection, ContentValues values) {
+      check(collection == MediaStore.Downloads.EXTERNAL_CONTENT_URI, "expected Downloads");
+      check(Integer.valueOf(1).equals(values.get("pending")), "new row must be pending");
+      exists = true;
+      return own;
+    }
+    OutputStream openOutputStream(Uri uri) {
+      check(uri == own && exists, "open the exact owned row");
+      return new ByteArrayOutputStream() {
+        @Override public void close() { beforeClose.run(); }
+      };
+    }
+    int update(Uri uri, ContentValues values, String selection, String[] args) {
+      check(uri == own && exists && !published, "update the exact pending row");
+      check(Integer.valueOf(0).equals(values.get("pending")), "only final publication");
+      updates++;
+      duringUpdate.run();
+      if (commitBeforeThrow) published = true;
+      if (throwOnUpdate) throw new IllegalStateException("provider update failed");
+      if (rowsUpdated == 1) published = true;
+      return rowsUpdated;
+    }
+    int delete(Uri uri, String selection, String[] args) {
+      check(uri == own && exists, "delete only the exact owned row");
+      if (selection != null) {
+        check(selection.equals(MediaStore.MediaColumns.IS_PENDING + "=?")
+            && args.length == 1 && args[0].equals("1"), "cleanup must select still-pending rows");
+        guardedDeletes++;
+        if (published) return 0;
+      }
+      deletions++;
+      exists = false;
+      published = false;
+      return 1;
+    }
+  }
+  private static final class FinalRead extends InputStream {
+    int reads;
+    Runnable onEof = () -> {};
+    boolean fail;
+    @Override public int read() { throw new AssertionError("expected a buffer"); }
+    @Override public int read(byte[] bytes) throws IOException {
+      if (fail) throw new IOException("copy failed");
+      if (reads++ == 0) { bytes[0] = 4; return 1; }
+      onEof.run();
+      return -1;
+    }
+  }
+
+  private boolean osActive(BrowserDownloadPolicy.Entry entry) { return false; }
+  private void persist() {}
+  private void dismissDialogs() {}
+  private void message(String error) { notice = error; }
+  private static boolean validMime(String mime) { return mime != null; }
+
+  // PRODUCTION_METHODS
+
+  private static void check(boolean condition, String message) {
+    if (!condition) throw new AssertionError(message);
+  }
+  private static void onOwnerThread(Runnable action) {
+    FutureTask<Void> cancellation = new FutureTask<>(action, null);
+    Thread owner = new Thread(cancellation);
+    owner.setDaemon(true);
+    owner.start();
+    try { cancellation.get(5, TimeUnit.SECONDS); }
+    catch (Exception error) { throw new AssertionError("cancellation waited for publication I/O", error); }
+  }
+  public static void main(String[] args) throws Exception {
+    String scenario = args[0];
+    BrowserDownloadPublicationProbe h = new BrowserDownloadPublicationProbe();
+    FinalRead input = new FinalRead();
+    ContentResolver resolver = h.context.resolver;
+    boolean captured = scenario.equals("captured");
+    if (!captured) {
+      h.history.add(new BrowserDownloadPolicy.Entry(ID, "fixture", "https://example.invalid", true, "tab").started());
+      // PRODUCTION_ADMISSION
+    }
+    switch (scenario) {
+      case "cancel-at-eof":
+        input.onEof = () -> h.removeFromList(ID, true);
+        break;
+      case "forget-after-final-read":
+        resolver.beforeClose = () -> h.removeEntries(entry -> entry.ephemeral);
+        break;
+      case "publish-wins":
+        resolver.duringUpdate = () -> onOwnerThread(() -> h.removeFromList(ID, true));
+        break;
+      case "destroy-after-eof":
+        input.onEof = () -> onOwnerThread(h::destroy);
+        break;
+      case "copy-failed":
+        input.fail = true;
+        break;
+      case "update-failed":
+        resolver.throwOnUpdate = true;
+        break;
+      case "update-zero":
+        resolver.rowsUpdated = 0;
+        break;
+      case "committed-then-throw":
+        resolver.commitBeforeThrow = true;
+        resolver.throwOnUpdate = true;
+        break;
+      case "captured":
+        break;
+      default:
+        throw new AssertionError(scenario);
+    }
+    Uri saved = null;
+    Exception failure = null;
+    try { saved = h.publish(input, "fixture.bin", null, captured ? 0 : ID); }
+    catch (Exception error) { failure = error; }
+    check(h.notice == null, "no cancellation error");
+    switch (scenario) {
+      case "cancel-at-eof":
+      case "forget-after-final-read":
+        check(!resolver.published && saved == null,
+            "cancelled transfer was published after the final read");
+        check(failure instanceof Cancelled && resolver.deletions == 1
+            && resolver.updates == 0 && h.history.get(ID) == null, "cancel removes the pending row and history");
+        check(resolver.guardedDeletes == 0, "cancellation before the update retains direct cleanup");
+        break;
+      case "destroy-after-eof":
+        check(h.closed && failure instanceof Cancelled && saved == null && !resolver.exists
+            && resolver.updates == 0 && resolver.deletions == 1, "destroy retires an unclaimed transfer");
+        break;
+      case "copy-failed":
+      case "update-failed":
+      case "update-zero":
+        check(failure != null && saved == null && !resolver.exists && resolver.deletions == 1,
+            "a failed copy or update must leave no pending row or false receipt");
+        check(resolver.guardedDeletes == (scenario.equals("copy-failed") ? 0 : 1), "only attempted updates require guarded cleanup");
+        break;
+      case "committed-then-throw":
+        check(resolver.exists && resolver.published && resolver.deletions == 0,
+            "an ambiguous update deleted a file already published by the provider");
+        check(failure instanceof Refused && failure.getMessage().contains("Check Android Downloads")
+            && saved == null && resolver.guardedDeletes == 1, "an unconfirmed update has no success receipt");
+        break;
+      default:
+        check(failure == null && saved == resolver.own && resolver.exists
+            && resolver.published && resolver.deletions == 0, "a published file is retained");
+        check(h.history.get(ID) == null, "row removal must not re-add history");
+        if (!captured) check(h.transfers.get(ID) == TransferState.PUBLISHING, "a later cancel did not change publication ownership");
+    }
+  }
+}

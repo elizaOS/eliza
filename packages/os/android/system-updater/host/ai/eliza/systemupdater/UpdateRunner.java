@@ -93,13 +93,24 @@ final class UpdateRunner {
             UpdateChannel channel = new UpdateChannel(context.getString(R.string.os_update_manifest),
                     context.getResources().getStringArray(R.array.os_update_hosts),
                     context.getString(R.string.os_update_product), context.getString(R.string.os_update_device));
-            UpdateChannel.Candidate candidate = channel.discover();
+            UpdateChannel.Candidate candidate;
+            try {
+                candidate = channel.discover();
+            } catch (IOException unavailable) {
+                if (current.phase != UpdateJournal.Phase.REBOOT_READY) throw unavailable;
+                heldOfferUnavailable(run, unavailable);
+                return;
+            }
             if (current.isUnapplied() && (candidate == null || !current.targetBuild.equals(candidate.fingerprint)
                     || !current.packageSha256.equals(candidate.sha256))) {
                 UpdateJournal idle = current.cancelUnapplied();
                 store.write(current, idle); current = idle;
             }
-            if (candidate == null) { finish(run, "No newer system update was offered"); return; }
+            if (candidate == null) {
+                finish(run, current.phase == UpdateJournal.Phase.REBOOT_READY
+                        ? heldOfferStatus(null) : "No newer system update was offered");
+                return;
+            }
             if (current.phase == UpdateJournal.Phase.IDLE || current.phase == UpdateJournal.Phase.COMPLETE
                     || current.phase == UpdateJournal.Phase.SOURCE_RETAINED) {
                 UpdateJournal next = current.download(android.os.Build.FINGERPRINT,
@@ -108,7 +119,7 @@ final class UpdateRunner {
             }
             if (!current.targetBuild.equals(candidate.fingerprint)
                     || !current.packageSha256.equals(candidate.sha256)) {
-                finish(run, "The offered update changed; the earlier candidate remains held"); return;
+                finish(run, heldOfferStatus(candidate)); return;
             }
             boolean unapplied = current.isUnapplied();
             Path scratch = unapplied
@@ -163,9 +174,20 @@ final class UpdateRunner {
 
     private void rebootIfAllowed(Run run, JournalStore store, UpdateChannel channel,
             UpdateChannel.Candidate candidate) throws IOException {
-        if (run.stopped || !installAllowed() || !same(candidate, channel.discover())) {
+        if (run.stopped || !installAllowed()) {
             SystemUpdateJob.schedule(context, true);
             finish(run, "System update is ready; waiting for idle restart conditions"); return;
+        }
+        UpdateChannel.Candidate offered;
+        try {
+            offered = channel.discover();
+        } catch (IOException unavailable) {
+            heldOfferUnavailable(run, unavailable);
+            return;
+        }
+        if (!same(candidate, offered)) {
+            SystemUpdateJob.schedule(context, true);
+            finish(run, heldOfferStatus(offered)); return;
         }
         if (EngineInstaller.observeStatus() != UpdateEngine.UpdateStatusConstants.UPDATED_NEED_REBOOT) {
             finish(run, "System update engine state needs review"); return;
@@ -217,6 +239,17 @@ final class UpdateRunner {
         int count = Settings.Global.getInt(context.getContentResolver(), Settings.Global.BOOT_COUNT, -1);
         if (count < 0) throw new IllegalStateException("Boot identity unavailable");
         return "boot-" + count;
+    }
+
+    private static String heldOfferStatus(UpdateChannel.Candidate offered) {
+        return offered == null
+                ? "No matching offer for the applied system update. Automatic restart is on hold."
+                : "The current offer differs from the applied system update. Automatic restart is on hold.";
+    }
+
+    private void heldOfferUnavailable(Run run, IOException unavailable) {
+        Log.w("ElizaSystemUpdater", "Could not check the applied system update offer", unavailable);
+        finish(run, "Could not check the offer for the applied system update. Automatic restart is on hold.");
     }
 
     private static boolean same(UpdateChannel.Candidate first, UpdateChannel.Candidate next) {

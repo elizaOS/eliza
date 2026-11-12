@@ -31,6 +31,7 @@ public final class LocalVoiceRecording {
  private final Consumer<JSONObject> events;
  private final Handler handler=new Handler(Looper.getMainLooper());
  private MediaRecorder recorder;
+ private LocalMicrophoneLease microphone;
  private File file;
  private String id;
  private long startedAt;
@@ -54,8 +55,9 @@ public final class LocalVoiceRecording {
  }
  public synchronized JSONObject start(int maxDurationMs)throws IOException{
   checkStart(maxDurationMs);
-  id=UUID.randomUUID().toString();file=new File(context.getCacheDir(),prefix+id+".m4a");
+  microphone=LocalMicrophoneLease.acquire();
   try{
+   id=UUID.randomUUID().toString();file=new File(context.getCacheDir(),prefix+id+".m4a");
    recorder=new MediaRecorder();
    recorder.setAudioSource(MediaRecorder.AudioSource.MIC);
    recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
@@ -69,7 +71,10 @@ public final class LocalVoiceRecording {
    recorder.prepare();recorder.start();startedAt=SystemClock.elapsedRealtime();
    final String ownedId=id;deadline=()->{synchronized(this){if(!ownedId.equals(id))return;stopAutomatically();}};handler.postDelayed(deadline,maxDurationMs);
    JSONObject result=new JSONObject();put(result,"status","recording");put(result,"recordingId",id);put(result,"maxDurationMs",maxDurationMs);return result;
-  }catch(IOException|RuntimeException error){cancel();throw error;}
+  }catch(IOException|RuntimeException|Error error){
+   try{cancel();}catch(RuntimeException|Error cleanup){if(cleanup!=error)error.addSuppressed(cleanup);}
+   throw error;
+  }
  }
  /** Genuine peak from the already-owned microphone capture; no second stream or inferred RMS. */
  public synchronized JSONObject metrics(String recordingId){
@@ -81,7 +86,7 @@ public final class LocalVoiceRecording {
   handler.removeCallbacks(deadline);durationMs=SystemClock.elapsedRealtime()-startedAt;
   try{recorder.stop();}
   catch(RuntimeException error){cancel();throw new IllegalStateException("Recording was too short or unavailable");}
-  recorder.release();recorder=null;
+  releaseRecorder();
   if(!file.isFile()||file.length()==0||file.length()>MAX_BYTES){cancel();throw new IllegalStateException("Recording is unavailable or exceeds the size limit");}
   JSONObject result=new JSONObject();put(result,"status","recorded");put(result,"recordingId",id);put(result,"durationMs",durationMs);return result;
  }
@@ -124,9 +129,17 @@ public final class LocalVoiceRecording {
  /** Duration of the finished draft, in milliseconds. */
  public synchronized long durationMs(){return durationMs;}
  public synchronized void discard(String recordingId){if(id!=null&&id.equals(recordingId))cancel();}
+ private void releaseRecorder(){
+  if(recorder!=null){recorder.release();recorder=null;}
+  if(microphone!=null){microphone.release();microphone=null;}
+ }
  public synchronized void cancel(){
-  if(deadline!=null)handler.removeCallbacks(deadline);
-  if(recorder!=null){try{recorder.stop();}catch(RuntimeException ignored){/* Never started or already stopped. */}recorder.release();recorder=null;}
-  if(file!=null)file.delete();file=null;id=null;durationMs=0;interrupted=false;
+  try{
+   if(deadline!=null)handler.removeCallbacks(deadline);
+   if(recorder!=null)try{recorder.stop();}catch(RuntimeException ignored){/* Never started or already stopped. */}
+  }finally{
+   releaseRecorder();
+   if(file!=null)file.delete();file=null;id=null;durationMs=0;interrupted=false;
+  }
  }
 }

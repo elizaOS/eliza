@@ -139,7 +139,7 @@ test("an unqualified architecture cannot inherit the x86 browser", (t) => {
     () =>
       stageBrowserApps({
         ...options,
-        arch: "riscv64",
+        arch: "arm64",
         allowDevelopmentBrowser: true,
       }),
     /No verified chromium artifact/,

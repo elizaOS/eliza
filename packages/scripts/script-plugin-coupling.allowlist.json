@@ -180,26 +180,6 @@
     "reason": "curated fallback-art list for plugins with an elizaos.app surface but no committed hero.svg"
   },
   {
-    "file": "packages/scripts/lifeops/connector-paths.ts",
-    "tokens": ["plugins/plugin-github", "plugins/plugin-personal-assistant"],
-    "reason": "central LifeOps credential-path map for GitHub and personal-assistant connector live-validation lanes"
-  },
-  {
-    "file": "packages/scripts/lifeops/credential-probes.ts",
-    "tokens": ["plugins/plugin-github"],
-    "reason": "GitHub credential probe invokes the concrete plugin-github connector path for live validation"
-  },
-  {
-    "file": "packages/scripts/lifeops/hitl-credential-dashboard.ts",
-    "tokens": ["plugins/plugin-github"],
-    "reason": "HITL credential dashboard reports the concrete plugin-github credential lane used by operators"
-  },
-  {
-    "file": "packages/scripts/portable-linux-fused-inference.ts",
-    "tokens": ["plugins/plugin-local-inference"],
-    "reason": "the portable fused-inference builder is intentionally coupled to the local-inference native source tree and its tracked ABI verification files"
-  },
-  {
     "file": "packages/scripts/plugins/plugin-coding-tools/progressive-read-benchmark.ts",
     "tokens": ["plugins/plugin-coding-tools"],
     "reason": "Package-owned plugin-coding-tools tooling; relocation preserves its explicit source and test roots."
@@ -324,11 +304,6 @@
   },
   {
     "file": "packages/scripts/plugins/plugin-local-inference/generate-voice-corpus.ts",
-    "tokens": ["plugins/plugin-local-inference"],
-    "reason": "Package-owned local-inference tooling relocated into repository scripts."
-  },
-  {
-    "file": "packages/scripts/plugins/plugin-local-inference/local-inference-ablation.ts",
     "tokens": ["plugins/plugin-local-inference"],
     "reason": "Package-owned local-inference tooling relocated into repository scripts."
   },

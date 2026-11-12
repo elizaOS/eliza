@@ -41,7 +41,8 @@
     "format:check": "bunx @biomejs/biome format .",
     "test:native-session": "node --test test/native-host/credential-access.node.mjs",
     "test:native-passwords": "node --test test/native-host/password-custody.node.mjs",
-    "test:native-identity": "node --test test/native-host/owner-identity.node.mjs"
+    "test:native-identity": "node --test test/native-host/owner-identity.node.mjs",
+    "test:native-slots": "node --test test/native-host/json-slots.node.mjs"
   },
   "capacitor": {
     "android": {
