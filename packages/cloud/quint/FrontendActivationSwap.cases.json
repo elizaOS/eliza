@@ -1,0 +1,51 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/db/repositories/app-frontend-deployments.ts",
+    "packages/cloud/shared/src/db/schemas/app-frontend-deployments.ts",
+    "packages/cloud/shared/src/db/schemas/apps.ts",
+    "packages/cloud/shared/src/lib/services/app-frontend-hosting.ts",
+    "packages/cloud/api/v1/apps/[id]/frontend/[deploymentId]/route.ts",
+    "packages/cloud/api/v1/apps/[id]/frontend/[deploymentId]/route.activate-race.pglite.test.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-frontend-activation-swap.mjs",
+  "bounds": "One retained parent app with one active and one superseded deployment. The rollback caller's organization matches the parent row. One rollback and one inactive deployment deletion can interleave between their initial read and guarded write. Activation checks the organization under the parent app lock before its atomic swap. The separate app_frontend_deletion model checks that lock against whole-app deletion. The frontend_publication model checks bounded upload, finalization, publication and activation refusal for a foreign organization. This projection excludes other activation writers, artifact cleanup, authorization, process recovery and replica lag.",
+  "cases": [
+    {
+      "name": "rollback-and-delete",
+      "main": "FrontendActivationSwap",
+      "init": "init",
+      "step": "step",
+      "invariants": ["ExactlyOneLive", "CommittedEffectMatchesReceipt"],
+      "maxSteps": 12,
+      "samples": 200,
+      "temporal": [
+        "RejectedWritesKeepLiveRow",
+        "FairReadsFinish",
+        "ReadsFinish"
+      ],
+      "temporalChecks": [
+        {
+          "property": "RejectedWritesKeepLiveRow",
+          "expect": "holds",
+          "assumptions": [
+            "No scheduling fairness. The inactive deployment deletion predicate is rechecked at write time. A failed promotion rolls back the demotion in the same transaction."
+          ]
+        },
+        {
+          "property": "FairReadsFinish",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness for each admitted write. The handler resumes after the initial read and the database accepts or rejects the write."
+          ]
+        },
+        {
+          "property": "ReadsFinish",
+          "expect": "counterexample",
+          "assumptions": [
+            "No scheduling fairness. A handler can stay suspended after reading."
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,78 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/lib/services/stripe-checkout-orders.ts",
+    "packages/cloud/shared/src/db/schemas/stripe-checkout-orders.ts",
+    "packages/cloud/shared/src/db/migrations/0261_stripe_checkout_orders.sql",
+    "packages/cloud/shared/src/lib/services/__tests__/stripe-checkout-orders.pglite.test.ts",
+    "packages/cloud/api/stripe/create-checkout-session/route.ts",
+    "packages/cloud/api/v1/credits/checkout/route.ts"
+  ],
+  "bounds": {
+    "domain": "Two callers, two organization/key slots, two symbolic users, two digests and two published customer identities. Four instances separate exact replay, changed initiator, changed digest and identical request keys in distinct tenants.",
+    "assumptions": "Valid input abstracts the service numeric/string/purchase validation and prior caller authentication. Digests are collision-free identities. Insert plus uniqueness conflict is atomic; lookup observes the winning primary row. Customer authority is read and pinned under the service locks. pinCustomer models the route customer comparison together with the service CAS. Each caller retains the customer field from its original quote read. If that field was empty, the service may adopt a customer concurrently pinned by another caller; an already observed pin cannot be changed.",
+    "limitations": "No cryptographic or TypeScript refinement proof. Symbolic validation classes are connected to concrete SQL/service tests. Backend authorization lifetime, external Stripe behavior, transport uncertainty and recovery after dispatch remain separate models or protocol obligations."
+  },
+  "conformance": "packages/cloud/quint/check-credit-checkout-order.ts",
+  "cases": [
+    {
+      "name": "same-request-replay",
+      "main": "CreditCheckoutQuoteReplay",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "OriginalQuoteImmutable",
+        "SuccessfulReplayMatches",
+        "InvalidInputCannotInsert",
+        "DispatchHasPinnedCustomer"
+      ],
+      "temporal": [],
+      "maxSteps": 30,
+      "samples": 1000
+    },
+    {
+      "name": "initiator-conflict",
+      "main": "CreditCheckoutQuoteUserConflict",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "OriginalQuoteImmutable",
+        "SuccessfulReplayMatches",
+        "InvalidInputCannotInsert",
+        "DispatchHasPinnedCustomer"
+      ],
+      "temporal": [],
+      "maxSteps": 30,
+      "samples": 1000
+    },
+    {
+      "name": "request-digest-conflict",
+      "main": "CreditCheckoutQuoteDigestConflict",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "OriginalQuoteImmutable",
+        "SuccessfulReplayMatches",
+        "InvalidInputCannotInsert",
+        "DispatchHasPinnedCustomer"
+      ],
+      "temporal": [],
+      "maxSteps": 30,
+      "samples": 1000
+    },
+    {
+      "name": "tenant-scoped-request-key",
+      "main": "CreditCheckoutQuoteTenantIsolation",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "OriginalQuoteImmutable",
+        "SuccessfulReplayMatches",
+        "InvalidInputCannotInsert",
+        "DispatchHasPinnedCustomer"
+      ],
+      "temporal": [],
+      "maxSteps": 30,
+      "samples": 1000
+    }
+  ]
+}

@@ -62,7 +62,7 @@ function statusCopy(request: AccountDeletionRequestDto): {
       return {
         title: "Securing your request",
         description:
-          "Account access is fenced while Eliza prepares the encrypted recovery export.",
+          "Ordinary access is disabled. You can save a data export or cancel until the recovery window ends.",
       };
     case "recovery":
       return {
@@ -179,8 +179,7 @@ function DeletionStatus({
           reconciled safely.
         </p>
       ) : null}
-      {request.export?.status === "pending" ||
-      request.export?.status === "building" ? (
+      {request.export?.status === "building" ? (
         <p className="text-sm text-muted" role="status">
           Preparing your encrypted export…
         </p>
@@ -196,7 +195,10 @@ function DeletionStatus({
         </p>
       ) : null}
       <div className="grid gap-2">
-        {request.export?.status === "ready" ? (
+        {request.export?.status === "ready" ||
+        (request.canCancel &&
+          (request.export?.status === "pending" ||
+            request.export?.status === "failed")) ? (
           <Button
             type="button"
             variant="outline"

@@ -47,10 +47,12 @@ public class IndicatorLeaseProvider extends ContentProvider {
    if(IndicatorLease.ACQUIRE.equals(method)){
     IBinder token=extras==null?null:extras.getBinder(IndicatorLease.KEY_TOKEN);
     if(token==null)throw new IllegalArgumentException("SystemUI token required");
-    long generation=Listener.lease.acquire(boot);
-    // SystemUI's process dying ends the lease at once instead of waiting for expiry.
-    IBinder.DeathRecipient recipient=()->{Listener.lease.binderDied(generation);Listener.refresh(context);};
+    final long generation;
     synchronized(IndicatorLeaseProvider.class){
+     // Bind the generation and its death recipient in one admission order.
+     generation=Listener.lease.acquire(boot);
+     // SystemUI's process dying ends the lease at once instead of waiting for expiry.
+     IBinder.DeathRecipient recipient=()->{Listener.lease.binderDied(generation);Listener.refresh(context);};
      if(linkedToken!=null)try{linkedToken.unlinkToDeath(linkedRecipient,0);}catch(RuntimeException ignored){}
      linkedToken=null;linkedRecipient=null;
      try{token.linkToDeath(recipient,0);linkedToken=token;linkedRecipient=recipient;}

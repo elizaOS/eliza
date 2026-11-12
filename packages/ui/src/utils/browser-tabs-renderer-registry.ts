@@ -91,7 +91,21 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
     }
   };
 
-  window.__elizaTabExec = (requestId, script) => {
+  // Pinned (non-writable) like __elizaVaultFill below: the preload runs
+  // before page scripts, so the page cannot replace it to read request ids.
+  const pin = (name, value) => {
+    try {
+      Object.defineProperty(window, name, {
+        value: value,
+        writable: false,
+        configurable: false,
+      });
+    } catch (_err) {
+      // Already pinned by an earlier run of this preload.
+    }
+  };
+
+  pin("__elizaTabExec", (requestId, script) => {
     let value;
     try {
       // Indirect eval gives the script the global scope, matching the
@@ -124,7 +138,7 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
           error: err && err.message ? String(err.message) : String(err),
         });
       });
-  };
+  });
 
   // ── Visual cursor + realistic event kit ───────────────────────────────
   // Installed lazily to avoid touching the DOM before the page is ready.
@@ -510,26 +524,15 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
         }
         const requestId = nextWalletReq++;
         walletPending.set(requestId, { resolve: resolve, reject: reject });
-        // Include the page's origin/hostname so the host can show a
-        // "<domain> wants to ..." consent dialog without an extra eval
-        // round-trip.
-        let originValue;
-        let hostnameValue;
-        try {
-          originValue = location.origin;
-          hostnameValue = location.hostname;
-        } catch (_e) {
-          originValue = "";
-          hostnameValue = "";
-        }
+        // The host names the site from the tab's committed URL, not from
+        // anything in this message. Subframe requests are refused.
         window.__electrobunSendToHost({
           type: "__elizaWalletRequest",
           requestId: requestId,
           protocol: protocol,
           method: method,
           params: params,
-          origin: originValue,
-          hostname: hostnameValue,
+          topFrame: window === window.top,
         });
       });
 
@@ -1075,33 +1078,25 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
   // ── Vault autofill shim ─────────────────────────────────────────────
   // Detect login forms on each tab page, ask the host to look up saved
   // credentials for the current domain, and (with user consent) fill the
-  // username/password inputs. Mirrors the wallet shim's request/reply
-  // pattern: tab→host via __electrobunSendToHost; host→tab via
-  // tag.executeJavascript("window.__elizaVaultReply(...)").
+  // username/password inputs. tab→host via __electrobunSendToHost; the host
+  // answers with tag.executeJavascript("window.__elizaVaultFill(...)").
   //
-  // The host (BrowserWorkspaceView) is responsible for showing a consent
-  // prompt before returning credentials. The tab never autofills without
-  // a host response carrying explicit field values.
-  if (typeof window !== "undefined" && !window.__elizaVaultInstalled) {
+  // The host (BrowserWorkspaceView) takes the site from the tab's committed
+  // URL, refuses subframes, and shows a consent prompt before it sends any
+  // field values. __elizaVaultFill is pinned before page scripts run so a
+  // page cannot replace it to capture the values. Only the top frame asks.
+  if (
+    typeof window !== "undefined" &&
+    window === window.top &&
+    !window.__elizaVaultInstalled
+  ) {
     window.__elizaVaultInstalled = true;
 
-    const vaultPending = new Map();
-    let nextVaultReq = 1;
-
-    window.__elizaVaultReply = (requestId, payload) => {
-      const entry = vaultPending.get(requestId);
-      if (!entry) return;
-      vaultPending.delete(requestId);
-      try {
-        if (payload && typeof payload === "object" && payload.error) {
-          entry.reject(new Error(String(payload.error)));
-          return;
-        }
-        entry.resolve(payload && typeof payload === "object" ? payload : null);
-      } catch (_e) {
-        // Listener errors must not bubble up into the tab page.
-      }
-    };
+    const vaultPending = new Set();
+    const newVaultRequestId = () =>
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : String(Math.random()).slice(2) + String(Date.now());
 
     function cssSelectorFor(el) {
       if (!el || el.nodeType !== 1) return null;
@@ -1188,24 +1183,28 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
       }
     }
 
-    const callHost = (domain, url, fieldHints) =>
-      new Promise((resolve, reject) => {
-        if (typeof window.__electrobunSendToHost !== "function") {
-          reject(
-            new Error("Vault autofill bridge unavailable: not in an Eliza tab."),
-          );
-          return;
-        }
-        const requestId = nextVaultReq++;
-        vaultPending.set(requestId, { resolve: resolve, reject: reject });
-        window.__electrobunSendToHost({
-          type: "__elizaVaultAutofillRequest",
-          requestId: requestId,
-          domain: domain,
-          url: url,
-          fieldHints: fieldHints,
-        });
+    pin("__elizaVaultFill", (requestId, fields) => {
+      if (!vaultPending.delete(requestId)) return;
+      try {
+        fillFields(fields);
+      } catch (_e) {
+        // Fill errors must not bubble up into the tab page.
+      }
+    });
+
+    const callHost = (fieldHints) => {
+      if (typeof window.__electrobunSendToHost !== "function") return;
+      const requestId = newVaultRequestId();
+      vaultPending.add(requestId);
+      window.__electrobunSendToHost({
+        type: "__elizaVaultAutofillRequest",
+        requestId: requestId,
+        // A claim only: the host refuses it if it differs from the tab URL.
+        domain: location.hostname,
+        topFrame: true,
+        fieldHints: fieldHints,
       });
+    };
 
     function scanLoginForms() {
       const passwords = document.querySelectorAll(
@@ -1232,14 +1231,9 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
           fieldHints.push({ kind: "password", selector: pwSelector });
         }
         if (fieldHints.length === 0) continue;
-        callHost(location.hostname, location.href, fieldHints)
-          .then((payload) => {
-            if (payload && payload.fields) fillFields(payload.fields);
-          })
-          .catch(() => {
-            // User denied, no match, or bridge unavailable. Leave fields
-            // alone so the user can type credentials manually.
-          });
+        // On denial or no match the host sends no values and the user
+        // types the credentials.
+        callHost(fieldHints);
       }
     }
 

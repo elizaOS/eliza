@@ -3,6 +3,7 @@ import { isAndroidMobile, resolveApiToken } from "@elizaos/host/protocol";
 import { loadNativeRuntimeModule } from "./native-runtime-module.js";
 import {
   applyNativeCloudRuntimeProfile,
+  applyNativeDirectRuntimeProfile,
   type NativeRuntimeProfileStores,
   parseNativeCloudRoutingDeclaration,
 } from "./native-runtime-profile.js";
@@ -32,6 +33,15 @@ export async function startNativeManagedGoogleHost(
   env: NodeJS.ProcessEnv = process.env,
   profileStores?: NativeRuntimeProfileStores,
 ): Promise<{ close(): Promise<void> } | undefined> {
+  if (isAndroidMobile(env) && env.ELIZA_PROVIDER === "cerebras") {
+    try {
+      await applyNativeDirectRuntimeProfile(env, profileStores);
+    } catch {
+      throw new ElizaError("Native direct routing could not be prepared", {
+        code: "NATIVE_DIRECT_ROUTING_UNAVAILABLE",
+      });
+    }
+  }
   const prepareCloud =
     isAndroidMobile(env) && enabled(env.ELIZAOS_CLOUD_USE_INFERENCE);
   const entry = env.ELIZA_NATIVE_GOOGLE_HOST_MODULE;
@@ -49,13 +59,21 @@ export async function startNativeManagedGoogleHost(
     prepareCloud
       ? new ElizaError(message, { code: "NATIVE_CLOUD_ROUTING_UNAVAILABLE" })
       : unavailable(message);
-  const token = env.ELIZAOS_CLOUD_API_KEY;
+  const inferenceToken = env.ELIZAOS_CLOUD_API_KEY;
+  // Native provider admission supplies a separate Google key. Runtime routing
+  // can replace the inference key while the admitted Google binding stays valid.
+  const credentialKey =
+    env.ELIZA_PROVIDER === "cerebras" ||
+    env.ELIZA_NATIVE_GOOGLE_API_KEY !== undefined
+      ? "ELIZA_NATIVE_GOOGLE_API_KEY"
+      : "ELIZAOS_CLOUD_API_KEY";
+  const token = env[credentialKey];
   const apiToken = resolveApiToken(env);
   if (
     !isAndroidMobile(env) ||
     !root ||
     (raw !== undefined && raw.length > 8192) ||
-    !token ||
+    (prepareCloud ? !inferenceToken : !token) ||
     !apiToken ||
     // The managed Gmail and Calendar transports accept only this format; a
     // published endpoint they cannot use would break Gmail reads at plugin init.
@@ -76,13 +94,14 @@ export async function startNativeManagedGoogleHost(
         parseNativeCloudRoutingDeclaration(module.nativeCloudRuntime),
         profileStores,
       );
-      if (env.ELIZAOS_CLOUD_API_KEY !== token)
+      if (env.ELIZAOS_CLOUD_API_KEY !== inferenceToken)
         throw new Error("Native Cloud credential changed during preparation");
     }
   } catch {
     throw admissionFailure("Native runtime preparation failed");
   }
   if (!raw) return;
+  if (!token) throw unavailable("Native Google credential is unavailable");
   let binding: unknown;
   try {
     binding = JSON.parse(raw);
@@ -100,7 +119,7 @@ export async function startNativeManagedGoogleHost(
     assertCurrent() {
       if (
         env.ELIZA_NATIVE_GOOGLE_BINDING_JSON !== raw ||
-        env.ELIZAOS_CLOUD_API_KEY !== token
+        env[credentialKey] !== token
       )
         throw unavailable("Native Google owner changed");
     },
@@ -150,7 +169,8 @@ export async function startNativeManagedGoogleHostForBoot(
   } catch (error) {
     if (
       error instanceof ElizaError &&
-      error.code === "NATIVE_CLOUD_ROUTING_UNAVAILABLE"
+      (error.code === "NATIVE_CLOUD_ROUTING_UNAVAILABLE" ||
+        error.code === "NATIVE_DIRECT_ROUTING_UNAVAILABLE")
     )
       throw error;
     const code =

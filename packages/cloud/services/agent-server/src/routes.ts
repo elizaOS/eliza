@@ -13,6 +13,10 @@ import { logger } from "./logger";
 
 type HeaderMap = Record<string, string | undefined>;
 
+function isDrainingError(error: unknown): boolean {
+  return error instanceof ElizaError && error.code === "AGENT_SERVER_DRAINING";
+}
+
 /**
  * Extracts the auth token from request headers.
  * Checks X-Server-Token first, then falls back to Authorization Bearer.
@@ -411,10 +415,14 @@ async function withWorkflowService<T>(
     const message = err instanceof Error ? err.message : String(err);
     const agentUnavailable =
       message === "Agent not found" || message === "Agent not running";
-    set.status = agentUnavailable ? 404 : 500;
+    set.status = isDrainingError(err) ? 503 : agentUnavailable ? 404 : 500;
     return {
       success: false,
-      code: agentUnavailable ? "agent_not_found" : "workflow_operation_failed",
+      code: isDrainingError(err)
+        ? "server_draining"
+        : agentUnavailable
+          ? "agent_not_found"
+          : "workflow_operation_failed",
       error: message,
     };
   }
@@ -487,7 +495,9 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
           message === "At capacity" ||
           (err instanceof ElizaError && err.code === "AGENT_SERVER_DRAINING")
             ? 503
-            : 409;
+            : message === "Agent already exists"
+              ? 409
+              : 500;
         return { error: message };
       }
     })
@@ -510,7 +520,9 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
         set.status =
           err instanceof ElizaError && err.code === "AGENT_INITIALIZING"
             ? 503
-            : 404;
+            : message === "Agent not found"
+              ? 404
+              : 500;
         return { error: message };
       }
     })
@@ -533,7 +545,9 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
         set.status =
           err instanceof ElizaError && err.code === "AGENT_INITIALIZING"
             ? 503
-            : 404;
+            : message === "Agent not found"
+              ? 404
+              : 500;
         return { error: message };
       }
     })
@@ -593,8 +607,9 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
       } catch (err: unknown) {
         // error-policy:J1 translate the agent-server HTTP boundary into an explicit status.
         const message = err instanceof Error ? err.message : String(err);
-        set.status =
-          message === "Agent not found" || message === "Agent not running"
+        set.status = isDrainingError(err)
+          ? 503
+          : message === "Agent not found" || message === "Agent not running"
             ? 404
             : 500;
         return { error: message };
@@ -637,7 +652,12 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
       } catch (err: unknown) {
         // error-policy:J1 translate the agent-server HTTP boundary into an explicit status.
         const message = err instanceof Error ? err.message : String(err);
-        if (message === "Agent not found" || message === "Agent not running") {
+        if (isDrainingError(err)) {
+          set.status = 503;
+        } else if (
+          message === "Agent not found" ||
+          message === "Agent not running"
+        ) {
           set.status = 404;
         } else {
           logger.error("Event handler failed", {
@@ -723,8 +743,9 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
         .catch((err: unknown) => {
           // error-policy:J1 translate the workflow-status HTTP boundary into an explicit status.
           const message = err instanceof Error ? err.message : String(err);
-          set.status =
-            message === "Agent not found" || message === "Agent not running"
+          set.status = isDrainingError(err)
+            ? 503
+            : message === "Agent not found" || message === "Agent not running"
               ? 404
               : 500;
           return { error: message };

@@ -1,0 +1,50 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/db/repositories/job-execution-authority.ts",
+    "packages/cloud/shared/src/lib/services/app-container-store.ts",
+    "packages/cloud/shared/src/lib/services/container-job-executors.ts",
+    "packages/cloud/shared/src/node/provisioning-worker.ts",
+    "packages/cloud/shared/src/db/repositories/jobs.ts",
+    "packages/cloud/shared/src/lib/services/__tests__/provisioning-execution-authority.pglite.test.ts",
+    "packages/cloud/shared/src/lib/services/job-execution-authority.ts",
+    "packages/cloud/shared/src/db/schemas/jobs.ts",
+    "packages/cloud/shared/src/db/schemas/job-execution-leases.ts",
+    "packages/cloud/shared/src/db/schemas/containers.ts",
+    "packages/cloud/quint/container-conformance.mjs",
+    "packages/cloud/quint/reviewed-cloud-checks.json",
+    "packages/scripts/lib/junit-summary.ts"
+  ],
+  "bounds": {
+    "assumptions": [
+      "One durable job, two execution generations, two owner values and clock0..6. The replacement can use the same or another owner. Lease and grace remain one tick each. The app generation can survive job recovery.",
+      "Job, lease and dependent-resource locks serialize each write. The database clock is checked after resource lock acquisition; a successfully admitted transaction retains its locks through commit. No TypeScript or SQL isolation refinement is proved.",
+      "Provider dispatch and completion remain external. A lease timeout or cancellation does not prove remote quiescence; an explicit witness retains overlapping old and new provider calls.",
+      "No eventual provider completion, provider-side fencing or cross-job routing ownership is proved."
+    ],
+    "progress": "Only pending dependent DB mutations have a conditional completion property; uncancellable provider work can overlap after recovery."
+  },
+  "cases": [
+    {
+      "name": "provisioning-execution",
+      "main": "provisioning_execution",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["PendingDependentWriteCompletes"],
+      "maxSteps": 40,
+      "samples": 1000,
+      "deadlock": false,
+      "temporalChecks": [
+        {
+          "property": "PendingDependentWriteCompletes",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of finishDependentStep models a pending DB lock/query sequence eventually advancing or failing.",
+            "The job/lease/resource transaction protects admitted writes until commit. Provider completion and cancellation remain independent external actions with no fairness assumption."
+          ]
+        }
+      ]
+    }
+  ],
+  "conformance": "packages/cloud/quint/check-reviewed-cloud.mjs"
+}

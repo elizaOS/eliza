@@ -18,6 +18,7 @@ async function hydrateSeoRequest(request: SeoRequest): Promise<SeoRequest> {
     storage: request.prompt_context_storage,
     key: request.prompt_context_key,
     inlineValue: request.prompt_context,
+    strict: true,
   });
 
   return { ...request, prompt_context: promptContext };

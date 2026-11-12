@@ -38,6 +38,7 @@ export class NativeSurfaceBrowserTarget {
     "task-action-feedback",
     "task-origins",
     "task-commit-grant",
+    "task-commit-pattern",
   ]);
   private stopped = false;
   private readonly lifetime = new AbortController();

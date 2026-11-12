@@ -95,7 +95,12 @@ export function notesDraftChanges(
   };
 }
 
-/** IDs whose saved note changed since the draft and differs from the drafted copy. */
+/**
+ * IDs the draft cannot apply: a saved note that changed since the draft and
+ * differs from the drafted copy, a drafted new note already saved with other
+ * content, and a drafted edit of a note deleted since. A host keeps a draft with
+ * conflicts for recovery export instead of clearing it.
+ */
 export function notesDraftConflicts(
   list: NoteRecord[],
   draft: NotesDraftChanges,
@@ -105,14 +110,22 @@ export function notesDraftConflicts(
   );
   const added = new Set(draft.added);
   const removed = new Set(draft.removed);
-  return list
-    .filter((note) => {
-      const now = JSON.stringify(note);
-      if (removed.has(note.id)) return now !== draft.before[note.id];
-      if (!drafted.has(note.id) || added.has(note.id)) return false;
-      return now !== draft.before[note.id] && now !== drafted.get(note.id);
-    })
-    .map((note) => note.id);
+  const present = new Set(list.map((note) => note.id));
+  return [
+    ...list
+      .filter((note) => {
+        const now = JSON.stringify(note);
+        if (removed.has(note.id)) return now !== draft.before[note.id];
+        if (!drafted.has(note.id)) return false;
+        // Never applied over: the saved copy may hold a later agent edit.
+        if (added.has(note.id)) return now !== drafted.get(note.id);
+        return now !== draft.before[note.id] && now !== drafted.get(note.id);
+      })
+      .map((note) => note.id),
+    ...draft.records
+      .filter((note) => !added.has(note.id) && !present.has(note.id))
+      .map((note) => note.id),
+  ];
 }
 
 /**

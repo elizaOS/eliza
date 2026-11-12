@@ -21,7 +21,6 @@ import {
   type ToolChoice,
   type ToolDefinition,
 } from "@elizaos/core";
-import { readAliasedEnv } from "@elizaos/host/protocol";
 import type { LifeOpsFakeBackend } from "@elizaos/lifeops-bench";
 import {
   LifeOpsBenchHandler,
@@ -146,7 +145,7 @@ function normalizeBenchmarkTaskAgentEnv(): void {
             ? "opencode"
             : normalized;
   process.env.BENCHMARK_TASK_AGENT ??= requested;
-  if (readAliasedEnv("ELIZA_AGENT_ORCHESTRATOR") === undefined) {
+  if (!process.env.ELIZA_AGENT_ORCHESTRATOR?.trim()) {
     process.env.ELIZA_AGENT_ORCHESTRATOR = "1";
   }
   process.env.ELIZA_AGENT_SELECTION_STRATEGY ??= "fixed";

@@ -98,7 +98,6 @@ function renderedConversationTextsFromState(
 
 export function recentConversationTextsFromState(
 	state: State | undefined,
-	_limit?: number,
 ): string[] {
 	const collected = renderedConversationTextsFromState(state);
 	for (const item of getRecentMessagesData(state)) {

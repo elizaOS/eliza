@@ -34,7 +34,7 @@
  *    fabricate numbers (AGENTS.md §3 / §8).
  *
  * Usage:
- *   node packages/inference/verify/guided_decode_token_bench.mjs \
+ *   bun packages/inference/verify/guided_decode_token_bench.mjs \
  *     [--bin PATH --model PATH] [--bpt 3.6] [--report PATH] [--json]
  */
 

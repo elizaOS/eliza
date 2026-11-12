@@ -1,0 +1,22 @@
+{
+  "sources": [
+    "packages/agent/src/services/push/notification-push-service.ts",
+    "packages/agent/src/services/push/push-token-registry.ts"
+  ],
+  "bounds": {
+    "domain": "Two attachments, epochs 0..2, one token and two delivery attempts.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "services_push",
+      "main": "services_push",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

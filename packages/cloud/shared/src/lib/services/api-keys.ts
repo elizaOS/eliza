@@ -11,6 +11,10 @@ import type { DbTransaction } from "../../db/client";
 import { encryptApiKey } from "../../db/crypto/api-keys";
 import { writeTransaction } from "../../db/helpers";
 import { type ApiKey, apiKeysRepository, type NewApiKey } from "../../db/repositories/api-keys";
+import {
+  type MobileSessionRetirementCause,
+  mobileAppAuthGrantsRepository,
+} from "../../db/repositories/mobile-app-auth-grants";
 import { lockOrganizationPolicy } from "../../db/repositories/organization-policy-generation";
 import { apiKeys } from "../../db/schemas/api-keys";
 import { ForbiddenError } from "../api/cloud-worker-errors";
@@ -175,6 +179,7 @@ async function withMutationAudit<T>(
   audit: ApiKeyMutationAudit<T> | undefined,
   outerTx?: DbTransaction,
   organizationIds: string[] = [],
+  userLockIds: string[] = [],
 ): Promise<T> {
   const run = async (tx: DbTransaction): Promise<T> => {
     const outcome = await mutate(tx);
@@ -182,8 +187,12 @@ async function withMutationAudit<T>(
     return outcome;
   };
   return outerTx
-    ? withInferencePolicyMutationInTransaction(outerTx, { organizationIds }, run)
-    : withInferencePolicyMutation({ organizationIds }, run);
+    ? withInferencePolicyMutationInTransaction(
+        outerTx,
+        { organizationIds, userLockIds, credentialOnly: true },
+        run,
+      )
+    : withInferencePolicyMutation({ organizationIds, userLockIds, credentialOnly: true }, run);
 }
 
 export interface MobileCredentialSummary {
@@ -462,6 +471,7 @@ export class ApiKeysService {
       audit,
       tx,
       [data.organization_id],
+      [data.user_id],
     );
 
     return {
@@ -482,20 +492,23 @@ export class ApiKeysService {
   ): Promise<{ apiKey: ApiKey; plainKey: string; usage: ApiKeyUsage }> {
     // Encrypt outside the transaction so KMS work does not hold the policy lock.
     const { apiKey, plainKey } = await this.buildApiKeyInsert({ ...data, user_created: true });
-    return withInferencePolicyMutation({ organizationIds: [data.organization_id] }, async (tx) => {
-      await lockOrganizationPolicy(tx, data.organization_id);
-      const policy = await readOrganizationQuotaPolicyInTransaction(tx, data.organization_id);
-      const limit = Number(requireOrganizationResourceLimit(policy, "apiKeys"));
-      const used = await countUserCreatedKeys(tx, data.organization_id);
-      if (used >= limit) throw new ApiKeyLimitExceededError(data.organization_id, used, limit);
-      const created = await apiKeysRepository.create(apiKey, tx);
-      await audit?.(tx, created);
-      return {
-        apiKey: created,
-        plainKey,
-        usage: { used: used + 1, limit, remaining: Math.max(limit - used - 1, 0) },
-      };
-    });
+    return withInferencePolicyMutation(
+      { organizationIds: [data.organization_id], userLockIds: [data.user_id] },
+      async (tx) => {
+        await lockOrganizationPolicy(tx, data.organization_id);
+        const policy = await readOrganizationQuotaPolicyInTransaction(tx, data.organization_id);
+        const limit = Number(requireOrganizationResourceLimit(policy, "apiKeys"));
+        const used = await countUserCreatedKeys(tx, data.organization_id);
+        if (used >= limit) throw new ApiKeyLimitExceededError(data.organization_id, used, limit);
+        const created = await apiKeysRepository.create(apiKey, tx);
+        await audit?.(tx, created);
+        return {
+          apiKey: created,
+          plainKey,
+          usage: { used: used + 1, limit, remaining: Math.max(limit - used - 1, 0) },
+        };
+      },
+    );
   }
 
   /** Reads the organization's API-key usage against its plan ceiling. */
@@ -565,76 +578,85 @@ export class ApiKeysService {
       is_active: true,
     });
 
-    await withInferencePolicyMutation({ organizationIds: [organizationId] }, async (tx) => {
-      // Keep lock acquisition in its own statement. Under READ COMMITTED, a
-      // waiter gets a fresh snapshot for the conditional INSERT after the lock
-      // holder commits. Folding lock + existence check into one statement
-      // would preserve the pre-wait snapshot and could mint a duplicate.
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtext(${`default_api_key:${userId}:${organizationId}`}))`,
-      );
-
-      const now = new Date();
-      const usableDefaultKey = tx
-        .select({ id: apiKeys.id })
-        .from(apiKeys)
-        .where(
-          and(
-            eq(apiKeys.user_id, userId),
-            eq(apiKeys.organization_id, organizationId),
-            eq(apiKeys.name, "Default API Key"),
-            eq(apiKeys.is_active, true),
-            isNull(apiKeys.deleted_at),
-            or(isNull(apiKeys.expires_at), gt(apiKeys.expires_at, now)),
-          ),
+    await withInferencePolicyMutation(
+      { organizationIds: [organizationId], userLockIds: [userId] },
+      async (tx) => {
+        // Keep lock acquisition in its own statement. Under READ COMMITTED, a
+        // waiter gets a fresh snapshot for the conditional INSERT after the lock
+        // holder commits. Folding lock + existence check into one statement
+        // would preserve the pre-wait snapshot and could mint a duplicate.
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtext(${`default_api_key:${userId}:${organizationId}`}))`,
         );
 
-      // Drizzle's INSERT ... SELECT requires every insertable column in schema
-      // order. Supplying the table's defaults explicitly keeps this one
-      // statement equivalent to values(apiKey), while NOT EXISTS performs the
-      // post-lock readiness check and conditional insert in the same snapshot.
-      await tx.insert(apiKeys).select(
-        tx
-          .select({
-            id: sql<string>`${apiKey.id}::uuid`.as("id"),
-            name: sql<string>`${apiKey.name}::text`.as("name"),
-            description: sql<string | null>`${apiKey.description ?? null}::text`.as("description"),
-            key_hash: sql<string>`${apiKey.key_hash}::text`.as("key_hash"),
-            key_prefix: sql<string>`${apiKey.key_prefix}::text`.as("key_prefix"),
-            key_ciphertext: sql<string | null>`${apiKey.key_ciphertext ?? null}::text`.as(
-              "key_ciphertext",
+        const now = new Date();
+        const usableDefaultKey = tx
+          .select({ id: apiKeys.id })
+          .from(apiKeys)
+          .where(
+            and(
+              eq(apiKeys.user_id, userId),
+              eq(apiKeys.organization_id, organizationId),
+              eq(apiKeys.name, "Default API Key"),
+              eq(apiKeys.is_active, true),
+              isNull(apiKeys.deleted_at),
+              or(isNull(apiKeys.expires_at), gt(apiKeys.expires_at, now)),
             ),
-            key_nonce: sql<string | null>`${apiKey.key_nonce ?? null}::text`.as("key_nonce"),
-            key_auth_tag: sql<string | null>`${apiKey.key_auth_tag ?? null}::text`.as(
-              "key_auth_tag",
-            ),
-            key_kms_key_id: sql<string | null>`${apiKey.key_kms_key_id ?? null}::text`.as(
-              "key_kms_key_id",
-            ),
-            key_kms_key_version: sql<
-              number | null
-            >`${apiKey.key_kms_key_version ?? null}::integer`.as("key_kms_key_version"),
-            organization_id: sql<string>`${apiKey.organization_id}::uuid`.as("organization_id"),
-            user_id: sql<string>`${apiKey.user_id}::uuid`.as("user_id"),
-            source_app_id: sql<string | null>`${apiKey.source_app_id ?? null}::uuid`.as(
-              "source_app_id",
-            ),
-            rate_limit: sql<number>`${apiKey.rate_limit ?? 1000}::integer`.as("rate_limit"),
-            is_active: sql<boolean>`${apiKey.is_active ?? true}::boolean`.as("is_active"),
-            usage_count: sql<number>`${apiKey.usage_count ?? 0}::integer`.as("usage_count"),
-            expires_at: sql<Date | null>`${apiKey.expires_at ?? null}::timestamp`.as("expires_at"),
-            last_used_at: sql<Date | null>`${apiKey.last_used_at ?? null}::timestamp`.as(
-              "last_used_at",
-            ),
-            created_at: sql<Date>`NOW()`.as("created_at"),
-            updated_at: sql<Date>`NOW()`.as("updated_at"),
-            deleted_at: sql<Date | null>`${apiKey.deleted_at ?? null}::timestamp`.as("deleted_at"),
-            user_created: sql<boolean>`false`.as("user_created"),
-          })
-          .from(sql`(SELECT 1) AS singleton`)
-          .where(notExists(usableDefaultKey)),
-      );
-    });
+          );
+
+        // Drizzle's INSERT ... SELECT requires every insertable column in schema
+        // order. Supplying the table's defaults explicitly keeps this one
+        // statement equivalent to values(apiKey), while NOT EXISTS performs the
+        // post-lock readiness check and conditional insert in the same snapshot.
+        await tx.insert(apiKeys).select(
+          tx
+            .select({
+              id: sql<string>`${apiKey.id}::uuid`.as("id"),
+              name: sql<string>`${apiKey.name}::text`.as("name"),
+              description: sql<string | null>`${apiKey.description ?? null}::text`.as(
+                "description",
+              ),
+              key_hash: sql<string>`${apiKey.key_hash}::text`.as("key_hash"),
+              key_prefix: sql<string>`${apiKey.key_prefix}::text`.as("key_prefix"),
+              key_ciphertext: sql<string | null>`${apiKey.key_ciphertext ?? null}::text`.as(
+                "key_ciphertext",
+              ),
+              key_nonce: sql<string | null>`${apiKey.key_nonce ?? null}::text`.as("key_nonce"),
+              key_auth_tag: sql<string | null>`${apiKey.key_auth_tag ?? null}::text`.as(
+                "key_auth_tag",
+              ),
+              key_kms_key_id: sql<string | null>`${apiKey.key_kms_key_id ?? null}::text`.as(
+                "key_kms_key_id",
+              ),
+              key_kms_key_version: sql<
+                number | null
+              >`${apiKey.key_kms_key_version ?? null}::integer`.as("key_kms_key_version"),
+              organization_id: sql<string>`${apiKey.organization_id}::uuid`.as("organization_id"),
+              user_id: sql<string>`${apiKey.user_id}::uuid`.as("user_id"),
+              source_app_id: sql<string | null>`${apiKey.source_app_id ?? null}::uuid`.as(
+                "source_app_id",
+              ),
+              rate_limit: sql<number>`${apiKey.rate_limit ?? 1000}::integer`.as("rate_limit"),
+              is_active: sql<boolean>`${apiKey.is_active ?? true}::boolean`.as("is_active"),
+              usage_count: sql<number>`${apiKey.usage_count ?? 0}::integer`.as("usage_count"),
+              expires_at: sql<Date | null>`${apiKey.expires_at ?? null}::timestamp`.as(
+                "expires_at",
+              ),
+              last_used_at: sql<Date | null>`${apiKey.last_used_at ?? null}::timestamp`.as(
+                "last_used_at",
+              ),
+              created_at: sql<Date>`NOW()`.as("created_at"),
+              updated_at: sql<Date>`NOW()`.as("updated_at"),
+              deleted_at: sql<Date | null>`${apiKey.deleted_at ?? null}::timestamp`.as(
+                "deleted_at",
+              ),
+              user_created: sql<boolean>`false`.as("user_created"),
+            })
+            .from(sql`(SELECT 1) AS singleton`)
+            .where(notExists(usableDefaultKey)),
+        );
+      },
+    );
   }
 
   /**
@@ -693,6 +715,10 @@ export class ApiKeysService {
           ...(existing ? [existing.organization_id] : []),
           ...(data.organization_id ? [data.organization_id] : []),
         ],
+        userLockIds: [
+          ...(existing ? [existing.user_id] : []),
+          ...(data.user_id ? [data.user_id] : []),
+        ],
       },
       (tx) => apiKeysRepository.update(id, data, tx),
     );
@@ -724,6 +750,7 @@ export class ApiKeysService {
       audit,
       undefined,
       existing ? [existing.organization_id] : [],
+      existing ? [existing.user_id] : [],
     );
     if (existing) {
       await this.invalidateCache(existing.key_hash);
@@ -772,6 +799,7 @@ export class ApiKeysService {
       audit,
       undefined,
       [existing.organization_id],
+      [existing.user_id],
     );
     await this.invalidateCache(existing.key_hash);
     return { apiKey, plainKey };
@@ -793,6 +821,90 @@ export class ApiKeysService {
     return credentials.map((credential) => mobileCredentialSummary(credential, now));
   }
 
+  /**
+   * Plans what retiring this mobile credential takes with it (see
+   * `MobileSessionRetirementCause`) and fences those credentials before any
+   * primary write, like the credential's own revocation. `retire` runs inside
+   * the caller's tombstone transaction, ahead of the credential's own row.
+   * `settle` runs after the commit: it fences any credential that joined the
+   * session after the plan was read and evicts every retired secret.
+   * `retireAlone` repairs the session on a retry whose credential is already
+   * tombstoned. `successorCredentialId` is what a self-revocation named as the
+   * credential it was renewed into; the repository decides with it whether
+   * the request is a renewal's last step or a sign-out.
+   */
+  private async planMobileSessionRetirement(
+    credential: Pick<ApiKey, "id" | "organization_id">,
+    cause: MobileSessionRetirementCause,
+    successorCredentialId: string | null = null,
+  ) {
+    const planned = await mobileAppAuthGrantsRepository.planSessionRetirement(
+      credential.id,
+      cause,
+      { successorCredentialId, now: new Date() },
+    );
+    for (const member of planned) await revokeInferenceApiKey(member.organization_id, member.id);
+    const fenced = new Set(planned.map((member) => member.id));
+    const retired = new Map<string, ApiKey>();
+    const retire = async (tx: DbTransaction | undefined): Promise<void> => {
+      if (!tx) {
+        throw new ElizaError("Mobile session retirement requires its tombstone transaction", {
+          code: "MOBILE_API_KEY_SESSION_RETIREMENT_UNFENCED",
+          severity: "fatal",
+        });
+      }
+      const rows = await mobileAppAuthGrantsRepository.retireSessionInTransaction(
+        tx,
+        credential.id,
+        cause,
+        { successorCredentialId, now: new Date() },
+      );
+      for (const row of rows) retired.set(row.id, row);
+    };
+    const settle = async (): Promise<string[]> => {
+      for (const member of retired.values()) {
+        if (!fenced.has(member.id)) {
+          await revokeInferenceApiKey(member.organization_id, member.id);
+        }
+        await this.invalidateCache(member.key_hash);
+      }
+      if (retired.size > 0) {
+        logger.warn("[ApiKeys] Mobile sign-in retired with its credential", {
+          credentialId: credential.id,
+          organizationId: credential.organization_id,
+          cause,
+          retiredCredentialIds: [...retired.keys()],
+        });
+      }
+      return [...retired.keys()];
+    };
+    const retireAlone = async (): Promise<string[]> => {
+      if (planned.length === 0) return [];
+      await withMutationAudit(retire, undefined, undefined, [credential.organization_id]);
+      return await settle();
+    };
+    return { retire, settle, retireAlone };
+  }
+
+  /**
+   * Ends the sign-in of a mobile credential that asked to renew although its
+   * successor was already acknowledged: the secret has two holders, and the
+   * server cannot tell which one is the phone. Every credential of the
+   * sign-in is tombstoned, the presenting one included. Returns their ids.
+   */
+  async revokeMobileSessionForReuse(
+    credentialId: string,
+    organizationId: string,
+  ): Promise<string[]> {
+    if (!isUuid(credentialId) || !isUuid(organizationId)) return [];
+    return await (
+      await this.planMobileSessionRetirement(
+        { id: credentialId, organization_id: organizationId },
+        "reuse",
+      )
+    ).retireAlone();
+  }
+
   /** Revokes one account-owned mobile credential without requiring the lost secret. */
   async revokeMobileCredentialForAccount(
     credentialId: string,
@@ -807,13 +919,24 @@ export class ApiKeysService {
       userId,
       organizationId,
     );
-    const existingReceipt = mobileRevocationReceipt(existing);
-    if (existingReceipt) return { receipt: existingReceipt, revokedNow: false };
     if (!existing) return null;
+    // Fence the immutable identity before mutation, including response-loss
+    // retries. A failed primary write leaves the credential denied safely.
+    await revokeInferenceApiKey(existing.organization_id, existing.id);
+    // Revoking a device ends its sign-in: every credential renewed from it,
+    // or that it was renewed from, goes with it.
+    const session = await this.planMobileSessionRetirement(existing, "owner");
+    const existingReceipt = mobileRevocationReceipt(existing);
+    if (existingReceipt) {
+      await session.retireAlone();
+      await this.invalidateCache(existing.key_hash);
+      return { receipt: existingReceipt, revokedNow: false };
+    }
 
     const receipt = await withMutationAudit(
-      async (tx) =>
-        mobileRevocationReceipt(
+      async (tx) => {
+        await session.retire(tx);
+        return mobileRevocationReceipt(
           await apiKeysRepository.tombstoneMobileByOwner(
             credentialId,
             userId,
@@ -821,7 +944,8 @@ export class ApiKeysService {
             new Date(),
             tx,
           ),
-        ),
+        );
+      },
       audit
         ? async (tx, revoked) => {
             if (revoked) await audit(tx, { receipt: revoked, revokedNow: true });
@@ -830,12 +954,19 @@ export class ApiKeysService {
       undefined,
       [organizationId],
     );
-    if (receipt) return { receipt, revokedNow: true };
+    await session.settle();
+    if (receipt) {
+      await this.invalidateCache(existing.key_hash);
+      return { receipt, revokedNow: true };
+    }
 
     const concurrent = mobileRevocationReceipt(
       await apiKeysRepository.findMobileByOwnerConsistent(credentialId, userId, organizationId),
     );
-    if (concurrent) return { receipt: concurrent, revokedNow: false };
+    if (concurrent) {
+      await this.invalidateCache(existing.key_hash);
+      return { receipt: concurrent, revokedNow: false };
+    }
     throw new ElizaError("Account-owned mobile credential could not be tombstoned", {
       code: "MOBILE_API_KEY_ACCOUNT_REVOCATION_MISMATCH",
       context: { credentialId },
@@ -845,23 +976,43 @@ export class ApiKeysService {
 
   /**
    * Revokes a mobile row proven by its secret, including expired/inactive retries.
-   * Mobile secrets are excluded from both auth caches, so a cache brownout must
-   * never delay or veto the primary tombstone.
+   * Fence the immutable identity before the primary tombstone, then confirm
+   * auth-cache eviction before reporting success. Retries repair both fences.
+   *
+   * `successorCredentialId` is the credential the caller says this one was
+   * renewed into. Only then (or right after that renewal's acknowledgement)
+   * is the revocation a renewal's last step that leaves the successor alone;
+   * otherwise it is a sign-out that ends every credential of the sign-in.
    */
   async revokePresentedMobileCredential(
     secret: string,
     audit?: ApiKeyMutationAudit<MobileApiKeySelfRevocationResult>,
+    successorCredentialId: string | null = null,
   ): Promise<MobileApiKeySelfRevocationResult | null> {
+    if (successorCredentialId !== null && !isUuid(successorCredentialId)) return null;
     if (!isMobileApiKeySecret(secret)) return null;
     const keyHash = crypto.createHash("sha256").update(secret).digest("hex");
     const existing = await apiKeysRepository.findByHashConsistent(keyHash);
-    const existingResult = mobileSelfRevocationResult(existing, false);
-    if (existingResult) return existingResult;
     if (!existing || !isUuid(existing.source_app_id)) return null;
+    await revokeInferenceApiKey(existing.organization_id, existing.id);
+    const session = await this.planMobileSessionRetirement(existing, "self", successorCredentialId);
+    const existingResult = mobileSelfRevocationResult(existing, false);
+    if (existingResult) {
+      await session.retireAlone();
+      await this.invalidateCache(keyHash);
+      return existingResult;
+    }
 
     const tombstone = await withMutationAudit(
-      (tx) =>
-        apiKeysRepository.tombstoneExactMobileCredential(existing.id, keyHash, new Date(), tx),
+      async (tx) => {
+        await session.retire(tx);
+        return await apiKeysRepository.tombstoneExactMobileCredential(
+          existing.id,
+          keyHash,
+          new Date(),
+          tx,
+        );
+      },
       audit
         ? async (tx, revoked) => {
             const result = mobileSelfRevocationResult(revoked, true);
@@ -871,12 +1022,16 @@ export class ApiKeysService {
       undefined,
       [existing.organization_id],
     );
+    await session.settle();
     if (!tombstone) {
       const concurrentResult = mobileSelfRevocationResult(
         await apiKeysRepository.findByHashConsistent(keyHash),
         false,
       );
-      if (concurrentResult) return concurrentResult;
+      if (concurrentResult) {
+        await this.invalidateCache(keyHash);
+        return concurrentResult;
+      }
       throw new ElizaError("Presented mobile credential could not be tombstoned", {
         code: "MOBILE_API_KEY_EXACT_REVOCATION_MISMATCH",
         context: { credentialId: existing.id },
@@ -891,6 +1046,7 @@ export class ApiKeysService {
         severity: "fatal",
       });
     }
+    await this.invalidateCache(keyHash);
     return persistedResult;
   }
 
@@ -948,12 +1104,18 @@ export class ApiKeysService {
     return result;
   }
 
-  /** Revokes only the exact active mobile row proven at the request boundary. */
+  /**
+   * Revokes the exact active mobile row proven at the request boundary, and
+   * with it the rest of its sign-in unless this is a renewal's last step (see
+   * `revokePresentedMobileCredential`).
+   */
   async revokeExactMobileCredential(
     credential: Pick<ApiKey, "id" | "key_hash" | "source_app_id">,
     audit?: ApiKeyMutationAudit<MobileApiKeySelfRevocationResult>,
+    successorCredentialId: string | null = null,
   ): Promise<MobileApiKeySelfRevocationResult> {
     if (
+      (successorCredentialId !== null && !isUuid(successorCredentialId)) ||
       !isUuid(credential.id) ||
       !/^[0-9a-f]{64}$/i.test(credential.key_hash) ||
       !isUuid(credential.source_app_id)
@@ -972,7 +1134,18 @@ export class ApiKeysService {
         await apiKeysRepository.findByHashConsistent(credential.key_hash),
         false,
       );
-      if (result?.receipt.credentialId === credential.id) return result;
+      if (result?.receipt.credentialId === credential.id) {
+        await revokeInferenceApiKey(result.organizationId, credential.id);
+        await (
+          await this.planMobileSessionRetirement(
+            { id: credential.id, organization_id: result.organizationId },
+            "self",
+            successorCredentialId,
+          )
+        ).retireAlone();
+        await this.invalidateCache(credential.key_hash);
+        return result;
+      }
       throw new ElizaError("Validated mobile credential no longer matches an active key", {
         code: "MOBILE_API_KEY_EXACT_REVOCATION_MISMATCH",
         context: { credentialId: credential.id },
@@ -980,14 +1153,18 @@ export class ApiKeysService {
       });
     }
 
+    await revokeInferenceApiKey(exact.organization_id, exact.id);
+    const session = await this.planMobileSessionRetirement(exact, "self", successorCredentialId);
     const tombstone = await withMutationAudit(
-      (tx) =>
-        apiKeysRepository.tombstoneExactMobileCredential(
+      async (tx) => {
+        await session.retire(tx);
+        return await apiKeysRepository.tombstoneExactMobileCredential(
           credential.id,
           credential.key_hash,
           new Date(),
           tx,
-        ),
+        );
+      },
       audit
         ? async (tx, revoked) => {
             const result = mobileSelfRevocationResult(revoked, true);
@@ -997,12 +1174,14 @@ export class ApiKeysService {
       undefined,
       [exact.organization_id],
     );
+    await session.settle();
     if (!tombstone) {
       const concurrentResult = mobileSelfRevocationResult(
         await apiKeysRepository.findByHashConsistent(credential.key_hash),
         false,
       );
       if (concurrentResult?.receipt.credentialId === credential.id) {
+        await this.invalidateCache(credential.key_hash);
         return concurrentResult;
       }
       throw new ElizaError("Validated mobile credential no longer matches an active key", {
@@ -1019,6 +1198,7 @@ export class ApiKeysService {
         severity: "fatal",
       });
     }
+    await this.invalidateCache(credential.key_hash);
     return result;
   }
 
@@ -1059,15 +1239,23 @@ export class ApiKeysService {
     tx: DbTransaction | undefined,
     fn: (tx: DbTransaction | undefined) => Promise<T>,
   ): Promise<T> {
-    if (getCloudAwareEnv().INFERENCE_FUNDED_BUDGET_ADMISSION !== "true") return fn(tx);
+    if (
+      getCloudAwareEnv().INFERENCE_FUNDED_BUDGET_ADMISSION !== "true" &&
+      getCloudAwareEnv().INFERENCE_RATE_POLICY_ADMISSION !== "true"
+    )
+      return fn(tx);
     const run = async (inner: DbTransaction) => {
       const rows = await inner
-        .select({ organization_id: apiKeys.organization_id })
+        .select({ organization_id: apiKeys.organization_id, user_id: apiKeys.user_id })
         .from(apiKeys)
         .where(eq(apiKeys.name, name));
       return withInferencePolicyMutationInTransaction(
         inner,
-        { organizationIds: rows.map((row) => row.organization_id) },
+        {
+          organizationIds: rows.map((row) => row.organization_id),
+          userLockIds: rows.map((row) => row.user_id),
+          credentialOnly: true,
+        },
         fn,
       );
     };

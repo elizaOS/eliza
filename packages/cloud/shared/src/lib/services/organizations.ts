@@ -2,12 +2,18 @@
  * Organizations service for managing organization data and credit balances.
  */
 
+import { and, eq, isNull } from "drizzle-orm";
+import type { DbTransaction } from "../../db/client";
+import { writeTransaction } from "../../db/helpers";
 import { apiKeysRepository } from "../../db/repositories/api-keys";
+import { lockNonPublisherOrganization } from "../../db/repositories/native-app-publishers";
 import {
   type NewOrganization,
   type Organization,
   organizationsRepository,
 } from "../../db/repositories/organizations";
+import { apiKeys } from "../../db/schemas/api-keys";
+import { users } from "../../db/schemas/users";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";
@@ -81,20 +87,40 @@ export class OrganizationsService {
    * org's API keys so a deactivated/deleted org stops fast-pathing inference
    * immediately rather than authorizing until the authContext TTL expires. The
    * slow path enforces `org.is_active`, but the IAC cache short-circuits it.
-   * Best-effort: a cache failure must never break the lifecycle write. Reuses the
-   * existing listByOrganization reader (no new reader added).
+   * Best-effort: a cache failure must never break the lifecycle write. Deletion
+   * reads through its transaction before the key and user rows disappear.
    */
-  private async invalidateInferenceAuthForOrganization(organizationId: string): Promise<void> {
+  private async invalidateInferenceAuthForOrganization(
+    organizationId: string,
+    transaction?: DbTransaction,
+  ): Promise<void> {
     try {
-      const [keys, organization] = await Promise.all([
-        apiKeysRepository.listByOrganization(organizationId),
-        organizationsRepository.findWithUsers(organizationId),
-      ]);
+      const [keys, members] = transaction
+        ? await Promise.all([
+            transaction
+              .select({ key_hash: apiKeys.key_hash })
+              .from(apiKeys)
+              .where(
+                and(
+                  eq(apiKeys.organization_id, organizationId),
+                  isNull(apiKeys.deleted_at),
+                  isNull(apiKeys.source_app_id),
+                ),
+              ),
+            transaction
+              .select({ steward_user_id: users.steward_user_id })
+              .from(users)
+              .where(eq(users.organization_id, organizationId)),
+          ])
+        : await Promise.all([
+            apiKeysRepository.listByOrganization(organizationId),
+            organizationsRepository
+              .findWithUsers(organizationId)
+              .then((organization) => organization?.users ?? []),
+          ]);
       await Promise.all([
         invalidateInferenceAuthContextsByKeyHashes(keys.map((k) => k.key_hash)),
-        invalidateInferenceSessionAuthContexts(
-          organization?.users.map((user) => user.steward_user_id) ?? [],
-        ),
+        invalidateInferenceSessionAuthContexts(members.map((user) => user.steward_user_id)),
       ]);
     } catch (error) {
       logger.warn("[OrganizationsService] Failed to invalidate inference auth cache for org", {
@@ -105,12 +131,13 @@ export class OrganizationsService {
   }
 
   async update(id: string, data: Partial<NewOrganization>): Promise<Organization | undefined> {
-    if (data.is_active === false) {
-      await setInferenceOrganizationActive(id, false);
-    }
-    const result = await withInferencePolicyMutation({ organizationIds: [id] }, (tx) =>
-      organizationsRepository.update(id, data, tx),
-    );
+    const result = await withInferencePolicyMutation({ organizationIds: [id] }, async (tx) => {
+      if (data.is_active === false) {
+        await lockNonPublisherOrganization(id, tx);
+        await setInferenceOrganizationActive(id, false);
+      }
+      return organizationsRepository.update(id, data, tx);
+    });
     // Invalidate cache after update
     await this.invalidateCache(id);
     // Deactivation: when is_active flips to false, evict the org's warm IAC
@@ -136,12 +163,15 @@ export class OrganizationsService {
   }
 
   async delete(id: string): Promise<void> {
-    await setInferenceOrganizationActive(id, false);
-    // Resolve + evict the org's cached IAC identities BEFORE the delete cascade
-    // removes the api_keys rows, so the key_hash set is read while it still exists.
-    await this.invalidateInferenceAuthForOrganization(id);
-    await invalidateOutboundMessageStanding(id);
-    await organizationsRepository.delete(id);
+    await writeTransaction(async (tx) => {
+      await lockNonPublisherOrganization(id, tx);
+      await setInferenceOrganizationActive(id, false);
+      // Resolve + evict the org's cached IAC identities BEFORE the delete cascade
+      // removes the api_keys rows, so the key_hash set is read while it still exists.
+      await this.invalidateInferenceAuthForOrganization(id, tx);
+      await invalidateOutboundMessageStanding(id);
+      await organizationsRepository.delete(id, tx);
+    });
     // Invalidate cache after delete
     await this.invalidateCache(id);
   }

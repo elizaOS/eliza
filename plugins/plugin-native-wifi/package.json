@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-native-wifi",
-  "version": "2.0.12-beta.0",
+  "version": "2.0.5",
   "type": "module",
   "description": "Wi-Fi overlay app for the Eliza Android build \u2014 scan, inspect, and connect to nearby networks via @elizaos/plugin-native-wifi/bridge.",
   "main": "./dist/index.js",
@@ -35,8 +35,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.build.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
-    "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-wifi -- bun run build:unlocked",
-    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
+    "build": "bun ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-wifi -- bun run build:unlocked",
+    "clean": "bun ../../packages/scripts/rm-path-recursive.ts dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:types": "tsc6 --noCheck -p tsconfig.build.json",
     "lint:check": "bunx @biomejs/biome check .",
@@ -79,10 +79,10 @@
   ],
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
-    "rollup": "^4.65.0",
+    "rollup": "^4.68.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.5",
+    "vitest": "^5.1.0",
     "tsup": "^9.0.0"
   },
   "capacitor": {

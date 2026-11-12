@@ -1,3 +1,8 @@
+import { commitNotesRequestRestriction } from "@elizaos/core";
+import {
+  beginStage1NotesRequestIssuer,
+  resolveNotesRequestHostRestriction,
+} from "./notes-request-issuer";
 /** Builds the complete Stage 1 request, performs bounded empty-output retries, and validates the response decision. Registers diagnostic persistence with the outer turn before handing control to routing and planning. */
 
 import type {
@@ -30,6 +35,7 @@ import {
   providerReviewSources,
   recordInferenceSpan,
   sanitizeUserVisibleModelOutput,
+  TurnAbortedError,
   timeInferenceSpan,
   withGuidedDecodeProviderOptions,
   withModelInputBudgetProviderOptions,
@@ -37,6 +43,7 @@ import {
   withRequiredCompletionSourceIdentity,
 } from "@elizaos/core";
 import { canPublishProgressBeforeResponseDecision } from "../../features/trust/should-respond-risk-gate.ts";
+import { ACKNOWLEDGMENT_RULE } from "../../prompts/acknowledgment.ts";
 import {
   candidateActionNamesFieldEvaluator,
   completionContextFieldEvaluator,
@@ -75,6 +82,7 @@ import {
   historyReferenceNotice,
   historyReferences,
   loadHistoryReferences,
+  nativeHistoryReadBinding,
   projectReviewedHistory,
   readHistoryContextRequests,
   repairableHistorySourceIds,
@@ -82,8 +90,14 @@ import {
   withReviewedHistorySelection,
 } from "./history-discovery.js";
 import { withoutInactiveFields } from "./inactive-field-schema.js";
+import {
+  assertNativeContextReadToolBudget,
+  type NativeContextReadContract,
+  supportsNativeContextReads,
+} from "./native-context-read.ts";
 import { composeResponseState } from "./provider-state.js";
 import { restorePiiInUserReplyText } from "./reply-policy.ts";
+import { replyIsClaimSafeAcknowledgment } from "./side-effect-claims.ts";
 import {
   createSourceReplySnapshot,
   isNativeReplyPartsCandidate,
@@ -123,6 +137,10 @@ import {
   normalizeRawParsedForFieldRegistry,
   reportRejectedUserVisibleModelOutput,
 } from "./stage1-output.ts";
+import {
+  createStage1DirectReplyStreamGate,
+  STAGE1_REPLY_STREAM_FIELDS,
+} from "./stage1-reply-stream.ts";
 import { parseToolArguments } from "./tool-arguments.ts";
 import { recordMessageHandlerStage } from "./trajectory-stages.ts";
 import type { V5MessageRuntimeInput } from "./turn-input.ts";
@@ -201,8 +219,16 @@ export async function generateStage1Decision(
   );
   let contextReadAcknowledgmentSent = false;
   const messageHandlerStartedAt = Date.now();
+  const ownedStreamingContext = getStreamingContext();
   const stage1TurnSignal =
-    getStreamingContext()?.abortSignal ?? new AbortController().signal;
+    ownedStreamingContext?.abortSignal ?? new AbortController().signal;
+
+  // Host issuer is private and never placed into model or State JSON.
+  const notesRequestIssuer = beginStage1NotesRequestIssuer(
+    args.runtime,
+    args.message,
+  );
+  let notesClassificationInput: object | undefined;
 
   const responseHandlerFieldContext: ResponseHandlerFieldContext = {
     runtime: args.runtime,
@@ -320,11 +346,57 @@ export async function generateStage1Decision(
   let repairHistorySourceIds: string[] | undefined;
   let nativeHistoryRead = false;
   let restoredHistorySourceSetId: string | undefined;
+  const nativeTurnIdentity = {
+    agentId: args.runtime.agentId,
+    roomId: args.message.roomId,
+    entityId: args.message.entityId,
+    messageId: args.message.id,
+    responseId: args.responseId,
+  };
+  const assertNativeTurnIdentity = () => {
+    if (
+      args.runtime.agentId !== nativeTurnIdentity.agentId ||
+      args.message.roomId !== nativeTurnIdentity.roomId ||
+      args.message.entityId !== nativeTurnIdentity.entityId ||
+      args.message.id !== nativeTurnIdentity.messageId ||
+      args.responseId !== nativeTurnIdentity.responseId
+    ) {
+      throw new TurnAbortedError("Context read authorization changed");
+    }
+  };
+  let nativeSelectionAuthority:
+    | { sourceSetId: string; role: string; frameworkHistory: boolean }
+    | undefined;
   let sourceSelectionBinding: ReturnType<typeof createSourceSelectionBinding>;
   let sourceReplySnapshot: ReturnType<typeof createSourceReplySnapshot>;
   let sourceReplyRendering: SourceReplyRendering | undefined;
   let effectiveReplySchema: JSONSchema | undefined;
-  const interpretNativeReply = (raw: string | GenerateTextResult) => {
+  const interpretNativeReply = async (raw: string | GenerateTextResult) => {
+    if (nativeReadContract || nativeSelectionAuthority) {
+      stage1TurnSignal.throwIfAborted();
+      assertNativeTurnIdentity();
+      const currentRole = await resolveStage1SenderRole(
+        args.runtime,
+        args.message,
+      );
+      stage1TurnSignal.throwIfAborted();
+      assertNativeTurnIdentity();
+      const frameworkHistory =
+        nativeSelectionAuthority?.frameworkHistory ||
+        nativeReadContract?.history;
+      if (
+        currentRole !== (nativeSelectionAuthority?.role ?? senderRole) ||
+        (frameworkHistory &&
+          args.runtime.providers?.some((provider) =>
+            provider.name.startsWith(HISTORY_REFERENCE_PREFIX),
+          )) ||
+        (nativeSelectionAuthority &&
+          completionContextSources(context).sourceSetId !==
+            nativeSelectionAuthority.sourceSetId)
+      ) {
+        throw new TurnAbortedError("Context read authorization changed");
+      }
+    }
     sourceReplyRendering = undefined;
     const bound = sourceSelectionBinding?.resolve(raw) ?? raw;
     const snapshot = sourceReplySnapshot;
@@ -394,6 +466,12 @@ export async function generateStage1Decision(
     };
   };
   let providerReviewSourceSetId: string | undefined;
+  let nativeReadContract: NativeContextReadContract | undefined;
+  // Field names in the HANDLE_RESPONSE tool schema last sent to the model.
+  // The schema can omit an active field (contextRequests when no reference is
+  // available), and the reply stream gate must not wait for a field the
+  // model was never asked to write.
+  let sentHandleResponseFields: ReadonlySet<string> | undefined;
   const createMessageHandlerTools = () => {
     context.metadata = {
       ...context.metadata,
@@ -458,7 +536,8 @@ export async function generateStage1Decision(
         effectiveReplySchema = {
           ...SOURCE_REPLY_SCHEMA,
           description:
-            "Ordered reply parts: text is your own prose. For a verbatim whole-message quote use source with value copied exactly from a supplied original, including whitespace. Source quotes are validated and kept unchanged. Preserve speaker attribution. Use [] for no reply.",
+            ACKNOWLEDGMENT_RULE +
+            " Ordered reply parts: text is your own prose. For a verbatim whole-message quote use source with value copied exactly from a supplied original, including whitespace. Source quotes are validated and kept unchanged. When the user did not catch your last reply ('what?', 'sorry?', 'say that again'), repeat it as a single source part quoting that reply instead of restating it. Preserve speaker attribution. Use [] for no reply.",
         };
         fieldSchema = {
           ...fieldSchema,
@@ -471,14 +550,55 @@ export async function generateStage1Decision(
     }
     if (discoveryEnabled)
       fieldSchema = withProviderReviewSchema(fieldSchema, context);
-    const referenceSchema =
-      discoveryEnabled && !history
+    nativeReadContract = undefined;
+    if (
+      discoveryEnabled &&
+      selectedResponseHandlerFields.includes(contextRequestsFieldEvaluator) &&
+      canonicalResponseHandlerSchema.properties?.contextRequests ===
+        contextRequestsFieldEvaluator.schema &&
+      supportsNativeContextReads(fieldSchema.properties?.contextRequests)
+    ) {
+      // Recover provider-origin offers from the same pure projection, not from
+      // routing domains or guessed names. Framework history has its own binding.
+      const providers = projectDiscoverableContext(
+        context,
+        args.state,
+        loadedContext,
+      ).available;
+      if (contextCatalog && discovery.available.has(CONTEXT_CATALOG_REFERENCE))
+        providers.add(CONTEXT_CATALOG_REFERENCE);
+      const ownedHistory = args.runtime.providers?.some((provider) =>
+        provider.name.startsWith(HISTORY_REFERENCE_PREFIX),
+      );
+      const historyBinding = ownedHistory
+        ? undefined
+        : nativeHistoryReadBinding(context, history, discovery.available, {
+            agentId: args.runtime.agentId,
+            roomId: args.message.roomId,
+            entityId: args.message.entityId,
+            roles: [senderRole],
+          });
+      nativeReadContract = {
+        providers: new Set(
+          [...providers].filter((name) => discovery.available.has(name)),
+        ),
+        ...(historyBinding ? { history: historyBinding } : {}),
+      };
+    }
+    const referenceSchema = nativeReadContract
+      ? withAvailableContextRequests(fieldSchema, nativeReadContract.providers)
+      : discoveryEnabled && !history
         ? withAvailableContextRequests(fieldSchema, discovery.available)
         : fieldSchema;
     const readTool =
       discoveryEnabled && discovery.available.size > 0
-        ? createContextReadTool(referenceSchema, contextReadProgressEnabled)
+        ? createContextReadTool(
+            nativeReadContract ? fieldSchema : referenceSchema,
+            contextReadProgressEnabled,
+            nativeReadContract,
+          )
         : undefined;
+    if (!readTool) nativeReadContract = undefined;
     nativeHistoryRead = Boolean(
       history &&
         readTool &&
@@ -497,27 +617,96 @@ export async function generateStage1Decision(
       discovery.context,
       repairHistoryIdentity,
     );
-    // Only the registered native history contract supports request binding.
-    sourceSelectionBinding =
+    // Selection authority survives a successful full read even when no further
+    // READ_CONTEXT tool remains. Preserve the existing foreground admission gate.
+    const canBindSelection = Boolean(
       (history || restoredHistorySourceSetId || sourceReplySnapshot) &&
-      !repairHistoryIdentity &&
-      selectedResponseHandlerFields.includes(completionContextFieldEvaluator) &&
-      selectedResponseHandlerFields.includes(contextRequestsFieldEvaluator) &&
-      canonicalResponseHandlerSchema.properties?.completionContext ===
-        completionContextFieldEvaluator.schema &&
-      canonicalResponseHandlerSchema.properties?.contextRequests ===
-        contextRequestsFieldEvaluator.schema
-        ? createSourceSelectionBinding(parameters, discovery.context)
-        : undefined;
-    return [
+        !repairHistoryIdentity &&
+        selectedResponseHandlerFields.includes(
+          completionContextFieldEvaluator,
+        ) &&
+        selectedResponseHandlerFields.includes(contextRequestsFieldEvaluator) &&
+        canonicalResponseHandlerSchema.properties?.completionContext ===
+          completionContextFieldEvaluator.schema &&
+        canonicalResponseHandlerSchema.properties?.contextRequests ===
+          contextRequestsFieldEvaluator.schema,
+    );
+    nativeSelectionAuthority = undefined;
+    if (
+      canBindSelection &&
+      discoveryEnabled &&
+      supportsNativeContextReads(fieldSchema.properties?.contextRequests)
+    ) {
+      assertNativeTurnIdentity();
+      const evidence = history ?? historyReadEvidence;
+      const sourceSetId = completionContextSources(
+        discovery.context,
+      ).sourceSetId;
+      if (
+        evidence &&
+        (evidence.sourceSetId !== sourceSetId ||
+          evidence.scope.agentId !== nativeTurnIdentity.agentId ||
+          evidence.scope.roomId !== nativeTurnIdentity.roomId ||
+          evidence.scope.entityId !== nativeTurnIdentity.entityId ||
+          evidence.scope.roles.length !== 1 ||
+          evidence.scope.roles[0] !== senderRole)
+      ) {
+        throw new TurnAbortedError("Context read authorization changed");
+      }
+      if (
+        restoredHistorySourceSetId &&
+        (!historyReadEvidence ||
+          historyReadEvidence.sourceSetId !== restoredHistorySourceSetId ||
+          restoredHistorySourceSetId !== sourceSetId)
+      ) {
+        throw new TurnAbortedError("Context read authorization changed");
+      }
+      nativeSelectionAuthority = {
+        sourceSetId,
+        role: senderRole,
+        frameworkHistory: Boolean(evidence),
+      };
+    }
+    const selectionAuthority = nativeSelectionAuthority;
+    sourceSelectionBinding = canBindSelection
+      ? createSourceSelectionBinding(
+          parameters,
+          discovery.context,
+          selectionAuthority
+            ? {
+                sourceOrdinals: true,
+                assertCurrent() {
+                  assertNativeTurnIdentity();
+                  if (
+                    completionContextSources(context).sourceSetId !==
+                    selectionAuthority.sourceSetId
+                  ) {
+                    throw new TurnAbortedError(
+                      "Context read authorization changed",
+                    );
+                  }
+                },
+              }
+            : undefined,
+        )
+      : undefined;
+    const handleResponseParameters =
+      sourceSelectionBinding?.parameters ?? parameters;
+    sentHandleResponseFields = new Set(
+      Object.keys(handleResponseParameters.properties ?? {}),
+    );
+    const tools = [
       createHandleResponseTool({
         directMessage: directMessageChannel,
-        parameters: sourceSelectionBinding?.parameters ?? parameters,
+        parameters: handleResponseParameters,
         description:
           "Stage 1: populate registered response-handler fields once before action tools. Empty values for non-applicable fields.",
       }),
       ...(readTool ? [readTool] : []),
     ];
+    if (nativeReadContract || nativeSelectionAuthority)
+      assertNativeContextReadToolBudget(tools);
+    return tools;
   };
   let messageHandlerTools = createMessageHandlerTools();
   // Discovery continues the same scoped workflow, even as its input expands.
@@ -580,22 +769,22 @@ export async function generateStage1Decision(
   // prompt text stays byte-stable, only the grammar varies per turn. Cloud
   // adapters ignore `responseSkeleton` / `grammar` — `tools` carries the
   // equivalent (unforced) contract for them.
+  // The fields the model is asked to write on the current attempt; skipped
+  // fields stay in the registry projection but are not generated.
+  const activeResponseHandlerFields = () =>
+    selectedResponseHandlerFields.filter(
+      (field) =>
+        !responseHandlerFieldPrompt.skippedFieldNames.includes(field.name),
+    );
   const createResponseGrammar = () =>
     buildResponseGrammar(
       {
         actions: args.runtime.actions ?? [],
-        responseHandlerFields: selectedResponseHandlerFields
-          .filter(
-            (field) =>
-              !responseHandlerFieldPrompt.skippedFieldNames.includes(
-                field.name,
-              ),
-          )
-          .map((field) =>
-            field === replyTextFieldEvaluator && effectiveReplySchema
-              ? { ...field, schema: effectiveReplySchema }
-              : field,
-          ),
+        responseHandlerFields: activeResponseHandlerFields().map((field) =>
+          field === replyTextFieldEvaluator && effectiveReplySchema
+            ? { ...field, schema: effectiveReplySchema }
+            : field,
+        ),
         responseHandlerFieldSignature:
           hashString(
             JSON.stringify(responseHandlerFieldPrompt.skippedFieldNames),
@@ -650,12 +839,27 @@ export async function generateStage1Decision(
     // plannerDefaultMaxTokens).
     maxTokens: undefined,
     omitMaxTokens: true,
-    // Streamed structured generation: the local engine (W4) streams the
-    // HANDLE_RESPONSE envelope and parses it incrementally so `shouldRespond`
-    // / `contexts` route the moment they are known. User-visible `replyText`
-    // remains buffered until routing and effect validation complete. Cloud
-    // adapters ignore the flag and return the result whole.
+    // Streamed structured generation: the provider streams the
+    // HANDLE_RESPONSE envelope and the runtime parses it incrementally. Only
+    // `replyText` reaches the user's stream, and only when the routing fields
+    // generated before it settle a direct answer (stage1-reply-stream.ts);
+    // routing JSON, acknowledgements for planned work and source quotations
+    // never stream. Each attempt (retry, repair, context read) is its own
+    // stream revision and the validated final reply stays authoritative. A
+    // decision-only call delivers no reply, so it streams nothing.
     streamStructured: true,
+    ...(args.stage1DecisionOnly
+      ? {}
+      : {
+          streamFields: STAGE1_REPLY_STREAM_FIELDS,
+          streamFieldGate: createStage1DirectReplyStreamGate(() =>
+            activeResponseHandlerFields().filter(
+              (field) =>
+                !sentHandleResponseFields ||
+                sentHandleResponseFields.has(field.name),
+            ),
+          ),
+        }),
     // This is the only Stage 1 field intended for the user. Local voice
     // consumes the validated replyText field; planner/evaluator calls leave
     // this unset and therefore cannot leak their structured output to TTS.
@@ -681,10 +885,18 @@ export async function generateStage1Decision(
       | { error: unknown }
       | undefined;
     try {
+      // Snapshot the actual input of this call, including context-read loops.
+      // The final handled response is committed against its own last input.
+      const classificationInput = structuredClone({
+        messages: params.messages,
+        tools: params.tools,
+        toolChoice: params.toolChoice,
+      });
       const raw = (await args.runtime.useModel(
         ModelType.RESPONSE_HANDLER,
         params,
       )) as string | GenerateTextResult;
+      notesClassificationInput = classificationInput;
       outcome = { raw };
       return raw;
     } catch (error) {
@@ -734,7 +946,7 @@ export async function generateStage1Decision(
   ) => {
     const raw = await generateRecordedStage1(params);
     try {
-      return interpretNativeReply(raw);
+      return await interpretNativeReply(raw);
     } catch (error) {
       if (
         !(error instanceof ElizaError) ||
@@ -782,7 +994,7 @@ export async function generateStage1Decision(
           }),
         ),
       });
-      return interpretNativeReply(repaired);
+      return await interpretNativeReply(repaired);
     }
   };
   // Provider-shape retry: cloud reasoning models reached over
@@ -807,7 +1019,7 @@ export async function generateStage1Decision(
     ? directCodingResponseHandlerResult()
     : await generateInterpretedStage1(stage1ModelParams);
   if (args.codingMode)
-    rawMessageHandler = interpretNativeReply(rawMessageHandler);
+    rawMessageHandler = await interpretNativeReply(rawMessageHandler);
   const contextReadEnabled = () =>
     messageHandlerTools.some((tool) => tool.name === READ_CONTEXT_TOOL_NAME);
   if (!discoveryEnabled && hasContextReadToolCall(rawMessageHandler)) {
@@ -939,7 +1151,11 @@ export async function generateStage1Decision(
     let explicit: string[] = [];
     let invalidReadRepair: string | undefined;
     try {
-      nativeRead = extractContextRead(rawMessageHandler, contextReadEnabled());
+      nativeRead = extractContextRead(
+        rawMessageHandler,
+        contextReadEnabled(),
+        nativeReadContract,
+      );
       parsedDecision =
         nativeRead ?? extractMessageHandlerRawParsed(rawMessageHandler);
       if (terminalReviewAnswerPending && !nativeRead) {
@@ -971,7 +1187,9 @@ export async function generateStage1Decision(
         ...(Array.isArray(rejected)
           ? [`Rejected references: ${JSON.stringify(rejected)}.`]
           : []),
-        `Available provider reference IDs: ${JSON.stringify([...discovery.available].filter((name) => !name.startsWith(HISTORY_REFERENCE_PREFIX)))}.${historyReferenceNotice(context, history)}`,
+        nativeReadContract
+          ? `Use READ_CONTEXT reads with the offered provider references ${JSON.stringify([...nativeReadContract.providers])}. History selectors, when offered by that tool, require its exact sourceSetId and typed sourceOrdinals or speaker/query fields. Do not put string history references in HANDLE_RESPONSE or reads.`
+          : `Available provider reference IDs: ${JSON.stringify([...discovery.available].filter((name) => !name.startsWith(HISTORY_REFERENCE_PREFIX)))}.${historyReferenceNotice(context, history)}`,
         "READ_CONTEXT reads only those advertised references or the advertised conversation-history syntax. Routing-context names, tools and filesystem paths are not provider references. For requested file/tool operations or current stored-record data unavailable from advertised providers, use HANDLE_RESPONSE to select the appropriate available contexts and requested outcomes for the planner. Do not use history:all as a fallback for an unknown routing-context or tool name; history does not establish current timestamps or state. Do not claim the capability is unavailable merely because it is not a readable context reference. Otherwise request only a needed authorized reference. Reconsider the original request and preserve its constraints; return one valid Stage-1 operation.",
         // A rejected READ_CONTEXT call carries no decision to keep.
         ...(parsedDecision && !nativeRead
@@ -1254,10 +1472,11 @@ export async function generateStage1Decision(
             reply: progress.text,
             actionResults: [],
             actions: args.runtime.actions,
-          }).verdict !== "reject"
+          }).verdict !== "reject" &&
+          replyIsClaimSafeAcknowledgment(progress.text)
         ) {
           stage1TurnSignal.throwIfAborted();
-          args.onPlanningAcknowledgment?.(
+          await args.onPlanningAcknowledgment?.(
             restorePiiInUserReplyText(progress.text),
           );
           contextReadAcknowledgmentSent = true;
@@ -1657,6 +1876,35 @@ export async function generateStage1Decision(
         output: stageOneVisibleReply,
       });
     }
+  }
+  // The owned normalizer copied this field only from an active, parsed and
+  // handled field trace. No free-form intents or planner tool args are used.
+  if (notesRequestIssuer && notesClassificationInput) {
+    // Keep the parsed model field intact. Existing current-request ownership
+    // can only lower its host-effective restriction, never grant a write.
+    messageHandler.plan.notesRequestHostRestriction =
+      resolveNotesRequestHostRestriction(
+        args.runtime,
+        args.message,
+        messageHandler.plan.notesRequestEffect ?? "unresolved",
+        messageHandler.plan.notesRequestInterpretation,
+      );
+    const classifiedSource = structuredClone({
+      input: notesClassificationInput,
+      interpretation: messageHandler.plan.notesRequestInterpretation,
+      hostRestriction: messageHandler.plan.notesRequestHostRestriction,
+    });
+    commitNotesRequestRestriction(notesRequestIssuer, {
+      classification:
+        messageHandler.plan.notesRequestHostRestriction?.classification ??
+        messageHandler.plan.notesRequestEffect ??
+        "unresolved",
+      interpretation: messageHandler.plan.notesRequestHostRestriction
+        ? { status: "contradictory", operations: [] }
+        : messageHandler.plan.notesRequestInterpretation,
+      source: classifiedSource,
+      currentSource: () => classifiedSource,
+    });
   }
   const parsedResponseHandlerReply = getMessageHandlerReply(messageHandler);
   args.onStage1Decision?.({

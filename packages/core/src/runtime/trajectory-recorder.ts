@@ -26,8 +26,6 @@ export {
 	type RecordedStageKind,
 } from "../services/trajectory-semantic-stage";
 
-// Schema (mirrors PLAN.md §18.1)
-
 export interface RecordedUsage {
 	promptTokens?: number;
 	completionTokens?: number;
@@ -298,8 +296,6 @@ export interface RecordedTrajectory {
 	metrics: RecordedTrajectoryMetrics;
 }
 
-// TrajectoryRecorder interface (PLAN.md §18.2)
-
 export interface StartTrajectoryInput {
 	agentId: string;
 	roomId?: string;
@@ -342,8 +338,6 @@ export interface TrajectoryRecorder {
 	list(opts?: ListTrajectoriesOptions): Promise<RecordedTrajectory[]>;
 }
 
-// Helpers
-
 export interface RecorderLogger {
 	warn?: (context: unknown, message?: string) => void;
 	debug?: (context: unknown, message?: string) => void;
@@ -357,10 +351,6 @@ export function isTrajectoryRecordingEnabled(): boolean {
 
 const RECORD_SANITIZE_MAX_DEPTH = 40;
 
-function normalizeRecordString(value: string): string {
-	return toWellFormedUnicode(value);
-}
-
 function sanitizeForRecord(
 	value: unknown,
 	seen = new WeakSet<object>(),
@@ -370,7 +360,7 @@ function sanitizeForRecord(
 		return "[MaxDepth]";
 	}
 	if (value === null) return null;
-	if (typeof value === "string") return normalizeRecordString(value);
+	if (typeof value === "string") return toWellFormedUnicode(value);
 	if (typeof value === "number") {
 		return Number.isFinite(value) ? value : null;
 	}
@@ -515,50 +505,24 @@ export interface ToolStageIOCapture {
  */
 export function captureToolStageIO(args: ToolStageIOInput): ToolStageIOCapture {
 	const out: ToolStageIOCapture = {};
-
 	if (args.input !== undefined) {
-		out.input = toWellFormedUnicode(encodeTrajectoryFieldValue(args.input));
+		out.input = encodeWellFormedTrajectoryField(args.input);
 	}
 	if (args.output !== undefined) {
-		out.output = toWellFormedUnicode(encodeTrajectoryFieldValue(args.output));
+		out.output = encodeWellFormedTrajectoryField(args.output);
 	}
 	if (args.error !== undefined) {
-		out.errorText = toWellFormedUnicode(encodeTrajectoryFieldValue(args.error));
+		out.errorText = encodeWellFormedTrajectoryField(args.error);
 	}
 	return out;
 }
 
-// Skill invocation I/O capture (W1-T5 / M13)
-//
-// Mirrors `captureToolStageIO` at the skill (USE_SKILL) seam.
-
-export interface SkillInvocationIOInput {
-	args?: unknown;
-	result?: unknown;
-}
-
-export interface SkillInvocationIOCapture {
-	args?: string;
-	result?: string;
-}
-
-/**
- * Encode complete skill invocation args/result for a per-skill trajectory
- * record. Fields that are `undefined` after encoding are omitted so the
- * persisted shape stays minimal.
- */
-export function captureSkillInvocationIO(
-	input: SkillInvocationIOInput,
-): SkillInvocationIOCapture {
-	const out: SkillInvocationIOCapture = {};
-
-	if (input.args !== undefined) {
-		out.args = toWellFormedUnicode(encodeTrajectoryFieldValue(input.args));
-	}
-	if (input.result !== undefined) {
-		out.result = toWellFormedUnicode(encodeTrajectoryFieldValue(input.result));
-	}
-	return out;
+/** Non-string values are sanitized (well-formed strings) and JSON.stringify
+ * escapes lone surrogates, so only raw strings need re-normalizing. */
+function encodeWellFormedTrajectoryField(value: unknown): string {
+	return typeof value === "string"
+		? toWellFormedUnicode(value)
+		: encodeTrajectoryFieldValue(value);
 }
 
 /**
@@ -617,10 +581,7 @@ export function projectRecordedStageToolDiagnostics(
 		// no longer provable against the persisted prompt — drop the offsets via
 		// the canonical fallback and keep contribution identity.
 		if (typeof stage.model.prompt === "string") {
-			const projectedPrompt = redactText(stage.model.prompt);
-			if (projectedPrompt !== stage.model.prompt) {
-				stage.model.prompt = projectedPrompt;
-			}
+			stage.model.prompt = redactText(stage.model.prompt);
 		}
 		stage.model.response = redactText(stage.model.response);
 		// Provider content parts repeat the visible response and carry private
@@ -639,13 +600,10 @@ export function projectRecordedStageToolDiagnostics(
 			);
 		}
 		if (Array.isArray(stage.model.messages)) {
-			const projectedMessages = projectCompleteToolValueForModel(
+			stage.model.messages = projectCompleteToolValueForModel(
 				stage.model.messages,
 				redactText,
 			) as RecordedModelCall["messages"];
-			if (projectedMessages !== stage.model.messages) {
-				stage.model.messages = projectedMessages;
-			}
 		}
 		const attributionInputAfter = canonicalPromptForModelCall({
 			messages: stage.model.messages,
@@ -667,8 +625,6 @@ export function projectRecordedStageToolDiagnostics(
 		) as RecordedEvaluationStage;
 	}
 }
-
-// Trajectory finalization guard
 
 export interface FinalizeTrajectoryRecordingOptions {
 	recorder: TrajectoryRecorder;
@@ -698,7 +654,10 @@ export async function finalizeTrajectoryRecording(
 		// error-policy:J7 Finalization is diagnostic and cannot replace the turn;
 		// it must still surface the trajectory left unterminated.
 		opts.logger?.warn?.(
-			{ err: (err as Error).message, trajectoryId: opts.trajectoryId },
+			{
+				err: err instanceof Error ? err.message : String(err),
+				trajectoryId: opts.trajectoryId,
+			},
 			"[TrajectoryRecorder] endTrajectory failed",
 		);
 		opts.reportError?.("TrajectoryRecorder.finalize", err, {

@@ -1,0 +1,16 @@
+{
+  "cases": [
+    {
+      "name": "bounded",
+      "main": "RefreshMutex",
+      "init": "init",
+      "step": "step",
+      "invariants": ["invariant"],
+      "temporal": [],
+      "maxSteps": 60,
+      "samples": 1000
+    }
+  ],
+  "sources": ["packages/auth/src/auth/refresh-mutex.ts"],
+  "bounds": "Three callers with one invocation each, two keys, sentinel resolved predecessor 0."
+}

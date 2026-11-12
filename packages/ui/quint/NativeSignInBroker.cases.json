@@ -1,0 +1,45 @@
+{
+  "sources": [
+    "packages/ui/src/android-cloud/native-cloud-sign-in.ts",
+    "packages/ui/src/android-cloud/__e2e__/native-cloud-sign-in.test.ts",
+    "packages/auth/src/auth/native-cloud-sign-in.ts"
+  ],
+  "conformance": "packages/ui/quint/check-native-sign-in-broker.mjs",
+  "bounds": {
+    "domain": "Two successive request identities. Two deployments and two native port identities, including the omitted production port. One view subscriber per request and one in-flight activation callback per request; a retired callback can outlive its successor's admission.",
+    "assumptions": "Synchronous request and return listeners complete. A caller uses a fresh non-aborted signal for a retry. Native event parsing is abstracted to accepted or ignored; retained events carry an opaque payload and the last accepted return replaces earlier ones.",
+    "limitations": "The model covers renderer promise ownership and event routing. It excludes the view controller's native request/attempt IDs, credential slot writes and identity checks, partial host activation effects, and port registration/listener failures. Implementation cases run the broker and parser with controlled native, storage and event boundaries."
+  },
+  "cases": [
+    {
+      "name": "renderer-request-ownership",
+      "main": "NativeSignInBroker",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "OneOpenRequest",
+        "ReturnUsesMatchingOwner",
+        "CancelledOrRetiredCannotSettle"
+      ],
+      "temporal": ["UnderFairReplies", "EachActivationReturns"],
+      "temporalChecks": [
+        {
+          "property": "UnderFairReplies",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of activationReply(id) for each request: every started host callback eventually fulfills or rejects. Cancellation fences publication but does not force a pending host callback to settle."
+          ]
+        },
+        {
+          "property": "EachActivationReturns",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. A started host activation can remain unresolved while other renderer events continue."
+          ]
+        }
+      ],
+      "maxSteps": 35,
+      "samples": 1000
+    }
+  ]
+}

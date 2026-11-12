@@ -53,6 +53,7 @@ import {
   type ReserveAgentBackupRestoreTargetAndStartReplacementIntentInput,
 } from "../../db/repositories/agent-backup-restore-operations";
 import {
+  AgentBackupRestoreCleanupCapacityError,
   type AgentBackupRestoreContainerAuthority,
   type AgentBackupRestorePreviousRoute,
   type AgentBackupRestoreServingClaim,
@@ -358,15 +359,29 @@ async function scheduleRetry(
  * settled (cleanup_proven, node slot released) only after exact absence, so
  * the agent's replacement fence is freed without ever racing a late adopter.
  */
+export type AgentBackupRestoreTerminalCleanupResult =
+  | { readonly status: "settled" | "cleaned" }
+  | {
+      readonly status: "quarantined";
+      readonly operationId: string;
+      readonly replacementAttemptId: string;
+      readonly reason:
+        | "node_authority_unavailable"
+        | "daemon_outcome_unresolved"
+        | "cleanup_proof_unavailable";
+      readonly errorCode: string;
+    };
+
 export async function cleanupTerminalAgentBackupRestore(
   deps: Pick<
     AgentBackupRestoreCoordinatorDependencies,
     "beginTerminalCleanup" | "finishTerminalCleanup" | "removeRestoreContainer" | "loadOperation"
   >,
   operationId: string,
-): Promise<"settled" | "cleaned"> {
-  const fenced = await deps.beginTerminalCleanup(operationId);
-  if (fenced.settled) return "settled";
+  replacementAttemptId?: string,
+): Promise<AgentBackupRestoreTerminalCleanupResult> {
+  const fenced = await deps.beginTerminalCleanup(operationId, replacementAttemptId);
+  if (fenced.settled) return Object.freeze({ status: "settled" });
   const operation = await deps.loadOperation(operationId);
   if (!operation) {
     throw coordinatorError(
@@ -374,16 +389,57 @@ export async function cleanupTerminalAgentBackupRestore(
       "Restore operation is missing",
     );
   }
-  await deps.removeRestoreContainer(fenced);
-  await deps.finishTerminalCleanup({
-    operationId,
-    receiptDigest: buildAgentBackupRestoreExactCleanupReceiptDigestV1({
-      operation,
+  try {
+    await deps.removeRestoreContainer(fenced);
+  } catch (error) {
+    // error-policy:J3 missing remote proof keeps the exact attempt quarantined.
+    // A node-authority failure may be wrapped by the provider's locator error.
+    const cause = error instanceof Error ? error.cause : undefined;
+    const code = cause ? errorCode(cause) : errorCode(error);
+    const reason = code.startsWith("SANDBOX_REPLACEMENT_NODE_AUTHORITY_")
+      ? "node_authority_unavailable"
+      : code === "SANDBOX_REPLACEMENT_DOCKER_CREATE_UNRESOLVED"
+        ? "daemon_outcome_unresolved"
+        : "cleanup_proof_unavailable";
+    const quarantined = Object.freeze({
+      status: "quarantined" as const,
+      operationId,
       replacementAttemptId: fenced.replacementAttemptId,
-      locator: fenced.locator,
-    }),
-  });
-  return "cleaned";
+      reason,
+      errorCode: code,
+    });
+    logger.warn("[AgentBackupRestoreCoordinator] Exact cleanup proof unavailable", quarantined);
+    return quarantined;
+  }
+  let settlement: Awaited<ReturnType<typeof deps.finishTerminalCleanup>>;
+  try {
+    settlement = await deps.finishTerminalCleanup({
+      operationId,
+      replacementAttemptId: fenced.replacementAttemptId,
+      receiptDigest: buildAgentBackupRestoreExactCleanupReceiptDigestV1({
+        operation,
+        replacementAttemptId: fenced.replacementAttemptId,
+        locator: fenced.locator,
+      }),
+    });
+  } catch (error) {
+    // error-policy:J3 the node changed after remote proof; the failed transaction
+    // preserves the attempt fence and cannot spend the replacement node's slot.
+    if (!(error instanceof AgentBackupRestoreCleanupCapacityError)) throw error;
+    const quarantined = Object.freeze({
+      status: "quarantined" as const,
+      operationId,
+      replacementAttemptId: fenced.replacementAttemptId,
+      reason: "node_authority_unavailable" as const,
+      errorCode: error.code,
+    });
+    logger.warn(
+      "[AgentBackupRestoreCoordinator] Exact cleanup settlement unavailable",
+      quarantined,
+    );
+    return quarantined;
+  }
+  return Object.freeze({ status: settlement.replayed ? "settled" : "cleaned" });
 }
 
 async function cleanupAfterTerminal(context: TurnContext, operationId: string): Promise<void> {
@@ -1211,6 +1267,11 @@ export interface AgentBackupRestoreCoordinatorCycleSummary {
   readonly failures: number;
   /** Failed restore containers removed and their fences settled this cycle. */
   readonly terminalCleanups: number;
+  /** Exact attempts retained until their original node/daemon proof is available. */
+  readonly quarantinedCleanups: readonly Extract<
+    AgentBackupRestoreTerminalCleanupResult,
+    { status: "quarantined" }
+  >[];
 }
 
 /** One bounded, serial coordinator cycle over due operations owned by this worker. */
@@ -1252,13 +1313,20 @@ export async function runAgentBackupRestoreCoordinatorCycle(input: {
   // replacement fence (an earlier cleanup was interrupted or deferred).
   const deps = input.dependencies ?? createProductionCoordinatorDependencies();
   let cleaned = 0;
+  const quarantined: Extract<AgentBackupRestoreTerminalCleanupResult, { status: "quarantined" }>[] =
+    [];
   for (const operationId of await deps.listTerminalCleanups({
     ownerId: input.config.workerId,
     limit: input.limit ?? 10,
   })) {
     input.signal?.throwIfAborted();
     try {
-      if ((await cleanupTerminalAgentBackupRestore(deps, operationId)) === "cleaned") cleaned += 1;
+      const cleanup = await cleanupTerminalAgentBackupRestore(deps, operationId);
+      if (cleanup.status === "cleaned") cleaned += 1;
+      if (cleanup.status === "quarantined") {
+        quarantined.push(cleanup);
+        failures += 1;
+      }
     } catch (error) {
       // error-policy:J1 cleanup stays fenced and is retried next cycle.
       failures += 1;
@@ -1274,6 +1342,7 @@ export async function runAgentBackupRestoreCoordinatorCycle(input: {
     results: Object.freeze(results),
     failures,
     terminalCleanups: cleaned,
+    quarantinedCleanups: Object.freeze(quarantined),
   });
 }
 

@@ -1,5 +1,13 @@
 package ai.elizaos.app;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.RandomAccessFile;
+import java.util.zip.GZIPOutputStream;
+
 /**
  * Pure crash-safety decision for {@link ElizaAgentService}'s on-device agent
  * asset extraction (elizaOS/eliza#12453).
@@ -75,5 +83,96 @@ final class ElizaAssetExtractionPolicy {
             return Action.KEEP_MISSING_ASSETS;
         }
         return Action.FAIL_NO_ASSETS;
+    }
+
+    /** Suffix of an in-progress copy; a leftover one is from an interrupted run. */
+    static final String TEMP_SUFFIX = ".tmp";
+
+    /**
+     * The aux tarballs (outside the swapped agent root) follow the agent tree:
+     * refresh them when their durable stamp differs from the tree's stamp. The
+     * aux stamp is written only after every tarball refreshed, so a kill in
+     * between refreshes again on the next boot. An unstamped tree (0) never
+     * forces a refresh.
+     */
+    static boolean auxRefreshDue(long auxStamp, long treeStamp) {
+        return treeStamp > 0L && auxStamp != treeStamp;
+    }
+
+    /**
+     * A re-gzipped tarball is kept only when its gzip trailer records exactly the
+     * asset's length (ISIZE is the input length mod 2^32), so a truncated or
+     * foreign file is rewritten. {@code gzipInputSize} is -1 when unreadable.
+     */
+    static boolean tarballCurrent(long gzipInputSize, long assetLength, boolean refreshDue) {
+        return !refreshDue
+            && gzipInputSize >= 0L
+            && assetLength >= 0L
+            && gzipInputSize == (assetLength & 0xffffffffL);
+    }
+
+    /**
+     * Bundled models are stored uncompressed, so a complete copy has the asset's
+     * length. When the length is unknown ({@code -1}) the copy is replaced on an
+     * aux refresh instead. A model with no asset is never considered here.
+     */
+    static boolean modelCurrent(long targetLength, long assetLength, boolean auxRefreshDue) {
+        if (targetLength <= 0L) return false;
+        if (assetLength >= 0L) return targetLength == assetLength;
+        return !auxRefreshDue;
+    }
+
+    /** The ISIZE trailer of a gzip file, or -1 when it is missing, short or not gzip. */
+    static long gzipTrailerSize(File file) {
+        if (!file.isFile() || file.length() < 18L) return -1L;
+        try (RandomAccessFile in = new RandomAccessFile(file, "r")) {
+            if (in.read() != 0x1f || in.read() != 0x8b) return -1L;
+            in.seek(file.length() - 4L);
+            long size = 0L;
+            for (int i = 0; i < 4; i++) size |= ((long) in.read() & 0xffL) << (8 * i);
+            return size;
+        } catch (IOException unreadable) {
+            return -1L;
+        }
+    }
+
+    /**
+     * Delete the leftover {@link #TEMP_SUFFIX} copy of one managed target. Only
+     * named targets are cleaned: the same directories hold other components'
+     * in-progress files (for example model downloads).
+     */
+    static boolean deleteStaleTemp(File target) {
+        File temp = new File(target.getPath() + TEMP_SUFFIX);
+        return temp.isFile() && temp.delete();
+    }
+
+    /**
+     * Copy {@code in} to {@code target} so a kill never leaves a partial target:
+     * write {@code target.tmp}, fsync it, then rename over the target.
+     */
+    static void writeAtomically(InputStream in, File target, boolean gzip) throws IOException {
+        File parent = target.getParentFile();
+        if (parent != null && !parent.isDirectory() && !parent.mkdirs()) {
+            throw new IOException("Could not create " + parent);
+        }
+        File temp = new File(target.getPath() + TEMP_SUFFIX);
+        try (FileOutputStream raw = new FileOutputStream(temp)) {
+            OutputStream out = gzip ? new GZIPOutputStream(raw, 64 * 1024) : raw;
+            byte[] buffer = new byte[64 * 1024];
+            int read;
+            while ((read = in.read(buffer)) > 0) {
+                out.write(buffer, 0, read);
+            }
+            if (out instanceof GZIPOutputStream) ((GZIPOutputStream) out).finish();
+            out.flush();
+            raw.getFD().sync();
+        } catch (IOException error) {
+            temp.delete();
+            throw error;
+        }
+        if (!temp.renameTo(target)) {
+            temp.delete();
+            throw new IOException("Could not move " + temp + " into place");
+        }
     }
 }

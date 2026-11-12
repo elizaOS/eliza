@@ -611,7 +611,7 @@ function main() {
   if (args.help) {
     console.log(
       [
-        "Usage: node scripts/lib/apple-entitlement-audit.ts [--app=/path/to/App.app]",
+        "Usage: bun scripts/lib/apple-entitlement-audit.ts [--app=/path/to/App.app]",
         "",
         "Validates App Store-facing Apple entitlement files against",
         "platforms/apple-store-entitlements.reviewed.json. When --app is",

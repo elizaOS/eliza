@@ -98,11 +98,11 @@ function cloneDocument(document: NotesDocument): NotesDocument {
   return structuredClone(document);
 }
 function snapshotFromDocument(document: NotesDocument): NotesSnapshot {
-  return structuredClone({
+  return {
     revision: document.revision,
     notes: document.notes,
     trash: document.trash ?? [],
-  });
+  };
 }
 
 function isNodeErrorWithCode(
@@ -251,8 +251,10 @@ export class NotesStore {
     }
   }
 
-  snapshot(): NotesSnapshot {
-    return snapshotFromDocument(this.requireReadyDocument());
+  snapshot(
+    project: (document: NotesDocument) => NotesSnapshot = snapshotFromDocument,
+  ): NotesSnapshot {
+    return project(cloneDocument(this.requireReadyDocument()));
   }
 
   /** Reads persisted bytes after queued writes without refreshing or mutating Notes. */
@@ -275,23 +277,45 @@ export class NotesStore {
 
   async transact<T>(
     mutate: (draft: NotesDocument) => T,
+    project: (document: NotesDocument) => NotesSnapshot = snapshotFromDocument,
   ): Promise<{ value: T; snapshot: NotesSnapshot }> {
     await this.initialize();
     return this.serialize(async () => {
       const current = this.requireReadyDocument();
       const draft = cloneDocument(current);
       const value = mutate(draft);
+      // Retire metadata only for records this mutation permanently removed.
+      // Unknown new metadata still reaches validation and is rejected.
+      const previousRevisions = current.noteRevisions;
+      if (
+        draft.noteRevisions !== undefined &&
+        previousRevisions !== undefined
+      ) {
+        const remaining = new Set([
+          ...draft.notes.map((note) => note.id),
+          ...(draft.trash ?? []).map((entry) => entry.note.id),
+        ]);
+        draft.noteRevisions = Object.fromEntries(
+          Object.entries(draft.noteRevisions).filter(
+            ([id]) =>
+              remaining.has(id) || !Object.hasOwn(previousRevisions, id),
+          ),
+        );
+      }
       // Compare inside the write barrier: a replay must neither rewrite the
       // file nor invalidate a confirmation bound to unchanged Notes state.
       if (isDeepStrictEqual(draft, current)) {
-        return { value, snapshot: snapshotFromDocument(current) };
+        return { value, snapshot: project(cloneDocument(current)) };
       }
       draft.revision = current.revision + 1;
       draft.persistedAt = this.now().toISOString();
       const next = parseNotesDocument(draft);
+      // Projection runs on a detached value before persistence. A throwing or
+      // mutating projector cannot change the committed document or its cache.
+      const snapshot = project(cloneDocument(next));
       await this.writeAtomic(next);
       this.shared.document = next;
-      return { value, snapshot: snapshotFromDocument(next) };
+      return { value, snapshot };
     });
   }
 
@@ -447,16 +471,21 @@ export class NotesStore {
           raw,
         );
       } catch (error) {
-        throw this.writeFailure(error);
+        throw this.uncertainEncryptedWriteFailure(error);
       }
       if (!saved)
         throw new ElizaError("Notes changed in another view.", {
           code: "NOTES_EDIT_CONFLICT",
           severity: "ephemeral",
         });
-      const confirmed = await this.encryptedPort.read();
+      let confirmed: string | null;
+      try {
+        confirmed = await this.encryptedPort.read();
+      } catch (error) {
+        throw this.uncertainEncryptedWriteFailure(error);
+      }
       if (confirmed !== raw)
-        throw this.writeFailure(
+        throw this.uncertainEncryptedWriteFailure(
           new Error("Encrypted Notes commit readback is uncertain"),
         );
       this.shared.persistedRaw = raw;
@@ -609,9 +638,8 @@ export class NotesStore {
   }
 
   /**
-   * A failed atomic write leaves the published file and the cached document
-   * unchanged, so the store stays ready: the caller gets the typed failure and
-   * the next read or write works when the cause is gone.
+   * A failed local atomic write retains the cached document. Encrypted-port
+   * acknowledgement uncertainty also fences the cache in the helper below.
    */
   private writeFailure(error: unknown): ElizaError {
     return toStoreError(
@@ -620,5 +648,16 @@ export class NotesStore {
       "Notes state could not be written atomically.",
       this.filePath,
     );
+  }
+
+  /** A port may commit before its acknowledgement or readback fails. The old
+   * cache is then unknown, including any cleanup receipts. Fence every shared
+   * view until all handles close and an authoritative reopen loads the bytes.
+   */
+  private uncertainEncryptedWriteFailure(error: unknown): ElizaError {
+    const failure = this.writeFailure(error);
+    this.shared.failure = failure;
+    this.shared.phase = "error";
+    return failure;
   }
 }

@@ -27,6 +27,7 @@ import {
   getContextRoutingFromState,
   getDirectActionRoutingRules,
   getLocalizedExamplesProvider,
+  getRequestOperationIssuer,
   getStreamingContext,
   getTrajectoryContext,
   getUserMessageText,
@@ -168,7 +169,10 @@ import {
   withActionResultsForPrompt,
   withContextRoutingValues,
 } from "./response-state.ts";
-import { replyClaimsInProgressWork } from "./side-effect-claims.ts";
+import {
+  replyClaimsInProgressWork,
+  replyIsClaimSafeAcknowledgment,
+} from "./side-effect-claims.ts";
 import {
   getSourceReplyRendering,
   sourceReplyAssertionText,
@@ -322,7 +326,7 @@ export async function runV5MessageRuntimeStage1(
   const stage1PreprocessStartedAt = performance.now();
 
   // G10/G11: construct the per-trajectory recorder. No-op when disabled via
-  // ELIZA_TRAJECTORY_RECORDING=0. Failures inside the recorder must NEVER
+  // ELIZA_TRAJECTORY_LOGGING=0. Failures inside the recorder must NEVER
   // propagate up — the recorder is observability, not load-bearing.
   const recordingEnabled = isTrajectoryRecordingEnabled();
   // Every stage emitted below also mirrors into the turn's database
@@ -941,6 +945,7 @@ export async function runV5MessageRuntimeStage1(
           await resolvePlannedReplyEgress({
             providers: args.state.data.providers,
             contexts: messageHandler.plan.contexts,
+
             runtime: args.runtime,
             message: args.message,
             reply,
@@ -1047,10 +1052,19 @@ export async function runV5MessageRuntimeStage1(
       const visibleProgress = sanitizeUserVisibleModelOutput(earlyReplyText);
       earlyReplyText =
         visibleProgress.kind === "text" ? visibleProgress.text : "";
-      // A pending draft is not a read result. Only whole-reply progress can
-      // precede tools; answer-like text (including progress plus an answer)
-      // waits for the normal grounded final path. Never fabricate a substitute.
-      if (!replyClaimsInProgressWork(earlyReplyText)) earlyReplyText = "";
+      // A pending draft is not a read result. The transient acknowledgement
+      // keeps the model's forward-looking wording; the durable early reply
+      // stays whole-reply progress. Answer-like text (including progress plus
+      // an answer) waits for the normal grounded final path. Never fabricate a
+      // substitute.
+      if (
+        !(
+          args.onPlanningAcknowledgment
+            ? replyIsClaimSafeAcknowledgment
+            : replyClaimsInProgressWork
+        )(earlyReplyText)
+      )
+        earlyReplyText = "";
       const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
         currentScope: {
           agentId: args.runtime.agentId,
@@ -1084,7 +1098,9 @@ export async function runV5MessageRuntimeStage1(
       !messageHandler.plan.deterministicToolCall &&
       earlyReplyText.trim().length > 0
     ) {
-      args.onPlanningAcknowledgment(restorePiiInUserReplyText(earlyReplyText));
+      await args.onPlanningAcknowledgment(
+        restorePiiInUserReplyText(earlyReplyText),
+      );
     }
     // The addressing gate above already terminal-routes addressed-to-other
     // turns to ignored, so a gated turn cannot normally reach this planning
@@ -1130,13 +1146,22 @@ export async function runV5MessageRuntimeStage1(
           // refresh RECENT_MESSAGES only when an early reply actually
           // changed history. An empty refresh set means maximum reuse;
           // planner-only context-gated providers still run because they
-          // are not cached yet.
+          // are not cached yet. With discovery on, the planner and evaluator
+          // see only discoveryText for providers Stage 1 did not load, and
+          // restoreProviderContext composes their complete text again.
           await args.runtime.composeState(
             args.message,
             plannerProviderNames,
             true,
             false,
             earlyReplySent ? ["RECENT_MESSAGES"] : [],
+            {
+              deferredReferenceProviders: providerDiscoveryEnabled
+                ? plannerProviderNames.filter(
+                    (name) => !loadedContextProviders.includes(name),
+                  )
+                : [],
+            },
           )
         : args.state;
     const selectedContextRoutingState =
@@ -1637,6 +1662,21 @@ export async function runV5MessageRuntimeStage1(
           : {}),
         plan: {
           contexts: messageHandler.plan.contexts,
+          ...(messageHandler.plan.notesRequestEffect !== undefined
+            ? { notesRequestEffect: messageHandler.plan.notesRequestEffect }
+            : {}),
+          ...(messageHandler.plan.notesRequestInterpretation !== undefined
+            ? {
+                notesRequestInterpretation:
+                  messageHandler.plan.notesRequestInterpretation,
+              }
+            : {}),
+          ...(messageHandler.plan.notesRequestHostRestriction !== undefined
+            ? {
+                notesRequestHostRestriction:
+                  messageHandler.plan.notesRequestHostRestriction,
+              }
+            : {}),
           ...(messageHandler.plan.replyEffectStatus !== undefined
             ? { replyEffectStatus: messageHandler.plan.replyEffectStatus }
             : {}),
@@ -2176,6 +2216,10 @@ export async function runV5MessageRuntimeStage1(
             };
           }
           return runPlannerLoop({
+            requestOperationIssuer: getRequestOperationIssuer(
+              args.runtime,
+              args.message,
+            ),
             ...(args.resolveTypedReadReply
               ? {
                   resolveTypedReadReply: args.resolveTypedReadReply,
@@ -2252,6 +2296,10 @@ export async function runV5MessageRuntimeStage1(
     ) =>
       timeInferenceSpan("message:planner", () =>
         runPlannerLoop({
+          requestOperationIssuer: getRequestOperationIssuer(
+            args.runtime,
+            args.message,
+          ),
           ...(args.resolveTypedReadReply
             ? {
                 resolveTypedReadReply: args.resolveTypedReadReply,
@@ -2836,7 +2884,13 @@ export async function runV5MessageRuntimeStage1(
         contexts: selectedContexts,
         runtime: args.runtime,
         message: args.message,
-        reply: plannerResult.finalMessage ?? "",
+        // A planner claim rejection has no deliverable draft. An empty reply
+        // enters the existing reply-only recovery and its grounding review.
+        reply:
+          plannerResult.replyRecoveryRequired === true &&
+          plannerResult.terminalFailure?.code === "REPLY_GROUNDING_FAILED"
+            ? ""
+            : (plannerResult.finalMessage ?? ""),
         actionResults: egressActionResults,
         evaluator: plannerResult.evaluator,
         recovery: capturePlannerReplyRecovery(
@@ -2849,6 +2903,12 @@ export async function runV5MessageRuntimeStage1(
         ...plannerResult,
         finalMessage: recoveredReply.text,
         replyRecoveryRequired: undefined,
+        // Successful checked prose repairs only this presentation failure.
+        // Tool/provider/pending outcomes and evaluator coverage stay intact.
+        ...(plannerResult.terminalFailure?.kind === "reply_generation_error" &&
+        plannerResult.terminalFailure.code === "REPLY_GROUNDING_FAILED"
+          ? { terminalFailure: undefined }
+          : {}),
       };
       replyRecovered = true;
     }

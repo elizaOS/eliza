@@ -1,0 +1,22 @@
+{
+  "sources": [
+    "packages/agent/src/runtime/operations/repository.ts",
+    "packages/agent/src/runtime/operations/types.ts"
+  ],
+  "bounds": {
+    "domain": "One record with current/previous/dead/remote/legacy owner classes.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "runtime_operation_recovery",
+      "main": "runtime_operation_recovery",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

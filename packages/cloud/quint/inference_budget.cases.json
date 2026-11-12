@@ -1,0 +1,27 @@
+{
+  "sources": [
+    "packages/cloud/api/src/inference-admission-budget.ts",
+    "packages/cloud/shared/src/lib/services/inference-funding-budget-protocol.ts"
+  ],
+  "bounds": {
+    "assumptions": [
+      "Two installed grants of two units, two immutable request IDs, maximum reservation 1..3, costs 0..3, clock 0..4.",
+      "Transactions are atomic; request identifiers and cancellation capabilities are unique.",
+      "Provider execution, grant minting/refill, SQL reconciliation and implementation refinement are excluded."
+    ],
+    "progress": "No temporal or fairness claim. Each model permits stuttering and repeated failures."
+  },
+  "cases": [
+    {
+      "name": "inference-budget",
+      "main": "inference_budget",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 40,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ]
+}

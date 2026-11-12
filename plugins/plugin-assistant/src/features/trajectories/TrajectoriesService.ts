@@ -28,6 +28,7 @@ import {
   projectRecordedStageToolDiagnostics,
   projectToolDiagnosticValue,
   recordedStageToSemanticStage,
+  resolveTrajectoryGate,
   Service,
   sanitizeTrajectoryJsonValue,
   sanitizeTrajectoryJsonValueInBudget,
@@ -1058,6 +1059,8 @@ export class TrajectoriesService extends Service {
 
   private enabled = true;
   private initialized = false;
+  private storageDeferred = false;
+  private deferredStorageReady: Promise<boolean> | null = null;
   private stopping = false;
   private stopPromise: Promise<void> | null = null;
   // Routing can include another service's same-agent trajectory. Only a
@@ -1215,8 +1218,34 @@ export class TrajectoriesService extends Service {
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
     const service = new TrajectoriesService(runtime);
+    if (!resolveTrajectoryGate().enabled) {
+      // Persistence is off by policy, so boot runs no table DDL. A read, or a
+      // capture after setEnabled(true), creates the tables on first use.
+      service.exposeBoundMethods();
+      service.enabled = false;
+      service.storageDeferred = true;
+      return service;
+    }
     await service.initialize();
     return service;
+  }
+
+  /** Creates the tables that start() deferred; false when storage is unavailable. */
+  private ensureDeferredStorage(): Promise<boolean> {
+    if (!this.storageDeferred) return Promise.resolve(true);
+    this.deferredStorageReady ??= this.initialize().then(
+      () => {
+        if (!this.initialized) this.deferredStorageReady = null;
+        return this.initialized;
+      },
+      (error: unknown) => {
+        // error-policy:J2 withdraw the failed setup so the next capture retries;
+        // this capture's caller receives the failure.
+        this.deferredStorageReady = null;
+        throw error;
+      },
+    );
+    return this.deferredStorageReady;
   }
 
   async stop(): Promise<void> {
@@ -1432,6 +1461,12 @@ export class TrajectoriesService extends Service {
   }
 
   private async ensureStorageReady(): Promise<void> {
+    if (this.storageDeferred) {
+      if (!(await this.ensureDeferredStorage())) {
+        throw this.storageUnavailableError();
+      }
+      return;
+    }
     if (!this.initialized) {
       await this.initialize();
       return;
@@ -2709,6 +2744,7 @@ export class TrajectoriesService extends Service {
     stepIdOrAgentId: string,
     options: StartTrajectoryOptions,
   ): Promise<string> {
+    if (!(await this.ensureDeferredStorage())) return uuidv4();
     const isLegacySignature = options.agentId !== undefined;
     const legacyStepId = isLegacySignature ? stepIdOrAgentId : null;
     const requestedAgentId = isLegacySignature

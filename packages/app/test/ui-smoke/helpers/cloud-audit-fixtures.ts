@@ -123,6 +123,7 @@ const APP_BILLING_FIXTURE = billingFixture({ appId: SMOKE_APP_UUID });
 
 const SMOKE_APP = {
   id: SMOKE_APP_UUID,
+  organization_id: "org-smoke-1",
   name: "Smoke App",
   slug: "smoke-app",
   description: "Deterministic ui-smoke application fixture",

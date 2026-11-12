@@ -253,3 +253,33 @@ it("treats a capability failure before dispatch as not accepted, not unknown", a
     ),
   ).toBe(true);
 });
+describe("managed Calendar refusal receipts", () => {
+  const refuse = (outcome: string) => {
+    state.call.mockResolvedValueOnce(caps).mockResolvedValueOnce({
+      calendarFailure: {
+        grantId: source,
+        calendarId: "calendar",
+        accountId: "account",
+        code: "CALENDAR_SYNC_PRECONDITION",
+        outcome,
+      },
+    });
+    return make().port.execute(approval, {
+      sourceId: source,
+      calendarId: "calendar",
+      managedAccountId: "account",
+    } as never);
+  };
+  it("ends the approval when a precondition failed", async () => {
+    await expect(refuse("precondition_failed")).rejects.toMatchObject({
+      name: "CalendarMutationPreflightError",
+      failure: { code: "CALENDAR_SYNC_PRECONDITION", retryable: false },
+    });
+  });
+  it("keeps a plain non-acceptance retryable", async () => {
+    await expect(refuse("not_accepted")).rejects.toMatchObject({
+      name: "CalendarMutationNotAcceptedError",
+      failure: { code: "CALENDAR_SYNC_PRECONDITION", retryable: true },
+    });
+  });
+});

@@ -168,7 +168,7 @@ public final class SenseInvocationTest {
     }
 
     public static void main(String[] args) {
-        for (String host : new String[]{"ai.elizaos.app", "ai.elizaresearch.alphaphone"}) {
+        for (String host : new String[]{"ai.elizaos.app", "ai.alphacompute.alphaphone"}) {
             SenseInvocation state=new SenseInvocation();
             state.record(host,host+".sense",true,100,false);
             state.bind(1, 1, OWNER, A);check(state.take(1, 1, OWNER, A,101,false)==null,"cold-start cannot inherit unbound wake");

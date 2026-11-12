@@ -31,7 +31,7 @@ public final class PasswordEditorInstrumentedTest {
           PasswordVaultAccess access = PasswordVaultAccess.get(activity);
           access.lock();
           PasswordEditor.Result result = new PasswordEditor.Result() {
-            public void saved(String id) { fail("No save requested"); }
+            public void saved(String id, long revision) { fail("No save requested"); }
             public void cancelled() { cancellations.incrementAndGet(); }
           };
           try { PasswordEditor.open(activity, access, access.ticket(), result); fail("Locked editor admitted"); }

@@ -136,10 +136,7 @@ export function restoreAndroidManifestFromPlatformTemplateIfMissing() {
   return true;
 }
 
-export function overlayAndroid({
-  includeAospRoleLaunchers = false,
-  includeHomeRole = includeAospRoleLaunchers,
-} = {}) {
+export function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
   assertSharedTreeOnlyForEliza("overlay Java sources");
   const templateJavaRoot = path.join(
     platformsDir,
@@ -359,7 +356,7 @@ export function overlayAndroid({
       '    <uses-feature android:name="android.hardware.telephony" android:required="false" />',
     );
     const withElizaOsActivityFilters = ensureElizaOsActivityFilters(xml, {
-      enabled: includeHomeRole,
+      enabled: includeAospRoleLaunchers,
     });
     if (withElizaOsActivityFilters !== xml) {
       xml = withElizaOsActivityFilters;

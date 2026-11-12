@@ -1,0 +1,94 @@
+[
+  {
+    "id": "auth.AccountPoolHealth",
+    "model": "packages/auth/quint/AccountPoolHealth.qnt",
+    "sources": [
+      "packages/auth/src/accounts/account-pool.ts",
+      "packages/auth/src/accounts/account-selection.ts",
+      "packages/auth/src/accounts/coding-account-bridge.ts",
+      "packages/auth/src/auth/credentials.ts",
+      "packages/auth/src/auth/account-storage.ts",
+      "packages/auth/src/accounts/multi-account-affinity-failover.test.ts",
+      "packages/auth/test/fixtures/pool-health-process-probe.ts"
+    ],
+    "invariants": [
+      "TypeOK",
+      "StaleObservationCannotWrite",
+      "DeletedAccountCannotReappear",
+      "OtherProviderUnchanged",
+      "UsagePreservesNewHealth",
+      "AppliedUsageMatchesResponse",
+      "FailurePreservesUsage",
+      "RotatedReceiptIsCurrent",
+      "UsageAcknowledgementNeedsCommit",
+      "ExpiryVerdictUsesCurrentSubscription",
+      "CurrentResetControlsCooldown"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two accounts from two provider families and generations1..5. Each of at most two one-shot calls may represent an explicit retained metadata snapshot.",
+      "Shared verification uses a two-caller fixed-clock case with all external writes, a single-caller advancing-clock case with all external writes, and a two-caller advancing-clock case with only call-owned writes. The combined two-caller advancing-clock graph with independent replacement, health and subscription writes is not a required case. Cross-process implementation checks exercise concurrent reset, expiry, replacement and owned-field races.",
+      "The default adapter supplies verified generation provenance and synchronous credential-lock CAS. Crypto, cross-process lock admission, root reset recovery and collision-free generation allocation rely on the separate credential-storage models.",
+      "Health and the opaque non-cooldown detail identity are compared together with the explicit cooldown. Two detail identities represent equal or different lastChecked/error fields in this bounded instance. Arbitrary repeated detail/timestamp histories and provider payload schema stay outside finite arithmetic; real adapters exercise the payload and field-merging boundary.",
+      "Storage failure before publication leaves metadata unchanged; a failure after publication may retain it. Calls expose uncertain storage outcomes. Filesystem power-loss persistence remains outside the process-level model.",
+      "Unbranded injected AccountPoolDeps retain their legacy contract when no generation guard is supplied. An explicit generation guard cannot validate an unbranded snapshot and refuses it. These compatibility schedules have real conformance but are outside the default-adapter safety theorem.",
+      "AccountPoolBroker models broker lease reports separately. Timer stop/restart ownership, arbitrary account pools, repeated retries, usage priming cadence and full selection strategies are separate protocols. This model does not claim whole-pool coverage.",
+      "The health case keeps email and other display metadata opaque; the separate backfill case covers symbolic email presence and newer-write ownership.",
+      "The comparison includes explicit cooldown and bounded opaque detail identity. Completed-call captured records are erased only after their last future read; result/receipt/usage and transition-invariant baselines remain.",
+      "Transition-only historical account snapshots are erased after evaluation into sticky violation monitors. Runtime account/call states, finite domains and fair call actions are retained."
+    ]
+  },
+  {
+    "id": "auth.AccountPoolBackfill",
+    "model": "packages/auth/quint/AccountPoolHealth.qnt",
+    "sources": [
+      "packages/auth/src/accounts/account-pool.ts",
+      "packages/auth/src/accounts/account-selection.ts",
+      "packages/auth/src/accounts/coding-account-bridge.ts",
+      "packages/auth/src/auth/credentials.ts",
+      "packages/auth/src/auth/account-storage.ts",
+      "packages/auth/src/accounts/multi-account-affinity-failover.test.ts",
+      "packages/auth/test/fixtures/pool-health-process-probe.ts"
+    ],
+    "invariants": [
+      "TypeOK",
+      "ExistingEmailWins",
+      "ReplacementIsNotBackfilled",
+      "BackfillUsesOnlyObservedEmail",
+      "ExistingEmailSkipsProfile"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Absent/fetched/current email values0/1/2, one credential replacement and one independent current email installation. Provider and storage must eventually settle for progress.",
+      "Generation fencing and preserving a current email are modeled across profile await, fresh reread and locked publication, including before/after-publication failures. Actual addresses and other display metadata remain opaque.",
+      "Transition-only historical account snapshots are erased after evaluation into sticky violation monitors. Runtime account/call states, finite domains and fair call actions are retained."
+    ]
+  },
+  {
+    "id": "auth.AccountPoolContext",
+    "model": "packages/auth/quint/AccountPoolHealth.qnt",
+    "sources": [
+      "packages/auth/src/accounts/account-pool.ts",
+      "packages/auth/src/accounts/account-selection.ts",
+      "packages/auth/src/accounts/coding-account-bridge.ts",
+      "packages/auth/src/auth/credentials.ts",
+      "packages/auth/src/auth/account-storage.ts",
+      "packages/auth/src/accounts/multi-account-affinity-failover.test.ts",
+      "packages/auth/quint/check-account-pool-health.mjs",
+      "packages/auth/test/fixtures/pool-health-process-probe.ts"
+    ],
+    "invariants": [
+      "TypeOK",
+      "TokenAndOrganizationShareDecision",
+      "ReplacementOrganizationIsSelected",
+      "PollCarriesTokenOrganization",
+      "PublicationOwnsGeneration"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One token resolution/usage probe and one replacement, two credential generations, optional organization0 and two named organization identities. The exact default getAccessToken decision receipt carries generation and organization together.",
+      "The generation CAS and storage ownership rely on the separate account-storage/AccessTokenResolution models. Public/wire outcomes stay unchanged. Token strings, provider organization validation and arbitrary broker leases remain outside this instance.",
+      "Transition-only historical account snapshots are erased after evaluation into sticky violation monitors. Runtime account/call states, finite domains and fair call actions are retained."
+    ]
+  }
+]

@@ -1,3 +1,4 @@
+import { normalizeNotesRequestInterpretation } from "@elizaos/core";
 /** Normalizes native and structured message-handler output and validates candidate action decisions. */
 
 import type {
@@ -754,6 +755,49 @@ export function messageHandlerFromFieldResult(
     )
   ) {
     plan.calendarReadBindings = result.calendarReadBindings;
+  }
+  if (
+    fieldRun !== undefined &&
+    result.notesRequestEffect === fieldRun.parsed.notesRequestEffect &&
+    (result.notesRequestEffect === "read_only" ||
+      result.notesRequestEffect === "mutation_requested" ||
+      result.notesRequestEffect === "unresolved") &&
+    fieldRun.traces.some(
+      (trace) =>
+        trace.fieldName === "notesRequestEffect" &&
+        trace.active &&
+        trace.parsed &&
+        trace.handled &&
+        trace.parseOutcome === "ok" &&
+        !trace.errorMessage,
+    )
+  ) {
+    plan.notesRequestEffect = result.notesRequestEffect;
+    if (
+      result.notesRequestInterpretation ===
+      fieldRun.parsed.notesRequestInterpretation
+    ) {
+      const interpretation = normalizeNotesRequestInterpretation(
+        result.notesRequestInterpretation,
+      );
+      if (
+        interpretation &&
+        fieldRun.traces.some(
+          (trace) =>
+            trace.fieldName === "notesRequestEffect" &&
+            trace.debug?.includes(
+              `notes-request-interpretation:${interpretation.status}`,
+            ),
+        )
+      ) {
+        const planInterpretation = {
+          status: interpretation.status,
+          operations: [...interpretation.operations],
+        };
+        Object.freeze(planInterpretation.operations);
+        plan.notesRequestInterpretation = Object.freeze(planInterpretation);
+      }
+    }
   }
   if (
     !terminalNonAppliedReply &&

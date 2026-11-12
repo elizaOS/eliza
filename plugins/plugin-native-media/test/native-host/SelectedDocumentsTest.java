@@ -1,4 +1,5 @@
 import ai.eliza.plugins.media.DocumentBytes;
+import ai.eliza.plugins.media.PdfPageLimits;
 import ai.eliza.plugins.media.SelectedPhotoCopy;
 import ai.eliza.plugins.media.SourceReferences;
 import java.io.ByteArrayInputStream;
@@ -14,8 +15,9 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * JVM tests of exact selected-photo copies, document byte rules and source reference counting with
- * synthetic sources only. Not Android, provider or grant evidence.
+ * JVM tests of exact selected-photo copies, document byte rules, source reference counting and the
+ * selected-PDF preview bounds with synthetic sources only. Not Android, provider, grant or
+ * isolated-renderer evidence.
  */
 public final class SelectedDocumentsTest {
   private static int checks;
@@ -236,6 +238,29 @@ public final class SelectedDocumentsTest {
                 + "a".repeat(64))
             && !SourceReferences.valid(null),
         "a1: shape");
+    // Selected-PDF previews: Files keeps 20 MiB sources, reviewed attachments keep 5 MiB.
+    long mib = 1024L * 1024;
+    long selected = PdfPageLimits.sourceLimit(true), attachment = PdfPageLimits.sourceLimit(false);
+    check(selected == 20 * mib && attachment == 5 * mib, "per-kind source limits");
+    PdfPageLimits.requireSource(6 * mib, selected);
+    PdfPageLimits.requireSource(20 * mib, selected);
+    rejects(() -> PdfPageLimits.requireSource(21 * mib, selected), "21 MiB selected PDF");
+    rejects(() -> PdfPageLimits.requireSource(6 * mib, attachment), "6 MiB attachment");
+    rejects(() -> PdfPageLimits.requireSource(6 * mib), "attachment default stays 5 MiB");
+    rejects(() -> PdfPageLimits.requireSource(0, selected), "empty selected PDF");
+    rejects(() -> PdfPageLimits.requireSource(21 * mib, Long.MAX_VALUE), "no limit past 20 MiB");
+    // A preview reply is accepted only from an isolated, network-denied renderer.
+    int[] size = PdfPageLimits.fit(612, 792);
+    long bytes = PdfPageLimits.argbLength(size[0], size[1]);
+    PdfPageLimits.requireReply(true, true, 99001, 10001, size[0], size[1], 2, 0, 0, bytes);
+    rejects(()
+                -> PdfPageLimits.requireReply(
+                    false, true, 99001, 10001, size[0], size[1], 2, 0, 0, bytes),
+        "non-isolated preview reply");
+    rejects(()
+                -> PdfPageLimits.requireReply(
+                    true, false, 99001, 10001, size[0], size[1], 2, 0, 0, bytes),
+        "internet-allowed preview reply");
     System.out.println(checks + " assertions passed");
   }
 }

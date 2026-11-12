@@ -1,0 +1,80 @@
+{
+  "sources": [
+    "packages/cloud/sdk/native-host/cloud-services.mjs",
+    "packages/cloud/sdk/native-host/cloud-services.test.mjs",
+    "packages/agent/native-host/gateway.mjs",
+    "packages/agent/native-host/gateway.e2e.test.mjs",
+    "packages/cloud/quint/check-native-paid-access-cache.mjs",
+    "packages/cloud/sdk/README.md"
+  ],
+  "bounds": {
+    "domain": "Two credential fingerprints, two callers, two reusable physical-check slots, one account-generation change, one access-revision change, two paid-cache invalidations and two remote plan changes. At most two owner/revision/cache invalidation transitions occur in one run. Slots are reused only after cache, flight, background and caller references all retire.",
+    "assumptions": [
+      "A settled active answer is only a local funding UI gate. There is no TTL: a remote plan lapse may precede background refresh, and a warm local call can still pass. Cloud independently authorizes every paid request and charge; this model has no payment effect or authoritative entitlement grant.",
+      "Key fingerprint, account generation, access revision and paid-cache epoch guard joins, fills and warm reuse. Already-joined live callers may receive a prior revision; only owner generation/key fence their local positive decision. The observable key guard is an atomic model boundary, not continuous credential freshness or a lock on external file writers.",
+      "A same-generation identity refusal may conservatively invalidate a replacement account cache, but cannot clear its credential. onRevoked callback completion and guarded conditional clear are separate transitions. An unavailable refresh retains the last definite answer. A definite refusal is checked live before a new local admission, so a later upgrade can take effect. Old finalizers cannot clear successor flights, and an old identity refusal cannot clear a replacement saved key.",
+      "Fairness assumes continuously enabled background timer delivery, completion of the current HTTP check or abort deadline, completion of the host revocation callback, matching finalization and caller observation. It assumes settlement, not network success. CallsSettle and BackgroundSettles are conditional; CallsWithoutFairness requires a temporal loop counterexample.",
+      "Credential startup/write queues have settled before modeled allocation. Conditional clear is an atomic model boundary for the SDK file-store operation queue and verified-account compareExchange. Generic legacy host stores must serialize owner changes through their guard. This does not assert compare-and-swap against arbitrary filesystem writes or independent store instances between read and clear. The revocation path covers replacement already present at the first check and replacement during the awaited host callback, then rechecks owner before conditional clear. Signed-out and revocation side effects are abstracted; real loopback HTTP and private-file tests check identity-401 priority, replacement-key preservation and native gateway refusal. Header/body deadline accuracy, more owners/callers, process restart, arbitrary provider schedules and implementation trace refinement are not proved. A background operation owned by an old epoch need not autonomously refresh a successor; later activity can trigger that refresh."
+    ]
+  },
+  "limitations": [
+    "Two credential fingerprints, two callers, two reusable physical-check slots, one account-generation change, one access-revision change, two paid-cache invalidations and two remote plan changes. At most two owner/revision/cache invalidation transitions occur in one run. Slots are reused only after cache, flight, background and caller references all retire.",
+    "A settled active answer is only a local funding UI gate. There is no TTL: a remote plan lapse may precede background refresh, and a warm local call can still pass. Cloud independently authorizes every paid request and charge; this model has no payment effect or authoritative entitlement grant.",
+    "Key fingerprint, account generation, access revision and paid-cache epoch guard joins, fills and warm reuse. Already-joined live callers may receive a prior revision; only owner generation/key fence their local positive decision. The observable key guard is an atomic model boundary, not continuous credential freshness or a lock on external file writers.",
+    "A same-generation identity refusal may conservatively invalidate a replacement account cache, but cannot clear its credential. onRevoked callback completion and guarded conditional clear are separate transitions. An unavailable refresh retains the last definite answer. A definite refusal is checked live before a new local admission, so a later upgrade can take effect. Old finalizers cannot clear successor flights, and an old identity refusal cannot clear a replacement saved key.",
+    "Fairness assumes continuously enabled background timer delivery, completion of the current HTTP check or abort deadline, completion of the host revocation callback, matching finalization and caller observation. It assumes settlement, not network success. CallsSettle and BackgroundSettles are conditional; CallsWithoutFairness requires a temporal loop counterexample.",
+    "Credential startup/write queues have settled before modeled allocation. Conditional clear is an atomic model boundary for the SDK file-store operation queue and verified-account compareExchange. Generic legacy host stores must serialize owner changes through their guard. This does not assert compare-and-swap against arbitrary filesystem writes or independent store instances between read and clear. The revocation path covers replacement already present at the first check and replacement during the awaited host callback, then rechecks owner before conditional clear. Signed-out and revocation side effects are abstracted; real loopback HTTP and private-file tests check identity-401 priority, replacement-key preservation and native gateway refusal. Header/body deadline accuracy, more owners/callers, process restart, arbitrary provider schedules and implementation trace refinement are not proved. A background operation owned by an old epoch need not autonomously refresh a successor; later activity can trigger that refresh."
+  ],
+  "conformance": "packages/cloud/quint/check-native-paid-access-cache.mjs",
+  "cases": [
+    {
+      "name": "settled-local-funding-cache",
+      "main": "NativePaidAccessCache",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "DefiniteCacheOnly",
+        "SingleFlightPerTuple",
+        "NoStaleAdmission",
+        "NoWrongOwnerMutation",
+        "FinalizerKeepsSuccessor"
+      ],
+      "temporal": ["CallsSettle", "BackgroundSettles", "CallsWithoutFairness"],
+      "temporalChecks": [
+        {
+          "property": "CallsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "A settled active answer is only a local funding UI gate. There is no TTL: a remote plan lapse may precede background refresh, and a warm local call can still pass. Cloud independently authorizes every paid request and charge; this model has no payment effect or authoritative entitlement grant.",
+            "Key fingerprint, account generation, access revision and paid-cache epoch guard joins, fills and warm reuse. Already-joined live callers may receive a prior revision; only owner generation/key fence their local positive decision. The observable key guard is an atomic model boundary, not continuous credential freshness or a lock on external file writers.",
+            "A same-generation identity refusal may conservatively invalidate a replacement account cache, but cannot clear its credential. onRevoked callback completion and guarded conditional clear are separate transitions. An unavailable refresh retains the last definite answer. A definite refusal is checked live before a new local admission, so a later upgrade can take effect. Old finalizers cannot clear successor flights, and an old identity refusal cannot clear a replacement saved key.",
+            "Fairness assumes continuously enabled background timer delivery, completion of the current HTTP check or abort deadline, completion of the host revocation callback, matching finalization and caller observation. It assumes settlement, not network success. CallsSettle and BackgroundSettles are conditional; CallsWithoutFairness requires a temporal loop counterexample.",
+            "Credential startup/write queues have settled before modeled allocation. Conditional clear is an atomic model boundary for the SDK file-store operation queue and verified-account compareExchange. Generic legacy host stores must serialize owner changes through their guard. This does not assert compare-and-swap against arbitrary filesystem writes or independent store instances between read and clear. The revocation path covers replacement already present at the first check and replacement during the awaited host callback, then rechecks owner before conditional clear. Signed-out and revocation side effects are abstracted; real loopback HTTP and private-file tests check identity-401 priority, replacement-key preservation and native gateway refusal. Header/body deadline accuracy, more owners/callers, process restart, arbitrary provider schedules and implementation trace refinement are not proved. A background operation owned by an old epoch need not autonomously refresh a successor; later activity can trigger that refresh."
+          ]
+        },
+        {
+          "property": "BackgroundSettles",
+          "expect": "holds",
+          "assumptions": [
+            "A settled active answer is only a local funding UI gate. There is no TTL: a remote plan lapse may precede background refresh, and a warm local call can still pass. Cloud independently authorizes every paid request and charge; this model has no payment effect or authoritative entitlement grant.",
+            "Key fingerprint, account generation, access revision and paid-cache epoch guard joins, fills and warm reuse. Already-joined live callers may receive a prior revision; only owner generation/key fence their local positive decision. The observable key guard is an atomic model boundary, not continuous credential freshness or a lock on external file writers.",
+            "A same-generation identity refusal may conservatively invalidate a replacement account cache, but cannot clear its credential. onRevoked callback completion and guarded conditional clear are separate transitions. An unavailable refresh retains the last definite answer. A definite refusal is checked live before a new local admission, so a later upgrade can take effect. Old finalizers cannot clear successor flights, and an old identity refusal cannot clear a replacement saved key.",
+            "Fairness assumes continuously enabled background timer delivery, completion of the current HTTP check or abort deadline, completion of the host revocation callback, matching finalization and caller observation. It assumes settlement, not network success. CallsSettle and BackgroundSettles are conditional; CallsWithoutFairness requires a temporal loop counterexample.",
+            "Credential startup/write queues have settled before modeled allocation. Conditional clear is an atomic model boundary for the SDK file-store operation queue and verified-account compareExchange. Generic legacy host stores must serialize owner changes through their guard. This does not assert compare-and-swap against arbitrary filesystem writes or independent store instances between read and clear. The revocation path covers replacement already present at the first check and replacement during the awaited host callback, then rechecks owner before conditional clear. Signed-out and revocation side effects are abstracted; real loopback HTTP and private-file tests check identity-401 priority, replacement-key preservation and native gateway refusal. Header/body deadline accuracy, more owners/callers, process restart, arbitrary provider schedules and implementation trace refinement are not proved. A background operation owned by an old epoch need not autonomously refresh a successor; later activity can trigger that refresh."
+          ]
+        },
+        {
+          "property": "CallsWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. An in-flight HTTP operation can stay pending forever. A temporal loop counterexample is required; unavailable or refused responses are not authorization successes."
+          ]
+        }
+      ],
+      "maxSteps": 50,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ]
+}

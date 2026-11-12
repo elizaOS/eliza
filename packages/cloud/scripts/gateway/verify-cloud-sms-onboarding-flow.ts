@@ -27,7 +27,7 @@ const defaultAttempts = 3;
 
 function usage() {
   return [
-    "Usage: node packages/cloud/scripts/gateway/verify-cloud-sms-onboarding-flow.ts [options]",
+    "Usage: bun packages/cloud/scripts/gateway/verify-cloud-sms-onboarding-flow.ts [options]",
     "",
     "Options:",
     "  --webhook-url <url>       Cloud gateway webhook. Defaults to production Blooio local bridge URL.",

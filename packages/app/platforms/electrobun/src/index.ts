@@ -38,10 +38,6 @@ import {
 import { setApplicationMenuActionHandler } from "./application-menu-action-registry";
 import { showBackgroundNoticeOnce } from "./background-notice";
 import { getBrandConfig } from "./brand-config";
-import {
-	resolveNamespaceFromEnv,
-	resolveRendererUrlFromEnv,
-} from "./brand-env-reads";
 import { startBrowserWorkspaceBridgeServer } from "./browser-workspace-bridge-server";
 import { readNavigationEventUrl } from "./cloud-auth-window";
 import { hydrateCloudOnlyEnv } from "./cloud-only-boot";
@@ -1024,7 +1020,10 @@ async function resolveRendererUrl(): Promise<string> {
 	// Prefer ELIZA_RENDERER_URL / VITE_DEV_SERVER_URL when set (e.g. dev-platform.ts watch mode).
 	// Why: Vite HMR only works against the dev server; serving pre-built dist from this static
 	// server would force a full rebuild for every UI change.
-	let rendererUrl = resolveRendererUrlFromEnv();
+	let rendererUrl =
+		process.env.ELIZA_RENDERER_URL?.trim() ||
+		process.env.VITE_DEV_SERVER_URL ||
+		"";
 	if (!rendererUrl) {
 		rendererUrlPromise ??= startRendererServer();
 		rendererUrl = await rendererUrlPromise;
@@ -2485,7 +2484,7 @@ async function loadTheAppEnvFilesForMain(): Promise<void> {
 			"..",
 			"..",
 		);
-		const namespace = resolveNamespaceFromEnv(BRAND.namespace);
+		const namespace = process.env.ELIZA_NAMESPACE?.trim() || BRAND.namespace;
 		const xdgStateHome = process.env.XDG_STATE_HOME?.trim();
 		const stateHome = xdgStateHome
 			? path.isAbsolute(xdgStateHome)

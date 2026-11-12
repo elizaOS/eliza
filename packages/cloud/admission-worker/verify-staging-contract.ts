@@ -83,7 +83,9 @@ requireContract(
         Object.entries(target.alias ?? {}).filter(
           ([name]) =>
             name !==
-            "@elizaos/cloud-shared/lib/services/inference-admission-recovery",
+              "@elizaos/cloud-shared/lib/services/inference-admission-recovery" &&
+            name !==
+              "@elizaos/cloud-shared/lib/services/inference-policy-primary",
         ),
       ),
       new URL("./", import.meta.url),
@@ -113,21 +115,17 @@ requireContract(
   JSON.stringify(stage.migrations) === "[]",
   "Accepted staging must explicitly disable inherited legacy migrations",
 );
-const expectedClasses = [
-  "SharedRuntimeConversation",
-  "InferenceAdmissionGate",
-  "AnonymousChatGate",
-  "OnboardingSessionCoordinator",
-  "TwitterOAuthRefreshCoordinator",
-  "PersonalDeliveryProjection",
-  "PersonalTelegramDelivery",
-  "InferenceRateLimitV2RollbackFloor",
-  "DoorDashCheckoutGate",
-].sort();
+// Every global SQLite class stays declared in staging; only the admission gate
+// is transferred. Derived from the source so new classes cannot go stale here.
+const expectedClasses = Object.keys(source.exports ?? {}).sort();
+requireContract(
+  expectedClasses.includes("InferenceAdmissionGate"),
+  "Global source must declare the admission gate",
+);
 requireContract(
   JSON.stringify(Object.keys(stage.exports ?? {}).sort()) ===
     JSON.stringify(expectedClasses),
-  "Staging must retain exactly all nine source declarations",
+  "Staging must retain exactly every global source declaration",
 );
 for (const name of expectedClasses) {
   const globalDeclaration = source.exports?.[name];
@@ -185,7 +183,24 @@ requireContract(
     ]),
   "Staging API admission binding must reference the adopted target",
 );
+// The external Maps gate owns these policies. Duplicating them on the API
+// consumes text bindings without changing the policy used by the gate.
+const mapsGateOnlyVariables = new Set([
+  "ELIZA_CLOUD_MAPS_REQUEST_ALLOWANCES",
+  "ELIZA_CLOUD_MAPS_PLAN_RATE_LIMITS",
+]);
+for (const key of mapsGateOnlyVariables) {
+  requireContract(
+    typeof target.vars?.[key] === "string" && target.vars[key].length > 0,
+    `Maps admission host must configure: ${key}`,
+  );
+  requireContract(
+    stage.vars?.[key] === undefined,
+    `Maps policy must only be configured on the staging admission host: ${key}`,
+  );
+}
 for (const [key, value] of Object.entries(target.vars ?? {})) {
+  if (mapsGateOnlyVariables.has(key)) continue;
   requireContract(
     stage.vars?.[key] === value,
     `Target variable differs from staging: ${key}`,
@@ -195,6 +210,33 @@ for (const key of ["CACHE_BACKEND", "CACHE_ENABLED", "NEXT_PUBLIC_APP_URL"]) {
   requireContract(
     target.vars?.[key] !== undefined && target.vars[key] === stage.vars?.[key],
     `Recovery configuration must retain staging variable: ${key}`,
+  );
+}
+// The API keeps its own copy of these flags, so a missing target variable is a
+// silent feature split (for example, speech subscriptions answering 404 while
+// the API opens sessions). Compare every variable the gate's modules read.
+const gateSources = [
+  "inference-admission-gate.ts",
+  "inference-funded-budget-controller.ts",
+  "speech-revocation-registry.ts",
+];
+const gateVariables = new Set<string>();
+for (const file of gateSources) {
+  const text = await readFile(
+    new URL(`../api/src/${file}`, import.meta.url),
+    "utf8",
+  );
+  for (const match of text.matchAll(/\benv\.([A-Z][A-Z0-9_]*)\b/g))
+    gateVariables.add(match[1]);
+}
+requireContract(
+  gateVariables.has("VOICE_SPEECH_RELAY_ENABLED"),
+  "Gate variable scan no longer finds the speech subscription flag",
+);
+for (const key of gateVariables) {
+  requireContract(
+    target.vars?.[key] === stage.vars?.[key],
+    `Gate variable must match staging: ${key}`,
   );
 }
 requireContract(
@@ -233,6 +275,12 @@ requireContract(
     "@elizaos/cloud-shared/lib/services/inference-admission-recovery"
   ] === "./src/recovery-service.ts",
   "Recovery must use the private RPC adapter",
+);
+requireContract(
+  target.alias?.[
+    "@elizaos/cloud-shared/lib/services/inference-policy-primary"
+  ] === "./src/policy-service.ts",
+  "Policy hydration must use the private RPC adapter",
 );
 requireContract(
   JSON.stringify(target.services) ===

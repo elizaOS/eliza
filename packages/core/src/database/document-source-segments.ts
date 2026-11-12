@@ -3,8 +3,10 @@
  * reconstructs one bounded byte, line, or fragment page from authorized rows.
  * Source is materialized only from rows a storage adapter already selected.
  */
+
 import { randomUUID } from "node:crypto";
 import { ElizaError } from "../errors";
+import { sha256Hex } from "../runtime/trajectory-provider-attribution";
 import type {
 	DocumentRangeReadParams,
 	DocumentRangeReadResult,
@@ -13,7 +15,7 @@ import type { DocumentMetadata, FragmentMetadata } from "../types/memory";
 import type { Memory } from "../types/memory.js";
 import { MemoryType } from "../types/memory.js";
 import type { Content, UUID } from "../types/primitives.js";
-import { createHash } from "../utils/crypto-compat";
+import { utf8ByteLength } from "../utils/unicode";
 
 interface DocumentSourceMetadata
 	extends DocumentMetadata,
@@ -74,10 +76,6 @@ function bytes(value: string): Uint8Array {
 	return encoder.encode(value);
 }
 
-function byteLength(value: string): number {
-	return bytes(value).length;
-}
-
 function lines(value: string): string[] {
 	const result: string[] = [];
 	let start = 0;
@@ -120,29 +118,38 @@ function units(
 		.filter((fragment) => fragment.length > 0);
 }
 
-function ranges(value: string, unit: "line" | "fragment"): UnitRange[] {
+interface LineRange extends UnitRange {
+	blank: boolean;
+}
+
+function lineRanges(value: string): LineRange[] {
 	let offset = 0;
-	const lineRanges = lines(value).map((text) => {
+	return lines(value).map((text) => {
 		const start = offset;
-		offset += byteLength(text);
+		offset += utf8ByteLength(text);
 		return {
 			start,
 			end: offset,
 			blank: text.replace(/[\r\n]/gu, "").trim().length === 0,
 		};
 	});
-	if (unit === "line")
-		return lineRanges.map(({ start, end }) => ({ start, end }));
+}
+
+/** Fragments end at each blank line; the tail after the last one is a fragment too. */
+function fragmentRanges(
+	lineRangesOfSource: readonly LineRange[],
+	totalBytes: number,
+): UnitRange[] {
 	const fragments: UnitRange[] = [];
 	let fragmentStart = 0;
-	for (const line of lineRanges) {
+	for (const line of lineRangesOfSource) {
 		if (!line.blank) continue;
 		if (line.end > fragmentStart)
 			fragments.push({ start: fragmentStart, end: line.end });
 		fragmentStart = line.end;
 	}
-	if (offset > fragmentStart)
-		fragments.push({ start: fragmentStart, end: offset });
+	if (totalBytes > fragmentStart)
+		fragments.push({ start: fragmentStart, end: totalBytes });
 	return fragments;
 }
 
@@ -196,14 +203,14 @@ export function buildDocumentSourceProjection(args: {
 	documentMetadata: DocumentSourceMetadata;
 }): DocumentSourceProjection {
 	const source = bytes(args.text);
-	const lineRanges = ranges(args.text, "line");
-	const fragmentRanges = ranges(args.text, "fragment");
-	const digest = createHash("sha256").update(source).digest("hex");
+	const sourceLines = lineRanges(args.text);
+	const sourceFragments = fragmentRanges(sourceLines, source.length);
+	const digest = sha256Hex(source);
 	const segments: Memory[] = [];
 	for (let start = 0, position = 0; start < source.length; position++) {
 		const end = safeUtf8End(source, start);
-		const line = intersectingRange(lineRanges, start, end);
-		const fragment = intersectingRange(fragmentRanges, start, end);
+		const line = intersectingRange(sourceLines, start, end);
+		const fragment = intersectingRange(sourceFragments, start, end);
 		const metadata: FragmentMetadata & Record<string, unknown> = {
 			...args.documentMetadata,
 			type: MemoryType.FRAGMENT,
@@ -211,20 +218,18 @@ export function buildDocumentSourceProjection(args: {
 			fragmentRole: "source-segment",
 			position,
 			sourceSegmentVersion: DOCUMENT_SOURCE_SEGMENT_VERSION,
-			sourceSegmentSha256: createHash("sha256")
-				.update(source.subarray(start, end))
-				.digest("hex"),
+			sourceSegmentSha256: sha256Hex(source.subarray(start, end)),
 			sourceByteStart: start,
 			sourceByteEnd: end,
 			sourceLineStart: line.start,
 			sourceLineEnd: line.end,
-			sourceLineStartBoundary: lineRanges[line.start]?.start === start,
-			sourceLineEndBoundary: lineRanges[line.end - 1]?.end === end,
+			sourceLineStartBoundary: sourceLines[line.start]?.start === start,
+			sourceLineEndBoundary: sourceLines[line.end - 1]?.end === end,
 			sourceFragmentStart: fragment.start,
 			sourceFragmentEnd: fragment.end,
 			sourceFragmentStartBoundary:
-				fragmentRanges[fragment.start]?.start === start,
-			sourceFragmentEndBoundary: fragmentRanges[fragment.end - 1]?.end === end,
+				sourceFragments[fragment.start]?.start === start,
+			sourceFragmentEndBoundary: sourceFragments[fragment.end - 1]?.end === end,
 			timestamp: Date.now(),
 		};
 		segments.push({
@@ -243,8 +248,8 @@ export function buildDocumentSourceProjection(args: {
 			sourceSegmentVersion: DOCUMENT_SOURCE_SEGMENT_VERSION,
 			sourceSegmentCount: segments.length,
 			sourceByteLength: source.length,
-			sourceLineCount: lineRanges.length,
-			sourceFragmentCount: fragmentRanges.length,
+			sourceLineCount: sourceLines.length,
+			sourceFragmentCount: sourceFragments.length,
 			sourceSha256: digest,
 			sourceFingerprint: `sha256:${digest}`,
 			sourceStorage:
@@ -418,10 +423,9 @@ export function readDocumentSourceProjection(args: {
 			end <= start ||
 			position === null ||
 			typeof text !== "string" ||
-			byteLength(text) !== end - start ||
+			utf8ByteLength(text) !== end - start ||
 			typeof metadata.sourceSegmentSha256 !== "string" ||
-			createHash("sha256").update(text).digest("hex") !==
-				metadata.sourceSegmentSha256 ||
+			sha256Hex(text) !== metadata.sourceSegmentSha256 ||
 			(previousEnd !== undefined && start !== previousEnd) ||
 			(previousPosition !== undefined && position !== previousPosition + 1)
 		) {
@@ -590,7 +594,7 @@ export function readDocumentSourceProjection(args: {
 			.join("");
 		const firstByte = safeNumber(firstMetadata.sourceByteStart) ?? 0;
 		return bytePage(
-			firstByte + byteLength(skipped),
+			firstByte + utf8ByteLength(skipped),
 			(DOCUMENT_SOURCE_READ_MAX_SEGMENTS - 1) *
 				DOCUMENT_SOURCE_SEGMENT_MAX_BYTES,
 		);
@@ -631,6 +635,6 @@ export function readDocumentSourceProjection(args: {
 		total: unitTotal,
 		...common,
 		returnedSourceSegments: rows.length,
-		returnedSourceBytes: byteLength(pageText),
+		returnedSourceBytes: utf8ByteLength(pageText),
 	};
 }

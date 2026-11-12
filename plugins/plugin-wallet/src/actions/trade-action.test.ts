@@ -73,9 +73,12 @@ function createRuntime(fetchMock: typeof fetch): {
   return { runtime, service, cache };
 }
 
+let messageCount = 0;
+/** Each turn is a new user message, as the confirmation gate requires. */
 function message(text: string): Memory {
+  messageCount++;
   return {
-    id: "00000000-0000-0000-0000-000000000001",
+    id: `00000000-0000-0000-0001-${String(messageCount).padStart(12, "0")}`,
     entityId: "00000000-0000-0000-0000-000000000002",
     agentId: "00000000-0000-0000-0000-000000000003",
     roomId: "00000000-0000-0000-0000-000000000004",
@@ -249,7 +252,7 @@ describe("tradeRouterAction", () => {
       "Submit Hyperliquid buy 0.01 BTC at 61000 with 2x leverage time-in-force Ioc under governed session sess_hl_fixture? Reply yes to submit or no to cancel.",
     );
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    const cacheKey = `confirmation:00000000-0000-0000-0000-000000000002:${TRADE_CONFIRM_ACTION}:${tradeOrderPendingKey(hyperliquidOrder)}`;
+    const cacheKey = `confirmation:00000000-0000-0000-0000-000000000004:00000000-0000-0000-0000-000000000002:${TRADE_CONFIRM_ACTION}:${tradeOrderPendingKey(hyperliquidOrder)}`;
     const pendingRecord = cache.get(cacheKey) as
       | { metadata?: { idempotencyKey?: string } }
       | undefined;

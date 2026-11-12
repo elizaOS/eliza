@@ -1,0 +1,106 @@
+package ai.eliza.sense;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+/** Exact production methods with deterministic Android service, scheduler and audio ports. */
+public final class ListeningServiceLifecycleTest {
+ static final List<String> events = new ArrayList<>();
+ static void check(boolean value, String what) { if (!value) throw new AssertionError(what + ": " + events); }
+ static class Intent {}
+ static class ServiceInfo { static final int FOREGROUND_SERVICE_TYPE_MICROPHONE = 128; }
+ static class SystemClock { static long elapsedRealtime() { return 1000; } }
+ static class Log { static void w(String tag, String message) { events.add("refused"); } }
+ static class ListenerNotifications {
+  static final int ACTIVE_ID = 1;
+  static Object active(Object service, ListenerPolicy.State state) { return state; }
+  static void showStatus(Object service, ListenerPolicy.State state) { events.add("status"); }
+ }
+ static class ListenerStore {
+  ListenerStore(Object service) {}
+  static void serializeConsent(Runnable task) { task.run(); }
+  long pausedUntil() { return 0; }
+ }
+ static class Listener {
+  static ListenerPolicy.State state = ListenerPolicy.State.OFF;
+  static final Epoch epoch = new Epoch();
+  static final Lease lease = new Lease();
+  static ListenerPolicy.State state(Object service) { return state; }
+ }
+ static class Epoch { void invalidate() { events.add("invalidate"); } void renew(boolean enabled) { events.add("renew:" + enabled); } }
+ static class Lease { long nextCheckDelay(long now) { return 1000; } }
+ static class Main { void removeCallbacks(Runnable task) {} void postDelayed(Runnable task, long delay) {} }
+ static class Worker { void execute(Runnable task) { events.add("recognizer"); } }
+ static class Service {
+  static final int START_STICKY = 1, STOP_FOREGROUND_REMOVE = 1;
+  int newestStart;
+  boolean refused, stopped;
+  public int onStartCommand(Intent intent, int flags, int startId) { throw new AssertionError("overridden"); }
+  void startForeground(int id, Object notification, int type) {
+   events.add("foreground");
+   if (refused) throw new SecurityException("synthetic revoked admission");
+  }
+  void stopForeground(int flag) { events.add("stopForeground"); }
+  void stopSelf() { stopped = true; events.add("stopSelf"); }
+  void stopSelf(int id) { events.add("stopSelf:" + id); if (id == newestStart) stopped = true; }
+ }
+ static final class Host extends Service {
+  static final String TAG = "fixture";
+  boolean destroyed, foregroundOwed, analyse;
+  int lastStart;
+  Object capture;
+  final Main main = new Main();
+  final Worker recognizer = new Worker();
+  final Runnable reapply = this::apply, indicatorCheck = () -> {}, leaseCheck = () -> {};
+  final AtomicBoolean leaseStopPosted = new AtomicBoolean();
+  void stopCapture() { events.add("stopCapture"); capture = null; }
+  void startCapture() { events.add("startCapture"); capture = new Object(); }
+  void loadEngine() {}
+  void apply() { ListenerStore.serializeConsent(this::applyUnderConsentLock); }
+  /* ACTUAL_START */
+  /* ACTUAL_APPLY */
+ }
+ static void stopScenario(boolean deliveredStart, boolean refused) {
+  events.clear(); Listener.state = ListenerPolicy.State.OFF;
+  Host host = new Host(); host.newestStart = 7; host.refused = refused;
+  host.onStartCommand(deliveredStart ? new Intent() : null, 0, 7);
+  check(host.stopped && events.contains("stopSelf:7"), "the delivered stop settles");
+  check(events.contains("foreground") == deliveredStart, "only a delivered foreground start is acknowledged");
+  check(events.contains("refused") == (deliveredStart && refused), "a refused admission is explicit");
+  check(!events.contains("startCapture") && !events.contains("recognizer"), "stop never starts audio");
+  check(!host.foregroundOwed, "foreground obligation is consumed once");
+ }
+ static void pendingNewerStart() {
+  events.clear(); Listener.state = ListenerPolicy.State.OFF;
+  Host host = new Host(); host.lastStart = 1; host.newestStart = 2;
+  host.apply();
+  check(!host.stopped && events.contains("stopSelf:1"), "an older reapply cannot stop an undelivered newer start");
+  host.onStartCommand(new Intent(), 0, 2);
+  check(host.stopped && events.contains("stopSelf:2"), "newest delivered start stops itself");
+  check(events.indexOf("foreground") < events.indexOf("stopSelf:2"), "acknowledge foreground before stopping delivered start");
+ }
+ static void refusedOlderStartRetainsNewer() {
+  events.clear(); Listener.state = ListenerPolicy.State.LISTENING;
+  Host host = new Host(); host.refused = true; host.newestStart = 2;
+  host.onStartCommand(new Intent(), 0, 1);
+  check(!host.stopped && events.contains("stopSelf:1"), "a refused older foreground start cannot stop a newer queued start");
+  check(!events.contains("startCapture") && !events.contains("recognizer"), "refused admission never starts audio");
+ }
+ static void allowedStart() {
+  events.clear(); Listener.state = ListenerPolicy.State.LISTENING;
+  Host host = new Host(); host.newestStart = 3;
+  host.onStartCommand(new Intent(), 0, 3);
+  check(events.indexOf("foreground") < events.indexOf("startCapture"), "foreground precedes capture");
+  check(events.contains("renew:true") && !host.stopped, "only admitted capture arms recognition");
+ }
+ public static void main(String[] args) {
+  stopScenario(false, false);
+  stopScenario(true, false);
+  stopScenario(true, true);
+  pendingNewerStart();
+  allowedStart();
+  refusedOlderStartRetainsNewer();
+  System.out.println("PASS exact listening service foreground lifecycle (6 scenarios)");
+ }
+}

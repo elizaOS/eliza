@@ -3,6 +3,7 @@
 import { createLogger } from "./logger";
 import type { Agent, Character } from "./types/agent.js";
 import type { IDatabaseAdapter } from "./types/database";
+import { ModelType } from "./types/model";
 import type { JsonValue, UUID } from "./types/primitives.js";
 import { ChannelType } from "./types/primitives.js";
 import type { IAgentRuntime } from "./types/runtime";
@@ -49,24 +50,21 @@ export async function runPluginMigrations(
 		return;
 	}
 
-	const pluginsWithSchemas = runtime.plugins
-		.filter((p) => p.schema)
-		.map((p) => {
-			const schema = p.schema || {};
-			const normalizedSchema: Record<string, JsonValue> = {};
-			for (const [key, value] of Object.entries(schema)) {
-				if (
-					typeof value === "string" ||
-					typeof value === "number" ||
-					typeof value === "boolean" ||
-					value === null ||
-					(typeof value === "object" && value !== null)
-				) {
-					normalizedSchema[key] = value as JsonValue;
-				}
+	const pluginsWithSchemas = runtime.plugins.flatMap((p) => {
+		if (!p.schema) return [];
+		const normalizedSchema: Record<string, JsonValue> = {};
+		for (const [key, value] of Object.entries(p.schema)) {
+			if (
+				typeof value === "string" ||
+				typeof value === "number" ||
+				typeof value === "boolean" ||
+				typeof value === "object"
+			) {
+				normalizedSchema[key] = value as JsonValue;
 			}
-			return { name: p.name, schema: normalizedSchema };
-		});
+		}
+		return [{ name: p.name, schema: normalizedSchema }];
+	});
 
 	if (pluginsWithSchemas.length === 0) {
 		logger.debug(
@@ -170,9 +168,7 @@ export async function ensureEmbeddingDimension(
 	runtime: IAgentRuntime,
 ): Promise<void> {
 	const adapter = runtime.adapter;
-	const model = runtime.getModel(
-		"TEXT_EMBEDDING" as import("./types/model").ModelTypeName,
-	);
+	const model = runtime.getModel(ModelType.TEXT_EMBEDDING);
 	if (!model) {
 		logger.debug(
 			{ src: "provisioning", agentId: runtime.agentId },

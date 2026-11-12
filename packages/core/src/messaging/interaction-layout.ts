@@ -103,13 +103,11 @@ function resolveButtonsPerRow(value: number | undefined): number {
 	return value;
 }
 
-function chunk<T>(items: T[], size: number): T[][] {
-	if (!Number.isInteger(size) || size < 1) {
-		throw new RangeError("chunk size must be a finite integer of at least 1");
-	}
-	const rows: T[][] = [];
-	for (let i = 0; i < items.length; i += size)
-		rows.push(items.slice(i, i + size));
+/** `size` is already validated by {@link resolveButtonsPerRow}. */
+function buttonRows(buttons: NeutralButton[], size: number): NeutralRow[] {
+	const rows: NeutralRow[] = [];
+	for (let i = 0; i < buttons.length; i += size)
+		rows.push({ buttons: buttons.slice(i, i + size) });
 	return rows;
 }
 
@@ -131,7 +129,7 @@ function optionButtons(
 		buttons.push({ label: o.label, callbackData, style: "secondary" });
 	}
 	return {
-		rows: chunk(buttons, perRow).map((b) => ({ buttons: b })),
+		rows: buttonRows(buttons, perRow),
 		anyDropped,
 	};
 }
@@ -174,7 +172,7 @@ export function toNeutralLayout(
 				if (callbackData)
 					buttons.push({ label: o.label, callbackData, style: "secondary" });
 			}
-			return { rows: chunk(buttons, perRow).map((b) => ({ buttons: b })) };
+			return { rows: buttonRows(buttons, perRow) };
 		}
 		case "task": {
 			// Without a resolvable link the card is dashboard-only; its bare
@@ -318,15 +316,21 @@ export function renderInteractionsAsPlainText(
 		// `hadBlocks` still reports the parse result rather than the cleanup.
 		return { text: cleanedText, hadBlocks: false };
 	}
-	const fallbacks = blocks
-		.map((block) => toPlainTextFallback(block, opts))
-		.filter((part): part is string => Boolean(part?.trim()));
+	return withPlainTextFallbacks(cleanedText, blocks, opts);
+}
+
+function withPlainTextFallbacks(
+	cleanedText: string,
+	blocks: readonly InteractionBlock[],
+	opts: PlainTextFallbackOptions,
+): { text: string; hadBlocks: true } {
+	const parts = cleanedText.trim().length > 0 ? [cleanedText] : [];
+	for (const block of blocks) {
+		const fallback = toPlainTextFallback(block, opts);
+		if (fallback?.trim()) parts.push(fallback);
+	}
 	return {
-		text: stripDashboardOnlyMarkers(
-			[cleanedText, ...fallbacks]
-				.filter((part) => part.trim().length > 0)
-				.join("\n\n"),
-		),
+		text: stripDashboardOnlyMarkers(parts.join("\n\n")),
 		hadBlocks: true,
 	};
 }
@@ -348,18 +352,11 @@ export function renderContentInteractionsAsPlainText(
 	if (interactions.length === 0) {
 		return renderInteractionsAsPlainText(source, opts);
 	}
-	const { cleanedText } = parseInteractionBlocks(source);
-	const fallbacks = interactions
-		.map((block) => toPlainTextFallback(block, opts))
-		.filter((part): part is string => Boolean(part?.trim()));
-	return {
-		text: stripDashboardOnlyMarkers(
-			[cleanedText, ...fallbacks]
-				.filter((part) => part.trim().length > 0)
-				.join("\n\n"),
-		),
-		hadBlocks: true,
-	};
+	return withPlainTextFallbacks(
+		parseInteractionBlocks(source).cleanedText,
+		interactions,
+		opts,
+	);
 }
 
 /**

@@ -11,7 +11,10 @@ import { createRealTestRuntime } from '../../../../packages/app/test/helpers/rea
 import { embeddedExecutions, hostedResults } from '../../src/db/schema';
 import { workflowPlugin } from '../../src/index';
 import { handleWorkflowRoutes } from '../../src/routes/workflow-routes';
-import type { EmbeddedWorkflowService } from '../../src/services/embedded-workflow-service';
+import {
+  type EmbeddedWorkflowService,
+  notRunOccurrence,
+} from '../../src/services/embedded-workflow-service';
 import { digestDeliveryProjection } from '../../src/services/hosted-digest';
 import { resolveSmithersWorkflowDir } from '../../src/services/smithers-runtime';
 
@@ -285,15 +288,23 @@ test('two actual scheduled hosted digests survive restart and reconnect with one
         triggerData: { scheduledAtMs: currentMinute, workflowVersionId: randomUUID() },
       })
     ).rejects.toThrow();
-    expect(
-      (
-        await call(`/workflows/${missed.workflowId}/run`, {
-          submissionId: randomUUID(),
-          expectedVersionId: missed.versionId,
-          input: { hostedDigest: { scheduledAt: new Date(currentMinute).toISOString() } },
-        })
-      ).status
-    ).toBe(409);
+    // /run never admits a hosted digest; the refusal carries a typed code clients can trust.
+    const reviewedRun = await call(`/workflows/${missed.workflowId}/run`, {
+      submissionId: randomUUID(),
+      expectedVersionId: missed.versionId,
+      input: { hostedDigest: { scheduledAt: new Date(currentMinute).toISOString() } },
+    });
+    expect(reviewedRun.status).toBe(409);
+    expect(reviewedRun.body).toMatchObject({
+      code: 'HOSTED_DIGEST_NOT_ADMITTED',
+      workflowId: missed.workflowId,
+    });
+    const manualRun = await call(`/workflows/${missed.workflowId}/run`, { input: {} });
+    expect(manualRun.status).toBe(409);
+    expect(manualRun.body).toMatchObject({
+      code: 'HOSTED_DIGEST_NOT_ADMITTED',
+      workflowId: missed.workflowId,
+    });
     const overlap = await newLoop(),
       heldId = randomUUID(),
       held = {
@@ -347,6 +358,7 @@ test('two actual scheduled hosted digests survive restart and reconnect with one
       triggerData: { scheduledAtMs: currentMinute, workflowVersionId: expiredLoop.versionId },
     });
     expect((expiredRun.output as any).status).toBe('unavailable');
+    expect(notRunOccurrence(expiredRun)?.status).toBe('unavailable');
     const revoked = await newLoop();
     expect((await call('/hosted/sources/revoke', { id: source.id, confirmed: true })).status).toBe(
       200

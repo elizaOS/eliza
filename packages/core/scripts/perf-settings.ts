@@ -1,24 +1,20 @@
-/** Captures deterministic performance-setting fixtures for core runtime benchmark runs. */
+/** Benchmarks settings encryption and decryption throughput (`bun run perf:settings`). */
 import { decryptStringValue, encryptStringValue } from "../src/settings";
 
-function formatNumber(value: number): string {
-	return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(
-		value,
-	);
-}
+const numberFormat = new Intl.NumberFormat("en-US", {
+	maximumFractionDigits: 2,
+});
 
-function benchmark(label: string, iterations: number, fn: () => void): number {
+function benchmark(label: string, iterations: number, fn: () => void): void {
 	const start = performance.now();
 	for (let i = 0; i < iterations; i += 1) {
 		fn();
 	}
 	const elapsedMs = performance.now() - start;
 	const opsPerSec = (iterations / elapsedMs) * 1000;
-	// eslint-disable-next-line no-console
 	console.log(
-		`${label}: ${formatNumber(opsPerSec)} ops/sec (${formatNumber(elapsedMs)} ms total)`,
+		`${label}: ${numberFormat.format(opsPerSec)} ops/sec (${numberFormat.format(elapsedMs)} ms total)`,
 	);
-	return opsPerSec;
 }
 
 const iterations = Number(process.env.ITERATIONS ?? "50000");
@@ -57,5 +53,4 @@ benchmark("decryptStringValue (v2 AES-GCM)", iterations, () => {
 });
 
 // Prevent dead-code elimination / ensure something observable.
-// eslint-disable-next-line no-console
 console.log(`last=${lastEncrypted.slice(0, 24)}…`);

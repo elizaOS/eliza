@@ -3,7 +3,8 @@
  *
  * Adds an email address to the authenticated user's account. Only allowed
  * when the user has no email currently set — changing an existing email
- * still requires support intervention.
+ * still requires support intervention. The address is stored unverified and
+ * no mail is sent, so it never links a sign-in to this account.
  *
  * Mirrors `_legacy_actions/users.ts → updateEmail`.
  */
@@ -98,7 +99,7 @@ app.patch("/", async (c) => {
 
     return c.json({
       success: true,
-      message: "Email added successfully! Please check your inbox to verify.",
+      message: "Email saved. It is not verified.",
     });
   } catch (error) {
     return failureResponse(c, error);

@@ -18,7 +18,7 @@
 
 import { ElizaError } from "@elizaos/core";
 import { createHash } from "crypto";
-import { decodeProtectedHeader, type JWTPayload, jwtVerify, SignJWT } from "jose";
+import { decodeProtectedHeader, errors, type JWTPayload, jwtVerify, SignJWT } from "jose";
 import { cache } from "../cache/client";
 import { InMemoryLRUCache } from "../cache/in-memory-lru-cache";
 import { CacheKeys, CacheTTL } from "../cache/keys";
@@ -89,6 +89,16 @@ export interface StewardTokenClaims {
   issuedAt: number;
   /** Token not-before time, when the issuer supplied one. */
   notBefore?: number;
+  /**
+   * Signed `auth_time`: when the user last authenticated. Re-mints and
+   * refresh-token rotation copy it, so it never moves without a sign-in.
+   */
+  authTime?: number;
+  /**
+   * Signed `sst`: when this bearer-renewed session chain started. Bearer
+   * refresh copies it and refuses renewal once the chain is too old.
+   */
+  sessionStartedAt?: number;
 }
 
 /**
@@ -96,9 +106,10 @@ export interface StewardTokenClaims {
  */
 interface CachedStewardClaims {
   /**
-   * Invalidates pre-Telegram claim memos that omitted signed identity authority.
+   * Invalidates memos that omitted signed identity authority or session-age
+   * claims (auth_time, sst).
    */
-  claimsSchemaVersion: 2;
+  claimsSchemaVersion: 3;
   userId: string;
   email?: string;
   address?: string;
@@ -112,6 +123,8 @@ interface CachedStewardClaims {
   expiration: number;
   issuedAt: number;
   notBefore?: number;
+  authTime?: number;
+  sessionStartedAt?: number;
   cachedAt: number;
   /** Binds a memo to the signing key so rotation invalidates old verification results. */
   signingKeyFingerprint: string;
@@ -311,6 +324,14 @@ export async function mintStewardTokenFromClaims(
   if (claims.stagingSessionBinding) {
     payload.eliza_staging_session = claims.stagingSessionBinding;
   }
+  // A re-mint is not an authentication: carry the signed sign-in time and
+  // session start unchanged. A token without them falls back to its own iat,
+  // never to now, so a chain of re-mints cannot move either one forward.
+  const presentedIssuedAt = claims.issuedAt > 0 ? claims.issuedAt : undefined;
+  const authTime = claims.authTime ?? presentedIssuedAt;
+  if (authTime !== undefined) payload.auth_time = authTime;
+  const sessionStartedAt = claims.sessionStartedAt ?? presentedIssuedAt;
+  if (sessionStartedAt !== undefined) payload.sst = sessionStartedAt;
 
   const token = await new SignJWT(payload)
     .setProtectedHeader(protectedHeader)
@@ -335,6 +356,21 @@ function fingerprintSigningKey(secret: Uint8Array): string {
 }
 
 /**
+ * Fingerprint of the key that verifies ordinary Steward sessions, or null when
+ * none is configured. Caches derived from a verified session store it so a key
+ * rotation invalidates them.
+ */
+export function stewardSessionKeyFingerprint(env: StewardVerifyEnv): string | null {
+  const secret = resolveJwtSecret(env);
+  return secret ? fingerprintSigningKey(secret) : null;
+}
+
+/** A signed token whose claims have the wrong shape: a rejected credential. */
+class StewardClaimShapeError extends Error {
+  override readonly name = "StewardClaimShapeError";
+}
+
+/**
  * In-memory LRU cache for Steward token verification (30s TTL, max 200).
  * Eliminates Redis round-trip for repeated requests within the same
  * serverless function instance.
@@ -348,7 +384,7 @@ function extractStagingSessionBinding(payload: JWTPayload): StagingSessionBindin
   const raw = payload.eliza_staging_session;
   if (raw === undefined) return undefined;
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new Error("Invalid staging session binding claim");
+    throw new StewardClaimShapeError("Invalid staging session binding claim");
   }
   const record = raw as Record<string, unknown>;
   if (
@@ -360,7 +396,7 @@ function extractStagingSessionBinding(payload: JWTPayload): StagingSessionBindin
     typeof record.sessionIssuedAt !== "number" ||
     typeof record.sessionMaxExpiresAt !== "number"
   ) {
-    throw new Error("Invalid staging session binding claim");
+    throw new StewardClaimShapeError("Invalid staging session binding claim");
   }
   return {
     version: STAGING_SESSION_EXCHANGE_VERSION,
@@ -371,6 +407,12 @@ function extractStagingSessionBinding(payload: JWTPayload): StagingSessionBindin
     sessionIssuedAt: record.sessionIssuedAt,
     sessionMaxExpiresAt: record.sessionMaxExpiresAt,
   };
+}
+
+function positiveSeconds(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : undefined;
 }
 
 function extractClaims(payload: JWTPayload): StewardTokenClaims {
@@ -392,10 +434,12 @@ function extractClaims(payload: JWTPayload): StewardTokenClaims {
   let telegramId: string | undefined;
   if (authMethod === "telegram") {
     if (!isValidStewardTelegramId(payload.telegramId)) {
-      throw new Error("Invalid Telegram identity claims");
+      throw new StewardClaimShapeError("Invalid Telegram identity claims");
     }
     telegramId = payload.telegramId;
   }
+  const authTime = positiveSeconds(payload.auth_time);
+  const sessionStartedAt = positiveSeconds(payload.sst);
 
   return {
     userId,
@@ -411,6 +455,8 @@ function extractClaims(payload: JWTPayload): StewardTokenClaims {
     expiration: payload.exp ?? 0,
     issuedAt: payload.iat ?? 0,
     ...(payload.nbf !== undefined ? { notBefore: payload.nbf } : {}),
+    ...(authTime !== undefined ? { authTime } : {}),
+    ...(sessionStartedAt !== undefined ? { sessionStartedAt } : {}),
   };
 }
 
@@ -611,7 +657,7 @@ export async function verifyStewardTokenCached(
         typeof cached.userId !== "string" ||
         typeof cached.expiration !== "number" ||
         typeof cached.issuedAt !== "number" ||
-        cached.claimsSchemaVersion !== 2 ||
+        cached.claimsSchemaVersion !== 3 ||
         typeof cached.signingKeyFingerprint !== "string"
       ) {
         await cache.del(cacheKey);
@@ -641,6 +687,10 @@ export async function verifyStewardTokenCached(
             expiration: cached.expiration,
             issuedAt: cached.issuedAt,
             ...(cached.notBefore !== undefined ? { notBefore: cached.notBefore } : {}),
+            ...(cached.authTime !== undefined ? { authTime: cached.authTime } : {}),
+            ...(cached.sessionStartedAt !== undefined
+              ? { sessionStartedAt: cached.sessionStartedAt }
+              : {}),
           };
 
           if (!(await validateStewardClaims(env, stagingHeader, claims, tokenHash))) {
@@ -678,7 +728,7 @@ export async function verifyStewardTokenCached(
     if (!options.skipDistributedCache && effectiveTtl > 0) {
       const cachedClaims: CachedStewardClaims = {
         ...claims,
-        claimsSchemaVersion: 2,
+        claimsSchemaVersion: 3,
         cachedAt: Date.now(),
         signingKeyFingerprint,
       };
@@ -708,7 +758,7 @@ export async function verifyStewardTokenCached(
     // Also cache in-memory
     IN_MEMORY_STEWARD_CACHE.set(tokenHash, {
       ...claims,
-      claimsSchemaVersion: 2,
+      claimsSchemaVersion: 3,
       cachedAt: Date.now(),
       signingKeyFingerprint,
     });
@@ -717,18 +767,24 @@ export async function verifyStewardTokenCached(
   } catch (error) {
     // error-policy:J3 invalid credentials return null; strict callers receive
     // infrastructure failures separately so they cannot report false logout success.
+    // Every jose error here describes the presented token (bad format, alg,
+    // signature, claims or lifetime), never the verifier's own health.
     const isExpectedFailure =
-      error instanceof Error &&
-      (error.message.includes("JWSInvalid") ||
-        error.message.includes("JWTExpired") ||
-        error.message.includes("JWTClaimValidationFailed") ||
-        error.message.includes("Invalid Compact JWS") ||
-        error.message.includes("signature verification failed") ||
-        ("code" in error &&
-          (error.code === "ERR_JWS_INVALID" ||
-            error.code === "ERR_JWT_EXPIRED" ||
-            error.code === "ERR_JWT_CLAIM_VALIDATION_FAILED" ||
-            error.code === "ERR_JWS_SIGNATURE_VERIFICATION_FAILED")));
+      error instanceof errors.JOSEError ||
+      error instanceof StewardClaimShapeError ||
+      (error instanceof Error &&
+        (error.message.includes("JWSInvalid") ||
+          error.message.includes("JWTExpired") ||
+          error.message.includes("JWTClaimValidationFailed") ||
+          error.message.includes("Invalid Compact JWS") ||
+          error.message.includes("signature verification failed") ||
+          ("code" in error &&
+            (error.code === "ERR_JWS_INVALID" ||
+              error.code === "ERR_JWT_EXPIRED" ||
+              error.code === "ERR_JWT_CLAIM_VALIDATION_FAILED" ||
+              error.code === "ERR_JWS_SIGNATURE_VERIFICATION_FAILED" ||
+              error.code === "ERR_JWT_INVALID" ||
+              error.code === "ERR_JOSE_ALG_NOT_ALLOWED"))));
 
     if (isExpectedFailure) {
       logger.debug(

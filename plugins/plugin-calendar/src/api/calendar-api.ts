@@ -20,10 +20,13 @@ import type {
   LifeOpsIcsCalendarSyncResponse,
   LifeOpsLinkedCalendarControl,
   LifeOpsLinkedCalendarControlMutationResult,
+  LifeOpsLinkedCalendarEventView,
+  LifeOpsLinkedCalendarMutationResponse,
   LifeOpsNextCalendarEventContext,
   ListLifeOpsCalendarsRequest,
   ListLifeOpsIcsCalendarSourcesResponse,
   PurgeLifeOpsCalendarImportedDataRequest,
+  ResolveLifeOpsLinkedCalendarConflictRequest,
   SeedLifeOpsCalendarRequest,
   SetLifeOpsCalendarIncludedRequest,
   SetLifeOpsCalendarIncludedResponse,
@@ -63,6 +66,13 @@ export interface CalendarClientMethods {
   updateLinkedCalendarControl(
     request: UpdateLifeOpsLinkedCalendarControlRequest,
   ): Promise<LifeOpsLinkedCalendarControlMutationResult>;
+  listLinkedCalendarEvents(): Promise<{
+    links: LifeOpsLinkedCalendarEventView[];
+  }>;
+  resolveLinkedCalendarConflict(
+    linkId: string,
+    request: ResolveLifeOpsLinkedCalendarConflictRequest,
+  ): Promise<LifeOpsLinkedCalendarMutationResponse>;
   getLifeOpsCalendarFeed(
     options?: GetLifeOpsCalendarFeedRequest,
     request?: Pick<RequestInit, "signal">,
@@ -140,6 +150,28 @@ export function installCalendarApi(host: CalendarApiHost): CalendarApi {
   ) {
     return this.fetch<LifeOpsLinkedCalendarControlMutationResult>(
       "/api/lifeops/calendar/sync-control",
+      {
+        method: "POST",
+        body: JSON.stringify(request),
+      },
+    );
+  };
+
+  calendarClientPrototype.listLinkedCalendarEvents = async function (
+    this: CalendarApiHost,
+  ) {
+    return this.fetch<{ links: LifeOpsLinkedCalendarEventView[] }>(
+      "/api/lifeops/calendar/links?view=events",
+    );
+  };
+
+  calendarClientPrototype.resolveLinkedCalendarConflict = async function (
+    this: CalendarApiHost,
+    linkId: string,
+    request: ResolveLifeOpsLinkedCalendarConflictRequest,
+  ) {
+    return this.fetch<LifeOpsLinkedCalendarMutationResponse>(
+      `/api/lifeops/calendar/links/${encodeURIComponent(linkId)}/resolve`,
       {
         method: "POST",
         body: JSON.stringify(request),

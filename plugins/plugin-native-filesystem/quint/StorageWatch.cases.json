@@ -1,0 +1,25 @@
+{
+  "sources": [
+    "plugins/plugin-native-filesystem/android/src/main/java/ai/eliza/plugins/filesystem/browser/StorageBrowser.java"
+  ],
+  "conformance": "plugins/plugin-native-filesystem/test/storage-watch.test.mjs",
+  "bounds": {
+    "domain": "Three serially issued watch tickets, each registered at most once; current and stale refusal, replacement and explicit unwatch.",
+    "assumptions": "Watch callbacks are synchronous. No fairness or eventual caller refusal is assumed. The host must call fail for a refused request; Alpha's separate bridge checks cover that composition.",
+    "limitations": "No Android FileObserver or ContentObserver callbacks, process death, arbitrary ticket overflow or storage authority are modeled. The executed JVM source test additionally checks a throwing cleanup callback loses publication authority. Resource release is conditional on the host actually reporting refusal."
+  },
+  "cases": [
+    {
+      "name": "bounded-watch-refusal",
+      "main": "StorageWatch",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "safety"
+      ],
+      "temporal": [],
+      "maxSteps": 20,
+      "samples": 1000
+    }
+  ]
+}

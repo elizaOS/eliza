@@ -17,6 +17,8 @@ import { userModerationStatus } from "../../db/schemas/moderation-violations";
 import { organizations } from "../../db/schemas/organizations";
 import { users } from "../../db/schemas/users";
 import { AuthenticationError, ForbiddenError } from "../api/errors";
+import { mintStewardTokenFromClaims } from "../auth/steward-client";
+import { runWithCloudBindings } from "../runtime/cloud-bindings";
 import { requireInferenceApiKeyWithOrg } from "./inference-api-key-auth";
 import { type InferenceAuthTelemetry, resolveInferenceAuthContext } from "./inference-auth-context";
 
@@ -180,6 +182,25 @@ describe("inference API-key identity", () => {
 });
 
 describe("mobile credentials on the Worker inference boundary", () => {
+  const qualifiedBindings = {
+    INFERENCE_ADMISSION_GATES: {
+      getByName() {
+        return {
+          async fetch() {
+            return Response.json({ allowed: true });
+          },
+        };
+      },
+    },
+  };
+  function qualifiedResolve(
+    request: Request,
+    options?: Parameters<typeof resolveInferenceAuthContext>[1],
+  ) {
+    return runWithCloudBindings(qualifiedBindings, () =>
+      resolveInferenceAuthContext(request, options),
+    );
+  }
   async function mobileKey(
     overrides: {
       active?: boolean;
@@ -210,72 +231,50 @@ describe("mobile credentials on the Worker inference boundary", () => {
       headers: { Authorization: `Bearer ${key}` },
     });
   }
-  test("active mobile key resolves in Worker cache-only mode without positive cache reads or writes", async () => {
-    process.env.INFERENCE_AUTH_CACHE_ENABLED = "true";
-    process.env.INFERENCE_STRONG_REVOCATION_ENABLED = "true";
+  // Mobile lifecycle keys share the combined cache: their revocations
+  // invalidate the same key-hash entry. A Worker cold miss is decided by the
+  // shared authoritative hydration and served, never refused (covered end to
+  // end, with a primary tripwire, in inference-auth-hot-path.pglite.test.ts).
+  test("active mobile key on a Worker cold miss is decided by the primary, not refused", async () => {
     const key = await mobileKey();
-    const deferred: Promise<unknown>[] = [];
     let trace: InferenceAuthTelemetry | undefined;
-    const result = await resolveInferenceAuthContext(request(key), {
-      cacheOnly: true,
+    // This fixture has no admission-projection tables, so the decision cannot
+    // complete; what matters is that the cold miss reaches the primary
+    // identity lookup instead of returning a retryable warming refusal.
+    await qualifiedResolve(request(key), {
       deferStrongCredentialCheck: true,
-      executionCtx: {
-        waitUntil(task) {
-          deferred.push(task);
-        },
-      },
+      executionCtx: { waitUntil() {} },
       onTelemetry(value) {
         trace = value;
       },
-    });
-    expect(result.kind).toBe("authorized");
-    if (result.kind !== "authorized") throw Error("Mobile Worker authorization failed");
-    expect(result.credential).toMatchObject({ kind: "api_key", userId: USER });
-    expect(result.source).toBe("origin");
-    expect(result.ctx.orgId).toBe(ORG);
-    expect(result.ctx.userId).toBe(USER);
-    expect(trace?.cacheRead).toBe("not_run");
-    expect(trace?.cacheWrite).toBe("not_run");
-    await Promise.allSettled(deferred);
-    await getPgliteClientForTests().query(
-      "UPDATE api_keys SET deleted_at=now() WHERE key_hash=$1",
-      [createHash("sha256").update(key).digest("hex")],
-    );
-    await expect(
-      resolveInferenceAuthContext(request(key), {
-        cacheOnly: true,
-        executionCtx: { waitUntil() {} },
-      }),
-    ).rejects.toBeInstanceOf(AuthenticationError);
-    delete process.env.INFERENCE_AUTH_CACHE_ENABLED;
-    delete process.env.INFERENCE_STRONG_REVOCATION_ENABLED;
+    }).catch(() => undefined);
+    expect(trace?.cacheRead).toBe("miss");
+    expect(typeof trace?.timings.identityLookupMs).toBe("number");
   });
-  test("Worker chat admits mobile identity before validation and still rejects generic callers", async () => {
+  test("Worker chat rejects generic callers before any admission work", async () => {
     const { handleChatCompletionsPOST } = await import("../../../../api/v1/chat/completions/route");
-    const key = await mobileKey();
     const send = async (token: string) => {
       const deferred: Promise<unknown>[] = [];
-      const response = await handleChatCompletionsPOST(
-        new Request("https://api.eliza.app/api/v1/chat/completions", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: "{}",
-        }),
-        {
-          skipOrgRateLimit: true,
-          executionCtx: {
-            waitUntil(task) {
-              deferred.push(task);
+      const response = await runWithCloudBindings(qualifiedBindings, () =>
+        handleChatCompletionsPOST(
+          new Request("https://api.eliza.app/api/v1/chat/completions", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: "{}",
+          }),
+          {
+            skipOrgRateLimit: true,
+            executionCtx: {
+              waitUntil(task) {
+                deferred.push(task);
+              },
             },
           },
-        },
+        ),
       );
       await Promise.allSettled(deferred);
       return response;
     };
-    const admitted = await send(key);
-    expect(admitted.status).toBe(400);
-    expect((await admitted.json()).error.code).toBe("missing_required_parameter");
     const refused = await send("unrecognized-credential");
     expect(refused.status).toBe(401);
     expect((await refused.json()).error.code).toBe("authentication_required");
@@ -289,19 +288,174 @@ describe("mobile credentials on the Worker inference boundary", () => {
       { app: null },
     ]) {
       const key = await mobileKey(state);
-      await expect(
-        resolveInferenceAuthContext(request(key), {
-          cacheOnly: true,
-          executionCtx: { waitUntil() {} },
-        }),
-      ).rejects.toBeInstanceOf(Error);
+      // The authoritative decision (what Worker hydration projects) rejects.
+      await expect(resolveInferenceAuthContext(request(key))).rejects.toBeInstanceOf(Error);
+      // A Worker request never authorizes a credential it has not cached.
+      const worker = await qualifiedResolve(request(key), {
+        executionCtx: { waitUntil() {} },
+      }).catch((error: unknown) => error);
+      expect((worker as { kind?: string }).kind).not.toBe("authorized");
     }
   });
   test("a non-API-key caller retains the generic slow path", async () => {
-    const result = await resolveInferenceAuthContext(request("unrecognized-credential"), {
-      cacheOnly: true,
+    const result = await qualifiedResolve(request("unrecognized-credential"), {
       executionCtx: { waitUntil() {} },
     });
     expect(result).toEqual({ kind: "slow_path", reason: "non_api_key" });
+  });
+});
+
+describe("verified bootstrap credential metadata", () => {
+  const bindings = {
+    STEWARD_SESSION_SECRET: "synthetic-bootstrap-secret-".repeat(3),
+  };
+  function request(token: string) {
+    return new Request("https://api.eliza.app/api/v1/voice/speech/session", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  }
+  async function resolve(token: string, includeVerifiedCredential = true) {
+    return await runWithCloudBindings(bindings, () =>
+      resolveInferenceAuthContext(request(token), { includeVerifiedCredential }),
+    );
+  }
+  async function rejectAtStrongBoundary(token: string, reason: string) {
+    const checks: Record<string, unknown>[] = [];
+    try {
+      return await runWithCloudBindings(
+        {
+          ...bindings,
+          INFERENCE_ADMISSION_GATES: {
+            getByName(organizationId: string) {
+              expect(organizationId).toBe(ORG);
+              return {
+                async fetch(req: Request) {
+                  expect(new URL(req.url).pathname).toBe("/credential/check");
+                  checks.push((await req.json()) as Record<string, unknown>);
+                  return Response.json({ allowed: false, reason }, { status: 403 });
+                },
+              };
+            },
+          },
+        },
+        () => resolveInferenceAuthContext(request(token), { includeVerifiedCredential: true }),
+      );
+    } finally {
+      expect(checks).toHaveLength(1);
+      expect(JSON.stringify(checks)).not.toContain(token);
+    }
+  }
+  test("API-key metadata requires ordinary authorization and does not enable caching", async () => {
+    const key = await seedKey({ userId: USER, organizationId: ORG });
+    const ordinary = await resolve(key, false);
+    expect(ordinary.kind).toBe("authorized");
+    expect("credential" in ordinary).toBe(false);
+    let trace: InferenceAuthTelemetry | undefined;
+    const included = await runWithCloudBindings(bindings, () =>
+      resolveInferenceAuthContext(request(key), {
+        includeVerifiedCredential: true,
+        onTelemetry(value) {
+          trace = value;
+        },
+      }),
+    );
+    expect(included.kind).toBe("authorized");
+    if (included.kind !== "authorized") throw Error("Expected verified API key");
+    expect(included.credential).toEqual({
+      kind: "api_key",
+      credentialId: included.ctx.apiKeyId,
+      userId: USER,
+      rateLimit: 1000,
+      expiresAt: null,
+    });
+    expect(JSON.stringify(included.credential)).not.toContain(key);
+    expect(trace?.cacheRead).toBe("not_run");
+    expect(trace?.cacheWrite).toBe("not_run");
+    for (const values of [
+      { userId: USER, organizationId: ORG, isActive: false },
+      { userId: USER, organizationId: ORG, deleted: true },
+      { userId: USER, organizationId: ORG, expired: true },
+      { userId: INACTIVE_USER, organizationId: ORG },
+      { userId: INACTIVE_ORG_USER, organizationId: INACTIVE_ORG },
+    ]) {
+      await expect(resolve(await seedKey(values))).rejects.toBeInstanceOf(Error);
+    }
+  });
+  test("signed session metadata uses verified subject and issue time while revoked standing is denied", async () => {
+    const subject = "synthetic-bootstrap-steward";
+    await getPgliteClientForTests().query("UPDATE users SET steward_user_id=$1 WHERE id=$2", [
+      subject,
+      USER,
+    ]);
+    const issuedAt = Math.floor(Date.now() / 1000);
+    const signed = await mintStewardTokenFromClaims(bindings, {
+      userId: subject,
+      issuedAt,
+      expiration: issuedAt + 600,
+    });
+    if (!signed) throw Error("Synthetic session signer unavailable");
+    const ordinary = await resolve(signed.token, false);
+    expect(ordinary.kind).toBe("authorized");
+    expect("credential" in ordinary).toBe(false);
+    const included = await resolve(signed.token);
+    expect(included.kind).toBe("authorized");
+    if (included.kind !== "authorized") throw Error("Expected verified session");
+    expect(included.credential).toEqual({
+      kind: "steward_session",
+      userId: USER,
+      stewardUserId: subject,
+      issuedAt,
+    });
+    expect(JSON.stringify(included.credential)).not.toContain(signed.token);
+    await expect(rejectAtStrongBoundary(signed.token, "session_revoked")).rejects.toBeInstanceOf(
+      Error,
+    );
+    const parts = signed.token.split(".");
+    parts[2] = `${parts[2].startsWith("A") ? "B" : "A"}${parts[2].slice(1)}`;
+    expect((await resolve(parts.join("."))).kind).toBe("rejected");
+    await getPgliteClientForTests().query("UPDATE users SET is_active=false WHERE id=$1", [USER]);
+    try {
+      await expect(resolve(signed.token)).rejects.toBeInstanceOf(Error);
+    } finally {
+      await getPgliteClientForTests().query("UPDATE users SET is_active=true WHERE id=$1", [USER]);
+    }
+  });
+  test("route bootstrap returns verified API and session metadata without a Worker context", async () => {
+    const { requireGenerativeRouteCaller } = await import(
+      "../../../../api/src/lib/generative-route-auth"
+    );
+    const key = await seedKey({ userId: USER, organizationId: ORG });
+    const values = new Map<string, unknown>();
+    const c = {
+      req: { raw: request(key) },
+      get: (name: string) => values.get(name),
+      set: (name: string, value: unknown) => values.set(name, value),
+    } as Parameters<typeof requireGenerativeRouteCaller>[0];
+    const caller = await runWithCloudBindings(bindings, () =>
+      requireGenerativeRouteCaller(c, { includeVerifiedCredential: true }),
+    );
+    expect(caller.credential).toMatchObject({ kind: "api_key", userId: USER });
+    expect(caller.user.organization_id).toBe(ORG);
+    expect(JSON.stringify(caller)).not.toContain(key);
+    const issuedAt = Math.floor(Date.now() / 1000);
+    const signed = await mintStewardTokenFromClaims(bindings, {
+      userId: "synthetic-bootstrap-steward",
+      issuedAt,
+      expiration: issuedAt + 600,
+    });
+    if (!signed) throw Error("Synthetic session signer unavailable");
+    c.req.raw = request(signed.token);
+    const sessionCaller = await runWithCloudBindings(bindings, () =>
+      requireGenerativeRouteCaller(c, { includeVerifiedCredential: true }),
+    );
+    expect(sessionCaller.credential).toEqual({
+      kind: "steward_session",
+      userId: USER,
+      stewardUserId: "synthetic-bootstrap-steward",
+      issuedAt,
+    });
+    expect(sessionCaller.apiKeyId).toBeNull();
+    expect(JSON.stringify(sessionCaller)).not.toContain(signed.token);
   });
 });

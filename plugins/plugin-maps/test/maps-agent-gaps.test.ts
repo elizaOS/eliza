@@ -4,7 +4,12 @@
  * and saved places are listed with the phone's own Maps list reconciled in.
  * Providers, stores and hosts are in-process stubs; no request leaves the test.
  */
-import type { HandlerOptions, IAgentRuntime, Memory } from "@elizaos/core";
+import type {
+  ActionResult,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
 // Owner access is resolved by core from world roles; the stub runtime has none,
@@ -15,13 +20,15 @@ vi.mock("@elizaos/core", async (importOriginal) => ({
     message?.entityId === OWNER,
 }));
 
-import { mapsAction } from "../src/action.js";
+import { mapsAction, mapsNavigationAction } from "../src/action.js";
 import type { MapsProviderAdapter } from "../src/adapter.js";
 import { SavedPlaces } from "../src/client/saved-places.ts";
 import { planCoveredRoutes } from "../src/components/plan-covered-routes.js";
 import { offeredTravelModes } from "../src/coverage.js";
 import { MapsError } from "../src/errors.js";
 import { serverInteract } from "../src/interact.js";
+import type { MapsDeviceNavigation } from "../src/navigation.js";
+import { mapsPlugin } from "../src/plugin.js";
 import {
   type MapsHostSavedPlace,
   parseHostSavedPlaces,
@@ -361,7 +368,7 @@ describe("saved places reconciled with the phone's list", () => {
     );
     expect(stranger).toMatchObject({
       success: true,
-      text: "You have no saved places.",
+      text: "No places are saved with your assistant yet. Places saved only on the phone's Maps screen aren't included.",
       data: { device: "none", places: [] },
     });
     expect(JSON.stringify(stranger)).not.toContain("Pin");
@@ -375,8 +382,65 @@ describe("saved places reconciled with the phone's list", () => {
     });
     service.registerSavedPlacesHost(null);
     expect(await run(service, { action: "saved" })).toMatchObject({
+      text: "Saved places: Port. Places saved only on the phone's Maps screen aren't included.",
       data: { device: "none" },
     });
+  });
+
+  it("says a MAPS_SAVE is the assistant's only while no phone list is registered", async () => {
+    let commit = 0;
+    const writes: SavedPlace[] = [];
+    const service = new MapsService(undefined, {
+      ...store([]),
+      save: async (request) => {
+        commit += 1;
+        const row = saved(
+          request.place,
+          request.label ?? request.place.name,
+          commit,
+        );
+        writes.push(row);
+        return {
+          savedPlace: row,
+          replayed: false,
+          commitId: `c${commit}`,
+          committedAt: "2026-10-01T00:00:00.000Z",
+          idempotencyKey: `k${commit}`,
+          currentlyApplied: true,
+          currentSavedPlace: row,
+        };
+      },
+    });
+    const mapsSave = mapsPlugin.actions?.find(
+      (action) => action.name === "MAPS_SAVE",
+    );
+    const parameters = {
+      action: "save",
+      latitude: 43.7,
+      longitude: 7.4,
+      name: "Pin",
+      label: "Dentist",
+    };
+    const save = () =>
+      mapsSave?.handler?.(
+        runtimeWith(service),
+        message(parameters),
+        undefined,
+        { parameters } as HandlerOptions,
+      );
+    expect(await save()).toMatchObject({
+      success: true,
+      text: "Saved Dentist with your assistant. It isn't in the phone's Maps list.",
+    });
+    service.registerSavedPlacesHost({
+      namespace: "phone.maps.saved-places.v1",
+      list: async () => [],
+    });
+    expect(await save()).toMatchObject({
+      success: true,
+      text: "Saved Dentist.",
+    });
+    expect(writes).toHaveLength(2);
   });
 });
 
@@ -449,5 +513,284 @@ describe("the Maps view plans only the modes a provider serves", () => {
       await planCoveredRoutes(port, PORT, CASINO, provider, controller.signal),
     ).toBeNull();
     expect(asked).toEqual([]);
+  });
+});
+
+/** A runtime with the cache core's confirmation helper keeps pending consent in. */
+function cachedRuntime(service: MapsService) {
+  const cache = new Map<string, unknown>();
+  return {
+    getService: () => service,
+    getCache: async (key: string) => cache.get(key),
+    setCache: async (key: string, value: unknown) => {
+      cache.set(key, value);
+      return true;
+    },
+    deleteCache: async (key: string) => cache.delete(key),
+  } as unknown as IAgentRuntime;
+}
+
+const turn = (
+  runtime: IAgentRuntime,
+  id: number,
+  text: string,
+  parameters: Record<string, unknown>,
+) =>
+  mapsAction.handler?.(
+    runtime,
+    {
+      id: `00000000-0000-4000-8000-0000000002${String(id).padStart(2, "0")}`,
+      entityId: OWNER,
+      roomId: "00000000-0000-4000-8000-000000000003",
+      content: { text },
+    } as unknown as Memory,
+    undefined,
+    { parameters } as HandlerOptions,
+  ) as Promise<ActionResult>;
+
+describe("sharing a location waits for the user's own reply", () => {
+  const port = {
+    action: "share",
+    name: "Port Hercule",
+    latitude: 43.7347,
+    longitude: 7.4206,
+  };
+
+  it("ignores a model-supplied confirm and the asking message itself", async () => {
+    const runtime = cachedRuntime(new MapsService(undefined, store([])));
+    const asked = await turn(runtime, 1, "Share Port Hercule", {
+      ...port,
+      confirm: true,
+    });
+    expect(asked).toMatchObject({
+      success: false,
+      data: { reason: "confirmation_required", awaitingUserInput: true },
+    });
+    expect(asked.data?.handoff).toBeUndefined();
+    // The planner running the action again inside the same turn is no reply.
+    const again = await turn(runtime, 1, "Share Port Hercule", {
+      ...port,
+      confirm: true,
+    });
+    expect(again).toMatchObject({
+      success: false,
+      data: { reason: "confirmation_required" },
+    });
+    const shared = await turn(
+      runtime,
+      2,
+      "Yes, share the location of Port Hercule (confirmed).",
+      port,
+    );
+    expect(shared).toMatchObject({
+      success: true,
+      data: { action: "share", handoff: { kind: "share" } },
+    });
+    expect(shared.data?.sharedAt).toEqual(expect.any(String));
+  });
+
+  it("binds consent to the place it was asked for", async () => {
+    const runtime = cachedRuntime(new MapsService(undefined, store([])));
+    await turn(runtime, 1, "Share Port Hercule", port);
+    const other = await turn(runtime, 2, "Yes, share it.", {
+      action: "share",
+      name: "Casino",
+      latitude: 43.7397,
+      longitude: 7.4276,
+    });
+    expect(other).toMatchObject({
+      success: false,
+      data: { reason: "confirmation_required" },
+    });
+    expect(other.data?.handoff).toBeUndefined();
+  });
+
+  it("does not share after a no", async () => {
+    const runtime = cachedRuntime(new MapsService(undefined, store([])));
+    await turn(runtime, 1, "Share Port Hercule", port);
+    expect(
+      await turn(runtime, 2, "No, do not share my location.", port),
+    ).toMatchObject({
+      success: false,
+      text: "Not shared.",
+      data: { reason: "cancelled" },
+    });
+  });
+});
+
+describe("MAPS_NAVIGATE starts phone navigation when the phone can take it", () => {
+  const destination = {
+    action: "navigate",
+    name: "Port Hercule",
+    latitude: 43.7347,
+    longitude: 7.4206,
+    travelMode: "walk",
+  };
+  function phone(available?: boolean) {
+    const started: unknown[] = [];
+    const device: MapsDeviceNavigation = {
+      ...(available === undefined ? {} : { available: async () => available }),
+      select: async () => ({ state: "selected" }),
+      start: async ({ destination, travelMode }) => {
+        started.push([destination.name, travelMode]);
+        return {
+          state: "awaiting-confirmation",
+          placeName: destination.name,
+          travelMode,
+        };
+      },
+      reroute: async () => ({ state: "navigating" }),
+      stop: async () => ({ state: "stopped" }),
+    };
+    return { device, started };
+  }
+
+  it("asks the phone, which still waits for the user's confirmation", async () => {
+    const service = new MapsService(undefined, store([]));
+    const { device, started } = phone(true);
+    service.registerDeviceNavigation(device);
+    expect(await run(service, destination)).toMatchObject({
+      success: false,
+      text: "Confirm on the phone to start navigation to Port Hercule.",
+      data: {
+        action: "navigate",
+        awaitingUserInput: true,
+        reason: "device_confirmation",
+      },
+    });
+    expect(started).toEqual([["Port Hercule", "walk"]]);
+  });
+
+  it("returns the directions link when the phone is not ready, refuses or does not say", async () => {
+    for (const available of [false, undefined]) {
+      const service = new MapsService(undefined, store([]));
+      const { device, started } = phone(available);
+      service.registerDeviceNavigation(device);
+      expect(await run(service, destination)).toMatchObject({
+        success: true,
+        data: { action: "navigate", handoff: { kind: "navigate" } },
+      });
+      expect(started).toEqual([]);
+    }
+    const refusing = new MapsService(undefined, store([]));
+    const { device, started } = phone(true);
+    device.available = async () => {
+      throw new MapsError("The phone is not available.", {
+        code: "MAPS_DEVICE_UNAVAILABLE",
+      });
+    };
+    refusing.registerDeviceNavigation(device);
+    expect(await run(refusing, destination)).toMatchObject({
+      success: true,
+      data: { handoff: { kind: "navigate" } },
+    });
+    expect(started).toEqual([]);
+    expect(
+      await run(new MapsService(undefined, store([])), destination),
+    ).toMatchObject({ success: true, data: { handoff: { kind: "navigate" } } });
+  });
+
+  it("marks the phone's waiting states as waiting on the user", async () => {
+    const service = new MapsService(undefined, store([]));
+    const { device } = phone(true);
+    device.start = async () => ({ state: "awaiting-location" });
+    service.registerDeviceNavigation(device);
+    const result = await mapsNavigationAction.handler?.(
+      runtimeWith(service),
+      message({}),
+      undefined,
+      {
+        parameters: { ...destination, action: "start" },
+      } as unknown as HandlerOptions,
+    );
+    expect(result).toMatchObject({
+      success: false,
+      data: { awaitingUserInput: true, reason: "device_location" },
+    });
+  });
+});
+
+describe("forms ask for names, not ids", () => {
+  const hit = (n: number, name: string): PlaceRef => ({
+    provider: "stub",
+    providerPlaceId: `H${n}`,
+    name,
+    coordinates: { latitude: 43.73 + n / 100, longitude: 7.42 },
+    formattedAddress: `${n} Quai, Monaco`,
+    categories: [],
+  });
+  function searching(places: PlaceRef[]) {
+    const service = new MapsService(undefined, store([]));
+    service.registerAdapter({
+      ...adapter(null),
+      searchPlaces: async () => ({ places, nextCursor: null }),
+    } as MapsProviderAdapter);
+    return service;
+  }
+
+  it("labels route fields by name or address", async () => {
+    const result = await run(searching([]), { action: "route" });
+    const fields =
+      (
+        result?.data as
+          | { uiRequest?: { fields: { label: string }[] } }
+          | undefined
+      )?.uiRequest?.fields ?? [];
+    expect(fields.map((field) => field.label)).toEqual([
+      "Starting place (name or address)",
+      "Destination (name or address)",
+      "Travel mode",
+    ]);
+    expect(JSON.stringify(result)).not.toMatch(/\bID\b/);
+  });
+
+  it("plans the route from a single match", async () => {
+    const result = await run(searching([hit(1, "Casino")]), {
+      action: "route",
+      originName: "Port",
+      originLatitude: 43.7347,
+      originLongitude: 7.4206,
+      destinationQuery: "Casino",
+    });
+    expect(result).toMatchObject({
+      success: true,
+      text: "1.0 km, about 10 min by drive.",
+      data: { route: { destination: { name: "Casino" } } },
+    });
+  });
+
+  it("asks which one when several places match", async () => {
+    const result = await run(
+      searching([hit(1, "Casino"), hit(2, "Casino Cafe")]),
+      { action: "share", placeQuery: "Casino" },
+    );
+    expect(result).toMatchObject({
+      success: false,
+      data: {
+        reason: "missing_input",
+        awaitingUserInput: true,
+        missingFields: ["placeQuery"],
+      },
+    });
+    expect(result?.text).toContain("Which one did you mean?");
+    expect(result?.userFacingText).toContain("Casino Cafe");
+    expect(
+      (result?.data as { places?: unknown[] } | undefined)?.places,
+    ).toHaveLength(2);
+  });
+});
+
+describe("error replies are plain", () => {
+  it("asks to sign in when no Maps provider is connected", async () => {
+    const result = await run(new MapsService(undefined, store([])), {
+      action: "place",
+      query: "Port",
+    });
+    expect(result).toMatchObject({
+      success: false,
+      text: "No maps provider adapter is available.",
+      userFacingText: "Sign in to use Maps.",
+      data: { error: "MAPS_PROVIDER_UNAVAILABLE" },
+    });
   });
 });

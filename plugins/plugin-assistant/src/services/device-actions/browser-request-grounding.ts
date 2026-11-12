@@ -1,6 +1,7 @@
 export {
   authoredBrowserDestination,
-  browserDestinationMatches,
+  containsWebAddress,
+  groundBrowserDestination,
 } from "@elizaos/contracts/browser-request-grounding";
 
 /** Policy refusal before persistence; never represents a human review decision. */

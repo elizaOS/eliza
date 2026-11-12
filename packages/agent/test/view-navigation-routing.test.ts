@@ -16,7 +16,10 @@ import {
   registerPluginViews,
 } from "../src/api/views-registry.ts";
 import { registerViewNavigationRoutingRule } from "../src/runtime/view-navigation.ts";
-import { resolveExplicitRegisteredViewRequest } from "../src/runtime/view-navigation-targets.ts";
+import {
+  isExplicitBackViewRequest,
+  resolveExplicitRegisteredViewRequest,
+} from "../src/runtime/view-navigation-targets.ts";
 
 const runtimes: IAgentRuntime[] = [];
 afterEach(() => {
@@ -142,6 +145,138 @@ describe("registered view navigation exposure", () => {
       "Open my calendar, please, then add lunch.",
     ])
       expect(await eligible(r, text)).toEqual([]);
+  });
+  it("admits spoken acknowledgements and a request frame around one complete command, and nothing more", async () => {
+    const r = fixture();
+    await registerPluginViews(
+      r,
+      {
+        name: "test-spoken-views",
+        views: [
+          {
+            id: "calendar",
+            label: "Calendar",
+            path: "/calendar",
+            bundleUrl: "/calendar.js",
+          },
+          {
+            id: "notes",
+            label: "Notes",
+            path: "/notes",
+            bundleUrl: "/notes.js",
+          },
+        ],
+      } as never,
+      { pluginDir: process.cwd(), indexEmbeddings: false },
+    );
+    // Live direct stage 2026-10-31 voice turns (tj-41061eccc66d0e,
+    // tj-41f9d4af5a0266, tj-6e61957c374610, tj-6efbf84c684459): Stage 1
+    // chose direct navigation, and each still ran the planner and evaluator.
+    for (const text of [
+      "Can you open the calendar?",
+      "Can you open the notes?",
+      "Okay, go home.",
+      "Can you go home?",
+      "It's okay. Can you go home?",
+      "It’s okay. Can you go home?",
+      "Its okay, can you go home?",
+      "Okay, cool, thank you. Can you go home?",
+      "Okay, cool. Can you go home?",
+      "Could you please open my calendar for me?",
+      "Could you open my calendar for me, please?",
+      "Please, can you open the calendar?",
+      "Um, can you please open Workflows?",
+      "show me notes",
+      "Yeah, show me the notes.",
+      ...[
+        "Alright",
+        "All right",
+        "Yes",
+        "Yep",
+        "Sure",
+        "Great",
+        "Nice",
+        "Perfect",
+        "Thanks",
+        "Hey",
+        "Uh",
+        "Oh",
+        "It's fine",
+        "It's alright",
+      ].map((lead) => `${lead}, open the notes.`),
+    ])
+      expect(
+        (await eligible(r, text)).map((x) => x.action.name),
+        text,
+      ).toEqual(["VIEWS_SHOW"]);
+    for (const text of [
+      "Open notes?",
+      "Okay, open notes?",
+      "Okay.",
+      "Thank you.",
+      "No, open notes.",
+      "Should I open the calendar?",
+      "Should I open Workflows?",
+      "Can you not open the calendar?",
+      "Can you please not open notes?",
+      "Okay, don't open notes.",
+      "Can you open notes without saying it?",
+      "Can you open the calendar without saying it?",
+      "Yeah, open the notes without saying the like opening notes thing.",
+      "To you open the calendar and tell me um like if there's anything on it for this week.",
+      "Can you open the calendar and tell me what's on it?",
+      "Sure, open the calendar and tell me what's on it.",
+      "Could you tell me if you can open notes?",
+      "Will you open the calendar tomorrow?",
+      "Can you open my calendar for tomorrow?",
+      "Can you open the calendar if I have a meeting today?",
+      "Okay, if ready, open the calendar.",
+      "If you can, open Workflows.",
+      "Why can't you open notes?",
+      "Why do you keep opening the calendar?",
+      "Show me what's on my calendar.",
+      "Can you show me the calendar for tomorrow?",
+      "Thanks. Open Workflows then create a note.",
+    ])
+      expect(await eligible(r, text), text).toEqual([]);
+    expect(
+      resolveExplicitRegisteredViewRequest(
+        [{ id: "chat", label: "Chat" }],
+        "Okay, cool. Can you go home?",
+      ),
+    ).toEqual({ view: { id: "chat", label: "Chat" }, resolvedAlias: "home" });
+    // Every client chat turn reaches this route; a long message is not a
+    // spoken one-view command and is declined before any pattern scan.
+    for (const text of [
+      `Can you open notes${", please".repeat(20)}?`,
+      `open notes${" for me".repeat(30_000)} x`,
+      `go back${".".repeat(30_000)}`,
+    ]) {
+      expect(
+        resolveExplicitRegisteredViewRequest(
+          [{ id: "notes", label: "Notes" }],
+          text,
+        ),
+      ).toBeUndefined();
+      expect(isExplicitBackViewRequest(text)).toBe(false);
+    }
+  });
+  it("recognizes a spoken back request only as a complete command", () => {
+    for (const text of [
+      "go back",
+      "Please go back.",
+      "Can you go back?",
+      "Okay, go back, please.",
+    ])
+      expect(isExplicitBackViewRequest(text), text).toBe(true);
+    for (const text of [
+      "Go back?",
+      "Should I go back?",
+      "Can you not go back?",
+      "Can you go back to the calendar and add lunch?",
+      "Okay.",
+    ])
+      expect(isExplicitBackViewRequest(text), text).toBe(false);
   });
   it("does not expose an unavailable registered view", async () => {
     const r = fixture();

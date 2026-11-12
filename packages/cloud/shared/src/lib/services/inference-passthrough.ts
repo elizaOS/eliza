@@ -204,7 +204,7 @@ export function createPassthroughStreamMeter(
   const now = options.now ?? (() => performance.now());
   const startedAt = options.startedAt ?? now();
   const decoder = new TextDecoder();
-  let buffer = "";
+  let lineFragments: string[] = [];
   let terminal = false;
   const tail: PassthroughStreamTail = {
     usage: null,
@@ -286,12 +286,24 @@ export function createPassthroughStreamMeter(
   };
 
   const consume = (text: string) => {
-    buffer += text;
-    let newlineAt = buffer.indexOf("\n");
-    while (newlineAt !== -1) {
-      handleLine(buffer.slice(0, newlineAt));
-      buffer = buffer.slice(newlineAt + 1);
-      newlineAt = buffer.indexOf("\n");
+    // Scan each decoded fragment once. Rescanning/flattening the entire pending
+    // line per chunk makes a long fragmented SSE event quadratic in its size.
+    let start = 0;
+    while (start < text.length) {
+      const newlineAt = text.indexOf("\n", start);
+      if (newlineAt === -1) {
+        lineFragments.push(text.slice(start));
+        return;
+      }
+      const lastFragment = text.slice(start, newlineAt);
+      if (lineFragments.length === 0) {
+        handleLine(lastFragment);
+      } else {
+        lineFragments.push(lastFragment);
+        handleLine(lineFragments.join(""));
+        lineFragments = [];
+      }
+      start = newlineAt + 1;
     }
   };
 
@@ -311,9 +323,9 @@ export function createPassthroughStreamMeter(
       terminal = true;
       try {
         consume(decoder.decode());
-        if (buffer) {
-          handleLine(buffer);
-          buffer = "";
+        if (lineFragments.length > 0) {
+          handleLine(lineFragments.join(""));
+          lineFragments = [];
         }
       } catch (error) {
         // error-policy:J7 see observe().

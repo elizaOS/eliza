@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/voice",
-  "version": "2.0.12-beta.0",
+  "version": "2.0.5",
   "description": "Portable voice turn analysis, acoustic processing and speech metrics.",
   "type": "module",
   "license": "MIT",
@@ -46,6 +46,18 @@
       "import": "./dist/native-speech-request.js",
       "default": "./dist/native-speech-request.js"
     },
+    "./native-cloud-speech": {
+      "eliza-source": "./src/native-cloud-speech.ts",
+      "types": "./dist/native-cloud-speech.d.ts",
+      "import": "./dist/native-cloud-speech.js",
+      "default": "./dist/native-cloud-speech.js"
+    },
+    "./cloud-speech-chunks": {
+      "eliza-source": "./src/cloud-speech-chunks.ts",
+      "types": "./dist/cloud-speech-chunks.d.ts",
+      "import": "./dist/cloud-speech-chunks.js",
+      "default": "./dist/cloud-speech-chunks.js"
+    },
     "./turn-routes": {
       "eliza-source": "./src/voice-turn-routes.ts",
       "types": "./dist/voice-turn-routes.d.ts",
@@ -84,13 +96,13 @@
     }
   },
   "scripts": {
-    "build": "tsc6 --noCheck -p tsconfig.emit.json && node ../scripts/rewrite-dist-relative-imports-node-esm.ts packages/voice",
+    "build": "tsc6 --noCheck -p tsconfig.emit.json && bun ../scripts/rewrite-dist-relative-imports-node-esm.ts packages/voice",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint:check": "bunx @biomejs/biome check src test package.json",
     "lint": "bunx @biomejs/biome check --write src test package.json",
     "prepublishOnly": "bun run build",
     "test": "vitest run",
-    "test:browser:consumer": "node test/consumer.mjs"
+    "test:browser:consumer": "bun test/consumer.mjs"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*"
@@ -100,7 +112,7 @@
     "@types/node": "^25.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   },
   "publishConfig": {
     "access": "public"

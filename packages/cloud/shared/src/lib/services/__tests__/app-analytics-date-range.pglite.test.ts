@@ -19,6 +19,10 @@ let client: typeof import("../../../db/client");
 beforeAll(async () => {
   const { pushSchema } = await import("drizzle-kit/api");
   const appsSchema = await import("../../../db/schemas/apps");
+  const { apiKeys } = await import("../../../db/schemas/api-keys");
+  const { generations } = await import("../../../db/schemas/generations");
+  const { jobs } = await import("../../../db/schemas/jobs");
+  const { usageRecords } = await import("../../../db/schemas/usage-records");
   const { organizations } = await import("../../../db/schemas/organizations");
   const { users } = await import("../../../db/schemas/users");
   client = await import("../../../db/client");
@@ -29,6 +33,10 @@ beforeAll(async () => {
       appDeploymentStatusEnum: appsSchema.appDeploymentStatusEnum,
       userDatabaseStatusEnum: appsSchema.userDatabaseStatusEnum,
       appReviewStatusEnum: appsSchema.appReviewStatusEnum,
+      apiKeys,
+      generations,
+      jobs,
+      usageRecords,
       apps: appsSchema.apps,
       appRequests: appsSchema.appRequests,
     } as never,

@@ -1,4 +1,5 @@
-import { findCheckoutSessionForOrder } from "@/api-app/checkout-reconciliation";
+import { getCloudDeployment } from "@elizaos/cloud-shared/lib/deployment/cloud-deployment";
+import { findCheckoutSessionForOrder } from "../../src/checkout-reconciliation";
 /**
  * POST /api/stripe/create-checkout-session
  *
@@ -25,7 +26,11 @@ import {
   moneyRateLimit,
   RateLimitPresets,
 } from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
-import { stripeCheckoutOrdersService } from "@elizaos/cloud-shared/lib/services/stripe-checkout-orders";
+import {
+  STRIPE_CHECKOUT_PROVIDER_RETRY_WINDOW_MS,
+  StripeCheckoutAuthorityError,
+  stripeCheckoutOrdersService,
+} from "@elizaos/cloud-shared/lib/services/stripe-checkout-orders";
 import { stripeCustomerAuthorityService } from "@elizaos/cloud-shared/lib/services/stripe-customer-authority";
 import {
   isStripeConfigured,
@@ -140,19 +145,7 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
     if (!/^[a-z]{3}$/.test(stripeCurrency)) {
       return c.json({ error: "Payment currency is misconfigured" }, 503);
     }
-    const allowedOrigins = [
-      c.env.NEXT_PUBLIC_APP_URL,
-      "http://localhost:3000",
-      "http://localhost:3001",
-      "http://localhost:4455",
-      "https://elizaos.ai",
-      "https://www.elizaos.ai",
-      "https://os.eliza.app",
-      // Transitional legacy storefront origin.
-      "https://os.elizacloud.ai",
-      "https://eliza.ai",
-      "https://www.eliza.ai",
-    ].filter(Boolean) as string[];
+    const allowedOrigins = getCloudDeployment().checkoutReturnOrigins;
     const clientRequestKey = c.req.header("idempotency-key")?.trim();
     if (!hardwareSku && !clientRequestKey) {
       return c.json(
@@ -395,11 +388,14 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
           return c.json({ sessionId: recovered.id, url: recovered.url });
         }
         if (
-          Date.now() - checkoutOrder.updated_at.getTime() >=
-          23 * 60 * 60 * 1000
+          !checkoutOrder.provider_started_at ||
+          Date.now() - checkoutOrder.provider_started_at.getTime() >=
+            STRIPE_CHECKOUT_PROVIDER_RETRY_WINDOW_MS
         ) {
-          throw new Error(
+          throw new StripeCheckoutAuthorityError(
+            "STRIPE_CHECKOUT_RECONCILIATION_REQUIRED",
             "Stripe Checkout creation is ambiguous and requires reconciliation",
+            { checkoutOrderId: checkoutOrder.id },
           );
         }
       }

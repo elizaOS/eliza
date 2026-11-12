@@ -1,5 +1,5 @@
 /**
- * Alpha routines (#31022): a routine that fires while the phone is offline
+ * Consumer routines: a routine that fires while the phone is offline
  * lands in durable chat history exactly once and is served on reconnect.
  *
  * Real composition: SQLite AgentRuntime, the scheduling plugin (runner
@@ -14,15 +14,15 @@ import path from "node:path";
 import { AgentEventService, createCharacter } from "@elizaos/core";
 import { installHttpPluginLifecycle } from "@elizaos/host/protocol";
 import {
-  ALPHA_ROUTINES_ENABLE_TRIGGERS,
-  ALPHA_ROUTINES_IDEMPOTENCY_KEYS,
+  buildDailyRoutinesPack,
   createSchedulingRecordStores,
+  DAILY_ROUTINES_ENABLE_TRIGGERS,
   getSchedulingRecordStore,
   isScheduledTaskDue,
   OWNER_LOCAL_TZ,
+  registerDefaultTaskPack,
   registerScheduledTaskRunnerDeps,
   runStandaloneSchedulingTick,
-  SCHEDULING_DEFAULT_PACKS_SETTING,
   type ScheduledTask,
   type ScheduledTaskRunnerService,
   schedulingPlugin,
@@ -33,6 +33,12 @@ import { expect, it, vi } from "vitest";
 import { createAssistantPlugin } from "../../../plugins/plugin-assistant/src/index.ts";
 import { createProductionScheduledTaskDispatcher } from "../../../plugins/plugin-personal-assistant/src/lifeops/scheduled-task/runtime-wiring.ts";
 import { startApiServer } from "../src/api/server.ts";
+
+const ROUTINE_KEYS = {
+  morningBrief: "scheduling:consumer:morning-brief",
+  reminders: "scheduling:consumer:reminders",
+  nudge: "scheduling:consumer:nudge",
+};
 
 const OWNER_TZ = "America/New_York";
 const ROUTINE_SOURCE = "lifeops-scheduled-task";
@@ -67,12 +73,20 @@ it("delivers a routine fired while offline exactly once on reconnect", async () 
       { ...schedulingPlugin, schema: undefined, dependencies: [] },
     ],
     character: createCharacter({
-      name: "AlphaRoutines",
-      settings: { [SCHEDULING_DEFAULT_PACKS_SETTING]: "alpha-routines" },
+      name: "ConsumerRoutines",
     }),
     logLevel: "fatal",
     enableAutonomy: false,
   });
+  registerDefaultTaskPack(
+    runtime,
+    buildDailyRoutinesPack({
+      agentId: runtime.agentId,
+      packId: "consumer-routines",
+      idempotencyKeys: ROUTINE_KEYS,
+      recordKeys: ROUTINE_KEYS,
+    }),
+  );
   // Consumer host wiring as the personal assistant installs it: its production
   // dispatcher over the scheduling-owned durable store, owner facts carrying
   // the owner's timezone.
@@ -100,28 +114,27 @@ it("delivers a routine fired while offline exactly once on reconnect", async () 
       service.getRunner({ agentId: runtime.agentId, now: () => now });
 
     // Seeded once through the default-pack mechanism, all disabled.
-    const alphaKeys = Object.values(ALPHA_ROUTINES_IDEMPOTENCY_KEYS);
-    let alpha: ScheduledTask[] = [];
+    const routineKeys = Object.values(ROUTINE_KEYS);
+    let routines: ScheduledTask[] = [];
     await vi.waitFor(
       async () => {
-        alpha = (await runnerAt(new Date()).list()).filter((task) =>
-          alphaKeys.includes(task.idempotencyKey as never),
+        routines = (await runnerAt(new Date()).list()).filter((task) =>
+          routineKeys.includes(task.idempotencyKey as never),
         );
-        expect(alpha).toHaveLength(alphaKeys.length);
+        expect(routines).toHaveLength(routineKeys.length);
       },
       { timeout: 30_000 },
     );
-    for (const task of alpha) {
+    for (const task of routines) {
       expect(task.trigger).toEqual({ kind: "manual" });
       expect(task.metadata).toMatchObject({
-        defaultPack: "alpha-routines",
+        defaultPack: "consumer-routines",
         pausedByDefault: true,
         enableTrigger: { kind: "cron", tz: OWNER_LOCAL_TZ },
       });
     }
-    const brief = alpha.find(
-      (task) =>
-        task.idempotencyKey === ALPHA_ROUTINES_IDEMPOTENCY_KEYS.morningBrief,
+    const brief = routines.find(
+      (task) => task.idempotencyKey === ROUTINE_KEYS.morningBrief,
     );
     if (!brief) throw new Error("morning brief routine was not seeded");
 
@@ -147,7 +160,7 @@ it("delivers a routine fired while offline exactly once on reconnect", async () 
     };
     const { conversation } = await request("/api/conversations", {
       method: "POST",
-      body: JSON.stringify({ title: "Alpha phone" }),
+      body: JSON.stringify({ title: "Consumer channel" }),
     });
     const routineHistory = async (): Promise<HistoryMessage[]> => {
       const { messages } = (await request(
@@ -192,7 +205,7 @@ it("delivers a routine fired while offline exactly once on reconnect", async () 
       {
         method: "POST",
         body: JSON.stringify({
-          trigger: ALPHA_ROUTINES_ENABLE_TRIGGERS.morningBrief,
+          trigger: DAILY_ROUTINES_ENABLE_TRIGGERS.morningBrief,
         }),
       },
     )) as { task: ScheduledTask };

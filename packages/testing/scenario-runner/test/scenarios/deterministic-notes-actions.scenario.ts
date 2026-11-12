@@ -5,7 +5,19 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { isDeepStrictEqual } from "node:util";
-import type { IAgentRuntime } from "@elizaos/core";
+import {
+  type Action,
+  beginRequestOperationAttempt,
+  beginRequestOperationIssuer,
+  bindTaskExtractionContext,
+  type ContextObject,
+  commitNotesRequestRestriction,
+  type IAgentRuntime,
+  isObjectRecord,
+  type NotesRequestOperation,
+  runWithActionRoutingContext,
+  type State,
+} from "@elizaos/core";
 import type {
   CapturedAction,
   ScenarioCheckResult,
@@ -15,8 +27,11 @@ import type {
 import { scenario } from "@elizaos/testing";
 import notesPlugin, {
   NotesService,
+  notesAction,
   type StickyNote,
 } from "../../../../../plugins/plugin-notes/src/index.ts";
+
+const notesHandler = notesAction.handler;
 
 const title = "Workflow launch checklist";
 const originalBody = "\nConfirm the native run output.\nKeep  two spaces.";
@@ -25,6 +40,85 @@ const updatedBody =
 let notesFilePath: string;
 let notesAgentId: string;
 let createdNote: StickyNote | undefined;
+// Authored request interpretations, independent of the action's parameters.
+// Direct action turns do not run Stage 1, so this model-free host fixture
+// supplies its request binding without relaxing the production Notes gate.
+const requestOperations = new Map<string, NotesRequestOperation>([
+  ["save a note", "create"],
+  ["show my workflow note", "list"],
+  ["read my workflow note without changing it", "get"],
+  ["update my workflow note", "patch"],
+  ["read my updated workflow note", "list"],
+  ["delete my workflow note", "delete"],
+]);
+
+function bindScenarioNotesRequests(original: Action): Action {
+  const action = { ...original };
+  action.handler = async (runtime, message, _state, options, callback) => {
+    const operation = requestOperations.get(message.content.text ?? "");
+    if (!operation)
+      return notesHandler(runtime, message, _state, options, callback);
+    const lifetime = new AbortController();
+    const issuer = beginRequestOperationIssuer({
+      runtime,
+      message,
+      current: () => !lifetime.signal.aborted,
+    });
+    if (!issuer) throw new Error("Scenario Notes request issuer unavailable");
+    const source = { text: message.content.text, operation };
+    try {
+      if (
+        !commitNotesRequestRestriction(issuer, {
+          classification:
+            operation === "get" || operation === "list"
+              ? "read_only"
+              : "mutation_requested",
+          interpretation: { status: "explicit", operations: [operation] },
+          source,
+          currentSource: () => source,
+        })
+      )
+        throw new Error("Scenario Notes request commitment failed");
+      const state = { values: {}, data: {}, text: "" } as State;
+      const context: ContextObject = {
+        id: String(message.id),
+        metadata: { messageId: message.id, roomId: message.roomId },
+        events: [],
+      };
+      bindTaskExtractionContext(
+        state,
+        message,
+        context,
+        context,
+        runtime,
+        issuer,
+      );
+      const attempt = beginRequestOperationAttempt({
+        runtime,
+        message,
+        state,
+        action,
+      });
+      if (!attempt)
+        throw new Error("Scenario Notes request attempt unavailable");
+      return await runWithActionRoutingContext(
+        {
+          actionName: action.name,
+          modelClass: action.modelClass,
+          messageId: message.id,
+          requestMessage: message,
+          requestState: state,
+          requestRuntime: runtime,
+          requestOperationAttempt: attempt,
+        },
+        () => notesHandler(runtime, message, state, options, callback),
+      );
+    } finally {
+      lifetime.abort();
+    }
+  };
+  return action;
+}
 const replacementParameters: {
   action: "patch";
   target: { kind: "text"; value: string };
@@ -174,6 +268,14 @@ export default scenario({
         const service = notesService(ctx);
         if (!service) return "NotesService did not start";
         await service.clearNotes();
+        const actionIndex = runtime.actions.findIndex(
+          (candidate) => candidate.name === "NOTES",
+        );
+        const action = runtime.actions[actionIndex];
+        if (!action) return "Notes action did not register";
+        // The runner reattaches its interceptor after seeds. Use a scenario-local
+        // action object so detaching the old interceptor cannot undo this binding.
+        runtime.actions[actionIndex] = bindScenarioNotesRequests(action);
         notesFilePath = service.store.filePath;
         notesAgentId = String(runtime.agentId);
         createdNote = undefined;
@@ -195,6 +297,30 @@ export default scenario({
         },
       },
       assertTurn: expectNotesResult("create", originalBody),
+    },
+    {
+      kind: "action",
+      name: "refuse a write during the authored read-only request",
+      actionName: "NOTES",
+      text: "read my workflow note without changing it",
+      options: {
+        parameters: { action: "create", content: "Unrequested duplicate" },
+      },
+      assertTurn: async (execution) => {
+        const result = capturedNotesAction(execution)?.result;
+        const data = result?.data;
+        if (
+          result?.success !== false ||
+          !isObjectRecord(data) ||
+          data.code !== "REQUEST_OPERATION_RESTRICTED" ||
+          data.executionStatus !== "not_started"
+        )
+          return "read-only request did not reject the attempted write";
+        const stored = JSON.parse(await readFile(notesFilePath, "utf8"));
+        return isDeepStrictEqual(stored.notes, [createdNote])
+          ? undefined
+          : "read-only request changed the durable Notes store";
+      },
     },
     {
       kind: "action",

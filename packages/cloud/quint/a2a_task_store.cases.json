@@ -1,0 +1,84 @@
+{
+  "sources": [
+    "packages/cloud/api/src/a2a-task-state.ts",
+    "packages/cloud/shared/src/lib/services/cloudflare-a2a-task-store.ts",
+    "packages/cloud/shared/src/lib/services/a2a-task-store.ts",
+    "packages/cloud/api/__tests__/a2a-task-state-workerd.test.ts",
+    "packages/cloud/api/test/fixtures/a2a-task-state-worker.ts",
+    "packages/cloud/api/a2a/route.ts",
+    "packages/cloud/shared/src/lib/api/a2a/platform-cloud.ts",
+    "packages/cloud/shared/src/lib/types/a2a.ts",
+    "packages/cloud/quint/check-a2a-task-store.mjs",
+    "packages/scripts/lib/test-output.ts",
+    "packages/scripts/run-with-deadline.ts"
+  ],
+  "bounds": {
+    "assumptions": [
+      "One task, two writers and tenants, versions 1..6, clock 0..4, three history elements and two import fingerprints.",
+      "CAS retries, expiry and deletion, owner filtering and pre-serving idempotent import are modeled.",
+      "Arbitrary unconditional replacement, the Redis backend and semantic task status transitions are excluded. Ten real SQLite-backed workerd checks cover selected receipt and content-preservation scenarios, not general trace equivalence.",
+      "A foreign read is rejected before the owned import phase closes, matching the Durable Object transaction.",
+      "History is set-valued in this model. Real implementation checks assert ordered complete content and duplicate retention. Multi-task import conflict atomicity is checked by workerd outside the one-task model."
+    ],
+    "progress": "The storage projection permits stuttering and repeated failures and makes no progress claim.",
+    "terminalCancellation": [
+      "One authorized organization and task, two admitted cancel requests and at most one completion publication of a working record. A version conflict re-reads, and the terminal check prevents another mutation. The successful cancellation reply represents the acknowledged stored version.",
+      "Completion carries symbolic complete history and one artifact. Real Hono/Workerd checks hold an actual SQLite read receipt across completion or another cancellation. They check exact terminal output and successful/refused conditional writes with a local authenticated principal.",
+      "One optional completion can race the observed working task. Arbitrary later message/send replacements, independent raw history or artifact appends, expiration, deletion and recreation during a semantic cancel, lost write acknowledgements, the legacy skill lifecycle and Redis lock expiry are outside this projection. The storage projection separately checks bounded TTL and import behavior."
+    ]
+  },
+  "cases": [
+    {
+      "name": "a2a-task-store",
+      "main": "a2a_task_store",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 40,
+      "samples": 1000,
+      "deadlock": false
+    },
+    {
+      "name": "a2a-platform-terminal-cancellation",
+      "main": "a2a_task_terminal",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "CancellationAcknowledgesStoredVersion",
+        "CompletedOutputRetained"
+      ],
+      "temporal": [
+        "TerminalReceiptStable",
+        "FairRequestsSettle",
+        "RequestsSettle"
+      ],
+      "temporalChecks": [
+        {
+          "property": "TerminalReceiptStable",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. At most one completion publication is enabled while the task is working. Independent appends, expiry and later unconditional replacements are outside this projection."
+          ]
+        },
+        {
+          "property": "FairRequestsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of read and conditional write replies for both admitted cancels. Reads and writes respond; a version conflict is possible once and causes a fresh read. Uncertain effects and storage outages are outside this progress claim."
+          ]
+        },
+        {
+          "property": "RequestsSettle",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. A ready read or write can remain pending."
+          ]
+        }
+      ],
+      "maxSteps": 25,
+      "samples": 1000
+    }
+  ],
+  "conformance": "packages/cloud/quint/check-a2a-task-store.mjs"
+}

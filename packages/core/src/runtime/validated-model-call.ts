@@ -131,12 +131,8 @@ export function getProviderForModelType(
 ): string | undefined {
 	const models = (runtime as { models?: Map<string, ModelHandler[]> }).models;
 	if (!models || typeof models.get !== "function") return undefined;
-	const entries = models.get(String(modelType));
-	if (!entries || entries.length === 0) return undefined;
-	// Same priority-pick logic as resolveModelRegistration: array is already
-	// sorted on register, first wins.
-	const first = entries[0];
-	return first?.provider;
+	// Registration keeps each list priority-sorted, so the first entry wins.
+	return models.get(String(modelType))?.[0]?.provider;
 }
 
 /**
@@ -165,7 +161,7 @@ function shouldValidate(
  * the number of rerolls (NOT total attempts). Used to cap our default budget
  * when the user has dialled it down.
  *
- * Mapping mirrors {@link AgentRuntime.dynamicPromptExecFromState}:
+ * Mapping:
  * - `trusted` / `fast` → 0 rerolls
  * - `progressive` → 2 rerolls
  * - `strict` / `safe` → 3 rerolls
@@ -287,13 +283,13 @@ export async function callModelWithValidation(
 		// `Promise<string>` branch. Callers using the wrapper for text-JSON
 		// schemas can pass any model-type literal that resolves to text, but
 		// the type system can't see that across the generic boundary.
-		const result = (await (
+		const result = await (
 			runtime.useModel as (
 				modelType: string,
 				params: GenerateTextParams,
 				provider?: string,
 			) => Promise<unknown>
-		)(String(options.modelType), options.params, options.provider)) as unknown;
+		)(String(options.modelType), options.params, options.provider);
 		lastRaw = typeof result === "string" ? result : String(result ?? "");
 
 		// Local / opted-out path: parse best-effort but don't reroll.

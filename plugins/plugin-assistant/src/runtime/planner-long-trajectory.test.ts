@@ -22,7 +22,7 @@ import {
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { collectSubPlannerSubSteps } from "../services/message/planned-tool.ts";
-import { runEvaluator } from "./evaluator.ts";
+import { parseEvaluatorOutput, runEvaluator } from "./evaluator.ts";
 import {
   partitionRedundantSucceededCalls,
   runPlannerLoop,
@@ -2692,22 +2692,25 @@ describe("canonical nonretryable receipt repair", () => {
                   effectReceipts: [applied],
                   [row.secondKey]: pin,
                 },
-          evaluate: async () => ({
-            decision: "FINISH",
-            success: true,
-            thought: "Fixture committed matching operation.",
-            messageToUser: added,
-            replyEffectStatus: "applied",
-            effectReceiptIds: [applied.receiptId],
-            requestFullyCovered: true,
-            outcomeCoverage: [
-              {
-                intentId: "intent:1",
-                status: "completed",
-                evidenceStepIds: ["step:2"],
-              },
-            ],
-          }),
+          evaluate: async () =>
+            parseEvaluatorOutput(
+              JSON.stringify({
+                decision: "FINISH",
+                success: true,
+                thought: "Fixture committed matching operation.",
+                messageToUser: added,
+                replyEffectStatus: "applied",
+                effectReceiptIds: [applied.receiptId],
+                requestFullyCovered: true,
+                outcomeCoverage: [
+                  {
+                    intentId: "intent:1",
+                    status: "completed",
+                    evidenceStepIds: ["step:2"],
+                  },
+                ],
+              }),
+            ),
         });
         expect(attempts).toBe(2);
         expect(result.finalMessage).toBe(added);
@@ -2862,6 +2865,16 @@ describe("canonical nonretryable receipt repair", () => {
       async (flag) => {
         let plans = 0,
           attempts = 0;
+        const applied: EffectReceipt = {
+          ...receipt,
+          receiptId: "exploratory-calendar-created",
+          operation: "calendar.event.create",
+          resource: {
+            kind: "calendar.event",
+            id: "calendar-check",
+            version: "1",
+          },
+        };
         const result = await runPlannerLoop({
           context,
           codingMode: false,
@@ -2886,31 +2899,35 @@ describe("canonical nonretryable receipt repair", () => {
                   turnComplete: false,
                   modelReplyRequired: true,
                   transcriptVisibility: "internal",
-                  effectReceipts: [receipt],
+                  effectReceipts: [applied],
                 },
           evaluate: async ({ trajectory }) =>
-            trajectory.steps.at(-1)?.result?.success === false
-              ? {
-                  decision: "CONTINUE",
-                  success: false,
-                  thought: "Continue requested work.",
-                }
-              : {
-                  decision: "FINISH",
-                  success: true,
-                  thought: "Requested write verified.",
-                  messageToUser: added,
-                  replyEffectStatus: "applied",
-                  effectReceiptIds: [receipt.receiptId],
-                  requestFullyCovered: true,
-                  outcomeCoverage: [
-                    {
-                      intentId: "intent:1",
-                      status: "completed",
-                      evidenceStepIds: ["step:2"],
+            parseEvaluatorOutput(
+              JSON.stringify(
+                trajectory.steps.at(-1)?.result?.success === false
+                  ? {
+                      decision: "CONTINUE",
+                      success: false,
+                      thought: "Continue requested work.",
+                    }
+                  : {
+                      decision: "FINISH",
+                      success: true,
+                      thought: "Requested write verified.",
+                      messageToUser: added,
+                      replyEffectStatus: "applied",
+                      effectReceiptIds: [applied.receiptId],
+                      requestFullyCovered: true,
+                      outcomeCoverage: [
+                        {
+                          intentId: "intent:1",
+                          status: "completed",
+                          evidenceStepIds: ["step:2"],
+                        },
+                      ],
                     },
-                  ],
-                },
+              ),
+            ),
         });
         expect(attempts).toBe(2);
         expect(result.finalMessage).toBe(added);
@@ -3266,7 +3283,13 @@ describe("final effective verdict retains unresolved effect authority", () => {
                   {
                     id: "coding-final",
                     name: "REPLY",
-                    arguments: { text: claim, eliza_turn_scope: "final" },
+                    arguments: {
+                      text: claim,
+                      eliza_turn_scope: "final",
+                      ...(mode === "coding-same"
+                        ? { effectReceiptIds: ["new-reminder"] }
+                        : {}),
+                    },
                   },
                 ],
               };
@@ -3354,32 +3377,36 @@ describe("final effective verdict retains unresolved effect authority", () => {
           };
         },
         evaluate: async () =>
-          mode === "exploratory" && attempts === 1
-            ? {
-                decision: "CONTINUE",
-                success: false,
-                thought: "Continue after optional lookup.",
-              }
-            : {
-                decision: "FINISH",
-                success: true,
-                thought: "Raw model verdict.",
-                messageToUser: claim,
-                requestFullyCovered: true,
-                replyEffectStatus: "applied",
-                effectReceiptIds: ["new-reminder"],
-                ...(coding
-                  ? {
-                      outcomeCoverage: [
-                        {
-                          intentId: "intent:1",
-                          status: "completed" as const,
-                          evidenceStepIds: ["step:2"],
-                        },
-                      ],
-                    }
-                  : {}),
-              },
+          parseEvaluatorOutput(
+            JSON.stringify(
+              mode === "exploratory" && attempts === 1
+                ? {
+                    decision: "CONTINUE",
+                    success: false,
+                    thought: "Continue after optional lookup.",
+                  }
+                : {
+                    decision: "FINISH",
+                    success: true,
+                    thought: "Raw model verdict.",
+                    messageToUser: claim,
+                    requestFullyCovered: true,
+                    replyEffectStatus: "applied",
+                    effectReceiptIds: ["new-reminder"],
+                    ...(coding
+                      ? {
+                          outcomeCoverage: [
+                            {
+                              intentId: "intent:1",
+                              status: "completed" as const,
+                              evidenceStepIds: ["step:2"],
+                            },
+                          ],
+                        }
+                      : {}),
+                  },
+            ),
+          ),
       });
       const rawHistory = structuredClone(result.trajectory.evaluatorOutputs);
       const mapped = subPlannerResultToPlannerToolResult(result);

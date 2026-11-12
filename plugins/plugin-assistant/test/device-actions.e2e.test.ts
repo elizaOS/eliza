@@ -8,15 +8,21 @@ import {
   type ActionResult,
   actionGateFailure,
   activeCommittedEffectReceipts,
+  beginRequestOperationIssuer,
+  bindTaskExtractionContext,
   ChannelType,
+  type ContextObject,
+  commitNotesRequestRestriction,
   conversationClientUserMemoryId,
   executePlannedToolCall,
   type IAgentRuntime,
   type Memory,
   ModelType,
   projectDeferredProviders,
+  ResponseHandlerFieldRegistry,
   resolveActionGateFailure,
   resolveOwnerEntityIdOrDefault,
+  type State,
   type UUID,
   validateToolArgs,
 } from "@elizaos/core";
@@ -57,6 +63,7 @@ import {
 } from "../../plugin-calendar/src/service/linked-calendar-sync.ts";
 import type { GoogleCalendarEvent } from "../../plugin-google-workspace/src/types.ts";
 import { notesPlugin } from "../../plugin-notes/src/plugin.ts";
+import { notesRequestEffectField } from "../../plugin-notes/src/request-effect.ts";
 import {
   NOTES_SERVICE_TYPE,
   NotesService,
@@ -80,6 +87,7 @@ import {
 } from "../src/services/approval/service.ts";
 import { proposeDeviceAction } from "../src/services/device-actions/action.ts";
 import { deviceActionEffectReceipts } from "../src/services/device-actions/effect-receipts.ts";
+import { deviceReadResult } from "../src/services/device-actions/read-completion.ts";
 import {
   DeviceActionService,
   deviceProposalDigest,
@@ -94,6 +102,7 @@ import {
   readContextRequests,
 } from "../src/services/message/context-discovery.ts";
 import { stage1ResponseStateProviderNames } from "../src/services/message/provider-state.ts";
+import { messageHandlerFromFieldResult } from "../src/services/message/stage1-output.ts";
 import { collectDiscoveryCatalogActions } from "../src/services/message/tool-discovery.ts";
 import { runV5MessageRuntimeStage1 } from "../src/services/message.ts";
 import { withOwnerDeviceActionTurn } from "./device-owner-turn.ts";
@@ -1223,6 +1232,540 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       ).toThrow();
     }
     {
+      // Owner-approved calls, contact changes, contact SMS and open-item reads:
+      // one capability each, exact operations, and typed results that agree
+      // with the receipt outcome. Every receipt here is synthetic.
+      const service = new DeviceActionService(runtimeState.runtime);
+      const contact = {
+        displayName: "Ada Lovelace",
+        phoneNumbers: ["+15555550123"],
+        emailAddresses: ["ada@example.com"],
+      };
+      const thread = {
+        kind: "messages-read",
+        status: "read",
+        participant: "Ada Lovelace",
+        messages: [
+          { direction: "in", date: 1000, body: "Lunch?" },
+          { direction: "out", date: 2000, body: "Noon." },
+        ],
+        truncated: false,
+      };
+      const voicemail = {
+        kind: "voicemail-read",
+        status: "read",
+        caller: "Ada Lovelace",
+        date: 1000,
+        durationSeconds: 12,
+        transcriptState: "ready",
+        engine: "device",
+        transcript: "Call me back.",
+      };
+      const cases: Array<{
+        capability: string;
+        operation: Record<string, unknown>;
+        invalid: unknown[];
+        applied: Record<string, unknown>;
+        failed: Record<string, unknown>;
+        refused: Array<Record<string, unknown>>;
+        read?: boolean;
+      }> = [
+        {
+          capability: "phone.call.v1",
+          operation: {
+            type: "phone_call",
+            target: { kind: "number", number: "+15555550123" },
+          },
+          invalid: [
+            { type: "phone_call", target: { kind: "number", number: "*#06#" } },
+            { type: "phone_call", target: { kind: "contact", query: "" } },
+            {
+              type: "phone_call",
+              target: { kind: "number", number: "+15555550123" },
+              speaker: true,
+            },
+          ],
+          applied: { kind: "phone-call", status: "placed", contact: false },
+          failed: { kind: "phone-call", status: "busy", contact: false },
+          refused: [
+            { kind: "phone-call", status: "connected", contact: false },
+            // A number call resolved no contact.
+            { kind: "phone-call", status: "placed", contact: true },
+            { kind: "phone-call", status: "not-found", contact: false },
+            {
+              kind: "phone-call",
+              status: "placed",
+              contact: false,
+              seconds: 4,
+            },
+            { kind: "phone-call", status: "cancelled", contact: false },
+          ],
+        },
+        {
+          capability: "contacts.write.v1",
+          operation: { type: "contact_create", contact },
+          invalid: [
+            { type: "contact_create", contact: { ...contact, id: "7" } },
+            {
+              type: "contact_create",
+              contact: { ...contact, phoneNumbers: ["555-1234"] },
+            },
+          ],
+          applied: { kind: "contact-write", status: "saved" },
+          failed: { kind: "contact-write", status: "cancelled" },
+          refused: [
+            { kind: "contact-write", status: "deleted" },
+            { kind: "contact-write", status: "stale" },
+            { kind: "contact-write", status: "not-found" },
+            { kind: "contact-write", status: "saved", contact },
+          ],
+        },
+        {
+          capability: "contacts.write.v1",
+          operation: {
+            type: "contact_update",
+            query: "Ada",
+            set: { phoneNumbers: ["+15555550199"] },
+          },
+          invalid: [
+            { type: "contact_update", query: "Ada", set: {} },
+            { type: "contact_update", query: "Ada", set: { id: "7" } },
+          ],
+          applied: { kind: "contact-write", status: "saved" },
+          failed: { kind: "contact-write", status: "stale" },
+          refused: [
+            { kind: "contact-write", status: "deleted" },
+            { kind: "contact-write", status: "not-found" },
+          ],
+        },
+        {
+          capability: "contacts.write.v1",
+          operation: { type: "contact_delete", query: "Ada" },
+          invalid: [{ type: "contact_delete", query: "Ada", contactId: "7" }],
+          applied: { kind: "contact-write", status: "deleted" },
+          failed: { kind: "contact-write", status: "not-found" },
+          refused: [
+            { kind: "contact-write", status: "saved" },
+            { kind: "contact-write", status: "cancelled" },
+          ],
+        },
+        {
+          capability: "messages.read.v1",
+          operation: { type: "messages_read_selected" },
+          invalid: [{ type: "messages_read_selected", threadId: "4" }],
+          applied: thread,
+          failed: { kind: "messages-read", status: "none-selected" },
+          refused: [
+            { kind: "messages-read", status: "none-selected" },
+            { ...thread, messages: [...thread.messages].reverse() },
+            {
+              ...thread,
+              messages: Array.from({ length: 21 }, (_, date) => ({
+                direction: "in",
+                date,
+                body: "x",
+              })),
+            },
+            { ...thread, address: "+15555550123" },
+          ],
+          read: true,
+        },
+        {
+          capability: "voicemail.read.v1",
+          operation: { type: "voicemail_read_selected" },
+          invalid: [{ type: "voicemail_read_selected", id: "3" }],
+          applied: voicemail,
+          failed: { kind: "voicemail-read", status: "unavailable" },
+          refused: [
+            { kind: "voicemail-read", status: "none-selected" },
+            { ...voicemail, transcript: null },
+            { ...voicemail, engine: null },
+            { ...voicemail, transcriptState: "pending" },
+          ],
+          read: true,
+        },
+        {
+          capability: "voicemail.delete.v1",
+          operation: { type: "voicemail_delete_selected" },
+          invalid: [{ type: "voicemail_delete_selected", id: "3" }],
+          applied: { kind: "voicemail-delete", status: "deleted" },
+          failed: { kind: "voicemail-delete", status: "cancelled" },
+          refused: [
+            { kind: "voicemail-delete", status: "cancelled" },
+            { kind: "voicemail-delete", status: "deleted", count: 2 },
+          ],
+        },
+      ];
+      const every = [...new Set(cases.map((item) => item.capability))];
+      for (const item of cases) {
+        const { capability, operation } = item;
+        const kind = String(operation.type);
+        const c = { ...credentials, capabilities: [capability] };
+        const send = (path: string, body?: unknown) =>
+          request(path, body, "a", deviceKey, capability);
+        // Neither the base phone nor every other telephony capability admits it.
+        for (const capabilities of [
+          credentials.capabilities,
+          ["phone.dial.v1", "contacts.lookup.v1", "sms.send.v1"],
+          [...every, "sms.compose.v1"].filter((other) => other !== capability),
+        ])
+          await expect(
+            service.propose(
+              { ...credentials, capabilities },
+              operation,
+              `${kind}-no-cap`,
+              "fixture",
+            ),
+          ).rejects.toThrow();
+        for (const bad of item.invalid)
+          await expect(
+            service.propose(c, bad, `${kind}-invalid`, "fixture"),
+          ).rejects.toThrow();
+        const claimed = async (key: string) => {
+          const proposal = await service.propose(c, operation, key, "fixture");
+          const found = (await send("/proposals")).body.proposals.find(
+            (p: any) => p.id === proposal.id,
+          );
+          expect(
+            (
+              await send(`/proposals/${found.id}/decision`, {
+                digest: found.digest,
+                decision: "approve",
+              })
+            ).status,
+          ).toBe(200);
+          const claim = await send(`/proposals/${found.id}/claim`, {
+            digest: found.digest,
+          });
+          expect(claim.status).toBe(200);
+          return {
+            id: found.id as string,
+            digest: found.digest as string,
+            attemptId: claim.body.proposal.execution.attemptId as string,
+            post: (receipt: unknown) =>
+              send(`/proposals/${found.id}/receipt`, {
+                digest: found.digest,
+                attemptId: claim.body.proposal.execution.attemptId,
+                receipt,
+              }),
+          };
+        };
+        const ok = await claimed(`${kind}-ok`);
+        // The phone lost this capability: no result is accepted for it.
+        expect(
+          (
+            await request(
+              `/proposals/${ok.id}/receipt`,
+              {
+                digest: ok.digest,
+                attemptId: ok.attemptId,
+                receipt: {
+                  outcome: "applied",
+                  operationId: ok.id,
+                  result: item.applied,
+                },
+              },
+              "a",
+              deviceKey,
+              "phone.dial.v1",
+            )
+          ).status,
+        ).toBe(409);
+        expect(
+          (await send("/proposals")).body.proposals.find(
+            (p: any) => p.id === ok.id,
+          ).state,
+        ).toBe("executing");
+        for (const result of item.refused)
+          expect(
+            (
+              await ok.post({
+                outcome: "applied",
+                operationId: ok.id,
+                result,
+              })
+            ).status,
+          ).toBe(409);
+        // An applied receipt needs its typed evidence, and the outcome must match it.
+        expect(
+          (await ok.post({ outcome: "applied", operationId: ok.id })).status,
+        ).toBe(409);
+        expect(
+          (
+            await ok.post({
+              outcome: "failed",
+              operationId: ok.id,
+              result: item.applied,
+            })
+          ).status,
+        ).toBe(409);
+        expect(
+          (
+            await ok.post({
+              outcome: "applied",
+              operationId: ok.id,
+              result: item.failed,
+            })
+          ).status,
+        ).toBe(409);
+        const recorded = await ok.post({
+          outcome: "applied",
+          operationId: ok.id,
+          result: item.applied,
+        });
+        expect(recorded.status).toBe(200);
+        expect(recorded.body.proposal.state).toBe("done");
+        // The same operation key returns the stored receipt; nothing is proposed again.
+        const replayed = await service.proposeWithOutcome(
+          c,
+          operation,
+          `${kind}-ok`,
+          "fixture",
+        );
+        expect(replayed.reused).toBe(true);
+        expect(replayed.request.id).toBe(ok.id);
+        expect(replayed.request.execution?.providerReceipt?.result).toEqual(
+          item.applied,
+        );
+        const receipts = activeCommittedEffectReceipts(
+          deviceActionEffectReceipts(replayed),
+        );
+        expect(receipts).toHaveLength(item.read ? 0 : 1);
+        if (!item.read) expect(receipts[0].operation).toBe(`device.${kind}`);
+        // The original-request reply reads the stored item, never the phone again.
+        if (item.read)
+          expect(deviceReadResult(replayed.request)).toEqual(item.applied);
+        else expect(() => deviceReadResult(replayed.request)).toThrow();
+        // A stored result naming no effect is never replayed as applied.
+        const stored = replayed.request.execution!;
+        expect(() =>
+          deviceActionEffectReceipts({
+            ...replayed,
+            request: {
+              ...replayed.request,
+              execution: {
+                ...stored,
+                providerReceipt: {
+                  ...stored.providerReceipt!,
+                  result: item.failed,
+                },
+              },
+            },
+          }),
+        ).toThrow();
+        const refused = await claimed(`${kind}-failed`);
+        const failed = await refused.post({
+          outcome: "failed",
+          operationId: refused.id,
+          result: item.failed,
+        });
+        expect(failed.status).toBe(200);
+        expect(failed.body.proposal.state).toBe("reconciliation_required");
+        expect(
+          activeCommittedEffectReceipts(
+            deviceActionEffectReceipts(
+              await service.proposeWithOutcome(
+                c,
+                operation,
+                `${kind}-failed`,
+                "fixture",
+              ),
+            ),
+          ),
+        ).toHaveLength(0);
+      }
+      // The contact SMS keeps the SIM send's rules: the journal identity is the
+      // execution claim, and an unknown outcome is neither failed nor retried.
+      const capability = "sms.compose.v1";
+      const c = { ...credentials, capabilities: [capability] };
+      const operation = { type: "sms_compose", query: "Ada", body: "Late." };
+      const send = (path: string, body?: unknown) =>
+        request(path, body, "a", deviceKey, capability);
+      await expect(
+        service.propose(
+          { ...credentials, capabilities: ["sms.send.v1"] },
+          operation,
+          "compose-no-cap",
+          "fixture",
+        ),
+      ).rejects.toThrow();
+      for (const bad of [
+        { ...operation, body: "" },
+        { ...operation, body: "x".repeat(1601) },
+        { ...operation, recipients: ["+15555550123"] },
+        { ...operation, subscriptionId: 3 },
+      ])
+        await expect(
+          service.propose(c, bad, "compose-invalid", "fixture"),
+        ).rejects.toThrow();
+      for (const [status, outcome, state] of [
+        ["drafted", "applied", "done"],
+        ["submitted", "applied", "done"],
+        ["sent", "applied", "done"],
+        ["delivered", "applied", "done"],
+        ["unknown", "unknown", "reconciliation_required"],
+        ["failed", "failed", "reconciliation_required"],
+        ["cancelled", "failed", "done"],
+        ["not-found", "failed", "done"],
+        ["unavailable", "failed", "done"],
+      ] as const) {
+        const key = `compose-${status}`;
+        const proposal = await service.propose(c, operation, key, "fixture");
+        const item = (await send("/proposals")).body.proposals.find(
+          (p: any) => p.id === proposal.id,
+        );
+        expect(
+          (
+            await send(`/proposals/${item.id}/decision`, {
+              digest: item.digest,
+              decision: "approve",
+            })
+          ).status,
+        ).toBe(200);
+        const claim = await send(`/proposals/${item.id}/claim`, {
+          digest: item.digest,
+        });
+        const post = (receipt: unknown) =>
+          send(`/proposals/${item.id}/receipt`, {
+            digest: item.digest,
+            attemptId: claim.body.proposal.execution.attemptId,
+            receipt,
+          });
+        const result = { kind: "sms-compose", status };
+        for (const wrong of [
+          { outcome, operationId: "another-journal-row", result },
+          {
+            outcome: outcome === "applied" ? "unknown" : "applied",
+            operationId: item.id,
+            result,
+          },
+          {
+            outcome,
+            operationId: item.id,
+            result: { ...result, recipient: "+15555550123" },
+          },
+        ])
+          expect((await post(wrong)).status).toBe(409);
+        const recorded = await post({ outcome, operationId: item.id, result });
+        expect(recorded.status).toBe(200);
+        expect(recorded.body.proposal.state).toBe(state);
+        const replayed = await service.proposeWithOutcome(
+          c,
+          operation,
+          key,
+          "fixture",
+        );
+        expect(replayed.reused).toBe(true);
+        expect(replayed.request.id).toBe(item.id);
+        const effects = deviceActionEffectReceipts(replayed);
+        expect(activeCommittedEffectReceipts(effects)).toHaveLength(
+          outcome === "applied" ? 1 : 0,
+        );
+        if (status === "unknown")
+          expect(effects[0]).toMatchObject({
+            outcome: "failed",
+            failure: { retryable: false, acceptance: "unknown" },
+          });
+        // No second review is offered for a settled or uncertain send.
+        expect(
+          (await send("/proposals")).body.proposals.filter(
+            (p: any) => p.id === item.id,
+          ),
+        ).toHaveLength(1);
+        expect(
+          (await send(`/proposals/${item.id}/claim`, { digest: item.digest }))
+            .status,
+        ).toBe(409);
+      }
+      // A reply draft shares the capability and names no recipient. It is
+      // placed or the conversation is left as it was: both settle, and no
+      // status claims a send.
+      const reply = { type: "sms_reply_selected", body: "Late." };
+      await expect(
+        service.propose(
+          { ...credentials, capabilities: ["sms.send.v1", "messages.read.v1"] },
+          reply,
+          "reply-no-cap",
+          "fixture",
+        ),
+      ).rejects.toThrow();
+      for (const bad of [
+        { ...reply, body: "" },
+        { ...reply, body: "x".repeat(1601) },
+        { ...reply, query: "Ada" },
+        { ...reply, recipients: ["+15555550123"] },
+        { ...reply, threadId: "4" },
+      ])
+        await expect(
+          service.propose(c, bad, "reply-invalid", "fixture"),
+        ).rejects.toThrow();
+      for (const [status, outcome] of [
+        ["drafted", "applied"],
+        ["none-selected", "failed"],
+        ["occupied", "failed"],
+        ["unavailable", "failed"],
+      ] as const) {
+        const key = `reply-${status}`;
+        const proposal = await service.propose(c, reply, key, "fixture");
+        const item = (await send("/proposals")).body.proposals.find(
+          (p: any) => p.id === proposal.id,
+        );
+        expect(
+          (
+            await send(`/proposals/${item.id}/decision`, {
+              digest: item.digest,
+              decision: "approve",
+            })
+          ).status,
+        ).toBe(200);
+        const claim = await send(`/proposals/${item.id}/claim`, {
+          digest: item.digest,
+        });
+        const post = (receipt: unknown) =>
+          send(`/proposals/${item.id}/receipt`, {
+            digest: item.digest,
+            attemptId: claim.body.proposal.execution.attemptId,
+            receipt,
+          });
+        const result = { kind: "sms-reply", status };
+        for (const wrong of [
+          {
+            outcome: outcome === "applied" ? "failed" : "applied",
+            operationId: item.id,
+            result,
+          },
+          { outcome: "unknown", operationId: item.id, result },
+          {
+            outcome: "applied",
+            operationId: item.id,
+            result: { kind: "sms-compose", status: "sent" },
+          },
+          {
+            outcome,
+            operationId: item.id,
+            result: { ...result, recipient: "+15555550123" },
+          },
+        ])
+          expect((await post(wrong)).status).toBe(409);
+        const recorded = await post({ outcome, operationId: item.id, result });
+        expect(recorded.status).toBe(200);
+        expect(recorded.body.proposal.state).toBe("done");
+        const replayed = await service.proposeWithOutcome(
+          c,
+          reply,
+          key,
+          "fixture",
+        );
+        expect(replayed.reused).toBe(true);
+        const receipts = activeCommittedEffectReceipts(
+          deviceActionEffectReceipts(replayed),
+        );
+        expect(receipts).toHaveLength(outcome === "applied" ? 1 : 0);
+        if (outcome === "applied")
+          expect(receipts[0].operation).toBe("device.sms_reply_selected");
+      }
+    }
+    {
       // Real authenticated HTTP, durable SQL claims and immutable typed SMS receipts.
       // The transport receipt is synthetic; no SIM operation or delivery is asserted.
       const service = new DeviceActionService(runtimeState.runtime);
@@ -1369,8 +1912,11 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         ).toBe(409);
         const recorded = await post(receipt);
         expect(recorded.status).toBe(200);
+        // A cancelled or denied SMS submitted nothing, so it settles without review.
         expect(recorded.body.proposal.state).toBe(
-          applied ? "done" : "reconciliation_required",
+          applied || ["cancelled", "denied"].includes(status)
+            ? "done"
+            : "reconciliation_required",
         );
         expect((await post(receipt)).status).toBe(200);
         if (status === "unknown" || status === "failed") {
@@ -1441,6 +1987,11 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           "calendar.agenda-read.v1",
           "calendar.named-read.v1",
           "notes.query.v1",
+          "notes.organize.v1",
+          "notes.list-filter.v1",
+          "photos.library.v1",
+          "photos.view.v1",
+          "files.browser.v1",
           "reminders.local-record.v2",
           "reminders.create.v1",
           "clock.handoff.v2",
@@ -1448,6 +1999,12 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           "sms.send.v1",
           "phone.dial.v1",
           "contacts.lookup.v1",
+          "phone.call.v1",
+          "contacts.write.v1",
+          "sms.compose.v1",
+          "messages.read.v1",
+          "voicemail.read.v1",
+          "voicemail.delete.v1",
           "notes.search.v1",
           "calendar.availability-read.v1",
           "device.named-target.v1",
@@ -3776,6 +4333,9 @@ test("device approval REST lifecycle survives restart and never duplicates claim
 // opens the page itself. The turn now ends with its own reply and no extra call.
 // Live tj-5503e82f445bf2: Stage 1 asked "Which page are you after?" while the
 // routed planner opened the page; the reply must name the actual request.
+// QA 2026-10-30: the model rewrote a typed "youtube.com" as www.youtube.com
+// and the exact-match check refused it. A request the router does not claim
+// reaches the planner, and the typed spelling opens.
 test.each([
   {
     stage1: "pending browser acknowledgement",
@@ -3784,6 +4344,9 @@ test.each([
     candidateActionNames: ["DEVICE_BROWSER_OPEN"],
     replyText: "Opening example.com in the browser.",
     replyEffectStatus: "pending",
+    request: "open example.com",
+    modelUrl: "https://example.com",
+    opened: "https://example.com/",
   },
   {
     stage1: "simple clarifying question",
@@ -3792,6 +4355,20 @@ test.each([
     candidateActionNames: [],
     replyText: "Which page are you after?",
     replyEffectStatus: "none",
+    request: "open example.com",
+    modelUrl: "https://example.com",
+    opened: "https://example.com/",
+  },
+  {
+    stage1: "model-judged request with a rewritten address",
+    contexts: ["browser"],
+    intents: ["Open youtube.com"],
+    candidateActionNames: ["DEVICE_BROWSER_OPEN"],
+    replyText: "Opening YouTube.",
+    replyEffectStatus: "pending",
+    request: "Hey Eliza, can you pull up youtube.com for me?",
+    modelUrl: "https://www.youtube.com",
+    opened: "https://youtube.com/",
   },
 ])(
   "direct-request URL open ends the turn with one reply and no owner review ($stage1)",
@@ -3801,6 +4378,9 @@ test.each([
     candidateActionNames,
     replyText,
     replyEffectStatus,
+    request,
+    modelUrl,
+    opened: openedUrl,
   }) => {
     const fixture = await createRealTestRuntime({
       characterName: "DirectBrowserOpenFixture",
@@ -3838,10 +4418,10 @@ test.each([
               arguments: {
                 operation: {
                   type: "browser_navigate",
-                  url: "https://example.com",
+                  url: modelUrl,
                 },
                 operationKey: "browser-open-example",
-                reason: "User asked to open example.com.",
+                reason: "User asked to open a site.",
                 eliza_turn_scope: "final",
               },
             },
@@ -3863,7 +4443,7 @@ test.each([
         entityId: owner as UUID,
         roomId,
         content: {
-          text: "open example.com",
+          text: request,
           source: "client_chat",
           role: "user",
           channelType: ChannelType.DM,
@@ -3924,14 +4504,14 @@ test.each([
         expect(
           opened.result.responseContent?.text,
           JSON.stringify(opened.result.actionResults),
-        ).toBe("Opening example.com.");
+        ).toBe(`Opening ${new URL(openedUrl).host}.`);
       const proposals = await service.list(credential);
       expect(proposals).toHaveLength(1);
       expect(proposals[0]).toMatchObject({
         state: "pending",
         payload: {
           requestMessageId: message.id,
-          operation: { type: "browser_navigate", url: "https://example.com/" },
+          operation: { type: "browser_navigate", url: openedUrl },
         },
       });
       useModel.mockRestore();
@@ -4412,6 +4992,7 @@ test.each([
 test("selected native Notes authority blocks backend writes without affecting canonical counter-requests", async () => {
   const fixture = await createRealTestRuntime({
     characterName: "NativeRecordAuthority",
+    withLLM: false,
   });
   const runtime = fixture.runtime;
   const directory = await mkdtemp(join(tmpdir(), "native-note-authority-"));
@@ -4479,18 +5060,115 @@ test("selected native Notes authority blocks backend writes without affecting ca
     proposeDeviceAction,
     ...unrelatedActions,
   ];
-  const discover = () =>
+  const discover = (requestMessage: Memory = message) =>
     collectDiscoveryCatalogActions({
       actions,
-      message,
+      message: requestMessage,
       selectedContexts: ["general"],
       userRoles: ["OWNER"],
     }).map((action) => action.name);
+  const requestStates = new WeakMap<Memory, State>();
+  const lifetimes: AbortController[] = [];
+  const canonicalCounterRequest = (text: string): Memory => ({
+    ...structuredClone(message),
+    id: randomUUID() as UUID,
+    agentId: runtime.agentId,
+    createdAt: Date.now(),
+    content: { ...structuredClone(message.content), text },
+  });
+  // A supplied model interpretation is controlled here, but the real field
+  // dispatcher/normalizer and current host issuer own its request binding.
+  // OWNER roles and forged clientDevice metadata alone cannot mint that proof.
+  const prepareRequest = async (requestMessage: Memory) => {
+    const state: State = { values: {}, data: {}, text: "" };
+    const lifetime = new AbortController();
+    lifetimes.push(lifetime);
+    const issuer = beginRequestOperationIssuer({
+      runtime,
+      message: requestMessage,
+      current: () => !lifetime.signal.aborted,
+    });
+    if (!issuer) throw new Error("Expected current canonical Notes request");
+    const modelField = {
+      classification: "mutation_requested",
+      operations: ["create"],
+    };
+    const fields = new ResponseHandlerFieldRegistry();
+    fields.register(notesRequestEffectField);
+    const fieldRun = await fields.dispatch({
+      rawParsed: {
+        shouldRespond: "RESPOND",
+        contexts: ["notes"],
+        intents: [requestMessage.content.text],
+        requiresTool: true,
+        replyEffectStatus: "pending",
+        replyText: "",
+        candidateActionNames: [],
+        facts: [],
+        relationships: [],
+        addressedTo: [],
+        notesRequestEffect: modelField,
+      },
+      runtime,
+      message: requestMessage,
+      state,
+      senderRole: "OWNER",
+      turnSignal: lifetime.signal,
+    });
+    const handler = messageHandlerFromFieldResult(fieldRun.parsed, fieldRun, {
+      actions: runtime.actions,
+      messageText: requestMessage.content.text ?? "",
+    });
+    const source = {
+      currentText: requestMessage.content.text,
+      modelField,
+      interpretation: handler.plan.notesRequestInterpretation,
+    };
+    if (
+      !commitNotesRequestRestriction(issuer, {
+        classification: handler.plan.notesRequestEffect ?? "unresolved",
+        interpretation: handler.plan.notesRequestInterpretation,
+        source,
+        currentSource: () => source,
+      })
+    )
+      throw new Error("Expected handled Notes interpretation commitment");
+    const original: ContextObject = {
+      id: `counter-request:${requestMessage.id}`,
+      metadata: {
+        agentId: runtime.agentId,
+        messageId: requestMessage.id,
+        roomId: requestMessage.roomId,
+        entityId: requestMessage.entityId,
+      },
+      events: [
+        {
+          id: String(requestMessage.id),
+          type: "message",
+          message: {
+            id: String(requestMessage.id),
+            role: "user",
+            content: requestMessage.content.text ?? "",
+          },
+        },
+      ],
+    };
+    bindTaskExtractionContext(
+      state,
+      requestMessage,
+      original,
+      original,
+      runtime,
+      issuer,
+    );
+    requestStates.set(requestMessage, state);
+  };
   const execute = (content: string, actionMessage: Memory = message) =>
     executePlannedToolCall(
       runtime,
       {
         message: actionMessage,
+        state: requestStates.get(actionMessage),
         activeContexts: ["notes"],
         userRoles: ["OWNER"],
       },
@@ -4500,6 +5178,7 @@ test("selected native Notes authority blocks backend writes without affecting ca
     await registerOwnerRoom(runtime, message);
     await service.register(credential, "Native record owner");
     for (const action of actions) runtime.registerAction(action);
+    await prepareRequest(message);
     const outside = discover();
     expect(outside).toContain("NOTES_CREATE");
     expect(outside).toContain("CALENDAR");
@@ -4568,47 +5247,127 @@ test("selected native Notes authority blocks backend writes without affecting ca
       ).toMatchObject({ success: false });
       expect(notes.listNotes()).toHaveLength(0);
     });
-    // Forged clientDevice metadata is not authority; an ordinary counter-request still writes its real store.
+    // Forged metadata grants no authority. Malformed identity and unissued or
+    // serialized-looking state stay denied even outside a native device turn.
+    const ordinary = canonicalCounterRequest(
+      "Create a note: Ordinary backend note",
+    );
+    await prepareRequest(ordinary);
+    const issuedState = requestStates.get(ordinary);
+    if (!issuedState) throw new Error("Expected bound ordinary request state");
+    for (const malformed of [
+      { ...ordinary, agentId: undefined },
+      { ...ordinary, agentId: randomUUID() },
+      { ...ordinary },
+    ]) {
+      expect(
+        await executePlannedToolCall(
+          runtime,
+          {
+            message: malformed,
+            state: issuedState,
+            activeContexts: ["notes"],
+            userRoles: ["OWNER"],
+          },
+          {
+            name: "NOTES_CREATE",
+            params: { content: "Must not steal issued request state" },
+          },
+        ),
+      ).toMatchObject({ success: false });
+    }
     expect(
-      await execute("Ordinary backend note", {
-        ...message,
-        agentId: undefined,
-      }),
-    ).toMatchObject({ success: true });
+      await executePlannedToolCall(
+        runtime,
+        {
+          message: ordinary,
+          activeContexts: ["notes"],
+          userRoles: ["OWNER"],
+        },
+        {
+          name: "NOTES_CREATE",
+          params: { content: "Missing state must not write" },
+        },
+      ),
+    ).toMatchObject({ success: false });
+    expect(
+      await executePlannedToolCall(
+        runtime,
+        {
+          message: ordinary,
+          state: {
+            values: { notesRequestEffect: "mutation_requested" },
+            data: {},
+            text: "",
+          },
+          activeContexts: ["notes"],
+          userRoles: ["OWNER"],
+        },
+        {
+          name: "NOTES_CREATE",
+          params: { content: "Forged state must not write" },
+        },
+      ),
+    ).toMatchObject({ success: false });
+    expect(notes.listNotes()).toHaveLength(0);
+    // The same forged clientDevice data cannot block a genuinely current,
+    // canonical non-native request from writing the backend store.
+    const ordinaryResult = await execute("Ordinary backend note", ordinary);
+    expect(ordinaryResult).toMatchObject({ success: true });
+    expect(ordinaryResult.effectReceipts).toEqual(
+      expect.arrayContaining([expect.objectContaining({ outcome: "applied" })]),
+    );
     expect(notes.listNotes()).toHaveLength(1);
     const metadata = message.content.metadata as {
       clientDevice: { context: { selectedObject: { kind: string } } };
     };
     metadata.clientDevice.context.selectedObject.kind = "canonical-note-source";
+    const clockOnly = canonicalCounterRequest(
+      "Create a note: Clock-only caller backend note",
+    );
+    await prepareRequest(clockOnly);
     await withOwnerDeviceActionTurn(
       runtime,
       { ...credential, capabilities: ["clock.handoff.v1"] },
       async () => {
-        setDeviceActionRequestMessage(runtime, message);
-        expect(discover()).toContain("NOTES_CREATE");
-        expect(discover()).toContain("CALENDAR");
-        expect(discover()).toContain("OWNER_REMINDERS");
-        expect(await execute("Clock-only caller backend note")).toMatchObject({
+        setDeviceActionRequestMessage(runtime, clockOnly);
+        expect(discover(clockOnly)).toContain("NOTES_CREATE");
+        expect(discover(clockOnly)).toContain("CALENDAR");
+        expect(discover(clockOnly)).toContain("OWNER_REMINDERS");
+        expect(
+          await execute("Clock-only caller backend note", clockOnly),
+        ).toMatchObject({
           success: true,
         });
       },
     );
     metadata.clientDevice.context.selectedObject.kind = "note-source";
+    const heldRequest = canonicalCounterRequest("Create my phone note");
+    const concurrent = canonicalCounterRequest(
+      "Create a note: Concurrent non-phone note",
+    );
+    await prepareRequest(heldRequest);
+    await prepareRequest(concurrent);
     let release!: () => void;
     const held = withOwnerDeviceActionTurn(runtime, credential, async () => {
-      setDeviceActionRequestMessage(runtime, message);
+      setDeviceActionRequestMessage(runtime, heldRequest);
       await new Promise<void>((resolve) => {
         release = resolve;
       });
-      expect(discover()).not.toContain("NOTES_CREATE");
+      expect(discover(heldRequest)).not.toContain("NOTES_CREATE");
     });
     while (!release) await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(discover()).toContain("NOTES_CREATE");
-    expect(await execute("Concurrent non-phone note")).toMatchObject({
-      success: true,
-    });
-    release();
-    await held;
+    try {
+      expect(discover(concurrent)).toContain("NOTES_CREATE");
+      expect(
+        await execute("Concurrent non-phone note", concurrent),
+      ).toMatchObject({
+        success: true,
+      });
+    } finally {
+      release();
+      await held;
+    }
     expect(notes.listNotes()).toHaveLength(3);
     await expect(
       withOwnerDeviceActionTurn(
@@ -4618,7 +5377,20 @@ test("selected native Notes authority blocks backend writes without affecting ca
       ),
     ).rejects.toThrow();
     expect(notes.listNotes()).toHaveLength(3);
+    expect(
+      notes
+        .listNotes()
+        .map((note) => note.title)
+        .sort(),
+    ).toEqual(
+      [
+        "Ordinary backend note",
+        "Clock-only caller backend note",
+        "Concurrent non-phone note",
+      ].sort(),
+    );
   } finally {
+    for (const lifetime of lifetimes) lifetime.abort();
     serviceLookup.mockRestore();
     await fixture.cleanup();
     await rm(directory, { recursive: true, force: true });

@@ -30,7 +30,12 @@ public final class NativeRuntimeEmbeddings {
 
   /** Unknown profile names fail closed, matching resolveNativeRuntimeProfile. */
   public static void apply(String profile, File nativeLibraryDirectory, File filesDirectory, Map<String, String> env) {
-    if ("cloud".equals(profile)) return;
+    if ("cloud".equals(profile)) {
+      // Provider admission has already validated and applied this host-owned environment.
+      if ("cerebras".equals(env.get("ELIZA_PROVIDER")))
+        applyLocal(nativeLibraryDirectory, filesDirectory, env);
+      return;
+    }
     if (profile != null && !profile.isEmpty() && !"native".equals(profile))
       throw new IllegalArgumentException("Unknown native runtime profile");
     applyLocal(nativeLibraryDirectory, filesDirectory, env);

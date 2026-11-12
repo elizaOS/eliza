@@ -19,6 +19,7 @@ import { resolveDefaultVaultDataDir } from "@elizaos/auth/vault";
 import {
   AgentRuntime,
   addLogListener,
+  assertActionAllowlistMatchesActions,
   ChannelType,
   type Component,
   createMessageMemory,
@@ -26,6 +27,7 @@ import {
   EmbeddingDimensionProbeError,
   type Entity,
   formatError,
+  handoffTaskSchedulerAdapter,
   type IAgentRuntime,
   type IDatabaseAdapter,
   type LogEntry,
@@ -55,7 +57,6 @@ import {
   isMobilePlatform,
   migrateLegacyRuntimeConfig,
   normalizeFirstRunProviderId,
-  readAliasedEnv,
   resolveDeploymentTargetInConfig,
   resolveDesktopApiPort,
   resolveElizaCloudTopology,
@@ -74,6 +75,7 @@ import {
   getPgliteErrorCode,
   PGLITE_ERROR_CODES,
 } from "@elizaos/plugin-sql/errors";
+import { validateDbHost } from "../api/database.ts";
 import {
   debugLogResolvedContext,
   validateRuntimeContext,
@@ -129,6 +131,7 @@ import { bootstrapRemoteCapabilityPlugins } from "../services/remote-plugin-adap
 import {
   SandboxManager,
   type SandboxMode,
+  setActiveSandboxManager,
 } from "../services/sandbox-manager.ts";
 import {
   evaluateTeeBootGate,
@@ -212,7 +215,10 @@ import {
   OPTIONAL_STATIC_PLUGIN_REGISTRATIONS,
 } from "./optional-plugins.ts";
 import { deduplicatePluginActions } from "./plugin-action-dedupe.ts";
-import { PROVIDER_PLUGIN_MAP } from "./plugin-collector.ts";
+import {
+  collectConfiguredDeniedPluginNames,
+  PROVIDER_PLUGIN_MAP,
+} from "./plugin-collector.ts";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle.ts";
 import {
   isWorkspacePluginSourceFallbackAllowed,
@@ -276,7 +282,10 @@ async function runVaultBootHydration(): Promise<void> {
   // Same environments the old inline block skipped: Android has no D-Bus for
   // libsecret and no plaintext secrets to migrate; cloud-provisioned sandboxes
   // get real env vars from the daemon and vault-pglite init has hung there.
-  if (isMobilePlatform() || readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1") {
+  if (
+    isMobilePlatform() ||
+    process.env.ELIZA_CLOUD_PROVISIONED?.trim() === "1"
+  ) {
     return;
   }
   const bridge = getAgentHostBridge();
@@ -591,10 +600,19 @@ function shouldBlockDeferredPluginImports(): boolean {
 }
 async function registerStaticPluginPhase(
   phase: CoreStaticPluginPhase,
+  denied: ReadonlySet<string> = new Set(),
 ): Promise<void> {
+  // A denied plugin is never resolved, so do not evaluate its module. Its lazy
+  // loader stays registered in case the deny list changes later.
   const registrations = CORE_STATIC_PLUGIN_REGISTRATIONS.filter(
     (registration) =>
       registration.phase === phase &&
+      !(
+        phase === "deferred" &&
+        (denied.has(registration.packageName) ||
+          (registration.registryName !== undefined &&
+            denied.has(registration.registryName)))
+      ) &&
       (!["@elizaos/plugin-sql", SQLITE_PLUGIN].includes(
         registration.packageName,
       ) ||
@@ -721,13 +739,20 @@ async function ensureBlockingCoreStaticPluginsRegistered(
     abortSignal,
   );
 }
+/**
+ * Imports the deferred static plugins once. `denied` (from
+ * collectConfiguredDeniedPluginNames) is read by the first call only.
+ */
 export async function ensureDeferredCoreStaticPluginsRegistered(
   abortSignal?: AbortSignal,
+  denied: ReadonlySet<string> = collectConfiguredDeniedPluginNames(undefined),
 ): Promise<void> {
   if (_deferredStaticPluginsRegistered) return;
   if (!_deferredStaticPluginsRegistrationPromise) {
-    _deferredStaticPluginsRegistrationPromise =
-      registerStaticPluginPhase("deferred");
+    _deferredStaticPluginsRegistrationPromise = registerStaticPluginPhase(
+      "deferred",
+      denied,
+    );
   }
   await awaitOwnedPromise(
     _deferredStaticPluginsRegistrationPromise,
@@ -1574,7 +1599,8 @@ export async function closeRuntimeAdapter(
   if (!adapter || typeof adapter.close !== "function") return;
   try {
     logger.debug(`[eliza] ${context}: closing database adapter`);
-    await adapter.close();
+    // Core owns adapter-wide scheduler queries and pending diagnostics.
+    await runtime.close();
     logger.debug(`[eliza] ${context}: database adapter closed`);
   } catch (err) {
     logger.warn(
@@ -1745,16 +1771,40 @@ export async function disposeReplacedRuntime(
   previousRuntime: AgentRuntime,
   activeRuntime: AgentRuntime,
 ): Promise<void> {
+  if (previousRuntime === activeRuntime) return;
   const connection = (runtime: AgentRuntime) =>
     (
       runtime.adapter as { getRawConnection?: () => unknown } | undefined
     )?.getRawConnection?.();
   const shared = connection(previousRuntime);
-  await shutdownRuntime(previousRuntime, "hot-reload cleanup", {
-    fast: true,
-    keepAdapterOpen:
-      shared !== undefined && shared === connection(activeRuntime),
-  });
+  const keepAdapterOpen =
+    shared !== undefined && shared === connection(activeRuntime);
+  const handoff = keepAdapterOpen
+    ? handoffTaskSchedulerAdapter(
+        previousRuntime.adapter,
+        activeRuntime.adapter,
+      )
+    : Promise.resolve();
+  const retire = async () => {
+    try {
+      await shutdownRuntime(previousRuntime, "hot-reload cleanup", {
+        fast: true,
+        // Fast stop clears service lookups at its cap; original callbacks can
+        // still own database work. Keep their original retirement receipt.
+        requireQuiescence: true,
+        keepAdapterOpen,
+      });
+    } finally {
+      await handoff;
+    }
+  };
+  if (keepAdapterOpen) {
+    // Publish the outgoing owner before shutdown's first await. The API has
+    // already published the replacement; concurrent final close must join it.
+    await activeRuntime.retainSharedAdapterRetirement(retire);
+  } else {
+    await retire();
+  }
 }
 interface TrajectoryLoggerControl {
   isEnabled?: () => boolean;
@@ -2066,7 +2116,10 @@ export async function resolveConnectorSecretsOverlayForBoot(
     .filter(([, value]) => isVaultRef(value))
     .map(([key]) => key);
   if (refKeys.length === 0) return {};
-  if (isMobilePlatform() || readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1") {
+  if (
+    isMobilePlatform() ||
+    process.env.ELIZA_CLOUD_PROVISIONED?.trim() === "1"
+  ) {
     logger.error(
       `[vault-bootstrap] connector vault ref(s) present but the vault is unavailable on this platform (fail-closed): ${refKeys.join(", ")}`,
     );
@@ -2089,7 +2142,10 @@ export async function resolveConnectorSecretsOverlayForBoot(
 export async function resolveConfigEnvVaultRefsForBoot(
   config: ElizaConfig,
 ): Promise<void> {
-  if (isMobilePlatform() || readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1") {
+  if (
+    isMobilePlatform() ||
+    process.env.ELIZA_CLOUD_PROVISIONED?.trim() === "1"
+  ) {
     return;
   }
   if (
@@ -2387,6 +2443,8 @@ function applyCloudConfigToEnvResolved(config: ElizaConfig): void {
   const setCloudUsageEnv = (key: string, enabled: boolean): void => {
     if (enabled) {
       process.env[key] = "true";
+    } else if (shouldLoadCloudPlugin) {
+      process.env[key] = "false";
     } else {
       delete process.env[key];
     }
@@ -2713,12 +2771,18 @@ function resolveDefaultPgliteDataDir(config: ElizaConfig): string {
  * Postgres. Without this, the provider defaulted to "pglite" whenever the
  * loaded config lacked an explicit provider — even when Postgres was wired via
  * env — so the WebAssembly PGlite build was attempted and aborted on runtimes
- * that have no WASM (e.g. the riscv64 image, which provisions native Postgres).
+ * that have no WASM.
  * Keeping env authoritative makes the env-only Postgres path consistent across
  * applyDatabaseConfigToEnv, resolveActivePgliteDataDir, and the provider log.
  */
-/** @internal Exported for testing. */
-export function applyDatabaseConfigToEnv(config: ElizaConfig): void {
+/**
+ * Returns the Postgres URL when it was built from `config.database` (the
+ * value the database API saves), or null when it came from the environment
+ * or the provider is not Postgres.
+ *
+ * @internal Exported for testing.
+ */
+export function applyDatabaseConfigToEnv(config: ElizaConfig): string | null {
   const db = config.database;
   const provider = resolveEffectiveDbProvider(config);
   const databaseUrl = process.env.DATABASE_URL?.trim();
@@ -2733,11 +2797,12 @@ export function applyDatabaseConfigToEnv(config: ElizaConfig): void {
     delete process.env.POSTGRES_URL;
     delete process.env.DATABASE_URL;
     delete process.env.PGLITE_DATA_DIR;
-    return;
+    return null;
   }
   if (provider === "postgres") {
     const pg = db?.postgres;
     let url = pg?.connectionString ?? postgresUrl ?? databaseUrl;
+    let fromConfig = Boolean(url) && url === pg?.connectionString;
     if (!url && pg) {
       const host = pg.host ?? "localhost";
       const port = pg.port ?? 5432;
@@ -2747,6 +2812,7 @@ export function applyDatabaseConfigToEnv(config: ElizaConfig): void {
       const auth = password ? `${user}:${password}` : user;
       const sslParam = pg.ssl ? "?sslmode=verify-full" : "";
       url = `postgresql://${auth}@${host}:${port}/${database}${sslParam}`;
+      fromConfig = true;
     }
     process.env.POSTGRES_URL = url;
     // Clear PGLite dir so plugin-sql does not fall back to PGLite
@@ -2758,6 +2824,7 @@ export function applyDatabaseConfigToEnv(config: ElizaConfig): void {
     ) {
       logger.info("[eliza] DATABASE_URL detected: using Postgres database");
     }
+    return fromConfig && url ? url : null;
   } else {
     // PGLite mode (default): ensure no leftover POSTGRES_URL and pin
     // PGLite to the workspace path unless overridden by config/env.
@@ -2794,6 +2861,52 @@ export function applyDatabaseConfigToEnv(config: ElizaConfig): void {
       // recovery enabled, triggers the resetPgliteDataDir path.
       cleanStalePglitePid(dataDir);
     }
+  }
+  return null;
+}
+/**
+ * Re-validate a configured Postgres URL at boot and pin it to the validated
+ * address. The hostname stays in the URL so TLS verify-full and SNI check
+ * the real name; `hostaddr` carries the address libpq-compatible clients
+ * connect to. node-postgres ignores `hostaddr` and resolves the name again,
+ * so for it this check narrows, but does not close, a DNS-rebinding window.
+ * Unix sockets and multi-host lists are validated but not pinned.
+ *
+ * @internal Exported for testing.
+ */
+export async function pinConfiguredPostgresUrl(url: string): Promise<string> {
+  if (isUnixSocketPostgresUrl(url)) return url;
+  const validation = await validateDbHost({ connectionString: url });
+  if (validation.error || !validation.pinnedHost) {
+    throw new ElizaError(
+      `The configured Postgres host failed validation: ${validation.error ?? "no address to connect to"}`,
+      { code: "POSTGRES_HOST_REJECTED" },
+    );
+  }
+  const parsed = new URL(url);
+  const hostParam = parsed.searchParams.get("host");
+  if (hostParam?.includes(",") || parsed.searchParams.has("hostaddr")) {
+    return url;
+  }
+  parsed.searchParams.set(
+    "hostaddr",
+    validation.pinnedHost.replace(/^::ffff:/i, ""),
+  );
+  return parsed.toString();
+}
+function isUnixSocketPostgresUrl(url: string): boolean {
+  try {
+    // node-postgres accepts an empty host ("user@/db?host=/run/postgresql")
+    // by parsing it with a placeholder host; do the same here.
+    const parsed = URL.canParse(url)
+      ? new URL(url)
+      : new URL(url.replace("@/", "@placeholder/"));
+    return (
+      parsed.searchParams.get("host")?.startsWith("/") === true ||
+      /^%2f/i.test(parsed.hostname)
+    );
+  } catch {
+    return false;
   }
 }
 type PglitePidFileStatus =
@@ -4140,7 +4253,12 @@ export async function startEliza(
   // 2c. Propagate x402 config into process.env
   applyX402ConfigToEnv(config);
   // 2d. Propagate database config into process.env for plugin-sql
-  applyDatabaseConfigToEnv(config);
+  const configuredPostgresUrl = applyDatabaseConfigToEnv(config);
+  if (configuredPostgresUrl) {
+    process.env.POSTGRES_URL = await pinConfiguredPostgresUrl(
+      configuredPostgresUrl,
+    );
+  }
   // Boot-time vault hydration is DEFERRED off the blocking path. The desktop
   // flow (`hydrateWalletKeysFromNodePlatformSecureStore` + `runVaultBootstrap`)
   // reaches the OS keychain through `defaultMasterKey().load()` and opens a
@@ -4167,7 +4285,8 @@ export async function startEliza(
   // records which of those keys the launch environment actually set, letting
   // the deferred hydrate keep that exact precedence (vault beats config-merged
   // values; never clobbers a real env var).
-  const isCloudProvisioned = readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1";
+  const isCloudProvisioned =
+    process.env.ELIZA_CLOUD_PROVISIONED?.trim() === "1";
   vaultBootHydration = null;
   if (!isMobilePlatform() && !isCloudProvisioned) {
     getAgentHostBridge().captureWalletEnvBootBaseline();
@@ -4280,7 +4399,7 @@ export async function startEliza(
   // injected by the daemon as env vars, so there's nothing to multiplex. The
   // pool implementation is supplied by the host through the injected agent host
   // bridge (see ./host-bridge.ts) — no app import, no boot-time cycle.
-  if (readAliasedEnv("ELIZA_CLOUD_PROVISIONED") !== "1")
+  if (process.env.ELIZA_CLOUD_PROVISIONED?.trim() !== "1")
     try {
       const accountPool = getAgentHostBridge();
       accountPool.getDefaultAccountPool();
@@ -4495,7 +4614,7 @@ export async function startEliza(
   // PGlite cold start this inventory listing would otherwise trigger.
   if (
     process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER !== "1" &&
-    readAliasedEnv("ELIZA_CLOUD_PROVISIONED") !== "1" &&
+    process.env.ELIZA_CLOUD_PROVISIONED?.trim() !== "1" &&
     existsSync(resolveDefaultVaultDataDir())
   ) {
     try {
@@ -4525,7 +4644,7 @@ export async function startEliza(
   if (
     preferredProviderId &&
     preferredProviderId !== "elizacloud" &&
-    readAliasedEnv("ELIZA_CLOUD_PROVISIONED") !== "1"
+    process.env.ELIZA_CLOUD_PROVISIONED?.trim() !== "1"
   ) {
     const providerCredential = await hydrateSelectedProviderCredentialFromVault(
       {
@@ -4751,6 +4870,7 @@ export async function startEliza(
       });
       try {
         await sandboxManager.start();
+        setActiveSandboxManager(sandboxManager);
         logger.info("[eliza] Sandbox manager started");
       } catch (err) {
         logger.error(
@@ -4789,7 +4909,7 @@ export async function startEliza(
   const subAgentCredentialPlugins = shouldRegisterSubAgentCredentialsPlugin()
     ? [{ ...subAgentCredentialsPlugin }]
     : [];
-  const assistantPlugins = createAssistantPlugins(character);
+  const assistantPlugins = createAssistantPlugins(character, config);
   const assistantPlugin = assistantPlugins[0];
   deduplicatePluginActions([
     ...assistantPlugins,
@@ -5495,7 +5615,7 @@ export async function startEliza(
   ): Promise<readonly import("./agent-wallets.ts").AgentWalletDescriptor[]> => {
     if (
       process.env.ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP === "1" ||
-      readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1"
+      process.env.ELIZA_CLOUD_PROVISIONED?.trim() === "1"
     ) {
       return Promise.resolve([]);
     }
@@ -5733,7 +5853,10 @@ export async function startEliza(
     if (blockDeferredPluginImports) {
       return resolvedPlugins;
     }
-    await ensureDeferredCoreStaticPluginsRegistered(abortSignal);
+    await ensureDeferredCoreStaticPluginsRegistered(
+      abortSignal,
+      collectConfiguredDeniedPluginNames(config),
+    );
     const deferredResolvedPlugins = await resolvePlugins(config, {
       quiet: preOnboarding,
       phase: "deferred",
@@ -5967,6 +6090,11 @@ export async function startEliza(
       runtime.logger,
     );
     bootTimer.lap("deferred:complete");
+    // Last, once every deferred step has run: an ELIZA_ACTION_ALLOWLIST entry
+    // that names no registered action (usually an upstream rename) marks the
+    // deferred boot failed and reports INVALID_ACTION_ALLOWLIST. Chat stays
+    // up, and the unmatched name allows nothing.
+    assertActionAllowlistMatchesActions(runtime.actions ?? []);
   };
   try {
     // Time from the register-sql lap up to entering service init (roles
@@ -6038,6 +6166,7 @@ export async function startEliza(
     },
     disposeSandbox: sandboxManager
       ? async () => {
+          setActiveSandboxManager(null);
           await sandboxManager?.stop();
         }
       : undefined,
@@ -6172,7 +6301,7 @@ export async function startEliza(
     // the renderer hit "Failed to fetch". Prefer the desktop API port
     // resolver when ELIZA_API_PORT is set; otherwise fall back to the
     // server-only resolver so CLI-mode defaults (2138) stay untouched.
-    const apiPort = readAliasedEnv("ELIZA_API_PORT")
+    const apiPort = process.env.ELIZA_API_PORT?.trim()
       ? resolveDesktopApiPort(process.env)
       : resolveServerOnlyPort(process.env);
     // Local-agent IPC mode (Android stdio bridge / Capacitor): the WebView
@@ -6221,7 +6350,9 @@ export async function startEliza(
             const teardown = shutdownRuntime(
               runtime,
               "pre-restore runtime disposal",
-              { fast: true },
+              // This process keeps serving after replacement. A fast room
+              // timeout cannot release the old adapter under an admitted owner.
+              { requireQuiescence: true },
             );
             pendingRuntimeTeardown = teardown;
             try {

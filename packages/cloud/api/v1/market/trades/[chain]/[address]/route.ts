@@ -21,7 +21,7 @@ import type {
   AppEnv,
 } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { executeGuardedPaidProxyWithPreflight } from "@/api-app/lib/guarded-paid-proxy";
+import { executeGuardedPaidProxyWithPreflight } from "../../../../../src/lib/guarded-paid-proxy";
 
 const CORS_METHODS = "GET, OPTIONS";
 export const TOKEN_TRADE_TYPES = Object.freeze([

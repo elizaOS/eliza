@@ -6,7 +6,9 @@ import { join } from "node:path";
 import {
   AgentRuntime,
   type IAgentRuntime,
+  InferenceTurnTimer,
   ModelType,
+  resolveOwnerEntityIdOrDefault,
   Service,
 } from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
@@ -16,11 +18,16 @@ import { proposeDeviceAction } from "../../../plugins/plugin-assistant/src/servi
 import { recordCloudInferenceFailure } from "../../../plugins/plugin-elizacloud/src/utils/inference-diagnostics.ts";
 import { installRouterHandler } from "../../../plugins/plugin-local-inference/src/services/router-handler.ts";
 import { detectRuntimeModel } from "../src/api/agent-model.ts";
+import { registerTokenRoleResolver } from "../src/api/boundary-role-resolver.ts";
 import {
   type CloudModelReadinessView,
   computeCanRespond,
   responseReadinessFields,
 } from "../src/api/health-routes.ts";
+import {
+  captureNativeInferenceTiming,
+  readNativeInferenceTiming,
+} from "../src/api/native-inference-timing.ts";
 import { startApiServer } from "../src/api/server.ts";
 
 class Loader extends Service {
@@ -382,4 +389,115 @@ it("exposes only finite Cloud failure facts through authenticated existing statu
     `http://127.0.0.1:${server.port}/api/status`,
   );
   expect(unauthenticated.status).toBe(401);
+});
+
+it("keeps native timing private to the current runtime, owner and host revision", async () => {
+  runtime.setSetting("ELIZA_HOST_CONTEXT_REVISION", "boot:timing-status-test");
+  const owner = resolveOwnerEntityIdOrDefault(runtime);
+  const summary = new InferenceTurnTimer({
+    turnId: "PRIVATE_TURN",
+    roomId: "PRIVATE_ROOM",
+    label: "PRIVATE_LABEL",
+    traceId: "ab".repeat(16),
+    t0EpochMs: Date.now() - 20,
+  }).close();
+  summary.spans.push({
+    name: "model:PRIVATE_MODEL",
+    startMs: 0,
+    endMs: 10,
+    durationMs: 10,
+    meta: { prompt: "PRIVATE_PROMPT" },
+  });
+  const complete = captureNativeInferenceTiming(runtime, owner);
+  expect(complete).toBeTypeOf("function");
+  complete?.(summary);
+  const unregister = registerTokenRoleResolver({
+    id: "native-timing-status-test",
+    resolve: (req) =>
+      req.headers.authorization === "Bearer timing-guest"
+        ? {
+            providerId: "native-timing-status-test",
+            principal: "timing-guest",
+            claims: {},
+            worldRole: "USER",
+            isAdmin: false,
+            isRouteInScope: () => true,
+          }
+        : null,
+  });
+  const getLogs = vi.spyOn(runtime, "getLogs");
+  const status = async (credential: string = token) => {
+    const response = await fetch(`http://127.0.0.1:${server.port}/api/status`, {
+      headers: { Authorization: `Bearer ${credential}` },
+    });
+    expect(response.status).toBe(200);
+    return response.json();
+  };
+  try {
+    const value = (await status()).nativeInferenceTiming;
+    expect(value).toMatchObject({ version: 1, traceId: "ab".repeat(16) });
+    expect(JSON.stringify(value)).not.toContain("PRIVATE");
+    expect(value.stages).toContainEqual({
+      stage: "llm-inference",
+      totalMs: 10,
+      toFirstVisibleMs: null,
+    });
+    expect(
+      (await status("timing-guest")).nativeInferenceTiming,
+    ).toBeUndefined();
+    expect(getLogs).not.toHaveBeenCalled();
+    const delayed = captureNativeInferenceTiming(runtime, owner);
+    const newest = captureNativeInferenceTiming(runtime, owner);
+    newest?.({ ...summary, traceId: "cd".repeat(16) });
+    delayed?.(summary);
+    delayed?.({
+      ...summary,
+      get spans(): never {
+        throw Error("OLD_DIAGNOSTIC");
+      },
+    });
+    expect((await status()).nativeInferenceTiming.traceId).toBe(
+      "cd".repeat(16),
+    );
+    const other = new AgentRuntime({
+      character: { name: "Other timing owner", bio: [] },
+    });
+    expect(readNativeInferenceTiming(other)).toBeUndefined();
+    expect(captureNativeInferenceTiming(runtime, randomUUID())).toBeUndefined();
+    const previousOwner = runtime.getSetting("ELIZA_ADMIN_ENTITY_ID");
+    try {
+      runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", randomUUID());
+      complete?.(summary);
+      expect((await status()).nativeInferenceTiming).toBeUndefined();
+    } finally {
+      runtime.setSetting(
+        "ELIZA_ADMIN_ENTITY_ID",
+        typeof previousOwner === "string" ? previousOwner : null,
+      );
+    }
+    expect(readNativeInferenceTiming(runtime)).toBeUndefined();
+    complete?.(summary);
+    runtime.setSetting("ELIZA_HOST_CONTEXT_REVISION", "boot:replacement");
+    complete?.(summary);
+    expect((await status()).nativeInferenceTiming).toBeUndefined();
+    runtime.setSetting(
+      "ELIZA_HOST_CONTEXT_REVISION",
+      "boot:timing-status-test",
+    );
+    expect(readNativeInferenceTiming(runtime)).toBeUndefined();
+    const malformed = captureNativeInferenceTiming(runtime, owner);
+    expect(() =>
+      malformed?.({
+        ...summary,
+        get spans(): never {
+          throw Error("PRIVATE_DIAGNOSTIC_FAILURE");
+        },
+      }),
+    ).not.toThrow();
+    expect(readNativeInferenceTiming(runtime)).toBeUndefined();
+  } finally {
+    unregister();
+    getLogs.mockRestore();
+    runtime.setSetting("ELIZA_HOST_CONTEXT_REVISION", null);
+  }
 });

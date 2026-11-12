@@ -36,6 +36,7 @@ function assets() {
     "command-handler.mjs": Buffer.from("export const cancellation = true;\n"),
     "page-command.mjs": Buffer.from("export function pageCommand() {}\n"),
     "commands.mjs": Buffer.from('export const context = "完整🙂";\n'),
+    "effect-watch.mjs": Buffer.from("export const network = true;\n"),
     "figtree-OFL.txt": Buffer.from("SIL Open Font License, Version 1.1\n"),
     "guide-font.mjs": Buffer.from(
       'export const guideFonts = [{ weight: 500, data: "d09GMgAB" }];\n',
@@ -58,11 +59,17 @@ function assets() {
           "tabs",
           "scripting",
           "webNavigation",
+          "webRequest",
           "storage",
           "nativeMessaging",
           "alarms",
         ],
-        host_permissions: ["http://*/*", "https://*/*"],
+        host_permissions: [
+          "http://*/*",
+          "https://*/*",
+          "ws://*/*",
+          "wss://*/*",
+        ],
         background: { service_worker: "background.mjs", type: "module" },
       }),
     ),
@@ -240,6 +247,51 @@ test("Android connects to an address only through a navigation the protection ru
   const linux = await generateComponentOverlay(input);
   for (const filename of [warmup, customTabs, prefs])
     assert.equal(linux.files[filename], undefined);
+});
+
+test("Android pages follow a font size change while the browser stays open", async () => {
+  const tracker =
+    "chrome/android/java/src/org/chromium/chrome/browser/ChromeActivitySessionTracker.java";
+  const android = await generateComponentOverlay(request());
+  const source = android.files[tracker];
+  // Chromium sets the factor once per profile when a foreground session starts; that stays.
+  assert.match(
+    source,
+    /handlePerProfileForegroundSessionStart\(Profile profile\) \{[\s\S]*?FontSizePrefs\.getInstance\(profile\)\.setFontScaleFactor\(\);/,
+  );
+  // The application's configuration callback sets it again when the font scale changes.
+  const initialize = source.slice(
+    source.indexOf("public void initializeWithNative() {"),
+    source.indexOf("private void onFontScaleChanged() {"),
+  );
+  assert.match(
+    initialize,
+    /ApplicationStatus\.registerApplicationStateListener\(createApplicationStateListener\(\)\);[\s\S]*ContextUtils\.getApplicationContext\(\)\s*\.registerComponentCallbacks\(/,
+  );
+  assert.match(
+    initialize,
+    /public void onConfigurationChanged\(Configuration configuration\) \{\s*if \(configuration\.fontScale == mFontScale\) return;\s*mFontScale = configuration\.fontScale;\s*onFontScaleChanged\(\);/,
+  );
+  // Only during a session, and for each profile the session started.
+  assert.match(
+    source,
+    /private void onFontScaleChanged\(\) \{\s*ThreadUtils\.assertOnUiThread\(\);\s*if \(!mIsStarted\) return;\s*for \(Profile profile : mStartupProfileTasksCompleted\.getTrackedProfiles\(\)\) \{\s*FontSizePrefs\.getInstance\(profile\)\.setFontScaleFactor\(\);/,
+  );
+  for (const name of [
+    "android.content.ComponentCallbacks",
+    "android.content.res.Configuration",
+    "org.chromium.base.ContextUtils",
+  ])
+    assert.equal(source.split(`import ${name};`).length, 2);
+  assert.equal(android.report.outputs[tracker], sha256(source));
+  // Desktop builds keep Chromium's file unchanged.
+  const input = request();
+  input.platform = "linux";
+  input.assets["runtime-config.mjs"] = Buffer.from(
+    'export const nativeHost = "ai.elizaos.browser";\n',
+  );
+  const linux = await generateComponentOverlay(input);
+  assert.equal(linux.files[tracker], undefined);
 });
 
 test("source mutations, unsupported revisions, identity changes, and unexpected resources fail before output", async () => {
@@ -436,7 +488,7 @@ test("Linux and Android resource additions fit the reviewed GRIT allocation", as
     count + protectionAssetNames.length <=
       Number(allocation[2]) - Number(allocation[1]),
   );
-  assert.equal(count, 25); // Includes both optional Hangouts entries, conservatively.
+  assert.equal(count, 26); // Includes both optional Hangouts entries, conservatively.
   const structures = [
     ...overlay.files[
       "chrome/browser/resources/component_extension_resources.grd"

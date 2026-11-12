@@ -2,11 +2,11 @@
  * Application detail — Settings tab (edit fields, allowed origins, danger zone).
  *
  * Bare `fetch` is replaced with the typed `updateApp` / `regenerateAppApiKey` /
- * `deleteApp` helpers; the single-app + list query keys are invalidated after a
- * save/delete so the detail page and list reflect changes without a full reload.
+ * `deleteApp` helpers. Confirmed deletion removes only this owner's list entry;
+ * an unmounted owner cannot publish a late success or navigation.
  */
 
-import { useQueryClient } from "@tanstack/react-query";
+import { type QueryKey, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Key,
@@ -18,7 +18,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "../../../bridge/toast";
 import {
@@ -41,7 +41,10 @@ import { Switch } from "../../../components/ui/switch";
 import { Textarea } from "../../../components/ui/textarea";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import {
-  APPS_QUERY_KEY,
+  AppDeletionPendingError,
+  resumeAppDeletionAndWait,
+} from "../lib/app-deletion-client";
+import {
   type App,
   appQueryKey,
   deleteApp,
@@ -52,15 +55,32 @@ import { storeOneTimeAppApiKey } from "../lib/one-time-app-api-key";
 
 interface AppSettingsProps {
   app: App;
+  appsQueryKey: QueryKey;
+  onDeletingChange?: (pending: boolean) => void;
 }
 
-export function AppSettings({ app }: AppSettingsProps) {
+export function AppSettings({
+  app,
+  appsQueryKey,
+  onDeletingChange,
+}: AppSettingsProps) {
   const t = useCloudT();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isLoading, setIsLoading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isCheckingDeletion, setIsCheckingDeletion] = useState(false);
+  const [pendingDeletion, setPendingDeletion] =
+    useState<AppDeletionPendingError | null>(null);
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const mounted = useRef(true);
+  const deletionInFlight = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const [allowedOrigins, setAllowedOrigins] = useState<string[]>(() => {
     const origins = app.allowed_origins;
@@ -90,7 +110,7 @@ export function AppSettings({ app }: AppSettingsProps) {
       );
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: appQueryKey(app.id) }),
-        queryClient.invalidateQueries({ queryKey: APPS_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: appsQueryKey }),
       ]);
     } catch (error) {
       toast.error(
@@ -149,18 +169,35 @@ export function AppSettings({ app }: AppSettingsProps) {
     }
   };
 
-  const handleDelete = async () => {
+  const observeDeletion = async (resume: AppDeletionPendingError | null) => {
+    if (deletionInFlight.current) return;
+    deletionInFlight.current = true;
     setIsDeleting(true);
+    setIsCheckingDeletion(true);
+    onDeletingChange?.(true);
+    let settled = false;
     try {
-      await deleteApp(app.id);
+      if (resume) await resumeAppDeletionAndWait(app.id, resume.jobId);
+      else await deleteApp(app.id);
+      if (!mounted.current) return;
+      settled = true;
+      setPendingDeletion(null);
+      queryClient.setQueryData<App[]>(appsQueryKey, (previous) =>
+        previous?.filter((candidate) => candidate.id !== app.id),
+      );
       toast.success(
         t("cloud.appSettings.deleteSuccess", {
           defaultValue: "App deleted successfully",
         }),
       );
-      await queryClient.invalidateQueries({ queryKey: APPS_QUERY_KEY });
       navigate("/cloud/apps");
     } catch (error) {
+      if (!mounted.current) return;
+      if (error instanceof AppDeletionPendingError && error.appId === app.id) {
+        setPendingDeletion(error);
+        return;
+      }
+      settled = true;
       toast.error(
         t("cloud.appSettings.deleteFailed", {
           defaultValue: "Failed to delete app",
@@ -175,9 +212,17 @@ export function AppSettings({ app }: AppSettingsProps) {
         },
       );
     } finally {
-      setIsDeleting(false);
+      deletionInFlight.current = false;
+      if (mounted.current) {
+        setIsCheckingDeletion(false);
+        if (settled) {
+          setIsDeleting(false);
+          onDeletingChange?.(false);
+        }
+      }
     }
   };
+  const handleDelete = () => observeDeletion(null);
 
   const addOrigin = () => {
     if (newOrigin && !allowedOrigins.includes(newOrigin)) {
@@ -192,6 +237,35 @@ export function AppSettings({ app }: AppSettingsProps) {
 
   return (
     <div className="space-y-4">
+      {pendingDeletion && (
+        <Card stack="default" variant="flatPadded">
+          <div role="status" className="space-y-3">
+            <p>
+              {pendingDeletion.reason === "recovery_required"
+                ? t("cloud.apps.deletionRecoveryRequired", {
+                    defaultValue:
+                      "The deletion job requires recovery. Its original request is retained and the app remains locked.",
+                  })
+                : t("cloud.apps.deletionStillPending", {
+                    defaultValue:
+                      "Deletion is still pending. Its status could not be confirmed; the original request is retained.",
+                  })}
+            </p>
+            <Button
+              onClick={() => void observeDeletion(pendingDeletion)}
+              disabled={isCheckingDeletion}
+            >
+              {isCheckingDeletion
+                ? t("cloud.apps.checkingDeletionStatus", {
+                    defaultValue: "Checking deletion status…",
+                  })
+                : t("cloud.apps.checkDeletionStatus", {
+                    defaultValue: "Check deletion status",
+                  })}
+            </Button>
+          </div>
+        </Card>
+      )}
       {/* Basic Settings */}
       <Card stack="default" variant="flatPadded">
         <h3 className="text-sm font-medium text-txt flex items-center gap-2">
@@ -387,7 +461,7 @@ export function AppSettings({ app }: AppSettingsProps) {
 
       {/* Save Button */}
       <div className="flex justify-end">
-        <Button onClick={handleSave} disabled={isLoading}>
+        <Button onClick={handleSave} disabled={isLoading || isDeleting}>
           {isLoading ? (
             <>
               <Loader2 className="size-4 mr-2 animate-spin" />
@@ -431,7 +505,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                   variant="destructive"
                   size="sm"
                   className="shrink-0"
-                  disabled={isRegenerating}
+                  disabled={isRegenerating || isDeleting}
                 >
                   {isRegenerating ? (
                     <Loader2 className="size-4 animate-spin" />
@@ -465,6 +539,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                   </AlertDialogCancel>
                   <AlertDialogAction
                     onClick={handleRegenerateApiKey}
+                    disabled={isDeleting}
                     className="bg-destructive-solid text-destructive-fg hover:bg-destructive-solid-hover"
                   >
                     {t("cloud.appSettings.regenerateApiKey", {

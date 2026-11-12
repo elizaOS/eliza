@@ -4,6 +4,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
+  hashStableJson,
   type Memory,
   resolveOwnerEntityIdOrDefault,
   type State,
@@ -15,7 +16,11 @@ import { workflowRoutePlugin } from "../../../plugins/plugin-workflow/src/plugin
 import { registerTokenRoleResolver } from "../src/api/boundary-role-resolver.ts";
 import { startApiServer } from "../src/api/server.ts";
 import { createOngoingTasksProvider } from "../src/providers/tasks.ts";
-import { readTriggerConfig } from "../src/triggers/runtime.ts";
+import { withTriggerTaskActivity } from "../src/triggers/activity.ts";
+import {
+  executeTriggerTask,
+  readTriggerConfig,
+} from "../src/triggers/runtime.ts";
 
 let canonicalOwner: string;
 const foreignOwner = "00000000-0000-4000-8000-000000000022";
@@ -354,4 +359,247 @@ it("keeps workflow todo responses and host overview projections identical", asyn
       (entry: { id: string }) => entry.id === todo.id,
     ),
   ).toEqual(updated);
+});
+
+it("archives and restores the same owned prompt without losing its definition", async () => {
+  const created = await request("canonical", "/api/triggers", "POST", {
+    kind: "prompt",
+    displayName: "Recovery HTTP QA",
+    instructions: "Keep the complete original instructions",
+    triggerType: "cron",
+    cronExpression: "0 8 * * 1-5",
+    timezone: "America/Los_Angeles",
+    enabled: false,
+  });
+  expect(created.status).toBe(201);
+  const { trigger } = (await created.json()) as {
+    trigger: { id: string; taskId: string };
+  };
+  const before = await fixture.runtime.getTask(trigger.taskId as never);
+  if (!before) throw new Error("Created trigger was not saved");
+  expect(
+    (
+      await request("foreign", `/api/triggers/${trigger.id}/archive`, "POST", {
+        expectedRevision: hashStableJson(before),
+      })
+    ).status,
+  ).toBe(403);
+  expect(
+    (
+      await request(
+        "canonical",
+        `/api/triggers/${trigger.id}/archive`,
+        "POST",
+        {},
+      )
+    ).status,
+  ).toBe(400);
+  expect(
+    (
+      await request(
+        "canonical",
+        `/api/triggers/${trigger.id}/archive`,
+        "POST",
+        {
+          expectedRevision: "0".repeat(64),
+        },
+      )
+    ).status,
+  ).toBe(409);
+  expect(
+    (
+      await request(
+        "canonical",
+        `/api/triggers/${trigger.id}/archive`,
+        "POST",
+        { expectedRevision: hashStableJson(before) },
+      )
+    ).status,
+  ).toBe(200);
+  const stored = await fixture.runtime.getTask(trigger.taskId as never);
+  if (!stored) throw new Error("Archived trigger was lost");
+  expect(stored?.metadata?.removedAt).toBeTypeOf("number");
+  expect(readTriggerConfig(stored)?.instructions).toBe(
+    readTriggerConfig(before)?.instructions,
+  );
+  expect(readTriggerConfig(stored)?.cronExpression).toBe(
+    readTriggerConfig(before)?.cronExpression,
+  );
+  const listed = (await (
+    await request("canonical", "/api/triggers")
+  ).json()) as { triggers: { id: string }[] };
+  expect(listed.triggers.some((row) => row.id === trigger.id)).toBe(false);
+  const removed = (await (
+    await request("canonical", "/api/triggers?removed=1")
+  ).json()) as { recovery: boolean; triggers: { id: string }[] };
+  expect(removed.recovery).toBe(true);
+  expect(removed.triggers.some((row) => row.id === trigger.id)).toBe(true);
+  const feed = await (await request("canonical", "/api/automations")).json();
+  expect(JSON.stringify(feed)).not.toContain("Recovery HTTP QA");
+  expect(
+    (
+      await executeTriggerTask(fixture.runtime, before, {
+        source: "manual",
+        force: true,
+      })
+    ).status,
+  ).toBe("skipped");
+  expect(
+    (
+      await request("canonical", `/api/triggers/${trigger.id}`, "PUT", {
+        displayName: "Stale edit",
+      })
+    ).status,
+  ).toBe(409);
+  expect(
+    (
+      await request(
+        "canonical",
+        `/api/triggers/${trigger.id}/restore`,
+        "POST",
+        { expectedRevision: hashStableJson(stored) },
+      )
+    ).status,
+  ).toBe(200);
+  const restored = await fixture.runtime.getTask(trigger.taskId as never);
+  if (!restored) throw new Error("Restored trigger was lost");
+  expect(restored?.metadata?.removedAt).toBeUndefined();
+  expect(readTriggerConfig(restored)?.instructions).toBe(
+    readTriggerConfig(before)?.instructions,
+  );
+  expect(readTriggerConfig(restored)?.enabled).toBe(false);
+  expect(
+    (await request("canonical", `/api/triggers/${trigger.id}`, "DELETE"))
+      .status,
+  ).toBe(200);
+});
+
+it("refuses removal while the same trigger is executing", async () => {
+  const created = await request("canonical", "/api/triggers", "POST", {
+    kind: "prompt",
+    displayName: "Busy recovery QA",
+    instructions: "Do not run",
+    triggerType: "cron",
+    cronExpression: "0 8 * * *",
+    enabled: false,
+  });
+  const { trigger } = (await created.json()) as {
+    trigger: { id: string; taskId: string };
+  };
+  const before = await fixture.runtime.getTask(trigger.taskId as never);
+  if (!before) throw new Error("Created trigger was not saved");
+  let release!: () => void;
+  const held = withTriggerTaskActivity(
+    fixture.runtime,
+    trigger.taskId as never,
+    () =>
+      new Promise<void>((resolve) => {
+        release = resolve;
+      }),
+  );
+  await Promise.resolve();
+  const response = await request(
+    "canonical",
+    `/api/triggers/${trigger.id}/archive`,
+    "POST",
+  );
+  expect(response.status).toBe(409);
+  expect(
+    (await fixture.runtime.getTask(trigger.taskId as never))?.metadata
+      ?.removedAt,
+  ).toBeUndefined();
+  release();
+  await held;
+  expect(
+    (
+      await request(
+        "canonical",
+        `/api/triggers/${trigger.id}/archive`,
+        "POST",
+        { expectedRevision: hashStableJson(before) },
+      )
+    ).status,
+  ).toBe(200);
+  expect(
+    (await request("canonical", `/api/triggers/${trigger.id}`, "DELETE"))
+      .status,
+  ).toBe(200);
+});
+
+it("rejects stale recovery snapshots even when the clock does not advance", async () => {
+  const created = await request("canonical", "/api/triggers", "POST", {
+    kind: "prompt",
+    displayName: "Recovery version QA",
+    instructions: "Keep this definition",
+    triggerType: "cron",
+    cronExpression: "0 8 * * *",
+    enabled: false,
+  });
+  const { trigger } = (await created.json()) as {
+    trigger: { id: string; taskId: string };
+  };
+  const original = await fixture.runtime.getTask(trigger.taskId as never);
+  if (!original) throw new Error("Created trigger was not saved");
+  const clock = vi
+    .spyOn(Date, "now")
+    .mockReturnValue(Number(original.metadata?.updatedAt));
+  try {
+    const changed = { ...original, description: "A newer edit" };
+    await fixture.runtime.updateTask(trigger.taskId as never, {
+      description: changed.description,
+    });
+    expect(
+      (
+        await request(
+          "canonical",
+          `/api/triggers/${trigger.id}/archive`,
+          "POST",
+          {
+            expectedRevision: hashStableJson(original),
+          },
+        )
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await request(
+          "canonical",
+          `/api/triggers/${trigger.id}/archive`,
+          "POST",
+          {
+            expectedRevision: hashStableJson(changed),
+          },
+        )
+      ).status,
+    ).toBe(200);
+    const archived = await fixture.runtime.getTask(trigger.taskId as never);
+    if (!archived) throw new Error("Archived trigger was lost");
+    expect(
+      (
+        await request(
+          "canonical",
+          `/api/triggers/${trigger.id}/restore`,
+          "POST",
+          {
+            expectedRevision: hashStableJson(archived),
+          },
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await request(
+          "canonical",
+          `/api/triggers/${trigger.id}/archive`,
+          "POST",
+          {
+            expectedRevision: hashStableJson(changed),
+          },
+        )
+      ).status,
+    ).toBe(409);
+  } finally {
+    clock.mockRestore();
+    await request("canonical", `/api/triggers/${trigger.id}`, "DELETE");
+  }
 });

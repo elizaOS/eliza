@@ -50,10 +50,7 @@ import {
   type RecordSettledInferenceBillingInput,
   recordSettledInferenceBilling,
 } from "@elizaos/cloud-shared/lib/services/ai-billing-settled";
-import {
-  AiPricingCacheUnavailableError,
-  AiPricingCacheWarmingError,
-} from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
+import { AiPricingCacheUnavailableError } from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
 import type { PricingBillingSource } from "@elizaos/cloud-shared/lib/services/ai-pricing-definitions";
 import { appCreditsService } from "@elizaos/cloud-shared/lib/services/app-credits";
 import {
@@ -62,17 +59,15 @@ import {
   InferenceAppAffiliateUnsupportedError,
 } from "@elizaos/cloud-shared/lib/services/app-inference-admission";
 import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
-import { contentModerationService } from "@elizaos/cloud-shared/lib/services/content-moderation";
 import type {
   CreditReconciliationResult,
   CreditReservation,
 } from "@elizaos/cloud-shared/lib/services/credits";
 import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
-import { isInferenceAdmissionGateWarmingError } from "@elizaos/cloud-shared/lib/services/inference-admission-gate";
 import { inferenceRateLimitConfig } from "@elizaos/cloud-shared/lib/services/inference-admission-snapshot";
 import type { InferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
 import { resolveInferenceAuthContext } from "@elizaos/cloud-shared/lib/services/inference-auth-context";
-import { InferenceBalanceCacheWarmingError } from "@elizaos/cloud-shared/lib/services/inference-billing-fast-path";
+import { InferenceBillingUnavailableError } from "@elizaos/cloud-shared/lib/services/inference-billing-fast-path";
 import type { InferenceCredentialCheck } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
 import {
   isKnownPreDispatchProviderConfigurationError,
@@ -109,13 +104,13 @@ import { Hono } from "hono";
 import {
   resolveInferenceAuthStandingDenial,
   resolveInferenceCredentialAdmissionDenial,
-} from "@/api-app/lib/generative-route-auth";
+} from "../../src/lib/generative-route-auth";
 import {
   type FinishedStepUsageSource,
   firstNumber,
   modelNotAvailableMessage,
   summarizeFinishedStepUsage,
-} from "@/api-app/lib/inference-usage";
+} from "../../src/lib/inference-usage";
 
 const ROUTE_MAX_DURATION = 800;
 
@@ -570,19 +565,9 @@ app.post("/", async (c) => {
     executionCtx =
       typeof candidate?.waitUntil === "function" ? candidate : undefined;
   } catch {
-    // error-policy:J4 local Hono hosts have no Workers execution context; an
-    // enabled Worker configuration fails closed immediately below.
+    // error-policy:J4 local Hono hosts have no Workers execution context and
+    // keep the synchronous primary admission.
     executionCtx = undefined;
-  }
-  if (!executionCtx && c.env?.INFERENCE_DEFERRED_ADMISSION === "true") {
-    logger.error(
-      "[Messages] Worker execution context is unavailable for cache-only inference",
-    );
-    return anthropicError(
-      "api_error",
-      "Inference authorization is warming. Retry shortly.",
-      503,
-    );
   }
   const decodedBody = await decodeRequestJson(c.req);
   const body = decodedBody.ok ? decodedBody.value : undefined;
@@ -619,8 +604,8 @@ app.post("/", async (c) => {
   // Steward-session inference. Cold Workers schedule authoritative hydration
   // and return a retryable response; wallet proofs stay on the non-Worker path
   // because their timestamped signatures are not reusable cache identities.
-  let moderationAlreadyChecked = false;
   let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
+  let apiKeyRateLimit: number | undefined;
   let admissionCredential: InferenceCredentialCheck | undefined;
   let guardOrganizationId: string | undefined;
   try {
@@ -632,16 +617,8 @@ app.post("/", async (c) => {
       const resolution = await resolveInferenceAuthContext(c.req.raw, {
         executionCtx,
         traceId,
-        cacheOnly: Boolean(executionCtx),
         deferStrongCredentialCheck: Boolean(executionCtx) && requestIsValid,
       });
-      if (resolution.kind === "warming") {
-        return anthropicError(
-          "api_error",
-          "Authorization cache is warming. Retry shortly.",
-          503,
-        );
-      }
       if (resolution.kind === "suspended") {
         const denial = resolveInferenceAuthStandingDenial(resolution, {
           route: "messages",
@@ -673,10 +650,11 @@ app.post("/", async (c) => {
           ? { id: resolution.ctx.apiKeyId }
           : null;
         admissionSnapshot = resolution.ctx.admission;
+        apiKeyRateLimit =
+          "apiKeyRateLimit" in resolution.ctx
+            ? resolution.ctx.apiKeyRateLimit
+            : undefined;
         admissionCredential = resolution.credential;
-        // The resolver already verified not-suspended (cache hit = at populate;
-        // origin miss = just now), so the synchronous moderation read is skipped.
-        moderationAlreadyChecked = true;
       } else {
         if (executionCtx) {
           return anthropicError(
@@ -733,17 +711,19 @@ app.post("/", async (c) => {
           cacheOnly: Boolean(executionCtx),
           executionCtx,
           config: inferenceRateLimitConfig(admissionSnapshot, "completions"),
+          admissionSnapshot,
           apiKeyId: apiKey?.id,
+          apiKeyRateLimit,
           userId: user.id,
         },
       );
     } catch (error) {
-      // error-policy:J1 preserve the Anthropic error envelope while the
-      // cache-only policy hydrates off path.
+      // error-policy:J1 preserve the Anthropic error envelope for a policy
+      // the limiter could not prove.
       if (error instanceof OrgRateLimitCacheNotReadyError) {
         return anthropicError(
           "api_error",
-          "Rate-limit authorization cache is warming. Retry shortly.",
+          "Rate-limit authorization is unavailable. Retry shortly.",
           503,
           { "Retry-After": "1" },
         );
@@ -777,29 +757,12 @@ app.post("/", async (c) => {
       Awaited<ReturnType<typeof appsService.getById>>
     > | null = null;
     if (requestedAppId) {
-      if (executionCtx) {
-        const appResolution =
-          await appsService.getAuthorizedMonetizedAppForUserCacheOnly(
-            requestedAppId,
-            user,
-            { executionCtx },
-          );
-        if (appResolution.kind !== "ready") {
-          return anthropicError(
-            "api_error",
-            "Application authorization cache is warming. Retry shortly.",
-            503,
-            { "Retry-After": "1" },
-          );
-        }
-        monetizedApp = appResolution.app;
-      } else {
-        monetizedApp =
-          (await appsService.getAuthorizedMonetizedAppForUser(
-            requestedAppId,
-            user,
-          )) ?? null;
-      }
+      monetizedApp =
+        (await appsService.getAuthorizedMonetizedAppForUser(
+          requestedAppId,
+          user,
+          { executionCtx },
+        )) ?? null;
       appId = monetizedApp?.id ?? null;
       useAppCredits = Boolean(monetizedApp?.monetization_enabled);
     }
@@ -809,55 +772,8 @@ app.post("/", async (c) => {
     const normalizedModel = normalizeModelName(model);
     const systemPrompt = normalizeSystemPrompt(request.system);
 
-    let shouldBlockUser = false;
-    if (!moderationAlreadyChecked) {
-      if (executionCtx) {
-        const moderationResolution =
-          await contentModerationService.shouldBlockUserCacheOnly(user.id, {
-            executionCtx,
-          });
-        if (moderationResolution.kind !== "ready") {
-          return anthropicError(
-            "api_error",
-            "Moderation authorization cache is warming. Retry shortly.",
-            503,
-          );
-        }
-        shouldBlockUser = moderationResolution.blocked;
-      } else {
-        shouldBlockUser = await contentModerationService.shouldBlockUser(
-          user.id,
-        );
-      }
-    }
-    if (shouldBlockUser) {
-      return anthropicError(
-        "permission_error",
-        "Your account has been suspended due to policy violations.",
-        403,
-      );
-    }
-
-    const lastUserMessage = request.messages
-      .filter((message) => message.role === "user")
-      .pop();
-    if (lastUserMessage) {
-      const content = getMessageContentForEstimate(lastUserMessage);
-      if (content) {
-        const moderationTask = contentModerationService.moderateInBackground(
-          content,
-          user.id,
-          undefined,
-          (result) => {
-            logger.warn("[Messages API] Async moderation detected violation", {
-              userId: user.id,
-              categories: result.flaggedCategories,
-            });
-          },
-        );
-        executionCtx?.waitUntil(moderationTask);
-      }
-    }
+    // Chat content is not moderated, synchronously or in the background.
+    // Account standing is part of the cached auth decision above.
 
     const estimateMessages: Array<{ content: string | undefined }> = [];
     if (systemPrompt) {
@@ -977,13 +893,12 @@ app.post("/", async (c) => {
         }
         if (
           error instanceof InferenceAdmissionUnavailableError ||
-          error instanceof InferenceBalanceCacheWarmingError ||
-          error instanceof AiPricingCacheWarmingError ||
+          error instanceof InferenceBillingUnavailableError ||
           error instanceof AiPricingCacheUnavailableError
         ) {
           return anthropicError(
             "api_error",
-            "Billing authorization is warming. Retry shortly.",
+            "Billing authorization is unavailable. Retry shortly.",
             503,
           );
         }
@@ -1035,11 +950,11 @@ app.post("/", async (c) => {
         }
         if (
           error instanceof InferenceAdmissionUnavailableError ||
-          error instanceof InferenceBalanceCacheWarmingError
+          error instanceof InferenceBillingUnavailableError
         ) {
           return anthropicError(
             "api_error",
-            "Billing authorization is warming. Retry shortly.",
+            "Billing authorization is unavailable. Retry shortly.",
             503,
           );
         }
@@ -1185,7 +1100,7 @@ app.post("/", async (c) => {
       }
       if (
         error instanceof InferenceAdmissionUnavailableError ||
-        error instanceof InferenceBalanceCacheWarmingError
+        error instanceof InferenceBillingUnavailableError
       ) {
         logger.error(
           "[Messages API] provider-boundary admission failed closed",
@@ -1205,9 +1120,7 @@ app.post("/", async (c) => {
         return attachPreforwardTelemetry(
           anthropicError(
             "api_error",
-            isInferenceAdmissionGateWarmingError(error)
-              ? "Billing authorization is warming. Retry shortly."
-              : "Inference admission is temporarily unavailable. Retry shortly.",
+            "Inference admission is temporarily unavailable. Retry shortly.",
             503,
           ),
         );

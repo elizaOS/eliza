@@ -28,7 +28,6 @@ export {
 } from "./actions/settings-actions.ts";
 export {
   completeOutputBlock,
-  normalizeTerminalOutput,
   resolveTerminalTransportTimeoutMs,
   terminalAction,
 } from "./actions/terminal.ts";
@@ -428,12 +427,9 @@ export {
   annotateTrajectoryStep,
   clearPersistedTrajectoryRows,
   completeTrajectoryStepInDatabase,
-  createDatabaseTrajectoryLogger,
-  DatabaseTrajectoryLogger,
   deletePersistedTrajectoryRows,
   flushTrajectoryWrites,
   installDatabaseTrajectoryLogger,
-  pruneOldTrajectories,
   startTrajectoryStepInDatabase,
 } from "./runtime/trajectory-storage.ts";
 export * from "./runtime/version.ts";

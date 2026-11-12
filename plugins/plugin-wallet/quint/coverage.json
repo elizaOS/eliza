@@ -1,0 +1,51 @@
+[
+  {
+    "id": "plugin-wallet.X402PaymentBudget",
+    "model": "plugins/plugin-wallet/quint/X402PaymentBudget.qnt",
+    "sources": [
+      "plugins/plugin-wallet/src/sdk/x402/budget.ts",
+      "plugins/plugin-wallet/src/sdk/x402/client.ts"
+    ],
+    "invariants": [
+      "BudgetConserved",
+      "TransferHasApproval",
+      "UnknownKeepsHold",
+      "ReceiptReplacesReservation",
+      "PreTransferFailureReleases",
+      "RecordedHasReceipt"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Three payments, one service, fixed per-request/daily limits and one forward day rollover.",
+      "The model follows X402Client reserved payments. Direct unreserved recordPayment calls, mutable service budget policies, on-chain limits and process restart are outside this model.",
+      "A transfer with unknown outcome retains its in-memory hold. Holds reset on process restart. Durable ledger behavior remains outside this model."
+    ],
+    "implementationTests": [
+      "plugins/plugin-wallet/src/sdk/x402/client.timeout.test.ts"
+    ]
+  },
+  {
+    "id": "plugin-wallet.SolanaTransactionReceipt",
+    "model": "plugins/plugin-wallet/quint/SolanaTransactionReceipt.qnt",
+    "sources": [
+      "plugins/plugin-wallet/src/chains/registry.ts",
+      "plugins/plugin-wallet/src/chains/wallet-action.ts"
+    ],
+    "invariants": [
+      "SignedBeforeSend",
+      "UncertaintyPreservesReceipt",
+      "HonestConfirmation",
+      "NoAutomaticResubmit",
+      "DefinitiveFailureOnly",
+      "SendUncertaintyDistinct"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One pre-authorized signed transaction and abstract accepted/rejected/lost RPC responses.",
+      "Approval admission, signer isolation, actual chain execution and cross-process retry coordination need their own models and live tests."
+    ],
+    "implementationTests": [
+      "plugins/plugin-wallet/src/chains/__tests__/solana-transfer-confirmation.test.ts"
+    ]
+  }
+]

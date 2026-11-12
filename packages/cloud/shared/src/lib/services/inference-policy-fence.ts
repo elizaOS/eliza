@@ -6,9 +6,11 @@ import { sqlRows } from "../../db/execute-helpers";
 import {
   dbWrite,
   registerAfterCommit,
+  registerAfterRollback,
   registerBeforeCommit,
   writeTransaction,
 } from "../../db/helpers";
+import { advanceOrganizationPolicyGeneration } from "../../db/repositories/organization-policy-generation";
 import type { RuntimeDurableObjectNamespace } from "../../types/cloud-worker-env";
 import { getCloudAwareEnv, getCloudBinding } from "../runtime/cloud-bindings";
 
@@ -20,14 +22,147 @@ export class InferencePolicyFenceError extends Error {
 }
 
 const transactionFences = new WeakMap<DbTransaction, Set<string>>();
+const standingFences = new WeakMap<DbTransaction, Set<string>>();
+
+/**
+ * Standing fence for cache-served inference admission, applied to EVERY
+ * organization a policy mutation touches (enrolled or not).
+ *
+ * Worker admission decides from a cached snapshot (policy, billing hold,
+ * funding) and the organization Durable Object, never from Postgres. To keep
+ * that exact, each mutation opens a pending entry in the organization gate
+ * before its first write (no new lease or dispatch is admitted while it is
+ * open), advances the policy generation in the same transaction, and closes
+ * the entry after COMMIT with that generation. A snapshot read before the
+ * commit therefore carries an older generation and is refused as stale; a
+ * rolled-back mutation only closes its entry. Hosts without the gate binding
+ * (Node services, local harnesses) never serve cache-backed admission.
+ */
+async function fenceStandingMutation(
+  tx: DbTransaction,
+  organizationIds: readonly string[],
+): Promise<void> {
+  if (!getCloudBinding<RuntimeDurableObjectNamespace>("INFERENCE_ADMISSION_GATES")) return;
+  const active = standingFences.get(tx) ?? new Set<string>();
+  const fresh = [...new Set(organizationIds)].sort().filter((id) => !active.has(id));
+  if (fresh.length === 0) return;
+  const mutationId = crypto.randomUUID();
+  const generations = new Map<string, string>();
+  const opened: string[] = [];
+  registerAfterRollback(tx, async () => {
+    for (const organizationId of opened)
+      await policyCall(organizationId, "/policy-fence/abort", { mutationId });
+  });
+  registerBeforeCommit(tx, async () => {
+    for (const organizationId of fresh) {
+      try {
+        const generation = await advanceOrganizationPolicyGeneration(tx, {
+          organizationId,
+          reason: "inference_standing_mutation",
+          actor: "system:inference-policy-fence",
+          change: { mutationId },
+        });
+        generations.set(organizationId, generation.toString());
+      } catch (error) {
+        // An organization without a subscription authority has no admission
+        // snapshot to supersede; closing its entry is the whole fence.
+        if (!(error instanceof ElizaError) || error.code !== "ORGANIZATION_POLICY_UNAVAILABLE")
+          throw error;
+      }
+    }
+  });
+  registerAfterCommit(tx, async () => {
+    for (const organizationId of fresh)
+      await policyCall(organizationId, "/policy-fence/commit", {
+        mutationId,
+        ...(generations.has(organizationId) && {
+          policyGeneration: generations.get(organizationId),
+        }),
+      });
+  });
+  for (const organizationId of fresh) {
+    await policyCall(organizationId, "/policy-fence/begin", { mutationId });
+    opened.push(organizationId);
+    active.add(organizationId);
+  }
+  standingFences.set(tx, active);
+}
 
 interface MutationOptions {
   organizationIds: string[];
+  /** Key association writers take shared user locks before organization locks. */
+  userLockIds?: string[];
   mutationId?: string;
   /** Bootstrap also fences organizations that have not yet enrolled. */
   enable?: boolean;
   /** Internal rollback after every canonical escrow grant has closed. */
   disable?: boolean;
+  /** Enroll only rate policy; never enable funded escrow. */
+  rateEnable?: boolean;
+  rateDisable?: boolean;
+  /**
+   * Credential association writes (API-key issue/revoke) change no policy,
+   * hold or funding the admission snapshot carries; credential revocation has
+   * its own Durable Object boundary. They skip the standing fence.
+   */
+  credentialOnly?: boolean;
+}
+
+function isCredentialOnly(options: MutationOptions): boolean {
+  return options.credentialOnly ?? (options.userLockIds?.length ?? 0) > 0;
+}
+
+function policyFencingEnabled(): boolean {
+  const env = getCloudAwareEnv();
+  return (
+    env.INFERENCE_FUNDED_BUDGET_ADMISSION === "true" ||
+    env.INFERENCE_RATE_POLICY_ADMISSION === "true"
+  );
+}
+
+/**
+ * Keep key association and standing discovery in one transaction lock domain.
+ *
+ * Lock order (global): users rows, then user policy advisory locks, then
+ * organization policy locks. A trigger-guarded users write already holds its
+ * row lock when the trigger takes the user advisory lock, so managed writers
+ * must take the same row lock first. The opposite order deadlocks with every
+ * unmanaged users writer, for example a Steward link that locks the row
+ * FOR UPDATE and then changes `steward_user_id`.
+ */
+async function lockUserPolicyAssociations(
+  tx: DbTransaction,
+  userIds: string[],
+  shared: boolean,
+): Promise<void> {
+  if (userIds.length === 0) return;
+  // The database casts, deduplicates and sorts UUIDs before taking locks, so
+  // alternate UUID spelling cannot differ from the row-trigger lock domain.
+  const ids = sql.join(
+    userIds.map((userId) => sql`${userId}::uuid`),
+    sql`, `,
+  );
+  // NO KEY UPDATE orders against every users writer but still admits the
+  // KEY SHARE that foreign-key inserts referencing these users need.
+  await tx.execute(
+    sql`SELECT id FROM users WHERE id = ANY(ARRAY[${ids}]) ORDER BY id FOR NO KEY UPDATE`,
+  );
+  await tx.execute(sql`SELECT lock_inference_policy_users(ARRAY[${ids}], ${shared})`);
+}
+
+/**
+ * Take the user half of the global lock order before a caller locks any
+ * organization row or policy fence in the same transaction. Writers that lock
+ * an organization first and then issue a key or change a user would otherwise
+ * invert the order taken by managed key issuance.
+ */
+export async function lockInferencePolicyUsers(
+  tx: DbTransaction,
+  userIds: string[],
+  options: { exclusive?: boolean } = {},
+): Promise<void> {
+  if (!policyFencingEnabled()) return;
+  await lockUserPolicyAssociations(tx, userIds, options.exclusive !== true);
 }
 
 async function policyCall(
@@ -113,10 +248,13 @@ export async function readBudgetPolicyEpoch(
   tx: DbTransaction,
   organizationId: string,
 ): Promise<string | null> {
-  if (getCloudAwareEnv().INFERENCE_FUNDED_BUDGET_ADMISSION !== "true") return null;
+  if (!policyFencingEnabled()) return null;
+  // The rate column exists from migration 0552; only the rate lane reads it.
   const [row] = await sqlRows<{ epoch: string }>(
     tx,
-    sql`SELECT epoch::text AS epoch FROM inference_policy_authorities WHERE organization_id = ${organizationId}::uuid AND enabled`,
+    getCloudAwareEnv().INFERENCE_RATE_POLICY_ADMISSION === "true"
+      ? sql`SELECT epoch::text AS epoch FROM inference_policy_authorities WHERE organization_id = ${organizationId}::uuid AND (enabled OR rate_enabled)`
+      : sql`SELECT epoch::text AS epoch FROM inference_policy_authorities WHERE organization_id = ${organizationId}::uuid AND enabled`,
   );
   return row?.epoch ?? null;
 }
@@ -144,22 +282,43 @@ export async function withInferencePolicyMutationInTransaction<T>(
   options: MutationOptions,
   fn: (tx: DbTransaction) => Promise<T>,
 ): Promise<T> {
-  if (getCloudAwareEnv().INFERENCE_FUNDED_BUDGET_ADMISSION !== "true") {
-    if (options.enable || options.disable)
-      throw new InferencePolicyFenceError("Inference funded budget admission is disabled");
+  if (!policyFencingEnabled()) {
+    if (options.enable || options.disable || options.rateEnable || options.rateDisable)
+      throw new InferencePolicyFenceError("Inference policy admission is disabled");
+    if (!isCredentialOnly(options)) await fenceStandingMutation(tx, options.organizationIds);
     return fn(tx);
   }
+  if (!isCredentialOnly(options)) await fenceStandingMutation(tx, options.organizationIds);
   if (options.enable && options.disable)
     throw new InferencePolicyFenceError("Policy enrollment and rollback cannot share one command");
+  if (options.rateEnable && options.rateDisable)
+    throw new InferencePolicyFenceError(
+      "Rate policy enrollment and rollback cannot share one command",
+    );
+  if (
+    (options.enable || options.disable) &&
+    getCloudAwareEnv().INFERENCE_FUNDED_BUDGET_ADMISSION !== "true"
+  )
+    throw new InferencePolicyFenceError("Funded policy enrollment is disabled");
+  if (
+    (options.rateEnable || options.rateDisable) &&
+    getCloudAwareEnv().INFERENCE_RATE_POLICY_ADMISSION !== "true"
+  )
+    throw new InferencePolicyFenceError("Rate policy enrollment is disabled");
+  await lockUserPolicyAssociations(tx, options.userLockIds ?? [], true);
   const active = transactionFences.get(tx) ?? new Set<string>();
   const organizationIds: string[] = [];
   for (const organizationId of [...new Set(options.organizationIds)].sort()) {
     if (active.has(organizationId)) {
-      if (options.disable)
+      if (options.disable || options.rateDisable)
         throw new InferencePolicyFenceError("Rollback requires its own managed policy transaction");
       continue;
     }
-    if (options.enable || (await readBudgetPolicyEpoch(tx, organizationId)) !== null)
+    if (
+      options.enable ||
+      options.rateEnable ||
+      (await readBudgetPolicyEpoch(tx, organizationId)) !== null
+    )
       organizationIds.push(organizationId);
   }
   if (organizationIds.length === 0) return fn(tx);
@@ -203,7 +362,7 @@ export async function withInferencePolicyMutationInTransaction<T>(
   registerBeforeCommit(tx, async () => {
     for (const { organizationId } of publications) {
       await tx.execute(
-        sql`UPDATE inference_policy_authorities SET enabled = ${!options.disable}, epoch = epoch + 1, updated_at = clock_timestamp() WHERE organization_id = ${organizationId}::uuid`,
+        sql`UPDATE inference_policy_authorities SET enabled = CASE WHEN ${options.enable === true} THEN true WHEN ${options.disable === true} THEN false ELSE enabled END, rate_enabled = CASE WHEN ${options.rateEnable === true} THEN true WHEN ${options.rateDisable === true} THEN false ELSE rate_enabled END, epoch = epoch + 1, updated_at = clock_timestamp() WHERE organization_id = ${organizationId}::uuid`,
       );
       await tx.execute(
         sql`UPDATE inference_policy_mutations SET phase = 'applied', epoch = (SELECT epoch FROM inference_policy_authorities WHERE organization_id = ${organizationId}::uuid), updated_at = clock_timestamp() WHERE organization_id = ${organizationId}::uuid AND mutation_id = ${mutationId} AND applying_txid = txid_current() AND phase = 'applying'`,
@@ -222,7 +381,11 @@ export async function inspectInferencePolicyMutation(
 > {
   return writeTransaction(async (tx) => {
     await lockInferencePolicyMutation(tx, organizationId, mutationId);
-    const [row] = await sqlRows<{ phase: string; fence_token: string; epoch: string | null }>(
+    const [row] = await sqlRows<{
+      phase: string;
+      fence_token: string;
+      epoch: string | null;
+    }>(
       tx,
       sql`SELECT phase, fence_token, epoch::text AS epoch FROM inference_policy_mutations WHERE organization_id = ${organizationId}::uuid AND mutation_id = ${mutationId}`,
     );
@@ -240,18 +403,24 @@ export async function withInferenceUserPolicyMutation<T>(
   fn: (tx: DbTransaction) => Promise<T>,
   transaction?: DbTransaction,
 ): Promise<T> {
-  if (getCloudAwareEnv().INFERENCE_FUNDED_BUDGET_ADMISSION !== "true")
-    return transaction ? fn(transaction) : writeTransaction(fn);
-  const rows = await sqlRows<{ organization_id: string }>(
-    transaction ?? dbWrite,
-    sql`SELECT organization_id FROM users WHERE id = ${userId}::uuid AND organization_id IS NOT NULL UNION SELECT organization_id FROM api_keys WHERE user_id = ${userId}::uuid`,
-  );
-  const options = {
-    organizationIds: [...rows.map((row) => row.organization_id), ...additionalOrganizationIds],
+  if (!policyFencingEnabled()) return transaction ? fn(transaction) : writeTransaction(fn);
+  const run = async (tx: DbTransaction): Promise<T> => {
+    // Discover only after freezing this user's key associations. Otherwise a
+    // new organization can be omitted while this writer waits on an old one.
+    await lockUserPolicyAssociations(tx, [userId], false);
+    const rows = await sqlRows<{ organization_id: string }>(
+      tx,
+      sql`SELECT organization_id FROM users WHERE id = ${userId}::uuid AND organization_id IS NOT NULL UNION SELECT organization_id FROM api_keys WHERE user_id = ${userId}::uuid`,
+    );
+    return withInferencePolicyMutationInTransaction(
+      tx,
+      {
+        organizationIds: [...rows.map((row) => row.organization_id), ...additionalOrganizationIds],
+      },
+      fn,
+    );
   };
-  return transaction
-    ? withInferencePolicyMutationInTransaction(transaction, options, fn)
-    : withInferencePolicyMutation(options, fn);
+  return transaction ? run(transaction) : writeTransaction(run);
 }
 
 /** Authorize subsequent policy writes through the exact outer transaction's COMMIT. */
@@ -325,6 +494,35 @@ export async function disableInferenceBudgetAdmission(organizationId: string): P
   await confirmInferencePolicyAuthCacheWithdrawal(organizationId);
 }
 
+/**
+ * Enroll one organization in rate-only admission. From this commit on every
+ * policy write for the organization (plan, override, key cap, key or user
+ * standing, organization lifecycle) must hold a Durable Object mutation
+ * permit and advances the epoch, which retires every cached rate proof.
+ * Funded escrow stays as it is.
+ */
+export async function enableInferenceRatePolicyAdmission(organizationId: string): Promise<void> {
+  if (getCloudAwareEnv().INFERENCE_RATE_POLICY_ADMISSION !== "true")
+    throw new InferencePolicyFenceError("Inference rate policy admission is disabled");
+  await withInferencePolicyMutation(
+    { organizationIds: [organizationId], rateEnable: true },
+    async () => {},
+  );
+}
+
+/** Withdraw rate-only delegation without moving its existing fixed-window counters. */
+export async function disableInferenceRatePolicyAdmission(organizationId: string): Promise<void> {
+  if (getCloudAwareEnv().INFERENCE_RATE_POLICY_ADMISSION !== "true")
+    throw new InferencePolicyFenceError(
+      "Keep rate policy admission enabled until rollback is acknowledged",
+    );
+  await withInferencePolicyMutation(
+    { organizationIds: [organizationId], rateDisable: true },
+    async () => {},
+  );
+  await confirmInferencePolicyAuthCacheWithdrawal(organizationId);
+}
+
 async function confirmInferencePolicyAuthCacheWithdrawal(organizationId: string): Promise<void> {
   const keys = await sqlRows<{ key_hash: string }>(
     dbWrite,
@@ -351,11 +549,7 @@ async function inferencePolicyMetadataAvailable(tx?: DbTransaction): Promise<boo
   if (!tables) throw new InferencePolicyFenceError("Inference policy metadata is unavailable");
   const available = Object.values(tables);
   if (available.every((exists) => exists)) return true;
-  if (
-    available.every((exists) => !exists) &&
-    getCloudAwareEnv().INFERENCE_FUNDED_BUDGET_ADMISSION !== "true"
-  )
-    return false;
+  if (available.every((exists) => !exists) && !policyFencingEnabled()) return false;
   throw new InferencePolicyFenceError("Inference policy metadata migration is incomplete");
 }
 
@@ -364,6 +558,13 @@ export async function prepareInferencePolicyForAccountDeletion(
   organizationId: string,
 ): Promise<void> {
   if (!(await inferencePolicyMetadataAvailable())) return;
+  if (getCloudAwareEnv().INFERENCE_RATE_POLICY_ADMISSION === "true") {
+    const [rateAuthority] = await sqlRows<{ rate_enabled: boolean }>(
+      dbWrite,
+      sql`SELECT rate_enabled FROM inference_policy_authorities WHERE organization_id = ${organizationId}::uuid`,
+    );
+    if (rateAuthority?.rate_enabled) await disableInferenceRatePolicyAdmission(organizationId);
+  }
   const [authority] = await sqlRows<{ enabled: boolean }>(
     dbWrite,
     sql`SELECT enabled FROM inference_policy_authorities WHERE organization_id = ${organizationId}::uuid`,
@@ -401,6 +602,13 @@ export async function clearDisabledInferencePolicyForAccountDeletion(
   organizationId: string,
 ): Promise<void> {
   if (!(await inferencePolicyMetadataAvailable(tx))) return;
+  if (getCloudAwareEnv().INFERENCE_RATE_POLICY_ADMISSION === "true") {
+    const [rateAuthority] = await sqlRows<{ rate_enabled: boolean }>(
+      tx,
+      sql`SELECT rate_enabled FROM inference_policy_authorities WHERE organization_id = ${organizationId}::uuid FOR UPDATE`,
+    );
+    if (rateAuthority?.rate_enabled) throw new InferencePolicyDrainPendingError(organizationId);
+  }
   const [authority] = await sqlRows<{ enabled: boolean }>(
     tx,
     sql`SELECT enabled FROM inference_policy_authorities WHERE organization_id = ${organizationId}::uuid FOR UPDATE`,

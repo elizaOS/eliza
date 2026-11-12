@@ -22,11 +22,6 @@ export const TaskStatus = {
 export type TaskStatus = (typeof TaskStatus)[keyof typeof TaskStatus];
 
 /**
- * Defines the contract for a Task Worker, which is responsible for executing a specific type of task.
- * Task workers are registered with the `AgentRuntime` and are invoked when a `Task` of their designated `name` needs processing.
- * WHY two gates: shouldRun (scheduler) has no message/state; canExecute (actions) has full context for auth (e.g. approval roles).
- */
-/**
  * Key-level change to a task's metadata applied as one storage mutation.
  * `set` merges keys over the stored object and `unset` removes keys, so two
  * writers touching different keys (an operator pause and a run's bookkeeping)
@@ -42,6 +37,11 @@ export interface TaskMetadataPatch {
 /** Result of `IAgentRuntime.patchTaskMetadata`. `unsupported` means the adapter has no atomic patch. */
 export type TaskMetadataPatchOutcome = "patched" | "missing" | "unsupported";
 
+/**
+ * Defines the contract for a Task Worker, which is responsible for executing a specific type of task.
+ * Task workers are registered with the `AgentRuntime` and are invoked when a `Task` of their designated `name` needs processing.
+ * WHY two gates: shouldRun (scheduler) has no message/state; canExecute (actions) has full context for auth (e.g. approval roles).
+ */
 export interface TaskWorker {
 	/** The unique name of the task type this worker handles. This name links `Task` instances to this worker. */
 	name: string;
@@ -178,65 +178,4 @@ export interface TaskRunStatus {
 	executing: boolean;
 	nextRunAt?: number;
 	lastError?: string;
-}
-
-/**
- * What kind of user response a {@link PendingUserAction} is waiting on. Drives
- * how the canonical "needs your response" surface routes the user back to the
- * handler:
- * - `approval` — a yes/no or pick-an-option decision (ApprovalService task).
- * - `prompt` — a free-text answer the agent asked for.
- * - `credential` — a secret/OAuth/QR the agent needs (the credential bridge).
- * - `clarifying` — a disambiguation question (which X did you mean?).
- *
- * This pass wires only the `approval` path end-to-end; the
- * other kinds are part of the type so the prompt/credential/clarifying stores
- * can be folded into the same surface later without a contract change.
- */
-export type PendingUserActionKind =
-	| "approval"
-	| "prompt"
-	| "credential"
-	| "clarifying";
-
-/**
- * One option the user can pick to resolve a {@link PendingUserAction} (mirrors
- * an ApprovalService option). The `name` is the value routed back to the
- * handler; `description` is the human-readable label.
- */
-export interface PendingUserActionOption {
-	name: string;
-	description?: string;
-	/** This option cancels/denies the request. */
-	isCancel?: boolean;
-}
-
-/**
- * A single action that is blocked waiting on the user — the canonical transport
- * DTO behind the one "needs your response" surface.
- *
- * It is a read-model projection (computed in the route/use-case, rendered by
- * the client) over whatever store actually holds the pending request — for the
- * approval path, an ApprovalService task (`AWAITING_CHOICE`/`APPROVAL`). Fields
- * are required by default; only `expectedReplyKind`/`options` are genuinely
- * optional (a confirm has neither).
- */
-export interface PendingUserAction {
-	/** Stable identifier (the underlying task id for the approval path). */
-	id: UUID;
-	/** Which response the surface should solicit + how it routes back. */
-	kind: PendingUserActionKind;
-	/** One-line, human-readable description of what is being asked. */
-	title: string;
-	/** Epoch-ms when the request was created (drives age-based escalation). */
-	createdAt: number;
-	/** Room the request belongs to — where the resolving reply must land. */
-	roomId: UUID;
-	/**
-	 * For `prompt`/`clarifying`: the shape of reply expected (e.g. "text",
-	 * "date", "amount"). Omitted for `approval`/`credential`.
-	 */
-	expectedReplyKind?: string;
-	/** Selectable options (approval picks). Absent for free-text prompts. */
-	options?: PendingUserActionOption[];
 }

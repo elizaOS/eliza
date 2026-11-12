@@ -6,7 +6,7 @@ import type http from "node:http";
 import type { TradePermissionMode } from "@elizaos/contracts";
 import type { AgentRuntime } from "@elizaos/core";
 import type { ElizaConfig } from "@elizaos/host/protocol";
-import type { LocalTradeExecutionOptions } from "@elizaos/plugin-wallet/transactions";
+import type { LocalTradeExecutionOptions } from "@elizaos/plugin-wallet/lib/trade-safety";
 import type { WalletCapabilityStatus } from "./wallet-capability.ts";
 
 // ---------------------------------------------------------------------------

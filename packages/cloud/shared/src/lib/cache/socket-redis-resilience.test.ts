@@ -105,6 +105,51 @@ describe("SocketRedis connection resilience", () => {
     await redis.quit();
   });
 
+  test("a burst longer than one op timeout completes in order on one healthy socket", async () => {
+    let connections = 0;
+    const server = createServer((socket: NetSocket) => {
+      connections += 1;
+      // Each reply takes 80ms, so 20 serialized ops need ~1.6s: longer than the
+      // 1s op timeout, while no single op is anywhere near it.
+      socket.on("data", (chunk) => {
+        const key = chunk.toString().split("\r\n")[4] ?? "";
+        setTimeout(() => socket.write(`$${key.length}\r\n${key}\r\n`), 80);
+      });
+    });
+    const port = await listen(server);
+    const redis = new SocketRedis(`redis://127.0.0.1:${port}`);
+
+    const keys = Array.from({ length: 20 }, (_, i) => `k${i}`);
+    const results = await Promise.all(keys.map((key) => redis.get(key)));
+    expect(results).toEqual(keys);
+    expect(connections).toBe(1);
+
+    await redis.quit();
+  }, 10_000);
+
+  test("a predecessor that never releases is still treated as orphaned", async () => {
+    let connections = 0;
+    const server = createServer((socket: NetSocket) => {
+      connections += 1;
+      socket.on("data", () => socket.write("$-1\r\n"));
+    });
+    const port = await listen(server);
+    const redis = new SocketRedis(`redis://127.0.0.1:${port}`);
+    expect(await redis.get("warm")).toBeNull();
+
+    // Reproduce the workerd orphan, whose `finally release()` never runs: the
+    // queue head never settles and the connection stops making progress.
+    const conn = (redis as unknown as { conn: { inflight: Promise<unknown> } }).conn;
+    conn.inflight = new Promise(() => {});
+
+    const started = Date.now();
+    expect(await redis.get("after")).toBeNull();
+    expect(Date.now() - started).toBeLessThan(2_500);
+    expect(connections).toBe(2);
+
+    await redis.quit();
+  }, 10_000);
+
   test("drops partial RESP parser state when reconnecting after a stalled reply", async () => {
     let connections = 0;
     const server = createServer((socket: NetSocket) => {

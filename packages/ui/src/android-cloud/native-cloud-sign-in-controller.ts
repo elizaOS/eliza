@@ -7,6 +7,7 @@ import {
   nativeSignInCodeStarted,
   nativeSignInGoogleOutcome,
   nativeSignInReadiness,
+  nativeSignInReadinessChanged,
   nativeSignInVerified,
   normalizeNativeSignInCode,
   validNativeSignInEmail,
@@ -76,9 +77,13 @@ export class NativeCloudSignInController<E extends string> {
   private pending: AbortController | null = null;
   private cancellation: Promise<void> | null = null;
   private cancellationRequired = false;
-  private nativeAttemptRetired = false;
-  /** Set only by an actual native dispatch, never by a retained event. */
+  /** Dispatches without a scoped retirement receipt. A failed send can leave
+   * either the previous code attempt or its replacement live in the host. */
+  private readonly nativeRequests = new Set<string>();
   private requestId: string | null = null;
+  private stepRequestId: string | null = null;
+  private verification: { requestId: string; signal: AbortSignal } | null =
+    null;
   private authenticated: NativeCloudSignInAuthenticated<E> | null = null;
   private activation: Promise<void> | null = null;
   private returned: { owner: AbortController; finish(): void } | null = null;
@@ -169,7 +174,11 @@ export class NativeCloudSignInController<E extends string> {
     void this.refreshReadiness(refreshNegative);
     if (!this.port.addListener) return;
     const listen = (
-      event: "signInCompleted" | "signInIncomplete" | "signInMfaRequired",
+      event:
+        | "signInCompleted"
+        | "signInIncomplete"
+        | "signInMfaRequired"
+        | "signInReadinessChanged",
       callback: (value: unknown) => void,
     ) => {
       void this.port
@@ -195,6 +204,18 @@ export class NativeCloudSignInController<E extends string> {
     });
     listen("signInIncomplete", (value) => {
       this.reportIncomplete(value);
+    });
+    // `status()` answers from the native cache at once and measures a method that was not ready
+    // behind that answer. The measured change arrives here, so the chooser shows it without a retry.
+    listen("signInReadinessChanged", (value) => {
+      const change = nativeSignInReadinessChanged(
+        value,
+        this.owner.environment,
+      );
+      if (!change || this.snapshot.step.kind !== "methods") return;
+      // The measurement is newer than any lookup still on its way, which would answer from the cache.
+      ++this.probe;
+      this.publish({ readiness: change.readiness });
     });
   }
 
@@ -264,7 +285,6 @@ export class NativeCloudSignInController<E extends string> {
         try {
           if (signal.aborted) cancel();
           this.check(generation, pending.signal);
-          this.nativeAttemptRetired = false;
           const returned = new Promise<void>((finish) => {
             this.returned = { owner: pending, finish };
           });
@@ -288,6 +308,8 @@ export class NativeCloudSignInController<E extends string> {
       )
         this.fail(error);
     } finally {
+      if (this.verification?.signal === pending.signal)
+        this.verification = null;
       if (this.pending === pending) {
         this.pending = null;
         this.publish({
@@ -321,48 +343,64 @@ export class NativeCloudSignInController<E extends string> {
       if (aborted) signal.removeEventListener("abort", aborted);
     }
   }
+  private dispatchRequest() {
+    const requestId = crypto.randomUUID();
+    this.nativeRequests.add(requestId);
+    this.requestId = requestId;
+    return requestId;
+  }
+
   private cancelNative() {
     if (this.cancellation) return this.cancellation;
-    const requestId = this.requestId;
-    // Readiness and queued host work own no native attempt. In particular,
-    // disposing either cannot cancel a different mounted request.
-    if (!requestId) {
-      this.nativeAttemptRetired = true;
-      return Promise.resolve();
-    }
+    const requests = [...this.nativeRequests];
+    // Readiness and queued host work have not dispatched any native request.
+    if (requests.length === 0) return Promise.resolve();
     this.cancellationRequired = true;
-    if (!this.cancellation) {
-      // Capture the originating ID before disposal or a later method changes state.
-      const cancellation = (async () => this.port.cancel({ requestId }))();
-      this.cancellation = cancellation;
-      void cancellation.then(
-        () => {
-          if (this.cancellation === cancellation) {
-            this.cancellation = null;
-            this.cancellationRequired = false;
-            this.nativeAttemptRetired = true;
+    let finish!: (work: Promise<void>) => void;
+    const cancellation = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    this.cancellation = cancellation;
+    void cancellation.then(
+      () => {
+        this.cancellation = null;
+        this.cancellationRequired = false;
+      },
+      () => {
+        // Retry only requests without a confirmed cancellation receipt.
+        this.cancellation = null;
+      },
+    );
+    // Install the shared owner before dispatching cancellation synchronously.
+    finish(
+      (async () => {
+        const receipts = await Promise.allSettled(
+          requests.map(async (requestId) => {
+            await this.port.cancel({ requestId });
+            this.nativeRequests.delete(requestId);
             if (this.requestId === requestId) this.requestId = null;
-          }
-        },
-        () => {
-          // A lost bridge acknowledgement does not prove native retirement.
-          // Keep the fence, but allow the next explicit action to retry cancel.
-          if (this.cancellation === cancellation) this.cancellation = null;
-        },
-      );
-    }
-    return this.cancellation;
+            if (this.stepRequestId === requestId) this.stepRequestId = null;
+          }),
+        );
+        const failed = receipts.find(
+          (receipt) => receipt.status === "rejected",
+        );
+        if (failed) throw failed.reason;
+      })(),
+    );
+    return cancellation;
   }
 
   private async verified(
     answer: unknown,
     attemptId: string,
+    requestId: string,
     generation: number,
     signal: AbortSignal,
   ) {
     this.check(generation, signal);
     const outcome = nativeSignInVerified(answer, this.owner.environment);
-    this.checkResponseRequest(outcome);
+    this.checkResponseRequest(outcome, requestId);
     if (outcome.status === "authenticated")
       return this.activate(outcome, generation, signal);
     this.publish({
@@ -374,10 +412,13 @@ export class NativeCloudSignInController<E extends string> {
       },
     });
   }
-  private checkResponseRequest(outcome: { requestId?: string }) {
+  private checkResponseRequest(
+    outcome: { requestId?: string },
+    requestId: string,
+  ) {
     // Older hosts can answer a directly awaited RPC without correlation metadata.
     // A supplied echo, however, must always identify our native dispatch.
-    if (outcome.requestId !== undefined && outcome.requestId !== this.requestId)
+    if (outcome.requestId !== undefined && outcome.requestId !== requestId)
       throw new NativeCloudSignInError("state-mismatch");
   }
   private async activate(
@@ -416,8 +457,7 @@ export class NativeCloudSignInController<E extends string> {
       return Promise.resolve();
     }
     return this.run(async (generation, signal) => {
-      const requestId = crypto.randomUUID();
-      this.requestId = requestId;
+      const requestId = this.dispatchRequest();
       const started = nativeSignInCodeStarted(
         await this.port.startEmail({
           environment: this.owner.environment,
@@ -426,6 +466,7 @@ export class NativeCloudSignInController<E extends string> {
         }),
       );
       this.check(generation, signal);
+      this.stepRequestId = requestId;
       this.publish({
         step: {
           kind: "code",
@@ -445,8 +486,7 @@ export class NativeCloudSignInController<E extends string> {
     return this.run(async (generation, signal) => {
       if (!this.port.startPhone)
         throw new NativeCloudSignInError("unavailable");
-      const requestId = crypto.randomUUID();
-      this.requestId = requestId;
+      const requestId = this.dispatchRequest();
       const started = nativeSignInCodeStarted(
         await this.port.startPhone({
           environment: this.owner.environment,
@@ -455,6 +495,7 @@ export class NativeCloudSignInController<E extends string> {
         }),
       );
       this.check(generation, signal);
+      this.stepRequestId = requestId;
       this.publish({
         step: {
           kind: "code",
@@ -467,8 +508,7 @@ export class NativeCloudSignInController<E extends string> {
   }
   startGoogle() {
     return this.run(async (generation, signal) => {
-      const requestId = crypto.randomUUID();
-      this.requestId = requestId;
+      const requestId = this.dispatchRequest();
       const outcome = nativeSignInGoogleOutcome(
         await this.port.startGoogle({
           environment: this.owner.environment,
@@ -477,10 +517,11 @@ export class NativeCloudSignInController<E extends string> {
         this.owner.environment,
       );
       this.check(generation, signal);
-      this.checkResponseRequest(outcome);
+      this.checkResponseRequest(outcome, requestId);
       if (outcome.status === "authenticated")
         await this.activate(outcome, generation, signal);
-      else
+      else {
+        this.stepRequestId = requestId;
         this.publish({
           step: {
             kind: "mfa",
@@ -489,17 +530,22 @@ export class NativeCloudSignInController<E extends string> {
             expiresAt: outcome.expiresAt,
           },
         });
+      }
     }, "google");
   }
   verify(code: string) {
     const step = this.snapshot.step;
     if (step.kind === "methods") return Promise.resolve();
+    const requestId = this.stepRequestId;
     const digits = normalizeNativeSignInCode(code);
     if (!digits) {
       this.fail(new NativeCloudSignInError("invalid-code"));
       return Promise.resolve();
     }
     return this.run(async (generation, signal) => {
+      if (!requestId || !this.nativeRequests.has(requestId))
+        throw new NativeCloudSignInError("expired");
+      this.verification = { requestId, signal };
       let result: unknown;
       if (step.kind === "mfa")
         result = await this.port.verifyMfa({
@@ -519,7 +565,13 @@ export class NativeCloudSignInController<E extends string> {
           code: digits,
         });
       }
-      await this.verified(result, step.attemptId, generation, signal);
+      await this.verified(
+        result,
+        step.attemptId,
+        requestId,
+        generation,
+        signal,
+      );
     }, "verify-code");
   }
   resend() {
@@ -531,11 +583,18 @@ export class NativeCloudSignInController<E extends string> {
         : this.startPhone(step.destination);
   }
   async acceptReturn(value: unknown) {
+    const pending = this.pending;
+    let requestId = this.requestId;
+    if (pending && this.snapshot.operation === "verify-code") {
+      const verification = this.verification;
+      if (verification?.signal !== pending.signal) return;
+      requestId = verification.requestId;
+    }
     if (
       !this.current() ||
       this.authenticated ||
       this.cancellationRequired ||
-      !this.requestId
+      !requestId
     )
       return;
     let outcome: NativeCloudSignInGoogleOutcome<E>;
@@ -543,20 +602,20 @@ export class NativeCloudSignInController<E extends string> {
       outcome = nativeSignInGoogleOutcome(value, this.owner.environment);
       // A retained event cannot establish an interactive request. Cold-start
       // recovery reads the current installed credential through the session owner.
-      if (outcome.requestId !== this.requestId) return;
+      if (outcome.requestId !== requestId) return;
     } catch {
       return;
     }
     // A retained completion may race the pending native call. The same generation
     // accepts it once; the pending call becomes inert after activation starts.
-    if (!this.pending)
+    if (!pending)
       return this.run(async (generation, signal) => {
-        await this.acceptOutcome(outcome, generation, signal);
+        await this.acceptOutcome(outcome, requestId, generation, signal);
       });
-    const pending = this.pending;
     const generation = this.generation;
     const accepted = await this.acceptOutcome(
       outcome,
+      requestId,
       generation,
       pending.signal,
     );
@@ -571,6 +630,7 @@ export class NativeCloudSignInController<E extends string> {
   }
   private async acceptOutcome(
     outcome: NativeCloudSignInGoogleOutcome<E>,
+    requestId: string,
     generation: number,
     signal: AbortSignal,
   ) {
@@ -591,6 +651,7 @@ export class NativeCloudSignInController<E extends string> {
         Reflect.get(resumed, "active") === true &&
         outcome.expiresAt > Date.now()
       ) {
+        this.stepRequestId = requestId;
         this.publish({
           step: {
             kind: "mfa",
@@ -700,7 +761,7 @@ export class NativeCloudSignInController<E extends string> {
     for (const handle of this.handles) void this.remove(handle);
     this.handles.clear();
     this.listeners.clear();
-    if (!this.completed && !this.authenticated && !this.nativeAttemptRetired)
+    if (!this.completed && !this.authenticated && this.nativeRequests.size)
       void this.cancelNative();
   }
 }

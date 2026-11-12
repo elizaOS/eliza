@@ -3641,6 +3641,160 @@
       "when": 1796083200167,
       "tag": "0549_drop_erc8004_agent_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 520,
+      "version": "7",
+      "when": 1796083200168,
+      "tag": "0550_app_creator_audit_reference",
+      "breakpoints": true
+    },
+    {
+      "idx": 521,
+      "version": "7",
+      "when": 1796083200169,
+      "tag": "0551_native_app_publishers",
+      "breakpoints": true
+    },
+    {
+      "idx": 522,
+      "version": "7",
+      "when": 1796083200170,
+      "tag": "0552_inference_rate_policy_fences",
+      "breakpoints": true
+    },
+    {
+      "idx": 523,
+      "version": "7",
+      "when": 1796083200171,
+      "tag": "0553_inference_policy_snapshot_fence",
+      "breakpoints": true
+    },
+    {
+      "idx": 524,
+      "version": "7",
+      "when": 1796083200172,
+      "tag": "0554_subscription_cancellation_dispatch_settle",
+      "breakpoints": true
+    },
+    {
+      "idx": 525,
+      "version": "7",
+      "when": 1796083200173,
+      "tag": "0555_stripe_delivery_outbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 526,
+      "version": "7",
+      "when": 1796083200174,
+      "tag": "0556_stripe_delivery_outbox_due_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 527,
+      "version": "7",
+      "when": 1796083200175,
+      "tag": "0557_stripe_delivery_lease_check_validate",
+      "breakpoints": true
+    },
+    {
+      "idx": 528,
+      "version": "7",
+      "when": 1796083200178,
+      "tag": "0558_container_placement_revision",
+      "breakpoints": true
+    },
+    {
+      "idx": 529,
+      "version": "7",
+      "when": 1796083200176,
+      "tag": "0559_stripe_checkout_provider_started_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 530,
+      "version": "7",
+      "when": 1796083200179,
+      "tag": "0561_evm_sweep_nonce_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 531,
+      "version": "7",
+      "when": 1796083200180,
+      "tag": "0562_vertex_observation_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 532,
+      "version": "7",
+      "when": 1796083200182,
+      "tag": "0564_stripe_legacy_adoption_cursors",
+      "breakpoints": true
+    },
+    {
+      "idx": 533,
+      "version": "7",
+      "when": 1796083200183,
+      "tag": "0565_stripe_legacy_retention_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 534,
+      "version": "7",
+      "when": 1796083200184,
+      "tag": "0566_app_deletion_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 535,
+      "version": "7",
+      "when": 1796083200185,
+      "tag": "0567_job_utc_clock_defaults",
+      "breakpoints": true
+    },
+    {
+      "idx": 536,
+      "version": "7",
+      "when": 1796083200186,
+      "tag": "0568_app_cleanup_manifest",
+      "breakpoints": true
+    },
+    {
+      "idx": 537,
+      "version": "7",
+      "when": 1796083200187,
+      "tag": "0569_cli_auth_session_verifier",
+      "breakpoints": true
+    },
+    {
+      "idx": 538,
+      "version": "7",
+      "when": 1796083200188,
+      "tag": "0570_subscription_grant_explicit_family",
+      "breakpoints": true
+    },
+    {
+      "idx": 539,
+      "version": "7",
+      "when": 1796083200189,
+      "tag": "0571_managed_gmail_star_operations",
+      "breakpoints": true
+    },
+    {
+      "idx": 540,
+      "version": "7",
+      "when": 1796083200190,
+      "tag": "0572_mobile_app_auth_session_start",
+      "breakpoints": true
+    },
+    {
+      "idx": 541,
+      "version": "7",
+      "when": 1796083200191,
+      "tag": "0573_mobile_app_auth_renewal_lineage",
+      "breakpoints": true
     }
   ]
 }

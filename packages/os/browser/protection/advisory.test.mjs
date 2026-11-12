@@ -397,3 +397,56 @@ test("with unscanned advice off, unavailable lists draw no bar and a lookalike s
     /Invalid advisory policy/,
   );
 });
+
+test("with unscanned advice withheld while loading, a first start draws no bar until a refresh ends without lists", async () => {
+  const browser = fakeBrowser();
+  let saved = {};
+  browser.storage.local.get = async () => saved;
+  const advisory = createProtectionAdvisory(browser, {
+    unscannedWhileLoading: false,
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(
+    browser.injections,
+    [null],
+    "No protection record yet: the lists may still be downloading",
+  );
+  assert.equal(page.root.children.length, 0);
+  // The first refresh ended without lists: the extension saved "unavailable" and redraws.
+  saved = { protection: { status: "unavailable" } };
+  await advisory.refreshAll();
+  assert.equal(parts().title.textContent, "This website wasn’t scanned");
+  // Loaded lists draw nothing, whatever their age.
+  saved = { protection: { status: "current", updatedAt: 0 } };
+  await advisory.refreshAll();
+  assert.equal(browser.injections.at(-1), null);
+
+  // The default keeps drawing the bar before the first refresh.
+  const eager = fakeBrowser();
+  eager.storage.local.get = async () => ({});
+  createProtectionAdvisory(eager);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(eager.injections.at(-1).title, "This website wasn’t scanned");
+
+  Object.defineProperty(globalThis, "location", {
+    configurable: true,
+    value: { origin: "https://paypa1.com", host: "paypa1.com" },
+  });
+  const lookalike = fakeBrowser("https://paypa1.com/");
+  lookalike.storage.local.get = async () => ({});
+  createProtectionAdvisory(lookalike, {
+    unscannedWhileLoading: false,
+    referenceDomains: ["paypal.com"],
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(
+    lookalike.injections.at(-1).title,
+    "This address may be pretending to be another website.",
+    "A lookalike still warns while the lists load",
+  );
+  assert.throws(
+    () =>
+      createProtectionAdvisory(fakeBrowser(), { unscannedWhileLoading: "no" }),
+    /Invalid advisory policy/,
+  );
+});

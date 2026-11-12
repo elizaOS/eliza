@@ -9,11 +9,15 @@ import {
   TASK_ACTION_NOT_DISPATCHED_REF,
   type TaskActionProposal,
   type TaskObservation,
+  type TaskOutcome,
   type TaskOwner,
   type TaskTransition,
   transitionInteractiveTask,
 } from "@elizaos/core/protocol";
-import type { SqliteInteractiveTaskStore } from "./interactive-task-store.ts";
+import type {
+  SqliteInteractiveTaskStore,
+  UnreadableTaskRecord,
+} from "./interactive-task-store.ts";
 
 /**
  * Why host cleanup runs after a task control. "close" is a pause whose user
@@ -58,10 +62,7 @@ export interface InteractiveTaskActuator {
       signal: AbortSignal;
       isCurrent: () => boolean;
     },
-  ): Promise<
-    | { status: "succeeded" | "failed"; evidenceRef: string }
-    | { status: "unknown"; evidenceRef?: string }
-  >;
+  ): Promise<TaskOutcome>;
   execute(
     proposal: TaskActionProposal,
     context: {
@@ -70,10 +71,7 @@ export interface InteractiveTaskActuator {
       /** Required immediately before the native effect, in addition to native checks. */
       isCurrent: () => boolean;
     },
-  ): Promise<
-    | { status: "succeeded" | "failed"; evidenceRef: string }
-    | { status: "unknown"; evidenceRef?: string }
-  >;
+  ): Promise<TaskOutcome>;
 }
 export type AuthorizedTaskGoal = Pick<
   Parameters<SqliteInteractiveTaskStore["create"]>[0],
@@ -196,6 +194,21 @@ export class InteractiveTaskRuntime {
   ): InteractiveTask {
     return this.applyControl(id, expectedRevision, type);
   }
+  /**
+   * Trusted host only, never a renderer route: start a new epoch for a new
+   * browser binding (for example a new action target) while the task stays
+   * active. A host must never pause a task for this: a pause is her Stop or
+   * a host safety stop that only her Resume ends, and a Stop that arrives
+   * meanwhile must hold.
+   * The caller observes again at the returned revision before it acts.
+   */
+  rebind(id: string, expectedRevision: number): InteractiveTask {
+    if (this.pending.has(id))
+      throw new ElizaError("Task operation is already running", {
+        code: "TASK_BUSY",
+      });
+    return this.fence(id, expectedRevision, { type: "rebind" });
+  }
   private applyControl(
     id: string,
     expectedRevision: number,
@@ -215,14 +228,26 @@ export class InteractiveTaskRuntime {
     transition: TaskTransition,
     reason?: TaskCleanupReason,
   ): InteractiveTask {
+    return this.fenced(
+      id,
+      () =>
+        this.options.store.transition(
+          id,
+          { owner: this.owner, expectedRevision, now: this.now() },
+          transition,
+        ).task,
+      reason,
+    );
+  }
+  private fenced(
+    id: string,
+    write: () => InteractiveTask,
+    reason?: TaskCleanupReason,
+  ): InteractiveTask {
     this.requireHealthy();
     let shouldAbort = false;
     try {
-      const result = this.options.store.transition(
-        id,
-        { owner: this.owner, expectedRevision, now: this.now() },
-        transition,
-      ).task;
+      const result = write();
       shouldAbort = true;
       return result;
     } catch (error) {
@@ -508,18 +533,59 @@ export class InteractiveTaskRuntime {
           expectedRevision: fence.revision,
           now: this.now(),
         },
-        {
-          type: "reconcile",
-          operationId,
-          status: result.status,
-          evidenceRef: result.evidenceRef,
-        },
+        // Copy only the outcome: a readback reply must not set other fields.
+        result.status === "unknown"
+          ? {
+              type: "reconcile",
+              operationId,
+              status: "unknown",
+              evidenceRef: result.evidenceRef,
+            }
+          : {
+              type: "reconcile",
+              operationId,
+              status: result.status,
+              evidenceRef: result.evidenceRef,
+            },
       ).task;
     } finally {
       this.pending.delete(id);
       this.startCleanup(id);
       await this.settle(id);
     }
+  }
+  /**
+   * The signed-in owner accepts that the task's unknown outcome stays unknown,
+   * for example when sign-out revoked the authorization readback needs. The
+   * task ends as cancelled, the operation stays "unknown" and a new task can
+   * start. Nothing here claims the effect happened or did not. Like
+   * `control`, the caller awaits `settle(id)` for the host cleanup.
+   */
+  acknowledgeUnknown(id: string, expectedRevision: number): InteractiveTask {
+    if (this.pending.has(id))
+      throw new ElizaError("Task operation is already running", {
+        code: "TASK_BUSY",
+      });
+    return this.fenced(
+      id,
+      () =>
+        this.options.store.acknowledgeUnknown(id, {
+          owner: this.owner,
+          expectedRevision,
+          now: this.now(),
+        }),
+      "cancel",
+    );
+  }
+  /** Records of this owner that this version cannot read; their documents are kept. */
+  unreadable(): UnreadableTaskRecord[] {
+    this.requireHealthy();
+    return this.options.store.unreadable(this.owner);
+  }
+  /** The owner releases the slot an unreadable unfinished record held. */
+  acknowledgeUnreadable(id: string): UnreadableTaskRecord[] {
+    this.requireHealthy();
+    return this.options.store.acknowledgeUnreadable(id, this.owner, this.now());
   }
   /** Trusted planner entrypoint; deliberately absent from the renderer routes. */
   async execute(

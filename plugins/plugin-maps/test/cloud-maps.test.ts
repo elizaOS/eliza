@@ -4,7 +4,7 @@
  * guarded transport, MapsService and the actions are the real modules.
  */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { mapsAction, mapsNavigationAction } from "../src/action.js";
 import {
   ELIZA_CLOUD_MAPS_ATTRIBUTION,
@@ -110,7 +110,7 @@ function message(content: Record<string, unknown>): Memory {
 }
 
 describe("ElizaCloudMapsAdapter", () => {
-  it("rejects unsupported query and result limits without changing the request", async () => {
+  it("rejects an overlong query and clamps the result limit to Cloud's 20", async () => {
     const { adapter, requests } = cloud(() =>
       Response.json({
         providerId: "eliza-cloud-osm",
@@ -121,13 +121,16 @@ describe("ElizaCloudMapsAdapter", () => {
     await expect(
       adapter.searchPlaces({ query: "x".repeat(301) }),
     ).rejects.toMatchObject({ code: "MAPS_INVALID_INPUT" });
-    await expect(
-      adapter.searchPlaces({ query: "exact", limit: 21 }),
-    ).rejects.toMatchObject({ code: "MAPS_INVALID_INPUT" });
     expect(requests).toHaveLength(0);
+    await adapter.searchPlaces({ query: "exact", limit: 21 });
+    await adapter.searchPlaces({ query: "exact", limit: 50 });
     const query = "x".repeat(300);
     await adapter.searchPlaces({ query, limit: 20 });
-    expect(requests[0].body).toEqual({ query, limit: 20 });
+    expect(requests.map(({ body }) => body)).toEqual([
+      { query: "exact", limit: 20 },
+      { query: "exact", limit: 20 },
+      { query, limit: 20 },
+    ]);
   });
   it("searches through POST bodies with the API key and maps device places", async () => {
     const { adapter, requests } = cloud(() =>
@@ -236,6 +239,9 @@ describe("ElizaCloudMapsAdapter", () => {
     [429, "allowance_exhausted", "MAPS_BUDGET_EXHAUSTED"],
     [503, "maps_not_configured", "MAPS_PROVIDER_UNAVAILABLE"],
     [503, "provider_unavailable", "MAPS_PROVIDER_FAILURE"],
+    [401, "authentication_required", "MAPS_AUTH_EXPIRED"],
+    [403, "access_denied", "MAPS_AUTH_REVOKED"],
+    [403, "maps_access_denied", "MAPS_AUTH_REVOKED"],
   ])(
     "reports Cloud %s %s as %s, never as data",
     async (status, code, mapsCode) => {
@@ -249,6 +255,129 @@ describe("ElizaCloudMapsAdapter", () => {
       expect((error as MapsError).code).toBe(mapsCode);
     },
   );
+
+  it("accepts a 2 MiB routes body with alternatives", async () => {
+    // Long geometry pads each route; the agent keeps only the summary.
+    const geometry = Array.from({ length: 16_000 }, (_, i) => ({
+      latitude: CASINO.latitude - i * 1e-7,
+      longitude: CASINO.longitude - i * 1e-7,
+    }));
+    const routes = [500, 650, 800].map((distance) => ({
+      ...ROUTE(distance),
+      geometry,
+    }));
+    const body = JSON.stringify({
+      providerId: "eliza-cloud-osm",
+      attribution: ELIZA_CLOUD_MAPS_ATTRIBUTION,
+      routes,
+    });
+    expect(body.length).toBeGreaterThan(2 * 1024 * 1024);
+    const { adapter } = cloud(
+      () =>
+        new Response(body, { headers: { "content-type": "application/json" } }),
+    );
+    const plans = await adapter.planRouteAlternatives({
+      origin: {
+        provider: "coordinates",
+        providerPlaceId: "coordinates:43.7397,7.4276",
+        name: "Casino",
+        coordinates: CASINO,
+        categories: [],
+      },
+      destination: {
+        provider: "coordinates",
+        providerPlaceId: "coordinates:43.7347,7.4206",
+        name: "Port",
+        coordinates: PORT,
+        categories: [],
+      },
+      travelMode: "walk",
+    });
+    expect(plans.map(({ distanceMeters }) => distanceMeters)).toEqual([
+      500, 650, 800,
+    ]);
+  });
+
+  it("fails a lookup that never answers as a timeout at the 20 s default deadline", async () => {
+    vi.useFakeTimers();
+    try {
+      const adapter = new ElizaCloudMapsAdapter({
+        apiKey: "eliza_test_key",
+        baseUrl: "https://api.example.test",
+        testTransport: {
+          fetchImpl: async () => Response.json(COVERAGE),
+          pinnedFetchImpl: async () => Response.json(COVERAGE),
+          lookupFn: () => new Promise(() => {}),
+        },
+      });
+      let settled: unknown;
+      const search = adapter.searchPlaces({ query: "Casino" }).then(
+        () => {
+          settled = "resolved";
+        },
+        (error: unknown) => {
+          settled = error;
+        },
+      );
+      await vi.advanceTimersByTimeAsync(19_999);
+      expect(settled).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(1);
+      await search;
+      expect(settled).toBeInstanceOf(MapsError);
+      expect(settled).toMatchObject({ code: "MAPS_PROVIDER_TIMEOUT" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("refuses a 401 whose code is not a string with a typed error", async () => {
+    const { adapter } = cloud(() =>
+      Response.json({ code: { toString: 1 } }, { status: 401 }),
+    );
+    const error = await adapter
+      .searchPlaces({ query: "Casino" })
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(MapsError);
+    expect((error as MapsError).code).toBe("MAPS_AUTH_EXPIRED");
+  });
+
+  it("cancels the response stream when its bytes are not UTF-8", async () => {
+    let cancelled = false;
+    const { adapter } = cloud(
+      () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            pull(controller) {
+              controller.enqueue(new Uint8Array([0xff, 0xfe]));
+            },
+            cancel() {
+              cancelled = true;
+            },
+          }),
+        ),
+    );
+    await expect(
+      adapter.searchPlaces({ query: "Casino" }),
+    ).rejects.toMatchObject({ code: "MAPS_MALFORMED_RESPONSE" });
+    await Promise.resolve();
+    expect(cancelled).toBe(true);
+  });
+
+  it("reads the retry delay from the body when no Retry-After header arrives", async () => {
+    const { adapter } = cloud(() =>
+      Response.json(
+        { error: "limited", code: "rate_limited", retryAfterSeconds: 30 },
+        { status: 429 },
+      ),
+    );
+    const error = await adapter
+      .searchPlaces({ query: "Casino" })
+      .catch((caught: unknown) => caught);
+    expect(error).toMatchObject({
+      code: "MAPS_RATE_LIMITED",
+      retryAfterMs: 30_000,
+    });
+  });
 
   it("refuses a response from a provider with different attribution", async () => {
     const { adapter } = cloud(() =>
@@ -598,7 +727,7 @@ describe("Cloud Maps coverage", () => {
       data: { action: "coverage", status: "reported" },
     });
     expect(reply?.text).toBe(
-      "Maps covers Monaco (dataset osm-monaco-2026-09-29). Routes: driving, walking and cycling, with alternatives. No live traffic, transit schedules or offline use. Searches and route points are sent to Eliza Cloud Maps and Nominatim for search, operated by Acme and GraphHopper for routing, operated by Acme. Cloud keeps only the request type and result, not your searches or locations. " +
+      "Maps covers Monaco (dataset osm-monaco-2026-09-29). Routes: driving, walking and cycling, with alternatives. No live traffic, transit schedules or offline use. Searches, search areas and route points are sent to Eliza Cloud Maps and Nominatim for search, operated by Acme and GraphHopper for routing, operated by Acme. Cloud keeps only the request type and result, not your searches or locations. " +
         `Data: ${ELIZA_CLOUD_MAPS_ATTRIBUTION}`,
     );
   });

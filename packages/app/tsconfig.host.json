@@ -38,7 +38,14 @@
       "@elizaos/plugin-native-inference/*": [
         "../../plugins/plugin-native-inference/src/*"
       ],
-      "@elizaos/core/protocol": ["../core/src/protocol"]
+      "@elizaos/core/protocol": ["../core/src/protocol"],
+      "@elizaos/plugin-personal-assistant/*": [
+        "../../plugins/plugin-personal-assistant/src/*"
+      ],
+      "@elizaos/plugin-reminders": [
+        "../../plugins/plugin-reminders/src/index.ts"
+      ],
+      "@elizaos/plugin-goals": ["../../plugins/plugin-goals/src/index.ts"]
     }
   },
   "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx"],

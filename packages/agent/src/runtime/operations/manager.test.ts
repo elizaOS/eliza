@@ -163,9 +163,13 @@ describe("DefaultRuntimeOperationManager", () => {
   });
   it("releases the busy gate left by a crashed process that had the same PID", async () => {
     // The first process stops mid-operation: its strategy never settles.
+    const strategyEntered = Promise.withResolvers<void>();
     const hung: ReloadStrategy = {
       tier: "cold",
-      apply: () => new Promise<AgentRuntime>(() => {}),
+      apply: () => {
+        strategyEntered.resolve();
+        return new Promise<AgentRuntime>(() => {});
+      },
     };
     const crashed = new DefaultRuntimeOperationManager({
       repository,
@@ -178,6 +182,9 @@ describe("DefaultRuntimeOperationManager", () => {
       intent: { kind: "restart", reason: "before crash" },
     });
     if (first.kind !== "accepted") throw new Error(first.kind);
+    // Reaching "running" does not drain the manager's next phase write.
+    // Wait until it reaches the stalled strategy before changing its disk record.
+    await strategyEntered.promise;
     await vi.waitFor(async () => {
       expect((await repository.get(first.operation.id))?.status).toBe(
         "running",

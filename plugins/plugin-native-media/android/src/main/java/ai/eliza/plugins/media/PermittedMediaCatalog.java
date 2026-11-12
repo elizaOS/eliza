@@ -42,6 +42,8 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public final class PermittedMediaCatalog implements AutoCloseable {
   private static final int PAGE_SIZE = 24;
+  /** Bounds of a read's preview edge in pixels; never the original bytes. */
+  public static final int PREVIEW_MIN = 64, PREVIEW_MAX = 2048;
   private static final String[] FIELDS = {"_id", "width", "height", "date_added", "_size",
       MediaStore.MediaColumns.DISPLAY_NAME, "date_modified", "owner_package_name",
       "generation_added", "generation_modified", "is_favorite", "is_trashed", "date_expires"};
@@ -71,22 +73,65 @@ public final class PermittedMediaCatalog implements AutoCloseable {
   };
   private static final class Page {
     final String snapshot, query, kind;
-    final int bucket;
-    final long before, until;
-    Page(String snapshot, String query, String kind, int bucket, long before) {
+    /** The last listed item's catalog key: capture time, source (volume x type) and _id. */
+    final long shot, id;
+    final int source;
+    final long until;
+    Page(String snapshot, String query, String kind, long shot, int source, long id) {
       this.snapshot = snapshot;
       this.query = query;
       this.kind = kind;
-      this.bucket = bucket;
-      this.before = before;
+      this.shot = shot;
+      this.source = source;
+      this.id = id;
       until = SystemClock.elapsedRealtime() + 120000;
     }
   }
+  /**
+   * The catalog's sort time in SQL: DATE_TAKEN, or date_added (seconds) when it is unset. It must
+   * equal {@link #shot(Cursor)}, which computes the same value for a listed row.
+   */
+  static final String SHOT = "ifnull(nullif(datetaken,0),date_added*1000)";
+  private static long shot(Cursor row) {
+    int taken = row.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_TAKEN);
+    long value = row.isNull(taken) ? 0 : row.getLong(taken);
+    return value != 0 ? value : row.getLong(3) * 1000;
+  }
+  /** Catalog order of merged rows {shot, source, _id, item}: newest first, then source, then _id desc. */
+  static final java.util.Comparator<Object[]> CATALOG_ORDER = (a, b) -> {
+    int byShot = Long.compare((Long) b[0], (Long) a[0]);
+    if (byShot != 0) return byShot;
+    int bySource = Integer.compare((Integer) a[1], (Integer) b[1]);
+    return bySource != 0 ? bySource : Long.compare((Long) b[2], (Long) a[2]);
+  };
+  /**
+   * Rows of {@code source} that come after the key (shot, source, id) in catalog order: newest
+   * capture time first, then source index, then _id descending. {@code args} receives the values.
+   */
+  // MediaStore binds selection arguments as text; the capture-time expression has no affinity.
+  static final String NUMBER = "CAST(? AS INTEGER)";
+  static String after(int source, long shot, int lastSource, long id, List<String> args) {
+    args.add(Long.toString(shot));
+    if (source < lastSource)
+      return " AND " + SHOT + "<" + NUMBER;
+    if (source > lastSource)
+      return " AND " + SHOT + "<=" + NUMBER;
+    args.add(Long.toString(shot));
+    args.add(Long.toString(id));
+    return " AND (" + SHOT + "<" + NUMBER + " OR (" + SHOT + "=" + NUMBER + " AND _id<" + NUMBER + "))";
+  }
   private boolean observing;
+  private final PhotoLibraryAccess.Profile profile;
   public PermittedMediaCatalog(Context context, Runnable changed) {
     this(context, true, changed);
   }
   public PermittedMediaCatalog(Context context, boolean active, Runnable changed) {
+    this(context, active, changed, PhotoLibraryAccess.Profile.LIBRARY);
+  }
+  /** A catalog that reads only what {@code profile} allows. */
+  public PermittedMediaCatalog(Context context, boolean active, Runnable changed,
+      PhotoLibraryAccess.Profile profile) {
+    this.profile = profile;
     this.context = context;
     listeners.add(changed);
     resolver = context.getContentResolver();
@@ -142,13 +187,19 @@ public final class PermittedMediaCatalog implements AutoCloseable {
       throw new SecurityException("Media access changed");
   }
   public void publish(com.getcapacitor.PluginCall call, JSObject value, long ticket) {
+    publish(call, value, ticket, null);
+  }
+  public void publish(com.getcapacitor.PluginCall call, JSObject value, long ticket,
+      Runnable onPublished) {
     main.post(() -> {
       try {
         requireReadTicket(ticket);
         call.resolve(value);
       } catch (Exception changed) {
         call.reject("Media access changed. Reopen Photos and reload.");
+        return;
       }
+      if (onPublished != null) onPublished.run();
     });
   }
   public void invalidate() {
@@ -161,22 +212,16 @@ public final class PermittedMediaCatalog implements AutoCloseable {
     return context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED;
   }
   public JSObject access() {
-    boolean legacy =
-        Build.VERSION.SDK_INT < 33 && granted(Manifest.permission.READ_EXTERNAL_STORAGE);
-    boolean images =
-        legacy || (Build.VERSION.SDK_INT >= 33 && granted(Manifest.permission.READ_MEDIA_IMAGES));
-    boolean videos =
-        legacy || (Build.VERSION.SDK_INT >= 33 && granted(Manifest.permission.READ_MEDIA_VIDEO));
-    boolean selected =
-        Build.VERSION.SDK_INT >= 34 && granted(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED);
+    int sdk = Build.VERSION.SDK_INT;
+    String[] answer = PhotoLibraryAccess.access(profile, sdk,
+        sdk < 33 && granted(Manifest.permission.READ_EXTERNAL_STORAGE),
+        sdk >= 33 && granted(Manifest.permission.READ_MEDIA_IMAGES),
+        sdk >= 33 && granted(Manifest.permission.READ_MEDIA_VIDEO),
+        sdk >= 34 && granted(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED));
     JSObject result = new JSObject();
-    result.put("images", images ? "full" : selected ? "selected" : "denied");
-    result.put("videos", videos ? "full" : selected ? "selected" : "denied");
-    result.put("scope",
-        images && videos       ? "full"
-            : images || videos ? "partial"
-            : selected         ? "selected"
-                               : "denied");
+    result.put("images", answer[1]);
+    result.put("videos", answer[2]);
+    result.put("scope", answer[0]);
     return result;
   }
   private void unlocked() {
@@ -236,6 +281,38 @@ public final class PermittedMediaCatalog implements AutoCloseable {
     List<String> volumes = volumes();
     return new Fence(volumes, snapshot(volumes));
   }
+  /**
+   * The published scope version: granted access plus each volume's MediaStore version, so it
+   * changes on a new grant or a rebuilt or removed volume. It leaves out the epoch and generation
+   * that {@link Fence#cursorIdentity} holds, so pausing, locking or editing a row keeps it; row
+   * changes reach watchers as library changes instead.
+   */
+  public String scopeVersion() throws Exception {
+    unlocked();
+    StringBuilder value = new StringBuilder(access().toString());
+    for (String volume : volumes()) value.append('|').append(volume).append('=').append(version(volume));
+    return Base64.encodeToString(java.security.MessageDigest.getInstance("SHA-256").digest(
+                                     value.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+        Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
+  }
+  /** A {@code next} cursor from before a pause, lock or change; the caller pages again from the start. */
+  public static final class StaleCursor extends IllegalStateException {
+    StaleCursor() {
+      super("Photo page expired; refresh Photos");
+    }
+  }
+  /**
+   * Each volume's MediaStore generation, which moves on any row change, even one made while
+   * paused and unobserved. Empty below Android 11, which has no generation.
+   */
+  public String generations() {
+    unlocked();
+    if (Build.VERSION.SDK_INT < 30) return "";
+    StringBuilder value = new StringBuilder();
+    for (String volume : volumes())
+      value.append('|').append(volume).append('=').append(MediaStore.getGeneration(context, volume));
+    return value.toString();
+  }
   public void requireCurrent(Fence fence) {
     if (SystemClock.elapsedRealtime() > fence.until)
       throw new IllegalStateException("Media query took too long; refresh Photos");
@@ -246,6 +323,10 @@ public final class PermittedMediaCatalog implements AutoCloseable {
         Build.VERSION.SDK_INT >= 30 ? FIELDS : java.util.Arrays.copyOf(FIELDS, 8)));
     if (video)
       result.add(MediaStore.Video.VideoColumns.DURATION);
+    result.add(MediaStore.MediaColumns.BUCKET_DISPLAY_NAME);
+    result.add(MediaStore.MediaColumns.DATE_TAKEN);
+    if (Build.VERSION.SDK_INT >= 29)
+      result.add(MediaStore.MediaColumns.RELATIVE_PATH);
     return result.toArray(new String[0]);
   }
   private String revision(Cursor row, String volume) {
@@ -277,6 +358,13 @@ public final class PermittedMediaCatalog implements AutoCloseable {
     result.put("identity",
         version(volume) + ":" + row.getLong(3)
             + (Build.VERSION.SDK_INT >= 30 ? ":" + row.getLong(8) : ""));
+    // The folder Android files the item under, and when it was taken (0 when unknown).
+    int bucket = row.getColumnIndex(MediaStore.MediaColumns.BUCKET_DISPLAY_NAME);
+    String folder = bucket < 0 || row.isNull(bucket) ? "" : row.getString(bucket);
+    result.put("bucket", folder.substring(0, Math.min(256, folder.length())));
+    int taken = row.getColumnIndex(MediaStore.MediaColumns.DATE_TAKEN);
+    result.put("dateTaken", taken < 0 || row.isNull(taken) ? 0 : row.getLong(taken));
+    OwnedMediaLibrary.putPlace(result, row);
     return result;
   }
   public Uri uri(MediaLibraryKey key) {
@@ -317,6 +405,8 @@ public final class PermittedMediaCatalog implements AutoCloseable {
     Runnable timeout = cancellation::cancel;
     main.postDelayed(timeout, 3000);
     try {
+      if (PhotoLibraryAccess.OWNED.equals(access().getString(video ? "videos" : "images")))
+        args = ownedOnly(args);
       // Typed collections are required for other apps' media under scoped storage.
       Uri collection = video ? MediaStore.Video.Media.getContentUri(volume)
                              : MediaStore.Images.Media.getContentUri(volume);
@@ -338,6 +428,22 @@ public final class PermittedMediaCatalog implements AutoCloseable {
       throw failure;
     }
   }
+  /**
+   * {@code args} narrowed to this app's own rows. Scoped storage already hides other apps' media
+   * without a grant; the explicit filter keeps the {@code owned} answer true under legacy storage.
+   */
+  private Bundle ownedOnly(Bundle args) {
+    Bundle out = new Bundle(args);
+    String where = args.getString(ContentResolver.QUERY_ARG_SQL_SELECTION);
+    String[] values = args.getStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS);
+    List<String> all = new ArrayList<>();
+    if (values != null) all.addAll(java.util.Arrays.asList(values));
+    all.add(context.getPackageName());
+    out.putString(ContentResolver.QUERY_ARG_SQL_SELECTION,
+        (where == null || where.isEmpty() ? "" : "(" + where + ") AND ") + "owner_package_name=?");
+    out.putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, all.toArray(new String[0]));
+    return out;
+  }
   /** Provider search, not an in-memory scan of previously loaded thumbnails. */
   public JSObject list(String cursor, String search, String kind, boolean thumbnails)
       throws Exception {
@@ -351,8 +457,8 @@ public final class PermittedMediaCatalog implements AutoCloseable {
       long from, long to, int limit) throws Exception {
     if (from < 0 || to < from || limit < 1 || limit > PAGE_SIZE)
       throw new IllegalArgumentException("Invalid bounded media query");
-    if (filter == null || !filter.matches("all|favorites|trash")
-        || (Build.VERSION.SDK_INT < 30 && !filter.equals("all")))
+    if (filter == null || !filter.matches("all|favorites|trash|camera|screenshots")
+        || (Build.VERSION.SDK_INT < 30 && !filter.matches("all|camera|screenshots")))
       throw new IllegalArgumentException("Unsupported media filter");
     String pageKind = kind + ":" + filter + ":" + from + ":" + to + ":" + limit;
     if (search == null || search.length() > 128 || search.indexOf('\0') >= 0 || kind == null
@@ -360,89 +466,93 @@ public final class PermittedMediaCatalog implements AutoCloseable {
       throw new IllegalArgumentException("Invalid photo query");
     List<String> volumes = volumes();
     String snapshot = snapshot(volumes);
-    int bucketIndex = 0;
-    long before = Long.MAX_VALUE;
-    List<MediaLibraryKey> buckets = new ArrayList<>();
-    for (String volume : volumes) {
-      if (readable(false) && !kind.equals("video"))
-        buckets.add(new MediaLibraryKey(volume, 1, false));
-      if (readable(true) && !kind.equals("image"))
-        buckets.add(new MediaLibraryKey(volume, 1, true));
-    }
+    boolean images = readable(false) && !kind.equals("video");
+    boolean videos = readable(true) && !kind.equals("image");
+    Page last = null;
     if (cursor != null && !cursor.isEmpty()) {
-      Page page;
       synchronized (pages) {
-        page = pages.remove(cursor);
+        last = pages.remove(cursor);
       }
-      if (page == null || page.until < SystemClock.elapsedRealtime()
-          || !page.snapshot.equals(snapshot) || !page.query.equals(search)
-          || !page.kind.equals(pageKind))
-        throw new IllegalStateException("Photo page expired; refresh Photos");
-      bucketIndex = page.bucket;
-      before = page.before;
+      if (last == null || last.until < SystemClock.elapsedRealtime()
+          || !last.snapshot.equals(snapshot) || !last.query.equals(search)
+          || !last.kind.equals(pageKind))
+        throw new StaleCursor();
     }
     JSArray items = new JSArray();
     String next = "";
     long thumbnailUntil = SystemClock.elapsedRealtime() + 3000;
-  outer:
-    for (; bucketIndex < buckets.size(); bucketIndex++, before = Long.MAX_VALUE) {
-      MediaLibraryKey bucket = buckets.get(bucketIndex);
-      String volume = bucket.volume;
-      Bundle args = new Bundle();
-      List<String> values = new ArrayList<>();
-      values.add(Long.toString(before));
-      String where = "is_pending=0 AND _id<?"
-          + (Build.VERSION.SDK_INT >= 30 ? " AND is_trashed=" + (filter.equals("trash") ? "1" : "0")
-                                         : "")
-          + (filter.equals("favorites") ? " AND is_favorite=1" : "");
-      if (Build.VERSION.SDK_INT >= 30)
-        args.putInt(MediaStore.QUERY_ARG_MATCH_TRASHED,
-            filter.equals("trash") ? MediaStore.MATCH_ONLY : MediaStore.MATCH_EXCLUDE);
-      if (from > 0) {
-        where += " AND date_added>=?";
-        values.add(Long.toString(from / 1000 + (from % 1000 == 0 ? 0 : 1)));
-      }
-      if (to < Long.MAX_VALUE) {
-        where += " AND date_added<=?";
-        values.add(Long.toString(to / 1000));
-      }
-      if (!search.isBlank()) {
-        where += " AND instr(lower(" + MediaStore.MediaColumns.DISPLAY_NAME + "),lower(?))>0";
-        values.add(search.trim());
-      }
-      args.putString(ContentResolver.QUERY_ARG_SQL_SELECTION, where);
-      args.putStringArray(
-          ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, values.toArray(new String[0]));
-      args.putStringArray(ContentResolver.QUERY_ARG_SORT_COLUMNS, new String[] {"_id"});
-      args.putInt(ContentResolver.QUERY_ARG_SORT_DIRECTION,
-          ContentResolver.QUERY_SORT_DIRECTION_DESCENDING);
-      args.putInt(ContentResolver.QUERY_ARG_LIMIT, limit + 1 - items.length());
-      try (Cursor rows = query(volume, bucket.video, args)) {
-        if (rows == null)
-          throw new IllegalStateException("Media provider unavailable");
-        while (rows.moveToNext()) {
-          if (items.length() == limit) {
-            next = UUID.randomUUID().toString();
-            synchronized (pages) {
-              pages.entrySet().removeIf(
-                  entry -> entry.getValue().until < SystemClock.elapsedRealtime());
-              while (pages.size() >= 32) pages.remove(pages.keySet().iterator().next());
-              pages.put(next, new Page(snapshot, search, pageKind, bucketIndex, before));
-            }
-            break outer;
-          }
-          JSObject item = metadata(rows, volume, bucket.video);
-          before = rows.getLong(0);
-          if (thumbnails && SystemClock.elapsedRealtime() < thumbnailUntil) {
-            try {
-              item.put("image", thumbnail(MediaLibraryKey.parse(item.getString("id")), 240));
-            } catch (Exception unavailable) {
-              item.put("image", "");
-            }
-          }
-          items.put(item);
+    // One newest-first catalog across every volume and both typed collections: each source
+    // (volume x images/videos) is read below the previous page's last key, and the sources are
+    // merged on (capture time desc, source, _id desc). The cursor is that key, so a later page never
+    // inserts rows above ones already listed, and favorite or restore never reorders a page.
+    List<Object[]> merged = new ArrayList<>();
+    for (int volumeIndex = 0; volumeIndex < volumes.size(); volumeIndex++) {
+      String volume = volumes.get(volumeIndex);
+      for (boolean video : new boolean[] {false, true}) {
+        if (video ? !videos : !images)
+          continue;
+        int source = volumeIndex * 2 + (video ? 1 : 0);
+        Bundle args = new Bundle();
+        List<String> values = new ArrayList<>();
+        String where = "is_pending=0"
+            + (Build.VERSION.SDK_INT >= 30
+                    ? " AND is_trashed=" + (filter.equals("trash") ? "1" : "0")
+                    : "")
+            + (filter.equals("favorites") ? " AND is_favorite=1" : "")
+            + OwnedMediaSelection.folderSelection(filter);
+        if (last != null)
+          where += after(source, last.shot, last.source, last.id, values);
+        if (Build.VERSION.SDK_INT >= 30)
+          args.putInt(MediaStore.QUERY_ARG_MATCH_TRASHED,
+              filter.equals("trash") ? MediaStore.MATCH_ONLY : MediaStore.MATCH_EXCLUDE);
+        if (from > 0) {
+          where += " AND date_added>=?";
+          values.add(Long.toString(from / 1000 + (from % 1000 == 0 ? 0 : 1)));
+        }
+        if (to < Long.MAX_VALUE) {
+          where += " AND date_added<=?";
+          values.add(Long.toString(to / 1000));
+        }
+        if (!search.isBlank()) {
+          where += " AND instr(lower(" + MediaStore.MediaColumns.DISPLAY_NAME + "),lower(?))>0";
+          values.add(search.trim());
+        }
+        args.putString(ContentResolver.QUERY_ARG_SQL_SELECTION, where);
+        args.putStringArray(
+            ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, values.toArray(new String[0]));
+        args.putString(ContentResolver.QUERY_ARG_SQL_SORT_ORDER, SHOT + " DESC, _id DESC");
+        args.putInt(ContentResolver.QUERY_ARG_LIMIT, limit + 1);
+        try (Cursor rows = query(volume, video, args)) {
+          if (rows == null)
+            throw new IllegalStateException("Media provider unavailable");
+          while (rows.moveToNext())
+            merged.add(new Object[] {shot(rows), source, rows.getLong(0), metadata(rows, volume, video)});
         }
       }
+    }
+    merged.sort(CATALOG_ORDER);
+    for (Object[] row : merged) {
+      if (items.length() == limit) {
+        // The key of the last listed row; the next page continues strictly after it.
+        Object[] key = merged.get(limit - 1);
+        next = UUID.randomUUID().toString();
+        synchronized (pages) {
+          pages.entrySet().removeIf(
+              entry -> entry.getValue().until < SystemClock.elapsedRealtime());
+          while (pages.size() >= 32) pages.remove(pages.keySet().iterator().next());
+          pages.put(next, new Page(snapshot, search, pageKind, (Long) key[0], (Integer) key[1], (Long) key[2]));
+        }
+        break;
+      }
+      JSObject item = (JSObject) row[3];
+      if (thumbnails && SystemClock.elapsedRealtime() < thumbnailUntil) {
+        try {
+          item.put("image", thumbnail(MediaLibraryKey.parse(item.getString("id")), 240));
+        } catch (Exception unavailable) {
+          item.put("image", "");
+        }
+      }
+      items.put(item);
     }
     current(snapshot, volumes);
     JSObject result = new JSObject();
@@ -456,6 +566,13 @@ public final class PermittedMediaCatalog implements AutoCloseable {
   }
   public JSObject read(String id, String expectedRevision, boolean pixels, boolean trashed)
       throws Exception {
+    return read(id, expectedRevision, pixels, trashed, 1024);
+  }
+  /** As {@link #read(String, String, boolean, boolean)} with a preview of at most {@code edge}. */
+  public JSObject read(String id, String expectedRevision, boolean pixels, boolean trashed,
+      int edge) throws Exception {
+    if (edge < PREVIEW_MIN || edge > PREVIEW_MAX)
+      throw new IllegalArgumentException("Invalid preview size");
     MediaLibraryKey key = MediaLibraryKey.parse(id);
     List<String> volumes = volumes();
     String snapshot = snapshot(volumes);
@@ -468,7 +585,7 @@ public final class PermittedMediaCatalog implements AutoCloseable {
     if (expectedRevision != null && !expectedRevision.equals(revision))
       throw new IllegalStateException("Selected media changed");
     if (pixels)
-      result.put("image", thumbnail(key, 1024));
+      result.put("image", thumbnail(key, edge));
     if (!revision.equals(inspect(key, trashed).getString("revision")))
       throw new IllegalStateException("Selected media changed");
     current(snapshot, volumes);
@@ -564,7 +681,7 @@ public final class PermittedMediaCatalog implements AutoCloseable {
     List<String> volumes = volumes();
     String snapshot = snapshot(volumes);
     long until = SystemClock.elapsedRealtime() + 3000;
-    int favorites = 0, videos = 0, trash = 0;
+    int favorites = 0, videos = 0, trash = 0, camera = 0, screenshots = 0;
     for (String volume : volumes)
       for (boolean video : new boolean[] {false, true}) {
         if (!readable(video))
@@ -574,8 +691,8 @@ public final class PermittedMediaCatalog implements AutoCloseable {
         if (Build.VERSION.SDK_INT >= 30)
           args.putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_INCLUDE);
         String[] projection = Build.VERSION.SDK_INT >= 30
-            ? new String[] {"is_favorite", "is_trashed"}
-            : new String[] {"_id"};
+            ? new String[] {"is_favorite", "is_trashed", MediaStore.MediaColumns.RELATIVE_PATH}
+            : new String[] {"_id", MediaStore.MediaColumns.RELATIVE_PATH};
         try (Cursor rows = query(volume, video, args, projection)) {
           if (rows == null)
             throw new IllegalStateException("Media provider unavailable");
@@ -590,6 +707,11 @@ public final class PermittedMediaCatalog implements AutoCloseable {
               videos++;
             if (Build.VERSION.SDK_INT >= 30 && rows.getInt(0) == 1)
               favorites++;
+            String album = OwnedMediaSelection.folderAlbum(rows.getString(projection.length - 1));
+            if (album.equals("camera"))
+              camera++;
+            else if (album.equals("screenshots"))
+              screenshots++;
           }
         }
       }
@@ -597,6 +719,8 @@ public final class PermittedMediaCatalog implements AutoCloseable {
     JSObject result = new JSObject();
     result.put("favorites", favorites);
     result.put("videos", videos);
+    result.put("camera", camera);
+    result.put("screenshots", screenshots);
     result.put("trash", trash);
     result.put("canFavorite", Build.VERSION.SDK_INT >= 30);
     return result;

@@ -1,0 +1,19 @@
+{
+  "sources": ["packages/agent/src/services/chat-idempotency-service.ts"],
+  "bounds": {
+    "domain": "One scoped key, two owners/fingerprints/waiters and generations 0..2.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "services_idempotency",
+      "main": "services_idempotency",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

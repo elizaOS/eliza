@@ -33,8 +33,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * or {@link PdfPageLimits#MAX_RENDERER_PSS_KB}. Outside an isolated process it refuses to bind.
  *
  * <p>Wire format (Messenger, {@code what == 1}): request bundle {@code request} (UUID string),
- * {@code page} (0-based) and {@code descriptor}; reply bundle {@code request} and either
- * {@code error}, or {@code pixels} (SharedMemory, ARGB_8888), {@code width}, {@code height},
+ * {@code page} (0-based), {@code descriptor} and optional {@code selected} (a document the owner
+ * picked, bounded by {@link PdfPageLimits#MAX_SELECTED_SOURCE_BYTES}); reply bundle
+ * {@code request} and either {@code error}, or {@code pixels} (SharedMemory, ARGB_8888), {@code width}, {@code height},
  * {@code pages}, {@code page}, {@code uid}, {@code isolated} and {@code internetDenied}.
  */
 public abstract class IsolatedPdfRenderService extends Service {
@@ -74,7 +75,8 @@ public abstract class IsolatedPdfRenderService extends Service {
     main.postDelayed(kill, PdfPageLimits.DEADLINE_MS);
     main.post(memory);
     boolean stall = stallFixture(data);
-    worker.execute(() -> render(descriptor, page, request, reply, stall));
+    long limit = PdfPageLimits.sourceLimit(data.getBoolean("selected", false));
+    worker.execute(() -> render(descriptor, page, limit, request, reply, stall));
     return true;
   }));
 
@@ -119,8 +121,8 @@ public abstract class IsolatedPdfRenderService extends Service {
     }
   }
 
-  private void render(ParcelFileDescriptor descriptor, int index, String request, Messenger reply,
-      boolean stall) {
+  private void render(ParcelFileDescriptor descriptor, int index, long limit, String request,
+      Messenger reply, boolean stall) {
     Bitmap bitmap = null;
     SharedMemory shared = null;
     ByteBuffer mapping = null;
@@ -128,7 +130,7 @@ public abstract class IsolatedPdfRenderService extends Service {
     try {
       if (stall)
         Thread.sleep(PdfPageLimits.DEADLINE_MS + 5000L);
-      PdfPageLimits.requireSource(descriptor.getStatSize());
+      PdfPageLimits.requireSource(descriptor.getStatSize(), limit);
       try (PdfRenderer renderer = new PdfRenderer(descriptor)) {
         int count = renderer.getPageCount();
         PdfPageLimits.requirePage(count, index);

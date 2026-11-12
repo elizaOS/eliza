@@ -104,15 +104,17 @@ function buildWordStream(
 	const kept: TranscriptWord[] = [];
 	const charToWord: number[] = [];
 	let concat = "";
-	for (const word of ordered) {
+	// Errors name the word by position, never by its text: the text is the
+	// speech being redacted.
+	for (const [position, word] of ordered.entries()) {
 		if (!Number.isFinite(word.startMs) || !Number.isFinite(word.endMs)) {
 			throw new RedactionSpanError(
-				`word "${word.text}" has non-finite timing (${word.startMs}..${word.endMs})`,
+				`word ${position} has non-finite timing (${word.startMs}..${word.endMs})`,
 			);
 		}
 		if (word.endMs <= word.startMs) {
 			throw new RedactionSpanError(
-				`word "${word.text}" ends (${word.endMs}) before it starts (${word.startMs})`,
+				`word ${position} ends (${word.endMs}) before it starts (${word.startMs})`,
 			);
 		}
 		const normalized = normalizeSpokenText(word.text);
@@ -280,12 +282,6 @@ export function mergeRedactionSpans(
 	}));
 }
 
-/** Options for {@link buildAudioRedactionSpans}. */
-export interface BuildRedactionSpanOptions
-	extends Omit<MergeRedactionSpanOptions, "durationMs"> {
-	durationMs: number;
-}
-
 /** Result of the full text-PII → timestamp-window derivation. */
 export interface AudioRedactionSpanPlan {
 	/** Padded, merged, non-overlapping windows ready for the executor. */
@@ -305,7 +301,7 @@ export interface AudioRedactionSpanPlan {
 export function buildAudioRedactionSpans(
 	words: readonly TranscriptWord[],
 	piiSpans: readonly PiiTextSpan[],
-	options: BuildRedactionSpanOptions,
+	options: MergeRedactionSpanOptions,
 ): AudioRedactionSpanPlan {
 	const { matches, unmatched } = matchPiiSpansToWords(words, piiSpans);
 	const spans = mergeRedactionSpans(matches, options);
@@ -318,9 +314,10 @@ export function assertCompleteAudioRedactionPlan(
 ): void {
 	if (plan.unmatched.length > 0) {
 		throw new RedactionSpanError(
-			`PII text could not be located in timed words: ${plan.unmatched
-				.map((span) => JSON.stringify(span.text))
-				.join(", ")}`,
+			// Never echo the PII itself: errors reach logs and telemetry.
+			`${plan.unmatched.length} PII span(s) could not be located in timed words (text lengths: ${plan.unmatched
+				.map((span) => span.text.length)
+				.join(", ")})`,
 		);
 	}
 	if (plan.spans.length === 0) {

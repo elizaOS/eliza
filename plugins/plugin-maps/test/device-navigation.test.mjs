@@ -146,6 +146,7 @@ function screen(maps, options = {}) {
     noLocation,
   );
   let navigating = false,
+    session = 0,
     routeId = "",
     fix,
     placeName = "",
@@ -186,14 +187,15 @@ function screen(maps, options = {}) {
             precision: "precise",
           });
     },
-    planFrom(origin) {
+    async planFrom(origin) {
       controller.setOrigin(origin);
-      return controller.planRoute();
+      await controller.planRoute();
     },
     // As the adapter: the session lasts from the user's Start to End, through rerouting and arrival.
     guidance: () =>
       navigating
         ? {
+            session,
             routeId,
             placeName,
             travelMode: controller.snapshot().mode,
@@ -205,13 +207,14 @@ function screen(maps, options = {}) {
     async reroute(from) {
       rerouting = true;
       try {
-        await controller.reroute(from);
+        const receipt = await controller.reroute(from);
+        const route = controller.snapshot().route;
+        if (route.phase === "ready") routeId = route.value.id;
+        else navigating = false;
+        return receipt;
       } finally {
         rerouting = false;
       }
-      const route = controller.snapshot().route;
-      if (route.phase === "ready") routeId = route.value.id;
-      else navigating = false;
     },
     async stop() {
       navigating = false;
@@ -234,6 +237,7 @@ function screen(maps, options = {}) {
       const route = controller.snapshot().route;
       assert.equal(route.phase, "ready");
       navigating = true;
+      session++;
       routeId = route.value.id;
       sheet = "navigation";
       fix = position;
@@ -538,7 +542,7 @@ function screen(maps, options = {}) {
   });
   assert.deepEqual(maps.calls.at(-1), ["route", PALACE, PORT, "drive"]);
   assert.notEqual(phone.surface.guidance().routeId, before);
-  // A failed replan ends guidance on the phone; the agent hears the typed reason.
+  // A failed replan keeps guidance on the current route; the agent hears the typed reason.
   const failing = provider(),
     broken = screen(failing),
     brokenNav = new DeviceMapsNavigation(broken.surface, owner);
@@ -556,7 +560,8 @@ function screen(maps, options = {}) {
     );
   };
   await failsWith(brokenNav.reroute(), "MAPS_PROVIDER_NETWORK", /unreachable/);
-  assert.equal(broken.surface.guidance(), null);
+  assert.equal(broken.surface.guidance().rerouting, false);
+  assert.equal(broken.surface.guidance().placeName, "Port Hercule");
 }
 
 // While a new route is planned, the session is still active: no agent request takes it over, and arrival ends rerouting.

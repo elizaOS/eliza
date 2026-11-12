@@ -48,7 +48,7 @@ test("the renderer runs only isolated and the viewer checks every reply before m
   assert.match(service, /PdfPageLimits\.admitsRequest\(request, page\)/);
   assert.match(
     service,
-    /PdfPageLimits\.requireSource\(descriptor\.getStatSize\(\)\)/,
+    /PdfPageLimits\.requireSource\(descriptor\.getStatSize\(\), limit\)/,
   );
   assert.match(service, /shared\.setProtect\(OsConstants\.PROT_READ\)/);
   assert.match(

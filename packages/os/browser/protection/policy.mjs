@@ -2,27 +2,42 @@
 export const RULE_BASE = 10000,
   MAX_DOMAINS = 1200000,
   CHUNK = 2000;
+const validHost = (host) =>
+  typeof host === "string" &&
+  host.length <= 253 &&
+  host.includes(".") &&
+  host
+    .split(".")
+    .every((l) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(l));
+/** Reviewed hosts a consumer never blocks (confirmed feed false positives), sorted and
+ * deduplicated. Each is a lowercase hostname. Chromium's `excludedRequestDomains` also
+ * covers its subdomains, compared by whole labels, so a lookalike or a parent domain is
+ * never excluded. */
+export function neverBlockHosts(neverBlock = []) {
+  if (
+    !Array.isArray(neverBlock) ||
+    neverBlock.length > 100 ||
+    !neverBlock.every(validHost)
+  )
+    throw Error("Invalid never-block hosts");
+  return [...new Set(neverBlock)].sort();
+}
 export function compileThreatRules(
   domains,
   extensionId,
-  { warningPage = "warning.html" } = {},
+  { warningPage = "warning.html", neverBlock = [] } = {},
 ) {
   if (!/^[a-z][a-z0-9-]*\.html$/.test(warningPage))
     throw Error("Invalid warning page");
   if (!/^[a-p]{32}$/.test(extensionId))
     throw Error("Invalid extension identity");
+  const excluded = neverBlockHosts(neverBlock);
+  const exclude = excluded.length ? { excludedRequestDomains: excluded } : {};
   const unique = [...new Set(domains)].sort();
   if (!unique.length || unique.length > MAX_DOMAINS)
     throw Error("Invalid threat list size");
   for (const host of unique)
-    if (
-      host.length > 253 ||
-      !host.includes(".") ||
-      !host
-        .split(".")
-        .every((l) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(l))
-    )
-      throw Error("Invalid threat domain");
+    if (!validHost(host)) throw Error("Invalid threat domain");
   const rules = [];
   for (let i = 0; i < unique.length; i += CHUNK) {
     const requestDomains = unique.slice(i, i + CHUNK),
@@ -31,7 +46,11 @@ export function compileThreatRules(
       id: RULE_BASE + offset,
       priority: 1,
       action: { type: "block" },
-      condition: { requestDomains, excludedResourceTypes: ["main_frame"] },
+      condition: {
+        requestDomains,
+        ...exclude,
+        excludedResourceTypes: ["main_frame"],
+      },
     });
     rules.push({
       id: RULE_BASE + offset + 1,
@@ -44,6 +63,7 @@ export function compileThreatRules(
       },
       condition: {
         requestDomains,
+        ...exclude,
         resourceTypes: ["main_frame"],
         regexFilter: "^(https?://.*)$",
       },

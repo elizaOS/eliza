@@ -1044,6 +1044,27 @@ async function opCreate(
   );
 }
 
+/**
+ * A disabled trigger has no next fire by definition — `resolveTriggerTiming`
+ * returns null for `enabled === false`, so `buildTriggerMetadata` can never
+ * schedule one. Park it on the far-future disabled interval instead, the same
+ * shape event triggers already use, so the row persists as paused and a later
+ * resume recomputes a real schedule.
+ */
+function pausedTriggerMetadata(
+  task: Task,
+  trigger: TriggerConfig,
+  nowMs: number,
+): TriggerTaskMetadata {
+  return {
+    ...((task.metadata as TriggerTaskMetadata | undefined) ?? {}),
+    blocking: true,
+    updatedAt: nowMs,
+    updateInterval: DISABLED_TRIGGER_INTERVAL_MS,
+    trigger: { ...trigger, nextRunAtMs: nowMs + DISABLED_TRIGGER_INTERVAL_MS },
+  };
+}
+
 async function opUpdate(
   runtime: IAgentRuntime,
   message: Memory,
@@ -1257,11 +1278,15 @@ async function opUpdate(
     });
   }
 
-  const metadata = buildTriggerMetadata({
-    trigger: next,
-    nowMs: Date.now(),
-    existingMetadata: task.metadata as TriggerTaskMetadata | undefined,
-  });
+  // An edit keeps a paused trigger paused, like the PUT route; resume
+  // recomputes the edited schedule.
+  const metadata = next.enabled
+    ? buildTriggerMetadata({
+        trigger: next,
+        nowMs: Date.now(),
+        existingMetadata: task.metadata as TriggerTaskMetadata | undefined,
+      })
+    : pausedTriggerMetadata(task, next, Date.now());
   if (!metadata) {
     return failed(
       "update",
@@ -1279,8 +1304,9 @@ async function opUpdate(
       next,
       messageTimeZone,
       Date.now(),
-      metadata.trigger?.nextRunAtMs,
-    )}.`,
+      // A paused row holds the far-future parked time, not a real fire time.
+      next.enabled ? metadata.trigger?.nextRunAtMs : undefined,
+    )}${next.enabled ? "" : " (paused)"}.`,
     triggerReceipt("update", String(task.id), { key: null }),
     {
       taskId: String(task.id),
@@ -1432,26 +1458,16 @@ async function opToggle(
       );
     }
   }
-  // A disabled trigger has no next fire by definition — `resolveTriggerTiming`
-  // returns null for `enabled === false`, so recomputing timing for the
-  // about-to-be-paused config ALWAYS failed and pausing was structurally
-  // impossible ("Failed to recompute trigger schedule." on every pause; live
-  // capture). Park it on the far-future disabled interval instead, the same
-  // shape event triggers already use, so the row persists as paused and a
-  // later resume recomputes a real schedule.
+  // Recomputing timing for the about-to-be-paused config always failed, so
+  // pausing was structurally impossible ("Failed to recompute trigger
+  // schedule." on every pause; live capture). See pausedTriggerMetadata.
   const metadata = enabled
     ? buildTriggerMetadata({
         trigger: next,
         nowMs,
         existingMetadata: task.metadata as TriggerTaskMetadata | undefined,
       })
-    : {
-        ...((task.metadata as TriggerTaskMetadata | undefined) ?? {}),
-        blocking: true,
-        updatedAt: nowMs,
-        updateInterval: DISABLED_TRIGGER_INTERVAL_MS,
-        trigger: { ...next, nextRunAtMs: nowMs + DISABLED_TRIGGER_INTERVAL_MS },
-      };
+    : pausedTriggerMetadata(task, next, nowMs);
   if (!metadata) {
     return failed(
       "toggle",

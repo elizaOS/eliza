@@ -22,7 +22,7 @@ import {
   rateLimit,
 } from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import {
-  isInferenceStrongRevocationEnabled,
+  hasInferenceRevocationBoundary,
   revokeInferenceSessionsThrough,
 } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
 import { markSsoBridgeLogout } from "@elizaos/cloud-shared/lib/services/sso-bridge-codes";
@@ -31,7 +31,7 @@ import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { deleteCookie } from "hono/cookie";
-import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
+import { getAuditDispatcher } from "../../src/services/audit-dispatcher-singleton";
 
 const app = new Hono<AppEnv>();
 
@@ -121,7 +121,7 @@ app.post("/", async (c) => {
   if (
     verifiedStewardToken &&
     verifiedClaims &&
-    isInferenceStrongRevocationEnabled(c.env)
+    hasInferenceRevocationBoundary(c.env)
   ) {
     try {
       const user = await getCurrentUserForStewardToken(c, verifiedStewardToken);

@@ -1,0 +1,154 @@
+{
+  "cases": [
+    {
+      "name": "leases",
+      "main": "InteractionSession_leases",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "AtMostOnce",
+        "ExactlyOnceAuthority",
+        "CompletedHasEffect",
+        "NoCommitWhileRevoked",
+        "NoLateCommit",
+        "AmbiguousRetained",
+        "ExecutorHasRecord"
+      ],
+      "temporal": ["EffectOnlyByCommitter", "EffectRecorded", "DeadlockFree"],
+      "maxSteps": 60,
+      "samples": 1000,
+      "legacyConfiguration": {
+        "name": "InteractionSession.leases.cfg",
+        "constants": [
+          "Clients = {c1, c2, c3}",
+          "Mismatched = {c3}",
+          "MaxRuns = 2",
+          "MaxTime = 4",
+          "Expiry = 3",
+          "Ttl = 1",
+          "None = None"
+        ],
+        "specification": ["Spec"],
+        "invariants": [
+          "TypeOK",
+          "AtMostOnce",
+          "ExactlyOnceAuthority",
+          "CompletedHasEffect",
+          "NoCommitWhileRevoked",
+          "NoLateCommit",
+          "AmbiguousRetained",
+          "ExecutorHasRecord"
+        ],
+        "properties": ["EffectOnlyByCommitter", "EffectRecorded"],
+        "checkDeadlock": true
+      },
+      "fairness": "Temporal liveness obligations explicitly imply the original per-action Fairness predicate. Step includes stuttering; nextStep preserves the original enabled relation.",
+      "deadlock": true,
+      "temporalChecks": [
+        {
+          "property": "EffectOnlyByCommitter",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in InteractionSession_leases: EffectOnlyByCommitter = always((next(s.effects) != s.effects implies Clients.exists(c => s.pc.get(c) == \"committed\" and next(s.pc.get(c)) == \"executed\")).orKeep(s))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        },
+        {
+          "property": "EffectRecorded",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in InteractionSession_leases: EffectRecorded = Fairness implies (s.effects == 1 leadsTo s.reached == \"completed\")",
+            "Model fairness predicate Fairness = Reconcile.weakFair(s) and Clients.forall(c => Commit(c).weakFair(s) and Execute(c).weakFair(s) and Complete(c).weakFair(s))",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        },
+        {
+          "property": "DeadlockFree",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in InteractionSession_leases: DeadlockFree = always(enabled(nextStep))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "retries",
+      "main": "InteractionSession_retries",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "AtMostOnce",
+        "ExactlyOnceAuthority",
+        "CompletedHasEffect",
+        "NoCommitWhileRevoked",
+        "NoLateCommit",
+        "AmbiguousRetained",
+        "ExecutorHasRecord"
+      ],
+      "temporal": ["EffectOnlyByCommitter", "EffectRecorded", "DeadlockFree"],
+      "maxSteps": 60,
+      "samples": 1000,
+      "legacyConfiguration": {
+        "name": "InteractionSession.retries.cfg",
+        "constants": [
+          "Clients = {c1, c2}",
+          "Mismatched = {}",
+          "MaxRuns = 3",
+          "MaxTime = 5",
+          "Expiry = 4",
+          "Ttl = 2",
+          "None = None"
+        ],
+        "specification": ["Spec"],
+        "invariants": [
+          "TypeOK",
+          "AtMostOnce",
+          "ExactlyOnceAuthority",
+          "CompletedHasEffect",
+          "NoCommitWhileRevoked",
+          "NoLateCommit",
+          "AmbiguousRetained",
+          "ExecutorHasRecord"
+        ],
+        "properties": ["EffectOnlyByCommitter", "EffectRecorded"],
+        "checkDeadlock": true
+      },
+      "fairness": "Temporal liveness obligations explicitly imply the original per-action Fairness predicate. Step includes stuttering; nextStep preserves the original enabled relation.",
+      "deadlock": true,
+      "temporalChecks": [
+        {
+          "property": "EffectOnlyByCommitter",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in InteractionSession_retries: EffectOnlyByCommitter = always((next(s.effects) != s.effects implies Clients.exists(c => s.pc.get(c) == \"committed\" and next(s.pc.get(c)) == \"executed\")).orKeep(s))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        },
+        {
+          "property": "EffectRecorded",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in InteractionSession_retries: EffectRecorded = Fairness implies (s.effects == 1 leadsTo s.reached == \"completed\")",
+            "Model fairness predicate Fairness = Reconcile.weakFair(s) and Clients.forall(c => Commit(c).weakFair(s) and Execute(c).weakFair(s) and Complete(c).weakFair(s))",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        },
+        {
+          "property": "DeadlockFree",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in InteractionSession_retries: DeadlockFree = always(enabled(nextStep))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        }
+      ]
+    }
+  ],
+  "sources": [
+    "packages/core/src/messaging/interaction-sessions.ts",
+    "packages/agent/src/services/sqlite-message-interaction-session-store.ts"
+  ]
+}

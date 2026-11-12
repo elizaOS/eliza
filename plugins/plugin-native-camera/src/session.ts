@@ -21,6 +21,9 @@ import { type CameraAccessKind, cameraAccessDenied } from "./host-ports";
 
 export type CameraSessionPhase = "off" | "starting" | "ready" | "error";
 
+/** Bridge rejection code for a recording start that also lost the preview. */
+export const PREVIEW_STOPPED = "PREVIEW_STOPPED";
+
 /** The receipt fields the session checks; hosts may carry more. */
 export interface CameraRecordingReceipt {
   path: string;
@@ -206,6 +209,9 @@ export function createCameraSession<
     if (!recording) return Promise.resolve("failed");
     recording = false;
     const flight = (async (): Promise<CameraRecordingOutcome> => {
+      // Yield first so `finalizing` holds this flight before a bridge that throws synchronously
+      // can settle it; otherwise the settled flight would be assigned after `finally` and stick.
+      await Promise.resolve();
       notify(hooks.recordingFinishing);
       try {
         const receipt = await camera.stopRecording();
@@ -340,6 +346,10 @@ export function createCameraSession<
         denied = "microphone";
         return "denied";
       }
+      // The bridge could not restore the viewfinder after the failed start: the preview is gone,
+      // so the host must offer `start(true)` instead of a dead shutter.
+      if ((error as { code?: unknown } | null)?.code === PREVIEW_STOPPED)
+        phase = "error";
       return "failed";
     } finally {
       recordingStarting = false;

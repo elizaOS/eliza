@@ -7,6 +7,13 @@ Configure `ELIZAOS_CLOUD_API_KEY`; `ELIZAOS_CLOUD_BASE_URL` overrides the API en
 `ELIZAOS_CLOUD_ENABLED` enables the provisioning and bridge services.
 Keep API keys server-side and retain per-agent routing authority.
 
+Hosts can turn off Cloud media, speech output and transcription registrations
+independently with `ELIZAOS_CLOUD_USE_MEDIA=false`,
+`ELIZAOS_CLOUD_USE_TTS=false` and `ELIZAOS_CLOUD_USE_STT=false`.
+Cloud embeddings can stay enabled while another provider owns those capabilities.
+Unset flags preserve the default Cloud registrations. Apply routing changes through
+the host's normal runtime replacement; these flags do not grant account access.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:

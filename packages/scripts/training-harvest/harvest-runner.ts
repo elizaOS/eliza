@@ -26,9 +26,9 @@
  * wiring noted in the manifest and are enumerated but not executed here.
  *
  * Usage:
- *   node harvest-runner.ts --provider-env s1-provider.json [--family scenario]
+ *   bun harvest-runner.ts --provider-env s1-provider.json [--family scenario]
  *       [--dir <manifest.dir>] [--limit N] [--harvest-root <dir>] [--dry-run]
- *   node harvest-runner.ts --deterministic --limit 3 --dry-run   # driver self-test
+ *   bun harvest-runner.ts --deterministic --limit 3 --dry-run   # driver self-test
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";

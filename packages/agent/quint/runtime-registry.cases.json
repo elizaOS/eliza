@@ -1,0 +1,19 @@
+{
+  "sources": ["packages/agent/src/sandbox-registry.ts"],
+  "bounds": {
+    "domain": "Two container generations and one Redis routing identity.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "runtime_registry",
+      "main": "runtime_registry",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

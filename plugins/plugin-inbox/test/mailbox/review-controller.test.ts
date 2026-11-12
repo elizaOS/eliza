@@ -3,12 +3,16 @@
  * synthetic provider: exact composer binding, single dispatch, unknown outcomes,
  * reviewed Undo, withdrawn grants and account changes. No account or network.
  */
-import { describe, expect, it } from "vitest";
+import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
+import { describe, expect, it, vi } from "vitest";
 import { sha256Hex } from "../../src/mailbox/digest.ts";
+import { inboxOperationKey } from "../../src/mailbox/operation-journal.ts";
 import {
   createMailReviewController,
   type MailReviewBinding,
   type MailReviewClient,
+  type MailReviewControllerOptions,
 } from "../../src/mailbox/review-controller.ts";
 import type {
   GmailInboxCapabilities,
@@ -42,15 +46,24 @@ const caps: GmailInboxCapabilities = {
 function fixture(
   outcome: GmailInboxReceipt["state"] = "succeeded",
   granted: Partial<GmailInboxCapabilities> = {},
+  extra: Partial<MailReviewControllerOptions> = {},
 ) {
   const slots = new Map<string, string>();
   const receipts = new Map<string, GmailInboxReceipt>();
   const dispatched: Bag[] = [];
   const toasts: string[] = [];
   let state = { outcome, publishes: 0 };
-  const hooks: { prepareGate?: Promise<void>; failReads?: boolean } = {};
+  const hooks: {
+    prepareGate?: Promise<void>;
+    failReads?: boolean;
+    prepareError?: unknown;
+    capabilitiesError?: boolean;
+  } = {};
   const client: MailReviewClient = {
-    gmailInboxCapabilities: async () => ({ ...caps, ...granted }),
+    gmailInboxCapabilities: async () => {
+      if (hooks.capabilitiesError) throw new Error("capabilities unavailable");
+      return { ...caps, ...granted };
+    },
     gmailDraft: async (_grant, draftId) => ({
       draftId,
       messageId: "m",
@@ -58,6 +71,7 @@ function fixture(
     }),
     async gmailPrepareOperation(_grant, requestId, proposal) {
       await hooks.prepareGate;
+      if (hooks.prepareError) throw hooks.prepareError;
       const review = {
         ...proposal,
         from: "owner@example.invalid",
@@ -132,6 +146,7 @@ function fixture(
       return () => (t += 1000);
     })(),
     defer: (task) => task(),
+    ...extra,
   });
   return {
     controller,
@@ -146,6 +161,18 @@ function fixture(
       current = null;
     },
   };
+}
+
+/** The phone client's Cloud protocol error, as the controller receives it. */
+class CloudProtocolError extends Error {
+  readonly code = "http";
+  constructor(
+    readonly status: number,
+    readonly data?: unknown,
+  ) {
+    super(`Cloud http (${status})`);
+    this.name = "CloudProtocolError";
+  }
 }
 
 const settle = async () => {
@@ -191,6 +218,116 @@ describe("createMailReviewController", () => {
     expect(sent).toEqual(["draft-1"]);
   });
 
+  it("renders a retained attachment review without encoding its bytes and rechecks them on confirmation", async () => {
+    const f = fixture("succeeded", {}, { defer: () => {} });
+    const owner = JSON.stringify(["production", "user", "org"]);
+    const bytes = Buffer.alloc(5 * 1024 * 1024, "a");
+    const file = {
+      name: "fixture.txt",
+      mimeType: "text/plain",
+      dataBase64: bytes.toString("base64"),
+    };
+    const proposal = { ...email(), attachments: [file] };
+    const attachment = {
+      name: file.name,
+      mimeType: file.mimeType,
+      size: bytes.length,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+    };
+    const requestId = crypto.randomUUID();
+    const review = {
+      ...proposal,
+      from: "owner@example.invalid",
+      attachments: [attachment],
+    };
+    const slot = await inboxOperationKey(owner, "grant");
+    f.slots.set(
+      slot,
+      JSON.stringify({
+        version: 1,
+        owner,
+        grantId: "grant",
+        requestId,
+        proposal,
+        phase: "review",
+        review,
+        receipt: {
+          requestId,
+          kind: "send",
+          state: "prepared",
+          reviewDigest: await sha256Hex(JSON.stringify(review)),
+          providerResult: null,
+          rejectionCode: null,
+        },
+        composer: { draftId: "draft-1" },
+      }),
+    );
+    let composer = { draftId: "draft-1", proposal };
+    f.controller.setComposer(() => composer);
+    await f.controller.bind("grant");
+
+    const stringify = vi.spyOn(JSON, "stringify");
+    let confirm: () => void;
+    try {
+      const view = f.controller.render().provider;
+      confirm = view.confirm;
+      expect(view.canConfirm).toBe(true);
+      expect(view.attachments).toBe(
+        `${file.name} · ${file.mimeType} · ${bytes.length} bytes · SHA-256 ${attachment.sha256}`,
+      );
+      expect(f.controller.chips((label) => label)).toEqual([
+        "Mail review / receipt",
+      ]);
+      expect(
+        stringify.mock.calls.some(
+          ([value]) =>
+            Array.isArray(value) &&
+            value[6]?.[0]?.dataBase64 === file.dataBase64,
+        ),
+      ).toBe(false);
+    } finally {
+      stringify.mockRestore();
+    }
+
+    // Legacy property order still participates in the original exact JSON comparison.
+    composer = {
+      ...composer,
+      proposal: {
+        ...proposal,
+        attachments: [
+          {
+            mimeType: file.mimeType,
+            name: file.name,
+            dataBase64: file.dataBase64,
+          },
+        ],
+      },
+    };
+    expect(f.controller.render().provider.canConfirm).toBe(false);
+    expect(f.slots.has(slot)).toBe(true);
+
+    const retainedAttachment = { ...file };
+    composer = {
+      ...composer,
+      proposal: { ...proposal, attachments: [retainedAttachment] },
+    };
+    expect(f.controller.render().provider.canConfirm).toBe(true);
+    bytes[bytes.length - 1] = 0x62;
+    retainedAttachment.dataBase64 = bytes.toString("base64");
+    expect(composer.proposal.attachments[0]).toBe(retainedAttachment);
+    expect(f.controller.render().provider.canConfirm).toBe(false);
+    expect(
+      JSON.parse(f.slots.get(slot) as string).proposal.attachments[0]
+        .dataBase64,
+    ).toBe(file.dataBase64);
+    // A button left over from the matching render cannot dispatch the edited email.
+    confirm();
+    await settle();
+    expect(f.dispatched).toEqual([]);
+    expect(f.slots.has(slot)).toBe(false);
+    expect(f.toasts.at(-1)).toMatch(/edited after this review/);
+  });
+
   it("shows an unknown outcome as uncertain and never re-enables Send", async () => {
     const f = fixture("outcome-unknown");
     const composerEmail = { draftId: "d", proposal: email() };
@@ -206,6 +343,34 @@ describe("createMailReviewController", () => {
     view.confirm();
     await settle();
     expect(f.dispatched).toHaveLength(1);
+  });
+
+  it("lets the owner discard an attempted send that Gmail reports as not sent", async () => {
+    const f = fixture("prepared");
+    const composerEmail = { draftId: "d", proposal: email() };
+    f.controller.setComposer(() => composerEmail);
+    await f.controller.bind("grant");
+    await f.controller.prepare(email(), { draftId: "d" });
+    f.controller.render().provider.confirm();
+    await settle();
+    const view = f.controller.render().provider;
+    expect(view.status).toMatch(/A late request can still deliver it/);
+    expect(view.canConfirm).toBe(false);
+    expect(view.canClear).toBe(true);
+    expect(view.clearLabel).toBe("Discard this operation");
+    view.clear();
+    await settle();
+    expect(f.slots.size).toBe(0);
+    expect(f.controller.render().providerReview).toBe(false);
+    // The account can send again. The discarded request was dispatched one time.
+    f.setOutcome("succeeded");
+    await f.controller.prepare(email(), { draftId: "d" });
+    f.controller.render().provider.confirm();
+    await settle();
+    expect(f.dispatched).toHaveLength(2);
+    expect(f.controller.render().provider.status).toBe(
+      "Provider confirmed this operation.",
+    );
   });
 
   it("offers a reviewed Undo after a confirmed trash", async () => {
@@ -242,7 +407,7 @@ describe("createMailReviewController", () => {
       messageId: "m1",
       expectedHistoryId: "h1",
     });
-    expect(f.toasts.at(-1)).toMatch(/has not granted this provider action/);
+    expect(f.toasts.at(-1)).toMatch(/has not allowed Gmail changes/);
     expect(f.slots.size).toBe(0);
   });
 
@@ -286,6 +451,136 @@ describe("createMailReviewController", () => {
       /withdrawn, but the unsent review could not be discarded/,
     );
     expect(f.dispatched).toEqual([]);
+  });
+
+  it("shows Cloud's refusal instead of the transport error", async () => {
+    const cases: Array<[CloudProtocolError, string | RegExp]> = [
+      [
+        new CloudProtocolError(400, {
+          error: "Attachment names must be unique",
+        }),
+        "Attachment names must be unique",
+      ],
+      [
+        new CloudProtocolError(413),
+        "Gmail refused this change. Check the review and try again.",
+      ],
+      [
+        new CloudProtocolError(400, { error: "See https://x.invalid/help" }),
+        "Gmail refused this change. Check the review and try again.",
+      ],
+      [new CloudProtocolError(502), /Mail operation unavailable/],
+    ];
+    for (const [error, shown] of cases) {
+      const f = fixture();
+      await f.controller.bind("grant");
+      f.hooks.prepareError = error;
+      await f.controller.prepare({
+        kind: "archive",
+        messageId: "m1",
+        expectedHistoryId: "h1",
+      });
+      if (typeof shown === "string") expect(f.toasts.at(-1)).toBe(shown);
+      else expect(f.toasts.at(-1)).toMatch(shown);
+      expect(f.controller.render().provider.status).not.toMatch(/Cloud http/);
+      expect(f.controller.render().provider.canRetry).toBe(true);
+      expect(f.dispatched).toEqual([]);
+    }
+  });
+
+  it("asks for sign-in again when the host reports the session expired", async () => {
+    const calls: Array<[string, unknown]> = [];
+    const f = fixture(
+      "succeeded",
+      {},
+      {
+        onSessionError: (sessionId, error) => {
+          calls.push([sessionId, error]);
+          return true;
+        },
+      },
+    );
+    await f.controller.bind("grant");
+    const expired = new CloudProtocolError(401);
+    f.hooks.prepareError = expired;
+    await f.controller.prepare({
+      kind: "archive",
+      messageId: "m1",
+      expectedHistoryId: "h1",
+    });
+    expect(calls).toEqual([["session-1", expired]]);
+    expect(f.controller.render().provider.status).toBe(
+      "Cloud sign-in expired. Sign in again, then check this review before retrying.",
+    );
+    expect(f.dispatched).toEqual([]);
+  });
+
+  it("reports a failed capability read apart from a missing grant", async () => {
+    const f = fixture();
+    f.hooks.capabilitiesError = true;
+    await f.controller.bind("grant");
+    expect(f.controller.render().capabilitiesFailed).toBe(true);
+    f.hooks.capabilitiesError = false;
+    await f.controller.bind("grant");
+    expect(f.controller.render().capabilitiesFailed).toBe(false);
+    f.hooks.capabilitiesError = true;
+    await f.controller.bind("grant");
+    expect(f.controller.render().capabilitiesFailed).toBe(true);
+  });
+
+  it("offers a reviewed permanent delete of the Gmail draft a sent email came from", async () => {
+    const f = fixture();
+    const providerDraft = { draftId: "g1", providerDigest: "e".repeat(64) };
+    const composerEmail = { draftId: "local-1", proposal: email() };
+    f.controller.setComposer(() => composerEmail);
+    const notes: Array<Bag> = [];
+    f.controller.setObservers({
+      sentNote: (source) => {
+        notes.push(source);
+        return source.providerDraft
+          ? "Sent. The Gmail draft you opened is still in Drafts."
+          : "Sent.";
+      },
+    });
+    await f.controller.bind("grant");
+    await f.controller.prepare(email(), { draftId: "local-1", providerDraft });
+    f.controller.render().provider.confirm();
+    await settle();
+    let view = f.controller.render().provider;
+    expect(f.dispatched.map((p) => p.kind)).toEqual(["send"]);
+    expect(view.draftNote).toBe(
+      "Sent. The Gmail draft you opened is still in Drafts.",
+    );
+    expect(notes.at(-1)?.providerDraft).toEqual(providerDraft);
+    expect(view.canDeleteDraft).toBe(true);
+    await new Promise((r) => setTimeout(r, 800));
+    view.deleteDraft();
+    await settle();
+    view = f.controller.render().provider;
+    expect(view.title).toBe("Delete Gmail draft");
+    expect(view.deletionWarning).toBe(true);
+    expect(view.confirmLabel).toBe("Permanently delete draft");
+    // Nothing is deleted until the permanent delete is confirmed.
+    expect(f.dispatched).toHaveLength(1);
+    view.confirm();
+    await settle();
+    expect(f.dispatched.at(-1)).toEqual({
+      kind: "draft-delete",
+      draftId: "g1",
+      expectedDigest: providerDraft.providerDigest,
+      confirmPermanentDelete: true,
+    });
+  });
+
+  it("does not offer a Gmail draft delete after sending a local-only email", async () => {
+    const f = fixture();
+    const composerEmail = { draftId: "local-1", proposal: email() };
+    f.controller.setComposer(() => composerEmail);
+    await f.controller.bind("grant");
+    await f.controller.prepare(email(), { draftId: "local-1" });
+    f.controller.render().provider.confirm();
+    await settle();
+    expect(f.controller.render().provider.canDeleteDraft).toBe(false);
   });
 
   it("stops at an account change before dispatch", async () => {

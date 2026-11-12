@@ -4,6 +4,7 @@ import {
   readPersonalGoogleContextOwner,
 } from "../../../db/repositories/personal-google-context-consent";
 import { secretsRepository } from "../../../db/repositories/secrets";
+import { getCloudDeployment } from "../../deployment/cloud-deployment";
 import {
   type GooglePersonalContextConsent,
   isGooglePersonalContextConsent,
@@ -227,7 +228,7 @@ export async function initiateOAuth2(
     throw new Error(`OAuth not configured: missing authorization endpoint for ${provider.id}`);
   }
 
-  const baseUrl = getCloudAwareEnv().NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
+  const baseUrl = getCloudAwareEnv().NEXT_PUBLIC_APP_URL || getCloudDeployment().appOrigin;
   const callbackUrl = getCallbackUrl(provider, baseUrl);
   const scopes = resolveRequestedScopes(provider, params.scopes);
   const redirectUrl = params.redirectUrl || "/auth/success";
@@ -442,6 +443,76 @@ export async function handleOAuth2Callback(
   };
 }
 
+export interface GoogleServerAuthCodeResult {
+  connectionId: string;
+  organizationId: string;
+  userId: string;
+  platformUserId: string;
+  email?: string;
+  displayName?: string;
+  scopes: string[];
+  /** Whether Google returned a refresh token (first consent or forced code). */
+  refreshTokenIssued: boolean;
+}
+
+/**
+ * Exchange an Android `serverAuthCode` for the signed-in owner. The app
+ * obtains it from `Identity.getAuthorizationClient().authorize(...)` with
+ * `requestOfflineAccess(<GOOGLE_CLIENT_ID>, true)`, so it is issued to Cloud's
+ * own web client and is exchanged with an empty redirect_uri. The connection
+ * is stored exactly as the OAuth callback stores one, with the scopes Google
+ * reports as granted (never the requested ones).
+ */
+export async function exchangeGoogleServerAuthCode(
+  provider: OAuthProviderConfig,
+  params: {
+    organizationId: string;
+    userId: string;
+    serverAuthCode: string;
+    /**
+     * The Google account (`sub`) this code must belong to, e.g. the identity
+     * that just signed in. A different account stores nothing.
+     */
+    expectedPlatformUserId?: string;
+  },
+): Promise<GoogleServerAuthCodeResult> {
+  if (provider.id !== "google") throw new Error("GOOGLE_SERVER_AUTH_CODE_PROVIDER_INVALID");
+  const tokens = await exchangeCodeForTokens(provider, params.serverAuthCode, undefined, "");
+  const granted =
+    typeof tokens.scope === "string"
+      ? [...new Set(tokens.scope.split(/\s+/u).filter(Boolean))]
+      : [];
+  if (granted.length === 0) throw new Error("GOOGLE_GRANTED_SCOPES_REQUIRED");
+  const userInfo = await fetchUserInfo(provider, tokens.access_token);
+  if (params.expectedPlatformUserId !== undefined && userInfo.id !== params.expectedPlatformUserId)
+    throw new Error("GOOGLE_SERVER_AUTH_CODE_ACCOUNT_MISMATCH");
+  const { connectionId } = await storeConnection(
+    provider,
+    params.organizationId,
+    params.userId,
+    "OWNER",
+    tokens,
+    userInfo,
+    granted,
+  );
+  logger.info("[OAuth2] Native server auth code exchanged for google", {
+    organizationId: params.organizationId,
+    connectionId,
+    platformUserId: userInfo.id,
+    scopes: granted.length,
+  });
+  return {
+    connectionId,
+    organizationId: params.organizationId,
+    userId: params.userId,
+    platformUserId: userInfo.id,
+    email: userInfo.email,
+    displayName: userInfo.displayName,
+    scopes: granted,
+    refreshTokenIssued: typeof tokens.refresh_token === "string" && tokens.refresh_token !== "",
+  };
+}
+
 /**
  * Exchange authorization code for access and refresh tokens.
  */
@@ -449,6 +520,8 @@ async function exchangeCodeForTokens(
   provider: OAuthProviderConfig,
   code: string,
   codeVerifier?: string,
+  /** Overrides the callback URL; Android server auth codes use "". */
+  redirectUri?: string,
 ): Promise<TokenResponse> {
   const clientId = getClientId(provider);
   const clientSecret = getClientSecret(provider);
@@ -461,8 +534,8 @@ async function exchangeCodeForTokens(
     throw new Error(`OAuth not configured: missing token endpoint for ${provider.id}`);
   }
 
-  const baseUrl = getCloudAwareEnv().NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
-  const callbackUrl = getCallbackUrl(provider, baseUrl);
+  const baseUrl = getCloudAwareEnv().NEXT_PUBLIC_APP_URL || getCloudDeployment().appOrigin;
+  const callbackUrl = redirectUri ?? getCallbackUrl(provider, baseUrl);
 
   // Build token request body
   const bodyParams: Record<string, string> = {

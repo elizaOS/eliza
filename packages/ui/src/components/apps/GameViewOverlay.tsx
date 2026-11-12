@@ -12,15 +12,25 @@ import { useRafCoalescer } from "../../gestures/useRafCoalescer";
 import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
 import { useAppSelectorShallow } from "../../state/app-store";
 import { Button } from "../ui/button";
+import { useAppRunApiSupport } from "./app-run-api";
 import {
-  buildViewerSessionKey,
+  isViewerAuthBlockedBySandbox,
   resolveEmbeddedViewerUrl,
   resolvePostMessageTargetOrigin,
   resolveViewerReadyEventType,
   shouldUseEmbeddedAppViewer,
+  VIEWER_AUTH_BLOCKED_MESSAGE,
 } from "./viewer-auth";
 
 export function GameViewOverlay() {
+  // Runs only exist when the agent serves the run API; without it there is
+  // nothing to float, so the overlay stays unmounted.
+  const runApi = useAppRunApiSupport();
+  if (runApi !== "supported") return null;
+  return <GameViewOverlayPanel />;
+}
+
+function GameViewOverlayPanel() {
   const {
     appRuns,
     activeGameRunId,
@@ -63,8 +73,6 @@ export function GameViewOverlay() {
       el.style.transform = `translate3d(${next.x - dragBaseRef.current.x}px, ${next.y - dragBaseRef.current.y}px, 0)`;
     });
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
-  const authSentRef = useRef(false);
-  const viewerSessionRef = useRef("");
   // Safety net: when the kiosk tab/document is backgrounded, tear the iframe
   // down so the game loop and its postMessage auth listener stop running. The
   // primary unmount path is App.tsx's render condition; this guards the case
@@ -85,11 +93,6 @@ export function GameViewOverlay() {
   const postMessageTargetOrigin = useMemo(
     () => resolvePostMessageTargetOrigin(activeGameViewerUrl),
     [activeGameViewerUrl],
-  );
-  const viewerSessionKey = useMemo(
-    () =>
-      buildViewerSessionKey(activeGameViewerUrl, activeGamePostMessagePayload),
-    [activeGamePostMessagePayload, activeGameViewerUrl],
   );
 
   const handleDragStart = useCallback(
@@ -156,22 +159,6 @@ export function GameViewOverlay() {
   }, [setState]);
 
   useEffect(() => {
-    if (viewerSessionRef.current !== viewerSessionKey) {
-      viewerSessionRef.current = viewerSessionKey;
-      authSentRef.current = false;
-    }
-  }, [viewerSessionKey]);
-
-  // Hiding the document unmounts the iframe; on re-show it remounts with a
-  // fresh contentWindow that re-emits its ready event, so the auth handshake
-  // must run again even within the same viewer session.
-  useEffect(() => {
-    if (!documentVisible) {
-      authSentRef.current = false;
-    }
-  }, [documentVisible]);
-
-  useEffect(() => {
     if (
       !documentVisible ||
       !useEmbeddedViewer ||
@@ -180,10 +167,6 @@ export function GameViewOverlay() {
     ) {
       return;
     }
-    if (authSentRef.current) {
-      return;
-    }
-
     const expectedReadyType = resolveViewerReadyEventType(
       activeGamePostMessagePayload,
     );
@@ -197,8 +180,10 @@ export function GameViewOverlay() {
       return;
     }
 
+    // Answer every READY from the current frame: a frame remounted after
+    // backgrounding or reattach has a new window, and one that reloads itself
+    // keeps its window but needs auth again.
     const onMessage = (event: MessageEvent<{ type?: string }>) => {
-      if (authSentRef.current) return;
       const iframeWindow = iframeRef.current?.contentWindow;
       if (!iframeWindow || event.source !== iframeWindow) return;
       if (event.data?.type !== expectedReadyType) return;
@@ -210,7 +195,6 @@ export function GameViewOverlay() {
         activeGamePostMessagePayload,
         postMessageTargetOrigin,
       );
-      authSentRef.current = true;
     };
 
     window.addEventListener("message", onMessage);
@@ -285,14 +269,26 @@ export function GameViewOverlay() {
           </Button>
         </div>
         {/* Iframe */}
-        <iframe
-          ref={iframeRef}
-          src={resolvedActiveGameViewerUrl}
-          sandbox={activeGameSandbox}
-          data-testid="game-view-overlay-iframe"
-          className="flex-1 w-full border-none"
-          title={activeGameDisplayName || "Game Overlay"}
-        />
+        {isViewerAuthBlockedBySandbox(
+          activeGamePostMessageAuth,
+          activeGameSandbox,
+        ) ? (
+          <div
+            role="alert"
+            className="flex flex-1 items-center justify-center px-4 text-center text-xs text-muted"
+          >
+            {VIEWER_AUTH_BLOCKED_MESSAGE}
+          </div>
+        ) : (
+          <iframe
+            ref={iframeRef}
+            src={resolvedActiveGameViewerUrl}
+            sandbox={activeGameSandbox}
+            data-testid="game-view-overlay-iframe"
+            className="flex-1 w-full border-none"
+            title={activeGameDisplayName || "Game Overlay"}
+          />
+        )}
       </div>
     </div>
   );

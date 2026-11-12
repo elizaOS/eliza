@@ -1,0 +1,46 @@
+[
+  {
+    "id": "auth-credential-storage-lock",
+    "model": "packages/auth/quint/AccountStorageLock.qnt",
+    "sources": [
+      "packages/auth/src/auth/account-storage.ts",
+      "packages/auth/src/auth/account-storage-subprocess.test.ts",
+      "packages/auth/test/fixtures/storage-ownership-probe.ts"
+    ],
+    "invariants": [
+      "MutualExclusion",
+      "ActiveOwnership",
+      "LiveQuarantineProtected"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Three one-shot process attempts. Timeout/retry repetition, mixed-version concurrent binaries and PID reuse are abstracted; quarantine ownership and stale observations are explicit.",
+      "Private local filesystem, collision-free UUIDs, process liveness and atomic rename/exclusive create are assumptions. Hardware power loss and malicious same-UID mutation are outside the model.",
+      "Conformance exercises real controlled subprocess schedules and encrypted files, not exhaustive schedule equivalence."
+    ]
+  },
+  {
+    "id": "auth-credential-storage-reset",
+    "model": "packages/auth/quint/AccountStorageReset.qnt",
+    "sources": [
+      "packages/auth/src/auth/account-storage.ts",
+      "packages/auth/src/auth/account-storage-subprocess.test.ts",
+      "packages/auth/test/fixtures/storage-ownership-probe.ts"
+    ],
+    "invariants": [
+      "TypeOK",
+      "RecordsBelongToCurrentGeneration",
+      "OldPolicyCannotWriteNewGeneration",
+      "SuccessRequiresFence",
+      "RecoveryPreservesUnknownOutcome",
+      "OneShotHostCallback",
+      "CompleteRollbackClearsIntent"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two original artifacts, two pending writes, one reset, one reset-process crash and one optional recovery-process crash. Artifact ciphertext is opaque; cryptographic correctness is assumed.",
+      "AccountProviderDeletion and AccountStorageMigration separately model bounded provider-wide deletion and per-file migration. Explicit account-list plans, remaining pool metadata operations and full host config rollback need separate models.",
+      "An interrupted reset has an unknown outcome. Recovery rolls credential deletion forward and never replays the host callback. Fsync and atomic rename supply durable ordering under the filesystem contract."
+    ]
+  }
+]

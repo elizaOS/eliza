@@ -3,9 +3,13 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 /** Validate a downstream HOME APK and stage an additive AOSP product overlay.
  * An optional reviewed list of runtime permissions is granted on first boot.
- * With a native ABI, the launcher's stored lib/<abi> libraries are installed beside it.
- * This does not claim agent payload, privileged permissions, default HOME policy,
- * image boot, or release qualification. The caller owns those separate gates.
+ * With a native ABI, the launcher's stored lib/<abi> libraries are installed beside it,
+ * through Android.mk or, for a Soong-only product, the reviewed soong-app-native rule.
+ * The launcher is nonprivileged unless the reviewed descriptor names permissions from
+ * the closed REVIEWED_PRIVILEGED_PERMISSIONS set; it is then a priv-app whose allow-list
+ * holds exactly those permissions.
+ * This does not claim agent payload, default HOME policy, image boot, or release
+ * qualification. The caller owns those separate gates.
  * Companion APKs (for example an update supervisor) are staged beside it only when
  * they carry the launcher's signer; they get no grants and no privileged placement.
  * Pinned browser and vault APKs are staged by stage-browser-apps.ts.
@@ -15,6 +19,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { crc32 } from "node:zlib";
+import { soongAppNativePatch } from "./soong-app-native.mjs";
 
 /** A second presigned package of the same product, pinned by hash. Its signer pin is
  * the launcher's certificateSha256, so a companion cannot carry another signer. */
@@ -23,6 +28,10 @@ export interface CompanionDescriptor {
   packageName: string;
   apkSha256: string;
 }
+/** The only signature|privileged permissions a reviewed descriptor may name. */
+export const REVIEWED_PRIVILEGED_PERMISSIONS: readonly string[] = Object.freeze(
+  ["android.permission.READ_PRIVILEGED_PHONE_STATE"],
+);
 export interface LauncherDescriptor {
   schemaVersion: 1;
   brand: string;
@@ -35,6 +44,12 @@ export interface LauncherDescriptor {
    * a product default-permissions file. Each must be declared by the APK.
    */
   defaultPermissions?: string[];
+  /**
+   * Installs the launcher as a priv-app whose privapp-permissions allow-list holds
+   * exactly these REVIEWED_PRIVILEGED_PERMISSIONS. Each must be declared by the APK.
+   * Absent: a nonprivileged app with no allow-list.
+   */
+  privilegedPermissions?: string[];
   /** Default: product. A system-only GSI must carry both APK and grants in system. */
   partition?: "product" | "system";
   /** Same-signer packages staged in the same partition, without grants or HOME. */
@@ -78,6 +93,23 @@ export function validateDescriptor(value: unknown): LauncherDescriptor {
       ))
   )
     throw new Error("Invalid default permissions");
+  if (
+    d.privilegedPermissions !== undefined &&
+    (!Array.isArray(d.privilegedPermissions) ||
+      !d.privilegedPermissions.length ||
+      new Set(d.privilegedPermissions).size !==
+        d.privilegedPermissions.length ||
+      d.privilegedPermissions.some(
+        (permission) => !REVIEWED_PRIVILEGED_PERMISSIONS.includes(permission),
+      ))
+  )
+    throw new Error("Invalid privileged permissions");
+  if (
+    d.privilegedPermissions?.some((permission) =>
+      d.defaultPermissions?.includes(permission),
+    )
+  )
+    throw new Error("A permission is both default and privileged");
   if (d.partition !== undefined && !["product", "system"].includes(d.partition))
     throw new Error("Invalid launcher partition");
   if (d.companions !== undefined) {
@@ -87,6 +119,7 @@ export function validateDescriptor(value: unknown): LauncherDescriptor {
     const modules = new Set([
       d.moduleName,
       `${d.moduleName}DefaultPermissions`,
+      ...(d.privilegedPermissions ? [`${d.moduleName}PrivappPermissions`] : []),
       "Launcher",
     ]);
     const packages = new Set([d.packageName]);
@@ -271,7 +304,10 @@ export function validateInspection(
       (match) => match[1],
     ),
   );
-  for (const permission of d.defaultPermissions ?? [])
+  for (const permission of [
+    ...(d.defaultPermissions ?? []),
+    ...(d.privilegedPermissions ?? []),
+  ])
     if (!declared.has(permission))
       throw new Error(`Launcher does not declare ${permission}`);
 }
@@ -295,6 +331,10 @@ export function validateCompanionInspection(
   if (launcherSigner(signatures) !== d.certificateSha256)
     throw new Error(`${name} signer differs from the launcher signer`);
 }
+/** Where the image installs the launcher: `priv-app` only with reviewed privileged permissions. */
+export function launcherInstallDirectory(d: LauncherDescriptor) {
+  return `/${d.partition ?? "product"}/${d.privilegedPermissions ? "priv-app" : "app"}/${d.moduleName}`;
+}
 export function renderOverlay(d: LauncherDescriptor) {
   validateDescriptor(d);
   const partitionProperty =
@@ -303,13 +343,21 @@ export function renderOverlay(d: LauncherDescriptor) {
   const permissions = d.defaultPermissions?.length
     ? `<?xml version="1.0" encoding="utf-8"?>\n<!-- Generated from the reviewed launcher descriptor. -->\n<exceptions>\n    <exception package="${d.packageName}">\n${d.defaultPermissions.map((permission) => `        <permission name="${permission}" fixed="false"/>\n`).join("")}    </exception>\n</exceptions>\n`
     : null;
-  const app = (name: string, apk: string) =>
-    `android_app_import {\n    name: "${name}",\n    apk: "${apk}",\n    presigned: true,\n    preprocessed: true,\n${partitionProperty}    dex_preopt: { enabled: false },\n}\n`;
+  const privappModule = `${d.moduleName}PrivappPermissions`;
+  const privilegedPermissions = d.privilegedPermissions
+    ? `<?xml version="1.0" encoding="utf-8"?>\n<!-- Generated from the reviewed launcher descriptor. -->\n<permissions>\n    <privapp-permissions package="${d.packageName}">\n${d.privilegedPermissions.map((permission) => `        <permission name="${permission}"/>\n`).join("")}    </privapp-permissions>\n</permissions>\n`
+    : null;
+  const app = (name: string, apk: string, privileged = false) =>
+    `android_app_import {\n    name: "${name}",\n    apk: "${apk}",\n    presigned: true,\n    preprocessed: true,\n${privileged ? "    privileged: true,\n" : ""}${partitionProperty}    dex_preopt: { enabled: false },\n}\n`;
   const companions = d.companions ?? [];
+  // The launcher module alone; native staging replaces or extends exactly this text.
+  const launcher = `// Generated from a hash- and signer-verified downstream launcher.\n${app(d.moduleName, "Launcher.apk", privilegedPermissions !== null)}`;
   return {
-    blueprint: `// Generated from a hash- and signer-verified downstream launcher.\n${app(d.moduleName, "Launcher.apk")}${permissions ? `\n// First-boot runtime grants the person can still revoke (fixed="false").\nprebuilt_etc {\n    name: "${permissionsModule}",\n    src: "default-permissions.xml",\n    sub_dir: "default-permissions",\n    filename: "default-permissions-${d.packageName}.xml",\n${partitionProperty}}\n` : ""}${companions.map((c) => `\n// Companion ${c.packageName}: same signer as the launcher, no grants.\n${app(c.moduleName, `${c.moduleName}.apk`)}`).join("")}`,
-    product: `# Additive: default HOME selection and privilege policy belong to device provisioning.\nPRODUCT_PACKAGES += ${[d.moduleName, ...(permissions ? [permissionsModule] : []), ...companions.map((c) => c.moduleName)].join(" ")}\n`,
+    launcher,
+    blueprint: `${launcher}${permissions ? `\n// First-boot runtime grants the person can still revoke (fixed="false").\nprebuilt_etc {\n    name: "${permissionsModule}",\n    src: "default-permissions.xml",\n    sub_dir: "default-permissions",\n    filename: "default-permissions-${d.packageName}.xml",\n${partitionProperty}}\n` : ""}${privilegedPermissions ? `\n// Privileged placement for exactly the reviewed permissions in privapp-permissions.xml; nothing else is allow-listed.\nprebuilt_etc {\n    name: "${privappModule}",\n    src: "privapp-permissions.xml",\n    sub_dir: "permissions",\n    filename: "privapp-permissions-${d.packageName}.xml",\n${partitionProperty}}\n` : ""}${companions.map((c) => `\n// Companion ${c.packageName}: same signer as the launcher, no grants.\n${app(c.moduleName, `${c.moduleName}.apk`)}`).join("")}`,
+    product: `# Additive: default HOME selection and privilege policy belong to device provisioning.\nPRODUCT_PACKAGES += ${[d.moduleName, ...(permissions ? [permissionsModule] : []), ...(privilegedPermissions ? [privappModule] : []), ...companions.map((c) => c.moduleName)].join(" ")}\n`,
     permissions,
+    privilegedPermissions,
   };
 }
 /** Android ABIs a launcher's bundled JNI can be installed for, never inferred from a fat APK. */
@@ -318,6 +366,16 @@ export const NATIVE_TARGETS = {
   x86_64: { arch: "x86_64", machine: 0x3e, musl: "x86_64" },
 } as const;
 export type NativeAbi = keyof typeof NATIVE_TARGETS;
+/**
+ * How the image installs the bundled JNI. `make`: Android.mk's `LOCAL_PREBUILT_JNI_LIBS`,
+ * which a product that still reads Android.mk honours. `soong`: one `prebuilt_app_native`
+ * module per library, `required` by the `android_app_import`, for products that ignore
+ * Android.mk (`PRODUCT_SOONG_ONLY`, as Android 17 Cuttlefish sets through
+ * `RELEASE_SOONG_ONLY_CUTTLEFISH`). That module type is the reviewed build/soong patch
+ * `patches/soong-app-native`, which the consumer applies in its AOSP checkout.
+ */
+export const NATIVE_INSTALLS = ["make", "soong"] as const;
+export type NativeInstall = (typeof NATIVE_INSTALLS)[number];
 const JNI_NAME = /^lib[A-Za-z0-9_.+-]+\.so$/;
 const MAX_JNI_BYTES = 1024 ** 3;
 
@@ -411,27 +469,32 @@ export function readNativeLibraries(bytes: Buffer, abi: NativeAbi) {
  * AOSP's supported prebuilt app rule (`LOCAL_PREBUILT_JNI_LIBS` with `BUILD_PREBUILT`)
  * installs the libraries in `<partition>/app/<module>/lib/<arch>` and keeps the presigned
  * APK unchanged; Soong's `android_app_import` installs none. The rest of the overlay
- * (grants, companions) stays in Soong. `config.fs` gives the shared Eliza runtime's
- * loader and Bun their executable mode (the table in stage-android-native.py); every
- * other library is 0644 as for any app.
+ * (grants, companions) stays in Soong. With `install: "soong"` the launcher stays an
+ * `android_app_import` that `required`s one `prebuilt_app_native` per library, installed
+ * at the same path (the rules stage-android-native.py's `finalize_soong` writes).
+ * A launcher with reviewed privileged permissions installs in `priv-app` instead of `app`
+ * (`LOCAL_PRIVILEGED_MODULE`, or build/soong's own `prebuilt_priv_app` per library).
+ * `config.fs` gives the shared Eliza runtime's loader and Bun their executable mode
+ * (the table in stage-android-native.py); every other library is 0644 as for any app.
  */
 export function renderNativeOverlay(
   d: LauncherDescriptor,
   abi: NativeAbi,
   libraries: { name: string; sha256: string }[],
+  install: NativeInstall = "make",
 ) {
   validateDescriptor(d);
   if (!Object.hasOwn(NATIVE_TARGETS, abi))
     throw new Error("Unsupported native ABI");
+  if (!NATIVE_INSTALLS.includes(install))
+    throw new Error("Unsupported native install rule");
   const target = NATIVE_TARGETS[abi];
   if (!libraries.length || libraries.some((l) => !JNI_NAME.test(l.name)))
     throw new Error("Invalid native library list");
   const full = renderOverlay(d);
-  const { defaultPermissions: _grants, companions: _companions, ...alone } = d;
-  const main = renderOverlay(alone).blueprint;
-  if (!full.blueprint.startsWith(main))
-    throw new Error("Cannot separate the launcher module");
+  const main = full.launcher;
   const partition = d.partition ?? "product";
+  const privileged = d.privilegedPermissions !== undefined;
   const executables = new Set([
     "libeliza_bun.so",
     `libeliza_ld_musl_${target.musl}.so`,
@@ -441,14 +504,44 @@ export function renderNativeOverlay(
   const records = libraries.map((library) => ({
     apkEntry: `lib/${abi}/${library.name}`,
     path: `${directory}/${library.name}`,
-    installPath: `/${partition}/app/${d.moduleName}/lib/${target.arch}/${library.name}`,
+    installPath: `${launcherInstallDirectory(d)}/lib/${target.arch}/${library.name}`,
     mode: executables.has(library.name) ? "0755" : "0644",
     sha256: library.sha256,
   }));
+  const rest = full.blueprint.slice(main.length);
+  // Module names with "_" cannot collide: launcher and companion names are [A-Za-z0-9].
+  const nativeModules = records.map((_, i) => `${d.moduleName}_native_${i}`);
+  const partitionProperty =
+    partition === "product" ? "    product_specific: true,\n" : "";
+  // build/soong's prebuilt_priv_app needs no patch; prebuilt_app_native is the reviewed one.
+  const patch =
+    install === "soong" && !privileged ? soongAppNativePatch() : null;
+  const soongBlueprint = () => {
+    const launcher = main.replace(
+      "    dex_preopt:",
+      `    required: [${nativeModules.map((m) => `"${m}"`).join(", ")}],\n    dex_preopt:`,
+    );
+    if (launcher === main) throw new Error("Cannot extend the launcher module");
+    return `${launcher.replace(
+      "// Generated from a hash- and signer-verified downstream launcher.\n",
+      `// Generated from a hash- and signer-verified downstream launcher and its bundled ${abi} JNI.\n${privileged ? "// prebuilt_priv_app is build/soong's own rule for files under <partition>/priv-app.\n" : "// prebuilt_app_native is the reviewed build/soong patch soong-app-native; apply it first.\n"}`,
+    )}${records
+      .map(
+        (r, i) =>
+          `\n${privileged ? "prebuilt_priv_app" : "prebuilt_app_native"} {\n    name: "${nativeModules[i]}",\n    src: "${r.path}",\n    filename: "${libraries[i]?.name}",\n    relative_install_path: "${d.moduleName}/lib/${target.arch}",\n${partitionProperty}}\n`,
+      )
+      .join("")}${rest}`;
+  };
   return {
     directory,
-    blueprint: `// The launcher ${d.moduleName} is in Android.mk, which installs its bundled JNI.\n${full.blueprint.slice(main.length)}`,
-    makefile: `# Generated from a hash- and signer-verified downstream launcher and its bundled ${abi} JNI.\nLOCAL_PATH := $(call my-dir)\ninclude $(CLEAR_VARS)\nLOCAL_MODULE := ${d.moduleName}\nLOCAL_MODULE_CLASS := APPS\nLOCAL_MODULE_SUFFIX := .apk\nLOCAL_SRC_FILES := Launcher.apk\nLOCAL_CERTIFICATE := PRESIGNED\nLOCAL_SDK_VERSION := 36\n${partition === "product" ? "LOCAL_PRODUCT_MODULE := true\n" : ""}LOCAL_MULTILIB := 64\nLOCAL_MODULE_TARGET_ARCH := ${target.arch}\nLOCAL_DEX_PREOPT := false\nLOCAL_PREBUILT_JNI_LIBS := ${records.map((r) => r.path).join(" ")}\ninclude $(BUILD_PREBUILT)\n`,
+    blueprint:
+      install === "soong"
+        ? soongBlueprint()
+        : `// The launcher ${d.moduleName} is in Android.mk, which installs its bundled JNI.\n${rest}`,
+    makefile:
+      install === "soong"
+        ? null
+        : `# Generated from a hash- and signer-verified downstream launcher and its bundled ${abi} JNI.\nLOCAL_PATH := $(call my-dir)\ninclude $(CLEAR_VARS)\nLOCAL_MODULE := ${d.moduleName}\nLOCAL_MODULE_CLASS := APPS\nLOCAL_MODULE_SUFFIX := .apk\nLOCAL_SRC_FILES := Launcher.apk\nLOCAL_CERTIFICATE := PRESIGNED\nLOCAL_SDK_VERSION := 36\n${partition === "product" ? "LOCAL_PRODUCT_MODULE := true\n" : ""}${privileged ? "LOCAL_PRIVILEGED_MODULE := true\n" : ""}LOCAL_MULTILIB := 64\nLOCAL_MODULE_TARGET_ARCH := ${target.arch}\nLOCAL_DEX_PREOPT := false\nLOCAL_PREBUILT_JNI_LIBS := ${records.map((r) => r.path).join(" ")}\ninclude $(BUILD_PREBUILT)\n`,
     product: `${full.product}\n# Exact modes for the launcher's bundled JNI.\nlauncher_native_dir := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))\nTARGET_FS_CONFIG_GEN += $(launcher_native_dir)/config.fs\n`,
     config: records
       .map(
@@ -461,6 +554,24 @@ export function renderNativeOverlay(
       apkSha256: d.apkSha256,
       abi,
       moduleName: d.moduleName,
+      installRule:
+        install !== "soong"
+          ? "android-mk"
+          : privileged
+            ? "soong-priv-app"
+            : "soong-app-native",
+      ...(patch
+        ? {
+            // The consumer's build/soong must carry exactly this reviewed patch.
+            soongPatch: {
+              name: patch.name,
+              manifestSha256: patch.manifestSha256,
+              project: patch.manifest.project,
+              revision: patch.manifest.revision,
+              files: patch.manifest.files,
+            },
+          }
+        : {}),
       libraries: records,
       // The bytes are the pinned APK's; the runtime they hold is not admitted here.
       runtimeAdmitted: false,
@@ -481,12 +592,20 @@ export function stageLauncher(options: {
   development: boolean;
   /** Install the launcher's stored lib/<abi> libraries beside it in the image. */
   nativeAbi?: NativeAbi;
+  /** With nativeAbi: Android.mk (default) or the Soong-only soong-app-native rule. */
+  nativeInstall?: NativeInstall;
 }) {
   if (
     options.nativeAbi !== undefined &&
     !Object.hasOwn(NATIVE_TARGETS, options.nativeAbi)
   )
     throw new Error("Unsupported native ABI");
+  if (options.nativeInstall !== undefined) {
+    if (!NATIVE_INSTALLS.includes(options.nativeInstall))
+      throw new Error("Unsupported native install rule");
+    if (options.nativeAbi === undefined)
+      throw new Error("A native install rule requires a native ABI");
+  }
   const d = validateDescriptor(
     JSON.parse(fs.readFileSync(options.descriptor, "utf8")),
   );
@@ -547,7 +666,12 @@ export function stageLauncher(options: {
         fs.readFileSync(apk),
         options.nativeAbi,
       );
-      const native = renderNativeOverlay(d, options.nativeAbi, libraries);
+      const native = renderNativeOverlay(
+        d,
+        options.nativeAbi,
+        libraries,
+        options.nativeInstall ?? "make",
+      );
       fs.mkdirSync(path.join(temporary, native.directory));
       for (const library of libraries)
         fs.writeFileSync(
@@ -555,7 +679,8 @@ export function stageLauncher(options: {
           library.data,
         );
       fs.writeFileSync(path.join(temporary, "Android.bp"), native.blueprint);
-      fs.writeFileSync(path.join(temporary, "Android.mk"), native.makefile);
+      if (native.makefile !== null)
+        fs.writeFileSync(path.join(temporary, "Android.mk"), native.makefile);
       fs.writeFileSync(path.join(temporary, "product.mk"), native.product);
       fs.writeFileSync(path.join(temporary, "config.fs"), native.config);
       fs.writeFileSync(
@@ -570,6 +695,11 @@ export function stageLauncher(options: {
       fs.writeFileSync(
         path.join(temporary, "default-permissions.xml"),
         overlay.permissions,
+      );
+    if (overlay.privilegedPermissions)
+      fs.writeFileSync(
+        path.join(temporary, "privapp-permissions.xml"),
+        overlay.privilegedPermissions,
       );
     fs.writeFileSync(
       path.join(temporary, "launcher.json"),
@@ -604,6 +734,7 @@ export function main(argv = process.argv.slice(2)) {
         "--aapt",
         "--apksigner",
         "--native-abi",
+        "--native-install",
       ].includes(flag) ||
       !value ||
       value.startsWith("--") ||
@@ -611,7 +742,7 @@ export function main(argv = process.argv.slice(2)) {
         (!companion?.[1] || !companion[2] || companion[1] in companions))
     )
       throw new Error(
-        "Expected --descriptor PATH --apk PATH [--companion MODULE=PATH ...] --output NEW_DIR [--native-abi arm64-v8a|x86_64] [--aapt PATH] [--apksigner PATH] [--development]",
+        "Expected --descriptor PATH --apk PATH [--companion MODULE=PATH ...] --output NEW_DIR [--native-abi arm64-v8a|x86_64 [--native-install make|soong]] [--aapt PATH] [--apksigner PATH] [--development]",
       );
     if (companion?.[1] && companion[2]) companions[companion[1]] = companion[2];
     else args[flag.slice(2)] = value;
@@ -629,6 +760,9 @@ export function main(argv = process.argv.slice(2)) {
       development,
       ...(args["native-abi"]
         ? { nativeAbi: args["native-abi"] as NativeAbi }
+        : {}),
+      ...(args["native-install"]
+        ? { nativeInstall: args["native-install"] as NativeInstall }
         : {}),
     }),
   );

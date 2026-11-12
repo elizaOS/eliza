@@ -1,12 +1,10 @@
 /**
- * Persists host trajectory captures and serves agent-scoped reads and archives.
- * The bridge adapts a registered logger; the standalone service shares its
- * read queries while retaining its public statistics shape. Recovery
+ * Persists host trajectory captures and serves agent-scoped reads and exports.
+ * The bridge adapts the registered assistant trajectory service. Recovery
  * ownership, write settlement and late-capture admission remain host concerns.
  */
 
 import { randomUUID } from "node:crypto";
-import path from "node:path";
 import {
   canonicalPromptForModelCall,
   cloneTrajectoryValue,
@@ -22,7 +20,6 @@ import {
   projectToolDiagnosticValue,
   type RecordedStage,
   recordedStageToSemanticStage,
-  Service,
   sanitizeTrajectoryJsonObject,
   type TrajectoryDetailRecord as Trajectory,
   type TrajectoryActionAttemptRecord as TrajectoryActionAttempt,
@@ -76,7 +73,6 @@ import {
   pushChatExchange,
   readOrchestratorTrajectoryContext,
   redactTrajectoryParams,
-  resolveTrajectoryArchiveDirectory,
   resolveTrajectoryLogger,
   type StartStepOptions,
   saveTrajectory,
@@ -85,11 +81,10 @@ import {
   shouldSuppressNoInputEmbeddingCall,
   sqlQuote,
   stepWriteQueues,
-  toArchiveSafeTimestamp,
+  type TrajectoryLoggerLike,
   toOptionalNumber,
   toText,
   warnRuntime,
-  writeCompressedJsonlRows,
 } from "./trajectory-internals.ts";
 
 // Re-export types needed by consumers
@@ -2406,6 +2401,62 @@ async function getDatabaseTrajectoryDetail(
 // Public write API
 // ---------------------------------------------------------------------------
 
+type TrajectoryBridgeMethods = {
+  startTrajectory?: (
+    stepIdOrAgentId: string,
+    options?: {
+      agentId?: string;
+      roomId?: string;
+      entityId?: string;
+      source?: string;
+      metadata?: Record<string, unknown>;
+      scenarioId?: string;
+      traceId?: string;
+      episodeId?: string;
+      batchId?: string;
+      groupIndex?: number;
+    },
+  ) => Promise<string>;
+  startStep?: (trajectoryId: string, state?: BridgeStepState) => string;
+  getCurrentStepId?: (trajectoryId: string) => string | null;
+  completeStep?: (
+    trajectoryId: string,
+    actionOrStepId: string | Record<string, unknown>,
+    actionOrReward?: Record<string, unknown>,
+    rewardInfo?: Record<string, unknown>,
+  ) => void;
+  flushWriteQueue?: (trajectoryId?: string) => Promise<void>;
+  applyReward?: (params: TrajectoryRewardRequest) => Promise<boolean>;
+  endTrajectory?: (
+    stepIdOrTrajectoryId: string,
+    status?: string,
+    finalMetrics?: Record<string, unknown>,
+  ) => Promise<void>;
+  releaseTrajectoryOwnership?: (stepIdOrTrajectoryId: string) => void;
+  listTrajectories?: (
+    options?: TrajectoryListOptions,
+  ) => Promise<TrajectoryListResult>;
+  getTrajectoryDetail?: (trajectoryId: string) => Promise<Trajectory | null>;
+  getStats?: () => Promise<unknown>;
+  stop?: () => Promise<void>;
+  isEnabled?: () => boolean;
+  setEnabled?: (enabled: boolean) => void;
+  deleteTrajectories?: (trajectoryIds: string[]) => Promise<number>;
+  clearAllTrajectories?: () => Promise<number>;
+  exportTrajectories?: (
+    options: RuntimeTrajectoryExportOptions,
+  ) => Promise<TrajectoryExportResult>;
+};
+
+/** The registered trajectory service after the host bridge owns its methods. */
+export type BridgedTrajectoryLogger = Required<
+  TrajectoryBridgeMethods &
+    Pick<
+      TrajectoryLoggerLike,
+      "logLlmCall" | "updateLlmCall" | "logProviderAccess"
+    >
+>;
+
 export async function installDatabaseTrajectoryLogger(
   runtime: IAgentRuntime,
 ): Promise<void> {
@@ -2598,45 +2649,7 @@ export async function installDatabaseTrajectoryLogger(
   logger.getLlmCallLogs = () => [];
   logger.getProviderAccessLogs = () => [];
 
-  const loggerAny = logger as typeof logger & {
-    startTrajectory?: (
-      stepIdOrAgentId: string,
-      options?: {
-        agentId?: string;
-        roomId?: string;
-        entityId?: string;
-        source?: string;
-        metadata?: Record<string, unknown>;
-        scenarioId?: string;
-        traceId?: string;
-        episodeId?: string;
-        batchId?: string;
-        groupIndex?: number;
-      },
-    ) => Promise<string>;
-    startStep?: (trajectoryId: string, state?: BridgeStepState) => string;
-    getCurrentStepId?: (trajectoryId: string) => string | null;
-    completeStep?: (
-      trajectoryId: string,
-      actionOrStepId: string | Record<string, unknown>,
-      actionOrReward?: Record<string, unknown>,
-      rewardInfo?: Record<string, unknown>,
-    ) => void;
-    flushWriteQueue?: (trajectoryId?: string) => Promise<void>;
-    applyReward?: (params: TrajectoryRewardRequest) => Promise<boolean>;
-    endTrajectory?: (
-      stepIdOrTrajectoryId: string,
-      status?: string,
-      finalMetrics?: Record<string, unknown>,
-    ) => Promise<void>;
-    releaseTrajectoryOwnership?: (stepIdOrTrajectoryId: string) => void;
-    listTrajectories?: (
-      options?: TrajectoryListOptions,
-    ) => Promise<TrajectoryListResult>;
-    getTrajectoryDetail?: (trajectoryId: string) => Promise<Trajectory | null>;
-    getStats?: () => Promise<unknown>;
-    stop?: () => Promise<void>;
-  };
+  const loggerAny = logger as typeof logger & TrajectoryBridgeMethods;
 
   const originalStop =
     typeof loggerAny.stop === "function"
@@ -2853,15 +2866,7 @@ export async function installDatabaseTrajectoryLogger(
   };
 
   // Add methods required by the trajectory-routes duck-type check
-  const loggerForRoutes = logger as typeof logger & {
-    isEnabled?: () => boolean;
-    setEnabled?: (enabled: boolean) => void;
-    deleteTrajectories?: (trajectoryIds: string[]) => Promise<number>;
-    clearAllTrajectories?: () => Promise<number>;
-    exportTrajectories?: (
-      options: RuntimeTrajectoryExportOptions,
-    ) => Promise<TrajectoryExportResult>;
-  };
+  const loggerForRoutes = loggerAny;
 
   let _enabled = shouldEnableByDefault;
 
@@ -3350,662 +3355,5 @@ export async function flushTrajectoryWrites(
     const nextLastWrite = lastWritePromises.get(runtimeKey);
     if (nextPending.length === 0 && nextLastWrite === lastWrite) return;
     observedLastWrite = lastWrite;
-  }
-}
-
-// ============================================================================
-// Standalone host trajectory service
-// ============================================================================
-
-/**
- * Provides host-backed capture and queries to explicitly composed trajectory
- * consumers.
- */
-export class DatabaseTrajectoryLogger extends Service {
-  static serviceType = "trajectories";
-  static override readonly allowsMultiple = true;
-  capabilityDescription =
-    "Database-backed trajectory logging service for LLM call persistence";
-
-  private enabled = shouldEnableTrajectoryLoggingByDefault();
-
-  private acceptsCapture(): boolean {
-    return acceptsNewTrajectoryCapture(this.runtime, this.enabled);
-  }
-
-  /**
-   * Static start method required by @elizaos/core runtime.
-   */
-  static async start(runtime: IAgentRuntime): Promise<Service> {
-    const service = new DatabaseTrajectoryLogger(runtime);
-    await service.initialize();
-    return service;
-  }
-
-  async initialize(): Promise<void> {
-    if (hasRuntimeDb(this.runtime)) {
-      await ensureTrajectoriesTable(this.runtime);
-      // Fire-and-forget TTL pruning on startup
-      pruneOldTrajectories(this.runtime, 30)
-        .then((count) => {
-          if (count && count > 0) {
-            coreLogger.warn(
-              `[trajectory-persistence] Pruned ${count} trajectories older than 30 days`,
-            );
-          }
-        })
-        .catch(() => {
-          /* non-critical */
-        });
-    }
-  }
-
-  async stop(): Promise<void> {
-    try {
-      await stopTrajectoryBridge(this.runtime);
-    } finally {
-      this.enabled = false;
-      releaseAllTrajectoryBridgeState(this.runtime);
-    }
-  }
-
-  isEnabled(): boolean {
-    return this.enabled;
-  }
-
-  setEnabled(enabled: boolean): void {
-    this.enabled = enabled;
-    if (!enabled) releaseAllTrajectoryBridgeState(this.runtime);
-  }
-
-  async startTrajectory(
-    stepIdOrAgentId: string,
-    options?: {
-      agentId?: string;
-      roomId?: string;
-      entityId?: string;
-      source?: string;
-      metadata?: Record<string, unknown>;
-      scenarioId?: string;
-      traceId?: string;
-      episodeId?: string;
-      batchId?: string;
-      groupIndex?: number;
-    },
-  ): Promise<string> {
-    if (!this.acceptsCapture()) return randomUUID();
-
-    const isLegacySignature = typeof options?.agentId === "string";
-    const stepId = isLegacySignature
-      ? stepIdOrAgentId
-      : `step-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const startMetadata = normalizeTrajectoryMetadata(
-      {
-        ...(options?.metadata ?? {}),
-        ...(options?.roomId !== undefined ? { roomId: options.roomId } : {}),
-        ...(options?.entityId !== undefined
-          ? { entityId: options.entityId }
-          : {}),
-        ...(options?.traceId !== undefined
-          ? {
-              correlation: {
-                traceId: options.traceId,
-                ...(options.roomId !== undefined
-                  ? { roomId: options.roomId }
-                  : {}),
-                ...(options.scenarioId !== undefined
-                  ? { runId: options.scenarioId }
-                  : {}),
-              },
-            }
-          : {}),
-      },
-      {
-        scenarioId: options?.scenarioId,
-        batchId: options?.batchId,
-      },
-    ).metadata;
-
-    const writePromise = enqueueStepWrite(this.runtime, stepId, async () => {
-      if (!this.enabled) return;
-      const tableReady = await ensureTrajectoriesTable(this.runtime);
-      if (!tableReady) return;
-
-      await writeStartedTrajectoryStep({
-        runtime: this.runtime,
-        stepId,
-        source: options?.source ?? "chat",
-        metadata: startMetadata,
-        traceId: options?.traceId,
-        episodeId: options?.episodeId,
-        groupIndex: options?.groupIndex,
-        createInitialStep: false,
-      });
-    });
-
-    const runtimeKey = this.runtime as object;
-    lastWritePromises.set(runtimeKey, writePromise);
-    rememberTrajectoryStep(this.runtime, stepId, stepId);
-
-    return stepId;
-  }
-
-  startStep(trajectoryId: string, state: BridgeStepState = {}): string {
-    if (!this.acceptsCapture()) return randomUUID();
-    return startChildTrajectoryStep(
-      this.runtime,
-      this,
-      trajectoryId,
-      state,
-      () => this.enabled,
-    );
-  }
-
-  getCurrentStepId(trajectoryId: string): string | null {
-    if (!this.acceptsCapture()) return null;
-    const ownerId = resolveBridgeTrajectoryId(this.runtime, trajectoryId);
-    return (
-      trajectoryBridgeStates
-        .get(this.runtime as object)
-        ?.activeStepIdByTrajectoryId.get(ownerId) ?? null
-    );
-  }
-
-  completeStep(
-    trajectoryId: string,
-    actionOrStepId: string | Record<string, unknown>,
-    actionOrReward?: Record<string, unknown>,
-    rewardInfo?: Record<string, unknown>,
-  ): void {
-    if (!this.acceptsCapture()) return;
-    const explicitStepId =
-      typeof actionOrStepId === "string" ? actionOrStepId : undefined;
-    const action = explicitStepId ? actionOrReward : actionOrStepId;
-    const reward = explicitStepId ? rewardInfo : actionOrReward;
-    const ownerId = resolveBridgeTrajectoryId(this.runtime, trajectoryId);
-    const stepId =
-      explicitStepId ??
-      getTrajectoryBridgeState(this.runtime).activeStepIdByTrajectoryId.get(
-        ownerId,
-      );
-    if (!stepId || !action) {
-      const error = new ElizaError("Trajectory action step is missing", {
-        code: "TRAJECTORY_ACTION_STEP_REQUIRED",
-        context: { trajectoryId: ownerId },
-      });
-      warnRuntime(
-        this.runtime,
-        "Trajectory action settlement did not identify an active child step",
-        error,
-      );
-      this.runtime.reportError("TrajectoryStorage.completeStep", error, {
-        trajectoryId: ownerId,
-        ...(stepId ? { stepId } : {}),
-        diagnosticOnly: true,
-      });
-      return;
-    }
-    try {
-      completeTrajectoryAction(
-        this.runtime,
-        ownerId,
-        stepId,
-        action,
-        reward,
-        () => this.enabled,
-      );
-    } catch (error) {
-      // error-policy:J7 Action telemetry cannot rewrite an already-settled tool
-      // result, but malformed or unroutable settlement remains observable.
-      warnRuntime(this.runtime, "Trajectory action settlement failed", error);
-      this.runtime.reportError("TrajectoryStorage.completeStep", error, {
-        trajectoryId: ownerId,
-        stepId,
-        diagnosticOnly: true,
-      });
-    }
-  }
-
-  /** Add an idempotent delayed reward without mutating a settled step. */
-  async applyReward(params: TrajectoryRewardRequest): Promise<boolean> {
-    return applyDatabaseTrajectoryReward(
-      this.runtime,
-      () => this.enabled,
-      params,
-    );
-  }
-
-  async flushWriteQueue(trajectoryId?: string): Promise<void> {
-    await flushTrajectoryWrites(this.runtime, trajectoryId);
-  }
-
-  async annotateStep(params: {
-    stepId: string;
-    kind?: TrajectoryStepKind;
-    script?: string;
-    childSteps?: string[];
-    appendChildSteps?: string[];
-    usedSkills?: string[];
-    appendSkillInvocations?: TrajectorySkillInvocation[];
-  }): Promise<void> {
-    if (!this.acceptsCapture()) return;
-    await annotateTrajectoryStep({
-      runtime: this.runtime,
-      ...params,
-    });
-  }
-
-  async endTrajectory(
-    stepIdOrTrajectoryId: string,
-    status: TrajectoryStatus = "completed",
-    finalMetrics?: Record<string, unknown>,
-  ): Promise<void> {
-    if (!this.acceptsCapture()) {
-      releaseTrajectoryBridgeState(
-        this.runtime,
-        resolveBridgeTrajectoryId(this.runtime, stepIdOrTrajectoryId),
-      );
-      return;
-    }
-    const trajectoryId = resolveBridgeTrajectoryId(
-      this.runtime,
-      stepIdOrTrajectoryId,
-    );
-    await terminalizeBridgeTrajectory(
-      this.runtime,
-      trajectoryId,
-      status,
-      finalMetrics,
-      () => this.enabled,
-    );
-  }
-
-  releaseTrajectoryOwnership(stepIdOrTrajectoryId: string): void {
-    releaseTrajectoryBridgeState(
-      this.runtime,
-      resolveBridgeTrajectoryId(this.runtime, stepIdOrTrajectoryId),
-    );
-  }
-
-  logLlmCall(params: Record<string, unknown>): void {
-    if (!this.acceptsCapture()) return;
-    let normalized: ReturnType<typeof normalizeLlmCallPayload>;
-    try {
-      normalized = normalizeLlmCallPayload([params]);
-    } catch (error) {
-      // error-policy:J7 malformed instrumentation cannot fail the agent loop.
-      reportInvalidTrajectoryCapture(this.runtime, "llm", error);
-      return;
-    }
-    if (!normalized) return;
-    if (
-      !acceptsTrajectoryStepCapture(
-        this.runtime,
-        this.enabled,
-        normalized.stepId,
-        "llm",
-        typeof normalized.params.purpose === "string"
-          ? normalized.params.purpose
-          : undefined,
-      )
-    )
-      return;
-    const trajectoryId = resolveBridgeTrajectoryId(
-      this.runtime,
-      normalized.stepId,
-    );
-
-    const writePromise = enqueueStepWrite(
-      this.runtime,
-      trajectoryId,
-      async () => {
-        if (!this.enabled) return;
-        const tableReady = await ensureTrajectoriesTable(this.runtime);
-        if (!tableReady) return;
-        await appendLlmCall(
-          this.runtime,
-          trajectoryId,
-          normalized.stepId,
-          normalized.params,
-        );
-      },
-    );
-    const runtimeKey = this.runtime as object;
-    lastWritePromises.set(runtimeKey, writePromise);
-  }
-
-  logProviderAccess(params: Record<string, unknown>): void {
-    if (!this.acceptsCapture()) return;
-    let normalized: ReturnType<typeof normalizeProviderAccessPayload>;
-    try {
-      normalized = normalizeProviderAccessPayload([params]);
-    } catch (error) {
-      // error-policy:J7 malformed instrumentation cannot fail the agent loop.
-      reportInvalidTrajectoryCapture(this.runtime, "provider", error);
-      return;
-    }
-    if (!normalized) return;
-    if (
-      !acceptsTrajectoryStepCapture(
-        this.runtime,
-        this.enabled,
-        normalized.stepId,
-        "provider",
-      )
-    )
-      return;
-    const trajectoryId = resolveBridgeTrajectoryId(
-      this.runtime,
-      normalized.stepId,
-    );
-
-    const writePromise = enqueueProviderAccess(
-      this.runtime,
-      this,
-      trajectoryId,
-      normalized.stepId,
-      normalized.params,
-      () => this.enabled,
-    );
-    const runtimeKey = this.runtime as object;
-    lastWritePromises.set(runtimeKey, writePromise);
-  }
-
-  logSemanticStage(params: Record<string, unknown>): void {
-    if (!this.acceptsCapture()) return;
-    let normalized: ReturnType<typeof normalizeSemanticStagePayload>;
-    try {
-      normalized = normalizeSemanticStagePayload(this.runtime, [params]);
-    } catch (error) {
-      // error-policy:J7 malformed instrumentation cannot fail the agent loop.
-      reportInvalidTrajectoryCapture(this.runtime, "semanticStage", error);
-      return;
-    }
-    if (!normalized) return;
-    if (
-      !acceptsTrajectoryStepCapture(
-        this.runtime,
-        this.enabled,
-        normalized.stepId,
-        "semanticStage",
-      )
-    )
-      return;
-    const trajectoryId = resolveBridgeTrajectoryId(
-      this.runtime,
-      normalized.stepId,
-    );
-
-    const writePromise = enqueueStepWrite(
-      this.runtime,
-      trajectoryId,
-      async () => {
-        if (!this.enabled) return;
-        const tableReady = await ensureTrajectoriesTable(this.runtime);
-        if (!tableReady) return;
-        await appendSemanticStage(
-          this.runtime,
-          trajectoryId,
-          normalized.stepId,
-          normalized.semantic,
-        );
-      },
-    );
-    const runtimeKey = this.runtime as object;
-    lastWritePromises.set(runtimeKey, writePromise);
-  }
-
-  updateLlmCall(
-    stepId: string,
-    callId: string,
-    patch: Record<string, unknown>,
-  ): void {
-    enqueueLlmCallPatch(
-      this.runtime,
-      stepId,
-      callId,
-      patch,
-      () => this.enabled,
-    );
-  }
-
-  getLlmCallLogs(): readonly unknown[] {
-    return [];
-  }
-
-  getProviderAccessLogs(): readonly unknown[] {
-    return [];
-  }
-
-  async listTrajectories(
-    options: TrajectoryListOptions,
-  ): Promise<TrajectoryListResult> {
-    return listDatabaseTrajectories(this.runtime, options);
-  }
-
-  async getTrajectoryDetail(trajectoryId: string): Promise<Trajectory | null> {
-    return getDatabaseTrajectoryDetail(this.runtime, trajectoryId);
-  }
-
-  async getStats(): Promise<unknown> {
-    const stats = await readDatabaseTrajectoryStatistics(this.runtime);
-    return {
-      total: stats.totalTrajectories,
-      enabled: this.enabled,
-      byStatus: stats.byStatus,
-      bySource: stats.bySource,
-    };
-  }
-
-  async deleteTrajectories(trajectoryIds: string[]): Promise<number> {
-    return deletePersistedTrajectoryRows(this.runtime, trajectoryIds);
-  }
-
-  async clearAllTrajectories(): Promise<number> {
-    return clearPersistedTrajectoryRows(this.runtime);
-  }
-
-  async exportTrajectories(
-    options: RuntimeTrajectoryExportOptions,
-  ): Promise<TrajectoryExportResult> {
-    const persistedTrajectories = await loadPersistedTrajectoriesForExport(
-      this.runtime,
-      options,
-    );
-    return exportPersistedTrajectories({
-      agentId: this.runtime.agentId,
-      persistedTrajectories,
-      options,
-    });
-  }
-}
-
-/**
- * Create and register a database-backed trajectory logger service on the runtime.
- */
-export function createDatabaseTrajectoryLogger(
-  runtime: IAgentRuntime,
-): DatabaseTrajectoryLogger {
-  const logger = new DatabaseTrajectoryLogger(runtime);
-  return logger;
-}
-
-// ---------------------------------------------------------------------------
-// Archive / prune
-// ---------------------------------------------------------------------------
-
-async function exportRawTrajectoriesToCompressedArchive(
-  runtime: IAgentRuntime,
-  cutoff: string,
-  archivedAt: string,
-): Promise<{ archivePath: string; rowCount: number }> {
-  const rawRowsResult = await executeRawSql(
-    runtime,
-    `SELECT
-      id, id AS trajectory_id, agent_id, source, status, start_time, end_time,
-      duration_ms, step_count, llm_call_count, provider_access_count,
-      total_prompt_tokens, total_completion_tokens,
-      total_cache_read_input_tokens, total_cache_creation_input_tokens,
-      total_reward, scenario_id, batch_id, steps_json,
-      metadata_json AS metadata, created_at, updated_at, episode_length, ai_judge_reward,
-      ai_judge_reasoning, archetype
-    FROM trajectories
-    WHERE created_at < ${sqlQuote(cutoff)}
-      AND agent_id = ${sqlQuote(runtime.agentId)}`,
-  );
-  const rawRows = extractRequiredRows(rawRowsResult, {
-    operation: "archive trajectories",
-    agentId: runtime.agentId,
-  }).map((row, index) => {
-    const record = asRecord(row);
-    if (!record) {
-      throw new ElizaError("Trajectory archive row is invalid", {
-        code: "TRAJECTORY_ROW_INVALID",
-        context: { index },
-      });
-    }
-    return record;
-  });
-
-  if (rawRows.length === 0) {
-    return { archivePath: "", rowCount: 0 };
-  }
-
-  const archiveDir = await resolveTrajectoryArchiveDirectory();
-  const archiveName = `trajectories-before-${toArchiveSafeTimestamp(cutoff)}-archived-${toArchiveSafeTimestamp(archivedAt)}.jsonl.gz`;
-  const archivePath = path.join(archiveDir, archiveName);
-  await writeCompressedJsonlRows(archivePath, rawRows);
-
-  return { archivePath, rowCount: rawRows.length };
-}
-
-/**
- * Archive and then delete trajectories older than `maxAgeDays`.
- */
-export async function pruneOldTrajectories(
-  runtime: IAgentRuntime,
-  maxAgeDays = 30,
-): Promise<number> {
-  requireTrajectoryDatabase(runtime);
-  const tableReady = await ensureTrajectoriesTable(runtime);
-  if (!tableReady) {
-    throw new ElizaError("Trajectory schema is unavailable", {
-      code: "TRAJECTORY_SCHEMA_UNAVAILABLE",
-    });
-  }
-
-  const cutoff = new Date(
-    Date.now() - maxAgeDays * 24 * 60 * 60 * 1000,
-  ).toISOString();
-  const archivedAt = new Date().toISOString();
-
-  try {
-    // Step 1: Persist full training rows to compressed local archive.
-    const archived = await exportRawTrajectoriesToCompressedArchive(
-      runtime,
-      cutoff,
-      archivedAt,
-    );
-    const archivePath = archived.archivePath;
-    if (archived.rowCount > 0 && !archivePath) {
-      throw new ElizaError("Trajectory archive path is missing", {
-        code: "TRAJECTORY_ARCHIVE_PATH_MISSING",
-        context: { rowCount: archived.rowCount },
-      });
-    }
-
-    // Step 2: Copy summary rows to archive table (idempotent).
-    try {
-      await executeRawSql(
-        runtime,
-        `INSERT OR IGNORE INTO trajectory_archive (
-          id, agent_id, source, status, start_time, end_time, duration_ms,
-          step_count, llm_call_count, provider_access_count,
-          total_prompt_tokens, total_completion_tokens,
-          total_cache_read_input_tokens, total_cache_creation_input_tokens,
-          total_reward,
-          scenario_id, batch_id, metadata, observations, archive_blob_path,
-          created_at, updated_at, archived_at
-        )
-        SELECT
-          id, agent_id, source, status, start_time, end_time, duration_ms,
-          step_count, llm_call_count, provider_access_count,
-          total_prompt_tokens, total_completion_tokens,
-          total_cache_read_input_tokens, total_cache_creation_input_tokens,
-          total_reward,
-          scenario_id, batch_id, metadata_json,
-          COALESCE(json_extract(metadata_json, '$.observations'), '[]'),
-          ${sqlQuote(archivePath)},
-          created_at, updated_at,
-          ${sqlQuote(archivedAt)}
-        FROM trajectories
-        WHERE created_at < ${sqlQuote(cutoff)}
-          AND agent_id = ${sqlQuote(runtime.agentId)}`,
-      );
-    } catch (sqliteError) {
-      // error-policy:J2 the first dialect failure is retained if PostgreSQL's
-      // equivalent statement also fails.
-      try {
-        await executeRawSql(
-          runtime,
-          `INSERT INTO trajectory_archive (
-            id, agent_id, source, status, start_time, end_time, duration_ms,
-            step_count, llm_call_count, provider_access_count,
-            total_prompt_tokens, total_completion_tokens,
-            total_cache_read_input_tokens, total_cache_creation_input_tokens,
-            total_reward,
-            scenario_id, batch_id, metadata, observations, archive_blob_path,
-            created_at, updated_at, archived_at
-          )
-          SELECT
-            id, agent_id, source, status, start_time, end_time, duration_ms,
-            step_count, llm_call_count, provider_access_count,
-            total_prompt_tokens, total_completion_tokens,
-            total_cache_read_input_tokens, total_cache_creation_input_tokens,
-            total_reward,
-            scenario_id, batch_id, metadata_json,
-            COALESCE(metadata_json::json->>'observations', '[]'),
-            ${sqlQuote(archivePath)},
-            created_at, updated_at,
-            ${sqlQuote(archivedAt)}
-          FROM trajectories
-          WHERE created_at < ${sqlQuote(cutoff)}
-            AND agent_id = ${sqlQuote(runtime.agentId)}
-          ON CONFLICT (id) DO NOTHING`,
-        );
-      } catch (postgresError) {
-        throw new ElizaError("Could not archive trajectory summaries", {
-          code: "TRAJECTORY_SUMMARY_ARCHIVE_FAILED",
-          cause: new AggregateError([sqliteError, postgresError]),
-        });
-      }
-    }
-
-    // Step 3: Delete the archived rows from the main table.
-    return await executeRawSqlTransaction(runtime, async (execute) => {
-      const owner = sqlQuote(runtime.agentId);
-      const countResult = await execute(
-        `SELECT count(*) AS total FROM trajectories
-         WHERE created_at < ${sqlQuote(cutoff)} AND agent_id = ${owner}`,
-      );
-      const count = readRequiredCount(countResult, "total", {
-        operation: "prune",
-      });
-      if (count > 0) {
-        await execute(`DELETE FROM trajectory_steps WHERE trajectory_id IN (
-          SELECT id FROM trajectories
-          WHERE created_at < ${sqlQuote(cutoff)} AND agent_id = ${owner}
-        )`);
-        await execute(
-          `DELETE FROM trajectories
-           WHERE created_at < ${sqlQuote(cutoff)} AND agent_id = ${owner}`,
-        );
-      }
-      return count;
-    });
-  } catch (error) {
-    // error-policy:J2 pruning is a write path; failed archive/delete work must
-    // surface rather than look like a disabled pruning result.
-    throw trajectoryOperationError("prune", error);
   }
 }

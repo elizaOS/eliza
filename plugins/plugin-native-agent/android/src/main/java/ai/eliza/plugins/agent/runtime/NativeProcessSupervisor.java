@@ -10,7 +10,7 @@ public final class NativeProcessSupervisor implements AutoCloseable {
     public enum State { STOPPED, STARTING, RUNNING, FAILED }
     @FunctionalInterface public interface Launcher { void launch(Scope scope) throws Exception; }
     @FunctionalInterface public interface Probe { boolean ready() throws Exception; }
-    public static final class LifecycleException extends IOException {
+    public static class LifecycleException extends IOException {
         public LifecycleException(String message) { super(message); }
     }
     public static final class Snapshot {
@@ -130,18 +130,24 @@ public final class NativeProcessSupervisor implements AutoCloseable {
             if (action == null) throw new IllegalArgumentException("Cleanup action is required");
             if (closed) action.run(); else cleanup.add(action);
         }
+        private void requireChildren(Process process) throws LifecycleException {
+            if (!process.isAlive()) throw new LifecycleException("Native child exited before readiness");
+            if (!alive()) throw new LifecycleException("Native sibling child exited before readiness");
+        }
         private synchronized boolean alive() {
             if (closed || processes.isEmpty()) return false;
             for (Process process : processes) if (!process.isAlive()) return false;
             return true;
         }
+        /** Waits for one child; fails fast when it or any other child of this scope has exited,
+         * since a launch whose sibling is already gone cannot reach RUNNING. */
         public void awaitReady(Process process, Probe probe, long timeoutMs, long pollMs) throws Exception {
             if (timeoutMs <= 0 || timeoutMs > 86400000 || pollMs <= 0 || pollMs > timeoutMs)
                 throw new IllegalArgumentException("Invalid native readiness budget");
             long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
             while (true) {
                 check();
-                if (!process.isAlive()) throw new LifecycleException("Native child exited before readiness");
+                requireChildren(process);
                 long remaining = deadline - System.nanoTime();
                 if (remaining <= 0) throw new LifecycleException("Native child readiness timed out");
                 Future<Boolean> request = probes.submit(probe::ready);
@@ -156,7 +162,7 @@ public final class NativeProcessSupervisor implements AutoCloseable {
                     // Connection refusal and socket timeouts are expected until the child binds.
                 } finally { request.cancel(true); }
                 check();
-                if (!process.isAlive()) throw new LifecycleException("Native child exited before readiness");
+                requireChildren(process);
                 remaining = deadline - System.nanoTime();
                 if (remaining <= 0) throw new LifecycleException("Native child readiness timed out");
                 if (ready) return;

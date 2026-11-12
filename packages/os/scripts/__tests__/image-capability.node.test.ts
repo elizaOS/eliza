@@ -25,7 +25,7 @@ function staged(t) {
   return output;
 }
 
-for (const appId of ["ai.elizaos.app", "ai.elizaresearch.alphaphone"]) {
+for (const appId of ["ai.elizaos.app", "ai.alphacompute.alphaphone"]) {
   test(`${appId} gets one versioned product-partition feature`, (t) => {
     const feature = imageFeatureName(appId);
     assert.equal(feature, `${appId}.aosp_image`);
@@ -106,7 +106,7 @@ test("the provisioning overlay is a static product RRO naming only the host's ov
 });
 
 test("a brand keeps its installed overlay identifiers", () => {
-  const files = renderImageProvisioningOverlay("ai.elizaresearch.alphaphone", {
+  const files = renderImageProvisioningOverlay("ai.alphacompute.alphaphone", {
     module: "AlphaImageCapabilityOverlay",
     overlayable: "AlphaImageProvisioning",
     resource: "alpha_aosp_image_capability",

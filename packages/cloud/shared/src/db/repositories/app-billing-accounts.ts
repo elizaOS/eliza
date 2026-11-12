@@ -45,7 +45,7 @@ export async function materializeAppBillingAccounts(
 
 async function checkPrincipal(tx: DbTransaction, appId: string, principal: AppBillingPrincipal) {
   const [user] = await tx
-    .select({ id: users.id, organizationId: users.organization_id })
+    .select({ id: users.id, organizationId: users.organization_id, role: users.role })
     .from(users)
     .innerJoin(organizations, eq(users.organization_id, organizations.id))
     .where(
@@ -93,7 +93,6 @@ export class AppBillingAccountsRepository {
         .select({
           id: apps.id,
           organizationId: apps.organization_id,
-          creatorId: apps.created_by_user_id,
         })
         .from(apps)
         .where(and(eq(apps.id, appId), eq(apps.is_active, true), eq(apps.is_approved, true)))
@@ -101,7 +100,11 @@ export class AppBillingAccountsRepository {
         .for("update");
       if (!app) denied();
       const user = await checkPrincipal(tx, appId, principal);
-      if (app.creatorId !== user.id || app.organizationId !== user.organizationId) denied();
+      if (
+        app.organizationId !== user.organizationId ||
+        (user.role !== "owner" && user.role !== "admin")
+      )
+        denied();
       await tx
         .insert(appBillingRegistrations)
         .values({
@@ -122,12 +125,7 @@ export class AppBillingAccountsRepository {
           ),
         )
         .limit(1);
-      if (
-        !registration ||
-        registration.owner_organization_id !== app.organizationId ||
-        registration.registered_by_user_id !== user.id
-      )
-        denied();
+      if (!registration || registration.owner_organization_id !== app.organizationId) denied();
       await materializeAppBillingAccounts(tx, appId);
       return dto(registration);
     });

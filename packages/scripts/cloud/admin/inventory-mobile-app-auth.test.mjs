@@ -54,7 +54,8 @@ const client = {
 before(async () => {
   db = await PGlite.create();
   await db.exec(
-    `CREATE TABLE organizations(id uuid PRIMARY KEY,is_active boolean);CREATE TABLE users(id uuid PRIMARY KEY,organization_id uuid,is_active boolean,deleted_at timestamptz,role text);CREATE TABLE apps(id uuid PRIMARY KEY,organization_id uuid,created_by_user_id uuid,is_active boolean,is_approved boolean,app_url text,allowed_origins jsonb,api_key_id uuid);CREATE TABLE api_keys(id uuid PRIMARY KEY,organization_id uuid,user_id uuid,is_active boolean,deleted_at timestamptz);`,
+    `CREATE TABLE native_app_publishers(organization_id uuid PRIMARY KEY);
+      CREATE TABLE organizations(id uuid PRIMARY KEY,is_active boolean);CREATE TABLE users(id uuid PRIMARY KEY,organization_id uuid,is_active boolean,deleted_at timestamptz,role text);CREATE TABLE apps(id uuid PRIMARY KEY,organization_id uuid,created_by_user_id uuid,is_active boolean,is_approved boolean,app_url text,allowed_origins jsonb,api_key_id uuid);CREATE TABLE api_keys(id uuid PRIMARY KEY,organization_id uuid,user_id uuid,is_active boolean,deleted_at timestamptz);`,
   );
 });
 beforeEach(async () => {

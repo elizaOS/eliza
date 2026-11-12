@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-trajectory-logger",
-  "version": "2.0.12-beta.0",
+  "version": "2.0.5",
   "type": "module",
   "description": "Realtime trajectory inspector overlay app — surfaces the last completed and the in-flight trajectory with HANDLE / PLAN / ACTION / EVALUATE phase drilldowns.",
   "main": "./dist/index.js",
@@ -13,7 +13,7 @@
     },
     "./plugin": {
       "eliza-source": "./src/plugin.ts",
-      "bun": "./src/plugin.ts",
+      "bun": "./dist/plugin.js",
       "types": "./dist/plugin.d.ts",
       "import": "./dist/plugin.js",
       "default": "./dist/plugin.js"
@@ -30,7 +30,7 @@
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "test": "bunx vitest run --config ./vitest.config.ts",
     "build": "bun run build:js && bun run build:views && bun run build:types",
-    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
+    "clean": "bun ../../packages/scripts/rm-path-recursive.ts dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "vite build --config vite.config.views.ts",
     "build:types": "tsc6 --noCheck -p tsconfig.build.json",

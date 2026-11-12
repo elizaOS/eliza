@@ -34,6 +34,7 @@ const config = {
     "vite",
     "vitest",
     "make",
+    "java",
   ],
   ignoreDependencies: ["vitest", "vitest/config"],
   ignoreUnresolved: ["bun-types", "node:sqlite"],
@@ -209,7 +210,7 @@ const config = {
         "playwright.*.config.ts",
         "scripts/**/*.{test,spec}.{ts,tsx,mjs}",
         // Device/workflow CLIs and subprocess entrypoints outside package scripts.
-        "scripts/alpha-dstack.ts",
+        "scripts/dstack.ts",
         "scripts/android-chromium-smoke.mjs",
         "scripts/android-gateway-lifecycle.ts",
         "scripts/android-native-agent.ts",

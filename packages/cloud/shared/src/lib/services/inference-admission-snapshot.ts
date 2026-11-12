@@ -1,7 +1,8 @@
 /**
  * Hydrates the immutable admission projection stored beside inference identity.
- * Database work is allowed only while warming the combined decision under a
- * Worker lifetime; warm requests consume the projection from their single KV read.
+ * Warm requests consume the projection from their single cache read. An aged
+ * projection still decides its request and is refreshed under `waitUntil`;
+ * only a request with no projection at all is filled from the primary inline.
  */
 
 import type { DbTransaction } from "../../db/client";
@@ -16,16 +17,13 @@ import {
   type InferenceAdmissionSnapshot,
   isInferenceAdmissionSnapshot,
 } from "./inference-auth-cache";
-import { isSnapshotAdmissionEnabled } from "./inference-billing-deferred";
-import { type EndpointType, type OrgRateLimitConfig } from "./org-rate-limits";
+import type { EndpointType, OrgRateLimitConfig } from "./org-rate-limits";
 import { withOrganizationPolicyAdmission } from "./organization-policy-admission";
 import {
   type OrganizationQuotaPolicy,
-  readOrganizationQuotaPolicy,
   requireOrganizationPolicyBalance,
   requireOrganizationRateTier,
 } from "./organization-quota-policy";
-import { hydrationSettledWithin } from "./shared-runtime/bounded-hydration";
 import { readSubscriberFundingCapacityInTransaction } from "./subscriber-inference-funding";
 
 const admissionMemoryCache = new InMemoryLRUCache<InferenceAdmissionSnapshot>(1_000, 5_000);
@@ -33,17 +31,6 @@ const admissionMemoryCache = new InMemoryLRUCache<InferenceAdmissionSnapshot>(1_
 /** Clears isolate-local projection state for deterministic cache contract tests. */
 export function resetInferenceAdmissionMemoryCacheForTests(): void {
   admissionMemoryCache.clear();
-}
-
-export interface AdmissionSnapshotExecutionContext {
-  waitUntil(promise: Promise<unknown>): void;
-}
-
-export class InferenceAdmissionSnapshotCacheWarmingError extends Error {
-  constructor(message = "Inference admission cache is warming") {
-    super(message);
-    this.name = "InferenceAdmissionSnapshotCacheWarmingError";
-  }
 }
 
 /** Derive the exact endpoint limiter without another shared-cache lookup. */
@@ -64,14 +51,11 @@ export function inferenceRateLimitConfig(
 export async function loadInferenceAdmissionSnapshot(
   organizationId: string,
 ): Promise<InferenceAdmissionSnapshot> {
-  const { isFundedBudgetAdmissionEnabled } = await import("./inference-funded-budget-admission");
-  if (isFundedBudgetAdmissionEnabled()) {
-    return withOrganizationPolicyAdmission(organizationId, undefined, (policy, tx) =>
-      inferenceAdmissionSnapshotInTransaction(tx, organizationId, policy),
-    );
-  }
-  const policy = await readOrganizationQuotaPolicy(organizationId);
-  return inferenceAdmissionSnapshotFromPolicy(policy);
+  // Always the complete projection (hold and funding included): the Worker
+  // admission lane decides from it without reading the primary again.
+  return withOrganizationPolicyAdmission(organizationId, undefined, (policy, tx) =>
+    inferenceAdmissionSnapshotInTransaction(tx, organizationId, policy),
+  );
 }
 export function inferenceAdmissionSnapshotFromPolicy(
   policy: OrganizationQuotaPolicy,
@@ -108,15 +92,22 @@ export async function inferenceAdmissionSnapshotInTransaction(
   const snapshot = inferenceAdmissionSnapshotFromPolicy(policy);
   const hold = await billingHoldService.getState(organizationId, tx);
   const funding = policy.subscriptionFunded
-    ? await readSubscriberFundingCapacityInTransaction(tx, organizationId, { policy })
+    ? await readSubscriberFundingCapacityInTransaction(tx, organizationId, {
+        policy,
+      })
     : undefined;
-  const { readInferenceBudgetPolicy } = await import("./inference-funded-budget-admission");
+  const { readInferenceBudgetPolicy, readInferencePolicy, isRatePolicyAdmissionEnabled } =
+    await import("./inference-funded-budget-admission");
   const fundedBudget = await readInferenceBudgetPolicy(tx, organizationId, policy);
+  const ratePolicy = isRatePolicyAdmissionEnabled()
+    ? await readInferencePolicy(tx, organizationId, policy)
+    : undefined;
   return {
     ...snapshot,
     billingHold: hold.status === "held",
     ...(funding && { funding }),
     ...(fundedBudget && { fundedBudget }),
+    ...(ratePolicy?.rateEnabled && { ratePolicy }),
   };
 }
 
@@ -130,7 +121,6 @@ export async function publishInferenceAdmissionSnapshotToGate(
   organizationId: string,
   snapshot: InferenceAdmissionSnapshot,
 ): Promise<void> {
-  if (!isSnapshotAdmissionEnabled()) return;
   // Non-Worker hosts have no gate binding and never serve snapshot admission.
   if (!getCloudBinding("INFERENCE_ADMISSION_GATES")) return;
   await publishInferenceAdmissionPolicy({
@@ -149,7 +139,12 @@ export async function publishInferenceAdmissionSnapshotToGate(
   });
 }
 
-/** Populate the combined projection from authoritative stores off the hot path. */
+/**
+ * Populate the combined projection from the primary and publish it to the
+ * organization gate. The snapshot read inside the policy transaction is the
+ * decision; a failed shared-cache write only means the next isolate fills
+ * again, so it is reported and never fails the request being served.
+ */
 export async function warmInferenceAdmissionSnapshot(
   organizationId: string,
 ): Promise<InferenceAdmissionSnapshot> {
@@ -159,9 +154,10 @@ export async function warmInferenceAdmissionSnapshot(
     await publishInferenceAdmissionSnapshotToGate(organizationId, snapshot);
     const outcome = await cache.setWithOutcome(key, snapshot, CacheTTL.inference.orgAdmission);
     if (outcome.kind !== "written")
-      throw new InferenceAdmissionSnapshotCacheWarmingError(
-        "Admission snapshot publication was not acknowledged",
-      );
+      logger.warn("[inference-admission] admission snapshot cache write failed", {
+        organizationId,
+        cacheWrite: outcome.kind,
+      });
     admissionMemoryCache.set(key, snapshot);
     return snapshot;
   });
@@ -189,6 +185,28 @@ export async function refreshStaleInferenceAdmissionSnapshot(
 }
 
 /**
+ * Make a committed credit-balance change (top-up, refund, hold settlement or a
+ * non-inference debit) visible to Worker admission before the next lease.
+ * Where the organization gate is bound, the projection is republished from
+ * the primary: that advances the gate to the committed balance revision, and
+ * because the gate keeps the newest revision, a request still carrying an
+ * older snapshot leases against the committed balance. Hosts without a gate
+ * drop the shared projection so the next Worker admission refills it. Run
+ * only after the owning transaction commits; the republish locks the policy row.
+ */
+export async function republishInferenceAdmissionAfterCreditMutation(
+  organizationId: string,
+): Promise<void> {
+  if (getCloudBinding("INFERENCE_ADMISSION_GATES")) {
+    await refreshStaleInferenceAdmissionSnapshot(organizationId);
+    return;
+  }
+  const key = CacheKeys.inference.orgAdmission(organizationId);
+  admissionMemoryCache.delete(key);
+  await cache.del(key);
+}
+
+/**
  * Read the published organization projection from the isolate or shared cache
  * only. Returns null on a miss or an unreadable cache; it never hydrates.
  */
@@ -213,58 +231,89 @@ export async function peekInferenceAdmissionSnapshot(
   }
 }
 
-/**
- * Resolve the shared-runtime billing and rate policy with one remote cache read.
- * Misses hydrate from authoritative stores only under the Worker lifetime.
- */
-export async function getInferenceAdmissionSnapshotCacheOnly(
+/** The isolate's copy of the published projection; never reads a shared store. */
+export function peekInferenceAdmissionSnapshotInIsolate(
   organizationId: string,
-  executionCtx: AdmissionSnapshotExecutionContext,
-  options: {
-    /**
-     * Join the scheduled hydration for up to this long before reporting
-     * warming. The hydration still runs under the Worker lifetime either way.
-     */
-    awaitHydrationMs?: number;
-  } = {},
+): InferenceAdmissionSnapshot | undefined {
+  const local = admissionMemoryCache.get(CacheKeys.inference.orgAdmission(organizationId));
+  return isInferenceAdmissionSnapshot(local) ? local : undefined;
+}
+
+/**
+ * Refresh the projection after the response it was served to. The request
+ * that noticed an aged or refusing projection keeps its decision; this fill
+ * republishes the primary state to the gate and both caches for later calls.
+ * `force` skips the shared-cache copy, for a refusal that copy would repeat.
+ */
+export function refreshInferenceAdmissionSnapshotOffResponse(
+  organizationId: string,
+  executionCtx: { waitUntil(promise: Promise<unknown>): void },
+  options: { force?: boolean } = {},
+): void {
+  executionCtx.waitUntil(
+    (async () => {
+      if (!options.force) {
+        const published = await peekInferenceAdmissionSnapshot(organizationId);
+        if (
+          published &&
+          Date.now() - published.balance.balanceAt <= CacheTTL.inference.orgAdmission * 1000
+        )
+          return;
+      }
+      await fillInferenceAdmissionSnapshot(organizationId);
+    })().catch((error) => {
+      // error-policy:J7 the served decision stands; the next aged request
+      // schedules the refresh again and the gate keeps its own fences.
+      logger.warn("[inference-admission] off-response snapshot refresh failed", {
+        organizationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }),
+  );
+}
+
+const inflightAdmissionFills = new Map<string, Promise<InferenceAdmissionSnapshot>>();
+
+/**
+ * Resolve the organization admission snapshot cache-first. A warm request does
+ * one isolate or shared-cache read. A cold one fills the cache inline from the
+ * authoritative stores (coalesced per isolate) and is served from that fill,
+ * so a cold cache never fails the request.
+ */
+export async function getInferenceAdmissionSnapshotCacheFirst(
+  organizationId: string,
 ): Promise<InferenceAdmissionSnapshot> {
   const key = CacheKeys.inference.orgAdmission(organizationId);
   const local = admissionMemoryCache.get(key);
   if (isInferenceAdmissionSnapshot(local)) return local;
 
-  let cached: InferenceAdmissionSnapshot | null;
+  let cached: InferenceAdmissionSnapshot | null = null;
   try {
     cached = await cache.get<InferenceAdmissionSnapshot>(key);
   } catch (error) {
-    // error-policy:J4 inference cannot safely proceed without admission policy.
-    throw new InferenceAdmissionSnapshotCacheWarmingError(
-      error instanceof Error ? error.message : undefined,
-    );
+    // error-policy:J4 an unreadable shared cache falls through to the
+    // authoritative fill below instead of failing the request.
+    logger.warn("[inference-admission] admission snapshot cache read failed", {
+      organizationId,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
   if (isInferenceAdmissionSnapshot(cached)) {
     admissionMemoryCache.set(key, cached);
     return cached;
   }
+  return await fillInferenceAdmissionSnapshot(organizationId);
+}
 
-  const hydration = Promise.resolve()
-    .then(() => warmInferenceAdmissionSnapshot(organizationId))
-    .then(() => undefined)
-    .catch((error) => {
-      // error-policy:J7 authoritative hydration is deliberately detached from
-      // the request; the next request remains fail-closed if it did not finish.
-      logger.warn("[inference-admission] combined snapshot hydration failed", {
-        organizationId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    });
-  executionCtx.waitUntil(hydration);
-  if (
-    options.awaitHydrationMs !== undefined &&
-    options.awaitHydrationMs > 0 &&
-    (await hydrationSettledWithin(hydration, options.awaitHydrationMs))
-  ) {
-    const hydrated = admissionMemoryCache.get(key);
-    if (isInferenceAdmissionSnapshot(hydrated)) return hydrated;
-  }
-  throw new InferenceAdmissionSnapshotCacheWarmingError();
+/** Authoritative fill shared by concurrent cold requests in this isolate. */
+export function fillInferenceAdmissionSnapshot(
+  organizationId: string,
+): Promise<InferenceAdmissionSnapshot> {
+  const existing = inflightAdmissionFills.get(organizationId);
+  if (existing) return existing;
+  const fill = warmInferenceAdmissionSnapshot(organizationId).finally(() => {
+    inflightAdmissionFills.delete(organizationId);
+  });
+  inflightAdmissionFills.set(organizationId, fill);
+  return fill;
 }

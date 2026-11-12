@@ -20,5 +20,5 @@ use the monotonic clock. The emulator suite injects known coordinates and checks
 reads, watch cancellation, and timeouts without silently skipping missing fixes:
 
 ```bash
-node packages/app/scripts/android-native-plugins.ts --serial emulator-5554 --plugin plugin-native-location
+bun packages/app/scripts/android-native-plugins.ts --serial emulator-5554 --plugin plugin-native-location
 ```
