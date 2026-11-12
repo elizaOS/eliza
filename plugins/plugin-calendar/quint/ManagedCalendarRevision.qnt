@@ -1,21 +1,37 @@
 // Provider edit time remains distinct from the time a cached feed was refreshed.
 module ManagedCalendarRevision {
   var providerRevision: int
+  var legacyRevision: int
   var cachedRevision: int
+  var refreshTime: int
   var synchronized: bool
-  action init = all {
-    providerRevision' = 10, cachedRevision' = -1, synchronized' = false
+  pure def revision(primary: int, legacy: int, refreshed: int): int =
+    if (primary >= 0) primary else if (legacy >= 0) legacy else refreshed
+  action init = {
+    nondet primary = Set(-1, 10).oneOf()
+    nondet legacy = Set(-1, 20).oneOf()
+    all {
+      providerRevision' = primary, legacyRevision' = legacy,
+      cachedRevision' = -1, refreshTime' = 100, synchronized' = false
+    }
   }
-  action refresh = all {
-    providerRevision' = providerRevision,
-    cachedRevision' = providerRevision, synchronized' = true
+  action refresh = {
+    nondet observed = Set(100, 200).oneOf()
+    all {
+      providerRevision' = providerRevision, legacyRevision' = legacyRevision,
+      cachedRevision' = revision(providerRevision, legacyRevision, observed),
+      refreshTime' = observed, synchronized' = true
+    }
   }
   action edit = all {
-    providerRevision' = if (providerRevision == 10) 20 else 10,
-    cachedRevision' = cachedRevision, synchronized' = false
+    providerRevision' = if (providerRevision == 10) 30 else 10,
+    legacyRevision' = legacyRevision, cachedRevision' = cachedRevision,
+    refreshTime' = refreshTime, synchronized' = false
   }
   action step = any { refresh, edit }
-  val CacheUsesProviderRevision = not(synchronized) or cachedRevision == providerRevision
-  val NoRefreshTimeAsEditTime = Set(-1, 10, 20).contains(cachedRevision)
+  val CacheUsesProviderRevision =
+    not(synchronized) or cachedRevision == revision(providerRevision, legacyRevision, refreshTime)
+  val NoRefreshTimeAsEditTime =
+    not(synchronized) or (providerRevision < 0 and legacyRevision < 0) or cachedRevision != refreshTime
   val invariant = CacheUsesProviderRevision and NoRefreshTimeAsEditTime
 }

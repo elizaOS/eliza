@@ -3,9 +3,10 @@
     "packages/cloud/shared/src/lib/services/agent-google-connector/calendar.ts",
     "packages/cloud/shared/src/lib/services/agent-google-connector/calendar.etag.test.ts",
     "packages/app/src/runtime/managed-google-agent/managed-google-agent-host.ts",
-    "packages/app/test/native-host/managed-google-agent.test.mjs"
+    "packages/app/test/native-host/managed-google-agent.test.mjs",
+    "plugins/plugin-calendar/src/service/managed-calendar-host.ts"
   ],
-  "bounds": "One Google event with two valid provider revision times and repeated cache refreshes. Missing provider timestamps retain the existing fallback and are outside the known-revision invariant. No provider mutation, wall-clock latency or fairness claim.",
+  "bounds": "One Google event, current and legacy provider timestamps, two refresh times, and repeated refreshes and edits. Refresh time is a storage fallback only when both provider timestamps are absent. Conformance runs the managed host readback against model-generated states. No provider mutation, wall-clock latency or fairness claim.",
   "conformance": "plugins/plugin-calendar/quint/check-managed-calendar-revision.mjs",
   "cases": [
     {
