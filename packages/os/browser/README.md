@@ -151,7 +151,7 @@ has compiled or passed release-device tests.
 After building the extension, generate the overlay outside the checkout:
 
 ```sh
-node packages/os/browser/scripts/chromium-component.mjs \
+bun packages/os/browser/scripts/chromium-component.mjs \
   --source /absolute/chromium/src \
   --extension /absolute/eliza/packages/os/browser/dist/android \
   --out /absolute/new-overlay-directory --platform android \
@@ -286,7 +286,7 @@ is installed during an authorized snapshot, so activity before that snapshot or
 lost before storage acknowledgment is not covered. Product consumers must treat
 attempts as uncertain and reconcile observed provider status. They must not infer
 payment success or human intent solely from a form event. Run
-`node packages/os/browser/scripts/test-manual-activity.mjs` for Chromium event
+`bun packages/os/browser/scripts/test-manual-activity.mjs` for Chromium event
 semantics using a simulated message transport; installed transport/device
 qualification and product consumption remain separate gates.
 
@@ -377,7 +377,7 @@ Eliza OS owns Android Chromium compilation as well as source preparation. On a
 provisioned Linux Chromium/depot_tools host, run:
 
 ```sh
-node packages/os/scripts/android/build-chromium-browser.ts \
+bun packages/os/scripts/android/build-chromium-browser.ts \
   --source /absolute/chromium/src --extension /absolute/product/extension \
   --out /absolute/new-overlay --build /absolute/chromium/src/out/Owned \
   --args-file /absolute/reviewed-args.gn --jobs 8 \
@@ -538,7 +538,7 @@ licenses for the bundled domain parser and Unicode decoder.
 
 Run `test:browser:protection:advisory` for the real Chromium extension flow,
 keyboard-accessible controls, account reset, offline visits and narrow layout.
-`node browser/protection/test-advisory.mjs --baseline` captures the disabled
+`bun browser/protection/test-advisory.mjs --baseline` captures the disabled
 baseline. Run `bun --conditions=eliza-source browser/protection/test-advisory.mjs --native`
 from `packages/os` to exercise the same flow through the actual Linux native host
 and socket target, including disconnect reset. These controlled pages do not

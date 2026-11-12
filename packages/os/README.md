@@ -10,8 +10,8 @@ Application and native-runtime sources belong to `packages/app` and its plugins.
 Builders use the enclosing Eliza checkout, or `ELIZAOS_ELIZA_ROOT` when explicitly
 set.
 
-Install workspace dependencies with Bun 1.4.2 at the repository root. Use Node
-24.15.0 for scripts. From the repository root:
+Install workspace dependencies with Bun 1.4.2 at the repository root. Use Bun
+for scripts and Node 24.15.0 for the retained Node lanes. From the repository root:
 
 ```bash
 bun run --cwd packages/os build                 # browser component

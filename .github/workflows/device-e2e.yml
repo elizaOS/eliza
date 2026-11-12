@@ -240,7 +240,7 @@ jobs:
       # ios-e2e.ts owns the whole lane — simulator boot, app build, install,
       # auth deep-link drive — inside one bundle root.
       - name: iOS device-bundle run
-        run: node packages/app/scripts/ios-e2e.ts --skip-local-chat --output "$ELIZA_DEVICE_BUNDLE_ROOT/ios"
+        run: bun packages/app/scripts/ios-e2e.ts --skip-local-chat --output "$ELIZA_DEVICE_BUNDLE_ROOT/ios"
 
       - name: Upload iOS simulator bundle
         if: always()

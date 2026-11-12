@@ -15,9 +15,9 @@
 // brand's `<brand>_cf_x86_64_phone` build.
 //
 // Usage:
-//   node scripts/android/avd-test.ts --avd <name>
-//   node scripts/android/avd-test.ts --avd <name> --apk path/to/app.apk
-//   node scripts/android/avd-test.ts --avd <name> --capture reports/avd
+//   bun scripts/android/avd-test.ts --avd <name>
+//   bun scripts/android/avd-test.ts --avd <name> --apk path/to/app.apk
+//   bun scripts/android/avd-test.ts --avd <name> --capture reports/avd
 //
 // Flags:
 //   --brand-config <PATH> Brand config JSON (default brand.eliza.json).
@@ -89,7 +89,7 @@ export function parseSubArgs(argv, brand) {
       i += 1;
     } else if (arg === "-h" || arg === "--help") {
       console.log(
-        "Usage: node scripts/android/avd-test.ts [--brand-config PATH] --avd <NAME> [--apk PATH] [--no-reuse] [--capture DIR] [--boot-timeout-ms N] [--serial S]",
+        "Usage: bun scripts/android/avd-test.ts [--brand-config PATH] --avd <NAME> [--apk PATH] [--no-reuse] [--capture DIR] [--boot-timeout-ms N] [--serial S]",
       );
       process.exit(0);
     } else {

@@ -290,7 +290,7 @@ function parseDfmArgs(argv) {
       i += 1;
     } else if (arg === "-h" || arg === "--help") {
       console.log(
-        "Usage: node eliza/packages/app/scripts/aosp/stage-models-dfm.ts [--force] [--app-config <PATH>]",
+        "Usage: bun eliza/packages/app/scripts/aosp/stage-models-dfm.ts [--force] [--app-config <PATH>]",
       );
       process.exit(0);
     } else {

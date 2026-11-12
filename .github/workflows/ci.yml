@@ -70,9 +70,9 @@ jobs:
       - name: Formatting
         run: bun run format:check
       - name: Prompt secret scan
-        run: node packages/scripts/check-prompt-secrets.ts
+        run: bun packages/scripts/check-prompt-secrets.ts
       - name: Validate CI Bun version pin contract
-        run: node packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
+        run: bun packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
       - name: Upload Bun runtime resolution inventory
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
@@ -215,7 +215,7 @@ jobs:
           pattern: quint-canonical-manifest-*
           path: test-results/quint-canonical-manifests
       - name: Verify complete disjoint model coverage
-        run: node packages/scripts/check-quint-shards.ts test-results/quint-canonical-manifests 4
+        run: bun packages/scripts/check-quint-shards.ts test-results/quint-canonical-manifests 4
       - name: Upload complete Quint evidence summary
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
@@ -521,7 +521,7 @@ jobs:
           retention-days: 3
       - name: Prune deterministic E2E scratch output
         if: always()
-        run: node packages/scripts/rm-path-recursive.ts test-results/scenario-runner/pr-deterministic test-results/scenario-runner/pr-deterministic-corpus test-results/scenario-runner/pr-deterministic-orchestrator test-results/scenario-runner/pr-deterministic-lifeops test-results/scenario-runner/catalog-inventory packages/app/playwright-report test-results/app
+        run: bun packages/scripts/rm-path-recursive.ts test-results/scenario-runner/pr-deterministic test-results/scenario-runner/pr-deterministic-corpus test-results/scenario-runner/pr-deterministic-orchestrator test-results/scenario-runner/pr-deterministic-lifeops test-results/scenario-runner/catalog-inventory packages/app/playwright-report test-results/app
       - name: E2E coverage matrix report
         if: always()
         run: bun --conditions=eliza-source packages/scripts/e2e-coverage/write-coverage-matrix-report.ts --report-dir reports/coverage

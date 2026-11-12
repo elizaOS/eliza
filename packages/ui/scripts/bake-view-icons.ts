@@ -4,7 +4,7 @@
  * a typed URL lookup. Keeping PNG bytes outside JavaScript avoids parsing every
  * icon at startup while `import.meta.url` remains deterministic and offline.
  *
- * Usage: node scripts/bake-view-icons.ts [srcDir]   (default /tmp/view-icons)
+ * Usage: bun scripts/bake-view-icons.ts [srcDir]   (default /tmp/view-icons)
  */
 import { execFileSync } from "node:child_process";
 import {

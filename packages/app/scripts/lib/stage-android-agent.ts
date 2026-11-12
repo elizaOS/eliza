@@ -119,6 +119,9 @@ const ABI_TARGETS = [
   },
 ];
 
+// Retired ABIs: a reused checkout may still hold their staged assets; always prune.
+const RETIRED_ANDROID_ABIS = ["riscv64"];
+
 /** Select the product ABIs explicitly; unspecified builds retain all targets. */
 export function selectAndroidRuntimeTargets(value) {
   if (value === undefined) return ABI_TARGETS;
@@ -139,7 +142,10 @@ export function selectAndroidRuntimeTargets(value) {
 function pruneUnselectedRuntimeAbis({ assetsAgentDir, targets }) {
   const selected = new Set(targets.map(({ androidAbi }) => androidAbi));
   let removed = 0;
-  for (const { androidAbi } of ABI_TARGETS) {
+  for (const androidAbi of [
+    ...ABI_TARGETS.map((target) => target.androidAbi),
+    ...RETIRED_ANDROID_ABIS,
+  ]) {
     if (selected.has(androidAbi)) continue;
     const directory = path.join(assetsAgentDir, androidAbi);
     if (!fs.existsSync(directory)) continue;
@@ -1095,7 +1101,7 @@ export function stageSeccompShimForAbi({
       `[stage-android-agent] Missing compiled SIGSYS shim for ${androidAbi}, or cache source/output identity is stale. ` +
         `Stock Android kills the raw Alpine loader with SIGSYS during Bun's ` +
         `event loop startup; refusing to build an APK that cannot boot. Run ` +
-        `\`node packages/app/scripts/aosp/compile-shim.ts --abi ${androidAbi}\` ` +
+        `\`bun packages/app/scripts/aosp/compile-shim.ts --abi ${androidAbi}\` ` +
         `or restore ${path.relative(process.cwd(), abiCacheDir)} before building.`,
     );
   }

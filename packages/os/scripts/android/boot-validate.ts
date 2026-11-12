@@ -118,7 +118,7 @@ export function parseSubArgs(argv) {
       i += 1;
     } else if (arg === "-h" || arg === "--help") {
       console.log(
-        "Usage: node scripts/android/boot-validate.ts [--brand-config <PATH>] [--adb <ADB>] [--serial <SERIAL>] [--timeout-ms <MS>] [--json] [--skip-logcat] [--expected-abi <ABI>]",
+        "Usage: bun scripts/android/boot-validate.ts [--brand-config <PATH>] [--adb <ADB>] [--serial <SERIAL>] [--timeout-ms <MS>] [--json] [--skip-logcat] [--expected-abi <ABI>]",
       );
       process.exit(0);
     } else {

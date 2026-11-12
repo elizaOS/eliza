@@ -40,12 +40,12 @@
 // attached.
 //
 // Usage:
-//   node scripts/android/deploy-pixel.ts \
+//   bun scripts/android/deploy-pixel.ts \
 //     --aosp-root /path/to/aosp [--abi arm64-v8a|x86_64] [--device <serial>] \
 //     [--skip-libllama] [--skip-aosp-build] [--voice] [--jobs N] [--dry-run]
 //
 // For a running cvd (no AOSP build needed if the cvd already has the app):
-//   node scripts/android/deploy-pixel.ts --abi x86_64 \
+//   bun scripts/android/deploy-pixel.ts --abi x86_64 \
 //     --skip-libllama --skip-aosp-build --voice
 
 import { spawnSync } from "node:child_process";
@@ -107,7 +107,7 @@ export function parseArgs(argv) {
     } else if (a === "--dry-run") args.dryRun = true;
     else if (a === "--help" || a === "-h") {
       console.log(
-        "Usage: node scripts/android/deploy-pixel.ts " +
+        "Usage: bun scripts/android/deploy-pixel.ts " +
           "[--aosp-root <DIR>] [--abi arm64-v8a|x86_64] [--device <serial>] " +
           "[--brand-config <PATH>] [--skip-libllama] [--skip-aosp-build] " +
           "[--launcher-apk <SIGNED_APK> (--launcher-descriptor <JSON> | --development-launcher)] " +
@@ -429,7 +429,7 @@ async function main(argv = process.argv.slice(2)) {
         throw new Error(
           `[deploy-pixel] ${physicalTarget.targetId} is not running the expected flashed elizaOS image. ` +
             `fingerprint=${JSON.stringify(fingerprint)} packagePath=${JSON.stringify(packagePath)}. ` +
-            "Use node scripts/android/install-release.ts with a lab-validated " +
+            "Use bun scripts/android/install-release.ts with a lab-validated " +
             "signed release manifest, --execute, and --confirm-flash. " +
             "The image launcher APK will not be sideloaded onto a physical target.",
         );
@@ -493,7 +493,7 @@ async function main(argv = process.argv.slice(2)) {
   if (args.dryRun) {
     if (!args.voiceOnly) {
       console.log(
-        `[deploy-pixel] (dry-run) would run: node scripts/android/smoke-cuttlefish.ts` +
+        `[deploy-pixel] (dry-run) would run: bun scripts/android/smoke-cuttlefish.ts` +
           ` --package-name ${pkg} --app-name ${brand.appName}`,
       );
     }

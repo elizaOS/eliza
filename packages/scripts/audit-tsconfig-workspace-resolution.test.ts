@@ -58,7 +58,7 @@ test("discovers implicit, explicit, compact, and multiple typecheck projects", (
   assert.deepEqual(
     discoverTypecheckProjects(
       packageDir,
-      "node prepare.mjs && tsc --noEmit -p tsconfig.typecheck.json && tsc -p./src/tsconfig.json --noEmit",
+      "bun prepare.mjs && tsc --noEmit -p tsconfig.typecheck.json && tsc -p./src/tsconfig.json --noEmit",
     ),
     [
       path.join(packageDir, "tsconfig.typecheck.json"),

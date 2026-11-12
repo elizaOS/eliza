@@ -418,7 +418,7 @@ export function parseSubArgs(argv) {
       i += 1;
     } else if (arg === "-h" || arg === "--help") {
       console.log(
-        "Usage: node scripts/android/build-aosp.ts [--brand-config <PATH>] --aosp-root <AOSP_ROOT> [--source-vendor <VENDOR_DIR>] [--vendor-archive <FACTORY_ARCHIVE>] [--jobs <N>] [--skip-build] [--allow-development-browser] [--rebuild-launcher-apk] [--launcher-apk <SIGNED_APK> (--launcher-descriptor <REVIEWED_JSON> | --development-launcher) [--source-commit <COMMIT>] [--aapt <PATH>] [--apksigner <PATH>]] [--launch] [--boot-validate]",
+        "Usage: bun scripts/android/build-aosp.ts [--brand-config <PATH>] --aosp-root <AOSP_ROOT> [--source-vendor <VENDOR_DIR>] [--vendor-archive <FACTORY_ARCHIVE>] [--jobs <N>] [--skip-build] [--allow-development-browser] [--rebuild-launcher-apk] [--launcher-apk <SIGNED_APK> (--launcher-descriptor <REVIEWED_JSON> | --development-launcher) [--source-commit <COMMIT>] [--aapt <PATH>] [--apksigner <PATH>]] [--launch] [--boot-validate]",
       );
       process.exit(0);
     } else if (arg.startsWith("-")) {

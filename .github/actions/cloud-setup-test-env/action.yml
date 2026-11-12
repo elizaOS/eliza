@@ -127,7 +127,7 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        node --input-type=module <<'NODE'
+        bun - <<'NODE'
         import {execFileSync} from 'node:child_process';
         import {writeFileSync} from 'node:fs';
         import {join} from 'node:path';

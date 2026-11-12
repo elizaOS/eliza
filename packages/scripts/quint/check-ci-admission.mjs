@@ -120,7 +120,7 @@ assert.equal(
   shardGate.steps.find(
     (step) => step.name === "Verify complete disjoint model coverage",
   ).run,
-  "node packages/scripts/check-quint-shards.ts test-results/quint-manifests 4",
+  "bun packages/scripts/check-quint-shards.ts test-results/quint-manifests 4",
 );
 const selection = shardJob.steps.find((step) => step.id === "changes");
 assert.equal(selection.run, 'echo "run=true" >> "$GITHUB_OUTPUT"');

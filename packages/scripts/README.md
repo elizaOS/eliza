@@ -14,8 +14,8 @@ Run commands from the repository root:
 
 ```bash
 bun run test:scripts
-node packages/scripts/run-script-tests.ts --inventory
-node packages/scripts/audit-scripts.ts
+bun packages/scripts/run-script-tests.ts --inventory
+bun packages/scripts/audit-scripts.ts
 bun run verify
 ```
 

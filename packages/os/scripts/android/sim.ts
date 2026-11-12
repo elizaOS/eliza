@@ -84,7 +84,7 @@ export function parseSubArgs(argv, brand) {
       i += 1;
     } else if (arg === "-h" || arg === "--help") {
       console.log(
-        "Usage: node scripts/android/sim.ts [--brand-config PATH] [--aosp-root DIR] [--out DIR] [--no-launch] [--stop-after] [--wait-for-build]",
+        "Usage: bun scripts/android/sim.ts [--brand-config PATH] [--aosp-root DIR] [--out DIR] [--no-launch] [--stop-after] [--wait-for-build]",
       );
       process.exit(0);
     } else {

@@ -216,7 +216,7 @@ export async function main(argv = process.argv.slice(2)) {
     target !== "ios-overlay"
   ) {
     console.error(
-      "Usage: node scripts/run-mobile-build.ts <android|android-host-e2e|android-sms-gateway|android-cloud [--debug | --audit [aab-path]]|android-system|ios|ios-local|ios-overlay>",
+      "Usage: bun scripts/run-mobile-build.ts <android|android-host-e2e|android-sms-gateway|android-cloud [--debug | --audit [aab-path]]|android-system|ios|ios-local|ios-overlay>",
     );
     process.exit(1);
   }

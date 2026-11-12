@@ -26,7 +26,7 @@ const adbPath =
 
 function usage() {
   return [
-    "Usage: node packages/app/scripts/watch-sms-gateway-readiness.ts [options]",
+    "Usage: bun packages/app/scripts/watch-sms-gateway-readiness.ts [options]",
     "",
     "Options:",
     "  --timeout <seconds>   Stop waiting after this many seconds (1-86400). Defaults to 300.",
@@ -276,7 +276,7 @@ async function main() {
       console.log(`[sms-gateway-watch] adb device ready: ${devices[0]}`);
       if (args.runInstall) runInstallFlow();
       console.log(
-        "Run: node packages/app/scripts/install-android-sms-gateway.ts --grant-role --clear-logcat --watch-logs 60",
+        "Run: bun packages/app/scripts/install-android-sms-gateway.ts --grant-role --clear-logcat --watch-logs 60",
       );
       return;
     }
@@ -299,7 +299,7 @@ async function main() {
         runInstallFlow(["--pair", pairing.endpoint, "--connect", "auto"], "60");
       }
       console.log(
-        `[sms-gateway-watch] wireless pairing ready: ${pairing.endpoint}. Run: node packages/app/scripts/install-android-sms-gateway.ts --pair ${pairing.endpoint} --connect auto --wait-device 60 --grant-role --clear-logcat --watch-logs 60`,
+        `[sms-gateway-watch] wireless pairing ready: ${pairing.endpoint}. Run: bun packages/app/scripts/install-android-sms-gateway.ts --pair ${pairing.endpoint} --connect auto --wait-device 60 --grant-role --clear-logcat --watch-logs 60`,
       );
       return;
     }

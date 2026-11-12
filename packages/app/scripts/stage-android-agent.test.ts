@@ -551,14 +551,18 @@ test("artifact downloads preserve GitHub binary content negotiation", async () =
   }
 });
 
-test("Pixel runtime selection narrows the default ABI set", () => {
+test("runtime selection narrows to the requested ABI and defaults to all", () => {
   assert.deepEqual(
     selectAndroidRuntimeTargets("arm64-v8a").map((t) => t.bunArch),
     ["aarch64"],
   );
   assert.deepEqual(
-    selectAndroidRuntimeTargets(undefined).map((t) => t.bunArch),
-    ["x64", "aarch64"],
+    selectAndroidRuntimeTargets(undefined).map((t) => t.androidAbi),
+    ["x86_64", "arm64-v8a"],
+  );
+  assert.throws(
+    () => selectAndroidRuntimeTargets("riscv64"),
+    /unique supported/,
   );
 });
 test("runtime selection rejects empty, unknown, and duplicate ABI inputs", () => {
@@ -593,6 +597,8 @@ test("ABI restaging removes only unselected owned runtime directories", () => {
   try {
     fs.mkdirSync(assetsAgentDir, { recursive: true });
     fs.writeFileSync(path.join(assetsAgentDir, "unrelated"), "keep");
+    // A retired ABI left by an older checkout is pruned even when all targets stay.
+    fs.mkdirSync(path.join(assetsAgentDir, "riscv64"));
     stage(undefined);
     stage("arm64-v8a");
     stage("x86_64");

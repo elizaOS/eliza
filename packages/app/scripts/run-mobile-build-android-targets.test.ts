@@ -108,9 +108,9 @@ describe("Android mobile build target table", () => {
   ])(
     "runs the exact mobile CLI through a pre-mutation Android guard (%o)",
     (intent) => {
-      // The production package scripts invoke this CLI with Node. `process.execPath`
-      // points at Bun under `bun test`, which spends long enough compiling this
-      // large orchestrator to hit Bun's per-test timeout before the guard runs.
+      // Keep this CLI fixture on Node: under `bun test`, `process.execPath`
+      // points at Bun, whose cold compilation of this large orchestrator can
+      // reach the per-test timeout before the guard runs.
       const result = spawnSync("node", [mobileBuildScript, "android"], {
         encoding: "utf8",
         env: {
@@ -153,7 +153,7 @@ describe("Android mobile build target table", () => {
     const packageJson = JSON.parse(fs.readFileSync(appPackageJsonPath, "utf8"));
 
     expect(packageJson.scripts["build:android:cloud:debug"]).toBe(
-      "node ../../packages/app/scripts/run-mobile-build.ts android-cloud --debug",
+      "bun ../../packages/app/scripts/run-mobile-build.ts android-cloud --debug",
     );
     expect(runMobileBuildSource).toContain(
       'buildAndroidCloud({ debug: options.includes("--debug") })',
@@ -172,7 +172,7 @@ describe("Android mobile build target table", () => {
       });
       expect(result.status).toBe(1);
       expect(result.stderr).toContain(
-        "Usage: node scripts/run-mobile-build.ts",
+        "Usage: bun scripts/run-mobile-build.ts",
       );
     }
   });
@@ -217,7 +217,7 @@ describe("Android mobile build target table", () => {
     const packageJson = JSON.parse(fs.readFileSync(appPackageJsonPath, "utf8"));
 
     expect(packageJson.scripts["build:android:host-e2e"]).toBe(
-      "node ../../packages/app/scripts/run-mobile-build.ts android-host-e2e",
+      "bun ../../packages/app/scripts/run-mobile-build.ts android-host-e2e",
     );
     expect(runMobileBuildSource).toContain('target !== "android-host-e2e"');
     expect(runMobileBuildSource).toContain(

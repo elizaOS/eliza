@@ -39,7 +39,7 @@
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "typecheck": "tsc --noEmit",
-    "build": "node ../../scripts/operator/build.ts",
+    "build": "bun ../../scripts/operator/build.ts",
     "clean": "rm -rf dist",
     "dev": "bunx pepr dev"
   },

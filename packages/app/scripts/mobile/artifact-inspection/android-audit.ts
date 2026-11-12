@@ -94,7 +94,7 @@ export function auditAndroidBionicInferenceLibraries(
     const offenders = findAndroidBionicInferenceOffenders(fusedBytes);
     if (offenders.length > 0) {
       throw mobileBuildError(
-        `[mobile-build] android sideload artifact contains a Linux/musl fused inference library at ${fusedEntry} that Android's bionic loader cannot load: ${offenders.join(", ")}. Rebuild and stage that architecture with \`node packages/app/scripts/stage-elizavoice-lib.ts --abi <abi> --variant cpu\` (or the Vulkan variant with its required host tooling).`,
+        `[mobile-build] android sideload artifact contains a Linux/musl fused inference library at ${fusedEntry} that Android's bionic loader cannot load: ${offenders.join(", ")}. Rebuild and stage that architecture with \`bun packages/app/scripts/stage-elizavoice-lib.ts --abi <abi> --variant cpu\` (or the Vulkan variant with its required host tooling).`,
         {
           code: "ANDROID_BIONIC_INFERENCE_INCOMPATIBLE",
           context: { artifact, fusedEntry, offenders },

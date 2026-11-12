@@ -220,7 +220,7 @@ registry's callback is authoritative; the admin does not infer an environment
 from a hostname. Review each environment's registry before repair.
 Set `ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID` to select the same client for the
 standalone verifier. With the protected environment variables present, run
-`node packages/scripts/cloud/admin/verify-mobile-app-auth-registration.ts
+`bun packages/scripts/cloud/admin/verify-mobile-app-auth-registration.ts
 --skip-database --verify-live` to check its public metadata without a database read.
 Omitting the selector checks the primary client. Release gates use `--all-clients`
 to check the primary client and every enabled additional client, both in the
@@ -514,7 +514,7 @@ the current and next two monthly periods funded; missed months do not accumulate
   off while unset. The numbers are not selected yet; `placeholder` enables
   unselected test values only. Latency benchmark:
   `bun --conditions=eliza-source packages/cloud/scripts/plan-request-limit-latency.ts`.
-  Against a deployment, `node packages/cloud/scripts/plan-admission-deployed-latency.ts
+  Against a deployment, `bun packages/cloud/scripts/plan-admission-deployed-latency.ts
   --config <file.json> --confirm-real-requests` reports client and Server-Timing
   p50/p95 on the existing completion and geocode routes for accounts a person
   prepares (normal, cache-miss, exhausted, expired, billing outage), minus an

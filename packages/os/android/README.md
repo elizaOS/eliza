@@ -3,7 +3,7 @@
 AOSP vendor overlays and build orchestration for Cuttlefish and supported Pixel
 products. A full image build requires a Linux x86_64 builder, the pinned AOSP
 checkout, Android build dependencies, and Eliza workspace dependencies. Cuttlefish
-launches require KVM except for the RISC-V TCG path.
+launches require KVM.
 
 From the repository root:
 
@@ -30,7 +30,7 @@ Verify the full prepared source tree and matching factory archive without writin
 to either input:
 
 ```bash
-node packages/os/scripts/android/verify-source-lock.ts --profile pixel10a \
+bun packages/os/scripts/android/verify-source-lock.ts --profile pixel10a \
   --aosp-root /absolute/aosp --vendor-archive /absolute/stallion-factory.zip
 ```
 
@@ -89,7 +89,7 @@ Staging verifies hashes, pinned APK signatures, package identities, versions and
 AOSP sync rejects missing or changed artifacts. Both apps remain nonprivileged and
 signed by their pinned publishers. Chromium pins select separate x86_64 and ARM64 development
 snapshots and stage them under architecture-specific directories. Use `ARCH=arm64`
-for Pixel builds. Neither snapshot is release-qualified; RISC-V has no pinned artifact.
+for Pixel builds. Neither snapshot is release-qualified.
 Bitwarden remains locked until the user signs in and enables Android Autofill and
 passkeys. Its F-Droid build requires manual vault sync. The launcher's Passwords
 screen provides setup, backup and recovery guidance without accessing vault data.
@@ -143,7 +143,7 @@ is unchanged. Development unpacked-extension proofs do not qualify release build
   to a reviewed SKU/baseline. Missing values remain incomplete:
 
   ```bash
-  node packages/os/scripts/android/device-qualify.ts --serial SERIAL \
+  bun packages/os/scripts/android/device-qualify.ts --serial SERIAL \
     [--requirements product.json] [--fastboot]
   ```
 
@@ -184,7 +184,7 @@ Sign it (the release signer for a release; a developer key for development
 images), then stage it:
 
 ```bash
-node packages/os/scripts/android/image-launcher.ts \
+bun packages/os/scripts/android/image-launcher.ts \
   --brand-config packages/os/scripts/android/brand.eliza.json \
   --apk /absolute/signed.apk --development --source-commit ELIZA_COMMIT
 ```
@@ -222,7 +222,7 @@ Stage an independently built HOME application without replacing the Eliza runtim
 or inheriting its permission list:
 
 ```bash
-node packages/os/scripts/android/stage-launcher-overlay.ts \
+bun packages/os/scripts/android/stage-launcher-overlay.ts \
   --descriptor /absolute/launcher.json --apk /absolute/launcher.apk \
   --output /absolute/new-vendor-directory
 ```

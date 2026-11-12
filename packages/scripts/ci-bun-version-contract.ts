@@ -109,8 +109,8 @@ const REVIEWED_SETUP_BUN_SHAS = new Set([
 const FLOATING_ALLOWLIST = [];
 
 // Deliberately excluded surfaces, inventoried so the exclusion is visible
-// rather than silent. The embedded entries are the Android/RISC-V Bun binary
-// shipping boundary #17044 scopes out (their versions are proven on-device,
+// rather than silent. The embedded entry is the Android Bun binary
+// shipping boundary #17044 scopes out (its version is proven on-device,
 // not by text equality); the advisory entry is developer-machine guidance,
 // not a repository runtime selector.
 const EXCLUDED_SURFACES = [
@@ -119,11 +119,6 @@ const EXCLUDED_SURFACES = [
     classification: "contract-self-excluded",
     reason:
       "negative test fixtures intentionally contain rejected install commands",
-  },
-  {
-    prefix: "packages/app/scripts/bun-riscv64/",
-    classification: "embedded-boundary-excluded",
-    reason: "custom RISC-V Bun build with its own device-proof record",
   },
   {
     prefix: "packages/app/scripts/lib/stage-android-agent.ts",
@@ -1071,12 +1066,12 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT, overrides = {}) {
     }
     if (CONTRACT_ENFORCEMENT_WORKFLOWS.has(name)) {
       if (
-        !/node packages\/scripts\/ci-bun-version-contract\.ts\s+--inventory\s+["']?\$RUNNER_TEMP\/bun-runtime-inventory\.json/.test(
+        !/bun packages\/scripts\/ci-bun-version-contract\.ts\s+--inventory\s+["']?\$RUNNER_TEMP\/bun-runtime-inventory\.json/.test(
           text,
         )
       ) {
         violate(
-          `${rel}: required lane does not execute the Bun contract with an exact-head inventory. Run \`node packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"\`.`,
+          `${rel}: required lane does not execute the Bun contract with an exact-head inventory. Run \`bun packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"\`.`,
         );
       }
       if (

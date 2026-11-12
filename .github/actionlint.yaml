@@ -7,7 +7,6 @@ self-hosted-runner:
     - kvm
     - elizaos-release-build
     - elizaos-release-signing
-    - riscv64
 
 paths:
   .github/workflows/*.yml:

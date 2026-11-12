@@ -6,7 +6,7 @@
 // token is readable, chat round-trip works, and response generation
 // stayed local.
 //
-// Designed to run after `node scripts/android/build-aosp.ts --launch`
+// Designed to run after `bun scripts/android/build-aosp.ts --launch`
 // finishes. Idempotent: re-running on the same cvd is fine; the service
 // is restartable. Exit code 0 on full pass, 1 on any failure.
 //
@@ -749,7 +749,7 @@ export function parseSmokeArgs(argv) {
       i += 1;
     } else if (arg === "-h" || arg === "--help") {
       console.log(
-        "Usage: node scripts/android/smoke-cuttlefish.ts [--json] [--app-config <PATH> | --package-name <ID> [--app-name <NAME>]] [--expected-abi <ABI>]",
+        "Usage: bun scripts/android/smoke-cuttlefish.ts [--json] [--app-config <PATH> | --package-name <ID> [--app-name <NAME>]] [--expected-abi <ABI>]",
       );
       process.exit(0);
     } else {

@@ -25,7 +25,7 @@
  *     - any serious/critical a11y violation
  *
  * Usage:
- *   node test/story-gate/run-story-gate.mjs [--static-dir storybook-static]
+ *   bun test/story-gate/run-story-gate.mjs [--static-dir storybook-static]
  *     [--out <output-directory>] [--concurrency 6] [--shard i/n]
  *     [--section Primitives] [--grep <substr>] [--limit N]
  *     [--no-screenshots] [--no-a11y]

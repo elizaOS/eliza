@@ -124,7 +124,7 @@ the locked tag object and peeled commit; after `repo init`, that
 commit (or, in mirror mode, tag and commit in the bare repository) and every
 `requiredSourceFiles` path. Projects outside the AOSP manifest therefore fail
 closed in `sync-aosp.sh`. Check a finished checkout with
-`node packages/os/scripts/android/verify-source-lock.ts --profile NAME --aosp-root DIR`.
+`bun packages/os/scripts/android/verify-source-lock.ts --profile NAME --aosp-root DIR`.
 
 ## Evidence levels
 
