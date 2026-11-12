@@ -18,6 +18,7 @@ const required = [
   "a late identity refusal keeps a replacement private-file credential",
   "one live check serves concurrent cold requests, and background checks coalesce",
   "sign-out, sign-in, revocation and a refused paid call drop the cached answer",
+  "a refusal during a background check schedules another, and settling waits for it",
   "the access route shares the live check and keeps the paid cache warm",
   "a paid route that Cloud refuses tells the Cloud routes to drop their cached answer",
 ];

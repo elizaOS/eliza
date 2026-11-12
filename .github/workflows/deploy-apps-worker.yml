@@ -1,5 +1,10 @@
 name: Deploy Apps Worker (Product 2)
 
+# Paused by the repository owner on 2026-11-10: Apps deployment is unused.
+# Keep this workflow disabled in GitHub Actions. It is absent from the staging
+# and main effect registries, and both API environments set APPS_DEPLOY_ENABLED=0.
+# Resume all three controls only after the Apps service is approved and qualified.
+
 run-name: Apps worker ${{ inputs.environment || 'staging' }} ${{ inputs.source_sha || github.sha }} ${{ inputs.effect_digest || 'manual' }}
 
 # SSHes to the apps-control host, fetches the target branch, installs the

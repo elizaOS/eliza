@@ -39,7 +39,7 @@
  *       "billing-outage": { "keyEnv": "BENCH_OUTAGE_KEY", "apiBase": "https://<outage deployment>" } } }
  * Cache-miss needs iterations x services fresh keys, comma-separated.
  *
- * Run:    node packages/cloud/scripts/plan-admission-deployed-latency.ts \
+ * Run:    bun packages/cloud/scripts/plan-admission-deployed-latency.ts \
  *           --config <file.json> --confirm-real-requests
  * Output: test-results/plan-admission-deployed-latency/results.json
  */

@@ -76,7 +76,10 @@ public final class EmbeddedRuntimeGroupTest {
           // Every private file is published before the agent exists.
           check(events.equals(List.of("agent-token","gateway-token","credential-binding.json")));
           events.add("agent");
-          return command(agent,mode.equals("agent-failure")?200:agentDelay,mode.equals("agent-failure"));
+          // In gateway-exit the agent boots for longer than the gateway lives, so a launch that
+          // waited out the agent's boot before noticing the dead gateway would report it ready.
+          return command(agent,mode.equals("agent-failure")?200:mode.equals("gateway-exit")?5000:agentDelay,
+            mode.equals("agent-failure"));
         },(agent,gateway,brokerPort,brokerToken)->{
           check(events.equals(List.of("agent-token","gateway-token","credential-binding.json","agent","broker")));
           check(brokerPort>0&&brokerToken.length()==64);
@@ -126,6 +129,8 @@ public final class EmbeddedRuntimeGroupTest {
           until(()->closes.get()==1);
           until(()->session.snapshot().processes.values().stream().noneMatch(Process::isAlive));
           check(launched[0]==0);
+          // A gateway that exits while the agent boots fails the agent's wait at once.
+          if(mode.equals("gateway-exit"))check(!agentReady.get());
         }
       } finally { session.close(); }
       until(()->session.snapshot().processes.values().stream().noneMatch(Process::isAlive));

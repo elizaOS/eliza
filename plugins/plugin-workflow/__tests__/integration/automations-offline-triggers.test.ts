@@ -154,6 +154,7 @@ function triggerRoute(tasks: Array<Record<string, unknown>>) {
           store.delete(taskId);
         },
       } as unknown as IAgentRuntime,
+      assertCurrentRuntime: () => {},
       ownerEntityId: owner,
       localOwnerEntityId: owner,
       readJsonBody: async () => body ?? {},

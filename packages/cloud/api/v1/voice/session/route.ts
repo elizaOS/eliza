@@ -26,7 +26,7 @@ import type {
 } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { requireGenerativeRouteCaller } from "@/api-app/lib/generative-route-auth";
+import { requireGenerativeRouteCaller } from "../../../src/lib/generative-route-auth";
 
 /**
  * POST /api/v1/voice/session — mint a scoped voice-session token (contract §7.1).

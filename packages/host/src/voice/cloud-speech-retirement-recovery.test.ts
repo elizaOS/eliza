@@ -238,7 +238,7 @@ test("restart uses its journal to retire the exact prior session before a new mi
   const origin = "https://api.eliza.app";
   const conversation = "conversation";
   const previous = crypto.randomUUID();
-  const prepared = crypto.randomUUID();
+  const prepared = "55555555-5555-5555-8555-555555555555";
   const events: string[] = [];
   const journal = cloudSpeechRecoveryJournal(root, owner, origin, conversation);
   try {
@@ -333,3 +333,113 @@ test("restart uses its journal to retire the exact prior session before a new mi
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test.each(["admit", "cancel", "owner-change", "retirement-unknown", "expired"])(
+  "successor consent prewarms without provider admission: %s",
+  async (outcome) => {
+    const previous = crypto.randomUUID();
+    const prepared = "55555555-5555-5555-8555-555555555555";
+    const pending = new Set([previous]);
+    const events: string[] = [];
+    const controller = new AbortController();
+    let current = true;
+    let release!: () => void;
+    let signalPrepared!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const ready = new Promise<void>((resolve) => {
+      signalPrepared = resolve;
+    });
+    const start = createCloudSpeechRelayPorts({
+      enabled: true,
+      origin: "https://api.eliza.app",
+      credential: async () => "current-owner-key",
+      signal: controller.signal,
+      assertCurrent() {
+        if (!current) throw Error("owner changed");
+      },
+      recoveryJournal: {
+        async pending() {
+          return [...pending];
+        },
+        async record(id) {
+          pending.add(id);
+        },
+        async clear(id) {
+          pending.delete(id);
+        },
+      },
+      async beforeProviderAdmission() {
+        signalPrepared();
+        await gate;
+      },
+      fetch: (async (url) => {
+        const path = new URL(String(url)).pathname;
+        if (path.endsWith("/consent")) {
+          events.push("consent");
+          return Response.json({
+            consentNonce: nonce,
+            expiresAt: new Date(
+              Date.now() + (outcome === "expired" ? 20 : 60000),
+            ).toISOString(),
+            retirementProofVersion: 1,
+            recoverySessionId: prepared,
+          });
+        }
+        if (path.endsWith("/revoke")) {
+          const id = path.split("/").at(-2);
+          if (!id) throw Error("Missing retirement ID");
+          events.push(`revoke:${id}`);
+          if (id === previous && outcome === "retirement-unknown")
+            return Response.json({}, { status: 503 });
+          return Response.json({
+            revoked: true,
+            retirement: {
+              version: 1,
+              sessionId: id,
+              state: "confirmed",
+              mode: "never_started",
+              stt: "not_dispatched",
+              tts: "not_dispatched",
+              accounting: "not_started",
+              completedAt: new Date().toISOString(),
+            },
+          });
+        }
+        events.push("mint");
+        throw Error("mint response lost");
+      }) as typeof fetch,
+      websocket() {
+        throw Error("No provider socket expected");
+      },
+    });
+    // Observe rejection immediately; the barrier deliberately keeps startup pending.
+    const result = start.then(
+      () => null,
+      (error: unknown) => error,
+    );
+    await ready;
+    expect(events).toEqual(["consent"]);
+    expect([...pending]).toEqual([previous, prepared]);
+    if (outcome === "cancel") controller.abort();
+    if (outcome === "owner-change") current = false;
+    if (outcome === "expired")
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    release();
+    expect(await result).toBeInstanceOf(Error);
+    expect(events.includes("mint")).toBe(outcome === "admit");
+    expect(events.at(-1)).toBe(`revoke:${prepared}`);
+    expect(pending.has(prepared)).toBe(false);
+    expect(pending.has(previous)).toBe(
+      ["cancel", "owner-change", "retirement-unknown"].includes(outcome),
+    );
+    if (outcome === "admit")
+      expect(events).toEqual([
+        "consent",
+        `revoke:${previous}`,
+        "mint",
+        `revoke:${prepared}`,
+      ]);
+  },
+);

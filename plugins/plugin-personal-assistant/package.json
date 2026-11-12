@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-personal-assistant",
-  "version": "2.0.12-beta.0",
+  "version": "2.0.5",
   "type": "module",
   "description": "Personal-assistant orchestration plugin: BRIEF, PRIORITIZE, PERSONAL_ASSISTANT cross-domain orchestration, scheduled-task owner CRUD, and default-pack composition. Slimmed from the legacy plugin-lifeops; domain-specific surfaces have moved to plugin-inbox, plugin-goals, plugin-calendar, plugin-blocker, plugin-relationships, etc.",
   "sideEffects": [
@@ -49,9 +49,9 @@
     "./native-host/bill-review-controller": "./native-host/bill-review-controller.ts"
   },
   "scripts": {
-    "lint:default-packs": "node ../../packages/scripts/plugins/plugin-personal-assistant/lint-default-packs.ts",
+    "lint:default-packs": "bun ../../packages/scripts/plugins/plugin-personal-assistant/lint-default-packs.ts",
     "verify": "bun run lint:default-packs && bun run build:types && bun run test",
-    "pretest": "node ../../packages/scripts/plugins/plugin-personal-assistant/lint-default-packs.ts",
+    "pretest": "bun ../../packages/scripts/plugins/plugin-personal-assistant/lint-default-packs.ts",
     "test": "bun run test:bill-host && vitest run --config vitest.config.ts",
     "test:background-real": "vitest run --config vitest.background-real.config.ts test/scheduled-task-end-to-end.e2e.test.ts test/reminder-review-job.real.e2e.test.ts test/lifeops-scheduling.real.test.ts test/schedule-merged-state.real.test.ts",
     "test:integration": "vitest run --config vitest.src-integration.config.ts && cd \"$(git rev-parse --show-toplevel)\" && vitest run --config packages/scripts/vitest/integration.config.ts plugins/plugin-personal-assistant/test/life-smoke.integration.test.ts",
@@ -62,7 +62,7 @@
     "bench:work-threads": "cd ../.. && bun packages/scripts/plugins/plugin-personal-assistant/work-thread-benchmark.ts",
     "verify:live-schedule": "bun run ../../packages/scripts/plugins/plugin-personal-assistant/verify-live-schedule-data.ts",
     "build": "bun run build:js && bun run build:views && bun run build:types",
-    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
+    "clean": "bun ../../packages/scripts/rm-path-recursive.ts dist",
     "build:js": "bun run clean && tsup --config tsup.config.ts",
     "build:views": "vite build --config vite.config.views.ts",
     "build:types": "tsc6 --noCheck -p tsconfig.build.json",
@@ -72,7 +72,7 @@
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "test:bill-host": "node --test --conditions=eliza-source native-host/*.test.mjs",
-    "test:guided-website": "node --conditions=eliza-source scripts/test-guided-website-chromium.mjs"
+    "test:guided-website": "bun --conditions=eliza-source scripts/test-guided-website-chromium.mjs"
   },
   "dependencies": {
     "@capacitor/core": "8.4.0",
@@ -113,7 +113,7 @@
     "tldts": "7.4.16"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4.3.1",
+    "@tailwindcss/vite": "^4.3.5",
     "tailwindcss": "^4.3.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "@electric-sql/pglite": "^0.4.0",
@@ -122,14 +122,14 @@
     "dotenv": "^17.2.3",
     "fs-extra": "^11.4.0",
     "google-auth-library": "^11.1.0",
-    "jsdom": "^30.1.3",
+    "jsdom": "^31.0.0",
     "json5": "^2.2.3",
-    "playwright": "1.64.1",
+    "playwright": "1.65.0",
     "ts-morph": "28.0.0",
     "tsup": "^9.0.0",
     "react-dom": "*",
     "vite": "^8.3.3",
-    "vitest": "^5.0.5",
+    "vitest": "^5.1.0",
     "@elizaos/testing": "workspace:*",
     "@elizaos/plugin-local-inference": "workspace:*"
   },

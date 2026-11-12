@@ -199,3 +199,27 @@ describe("one Calendar model view", () => {
     );
   });
 });
+
+it("gives the response model a DST-correct local range without rewriting canonical timestamps", () => {
+  const appointment = {
+    ...stored("incident", "Appointment", 19),
+    startAt: "2026-11-10T19:00:00.000Z",
+    endAt: "2026-11-10T19:30:00.000Z",
+    timezone: "America/New_York",
+  };
+  const data = {
+    events: [appointment],
+    sources: [],
+    replyContext: { context: { timeZone: "America/Los_Angeles" } },
+  };
+  const before = structuredClone(data);
+  expect(calendarReadPromptProjection(data).promptData?.events).toMatchObject([
+    {
+      startAt: appointment.startAt,
+      endAt: appointment.endAt,
+      timezone: "America/New_York",
+      displayTime: "Nov 10, 11:00 AM – 11:30 AM PST",
+    },
+  ]);
+  expect(data).toEqual(before);
+});

@@ -32,7 +32,10 @@ The helper copies the canonical Pages configuration into a
 private temporary directory, keeps its other bindings and uses the existing
 built Worker. Pinned Wrangler reads that directory without `--config` or
 `--env`. The release verifies each public fallback body and privacy header after
-deployment, then removes the temporary configuration. This does not register an
+deployment, then removes the temporary configuration. For a callback that ends
+in `/auth/callback` it also probes the derived checkout return
+(`/billing/return`) and requires the exact script-free page that forwards only
+a well-formed session id and the result. This does not register an
 OAuth client or change Android App Link verification.
 
 Gateway deployment, verification, homepage readiness, and DNS operations belong
@@ -63,33 +66,6 @@ The staging database identity report can query the recorded Hetzner server IDs
 for agents blocked by migration 0398. Enable `read_only_agent_provider_state` to
 emit hashed subjects and provider-state comparisons. A server absent from the
 configured project does not establish historical billing or authorize a repair.
-
-## Staging 0398 deletion row repair
-
-Migration 0398 refuses to run while an agent in `deletion_pending` or
-`deletion_failed` lacks pre-deletion billing authority. On staging, one legacy
-failed deletion had no captured previous status or billing status, no compute
-funding and no provider stop record, and its server no longer existed. The
-owner approved retiring that row. `Cloud staging deletion row repair`
-(`.github/workflows/cloud-staging-deletion-row-repair.yml`) does this:
-
-1. Dispatch it from `staging` with `expected_cloud_commit` set to the staging
-   head and `mode=dry-run`. It lists the rows the migration guard reports (ID
-   and lifecycle fields only) in a read-only transaction.
-2. Dispatch `mode=apply` with that `agent_id` and a `reason`. In one
-   transaction it checks the pinned staging database identity, locks the
-   guard's tables, requires the guard to report exactly that row in the
-   approved state (`deletion_failed`, null previous status and billing status,
-   no funding, no stop intent), sets `deleted_at` on exactly one row, requires
-   the guard to report zero rows, and commits. The receipt, with the reason, is
-   kept as a 90-day artifact and in the job summary.
-
-Only `deleted_at` and `updated_at` change, so no billing segment is written.
-The script (`admin/staging-deletion-row-repair.ts`) refuses to run unless
-`GITHUB_REF` is `refs/heads/staging`, the operator environment is staging and
-the database identity matches `admin/staging-database-identity-pin.ts`. Confirm
-the result with the database identity staging report
-(`read_only_deletion_billing_provenance`).
 
 ## Staging grant codes
 

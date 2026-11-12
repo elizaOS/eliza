@@ -94,6 +94,9 @@ export interface CloudSpeechRelayClientOptions {
   /** Register cleanup before remote admission; remains usable if acquisition rejects. */
   registerRetirement?(retirement: CloudSpeechRelayRetirement): void;
   recoveryJournal?: CloudSpeechRecoveryJournal;
+  /** Host-only successor fence. Consent may prepare a ledger before this resolves;
+   * recovery and provider admission must wait for confirmed predecessor retirement. */
+  beforeProviderAdmission?(): Promise<void>;
   fetch?: typeof fetch;
   websocket?: (url: string) => WebSocket;
   /** Safe structured diagnostics only; logger failure cannot alter transport lifecycle. */
@@ -262,6 +265,11 @@ export async function createCloudSpeechRelayPorts(
     throw new CloudSpeechRelayClientError(
       "configuration",
       "Cloud speech transport must run on the host",
+    );
+  if (options.beforeProviderAdmission && !options.recoveryJournal)
+    throw new CloudSpeechRelayClientError(
+      "configuration",
+      "Prepared speech requires a recovery journal",
     );
   const origin = new URL(options.origin);
   if (
@@ -511,8 +519,11 @@ export async function createCloudSpeechRelayPorts(
         ? body.consentNonce
         : undefined;
     let finishAdmission: (() => void) | undefined;
-    const deadline = started + 10000;
-    const requestDeadline = AbortSignal.timeout(10000);
+    // Consent has no provider allocation and may need a cold authorization
+    // and storage round trip. Stop still cancels it through startupSignal.
+    const requestTimeoutMs = mintRequest ? 10_000 : 30_000;
+    const deadline = started + requestTimeoutMs;
+    const requestDeadline = AbortSignal.timeout(requestTimeoutMs);
     const startupSignal = AbortSignal.any([signal, requestDeadline]);
     const requestSignal = mintRequest ? requestDeadline : startupSignal;
     const encoded = JSON.stringify(body);
@@ -887,14 +898,18 @@ export async function createCloudSpeechRelayPorts(
   };
   try {
     options.registerRetirement?.(retirement);
-    if (journal) {
+    const recover = async () => {
+      if (!journal) return;
       for (const id of await journal.pending()) {
         assertCurrent();
         requireValue(UUID.test(id));
+        // The successor ledger is not a previous interrupted admission.
+        if (id === sessionId) continue;
         await confirmSessionRetirement(id, credential, assertCurrent);
       }
       assertCurrent();
-    }
+    };
+    if (!options.beforeProviderAdmission) await recover();
     const consent = await request(SPEECH_RELAY_ROUTES.consent, {});
     exact(consent, [
       "consentNonce",
@@ -917,6 +932,24 @@ export async function createCloudSpeechRelayPorts(
       journalWrite = journal.record(preparedId);
       await journalWrite;
       assertCurrent();
+    }
+    const beforeProviderAdmission = options.beforeProviderAdmission;
+    if (beforeProviderAdmission) {
+      // Race the host fence with cancellation so an unclaimed successor cannot
+      // retain a pending acquisition (or block host shutdown) indefinitely.
+      await new Promise<void>((resolve, reject) => {
+        const abort = () => reject(lifecycle.signal.reason);
+        lifecycle.signal.throwIfAborted();
+        lifecycle.signal.addEventListener("abort", abort, { once: true });
+        void beforeProviderAdmission()
+          .then(resolve, reject)
+          .finally(() => {
+            lifecycle.signal.removeEventListener("abort", abort);
+          });
+      });
+      assertCurrent();
+      await recover();
+      requireValue(Date.parse(String(consent.expiresAt)) > Date.now());
     }
     const minted = await request(SPEECH_RELAY_ROUTES.mint, {
       consentNonce: consent.consentNonce,

@@ -4,7 +4,10 @@ import type {
 } from "@elizaos/contracts";
 import { AgentRuntime, type Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { createCalendarActionRunner } from "../actions/calendar-handler.js";
+import {
+  createCalendarActionRunner,
+  formatCalendarSearchResults,
+} from "../actions/calendar-handler.js";
 import { CalendarService } from "../service/CalendarService.js";
 import { buildNextCalendarEventContext } from "./calendar-normalize.js";
 import { formatCalendarFeed, formatNextEventContext } from "./format.js";
@@ -380,4 +383,37 @@ describe("next-event temporal evidence", () => {
     expect(model).not.toHaveBeenCalled();
     expect(feed).toEqual(original);
   });
+});
+
+it("formats a remote event in the requested local clock after the DST rollback", () => {
+  const appointment = event("2026-11-10T19:00:00.000Z", "America/New_York");
+  appointment.endAt = "2026-11-10T19:30:00.000Z";
+  const feed = { events: [appointment] } as Parameters<
+    typeof formatCalendarFeed
+  >[0];
+  const before = structuredClone(feed);
+  expect(
+    formatCalendarFeed(feed, "tomorrow", {
+      asOf: new Date("2026-11-10T06:00:00.000Z"),
+      timeZone: "America/Los_Angeles",
+    }),
+  ).toContain("Nov 10, 11:00 AM – 11:30 AM PST");
+  expect(feed).toEqual(before);
+});
+
+it("uses the same local range for one or multiple matching events", () => {
+  const appointment = event("2026-11-10T19:00:00.000Z", "America/New_York");
+  appointment.endAt = "2026-11-10T19:30:00.000Z";
+  const reference = {
+    asOf: new Date("2026-11-10T06:00:00.000Z"),
+    timeZone: "America/Los_Angeles",
+  };
+  for (const events of [
+    [appointment],
+    [appointment, { ...appointment, id: "other" }],
+  ]) {
+    expect(
+      formatCalendarSearchResults(events, "Review", "tomorrow", reference),
+    ).toContain("Nov 10, 11:00 AM – 11:30 AM PST");
+  }
 });

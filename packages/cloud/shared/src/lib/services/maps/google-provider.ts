@@ -587,8 +587,7 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
       maxZoomRects?: unknown;
     } | null;
     const copyright = boundedText(json?.copyright, 500);
-    if (copyright === undefined && json?.copyright !== undefined && json.copyright !== "")
-      throw invalidResponse();
+    if (!copyright) throw invalidResponse();
     const maxZoom = Array.isArray(json?.maxZoomRects)
       ? json.maxZoomRects.reduce<number | undefined>((best, rect) => {
           const zoom = finiteNumber((rect as { maxZoom?: unknown } | null)?.maxZoom);
@@ -597,7 +596,7 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
       : undefined;
     return {
       providerId: this.providerId,
-      copyright: copyright ?? TILE_ATTRIBUTION,
+      copyright,
       ...(maxZoom !== undefined ? { maxZoom } : {}),
     };
   }
@@ -610,7 +609,14 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
     const url = new URL(`2dtiles/${request.z}/${request.x}/${request.y}`, TILES_URL);
     url.searchParams.set("session", session.token);
     url.searchParams.set("key", this.apiKey);
-    return upstreamFetch(url, { method: "GET" }, signal, this.fetchImpl, [200, 401, 403, 404]);
+    // Fetch the current tile without retaining provider content in an HTTP cache.
+    return upstreamFetch(
+      url,
+      { method: "GET", cache: "no-store" },
+      signal,
+      this.fetchImpl,
+      [200, 401, 403, 404],
+    );
   }
 
   private tileSessionKey(): string {

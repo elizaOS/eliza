@@ -77,7 +77,7 @@ fi
 # Value-safe validation: exact UUID allowlists, dedicated signing
 # key/kid, and the code/runtime version are all required before the
 # first QA-related Worker secret is touched.
-node ../scripts/validate-staging-session-cutover.ts
+bun ../scripts/validate-staging-session-cutover.ts
 
 # Fish is a separate, default-off promotion within realtime voice.
 # Refuse to advertise it unless its own credentials and the exact

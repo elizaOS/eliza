@@ -68,7 +68,7 @@ import type {
 } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { resolveStewardBaseUrl } from "@/api-app/steward/base-url";
+import { resolveStewardBaseUrl } from "../../../../src/steward/base-url";
 import {
   MOBILE_APP_AUTH_TOKEN_RATE_LIMIT,
   mobileAppAuthRateLimitMiddleware,

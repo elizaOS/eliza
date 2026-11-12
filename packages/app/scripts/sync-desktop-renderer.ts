@@ -295,7 +295,7 @@ function syncRendererBundle() {
 
 function printUsage() {
   console.log(
-    "Usage: node scripts/sync-desktop-renderer.ts [--app-path <path>] [--renderer-path <path>] [--skip-build] [--watch]",
+    "Usage: bun scripts/sync-desktop-renderer.ts [--app-path <path>] [--renderer-path <path>] [--skip-build] [--watch]",
   );
   console.log("Environment:");
   console.log(
@@ -305,11 +305,11 @@ function printUsage() {
     "  ELIZA_DESKTOP_RENDERER_PATH  Override renderer folder directly",
   );
   console.log("\nExamples:");
-  console.log("  node scripts/sync-desktop-renderer.ts");
+  console.log("  bun scripts/sync-desktop-renderer.ts");
   console.log(
-    "  node scripts/sync-desktop-renderer.ts --app-path ~/Applications/Eliza.app --skip-build",
+    "  bun scripts/sync-desktop-renderer.ts --app-path ~/Applications/Eliza.app --skip-build",
   );
-  console.log("  node scripts/sync-desktop-renderer.ts --watch");
+  console.log("  bun scripts/sync-desktop-renderer.ts --watch");
 }
 
 function main() {

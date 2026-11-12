@@ -297,6 +297,10 @@ def stage(apk, output, module, target='stallion', admission=None):
                    '    preprocessed: true,\n    product_specific: true,\n'
                    '    dex_preopt: { enabled: false },\n}\n')
     expected_bp = (admission or {}).get('launcherBlueprint', expected_bp)
+    # Only a launcher whose reviewed descriptor names privileged permissions is a priv-app.
+    privileged = (admission or {}).get('launcherPrivileged') is True
+    if ('    privileged: true,\n' in expected_bp) != privileged:
+        raise ValueError('Launcher privilege differs from its admitted blueprint')
     if ((output / 'Android.bp').read_text() != expected_bp
             or any((output / name).exists() for name in ['Android.mk', 'config.fs', 'native-libraries.json'])):
         raise ValueError('Expected a fresh, exact upstream launcher overlay')
@@ -306,7 +310,7 @@ def stage(apk, output, module, target='stallion', admission=None):
     records = []
     for index, (name, data) in enumerate(payloads):
         (native / name).write_bytes(data)
-        destination = f'app/{module}/lib/{arch}'
+        destination = f'{"priv-app" if privileged else "app"}/{module}/lib/{arch}'
         records.append({'apkEntry': prefix + name,
                         'path': native_name + '/' + name,
                         'installPath': '/product/' + destination + '/' + name,
@@ -324,7 +328,8 @@ def stage(apk, output, module, target='stallion', admission=None):
         f'LOCAL_MODULE := {module}\n' +
         'LOCAL_MODULE_CLASS := APPS\nLOCAL_MODULE_SUFFIX := .apk\n'
         'LOCAL_SRC_FILES := Launcher.apk\nLOCAL_CERTIFICATE := PRESIGNED\n'
-        'LOCAL_SDK_VERSION := 36\nLOCAL_PRODUCT_MODULE := true\n'
+        'LOCAL_SDK_VERSION := 36\nLOCAL_PRODUCT_MODULE := true\n' +
+        ('LOCAL_PRIVILEGED_MODULE := true\n' if privileged else '') +
         f'LOCAL_MULTILIB := 64\nLOCAL_MODULE_TARGET_ARCH := {arch}\n'
         'LOCAL_DEX_PREOPT := false\nLOCAL_PREBUILT_JNI_LIBS := ' +
         ' '.join(native_name + '/' + name for name, _ in payloads) +
@@ -338,19 +343,21 @@ def stage(apk, output, module, target='stallion', admission=None):
     return report
 
 
-def finalize_soong(output, module, report, remaining_blueprint=""):
+def finalize_soong(output, module, report, remaining_blueprint="", privileged=False):
     # Shared admission remains authoritative. Adapt only its legacy install rules
     # for image products that ignore Android.mk; never alter admitted payloads.
     if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_]*', module) or report.get('moduleName') != module:
         raise ValueError('Native module identity changed')
     arch = TARGETS[report['target']]['arch']
+    # prebuilt_priv_app is build/soong's own rule for files under <partition>/priv-app.
+    directory, rule = ('priv-app', 'prebuilt_priv_app') if privileged else ('app', 'prebuilt_app_native')
     if (output / 'Android.bp').read_text() != '// The launcher is defined in Android.mk for bundled JNI installation.\n' + remaining_blueprint:
         raise ValueError('Unexpected shared launcher blueprint')
     if hashlib.sha256((output / 'Launcher.apk').read_bytes()).hexdigest() != report['apkSha256']:
         raise ValueError('Admitted launcher bytes changed')
     for record in report['libraries']:
         name = Path(record['path']).name
-        if not re.fullmatch(r'lib[A-Za-z0-9_.+-]+\.so', name) or record['path'] != f'native-{arch}/{name}' or record['installPath'] != f'/product/app/{module}/lib/{arch}/{name}':
+        if not re.fullmatch(r'lib[A-Za-z0-9_.+-]+\.so', name) or record['path'] != f'native-{arch}/{name}' or record['installPath'] != f'/product/{directory}/{module}/lib/{arch}/{name}':
             raise ValueError('Native installation path changed')
         source = output / record['path']
         if source.is_symlink() or hashlib.sha256(source.read_bytes()).hexdigest() != record['sha256']:
@@ -365,12 +372,13 @@ def finalize_soong(output, module, report, remaining_blueprint=""):
     blueprint = ('// Generated from a hash- and signer-verified downstream launcher.\n'
         'android_app_import {\n' + f'    name: "{module}",\n' +
         '    apk: "Launcher.apk",\n    presigned: true,\n'
-        '    preprocessed: true,\n    product_specific: true,\n' +
+        '    preprocessed: true,\n' + ('    privileged: true,\n' if privileged else '') +
+        '    product_specific: true,\n' +
         '    required: ' + json.dumps(native_modules) + ',\n' +
         '    dex_preopt: { enabled: false },\n}\n')
     for name, record in zip(native_modules, records):
-        relative = Path(record['installPath']).relative_to('/product/app')
-        blueprint += ('\nprebuilt_app_native {\n' + f'    name: "{name}",\n' +
+        relative = Path(record['installPath']).relative_to('/product/' + directory)
+        blueprint += ('\n' + rule + ' {\n' + f'    name: "{name}",\n' +
             f'    src: "{record["path"]}",\n    filename: "{relative.name}",\n' +
             f'    relative_install_path: "{relative.parent}",\n' +
             '    product_specific: true,\n}\n')
@@ -391,7 +399,8 @@ if __name__ == '__main__':
     admission = json.loads(args.admission.read_text(), object_pairs_hook=unique_object) if args.admission else None
     if args.finalize_soong:
         report = json.loads((args.output / 'native-libraries.json').read_text(), object_pairs_hook=unique_object)
-        result = finalize_soong(args.output, args.module, report, (admission or {}).get('remainingBlueprint', ''))
+        result = finalize_soong(args.output, args.module, report, (admission or {}).get('remainingBlueprint', ''),
+                                (admission or {}).get('launcherPrivileged') is True)
     else:
         result = stage(args.apk, args.output, args.module, args.target, admission)
     print(json.dumps(result, indent=2))

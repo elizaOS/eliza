@@ -735,7 +735,7 @@ export function createCloudRoutes({
   let paidAccess = null; // { generation, fingerprint, access }
   let paidAccessEpoch = 0;
   let paidAccessCheck = null; // { epoch, generation, promise }
-  let scheduledRevalidation = null;
+  let scheduledRevalidation = null; // { epoch, promise }
   function invalidatePaidAccess() {
     paidAccessEpoch++;
     paidAccess = null;
@@ -1086,18 +1086,25 @@ export function createCloudRoutes({
     paidAccessCheck = flight;
     return flight.promise;
   }
-  /** Refreshes the cache after the request that used it, off its path. */
+  /**
+   * Refreshes the cache after the request that used it, off its path. One
+   * check is scheduled per cache epoch: a pending one whose epoch was dropped
+   * (a refusal, a credential write) cannot fill the cache, so another is
+   * scheduled for the current epoch.
+   */
   function scheduleRevalidation() {
-    if (scheduledRevalidation) return;
-    scheduledRevalidation = new Promise((resolve) => {
+    if (scheduledRevalidation?.epoch === paidAccessEpoch) return;
+    const scheduled = { epoch: paidAccessEpoch, promise: null };
+    scheduled.promise = new Promise((resolve) => {
       const timer = setTimeout(
         () => resolve(sharedAccessCheck().catch(() => {})),
         0,
       );
       timer.unref?.();
     }).finally(() => {
-      scheduledRevalidation = null;
+      if (scheduledRevalidation === scheduled) scheduledRevalidation = null;
     });
+    scheduledRevalidation = scheduled;
   }
   function paidAccessRefused() {
     invalidatePaidAccess();
@@ -2559,10 +2566,17 @@ export function createCloudRoutes({
   // A host that saw Cloud refuse a paid call (401 or 402) made outside these
   // routes, for example by the agent, drops the cached answer with this.
   handleCloudRoute.paidAccessRefused = paidAccessRefused;
-  // Resolves once the background check scheduled after a request has finished.
+  // Resolves once no background or live check is pending for the current
+  // cache epoch. A check for a dropped epoch is awaited too, and the wait goes
+  // on while a newer check is scheduled or started meanwhile.
   handleCloudRoute.paidAccessSettled = async () => {
-    await scheduledRevalidation;
-    await paidAccessCheck?.promise.catch(() => {});
+    for (;;) {
+      const scheduled = scheduledRevalidation;
+      const flight = paidAccessCheck;
+      if (!scheduled && !flight) return;
+      await scheduled?.promise;
+      await flight?.promise.catch(() => {});
+    }
   };
   // This port is never exposed as a renderer route. It shares login/logout
   // epochs. Each read first checks that the owner's connected Google account

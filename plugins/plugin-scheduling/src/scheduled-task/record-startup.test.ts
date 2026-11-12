@@ -164,7 +164,33 @@ it("seeds the opt-in consumer routines disabled, alongside the fallback, once", 
       if (routineIds.has(task.taskId))
         expect(task.state.firedAt).toBeUndefined();
     }
-    // Owner deletes one routine; a restart must not resurrect or duplicate.
+    // Fresh defaults use owner-local time; an owner edit must survive later boots.
+    const goodMorning = (await runner.list()).find(
+      (task) =>
+        task.idempotencyKey ===
+        FALLBACK_DEFAULT_PACK_IDEMPOTENCY_KEYS.goodMorning,
+    );
+    if (!goodMorning) throw new Error("Good morning was not seeded");
+    expect(goodMorning.trigger).toEqual({
+      kind: "cron",
+      expression: "0 8 * * *",
+      tz: OWNER_LOCAL_TZ,
+    });
+    const editedTrigger = {
+      kind: "cron",
+      expression: "0 7 * * *",
+      tz: "America/New_York",
+    } as const;
+    await runner.apply(goodMorning.taskId, "edit", { trigger: editedTrigger });
+    // Owner deletes one routine and one fallback; a restart must not resurrect either.
+    const weekly = (await runner.list()).find(
+      (task) =>
+        task.idempotencyKey ===
+        FALLBACK_DEFAULT_PACK_IDEMPOTENCY_KEYS.weeklyReview,
+    );
+    if (!weekly || !runner.remove)
+      throw new Error("Weekly review was not seeded");
+    expect(await runner.remove(weekly.taskId)).toBe(true);
     const nudge = routines.find(
       (task) => task.idempotencyKey === ROUTINE_KEYS.nudge,
     );
@@ -190,8 +216,17 @@ it("seeds the opt-in consumer routines disabled, alongside the fallback, once", 
     expect(reseed.seeded).toEqual([]);
     expect(reseed.skipped).toEqual(expect.arrayContaining(routineKeys));
     expect(await listKeys(runtime)).toEqual(
-      seededKeys.filter((key) => key !== ROUTINE_KEYS.nudge),
+      seededKeys.filter(
+        (key) =>
+          key !== ROUTINE_KEYS.nudge &&
+          key !== FALLBACK_DEFAULT_PACK_IDEMPOTENCY_KEYS.weeklyReview,
+      ),
     );
+    expect(
+      (await getScheduledTaskRunner(runtime, { agentId }).list()).find(
+        (task) => task.taskId === goodMorning.taskId,
+      )?.trigger,
+    ).toEqual(editedTrigger);
   } finally {
     await runtime.stop();
     if (runtime.adapter) await runtime.adapter.close();

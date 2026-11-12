@@ -103,3 +103,48 @@ test("replacement UUID collisions and malformed or invalid non-target source fai
     assert.equal("registryJson" in p, false);
   }
 });
+
+test("an explicit compatibility alias preserves one exact app, callback and credential lifetime", () => {
+  const alias = { ...target, clientId: "org.example.legacy", aliasOf: target.clientId };
+  const raw = JSON.stringify([other, target, alias]);
+  assert.equal(parseRegisteredMobileClients(raw, reserved).ok, true);
+  assert.deepEqual(selectRegisteredMobileClient(raw, alias.clientId, reserved), {
+    ok: true,
+    registration: alias,
+  });
+  assert.equal(
+    selectRegisteredMobileClient(raw, target.clientId, reserved).registration.clientId,
+    target.clientId,
+  );
+  for (const patch of [
+    { appId: OTHER },
+    { redirectUri: other.redirectUri },
+    { enabled: false },
+    { credentialTtlSeconds: 86400 },
+    { aliasOf: reserved.clientId },
+    { aliasOf: "org.example.missing" },
+  ])
+    assert.equal(
+      parseRegisteredMobileClients(
+        JSON.stringify([other, target, { ...alias, ...patch }]),
+        reserved,
+      ).ok,
+      false,
+    );
+  assert.equal(
+    parseRegisteredMobileClients(
+      JSON.stringify([
+        target,
+        alias,
+        { ...alias, clientId: "org.example.chain", aliasOf: alias.clientId },
+      ]),
+      reserved,
+    ).ok,
+    false,
+  );
+  assert.equal(
+    planRegisteredMobileClientAppIdUpdate(raw, target.clientId, NEXT, reserved).ok,
+    false,
+    "an app move cannot leave its compatibility alias on another app",
+  );
+});

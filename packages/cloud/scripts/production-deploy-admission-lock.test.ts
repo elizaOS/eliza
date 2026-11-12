@@ -228,7 +228,7 @@ describe("committed Cloud CF workflow matches the policy", () => {
     expect(cloudCfRelease).not.toContain("cloud-cf-deploy-app-");
   });
 
-  test("staging publishes the validated admission and speech hosts before its API", () => {
+  test("staging publishes only selected hosts and rechecks speech ownership before its API", () => {
     const apiConfig = Bun.TOML.parse(
       readFileSync(
         resolve(repoRoot, "packages/cloud/api/wrangler.toml"),
@@ -252,7 +252,7 @@ describe("committed Cloud CF workflow matches the policy", () => {
         (binding) => binding.name === "INFERENCE_ADMISSION_GATES",
       ).script_name,
     ).toBe("eliza-cloud-admission-staging");
-    // Speech sessions follow the same split: staging only, production local.
+    // Speech activation is deferred; both APIs retain their session namespace.
     expect(
       apiConfig.env.production.durable_objects.bindings.filter(
         (binding) => binding.name === "SPEECH_RELAY_SESSIONS",
@@ -264,7 +264,7 @@ describe("committed Cloud CF workflow matches the policy", () => {
       apiConfig.env.staging.durable_objects.bindings.find(
         (binding) => binding.name === "SPEECH_RELAY_SESSIONS",
       ).script_name,
-    ).toBe("eliza-cloud-speech-staging");
+    ).toBeUndefined();
     const parsed = Bun.YAML.parse(cloudCfRelease);
     expect(
       parsed.on.workflow_call.secrets.STAGING_SPEECH_CUTOVER_ATTESTATION
@@ -277,6 +277,8 @@ describe("committed Cloud CF workflow matches the policy", () => {
       `\${{ secrets.STAGING_SPEECH_CUTOVER_ATTESTATION }}`,
     );
     expect(preflight.run).toContain("speech-host-cutover-admission.mjs");
+    expect(preflight.run).toContain("--selected-host");
+    expect(preflight.run).toContain("export STAGING_SPEECH_HOST");
     expect(preflight.run).toContain('>> "$GITHUB_OUTPUT"');
     expect(steps.indexOf(preflight)).toBeLessThan(
       steps.findIndex(
@@ -293,6 +295,9 @@ describe("committed Cloud CF workflow matches the policy", () => {
     expect(deployStep.env.SPEECH_CUTOVER_EXPECTED_FINGERPRINT).toBe(
       `\${{ steps.speech-cutover.outputs.fingerprint }}`,
     );
+    expect(deployStep.env.STAGING_SPEECH_HOST).toBe(
+      `\${{ steps.speech-cutover.outputs.selected_host }}`,
+    );
     const deploy = deployStep.run;
     const fragment = deploy.match(
       /recheck_canonical_source\nif \[ "\$DEPLOY_ENVIRONMENT" = "staging" \]; then\n[\s\S]*?bunx wrangler deploy "\$\{args\[@\]\}"\n/,
@@ -301,7 +306,7 @@ describe("committed Cloud CF workflow matches the policy", () => {
 
     // Execute the committed shell ordering. The command adapters record only
     // local calls; this test never loads credentials or contacts Cloudflare.
-    const run = (environment, failure = "") =>
+    const run = (environment, failure = "", host = "speech") =>
       spawnSync(
         "bash",
         [
@@ -321,6 +326,7 @@ bun() {
       else
         printf 'validate-speech\n' >&2
         [ "$FAILURE" != speech-validation ] || return 25
+        printf '%s\n' "\${CONFIGURED_SPEECH_HOST:-$STAGING_SPEECH_HOST}"
       fi ;;
     *) return 90 ;;
   esac
@@ -361,6 +367,8 @@ ${fragment}`,
             DEPLOY_ENVIRONMENT: environment,
             GITHUB_SHA: "a".repeat(40),
             CLOUD_VOICE_USAGE_BACKEND: "redis",
+            STAGING_SPEECH_HOST: host,
+            CONFIGURED_SPEECH_HOST: failure === "host-changed" ? "api" : host,
             FAILURE: failure,
           },
         },
@@ -390,6 +398,22 @@ ${fragment}`,
     expect(staging.stderr).toContain(
       "speech-secrets CARTESIA_API_KEY DATABASE_URL",
     );
+    const retained = run("staging", "", "api");
+    expect(retained.status).toBe(0);
+    expect(retained.stdout.trim().split("\n")).toEqual([
+      "guard",
+      "reconcile",
+      "validate",
+      "guard",
+      admission,
+      "guard",
+      api("staging"),
+    ]);
+    expect(retained.stderr).toContain("recheck-speech-cutover");
+    expect(retained.stderr).not.toContain("speech-secrets");
+    const retainedChanged = run("staging", "speech-cutover", "api");
+    expect(retainedChanged.status).not.toBe(0);
+    expect(retainedChanged.stdout).not.toContain("api wrangler deploy");
     const production = run("production");
     expect(production.status).toBe(0);
     expect(production.stdout.trim().split("\n")).toEqual([
@@ -403,6 +427,7 @@ ${fragment}`,
       "speech-secrets",
       "speech",
       "speech-cutover",
+      "host-changed",
     ]) {
       const stopped = run("staging", failure);
       expect(stopped.status).not.toBe(0);

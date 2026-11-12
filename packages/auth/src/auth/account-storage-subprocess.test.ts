@@ -492,8 +492,10 @@ it("retains a live successor when a stale lock observation is renamed", async ()
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(fs.existsSync(path.join(root, "reaper-ready"))).toBe(false);
     fs.writeFileSync(path.join(root, "holder-go"), "go");
-    expect(await finishOwnershipProbe(holder)).toEqual({ ok: true });
+    await waitForOwnershipBarrier(holder, "holder-release-unlinked");
     await waitForOwnershipBarrier(reaper, "reaper-ready");
+    fs.writeFileSync(path.join(root, "holder-release-go"), "go");
+    expect(await finishOwnershipProbe(holder)).toEqual({ ok: true });
     fs.writeFileSync(path.join(root, "reaper-go"), "go");
     expect(await finishOwnershipProbe(reaper)).toEqual({ ok: true });
     expect(

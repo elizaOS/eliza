@@ -1261,3 +1261,41 @@ test("legacy primary provisioning refuses fresh apps without a durable publisher
     false,
   );
 });
+
+test("restoring a renamed client adds an explicit alias without changing the current client or unrelated registrations", async () => {
+  const current = {
+    clientId: "org.example.current",
+    appId: APP,
+    redirectUri: CALLBACK,
+    enabled: true,
+    credentialTtlSeconds: 7776000,
+  };
+  const source = { ...input, registry: JSON.stringify([retained, current]) };
+  const plan = buildRegistryAddition(source, APP);
+  const rows = JSON.parse(plan.candidate);
+  assert.deepEqual(rows.slice(0, 2), [retained, current]);
+  assert.deepEqual(rows[2], {
+    ...current,
+    clientId,
+    aliasOf: current.clientId,
+  });
+  assert.equal(
+    plan.nonTargetSha256,
+    registryDigest(JSON.stringify([retained, current])),
+  );
+  await validateRegistryPublication(
+    readOnly,
+    { ...source, registry: plan.candidate },
+    {
+      candidateSha256: plan.candidateSha256,
+      nonTargetSha256: plan.nonTargetSha256,
+      appBindingSha256: appBindingDigest(source, BINDING),
+    },
+  );
+  const again = buildRegistryAddition(
+    { ...source, registry: plan.candidate },
+    APP,
+  );
+  assert.equal(again.added, false);
+  assert.equal(again.changed, false);
+});

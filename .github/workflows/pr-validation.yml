@@ -6,8 +6,8 @@
 # exceptions, alongside path-scoped SDK owning suites and a native speech compile/contract check. Provider, device, deployment, and destructive-effect lanes remain
 # excluded. A path-scoped Core/assistant/Notes owning-regression subset also
 # qualifies changes to that flow through the unchanged package test configs.
-# Source and formal-model changes also run the source-linked Quint cases and
-# implementation conformance checks before merge.
+# Promotion to main also runs the source-linked Quint cases and implementation
+# conformance checks. Main merge-queue candidates require the same complete proof.
 name: PR Validation
 
 on:
@@ -45,8 +45,9 @@ jobs:
   source-checks:
     name: Source checks
     runs-on: ubuntu-24.04
-    # A cold broad workspace build can reach the final lint/type checks after 37 minutes.
-    timeout-minutes: 60
+    # A cold main promotion took 46 minutes before lint/typecheck and hit the
+    # former 60-minute limit while typecheck was still progressing.
+    timeout-minutes: 90
     env:
       # Cloud API checking needs an 8 GiB heap. Run one compiler alongside
       # the separately capped 2 GiB lint process on the 16 GiB runner.
@@ -170,7 +171,7 @@ jobs:
 
       - name: Validate CI Bun version pin contract
         if: steps.affected.outputs.source == 'true'
-        run: node packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
+        run: bun packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
 
       - name: Upload Bun runtime resolution inventory
         if: steps.affected.outputs.source == 'true'
@@ -188,7 +189,7 @@ jobs:
           MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
         run: |
           if [[ -f packages/scripts/pr-core-build-scope.ts ]]; then
-            node packages/scripts/pr-core-build-scope.ts "$MERGE_BASE" "$GITHUB_OUTPUT"
+            bun packages/scripts/pr-core-build-scope.ts "$MERGE_BASE" "$GITHUB_OUTPUT"
           else
             echo "Candidate predates scoped bootstrap; retaining the full core build."
             echo "core_bootstrap_required=true" >> "$GITHUB_OUTPUT"
@@ -308,7 +309,7 @@ jobs:
         env:
           RUN_TURBO_AFFECTED: ${{ steps.affected.outputs.full == 'false' && '1' || '0' }}
           TURBO_SCM_BASE: ${{ steps.affected.outputs.base }}
-        run: node packages/scripts/run-turbo.ts run build --concurrency=4 --output-logs=errors-only
+        run: bun packages/scripts/run-turbo.ts run build --concurrency=4 --output-logs=errors-only
 
       - name: Verify native direct inference and Google service admission
         if: >-
@@ -353,7 +354,7 @@ jobs:
           fi
           (
             cd packages/app
-            node ../scripts/run-vitest.ts run --config vitest.host.config.ts \
+            bun ../scripts/run-vitest.ts run --config vitest.host.config.ts \
               src/runtime/native-runtime-profile.test.ts \
               src/runtime/native-managed-google-host.test.ts \
               src/runtime/native-direct-routing.test.ts \
@@ -363,7 +364,7 @@ jobs:
           )
           (
             cd packages/agent
-            node ../scripts/run-vitest.ts run --config vitest.config.ts \
+            bun ../scripts/run-vitest.ts run --config vitest.config.ts \
               test/managed-google-env-process-only.test.ts \
               --maxWorkers=1 --no-file-parallelism \
               --execArgv=--max-old-space-size=2048
@@ -392,7 +393,7 @@ jobs:
           if [ "$calendar_diff_status" -ne 1 ]; then
             exit "$calendar_diff_status"
           fi
-          node packages/scripts/with-test-runtime.ts \
+          bun packages/scripts/with-test-runtime.ts \
             bun run --cwd plugins/plugin-calendar test \
             --maxWorkers=1 --no-file-parallelism
 
@@ -417,7 +418,7 @@ jobs:
           if [ "$assistant_diff_status" -ne 1 ]; then
             exit "$assistant_diff_status"
           fi
-          node ../../packages/scripts/run-vitest.ts run --config vitest.config.ts \
+          bun ../../packages/scripts/run-vitest.ts run --config vitest.config.ts \
             src/runtime/calendar-read-coverage.test.ts \
             --maxWorkers=1 --no-file-parallelism \
             --execArgv=--max-old-space-size=2048
@@ -455,7 +456,7 @@ jobs:
         env:
           NODE_OPTIONS: "--max-old-space-size=2048"
         run: >-
-          node ../../packages/scripts/run-vitest.ts run --config vitest.config.ts
+          bun ../../packages/scripts/run-vitest.ts run --config vitest.config.ts
           src/__tests__/request-effect.test.ts
           --maxWorkers=1 --no-file-parallelism
           --execArgv=--max-old-space-size=2048
@@ -471,7 +472,7 @@ jobs:
         env:
           NODE_OPTIONS: "--max-old-space-size=2048"
         run: >-
-          node ../../packages/scripts/run-vitest.ts run --config vitest.config.ts
+          bun ../../packages/scripts/run-vitest.ts run --config vitest.config.ts
           src/runtime/planner-finish-grounding.test.ts
           src/runtime/__tests__/planner-native-scope-repair.test.ts
           src/runtime/__tests__/planner-scope-failure-copy.test.ts
@@ -494,7 +495,7 @@ jobs:
         env:
           NODE_OPTIONS: "--max-old-space-size=2048"
         run: >-
-          node ../scripts/run-vitest.ts run --config vitest.config.ts
+          bun ../scripts/run-vitest.ts run --config vitest.config.ts
           test/async-context.node-esm.test.ts
           test/context-renderer-runtime-events.test.ts
           test/mode-action-authority.test.ts
@@ -533,7 +534,7 @@ jobs:
           if [ "$reminder_diff_status" -ne 1 ]; then
             exit "$reminder_diff_status"
           fi
-          node ../../packages/scripts/run-vitest.ts run --config vitest.src-integration.config.ts \
+          bun ../../packages/scripts/run-vitest.ts run --config vitest.src-integration.config.ts \
             src/actions/life.update-reminder-delay.pglite.integration.test.ts \
             src/actions/life.cancel-reminder.pglite.integration.test.ts \
             --maxWorkers=1 --no-file-parallelism \
@@ -592,7 +593,7 @@ jobs:
           NODE_OPTIONS: "--max-old-space-size=2048"
           DEBUG: "vite:resolve*"
         run: >-
-          node ../../packages/scripts/run-vitest.ts run --config vitest.config.ts
+          bun ../../packages/scripts/run-vitest.ts run --config vitest.config.ts
           src/actions/lib/reminder-create-contract.test.ts
           --maxWorkers=1 --no-file-parallelism
           --execArgv=--max-old-space-size=2048
@@ -608,7 +609,7 @@ jobs:
           NODE_OPTIONS: "--max-old-space-size=2048"
           DEBUG: "vite:resolve*"
         run: >-
-          node ../../packages/scripts/run-vitest.ts run --config vitest.src-integration.config.ts
+          bun ../../packages/scripts/run-vitest.ts run --config vitest.src-integration.config.ts
           src/lifeops/domains/reminders-service.review-cursor.pglite.integration.test.ts
           src/lifeops/domains/definitions-service.recurring-snooze.pglite.integration.test.ts
           src/lifeops/reminder-wake.pglite.integration.test.ts
@@ -654,7 +655,7 @@ jobs:
         env:
           NODE_OPTIONS: "--max-old-space-size=2048"
         run: >-
-          node packages/scripts/run-vitest.ts run --config vitest.config.ts
+          bun packages/scripts/run-vitest.ts run --config vitest.config.ts
           packages/contracts/src/browser-request-grounding.test.ts
           --maxWorkers=1 --no-file-parallelism
           --execArgv=--max-old-space-size=2048
@@ -670,7 +671,7 @@ jobs:
         env:
           NODE_OPTIONS: "--max-old-space-size=2048"
         run: >-
-          node ../../packages/scripts/run-vitest.ts run --config vitest.config.ts
+          bun ../../packages/scripts/run-vitest.ts run --config vitest.config.ts
           src/services/device-actions/browser-open-routing.test.ts
           src/services/device-actions/client-coordinator.test.ts
           --maxWorkers=1 --no-file-parallelism
@@ -689,7 +690,7 @@ jobs:
         env:
           NODE_OPTIONS: "--max-old-space-size=2048"
         run: >-
-          node ../../packages/scripts/run-vitest.ts run --config vitest.device-actions.config.ts
+          bun ../../packages/scripts/run-vitest.ts run --config vitest.device-actions.config.ts
           test/browser-request-grounding.pglite.test.ts
           test/device-actions.e2e.test.ts
           --maxWorkers=1 --no-file-parallelism
@@ -706,7 +707,7 @@ jobs:
         env:
           NODE_OPTIONS: "--max-old-space-size=2048"
         run: >-
-          node ../../packages/scripts/run-vitest.ts run --config vitest.config.ts
+          bun ../../packages/scripts/run-vitest.ts run --config vitest.config.ts
           src/actions/browser-availability.test.ts
           --maxWorkers=1 --no-file-parallelism
           --execArgv=--max-old-space-size=2048
@@ -777,7 +778,7 @@ jobs:
         if: steps.affected.outputs.app == 'true'
         timeout-minutes: 1
         run: >-
-          node node_modules/vitest/vitest.mjs run --config vitest.config.ts
+          bun packages/scripts/run-vitest.ts run --config vitest.config.ts
           packages/ui/src/cloud/join/lib/run-join-flow.test.ts
           --maxWorkers=1 --no-file-parallelism --testTimeout=10000 --hookTimeout=10000
 
@@ -854,9 +855,9 @@ jobs:
           TURBO_SCM_BASE: ${{ steps.affected.outputs.base }}
         run: |
           set -euo pipefail
-          NODE_OPTIONS=--max-old-space-size=2048 node packages/scripts/run-turbo.ts run lint:check --concurrency=1 &
+          NODE_OPTIONS=--max-old-space-size=2048 bun packages/scripts/run-turbo.ts run lint:check --concurrency=1 &
           lint_pid=$!
-          node packages/scripts/run-turbo.ts run typecheck --concurrency=1 &
+          bun packages/scripts/run-turbo.ts run typecheck --concurrency=1 &
           types_pid=$!
           status=0
           wait "$lint_pid" || status=$?
@@ -865,6 +866,7 @@ jobs:
 
   quint-models:
     name: Quint shard (${{ matrix.shard }}/4)
+    if: (github.event_name == 'pull_request' && github.base_ref == 'main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main')
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     strategy:
@@ -895,30 +897,12 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
           persist-credentials: false
           submodules: false
-      - name: Select source and model changes
+      - name: Require complete main-context proof
         id: changes
-        env:
-          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
-          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
-        run: |
-          set -euo pipefail
-          merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
-          status=0
-          git diff --quiet "$merge_base"..."$HEAD_SHA" -- \
-            packages plugins package.json bun.lock \
-            .github/workflows/pr-validation.yml .github/workflows/ci.yml \
-            ':(icase,glob)**/*.qnt' ':(icase,glob)**/*.tla' ':(icase,glob)**/*.pcal' || status=$?
-          if [ "$status" -eq 0 ]; then
-            echo "run=false" >> "$GITHUB_OUTPUT"
-          elif [ "$status" -eq 1 ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::error::Quint change selection failed with exit $status."
-            exit "$status"
-          fi
+        run: echo "run=true" >> "$GITHUB_OUTPUT"
       - if: steps.changes.outputs.run == 'true'
         uses: ./.github/actions/setup-bun-workspace
         with:
@@ -960,7 +944,7 @@ jobs:
         run: |
           set -euo pipefail
           jar="$RUNNER_TEMP/json-20250517.jar"
-          curl -fsSL --retry 3 -o "$jar" https://repo1.maven.org/maven2/org/json/json/20250517/json-20250517.jar
+          curl -fsSL --retry 3 -o "$jar" https://repo.maven.apache.org/maven2/org/json/json/20250517/json-20250517.jar
           echo "3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796  $jar" | sha256sum -c -
           echo "ELIZA_JSON_JAR=$jar" >> "$GITHUB_ENV"
       - name: Build core conformance dependencies
@@ -974,6 +958,11 @@ jobs:
             sudo apt-get install -y --no-install-recommends redis-server
           fi
           redis-server --version
+      - name: Install Chromium for browser conformance
+        if: steps.changes.outputs.run == 'true'
+        env:
+          PLAYWRIGHT_INSTALL_CWD: packages/ui
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
       - name: Verify Quint models and real transitions
         if: steps.changes.outputs.run == 'true'
         env:
@@ -1003,7 +992,7 @@ jobs:
 
   quint:
     name: Quint state and implementation checks
-    if: ${{ always() && !cancelled() }}
+    if: ${{ always() && !cancelled() && ((github.event_name == 'pull_request' && github.base_ref == 'main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main')) }}
     needs: [quint-models]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -1019,7 +1008,7 @@ jobs:
             exit 1
           fi
           case "$SHOULD_RUN" in
-            true|false) ;;
+            true) ;;
             *) echo "::error::Quint selection result is missing or invalid"; exit 1 ;;
           esac
       - name: Checkout verified source
@@ -1027,7 +1016,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
           persist-credentials: false
           submodules: false
       - name: Install evidence validator dependencies
@@ -1052,7 +1041,7 @@ jobs:
           path: test-results/quint-manifests
       - name: Verify complete disjoint model coverage
         if: needs.quint-models.outputs.run == 'true'
-        run: node packages/scripts/check-quint-shards.ts test-results/quint-manifests 4
+        run: bun packages/scripts/check-quint-shards.ts test-results/quint-manifests 4
       - name: Upload complete Quint evidence summary
         if: always() && needs.quint-models.outputs.run == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -1132,7 +1121,7 @@ jobs:
       - name: Build real owning dependency closure
         if: steps.owning-diff.outputs.run == 'true'
         run: >-
-          node packages/scripts/run-turbo.ts run build
+          bun packages/scripts/run-turbo.ts run build
           --filter=@elizaos/plugin-calendar... --filter=@elizaos/agent...
           --filter=@elizaos/plugin-assistant... --filter=@elizaos/host...
           --filter=@elizaos/core... --filter=@elizaos/plugin-notes...
@@ -1181,7 +1170,7 @@ jobs:
         working-directory: packages/host
         run: |
           set -euo pipefail
-          node ../scripts/run-vitest.ts run --config vitest.config.ts src/voice 2>&1 | tee "$RUNNER_TEMP/host-voice-typescript-owning.log"
+          bun ../scripts/run-vitest.ts run --config vitest.config.ts src/voice 2>&1 | tee "$RUNNER_TEMP/host-voice-typescript-owning.log"
       - name: Run full host voice JavaScript suite
         if: steps.owning-diff.outputs.run == 'true' && matrix.lane == 'calendar-voice'
         timeout-minutes: 10
@@ -1196,7 +1185,7 @@ jobs:
           NODE_OPTIONS: "--max-old-space-size=2048"
         run: |
           set -euo pipefail
-          node ../scripts/run-vitest.ts run --config vitest.config.ts \
+          bun ../scripts/run-vitest.ts run --config vitest.config.ts \
             --maxWorkers=1 --no-file-parallelism \
             --execArgv=--max-old-space-size=2048 \
             2>&1 | tee "$RUNNER_TEMP/portable-voice-owning.log"
@@ -1581,6 +1570,7 @@ jobs:
     steps:
       - name: Require every admission lane
         env:
+          PROMOTION: ${{ (github.event_name == 'pull_request' && github.base_ref == 'main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main') }}
           RESULTS: >-
             secret-scan=${{ needs.secret-scan.result }}
             source-checks=${{ needs.source-checks.result }}
@@ -1594,7 +1584,9 @@ jobs:
           for pair in $RESULTS; do
             name="${pair%%=*}"
             result="${pair#*=}"
-            if [ "$result" != "success" ]; then
+            expected=success
+            if [ "$name" = quint ] && [ "$PROMOTION" != true ]; then expected=skipped; fi
+            if [ "$result" != "$expected" ]; then
               echo "::error title=PR admission::$name finished with $result"
               exit 1
             fi

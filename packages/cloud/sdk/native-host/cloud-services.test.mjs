@@ -3397,6 +3397,44 @@ test("sign-out, sign-in, revocation and a refused paid call drop the cached answ
   await assert.rejects(routes.requirePaidAccess(), /Funding signed_out/);
 });
 
+test("a refusal during a background check schedules another, and settling waits for it", async (t) => {
+  const { routes, control, accountCalls } = await paidAccessHarness(t);
+  await routes.requirePaidAccess();
+  await routes.paidAccessSettled();
+  // A warm request schedules a background check; hold it in flight.
+  let release;
+  control.hold = new Promise((resolve) => {
+    release = resolve;
+  });
+  const before = accountCalls().length;
+  await routes.requirePaidAccess();
+  assert.equal(accountCalls().length, before, "warm");
+  while (accountCalls().length < before + 2)
+    await new Promise((r) => setImmediate(r));
+  // The agent's own Cloud call is refused while that check is in flight. Its
+  // answer belongs to the dropped epoch and cannot fill the cache, so another
+  // check must be scheduled for the current one.
+  routes.paidAccessRefused();
+  control.hold = null;
+  let settled = false;
+  const settling = routes.paidAccessSettled().then(() => {
+    settled = true;
+  });
+  release();
+  await settling;
+  assert.ok(settled);
+  assert.equal(
+    accountCalls().length,
+    before + 4,
+    "a second background check ran for the current epoch before settling",
+  );
+  // That check filled the cache: the next request asks Cloud nothing.
+  const refilled = accountCalls().length;
+  await routes.requirePaidAccess();
+  assert.equal(accountCalls().length, refilled, "warm after the refusal");
+  await routes.paidAccessSettled();
+});
+
 test("the access route shares the live check and keeps the paid cache warm", async (t) => {
   const { routes, accountCalls, base } = await paidAccessHarness(t);
   const answer = await (await fetch(`${base}/cloud/account/access`)).json();

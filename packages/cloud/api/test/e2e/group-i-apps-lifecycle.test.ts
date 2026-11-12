@@ -160,7 +160,9 @@ async function awaitAppDeletion(
   }
   expect(admission.state).toBe("pending");
   expect(admission.success).toBe(false);
-  const deadline = Date.now() + 120_000;
+  // A job from an older worker can retain its 120-second transport backoff.
+  // Allow that backoff plus its polling cycle; still require the exact final receipt.
+  const deadline = Date.now() + 180_000;
   while (Date.now() < deadline) {
     const poll = await api.get(`/api/v1/jobs/${admission.jobId}`, {
       headers: bearerHeaders(),
@@ -694,7 +696,7 @@ describeE2E("DELETE /api/v1/apps/:id", () => {
       headers: bearerHeaders(),
     });
     expect(getRes.status).toBe(404);
-  }, 150_000);
+  }, 210_000);
 });
 
 // -------- POST /api/v1/apps/check-name -------------------------------------
@@ -789,5 +791,5 @@ describeE2E("Apps lifecycle round-trip", () => {
       headers: bearerHeaders(),
     });
     expect(goneRes.status).toBe(404);
-  }, 150_000);
+  }, 210_000);
 });

@@ -109,3 +109,97 @@ module ResponsesAdaptation {
   run oldEmptySuccessDetectedTest = initAccepted.then(validate).then(prepare).then(canonical)
     .then(providerReturns("malformed")).then(oldFabricateCompletion).expect(not(noFabricatedCompletion) and not(outputPreserved))
 }
+
+// The admitted non-streaming request carries its client signal through the
+// canonical dispatch gate and SDK. HTTP return and selection of a settlement
+// port can complete independently; this does not model the durable ledger.
+module ResponsesCancellation {
+  var s: {
+    phase: str, aborted: bool, invoked: bool, outcome: str,
+    http: int, settlement: str
+  }
+
+  action init = s' = {
+    phase: "admitted", aborted: false, invoked: false, outcome: "pending",
+    http: 0, settlement: "none"
+  }
+  action cancel = all { not(s.aborted), s' = s.with("aborted", true) }
+  action resolve(outcome: str): bool =
+    s' = s.with("phase", "resolved").with("outcome", outcome)
+
+  action beginCommit = all {
+    s.phase == "admitted",
+    if (s.aborted) resolve("before-abort") else s' = s.with("phase", "committing")
+  }
+  action commitReply(success: bool): bool = all {
+    s.phase == "committing",
+    if (not(success)) resolve("before-failure")
+    else if (s.aborted) resolve("before-abort")
+    else s' = s.with("phase", "allowed")
+  }
+  // The gate's final signal check precedes the awaiting SDK continuation.
+  // A later abort can reach an invocation that already carries a dead signal.
+  action invokeSdk = all {
+    s.phase == "allowed",
+    s' = s.with("phase", "provider").with("invoked", true)
+  }
+  action sdkReply(outcome: str): bool = all {
+    s.phase == "provider",
+    Set("success", "unknown", "provider-abort").contains(outcome),
+    outcome == "provider-abort" implies s.aborted,
+    resolve(outcome)
+  }
+  pure def status(outcome: str): int =
+    if (outcome == "before-abort") 499 else if (outcome == "success") 200 else 503
+  pure def effect(outcome: str): str =
+    if (Set("before-abort", "before-failure").contains(outcome)) "zero"
+    else if (outcome == "success") "actual"
+    else "unknown"
+  action returnHttp = all {
+    s.phase == "resolved", s.http == 0,
+    s' = s.with("http", status(s.outcome))
+  }
+  action selectSettlement = all {
+    s.phase == "resolved", s.settlement == "none",
+    s' = s.with("settlement", effect(s.outcome))
+  }
+  action finishCommit = any { commitReply(true), commitReply(false) }
+  action finishSdk = any { sdkReply("success"), sdkReply("unknown"), sdkReply("provider-abort") }
+  action step = any {
+    cancel, beginCommit, finishCommit, invokeSdk, finishSdk,
+    returnHttp, selectSettlement, s' = s
+  }
+
+  val Safety = and {
+    (s.outcome != "pending") == (s.phase == "resolved"),
+    s.outcome == "before-abort" implies (s.aborted and not(s.invoked)),
+    s.outcome == "provider-abort" implies (s.aborted and s.invoked),
+    s.http != 0 implies (s.phase == "resolved" and s.http == status(s.outcome)),
+    s.settlement != "none" implies (s.phase == "resolved" and s.settlement == effect(s.outcome)),
+    s.http == 200 implies (s.invoked and s.outcome == "success"),
+    s.invoked implies s.settlement != "zero"
+  }
+  temporal PublicationsAgree = always((all {
+    s.outcome != "pending" implies next(s.outcome) == s.outcome,
+    s.http != 0 implies next(s.http) == s.http,
+    s.settlement != "none" implies next(s.settlement) == s.settlement
+  }).orKeep(s))
+  temporal RequestSettles = eventually(s.http != 0 and s.settlement != "none")
+  temporal FairRequestSettles = (
+    beginCommit.weakFair(s) and finishCommit.weakFair(s) and invokeSdk.weakFair(s)
+      and finishSdk.weakFair(s) and returnHttp.weakFair(s) and selectSettlement.weakFair(s)
+  ) implies RequestSettles
+
+  run CancelDuringCommitTest = init.then(beginCommit).then(cancel).then(commitReply(true))
+    .then(returnHttp).then(selectSettlement)
+    .expect(Safety and s.http == 499 and s.settlement == "zero" and not(s.invoked))
+  run CancelAfterSdkInvocationTest = init.then(beginCommit).then(commitReply(true)).then(invokeSdk)
+    .then(cancel).then(sdkReply("provider-abort")).then(selectSettlement).then(returnHttp)
+    .expect(Safety and s.http == 503 and s.settlement == "unknown")
+  run LateSignalStillReachesSdkTest = init.then(beginCommit).then(commitReply(true)).then(cancel)
+    .then(invokeSdk).then(sdkReply("provider-abort")).then(returnHttp)
+    .expect(Safety and s.aborted and s.invoked and s.http == 503)
+  run ValidResultCanWinCancellationRaceTest = init.then(beginCommit).then(commitReply(true)).then(invokeSdk)
+    .then(sdkReply("success")).then(cancel).then(returnHttp).then(selectSettlement)
+    .expect(Safety and s.http == 200 and s.settlement == "actual")
+}

@@ -682,3 +682,66 @@ test("development images keep the launcher's provisioning default and malformed 
       /imageProvisioning|Invalid/,
     );
 });
+
+test("a product can stage the disabled updater with exact source evidence", (t) => {
+  const f = fixture(t, "example");
+  f.product.systemUpdater = true;
+  const result = composePixel10aProduct({ ...f, production: true });
+  assert.equal(result.systemUpdater.staged, true);
+  assert.equal(result.systemUpdater.enabled, false);
+  assert.equal(result.systemUpdater.files.length, 18);
+  for (const file of result.systemUpdater.files) {
+    assert.equal(
+      createHash("sha256")
+        .update(fs.readFileSync(path.join(f.output, file.path)))
+        .digest("hex"),
+      file.sha256,
+    );
+  }
+  assert.match(
+    fs.readFileSync(path.join(f.output, "product.mk"), "utf8"),
+    /inherit-product, vendor\/example_phone\/system-updater\/product.mk/,
+  );
+  assert.match(
+    fs.readFileSync(
+      path.join(f.output, "system-updater/res/values/config.xml"),
+      "utf8",
+    ),
+    /<bool name="os_update_enabled">false<\/bool>/,
+  );
+  assert.doesNotMatch(
+    fs.readFileSync(path.join(f.output, "Android.bp"), "utf8"),
+    /privileged/,
+  );
+  assert.equal(result.imageBuilt, false);
+  assert.equal(result.deviceAcceptanceVerified, false);
+});
+
+test("updater enrollment cannot be smuggled into the staging switch", (t) => {
+  const f = fixture(t, "example");
+  f.product.systemUpdater = { enabled: true };
+  assert.throws(
+    () => composePixel10aProduct(f),
+    /systemUpdater must be a boolean/,
+  );
+  assert.equal(fs.existsSync(path.join(f.output, "system-updater")), false);
+  assert.equal(
+    fs.existsSync(path.join(f.output, "physical-product.json")),
+    false,
+  );
+});
+
+test("an existing updater staging directory is retained on refusal", (t) => {
+  const f = fixture(t, "example");
+  f.product.systemUpdater = true;
+  const directory = path.join(f.output, "system-updater");
+  fs.mkdirSync(directory);
+  const marker = path.join(directory, "keep.txt");
+  fs.writeFileSync(marker, "preexisting state");
+  assert.throws(
+    () => composePixel10aProduct(f),
+    /composition already exists: system-updater/,
+  );
+  assert.equal(fs.readFileSync(marker, "utf8"), "preexisting state");
+  assert.deepEqual(fs.readdirSync(directory), ["keep.txt"]);
+});

@@ -22,7 +22,7 @@ import { decodeOptionalRequestJson } from "@elizaos/cloud-shared/lib/utils/json-
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { appsDeployOrganizationDecision } from "@/api-app/lib/apps-deploy-gate";
+import { appsDeployOrganizationDecision } from "../../../../src/lib/apps-deploy-gate";
 import { DeployBodySchema } from "./schema";
 
 const app = new Hono<AppEnv>();

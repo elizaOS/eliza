@@ -114,7 +114,7 @@ async function main() {
         cwd: REPO_ROOT,
         logSink,
         label:
-          "node packages/app/scripts/ios-onboarding-smoke.ts --no-video --api-base http://127.0.0.1:31337",
+          "bun packages/app/scripts/ios-onboarding-smoke.ts --no-video --api-base http://127.0.0.1:31337",
       },
     );
 

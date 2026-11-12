@@ -15,7 +15,15 @@ import {
   writeBrandAssets,
 } from "./pixel10a-brand-assets.mjs";
 import { assertNoLockScreenSurface } from "./secure-camera.mjs";
-import { renderOverlay, validateDescriptor } from "./stage-launcher-overlay.ts";
+import {
+  launcherInstallDirectory,
+  renderOverlay,
+  validateDescriptor,
+} from "./stage-launcher-overlay.ts";
+import {
+  admitSystemUpdater,
+  writeSystemUpdater,
+} from "./system-updater-staging.mjs";
 
 const hardwareRoot = fileURLToPath(
   new URL("../../android/devices/pixel10a/", import.meta.url),
@@ -112,6 +120,13 @@ export function validatePixel10aProduct(value) {
     )
       throw new Error(`Invalid Pixel 10a ${name}`);
   }
+  if (
+    value.systemUpdater !== undefined &&
+    typeof value.systemUpdater !== "boolean"
+  )
+    throw new Error(
+      "systemUpdater must be a boolean; enrollment is a separate gate",
+    );
   validateBrandAssets(value.brandAssets);
   pixelConfigIdentity(value);
   return value;
@@ -272,7 +287,7 @@ function verifyNativeStaging(output, launcher, evidence) {
       names.has(name) ||
       library.apkEntry !== `lib/arm64-v8a/${name}` ||
       library.installPath !==
-        `/product/app/${launcher.moduleName}/lib/arm64/${name}` ||
+        `${launcherInstallDirectory(launcher)}/lib/arm64/${name}` ||
       library.mode !== mode
     )
       throw new Error("Invalid native staging entry");
@@ -298,7 +313,10 @@ function verifyNativeStaging(output, launcher, evidence) {
   return true;
 }
 
-/** Compose a previously admitted, nonprivileged launcher overlay. No source or device writes. */
+/**
+ * Compose a previously admitted launcher overlay. The launcher is nonprivileged unless its
+ * reviewed descriptor names privileged permissions. No source or device writes.
+ */
 export function composePixel10aProduct({
   output,
   product,
@@ -323,12 +341,23 @@ export function composePixel10aProduct({
   const makefile = fs.existsSync(path.join(output, "Android.mk"))
     ? fs.readFileSync(path.join(output, "Android.mk"), "utf8")
     : "";
-  if (
+  const overlay = renderOverlay(launcher);
+  const privileged =
     /\bprivileged\s*:\s*true\b/.test(blueprint) ||
-    /LOCAL_PRIVILEGED_MODULE\s*:?=\s*true/.test(makefile)
+    /LOCAL_PRIVILEGED_MODULE\s*:?=\s*true/.test(makefile);
+  const allowlist = path.join(output, "privapp-permissions.xml");
+  if (!launcher.privilegedPermissions) {
+    if (privileged || fs.existsSync(allowlist))
+      throw new Error("Pixel 10a main launcher must remain nonprivileged");
+  } else if (
+    !privileged ||
+    !fs.existsSync(allowlist) ||
+    fs.readFileSync(allowlist, "utf8") !== overlay.privilegedPermissions
   )
-    throw new Error("Pixel 10a main launcher must remain nonprivileged");
-  if (!makefile && blueprint !== renderOverlay(launcher).blueprint)
+    throw new Error(
+      "Pixel 10a launcher privilege differs from its reviewed privileged permissions",
+    );
+  if (!makefile && blueprint !== overlay.blueprint)
     throw new Error("Pixel 10a requires an admitted launcher overlay");
   const nativeLibrariesStaged = verifyNativeStaging(
     output,
@@ -339,12 +368,14 @@ export function composePixel10aProduct({
   // Pinned brand assets are verified before anything is written.
   const brandAssets = admitBrandAssets(product, { bootAnimation });
   const hardware = renderHardware(product);
+  const updater = admitSystemUpdater(product);
   for (const name of [
     "AndroidProducts.mk",
     `${product.productName}.mk`,
     "stallion",
     "brand",
     "physical-product.json",
+    ...(updater ? ["system-updater"] : []),
   ])
     if (fs.existsSync(path.join(output, name)))
       throw new Error(`Pixel 10a composition already exists: ${name}`);
@@ -398,6 +429,7 @@ export function composePixel10aProduct({
       )[1],
     };
   }
+  const systemUpdater = writeSystemUpdater(output, product, updater);
   const evidence = {
     schema: 1,
     target: "pixel10a",
@@ -412,6 +444,7 @@ export function composePixel10aProduct({
       files: hardware.files.map(({ bytes, ...record }) => record),
     },
     brandAssets: brandAssets.evidence,
+    systemUpdater,
     sourceEvidence,
     vendorApi,
     imageFeature,

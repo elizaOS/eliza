@@ -17,8 +17,8 @@ import { z } from "zod";
 import {
   type AuditResult,
   CLIENT_AUDIT_ACTIONS,
-} from "@/api-app/services/audit";
-import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
+} from "../../../src/services/audit";
+import { getAuditDispatcher } from "../../../src/services/audit-dispatcher-singleton";
 
 const app = new Hono<AppEnv>();
 

@@ -5,7 +5,12 @@ import {
   createCloudSpeechRelayPorts,
 } from "./cloud-speech-relay-client";
 
-function fixture(upgradeMs: number, readyMs: number, signal?: AbortSignal) {
+function fixture(
+  upgradeMs: number,
+  readyMs: number,
+  signal?: AbortSignal,
+  consentMs = 0,
+) {
   const id = crypto.randomUUID();
   const expiry = new Date(Date.now() + 60000).toISOString();
   const logs: CloudSpeechRelayTransportDiagnostic[] = [];
@@ -15,9 +20,13 @@ function fixture(upgradeMs: number, readyMs: number, signal?: AbortSignal) {
   let closed = 0;
   const timers: ReturnType<typeof setTimeout>[] = [];
   const fetcher = Object.assign(
-    async (input: Parameters<typeof fetch>[0]) => {
+    async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
       const url = new URL(String(input));
       requests.push(url.pathname);
+      if (url.pathname.endsWith("/consent") && consentMs > 0)
+        await sleep(consentMs, undefined, {
+          signal: init?.signal ?? undefined,
+        });
       return Response.json(
         url.pathname.endsWith("/consent")
           ? {
@@ -112,6 +121,40 @@ function fixture(upgradeMs: number, readyMs: number, signal?: AbortSignal) {
     },
   };
 }
+
+test("cold consent can finish just beyond ten seconds without a false startup failure", async () => {
+  const f = fixture(0, 0, undefined, 10_100);
+  try {
+    const ports = await f.pending;
+    expect(f.requests.filter((path) => path.endsWith("/consent"))).toHaveLength(
+      1,
+    );
+    expect(f.requests.filter((path) => path.endsWith("/session"))).toHaveLength(
+      1,
+    );
+    expect(f.sent).toEqual(["hello"]);
+    await ports.close();
+  } finally {
+    f.cleanup();
+  }
+}, 20_000);
+
+test("Stop cancels a cold consent before any session is allocated", async () => {
+  const abort = new AbortController();
+  const f = fixture(0, 0, abort.signal, 10_100);
+  const settled = f.pending.then(
+    () => null,
+    (error) => error,
+  );
+  await sleep(20);
+  abort.abort();
+  expect(await settled).toBeInstanceOf(Error);
+  expect(f.requests.filter((path) => path.endsWith("/session"))).toHaveLength(
+    0,
+  );
+  expect(f.sent).toEqual([]);
+  f.cleanup();
+});
 
 test("three-second upgrade plus three-second ready succeeds within separate finite phase budgets", async () => {
   const f = fixture(3000, 3000);

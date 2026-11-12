@@ -105,6 +105,7 @@ export async function reserveSpeechRelayAdmission(input: {
           credential: caller.credential,
           executionCtx,
           atomicProviderBoundary: true,
+          commitLeaseAtDispatch: true,
           requireTerminalSettlementReceipt: input.onProgress !== undefined,
         });
       } catch (error) {
