@@ -210,7 +210,17 @@ export function describeMapsDisclosure(
   disclosure: CloudMapsDisclosure | undefined,
 ): string {
   if (!disclosure) return "";
-  return `${describeLocationRecipients(disclosure.recipients, "Cloud Maps")} Cloud keeps only the request type and result, not your searches or locations.`;
+  const services = [
+    ...new Set(
+      disclosure.recipients.map((recipient) => {
+        const { name, operator } = recipient;
+        return name.toLowerCase().includes(operator.toLowerCase())
+          ? name
+          : `${name} (${operator})`;
+      }),
+    ),
+  ];
+  return `Searches and route locations go to ${services.join(" and ")}. Cloud stores only the request type and result.`;
 }
 
 function disclosureOf(value: unknown): CloudMapsDisclosure | undefined {

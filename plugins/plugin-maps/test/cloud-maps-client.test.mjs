@@ -822,7 +822,7 @@ assert.equal(
   }
   assert.equal(
     describeMapsDisclosure(disclosure),
-    "Searches, search areas and route points are sent to Eliza Cloud Maps and Nominatim for search, operated by Acme and GraphHopper for routing, operated by Acme. Cloud keeps only the request type and result, not your searches or locations.",
+    "Searches and route locations go to Eliza Cloud Maps and Nominatim (Acme) and GraphHopper (Acme). Cloud stores only the request type and result.",
   );
   assert.equal(describeMapsDisclosure(undefined), "");
   console.log(
