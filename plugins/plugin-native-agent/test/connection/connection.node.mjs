@@ -138,10 +138,35 @@ test("device billing routes exist in the Cloud API and exclude sign-in", () => {
     assert.ok(!route.includes("/app-auth/"), `${route} is a sign-in route`);
     const file = path.join(cloudApi, route.replace(/^\/api\//, ""), "route.ts");
     assert.ok(fs.existsSync(file), `${route} has no Cloud route at ${file}`);
+    const served = fs.readFileSync(file, "utf8");
     assert.match(
-      fs.readFileSync(file, "utf8"),
+      served,
       new RegExp(`\\.${method.toLowerCase()}\\(`),
       `${route} does not serve ${method}`,
     );
+    if (method !== "POST") continue;
+    // This transport carries the device's mobile sign-in key, never a browser
+    // session. A billing POST that Cloud authorizes for sessions only answers
+    // 401 session_auth_required to every request made from here.
+    assert.match(
+      served,
+      /authorize: requireCurrentBillingManager,/,
+      `${route} does not accept the device's mobile credential`,
+    );
+    assert.doesNotMatch(
+      served,
+      /requireCurrentBillingManagerSession/,
+      `${route} is authorized for browser sessions only`,
+    );
   }
+  // The authority those routes name must itself admit the mobile credential.
+  const authority = fs.readFileSync(
+    path.resolve(cloudApi, "../shared/src/lib/auth/workers-hono-auth.ts"),
+    "utf8",
+  );
+  const body = authority.slice(
+    authority.indexOf("export async function requireCurrentBillingManager("),
+  );
+  assert.match(body.slice(0, 2000), /isMobileApiKeySecret\(presented\)/);
+  assert.match(body.slice(0, 2000), /mobileCredential: credential/);
 });

@@ -17,7 +17,6 @@ import {
 } from "@elizaos/cloud-shared/lib/eliza-agent-web-ui";
 import { checkAgentCreditGate } from "@elizaos/cloud-shared/lib/services/agent-billing-gate";
 import { insufficientCredits402 } from "@elizaos/cloud-shared/lib/services/agent-billing-gate-402";
-import { warmInferenceRateLimitGate } from "@elizaos/cloud-shared/lib/services/inference-admission-gate";
 import { getPairingTokenService } from "@elizaos/cloud-shared/lib/services/pairing-token";
 import {
   checkProvisioningWorkerHealth,
@@ -434,20 +433,6 @@ async function __hono_POST(
       agentId,
       webUiUrl,
     );
-
-    // Prepare the existing quota gate during browser handoff; warming neither
-    // consumes quota nor replaces the first inference request's admission checks.
-    if (executionCtx) {
-      executionCtx.waitUntil(
-        warmInferenceRateLimitGate(user.organization_id).catch((error) => {
-          // error-policy:J1 Optional background preparation reports its failure;
-          // foreground inference still performs the authoritative gate check.
-          logger.warn("[pairing-token] Inference gate prewarm failed", {
-            error,
-          });
-        }),
-      );
-    }
 
     const response = applyCorsHeaders(
       Response.json({

@@ -26,10 +26,7 @@
         "RemoveOnlyStaleAcknowledgedOrDead",
         "ReportedOnce"
       ],
-      "temporal": [
-        "UnderFairReplies",
-        "EachRunSettles"
-      ],
+      "temporal": ["UnderFairReplies", "EachRunSettles"],
       "temporalChecks": [
         {
           "property": "UnderFairReplies",

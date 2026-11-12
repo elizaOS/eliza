@@ -45,8 +45,9 @@ jobs:
   source-checks:
     name: Source checks
     runs-on: ubuntu-24.04
-    # A cold broad workspace build can reach the final lint/type checks after 37 minutes.
-    timeout-minutes: 60
+    # A cold main promotion took 46 minutes before lint/typecheck and hit the
+    # former 60-minute limit while typecheck was still progressing.
+    timeout-minutes: 90
     env:
       # Cloud API checking needs an 8 GiB heap. Run one compiler alongside
       # the separately capped 2 GiB lint process on the 16 GiB runner.

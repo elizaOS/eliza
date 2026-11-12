@@ -18,7 +18,7 @@ import {
   type CreditReservation,
   InsufficientCreditsError,
 } from "@elizaos/cloud-shared/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { inferenceFundingRefusal } from "@elizaos/cloud-shared/lib/services/inference-funding-refusal";
 import {
   elevenLabsSdkErrorStatus,
   isKnownUnacceptedProviderStatus,
@@ -295,16 +295,13 @@ async function __hono_POST(c: AppContext) {
       providerSelection?.ok === true &&
       providerSelection.provider !== "kokoro" &&
       providerSelection.provider !== "cloudflare";
-    const { user, apiKeyId, admissionSnapshot, credential } =
+    const { user, apiKeyId, admissionSnapshot, refreshAuthEntry } =
       await requireGenerativeRouteCaller(c, {
         compatibility: "raw",
         rateLimitEndpoint: "strict",
         deferStrongCredentialCheck: willAdmit,
+        cachedDecisionIsFinal: true,
       });
-    await using credentialGuard = deferredCredentialAdmissionGuard({
-      organizationId: () => user.organization_id,
-      credential: () => credential,
-    });
     settlementOrganizationId = user.organization_id;
     settlementUserId = user.id;
     timings.authMs = Date.now() - requestStart;
@@ -715,7 +712,7 @@ async function __hono_POST(c: AppContext) {
         apiKeyId,
         cost: billingCost,
         admissionSnapshot,
-        credential: credentialGuard.credentialForAdmission(),
+        refreshAuthEntry,
         idempotencyKey: ttsIdempotencyKey ?? undefined,
         atomicProviderBoundary: true,
       });
@@ -726,7 +723,11 @@ async function __hono_POST(c: AppContext) {
       if (error instanceof InsufficientCreditsError) {
         return Response.json(
           {
-            error: "Insufficient credits for text-to-speech",
+            // Clients parse `error.code` and `error.resetsAt`.
+            error: inferenceFundingRefusal(error, {
+              insufficientCreditsMessage:
+                "Insufficient credits for text-to-speech",
+            }),
             required: error.required,
           },
           { status: 402 },
