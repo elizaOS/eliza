@@ -396,10 +396,12 @@ export function filterTime(value: string, end = false): number {
     ? new Date(year, month - 1, day + 1).getTime() - 1
     : new Date(year, month - 1, day).getTime();
 }
-// Words of any script, like StorageCatalog.query on Android.
+// Words of any script, like StorageCatalog.query on Android. Final ς folds to
+// σ: toLowerCase gives "ΚΟΣΜΟΣ.pdf" a σ but the typed word "κόσμος" a ς.
 const words = (value: string) =>
   value
     .toLowerCase()
+    .replace(/ς/g, "σ")
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .split(/[^\p{L}\p{M}\p{N}]+/u)

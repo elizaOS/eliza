@@ -73,6 +73,15 @@ for (const [script, text, names, expected] of [
     ["Договор аренды.pdf"],
   ],
   ["Greek", "σύμβαση", ["Σύμβαση.pdf", "notes.pdf"], ["Σύμβαση.pdf"]],
+  // A typed word ends in ς; a capital name lowercases to σ before ".pdf".
+  [
+    "Greek final-sigma",
+    "κόσμος",
+    ["ΚΟΣΜΟΣ.pdf", "ΤΟΜΟΣ.txt", "notes.pdf"],
+    ["ΚΟΣΜΟΣ.pdf"],
+  ],
+  // A capital prefix lowercases to a final ς; the name has σ there.
+  ["Greek capital", "ΚΟΣ", ["Κόσμος.pdf", "notes.pdf"], ["Κόσμος.pdf"]],
   ["Devanagari", "अनुबंध", ["किराया अनुबंध.pdf", "notes.pdf"], ["किराया अनुबंध.pdf"]],
   [
     "Chinese",
