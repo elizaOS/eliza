@@ -8,7 +8,8 @@ import org.json.JSONObject;
  *
  * The saved, acknowledged {@code eliza_mobile_} key asks Cloud for a new mobile authorization code
  * ({@link #PATH}); the code is exchanged and acknowledged through the ordinary mobile App Auth token
- * and ack routes. The new key replaces the saved one only after Cloud confirmed it, and the old key
+ * and ack routes. The successor secret and proof are durably staged before acknowledgement. The
+ * new key replaces the selected one only after Cloud confirmed it, and the old key
  * is revoked only after the new one is saved. A refusal never removes the working key: the owner
  * signs in again when it expires.
  *
@@ -20,7 +21,8 @@ import org.json.JSONObject;
  * still the saved one: that request would end the saved key.</li>
  * <li>A key whose successor Cloud confirmed must not ask for renewal again: Cloud takes that as two
  * holders and ends the sign-in. So once a confirmation may have reached Cloud, the saved key is not
- * presented again unless Cloud said the new key was not confirmed ({@link Record#CONFIRMING}).</li>
+ * presented again while a successor receipt exists. An acknowledgement refusal does not prove that
+ * another in-flight acknowledgement cannot still commit.</li>
  * </ul>
  *
  * Nothing here logs, sends a request or touches storage.
@@ -56,7 +58,8 @@ public final class CloudKeyRenewal {
  /**
   * 200 carries a code. 401 (key invalid, expired, client disabled or registered again), 403 (user
   * inactive or the key left the user's organization) and 409 (the renewal window closed) need a full
-  * sign-in. Everything else (429, 503, another status, no answer) may be asked again a day later.
+  * sign-in. Other failures defer completion. A dispatched request retains its exclusive claim until
+  * it advances to a successor receipt or the owner signs in again.
   */
  public static Answer answer(int status) {
   if (status == 200) return Answer.CODE;
@@ -68,6 +71,124 @@ public final class CloudKeyRenewal {
   * sign-in, expired, or its client disabled): unlike 403 and 409, the saved key does not keep working.
   */
  public static boolean keyRefused(int status) { return status == 401; }
+
+ /**
+  * An exclusive pre-network claim in the same encrypted receipt slot. It cannot be stolen on a
+  * timeout: another live host might be paused immediately before dispatching its predecessor key.
+  * Only the exact in-flight owner can replace it with a full successor receipt, or remove it before
+  * dispatch. Once dispatched it remains on every uncertain outcome.
+  */
+ public static final class Request {
+  public static final String KIND = "mobile-key-renewal-request-v1";
+  public final String raw, generation, predecessor;
+  public final long attemptedAt;
+  private Request(String raw, JSONObject value, CloudSignInConfig config, CloudSignInEnvironment environment) throws Exception {
+   this.raw = raw;
+   generation = value.getString("generation"); predecessor = value.getString("predecessor");
+   attemptedAt = value.getLong("attemptedAt");
+   JSONObject before = new JSONObject(predecessor);
+   if (!isRequest(value) || !CloudSignInFlow.Pending.validGeneration(generation)
+     || !CloudSignInFlow.validUuid(value.optString("requestId", null)) || attemptedAt <= 0
+     || !config.clientId.equals(value.optString("clientId", null))
+     || !environment.name.equals(value.optString("environment", null))
+     || !environment.callback().equals(value.optString("redirectUri", null))
+     || !CloudSignInFlow.validUuid(before.optString("credentialId", null))
+     || !CloudSignInFlow.validMobileSecret(before.optString("token", null))
+     || Receipt.time(before.opt("expiresAt")) <= 0) throw new IllegalArgumentException("Invalid renewal request claim");
+  }
+  public static boolean isRequest(JSONObject value) { return KIND.equals(value.optString("kind", null)); }
+  public static Request parse(String raw, CloudSignInConfig config, CloudSignInEnvironment environment) throws Exception {
+   return new Request(raw, new JSONObject(raw), config, environment);
+  }
+  public static Request create(CloudSignInConfig config, CloudSignInEnvironment environment, String generation, String predecessor, long now) throws Exception {
+   String raw = new JSONObject().put("kind", KIND).put("generation", generation).put("predecessor", predecessor)
+    .put("requestId", java.util.UUID.randomUUID().toString()).put("attemptedAt", now)
+    .put("clientId", config.clientId).put("environment", environment.name).put("redirectUri", environment.callback()).toString();
+   return parse(raw, config, environment);
+  }
+  public boolean matchesPredecessor(String value) { return Receipt.sameCredential(predecessor, value); }
+ }
+
+ /**
+  * A successor's encrypted acknowledgement receipt, in the existing native receipt slot. The
+  * selected predecessor is kept until Cloud confirms the successor. The receipt retains everything
+  * needed to retry that exact acknowledgement and publication after a process restart.
+  */
+ public static final class Receipt {
+  public static final String KIND = "mobile-key-renewal-v1";
+  public final String raw, generation, predecessor, successor;
+  public final String previousToken, credentialId, secret, installedId;
+  public final long previousExpiresAt, expiresAt, acknowledgeBy;
+  public final boolean confirmed;
+  private final String proof;
+
+  private Receipt(String raw, JSONObject value, CloudSignInConfig config, CloudSignInEnvironment environment) throws Exception {
+   if (!KIND.equals(value.optString("kind", null))) throw new IllegalArgumentException("Not a renewal receipt");
+   this.raw = raw;
+   generation = value.getString("generation");
+   predecessor = value.getString("predecessor");
+   successor = value.getString("successor");
+   JSONObject before = new JSONObject(predecessor), after = new JSONObject(successor), binding = value.optJSONObject("proof");
+   previousToken = before.getString("token");
+   previousExpiresAt = time(before.opt("expiresAt"));
+   credentialId = after.getString("serverCredentialId");
+   secret = after.getString("token");
+   installedId = after.getString("credentialId");
+   expiresAt = time(after.opt("expiresAt"));
+   acknowledgeBy = value.getLong("acknowledgeBy");
+   if (!(value.opt("confirmed") instanceof Boolean)) throw new IllegalArgumentException("Invalid renewal receipt state");
+   confirmed = Boolean.TRUE.equals(value.opt("confirmed"));
+   if (!CloudSignInFlow.Pending.validGeneration(generation)
+    || !CloudSignInFlow.validUuid(before.optString("credentialId", null))
+    || !CloudSignInFlow.validMobileSecret(previousToken) || previousExpiresAt <= 0
+    || !CloudSignInFlow.validUuid(credentialId) || !CloudSignInFlow.validUuid(installedId)
+    || !CloudSignInFlow.validMobileSecret(secret) || secret.equals(previousToken)
+    || expiresAt <= previousExpiresAt || acknowledgeBy <= 0 || binding == null
+    || !config.clientId.equals(binding.optString("clientId", null))
+    || !environment.name.equals(binding.optString("environment", null))
+    || !environment.callback().equals(binding.optString("redirectUri", null))
+    || !CloudSignInFlow.validState(binding.optString("state", null))
+    || !CloudSignInFlow.validVerifier(binding.optString("codeVerifier", null))
+    || !binding.optString("code", "").matches("emac_[0-9a-f]{64}")
+    || !credentialId.equals(binding.optString("credentialId", null))
+    || !secret.equals(binding.optString("secret", null)))
+    throw new IllegalArgumentException("Invalid renewal receipt");
+   proof = binding.toString();
+  }
+
+  public static boolean isRenewal(JSONObject value) { return KIND.equals(value.optString("kind", null)); }
+  public static Receipt parse(String raw, CloudSignInConfig config, CloudSignInEnvironment environment) throws Exception {
+   return new Receipt(raw, new JSONObject(raw), config, environment);
+  }
+  public static Receipt create(CloudSignInConfig config, CloudSignInEnvironment environment, String generation,
+    String predecessor, JSONObject binding, String credentialId, String secret, long expiresAt, long acknowledgeBy) throws Exception {
+   JSONObject successor = new JSONObject().put("credentialId", java.util.UUID.randomUUID().toString())
+    .put("token", secret).put("expiresAt", expiresAt).put("serverCredentialId", credentialId);
+   JSONObject proof = new JSONObject(binding.toString()).put("credentialId", credentialId).put("secret", secret);
+   String raw = new JSONObject().put("kind", KIND).put("generation", generation).put("predecessor", predecessor)
+    .put("successor", successor.toString()).put("proof", proof).put("acknowledgeBy", acknowledgeBy).put("confirmed", false).toString();
+   return parse(raw, config, environment);
+  }
+  public JSONObject proof() throws Exception { return new JSONObject(proof); }
+  public String confirmedRecord() throws Exception { return new JSONObject(raw).put("confirmed", true).toString(); }
+  public boolean matchesPredecessor(String value) { return sameCredential(predecessor, value); }
+  public boolean matchesSuccessor(String value) { return sameCredential(successor, value); }
+  private static boolean sameCredential(String left, String right) {
+   if (left == null || right == null) return false;
+   try {
+    JSONObject a = new JSONObject(left), b = new JSONObject(right);
+    return a.getString("credentialId").equals(b.getString("credentialId"))
+     && a.getString("token").equals(b.getString("token"))
+     && a.optString("serverCredentialId", "").equals(b.optString("serverCredentialId", ""))
+     && time(a.opt("expiresAt")) == time(b.opt("expiresAt"));
+   } catch (Exception invalid) { return false; }
+  }
+  private static long time(Object value) {
+   if (value instanceof Number) return ((Number) value).longValue();
+   if (value instanceof String) try { return java.time.Instant.parse((String) value).toEpochMilli(); } catch (Exception invalid) { return 0; }
+   return 0;
+  }
+ }
 
  /** The strict request body: the mobile PKCE binding of the App Auth connect route, without a flow. */
  public static JSONObject body(CloudSignInConfig config, CloudSignInEnvironment environment, String state, String challenge) throws Exception {
@@ -81,8 +202,8 @@ public final class CloudKeyRenewal {
   * identity, when it was issued (0 when an older build saved it), when renewal was last asked and
   * what came of it. A record for another key says nothing about the saved one.
   *
-  * `confirming`: a new key was sent to Cloud for confirmation and Cloud has not said it was refused,
-  * so the saved key may have a confirmed successor this phone does not hold. `rejected`: Cloud
+  * The encrypted request/receipt is the custody and exclusion authority; this plain record only
+  * limits requests and supports older builds' `confirming` markers. `rejected`: Cloud
   * answered the renewal request of this key with 401.
   */
  public static final class Record {

@@ -16,7 +16,10 @@ const fixtures = {
   "NativeAndroidActivation.qnt": [chain],
   "NativeAndroidKeyRenewal.qnt": [
     chain,
-    "^silent renewal confirms the new key before saving it",
+    "^silent renewal stages durable custody before confirmation",
+    "^renewal bookkeeping commits before admitting another request",
+    "^the exact renewal save through the resident credential store",
+    "^actual Android resident credential mutation owns the exact stop and write",
   ],
   "NativeAndroidReadiness.qnt": [
     "^exact readiness measurement, cache and single-flight probe",

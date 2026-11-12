@@ -269,102 +269,76 @@ same outcomes as the in-process retries (below).
 
 ### Silent key renewal
 
-A saved key is renewed in the background when it has less than ten days left, or is
-in the last third of its life when its issue time is known. The plugin checks on
-load and resume (at most hourly per process) and on `renewSignIn({environment})`. It
-asks Cloud at most once in 24 hours per saved key and never while a sign-in attempt
-is active.
+A saved key is due with less than ten days left, or in the last third of its life
+when its issue time is known. The plugin checks on load/resume (at most hourly per
+process) and on `renewSignIn({environment})`. It sends at most one request per key
+in 24 hours and pauses for an active sign-in.
 
-1. `POST /api/v1/app-auth/mobile/renew` with the saved key (`Authorization: Bearer`
-   and `X-API-Key`) and a fresh mobile PKCE binding
-   (`clientId`, `environment`, `redirectUri`, `state`, `codeChallenge`,
-   `codeChallengeMethod: "S256"`, `deviceName`). 200 answers
-   `{success: true, code: "emac_…", expiresAt}`.
-2. The code is exchanged and acknowledged through the existing
-   `/api/v1/app-auth/mobile/token` and `/api/v1/app-auth/mobile/ack` routes. An
-   unanswered acknowledgement is repeated until Cloud's deadline.
-3. Only a key Cloud confirmed is saved, and only while the saved key is still the
-   one the renewal presented. The duty to revoke the old key is stored first, in
-   the native-only slot `cloud-signin:v1:retire:<environment>`
-   (`CloudSignInConfig.retiringSlot`), as `{token, expiresAt, successor}` where
-   `successor` is the new key's `credentialId` from the token exchange; a renewal
-   that cannot store it saves nothing.
-4. The host's `savedKeyRenewed(environment, credentialId)` hook runs.
-5. The old key is revoked with `DELETE /api/v1/api-keys/current`, presenting the
-   old key and the header `X-Renewed-Credential-Id: <successor>`. The header is
-   what makes this the last step of a renewal: Cloud then ends the old key alone.
-   Without it Cloud takes the request as a sign-out and ends every key of the
-   sign-in, the renewed one included (it tolerates a missing header only for two
-   minutes after the acknowledgement). So every attempt sends it, also the ones
-   made from storage on a later start. A 2xx answer or a 401 (Cloud already
-   refuses that key) ends the duty. With no answer it is retried twice in this
-   process and again on later starts until the old key expires, so a renewal
-   rotates the key and never leaves two live ones behind. A stored duty for a key
-   that is still the saved one, or one that names no successor, is dropped without
-   a request.
-6. The retained `signInRenewed` event (`{environment, expiresAt, credentialId}`)
-   tells the renderer to read the saved sign-in again.
+Renewal requires `observeCredentialCommit()`, `credentialGeneration()` and
+`adoptCredentialCommit(generation)`. The default host returns `unavailable` before
+network work; the current Eliza host does not enable these optional hooks. A
+participating host must provide durable, authoritative encrypted
+slot reads/writes and exact compare-and-exchange under the original credential
+intent. Credential-slot comparisons must run the normal provider/agent retirement
+path. A newer sign-out or sign-in fences every stage, including after restart.
 
-401, 403 and 409 mean Cloud will not renew this key (`sign-in-required`). Every
-other failure is asked again a day later (`deferred`). Neither removes the saved
-key. After 403 and 409 it keeps working until it expires, and the owner then signs
-in as before. 401 is different: Cloud refuses the key itself (it was revoked, or
-its whole sign-in was ended), so the answer also carries `keyRefused: true` and
-`expiryWarning: true` whatever time is left, and so does every later check that
-day. Ask the owner to sign in then. Renewal writes no acknowledgement receipt,
-because a receipt holds no key and the unconfirmed key is never stored.
+1. Claim the existing encrypted receipt slot with an exact renewal request record
+   bound to the selected predecessor and original durable generation. Recheck both
+   after claiming it, commit the daily preference marker synchronously, then send
+   `POST /api/v1/app-auth/mobile/renew` with the selected key in `Authorization`
+   and `X-API-Key` and a fresh mobile PKCE binding. Two host instances cannot send
+   the same predecessor while either holds this claim.
+2. Exchange the code through `/api/v1/app-auth/mobile/token`. Replace the exact
+   request claim with an encrypted successor receipt and read it back **before**
+   `/api/v1/app-auth/mobile/ack`. The receipt retains the successor secret, stable
+   proposed local identity, server credential ID, PKCE proof, original generation,
+   predecessor and deadline. The working predecessor stays selected.
+3. An exact successful ACK activates the successor. Commit that confirmation to
+   the receipt, then persist/read back the old-key retirement duty in
+   `CloudSignInConfig.retiringSlot` as `{token, expiresAt, successor}`. Publish and
+   read back the successor through the host's credential replacement path. A
+   partial selected-slot write can be repaired from the confirmed receipt under
+   its original generation; it cannot overwrite a newer owner's selection.
+4. Remove only the exact receipt, call `savedKeyRenewed(environment, credentialId)`
+   as an optional best-effort host notification, then retire the predecessor with
+   `DELETE /api/v1/api-keys/current` and
+   `X-Renewed-Credential-Id: <successor server credential ID>`. Always send that
+   header: an unnamed delete can end the entire sign-in. The retained
+   `signInRenewed` event tells the renderer to read the selected sign-in again.
+   An unanswered retirement keeps its exact duty for retry on later starts. `renewed`
+   confirms the acknowledged, durably selected credential; it does not confirm that
+   a resident agent started. Hook failure leaves that renewal result unchanged.
 
-A new key that is not saved is never used, and it is not revoked while the key it
-was renewed from is still the saved one. Both belong to one sign-in, and to Cloud a
-key without a confirmed successor that revokes itself is signing out: that request
-would end the saved key. Unconfirmed, the new key lapses at Cloud's deadline.
-Confirmed (the save was refused, or a newer credential action owned the slot), it
-ends with the sign-in. It is revoked only when the saved key was removed or
-replaced meanwhile, because the owner signed out or signed in again.
+A full successor receipt resumes the same ACK and installation after restart,
+even after the original ACK deadline: a landed ACK can be replayed with the same
+proof and secret. An ambiguous or refused ACK retains custody and blocks another
+renewal of the predecessor, because an earlier in-flight ACK may still commit.
+An exchange-state `authorization_complete` response is not an activation receipt.
+The client never sends a bare successor revocation while preserving its predecessor.
 
-Cloud also ends a whole sign-in when a key asks for renewal after its successor
-was confirmed. The client therefore records, before the first acknowledgement
-request, that the saved key may have a confirmed successor (`confirming` in the
-plain renewal record). It clears that only when Cloud refuses the acknowledgement.
-While it stands, including after the process ended or Cloud's deadline passed with
-no answer, that key is not presented for renewal again: `renewSignIn` answers
-`sign-in-required`, the key keeps working until it expires, and the expiry warning
-appears in its last three days. This costs one full sign-in in the rare case that
-the confirmation never reached Cloud; asking again would cost the working key
-whenever it had.
+A pre-secret request claim is never stolen or cleared on timeout. A paused live
+owner could still send its request, and a response can outlive the local caller.
+Once dispatched, a failed exchange or process loss therefore preserves the claim
+and working key. Checks return `deferred`, then `sign-in-required` after 24 hours;
+a fresh interactive sign-in replaces the unresolved claim. Only a request whose
+owner sent nothing can be cleared by that exact owner. Plain preference records
+limit requests and preserve older `confirming` markers; they are not secret custody.
 
-`renewSignIn` answers `{environment, status, expiryWarning, expiresAt?, credentialId?, keyRefused?}`
-(`nativeSignInRenewal`). `expiryWarning` is true only when fewer than three days
-remain and renewal is impossible or has failed, or when Cloud refused the key
-(`keyRefused`); show the expiry warning from it, not from the remaining time
-alone. An answer given while Cloud's confirmation of the new key is still awaited
-(`deferred`) never carries the warning.
+`renewSignIn` returns
+`{environment, status, expiryWarning, expiresAt?, credentialId?, keyRefused?}`
+without a secret. Status is `current`, `renewed`, `deferred`, `sign-in-required`,
+`unavailable` or `signed-out`. A renewal-route 401 means the selected key itself is
+refused and returns `keyRefused: true` with an immediate expiry warning, including
+later checks. A 403/409 requires sign-in while retaining the selected key. Other
+failures retain their request or successor receipt. The expiry warning otherwise
+appears only within the final three days when renewal has failed or is unavailable.
+A pending browser sign-in also delays fresh renewal.
 
-A browser Google sign-in that an earlier process began (a live pending record)
-counts as a sign-in in progress: nothing is renewed until it returns or expires.
-
-Renewal needs a host that implements `observeCredentialCommit()`: a check bound to
-the newest credential intent that reserves nothing, so background work never
-supersedes an owner's action and stops once one is reserved. The default returns
-null and the status is `unavailable`. No host in this repository implements it yet.
-
-A host that turns renewal on must do two more things:
-
-- Store the retiring slot like the receipt slot. A store that refuses the name makes
-  every renewal end as `deferred`.
-- Handle the save as the credential replacement it is. A store that binds a local
-  agent to the saved key (plugin-native-agent's `ResidentCredentialStore`) stops that
-  agent, removes its Cloud provider admission and runs its "Cloud changed" effects on
-  this write, exactly as for a new sign-in. Admit the agent again in
-  `savedKeyRenewed`, so that does not depend on a renderer listening for
-  `signInRenewed` at that moment. The old key is revoked only after the hook
-  returned. `test:native-android` runs the exact save through that store.
-
-Cloud allows one confirmed successor per key and keeps the old key valid until the
-client's `DELETE`. `test:native-android` runs the client's exact requests against
-those rules (the `Cloud` model in `CloudSignInChainTest`): after every renewal
-outcome the key the phone has saved is one Cloud still accepts, or the outcome
-says `keyRefused`.
+`test:native-android` executes the exact Java renewal and recovery methods with
+real JSON round trips, controlled crashes/storage faults, shared-instance claims
+and synthetic Cloud rules. It also checks the actual resident-store replacement
+and host compare-and-exchange paths. It runs on a plain JVM; Android device
+execution and real Cloud delivery remain separate checks.
 
 ### Browser Google return in a new process
 
