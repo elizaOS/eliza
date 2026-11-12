@@ -28,9 +28,6 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
-    testOptions {
-        unitTests.includeAndroidResources = true
-    }
 }
 
 repositories {
@@ -44,7 +41,6 @@ dependencies {
 
     // JVM test of the shared call screen's keypad tone ownership.
     testImplementation "junit:junit:$junitVersion"
-    testImplementation "org.robolectric:robolectric:4.16.1"
 
     // Instrumented test deps (issue #9967 — on-device dialer status read).
     androidTestImplementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"

@@ -42,8 +42,6 @@ exit 90
         encoding: "utf8",
         env: {
           ...process.env,
-          // These tests replace sudo. Keep host package configuration untouched.
-          RUNNER_ENVIRONMENT: "self-hosted",
           PATH: `${dir}:${process.env.PATH}`,
           ELIZA_APT_UBUNTU_ONLY: String(isolated),
           APT_TEST_MODE: mode,

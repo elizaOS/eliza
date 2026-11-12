@@ -3,15 +3,9 @@ import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import {
   CALENDAR_AVAILABILITY_CAPABILITY,
   CALENDAR_NAMED_READ_CAPABILITY,
-  canonicalNotesListContextAllowed,
   NAMED_TARGET_CAPABILITY,
-  NOTES_LIST_FILTER_CAPABILITY,
   NOTES_SEARCH_CAPABILITY,
-  PHONE_WORKFLOW_CALENDAR_ANCHOR_PROTOCOL,
   PHONE_WORKFLOW_DEVICE_PROTOCOL,
-  resolvePhoneCalendarRange,
-  validatePhoneCalendarRange,
-  workflowCalendarReadMatches,
   workflowReminderDayIsCurrent,
 } from "@elizaos/contracts";
 import type { NativeNotesDeferredRead } from "@elizaos/contracts/native-notes-query";
@@ -195,24 +189,6 @@ import {
   smsReceiptOutcome,
   validateSmsResult,
 } from "./sms-contract.ts";
-import {
-  CONTACT_WRITE_CAPABILITY,
-  isSmsCompose,
-  isSmsReply,
-  isTelephonyAction,
-  MESSAGES_READ_CAPABILITY,
-  PHONE_CALL_CAPABILITY,
-  SMS_COMPOSE_CAPABILITY,
-  selectedTelephonyView,
-  smsComposeNotSubmitted,
-  smsReplyNotDrafted,
-  TELEPHONY_ACTION_OPERATION_TYPES,
-  telephonyActionCapabilityAvailable,
-  telephonyActionReceiptOutcome,
-  VOICEMAIL_DELETE_CAPABILITY,
-  VOICEMAIL_READ_CAPABILITY,
-  validateTelephonyActionResult,
-} from "./telephony-actions-contract.ts";
 import { requireTurnObservation, turnObservation } from "./turn-observation.ts";
 import {
   type DeviceViewProfile,
@@ -337,9 +313,6 @@ export function deviceActionToolGuidance(
     .filter(
       (item) =>
         deviceOperationSupportedByCapabilities(item.operation, capabilities) &&
-        (DEVICE_RECORD_ADMISSION[item.operation]?.selection !==
-          "canonical-notes-list" ||
-          admitted(item.operation)) &&
         (DEVICE_RECORD_ADMISSION[item.operation]?.domain !== "notes" ||
           !canonicalNotes ||
           admitted(item.operation)) &&
@@ -676,15 +649,10 @@ export const DEVICE_RECORD_ADMISSION: Readonly<
     {
       domain: "notes" | "calendar";
       views: readonly string[] | "any";
-      selection: "none" | "device" | "canonical-notes-list";
+      selection: "none" | "device";
     }
   >
 > = {
-  notes_list_filter: {
-    domain: "notes",
-    views: ["notes"],
-    selection: "canonical-notes-list",
-  },
   notes_query: { domain: "notes", views: ["home", "notes"], selection: "none" },
   notes_search: {
     domain: "notes",
@@ -768,10 +736,7 @@ export function deviceAppRecordOperationAvailable(
   const current = getDeviceActionTurn();
   // Workflow/system hosts outside an authenticated client turn keep their existing admission.
   if (!current || current.runtime !== runtime)
-    return (
-      rule.selection !== "canonical-notes-list" &&
-      options?.requestBound !== true
-    );
+    return options?.requestBound !== true;
   if (!current.active || !current.isCurrent()) return false;
   const source = currentAppRecordSource(runtime, rule.domain, message);
   if (rule.selection === "device") return source === "device";
@@ -786,8 +751,6 @@ export function deviceAppRecordOperationAvailable(
   message ??= current.requestMessage?.message ?? current.replyContext?.message;
   const context = message && turnObservation(message.content.metadata);
   if (!context?.view) return false;
-  if (rule.selection === "canonical-notes-list")
-    return source === "runtime" && canonicalNotesListContextAllowed(context);
   const kind = context.selectedObject
     ? Reflect.get(context.selectedObject, "kind")
     : undefined;
@@ -885,7 +848,7 @@ export function setDeviceReadReplyContext(
 async function freshRequestedMessageId(
   runtime: IAgentRuntime,
   credential: DeviceCredential,
-  options: { allowReviewed?: boolean; readText?: boolean } = {},
+  browserRequest = false,
 ): Promise<
   { messageId: string; requestText: string; assertCurrent(): void } | undefined
 > {
@@ -907,7 +870,7 @@ async function freshRequestedMessageId(
     typeof original.createdAt !== "number" ||
     !Number.isFinite(original.createdAt) ||
     original.createdAt < current.startedAt ||
-    (!options.allowReviewed &&
+    (!browserRequest &&
       (!metadata ||
         typeof metadata !== "object" ||
         Array.isArray(metadata) ||
@@ -984,7 +947,7 @@ async function freshRequestedMessageId(
     return;
   return {
     messageId: originalId,
-    requestText: options.readText
+    requestText: browserRequest
       ? extractUserText(unwrapUserMessageText(stored))
       : "",
     assertCurrent,
@@ -1901,7 +1864,7 @@ export class DeviceActionService {
   async register(
     c: DeviceCredential,
     label: string,
-    workflowProtocol: number = 0,
+    workflowProtocol: 0 | 1 | 2 = 0,
     workflowOwnerId: string = c.subjectUserId,
   ): Promise<{
     installationId: string;
@@ -1942,7 +1905,6 @@ export class DeviceActionService {
           "notes.local-record.v1",
           NOTES_QUERY_CAPABILITY,
           NOTES_ORGANIZE_CAPABILITY,
-          NOTES_LIST_FILTER_CAPABILITY,
           NOTES_SEARCH_CAPABILITY,
           CALENDAR_AVAILABILITY_CAPABILITY,
           FILES_CAPABILITY,
@@ -1958,12 +1920,6 @@ export class DeviceActionService {
           SMS_SEND_CAPABILITY,
           PHONE_DIAL_CAPABILITY,
           CONTACT_LOOKUP_CAPABILITY,
-          PHONE_CALL_CAPABILITY,
-          CONTACT_WRITE_CAPABILITY,
-          SMS_COMPOSE_CAPABILITY,
-          MESSAGES_READ_CAPABILITY,
-          VOICEMAIL_READ_CAPABILITY,
-          VOICEMAIL_DELETE_CAPABILITY,
           PHOTO_LIBRARY_CAPABILITY,
           PHOTOS_VIEW_CAPABILITY,
         ],
@@ -2203,11 +2159,6 @@ export class DeviceActionService {
       !phoneDialCapabilityAvailable(validated, c.capabilities)
     )
       throw new DeviceActionError("Dial capability unavailable");
-    if (
-      isTelephonyAction(validated) &&
-      !telephonyActionCapabilityAvailable(validated.type, c.capabilities)
-    )
-      throw new DeviceActionError("Telephony capability unavailable");
     if (isMapsOperation(validated)) {
       if (!c.capabilities?.includes(MAPS_CAPABILITY))
         throw new DeviceActionError("Maps capability unavailable");
@@ -2248,7 +2199,6 @@ export class DeviceActionService {
         "camera_capture_photo",
         "sms_send",
         "phone_dial",
-        ...TELEPHONY_ACTION_OPERATION_TYPES,
         "clock_handoff",
         "clock_alarm",
         "create_note",
@@ -2281,16 +2231,16 @@ export class DeviceActionService {
     )
       throw new DeviceActionError("Workflow read requires bound dispatcher");
     const browserRequest = validated.type === "browser_navigate";
-    const selectedTelephony = selectedTelephonyView(validated) !== undefined;
     const foregroundTurn =
       isPhotosViewOperation(validated) || isFilesOperation(validated)
         ? getDeviceActionTurn()
         : undefined;
     const signal = foregroundTurn && getStreamingContext()?.abortSignal;
-    const requestOrigin = await freshRequestedMessageId(this.runtime, c, {
-      allowReviewed: browserRequest || selectedTelephony,
-      readText: browserRequest,
-    });
+    const requestOrigin = await freshRequestedMessageId(
+      this.runtime,
+      c,
+      browserRequest,
+    );
     // Reviewed Photos and Files proposals retain their foreground owner
     // even without a direct-request message binding.
     const assertCurrent =
@@ -2353,10 +2303,9 @@ export class DeviceActionService {
           !Array.isArray(metadata) &&
           "agentActionMode" in metadata &&
           metadata.agentActionMode === "direct-request-v1";
-        const requestingMessage =
-          directRequest || selectedTelephony
-            ? requestOrigin?.messageId
-            : undefined;
+        const requestingMessage = directRequest
+          ? requestOrigin?.messageId
+          : undefined;
         const payload: DeviceActionPayload = {
           action: "device_action",
           version: 1,
@@ -2508,7 +2457,6 @@ export class DeviceActionService {
   private async requireActiveWorkflow(
     tx: TransactionalDb,
     binding: WorkflowDeviceBinding,
-    calendarProtocol?: number,
   ): Promise<void> {
     const rows = await executeRawSqlTx(
       tx,
@@ -2527,29 +2475,6 @@ export class DeviceActionService {
       throw new DeviceActionError(
         "Workflow is no longer accepting device decisions",
       );
-    const relativeProtocol =
-      execution.calendarAnchorAt === undefined
-        ? 4
-        : PHONE_WORKFLOW_CALENDAR_ANCHOR_PROTOCOL;
-    if (calendarProtocol !== undefined && calendarProtocol < relativeProtocol) {
-      // A peer can downgrade after queueing or approval. Recheck its ability
-      // to review the pinned relative spec before decision and claim.
-      const versions = await executeRawSqlTx(
-        tx,
-        `SELECT workflow FROM workflow.embedded_workflows WHERE agent_id = ${sqlText(this.runtime.agentId)} AND id = ${sqlText(binding.workflowId)} AND version_id = ${sqlText(binding.versionId)} UNION ALL SELECT workflow FROM workflow.workflow_revisions WHERE agent_id = ${sqlText(this.runtime.agentId)} AND workflow_id = ${sqlText(binding.workflowId)} AND version_id = ${sqlText(binding.versionId)}`,
-      );
-      const metadata = object(object(versions[0]?.workflow).metadata);
-      if (typeof metadata.elizaPhoneWorkflowSpec !== "string")
-        throw new DeviceActionError("Workflow specification unavailable");
-      const spec = object(JSON.parse(metadata.elizaPhoneWorkflowSpec));
-      const step = object(
-        (Array.isArray(spec.steps) ? spec.steps : []).find(
-          (raw) => object(raw).id === binding.stepId,
-        ),
-      );
-      if ("days" in validatePhoneCalendarRange(step.range))
-        throw new DeviceActionError("Workflow device protocol unavailable");
-    }
   }
   async validateWorkflowTarget(
     subjectUserId: string,
@@ -2576,15 +2501,7 @@ export class DeviceActionService {
     dispatch: WorkflowDeviceDispatch,
   ): Promise<ApprovalRequest> {
     const binding = validateWorkflowBinding(dispatch.binding);
-    const { type, ...scope } = object(dispatch.operation);
-    const relative =
-      type === "read_calendar_range" && "days" in scope
-        ? validatePhoneCalendarRange(scope)
-        : undefined;
-    const absolute = relative
-      ? undefined
-      : validateDeviceOperation(dispatch.operation);
-    const operationType = absolute?.type ?? "read_calendar_range";
+    const operation = validateDeviceOperation(dispatch.operation);
     return this.database().transaction(async (tx) => {
       const rows = await executeRawSqlTx(
         tx,
@@ -2594,7 +2511,7 @@ export class DeviceActionService {
         rows.length !== 1 ||
         rows[0]?.revoked !== false ||
         Number(rows[0]?.workflow_protocol) <
-          workflowOperationProtocol(operationType) ||
+          workflowOperationProtocol(operation.type) ||
         rows[0]?.enrollment_id !== dispatch.target.enrollmentId
       )
         throw new DeviceActionError("Workflow device enrollment unavailable");
@@ -2643,76 +2560,6 @@ export class DeviceActionService {
       const step = object(
         steps.find((raw) => object(raw).id === binding.stepId),
       );
-      // Workflow ownership stays canonical. The proposal belongs to the authenticated device subject.
-      const deviceSubjectUserId = text(rows[0].subject_user_id, 256);
-      const queue = new PgApprovalQueue(transactionRuntime(this.runtime, tx), {
-        agentId: this.runtime.agentId,
-      });
-      const idempotencyKey = `workflow-device:${digest([subjectUserId, binding.runId, binding.stepId])}`;
-      const existing = await queue.byIdempotencyKey(
-        idempotencyKey,
-        deviceSubjectUserId,
-      );
-      let operation = absolute;
-      if (operationType === "read_calendar_range") {
-        if (step.kind !== "Read" || step.operation !== "calendar_range")
-          throw new DeviceActionError("Workflow Calendar scope changed");
-        const range = validatePhoneCalendarRange(step.range);
-        if (relative && stableStringify(relative) !== stableStringify(range))
-          throw new DeviceActionError("Workflow Calendar scope changed");
-        if ("days" in range) {
-          const anchor = execution.calendarAnchorAt;
-          const required =
-            anchor === undefined ? 4 : PHONE_WORKFLOW_CALENDAR_ANCHOR_PROTOCOL;
-          if (Number(rows[0]?.workflow_protocol) < required)
-            throw new DeviceActionError("Workflow device protocol unavailable");
-          if (anchor === undefined) {
-            // Before the run clock was stored, a queued proposal was the only
-            // durable record of the date the owner was shown.
-            if (!existing)
-              throw new DeviceActionError(
-                "Workflow Calendar run time unavailable",
-              );
-            const retained = validateDevicePayload(existing.payload).operation;
-            if (
-              retained.type !== "read_calendar_range" ||
-              !workflowCalendarReadMatches(
-                range,
-                retained,
-                Date.parse(retained.start),
-                0,
-              ) ||
-              (absolute &&
-                stableStringify(absolute) !== stableStringify(retained))
-            )
-              throw new DeviceActionError("Workflow Calendar scope changed");
-            operation = retained;
-          } else {
-            const instant =
-              typeof anchor === "string" ? Date.parse(anchor) : NaN;
-            if (
-              !Number.isFinite(instant) ||
-              new Date(instant).toISOString() !== anchor
-            )
-              throw new DeviceActionError(
-                "Workflow Calendar run time unavailable",
-              );
-            const read = validateDeviceOperation({
-              type: "read_calendar_range",
-              ...resolvePhoneCalendarRange(range, instant),
-            });
-            if (absolute && stableStringify(absolute) !== stableStringify(read))
-              throw new DeviceActionError("Workflow Calendar scope changed");
-            operation = read;
-          }
-        } else if (
-          operation?.type !== "read_calendar_range" ||
-          !workflowCalendarReadMatches(range, operation)
-        )
-          throw new DeviceActionError("Workflow Calendar scope changed");
-      }
-      if (!operation)
-        throw new DeviceActionError("Invalid workflow device operation");
       if (operation.type === "create_note") {
         if (
           step.kind !== "Write" ||
@@ -2739,6 +2586,14 @@ export class DeviceActionService {
           throw new DeviceActionError(
             "Workflow reminder read names a day other than today",
           );
+      } else if (operation.type === "read_calendar_range") {
+        const { type: _type, ...range } = operation;
+        if (
+          step.kind !== "Read" ||
+          step.operation !== "calendar_range" ||
+          stableStringify(step.range) !== stableStringify(range)
+        )
+          throw new DeviceActionError("Workflow Calendar scope changed");
       } else if (operation.type === "post_notification") {
         if (
           step.kind !== "Notify" ||
@@ -2749,8 +2604,18 @@ export class DeviceActionService {
       } else if (operation.type === "speak_text") {
         if (step.kind !== "Speak" || step.operation !== "read_aloud")
           throw new DeviceActionError("Workflow speech scope changed");
-      } else if (operation.type !== "read_calendar_range")
+      } else
         throw new DeviceActionError("Unsupported workflow device operation");
+      // Workflow ownership stays canonical; phone approvals retain the authenticated device subject.
+      const deviceSubjectUserId = text(rows[0].subject_user_id, 256);
+      const queue = new PgApprovalQueue(transactionRuntime(this.runtime, tx), {
+        agentId: this.runtime.agentId,
+      });
+      const idempotencyKey = `workflow-device:${digest([subjectUserId, binding.runId, binding.stepId])}`;
+      const existing = await queue.byIdempotencyKey(
+        idempotencyKey,
+        deviceSubjectUserId,
+      );
       return (
         await queue.enqueueTransactional(
           {
@@ -2972,13 +2837,7 @@ export class DeviceActionService {
     )
       throw new DeviceActionError("Workflow device protocol unavailable");
     if (activeWorkflowTx && payload.workflow)
-      await this.requireActiveWorkflow(
-        activeWorkflowTx,
-        payload.workflow,
-        payload.operation.type === "read_calendar_range"
-          ? Number(row.workflow_protocol)
-          : undefined,
-      );
+      await this.requireActiveWorkflow(activeWorkflowTx, payload.workflow);
     return request;
   }
   async decide(
@@ -3091,14 +2950,6 @@ export class DeviceActionService {
         !phoneDialCapabilityAvailable(payload.operation, c.capabilities)
       )
         throw new DeviceActionError("Dial capability unavailable");
-      if (
-        isTelephonyAction(payload.operation) &&
-        !telephonyActionCapabilityAvailable(
-          payload.operation.type,
-          c.capabilities,
-        )
-      )
-        throw new DeviceActionError("Telephony capability unavailable");
       if (
         isCalendarOperation(payload.operation) &&
         !calendarCapabilityAvailable(payload.operation.type, c.capabilities)
@@ -3217,38 +3068,6 @@ export class DeviceActionService {
             receipt = { ...receipt, result };
           } catch {
             throw new DeviceActionError("Invalid dial receipt");
-          }
-        }
-      } else if (isTelephonyAction(payload.operation)) {
-        // The contact SMS shares the SIM send's journal identity, so a lost
-        // response reconciles against one native row and never sends twice.
-        if (
-          isSmsCompose(payload.operation) &&
-          receipt.operationId !== request.execution?.providerIdempotencyKey
-        )
-          throw new DeviceActionError(
-            "SMS journal identity differs from execution claim",
-          );
-        // Missing evidence can only preserve uncertainty. A typed result must
-        // agree with the outcome: no status claims a connected call, and an
-        // unknown SMS stays unknown rather than failed or retryable.
-        if (receipt.outcome !== "unknown" || value.result !== undefined) {
-          try {
-            const result = validateTelephonyActionResult(
-              payload.operation,
-              value.result,
-            );
-            const outcome = telephonyActionReceiptOutcome(result);
-            if (
-              receipt.outcome !== outcome &&
-              !(receipt.outcome === "not_applied" && outcome === "failed")
-            )
-              throw new DeviceActionError(
-                "Telephony receipt outcome conflicts with native evidence",
-              );
-            receipt = { ...receipt, result };
-          } catch {
-            throw new DeviceActionError("Invalid telephony receipt");
           }
         }
       } else if (isClockOperation(payload.operation)) {
@@ -3400,22 +3219,7 @@ export class DeviceActionService {
           (receipt.result as { status?: unknown } | undefined)
             ?.status as string,
         );
-      // A contact SMS the owner dismissed, or whose contact or radio was
-      // missing, submitted nothing either. `unknown` never settles here.
-      const composeNotSubmitted =
-        isSmsCompose(payload.operation) &&
-        receipt.outcome === "failed" &&
-        smsComposeNotSubmitted(receipt.result);
-      // A reply draft that was not placed changed nothing and sends nothing.
-      const replyNotDrafted =
-        isSmsReply(payload.operation) &&
-        receipt.outcome === "failed" &&
-        smsReplyNotDrafted(receipt.result);
-      return receipt.outcome === "applied" ||
-        notDispatched ||
-        smsNotSubmitted ||
-        composeNotSubmitted ||
-        replyNotDrafted
+      return receipt.outcome === "applied" || notDispatched || smsNotSubmitted
         ? q.markDone(mutation)
         : q.markReconciliationRequired({
             ...mutation,
@@ -3491,14 +3295,6 @@ export class DeviceActionService {
         !phoneDialCapabilityAvailable(payload.operation, c.capabilities)
       )
         throw new DeviceActionError("Dial capability unavailable");
-      if (
-        isTelephonyAction(payload.operation) &&
-        !telephonyActionCapabilityAvailable(
-          payload.operation.type,
-          c.capabilities,
-        )
-      )
-        throw new DeviceActionError("Telephony capability unavailable");
       if (
         isCalendarOperation(payload.operation) &&
         !calendarCapabilityAvailable(payload.operation.type, c.capabilities)
@@ -3606,38 +3402,6 @@ export class DeviceActionService {
             receipt = { ...receipt, result };
           } catch {
             throw new DeviceActionError("Invalid dial receipt");
-          }
-        }
-      } else if (isTelephonyAction(payload.operation)) {
-        // The contact SMS shares the SIM send's journal identity, so a lost
-        // response reconciles against one native row and never sends twice.
-        if (
-          isSmsCompose(payload.operation) &&
-          receipt.operationId !== request.execution?.providerIdempotencyKey
-        )
-          throw new DeviceActionError(
-            "SMS journal identity differs from execution claim",
-          );
-        // Missing evidence can only preserve uncertainty. A typed result must
-        // agree with the outcome: no status claims a connected call, and an
-        // unknown SMS stays unknown rather than failed or retryable.
-        if (receipt.outcome !== "unknown" || value.result !== undefined) {
-          try {
-            const result = validateTelephonyActionResult(
-              payload.operation,
-              value.result,
-            );
-            const outcome = telephonyActionReceiptOutcome(result);
-            if (
-              receipt.outcome !== outcome &&
-              !(receipt.outcome === "not_applied" && outcome === "failed")
-            )
-              throw new DeviceActionError(
-                "Telephony receipt outcome conflicts with native evidence",
-              );
-            receipt = { ...receipt, result };
-          } catch {
-            throw new DeviceActionError("Invalid telephony receipt");
           }
         }
       } else if (isClockOperation(payload.operation)) {

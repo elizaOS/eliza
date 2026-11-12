@@ -15,11 +15,7 @@ import {
   writeBrandAssets,
 } from "./pixel10a-brand-assets.mjs";
 import { assertNoLockScreenSurface } from "./secure-camera.mjs";
-import {
-  launcherInstallDirectory,
-  renderOverlay,
-  validateDescriptor,
-} from "./stage-launcher-overlay.ts";
+import { renderOverlay, validateDescriptor } from "./stage-launcher-overlay.ts";
 import {
   admitSystemUpdater,
   writeSystemUpdater,
@@ -287,7 +283,7 @@ function verifyNativeStaging(output, launcher, evidence) {
       names.has(name) ||
       library.apkEntry !== `lib/arm64-v8a/${name}` ||
       library.installPath !==
-        `${launcherInstallDirectory(launcher)}/lib/arm64/${name}` ||
+        `/product/app/${launcher.moduleName}/lib/arm64/${name}` ||
       library.mode !== mode
     )
       throw new Error("Invalid native staging entry");
@@ -313,10 +309,7 @@ function verifyNativeStaging(output, launcher, evidence) {
   return true;
 }
 
-/**
- * Compose a previously admitted launcher overlay. The launcher is nonprivileged unless its
- * reviewed descriptor names privileged permissions. No source or device writes.
- */
+/** Compose a previously admitted, nonprivileged launcher overlay. No source or device writes. */
 export function composePixel10aProduct({
   output,
   product,
@@ -341,23 +334,12 @@ export function composePixel10aProduct({
   const makefile = fs.existsSync(path.join(output, "Android.mk"))
     ? fs.readFileSync(path.join(output, "Android.mk"), "utf8")
     : "";
-  const overlay = renderOverlay(launcher);
-  const privileged =
+  if (
     /\bprivileged\s*:\s*true\b/.test(blueprint) ||
-    /LOCAL_PRIVILEGED_MODULE\s*:?=\s*true/.test(makefile);
-  const allowlist = path.join(output, "privapp-permissions.xml");
-  if (!launcher.privilegedPermissions) {
-    if (privileged || fs.existsSync(allowlist))
-      throw new Error("Pixel 10a main launcher must remain nonprivileged");
-  } else if (
-    !privileged ||
-    !fs.existsSync(allowlist) ||
-    fs.readFileSync(allowlist, "utf8") !== overlay.privilegedPermissions
+    /LOCAL_PRIVILEGED_MODULE\s*:?=\s*true/.test(makefile)
   )
-    throw new Error(
-      "Pixel 10a launcher privilege differs from its reviewed privileged permissions",
-    );
-  if (!makefile && blueprint !== overlay.blueprint)
+    throw new Error("Pixel 10a main launcher must remain nonprivileged");
+  if (!makefile && blueprint !== renderOverlay(launcher).blueprint)
     throw new Error("Pixel 10a requires an admitted launcher overlay");
   const nativeLibrariesStaged = verifyNativeStaging(
     output,

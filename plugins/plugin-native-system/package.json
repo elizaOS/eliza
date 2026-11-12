@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-system",
-  "version": "2.0.5",
+  "version": "2.0.4",
   "description": "Android system-role status bridge for ElizaOS.",
   "main": "./dist/plugin.cjs.js",
   "module": "./dist/esm/index.js",
@@ -75,11 +75,11 @@
   },
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
-    "rollup": "^4.68.0",
+    "rollup": "^4.65.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.1.0",
-    "@types/ws": "^8.18.2"
+    "vitest": "^5.0.5",
+    "@types/ws": "^8.18.1"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.3.1"
@@ -100,6 +100,6 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "ws": "^8.22.1"
+    "ws": "^8.21.3"
   }
 }

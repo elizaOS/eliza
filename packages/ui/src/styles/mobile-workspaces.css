@@ -19,6 +19,10 @@
   --card-foreground: var(--text);
   --text-strong: var(--text);
   --muted-strong: var(--text);
+  --accent-action: var(--accent);
+  --accent-action-foreground: var(--accent-foreground);
+  --accent-action-hover: color-mix(in srgb, var(--accent) 88%, var(--text));
+  --accent-action-hover-foreground: var(--accent-foreground);
   --accent-subtle: color-mix(in srgb, var(--accent) 12%, transparent);
   --min-touch-target: 44px;
   --view-pad-bottom: 16px;

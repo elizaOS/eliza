@@ -20,32 +20,17 @@
 	{
 		"id": "core-ApprovalService",
 		"model": "packages/core/quint/ApprovalService.qnt",
-		"sources": [
-			"packages/core/src/services/approval.ts",
-			"packages/core/src/runtime/retirement.ts",
-			"packages/core/test/approval-service-model.test.ts"
-		],
+		"sources": ["packages/core/src/services/approval.ts"],
 		"invariants": [
 			"AtMostOneCallback",
 			"ResultAgrees",
 			"SingleOwner",
-			"TypeOK",
-			"NoLatePending",
-			"RetiredIsDrained",
-			"ReplacementIsDrained",
-			"AcknowledgedSelectionHasEffect",
-			"NoInventedFreeEffects",
-			"RestartCannotAcknowledgeCallback"
+			"TypeOK"
 		],
-		"status": "partial",
+		"status": "modeled",
 		"limitations": [
-			"One published approval and two competing selectors, plus a separate one-request retirement projection. Callback completion/failure and storage settlement are nondeterministic.",
-			"Role authorization, option validation, multiple pending approvals, durable recovery of task rows and process restart are outside these projections.",
-			"Stopping an already-pending request retains its durable task row. Callback failure retains the row but removes its in-memory callback. Unavailable callbacks fail closed; durable function reconstruction and retries remain unsupported.",
-			"Retirement assumes admitted callbacks settle and do not await their own service unload or stop. Independent instances running concurrently and reentrant lifecycle calls remain separate obligations.",
-			"Creation failure is checked before a successful commit. Unknown commit acknowledgements and external database mutation are outside these projections.",
-			"Two additional finite cases cover a single persisted required-callback task (sync or async) or callback-free async task, one runtime restart and same-name worker registration. Mixed callback shapes, legacy/externally changed metadata and startup deadline reconstruction remain open.",
-			"ChoiceApprovalCancellation separately models receipt-bearing cancellation. Core real SQLite checks cover delete acknowledgement before settlement, exclusive callback-free ownership, failure retry with the original deadline and concurrent stop success/failure. Legacy orphan cleanup has no cancellation receipt. A real committed-delete/lost-acknowledgement case also verifies that a missing task cannot produce a successful timeout callback receipt; unknown storage acknowledgement remains outside the finite model."
+			"One pending approval and two competing selectors. Callback completion and failure are nondeterministic.",
+			"Model verification does not establish behavior outside these bounds."
 		]
 	},
 	{
@@ -146,11 +131,10 @@
 			"TakenClearsDirty",
 			"TypeOK"
 		],
-		"status": "partial",
+		"status": "modeled",
 		"limitations": [
 			"One agent, two service instances, two adapters, three tick slots, two restarts and two registrations.",
-			"Model verification does not establish behavior outside these bounds.",
-			"TaskSchedulerQueryDrain covers query ownership across unregister and scheduler restart. Its separate batch projection covers a peer replacement while the first agent awaits in one shared batch. Hosts own physical adapter sharing and lifetime."
+			"Model verification does not establish behavior outside these bounds."
 		]
 	},
 	{
@@ -170,12 +154,10 @@
 			"PausedNotSelected",
 			"TypeOK"
 		],
-		"status": "partial",
+		"status": "modeled",
 		"limitations": [
 			"One task row. Runner sets, wake requests and pause writes use the four original finite configurations.",
-			"Model verification does not establish behavior outside these bounds.",
-			"The four scheduling cases cover blocking claims. TaskRetirement adds stop and overlapping nonblocking ownership with real PGlite conformance.",
-			"TaskSchedulerQueryDrain covers external daemon query retirement. Orphan quarantine, adaptive intervals and metadata conflict policy still require coverage."
+			"Model verification does not establish behavior outside these bounds."
 		]
 	}
 ]

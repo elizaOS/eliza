@@ -73,13 +73,7 @@ original absolute expiry (null means persistent). Complete raw job values and
 list duplicates are retained. Public operations cannot import. Serving closes
 imports permanently; the existing managed bot still owns queue start/stop and
 Discord nonce deduplication. Other Discord leases and routing state remain on
-their configured stores. Deploy the Worker with retry replacement support
-before starting a gateway that uses it. The operation replaces one exact
-processing member in one transaction. It preserves previously imported copies.
-The writer checks retry support on the authenticated delivery-marker read.
-An older Worker leaves the claim available for a later poll without sending a
-welcome. Stop and drain the writer before rolling back the Worker so an
-admitted send and its retry use the same protocol.
+their configured stores.
 
 Discord coordination can use `DISCORD_COORDINATION_STATE` when
 `CLOUD_DISCORD_COORDINATION_BACKEND=cloudflare`, with `DISCORD_COORDINATION_URL`

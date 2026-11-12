@@ -25,13 +25,11 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, type Page, type Route, test } from "@playwright/test";
-import type { App } from "../../../ui/src/cloud/applications/lib/apps";
 import {
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
 } from "./helpers";
-import { installCloudApiStubs } from "./helpers/cloud-audit-fixtures";
 import { seedStewardSession, setStewardSession } from "./helpers/test-auth";
 
 const EVIDENCE_DIR = resolve(
@@ -43,14 +41,14 @@ const APP_ID = "6e0a4f1c-9d2b-4c33-8f0e-5a7b1c2d3e4f";
 const APP_NAME = "Deep Link Deploy Proof";
 const DEPLOY_COMMIT_SHA = "0123456789abcdef0123456789abcdef01234567";
 
-function mockApp(): App {
+function mockApp(): Record<string, unknown> {
   return {
     id: APP_ID,
     name: APP_NAME,
     description: "ui-smoke fixture app for the #10823 deep-link entry",
     slug: "deep-link-deploy-proof",
-    organization_id: "org-smoke-1",
-    created_by_user_id: "cloud-audit-smoke-user",
+    organization_id: "org-1",
+    created_by_user_id: "user-deploy-proof",
     app_url: "https://deploy-proof.example.test",
     allowed_origins: ["https://deploy-proof.example.test"],
     api_key_id: "key-1",
@@ -83,9 +81,6 @@ function mockApp(): App {
     response_notifications: null,
     is_active: true,
     is_approved: true,
-    review_status: "approved",
-    review_content_hash: null,
-    reviewed_at: "2026-06-01T00:00:00.000Z",
     created_at: "2026-06-01T00:00:00.000Z",
     updated_at: "2026-07-01T00:00:00.000Z",
     last_used_at: "2026-07-01T00:00:00.000Z",
@@ -200,13 +195,22 @@ test.beforeEach(async ({ page }) => {
   });
   await seedStewardSession(page, {
     jwt: true,
-    subject: "cloud-audit-smoke-user",
-    userId: "cloud-audit-smoke-user",
+    subject: "user-deploy-proof",
+    userId: "user-deploy-proof",
   });
-  // Keep the default local active server. Cloud authority and personal-agent
-  // discovery use the shared fixtures installed before this shell boots.
+  // Mark first-run complete with a local active server: since #19511 a fresh
+  // boot drives cloud onboarding through GET /api/v1/eliza/personal, which this
+  // spec's cloud mock deliberately does not serve — the deep-link contract under
+  // test assumes an already-set-up shell, not the onboarding flow.
   await seedAppStorage(page, {
     "eliza:ui-shell-mode": "web",
+    "elizaos:active-server": JSON.stringify({
+      id: "cloud:deploy-proof",
+      kind: "cloud",
+      label: "Eliza Cloud",
+      apiBase: "https://api.eliza.app/api/v1",
+      accessToken: "shared-agent-token",
+    }),
   });
   // Instrument the navigate-view bus BEFORE boot: the listener count is the
   // explicit shell-ready boundary the deep-link dispatch below waits on, and
@@ -257,7 +261,6 @@ test("eliza://apps/deploy intent mounts the Apps studio and submits repo/ref dep
   mkdirSync(EVIDENCE_DIR, { recursive: true });
   const unmocked: string[] = [];
   const deployRequests: unknown[] = [];
-  await installCloudApiStubs(page, { initialAgentState: "shared" });
   await installCloudApiMocks(page, unmocked, deployRequests);
 
   await openAppPath(page, "/");
@@ -265,8 +268,8 @@ test("eliza://apps/deploy intent mounts the Apps studio and submits repo/ref dep
   // Restore the canonical session at the live boundary the Apps studio reads.
   await setStewardSession(page, {
     jwt: true,
-    subject: "cloud-audit-smoke-user",
-    userId: "cloud-audit-smoke-user",
+    subject: "user-deploy-proof",
+    userId: "user-deploy-proof",
   });
   await page.evaluate(() =>
     window.dispatchEvent(new CustomEvent("steward-token-sync")),

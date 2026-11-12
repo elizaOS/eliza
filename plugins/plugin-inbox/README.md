@@ -63,8 +63,7 @@ every host input is injected:
 - `InboxOperation` journals one reviewed effect per owner and grant in host
   compare-and-exchange storage. `dispatching` is saved before the single
   dispatch; a lost reply or an unknown outcome is resolved only by reading the
-  canonical receipt and is never dispatched again. The owner can discard an
-  attempted operation only while the provider still reports it as prepared.
+  canonical receipt and is never dispatched again.
 - `createMailReviewController` reviews sends and provider drafts against the
   exact composer email, archives and trashes with a reviewed Undo, checks saved
   receipts and discards an undispatched review when change access is withdrawn.

@@ -29,9 +29,7 @@
  * them on its monotonic clock and links them to its capture turn by a random native turn id,
  * which the record keeps as `nativeTurn`. Only the stage name and that id cross the bridge.
  *
- * Timing is diagnostic: storage failures and sink failures never affect a voice turn. The active
- * turn's record stays in memory. A mark reads the clock and does no storage work. Changed records
- * go to storage in one deferred write; `records`, `exportJson` and `recordHeard` write them first.
+ * Timing is diagnostic: storage failures and sink failures never affect a voice turn.
  */
 import type {
   ClefEndpointUnavailableReason,
@@ -313,17 +311,8 @@ export function createVoiceTurnTiming(
   let clock = options.clock ?? defaultClock;
   let sink: NativeVoiceStageSink | undefined;
   let active:
-    | {
-        id: string;
-        base: number;
-        row: VoiceTimingRecord;
-        entry?: string;
-        native?: string;
-      }
+    | { id: string; base: number; entry?: string; native?: string }
     | undefined;
-  // Changed records that storage does not hold yet, by id.
-  const unsaved = new Map<string, VoiceTimingRecord>();
-  let scheduled = false;
 
   const store = () => {
     try {
@@ -371,7 +360,7 @@ export function createVoiceTurnTiming(
       ([key, at]) => order.includes(key) && isOffset(at),
     );
   };
-  const stored = (): VoiceTimingRecord[] => {
+  const records = (): VoiceTimingRecord[] => {
     try {
       const raw = store()?.getItem(options.storageKey);
       const parsed: unknown = raw ? JSON.parse(raw) : [];
@@ -380,35 +369,16 @@ export function createVoiceTurnTiming(
       return [];
     }
   };
-  /** Writes the changed records: one storage read and one storage write. */
-  const flush = () => {
-    scheduled = false;
-    if (!unsaved.size) return;
-    const changed = [...unsaved.values()];
-    unsaved.clear();
+  const save = (row: VoiceTimingRecord) => {
     try {
-      const rows = stored().filter(
-        (item) => !changed.some((row) => row.id === item.id),
-      );
-      rows.push(...changed);
+      const rows = records().filter((item) => item.id !== row.id);
+      rows.push(row);
       store()?.setItem(options.storageKey, JSON.stringify(rows.slice(-limit)));
     } catch {
       /* Timing is diagnostic; it never blocks a voice turn. */
     }
   };
-  const records = (): VoiceTimingRecord[] => {
-    flush();
-    return stored();
-  };
-  /** Queues the record for the deferred write, so the voice turn does not wait for storage. */
-  const save = (row: VoiceTimingRecord) => {
-    unsaved.set(row.id, row);
-    if (scheduled) return;
-    scheduled = true;
-    setTimeout(flush, 0);
-  };
-  const find = (id: string) =>
-    active?.id === id ? active.row : records().find((item) => item.id === id);
+  const find = (id: string) => records().find((item) => item.id === id);
 
   const forwardNative = (
     mark: VoiceTimingMark,
@@ -446,8 +416,10 @@ export function createVoiceTurnTiming(
   const abandon = () => {
     const current = active;
     active = undefined;
-    if (current && current.row.marks["final-reply"] === undefined)
-      save({ ...current.row, outcome: "abandoned" });
+    if (!current) return;
+    const row = find(current.id);
+    if (row && row.marks["final-reply"] === undefined)
+      save({ ...row, outcome: "abandoned" });
   };
 
   const mark = (name: VoiceTimingMark, turn?: string): boolean => {
@@ -458,9 +430,9 @@ export function createVoiceTurnTiming(
       !order.includes(name)
     )
       return false;
+    const row = find(current.id);
+    if (!row || row.outcome || row.marks[name] !== undefined) return false;
     const at = Math.max(0, Math.round(clock() - current.base));
-    const row = current.row;
-    if (row.marks[name] !== undefined) return false;
     const index = order.indexOf(name);
     // Reply and audio marks measure from send; send measures from a ready transcript.
     if (index >= 3 && row.marks.send === undefined) return false;
@@ -487,8 +459,8 @@ export function createVoiceTurnTiming(
     const current = active;
     if (!current || !value || (turn !== undefined && turn !== current.id))
       return false;
-    const row = current.row;
-    if (row[key]) return false;
+    const row = find(current.id);
+    if (!row || row.outcome || row[key]) return false;
     row[key] = value;
     save(row);
     return true;
@@ -515,7 +487,8 @@ export function createVoiceTurnTiming(
         input.policy === "auto-send" || input.policy === "review"
           ? input.policy
           : undefined;
-      const row: VoiceTimingRecord = {
+      active = { id, base: clock(), ...(entry ? { entry } : {}) };
+      save({
         version: 1,
         id,
         recordedAt: Date.now(),
@@ -524,9 +497,7 @@ export function createVoiceTurnTiming(
         ...(entry ? { entry } : {}),
         ...(policy ? { policy } : {}),
         marks: { "recording-end": 0 },
-      };
-      active = { id, base: clock(), row, ...(entry ? { entry } : {}) };
-      save(row);
+      });
       return id;
     },
     mark,
@@ -592,7 +563,6 @@ export function createVoiceTurnTiming(
       ),
     clear() {
       active = undefined;
-      unsaved.clear();
       try {
         store()?.removeItem(options.storageKey);
       } catch {

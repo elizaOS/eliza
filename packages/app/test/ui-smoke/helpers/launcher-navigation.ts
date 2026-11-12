@@ -42,35 +42,21 @@ async function railGestureY(
     ),
   ];
   const targetTestId = `home-launcher-${currentPage}-page`;
-  // The collapsed sheet state can precede its visual settle. Wait for the
-  // same real hit-tested target before dispatching the gesture.
-  let usableY: number | null = null;
-  await expect
-    .poll(
-      async () => {
-        usableY = await page.evaluate(
-          ({ candidates, targetTestId, x }) => {
-            for (const y of candidates) {
-              const hit = document.elementFromPoint(x, y);
-              if (
-                hit?.closest(`[data-testid="${targetTestId}"]`) &&
-                !hit.closest("[data-notif-row]")
-              ) {
-                return y;
-              }
-            }
-            return null;
-          },
-          { candidates, targetTestId, x },
-        );
-        return usableY;
-      },
-      {
-        message: `${currentPage} launcher page has no unobstructed drag point`,
-        timeout: 5_000,
-      },
-    )
-    .not.toBeNull();
+  const usableY = await page.evaluate(
+    ({ candidates, targetTestId, x }) => {
+      for (const y of candidates) {
+        const hit = document.elementFromPoint(x, y);
+        if (
+          hit?.closest(`[data-testid="${targetTestId}"]`) &&
+          !hit.closest("[data-notif-row]")
+        ) {
+          return y;
+        }
+      }
+      return null;
+    },
+    { candidates, targetTestId, x },
+  );
   if (usableY === null) {
     throw new Error(
       `${currentPage} launcher page has no unobstructed drag point`,

@@ -58,8 +58,9 @@ export function mcpServersIncludeStdio(
 }
 
 /**
- * Stdio MCP config writes can reach child_process.spawn, so they require
- * ELIZA_TERMINAL_RUN_TOKEN.
+ * Stdio MCP config writes can reach child_process.spawn. By default require
+ * ELIZA_TERMINAL_RUN_TOKEN; set ELIZA_ALLOW_UNAUTHENTICATED_STDIO_MCP=1 only
+ * for intentional local dev (legacy compat passthrough).
  */
 export function resolveMcpTerminalAuthorizationRejection(
   req: Pick<http.IncomingMessage, "headers">,
@@ -70,12 +71,17 @@ export function resolveMcpTerminalAuthorizationRejection(
     return null;
   }
 
+  if (process.env.ELIZA_ALLOW_UNAUTHENTICATED_STDIO_MCP === "1") {
+    return resolveTerminalRunRejection(req as http.IncomingMessage, body);
+  }
+
   const expected = readAliasedEnv("ELIZA_TERMINAL_RUN_TOKEN");
   if (!expected) {
     return {
       status: 403,
       reason:
-        "Stdio MCP server configuration requires ELIZA_TERMINAL_RUN_TOKEN.",
+        "Stdio MCP server configuration requires ELIZA_TERMINAL_RUN_TOKEN. " +
+        "Set ELIZA_ALLOW_UNAUTHENTICATED_STDIO_MCP=1 only for intentional local development.",
     };
   }
 

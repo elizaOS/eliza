@@ -218,39 +218,6 @@ test('typed local-time schedules: reviewed arming, exact occurrences, missed, ov
         triggerData: { scheduledAtMs: occurrence, workflowVersionId: manual.versionId },
       })
     ).rejects.toThrow('only when the owner starts them');
-    const forged = { status: 'ready', scheduledAt: '2020-01-01T00:00:00.000Z' };
-    const manualRun = await call(`/workflows/${manual.workflowId}/run`, {
-      input: { typedSchedule: forged, calendarAnchorAt: forged.scheduledAt },
-    });
-    expect(manualRun.status).toBe(202);
-    expect(manualRun.body.execution.calendarAnchorAt).toBe(manualRun.body.execution.startedAt);
-    expect(manualRun.body.execution.calendarAnchorAt).not.toBe(forged.scheduledAt);
-    const manualReview = await call(`/executions/${manualRun.body.execution.id}/phone-review`);
-    expect(manualReview.body.calendarAnchorAt).toBe(manualRun.body.execution.calendarAnchorAt);
-    expect((await settle(manualRun.body.execution.id)).status).toBe('finished');
-    const reviewedManual = {
-      submissionId: randomUUID(),
-      expectedVersionId: manual.versionId,
-      input: { typedSchedule: forged },
-    };
-    const reviewed = await call(`/workflows/${manual.workflowId}/run`, reviewedManual);
-    expect(reviewed.status).toBe(202);
-    const reviewedRun = reviewed.body.execution;
-    expect(reviewedRun.calendarAnchorAt).toBe(reviewedRun.startedAt);
-    expect(reviewedRun.calendarAnchorAt).not.toBe(forged.scheduledAt);
-    expect((await settle(reviewedRun.id)).status).toBe('finished');
-    const replayed = await call(`/workflows/${manual.workflowId}/run`, reviewedManual);
-    expect(replayed.body.execution.id).toBe(reviewedRun.id);
-    expect(replayed.body.execution.calendarAnchorAt).toBe(reviewedRun.calendarAnchorAt);
-    const chat = await runtime
-      .getService('workflow')
-      .startWorkflow(
-        manual.workflowId,
-        { mode: 'chat', input: { typedSchedule: forged } },
-        'owner'
-      );
-    expect(chat.calendarAnchorAt).toBe(chat.startedAt);
-    expect((await settle(chat.id)).status).toBe('finished');
 
     // The armed task fires through the real trigger runtime for this exact occurrence.
     const task = armed(id)[0];
@@ -274,10 +241,6 @@ test('typed local-time schedules: reviewed arming, exact occurrences, missed, ov
       status: 'ready',
       text: '',
     });
-    expect(run.calendarAnchorAt).toBe(new Date(occurrence).toISOString());
-    expect((await call(`/executions/${run.id}/phone-review`)).body.calendarAnchorAt).toBe(
-      run.calendarAnchorAt
-    );
     expect(run.output[0].text).toBe('Today: scheduled agenda.');
     // The trigger advanced to the next day's occurrence.
     expect(
@@ -289,7 +252,6 @@ test('typed local-time schedules: reviewed arming, exact occurrences, missed, ov
       triggerData: { scheduledAtMs: occurrence, workflowVersionId: version },
     });
     expect(repeated.id).toBe(run.id);
-    expect(repeated.calendarAnchorAt).toBe(run.calendarAnchorAt);
 
     // An occurrence from yesterday (the phone was off) is recorded once as missed and never run.
     const yesterday = occurrence - 86_400_000;
@@ -392,7 +354,6 @@ test('typed local-time schedules: reviewed arming, exact occurrences, missed, ov
       status: 'missed',
       scheduledAt: '2026-03-09T06:30:00.000Z',
     });
-    expect(nextDay.calendarAnchorAt).toBeUndefined();
     expect((nextDay.output as any).skippedLocalTime).toBeUndefined();
     expect(await dstRecords()).toHaveLength(2);
     await call(`/workflows/${dstSaved.workflowId}/deactivate`, { expectedVersionId: dstVersion });
@@ -437,7 +398,6 @@ test('typed local-time schedules: reviewed arming, exact occurrences, missed, ov
       triggerData: { scheduledAtMs: occurrence, workflowVersionId: version },
     });
     expect(overlap.output).toMatchObject({ status: 'overlap' });
-    expect(overlap.calendarAnchorAt).toBeUndefined();
     await (runtime.db as any)
       .update(schema.embeddedExecutions)
       .set({
@@ -479,25 +439,6 @@ test('typed local-time schedules: reviewed arming, exact occurrences, missed, ov
       startedAt: queued.startedAt,
       execution: queued,
     });
-    const coldManual = {
-      ...queued,
-      id: randomUUID(),
-      workflowId: manual.workflowId,
-      workflowVersionId: manual.versionId,
-      mode: 'manual',
-      calendarAnchorAt: queued.startedAt,
-      input: { typedSchedule: forged },
-    };
-    await (runtime.db as any).insert(schema.embeddedExecutions).values({
-      agentId: AGENT,
-      id: coldManual.id,
-      workflowId: coldManual.workflowId,
-      status: coldManual.status,
-      mode: coldManual.mode,
-      finished: false,
-      startedAt: coldManual.startedAt,
-      execution: coldManual,
-    });
     await embedded!.stop();
     await new Promise<void>((resolve) => server?.close(() => resolve()));
     server = undefined;
@@ -511,10 +452,6 @@ test('typed local-time schedules: reviewed arming, exact occurrences, missed, ov
     const recovered = await settle(queuedId);
     expect(recovered.status).toBe('finished');
     expect(recovered.output).toMatchObject({ status: 'missed' });
-    const recoveredManual = await settle(coldManual.id);
-    expect(recoveredManual.status).toBe('finished');
-    expect(recoveredManual.output).not.toMatchObject({ status: 'missed' });
-    expect(recoveredManual.calendarAnchorAt).toBe(coldManual.calendarAnchorAt);
 
     // An edit saves a paused version and disarms the schedule; pausing also disarms it.
     stored = await embedded!.getWorkflow(id);

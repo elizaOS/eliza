@@ -108,14 +108,15 @@ rl = [
   # FSDP+Megatron training backends, and verifiable-reward registry. Stage 2
   # of RL_STRATEGY.md uses the python-callable reward path
   # (`custom_reward_function`) to invoke scripts/eliza_reward_fn.py:compute_score
-  # per rollout. Published verl 0.9.x needs Transformers <5.11, but the
-  # security-fixed vLLM 0.32 needs >=5.16. Pin the official compatibility
-  # revision until a compatible verl release is available.
-  "verl @ git+https://github.com/verl-project/verl.git@f78fd053e13c3d021e51de5e81afc54dddd13993",
+  # per rollout. verl 0.9 moves its runtime to NumPy 2 and supports current
+  # vLLM rollout engines; keep the project pin above the security-fixed 0.26
+  # line.
+  "verl>=0.9.0,<0.10.0",
   # GRPO trainer needs vLLM for rollouts; pin separately so users running RL
-  # without serving don't have to install the full `serve` extra. Keep the
-  # floor on the security-fixed 0.32 line for both rollout and serving.
-  "vllm>=0.32.0,<0.33.0",
+  # without serving don't have to install the full `serve` extra. The 0.27
+  # line includes the auth, request-fanout, ReDoS, and media-input fixes that
+  # are absent from the old 0.8 rollout server.
+  "vllm>=0.27.1,<0.33.0",
   # verl's dashboard dependency otherwise floats to historical Ray releases.
   # Keep the resolved dashboard past the published RCE and unauthenticated
   # destructive-endpoint advisory ranges.
@@ -157,10 +158,10 @@ serve = [
   # vLLM 0.27+ ships EAGLE-3 speculative decoding (PR #38280 era), the
   # TurboQuant K/V quantization plugin, FP8 KV cache via FlashAttention 3
   # on sm_90, and continuous batching needed by the Gemma-era serve harness.
-  # Keep the security fixes in 0.32 as the minimum. See
+  # Pin a minor floor that captures all of these. See
   # scripts/inference/serve_vllm.py for the canonical flag set per model +
   # GPU target.
-  "vllm>=0.32.0,<0.33.0",
+  "vllm>=0.27.1,<0.33.0",
   # `vllm-flash-attn` is bundled with vLLM 0.20+; add explicitly so the
   # constraint solver doesn't pull a stale wheel from a transitive dep.
   "transformers>=4.46.0",

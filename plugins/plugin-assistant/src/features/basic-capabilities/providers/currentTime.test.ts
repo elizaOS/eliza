@@ -65,17 +65,8 @@ describe("currentTimeProvider", () => {
       userTimeZone: "America/Los_Angeles",
       timeZoneOrigin: "device",
     });
-    // The prompt line is minute-precise; values and data keep the instant.
-    expect(result.text).toContain("Tuesday, August 4, 2026 at 7:41 PM PDT");
-    expect(result.text).toContain("UTC instant: 2026-08-05T02:41Z");
-    expect(result.text).not.toContain(":04");
-    vi.setSystemTime(new Date("2026-08-05T02:41:58.001Z"));
-    const laterInMinute = await currentTimeProvider.get(
-      runtime("Europe/Paris"),
-      message("America/Los_Angeles"),
-      {} as never,
-    );
-    expect(laterInMinute.text).toBe(result.text);
+    expect(result.text).toContain("Tuesday, August 4, 2026 at 7:41:04 PM PDT");
+    expect(result.text).toContain("UTC instant: 2026-08-05T02:41:04.618Z");
     expect(result.text).toContain("America/Los_Angeles");
     expect(result.text).not.toContain("Europe/Paris");
     expect(result.text).not.toMatch(/[\r\n]/);
@@ -95,30 +86,26 @@ describe("currentTimeProvider", () => {
       timeZone: "America/Los_Angeles",
       timeZoneOrigin: "device",
     });
-    expect(result.text).toContain("Sunday, November 1, 2026 at 1:30 AM PST");
-    expect(result.text).toContain("2026-11-01T09:30Z");
+    expect(result.text).toContain("Sunday, November 1, 2026 at 1:30:00 AM PST");
+    expect(result.text).toContain("2026-11-01T09:30:00.000Z");
   });
 
   it.each([
-    ["2026-03-08T09:59:59.000Z", "2026-03-08T09:59Z", "1:59 AM PST"],
-    ["2026-03-08T10:00:00.000Z", "2026-03-08T10:00Z", "3:00 AM PDT"],
-  ])(
-    "retains the minute and DST offset at %s",
-    async (instant, minute, localTime) => {
-      vi.useFakeTimers();
-      vi.setSystemTime(new Date(instant));
-      const result = await currentTimeProvider.get(
-        runtime(),
-        message("America/Los_Angeles"),
-        {} as never,
-      );
-      expect(result.data?.iso).toBe(instant);
-      expect(result.text).toContain(minute);
-      expect(result.text).toContain(`Sunday, March 8, 2026 at ${localTime}`);
-      expect(result.text).toContain("America/Los_Angeles");
-      expect(result.text).not.toMatch(/[\r\n]/);
-    },
-  );
+    ["2026-03-08T09:59:59.000Z", "1:59:59 AM PST"],
+    ["2026-03-08T10:00:00.000Z", "3:00:00 AM PDT"],
+  ])("retains the instant and DST offset at %s", async (instant, localTime) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(instant));
+    const result = await currentTimeProvider.get(
+      runtime(),
+      message("America/Los_Angeles"),
+      {} as never,
+    );
+    expect(result.text).toContain(instant);
+    expect(result.text).toContain(`Sunday, March 8, 2026 at ${localTime}`);
+    expect(result.text).toContain("America/Los_Angeles");
+    expect(result.text).not.toMatch(/[\r\n]/);
+  });
 
   it("presents the configured TIMEZONE as the owner's zone when the owner sends without a device zone", async () => {
     // Live 2026-09-05: "user timezone unknown" made the planner emit UTC

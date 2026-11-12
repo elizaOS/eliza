@@ -18,6 +18,7 @@ bun run --cwd plugins/plugin-personal-assistant test   # tests
 
 The managed morning brief follows authenticated owner foreground activity after the configured owner-day boundary (04:00 by default), with admission and day consumption persisted on its scheduled-task row. Manual refresh is separate; customized schedules are preserved. Android requires an authenticated user-present report with an unlocked, interactive device; iOS uses foreground events. Client reports are not OS attestation. Duplicate defaults and unresolved legacy delivery require reconciliation.
 
+
 ### Native bill task composition
 
 `native-host/*.mjs` provides host-only bill discovery, complete PDF interpretation,
@@ -164,6 +165,7 @@ a command started meanwhile is sent only after `release()`. `release({ send: fal
 ends a hold whose question was not answered: waiting commands are not sent and
 resolve `false`, and no re-check starts. `release()` returns whether a command was
 waiting.
+
 
 `native-host/bill-review-controller.ts` sequences explicitly requested bill metadata
 search, message read, review admission, observation and submission through host ports.

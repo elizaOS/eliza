@@ -1,6 +1,5 @@
 /** Exercises missing collectors, failed generation, and report persistence against real PGlite. No provider request is made. */
 import { PGlite } from "@electric-sql/pglite";
-import { LIFEOPS_INBOX_CHANNELS, type LifeOpsInbox } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveOwnerFactStore } from "../owner/fact-store.js";
@@ -71,115 +70,6 @@ describe("check-in source availability and generation failures", () => {
     await db.close();
     vi.unstubAllEnvs();
   });
-
-  it("includes ordinary Gmail through the Inbox when triage is not available", async () => {
-    const inbox: LifeOpsInbox = {
-      fetchedAt: "2026-11-10T16:00:00Z",
-      sources: [],
-      channelCounts: Object.fromEntries(
-        LIFEOPS_INBOX_CHANNELS.map((channel) => [
-          channel,
-          {
-            total: channel === "gmail" ? 1 : 0,
-            unread: channel === "gmail" ? 1 : 0,
-          },
-        ]),
-      ) as LifeOpsInbox["channelCounts"],
-      messages: [
-        {
-          id: "gmail:proof",
-          channel: "gmail",
-          sender: {
-            id: "sender",
-            displayName: "QA sender",
-            email: null,
-            avatarUrl: null,
-          },
-          subject: "Connected Inbox proof",
-          snippet: "Existing readable Gmail",
-          receivedAt: "2026-11-10T15:00:00Z",
-          unread: true,
-          deepLink: null,
-          sourceRef: { channel: "gmail", externalId: "proof" },
-        },
-      ],
-    };
-    const getInbox = vi.fn(async () => inbox);
-    const report = await new CheckinService(runtime, {
-      sources: {
-        getGoogleConnectorAccounts: async () => [],
-        getInbox,
-      },
-    }).runMorningCheckin({
-      now: new Date("2026-11-10T16:00:00Z"),
-      timezone: "America/Los_Angeles",
-    });
-    expect(getInbox).toHaveBeenCalledWith(
-      expect.objectContaining({ channels: expect.arrayContaining(["gmail"]) }),
-    );
-    expect(report.summaryText).toContain("Connected Inbox proof");
-    expect(report.summaryText.match(/Connected Inbox proof/g)).toHaveLength(1);
-  });
-
-  it.each(["complete", "partial"] as const)(
-    "reads a %s canonical Calendar feed without requiring a legacy copy",
-    async (state) => {
-      const now = new Date("2026-11-10T16:00:00Z");
-      const requests: unknown[] = [];
-      const report = await new CheckinService(runtime, {
-        sources: {
-          getCalendarFeed: async (_url, request) => {
-            requests.push(request);
-            return {
-              calendarId: "unified",
-              source: "synced",
-              state,
-              sources: [],
-              timeMin: request?.timeMin ?? "",
-              timeMax: request?.timeMax ?? "",
-              syncedAt: now.toISOString(),
-              events: [
-                {
-                  id: "connected-event",
-                  calendarId: "primary",
-                  provider: "google",
-                  side: "owner",
-                  title: "Connected meeting",
-                  description: null,
-                  location: null,
-                  status: "confirmed",
-                  startAt: "2026-11-10T19:00:00Z",
-                  endAt: "2026-11-10T19:30:00Z",
-                  isAllDay: false,
-                  timezone: "America/New_York",
-                  htmlLink: null,
-                  conferenceLink: null,
-                  organizer: null,
-                  attendees: [],
-                  metadata: {},
-                  syncedAt: now.toISOString(),
-                  updatedAt: now.toISOString(),
-                },
-              ],
-            };
-          },
-        },
-      }).runMorningCheckin({ now, timezone: "America/Los_Angeles" });
-      expect(requests).toEqual([
-        expect.objectContaining({
-          side: "owner",
-          timeZone: "America/Los_Angeles",
-          timeMin: "2026-11-10T08:00:00.000Z",
-          timeMax: "2026-11-11T08:00:00.000Z",
-        }),
-      ]);
-      expect(report.todaysMeetings[0]?.id).toBe("connected-event");
-      expect(report.summaryText).toContain("Connected meeting");
-      expect(report.summaryText).toContain("11:00 AM");
-      expect(report.summaryText).toContain("11:30 AM PST");
-      expect(report.summaryText).not.toContain("No Calendar events");
-    },
-  );
 
   it("binds Calendar source identity and times before rendering one owner-local agenda entry", async () => {
     await db.exec(`
@@ -547,46 +437,6 @@ describe("check-in source availability and generation failures", () => {
          true, '{"channel":"telegram","externalId":"source-proof"}', $1, $1)`,
         [cachedAt],
       );
-      const originalService = runtime.getService.bind(runtime);
-      Object.assign(runtime, {
-        getService: (type: string) =>
-          type === "calendar"
-            ? {
-                getCalendarFeed: async (
-                  _url: URL,
-                  request: {
-                    timeMin: string;
-                    timeMax: string;
-                    timeZone: string;
-                  },
-                ) => {
-                  const rows = (
-                    await db.query<Record<string, unknown>>(
-                      "SELECT * FROM app_calendar.life_calendar_events WHERE start_at >= $1 AND start_at < $2 ORDER BY start_at",
-                      [request.timeMin, request.timeMax],
-                    )
-                  ).rows;
-                  return {
-                    calendarId: "unified",
-                    source: "cache",
-                    state: "complete",
-                    sources: [],
-                    timeMin: request.timeMin,
-                    timeMax: request.timeMax,
-                    syncedAt: null,
-                    events: rows.map((row) => ({
-                      id: row.id,
-                      title: row.title,
-                      startAt: row.start_at,
-                      endAt: row.end_at,
-                      status: row.status,
-                      isAllDay: row.is_all_day,
-                    })),
-                  };
-                },
-              }
-            : originalService(type),
-      });
       modelResponse = "Owner-local meeting and the existing inbox item.";
       const summary = await composeOwnerFacingScheduledTaskText(runtime, {
         taskId: "managed-brief",

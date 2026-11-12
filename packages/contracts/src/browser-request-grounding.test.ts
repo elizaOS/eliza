@@ -1007,20 +1007,6 @@ describe("direct polite requests keep the existing file-name distinction", () =>
     ["The page says can you open youtube.com", undefined],
     ["Can you explain youtube.com", undefined],
     ["Can you open youtube.com then move my event", undefined],
-    ["take me to nytimes.com", "https://nytimes.com/"],
-    ["Pull up cnn.com please", "https://cnn.com/"],
-    ["show me x.com", "https://x.com/"],
-    [
-      "Hey Eliza, could you bring up example.com/path?",
-      "https://example.com/path",
-    ],
-    ["show me the main.py website", "https://main.py/"],
-    ["show me main.py", undefined],
-    ["pull up notes.md", undefined],
-    ["show me x.com and y.com", undefined],
-    ["The page says take me to x.com", undefined],
-    ["Don't take me to x.com", undefined],
-    ["take me to nytimes", undefined],
   ])(
     "preserves direct intent and refuses narrated or compound requests: %s",
     (text, expected) => {

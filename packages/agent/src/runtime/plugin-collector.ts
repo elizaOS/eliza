@@ -41,10 +41,6 @@ import {
   resolveDevCloudEnvAuthority,
 } from "../config/dev-cloud-env-authority.ts";
 import {
-  ANDROID_PHONE_PLUGIN_NAME,
-  androidSmsReplyDraftEnabled,
-} from "./android-app-plugin-loaders.ts";
-import {
   CORE_PLUGINS,
   ELIZAOS_ANDROID_CORE_PLUGINS,
   ELIZAOS_ANDROID_TERMINAL_PLUGINS,
@@ -542,7 +538,6 @@ export function collectPluginNames(
   // unavailable in the app sandbox. Substitute the curated mobile-safe set.
   const onMobile = isMobilePlatform();
   const onElizaOsAndroid = isElizaOsAndroidRuntime();
-  const mobileSmsReplyDraft = androidSmsReplyDraftEnabled();
   // Dedicated chat-only cloud agents opt into a lean plugin set (no shell/
   // coding-tools/browser/orchestrator) to cut cold-boot time (#8434). Mobile keeps
   // its own curated set; lean-chat only applies off-mobile.
@@ -588,10 +583,6 @@ export function collectPluginNames(
   for (const viewPlugin of MOBILE_VIEW_PLUGINS) {
     pluginsToLoad.add(viewPlugin);
     track(viewPlugin, "MOBILE_VIEW_PLUGINS (home-tile view)");
-  }
-  if (mobileSmsReplyDraft) {
-    pluginsToLoad.add(ANDROID_PHONE_PLUGIN_NAME);
-    track(ANDROID_PHONE_PLUGIN_NAME, "ELIZA_MOBILE_SMS_REPLY_DRAFT");
   }
   // ElizaOS-only: add the system-surface overlay app plugins (WiFi,
   // Contacts, Phone). These wrap privileged Android system APIs available
@@ -973,7 +964,6 @@ export function collectPluginNames(
       ...MOBILE_CORE_PLUGINS,
       ...(mobileWorkflows ? ["@elizaos/plugin-workflow"] : []),
       ...MOBILE_VIEW_PLUGINS,
-      ...(mobileSmsReplyDraft ? [ANDROID_PHONE_PLUGIN_NAME] : []),
       ...(onElizaOsAndroid ? ELIZAOS_ANDROID_CORE_PLUGINS : []),
       ...(onElizaOsAndroid ? ELIZAOS_ANDROID_TERMINAL_PLUGINS : []),
       ...MOBILE_MODEL_PROVIDER_PLUGINS,

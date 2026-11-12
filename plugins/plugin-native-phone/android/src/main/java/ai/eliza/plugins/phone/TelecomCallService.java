@@ -24,7 +24,6 @@ import java.util.Set;
 import android.net.Uri;
 import android.telecom.Call;
 import android.telecom.InCallService;
-import android.telecom.PhoneAccount;
 import android.util.Log;
 import java.util.Collections;
 import java.util.HashMap;
@@ -45,9 +44,6 @@ public abstract class TelecomCallService extends InCallService {
 
     private static final Set<Runnable> LISTENERS = new LinkedHashSet<>();
     private final Map<Call, Call.Callback> callbacks = new HashMap<>();
-    /** Contact names by call ID and number. An empty name is a lookup that found none or is running. Main thread only. */
-    private final Map<String, String> names = new HashMap<>();
-    private java.util.concurrent.ExecutorService lookups;
     private static TelecomCallService activeService;
     private TelecomCallConfiguration config;
 
@@ -98,7 +94,6 @@ public abstract class TelecomCallService extends InCallService {
         String callId = CALL_IDS.remove(call);
         if (callId != null) {
             ACTIVE_CALLS.remove(callId);
-            names.keySet().removeIf(key -> key.startsWith(callId + '\n'));
         }
         Log.i(TAG, "Call removed id=" + callId);
         openCallSurface("removed", callId, call);
@@ -111,10 +106,12 @@ public abstract class TelecomCallService extends InCallService {
             publish();
             return;
         }
-        String label = callerLabel(callId, call.getDetails());
+        Call.Details details = call.getDetails();
+        Uri handle = details == null ? null : details.getHandle();
+        String label = handle == null ? "Unknown caller" : handle.getSchemeSpecificPart();
         boolean ringing = call.getState() == Call.STATE_RINGING;
         Notification.Builder builder = new Notification.Builder(this, config.channelId)
-            .setSmallIcon(config.notificationIcon)
+            .setSmallIcon(android.R.drawable.sym_action_call)
             .setContentTitle(label)
             .setContentText(TelecomCallActivity.stateLabel(call.getState()))
             .setCategory(Notification.CATEGORY_CALL)
@@ -142,48 +139,6 @@ public abstract class TelecomCallService extends InCallService {
         if ("added".equals(event)) showCall(callId);
     }
 
-    /**
-     * The caller's name for the notification: the name Telecom reports, else the owner's contact
-     * for the number when this app may read contacts, else the number. The contact is read off the
-     * main thread once per call; the notification shows the number until the name arrives.
-     */
-    private String callerLabel(String callId, Call.Details details) {
-        Uri handle = details == null ? null : details.getHandle();
-        String number = handle == null ? null : TelecomCallActivity.clean(handle.getSchemeSpecificPart());
-        String name = details == null ? null : TelecomCallActivity.clean(details.getCallerDisplayName());
-        if (name == null && details != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            name = TelecomCallActivity.clean(details.getContactDisplayName());
-        }
-        // A network that sends the number as the caller's name has named nobody.
-        if (name != null && name.equals(number)) name = null;
-        if (name == null && number != null && callId != null && PhoneAccount.SCHEME_TEL.equals(handle.getScheme())
-                && checkSelfPermission(android.Manifest.permission.READ_CONTACTS) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            String key = callId + '\n' + number;
-            if (names.containsKey(key)) name = TelecomCallActivity.clean(names.get(key));
-            else lookUp(key, callId, number);
-        }
-        return name != null ? name : number != null ? number : "Unknown caller";
-    }
-
-    private void lookUp(String key, String callId, String number) {
-        names.put(key, "");
-        if (lookups == null) lookups = java.util.concurrent.Executors.newSingleThreadExecutor();
-        android.content.ContentResolver resolver = getApplicationContext().getContentResolver();
-        android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
-        lookups.execute(() -> {
-            String found = TelecomCallActivity.contactName(resolver, number);
-            if (found == null) return;
-            main.post(() -> {
-                // A removed call or a destroyed service has dropped the key; it posts nothing.
-                Call call = ACTIVE_CALLS.get(callId);
-                if (activeService != this || call == null || !names.containsKey(key)
-                        || checkSelfPermission(android.Manifest.permission.READ_CONTACTS) != android.content.pm.PackageManager.PERMISSION_GRANTED) return;
-                names.put(key, found);
-                openCallSurface("named", callId, call);
-            });
-        });
-    }
-
     private PendingIntent callIntent(String id, String command) {
         Intent intent = new Intent(this, config.callActivity)
             .setData(new Uri.Builder().scheme(config.callScheme).authority(command).appendPath(id).build())
@@ -207,8 +162,6 @@ public abstract class TelecomCallService extends InCallService {
         for (Map.Entry<Call, Call.Callback> entry : callbacks.entrySet()) entry.getKey().unregisterCallback(entry.getValue());
         for (String id : callIds()) notifications.cancel(id, 1);
         callbacks.clear();
-        names.clear();
-        if (lookups != null) lookups.shutdownNow();
         ACTIVE_CALLS.clear();
         CALL_IDS.clear();
         if (activeService == this) activeService = null;
@@ -287,15 +240,12 @@ public abstract class TelecomCallService extends InCallService {
         @Override
         public void onStateChanged(Call call, int state) {
             super.onStateChanged(call, state);
-            // Android can already have posted this callback when unregister runs.
-            if (callbacks.get(call) != this || ACTIVE_CALLS.get(callId) != call) return;
             openCallSurface("state-changed", callId, call);
         }
 
         @Override
         public void onDetailsChanged(Call call, Call.Details details) {
             super.onDetailsChanged(call, details);
-            if (callbacks.get(call) != this || ACTIVE_CALLS.get(callId) != call) return;
             openCallSurface("details-changed", callId, call);
         }
     }

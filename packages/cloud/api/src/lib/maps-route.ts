@@ -54,6 +54,8 @@ import {
 } from "./maps-request-admission";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
+/** Tiles are per-caller (authenticated) and change rarely. */
+const TILE_CACHE = "private, max-age=86400";
 
 export interface MapsRouteDependencies {
   authenticate(c: AppContext): Promise<MapsCaller>;
@@ -494,7 +496,7 @@ export function createMapsRoute(
           status: 200,
           headers: {
             "Content-Type": image.contentType,
-            ...NO_STORE,
+            "Cache-Control": TILE_CACHE,
             Vary: "Accept",
           },
         });

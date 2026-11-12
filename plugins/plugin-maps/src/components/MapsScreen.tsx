@@ -117,11 +117,6 @@ export interface MapsScreenProps {
     element: HTMLElement,
     onError: () => void,
     onPin: (id: string) => void,
-    /** Map gestures and the settled visible area, for `MapPlaneOptions`. */
-    events: {
-      onInteraction: () => void;
-      onViewport: (center: Coordinate, zoom: number) => void;
-    },
   ) => MapsScreenPlane;
   /** Basemap and data credits, always visible over the map. */
   attribution: ReactNode;
@@ -351,17 +346,11 @@ export function MapsScreen({
         element,
         () => {
           if (current) {
-            // Copyright can recover on the next viewport read. Other plane
-            // failures need an explicit retry that recreates the renderer.
-            failed ||= element.dataset.mapError !== "copyright";
+            failed = true;
             controller.setMapState("error");
           }
         },
         (id) => controller.pin(id),
-        {
-          onInteraction: () => controller.stopFollowing(),
-          onViewport: (center, zoom) => controller.setViewport(center, zoom),
-        },
       );
     } catch {
       controller.setMapState("error");
@@ -370,7 +359,7 @@ export function MapsScreen({
     const observer = new MutationObserver(() => {
       if (current)
         controller.setMapState(
-          failed || element.dataset.mapError
+          failed
             ? "error"
             : element.dataset.mapReady === "true"
               ? "ready"
@@ -379,7 +368,7 @@ export function MapsScreen({
     });
     observer.observe(element, {
       attributes: true,
-      attributeFilter: ["data-map-ready", "data-map-error"],
+      attributeFilter: ["data-map-ready"],
     });
     return () => {
       current = false;
@@ -759,8 +748,8 @@ export function MapsScreen({
                   }}
                 >
                   <input
-                    aria-label="Starting point"
-                    placeholder="Search or choose a starting point"
+                    aria-label="Route origin coordinates"
+                    placeholder="Origin latitude, longitude"
                     value={directions.originText}
                     onChange={(event) =>
                       controller.setOriginText(event.target.value)
@@ -778,20 +767,20 @@ export function MapsScreen({
                   />
                   <button
                     type="button"
+                    aria-label="Use current location for route"
                     onClick={() => controller.locate()}
                     style={{
                       border: 0,
                       background: "transparent",
                       padding: 0,
-                      minHeight: 48,
-                      fontSize: textSize(14),
+                      fontSize: textSize(12),
                       textAlign: "left",
                       color: color.link,
                       cursor: "pointer",
                       font: "inherit",
                     }}
                   >
-                    Use my location
+                    Use current location for route
                   </button>
                   <div
                     style={{
@@ -1070,7 +1059,7 @@ export function MapsScreen({
           >
             <Icon d={icons.locate} />
           </button>
-        ) : navigation?.cameraFollowing ? null : (
+        ) : (
           <button
             type="button"
             aria-label="Recenter"
@@ -1339,25 +1328,6 @@ export function MapsScreen({
               <Icon d={icons.pin} size={18} />
               {place.address}
             </div>
-            {place.phoneHref ? (
-              <a
-                href={place.phoneHref}
-                aria-label={`Call ${place.phone}`}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  minHeight: 48,
-                  fontSize: textSize(14),
-                  color: color.link,
-                }}
-              >
-                Call {place.phone}
-              </a>
-            ) : place.phone ? (
-              <div style={{ fontSize: textSize(14), minHeight: 48 }}>
-                Phone {place.phone}
-              </div>
-            ) : null}
           </div>
         ) : null}
 

@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { afterEach, mock, test } from "node:test";
 import { crc32 } from "node:zlib";
 import { BrowserFiles } from "../src/browser/files.ts";
-import { BrowserStorageVolume } from "../src/browser/storage-volume.ts";
 
 const previousNavigator = Object.getOwnPropertyDescriptor(
   globalThis,
@@ -233,53 +232,3 @@ for (const method of ["shareMany", "saveMany"]) {
     assert.deepEqual(calls.urls, []);
   });
 }
-
-test("storage volume sharing preserves every selected path beyond one hundred and includes folders", async () => {
-  const { files, rows, calls } = fixture();
-  const paths = Array.from({ length: 101 }, (_, i) => `batch-${i}.bin`);
-  for (const [i, name] of paths.entries())
-    rows.push({
-      id: name,
-      parentId: "root",
-      name,
-      directory: false,
-      revision: `r-${i}`,
-      blob: new Blob([new Uint8Array([i, 255 - i])]),
-    });
-  const volume = new BrowserStorageVolume(files, {
-    trashFolder: ".trash",
-    trashKey: "share-fixture",
-  });
-  const result = await volume.share([...paths, "Résumé"]);
-  assert.equal(result.status, "opened");
-  assert.equal(calls.shared.length, 1);
-  const archive = await archiveEntries(calls.shared[0].files[0]);
-  assert.equal(archive.length, 104);
-  assert.deepEqual(
-    archive.slice(0, 101),
-    paths.map((name, i) => ({ name, bytes: [i, 255 - i] })),
-  );
-  assert.deepEqual(
-    archive.slice(101).map((entry) => entry.name),
-    ["Résumé/", "Résumé/二.bin", "Résumé/Empty/"],
-  );
-});
-
-test("storage folder queries report bounded traversal instead of false completeness", async () => {
-  const { files, rows } = fixture();
-  for (let i = 0; i < 5001; i++)
-    rows.push({
-      id: `folder-${i}`,
-      parentId: "root",
-      name: `folder-${i}`,
-      directory: true,
-      revision: `r-${i}`,
-    });
-  const volume = new BrowserStorageVolume(files, {
-    trashFolder: ".trash",
-    trashKey: "folder-query-fixture",
-  });
-  const result = await volume.query({ folders: true });
-  assert.equal(result.entries.length, 5000);
-  assert.equal(result.truncated, true);
-});

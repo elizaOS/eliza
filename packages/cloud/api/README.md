@@ -498,6 +498,7 @@ prepared reviews without reconstructing a mutation. The existing undo/status
 APIs remain compatible; consumers needing reviewed confirmation use this route.
 Apply migration `0510_subscription_renewal_review_receipts` before deploying.
 
+
 ## Organization upgrade review
 
 `POST /api/v1/subscriptions/upgrade/review` accepts `subscriptionId`, a positive
@@ -533,6 +534,7 @@ period end and `amountDueNowCents` is zero. `recurringEstimate` is a long-term
 estimate, not a guaranteed next invoice. This endpoint creates no provider
 schedule, command, charge or allowance change; downgrade confirmation is not
 yet exposed. Upgrade confirmation rejects a downgrade quote.
+
 
 Organization downgrade confirmation uses `POST /api/v1/subscriptions/downgrade/confirm`
 with only `quoteId` and `idempotencyKey` from an explicitly reviewed original quote.

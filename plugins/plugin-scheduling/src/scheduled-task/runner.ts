@@ -45,7 +45,6 @@ import type { TaskGateRegistry } from "./gate-registry.js";
 import { computeNextFireAt } from "./next-fire-at.js";
 import { createStateLogger, type ScheduledTaskLogStore } from "./state-log.js";
 import { projectMinuteOffsetMs } from "./time-range.js";
-import { resolveTriggerTz } from "./trigger-tz.js";
 import {
   type ActivitySignalBusView,
   APPROVAL_DEFAULT_FOLLOWUP_AFTER_MINUTES,
@@ -521,8 +520,6 @@ export function createInMemoryScheduledTaskStore(): ScheduledTaskStore {
 
 export interface ScheduledTaskDispatchRecord {
   taskId: string;
-  /** The owner's clock used for this scheduled occurrence. */
-  timezone?: string;
   /** Added additively; legacy host dispatchers may omit it. */
   kind?: ScheduledTask["kind"];
   firedAtIso: string;
@@ -2989,10 +2986,6 @@ export function createScheduledTaskRunner(
     try {
       dispatchResult = await dispatcher.dispatch({
         taskId: claimed.taskId,
-        timezone:
-          claimed.trigger.kind === "cron"
-            ? resolveTriggerTz(claimed.trigger.tz, await deps.ownerFacts())
-            : (await deps.ownerFacts()).timezone,
         kind: claimed.kind,
         firedAtIso: fireAtIso,
         channelKey: dispatchChannelKey,

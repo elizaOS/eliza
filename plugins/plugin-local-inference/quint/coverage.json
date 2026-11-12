@@ -13,31 +13,7 @@
 		"status": "modeled",
 		"limitations": [
 			"One capture and one original host epoch. Conditional model progress assumes weakly fair terminal delivery; without fairness, delivery can wait forever.",
-			"The JVM fixture uses controlled microphone and transport boundaries. Real executor fairness, transport progress, physical Android audio focus and device acceptance remain outside this evidence.",
-			"This terminal-delivery model excludes draft ownership. MicrophoneHandoff separately models the bounded live-to-draft-to-live resource handoff and its failed-release fence."
-		]
-	},
-	{
-		"id": "native-microphone-handoff",
-		"model": "plugins/plugin-local-inference/quint/MicrophoneHandoff.qnt",
-		"sources": [
-			"plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/LiveCaptureController.java",
-			"plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/LiveCaptureResource.java",
-			"plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/LiveVoiceCapture.java",
-			"plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/LocalVoiceRecording.java",
-			"plugins/plugin-local-inference/native/android/speech-bridge/src/main/java/ai/eliza/voice/LocalSpeechBridgePlugin.java"
-		],
-		"invariants": [
-			"OneMicrophoneOwner",
-			"ReleaseReceipt",
-			"FailedCloseFenced",
-			"ReopenFenced"
-		],
-		"status": "modeled",
-		"limitations": [
-			"One original live capture, one draft, one stale queued reservation, one automatic reopen and one later explicit live start. Native startup and full resource release must settle; no time bound permits a new owner.",
-			"Actual production controller/admission/capture/resource classes run against controlled source and transport ports. The bridge is compiled against Android36. Physical AudioRecord, MediaRecorder, permission, call focus and native callback acceptance remain unqualified.",
-			"A failed physical close preserves the original owner and refuses replacement. This controller does not claim recovery after that failed acknowledgement."
+			"The JVM fixture uses controlled microphone and transport boundaries. Real executor fairness, transport progress, physical Android audio focus and device acceptance remain outside this evidence."
 		]
 	}
 ]

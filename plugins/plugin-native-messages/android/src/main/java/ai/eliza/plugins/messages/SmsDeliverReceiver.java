@@ -35,8 +35,7 @@ public abstract class SmsDeliverReceiver extends BroadcastReceiver {
    SmsTelephony.WORK.execute(() -> {
     try {
      Uri row = MmsStore.persistIncomingSms(app, from, text, at, subscription);
-     try { MmsStore.notifyIncoming(app, config, row, from, text); }
-     catch (RuntimeException unconfirmed) { android.util.Log.e("SmsDeliverReceiver", "Incoming SMS stored; notice publication unconfirmed", unconfirmed); }
+     MmsStore.notifyIncoming(app, config, row, from, text);
     } catch (RuntimeException refused) {
      android.util.Log.e("SmsDeliverReceiver", "Incoming SMS could not be stored", refused);
     } finally { pending.finish(); }

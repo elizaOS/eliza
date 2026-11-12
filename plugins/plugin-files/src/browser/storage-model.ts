@@ -385,17 +385,6 @@ export function validateFilesFilter(value: unknown): FilesFilter {
   if (!Object.keys(out).length) throw Error("Empty filter");
   return out;
 }
-/**
- * The instant a filter date bounds. A date without a time is that day on this device, from its
- * first millisecond (`from`) to its last (`to`); a date with a time and zone is that instant.
- */
-export function filterTime(value: string, end = false): number {
-  if (value.length !== 10) return Date.parse(value);
-  const [year, month, day] = value.split("-").map(Number);
-  return end
-    ? new Date(year, month - 1, day + 1).getTime() - 1
-    : new Date(year, month - 1, day).getTime();
-}
 const words = (value: string) =>
   value
     .toLowerCase()
@@ -429,8 +418,13 @@ export function filterMatches(
     !within(parentOf(entry.path), filter.folder)
   )
     return false;
-  if (filter.from && entry.modified < filterTime(filter.from)) return false;
-  if (filter.to && entry.modified > filterTime(filter.to, true)) return false;
+  if (filter.from && entry.modified < Date.parse(filter.from)) return false;
+  if (
+    filter.to &&
+    entry.modified >
+      Date.parse(filter.to) + (filter.to.length === 10 ? DAY - 1 : 0)
+  )
+    return false;
   if (filter.text) {
     const name = words(entry.name);
     if (

@@ -213,8 +213,6 @@ export function reviewDescriptor(
     );
   if (descriptor.companions !== undefined)
     throw new Error("Eliza image launchers stage no companions");
-  if (descriptor.privilegedPermissions !== undefined)
-    throw new Error("Eliza image launchers carry no privileged permissions");
   return descriptor;
 }
 

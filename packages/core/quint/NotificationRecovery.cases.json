@@ -3,19 +3,15 @@
 		"packages/core/src/services/notification.ts",
 		"packages/core/src/runtime.ts",
 		"packages/core/src/runtime/service-lifecycle.ts",
-		"packages/core/test/notification.test.ts",
-		"packages/core/src/plugin-lifecycle.ts",
-		"packages/core/src/logger.ts",
-		"packages/core/src/services/agent-event.ts"
+		"packages/core/test/notification.test.ts"
 	],
 	"conformance": "packages/core/scripts/quint-notification-conformance.mjs",
-	"bounds": "One runtime with five effective availability states and separate load, outcome and finally phases. The failure count saturates at the first 30-second delay, so repeated capped failures can continue without a bound on attempt count. Logical ticks count whole elapsed seconds. A wall-clock change is a stutter. The ownership case uses two coordinator records for one runtime, an active-map identity, five effective service availability values and a binary cooldown abstraction. Publication can release a mapped record before its callback or finally completes.",
+	"bounds": "One runtime with five effective availability states and separate load, outcome and finally phases. The failure count saturates at the first 30-second delay, so repeated capped failures can continue without a bound on attempt count. Logical ticks count whole elapsed seconds. A wall-clock change is a stutter.",
 	"fairness": "The host load and its finally callback must settle. The monotonic clock must advance to exhaust a pending cooldown.",
 	"limitations": [
-		"Service publication, unload and replacement may overlap two coordinator records. Registry generations and service instance teardown retain their separate RuntimeLifecycle and ServiceLifecycle models.",
-		"The numeric case projects wall-clock changes away and uses elapsed seconds. The ownership case abstracts the precise delay to cooling or elapsed. The SQLite suite covers the monotonic millisecond boundary and repeated capped delays.",
-		"Actual log, runtime-error and agent-error observers can throw while recovery reports a failure. Their existing diagnostics boundaries preserve the coordinator record and cooldown.",
-		"Independent runtimes and cross-process recovery are outside this per-runtime ownership case."
+		"Service replacement during recovery and concurrent runtimes require their separate lifecycle ownership models.",
+		"The model projects wall-clock changes away and uses elapsed seconds. The SQLite/runtime regression checks both wall-clock directions and the exact millisecond retry boundary, including repeated capped delays.",
+		"Exceptions from diagnostics and cross-process restart are outside this recovery projection."
 	],
 	"cases": [
 		{
@@ -68,55 +64,6 @@
 					]
 				}
 			]
-		},
-		{
-			"name": "replacement-and-diagnostic-ownership",
-			"main": "NotificationRecoveryOwnership",
-			"init": "init",
-			"step": "step",
-			"invariants": [
-				"BusyRequestsJoin",
-				"CoolingCurrentEntryBacksOff",
-				"SuccessfulReceiptReleasesItsOwnMap"
-			],
-			"temporal": [
-				"StaleSuccessPreservesCurrentOwner",
-				"StaleFailurePreservesCurrentOwner",
-				"DetachedFinallyPreservesCurrentOwner",
-				"AttemptsSettle"
-			],
-			"temporalChecks": [
-				{
-					"property": "StaleSuccessPreservesCurrentOwner",
-					"expect": "holds",
-					"assumptions": [
-						"No fairness. A delayed successful callback may release only its own currently mapped coordinator record."
-					]
-				},
-				{
-					"property": "StaleFailurePreservesCurrentOwner",
-					"expect": "holds",
-					"assumptions": [
-						"No fairness. A failed callback writes only its own record, including when a replacement record is mapped."
-					]
-				},
-				{
-					"property": "DetachedFinallyPreservesCurrentOwner",
-					"expect": "holds",
-					"assumptions": [
-						"No fairness. Finally clears only the callback owner\u2019s in-flight marker."
-					]
-				},
-				{
-					"property": "AttemptsSettle",
-					"expect": "holds",
-					"assumptions": [
-						"Weak fairness of each owner\u2019s completion actions. Admitted load receipt delivery and finally callbacks eventually complete. Diagnostic observer exceptions are caught by the actual logger, runtime and agent-event boundaries."
-					]
-				}
-			],
-			"maxSteps": 50,
-			"samples": 500
 		}
 	]
 }

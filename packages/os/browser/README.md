@@ -142,6 +142,7 @@ bun run --cwd packages/os test:browser:page
 
 These tests do not exercise the installed native-message path.
 
+
 Owned Chromium component builds can preserve the extension ID without the old
 CRX private key. `scripts/chromium-component.mjs` supports only the revision and
 source hashes in `scripts/chromium/upstream.json`. It emits a deterministic overlay,
@@ -188,6 +189,7 @@ Chromium executable and run `node --conditions=eliza-source
 packages/os/browser/scripts/test-native-browser.mjs`. The test uses the embedded
 component and installed `/usr/libexec/elizaos-browser-native-host` relay without
 unpacked-extension or allowlist-bypass flags.
+
 
 The `pageGuidance` isolated-world renderer uses existing snapshot target identity
 for a single ring and dismissible label without changing provider element styles.
@@ -346,6 +348,7 @@ extension keeps the step dismissed for that tab, task and epoch, also after a
 reload, until the host restores it. Snapshot references in `keepClear` name
 controls the label must not cover. Manual-activity events from a form with a
 password, code or user-name field carry `credential: true`.
+
 
 Android component generation accepts `--embed-host` only as an explicit build
 option. It adds `knownActivityEmbeddingCerts` to the intent dispatcher target, standard Custom Tab and main

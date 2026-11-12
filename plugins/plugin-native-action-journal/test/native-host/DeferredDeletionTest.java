@@ -47,10 +47,10 @@ public final class DeferredDeletionTest {
   DeletionDeadline d = new DeletionDeadline("boot:1", 100, 100000);
   check(DeletionDeadline.WINDOW_MS == 10000);
   check(d.expiresAt == 110000);
-  check(DeletionDeadline.window(d.continuity, d.createdElapsed, d.expiresElapsed, "boot:1", 10099).equals("open"));
-  check(DeletionDeadline.window(d.continuity, d.createdElapsed, d.expiresElapsed, "boot:1", 10100).equals("expired"));
-  check(DeletionDeadline.window(d.continuity, d.createdElapsed, d.expiresElapsed, "boot:1", 99).equals("clock-changed"));
-  check(DeletionDeadline.window(d.continuity, d.createdElapsed, d.expiresElapsed, "boot:2", 20000).equals("clock-changed"));
+  check(d.state("boot:1", 10099) == DeletionDeadline.State.OPEN);
+  check(d.state("boot:1", 10100) == DeletionDeadline.State.EXPIRED);
+  check(d.state("boot:1", 99) == DeletionDeadline.State.CLOCK_CHANGED);
+  check(d.state("boot:2", 20000) == DeletionDeadline.State.CLOCK_CHANGED);
   refuses(IllegalArgumentException.class, () -> new DeletionDeadline("boot", Long.MAX_VALUE, 0));
   refuses(IllegalArgumentException.class, () -> new DeletionDeadline("", 0, 0));
  }

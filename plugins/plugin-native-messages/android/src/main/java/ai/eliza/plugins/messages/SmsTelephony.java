@@ -52,13 +52,10 @@ public final class SmsTelephony {
  public static final ExecutorService WORK = Executors.newSingleThreadExecutor();
 
  public interface Listener { void sendUpdated(String operationId); }
- /** One listener for each bridge. A second bridge does not remove the listener of the first bridge. */
- private static final Set<Listener> LISTENERS = new java.util.concurrent.CopyOnWriteArraySet<>();
- public static void listen(Listener value) { LISTENERS.add(value); }
- public static void stopListening(Listener value) { LISTENERS.remove(value); }
- static void updated(String operationId) { for (Listener current : LISTENERS) current.sendUpdated(operationId); }
- /** For each journal, the callbacks that wait on {@link #WORK}. Only the last of them reconciles. */
- private static final Map<String, java.util.concurrent.atomic.AtomicInteger> CALLBACKS = new java.util.concurrent.ConcurrentHashMap<>();
+ private static volatile Listener listener;
+ public static void listen(Listener value) { listener = value; }
+ public static void stopListening(Listener value) { if (listener == value) listener = null; }
+ static void updated(String operationId) { Listener current = listener; if (current != null) current.sendUpdated(operationId); }
 
  private static final Map<String, SmsSendJournal> JOURNALS = new HashMap<>();
  /** The process's journal for this host; an interrupted dispatch from an earlier process is reconciled to unknown on first load. */
@@ -297,8 +294,6 @@ public final class SmsTelephony {
   * journal even after the app's process was stopped. Ignored unless the profile admits this install.
   * "sent" is recorded only from a callback whose result is Activity.RESULT_OK; a delivery callback only
   * records that a report arrived, and its outcome is the provider status the platform wrote from it.
-  * A message with many parts gives many callbacks. Each callback records its evidence, but only the
-  * last waiting callback reconciles, and that reconcile reads the evidence of all of them.
   */
  public static void handleCallback(BroadcastReceiver receiver, Context context, Intent intent, SmsTelephonyConfiguration config) {
   if (intent == null || !config.admission.admitted(context)) return;
@@ -313,21 +308,16 @@ public final class SmsTelephony {
   final boolean confirmed = mmsFile == null || sendConfirmed(intent.getByteArrayExtra(SmsManager.EXTRA_MMS_DATA));
   final Context app = context.getApplicationContext();
   final BroadcastReceiver.PendingResult pending = receiver.goAsync();
-  final java.util.concurrent.atomic.AtomicInteger waiting = CALLBACKS.computeIfAbsent(config.journalKey(), key -> new java.util.concurrent.atomic.AtomicInteger());
-  waiting.incrementAndGet();
   try {
    WORK.execute(() -> {
-    final boolean last = waiting.decrementAndGet() == 0;
     try {
      SmsSendJournal journal = journal(app, config);
      SmsSendJournal.Record target = journal.get(operation);
      // An MMS callback settles only an MMS record, and an SMS callback only an SMS record.
-     boolean changed = false;
-     if (target == null || target.group == (mmsFile != null)) {
-      changed = sent ? journal.sentResult(operation, index, ok && confirmed) : journal.deliveryReported(operation, index);
-      if (sent) settleOwnRow(app, journal, operation, index);
-     }
-     Set<String> reconciled = last ? reconcile(app, config) : Collections.emptySet();
+     if (target != null && target.group != (mmsFile != null)) return;
+     boolean changed = sent ? journal.sentResult(operation, index, ok && confirmed) : journal.deliveryReported(operation, index);
+     if (sent) settleOwnRow(app, journal, operation, index);
+     Set<String> reconciled = reconcile(app, config);
      if (changed || reconciled.contains(operation)) updated(operation);
      for (String other : reconciled) if (!other.equals(operation)) updated(other);
     } catch (Exception unrecorded) {
@@ -337,7 +327,7 @@ public final class SmsTelephony {
      if (pending != null) pending.finish();
     }
    });
-  } catch (java.util.concurrent.RejectedExecutionException closed) { waiting.decrementAndGet(); if (mmsFile != null) MmsStore.delete(app, mmsFile); if (pending != null) pending.finish(); }
+  } catch (java.util.concurrent.RejectedExecutionException closed) { if (mmsFile != null) MmsStore.delete(app, mmsFile); if (pending != null) pending.finish(); }
  }
 
  /** Startup and observer reconciliation on {@link #WORK}; publishes changed operations to the listener. */

@@ -57,7 +57,6 @@ assert.deepEqual(
     "Maps retry delay includes the retained future refill boundary",
     "Maps durable allowance is shared, atomic, separately counted, and never replays admission",
     "Maps preserves burst AND sustained dimensions and refuses missing selected plan",
-    "Maps retains original receipts and first outcomes across allowance windows",
     "Maps refuses malformed policy, expired windows, and credential revocation before admission",
     "Maps count and replay tombstones survive a Worker restart, without touching zero monetary funds",
     "Maps refuses corrupted storage and carries rate tokens across allowance resets",

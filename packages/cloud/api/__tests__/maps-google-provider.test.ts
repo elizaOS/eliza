@@ -613,13 +613,7 @@ describe("Google Map Tiles", () => {
         });
       const status = tileStatus();
       return status === 200
-        ? new Response(PNG, {
-            headers: {
-              "content-type": "image/png",
-              "cache-control": "private, max-age=30, must-revalidate",
-              etag: '"google-tile-fixture"',
-            },
-          })
+        ? new Response(PNG, { headers: { "content-type": "image/png" } })
         : new Response("denied", { status });
     });
   }
@@ -644,7 +638,6 @@ describe("Google Map Tiles", () => {
     );
     expect(tileCall?.url.searchParams.get("session")).toBe("session-1");
     expect(tileCall?.url.searchParams.get("key")).toBe(KEY);
-    expect(tileCall?.init.cache).toBe("no-store");
   });
 
   test("a refused session is renewed once", async () => {
@@ -696,7 +689,7 @@ describe("Google Map Tiles", () => {
     );
     expect(ok.status).toBe(200);
     expect(ok.headers.get("content-type")).toBe("image/png");
-    expect(ok.headers.get("cache-control")).toBe("no-store");
+    expect(ok.headers.get("cache-control")).toBe("private, max-age=86400");
     expect(new Uint8Array(await ok.arrayBuffer())).toEqual(PNG);
     const jsonTile = await mounted().request(
       "/api/v1/maps/tiles/2/1/3",
@@ -769,32 +762,6 @@ describe("Google Map Tiles", () => {
     expect(((await unconfigured.json()) as { code: string }).code).toBe(
       "maps_not_configured",
     );
-  });
-
-  test("missing or malformed viewport copyright is refused", async () => {
-    for (const copyright of [undefined, "", " ", 12, "x".repeat(501)]) {
-      const { provider } = google((url) =>
-        url.pathname === "/v1/createSession"
-          ? Response.json({
-              session: "copyright-fixture",
-              expiry: String(Math.floor(Date.now() / 1000) + 36000),
-              tileWidth: 256,
-              imageFormat: "png",
-            })
-          : Response.json({ copyright }),
-      );
-      expect(
-        await refusal(
-          provider.viewport!({
-            zoom: 15,
-            north: 44,
-            south: 43,
-            east: 8,
-            west: 7,
-          }),
-        ),
-      ).toBe("provider_invalid_response");
-    }
   });
 
   test("the viewport copyright reuses the tile session and needs no allowance key", async () => {

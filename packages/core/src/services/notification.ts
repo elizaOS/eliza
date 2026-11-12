@@ -210,7 +210,7 @@ export class NotificationService extends Service {
 	private notifications: AgentNotification[] = [];
 	private nativeEpoch: string = crypto.randomUUID();
 	private nativeSequence = 0;
-	private nativeSequences: Record<string, number> = Object.create(null);
+	private nativeSequences: Record<string, number> = {};
 	private persistenceUncertain = false;
 	private notificationWriteTail: Promise<void> = Promise.resolve();
 	/**
@@ -318,7 +318,6 @@ export class NotificationService extends Service {
 						"Recovered notification service has an unexpected implementation",
 					);
 				}
-				if (recoveryByRuntime.get(runtime) !== recovery) return null;
 				recoveryByRuntime.delete(runtime);
 				recordAvailability(runtime, "registered");
 				logger.info(
@@ -419,7 +418,7 @@ export class NotificationService extends Service {
 	}
 
 	private snapshot(): NotificationInboxSnapshot {
-		const nativeSequences: Record<string, number> = Object.create(null);
+		const nativeSequences: Record<string, number> = {};
 		for (const n of this.notifications)
 			nativeSequences[n.id] = this.nativeSequences[n.id];
 		return {
