@@ -15,7 +15,10 @@ if (result.status !== 0) process.exit(result.status ?? 1);
 
 const consent = spawnSync(
   "bun",
-  ["test", "packages/cloud/api/__tests__/voice-speech-rate-limit.pglite.test.ts"],
+  [
+    "test",
+    "packages/cloud/api/__tests__/voice-speech-rate-limit.pglite.test.ts",
+  ],
   { stdio: "inherit" },
 );
 if (consent.error) throw consent.error;
