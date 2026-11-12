@@ -1,7 +1,6 @@
 {
   "name": "@elizaos/plugin-network",
-  "version": "0.1.0",
-  "private": true,
+  "version": "2.0.5",
   "type": "module",
   "description": "The Network's conversation layer for the shared Eliza agent: member context, availability state (structured routing with authz), post-turn signals, and the signed service-to-service contract with the Network service (turn, deliver, set-state, signals, updates).",
   "main": "src/index.ts",

@@ -1,8 +1,7 @@
 {
   "name": "@elizaos/cloud-shared",
-  "version": "0.1.0",
+  "version": "2.0.5",
   "description": "Shared backend code for Eliza Cloud: billing, db schemas/repositories, services lib, types, and route resolution.",
-  "private": true,
   "type": "module",
   "files": [
     "README.md",

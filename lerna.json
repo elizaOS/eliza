@@ -4,7 +4,11 @@
     "packages/*",
     "packages/app/platforms/*",
     "plugins/*",
-    "packages/cloud/sdk"
+    "packages/cloud/sdk",
+    "packages/cloud/api",
+    "packages/cloud/shared",
+    "packages/cloud/services/*",
+    "packages/cloud/deploy"
   ],
   "npmClient": "bun",
   "command": {

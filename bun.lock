@@ -762,7 +762,7 @@
     },
     "packages/cloud/api": {
       "name": "@elizaos/cloud-api",
-      "version": "2.0.3-beta.0",
+      "version": "2.0.5",
       "dependencies": {
         "@ai-sdk/openai": "^3.0.54",
         "@cloudflare/workers-types": "^4.20260429.1",
@@ -812,7 +812,7 @@
     },
     "packages/cloud/deploy": {
       "name": "@elizaos/cloud-deploy",
-      "version": "0.0.0",
+      "version": "2.0.5",
       "bin": {
         "cloud-deploy": "src/cli.ts",
       },
@@ -895,7 +895,7 @@
     },
     "packages/cloud/services/_common": {
       "name": "@elizaos/cloud-services-common",
-      "version": "1.0.0",
+      "version": "2.0.5",
       "dependencies": {
         "@elizaos/core": "workspace:*",
       },
@@ -1104,7 +1104,7 @@
     },
     "packages/cloud/shared": {
       "name": "@elizaos/cloud-shared",
-      "version": "0.1.0",
+      "version": "2.0.5",
       "dependencies": {
         "@ai-sdk/anthropic": "^3.0.72",
         "@ai-sdk/openai": "^3.0.54",
@@ -2807,7 +2807,7 @@
     },
     "plugins/plugin-network": {
       "name": "@elizaos/plugin-network",
-      "version": "0.1.0",
+      "version": "2.0.5",
       "dependencies": {
         "@elizaos/cloud-services-common": "workspace:*",
         "@elizaos/core": "workspace:*",
