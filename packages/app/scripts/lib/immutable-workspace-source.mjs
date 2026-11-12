@@ -143,8 +143,20 @@ export function verifyCommittedWorkspace(
       generatedFiles.includes(file) ||
       generatedLogs.has(file) ||
       generatedRoots.some((prefix) => file.startsWith(prefix));
-    // Include ignored files: .gitignore must not hide unexpected source additions.
-    for (const file of git(["ls-files", "--others", "-z"])
+    // Prune the already-admitted directories during the walk. Keep the patterns
+    // rooted, literal and case-sensitive, just like the prefix checks above.
+    // Repository ignore rules must still never hide unexpected source additions.
+    const directoryExclusions = [...new Set(generatedRoots)].map(
+      (prefix) => `--exclude=/${prefix.replace(/[\\*?[\]]/g, "\\$&")}`,
+    );
+    for (const file of git([
+      "-c",
+      "core.ignoreCase=false",
+      "ls-files",
+      "--others",
+      "-z",
+      ...directoryExclusions,
+    ])
       .split("\0")
       .filter(Boolean))
       if (!allowedGenerated(file))

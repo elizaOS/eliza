@@ -70,6 +70,33 @@ test("immutable source rejects changed bytes even when Git skips worktree stat c
   );
 });
 
+test("generated-directory pruning stays rooted, literal and case-sensitive", (t) => {
+  const f = fixture(t);
+  f.git("config", "core.ignoreCase", "true");
+  f.write(
+    "packages/widget[1]/package.json",
+    JSON.stringify({ name: "@example/widget" }),
+  );
+  f.git("add", "--", "packages");
+  f.git("commit", "-qm", "Add a workspace with a literal bracket in its path");
+  const commit = f.git("rev-parse", "HEAD");
+  f.write("packages/widget[1]/dist/index.js", "generated");
+  verifySource(f.root, commit);
+  for (const file of [
+    "packages/widget1/dist/injected.ts",
+    "packages/example/DIST/injected.ts",
+    "packages/example/src/node_modules/injected.ts",
+  ]) {
+    f.write(file, "unexpected");
+    assert.throws(
+      () => verifySource(f.root, commit),
+      (error) =>
+        error.message === `Unexpected untracked runtime source: ${file}`,
+    );
+    fs.unlinkSync(path.join(f.root, file));
+  }
+});
+
 test("immutable source rejects replaced files, mode changes, wrong commits and retired overrides", (t) => {
   const f = fixture(t),
     file = path.join(f.root, "packages/example/src/index.ts");
