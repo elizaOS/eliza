@@ -691,7 +691,17 @@ export function ChatView({
   const addImageFiles = useCallback(
     (files: FileList | File[]) => {
       void intakeAttachmentFiles(files)
-        .then(({ attachments, droppedTooLarge }) => {
+        .then(({ attachments, droppedTooLarge, emptyFileError }) => {
+          // An empty file is refused alone; the rest of the selection attaches.
+          if (emptyFileError) {
+            app.setActionNotice?.(
+              app.t("chatview.ImageReadFailed", {
+                message: emptyFileError,
+                defaultValue: "Couldn't read image: {{message}}",
+              }),
+              "error",
+            );
+          }
           setChatPendingImages((prev) => {
             const merged = [...prev, ...attachments];
             const kept = merged.slice(0, MAX_CHAT_IMAGES);

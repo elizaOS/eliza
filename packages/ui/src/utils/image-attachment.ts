@@ -317,6 +317,10 @@ function readFileAsBase64(file: File): Promise<string> {
     reader.readAsDataURL(file);
   });
 }
+/** User-facing reason for refusing a zero-byte file (the server 400s it). */
+function emptyAttachmentMessage(file: File): string {
+  return `"${file.name || "attachment"}" is empty — attach a file with content.`;
+}
 /**
  * Read one accepted file into a sendable {@link ImageAttachment}: base64 the
  * bytes, re-encode an image that the server would reject (over-cap or
@@ -330,9 +334,7 @@ async function fileToChatAttachment(
   // so a zero-byte file can never send. Refuse it here with a clear reason,
   // before reading it or deciding whether an image needs re-encoding.
   if (file.size === 0) {
-    throw new UnsendableAttachmentError(
-      `"${file.name || "attachment"}" is empty — attach a file with content.`,
-    );
+    throw new UnsendableAttachmentError(emptyAttachmentMessage(file));
   }
   let data = await readFileAsBase64(file);
   let mimeType = file.type;
@@ -384,13 +386,19 @@ export interface AttachmentIntakeResult {
   attachments: TransientClientMediaInput[];
   droppedTooLarge: DroppedFile[];
   droppedOverCount: DroppedFile[];
+  /**
+   * Reason for any zero-byte files that were refused, or `null`. The other
+   * files of the same selection are still read and returned in `attachments`.
+   */
+  emptyFileError: string | null;
 }
 /**
  * Full intake pipeline for the chat composer: filters unsupported files,
  * applies the byte and count caps via {@link partitionAttachmentFiles}, reads
  * the accepted files into {@link ImageAttachment} payloads, and returns the
  * dropped files (with reasons) alongside — so the caller can surface a
- * "kept N, dropped M" notice instead of silently truncating. Rejects only if a
+ * "kept N, dropped M" notice instead of silently truncating. Zero-byte files
+ * are refused per file and reported in `emptyFileError`. Rejects only if a
  * read of an accepted file fails.
  */
 export async function intakeAttachmentFiles(
@@ -400,8 +408,15 @@ export async function intakeAttachmentFiles(
   const supported = Array.from(files).filter(isSupportedChatUpload);
   const { accepted, droppedTooLarge, droppedOverCount } =
     partitionAttachmentFiles(supported, options);
-  const attachments = await filesToImageAttachments(accepted);
-  return { attachments, droppedTooLarge, droppedOverCount };
+  // Refuse zero-byte files one by one, so one empty file in a selection does
+  // not reject the whole batch and discard the files that can send.
+  const empty = accepted.filter((file) => file.size === 0);
+  const attachments = await filesToImageAttachments(
+    accepted.filter((file) => file.size > 0),
+  );
+  const emptyFileError =
+    empty.length > 0 ? empty.map(emptyAttachmentMessage).join(" ") : null;
+  return { attachments, droppedTooLarge, droppedOverCount, emptyFileError };
 }
 /**
  * Build the i18n params for a "kept N, dropped M" notice from an intake/

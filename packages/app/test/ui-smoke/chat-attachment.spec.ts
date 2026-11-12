@@ -270,3 +270,35 @@ test("chat overlay: an empty file is refused at intake instead of queued for a s
   ).toHaveCount(0);
   expect(conversations.streamCalls()).toHaveLength(0);
 });
+
+test("chat overlay: an empty file in a mixed selection is refused alone and the valid image still attaches", async ({
+  page,
+}) => {
+  const conversations = await installAttachmentStreamMock(page);
+
+  await openAppPath(page, "/chat");
+  await expect(page.getByTestId("chat-overlay")).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(page.getByTestId("chat-composer-plus")).toBeVisible({
+    timeout: 15_000,
+  });
+
+  // One picker selection: a valid PNG and a zero-byte PNG.
+  const fileInput = page.locator('input[type="file"][accept^="image/*"]');
+  await fileInput.setInputFiles([
+    { name: "smoke.png", mimeType: "image/png", buffer: ONE_PX_PNG },
+    { name: "empty.png", mimeType: "image/png", buffer: Buffer.alloc(0) },
+  ]);
+
+  await expect(page.getByRole("alert")).toContainText('"empty.png" is empty', {
+    timeout: 10_000,
+  });
+  await expect(
+    page.getByRole("button", { name: "remove smoke.png" }),
+  ).toBeVisible({ timeout: 10_000 });
+  await expect(
+    page.getByRole("button", { name: "remove empty.png" }),
+  ).toHaveCount(0);
+  expect(conversations.streamCalls()).toHaveLength(0);
+});

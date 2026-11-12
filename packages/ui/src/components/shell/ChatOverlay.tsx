@@ -2036,7 +2036,7 @@ export function ChatOverlay({
   const addImageFiles = React.useCallback(
     (files: FileList | File[]) => {
       void intakeAttachmentFiles(files)
-        .then(({ attachments, droppedTooLarge }) => {
+        .then(({ attachments, droppedTooLarge, emptyFileError }) => {
           // The overlay is a pure component without an i18n translator, so it
           // surfaces the "kept N, dropped M" notice inline in English (matching
           // its other hardcoded strings) via the existing imageError channel.
@@ -2045,11 +2045,14 @@ export function ChatOverlay({
             droppedTooLarge,
             droppedOverCount: [],
           });
-          setImageError(
+          // An empty file is refused alone; the rest of the selection attaches.
+          const notices = [
+            emptyFileError,
             summary
               ? `Kept ${summary.kept}, dropped ${summary.dropped} (too large — max ${summary.maxMb}MB)`
               : null,
-          );
+          ].filter(Boolean);
+          setImageError(notices.length > 0 ? notices.join(" ") : null);
           if (attachments.length) {
             setPendingImages((prev) =>
               [...prev, ...attachments].slice(0, MAX_CHAT_IMAGES),
