@@ -35,6 +35,7 @@ type GoogleCalendarApiEvent = {
   iCalUID?: string;
   recurringEventId?: string;
   created?: string;
+  updated?: string;
   start?: GoogleCalendarEventDate;
   end?: GoogleCalendarEventDate;
   organizer?: {
