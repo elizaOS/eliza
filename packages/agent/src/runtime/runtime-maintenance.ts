@@ -7,6 +7,7 @@
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import { scheduleAttachmentKnowledgeBackfill } from "../api/attachment-knowledge-backfill.ts";
 import { scheduleMediaGc } from "../api/media-runtime.ts";
+import { migrateWorkbenchScheduleTags } from "../triggers/workbench-migration.ts";
 
 interface MaintenanceJob {
   scope: string;
@@ -20,6 +21,10 @@ export async function runRuntimeStartupMaintenance(
 ): Promise<void> {
   abortSignal?.throwIfAborted();
   const jobs: MaintenanceJob[] = [
+    {
+      scope: "workbench-schedule-tag-migration",
+      run: () => migrateWorkbenchScheduleTags(runtime),
+    },
     {
       scope: "knowledge-backfill-schedule",
       run: () => scheduleAttachmentKnowledgeBackfill(runtime),
