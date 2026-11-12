@@ -6,6 +6,14 @@
   "private": true,
   "main": "src/index.ts",
   "types": "src/index.ts",
+  "files": [
+    "README.md",
+    "src",
+    "!src/**/*.test.ts"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "exports": {
     ".": "./src/index.ts",
     "./network-consent": "./src/network-consent.ts",

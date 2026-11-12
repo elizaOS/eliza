@@ -10,6 +10,6 @@
     "allowImportingTsExtensions": true,
     "types": ["node", "bun-types"]
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "scripts/**/*.ts"],
   "exclude": ["src/**/*.test.ts"]
 }

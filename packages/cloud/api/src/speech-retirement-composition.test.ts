@@ -39,6 +39,8 @@ mock.module("@elizaos/cloud-shared/db/client", () => ({
 mock.module("@elizaos/cloud-shared/lib/runtime/cloud-bindings", () => ({
   getCloudAwareEnv: () => ({}),
   runWithCloudBindingsAsync: (_env: unknown, fn: () => unknown) => fn(),
+  // The coordinator resolves the Cloud deployment (the consent seed) from the request-aware env.
+  getCloudAwareEnv: () => ({}),
 }));
 mock.module("@elizaos/cloud-shared/lib/utils/logger", () => ({
   logger: { info() {}, error() {} },

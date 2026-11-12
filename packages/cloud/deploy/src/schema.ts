@@ -43,6 +43,89 @@ export interface DeploymentPlacement {
   readonly region?: string;
 }
 
+export const DEPLOYMENT_COMPONENTS = [
+  "api",
+  "login",
+  "speech",
+  "admission",
+  "web",
+] as const;
+export type DeploymentComponentName = (typeof DEPLOYMENT_COMPONENTS)[number];
+
+/** Steward login Worker and its container. */
+export interface LoginComponent {
+  readonly workerName: string;
+  /** Custom domain the login Worker is served on. */
+  readonly host: string;
+  /** Rendered as `LOGIN_ENABLED`; a disabled login Worker answers 503. */
+  readonly enabled: boolean;
+  readonly container: {
+    readonly maxInstances: number;
+    readonly instanceType: string;
+    /**
+     * A pushed image (`registry.cloudflare.com/<account>/<name>:<tag>`).
+     * When omitted, upstream's Dockerfile is built at deploy time.
+     */
+    readonly image?: string;
+  };
+  readonly vars?: Readonly<Record<string, string>>;
+  readonly secrets: readonly string[];
+}
+
+/** Lean host for speech session objects. */
+export interface SpeechComponent {
+  readonly workerName: string;
+  readonly routes?: readonly DeploymentRoute[];
+  /**
+   * When true the API Worker's speech-session binding points at this Worker,
+   * so new sessions are created here. The API keeps its own class export.
+   */
+  readonly hostsSessions?: boolean;
+  /** Database and cache; the API Worker's when omitted. */
+  readonly resources?: {
+    readonly hyperdriveId: string;
+    readonly kvNamespaceId: string;
+  };
+  readonly vars?: Readonly<Record<string, string>>;
+  readonly secrets: readonly string[];
+}
+
+/** Dedicated isolate that owns the inference admission gate. */
+export interface AdmissionComponent {
+  readonly workerName: string;
+  readonly routes?: readonly DeploymentRoute[];
+  readonly vars?: Readonly<Record<string, string>>;
+  readonly secrets: readonly string[];
+}
+
+export interface WebNativeAuthCallback {
+  readonly redirectUri: string;
+  readonly androidPackage: string;
+  readonly appName: string;
+  readonly browserSignIn?: {
+    readonly startPath: string;
+    readonly returnPath: string;
+    readonly storageKey: string;
+    readonly apiOrigin: string;
+    readonly tenant: string;
+  };
+}
+
+/** Cloudflare Pages front end. */
+export interface WebComponent {
+  readonly projectName: string;
+  /** Rendered as `ELIZA_NATIVE_AUTH_CALLBACKS_JSON`. */
+  readonly nativeAuthCallbacks?: readonly WebNativeAuthCallback[];
+  readonly vars?: Readonly<Record<string, string>>;
+}
+
+export interface DeploymentComponents {
+  readonly login?: LoginComponent;
+  readonly speech?: SpeechComponent;
+  readonly admission?: AdmissionComponent;
+  readonly web?: WebComponent;
+}
+
 export interface DeploymentEnvironment {
   readonly workerName: string;
   readonly accountId: string;
@@ -67,6 +150,8 @@ export interface DeploymentEnvironment {
   readonly vars?: Readonly<Record<string, string>>;
   /** Names of the secrets the Worker needs. Never values. */
   readonly secrets: readonly string[];
+  /** The other parts of this Cloud. Each is optional. */
+  readonly components?: DeploymentComponents;
 }
 
 export interface Deployment {
@@ -108,6 +193,47 @@ export const DERIVED_VARS = [
   "ELIZA_ENTITLEMENT_ISSUER",
   "ELIZA_ENTITLEMENT_AUDIENCE",
 ] as const;
+
+/** Pages variables the renderer derives from typed fields. */
+export const WEB_DERIVED_VARS = [
+  "CLOUD_DEPLOYMENT_ID",
+  "API_UPSTREAM",
+  "VITE_ELIZA_CLOUD_BASE",
+  "VITE_STEWARD_TENANT_ID",
+  "NEXT_PUBLIC_STEWARD_TENANT_ID",
+  "VITE_ENVIRONMENT",
+  "ELIZA_NATIVE_AUTH_CALLBACKS_JSON",
+] as const;
+
+/** Login Worker variables the renderer derives from typed fields. */
+export const LOGIN_DERIVED_VARS = ["LOGIN_ENABLED"] as const;
+
+/**
+ * Secrets the login Worker refuses to start its runtime without
+ * (`REQUIRED_RUNTIME_SETTINGS` in `packages/auth/cloudflare/worker.ts`).
+ */
+export const LOGIN_REQUIRED_SECRETS = [
+  "DATABASE_URL",
+  "STEWARD_MASTER_PASSWORD",
+  "STEWARD_JWT_SECRET",
+  "STEWARD_KDF_SALT",
+  "STEWARD_AUDIT_HMAC_KEY",
+] as const;
+
+/**
+ * Login runtime settings whose built-in default is an eliza host or sender.
+ * A product deployment must set each one.
+ */
+export const LOGIN_REQUIRED_PRODUCT_VARS = [
+  "APP_URL",
+  "EMAIL_FROM",
+  "EMAIL_AUTH_REDIRECT_BASE_URL",
+  "PASSKEY_RP_ID",
+  "PASSKEY_ORIGIN",
+] as const;
+
+/** Class a deployment with an admission Worker must hand over to it. */
+export const ADMISSION_GATE_CLASS = "InferenceAdmissionGate";
 
 const DEPLOYMENT_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const WORKER_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,62}$/;
@@ -296,16 +422,485 @@ const ENVIRONMENT_FIELDS = [
   "durableObjectTransfers",
   "vars",
   "secrets",
+  "components",
 ] as const;
 
 function routeHost(pattern: string): string {
   return pattern.split("/")[0].replace(/^\*\.?/, "");
 }
 
+function checkRoutes(
+  check: Checker,
+  value: unknown,
+  path: string,
+  required: boolean,
+): DeploymentRoute[] {
+  const routes: DeploymentRoute[] = [];
+  if (!Array.isArray(value) || (required && value.length === 0)) {
+    check.fail(
+      path,
+      required ? "must be a non-empty array" : "must be an array",
+    );
+    return routes;
+  }
+  value.forEach((entry, index) => {
+    const at = `${path}[${index}]`;
+    const route = check.object(entry, at, ["pattern", "zone"]) ?? {};
+    const zone = check.string(route.zone, `${at}.zone`, HOSTNAME_PATTERN);
+    const pattern = check.string(
+      route.pattern,
+      `${at}.pattern`,
+      /^(\*\.?)?[a-z0-9]([a-z0-9.-]*[a-z0-9])?\/\S*$/,
+    );
+    if (zone && pattern) {
+      const host = routeHost(pattern);
+      if (host !== zone && !host.endsWith(`.${zone}`)) {
+        check.fail(`${at}.pattern`, "host is not in the configured zone");
+      }
+    }
+    routes.push({ pattern, zone });
+  });
+  return routes;
+}
+
+function checkVars(
+  check: Checker,
+  value: unknown,
+  path: string,
+  derived: readonly string[],
+): Record<string, string> | undefined {
+  if (value === undefined) return undefined;
+  const vars = check.stringMap(value, path, BINDING_NAME_PATTERN);
+  for (const name of Object.keys(vars)) {
+    if (derived.includes(name)) {
+      check.fail(
+        fieldPath(path, name),
+        "is set from a typed field and may not be repeated",
+      );
+    }
+    if (looksLikeSecretName(name)) {
+      check.fail(
+        fieldPath(path, name),
+        "is a secret name; list it under secrets instead",
+      );
+    }
+  }
+  return vars;
+}
+
+function checkSecrets(
+  check: Checker,
+  value: unknown,
+  path: string,
+  derived: readonly string[],
+  vars: Record<string, string> | undefined,
+): string[] {
+  const secrets: string[] = [];
+  if (!Array.isArray(value)) {
+    check.fail(path, "must be an array of secret names");
+    return secrets;
+  }
+  value.forEach((entry, index) => {
+    const name = check.string(entry, `${path}[${index}]`, BINDING_NAME_PATTERN);
+    if (!name) return;
+    if (secrets.includes(name)) check.fail(`${path}[${index}]`, "is repeated");
+    if (derived.includes(name) || (vars && name in vars)) {
+      check.fail(`${path}[${index}]`, "is also a plain variable");
+    }
+    secrets.push(name);
+  });
+  return secrets;
+}
+
+interface ComponentContext {
+  readonly deploymentId: string;
+  readonly workerName: string;
+  readonly origins: DeploymentOrigins;
+  readonly durableObjectTransfers: Record<string, string> | undefined;
+}
+
+function checkNativeAuthCallbacks(
+  check: Checker,
+  value: unknown,
+  path: string,
+  origins: DeploymentOrigins,
+): WebNativeAuthCallback[] {
+  const callbacks: WebNativeAuthCallback[] = [];
+  if (!Array.isArray(value)) {
+    check.fail(path, "must be an array");
+    return callbacks;
+  }
+  const pathPattern = /^\/[A-Za-z0-9/_~.-]+$/;
+  // Keep these rules aligned with the Pages selector; the app parity suite
+  // exercises both validators without adding an app runtime dependency here.
+  const reserved = (pathname: string) =>
+    /^\/(api|steward)(\/|$)/.test(pathname) ||
+    pathname.startsWith("/assets/") ||
+    [
+      "/.well-known/openid-configuration",
+      "/.well-known/oidc/jwks.json",
+      "/.well-known/assetlinks.json",
+    ].includes(pathname);
+  const seen = new Set<string>();
+  const storageKeys = new Set<string>();
+  value.forEach((entry, index) => {
+    const at = `${path}[${index}]`;
+    const callback =
+      check.object(entry, at, [
+        "redirectUri",
+        "androidPackage",
+        "appName",
+        "browserSignIn",
+      ]) ?? {};
+    const redirectUri = check.string(
+      callback.redirectUri,
+      `${at}.redirectUri`,
+      (uri) => {
+        try {
+          const url = new URL(uri);
+          return (
+            url.href === uri &&
+            url.protocol === "https:" &&
+            !url.username &&
+            !url.password &&
+            !url.search &&
+            !url.hash &&
+            !/[%;*\\]/.test(url.pathname) &&
+            !reserved(url.pathname)
+          );
+        } catch {
+          return false;
+        }
+      },
+    );
+    // A callback is served by this deployment's Pages project only.
+    let callbackOrigin = "";
+    let callbackPath = "";
+    try {
+      const callbackUrl = new URL(redirectUri);
+      callbackOrigin = callbackUrl.origin;
+      callbackPath = callbackUrl.pathname;
+    } catch {
+      // Reported above.
+    }
+    if (
+      callbackOrigin &&
+      callbackOrigin !== origins.web &&
+      callbackOrigin !== origins.app
+    ) {
+      check.fail(
+        `${at}.redirectUri`,
+        "must be on this environment's web or app origin",
+      );
+    }
+    if (redirectUri && seen.has(redirectUri))
+      check.fail(`${at}.redirectUri`, "repeats a callback route");
+    seen.add(redirectUri);
+    const androidPackage = check.string(
+      callback.androidPackage,
+      `${at}.androidPackage`,
+      /^[a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)+$/,
+    );
+    const appName = check.string(callback.appName, `${at}.appName`);
+    let browserSignIn: WebNativeAuthCallback["browserSignIn"];
+    if (callback.browserSignIn !== undefined) {
+      const signIn =
+        check.object(callback.browserSignIn, `${at}.browserSignIn`, [
+          "startPath",
+          "returnPath",
+          "storageKey",
+          "apiOrigin",
+          "tenant",
+        ]) ?? {};
+      const pathTest = (value: string) =>
+        pathPattern.test(value) &&
+        !value.startsWith("//") &&
+        new URL(value, "https://callback.invalid").pathname === value &&
+        !reserved(value);
+      browserSignIn = {
+        startPath: check.string(
+          signIn.startPath,
+          `${at}.browserSignIn.startPath`,
+          pathTest,
+        ),
+        returnPath: check.string(
+          signIn.returnPath,
+          `${at}.browserSignIn.returnPath`,
+          pathTest,
+        ),
+        storageKey: check.string(
+          signIn.storageKey,
+          `${at}.browserSignIn.storageKey`,
+          /^[A-Za-z0-9:._-]{1,128}$/,
+        ),
+        apiOrigin: check.string(
+          signIn.apiOrigin,
+          `${at}.browserSignIn.apiOrigin`,
+          (value) => isOrigin(value) && new URL(value).protocol === "https:",
+        ),
+        tenant: check.string(
+          signIn.tenant,
+          `${at}.browserSignIn.tenant`,
+          /^[A-Za-z0-9_-]{1,64}$/,
+        ),
+      };
+      if (browserSignIn.apiOrigin && browserSignIn.apiOrigin !== origins.api) {
+        check.fail(
+          `${at}.browserSignIn.apiOrigin`,
+          "must be this environment's api origin",
+        );
+      }
+      const start = `${callbackOrigin}${browserSignIn.startPath}`;
+      if (seen.has(start))
+        check.fail(`${at}.browserSignIn.startPath`, "repeats a callback route");
+      seen.add(start);
+      const storageKey = `${callbackOrigin}:${browserSignIn.storageKey}`;
+      if (storageKeys.has(storageKey))
+        check.fail(
+          `${at}.browserSignIn.storageKey`,
+          "repeats a storage key on this callback origin",
+        );
+      storageKeys.add(storageKey);
+    }
+    const callbackSuffix = "/auth/callback";
+    if (callbackPath.endsWith(callbackSuffix)) {
+      const billingReturn = `${callbackOrigin}${callbackPath.slice(0, -callbackSuffix.length)}/billing/return`;
+      if (seen.has(billingReturn))
+        check.fail(
+          `${at}.redirectUri`,
+          "repeats a derived billing return route",
+        );
+      seen.add(billingReturn);
+    }
+    callbacks.push({
+      redirectUri,
+      androidPackage,
+      appName,
+      ...(browserSignIn ? { browserSignIn } : {}),
+    });
+  });
+  return callbacks;
+}
+
+function checkComponents(
+  check: Checker,
+  value: unknown,
+  path: string,
+  context: ComponentContext,
+): DeploymentComponents {
+  const input =
+    check.object(value, path, ["login", "speech", "admission", "web"]) ?? {};
+  const workerNames = new Map<string, string>([[context.workerName, "api"]]);
+  const workerName = (entry: unknown, at: string, component: string) => {
+    const name = check.string(entry, at, WORKER_NAME_PATTERN);
+    const owner = workerNames.get(name);
+    if (name && owner) check.fail(at, `is also the ${owner} Worker's name`);
+    if (name) workerNames.set(name, component);
+    return name;
+  };
+  const components: {
+    -readonly [K in keyof DeploymentComponents]: DeploymentComponents[K];
+  } = {};
+
+  if (input.login !== undefined) {
+    const at = `${path}.login`;
+    const login =
+      check.object(input.login, at, [
+        "workerName",
+        "host",
+        "enabled",
+        "container",
+        "vars",
+        "secrets",
+      ]) ?? {};
+    if (typeof login.enabled !== "boolean")
+      check.fail(`${at}.enabled`, "must be true or false");
+    const containerIn =
+      check.object(login.container, `${at}.container`, [
+        "maxInstances",
+        "instanceType",
+        "image",
+      ]) ?? {};
+    const maxInstances = containerIn.maxInstances;
+    if (
+      typeof maxInstances !== "number" ||
+      !Number.isInteger(maxInstances) ||
+      maxInstances < 1 ||
+      maxInstances > 1000
+    ) {
+      check.fail(`${at}.container.maxInstances`, "must be a positive integer");
+    }
+    const vars = checkVars(check, login.vars, `${at}.vars`, LOGIN_DERIVED_VARS);
+    if (context.deploymentId !== ELIZA_DEPLOYMENT_ID) {
+      for (const name of LOGIN_REQUIRED_PRODUCT_VARS) {
+        if (!vars?.[name]?.trim()) {
+          check.fail(
+            `${at}.vars.${name}`,
+            "is required: the login runtime's default is an eliza value",
+          );
+        }
+      }
+    }
+    const secrets = checkSecrets(
+      check,
+      login.secrets,
+      `${at}.secrets`,
+      LOGIN_DERIVED_VARS,
+      vars,
+    );
+    for (const name of LOGIN_REQUIRED_SECRETS) {
+      if (Array.isArray(login.secrets) && !secrets.includes(name)) {
+        check.fail(
+          `${at}.secrets`,
+          `must list ${name}; the login Worker does not start without it`,
+        );
+      }
+    }
+    components.login = {
+      workerName: workerName(login.workerName, `${at}.workerName`, "login"),
+      host: check.string(login.host, `${at}.host`, HOSTNAME_PATTERN),
+      enabled: login.enabled === true,
+      container: {
+        maxInstances: typeof maxInstances === "number" ? maxInstances : 0,
+        instanceType: check.string(
+          containerIn.instanceType,
+          `${at}.container.instanceType`,
+          /^[a-z][a-z0-9-]{0,31}$/,
+        ),
+        ...(containerIn.image !== undefined
+          ? {
+              image: check.string(
+                containerIn.image,
+                `${at}.container.image`,
+                /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:\d{1,5})?(\/[a-z0-9][a-z0-9._-]*)+:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/,
+              ),
+            }
+          : {}),
+      },
+      ...(vars ? { vars } : {}),
+      secrets,
+    };
+  }
+
+  for (const name of ["speech", "admission"] as const) {
+    if (input[name] === undefined) continue;
+    const at = fieldPath(path, name);
+    const known =
+      name === "speech"
+        ? [
+            "workerName",
+            "routes",
+            "hostsSessions",
+            "resources",
+            "vars",
+            "secrets",
+          ]
+        : ["workerName", "routes", "vars", "secrets"];
+    const worker = check.object(input[name], at, known) ?? {};
+    const vars = checkVars(check, worker.vars, `${at}.vars`, DERIVED_VARS);
+    const common = {
+      workerName: workerName(worker.workerName, `${at}.workerName`, name),
+      ...(worker.routes !== undefined
+        ? { routes: checkRoutes(check, worker.routes, `${at}.routes`, false) }
+        : {}),
+      ...(vars ? { vars } : {}),
+      secrets: checkSecrets(
+        check,
+        worker.secrets,
+        `${at}.secrets`,
+        DERIVED_VARS,
+        vars,
+      ),
+    };
+    if (name === "admission") {
+      components.admission = common;
+      continue;
+    }
+    if (
+      worker.hostsSessions !== undefined &&
+      typeof worker.hostsSessions !== "boolean"
+    ) {
+      check.fail(`${at}.hostsSessions`, "must be true or false");
+    }
+    let resources: SpeechComponent["resources"];
+    if (worker.resources !== undefined) {
+      const resourcesIn =
+        check.object(worker.resources, `${at}.resources`, [
+          "hyperdriveId",
+          "kvNamespaceId",
+        ]) ?? {};
+      resources = {
+        hyperdriveId: check.string(
+          resourcesIn.hyperdriveId,
+          `${at}.resources.hyperdriveId`,
+          RESOURCE_ID_PATTERN,
+        ),
+        kvNamespaceId: check.string(
+          resourcesIn.kvNamespaceId,
+          `${at}.resources.kvNamespaceId`,
+          RESOURCE_ID_PATTERN,
+        ),
+      };
+    }
+    components.speech = {
+      ...common,
+      ...(worker.hostsSessions !== undefined
+        ? { hostsSessions: worker.hostsSessions === true }
+        : {}),
+      ...(resources ? { resources } : {}),
+    };
+  }
+
+  // One admission gate per deployment: the API Worker must bind the
+  // admission Worker's namespace, or the two would admit independently.
+  const gateOwner = context.durableObjectTransfers?.[ADMISSION_GATE_CLASS];
+  if (
+    components.admission?.workerName &&
+    gateOwner !== components.admission.workerName
+  ) {
+    check.fail(
+      `${path}.admission.workerName`,
+      `durableObjectTransfers.${ADMISSION_GATE_CLASS} must name this Worker`,
+    );
+  }
+
+  if (input.web !== undefined) {
+    const at = `${path}.web`;
+    const web =
+      check.object(input.web, at, [
+        "projectName",
+        "nativeAuthCallbacks",
+        "vars",
+      ]) ?? {};
+    const vars = checkVars(check, web.vars, `${at}.vars`, WEB_DERIVED_VARS);
+    components.web = {
+      projectName: check.string(
+        web.projectName,
+        `${at}.projectName`,
+        /^[a-z0-9][a-z0-9-]{0,57}$/,
+      ),
+      ...(web.nativeAuthCallbacks !== undefined
+        ? {
+            nativeAuthCallbacks: checkNativeAuthCallbacks(
+              check,
+              web.nativeAuthCallbacks,
+              `${at}.nativeAuthCallbacks`,
+              context.origins,
+            ),
+          }
+        : {}),
+      ...(vars ? { vars } : {}),
+    };
+  }
+
+  return components;
+}
+
 function checkEnvironment(
   check: Checker,
   value: unknown,
   path: string,
+  deploymentId: string,
 ): DeploymentEnvironment {
   const env = check.object(value, path, ENVIRONMENT_FIELDS) ?? {};
 
@@ -320,28 +915,7 @@ function checkEnvironment(
     ACCOUNT_ID_PATTERN,
   );
 
-  const routes: DeploymentRoute[] = [];
-  if (!Array.isArray(env.routes) || env.routes.length === 0) {
-    check.fail(`${path}.routes`, "must be a non-empty array");
-  } else {
-    env.routes.forEach((entry, index) => {
-      const at = `${path}.routes[${index}]`;
-      const route = check.object(entry, at, ["pattern", "zone"]) ?? {};
-      const zone = check.string(route.zone, `${at}.zone`, HOSTNAME_PATTERN);
-      const pattern = check.string(
-        route.pattern,
-        `${at}.pattern`,
-        /^(\*\.?)?[a-z0-9]([a-z0-9.-]*[a-z0-9])?\/\S*$/,
-      );
-      if (zone && pattern) {
-        const host = routeHost(pattern);
-        if (host !== zone && !host.endsWith(`.${zone}`)) {
-          check.fail(`${at}.pattern`, `host ${host} is not in zone ${zone}`);
-        }
-      }
-      routes.push({ pattern, zone });
-    });
-  }
+  const routes = checkRoutes(check, env.routes, `${path}.routes`, true);
 
   const originsIn =
     check.object(env.origins, `${path}.origins`, [
@@ -486,50 +1060,24 @@ function checkEnvironment(
           WORKER_NAME_PATTERN,
         );
 
-  let vars: Record<string, string> | undefined;
-  if (env.vars !== undefined) {
-    vars = check.stringMap(env.vars, `${path}.vars`, BINDING_NAME_PATTERN);
-    for (const name of Object.keys(vars)) {
-      if ((DERIVED_VARS as readonly string[]).includes(name)) {
-        check.fail(
-          `${path}.vars.${name}`,
-          "is set from a typed field and may not be repeated",
-        );
-      }
-      if (looksLikeSecretName(name)) {
-        check.fail(
-          `${path}.vars.${name}`,
-          "is a secret name; list it under secrets instead",
-        );
-      }
-    }
-  }
+  const vars = checkVars(check, env.vars, `${path}.vars`, DERIVED_VARS);
+  const secrets = checkSecrets(
+    check,
+    env.secrets,
+    `${path}.secrets`,
+    DERIVED_VARS,
+    vars,
+  );
 
-  const secrets: string[] = [];
-  if (!Array.isArray(env.secrets)) {
-    check.fail(`${path}.secrets`, "must be an array of secret names");
-  } else {
-    env.secrets.forEach((entry, index) => {
-      const name = check.string(
-        entry,
-        `${path}.secrets[${index}]`,
-        BINDING_NAME_PATTERN,
-      );
-      if (!name) return;
-      if (secrets.includes(name))
-        check.fail(`${path}.secrets[${index}]`, "is repeated");
-      if (
-        (DERIVED_VARS as readonly string[]).includes(name) ||
-        (vars && name in vars)
-      ) {
-        check.fail(
-          `${path}.secrets[${index}]`,
-          `${name} is also a plain variable`,
-        );
-      }
-      secrets.push(name);
-    });
-  }
+  const components =
+    env.components === undefined
+      ? undefined
+      : checkComponents(check, env.components, `${path}.components`, {
+          deploymentId,
+          workerName,
+          origins,
+          durableObjectTransfers,
+        });
 
   return {
     workerName,
@@ -548,6 +1096,7 @@ function checkEnvironment(
     ...(durableObjectTransfers ? { durableObjectTransfers } : {}),
     ...(vars ? { vars } : {}),
     secrets,
+    ...(components ? { components } : {}),
   };
 }
 
@@ -598,6 +1147,7 @@ export function validateDeployment(input: unknown): Deployment {
         check,
         environmentsIn[name],
         `deployment.environments.${name}`,
+        id,
       );
     }
     const workerNames = Object.values(environments).map(
@@ -612,6 +1162,31 @@ export function validateDeployment(input: unknown): Deployment {
         "deployment.environments",
         "staging and production share a workerName",
       );
+    }
+    // A Worker name identifies one script in the account, so a component
+    // may not reuse a name from the other environment either.
+    const owners = new Map<string, { environment: string; api: boolean }>();
+    for (const [environment, env] of Object.entries(environments)) {
+      const parts = env.components ?? {};
+      const named: [string, string | undefined][] = [
+        ["workerName", env.workerName],
+        ["components.login.workerName", parts.login?.workerName],
+        ["components.speech.workerName", parts.speech?.workerName],
+        ["components.admission.workerName", parts.admission?.workerName],
+      ];
+      for (const [field, name] of named) {
+        if (!name) continue;
+        const api = field === "workerName";
+        const other = owners.get(name);
+        // Two API Workers sharing a name is reported above.
+        if (other && other.environment !== environment && !(api && other.api)) {
+          check.fail(
+            `deployment.environments.${environment}.${field}`,
+            `is also a Worker of ${other.environment}`,
+          );
+        }
+        owners.set(name, { environment, api });
+      }
     }
   }
 

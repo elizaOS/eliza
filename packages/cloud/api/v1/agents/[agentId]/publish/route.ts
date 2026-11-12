@@ -24,7 +24,7 @@ import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { assertOrgMembership } from "@/api-app/middleware/org-membership";
+import { assertOrgMembership } from "../../../../src/middleware/org-membership";
 
 const app = new Hono<AppEnv>();
 

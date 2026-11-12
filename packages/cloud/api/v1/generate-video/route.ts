@@ -55,7 +55,7 @@ import {
   getGenerativeExecutionContext,
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
-} from "@/api-app/lib/generative-route-auth";
+} from "../../src/lib/generative-route-auth";
 
 const MAX_PROMPT_LENGTH = 4000;
 

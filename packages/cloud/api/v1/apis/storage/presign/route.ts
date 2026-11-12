@@ -14,12 +14,12 @@ import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
+import { requirePaidRouteStanding } from "../../../../src/lib/paid-route-standing";
 import {
   mintStorageReadCapabilityUrl,
   StorageReadCapabilityConfigurationError,
   validateStorageReadCapabilityConfiguration,
-} from "@/api-app/storage-read-capability";
+} from "../../../../src/storage-read-capability";
 
 const requestSchema = z.object({
   operation: z.literal("get"),

@@ -1,5 +1,5 @@
 import { getCloudDeployment } from "@elizaos/cloud-shared/lib/deployment/cloud-deployment";
-import { findCheckoutSessionForOrder } from "@/api-app/checkout-reconciliation";
+import { findCheckoutSessionForOrder } from "../../src/checkout-reconciliation";
 /**
  * POST /api/stripe/create-checkout-session
  *

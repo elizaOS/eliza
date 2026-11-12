@@ -38,7 +38,7 @@ import {
   marketDataConfig,
   marketDataHandler,
 } from "@elizaos/cloud-shared/lib/services/proxy/market-data";
-import { executeGuardedPaidProxyWithPreflight } from "@/api-app/lib/guarded-paid-proxy";
+import { executeGuardedPaidProxyWithPreflight } from "../../../../../src/lib/guarded-paid-proxy";
 
 // WHY 30s maxDuration:
 // - Upstream calls + retries can take 15-20s

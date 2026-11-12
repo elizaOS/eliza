@@ -164,6 +164,14 @@ describe("deployment file validation", () => {
       productWith((env) => {
         (env.secrets as string[]).push(secret, secret);
       }),
+      productWith((env) => {
+        env.routes = [
+          { pattern: `${secret}.example.org/*`, zone: "example.org" },
+        ];
+      }),
+      productWith((env) => {
+        env.routes = [{ pattern: "api.example.org/*", zone: secret }];
+      }),
     ]) {
       const problems = problemsOf(input);
       expect(problems.length).toBeGreaterThan(0);
@@ -221,7 +229,7 @@ describe("deployment file validation", () => {
           Object.assign(env, {
             routes: [{ pattern: "api.example.net/*", zone: "example.org" }],
           }),
-        "host api.example.net is not in zone example.org",
+        "host is not in the configured zone",
       ],
       [
         (env) =>
@@ -381,7 +389,18 @@ describe("product render", () => {
   }
 
   test("structure comes from upstream and every path resolves from the product directory", () => {
-    const { config } = renderProduct("production");
+    // A deployment file without components or transfers, as before they existed.
+    const { config } = renderWranglerConfig({
+      deployment: validateDeployment(
+        productWith((env) => {
+          delete env.components;
+          delete env.durableObjectTransfers;
+        }),
+      ),
+      environment: "production",
+      upstreamRoot: UPSTREAM_ROOT,
+      outDir: PRODUCT_DIR,
+    });
     expect(resolve(PRODUCT_DIR, config.main as string)).toBe(
       join(API_DIR, "src/index.ts"),
     );
@@ -442,7 +461,7 @@ describe("product render", () => {
     expect(() =>
       render(
         productWith((env) =>
-          Object.assign(env, { durableObjectTransfers: { Nope: "w" } }),
+          Object.assign(env.durableObjectTransfers as Table, { Nope: "w" }),
         ),
       ),
     ).toThrow("unknown class Nope");

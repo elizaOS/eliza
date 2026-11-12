@@ -1,119 +1,140 @@
 # @elizaos/cloud-deploy
 
-Renders the Cloud API Worker's Wrangler configuration for one product from a
-deployment file, so a product deploys its own Cloud from upstream code without
-editing `packages/cloud/api/wrangler.toml`.
+Renders a product's Cloud configuration from one deployment file: API, Steward
+login, speech and admission Workers, and Pages. Structure comes from upstream
+Wrangler files; product identity and resource IDs come from the deployment file.
+It never provisions resources, sets secrets, publishes packages or deploys.
 
-Private and unpublished. Run it with Bun from an upstream checkout; it has no
-runtime dependencies. It is a workspace member checked by repository verification.
+Private and unpublished, with no runtime dependencies. This workspace participates
+in repository tests, typechecking and linting. Run it with pinned Bun from a
+checkout, or from an install of packed packages for the API Worker.
 
-## Product directory
+## Render and check
 
+```bash
+bun packages/cloud/deploy/src/cli.ts render \
+  --deployment cloud/deployment.json --environment staging \
+  --upstream path/to/eliza --out cloud --component all
+
+bun packages/cloud/deploy/src/cli.ts check \
+  --config cloud/wrangler.staging.jsonc
+
+bun run --cwd packages/cloud/deploy test
+bun run --cwd packages/cloud/deploy typecheck
+bun run --cwd packages/cloud/deploy lint:check
 ```
-cloud/
-  deployment.json            identity and resource ids per environment; no secrets
-  wrangler.staging.jsonc     rendered; do not edit
-  wrangler.production.jsonc  rendered; do not edit
-  secrets.staging.txt        rendered; names of the secrets to set
-  secrets.production.txt
-```
 
-The upstream checkout lives elsewhere (a submodule, a sibling clone). Paths in
-the rendered config are written relative to the product directory, so the
-rendered files are valid as long as the two directories keep their relative
-position. Render again after moving either, or after advancing upstream.
+`--component` is `api` by default; it also accepts `login`, `speech`, `admission`,
+`web` or `all`. `all` renders every defined component before writing any output,
+so a validation refusal leaves the destination unchanged. Environments are
+`staging` and `production`. Exit codes: 0 success, 1 validation/check failure,
+2 command usage error.
+
+API output is `wrangler.<environment>.jsonc` and `secrets.<environment>.txt`.
+Other components insert their name before the environment. Secret files contain
+names only. Paths are relative to the destination: render again after moving it
+or changing upstream. Pages deployment requires copying its rendered config to
+the project's `wrangler.json` or `wrangler.toml`.
 
 ## Deployment file
 
-`{ "id": "<deployment id>", "environments": { "staging": {...}, "production": {...} } }`.
-See `examples/product.json`. Each environment has:
+Start with [examples/product.json](examples/product.json). The exact field and
+validation contract is [src/schema.ts](src/schema.ts). A deployment has an `id`
+and an `environments` object. Each environment declares:
 
-| Field                                                                          | Rendered as                                                                                                                |
-| ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| `workerName`, `accountId`                                                      | `name`, `account_id`                                                                                                       |
-| `routes[]` `{ pattern, zone }`                                                 | `routes` (the pattern's host must be in the zone)                                                                          |
-| `origins` `{ web, app, api, firstParty? }`                                     | `CLOUD_WEB_ORIGIN`, `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_API_URL`, `ELIZA_CLOUD_URL`, `CLOUD_FIRST_PARTY_ORIGINS`           |
-| `tenantId`                                                                     | `STEWARD_TENANT_ID`, `NEXT_PUBLIC_STEWARD_TENANT_ID`                                                                       |
-| `serviceName`, `blobHost`, `assetsBase`, `mailFrom`, `billingUrl`              | `CLOUD_PUBLIC_SERVICE_NAME`, `R2_PUBLIC_HOST`, `NEXT_PUBLIC_ASSETS_CDN_URL`, `SENDGRID_FROM_EMAIL`, `CLOUD_BILLING_URL`    |
-| `entitlement` `{ issuer, audience }`                                           | `ELIZA_ENTITLEMENT_ISSUER`, `ELIZA_ENTITLEMENT_AUDIENCE`                                                                   |
-| `resources` `{ hyperdriveId, kvNamespaceId, r2Bucket, rateLimitNamespaceIds }` | `hyperdrive`, `kv_namespaces`, `r2_buckets`, `ratelimits[].namespace_id` (one id per rate-limit binding upstream declares) |
-| `placement?` `{ mode, region? }`                                               | `placement`                                                                                                                |
-| `durableObjectTransfers?` `{ ClassName: workerName }`                          | `script_name` on that class's binding and a `transferred` export                                                           |
-| `vars?`                                                                        | further non-secret variables, verbatim                                                                                     |
-| `secrets[]`                                                                    | `secrets.<environment>.txt`; names only                                                                                    |
+- Worker name, account ID, routes and zones, web/app/API origins and tenant ID.
+- Public service name, blob authority (`host[:port]`), assets base, mail sender,
+  billing URL, and entitlement issuer/audience.
+- Hyperdrive, KV, R2 and rate-limit resource IDs; optional placement and Durable
+  Object transfers; extra non-secret `vars`; required secret names.
+- Optional `components`: login, speech, admission and web.
 
-The id is rendered as `CLOUD_DEPLOYMENT_ID`, the environment name as
-`ENVIRONMENT`. Together with the fields above these are the settings
-`resolveCloudDeployment` requires of a product deployment.
+Unknown fields, malformed identities, credentials in configuration, secret-named
+plain variables, and attempts to override derived variables are rejected. Product
+configs may not carry Eliza hosts, account/resource IDs or Worker/project names.
+Upstream settings the renderer does not understand also stop rendering.
 
-Validation refuses, with every problem listed: unknown fields; malformed ids,
-origins, hosts and routes; a host on or under `eliza.app` or `elizacloud.ai`
-unless the id is `eliza`; any value shaped like a credential; a
-secret-named variable under `vars`; a variable that a typed field already
-sets.
+Component rules:
 
-## What is taken from upstream
+- Login declares its custom domain, enabled flag, container settings, variables
+  and secret names. Products must supply every setting whose runtime default is
+  an Eliza host or mail sender, plus all five required login secrets. Without a
+  pushed container image, deployment builds upstream's Dockerfile.
+- Speech and admission receive the API's deployment identity. Cross-Worker
+  bindings name this deployment's owners. A dedicated admission Worker requires
+  `durableObjectTransfers.InferenceAdmissionGate` to name it, preserving one gate.
+  `speech.hostsSessions` directs new speech sessions to that Worker while the API
+  keeps its export for existing sessions.
+- Pages derives identity, API upstream, tenant, environment and native callback
+  variables, and binds this deployment's API Worker. Native callbacks must use
+  the environment's web/app origin and its API origin. Product Pages requests
+  fail with 503 if `API_UPSTREAM` is absent or malformed.
 
-From `packages/cloud/api/wrangler.toml` (top level plus `env.production`):
-entry, compatibility date and flags, `workers_dev`, `minify`, `keep_vars`,
-`define`, `alias`, observability, crons, AI and browser bindings, binding
-names, rate-limit shapes, Durable Object bindings and exports. Nothing else.
-No `[vars]` value is copied: a product states every variable it wants. An
-upstream key the renderer does not know stops the render, and a rendered
-non-eliza config that still contains an eliza account, Worker name, zone,
-database, cache or bucket id, or host is refused.
+## Installed API packages
 
-## Commands
+A product can bundle the API without an upstream checkout. Install
+`@elizaos/cloud-api` and `@elizaos/cloud-deploy`, and create `worker.ts`:
 
-```
-bun packages/cloud/deploy/src/cli.ts render \
-  --deployment cloud/deployment.json --environment staging \
-  --upstream path/to/eliza --out cloud
-
-bun packages/cloud/deploy/src/cli.ts check --config cloud/wrangler.staging.jsonc
+```ts
+export * from "@elizaos/cloud-api/worker";
+export { default } from "@elizaos/cloud-api/worker";
 ```
 
-`render` writes `wrangler.<environment>.jsonc` and `secrets.<environment>.txt`
-into `--out`. Exit 0 on success, 1 on an invalid deployment or render, 2 on a
-usage error.
+```bash
+bunx cloud-deploy render --deployment deployment.json --environment staging \
+  --packages . --main worker.ts --out .
+bunx cloud-deploy check --config wrangler.staging.jsonc --metafile bundle.json
+```
 
-`check` runs `wrangler deploy --dry-run` on a rendered config and prints a
-JSON report (`ok`, `bundleBytes`, Wrangler's upload size, files). It uploads
-nothing and passes no Cloudflare credential to Wrangler. It uses the
-`wrangler` installed in the upstream tree the config points at, so that tree
-must be installed and its workspace packages built; `--wrangler <bin>`
-overrides, `--keep <dir>` keeps the bundle. Exit 0 when the bundle builds.
+`--packages` supports the API only. It reads the installed package's Wrangler
+template, keeps its internal aliases and reports omitted sibling-source aliases;
+those dependencies resolve through `node_modules`. Source-shipped packages remain
+TypeScript; other packages resolve to built outputs. Checkout and installed
+bundles therefore need not be byte-identical. A product install also resolves
+Wrangler from the manifest range rather than the checkout lockfile.
 
-`bun test packages/cloud/deploy/src` runs the tests.
+[scripts/pack-check.ts](scripts/pack-check.ts) validates tarballs and a clean
+product install without publishing:
 
-## The eliza deployment
+```bash
+bun packages/cloud/deploy/scripts/pack-check.ts --work /path/outside/the/repo \
+  --public workspace
+```
 
-`deployments/eliza.json` states the eliza.app deployment as data. Rendering it
-reproduces the staging and production sections of `wrangler.toml`; the tests
-compare the two and name every difference:
+Build workspace outputs first; `--built <tree>` accepts an equivalent built tree.
+The check replaces workspace ranges in staged copies, packs required packages,
+rejects shipped tests/fixtures/secret files and missing exports, installs with
+scripts disabled, renders and bundles, and checks that every file input stays
+inside the product. `--public workspace` requires bundled Eliza packages from
+these tarballs; `--public registry` tests published versions instead. Third-party
+dependencies come from npm.
 
-- Six added variables (`CLOUD_DEPLOYMENT_ID`, `CLOUD_WEB_ORIGIN`,
-  `CLOUD_PUBLIC_SERVICE_NAME`, `NEXT_PUBLIC_ASSETS_CDN_URL`,
-  `SENDGRID_FROM_EMAIL`, `CLOUD_BILLING_URL`), set to the values the Worker
-  already resolves for the eliza deployment. Before eliza deploys from a
-  rendered config, check that none of these is also set on the deployed
-  Worker as a secret or dashboard variable.
-- Staging's explicit `migrations = []` is omitted (no migrations either way).
+## Scope of checks
 
-Its `secrets` list mirrors the names in the comment block of `wrangler.toml`
-and has not been compared with the deployed Workers. `wrangler.toml` and the
-release workflows are unchanged and still authoritative.
+Worker checks run `wrangler deploy --dry-run` without Cloudflare credentials.
+Login adds `--containers-rollout=none`, so its image is not built. Pages has no
+deployment dry run: the checker compiles Functions with the rendered config in a
+scratch Pages project. It does not build the Vite app. Reports explicitly list
+unvalidated behavior. `--wrangler`, `--keep` and Worker-only `--metafile` are
+available for inspection.
 
-## Not covered
+[deployments/eliza.json](deployments/eliza.json) has parity tests against the
+upstream templates. Rendered API configuration adds six explicit identity
+variables and omits staging's empty migration list. Login matches exactly;
+speech/admission add deployment identity variables; Pages adds the deployment ID
+and flattens each environment. The speech/admission staging values differ from
+their present runtime defaults: qualify the staging contract before deployment.
+Secret lists have not been compared with deployed Workers. Existing Wrangler
+files and release workflows remain authoritative.
 
-- The Pages front end, the Steward login Worker, and the speech and admission
-  Workers: each still has its own eliza `wrangler.toml`.
-- The top-level (unnamed, local development) environment of `wrangler.toml`.
-- Default values for upstream's operational variables: a product lists the
-  ones it wants under `vars`.
-- eliza hosts compiled into the Worker bundle as defaults for the eliza
-  deployment. They are code, not configuration.
-- Database migrations and a baseline for a new database.
-- Provisioning Cloudflare resources (Hyperdrive, KV, R2, rate-limit
-  namespaces, routes, DNS) and setting secrets.
-- An actual deploy, and npm publication of this package or the Worker's.
+Publication remains a coordinated maintainer release: the five source packages
+are private and outside the release cohort. Before publishing, align their
+versions, add their paths to fixed versioning and their names to the release
+cohort, validate the public dependency graph, and run the pack check before and
+after publication. The full Cloud dependency install is large.
+
+Resource provisioning, database baselines/migrations, product Vite builds and
+branding, login container qualification, resource/account validation, live
+Durable Object transfers, native-device acceptance and actual deployment remain
+separate work. Login, speech, admission and Pages currently require a checkout;
+their packages and JavaScript/type-declaration builds are not provided here.

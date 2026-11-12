@@ -81,7 +81,7 @@ import { Hono } from "hono";
 import {
   resolveInferenceAuthStandingDenial,
   resolveInferenceCredentialAdmissionDenial,
-} from "@/api-app/lib/generative-route-auth";
+} from "../../src/lib/generative-route-auth";
 
 interface EmbeddingsRequest {
   input: string | string[];

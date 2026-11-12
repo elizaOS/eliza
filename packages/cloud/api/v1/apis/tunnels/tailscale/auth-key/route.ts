@@ -16,7 +16,7 @@ import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
+import { requirePaidRouteStanding } from "../../../../../src/lib/paid-route-standing";
 
 const CUSTOMER_TUNNEL_TAG = "tag:eliza-tunnel";
 const DEFAULT_EXPIRY_SECONDS = 60 * 60;

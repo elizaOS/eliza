@@ -23,7 +23,7 @@ import {
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
+import { requirePaidRouteStanding } from "../../../../src/lib/paid-route-standing";
 
 const MAX_LIST_RESULTS = 1000;
 

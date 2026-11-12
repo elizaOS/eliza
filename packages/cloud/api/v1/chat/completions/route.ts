@@ -7,7 +7,7 @@ import { Hono } from "hono";
 import {
   resolveInferenceAuthStandingDenial,
   resolveInferenceCredentialAdmissionDenial,
-} from "@/api-app/lib/generative-route-auth";
+} from "../../../src/lib/generative-route-auth";
 import { type ChatCompletionTool, convertTools } from "./tools";
 
 /**
@@ -155,7 +155,7 @@ import {
   firstNumber,
   modelNotAvailableMessage,
   summarizeFinishedStepUsage,
-} from "@/api-app/lib/inference-usage";
+} from "../../../src/lib/inference-usage";
 import {
   ClientClosedBeforeDispatchError,
   joinProviderBoundary,

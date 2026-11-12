@@ -40,7 +40,7 @@ import type {
   AppEnv,
 } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { createTransactionalAudit } from "@/api-app/services/audit-transactional";
+import { createTransactionalAudit } from "../../../src/services/audit-transactional";
 
 const app = new Hono<AppEnv>();
 app.use("*", rateLimit(RateLimitPresets.STANDARD));

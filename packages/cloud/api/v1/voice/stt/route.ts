@@ -71,7 +71,7 @@ import {
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
   timeSpeechPhase,
-} from "@/api-app/lib/generative-route-auth";
+} from "../../../src/lib/generative-route-auth";
 import {
   calculateCartesiaSttCost,
   parseCartesiaUsdPerCredit,
