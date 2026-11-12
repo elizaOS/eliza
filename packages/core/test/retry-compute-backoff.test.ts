@@ -69,6 +69,21 @@ describe("computeBackoff invalid policy values", () => {
 		).toBe(100);
 	});
 
+	it("returns the cap instead of NaN when the base overflows with no jitter", () => {
+		expect(
+			computeBackoff(
+				{ initialMs: 1e308, maxMs: 1000, factor: 10, jitter: 0 },
+				2,
+			),
+		).toBe(1000);
+		expect(
+			computeBackoff(
+				{ initialMs: 100, maxMs: 1000, factor: 2, jitter: -2 },
+				1100,
+			),
+		).toBe(1000);
+	});
+
 	it("still applies jitter inside its documented range", () => {
 		withRandom(1, () => {
 			expect(

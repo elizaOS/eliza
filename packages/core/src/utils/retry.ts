@@ -98,6 +98,10 @@ export function computeBackoff(policy: BackoffPolicy, attempt: number): number {
 		? Math.max(Math.floor(attempt), 1)
 		: 1;
 	const base = initialMs * factor ** (safeAttempt - 1);
+	// An overflowing base is Infinity, and Infinity * 0 is NaN in the
+	// jitter term below, so a jitter of 0 would return NaN instead of
+	// the cap. Return the cap before the jitter term runs.
+	if (!Number.isFinite(base)) return maxMs;
 	const jitterAmount = base * jitter * Math.random();
 	return Math.min(maxMs, Math.round(base + jitterAmount));
 }
