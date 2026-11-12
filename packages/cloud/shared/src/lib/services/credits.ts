@@ -1241,16 +1241,18 @@ export class CreditsService {
         return;
       }
 
-      const sent = await emailService.sendLowCreditsEmail({
-        email: recipientEmail,
-        organizationName: org.name,
-        currentBalance,
-        threshold,
-        billingUrl: `${process.env.NEXT_PUBLIC_APP_URL}/cloud/billing`,
-      });
-
-      if (!sent) {
-        await releaseLowCreditsEmailClaim(organizationId);
+      let sent = false;
+      try {
+        sent = await emailService.sendLowCreditsEmail({
+          email: recipientEmail,
+          organizationName: org.name,
+          currentBalance,
+          threshold,
+          billingUrl: `${process.env.NEXT_PUBLIC_APP_URL}/cloud/billing`,
+        });
+      } finally {
+        // A send that failed or threw frees the claim for a later debit.
+        if (!sent) await releaseLowCreditsEmailClaim(organizationId);
       }
     } catch (error) {
       logger.error(

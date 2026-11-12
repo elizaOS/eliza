@@ -1763,6 +1763,9 @@ describe("low-credits email", () => {
   async function concurrentLowBalanceDebits(
     claim: (key: string) => Promise<boolean>,
     outage = false,
+    release?: (key: string) => Promise<void>,
+    sendFailures = 0,
+    batches = [5],
   ): Promise<number> {
     const { cache } = await import("../../cache/client");
     const { emailService } = await import("../email");
@@ -1775,21 +1778,31 @@ describe("low-credits email", () => {
       billing_email: "billing@example.test",
     } as never);
     const send = spyOn(emailService, "sendLowCreditsEmail").mockResolvedValue(true);
+    for (let i = 0; i < sendFailures; i += 1) {
+      send.mockRejectedValueOnce(new Error("SMTP connection reset"));
+    }
+    const del = release
+      ? spyOn(cache, "del").mockImplementation(((key: string) => release(key)) as never)
+      : undefined;
     const atomicSet = spyOn(cache, "setIfNotExists").mockImplementation(((key: string) =>
       claim(key)) as never);
     // An unavailable cache reads nothing and drops writes.
     const read = outage ? spyOn(cache, "get").mockResolvedValue(null as never) : undefined;
     const write = outage ? spyOn(cache, "set").mockResolvedValue(undefined as never) : undefined;
     try {
-      // Five debits under the threshold land at once (streaming inference).
-      await Promise.all(
-        Array.from({ length: 5 }, () => creditsService.notifyBalanceDecrease(ORG_ID, 2)),
-      );
+      // By default five debits under the threshold land at once (streaming
+      // inference). Each batch runs after the previous one settles.
+      for (const debits of batches) {
+        await Promise.all(
+          Array.from({ length: debits }, () => creditsService.notifyBalanceDecrease(ORG_ID, 2)),
+        );
+      }
       return send.mock.calls.length;
     } finally {
       orgRead.mockRestore();
       send.mockRestore();
       atomicSet.mockRestore();
+      del?.mockRestore();
       read?.mockRestore();
       write?.mockRestore();
       if (previousThreshold === undefined) delete process.env.LOW_CREDITS_THRESHOLD;
@@ -1812,5 +1825,25 @@ describe("low-credits email", () => {
       throw new Error("Cache unavailable for atomic set-if-not-exists");
     }, true);
     expect(sends).toBe(0);
+  });
+
+  test("a send that throws frees the claim, so a later debit sends the email", async () => {
+    const claimed = new Set<string>();
+    const sends = await concurrentLowBalanceDebits(
+      async (key) => {
+        if (claimed.has(key)) return false;
+        claimed.add(key);
+        return true;
+      },
+      false,
+      async (key) => {
+        claimed.delete(key);
+      },
+      1,
+      [1, 1],
+    );
+    // The first send throws and frees the claim; the later debit claims and sends.
+    expect(sends).toBe(2);
+    expect(claimed.size).toBe(1);
   });
 });
