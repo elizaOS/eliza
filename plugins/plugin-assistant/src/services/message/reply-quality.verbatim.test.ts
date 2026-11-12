@@ -61,6 +61,8 @@ test("exactly single-token requests preserve the requested reply at the quality 
     'Return exactly "READY".',
     "<@123> reply with exactly READY",
     "Reply with exactly READY verbatim.",
+    "Reply only READY.",
+    "For this preview check, reply only READY. Do not use tools or change anything.",
   ]) {
     expect(parseSayLiteralInstruction(messageText)).toBe("READY");
     expect(isUnusableStage1Reply("READY")).toBe(true);
@@ -84,6 +86,8 @@ test("exactly does not turn prose, quoted requests or extra actions into literal
     "Reply with exactly it verbatim",
     "Reply with exactly READY tomorrow",
     "Reply with exactly shouldRespond: true",
+    "For this check, reply only READY. Then send an email.",
+    'Quote "reply only READY". Do not use tools.',
   ]) {
     expect(parseSayLiteralInstruction(messageText)).toBeNull();
     expect(isTerseReplyWorthKeeping({ reply: "READY", messageText })).toBe(

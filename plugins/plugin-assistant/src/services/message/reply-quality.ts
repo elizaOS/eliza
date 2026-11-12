@@ -145,7 +145,9 @@ export function isRequestedTerseLiteralReply(args: {
  * {@link parseExactWordsInstruction} (which requires the explicit
  * "...with exactly N words: ..." form). Anchored to the whole message and a
  * single word, so it only fires on a clear "say <token>" request — not
- * "say something nice about cats". Between the verb and the literal only
+ * "say something nice about cats". A contextual "For …," prefix and trailing
+ * prohibitions can accompany the request. Additional positive actions cannot.
+ * Between the verb and the literal only
  * complete connector units may appear ("with", "the word", "the single word",
  * "one word", …) — never bare determiners, so "write a poem" cannot parse as
  * a request to say "poem". A trailing "verbatim" preserves the same explicit
@@ -164,7 +166,7 @@ export function parseSayLiteralInstruction(
     .replace(/^\s*(?:<@!?\d+>\s*|@\S+\s+|[^()\n]{0,80}\(@\d+\)\s*)/u, "")
     .trim();
   const match = body.match(
-    /^(?:(?:can|could|would|will)\s+you\s+|please\s+|just\s+|kindly\s+){0,3}(?:say|reply|respond|answer|output|return|write|type|echo|print)(?:\s+(?:with(?:\s+exactly)?|exactly|back|(?:(?:the|a|an)\s+)?(?:single|one)\s+(?:word|phrase|token)|the\s+(?:word|phrase|token))){0,2}\s*:?\s*(["'“”‘’]?)([\p{L}\p{N}]{1,40})(["'“”‘’]?)(\s+verbatim)?\s*[.!?]*$/iu,
+    /^(?:(?:for|in)\s+[^,\n.!?"“”']+,\s*)?(?:(?:can|could|would|will)\s+you\s+|please\s+|just\s+|kindly\s+){0,3}(?:say|reply|respond|answer|output|return|write|type|echo|print)(?:\s+(?:with(?:\s+(?:exactly|only))?|exactly|only|back|(?:(?:the|a|an)\s+)?(?:single|one)\s+(?:word|phrase|token)|the\s+(?:word|phrase|token))){0,2}\s*:?\s*(["'“”‘’]?)([\p{L}\p{N}]{1,40})(["'“”‘’]?)(\s+verbatim)?\s*[.!?]*(?:\s+(?:do\s+not|don't|never)\s+[^.!?]+[.!?]*)*$/iu,
   );
   if (!match) return null;
   // Unquoted pronouns refer to prior context rather than the literal word.

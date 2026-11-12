@@ -727,7 +727,9 @@ describe("Stage 1 response format", () => {
     ]);
     const result = await runStage1({
       runtime,
-      message: makeMessage({ text: "Reply with exactly READY." }),
+      message: makeMessage({
+        text: "For this preview check, reply only READY. Do not use tools or change anything.",
+      }),
       responseId: "00000000-0000-0000-0000-000000000010" as UUID,
     });
     expect(result.kind).toBe("direct_reply");
