@@ -557,7 +557,7 @@ async function checkHeldVerification({
   const sourceHashes = await readSources();
   const verifierSource = await read(verifier);
   const start = runnerSource.indexOf(
-    "            if (!current.targetBuild.equals(candidate.fingerprint)",
+    "            UpdateChannel.Candidate candidate",
   );
   const end = runnerSource.indexOf(
     "            if (current.phase != UpdateJournal.Phase.VERIFIED",
@@ -577,6 +577,12 @@ async function checkHeldVerification({
     "private static boolean same(",
     "private void failure(",
     "private synchronized void finish(",
+    ...(heldBefore
+      ? []
+      : [
+          "private static String heldOfferStatus(",
+          "private void heldOfferUnavailable(",
+        ]),
   ]
     .map((signature) => member(runnerSource, signature))
     .join("\n");
@@ -595,7 +601,7 @@ final class UpdateRunner {
     UpdateRunner(Context context) { this.context = context; }
     static void status(Context context, String message) { context.status = message; }
     boolean installAllowed() { return context.eligible; }
-    void replay(JournalStore store, UpdateChannel channel, UpdateChannel.Candidate candidate) {
+    void replay(JournalStore store, UpdateChannel channel) {
         Run run = active = new Run(context);
         File directory = context.getFilesDir();
         UpdateJournal current = store.read();
@@ -692,16 +698,73 @@ public final class RecoverySystem { public static void verifyPackage(java.io.Fil
       "before: missing payload was recreated before engine status",
     ]);
   } else {
-    assert.deepEqual(results, [
-      "missing REBOOT_READY 0 0",
-      "invalid REBOOT_READY 0 0",
-      "symlink REBOOT_READY 0 0",
-      "missing-archive REBOOT_READY 0 0",
-      "changed REBOOT_READY 0 0",
-      "ineligible REBOOT_READY 0 0",
-      "engine-idle REBOOT_READY 1 0",
-      "ready REBOOT_INTENT 1 1",
+    const observations = results.map((line) => line.split("\t"));
+    assert.deepEqual(
+      observations.map(([state]) => state),
+      [
+        "missing REBOOT_READY 0 0",
+        "invalid REBOOT_READY 0 0",
+        "symlink REBOOT_READY 0 0",
+        "missing-archive REBOOT_READY 0 0",
+        "changed REBOOT_READY 0 0",
+        "ineligible REBOOT_READY 0 0",
+        "engine-idle REBOOT_READY 1 0",
+        "ready REBOOT_INTENT 1 1",
+        "initial-absent REBOOT_READY 0 0",
+        "initial-different REBOOT_READY 0 0",
+        "initial-unavailable REBOOT_READY 0 0",
+        "recheck-absent REBOOT_READY 0 0",
+        "recheck-unavailable REBOOT_READY 0 0",
+      ],
+    );
+    const outcomes = Object.fromEntries(
+      observations.map(([state, status]) => {
+        const [name, , , reboots] = state.split(" ");
+        return [name, { status, reboots: Number(reboots) }];
+      }),
+    );
+    const noOffer =
+      "No matching offer for the applied system update. Automatic restart is on hold.";
+    const differentOffer =
+      "The current offer differs from the applied system update. Automatic restart is on hold.";
+    const unavailable =
+      "Could not check the offer for the applied system update. Automatic restart is on hold.";
+    const offerCases = [
+      ["initial-absent", false, noOffer],
+      ["initial-different", false, differentOffer],
+      ["initial-unavailable", false, unavailable],
+      ["recheck-absent", true, noOffer],
+      ["changed", true, differentOffer],
+      ["recheck-unavailable", true, unavailable],
+    ];
+    const expectedStatus = Object.fromEntries([
+      ...offerCases.map(([name, , status]) => [name, status]),
+      [
+        "ineligible",
+        "System update is ready; waiting for idle restart conditions",
+      ],
     ]);
+    assert.deepEqual(
+      Object.fromEntries(
+        Object.keys(expectedStatus).map((name) => [
+          name,
+          outcomes[name].status,
+        ]),
+      ),
+      expectedStatus,
+    );
+    const reasonForStatus = new Map([
+      [noOffer, "no-offer"],
+      [differentOffer, "different-offer"],
+      [unavailable, "offer-unavailable"],
+    ]);
+    const offerReplays = offerCases.map(([name, recheck], index) => {
+      const { status, reboots } = outcomes[name];
+      const reason = reasonForStatus.get(status);
+      assert.ok(reason);
+      return `run sourceHeldOffer${index}Test = prepared${recheck ? ".then(M::checkHeld(true))" : ""}.then(M::holdOffer(${JSON.stringify(reason)}))
+        .expect(M::OfferHoldKeepsApplied and M::s.offerHold == ${JSON.stringify(reason)} and M::s.reboots == ${reboots})`;
+    });
     const importPath = path
       .relative(out, path.join(root, model))
       .replaceAll(path.sep, "/")
@@ -713,11 +776,12 @@ public final class RecoverySystem { public static void verifyPackage(java.io.Fil
       import SystemUpdateHost as M from ${JSON.stringify(importPath)}
       action prepared = M::init.then(M::start).then(M::download).then(M::verify).then(M::apply).then(M::callback).then(M::start)
       run sourceMissingHeldTest = prepared.then(M::checkHeld(false))
-        .expect(M::s.phase == "ready" and M::s.reboots == ${Number(results[0].at(-1))} and not(M::s.writing))
+        .expect(M::s.phase == "ready" and M::s.reboots == ${outcomes.missing.reboots} and not(M::s.writing))
       run sourceEngineIdleTest = prepared.then(M::checkHeld(true)).then(M::holdEngine)
-        .expect(M::s.phase == "ready" and M::s.reboots == ${Number(results[6].at(-1))})
+        .expect(M::s.phase == "ready" and M::s.reboots == ${outcomes["engine-idle"].reboots})
       run sourceReadyHeldTest = prepared.then(M::checkHeld(true)).then(M::reboot)
-        .expect(M::s.phase == "reboot-intent" and M::s.reboots == ${Number(results[7].at(-1))})
+        .expect(M::s.phase == "reboot-intent" and M::s.reboots == ${outcomes.ready.reboots})
+      ${offerReplays.join("\n      ")}
     }\n`,
     );
     const replay = run(process.execPath, [
@@ -729,7 +793,7 @@ public final class RecoverySystem { public static void verifyPackage(java.io.Fil
       "--match=^source.*Test$",
       "--verbosity=1",
     ]);
-    assert.match(replay, /\b3 passing/);
+    assert.match(replay, /\b9 passing/);
     process.stdout.write(replay);
   }
   assert.deepEqual(await readSources(), sourceHashes);
