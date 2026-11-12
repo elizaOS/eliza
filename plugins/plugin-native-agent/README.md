@@ -494,7 +494,11 @@ production API origin, and opens only the production web/services hosts and the
 declared external providers. Its managed-service set includes device billing with
 the device's own sign-in key: `GET /api/v1/subscriptions/plans` (no query, no
 body) and body-only `POST /api/v1/subscriptions/checkout` and
-`/api/v1/subscriptions/checkout/confirm`. A checkout answers a hosted payment
+`/api/v1/subscriptions/checkout/confirm`. Cloud authorizes both POSTs for an
+owner/admin's acknowledged mobile credential only when the checkout body asks
+for `presentation: "mobile"`; any other presentation is refused with that key,
+and the package's node test fails if those routes go back to session-only
+authorization. A checkout answers a hosted payment
 page on `CloudConnectionPolicy.SUBSCRIPTION_CHECKOUT_HOST`; a host that offers
 checkout must declare that host among its external providers or the page cannot
 be opened. No sign-in route is admitted here: key renewal
