@@ -228,7 +228,12 @@ function sanitizeSpeechPunctuation(input: string): string {
 	);
 	// U+2116 (numero sign) is speech-semantic, not punctuation: keep it so a
 	// later language-aware stage can read "№4" instead of a stripped "4".
-	text = text.replace(/[^\p{L}\p{N}\s.,!?'"%/$:+，。！？；：\u2116-]/gu, " ");
+	// Currency signs (\p{Sc}: $, €, £, ¥, ₹, …) are speech-semantic too: TTS
+	// reads "€20" as "20 euros", while a stripped sign speaks only "20".
+	text = text.replace(
+		/[^\p{L}\p{N}\p{Sc}\s.,!?'"%/:+，。！？；：\u2116-]/gu,
+		" ",
+	);
 	text = text.replace(/([,.!?，。！？])\1+/g, "$1");
 	text = text.replace(/^[,;:.!?，。！？；：]+/g, " ");
 	return text;

@@ -118,7 +118,7 @@ jobs:
         # Used by docker-ci-smoke's boot-KPI budget parser after the image is
         # built. Keep it explicit so the real boot gate reports the committed
         # budget instead of falling back to its baked-in default.
-        run: sudo apt-get install -y --no-install-recommends jq
+        run: bash packages/scripts/github/install-apt-packages.sh --no-install-recommends jq
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
@@ -297,7 +297,7 @@ jobs:
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           # develop push  → :develop + :sha-<short>
           # main push     → :stable + :latest + :sha-<short>
-# Keeping :latest on main avoids breaking the four code sites that
+          # Keeping :latest on main avoids breaking the four code sites that
           # still hardcode it (containers-env fallback, sandbox-provider
           # fallback, two test fixtures) until they migrate to :stable.
           tags: |
@@ -385,6 +385,11 @@ jobs:
             echo "::error::$GITHUB_REF_NAME advanced from reconciled source $SOURCE_SHA to ${current_sha:-unresolved}; refusing publication"
             exit 1
           }
+
+      - name: Restore source Docker ignore after local image verification
+        # The verified image is already loaded. Undo only this workflow's
+        # owned build-context copy so source admission still checks every byte.
+        run: git restore --source=HEAD -- .dockerignore
 
       - name: Push exact verified image
         id: push

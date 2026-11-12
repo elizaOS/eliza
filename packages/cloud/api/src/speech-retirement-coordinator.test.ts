@@ -380,6 +380,40 @@ test("the same prepared consent and owner can mint once after recreation", async
       })
     ).status,
   ).toBe(409);
+  // The saved consent is bound to both principal and organization after recreation.
+  for (const user of [
+    { id: org, organization_id: org },
+    { id: owner, organization_id: owner },
+  ]) {
+    expect(
+      (
+        await f.post(f.make(), "initialize", {
+          ...mint,
+          caller: { user },
+        })
+      ).status,
+    ).toBe(409);
+    expect(f.row.phase).toBe("prepared");
+    expect(f.row.tokenDigest).toBe(f.input.tokenDigest);
+  }
+  const expired = fixture();
+  expect((await expired.post(expired.c, "prepare", expired.input)).status).toBe(
+    200,
+  );
+  expired.beforeNextTransaction(() => {
+    expired.row.expiresAt = Date.now() - 1;
+  });
+  expect(
+    (
+      await expired.post(expired.make(), "initialize", {
+        ...expired.input,
+        tokenDigest: "b".repeat(64),
+        consentDigest: expired.input.tokenDigest,
+      })
+    ).status,
+  ).toBe(409);
+  expect(expired.row.phase).toBe("prepared");
+  expect(control.opens).toBe(0);
   expect((await f.post(restarted, "initialize", mint)).status).toBe(200);
   expect(f.row.phase).toBe("minted");
   expect(f.row.tokenDigest).toBe(mint.tokenDigest);

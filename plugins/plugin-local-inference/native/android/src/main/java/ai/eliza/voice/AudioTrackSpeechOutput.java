@@ -12,6 +12,8 @@ import android.media.AudioTrack;
 public final class AudioTrackSpeechOutput implements StreamingSpeechPlayback.Output {
  /** Platform buffer target: about 200 ms, never below the device minimum. */
  public static final int BUFFER_MS=200;
+ /** Frames written before a stopped track starts playing (API 31+): about 40 ms instead of the whole buffer. */
+ public static final int START_MS=40;
  private final AudioTrack track;
  private final AudioTimestamp stamp=new AudioTimestamp();
  private final int rate;
@@ -28,8 +30,11 @@ public final class AudioTrackSpeechOutput implements StreamingSpeechPlayback.Out
    .setAudioFormat(new AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_FLOAT).setSampleRate(rate).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
    .setTransferMode(AudioTrack.MODE_STREAM)
    .setBufferSizeInBytes(bytes)
+   // A request: the platform grants its fast path only where the device mixer accepts this format.
+   .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
    .build();
   if(track.getState()!=AudioTrack.STATE_INITIALIZED){track.release();throw new IllegalStateException("Speech output unavailable");}
+  if(android.os.Build.VERSION.SDK_INT>=31)try{track.setStartThresholdInFrames(Math.max(1,rate*START_MS/1000));}catch(RuntimeException ignored){/* The default threshold (the whole buffer) still plays. */}
   return new AudioTrackSpeechOutput(track,rate);
  }
  public void play(){track.play();}

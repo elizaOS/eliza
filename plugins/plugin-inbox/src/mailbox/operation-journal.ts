@@ -251,11 +251,36 @@ export class InboxOperation {
     this.deps = deps;
   }
 
+  /**
+   * The copy that snapshot() returned for this record and this
+   * unconfirmedSource value. A view reads the snapshot on each render, and the
+   * record can hold attachments, so the copy is made one time for each change.
+   */
+  private view: {
+    record: InboxOperationRecord;
+    unconfirmedSource: boolean;
+    value: InboxOperationRecord;
+  } | null = null;
+
+  /** A copy of the saved record. Callers share it and must not change it. */
   snapshot(): InboxOperationRecord | null {
-    if (!this.record) return null;
-    const value = copy(this.record);
-    if (this.unconfirmedSource) delete value.source;
-    return value;
+    if (!this.record) {
+      this.view = null;
+      return null;
+    }
+    if (
+      this.view?.record !== this.record ||
+      this.view.unconfirmedSource !== this.unconfirmedSource
+    ) {
+      const value = copy(this.record);
+      if (this.unconfirmedSource) delete value.source;
+      this.view = {
+        record: this.record,
+        unconfirmedSource: this.unconfirmedSource,
+        value,
+      };
+    }
+    return this.view.value;
   }
 
   stop(): void {
@@ -590,7 +615,12 @@ export class InboxOperation {
       throw new Error(
         "Gmail answered for a different request, so nothing was confirmed. Check the saved receipt before trying again; do not send this message again.",
       );
-    // A prepared response after an attempted dispatch remains uncertain locally; never re-enable Send.
+    // A stale prepared response cannot replace the durable dispatch or observed receipt.
+    if (
+      receipt.state === "prepared" &&
+      (record.phase === "dispatching" || record.phase === "observed")
+    )
+      return;
     await this.save({
       ...record,
       receipt: copy(receipt),
@@ -619,6 +649,29 @@ export class InboxOperation {
       // A held cleanup proceeds once the provider, asked again, reports the same send as the saved receipt.
       if (this.unconfirmedSource && prior && sameSend(prior, receipt))
         this.unconfirmedSource = false;
+      return this.snapshot();
+    });
+  }
+
+  /**
+   * The owner discards an operation that was attempted. The provider is asked
+   * again. The record is removed only when the provider still reports the
+   * operation as prepared, which means that the provider did not start it. A
+   * request that is late can still arrive, so the caller must warn the owner
+   * first. All other answers are saved and the record stays.
+   */
+  async abandon(): Promise<InboxOperationRecord | null> {
+    return this.exclusive(async () => {
+      if (this.record?.phase !== "dispatching")
+        throw new Error("No attempted operation to discard");
+      const receipt = await this.deps.client.gmailOperation(
+        this.record.grantId,
+        this.record.requestId,
+        this.controller.signal,
+      );
+      this.check();
+      await this.observe(receipt);
+      if (receipt.state === "prepared") await this.save(null);
       return this.snapshot();
     });
   }

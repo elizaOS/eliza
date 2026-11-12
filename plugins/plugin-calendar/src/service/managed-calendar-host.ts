@@ -130,16 +130,6 @@ export interface ManagedCalendarHostApi {
     >;
   }>;
 }
-
-/** Keep provider edit time when materializing a managed Calendar event. */
-export function managedCalendarUpdatedAt(
-  metadata: LifeOpsCalendarEvent["metadata"],
-  syncedAt: string,
-): string {
-  if (typeof metadata.updatedAt === "string") return metadata.updatedAt;
-  if (typeof metadata.updated === "string") return metadata.updated;
-  return syncedAt;
-}
 /** Compatibility shape for explicit Cloud sync-v1 HTTP refusal, never a generic retry signal. */
 type CloudProtocolError = {
   name?: string;
@@ -405,7 +395,10 @@ export async function calendarAgentWrite(
       grantId: source,
       connectorAccountId: source,
       syncedAt: feed.syncedAt,
-      updatedAt: managedCalendarUpdatedAt(event.metadata, feed.syncedAt),
+      updatedAt:
+        typeof event.metadata.updated === "string"
+          ? event.metadata.updated
+          : feed.syncedAt,
     };
   }
   if (input.operation === "write-target") {

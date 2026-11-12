@@ -13,10 +13,12 @@ import { pushSchema } from "drizzle-kit/api";
 import { eq, sql } from "drizzle-orm";
 import { containersRepository } from "../../../db/repositories/containers";
 import { jobsRepository } from "../../../db/repositories/jobs";
+import { agentNodeIncarnationHistories } from "../../../db/schemas/agent-node-incarnation-histories";
 import { agentSandboxes } from "../../../db/schemas/agent-sandboxes";
 import { apiKeys } from "../../../db/schemas/api-keys";
 import { appDeploymentStatusEnum, appReviewStatusEnum, apps } from "../../../db/schemas/apps";
 import { containers } from "../../../db/schemas/containers";
+import { dockerNodes } from "../../../db/schemas/docker-nodes";
 import { generations } from "../../../db/schemas/generations";
 import { jobExecutionLeases } from "../../../db/schemas/job-execution-leases";
 import { jobs } from "../../../db/schemas/jobs";
@@ -33,7 +35,9 @@ import {
 import { DefaultAppDeployRunner } from "../app-deploy-runner";
 import { appDeploymentsService } from "../app-deployments";
 import { appsService } from "../apps";
-import { ContainerJobEnqueuer } from "../container-job-service";
+import { buildContainerExecutorDeps } from "../container-executor-deps";
+import type { ContainerExecutorDeps } from "../container-job-executors";
+import { ContainerJobEnqueuer, setContainerExecutorDeps } from "../container-job-service";
 import { containerJobsWriter } from "../container-jobs-writer";
 import { JOB_TYPES } from "../provisioning-job-types";
 
@@ -49,12 +53,14 @@ beforeAll(async () => {
     users,
     userCharacters,
     agentSandboxes,
+    agentNodeIncarnationHistories,
     apiKeys,
     generations,
     appDeploymentStatusEnum,
     appReviewStatusEnum,
     apps,
     containers,
+    dockerNodes,
     jobs,
     jobExecutionLeases,
     usageRecords,
@@ -142,6 +148,7 @@ async function persistContainerForDeployment(
       project_name: deployment.appId,
       organization_id: deployment.organizationId,
       user_id: deployment.userId,
+      image_tag: "ghcr.io/elizaos/fixture:latest",
       metadata: { appId: deployment.appId, deploymentGeneration: deployment.deploymentGeneration },
     })
     .returning({ id: containers.id });
@@ -326,6 +333,168 @@ test(
     expect(await appDeploymentsService.getLatestDeployment(deployment.appId)).toMatchObject({
       status: "READY",
       vercelUrl: publishedUrl,
+    });
+  },
+  TEST_TIMEOUT,
+);
+
+async function processFixtureProvisionChild(
+  configure?: (deps: ContainerExecutorDeps) => ContainerExecutorDeps,
+) {
+  const nodeId = `fixture-${crypto.randomUUID()}`;
+  const hostname = "fixture.example.com";
+  await dbWrite.insert(dockerNodes).values({ node_id: nodeId, hostname });
+  const env = {
+    APPS_CONTAINERS_ENABLED: "1",
+    CONTAINERS_DOCKER_NODES: `${nodeId}:${hostname}:8`,
+    CONTAINERS_SSH_KEY: "Zml4dHVyZQ==",
+    CONTAINERS_PUBLIC_BASE_DOMAIN: "apps.example.test",
+  };
+  const previousEnv = Object.keys(env).map((key) => [key, process.env[key]] as const);
+  Object.assign(process.env, env);
+  try {
+    setContainerExecutorDeps((authority) => {
+      const deps = buildContainerExecutorDeps(authority);
+      deps.provider.provision = async () => ({
+        containerId: "fixture-docker-id",
+        hostPort: 3000,
+        network: "fixture-network",
+        nodeId,
+        nodeHost: hostname,
+      });
+      const fixture = {
+        ...deps,
+        listVerifiedAppHostnames: undefined,
+        onRouteAdded: undefined,
+        probeAppReachable: undefined,
+      };
+      return configure ? configure(fixture) : fixture;
+    });
+    await new ProvisioningJobService().processPendingJobs(5, {
+      jobTypes: [JOB_TYPES.CONTAINER_PROVISION],
+    });
+  } finally {
+    setContainerExecutorDeps(buildContainerExecutorDeps);
+    for (const [key, value] of previousEnv) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
+async function seedProvisionChild() {
+  const deployment = await seedInterruptedDeployment();
+  const containerId = await persistContainerForDeployment(deployment);
+  const child = await new ContainerJobEnqueuer(containerJobsWriter).enqueueProvision({
+    containerId,
+    organizationId: deployment.organizationId,
+    userId: deployment.userId,
+    deploymentGeneration: deployment.deploymentGeneration,
+  });
+  return { deployment, containerId, child };
+}
+
+test(
+  "a live provision child links its container when its original parent is terminal",
+  async () => {
+    const { deployment, containerId, child } = await seedProvisionChild();
+    const completedAt = new Date();
+    await dbWrite
+      .update(jobs)
+      .set({ status: "completed", completed_at: completedAt, execution_quiesced_at: completedAt })
+      .where(eq(jobs.id, deployment.deploymentGeneration));
+
+    await processFixtureProvisionChild();
+
+    expect(await readJob(child.id)).toMatchObject({ status: "completed" });
+    expect(await readJob(deployment.deploymentGeneration)).toMatchObject({
+      status: "completed",
+      completed_at: completedAt,
+    });
+    const linked = await appsService.findByDeploymentGeneration(
+      deployment.appId,
+      deployment.deploymentGeneration,
+    );
+    expect(linked).toMatchObject({
+      deployment_status: "deployed",
+      metadata: { deploymentGeneration: deployment.deploymentGeneration, containerId },
+    });
+  },
+  TEST_TIMEOUT,
+);
+
+test(
+  "exhausted provision acknowledgement preserves the committed app READY result",
+  async () => {
+    const { deployment, containerId, child } = await seedProvisionChild();
+    await dbWrite.update(jobs).set({ max_attempts: 1 }).where(eq(jobs.id, child.id));
+    const productionUrl = `https://${containerId.replace(/-/g, "").slice(0, 8)}.apps.example.test`;
+    let publishedBeforeLostReply: Awaited<
+      ReturnType<typeof appsService.findByDeploymentGeneration>
+    >;
+    await processFixtureProvisionChild((deps) => ({
+      ...deps,
+      async markAppDeployed(...args) {
+        await deps.markAppDeployed!(...args);
+        publishedBeforeLostReply = await appsService.findByDeploymentGeneration(
+          deployment.appId,
+          deployment.deploymentGeneration,
+        );
+        throw new Error("fixture lost response after READY commit");
+      },
+    }));
+    const ready = {
+      deployment_status: "deployed",
+      production_url: productionUrl,
+      metadata: { deploymentGeneration: deployment.deploymentGeneration, containerId },
+    };
+    expect(publishedBeforeLostReply).toMatchObject(ready);
+    expect(await readJob(child.id)).toMatchObject({
+      status: "failed",
+      error: expect.stringContaining("fixture lost response after READY commit"),
+    });
+    expect(
+      await appsService.findByDeploymentGeneration(
+        deployment.appId,
+        deployment.deploymentGeneration,
+      ),
+    ).toMatchObject(ready);
+    expect(await appDeploymentsService.getLatestDeployment(deployment.appId)).toMatchObject({
+      status: "READY",
+      vercelUrl: productionUrl,
+    });
+  },
+  TEST_TIMEOUT,
+);
+
+test(
+  "an exhausted pre-READY provision failure still marks the current deployment failed",
+  async () => {
+    const { deployment, containerId, child } = await seedProvisionChild();
+    await dbWrite.update(jobs).set({ max_attempts: 1 }).where(eq(jobs.id, child.id));
+    await processFixtureProvisionChild((deps) => ({
+      ...deps,
+      async onRouteAdded() {
+        throw new Error("fixture ingress failure before READY");
+      },
+    }));
+    expect(await readJob(child.id)).toMatchObject({
+      status: "failed",
+      error: expect.stringContaining("fixture ingress failure before READY"),
+    });
+    const [container] = await dbWrite
+      .select()
+      .from(containers)
+      .where(eq(containers.id, containerId));
+    expect(container).toMatchObject({ status: "running" });
+    expect(
+      await appsService.findByDeploymentGeneration(
+        deployment.appId,
+        deployment.deploymentGeneration,
+      ),
+    ).toMatchObject({ deployment_status: "failed", production_url: null });
+    expect(await appDeploymentsService.getLatestDeployment(deployment.appId)).toMatchObject({
+      status: "ERROR",
     });
   },
   TEST_TIMEOUT,

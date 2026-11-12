@@ -1,0 +1,112 @@
+[
+  {
+    "source": "packages/cloud/sdk/src/account-billing-snapshot.ts",
+    "sha256": "c20753ba8e29808d8ac6c3fc4b1295395865f6d81ebc823008ee8e6febf09395",
+    "reason": "Declares billing snapshot observation states and response records. The Cloud billing owner reads and publishes actual balances and entitlement outcomes."
+  },
+  {
+    "source": "packages/cloud/sdk/src/app-billing-account.ts",
+    "sha256": "cb47f86669e71d50538af07308f688b10ef5563fab8f68e78522dab0b1e66a33",
+    "reason": "Declares app billing registration, account and response DTOs. The API and billing repositories own registration, account lifecycle and mutation."
+  },
+  {
+    "source": "packages/cloud/sdk/src/browser-contracts/account-lifecycle.ts",
+    "sha256": "128ed9b57845ffc5a334d60c3c8debee0cc058efd1aa1141a1c2e0766d2723c6",
+    "reason": "Declares account deletion and export operation contracts and status labels. Backend account lifecycle owners run the operations and publish their results."
+  },
+  {
+    "source": "packages/cloud/sdk/src/browser-contracts/personal-fallback.ts",
+    "sha256": "19aa2789e1286ccf23f20a27014175ca4b2c97e47b39fb7d01679221576da021",
+    "reason": "Declares fallback account reasons, presentation state and recovery links. The shared runtime and cutover service own the account transition and recovery."
+  },
+  {
+    "source": "packages/cloud/sdk/src/cloud-setup-session/types.ts",
+    "sha256": "ba708b1fe69523196b28644f35c4a90eefa53ab18455dbaa09cc5d6fe4acaa1d",
+    "reason": "Declares setup session, container status and action policy records. Setup and provisioning services own claim, container and completion transitions."
+  },
+  {
+    "source": "packages/cloud/sdk/src/native-host-routes.ts",
+    "sha256": "23a0ff9a8b6f9abf4019b9dca69b276674cf056781756c25c62c950c31c98aae",
+    "reason": "Declares native billing and account route request and response types. Native route handlers and Cloud billing authorities own admission and settlement."
+  },
+  {
+    "source": "packages/cloud/shared/src/lib/debug/types.ts",
+    "sha256": "b10d9484d523277fc8f379b3229330a2f6d78f8d1bab53c59440377df470b73d",
+    "reason": "Declares diagnostic event, failure and step payloads. Diagnostic collectors and runtime publishers own sequencing and retention."
+  },
+  {
+    "source": "packages/cloud/shared/src/lib/eliza/plugin-mcp/types.ts",
+    "sha256": "1a7c0884b0c24f668abb2d6bbcd4e7dea3a6a3643382b53d9ececfdb7f8df8b8",
+    "reason": "Declares MCP transport interfaces and fixed retry settings. The MCP client owns connection, retry and retirement state."
+  },
+  {
+    "source": "packages/cloud/shared/src/lib/eliza/plugin-web-search/types.ts",
+    "sha256": "a9bb5526bd02cb1a9eb0baf73aded3e1652361ec5417146145ed80c44831dc39",
+    "reason": "Declares search result, reputation and image payloads and service interfaces. Search providers and callers own lookup, authorization and result delivery."
+  },
+  {
+    "source": "packages/cloud/shared/src/lib/email/email-templates.generated.ts",
+    "sha256": "b3566d5ea4d43689456e83c25abd6e7beee2c88cc36e55d93b09c3e2c1b4e59f",
+    "reason": "Exports generated static template data. The email service selects templates and owns queueing, send attempts and delivery receipts."
+  },
+  {
+    "source": "packages/cloud/shared/src/lib/mobile-push/types.ts",
+    "sha256": "4e2e2cc7d58fef1f376a54cac57af7307c24f35bfae93dad5d428d21aa9dd21d",
+    "reason": "Declares push token, message and result shapes and a token size limit. Token registration and delivery services own lifecycle and receipts."
+  },
+  {
+    "source": "packages/cloud/shared/src/lib/providers/audio/types.ts",
+    "sha256": "9ea02e946ab8c9b9fbb63c04fdbdb00e5299af3df3b8188d30f6a022dc17b093",
+    "reason": "Declares audio generation options, output data and provider interfaces. Provider adapters own request progress and cancellation."
+  },
+  {
+    "source": "packages/cloud/shared/src/lib/providers/types.ts",
+    "sha256": "01b9450ee53f3ae5950eefe5d713914d045bccce541d235cf1ab11a0bad6c0e1",
+    "reason": "Declares provider messages, tools, request options and response payloads. The inference and provider adapters own dispatch, stream and terminal state."
+  },
+  {
+    "source": "packages/cloud/shared/src/lib/services/discord-automation/types.ts",
+    "sha256": "e8030d16660ac38e9f4cc5215b0cdfc93aa2b36bb4fa0903aadc79c1287e18b7",
+    "reason": "Declares guild, channel, connection and automation status records. The gateway and automation owners manage connection and workflow transitions."
+  },
+  {
+    "source": "packages/cloud/shared/src/lib/services/generic-billing-command-types.ts",
+    "sha256": "62bdd857fb88372b8a962e0420c8723e4f23ab101d878c173e4de9f6f6a5acfe",
+    "reason": "Declares billing command and evidence shapes. Billing command services own admission, reconciliation and durable writes."
+  },
+  {
+    "source": "packages/cloud/shared/src/lib/services/generic-billing-provider-types.ts",
+    "sha256": "8c54bc12d55839a1f2b8ac0a98d6e79dcfbb1f6a0c19b1540ff7065924e66376",
+    "reason": "Declares billing provider scope and durable intent records and a provider version constant. Provider effect owners perform dispatch and record outcomes."
+  },
+  {
+    "source": "packages/cloud/shared/src/lib/stripe-api-version.ts",
+    "sha256": "d974e4876d6921d7318654b1ba5b408f402ae34b9261c286f06ab5e80cafabb8",
+    "reason": "Exports the fixed Stripe API version. Provider clients and billing services own requests, retries and settlement."
+  },
+  {
+    "source": "packages/cloud/shared/src/lib/types/crypto-status.ts",
+    "sha256": "1ff0ad3b1eb6d9b46fdbc5b5c7d4b051b200bb850ea51d96299fa6aa9651e2bf",
+    "reason": "Declares token kinds, options and crypto status response records. Wallet and billing status handlers own observation and publication."
+  },
+  {
+    "source": "packages/cloud/shared/src/lib/types/eliza-character.ts",
+    "sha256": "9891c3d9037b90c93473b89bc697d27eeedc7aba00d911d9f67c7431c53426de",
+    "reason": "Declares character and template DTOs. Agent configuration and template services own selection, validation and updates."
+  },
+  {
+    "source": "packages/cloud/shared/src/lib/types/gallery.ts",
+    "sha256": "85375ca4942e2682df1ddc07874e719b77a4be6b1492fc287b2dd82afc79623d",
+    "reason": "Declares gallery item and presentation records. Gallery queries and their storage own item publication and updates."
+  },
+  {
+    "source": "packages/cloud/shared/src/lib/types/my-agents.ts",
+    "sha256": "b0b6d15cc2ce3457645898c148a3af795044c6ef75573470565ccede5aee5eaf",
+    "reason": "Declares agent search results and presentation state. Agent repositories and clients own fetching, selection and updates."
+  },
+  {
+    "source": "packages/cloud/shared/src/types/cloud-worker-env.ts",
+    "sha256": "0636555194d97903d1b9ade854568566154b2752b360469b53b2b65189277701",
+    "reason": "Declares Worker bindings, durable stub interfaces and authenticated request context. Worker services and bound Durable Objects own application state and effects."
+  }
+]

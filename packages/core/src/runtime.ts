@@ -99,6 +99,7 @@ import {
 	pendingPostDeliveryTaskCount,
 } from "./services/post-delivery-task-tracker.ts";
 import type { TaskService } from "./services/task";
+import { stopTaskSchedulerForAdapter } from "./services/task-scheduler";
 import { decryptSecret, getSalt } from "./settings";
 import {
 	invalidateTurnMemoPrefix,
@@ -3895,10 +3896,49 @@ export class AgentRuntime implements IAgentRuntime {
 	 * Closes the database adapter. Call after stop() for full teardown (stops services then closes DB/connection).
 	 */
 	async close(): Promise<void> {
-		await this.modelDispatch.drainDiagnostics();
-		if (this.adapter) {
-			await this.adapter.close();
+		if (this.adapter) await stopTaskSchedulerForAdapter(this.adapter);
+		let retirementFailure: unknown;
+		try {
+			await this.retirement.drain({ beforeCloseOnly: true });
+		} catch (error) {
+			// error-policy:J6 A settled outgoing failure must not prevent final
+			// resource release; preserve it after attempting adapter closure.
+			retirementFailure = error;
 		}
+		try {
+			await this.modelDispatch.drainDiagnostics();
+			if (this.adapter) await this.adapter.close();
+		} catch (error) {
+			if (retirementFailure) {
+				throw new ElizaError("Shared adapter retirement and closure failed", {
+					code: "RUNTIME_ADAPTER_RETIREMENT_CLOSE_FAILED",
+					cause: new AggregateError([retirementFailure, error]),
+				});
+			}
+			throw error;
+		}
+		if (retirementFailure) throw retirementFailure;
+	}
+
+	/** A host that reuses this adapter's storage retains the outgoing cleanup
+	 * before publishing its first asynchronous continuation. Only this adopted
+	 * work also gates close(); ordinary fast-stop callbacks keep their budget. */
+	retainSharedAdapterRetirement(operation: () => Promise<void>): Promise<void> {
+		return this.retirement.run(
+			async () => {
+				try {
+					await operation();
+				} catch (error) {
+					// error-policy:J2 Original callers and later close/strict-stop callers
+					// observe the same retained failure after the original work settles.
+					this.retirement.recordFailure("shared-adapter-retirement", error, {
+						beforeClose: true,
+					});
+					throw error;
+				}
+			},
+			{ beforeClose: true },
+		);
 	}
 	async getAgent(agentId: UUID): Promise<Agent | null> {
 		const agents = await this.adapter.getAgentsByIds([agentId]);

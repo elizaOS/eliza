@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-calendar",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "type": "module",
   "description": "First-class calendar plugin for elizaOS agents: Google, Microsoft, Apple, and ICS feeds; scheduling; event management; and owner-facing calendar views.",
   "sideEffects": false,
@@ -121,7 +121,7 @@
     "googleapis": "^169.0.0",
     "tsup": "^9.0.0",
     "react-dom": "*",
-    "vitest": "^5.0.5",
+    "vitest": "^5.1.0",
     "vite": "^8.3.3"
   },
   "peerDependencies": {

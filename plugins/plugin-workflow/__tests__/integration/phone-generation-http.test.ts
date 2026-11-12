@@ -310,6 +310,31 @@ test('registered typed generation HTTP route validates real enrollment and remai
       (await generate({ ...request, existing: { ...basic, device: target, steps: [calendar] } }))
         .status
     ).toBe(502);
+    const relativeCalendar = {
+      ...calendar,
+      range: {
+        calendarIds: ['selected-calendar'],
+        days: 1,
+        timeZone: 'America/New_York',
+        maximumEvents: 10,
+      },
+    };
+    const relativeDraft = { ...basic, device: target, steps: [relativeCalendar] };
+    output = JSON.stringify({ ...basic, steps: [relativeCalendar] });
+    expect((await generate({ ...request, existing: relativeDraft })).status).toBe(409);
+    await db.query('UPDATE client_devices SET workflow_protocol=4 WHERE enrollment_id=$1', [
+      target.enrollmentId,
+    ]);
+    expect((await generate({ ...request, existing: relativeDraft })).status).toBe(409);
+    await db.query('UPDATE client_devices SET workflow_protocol=5 WHERE enrollment_id=$1', [
+      target.enrollmentId,
+    ]);
+    expect((await generate({ ...request, existing: relativeDraft })).status).toBe(200);
+    output = JSON.stringify({
+      ...basic,
+      steps: [{ ...relativeCalendar, range: { ...relativeCalendar.range, days: 2 } }],
+    });
+    expect((await generate({ ...request, existing: relativeDraft })).status).toBe(502);
     for (const rejected of [
       { ...basic, device: target },
       { ...basic, source: 'run code' },

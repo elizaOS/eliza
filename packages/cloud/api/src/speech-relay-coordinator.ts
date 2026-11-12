@@ -1,7 +1,6 @@
 /** Speech-only Durable Object. The caller's agent, history and tools stay on its device. */
 import { createHash, timingSafeEqual } from "node:crypto";
 import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
-import { createDurableVoiceUsageStore } from "@elizaos/cloud-shared/lib/services/voice-usage-meter";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { resolveVoiceUsageLimits } from "@elizaos/cloud-shared/lib/voice-session/config";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
@@ -505,6 +504,7 @@ export class SpeechRelayCoordinator {
           "@elizaos/cloud-shared/lib/services/credits"
         );
         if (
+          this.stopped ||
           Date.now() >= ledger.expiresAt ||
           ledger.phase !== "minted" ||
           this.pendingSocket
@@ -752,11 +752,15 @@ export class SpeechRelayCoordinator {
     this.openingOwner = openingOwner;
     try {
       phases.claimMs = elapsed(startedAt);
-      const [{ runWithDbCacheAsync }, { reserveSpeechRelayAdmission }] =
-        await Promise.all([
-          import("@elizaos/cloud-shared/db/client"),
-          import("./speech-relay-admission"),
-        ]);
+      const [
+        { runWithDbCacheAsync },
+        { createDurableVoiceUsageStore },
+        { reserveSpeechRelayAdmission },
+      ] = await Promise.all([
+        import("@elizaos/cloud-shared/db/client"),
+        import("@elizaos/cloud-shared/lib/services/voice-usage-meter"),
+        import("./speech-relay-admission"),
+      ]);
       this.current();
       await runWithCloudBindingsAsync(this.env as Record<string, unknown>, () =>
         runWithDbCacheAsync(async () => {

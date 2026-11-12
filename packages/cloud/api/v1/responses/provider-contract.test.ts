@@ -35,6 +35,9 @@ let authCalls = 0;
 let admissions = 0;
 let normalSettlements = 0;
 let unknownSettlements = 0;
+let lastSettledCost: number | undefined;
+let holdDispatch: (() => Promise<void>) | undefined;
+let holdProvider: ((signal: AbortSignal) => Promise<Response>) | undefined;
 const spies: Array<{ mockRestore(): void }> = [];
 const model = createOpenAI({
   apiKey: "local-test-key",
@@ -43,6 +46,11 @@ const model = createOpenAI({
     expect(String(input)).toBe("https://provider.invalid/v1/chat/completions");
     const body = JSON.parse(String(init?.body));
     wireRequests.push(body);
+    if (holdProvider) {
+      const signal = init?.signal;
+      if (!signal) throw new Error("SDK fetch omitted the request signal");
+      return holdProvider(signal);
+    }
     if (body.stream) {
       const chunk = {
         id: "provider-original",
@@ -112,10 +120,12 @@ beforeAll(() => {
         let settled = false;
         return {
           mode: "durable_object_debit",
-          settle: async () => {
+          ...(holdDispatch && { markProviderDispatched: holdDispatch }),
+          settle: async (cost: number) => {
             if (settled) return null;
             settled = true;
             normalSettlements++;
+            lastSettledCost = cost;
             return null;
           },
           settleUnknown: async () => {
@@ -484,3 +494,105 @@ test("an empty provider refusal cannot turn billed empty output into success", a
     cached.mockRestore();
   }
 });
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+for (const phase of ["dispatch commit", "provider fetch"] as const) {
+  test(`Responses forwards cancellation during ${phase}`, async () => {
+    const { default: app } = await import("./route");
+    const cached = spyOn(
+      catalogue,
+      "getGatewayModelByIdCacheOnly",
+    ).mockResolvedValue({ kind: "ready", model: null, stale: false });
+    const abort = new AbortController();
+    const entered = deferred();
+    const release = deferred();
+    const tasks: Promise<unknown>[] = [];
+    const wireBefore = wireRequests.length;
+    const normalBefore = normalSettlements;
+    const unknownBefore = unknownSettlements;
+    let providerSignal: AbortSignal | undefined;
+    if (phase === "dispatch commit") {
+      holdDispatch = async () => {
+        entered.resolve();
+        await release.promise;
+      };
+    } else {
+      holdProvider = (signal) => {
+        providerSignal = signal;
+        const reply = new Promise<never>((_resolve, reject) => {
+          if (signal.aborted) reject(signal.reason);
+          else {
+            signal.addEventListener("abort", () => reject(signal.reason), {
+              once: true,
+            });
+          }
+        });
+        entered.resolve();
+        return reply;
+      };
+    }
+    const pending = Promise.resolve(
+      app.fetch(
+        new Request("https://cloud.test/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "openai/test", input: "hello" }),
+          signal: abort.signal,
+        }),
+        {},
+        {
+          props: {},
+          waitUntil(task) {
+            tasks.push(task);
+          },
+          passThroughOnException() {},
+        },
+      ),
+    );
+    try {
+      await Promise.race([
+        entered.promise,
+        pending.then((reply) => {
+          throw new Error(`Responses returned ${reply.status} before ${phase}`);
+        }),
+      ]);
+      abort.abort();
+      release.resolve();
+      const response = await pending;
+      const body = await response.json();
+      await Promise.all(tasks);
+      if (phase === "dispatch commit") {
+        expect(response.status).toBe(499);
+        expect(body).toMatchObject({
+          error: { code: "client_closed_request" },
+        });
+        expect(wireRequests).toHaveLength(wireBefore);
+        expect(normalSettlements).toBe(normalBefore + 1);
+        expect(lastSettledCost).toBe(0);
+        expect(unknownSettlements).toBe(unknownBefore);
+      } else {
+        expect(response.status).toBe(503);
+        expect(body).toMatchObject({ success: false, code: "internal_error" });
+        expect(providerSignal?.aborted).toBe(true);
+        expect(wireRequests).toHaveLength(wireBefore + 1);
+        expect(normalSettlements).toBe(normalBefore);
+        expect(unknownSettlements).toBe(unknownBefore + 1);
+      }
+    } finally {
+      abort.abort();
+      release.resolve();
+      await Promise.allSettled([pending]);
+      await Promise.allSettled(tasks);
+      holdDispatch = undefined;
+      holdProvider = undefined;
+      cached.mockRestore();
+    }
+  });
+}

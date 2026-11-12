@@ -160,7 +160,7 @@ async function awaitAppDeletion(
   }
   expect(admission.state).toBe("pending");
   expect(admission.success).toBe(false);
-  // The worker can race revocation confirmation and requeue for 120 seconds.
+  // A job from an older worker can retain its 120-second transport backoff.
   // Allow that backoff plus its polling cycle; still require the exact final receipt.
   const deadline = Date.now() + 180_000;
   while (Date.now() < deadline) {
@@ -791,5 +791,5 @@ describeE2E("Apps lifecycle round-trip", () => {
       headers: bearerHeaders(),
     });
     expect(goneRes.status).toBe(404);
-  }, 150_000);
+  }, 210_000);
 });

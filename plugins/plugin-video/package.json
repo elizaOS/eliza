@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-video",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -38,7 +38,7 @@
     "@types/node": "22.19.17",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   },
   "scripts": {
     "build": "bun run build.ts",
