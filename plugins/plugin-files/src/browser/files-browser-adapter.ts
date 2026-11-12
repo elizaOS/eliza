@@ -258,6 +258,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     counts: Partial<Record<FilesCategory, number>> = {},
     trashCount = 0;
   let entries: StorageEntry[] = [],
+    rootFolders: StorageEntry[] = [],
     categoryFolders: CategoryFolder[] | undefined,
     trashItems: TrashRow[] = [],
     loaded = false,
@@ -402,8 +403,15 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
         loaded = true;
         return;
       }
-      if (at.kind === "browse") await loadCounts(ticket);
-      else if (at.kind === "trash") {
+      if (at.kind === "browse") {
+        const [, root] = await Promise.all([
+          loadCounts(ticket),
+          storage.storageList({ path: "" }),
+        ]);
+        if (!current()) return;
+        if (!failed(root))
+          rootFolders = (root.entries || []).filter((entry) => entry.directory);
+      } else if (at.kind === "trash") {
         const rows = await trashAcross();
         if (!current()) return;
         if (rows) trashItems = rows;
@@ -1133,8 +1141,12 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     };
     const newFolder = () => {
       if (!granted || busy || !primary) return;
-      const target = place.kind === "folder" ? place : rootFolder;
-      if (place.kind !== "folder") go(target);
+      const target =
+        place.kind === "folder"
+          ? place
+          : place.kind === "category" && place.category === "downloads"
+            ? { ...rootFolder, path: DOWNLOAD_FOLDER }
+            : rootFolder;
       dialogTrigger = null;
       dialog = {
         kind: "name",
@@ -1147,7 +1159,10 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     };
     out.toolbar = {
       ready: granted && !busy && !!primary && place.kind !== "trash",
-      canCreate: place.kind === "browse" || place.kind === "folder",
+      canCreate:
+        place.kind === "browse" ||
+        place.kind === "folder" ||
+        (place.kind === "category" && place.category === "downloads"),
       newFolder,
       sort: () => {
         if (place.kind === "browse") go(rootFolder);
@@ -1185,6 +1200,12 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
       },
       allFiles: () => go(rootFolder),
       allFilesIcon: ICONS.folder,
+      folders: rootFolders.map((entry) => ({
+        id: entry.path,
+        name: entry.name,
+        d: ICONS.folder,
+        go: () => go({ kind: "folder", path: entry.path }),
+      })),
       cats: CATEGORIES.map(({ id, label }) => ({
         id,
         name: label,
