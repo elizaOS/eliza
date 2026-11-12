@@ -325,6 +325,8 @@
       "packages/cloud/shared/src/db/schemas/subscription-billing-operations.ts",
       "packages/cloud/shared/src/db/migrations/0373_subscription_authority.sql",
       "packages/cloud/shared/src/db/repositories/subscription-billing-operations.pglite.test.ts",
+      "packages/cloud/shared/src/lib/services/subscription-checkout.ts",
+      "packages/cloud/shared/src/lib/services/subscription-checkout-contract.ts",
       "packages/cloud/quint/check-platform-subscription-command.ts"
     ],
     "invariants": [
@@ -332,12 +334,13 @@
     ],
     "status": "partial",
     "limitations": [
-      "One original command, one platform organization, a foreign tenant and an app scope; checkout and upgrade representatives plus explicit generic-dispatch refusal for cancel/resume. Revisions 0..4, generations 0..2, two digest/error identities and three retained-history equivalence classes.",
+      "One original command, one platform organization, a foreign tenant and an app scope; checkout and upgrade representatives plus explicit generic-dispatch refusal for cancel/resume. Revisions 0..4, generations 0..2, two digest/error identities and three retained-history equivalence classes. Three return classes: the web, embedded or shared-payer return, the native billing return of the caller's registered client, and any other native return.",
       "Each command mutation is one committed organization/authority/command transaction. Rollback stutters. Row-lock mechanics, SQL isolation, caller authentication and paid-work/deletion admission are not implemented by this abstraction; repository locks alone do not authorize provider I/O.",
       "Repository dispatch commits OUTCOME_UNKNOWN before external I/O but is not an exclusive provider lease. Multiple callers may replay the same immutable key. Provider acceptance, idempotency retention, network ambiguity and recovery orchestration are excluded; no remote exactly-once claim is made.",
       "The history set abstracts append-only matching own checkout source/plan/subscription/digest records. Code 3 represents a foreign or mismatched candidate. Current-plan change does not remove history. Cryptographic digest correctness and unbounded histories are not proved.",
       "Concurrent different command keys, live-checkout uniqueness and contradictory command admission are exercised by the existing SQL fixture but not exhaustively modeled here. Full app-scoped execution, dedicated leased cancellation/resumption, upgrades and scheduled downgrade protocols need their own models.",
-      "Strict conformance requires eight named real PGlite repository scenarios; it is not trace-by-trace refinement or PostgreSQL multi-session lock evidence."
+      "Strict conformance requires eight named real PGlite repository scenarios and four named checkout scenarios for the mobile return against a loopback Stripe; it is not trace-by-trace refinement or PostgreSQL multi-session lock evidence.",
+      "The mobile presentation is modeled only as its return class. Hosted, embedded and shared presentations share class 0, so switching among them and the provider session shape are not modeled. The route's derivation of the return from the credential's registration, and Android App Link verification, are outside the instance. SubscriptionCheckoutReadBack models the recovery sweep."
     ]
   },
   {
@@ -635,7 +638,8 @@
       "The service captures a fresh confirmation timestamp after KMS, before awaiting SQL. Confirmation uses that captured value. Transport delivery can occur after the code deadline.",
       "Completed request-local timestamps and snapshots are cleared. Persistent grant, credential and reply identities remain in the state.",
       "The credential model treats safe cleanup atomically. MobileAppGrantCleanup models planning and batch transactions separately. Composition is not mechanically established.",
-      "Repeated failures beyond the two attempts, arbitrary database corruption, native durable storage and multi-grant authentication traffic remain outside the credential instance."
+      "Repeated failures beyond the two attempts, arbitrary database corruption, native durable storage and multi-grant authentication traffic remain outside the credential instance.",
+      "Key renewal issues a further code for the same sign-in from an acknowledged credential, and exchange and acknowledgement of that code also require the asking credential to still be active. MobileAppKeyRenewal models that lineage, its absolute cap and session revocation; this instance covers one sign-in code. Composition is not mechanically established."
     ]
   },
   {
@@ -2942,5 +2946,54 @@
     "limitations": [
       "One request and bounded revision changes. Google provider atomicity and production migration require separate deployment proof."
     ]
-  }
+  },
+    {
+      "id": "cloud-flow-mobile-key-renewal",
+      "model": "packages/cloud/quint/MobileAppKeyRenewal.qnt",
+      "sources": [
+        "packages/cloud/api/v1/app-auth/mobile/renew/route.ts",
+        "packages/cloud/api/v1/app-auth/mobile/_rate-limit.ts",
+        "packages/cloud/api/v1/api-keys/current/route.ts",
+        "packages/cloud/shared/src/lib/services/mobile-app-auth.ts",
+        "packages/cloud/shared/src/lib/services/api-keys.ts",
+        "packages/cloud/shared/src/db/repositories/mobile-app-auth-grants.ts",
+        "packages/cloud/shared/src/db/schemas/mobile-app-auth-grants.ts",
+        "packages/cloud/shared/src/db/migrations/0572_mobile_app_auth_session_start.sql",
+        "packages/cloud/shared/src/db/migrations/0573_mobile_app_auth_renewal_lineage.sql"
+      ],
+      "invariants": [
+        "safety"
+      ],
+      "status": "partial",
+      "limitations": [
+        "One sign-in at clock 0, three credential identities, two renewal requests, clock 0..6, cap 4, credential lifetime 3 and code lifetime 1. A third renewal and a second sign-in are outside the instance, so a revocation that ends the sign-in is every credential of the instance.",
+        "Exchange and acknowledgement of a renewal code are one atomic redemption, so the inactive credential of an exchanged code and its tombstone are not modeled. MobileAppCredential models the two steps for one code. Composition is not mechanically established.",
+        "Owner eligibility groups the inactive user, changed organization and closed or deletion-fenced organization into one flag, and client availability groups the registry entry and the app row. Both only ever turn off.",
+        "The 401, 403, 409, 429 and 503 answers are one refusal outcome. Limiter buckets, request bodies, PKCE bytes, credential headers and secret hashes are not modeled.",
+        "A grant issued before the session_started_at and session_id columns counts from created_at and is its own session. The model starts every lineage at the sign-in time with one session.",
+        "The predecessor stays valid until the phone revokes it or it expires. Revocation by the phone is not promised. A self-revocation ends only its credential when it names the acknowledged successor, or names nothing within the grace period (one tick) after the acknowledgement; otherwise it ends the sign-in. So a copy that renewed first ends when the phone signs out with the older key after the grace period, renews, or the owner revokes the device, and otherwise at the cap. A copy survives while the phone only uses the older key or lets it expire, and a sign-out inside the grace period does not end it.",
+        "Session retirement is one atomic step. The inference revocation boundary, auth-cache eviction and the audit record around it are outside the model."
+      ]
+    },
+    {
+      "id": "cloud-flow-subscription-checkout-read-back",
+      "model": "packages/cloud/quint/SubscriptionCheckoutReadBack.qnt",
+      "sources": [
+        "packages/cloud/shared/src/lib/services/subscription-checkout.ts",
+        "packages/cloud/shared/src/db/repositories/subscription-checkout-recovery.ts",
+        "packages/cloud/api/cron/process-stripe-queue/route.ts"
+      ],
+      "invariants": [
+        "safety"
+      ],
+      "status": "partial",
+      "limitations": [
+        "One dispatched organization checkout, one provider session, clock 0..12 in ticks of the first read-back age, backoff cap 4, provider retry horizon 10 and a one-tick create-settle margin. The production values are 2 minutes, 30 minutes, 23 hours and 5 minutes.",
+        "Each sweep step is one atomic observation and settlement. Command compare-and-swap, revision history and entitlement publication are refined by PlatformSubscriptionCommand and SubscriptionTerminalReceipt. Composition is not mechanically established.",
+        "Lane budgets, ordering among several checkouts and the provider account read (one successful read serves a whole sweep, settlement included; a failed read is not remembered) are outside this single-checkout instance. The repository tests cover them.",
+        "The provider is trusted to report open, complete, expired or missing truthfully for the command's own customer and session. A session that expires on its own before the horizon is observed, never forced.",
+        "An unavailable read of the checkout's own session rotates the checkout like an open one and is counted as a read-back. A failed provider account read is not a read-back: the checkout is not rotated and stays due, which the repository tests cover. A prepared command that never dispatched is outside the read-back lane and this instance.",
+        "Settlement without the webhook is conditional on the sweep running. Cron scheduling and provider availability are not promised."
+      ]
+    }
 ]
