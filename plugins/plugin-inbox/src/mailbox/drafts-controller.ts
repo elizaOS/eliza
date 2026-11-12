@@ -2080,7 +2080,10 @@ export function createMailDraftsController(
                 }
               },
               toKey: (e: Bag) => {
-                if (e.key === "Enter") {
+                if (
+                  e.key === "Enter" ||
+                  (e.key === " " && literalMailAddress(toQ.trim()))
+                ) {
                   e.preventDefault();
                   add();
                 }

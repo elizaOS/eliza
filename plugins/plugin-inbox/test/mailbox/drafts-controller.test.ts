@@ -231,6 +231,33 @@ describe("createMailDraftsController", () => {
     expect(f.prepared[0]?.source?.draftId).toBe(f.controller.email()?.draftId);
   });
 
+  it.each(["Enter", " "])("adds a complete recipient on %s", async (key) => {
+    const f = fixture();
+    await f.controller.bind("grant-a", "owner@example.invalid");
+    await f.controller.newEmail();
+    type(f.controller, "onTo", "friend@example.invalid");
+    let prevented = false;
+    const composer = f.controller.render().c as {
+      toKey: (event: { key: string; preventDefault: () => void }) => void;
+    };
+    composer.toKey({ key, preventDefault: () => { prevented = true; } });
+    expect(prevented).toBe(true);
+    expect((f.controller.render().c as Bag).toQ).toBe("");
+    expect(f.controller.proposal()?.to).toEqual(["friend@example.invalid"]);
+  });
+
+  it("includes the typed recipient when preparing Send", async () => {
+    const f = fixture();
+    await f.controller.bind("grant-a", "owner@example.invalid");
+    await f.controller.newEmail();
+    type(f.controller, "onTo", "friend@example.invalid");
+    type(f.controller, "onBody", "Draft body");
+    (f.controller.render().c as { send: () => void }).send();
+    expect(f.prepared).toHaveLength(1);
+    expect(f.prepared[0]?.proposal.to).toEqual(["friend@example.invalid"]);
+    expect((f.controller.render().c as Bag).toQ).toBe("");
+  });
+
   it("saves locally under the owner and grant and isolates other grants", async () => {
     const f = fixture();
     await f.controller.bind("grant-a", "owner@example.invalid");
