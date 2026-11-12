@@ -11,6 +11,7 @@ import { reconstructNoteContent } from "./types.js";
 
 import { createHash, randomUUID } from "node:crypto";
 import type { CalendarNoteSourceReference } from "@elizaos/contracts";
+import type { NotesAudioReceipt } from "./client/notes-audio-store.js";
 import { ElizaError, type IAgentRuntime, logger, Service } from "@elizaos/core";
 import { type EncryptedNotesDocumentPort, NotesStore } from "./store.js";
 import type {
@@ -20,9 +21,11 @@ import type {
   StickyNote,
 } from "./types.js";
 import {
+  isRecord,
   parseCreateNoteInput,
   parseEntityId,
   parseNoteEditRevision,
+  parseNoteEraseOperationId,
   parseUpdateNoteInput,
 } from "./validation.js";
 
@@ -225,6 +228,24 @@ function assertEditRevision(
         severity: "ephemeral",
       },
     );
+}
+
+function attachedRecordingId(note: StickyNote): string | undefined {
+  const format = note.format;
+  if (format?.kind !== "voice" || !Object.hasOwn(format.data, "audio"))
+    return undefined;
+  const { audio, recordingId } = format.data;
+  if (
+    !isRecord(audio) ||
+    typeof recordingId !== "string" ||
+    !/^[A-Za-z0-9_-]{1,128}$/.test(recordingId) ||
+    audio.audioId !== recordingId
+  )
+    throw new ElizaError("The archived note's recording identity is invalid.", {
+      code: "NOTES_ERASE_RECORDING_REQUIRED",
+      severity: "ephemeral",
+    });
+  return recordingId;
 }
 
 export class NotesService extends Service {
@@ -630,11 +651,91 @@ export class NotesService extends Service {
       const entry = trash[index];
       if (!entry || draft.notes.some((note) => note.id === id))
         throw notFound(id);
+      if (entry.eraseOperation)
+        throw new ElizaError("Permanent deletion is pending for this note.", {
+          code: "NOTES_ERASE_PENDING",
+          severity: "ephemeral",
+        });
       draft.notes.unshift(structuredClone(entry.note));
       trash.splice(index, 1);
       return entry.note;
     });
     await this.emitStateUpdated(transaction.snapshot, "note:restored");
+    return transaction;
+  }
+
+  /**
+   * Commit the exact archived revision the owner reviewed. The owner transport
+   * must establish recording custody before passing an observed audio ID.
+   * An attached recording keeps the archived row fenced against restore until
+   * its exact purge receipt can be verified by the owning host.
+   */
+  async beginArchivedNoteErase(
+    idValue: unknown,
+    expectedRevision: unknown,
+    operationValue: unknown,
+    observedAudioId?: string,
+  ) {
+    assertNotesServiceMutation(this.runtime, "delete");
+    const id = parseEntityId(idValue);
+    const revision = parseNoteEditRevision(expectedRevision, true);
+    const operationId = parseNoteEraseOperationId(operationValue);
+    const transaction = await this.store.transact((draft) => {
+      assertEditRevision(draft.revision, revision);
+      const trash = draft.trash ?? [];
+      const index = trash.findIndex((entry) => entry.note.id === id);
+      const entry = trash[index];
+      if (!entry) throw notFound(id);
+      if (entry.eraseOperation)
+        throw new ElizaError("Permanent deletion is already pending.", {
+          code: "NOTES_ERASE_PENDING",
+          severity: "ephemeral",
+        });
+      const audioId = attachedRecordingId(entry.note);
+      if (audioId !== observedAudioId)
+        throw new ElizaError("Verify the recording on its original host.", {
+          code: "NOTES_ERASE_RECORDING_REQUIRED",
+          severity: "ephemeral",
+        });
+      if (audioId !== undefined) {
+        entry.eraseOperation = operationId;
+        return { id, operationId, audioId };
+      }
+      trash.splice(index, 1);
+      return { id, operationId };
+    }, projectNotesSnapshot);
+    await this.emitStateUpdated(
+      transaction.snapshot,
+      "audioId" in transaction.value ? "note:erase-claimed" : "note:erased",
+    );
+    return transaction;
+  }
+
+  /** Only the owner transport may supply a verified recording-store receipt. */
+  async finishArchivedNoteErase(receipt: NotesAudioReceipt) {
+    assertNotesServiceMutation(this.runtime, "delete");
+    const id = parseEntityId(receipt.noteId);
+    const transaction = await this.store.transact((draft) => {
+      const trash = draft.trash ?? [];
+      const index = trash.findIndex((entry) => entry.note.id === id);
+      const entry = trash[index];
+      if (!entry) throw notFound(id);
+      const audioId = attachedRecordingId(entry.note);
+      if (
+        !audioId ||
+        !entry.eraseOperation ||
+        receipt.status !== "purged" ||
+        receipt.operationId !== entry.eraseOperation ||
+        receipt.audioId !== audioId
+      )
+        throw new ElizaError("The recording purge receipt does not match.", {
+          code: "NOTES_ERASE_RECEIPT_MISMATCH",
+          severity: "ephemeral",
+        });
+      trash.splice(index, 1);
+      return { id, operationId: entry.eraseOperation };
+    }, projectNotesSnapshot);
+    await this.emitStateUpdated(transaction.snapshot, "note:erased");
     return transaction;
   }
 

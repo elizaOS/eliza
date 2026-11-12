@@ -1,4 +1,4 @@
-import type { NotesSnapshot } from "../types.js";
+import type { NotesArchiveEraseInput, NotesSnapshot } from "../types.js";
 import type { NotesClient, NotesInteractResult } from "./notes-api.js";
 import { NotesSnapshotState } from "./notes-snapshot-state.js";
 
@@ -18,7 +18,8 @@ export class NotesController {
   private readAbort: AbortController | null = null;
   private invalidated = false;
   constructor(
-    private readonly notes: NotesClient,
+    private readonly notes: Pick<NotesClient, "readState" | "interact"> &
+      Partial<Pick<NotesClient, "eraseArchived">>,
     current: () => boolean,
     private readonly hooks: NotesControllerHooks,
   ) {
@@ -114,6 +115,23 @@ export class NotesController {
     capability: string,
     params?: Record<string, unknown>,
   ): Promise<NotesInteractResult> {
+    return this.write(
+      (signal) => this.notes.interact(capability, params, signal),
+      (result) => result.state,
+    );
+  }
+  async eraseArchived(input: NotesArchiveEraseInput): Promise<NotesSnapshot> {
+    const erase = this.notes.eraseArchived;
+    if (!erase) throw Error("Permanent deletion is unavailable.");
+    return this.write(
+      (signal) => erase(input, signal),
+      (snapshot) => snapshot,
+    );
+  }
+  private async write<T>(
+    perform: (signal: AbortSignal) => Promise<T>,
+    snapshot: (result: T) => NotesSnapshot,
+  ): Promise<T> {
     this.assertCurrent();
     if (this.writing) throw Error("A Notes operation is already pending.");
     this.writing = true;
@@ -125,13 +143,9 @@ export class NotesController {
     }
     this.hooks.phase("saving");
     try {
-      const result = await this.notes.interact(
-        capability,
-        params,
-        this.state.signal,
-      );
+      const result = await perform(this.state.signal);
       this.assertCurrent();
-      this.publish(result.state, "interact");
+      this.publish(snapshot(result), "interact");
       this.hooks.phase("ready");
       return result;
     } catch (error) {

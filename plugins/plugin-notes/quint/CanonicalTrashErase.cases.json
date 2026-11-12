@@ -1,0 +1,29 @@
+{
+  "sources": [
+    "plugins/plugin-notes/src/service.ts",
+    "plugins/plugin-notes/src/store.ts",
+    "plugins/plugin-notes/src/client/notes-audio-store.ts"
+  ],
+  "implementationTests": [
+    "plugins/plugin-notes/src/__tests__/backend.test.ts",
+    "plugins/plugin-notes/test/notes-audio-store.test.mjs"
+  ],
+  "bounds": "One selected archived note, one competing note ID, up to one intervening restore and rearchive, and one permanent deletion operation.",
+  "fairness": "No automatic recovery is assumed. Completion after an interruption requires the original owner and host to read the pending claim and the recording receipt, then complete the remaining writes.",
+  "limitations": [
+    "The owner route and UI are outside this draft. Separate storage tests exercise the modeled transitions, but do not provide end-to-end conformance for the owner transport.",
+    "Backup copies and recordings held by another host are outside this model."
+  ],
+  "cases": [
+    {
+      "name": "canonical-trash-erase",
+      "main": "CanonicalTrashErase",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 30,
+      "samples": 1000
+    }
+  ]
+}

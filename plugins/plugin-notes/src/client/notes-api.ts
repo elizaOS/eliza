@@ -2,8 +2,13 @@
 import type { ElizaClientFetch } from "@elizaos/ui/api/transport";
 import { NOTES_CAPABILITIES } from "../capabilities.js";
 import { parseNoteFormat } from "../note-format.js";
-import { NOTE_ID_REGEXP } from "../note-id.js";
-import type { NotesSnapshot, StickyColor, StickyNote } from "../types.js";
+import { NOTE_ID_REGEXP, RECORDING_DELETION_ID_REGEXP } from "../note-id.js";
+import type {
+  NotesArchiveEraseInput,
+  NotesSnapshot,
+  StickyColor,
+  StickyNote,
+} from "../types.js";
 export interface NotesInteractResult {
   success: true;
   text: string;
@@ -94,9 +99,18 @@ function parseSnapshot(value: unknown): NotesSnapshot {
                 !Number.isFinite(Date.parse(entry.deletedAt))
               )
                 throw Error("Invalid Notes Trash entry");
+              const eraseOperation = Object.hasOwn(entry, "eraseOperation")
+                ? readString(entry, "eraseOperation")
+                : undefined;
+              if (
+                eraseOperation !== undefined &&
+                !RECORDING_DELETION_ID_REGEXP.test(eraseOperation)
+              )
+                throw Error("Invalid Notes erase operation.");
               return {
                 note: parseNote(entry.note),
                 deletedAt: entry.deletedAt,
+                ...(eraseOperation !== undefined ? { eraseOperation } : {}),
               };
             });
             const ids = [
@@ -188,6 +202,12 @@ function parseBrokerResult(
   };
 }
 
+function parseSnapshotResponse(value: unknown): NotesSnapshot {
+  if (!isRecord(value) || value.success !== true || !("data" in value))
+    throw Error("Notes returned an invalid success envelope.");
+  return parseSnapshot(value.data);
+}
+
 export function createNotesClient(api: ElizaClientFetch) {
   return {
     async readState(signal?: AbortSignal): Promise<NotesSnapshot> {
@@ -198,9 +218,40 @@ export function createNotesClient(api: ElizaClientFetch) {
         ...(signal ? { signal } : {}),
       });
       signal?.throwIfAborted();
-      if (!isRecord(value) || value.success !== true || !("data" in value))
-        throw Error("Notes returned an invalid success envelope.");
-      return parseSnapshot(value.data);
+      return parseSnapshotResponse(value);
+    },
+    async eraseArchived(
+      input: NotesArchiveEraseInput,
+      signal?: AbortSignal,
+    ): Promise<NotesSnapshot> {
+      signal?.throwIfAborted();
+      const value = await api.fetch<unknown>(
+        "/api/notes/trash/erase",
+        {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(input),
+          ...(signal ? { signal } : {}),
+        },
+        { skipResume: true },
+      );
+      signal?.throwIfAborted();
+      const snapshot = parseSnapshotResponse(value);
+      const archived = snapshot.trash?.find(({ note }) => note.id === input.id);
+      const claimed = input.phase === "begin" && input.audioId !== undefined;
+      if (
+        snapshot.notes.some(({ id }) => id === input.id) ||
+        (input.phase === "begin" &&
+          snapshot.revision <= input.expectedRevision) ||
+        (claimed
+          ? archived?.eraseOperation !== input.operationId
+          : archived !== undefined)
+      )
+        throw Error("Notes did not confirm the requested erase operation.");
+      return snapshot;
     },
     async interact(
       capability: string,

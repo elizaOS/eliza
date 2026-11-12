@@ -6,6 +6,7 @@ import { initializeTestRuntime } from "@elizaos/testing/runtime";
  * capability, and invoke the authenticated state route against the real service.
  */
 
+import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -13,6 +14,7 @@ import {
   AgentRuntime,
   createCharacter,
   type IAgentRuntime,
+  resolveOwnerEntityIdOrDefault,
   Service,
   stringToUuid,
 } from "@elizaos/core";
@@ -183,6 +185,8 @@ async function invokeRoute(
     body?: unknown;
     params?: Record<string, string>;
     query?: Record<string, string | string[]>;
+    isTrustedLocal?: boolean;
+    accessContext?: RouteHandlerContext["accessContext"];
   } = {},
 ): Promise<RouteHandlerResult> {
   if (!routeValue.routeHandler) throw new Error("Route handler is required.");
@@ -196,10 +200,170 @@ async function invokeRoute(
     runtime,
     signal: new AbortController().signal,
     inProcess: false,
-    isTrustedLocal: true,
+    isTrustedLocal: options.isTrustedLocal ?? true,
+    ...(options.accessContext ? { accessContext: options.accessContext } : {}),
   } satisfies RouteHandlerContext;
   return routeValue.routeHandler(context);
 }
+
+describe("Archived Notes permanent erase", () => {
+  it("only accepts the authenticated Notes owner on the direct erase route", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    const runtime = await runtimeFor(service);
+    const note = await service.createNote({ content: "Disposable owner note" });
+    const archived = await service.deleteNoteWithCommit(note.id);
+    const erase = route("POST", "/api/notes/trash/erase");
+    const owner = {
+      requesterEntityId: resolveOwnerEntityIdOrDefault(runtime),
+      role: "OWNER",
+      isOwner: true,
+    } as const;
+    const body = {
+      phase: "begin",
+      id: note.id,
+      expectedRevision: archived.snapshot.revision,
+      operationId: randomUUID(),
+    };
+    for (const accessContext of [
+      undefined,
+      { ...owner, role: "GUEST" as const, isOwner: false },
+      { ...owner, requesterEntityId: stringToUuid("other-owner") },
+    ]) {
+      expect(
+        await invokeRoute(erase, runtime, {
+          body,
+          isTrustedLocal: false,
+          ...(accessContext ? { accessContext } : {}),
+        }),
+      ).toMatchObject({ status: 403 });
+    }
+    expect(
+      await invokeRoute(erase, runtime, {
+        body: { ...body, expectedRevision: archived.snapshot.revision - 1 },
+        accessContext: owner,
+        isTrustedLocal: false,
+      }),
+    ).toMatchObject({ status: 409 });
+    expect(service.snapshot()).toEqual(archived.snapshot);
+    expect(
+      await invokeRoute(erase, runtime, {
+        body,
+        accessContext: owner,
+        isTrustedLocal: false,
+      }),
+    ).toMatchObject({
+      status: 200,
+      body: { success: true, data: { trash: [] } },
+    });
+    expect((await service.store.persistedSnapshot()).trash).toEqual([]);
+  });
+
+  it("fences a plain-note erase to the reviewed archived revision", async () => {
+    const filePath = await temporaryStateFile();
+    const service = await serviceFor(filePath);
+    const note = await service.createNote({ content: "Disposable note" });
+    const kept = await service.createNote({ content: "Keep this note" });
+    const firstArchive = await service.deleteNoteWithCommit(note.id);
+    await service.restoreNoteWithCommit(
+      note.id,
+      firstArchive.snapshot.revision,
+    );
+    const secondArchive = await service.deleteNoteWithCommit(note.id);
+
+    await expect(
+      service.beginArchivedNoteErase(
+        note.id,
+        firstArchive.snapshot.revision,
+        randomUUID(),
+      ),
+    ).rejects.toMatchObject({ code: "NOTES_EDIT_CONFLICT" });
+
+    const erased = await service.beginArchivedNoteErase(
+      note.id,
+      secondArchive.snapshot.revision,
+      randomUUID(),
+    );
+    expect(erased.snapshot.notes).toEqual([kept]);
+    expect(erased.snapshot.trash).toEqual([]);
+    await service.stop();
+    const restarted = await serviceFor(filePath);
+    try {
+      expect(restarted.snapshot().trash).toEqual([]);
+      expect(restarted.getNote(kept.id)).toEqual(kept);
+    } finally {
+      await restarted.stop();
+    }
+  });
+
+  it("fences restore across restart until the exact owned recording purge is acknowledged", async () => {
+    const filePath = await temporaryStateFile();
+    const service = await serviceFor(filePath);
+    const audioId = "disposable_recording";
+    const note = await service.createNote({
+      content: "Disposable recording",
+      format: {
+        kind: "voice",
+        data: { recordingId: audioId, audio: { audioId, durationMs: 200 } },
+      },
+    });
+    const archived = await service.deleteNoteWithCommit(note.id);
+    const operationId = randomUUID();
+    await expect(
+      service.beginArchivedNoteErase(
+        note.id,
+        archived.snapshot.revision,
+        operationId,
+      ),
+    ).rejects.toMatchObject({ code: "NOTES_ERASE_RECORDING_REQUIRED" });
+    await expect(
+      service.beginArchivedNoteErase(
+        note.id,
+        archived.snapshot.revision,
+        "invalid-recording-operation",
+        audioId,
+      ),
+    ).rejects.toMatchObject({ code: "NOTES_VALIDATION_FAILED" });
+    expect(service.snapshot()).toEqual(archived.snapshot);
+    const claimed = await service.beginArchivedNoteErase(
+      note.id,
+      archived.snapshot.revision,
+      operationId,
+      audioId,
+    );
+    expect(claimed.snapshot.trash).toEqual([
+      { ...archived.snapshot.trash?.[0], eraseOperation: operationId },
+    ]);
+    await service.stop();
+
+    const restarted = await serviceFor(filePath);
+    try {
+      await expect(
+        restarted.restoreNoteWithCommit(note.id, claimed.snapshot.revision),
+      ).rejects.toMatchObject({ code: "NOTES_ERASE_PENDING" });
+      const receipt = {
+        noteId: note.id,
+        audioId,
+        operationId,
+        status: "purged",
+      } as const;
+      for (const wrong of [
+        { ...receipt, operationId: "another-operation" },
+        { ...receipt, audioId: "another_recording" },
+        { ...receipt, status: "removed" as const },
+      ]) {
+        await expect(
+          restarted.finishArchivedNoteErase(wrong),
+        ).rejects.toMatchObject({ code: "NOTES_ERASE_RECEIPT_MISMATCH" });
+      }
+      expect(restarted.snapshot()).toEqual(claimed.snapshot);
+      const erased = await restarted.finishArchivedNoteErase(receipt);
+      expect(erased.snapshot.trash).toEqual([]);
+      expect(erased.snapshot.notes).toEqual([]);
+    } finally {
+      await restarted.stop();
+    }
+  });
+});
 
 describe("NotesStore", () => {
   it.each([

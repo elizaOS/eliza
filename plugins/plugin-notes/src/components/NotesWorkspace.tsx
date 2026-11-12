@@ -48,7 +48,7 @@ export interface NotesWorkspacePorts {
 export interface NotesWorkspaceProps {
   /** Retained hidden hosts keep drafts but admit no foreground actions. */
   active?: boolean;
-  client: NotesClient;
+  client: Pick<NotesClient, "readState" | "interact">;
   binding: { key: string; current(): boolean };
   events?: {
     subscribeInvalidation(listener: (revision?: number) => void): () => void;

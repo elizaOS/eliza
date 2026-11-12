@@ -35,7 +35,25 @@ export interface NoteFormat {
 export interface TrashedNote {
   note: StickyNote;
   deletedAt: string;
+  /** The confirmed erase owns this archived note until its recording receipt settles. */
+  eraseOperation?: string;
 }
+export type NotesArchiveEraseInput =
+  | {
+      phase: "begin";
+      id: string;
+      expectedRevision: number;
+      operationId: string;
+      audioId?: string;
+    }
+  | {
+      phase: "finish";
+      id: string;
+      operationId: string;
+      audioId: string;
+      status: "purged";
+    };
+
 export interface StickyNote {
   id: string;
   title: string;

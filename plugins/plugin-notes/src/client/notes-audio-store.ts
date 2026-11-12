@@ -12,6 +12,8 @@
  * existing location.
  */
 
+import { RECORDING_DELETION_ID_REGEXP } from "../note-id.ts";
+
 export type NotesAudioDeletionStatus = "removed" | "restored" | "purged";
 export interface NotesAudioRow {
   audioId: string;
@@ -109,15 +111,13 @@ export const NOTES_AUDIO_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 export const NOTES_AUDIO_TRANSCRIPT_LIMIT = 64_000;
 export const NOTES_AUDIO_OPERATION_LIMIT = 128;
 const STORE = "audio";
-const OPERATION_ID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 const identity = (value: unknown) => {
   if (typeof value !== "string" || !value || value.length > 128)
     throw Error("Invalid recording identity.");
 };
 const operationId = (value: unknown) => {
-  if (typeof value !== "string" || !OPERATION_ID.test(value))
+  if (typeof value !== "string" || !RECORDING_DELETION_ID_REGEXP.test(value))
     throw Error("Invalid deletion operation");
 };
 

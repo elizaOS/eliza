@@ -3,7 +3,7 @@ import {
   NoteFormatError,
   parseNoteFormat as parseRichNoteFormat,
 } from "./note-format.js";
-import { NOTE_ID_REGEXP } from "./note-id.js";
+import { NOTE_ID_REGEXP, RECORDING_DELETION_ID_REGEXP } from "./note-id.js";
 /**
  * Runtime validation for every untrusted Notes boundary. Persisted JSON,
  * HTTP bodies, and agent capability params are normalized here before domain
@@ -20,6 +20,7 @@ import {
   type CreateNoteInput,
   NOTES_SCHEMA_VERSION,
   type NoteFormat,
+  type NotesArchiveEraseInput,
   type NotesDocument,
   type StickyColor,
   type StickyNote,
@@ -147,6 +148,53 @@ export function parseEntityId(value: unknown, field = "id"): string {
   return id;
 }
 
+export function parseNoteEraseOperationId(value: unknown): string {
+  if (typeof value !== "string" || !RECORDING_DELETION_ID_REGEXP.test(value))
+    throw validationError("Invalid Notes erase operation.", "eraseOperation");
+  return value;
+}
+
+export function parseNotesArchiveEraseInput(
+  value: unknown,
+): NotesArchiveEraseInput {
+  const input = requireRecord(value, "erase");
+  if (input.phase !== "begin" && input.phase !== "finish")
+    throw validationError("Invalid Notes erase phase.", "phase");
+  const id = parseEntityId(input.id);
+  const operationId = parseNoteEraseOperationId(input.operationId);
+  const audioId = input.audioId;
+  if (
+    (audioId !== undefined || input.phase === "finish") &&
+    (typeof audioId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(audioId))
+  )
+    throw validationError("Invalid recording identity.", "audioId");
+  if (input.phase === "begin") {
+    assertOnlyKeys(
+      input,
+      ["phase", "id", "operationId", "expectedRevision", "audioId"],
+      "erase",
+    );
+    return {
+      phase: "begin",
+      id,
+      expectedRevision: parseRevision(
+        input.expectedRevision,
+        "expectedRevision",
+      ),
+      operationId,
+      ...(typeof audioId === "string" ? { audioId } : {}),
+    };
+  }
+  assertOnlyKeys(
+    input,
+    ["phase", "id", "operationId", "audioId", "status"],
+    "erase",
+  );
+  if (input.status !== "purged" || typeof audioId !== "string")
+    throw validationError("A recording purge receipt is required.", "status");
+  return { phase: "finish", id, operationId, audioId, status: input.status };
+}
+
 export function parseStickyColor(value: unknown, field = "color"): StickyColor {
   if (
     value === "yellow" ||
@@ -224,12 +272,9 @@ export function parseNoteDateRange(value: unknown): {
   return { field: range.field, startAt, endAt };
 }
 
-function parseRevision(value: unknown): number {
+function parseRevision(value: unknown, field = "revision"): number {
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
-    throw validationError(
-      "revision must be a non-negative integer.",
-      "revision",
-    );
+    throw validationError(`${field} must be a non-negative integer.`, field);
   }
   return value;
 }
@@ -536,7 +581,7 @@ export function parseNotesDocument(value: unknown): NotesDocument {
   const allIds = new Set(noteIds);
   const trash = rawTrash.map((entry, index) => {
     const item = requireRecord(entry, `trash[${index}]`);
-    assertOnlyKeys(item, ["note", "deletedAt"], "trash");
+    assertOnlyKeys(item, ["note", "deletedAt", "eraseOperation"], "trash");
     const note = parseStickyNote(
       item.note,
       index,
@@ -548,6 +593,11 @@ export function parseNotesDocument(value: unknown): NotesDocument {
     return {
       note,
       deletedAt: parseTimestamp(item.deletedAt, "trash.deletedAt"),
+      ...(hasOwn(item, "eraseOperation")
+        ? {
+            eraseOperation: parseNoteEraseOperationId(item.eraseOperation),
+          }
+        : {}),
     };
   });
   const revision = parseRevision(record.revision);
