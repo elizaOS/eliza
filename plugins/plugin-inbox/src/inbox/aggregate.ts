@@ -38,6 +38,7 @@ import {
   type LifeOpsInboxThreadGroup,
 } from "@elizaos/contracts";
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
+import type { InboxFetcher } from "../actions/inbox.ts";
 import {
   fetchAllMessages,
   type GmailInboxSource,
@@ -917,6 +918,8 @@ export interface InboxDomainDeps {
   runtime: IAgentRuntime;
   cache: InboxMessageCache;
   sources: InboxDeps;
+  /** The host-selected Gmail reader verifies its current owner on every call. */
+  managedGmailRead?: InboxFetcher;
   /** Optional owner policy loader; defaults to enabled + default model. */
   loadPriorityScoringSettings?: PriorityScoringSettingsLoader;
 }
@@ -946,7 +949,7 @@ export class InboxDomain {
         xDmSource: sources,
       });
     const buildFromCache = (
-      messages: readonly CachedInboxMessage[],
+      messages: readonly LifeOpsInboxMessage[],
       sourceStatuses: LifeOpsInboxSourceStatus[],
     ): LifeOpsInbox =>
       buildInboxFromMessages(messages, {
@@ -962,6 +965,62 @@ export class InboxDomain {
         missedOnly: resolved.missedOnly,
         sortByPriority: resolved.sortByPriority,
       });
+    const managedGmailRead = this.deps.managedGmailRead;
+    if (managedGmailRead && resolved.allowed.has("gmail")) {
+      if (resolved.limit === undefined) {
+        throw new ElizaError(
+          "The managed Gmail host requires an explicit read limit.",
+          { code: "MANAGED_GMAIL_READ_LIMIT_REQUIRED" },
+        );
+      }
+      if (resolved.gmailAccountId) {
+        throw new ElizaError(
+          "The managed Gmail host selects the current owner account.",
+          { code: "MANAGED_GMAIL_ACCOUNT_OVERRIDE_UNSUPPORTED" },
+        );
+      }
+      const channels = Array.from(resolved.allowed).filter(
+        (channel) => channel !== "gmail",
+      );
+      const [otherInbox, gmail] = await Promise.all([
+        channels.length > 0
+          ? this.getInbox({ ...request, channels })
+          : Promise.resolve(null),
+        managedGmailRead({ runtime, limit: resolved.limit }),
+      ]);
+      // The existing managed adapter has no cross-owner cache. Read it live,
+      // even for a cached aggregate, and never merge legacy Gmail cache rows.
+      const managedInbox = await buildInboxWithLlm(
+        runtime,
+        gmail.map((message) => ({
+          id: message.id,
+          source: "gmail",
+          senderName: message.senderName,
+          senderEmail: message.senderIdentifier,
+          channelName: message.channel,
+          channelType: "dm" as const,
+          text: message.snippet,
+          snippet: message.snippet,
+          timestamp: Date.parse(message.receivedAt),
+          subject: message.threadTopic,
+          deepLink: message.deepLink,
+          gmailIsUnread: message.unread,
+        })),
+        { ...resolved, allowed: new Set(["gmail"]) },
+        [{ source: "gmail", state: "ok", degradations: [] }],
+        loadPriorityScoringSettings,
+      );
+      return buildFromCache(
+        [
+          ...(otherInbox ? flattenInboxMessages(otherInbox) : []),
+          ...flattenInboxMessages(managedInbox),
+        ],
+        [
+          ...(otherInbox?.sources ?? []),
+          { source: "gmail", state: "ok", degradations: [] },
+        ],
+      );
+    }
     const cacheReadLimit = cacheReadLimitFor(resolved);
     const cached = await cache.listCachedInboxMessages(runtime.agentId, {
       channels: Array.from(resolved.allowed),

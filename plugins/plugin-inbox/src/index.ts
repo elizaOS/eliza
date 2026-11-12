@@ -64,6 +64,7 @@ export {
   createInboxGmailGateway,
   type InboxGmailGateway,
 } from "./inbox/google-gmail-seam.ts";
+export { managedGmailReadFetcher } from "./inbox/managed-gmail-read.ts";
 export {
   fetchAllMessages,
   fetchChatMessages,
@@ -117,7 +118,5 @@ export {
   type InboxUnsubscribeServiceDeps,
 } from "./inbox/unsubscribe-service.ts";
 export { default, inboxPlugin } from "./plugin.ts";
-
 export { inboxTriageProvider } from "./providers/inbox-triage.ts";
-
 export * from "./types.ts";

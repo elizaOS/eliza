@@ -701,9 +701,11 @@ export function createManagedGoogleAgentHost(
             connectorAccountId: input.grantId,
             syncedAt: result.syncedAt,
             updatedAt:
-              typeof event.metadata.updated === "string"
-                ? event.metadata.updated
-                : result.syncedAt,
+              typeof event.metadata.updatedAt === "string"
+                ? event.metadata.updatedAt
+                : typeof event.metadata.updated === "string"
+                  ? event.metadata.updated
+                  : result.syncedAt,
             calendarSummary: calendar.summary,
           })),
         };

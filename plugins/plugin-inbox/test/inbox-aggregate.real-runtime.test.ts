@@ -761,6 +761,76 @@ describe("InboxDomain on a real runtime", () => {
     });
   }
 
+  it("uses the host-selected Gmail reader without replaying legacy cached mail", async () => {
+    const cache = new MemoryInboxCache();
+    const sources = new FakeConnectorSources([]);
+    let owner = "first";
+    const reads: number[] = [];
+    const domain = new InboxDomain({
+      runtime,
+      cache,
+      sources,
+      managedGmailRead: async ({ limit }) => {
+        reads.push(limit ?? 0);
+        return [
+          {
+            id: `alpha-gmail:${owner}:mail`,
+            platform: "gmail",
+            channel: "Inbox",
+            senderName: "Managed sender",
+            threadTopic: `Mail for ${owner}`,
+            snippet: "Managed mailbox content",
+            receivedAt: "2026-11-12T12:00:00.000Z",
+            unread: true,
+          },
+        ];
+      },
+    });
+    const first = await domain.getInbox({ channels: ["gmail"], limit: 10 });
+    expect(first.messages.map((message) => message.subject)).toEqual([
+      "Mail for first",
+    ]);
+    owner = "second";
+    const second = await domain.getInbox({
+      channels: ["gmail"],
+      limit: 10,
+      cacheMode: "cache-only",
+    });
+    expect(second.messages.map((message) => message.subject)).toEqual([
+      "Mail for second",
+    ]);
+    expect(second.sources).toEqual([
+      { source: "gmail", state: "ok", degradations: [] },
+    ]);
+    expect(reads).toEqual([10, 10]);
+    expect(cache.listCalls).toBe(0);
+    expect(cache.upsertCalls).toBe(0);
+    await expect(
+      domain.getInbox({
+        channels: ["gmail"],
+        limit: 10,
+        gmailAccountId: "other",
+      }),
+    ).rejects.toMatchObject({
+      code: "MANAGED_GMAIL_ACCOUNT_OVERRIDE_UNSUPPORTED",
+    });
+  });
+
+  it("keeps a failed managed Gmail read visible instead of reporting an empty inbox", async () => {
+    const failure = new Error("Managed owner changed");
+    const domain = new InboxDomain({
+      runtime,
+      cache: new MemoryInboxCache(),
+      sources: new FakeConnectorSources([]),
+      managedGmailRead: async () => {
+        throw failure;
+      },
+    });
+    await expect(
+      domain.getInbox({ channels: ["gmail"], limit: 10 }),
+    ).rejects.toBe(failure);
+  });
+
   it("cache-only mode serves from the cache seam without touching connector sources", async () => {
     const cache = new MemoryInboxCache();
     const sources = new FakeConnectorSources([]);
