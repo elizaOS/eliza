@@ -376,7 +376,8 @@ async function requireRendererCloudApiOrigin(
     expect(health.commit).toBe(stagingPagesRenderer.commit);
     expect(health.environment).toBe("staging");
   }
-  return observation.apiOrigin;
+  // The release certificate records the upstream API proved by proxy health.
+  return stagingPagesRenderer ? expectedApiOrigin : observation.apiOrigin;
 }
 
 async function openProtectedCloudBlankStart(
