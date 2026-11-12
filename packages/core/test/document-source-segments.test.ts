@@ -10,9 +10,9 @@ import { describe, expect, it } from "vitest";
 import {
 	buildDocumentSourceProjection,
 	DOCUMENT_SOURCE_SEGMENT_MAX_BYTES,
+	type DocumentSourceProjection,
 	readDocumentSourceProjection,
 	requireDocumentSourceReadMetadata,
-	type DocumentSourceProjection,
 } from "../src/database/document-source-segments.ts";
 
 const encoder = new TextEncoder();
@@ -42,9 +42,7 @@ function buildProjection(text: string) {
 	return { documentId, projection, parent };
 }
 
-function assertSegmentByteLengthIdentity(
-	projection: DocumentSourceProjection,
-) {
+function assertSegmentByteLengthIdentity(projection: DocumentSourceProjection) {
 	for (const segment of projection.segments) {
 		const metadata = segment.metadata as Record<string, unknown>;
 		const start = metadata.sourceByteStart as number;
@@ -77,8 +75,7 @@ describe("document source segments with a byte order mark", () => {
 	});
 
 	it("keeps a byte order mark that starts the second segment", () => {
-		const text =
-			"a".repeat(DOCUMENT_SOURCE_SEGMENT_MAX_BYTES) + "\uFEFFhello world\n";
+		const text = `${"a".repeat(DOCUMENT_SOURCE_SEGMENT_MAX_BYTES)}\uFEFFhello world\n`;
 		const { documentId, projection, parent } = buildProjection(text);
 		expect(projection.segments).toHaveLength(2);
 		expect(projection.segments[1]?.content.text?.charCodeAt(0)).toBe(0xfeff);
