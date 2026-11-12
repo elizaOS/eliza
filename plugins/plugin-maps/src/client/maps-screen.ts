@@ -734,6 +734,20 @@ export class MapsScreenController {
     this.invalidate();
   }
 
+  /** Select a user-tapped map location through the same place and route surface. */
+  selectPoint(point: Coordinate): void {
+    if (this.disposed || !this.host.active()) return;
+    this.host.discardHandoff?.();
+    ++this.searchIntent;
+    this.query = "";
+    this.selected = { label: "Selected location", coordinate: coordinate(point), origin: "manual" };
+    this.searching = false;
+    this.directions = false;
+    this.originMode = false;
+    this.message = "";
+    this.invalidate();
+  }
+
   /** A map pin tap. */
   pin(id: string): void {
     const pinned = this.choosingOrigin()

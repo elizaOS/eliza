@@ -76,6 +76,8 @@ export interface MapPlaneOptions {
   preserveDrawingBuffer?: boolean;
   /** Called when the user taps a result pin. */
   onPin?(id: string): void;
+  /** A single tap on the map, excluding result markers and zoom gestures. */
+  onPoint?(point: Coordinate): void;
   /** Only direct map gestures interrupt camera following. */
   onInteraction?(): void;
   fontUrl: string;
@@ -118,6 +120,7 @@ export class MapPlane {
   private disposeCopyright?: () => void;
   private refreshCopyright?: () => void;
   private destroyed = false;
+  private pointTimer?: ReturnType<typeof setTimeout>;
   /** Set by MapLibre's one-shot "load"; from then on the style accepts sources and layers. */
   private styleReady = false;
   constructor(
@@ -362,8 +365,20 @@ export class MapPlane {
       if (protocol) removeProtocol(protocol);
       throw error;
     }
+    this.map.on("click", (event) => {
+      if (!options.onPoint || (event.originalEvent.target as Element)?.closest?.(".maplibregl-marker")) return;
+      clearTimeout(this.pointTimer);
+      const point = { latitude: event.lngLat.lat, longitude: event.lngLat.lng };
+      this.pointTimer = setTimeout(() => {
+        if (!this.destroyed) options.onPoint?.(point);
+      }, 250);
+    });
+    this.map.on("dblclick", () => clearTimeout(this.pointTimer));
     this.map.on("movestart", (event) => {
-      if (event.originalEvent) options.onInteraction?.();
+      if (event.originalEvent) {
+        clearTimeout(this.pointTimer);
+        options.onInteraction?.();
+      }
     });
     this.map.on("idle", () => {
       if (this.destroyed) return;
@@ -676,6 +691,7 @@ export class MapPlane {
   destroy() {
     if (this.destroyed) return;
     this.destroyed = true;
+    clearTimeout(this.pointTimer);
     this.disposeCopyright?.();
     try {
       for (const entry of this.pins.values()) entry.marker.remove();
