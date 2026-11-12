@@ -151,7 +151,8 @@ const keys: Record<
   | "cold_stt"
   | "cold_tts"
   | "cold_consent"
-  | "cold_session",
+  | "cold_session"
+  | "revoked_consent",
   { id: string; raw: string }
 > = {} as never;
 
@@ -224,6 +225,7 @@ beforeAll(async () => {
     keys[name] = { id, raw };
   };
   await seed("plain");
+  await seed("revoked_consent");
   // The pay-as-you-go tiers sum to 195 requests per minute, so 1 binds.
   await seed("capped", { rateLimit: 1 });
   await seed("inactive", { active: false });
@@ -428,15 +430,18 @@ describe("Worker speech rate limit without an admission snapshot", () => {
 
   for (const allowed of [true, false]) {
     test(`speech consent retries one credential deadline before any preparation (allowed=${allowed})`, async () => {
-      expect((await speak("stt", keys.plain.raw)).status).toBe(400);
+      const rawKey = allowed ? keys.plain.raw : keys.revoked_consent.raw;
+      expect((await speak("stt", rawKey)).status).toBe(400);
       gateCalls.length = 0;
       credentialChecks = 0;
       credentialCheckTimesOut = true;
       credentialAllowed = allowed;
 
-      const response = await speakOnce("consent", keys.plain.raw, true);
+      const response = await speakOnce("consent", rawKey, true);
       expect(response.status).toBe(allowed ? 200 : 401);
-      expect(credentialChecks).toBe(2);
+      // A denial also triggers the existing authoritative cache refresh.
+      // Its fence check is separate from the one consent retry.
+      expect(credentialChecks).toBe(allowed ? 2 : 3);
       expect(gateCalls).toHaveLength(allowed ? 1 : 0);
       expect(speechPrepares).toBe(allowed ? 1 : 0);
     });
