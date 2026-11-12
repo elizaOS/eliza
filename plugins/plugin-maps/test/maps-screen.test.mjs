@@ -377,7 +377,7 @@ test("place labels name provider places and typed coordinates", async () => {
   typed.screen.setQuery("1, 2");
   typed.screen.submit();
   await settle();
-  assert.match(typed.screen.view().place?.meta ?? "", /^Coordinates/);
+  assert.match(typed.screen.view().place?.meta ?? "", /^Place/);
 });
 
 test("a host replaces the missing-provider text", async () => {
@@ -878,7 +878,7 @@ test("the agent surface shows directions and plans only from an explicit device 
   );
 });
 
-test("coverage notices keep the coordinates of a place outside the region", async () => {
+test("coverage notices retain a selected place without exposing coordinate copy", async () => {
   const f = fixture({
     coverage: {
       name: "Monaco",
@@ -892,7 +892,8 @@ test("coverage notices keep the coordinates of a place outside the region", asyn
   assert.equal(view.status.map, "outside-coverage");
   assert.match(view.status.text, /outside Monaco map coverage/);
   assert.equal(view.map.selected, undefined);
-  assert.equal(view.place?.address, "48.85660, 2.35220");
+  assert.equal(view.place?.address, "");
+  assert.equal(view.place?.name, "Dropped pin");
 });
 
 test("Cloud admission failure remains visible through explicit search without provider calls", async () => {
@@ -1148,4 +1149,27 @@ test("retiring a provider clears a recentered location without a selected place"
   f.screen.release(false);
   assert.equal(f.screen.view().map.selected, undefined);
   f.screen.dispose();
+});
+
+test("a GPS origin displays My location and keeps the exact route point internal", async () => {
+  const f = fixture();
+  f.screen.setQuery("Destination");
+  f.screen.submit();
+  await settle();
+  f.screen.choose("place:fixture:destination");
+  await settle();
+  f.screen.openDirections();
+  f.setDeviceFix(f.fix({ coordinate: ORIGIN }));
+  f.screen.locate();
+  await settle();
+  assert.equal(f.screen.view().directions?.originText, "My location");
+  assert.deepEqual(f.calls.routes.at(-1).from, ORIGIN);
+  f.screen.planOrigin();
+  await settle();
+  assert.equal(f.screen.view().directions?.originText, "My location");
+  f.screen.setOriginText("Destination");
+  f.screen.planOrigin();
+  await settle();
+  assert.equal(f.screen.view().mode, "origin");
+  assert.equal(f.screen.view().directions?.originText, "Destination");
 });

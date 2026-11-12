@@ -938,25 +938,25 @@ export class MapsScreenController {
             latitude: Number(match[1]),
             longitude: Number(match[2]),
           }),
+          this.state?.originLabel ?? undefined,
         );
         this.message = "";
         this.originMode = false;
         void this.ensure().planRoute();
       } catch {
-        this.message = "Enter origin latitude, longitude.";
+        this.message = "Enter a valid starting point.";
       }
       this.invalidate();
       return;
     }
     if (!text) {
-      this.message =
-        "Enter a starting place, a saved place or latitude, longitude.";
+      this.message = "Enter a starting place or address.";
       this.invalidate();
       return;
     }
     const configured = this.state?.provider.status === "configured";
     if (!configured && !this.ensure().savedMatches(text).length) {
-      this.message = "Enter origin latitude, longitude.";
+      this.message = "Enter a valid starting point.";
       this.invalidate();
       return;
     }
@@ -1397,7 +1397,7 @@ export class MapsScreenController {
         locationHelp:
           locationState === "denied"
             ? this.host.deniedLocationHelp ||
-              "Allow location in settings, or enter coordinates."
+              "Allow location in settings, or search for a place."
             : "Location access does not share it with your agent.",
         mapRetry: this.mapState === "error",
         mapsAppHandoff: !!mapsAppText && this.mapsAppAvailable === true,
@@ -1460,9 +1460,8 @@ export class MapsScreenController {
               ? "Device location"
               : selected.origin === "provider"
                 ? "Place"
-                : "Coordinates") +
-          (detail?.phone ? ` · Phone ${detail.phone}` : ""),
-        address: detail?.address || coordLabel(selected.coordinate),
+                : "Place") + (detail?.phone ? ` · Phone ${detail.phone}` : ""),
+        address: detail?.address || "",
         ...(detail?.openingHours ? { hours: detail.openingHours } : {}),
         ...(detail?.website ? { website: detail.website } : {}),
         canDirections: controller.capabilities().modes.length > 0,
@@ -1475,7 +1474,11 @@ export class MapsScreenController {
       const modes = controller.capabilities().modes;
       view.directions = {
         name: selected.label,
-        originText: this.originText,
+        originText:
+          snapshot.originLabel ||
+          (snapshot.origin && COORDINATES.test(this.originText)
+            ? "Starting point"
+            : this.originText),
         duration: route
           ? `${Math.max(1, Math.round(route.durationSeconds / 60))} min`
           : snapshot.route.phase === "loading"
@@ -1610,7 +1613,7 @@ export class MapsScreenController {
       }
       if (!this.directions && !recenterOnly)
         this.selected = {
-          label: "Current location",
+          label: "My location",
           coordinate: position.coordinate,
           origin: "location",
         };
@@ -1814,7 +1817,7 @@ export class MapsScreenController {
     this.ensure().clearOrigin();
     this.message = choosing
       ? `Press Enter to search again for a starting point to ${this.selected?.label ?? ""}.`
-      : "Press Enter to search for this origin or calculate a route from coordinates.";
+      : "Search for a starting place or address.";
     this.invalidate();
   }
 

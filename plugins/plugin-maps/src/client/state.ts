@@ -355,7 +355,7 @@ export class MapsController {
         true,
         (position) => {
           if (!this.active || generation !== this.locationGeneration) return;
-          this.setOrigin(position.coordinate);
+          this.setOrigin(position.coordinate, "My location");
           this.update({
             position: { phase: "ready", value: position, error: null },
           });
