@@ -5,7 +5,10 @@ const s = vi.hoisted(() => ({
   queue: { byId: vi.fn(), approve: vi.fn(), reject: vi.fn() },
   execute: vi.fn(),
 }));
-vi.mock("@elizaos/core", () => ({ hasRoleAccess: async () => s.owner }));
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
+  hasRoleAccess: async () => s.owner,
+}));
 vi.mock("@elizaos/plugin-assistant", () => ({
   createApprovalQueue: () => s.queue,
 }));

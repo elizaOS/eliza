@@ -501,3 +501,22 @@ condition = "AND"
 paths = ['''^packages/auth/src/auth/native-cloud-sign-in\.test\.ts$''']
 regexTarget = "secret"
 regexes = ['''^0b6f3c1e-5a52-4c0e-9d5e-1f2a3b4c5d6e$''']
+
+[[allowlists]]
+description = "Synthetic checkout idempotency key in the mobile checkout route test"
+condition = "AND"
+paths = ['''^packages/cloud/api/__tests__/subscription-checkout-mobile-routes\.test\.ts$''']
+regexTarget = "secret"
+regexes = ['''^0b9f5c0e-3a57-4c55-9d0e-1f2f6f1f0a01$''']
+
+[[allowlists]]
+description = "Synthetic checkout idempotency key in the SDK mobile credential test"
+condition = "AND"
+paths = ['''^packages/cloud/sdk/src/mobile-credential\.test\.ts$''']
+regexTarget = "secret"
+regexes = ['''^0d0f3c61-6f1b-4e59-9a55-0c6f6f4b2a10$''']
+
+# The native sign-in renewal tests name a renewed key by this invented record
+# id. It is a UUID identifier of a credential row, not key material, and it
+# remains in this branch's commit-range scan. Match only this exact value in
+# its owning test file; other values there remain scanned.
