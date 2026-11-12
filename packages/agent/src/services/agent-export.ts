@@ -219,7 +219,7 @@ export interface ExportSizeEstimate {
  *
  * Honest export collections are a handful of objects deep. A decrypted import
  * can still be legal JSON that `JSON.parse` accepts (depth 20k in ~120 KiB,
- * well under the 16 MiB gunzip cap) and then stack-overflow the digest walk.
+ * far under the gunzip cap) and then stack-overflow the digest walk.
  */
 export const MAX_AGENT_EXPORT_CANONICALIZE_DEPTH = 64;
 /**
