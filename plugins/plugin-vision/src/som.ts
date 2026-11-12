@@ -112,6 +112,40 @@ function isValidBox(b: SomBbox): boolean {
 }
 
 /**
+ * Group boxes into visual rows, then order the rows top-to-bottom and the
+ * members of each row left-to-right.
+ *
+ * This buckets instead of sorting with a pairwise comparator, because "within
+ * `rowTolerance` vertically" is not transitive: with a 12px tolerance and a
+ * 10px row pitch, y=0 ~ y=10 ~ y=20 ~ ... chains the whole list into one
+ * "row", so the comparator has no total order to follow and `sort` returns an
+ * order that is neither top-to-bottom nor left-to-right (the sort is free to
+ * leave a box left of another behind it). Anchoring each row at its own
+ * topmost box keeps every row at most `rowTolerance` tall and the numbering a
+ * function of geometry alone.
+ */
+function orderByReadingRows(
+  boxes: readonly NormCandidate[],
+  rowTolerance: number,
+): NormCandidate[] {
+  const byTop = [...boxes].sort(
+    (a, b) => a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0],
+  );
+  const rows: NormCandidate[][] = [];
+  for (const box of byTop) {
+    const row = rows[rows.length - 1];
+    if (row && box.bbox[1] - row[0].bbox[1] <= rowTolerance) {
+      row.push(box);
+    } else {
+      rows.push([box]);
+    }
+  }
+  return rows.flatMap((row) =>
+    row.sort((a, b) => a.bbox[0] - b.bbox[0] || a.bbox[1] - b.bbox[1]),
+  );
+}
+
+/**
  * Fuse icon + text candidates into a deduplicated, 1-indexed set of marks.
  *
  * Pure and deterministic: same inputs → identical numbering, regardless of
@@ -167,11 +201,7 @@ export function buildSetOfMarks(
 
   // 3. Reading-order numbering: bucket into rows (within rowTolerance), then
   //    order rows top-to-bottom and members left-to-right.
-  const ordered = [...kept].sort((a, b) => {
-    const sameRow = Math.abs(a.bbox[1] - b.bbox[1]) <= rowTolerance;
-    if (sameRow) return a.bbox[0] - b.bbox[0] || a.bbox[1] - b.bbox[1];
-    return a.bbox[1] - b.bbox[1];
-  });
+  const ordered = orderByReadingRows(kept, rowTolerance);
 
   return ordered.map((c, i): SomMark => {
     const [x, y, w, h] = c.bbox;
