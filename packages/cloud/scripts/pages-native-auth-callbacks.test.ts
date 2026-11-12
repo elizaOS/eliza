@@ -127,6 +127,14 @@ describe("Pages native callback deployment", () => {
     try {
       const appDirectory = path.join(temporary, "packages/app");
       await mkdir(appDirectory, { recursive: true });
+      const functionsDirectory = path.join(appDirectory, "functions");
+      await mkdir(functionsDirectory, { recursive: true });
+      await writeFile(
+        path.join(functionsDirectory, "_native-auth-callback-config.ts"),
+        await readFile(
+          path.resolve(directory, "functions/_native-auth-callback-config.ts"),
+        ),
+      );
       await writeFile(
         path.join(appDirectory, "wrangler.toml"),
         await readFile(path.join(directory, "wrangler.toml")),
@@ -229,7 +237,44 @@ describe("Pages native callback deployment", () => {
             privateKey: "must-not-be-output",
           },
         },
-        browserProduction,
+        { ...browserProduction, redirectUri: stage.redirectUri },
+        {
+          ...browserStage,
+          browserSignIn: {
+            ...browserStage.browserSignIn,
+            apiOrigin: browserProduction.browserSignIn.apiOrigin,
+          },
+        },
+        {
+          ...browserStage,
+          browserSignIn: {
+            ...browserStage.browserSignIn,
+            tenant: browserProduction.browserSignIn.tenant,
+          },
+        },
+        ...[
+          "relative",
+          "//other.example/start",
+          "/assets/start",
+          "/api/start",
+          "/steward/start",
+          "/.well-known/assetlinks.json",
+          "/a/../start",
+          "/start?value=1",
+        ].flatMap((value) => [
+          {
+            ...browserStage,
+            browserSignIn: { ...browserStage.browserSignIn, startPath: value },
+          },
+          {
+            ...browserStage,
+            browserSignIn: { ...browserStage.browserSignIn, returnPath: value },
+          },
+        ]),
+        ...["", "has space", "x".repeat(129)].map((storageKey) => ({
+          ...browserStage,
+          browserSignIn: { ...browserStage.browserSignIn, storageKey },
+        })),
       ]) {
         const invalid = run(
           resolver,
