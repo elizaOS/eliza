@@ -34,19 +34,34 @@
     "id": "VoiceAssistantCaptureOwnership",
     "model": "packages/voice/quint/VoiceAssistantCaptureOwnership.qnt",
     "sources": [
+      "packages/voice/README.md",
       "packages/voice/src/voice-assistant-session.ts",
-      "packages/voice/src/voice-assistant-session.test.ts"
+      "packages/voice/src/voice-assistant-session.test.ts",
+      "packages/voice/vitest.config.ts",
+      "packages/scripts/lib/junit-summary.ts",
+      "packages/scripts/lib/test-output.ts",
+      "packages/voice/src/native-live-voice.ts",
+      "packages/voice/src/native-live-voice.test.ts",
+      "packages/voice/src/live-voice-session.ts",
+      "packages/voice/src/live-voice-session.test.ts",
+      "packages/ui/src/voice/voice-session-client-core.ts",
+      "packages/ui/src/voice/voice-session-mic-capture.ts",
+      "packages/ui/src/voice/__e2e__/voice-session-mic-capture.test.ts",
+      "packages/ui/src/voice/voice-session-cloud-budget-rotation.test.ts",
+      "packages/ui/src/hooks/useRealtimeVoiceSession.ts",
+      "packages/ui/src/hooks/useRealtimeVoiceSession.refusal.test.tsx"
     ],
     "invariants": [
       "SendNeedsConfirmedClose",
       "CaptureAdoptionRequiresLiveUnmutedOwner",
-      "StopWaitsForLateCancellation"
+      "StopWaitsForLateCancellation",
+      "FailedReleaseRetainsOwnership"
     ],
     "status": "partial",
     "limitations": [
-      "One half-duplex turn and at most one replacement capture. The turn waits for confirmed close. Mute can win a pending reopen. Stop retires the owner immediately and waits for close, acquisition and any late cancellation to settle.",
-      "The maintained controller suite checks ordinary turn drain, idle Mute and Unmute, rejected reopen, muted reopen close failure, Stop during close, and a returned late capture whose asynchronous cancel remains pending.",
-      "The proof uses controlled host ports. Physical microphone release, cancellation failure recovery, concurrent Stop or restart, binding replacement, and overlap with a new turn while Unmute acquisition is pending are separate."
+      "One owner and one replacement capture per generation; one restart is admitted only after every retained capture and pending close/cancel receipt settles successfully. Failed cancellation keeps the handle and can be retried.",
+      "Scenario conformance runs actual assistant, dictation, native capture, browser capture/client and React owner code with controlled failure ports. It covers failed close, failed cancel, late acquisition, retry, and Stop/retry/start without changing open-microphone policy.",
+      "Physical device release, unlimited generations, all owner replacement interleavings and open-microphone speech timing remain outside this finite projection. Progress requires eventual successful cancellation as an explicit fairness assumption."
     ]
   },
   {
