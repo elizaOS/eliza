@@ -80,6 +80,10 @@ describe("requireConfirmation", () => {
 		"yes please do that",
 		"yes, thanks",
 		"okay, go ahead, thanks",
+		"oui, vas-y",
+		"ja, bitte",
+		"确认，现在删除",
+		"はい、お願いします",
 	])("confirms the yes %j", async (text) => {
 		expect(await replyTo(text)).toBe("confirmed");
 	});
@@ -91,6 +95,12 @@ describe("requireConfirmation", () => {
 		"sure... wait no",
 		"yes, but not Ann",
 		"sí, pero no",
+		"oui, mais pas maintenant",
+		"ja, aber nicht jetzt",
+		"确认，先不要",
+		"确认，但不要删",
+		"确认，取消吧",
+		"はい、やっぱりいいえ",
 		"no, gracias",
 		"cancel",
 		"n",
