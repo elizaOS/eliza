@@ -40,4 +40,3 @@ module NativeRegistryMigration {
   run rollbackPreservesPriorImportTest = init.then(begin(true, false)).then(stage).then(commit)
     .then(begin(true, true)).then(rollback).expect(storedRows == 4 and receiptRows == 4)
 }
-
