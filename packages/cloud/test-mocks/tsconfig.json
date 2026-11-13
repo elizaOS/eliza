@@ -1,5 +1,8 @@
 {
-  "extends": ["../../../tsconfig.json", "../../agent/tsconfig.json"],
+  "extends": [
+    "../../../tsconfig.json",
+    "../../testing/tsconfig.workspace.json"
+  ],
   "compilerOptions": {
     "composite": false,
     "incremental": false,
