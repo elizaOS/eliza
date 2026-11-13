@@ -18,7 +18,7 @@ import {
   CalendarMutationPreflightError,
   type CalendarMutationReceipt,
 } from "../src/mutations/types.ts";
-import { calendarSchema } from "../src/service/index.ts";
+import { calendarSchema } from "../src/service/schema.ts";
 
 const AGENT_ID = "00000000-0000-4000-8000-000000000041";
 const REQUEST_ID = "00000000-0000-4000-8000-000000000042";
@@ -193,6 +193,7 @@ const changedPort: CalendarMutationPort = {
   },
 };
 
+// Match the existing Calendar migration fixture's cold PGlite setup budget.
 beforeAll(async () => {
   pg = new PGlite();
   const db = drizzle(pg);
@@ -202,7 +203,7 @@ beforeAll(async () => {
   );
   await createTable(approvalRequestTable);
   runtime = { agentId: AGENT_ID, adapter: { db }, db } as never;
-});
+}, 60_000);
 
 afterAll(async () => {
   await pg.close();
