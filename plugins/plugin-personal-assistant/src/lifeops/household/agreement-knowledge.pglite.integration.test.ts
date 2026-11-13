@@ -16,6 +16,8 @@ import { withAgentBackupAuthority } from "@elizaos/agent/services/agent-backup-a
 import { AuthStore } from "@elizaos/app/auth";
 import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import type { Plugin } from "@elizaos/core";
+// Preload the host plugin before the fixture's lifecycle timeout begins.
+import "../../plugin.ts";
 import {
   type AgentRuntime,
   attestAuthenticatedApiDeliveryAudience,

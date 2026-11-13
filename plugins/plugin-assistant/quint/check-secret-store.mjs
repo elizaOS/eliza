@@ -67,7 +67,7 @@ const result = spawnSync(
     "--conditions=eliza-source",
     path.join(root, "node_modules/vitest/vitest.mjs"),
     "run",
-    "src/features/secrets/storage/secret-store-model.pglite.test.ts",
+    "src/features/secrets/storage/self-world-model.pglite.test.ts",
     "--maxWorkers=1",
     "--reporter=json",
     `--outputFile=${report}`,

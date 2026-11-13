@@ -4,13 +4,13 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "@playwright/test";
 import { testOutputPath } from "../../../scripts/lib/test-output.ts";
-import type { LoginAuth, LoginSession } from "../../src/sdk/auth.ts";
+import type { LoginAuth } from "../../src/sdk/auth.ts";
 
 declare global {
   interface Window {
     ReviewLoginAuth: typeof LoginAuth;
     reviewAuth: LoginAuth;
-    reviewRotation: Promise<LoginSession | null> | undefined;
+    reviewRotation: ReturnType<LoginAuth["refreshSession"]> | undefined;
     reviewTokens: Map<string, string>;
   }
 }
@@ -67,6 +67,9 @@ test("model cases match real browser access-expiry recovery", async () => {
   let requests = 0;
   let release: (() => void) | undefined;
   let requestHadCredential = false;
+  const releaseResponse = () => {
+    if (release) release();
+  };
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
@@ -209,7 +212,7 @@ test("model cases match real browser access-expiry recovery", async () => {
           expect(requestHadCredential).toBe(true);
           if (model.loggedOut)
             await page.evaluate(() => window.reviewAuth.signOut());
-          release?.();
+          releaseResponse();
           await page.evaluate(() => window.reviewRotation);
         }
         const stored = await page.evaluate(() => {
@@ -256,7 +259,7 @@ test("model cases match real browser access-expiry recovery", async () => {
           errors,
         });
       } finally {
-        release?.();
+        releaseResponse();
         await context.close();
       }
     }

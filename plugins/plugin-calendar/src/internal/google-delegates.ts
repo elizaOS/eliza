@@ -147,13 +147,17 @@ function googleCapabilitiesForAccount(
         "google.calendar.write",
       ],
       "calendar.events.owned.readonly": ["google.calendar.read"],
+      "calendar.events.public.readonly": ["google.calendar.read"],
+      "calendar.app.created": ["google.calendar.read", "google.calendar.write"],
     };
   for (const scope of scopes) {
     const prefix = "https://www.googleapis.com/auth/";
     const suffix = scope.startsWith(prefix)
       ? scope.slice(prefix.length)
       : scope;
-    values.push(...(CALENDAR_SCOPE_CAPABILITIES[suffix] ?? []));
+    if (Object.hasOwn(CALENDAR_SCOPE_CAPABILITIES, suffix)) {
+      values.push(...CALENDAR_SCOPE_CAPABILITIES[suffix]);
+    }
   }
   if (scopes.some((scope) => scope.includes("gmail.readonly"))) {
     values.push("google.gmail.triage");

@@ -1,4 +1,3 @@
-import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { ChannelType, type UUID } from "@elizaos/core";
 import { createTestRuntime } from "@elizaos/testing/runtime";
@@ -11,8 +10,7 @@ import {
 
 interface StoreCase {
   scenario: number;
-  keys: number;
-  allowed?: boolean;
+  storedCount: number;
   worldExists?: boolean;
   metadataKept?: boolean;
 }
@@ -26,7 +24,7 @@ const componentCases = input
     : []
   : [0, 1].map((scenario) => ({
       scenario,
-      keys: scenario === 0 ? 2 : 1,
+      storedCount: scenario === 0 ? 2 : 1,
       worldExists: true,
       metadataKept: true,
     }));
@@ -67,11 +65,13 @@ it.each(componentCases)(
           metadata: { reviewMarker: "retained" },
         });
       }
-      const writes = Array.from({ length: model.keys }, (_, index) =>
+      const writes = Array.from({ length: model.storedCount }, (_, index) =>
         secrets.setUser(`KEY_${index}`, `fixture-${index}`, userId),
       );
-      expect(await Promise.all(writes)).toEqual(Array(model.keys).fill(true));
-      for (let index = 0; index < model.keys; index++) {
+      expect(await Promise.all(writes)).toEqual(
+        Array(model.storedCount).fill(true),
+      );
+      for (let index = 0; index < model.storedCount; index++) {
         expect(await secrets.getUser(`KEY_${index}`, userId)).toBe(
           `fixture-${index}`,
         );

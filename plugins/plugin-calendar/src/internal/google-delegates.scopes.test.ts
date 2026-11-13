@@ -25,6 +25,8 @@ describe("Google account scope projection", () => {
     ["calendar.readonly", false],
     ["calendar.events.readonly", false],
     ["calendar.events.owned.readonly", false],
+    ["calendar.events.public.readonly", false],
+    ["calendar.app.created", true],
   ])("projects %s without promoting read-only scopes", (scope, writable) => {
     for (const value of [scope, `https://www.googleapis.com/auth/${scope}`]) {
       const status = statusForScopes([value]);
@@ -44,6 +46,8 @@ describe("Google account scope projection", () => {
     "calendar.calendarlist.readonly",
     "calendar.not-a-supported-scope",
     "https://example.com/calendar.events",
+    "__proto__",
+    "constructor",
   ])("grants no event capabilities for %s", (scope) => {
     for (const value of [scope, `https://www.googleapis.com/auth/${scope}`]) {
       expect(statusForScopes([value]).grantedCapabilities).toEqual([

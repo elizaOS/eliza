@@ -8,6 +8,8 @@
  */
 
 import { resolveCalendarTimeZone } from "@elizaos/contracts";
+// Preload the host plugin before the fixture's lifecycle timeout begins.
+import "../../plugin.ts";
 import {
   type AgentRuntime,
   type Memory,
