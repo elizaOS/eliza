@@ -399,7 +399,6 @@ export const elizaOSCloudPlugin: Plugin = {
       surface: { header: "fullscreen", capabilities: ["agent-surface", "navigate"] },
       tags: ["cloud", "billing", "credits", "account", "api-keys", "agents"],
       visibleInManager: true,
-      desktopTabEnabled: true,
     },
   ],
 

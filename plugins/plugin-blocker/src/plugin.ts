@@ -58,7 +58,6 @@ export const blockerPlugin: Plugin = {
       tags: ["focus", "blocker", "distraction-control"],
       relatedActions: ["BLOCK"],
       visibleInManager: true,
-      desktopTabEnabled: true,
     },
   ],
   init: async (

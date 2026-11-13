@@ -243,11 +243,10 @@ export const schedulingPlugin: Plugin = {
       componentExport: "LifeOpsLiveTestView",
       tags: ["lifeops", "scheduling", "test", "hitl"],
       // Developer/QA validation surface, not a user destination: gate it behind
-      // Developer Mode and keep it off the launcher grid, the view manager, and
-      // desktop tabs. The route stays reachable for the live-test workflow.
+      // Developer Mode and keep it off the launcher grid and the view manager.
+      // The route stays reachable for the live-test workflow.
       viewKind: "developer",
       visibleInManager: false,
-      desktopTabEnabled: false,
     },
   ],
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {

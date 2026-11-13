@@ -47,7 +47,6 @@ export const relationshipsPlugin: Plugin = {
       tags: ["relationships", "entities", "people", "contacts", "graph"],
       relatedActions: ["ENTITY"],
       visibleInManager: true,
-      desktopTabEnabled: true,
     },
   ],
 };

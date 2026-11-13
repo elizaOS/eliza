@@ -68,7 +68,6 @@ export const walletAppPlugin: Plugin = {
         "BIRDEYE_WALLET_PORTFOLIO",
       ],
       visibleInManager: true,
-      desktopTabEnabled: true,
     },
   ],
   widgets: [

@@ -3160,7 +3160,7 @@ function AppContent() {
   // the user to a specific view by path or view ID.
   // When the target is "/views" or "/apps" (legacy launcher aliases), we also
   // directly set the tab so the nav bar becomes visible.
-  // On desktop, also open the view as a desktop tab if desktopTabEnabled.
+  // A "pin-tab" request also pins the view as a desktop tab.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const baseHandler = createNavigateViewHandler({

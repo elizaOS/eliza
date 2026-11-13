@@ -35,7 +35,6 @@ const VIEW_FIXTURES = [
     pluginName: "core",
     builtin: true,
     tags: ["launcher"],
-    desktopTabEnabled: true,
   },
   {
     id: "settings",
@@ -46,7 +45,6 @@ const VIEW_FIXTURES = [
     pluginName: "core",
     builtin: true,
     tags: ["settings"],
-    desktopTabEnabled: true,
   },
   {
     id: "calendar",
@@ -56,7 +54,6 @@ const VIEW_FIXTURES = [
     available: true,
     pluginName: "calendar",
     tags: ["calendar"],
-    desktopTabEnabled: true,
   },
 ];
 

@@ -23,7 +23,6 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     tags: ["wallet", "portfolio", "holdings"],
     responseContext: { primaryContext: "wallet" },
     visibleInManager: true,
-    desktopTabEnabled: true,
   },
   {
     id: "projects",
@@ -38,7 +37,6 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     responseContext: { primaryContext: "code" },
     relatedActions: ["TASKS"],
     visibleInManager: true,
-    desktopTabEnabled: true,
   },
   {
     id: "camera",
@@ -53,7 +51,6 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     tags: ["camera", "photo", "capture", "video", "vision"],
     responseContext: { primaryContext: "media" },
     visibleInManager: true,
-    desktopTabEnabled: true,
     platforms: ["android"],
     nativeOs: true,
   },
@@ -82,7 +79,6 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
       },
     ],
     visibleInManager: false,
-    desktopTabEnabled: false,
     platforms: ["android"],
     nativeOs: true,
   },
@@ -101,7 +97,6 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     anticipatoryIntent:
       "Offer to pick up the most recent thread or surface anything the user left unfinished, and ask what they want to work on next.",
     visibleInManager: true,
-    desktopTabEnabled: true,
     platforms: ["web", "desktop", "ios", "android"],
   },
   {
@@ -123,7 +118,6 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
       },
     ],
     visibleInManager: false,
-    desktopTabEnabled: true,
     platforms: ["web", "desktop", "ios", "android"],
     surface: { isolation: "native-webview", background: "opaque" },
   },
@@ -214,7 +208,6 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
       },
     ],
     visibleInManager: true,
-    desktopTabEnabled: true,
   },
   {
     id: "documents",
@@ -248,7 +241,6 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     anticipatoryIntent:
       "Offer to triage the newest ingested attachments/documents — summarize, tag, or file them — grounded in the recent-attachment counts.",
     visibleInManager: true,
-    desktopTabEnabled: true,
   },
   {
     id: "automations",
@@ -380,7 +372,6 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     tags: ["files", "attachments", "uploads"],
     responseContext: { primaryContext: "documents" },
     visibleInManager: false,
-    desktopTabEnabled: true,
   },
   {
     id: "stream",
@@ -396,7 +387,6 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
       secondaryContexts: ["system"],
     },
     visibleInManager: false,
-    desktopTabEnabled: true,
   },
   {
     id: "database",
@@ -448,7 +438,6 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
       "Offer to inventory or safely configure the exact credential the user needs without exposing secret values, and distinguish local Vault entries from Eliza Cloud organization credentials.",
     roleGate: { minRole: "OWNER" },
     visibleInManager: true,
-    desktopTabEnabled: true,
     platforms: ["web", "desktop", "ios", "android"],
   },
   {
@@ -468,7 +457,6 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     anticipatoryIntent:
       "Offer to set up the model/provider, voice, or connectors — recommend the smallest concrete configuration step from current settings state.",
     visibleInManager: true,
-    desktopTabEnabled: true,
   },
   {
     id: "background",
@@ -488,7 +476,6 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     anticipatoryIntent:
       "Offer to set the app background — pick a shader color, generate an image, or use an upload.",
     visibleInManager: true,
-    desktopTabEnabled: true,
     platforms: ["web", "desktop", "ios", "android"],
   },
 ];

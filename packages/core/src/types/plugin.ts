@@ -653,8 +653,6 @@ export interface ViewDeclaration {
 		params?: Record<string, unknown>,
 		context?: { runtime?: IAgentRuntime },
 	) => Promise<unknown>;
-	/** Allow this view to be pinned as a desktop tab. Default true. */
-	desktopTabEnabled?: boolean;
 	/** Show this view in the view manager grid. Default true. */
 	visibleInManager?: boolean;
 	/**

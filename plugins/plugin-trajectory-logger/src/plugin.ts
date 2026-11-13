@@ -54,7 +54,6 @@ const trajectoryLoggerPlugin: Plugin = {
       ],
       tags: ["developer", "trajectory", "debugging"],
       visibleInManager: true,
-      desktopTabEnabled: true,
     },
   ],
 };

@@ -140,7 +140,6 @@ interface SharedRestViewRegistration {
   pluginName: string;
   tags?: string[];
   visibleInManager?: boolean;
-  desktopTabEnabled?: boolean;
   builtin: boolean;
   hasHeroImage?: boolean;
 }
@@ -195,7 +194,6 @@ const SHARED_CHAT_VIEW: SharedRestViewRegistration = {
   pluginName: "@elizaos/builtin",
   tags: ["messaging", "conversation", "agent"],
   visibleInManager: true,
-  desktopTabEnabled: true,
   builtin: true,
   hasHeroImage: false,
 };

@@ -32,7 +32,6 @@ const VIEW_FIXTURES = [
     pluginName: "core",
     builtin: true,
     tags: ["launcher"],
-    desktopTabEnabled: true,
   },
   {
     id: "terminal",
@@ -43,7 +42,6 @@ const VIEW_FIXTURES = [
     pluginName: "core",
     builtin: true,
     tags: ["terminal"],
-    desktopTabEnabled: true,
   },
   {
     id: "wallet",
@@ -53,7 +51,6 @@ const VIEW_FIXTURES = [
     available: true,
     pluginName: "wallet",
     tags: ["wallet"],
-    desktopTabEnabled: true,
   },
 ];
 

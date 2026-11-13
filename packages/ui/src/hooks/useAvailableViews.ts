@@ -101,8 +101,6 @@ export interface ViewRegistryEntry {
    * rather than a dynamically loaded plugin view.
    */
   builtin?: boolean;
-  /** When true, the view can be pinned as a native desktop tab in the Electrobun shell. */
-  desktopTabEnabled?: boolean;
   /**
    * True when this view is a native device-OS surface that only exists on the
    * AOSP ElizaOS fork (phone/messages/contacts/camera). Stripped from the view
@@ -204,7 +202,6 @@ function isViewRegistryEntry(value: unknown): value is ViewRegistryEntry {
     isOptionalBoolean(value.visibleInManager) &&
     isOptionalBoolean(value.pinnable) &&
     isOptionalBoolean(value.builtin) &&
-    isOptionalBoolean(value.desktopTabEnabled) &&
     isOptionalBoolean(value.nativeOs) &&
     (value.order === undefined ||
       (typeof value.order === "number" && Number.isFinite(value.order))) &&
@@ -458,7 +455,6 @@ const BUILTIN_SHELL_VIEW_ENTRIES: ViewRegistryEntry[] = Object.entries(
   order: BUILTIN_TAB_ORDER[id as BuiltinTab],
   builtin: true,
   visibleInManager: false,
-  desktopTabEnabled: true,
 }));
 
 /**
