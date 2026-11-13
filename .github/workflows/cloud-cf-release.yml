@@ -115,6 +115,13 @@ on:
         required: false
       ELIZA_APP_TELEGRAM_WEBHOOK_SECRET:
         required: false
+      # Optional during the one-time native registration cutover only.
+      ELIZA_MOBILE_APP_AUTH_APP_ID:
+        required: false
+      ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON:
+        required: false
+      ELIZA_ANDROID_ASSET_LINKS_JSON:
+        required: false
       GATEWAY_WEBHOOK_BOOTSTRAP_SECRET:
         required: false
       GATEWAY_DISCORD_BOOTSTRAP_SECRET:
