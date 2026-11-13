@@ -1,7 +1,7 @@
 diff --git a/android/build.gradle b/android/build.gradle
 --- a/android/build.gradle
 +++ b/android/build.gradle
-@@ -5,6 +5,44 @@
+@@ -5,6 +5,41 @@
      androidxEspressoCoreVersion = project.hasProperty('androidxEspressoCoreVersion') ? rootProject.ext.androidxEspressoCoreVersion : '3.6.1'
  }
  
@@ -15,8 +15,6 @@ diff --git a/android/build.gradle b/android/build.gradle
 +// its own gradle property (`eliza.mtp.android.libdir.<abi>`) and env
 +// var (`ELIZA_MTP_ANDROID_LIBDIR_<ABI>`). For arm64-v8a the legacy
 +// unsuffixed names are still honored for backwards compatibility.
-+// riscv64 has no Vulkan path yet (Wave 2 ships CPU-only), so only the
-+// `cpu` backend is searched on that ABI.
 +def resolveElizaMtpAndroidLibDir = { String abi ->
 +    def propSuffix = abi == 'arm64-v8a' ? '' : ".${abi}"
 +    def envSuffix = abi == 'arm64-v8a' ? '' : "_${abi.replace('-', '_').toUpperCase()}"
@@ -28,10 +26,9 @@ diff --git a/android/build.gradle b/android/build.gradle
 +    def abiToken = [
 +        'arm64-v8a': 'android-arm64',
 +        'x86_64'   : 'android-x86_64',
-+        'riscv64'  : 'android-riscv64',
 +    ][abi]
 +    if (abiToken == null) return ''
-+    def backends = abi == 'riscv64' ? ['cpu'] : ['vulkan', 'cpu']
++    def backends = ['vulkan', 'cpu']
 +    def candidates = backends.collect { backend ->
 +        "${stateDir}/local-inference/bin/mtp/${abiToken}-${backend}"
 +    }
@@ -46,60 +43,30 @@ diff --git a/android/build.gradle b/android/build.gradle
  buildscript {
      repositories {
          google()
-@@ -26,12 +64,21 @@
+@@ -26,12 +61,20 @@
          versionCode 1
          versionName "1.0"
          testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 -        
 +
          ndk {
--            abiFilters 'arm64-v8a'
-+            abiFilters 'arm64-v8a', 'riscv64'
-+        }
+             abiFilters 'arm64-v8a'
+         }
 +
 +        externalNativeBuild {
 +            cmake {
 +                arguments "-DELIZA_REPO_ROOT=${resolveElizaRepoRoot()}",
 +                    "-DELIZA_MTP_ANDROID_LIBDIR_ARM64_V8A=${resolveElizaMtpAndroidLibDir('arm64-v8a')}",
-+                    "-DELIZA_MTP_ANDROID_LIBDIR_RISCV64=${resolveElizaMtpAndroidLibDir('riscv64')}",
 +                    "-DELIZA_SKIP_MTP_ANDROID_LIB=${resolveElizaSkipMtpAndroidLib() ? 'ON' : 'OFF'}"
 +            }
-         }
++        }
      }
 -    
 +
      externalNativeBuild {
          cmake {
              path "src/main/CMakeLists.txt"
-@@ -40,23 +87,23 @@
-             ndkVersion = "29.0.13113456"
-         }
-     }
--    
-+
-     buildTypes {
-         release {
-             minifyEnabled false
-             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-         }
-     }
--    
-+
-     lintOptions {
-         abortOnError = false
-     }
--    
-+
-     compileOptions {
-         sourceCompatibility JavaVersion.VERSION_21
-         targetCompatibility JavaVersion.VERSION_21
-     }
--    
-+
-     sourceSets {
-         main {
-             java {
-@@ -64,13 +111,6 @@
+@@ -64,13 +107,6 @@
              }
          }
      }
@@ -116,7 +83,7 @@ diff --git a/android/build.gradle b/android/build.gradle
 diff --git a/android/src/main/CMakeLists.txt b/android/src/main/CMakeLists.txt
 --- a/android/src/main/CMakeLists.txt
 +++ b/android/src/main/CMakeLists.txt
-@@ -1,131 +1,157 @@
+@@ -1,131 +1,143 @@
 -cmake_minimum_required(VERSION 3.10)
 +cmake_minimum_required(VERSION 3.22)
  
@@ -139,11 +106,7 @@ diff --git a/android/src/main/CMakeLists.txt b/android/src/main/CMakeLists.txt
 +
 +if(ELIZA_SKIP_MTP_ANDROID_LIB)
 +    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/eliza-mtp-smoke.cpp" "extern \"C\" int eliza_mtp_smoke() { return 0; }\n")
-+    if(ANDROID_ABI STREQUAL "riscv64")
-+        set(ELIZA_SMOKE_OUTPUT_NAME "llama-cpp-riscv64")
-+    else()
-+        set(ELIZA_SMOKE_OUTPUT_NAME "llama-cpp-arm64")
-+    endif()
++    set(ELIZA_SMOKE_OUTPUT_NAME "llama-cpp-arm64")
 +    add_library(${ELIZA_SMOKE_OUTPUT_NAME} SHARED "${CMAKE_CURRENT_BINARY_DIR}/eliza-mtp-smoke.cpp")
 +    target_link_libraries(${ELIZA_SMOKE_OUTPUT_NAME} PRIVATE ${LOG_LIB} ${ANDROID_LIB})
 +    set_target_properties(
@@ -230,23 +193,13 @@ diff --git a/android/src/main/CMakeLists.txt b/android/src/main/CMakeLists.txt
 -    ${LLAMACPP_LIB_DIR}/cap-tts.cpp
 -    ${CMAKE_SOURCE_DIR}/jni-utils.h
 -    ${CMAKE_SOURCE_DIR}/jni.cpp
-+if(NOT DEFINED ELIZA_REPO_ROOT)
-+    message(FATAL_ERROR "ELIZA_REPO_ROOT is required for the Eliza MTP Android JNI bridge")
-+endif()
-+
-+# Per-ABI MTP lib dirs are passed by android/build.gradle. Only the
-+# entry for the currently-building ABI is required; the other can be empty.
-+# riscv64 is CPU-only today (no ggml-vulkan.so produced yet).
++# The arm64-v8a MTP lib dir is passed by android/build.gradle.
 +if(ANDROID_ABI STREQUAL "arm64-v8a")
 +    set(ELIZA_MTP_LIBDIR "${ELIZA_MTP_ANDROID_LIBDIR_ARM64_V8A}")
 +    set(ELIZA_OUTPUT_NAME "llama-cpp-arm64")
 +    set(ELIZA_HAS_VULKAN TRUE)
-+elseif(ANDROID_ABI STREQUAL "riscv64")
-+    set(ELIZA_MTP_LIBDIR "${ELIZA_MTP_ANDROID_LIBDIR_RISCV64}")
-+    set(ELIZA_OUTPUT_NAME "llama-cpp-riscv64")
-+    set(ELIZA_HAS_VULKAN FALSE)
 +else()
-+    message(FATAL_ERROR "Unsupported ANDROID_ABI for Eliza MTP JNI bridge: ${ANDROID_ABI} (expected arm64-v8a or riscv64)")
++    message(FATAL_ERROR "Unsupported ANDROID_ABI for Eliza MTP JNI bridge: ${ANDROID_ABI} (expected arm64-v8a)")
 +endif()
 +
 +if(NOT ELIZA_MTP_LIBDIR OR ELIZA_MTP_LIBDIR STREQUAL "")
@@ -312,7 +265,13 @@ diff --git a/android/src/main/CMakeLists.txt b/android/src/main/CMakeLists.txt
 -        SHARED
 -        ${SOURCE_FILES}
 -    )
--
++add_library(
++    ${ELIZA_OUTPUT_NAME}
++    SHARED
++    ${ELIZA_MTP_JNI_CPP}
++    ${ELIZA_LLAMA_CPP_DIR}/common/json-schema-to-grammar.cpp
++)
+ 
 -    # ARM64 specific compile options for real devices
 -    target_compile_options(${target_name} PRIVATE
 -        -march=armv8-a
@@ -324,7 +283,15 @@ diff --git a/android/src/main/CMakeLists.txt b/android/src/main/CMakeLists.txt
 -        -fno-finite-math-only
 -        -funroll-loops
 -    )
--
++target_include_directories(
++    ${ELIZA_OUTPUT_NAME}
++    PRIVATE
++    ${ELIZA_LLAMA_CPP_DIR}/include
++    ${ELIZA_LLAMA_CPP_DIR}/ggml/include
++    ${ELIZA_LLAMA_CPP_DIR}/common
++    ${ELIZA_LLAMA_CPP_DIR}/vendor
++)
+ 
 -    # Link with Android libraries
 -    target_link_libraries(${target_name} 
 -        ${LOG_LIB}
@@ -337,32 +304,6 @@ diff --git a/android/src/main/CMakeLists.txt b/android/src/main/CMakeLists.txt
 -        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/jniLibs/arm64-v8a"
 -    )
 -endfunction()
--
--# Build ARM64 library for real devices
--build_library_arm64(llama-cpp-arm64)
--
--# Print build information
--message(STATUS "Building llama-cpp for Android ARM64 (real devices)")
--message(STATUS "Source directory: ${LLAMACPP_LIB_DIR}")
--message(STATUS "Architecture: ARM64 (arm64-v8a)")
--message(STATUS "Optimizations: ARMv8-A, Cortex-A76 tuning")
--message(STATUS "Output directory: ${CMAKE_CURRENT_SOURCE_DIR}/jniLibs/arm64-v8a")
-+add_library(
-+    ${ELIZA_OUTPUT_NAME}
-+    SHARED
-+    ${ELIZA_MTP_JNI_CPP}
-+    ${ELIZA_LLAMA_CPP_DIR}/common/json-schema-to-grammar.cpp
-+)
-+
-+target_include_directories(
-+    ${ELIZA_OUTPUT_NAME}
-+    PRIVATE
-+    ${ELIZA_LLAMA_CPP_DIR}/include
-+    ${ELIZA_LLAMA_CPP_DIR}/ggml/include
-+    ${ELIZA_LLAMA_CPP_DIR}/common
-+    ${ELIZA_LLAMA_CPP_DIR}/vendor
-+)
-+
 +target_compile_options(
 +    ${ELIZA_OUTPUT_NAME}
 +    PRIVATE
@@ -375,7 +316,9 @@ diff --git a/android/src/main/CMakeLists.txt b/android/src/main/CMakeLists.txt
 +if(ELIZA_HAS_VULKAN)
 +    list(APPEND _eliza_link_libs eliza_ggml_vulkan)
 +endif()
-+
+ 
+-# Build ARM64 library for real devices
+-build_library_arm64(llama-cpp-arm64)
 +target_link_libraries(
 +    ${ELIZA_OUTPUT_NAME}
 +    PRIVATE
@@ -390,7 +333,13 @@ diff --git a/android/src/main/CMakeLists.txt b/android/src/main/CMakeLists.txt
 +    OUTPUT_NAME "${ELIZA_OUTPUT_NAME}"
 +    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/jniLibs/${ANDROID_ABI}"
 +)
-+
+ 
+-# Print build information
+-message(STATUS "Building llama-cpp for Android ARM64 (real devices)")
+-message(STATUS "Source directory: ${LLAMACPP_LIB_DIR}")
+-message(STATUS "Architecture: ARM64 (arm64-v8a)")
+-message(STATUS "Optimizations: ARMv8-A, Cortex-A76 tuning")
+-message(STATUS "Output directory: ${CMAKE_CURRENT_SOURCE_DIR}/jniLibs/arm64-v8a")
 +message(STATUS "Building Eliza MTP JNI bridge for Android ${ANDROID_ABI}")
 +message(STATUS "Eliza repo root: ${ELIZA_REPO_ROOT}")
 +message(STATUS "MTP lib dir: ${ELIZA_MTP_LIBDIR}")
@@ -398,15 +347,7 @@ diff --git a/android/src/main/CMakeLists.txt b/android/src/main/CMakeLists.txt
 diff --git a/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java b/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java
 --- a/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java
 +++ b/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java
-@@ -305,13 +305,40 @@
-                 case "x86_64":
-                     libraryName = "llama-cpp-x86_64";
-                     break;
-+                case "riscv64":
-+                    libraryName = "llama-cpp-riscv64";
-+                    break;
-                 default:
-                     Log.w(TAG, "Unsupported ABI: " + abi + ", falling back to arm64-v8a");
+@@ -310,8 +310,29 @@
                      libraryName = "llama-cpp-arm64";
                      break;
              }
@@ -415,17 +356,14 @@ diff --git a/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java b/
              Log.i(TAG, "Loading native library for ABI: " + abi + " (library: " + libraryName + ")");
 +            // Preload MTP dependency libraries before our JNI bridge so
 +            // dlopen resolves the chain without ld.so probing LD_LIBRARY_PATH.
-+            // riscv64 currently has no ggml-vulkan.so (Wave 2 CPU-only); the
-+            // preload is wrapped in try/catch and an absent dependency is
++            // Each preload is wrapped in try/catch and an absent dependency is
 +            // logged as a warning rather than failing the load.
-+            if ("arm64-v8a".equals(abi) || "riscv64".equals(abi)) {
++            if ("arm64-v8a".equals(abi)) {
 +                java.util.List<String> mtpDependencies = new java.util.ArrayList<>();
 +                mtpDependencies.add("omp");
 +                mtpDependencies.add("ggml-base");
 +                mtpDependencies.add("ggml-cpu");
-+                if ("arm64-v8a".equals(abi)) {
-+                    mtpDependencies.add("ggml-vulkan");
-+                }
++                mtpDependencies.add("ggml-vulkan");
 +                mtpDependencies.add("ggml");
 +                mtpDependencies.add("llama");
 +                for (String dependency : mtpDependencies) {
@@ -440,7 +378,7 @@ diff --git a/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java b/
              System.loadLibrary(libraryName);
              Log.i(TAG, "Successfully loaded llama-cpp native library: " + libraryName);
          } catch (UnsatisfiedLinkError e) {
-@@ -332,7 +359,17 @@
+@@ -332,7 +353,17 @@
                  Log.i(TAG, "Native logging disabled");
              }
              callback.onResult(LlamaResult.success(null));
