@@ -15,13 +15,8 @@
     "drizzle-orm": "0.45.4"
   },
   "scripts": {
-    "sms-gateway:continue": "bun ./gateway/continue-sms-gateway-work.ts",
-    "sms-gateway:deploy:cloud-prod": "bun ./gateway/deploy-cloud-api-production-gateway.ts",
-    "sms-gateway:homepage": "bun ./gateway/check-homepage-public-readiness.ts",
-    "sms-gateway:homepage:dns": "bun ./gateway/sync-homepage-porkbun-dns.ts",
-    "sms-gateway:maintain:cloud-prod": "bun ./gateway/maintain-cloud-api-production-gateway.ts",
-    "sms-gateway:verify:cloud-onboarding": "bun ./gateway/verify-cloud-sms-onboarding-flow.ts",
-    "sms-gateway:verify:cloud-prod": "bun ./gateway/verify-cloud-api-production-deploy.ts"
+    "homepage:check": "bun ./gateway/check-homepage-public-readiness.ts",
+    "homepage:dns": "bun ./gateway/sync-homepage-porkbun-dns.ts"
   },
   "devDependencies": {
     "playwright": "^1.65.0",

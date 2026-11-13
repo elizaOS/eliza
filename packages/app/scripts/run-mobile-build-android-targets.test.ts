@@ -29,7 +29,6 @@ describe("Android mobile build target table", () => {
       "android",
       "android-cloud",
       "android-host-e2e",
-      "android-sms-gateway",
       "android-system",
     ]);
 
@@ -63,12 +62,6 @@ describe("Android mobile build target table", () => {
       webTarget: "android-cloud",
       env: { ELIZA_ANDROID_CLOUD_BUILD: "1" },
       cleartextPolicy: { allowCleartext: false, label: "cloud" },
-    });
-    expect(ANDROID_BUILD_TARGETS["android-sms-gateway"]).toMatchObject({
-      target: "android-sms-gateway",
-      webTarget: "android-cloud-debug",
-      includeSmsGatewayEnvDefaults: true,
-      cleartextPolicy: { allowCleartext: false, label: "sms-gateway" },
     });
     expect(ANDROID_BUILD_TARGETS["android-system"]).toMatchObject({
       target: "android-system",
@@ -290,25 +283,7 @@ describe("Android Gradle command table", () => {
     });
   });
 
-  it("keeps SMS gateway and AOSP/system Gradle contracts separate", () => {
-    expect(
-      resolveAndroidGradleCommands("android-sms-gateway", {
-        env: {},
-        settingsGradle: websiteBlockerSettings,
-      }),
-    ).toEqual({
-      metadataArgs: [
-        "-PelizaCloudBuild=true",
-        "-PelizaStripAgentAssets=true",
-        ":capacitor-cordova-android-plugins:writeDebugAarMetadata",
-      ],
-      buildArgs: [
-        "-PelizaCloudBuild=true",
-        "-PelizaStripAgentAssets=true",
-        ":app:assembleDebug",
-      ],
-    });
-
+  it("keeps the AOSP/system Gradle contract", () => {
     expect(resolveAndroidGradleCommands("android-system", { env: {} })).toEqual(
       {
         metadataArgs: [

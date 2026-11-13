@@ -56,10 +56,6 @@ export {
   ANDROID_PLAY_DATA_EXTRACTION_RULES,
   ANDROID_PLAY_FORBIDDEN_ASSET_MARKERS,
   ANDROID_PLAY_FORBIDDEN_INDEX_HTML_MARKERS,
-  ANDROID_SMS_GATEWAY_STRIPPED_COMPONENTS,
-  ANDROID_SMS_GATEWAY_STRIPPED_JAVA_FILES,
-  ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS,
-  ANDROID_SMS_GATEWAY_STRIPPED_PERMISSIONS,
   applyAndroidCloudSplashTheme,
   applyAndroidPlayManifestHardening,
   assertAndroidCloudNativeLibraryAllowlist,
@@ -83,7 +79,6 @@ export { patchLlamaCppCapacitorPodspecForXcframework } from "./mobile/ios/engine
 import {
   buildAndroid,
   buildAndroidCloud,
-  buildAndroidSmsGateway,
   buildAndroidSystem,
   runAndroidBuild,
 } from "./mobile/android/build.ts";
@@ -208,7 +203,6 @@ export async function main(argv = process.argv.slice(2)) {
   if (
     target !== "android" &&
     target !== "android-host-e2e" &&
-    target !== "android-sms-gateway" &&
     target !== "android-cloud" &&
     target !== "android-system" &&
     target !== "ios" &&
@@ -216,7 +210,7 @@ export async function main(argv = process.argv.slice(2)) {
     target !== "ios-overlay"
   ) {
     console.error(
-      "Usage: bun scripts/run-mobile-build.ts <android|android-host-e2e|android-sms-gateway|android-cloud [--debug | --audit [aab-path]]|android-system|ios|ios-local|ios-overlay>",
+      "Usage: bun scripts/run-mobile-build.ts <android|android-host-e2e|android-cloud [--debug | --audit [aab-path]]|android-system|ios|ios-local|ios-overlay>",
     );
     process.exit(1);
   }
@@ -224,8 +218,6 @@ export async function main(argv = process.argv.slice(2)) {
     await buildAndroid();
   } else if (target === "android-host-e2e") {
     await runAndroidBuild("android-host-e2e");
-  } else if (target === "android-sms-gateway") {
-    await buildAndroidSmsGateway();
   } else if (target === "android-cloud" && options[0] === "--audit") {
     // The Gradle bundleRelease finalizer audits the final AAB through this
     // step, so a direct Gradle or fastlane build gets the same release audit.

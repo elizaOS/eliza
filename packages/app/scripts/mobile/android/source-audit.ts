@@ -9,13 +9,7 @@ import {
   validateAndroidAppActionsXmlResource,
 } from "../android-manifest.ts";
 import { walkFiles } from "../build-tools.ts";
-import {
-  APP,
-  androidDir,
-  platformsDir,
-  repoRoot,
-  systemApkStaging,
-} from "../context.ts";
+import { APP, androidDir, repoRoot, systemApkStaging } from "../context.ts";
 import { escapeRegExp } from "../escape.ts";
 import {
   ANDROID_CLOUD_NATIVE_SIGN_IN_JAVA_FILES,
@@ -25,10 +19,6 @@ import {
   ANDROID_CLOUD_STRIPPED_RESOURCE_FILES,
   ANDROID_CLOUD_STRIPPED_RESOURCE_VALUES,
   ANDROID_PLAY_DATA_EXTRACTION_RULES,
-  ANDROID_SMS_GATEWAY_COMPONENTS,
-  ANDROID_SMS_GATEWAY_PERMISSIONS,
-  ANDROID_SMS_GATEWAY_STRIPPED_COMPONENTS,
-  ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS,
   isCloudBannedAsset,
   isCloudBannedNativeLibrary,
   resolveAndroidCloudAllowedNativePluginPackages,
@@ -332,95 +322,6 @@ export function auditAndroidCloudSource(phase, { env = process.env } = {}) {
     );
   }
   console.log(`[mobile-build] android-cloud ${phase} audit passed.`);
-}
-
-export function auditAndroidSmsGatewaySource(phase) {
-  const failures = [];
-  const manifestPath = path.join(
-    androidDir,
-    "app",
-    "src",
-    "main",
-    "AndroidManifest.xml",
-  );
-  failures.push(...auditAndroidSmsGatewayManifest(manifestPath));
-  failures.push(...missingAndroidSmsGatewayJavaFiles());
-  failures.push(
-    ...androidCloudNativePluginReferenceFailures(
-      ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS,
-    ),
-  );
-
-  if (failures.length > 0) {
-    throw new Error(
-      `[mobile-build] android-sms-gateway ${phase} audit failed:\n` +
-        failures.map((failure) => `  - ${failure}`).join("\n"),
-    );
-  }
-  console.log(`[mobile-build] android-sms-gateway ${phase} audit passed.`);
-}
-
-export function auditAndroidSmsGatewayManifest(manifestPath) {
-  const failures = [];
-  if (!fs.existsSync(manifestPath)) {
-    failures.push("AndroidManifest.xml is missing");
-    return failures;
-  }
-  const xml = stripXmlComments(fs.readFileSync(manifestPath, "utf8"));
-  for (const component of ANDROID_SMS_GATEWAY_COMPONENTS) {
-    if (!xml.includes(component)) {
-      failures.push(`AndroidManifest.xml is missing ${component}`);
-    }
-  }
-  for (const perm of ANDROID_SMS_GATEWAY_PERMISSIONS) {
-    const full = `android.permission.${perm}`;
-    if (!xml.includes(full)) {
-      failures.push(`AndroidManifest.xml is missing ${full}`);
-    }
-  }
-  for (const component of ANDROID_SMS_GATEWAY_STRIPPED_COMPONENTS) {
-    if (xml.includes(component)) {
-      failures.push(`AndroidManifest.xml still references ${component}`);
-    }
-  }
-  if (/usesCleartextTraffic="true"/.test(xml)) {
-    failures.push("AndroidManifest.xml still allows global cleartext traffic");
-  }
-  return failures;
-}
-
-export function missingAndroidSmsGatewayJavaFiles() {
-  const missing = [];
-  const javaRoot = path.join(androidDir, "app", "src", "main", "java");
-  for (const file of ["ElizaSmsGatewayService.java", "ElizaSmsReceiver.java"]) {
-    let found = false;
-    walkFiles(javaRoot, (filePath) => {
-      if (path.basename(filePath) === file) found = true;
-    });
-    if (!found) missing.push(`app/src/main/java is missing ${file}`);
-  }
-  return missing;
-}
-
-export function androidCloudNativePluginReferenceFailures(
-  strippedPlugins = ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
-) {
-  const failures = [];
-  for (const relPath of [
-    "capacitor.settings.gradle",
-    path.join("app", "capacitor.build.gradle"),
-    path.join("app", "src", "main", "assets", "capacitor.plugins.json"),
-  ]) {
-    const filePath = path.join(androidDir, relPath);
-    if (!fs.existsSync(filePath)) continue;
-    const source = fs.readFileSync(filePath, "utf8");
-    for (const [pkg, gradleProject] of strippedPlugins) {
-      if (source.includes(pkg) || source.includes(gradleProject)) {
-        failures.push(`${relPath} still references ${pkg}/${gradleProject}`);
-      }
-    }
-  }
-  return failures;
 }
 
 export function auditAndroidSystemSource(

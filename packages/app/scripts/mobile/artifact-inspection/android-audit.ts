@@ -12,8 +12,6 @@ import {
 import {
   ANDROID_CLOUD_SPLASH_MARK_RESOURCE,
   assertAndroidCloudNativeLibraryAllowlist,
-  assertAndroidSmsGatewayArtifactManifest,
-  assertAndroidSmsGatewayBadging,
   createAndroidPlayManifestPolicy,
   findAndroidCloudPackagedRuntimeOffenders,
   findAndroidPlayIndexHtmlFindings,
@@ -443,55 +441,4 @@ export function auditAndroidCloudArtifact(
   }
   log(`[mobile-build] android-cloud artifact audit passed: ${artifact}`);
   return artifact;
-}
-
-export function auditAndroidSmsGatewayArtifact({
-  androidSdkRoot,
-  javaHome,
-} = {}) {
-  const artifact = findAndroidCloudDebugApk();
-  if (!artifact) {
-    throw new Error(
-      "[mobile-build] android-sms-gateway debug APK was not found under app/build/outputs/.",
-    );
-  }
-
-  assertNoAndroidSmsGatewayPackagedOffenders(artifact, javaHome);
-  assertAndroidArtifactShipsWebPayload(
-    artifact,
-    listAndroidArtifactEntries(artifact, javaHome),
-    { requireAgent: false, label: "android-sms-gateway" },
-  );
-
-  const aapt = resolveAndroidBuildTool(androidSdkRoot, "aapt");
-  if (!aapt) {
-    throw new Error(
-      "[mobile-build] Could not find aapt under Android SDK build-tools for android-sms-gateway artifact audit.",
-    );
-  }
-  const badging = dumpAndroidArtifactBadging(aapt, artifact);
-  assertAndroidSmsGatewayBadging(badging);
-  const manifestText = dumpAndroidArtifactManifest(aapt, artifact);
-  assertAndroidSmsGatewayArtifactManifest(manifestText);
-
-  console.log(
-    `[mobile-build] android-sms-gateway artifact audit passed: ${artifact}`,
-  );
-  return artifact;
-}
-
-export function assertNoAndroidSmsGatewayPackagedOffenders(artifact, javaHome) {
-  const packagedOffenders = findAndroidCloudPackagedRuntimeOffenders(
-    listAndroidArtifactEntries(artifact, javaHome),
-  );
-  if (packagedOffenders.length > 0) {
-    throw mobileBuildError(
-      `[mobile-build] android-sms-gateway artifact contains local runtime payloads:\n` +
-        packagedOffenders.map((entry) => `  - ${entry}`).join("\n"),
-      {
-        code: "ANDROID_CLOUD_RUNTIME_PAYLOAD_PRESENT",
-        context: { artifact, offenders: packagedOffenders },
-      },
-    );
-  }
 }

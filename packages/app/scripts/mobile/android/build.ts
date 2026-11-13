@@ -16,17 +16,12 @@ import {
   auditAndroidCloudArtifact,
   auditAndroidHostE2eArtifact,
   auditAndroidSideloadArtifact,
-  auditAndroidSmsGatewayArtifact,
   auditAndroidSystemArtifact,
 } from "../artifact-inspection/android-audit.ts";
-import {
-  preserveAndroidSmsGatewayArtifact,
-  stageAndroidSystemApk,
-} from "../artifact-inspection/provenance.ts";
+import { stageAndroidSystemApk } from "../artifact-inspection/provenance.ts";
 import { generateAndroidBrandAssets } from "../assets.ts";
 import { prependPath, run, runCapacitor } from "../build-tools.ts";
 import {
-  APP,
   androidAgentSpikeDir,
   androidDir,
   appDir,
@@ -48,10 +43,9 @@ import {
 } from "./overlay.ts";
 import {
   auditAndroidCloudSource,
-  auditAndroidSmsGatewaySource,
   auditAndroidSystemSource,
 } from "./source-audit.ts";
-import { stripAndroidForCloud, stripAndroidForSmsGateway } from "./strip.ts";
+import { stripAndroidForCloud } from "./strip.ts";
 import { resolveAndroidBuildTarget } from "./targets.ts";
 
 export function enforceAndroidSideloadBuildPolicy({ env = process.env } = {}) {
@@ -84,30 +78,16 @@ export function enforceAndroidSideloadBuildPolicy({ env = process.env } = {}) {
   );
 }
 
-export function requireAndroidSmsGatewaySecret({ env = process.env } = {}) {
-  if (!env.ELIZA_ANDROID_SMS_GATEWAY_SECRET) {
-    throw new Error(
-      "ELIZA_ANDROID_SMS_GATEWAY_SECRET is required for android-sms-gateway.",
-    );
-  }
-}
-
 export const ANDROID_PREFLIGHTS = Object.freeze({
   sideload: enforceAndroidSideloadBuildPolicy,
 });
 
-export const ANDROID_AFTER_TOOLCHAIN = Object.freeze({
-  smsGatewaySecret: requireAndroidSmsGatewaySecret,
-});
-
 export const ANDROID_SOURCE_STRIPS = Object.freeze({
   cloud: stripAndroidForCloud,
-  smsGateway: stripAndroidForSmsGateway,
 });
 
 export const ANDROID_SOURCE_AUDITS = Object.freeze({
   cloud: auditAndroidCloudSource,
-  smsGateway: auditAndroidSmsGatewaySource,
   system: auditAndroidSystemSource,
 });
 
@@ -117,18 +97,12 @@ export const ANDROID_ARTIFACT_AUDITS = Object.freeze({
   cloud: ({ env, javaHome }) => auditAndroidCloudArtifact({ env, javaHome }),
   cloudDebug: ({ env, javaHome }) =>
     auditAndroidCloudArtifact({ debug: true, env, javaHome }),
-  smsGateway: ({ androidSdkRoot, javaHome }) =>
-    auditAndroidSmsGatewayArtifact({ androidSdkRoot, javaHome }),
   system: ({ javaHome }) => auditAndroidSystemArtifact({ javaHome }),
 });
 
 export const ANDROID_POST_BUILDS = Object.freeze({
   logCloudRelease: ({ artifact }) =>
     console.log(`[mobile-build] android-cloud release AAB: ${artifact}`),
-  preserveSmsGateway: ({ artifact }) => {
-    preserveAndroidSmsGatewayArtifact(artifact);
-    console.log(`[mobile-build] android-sms-gateway debug APK: ${artifact}`);
-  },
   stageSystemApk: stageAndroidSystemApk,
 });
 
@@ -155,21 +129,6 @@ export function resolveAndroidGradleCommands(
   });
 }
 
-export function resolveAndroidSmsGatewayEnvDefaults(env) {
-  return {
-    ELIZA_ANDROID_SMS_GATEWAY_ENABLED:
-      env.ELIZA_ANDROID_SMS_GATEWAY_ENABLED ?? "true",
-    ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL:
-      env.ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL ??
-      "https://api.eliza.app/api/webhooks/blooio/local?bridge=bluebubbles",
-    ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER:
-      env.ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER ?? "+14159611510",
-    ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL:
-      env.ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL ??
-      "Eliza Cloud Gateway (+14159611510)",
-  };
-}
-
 export function createAndroidBuildEnv(
   target,
   { androidSdkRoot, env, javaHome },
@@ -177,9 +136,6 @@ export function createAndroidBuildEnv(
   return {
     ...env,
     ...target.env,
-    ...(target.includeSmsGatewayEnvDefaults
-      ? resolveAndroidSmsGatewayEnvDefaults(env)
-      : {}),
     ANDROID_HOME: androidSdkRoot,
     ANDROID_SDK_ROOT: androidSdkRoot,
     // The Gradle AAB-audit finalizer resolves this orchestrator by walking up
@@ -228,12 +184,6 @@ export async function runAndroidBuild(
       "Android SDK not found. Set ANDROID_SDK_ROOT or ANDROID_HOME.",
     );
   if (!jdk) throw new Error("JDK 21 not found. Set JAVA_HOME.");
-  runAndroidTargetPhase(
-    target,
-    ANDROID_AFTER_TOOLCHAIN,
-    "afterToolchainResolvedKey",
-    { env: resolvedEnv },
-  );
 
   await buildWeb(target.webTarget);
   if (target.buildMobileAgentBundle) await buildMobileAgentBundle();
@@ -334,10 +284,6 @@ export async function buildAndroid() {
 
 export async function buildAndroidCloud({ debug = false } = {}) {
   await runAndroidBuild("android-cloud", { debug });
-}
-
-export async function buildAndroidSmsGateway() {
-  await runAndroidBuild("android-sms-gateway");
 }
 
 export async function buildAndroidSystem() {
