@@ -103,6 +103,23 @@ function diagnosticError(error: unknown) {
   };
 }
 
+function typeErrorLocation(
+  error: unknown,
+): { line: number; column: number } | undefined {
+  if (!(error instanceof TypeError) || typeof error.stack !== "string") return;
+  for (const frame of error.stack.split("\n").slice(1)) {
+    const match =
+      /^\s+at (?:[^()\r\n]+ \()?(?:async )?(?:(?:file:\/\/\/|\/)(?:[^()\s]+\/)*)?(?:worker|index)\.js:([1-9]\d*):([1-9]\d*)\)?$/.exec(
+        frame,
+      );
+    if (!match) continue;
+    const line = Number(match[1]);
+    const column = Number(match[2]);
+    if (Number.isSafeInteger(line) && Number.isSafeInteger(column))
+      return { line, column };
+  }
+}
+
 /** Only finite diagnostic identifiers from the error and its direct driver cause. */
 export function checkoutFailureDiagnostic(error: unknown) {
   try {
@@ -110,8 +127,10 @@ export function checkoutFailureDiagnostic(error: unknown) {
       error && typeof error === "object" && "cause" in error
         ? error.cause
         : null;
+    const location = typeErrorLocation(error);
     return {
       ...diagnosticError(error),
+      ...(location ? { location } : {}),
       ...(cause !== null && cause !== undefined
         ? { cause: diagnosticError(cause) }
         : {}),
