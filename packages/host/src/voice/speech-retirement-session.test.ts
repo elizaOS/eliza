@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import {
   createSpeechRelaySession,
   type SpeechRelayCreditReservation,
@@ -108,6 +108,62 @@ const identity = {
   userId: "owner",
   cloudSessionId: "session",
 };
+test("paid renewal retains one STT connection and settles each window once", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(1_000);
+  const p = ports();
+  const events: unknown[] = [];
+  const original = p.value.reserveCredits;
+  let window = 0,
+    opened = 0;
+  const open = p.value.openStt;
+  p.value.openStt = (...args) => {
+    opened++;
+    return open(...args);
+  };
+  p.value.reserveCredits = async (...args) => {
+    const index = window++;
+    const admission = await original(...args);
+    return {
+      ...admission,
+      settle: async (details, kinds) => {
+        const result = await admission.settle(details, kinds);
+        for (const kind of ["stt", "tts"] as const)
+          if (result?.[kind])
+            result[kind].requestId += index ? `:${index}` : "";
+        return result;
+      },
+    };
+  };
+  p.value.maxWindows = 2;
+  p.value.extend = async (_scope, expiresAt) => expiresAt;
+  p.value.emit = (event) => events.push(event);
+  try {
+    const session = await createSpeechRelaySession(
+      identity,
+      "consent",
+      p.value,
+    );
+    await vi.advanceTimersByTimeAsync(50_000);
+    expect(events).toContainEqual({
+      t: "extended",
+      expiresAt: new Date(111_000).toISOString(),
+    });
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(opened).toBe(1);
+    expect(p.handle.evidence()).toBeUndefined();
+    await session.close();
+    expect(p.handle.evidence()).toMatchObject({
+      accounting: "settled_actual",
+      moneyTerminal: true,
+    });
+    expect(p.money).toBe(4);
+    await session.close();
+    expect(p.money).toBe(4);
+  } finally {
+    vi.useRealTimers();
+  }
+});
 test("trusted STT drain and actual settlement yield explicit evidence", async () => {
   const p = ports();
   const session = await createSpeechRelaySession(identity, "consent", p.value);

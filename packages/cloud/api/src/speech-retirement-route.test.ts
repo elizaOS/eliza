@@ -105,7 +105,7 @@ test("new mint persists and acknowledges requested proof version", async () => {
     },
     env() as never,
   );
-  expect(res.headers.get(SPEECH_RELAY_EXTEND_HEADER)).toBeNull();
+  expect(res.headers.get(SPEECH_RELAY_EXTEND_HEADER)).toBe("1");
   expect((await responseObject(res)).retirementProofVersion).toBe(1);
   expect(data.calls[0].body.proofVersion).toBe(1);
 });

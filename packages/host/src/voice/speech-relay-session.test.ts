@@ -766,12 +766,13 @@ test("closing while an extension is in flight settles every reservation exactly 
     session = await f.open();
   await until(() => f.order.filter((step) => step === "credits").length === 2);
   await tick();
-  await session.close();
+  const closing = session.close();
+  accept(0);
+  await closing;
   // The renewal was never granted: its reservation carries no usage.
   expect(f.settled).toHaveLength(2);
   expect(f.settled[0]).toMatchObject({ dispatched: { stt: true } });
   expect(f.settled[1]).toEqual(UNGRANTED);
-  accept(0);
   await tick();
   await sleep(5);
   expect(f.settled).toHaveLength(2);
@@ -792,21 +793,22 @@ test("a reservation that lands after close is released, not leaked", async () =>
   };
   const session = await f.open();
   await until(() => calls === 2);
-  await session.close();
-  expect(f.settled).toHaveLength(1);
+  const closing = session.close();
   admit();
-  await until(() => f.settled.length === 2);
-  expect(f.settled[1]).toEqual(UNGRANTED);
+  await closing;
+  expect(f.settled).toHaveLength(2);
+  expect(f.settled).toContainEqual(UNGRANTED);
+  expect(f.settled).toContainEqual(expect.objectContaining({ dispatched: { stt: true, tts: false } }));
   expect(f.extensions).toEqual([]);
   expect(f.order.filter((step) => step === "quota-release")).toHaveLength(1);
 });
-test("a late renewal never asks for more than one window past the current end", async () => {
+test("a late renewal cannot revive an expired speech window", async () => {
   const f = renewing({ expiresAt: 1_000 + 20 }),
     session = await f.open();
   // The renewal runs only after the clock already passed the current end.
   f.advance(25);
-  await until(() => f.extensions.length === 1);
-  expect(f.extensions[0]).toBe(1_020 + SPEECH_RELAY_BUDGET.durationMs);
+  await sleep(30);
+  expect(f.extensions).toEqual([]);
   await session.close();
 });
 
