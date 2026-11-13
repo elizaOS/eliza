@@ -109,7 +109,29 @@ it("stores a 2 MiB binary file the VFS accepts", async () => {
   const read = await readFile(project, "bundle.bin", { encoding: "base64" });
   expect(read.status).toBe(200);
   expect(
-    Buffer.from(((await read.json()) as { content: string }).content, "base64")
-      .length,
-  ).toBe(bytes.length);
+    Buffer.from(((await read.json()) as { content: string }).content, "base64"),
+  ).toEqual(bytes);
+}, 120_000);
+
+it("stores JSON-escaped text within the decoded VFS file limit", async () => {
+  const project = randomUUID();
+  const content = "\u0000".repeat(3 * 1024 * 1024);
+  const written = await putFile(project, {
+    path: "controls.txt",
+    content,
+    encoding: "utf-8",
+  });
+  expect(written.status).toBe(200);
+  const read = await readFile(project, "controls.txt");
+  expect(read.status).toBe(200);
+  expect(((await read.json()) as { content: string }).content).toBe(content);
+}, 120_000);
+
+it("keeps the decoded VFS file limit enforced after transport accepts the body", async () => {
+  const written = await putFile(randomUUID(), {
+    path: "too-large.txt",
+    content: "x".repeat(10 * 1024 * 1024 + 1),
+    encoding: "utf-8",
+  });
+  expect(written.status).toBe(413);
 }, 120_000);

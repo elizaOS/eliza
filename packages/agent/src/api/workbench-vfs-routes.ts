@@ -416,12 +416,11 @@ async function handleFile(
   }
 
   if (method === "PUT") {
-    // The VFS accepts a file up to its own per-file limit (10 MiB by default),
-    // and a base64 body is 4/3 of that file, plus JSON framing. Read the body
-    // with that budget: the server's 1 MiB default answered 413 before this
-    // handler could apply the VFS limits at all.
+    // JSON can encode one UTF-8 control byte as six ASCII bytes (\u0000).
+    // This also covers base64 expansion. The VFS still applies its decoded
+    // per-file limit; this request budget only covers transport and framing.
     const raw = await readJsonBody<Record<string, unknown>>(req, res, {
-      maxBytes: Math.ceil((vfs.maxFileBytes * 4) / 3) + 4096,
+      maxBytes: vfs.maxFileBytes * 6 + 4096,
     });
     if (raw === null) return;
     const parsed = PutWorkbenchVfsFileRequestSchema.safeParse(raw);

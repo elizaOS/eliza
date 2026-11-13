@@ -1144,15 +1144,13 @@ function parseOAuthRedirectUri(redirectUri: string): URL {
  * configuration entry, not a redirect_uri that failed the policy check. Raising
  * it lets the operator see the real fault instead of a policy denial.
  */
-export class OAuthRedirectAllowlistEntryError extends Error {
-  readonly entry: string;
-
-  constructor(entry: string) {
+export class OAuthRedirectAllowlistEntryError extends ElizaError {
+  constructor() {
     super(
       "OAuth redirect_uri allowlist contains an entry that is not a valid absolute URL",
+      { code: "OAUTH_REDIRECT_ALLOWLIST_ENTRY_INVALID" },
     );
     this.name = "OAuthRedirectAllowlistEntryError";
-    this.entry = entry;
   }
 }
 
@@ -1164,7 +1162,7 @@ function isOAuthRedirectEntryMatch(
   try {
     allowedUrl = new URL(allowedEntry);
   } catch {
-    throw new OAuthRedirectAllowlistEntryError(allowedEntry);
+    throw new OAuthRedirectAllowlistEntryError();
   }
 
   if (allowedUrl.protocol !== "https:" && allowedUrl.protocol !== "http:") {
@@ -1277,7 +1275,7 @@ export async function assertAllowedOAuthRedirectUri(
   if (!matched) {
     if (invalidEntry) {
       logger.warn(
-        { allowedEntry: invalidEntry.entry },
+        { code: invalidEntry.code },
         "OAuth redirect_uri allowlist contains an unparseable entry",
       );
       throw invalidEntry;

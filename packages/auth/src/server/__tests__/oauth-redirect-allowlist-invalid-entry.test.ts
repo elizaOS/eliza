@@ -7,17 +7,32 @@
  * fault never surfaces. A malformed entry can never match, so raising it once
  * nothing matched changes no accepted redirect.
  */
-import { expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
+import type { createPGLiteDb } from "../db/pglite.ts";
 
-const dbModule = await import("../db/index.ts");
-const actualDb = dbModule as Record<string, unknown>;
-
-// The allowlist rows come from the shared DB client; the store is not what is
-// under test here, so every query returns no rows.
-mock.module("../db/index.ts", () => ({
-  ...actualDb,
-  getDb: () => ({ execute: async () => ({ rows: [] }) }),
-}));
+let database: Awaited<ReturnType<typeof createPGLiteDb>>;
+const databaseEnvironment = new Map<string, string | undefined>();
+beforeAll(async () => {
+  for (const [key, value] of Object.entries({
+    NODE_ENV: "test",
+    STEWARD_DB_MODE: "pglite",
+    STEWARD_PGLITE_MEMORY: "true",
+  })) {
+    databaseEnvironment.set(key, process.env[key]);
+    process.env[key] = value;
+  }
+  const { createPGLiteDb } = await import("../db/pglite.ts");
+  const { setPGLiteOverride } = await import("../db/client.ts");
+  database = await createPGLiteDb("memory://");
+  setPGLiteOverride(database.db, () => database.client.close());
+}, 60_000);
+afterAll(async () => {
+  if (database) await database.client.close();
+  for (const [key, value] of databaseEnvironment) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+});
 
 const ENV_KEYS = [
   "STEWARD_OAUTH_ALLOWED_REDIRECTS",

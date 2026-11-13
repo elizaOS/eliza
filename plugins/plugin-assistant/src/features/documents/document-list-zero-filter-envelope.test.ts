@@ -8,9 +8,9 @@ import {
   type Memory,
   type UUID,
 } from "@elizaos/core";
-import { wrapExternalContent } from "../../../../../packages/core/src/security/external-content.ts";
 import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { wrapExternalContent } from "../../../../../packages/core/src/security/external-content.ts";
 import { documentAction } from "./actions.ts";
 import { DocumentService } from "./service.ts";
 
