@@ -1,7 +1,7 @@
 /**
  * Vite configuration for the cross-platform app renderer.
  *
- * The config keeps web, Electrobun, and Capacitor builds on the same source
+ * The config keeps web and Capacitor builds on the same source
  * graph while pinning browser-safe aliases, dev-server prebundles, and manual
  * chunks that protect startup order for native, wallet, crypto, and workspace
  * package dependencies.
@@ -1360,7 +1360,7 @@ const localVoiceGatewayPort = resolveOptionalLocalVoiceGatewayPort(
 );
 const viteDevServerRuntime = resolveViteDevServerRuntime(process.env, uiPort);
 const enableAppSourceMaps = process.env.ELIZA_APP_SOURCEMAP === "1";
-/** Set by eliza/packages/app/scripts/dev-platform.ts for `vite build --watch` (Electrobun desktop). */
+/** Set by the live-stack Playwright runner for a fast `vite build --watch` dist. */
 const desktopFastDist = process.env.ELIZA_DESKTOP_VITE_FAST_DIST === "1";
 function resolveOptionalLocalVoiceGatewayPort(
   raw: string | undefined,
@@ -1609,8 +1609,8 @@ function resolveManualChunk(id: string): string | undefined {
   return undefined;
 }
 /**
- * Dev-only middleware that handles CORS for the desktop custom-scheme origin
- * (electrobun://-). Vite's proxy doesn't reliably forward CORS headers
+ * Dev-only middleware that handles CORS for native-shell origins (for example
+ * capacitor://localhost). Vite's proxy doesn't reliably forward CORS headers
  * for non-http origins, so we intercept preflight OPTIONS requests and tag
  * every /api response with the correct headers before the proxy layer.
  */
@@ -1948,7 +1948,7 @@ const optimizerNodePolyfills: Readonly<Record<string, string>> = (() => {
 export default defineConfig(({ command, mode }) => ({
   root: here,
   customLogger: viteLogger,
-  // Native shells (Electrobun `views://`, Capacitor `file://`) load assets
+  // Native shells (Capacitor `file://`) load assets
   // relative to the HTML document, so they need a relative base — keep "./".
   // The web bundle (`build:web` → Cloudflare Pages, served from an origin root)
   // is an SPA whose client-side routes go several segments deep
@@ -1978,8 +1978,8 @@ export default defineConfig(({ command, mode }) => ({
       localVoiceGatewayPort,
       here,
     ),
-    // Build variant — set at signing time by desktop-build.ts and embedded
-    // here so the renderer can branch on store vs direct without an API call.
+    // Build variant — set by the store build lanes and embedded here so the
+    // renderer can branch on store vs direct without an API call.
     __ELIZA_BUILD_VARIANT__: JSON.stringify(
       process.env.ELIZA_BUILD_VARIANT === "store" ? "store" : "direct",
     ),
@@ -1988,9 +1988,6 @@ export default defineConfig(({ command, mode }) => ({
     // Capacitor mobile bundles mount the tab/view App directly and must not
     // grow. This compile-time constant lets the mobile build tree-shake the
     // entire shell + Steward/wallet + public-page chunks out of the bundle.
-    // Desktop (Electrobun) shares this `dist`, so the constant is `true` there
-    // too; `main.tsx` then branches at runtime so only the actual web platform
-    // mounts the shell (desktop mounts App directly).
     // `ELIZA_DISABLE_WEB_SHELL=1` drops the cloud router shell from a web build
     // too (same tree-shake path as mobile) — used by the ui-smoke lane, which
     // exercises the agent app, not the cloud surface.
@@ -2664,7 +2661,6 @@ export const INVALID_TRACER_PROVIDER = {};
               "api/ios-local-agent-transport.ts",
             ),
           },
-          // Desktop shell resolves through its own renderer entry.
         ];
       })(),
     ],
@@ -2819,7 +2815,7 @@ export const INVALID_TRACER_PROVIDER = {};
   },
   build: {
     outDir: path.resolve(here, "web-dist"),
-    // Watch + incremental: avoid wiping dist each cycle; keeps Electrobun reloads fast.
+    // Watch + incremental: avoid wiping dist each cycle.
     emptyOutDir: !desktopFastDist,
     sourcemap: desktopFastDist ? false : enableAppSourceMaps,
     target: "es2022",
@@ -2978,8 +2974,8 @@ export const INVALID_TRACER_PROVIDER = {};
     // graph is large (~1200 workspace source modules), so warming it parallelizes
     // the transform work and shortens cold-load TTFB after a server (re)start.
     warmup: { clientFiles: ["src/main.tsx"] },
-    // Only pin the dev origin when the desktop shell explicitly asks for a
-    // loopback public URL. Capacitor live reload and LAN/browser clients need
+    // Only pin the dev origin when a caller explicitly asks for a loopback
+    // public URL. Capacitor live reload and LAN/browser clients need
     // Vite to keep serving the current request host instead of rewriting
     // module URLs back to 127.0.0.1.
     ...(viteDevServerRuntime.origin
@@ -3063,15 +3059,10 @@ export const INVALID_TRACER_PROVIDER = {};
     watch: {
       // Polling is only needed in Docker/WSL where native fs events are unreliable
       usePolling: process.env.ELIZA_DEV_POLLING === "1",
-      // Electrobun postBuild copies renderer HTML/assets into electrobun/build/.
-      // Watching those paths triggers full reloads while deps are still optimizing,
-      // which breaks with "chunk-*.js does not exist" in node_modules/.vite/deps.
-      // Benchmark packages are large offline fixture trees; the desktop renderer
-      // does not import them, and watching them can exhaust the kernel watcher
-      // limit before the desktop renderer is interactive.
+      // Benchmark packages are large offline fixture trees; the renderer does
+      // not import them, and watching them can exhaust the kernel watcher limit
+      // before the renderer is interactive.
       ignored: [
-        "**/electrobun/build/**",
-        "**/electrobun/artifacts/**",
         "**/packages/app/.vite/**",
         "**/packages/**/.turbo/**",
         "**/packages/**/.wrangler/**",
