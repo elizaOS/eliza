@@ -255,7 +255,10 @@ describe("check-in source availability and generation failures", () => {
       "Provider offset edit",
       "Today",
     ]);
-    expect(section?.error).toBeNull();
+    expect(section?.coverage).toBe("partial");
+    expect(section?.error).toContain(
+      "45 Calendar records have invalid source metadata or timestamps",
+    );
     expect(section?.summary).toContain("4 calendar items added or updated");
     expect(
       await db.query(
@@ -300,7 +303,7 @@ describe("check-in source availability and generation failures", () => {
     ]);
     expect(section?.coverage).toBe("partial");
     expect(section?.error).toContain(
-      "2 Calendar records have unreadable source metadata",
+      "2 Calendar records have invalid source metadata or timestamps",
     );
     expect(section?.summary).toContain("1 calendar item added or updated");
     expect(runtime.reportError).toHaveBeenCalledWith(

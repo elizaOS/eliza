@@ -1449,6 +1449,7 @@ async function collectCalendarChangeSection(
           (value) => value !== undefined && value !== null && value !== "",
         );
         const sourceMs = typeof source === "string" ? parseMs(source) : null;
+        if (source !== undefined && sourceMs === null) invalidMetadata += 1;
         return {
           ...row,
           updated_at:
@@ -1467,7 +1468,7 @@ async function collectCalendarChangeSection(
       .slice(0, 40);
     const metadataError =
       invalidMetadata > 0
-        ? `${invalidMetadata} Calendar records have unreadable source metadata; their edit times are unavailable.`
+        ? `${invalidMetadata} Calendar records have invalid source metadata or timestamps; their edit times are unavailable.`
         : null;
     if (metadataError) {
       runtime.reportError(
