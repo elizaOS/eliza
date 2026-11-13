@@ -202,6 +202,7 @@ test("reads complete callback binding from the deployed staging branch across al
     environment: "staging",
     fetchImpl: (async (input: string | URL | Request) => {
       const url = String(input);
+      expect(new URL(url).searchParams.has("per_page")).toBe(false);
       requests.push(url);
       const result = url.endsWith("/eliza-app")
         ? { name: "eliza-app" }
@@ -219,4 +220,28 @@ test("reads complete callback binding from the deployed staging branch across al
   });
   expect(value).toBe(source.callbacks);
   expect(requests).toHaveLength(4);
+});
+
+test("Pages failures report only request stage and numeric provider codes", async () => {
+  const { readDeployedNativeCallbacks } = await import(
+    "./migrate-native-app-auth.ts"
+  );
+  await expect(
+    readDeployedNativeCallbacks({
+      accountId: "a".repeat(32),
+      token: "not-logged-token",
+      project: "eliza-app",
+      environment: "staging",
+      fetchImpl: (async () =>
+        Response.json(
+          {
+            success: false,
+            errors: [{ code: 10000, message: "private provider details" }],
+          },
+          { status: 400 },
+        )) as typeof fetch,
+    }),
+  ).rejects.toThrow(
+    "Native client migration refused: pages_project_http_400_codes_10000",
+  );
 });
