@@ -1,4 +1,58 @@
 {
+  "DomainHealthRotation.qnt": [
+    {
+      "file": "packages/cloud/shared/src/lib/services/__tests__/domain-health-batch-rotation.pglite.test.ts",
+      "required": [
+        "checks oldest eligible domains and rotates persisted outcomes"
+      ]
+    }
+  ],
+  "DiscordWelcomeQueue.qnt": [
+    {
+      "file": "packages/cloud/services/gateway-container/cloudflare/discord-welcome-state.test.ts",
+      "required": [
+        "quiesced import preserves FIFO order, processing recovery, and delivered markers",
+        "an abandoned processing claim survives restart with its complete payload",
+        "public queue transport rejects imports, unauthorized callers and foreign lists",
+        "stop joins processing recovery and leaves the welcome available to the next owner",
+        "stop joins admitted delivery before another startup can recover its claim",
+        "transient welcome delivery retains its payload and nonce through durable retry",
+        "accepted welcome survives a rejected marker write at the delivery attempt limit",
+        "lost delivered-marker reply preserves the claim for marker replay",
+        "lost processing-removal reply does not requeue a delivered welcome",
+        "lost retry replacement reply retains only the delayed retry after restart",
+        "retry replacement preserves unrelated and duplicate legacy processing members",
+        "the same welcome poller resumes its retained claim after the state owner supports atomic retry"
+      ]
+    }
+  ],
+  "worker_cache_circuit.qnt": [
+    {
+      "file": "packages/cloud/api/__tests__/cache-circuit.miniflare.test.ts",
+      "required": [
+        "Worker circuit crosses response boundaries using a relative DO timer",
+        "clock identities cannot mutate tenant admission and the control Worker has no public clock route",
+        "an unknown clock acknowledgement retains its owner and restart can only extend its wait",
+        "a delayed ready receipt cannot reopen a later failure generation",
+        "a new request owns its probe while an older deferred clock reply is pending"
+      ]
+    }
+  ],
+  "cache_breaker_receipts.qnt": [
+    {
+      "file": "packages/cloud/shared/src/lib/cache/client-circuit.test.ts",
+      "required": [
+        "a forward wall-clock jump cannot bypass the cache breaker cooldown",
+        "elapsed cooldown permits a confirmed delete after a backward wall-clock jump",
+        "the exact cooldown boundary stays blocked and a later probe can fail",
+        "cache hits reset failures while successful misses retain them",
+        "a rejected backend delete is unconfirmed and preserves the cached value",
+        "already admitted reads can settle after the cache breaker opens",
+        "a lost reply after a real backend delete remains unconfirmed",
+        "a client with no selected backend confirms that it has nothing to invalidate"
+      ]
+    }
+  ],
   "app_deploy_generation.qnt": [
     {
       "file": "packages/cloud/shared/src/lib/services/__tests__/app-deploy-failed-attempt.pglite.test.ts",
@@ -7,6 +61,9 @@
         "an interrupted deploy acknowledges its exact durable child without repeating the handoff",
         "a lost child insert response retains the committed child without failing the app",
         "app deploy handoff recovery preserves the URL published by its ready child",
+        "a live provision child links its container when its original parent is terminal",
+        "exhausted provision acknowledgement preserves the committed app READY result",
+        "an exhausted pre-READY provision failure still marks the current deployment failed",
         "an exhausted deploy lease keeps an unconfirmed app generation in the deletion inventory",
         "an app deletion claim does not hide its interrupted deployment from recovery",
         "a deploy attempt that fails after the runner claims it leaves the app redeployable",
@@ -273,6 +330,205 @@
         "mismatched provider/plan/period observation fails closed: invalid_period_start",
         "deleted-account, cross-tenant and unavailable authority cannot finalize",
         "an immutable invoice receipt cannot enter terminal lifecycle finalization"
+      ]
+    }
+  ],
+  "SharedHistoryHydration.qnt": [
+    {
+      "file": "packages/cloud/api/__tests__/shared-runtime-first-turn-warming.miniflare.test.ts",
+      "required": [
+        "a cold room's first history read joins in-flight hydration instead of returning warming",
+        "hydration slower than the bound still fails closed with the retryable warming",
+        "a failed history load returns warming and starts a fresh read on retry",
+        "a canonical Personal Shared turn lets keep-warm prewarm report its owning organization",
+        "deferred prewarm joins one warmup and a cancelled body leaves the room and peer live",
+        "a deferred module failure fails both bodies and a later prewarm starts a fresh attempt"
+      ]
+    }
+  ],
+  "SharedInterruptedTurn.qnt": [
+    {
+      "file": "packages/cloud/api/__tests__/shared-runtime-cutover-reminder.miniflare.test.ts",
+      "required": [
+        "a stale idle alarm retains a newer saved turn and its replay claim",
+        "idle expiry rechecks its deadline after awaiting the dirty snapshot mirror",
+        "idle expiry retains a failed mirror and retires only after an acknowledged retry",
+        "a committed seal rejects a reminder before history mutation or inference",
+        "fallback recovery seals its imported snapshot and retains admission fencing after failed import",
+        "an evicted object reloads a checkpointed interrupted turn before admission",
+        "a connector turn refused by the cutover seal is a retryable hold, before and after commit",
+        "real DO rejects forged Network scope before transport or history access",
+        "Slop and Friends transport metadata keep one canonical Personal conversation",
+        "actual Shared bridge and stream replay DO receipts across Network changes without inference",
+        "canonical Network delivery extends Personal history once and honors ownership fences before dispatch",
+        "first handled text requires real Gateway JWT and service proof, then reuses the phone owner and canonical history",
+        "canonical eliza-app handled proof reaches its delivery verifier and records history once",
+        "a legacy dispatching intent without dispatchedAt keeps the claim grace window",
+        "a retryable gateway refusal leaves the delivery sendable on retry"
+      ]
+    }
+  ],
+  "mcp_hosted_discovery.qnt": [
+    {
+      "file": "packages/cloud/shared/src/lib/eliza/plugin-mcp/service.lifecycle.integration.test.ts",
+      "required": [
+        "stopping a disconnected HTTP session retires its lazy tool actions",
+        "stopping during real HTTP discovery prevents late tool publication",
+        "stop fences lazy publication after temporary HTTP transport close",
+        "stopping a lazy server preserves a replacement runtime action with the same name",
+        "stopping a started service rejects a pending lazy HTTP connection"
+      ]
+    },
+    {
+      "file": "packages/cloud/shared/src/lib/eliza/plugin-mcp/service.reconnect.test.ts",
+      "required": [
+        "failed connection retries back off and stop at the cap",
+        "transport construction failures also reach the cap",
+        "success resets the retry ladder",
+        "stop cancels retries even when no transport could be constructed",
+        "stop during an in-flight retry leaves no state or timers",
+        "an explicit reconnect starts a fresh retry ladder"
+      ]
+    }
+  ],
+  "held_webhook_retry.qnt": [
+    {
+      "file": "packages/cloud/services/gateway-container/cloudflare/webhook-ingress-state.test.ts",
+      "required": [
+        "complete ingress snapshot preserves content and expiry and cannot reopen after serving",
+        "hold transaction fences stale owners and preserves a reopened marker during cleanup",
+        "real hold drainer renews its native lease across long redelivery and does not dispatch twice",
+        "slow redelivery retains the full retry delay after the held outcome",
+        "a stale replica scan cannot redeliver a re-held member while another member is due",
+        "public ingress transport rejects imports and unrelated keyspaces"
+      ]
+    }
+  ],
+  "speech_deferred_opening.qnt": [
+    {
+      "file": "packages/cloud/api/__tests__/speech-relay-worker.test.ts",
+      "required": [
+        "ready speech streams PCM and multiple TTS contexts without another DB/auth/admission operation",
+        "a refused credit reservation preserves the allowlisted recovery reason before providers open",
+        "legacy speech clients receive no unnegotiated billing reason",
+        "staging reports numeric bootstrap phases only to a client that asked in hello",
+        "a refused revocation fence releases the concurrently admitted leases before any provider opens",
+        "authoritative org, API-key and session-cutoff revocations stop active speech through the internal socket",
+        "barge-in settles only the submitted TTS characters across contexts, not the full reserved monthly allowance",
+        "the Cloud client's prepare-first frames speak, finish silently and cancel with one tts_prepared per context",
+        "socket Stop settles with the DO bindings and a fresh DB context before a later revoke",
+        "an extending client keeps one live session past its minted end with a fresh fence and reservation",
+        "a declined renewal keeps the minted end and holds no lease for it",
+        "pre-hello revoke closes the public socket and late hello cannot open providers",
+        "real coordinator forwards STT-only selection and bounds unknown TTS money without confirming proof",
+        "unknown STT drain charges one initial hold and zero for an unused renewal",
+        "complete STT drain charges exact PCM once and zero for the unused renewed budget",
+        "a consent warm instantiates the session object without a ledger, and one mint owns it",
+        "a new host cannot revoke an old legacy session; the retained namespace can settle it once",
+        "revoke during deferred upgrade import refuses late public socket allocation",
+        "revoke joins a claimed opening across deferred imports before confirming no dispatch",
+        "failed deferred close import preserves an unconfirmed outcome and blocks a late upgrade",
+        "prepared UUIDv5 consent refuses missing before provider admission",
+        "prepared UUIDv5 consent refuses foreign owner before provider admission",
+        "prepared UUIDv5 consent refuses foreign organization before provider admission",
+        "prepared UUIDv5 consent refuses wrong nonce before provider admission",
+        "prepared UUIDv5 consent refuses expired before provider admission",
+        "prepared UUIDv5 consent revocation rejects a delayed mint and replays the same retirement",
+        "prepared UUIDv5 consent has one atomic mint winner and no replay",
+        "prepared speech and its expiry persist together in real SQLite storage"
+      ]
+    }
+  ],
+  "agent_backup_capture_handoff.qnt": [
+    {
+      "file": "packages/cloud/shared/src/lib/services/agent-backup-capture-v3-publication-source.test.ts",
+      "required": [
+        "reopens capture-only handoff, verifies bytes, and resumes partial publication",
+        "repairs a lost recordCaptured response before captured advances to uploading",
+        "rejects stale execution before taking the spool lock",
+        "stops the cleanup janitor after abort during its first await without starting another action",
+        "releases the spool lock after abort and resumes partial cleanup",
+        "keeps published spool until authoritative protected proof, then removes it",
+        "retains changed partial replay until terminal settlement authorizes bounded cleanup",
+        "retains a durable cleanup intent across retention expiry and retries it"
+      ]
+    }
+  ],
+  "agent_backup_spool_cleanup.qnt": [
+    {
+      "file": "packages/cloud/shared/src/lib/services/agent-backup-capture-v3-publication-source.test.ts",
+      "required": [
+        "reopens capture-only handoff, verifies bytes, and resumes partial publication",
+        "repairs a lost recordCaptured response before captured advances to uploading",
+        "rejects stale execution before taking the spool lock",
+        "stops the cleanup janitor after abort during its first await without starting another action",
+        "releases the spool lock after abort and resumes partial cleanup",
+        "keeps published spool until authoritative protected proof, then removes it",
+        "retains changed partial replay until terminal settlement authorizes bounded cleanup",
+        "retains a durable cleanup intent across retention expiry and retries it"
+      ]
+    }
+  ],
+  "app_deploy_ready_writeback.qnt": [
+    {
+      "file": "packages/cloud/shared/src/lib/services/__tests__/app-deploy-failed-attempt.pglite.test.ts",
+      "required": [
+        "an interrupted deploy without an exact child retains an unresolved job and app generation",
+        "an interrupted deploy acknowledges its exact durable child without repeating the handoff",
+        "a lost child insert response retains the committed child without failing the app",
+        "app deploy handoff recovery preserves the URL published by its ready child",
+        "a live provision child links its container when its original parent is terminal",
+        "exhausted provision acknowledgement preserves the committed app READY result",
+        "an exhausted pre-READY provision failure still marks the current deployment failed",
+        "an exhausted deploy lease keeps an unconfirmed app generation in the deletion inventory",
+        "an app deletion claim does not hide its interrupted deployment from recovery",
+        "a deploy attempt that fails after the runner claims it leaves the app redeployable",
+        "a worker that sees an already failed current generation settles it failed",
+        "an older queued generation cannot change a newer deployment",
+        "concurrent deploy admission and a lost enqueue response leave one job for the winning generation"
+      ]
+    }
+  ],
+  "press_submission_authority.qnt": [
+    {
+      "file": "packages/cloud/shared/src/lib/services/__tests__/press-submission-authority.pglite.test.ts",
+      "required": [
+        "concurrent cancellation and submission leave one consistent durable outcome",
+        "a submission key cannot acknowledge a different release",
+        "concurrent exact submissions replay one durable receipt",
+        "a rejected release transition rolls back its submission receipt",
+        "a cancelled release cannot acknowledge a historical orphan receipt"
+      ]
+    }
+  ],
+  "GrantPolicyStampAdmission.qnt": [
+    {
+      "file": "packages/cloud/shared/src/db/repositories/subscription-grants.pglite.test.ts",
+      "required": [
+        "explicit-family migration preserves existing codes and rejects omitted campaigns",
+        "a redeemed code serves the organization as an active Plus subscriber",
+        "admission reverts to the pay-as-you-go policy when the grant ends",
+        "a replay returns the original grant; a second code of the family is refused",
+        "concurrent redemptions never exceed the limit or grant an organization twice",
+        "unknown, expired, disabled and exhausted codes share one refusal",
+        "an effective paid subscription keeps precedence; the grant serves after it lapses",
+        "an exclusive code is refused while the organization has an open paid subscription",
+        "a canceled subscription (projected as free) is served by the active grant",
+        "a incomplete_expired subscription (projected as free) is served by the active grant",
+        "revoking the grant of a canceled subscriber serves the free plan",
+        "an organization holding a grant gets the generic refusal for a code that is not redeemable",
+        "deleting the redeeming user keeps the grant and clears its user",
+        "grant terms stay immutable and grant rows cannot be deleted",
+        "a revoked grant stops serving at once and its buckets are retired",
+        "an unknown grant id is a typed error",
+        "splits a window into calendar months and prorates the remainder",
+        "a lifetime grant publishes no expiry and retains revocation",
+        "lifetime replenishment skips missed months and replays without double credit",
+        "UTC calendar months clamp month ends, including leap years",
+        "a six-month code grants six full allowance months ending on the calendar date",
+        "an unknown subscription authority refuses an exclusive code",
+        "a code cannot carry both a day and a month term",
+        "the account snapshot reports the grant's free-through date and current allowance"
       ]
     }
   ]

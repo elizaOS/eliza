@@ -62,6 +62,25 @@ public class NativeProviderAdmission {
  }
  /** Select exactly one billing authority at process launch; never accept UI balance as authorization. */
  public static void applyProviderEnvironment(JSONObject provider,String cloudSaved,java.util.Map<String,String> env,long now) throws Exception {
+  applyProviderEnvironment(provider,cloudSaved,env,now,CLOUD_PROVIDER_BASE);
+ }
+ /**
+  * A product Cloud's provider base: an exact https origin followed by /api/v1 and nothing else.
+  * The Cloud credential is sent to this base, so anything looser is refused.
+  */
+ public static String requireCloudProviderBase(String base) {
+  if(base==null)throw new IllegalArgumentException("Cloud provider base is required");
+  java.net.URI uri;
+  try{uri=new java.net.URI(base);}catch(java.net.URISyntaxException invalid){throw new IllegalArgumentException("Cloud provider base is not a URL");}
+  String host=uri.getHost();
+  if(!"https".equals(uri.getScheme())||host==null||host.isEmpty()||uri.getPort()!=-1||uri.getRawUserInfo()!=null||uri.getRawQuery()!=null||uri.getRawFragment()!=null
+   ||!"/api/v1".equals(uri.getRawPath())||!base.equals("https://"+host+"/api/v1")||!host.equals(host.toLowerCase(java.util.Locale.ROOT)))
+   throw new IllegalArgumentException("Cloud provider base must be https://<host>/api/v1");
+  return base;
+ }
+ /** As above for a product that runs its own Cloud: {@code cloudProviderBase} replaces the default base. */
+ public static void applyProviderEnvironment(JSONObject provider,String cloudSaved,java.util.Map<String,String> env,long now,String cloudProviderBase) throws Exception {
+  requireCloudProviderBase(cloudProviderBase);
   if(provider.optBoolean("unbound"))throw new SecurityException("Provider is unbound");
   env.remove("ELIZA_NATIVE_GOOGLE_API_KEY");
   env.remove("ELIZA_NATIVE_GOOGLE_BINDING_JSON");
@@ -84,7 +103,7 @@ public class NativeProviderAdmission {
    for(String key:new String[]{"CEREBRAS_API_KEY","CEREBRAS_BASE_URL","CEREBRAS_MODEL","CEREBRAS_SMALL_MODEL","CEREBRAS_LARGE_MODEL","OPENAI_API_KEY","OPENAI_BASE_URL","ELIZA_PROVIDER"})env.remove(key);
    env.remove("CARTESIA_API_KEY");env.remove("CARTESIA_API_KEY_FILE");env.remove("ELIZA_SELF_HOSTED_VOICE_ENABLED");
    env.put("ELIZAOS_CLOUD_API_KEY",token);
-   env.put("ELIZAOS_CLOUD_BASE_URL",CLOUD_PROVIDER_BASE);
+   env.put("ELIZAOS_CLOUD_BASE_URL",cloudProviderBase);
    env.put("ELIZAOS_CLOUD_USE_INFERENCE","true");
    env.put("ELIZAOS_CLOUD_USE_EMBEDDINGS","true");
    env.put("ELIZAOS_CLOUD_EMBEDDING_MODEL","bge-small-en-v1.5");

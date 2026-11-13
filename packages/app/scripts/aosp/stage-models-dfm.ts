@@ -31,11 +31,10 @@
 //      via `<dist:module>` (the base APK's manifest references the
 //      DFM by name).
 //
-// AOSP/cuttlefish builds keep the APK path (`<PREFIX>_BUILD_FORMAT=apk`,
+// AOSP/cuttlefish builds keep the APK path (`ELIZA_BUILD_FORMAT=apk`,
 // the default). Cuttlefish needs an APK because cvd does not handle
-// AABs. This script only runs when `<PREFIX>_BUILD_FORMAT=aab` (where
-// `<PREFIX>` is the host app's `envPrefix`, e.g. ELIZA / ACME), or
-// when invoked with `--force`.
+// AABs. This script only runs when `ELIZA_BUILD_FORMAT=aab`, or when
+// invoked with `--force`.
 //
 // On-device asset access:
 //   `ElizaAgentService` reads `getAssets().open("agent/models/...")`.
@@ -291,7 +290,7 @@ function parseDfmArgs(argv) {
       i += 1;
     } else if (arg === "-h" || arg === "--help") {
       console.log(
-        "Usage: node eliza/packages/app/scripts/aosp/stage-models-dfm.ts [--force] [--app-config <PATH>]",
+        "Usage: bun eliza/packages/app/scripts/aosp/stage-models-dfm.ts [--force] [--app-config <PATH>]",
       );
       process.exit(0);
     } else {
@@ -304,15 +303,12 @@ function parseDfmArgs(argv) {
 async function main(argv = process.argv.slice(2)) {
   const { force, appConfigPath: appConfigArg } = parseDfmArgs(argv);
 
-  // The script is opt-in. Build-aosp.mjs only invokes it when the
-  // host's `<PREFIX>_BUILD_FORMAT` env var is `"aab"`. We accept any
-  // env name ending in `_BUILD_FORMAT` so forks with different
-  // envPrefix values don't have to fork this script. A direct
-  // invocation can pass `--force` to bypass the env check.
-  const buildFormat = readBuildFormatFromEnv(process.env);
+  // The script is opt-in: it runs only when `ELIZA_BUILD_FORMAT` is
+  // `"aab"`, or when a direct invocation passes `--force`.
+  const buildFormat = process.env.ELIZA_BUILD_FORMAT || null;
   if (buildFormat !== "aab" && !force) {
     console.log(
-      `[stage-models-dfm] *_BUILD_FORMAT=${buildFormat ?? "<unset>"}; nothing to do (set <PREFIX>_BUILD_FORMAT=aab or pass --force).`,
+      `[stage-models-dfm] ELIZA_BUILD_FORMAT=${buildFormat ?? "<unset>"}; nothing to do (set ELIZA_BUILD_FORMAT=aab or pass --force).`,
     );
     return;
   }
@@ -350,27 +346,6 @@ async function main(argv = process.argv.slice(2)) {
   console.log(
     "[stage-models-dfm] :models DFM staged. Build the AAB with `cd apps/app/android && ./gradlew :app:bundleRelease`.",
   );
-}
-
-/**
- * Look up `<PREFIX>_BUILD_FORMAT` across the typical host envPrefix
- * values without forcing the script to know which prefix the host is
- * using. If multiple are set, an explicit `aab` wins.
- */
-function readBuildFormatFromEnv(env) {
-  const candidates = Object.keys(env).filter((k) =>
-    k.endsWith("_BUILD_FORMAT"),
-  );
-  if (candidates.length === 0) return null;
-  for (const k of candidates) {
-    if (env[k] === "aab") return "aab";
-  }
-  // Return the first non-empty value so the diagnostic in main()
-  // shows the operator what was set.
-  for (const k of candidates) {
-    if (env[k]) return env[k];
-  }
-  return null;
 }
 
 export { main, moveModelAssets, patchAppBuildGradle, patchSettingsGradle };

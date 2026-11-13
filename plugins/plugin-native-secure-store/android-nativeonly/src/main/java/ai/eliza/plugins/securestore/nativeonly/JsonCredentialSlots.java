@@ -5,6 +5,7 @@ import android.security.keystore.KeyProperties;
 import android.util.AtomicFile;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -131,36 +132,38 @@ public final class JsonCredentialSlots {
    return value;
   }
  }
- /** End the ciphertext/plaintext buffer lifetimes before parsing nested JSON strings. */
+ /** Release the cipher and ciphertext before decoding and parsing the authenticated value. */
  private String readAuthenticated(String slot,int limit)throws Exception {
-   AtomicFile file=slotFile(slot);
-   try(InputStream input=file.openRead()){
+  byte[] plain=readPlaintext(slot,limit);
+  if(plain==null)return null;
+  try{return new String(plain,StandardCharsets.UTF_8);}
+  finally{Arrays.fill(plain,(byte)0);}
+ }
+ private byte[] readPlaintext(String slot,int limit)throws Exception {
+  AtomicFile file=slotFile(slot);byte[] encrypted=null;
+  try{
+   byte[] iv=new byte[12];
+   // Close the frame before decrypting, so a close failure cannot strand plaintext.
+   try(FileInputStream input=file.openRead()){
     if(input.read()!=1||input.read()!=12)throw new IllegalArgumentException();
-    byte[] iv=new byte[12];int offset=0;
+    int offset=0;
     while(offset<iv.length){int count=input.read(iv,offset,iv.length-offset);if(count<1)throw new IllegalArgumentException();offset+=count;}
-    Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");
-    cipher.init(Cipher.DECRYPT_MODE,key(),new GCMParameterSpec(128,iv));
-    cipher.updateAAD(slot.getBytes(StandardCharsets.US_ASCII));
-    // AndroidKeyStore itself buffers GCM plaintext until tag verification. Do not
-    // retain a second full ciphertext array alongside that provider-owned buffer.
-    java.util.ArrayList<byte[]> pieces=new java.util.ArrayList<>();
-    byte[] buffer=new byte[16384];int encrypted=0,plain=0;
-    try{
-     int count;
-     while((count=input.read(buffer))!=-1){
-      if(count==0)continue;
-      if(count>limit+16-encrypted)throw new IllegalArgumentException("Credential slot exceeds byte limit");encrypted+=count;
-      byte[] piece=cipher.update(buffer,0,count);
-      if(piece!=null&&piece.length>0){pieces.add(piece);if(piece.length>limit-plain)throw new IllegalArgumentException("Credential slot exceeds byte limit");plain+=piece.length;}
-     }
-     byte[] last=cipher.doFinal(); // Authenticate everything before returning any plaintext.
-     pieces.add(last);if(last.length>limit-plain)throw new IllegalArgumentException("Credential slot exceeds byte limit");plain+=last.length;
-     if(pieces.size()==1)return new String(last,StandardCharsets.UTF_8);
-     byte[] joined=new byte[plain];int position=0;
-     try{for(byte[] piece:pieces){System.arraycopy(piece,0,joined,position,piece.length);position+=piece.length;}return new String(joined,StandardCharsets.UTF_8);}
-     finally{Arrays.fill(joined,(byte)0);}
-    }finally{Arrays.fill(buffer,(byte)0);for(byte[] piece:pieces)Arrays.fill(piece,(byte)0);}
-   }catch(FileNotFoundException missing){if(file.getBaseFile().exists()||new File(file.getBaseFile().getPath()+".bak").exists())throw missing;return null;}
+    long size=input.getChannel().size()-14;
+    if(size<16||size>(long)limit+16)throw new IllegalArgumentException("Credential slot exceeds byte limit");
+    encrypted=new byte[(int)size];offset=0;
+    while(offset<encrypted.length){int count=input.read(encrypted,offset,encrypted.length-offset);if(count<1)throw new IllegalArgumentException();offset+=count;}
+    if(input.read()!=-1)throw new IllegalArgumentException("Credential slot changed while reading");
+   }
+   Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");
+   cipher.init(Cipher.DECRYPT_MODE,key(),new GCMParameterSpec(128,iv));
+   cipher.updateAAD(slot.getBytes(StandardCharsets.US_ASCII));
+   // One exact input avoids a provider's growing update buffer and its final full copy.
+   // doFinal authenticates the complete frame before any plaintext leaves this helper.
+   byte[] plain=cipher.doFinal(encrypted);
+   if(plain.length>limit){Arrays.fill(plain,(byte)0);throw new IllegalArgumentException("Credential slot exceeds byte limit");}
+   return plain;
+  }catch(FileNotFoundException missing){if(file.getBaseFile().exists()||new File(file.getBaseFile().getPath()+".bak").exists())throw missing;return null;}
+  finally{if(encrypted!=null)Arrays.fill(encrypted,(byte)0);}
  }
  public void remove(String name)throws Exception {
   synchronized(LOCK){

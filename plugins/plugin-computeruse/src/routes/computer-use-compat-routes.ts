@@ -7,10 +7,13 @@
  * authorize approval routes.
  */
 
-import crypto from "node:crypto";
 import type http from "node:http";
-import { ModelType } from "@elizaos/core";
-import { resolveAliasedEnvValue } from "@elizaos/host/protocol";
+import {
+  firstHeaderValue,
+  getProvidedApiToken,
+  ModelType,
+  tokenMatches,
+} from "@elizaos/core";
 import type { AppDescriptor, AppState } from "../app-control/types.js";
 import { ComputerUseSessionError } from "../sessions/session-manager.js";
 import type {
@@ -32,43 +35,8 @@ type CompatRuntimeState = {
 
 const MAX_BODY_BYTES = 1_048_576;
 
-function firstHeaderValue(value: string | string[] | undefined): string | null {
-  if (typeof value === "string") return value;
-  return Array.isArray(value) && typeof value[0] === "string" ? value[0] : null;
-}
-
-function tokenMatches(expected: string, provided: string): boolean {
-  const expectedBuf = Buffer.from(expected);
-  const providedBuf = Buffer.from(provided);
-  return (
-    expectedBuf.length === providedBuf.length &&
-    crypto.timingSafeEqual(expectedBuf, providedBuf)
-  );
-}
-
 function getCompatApiToken(): string | null {
-  return resolveAliasedEnvValue("ELIZA_API_TOKEN")?.trim() || null;
-}
-
-function getProvidedApiToken(
-  req: Pick<http.IncomingMessage, "headers">,
-): string | null {
-  const authHeader = firstHeaderValue(req.headers.authorization)
-    ?.slice(0, 1024)
-    ?.trim();
-  if (authHeader) {
-    const match = /^Bearer\s{1,8}(.+)$/i.exec(authHeader);
-    if (match?.[1]) return match[1].trim();
-  }
-
-  return (
-    (
-      firstHeaderValue(req.headers["x-eliza-token"]) ??
-      firstHeaderValue(req.headers["x-elizaos-token"]) ??
-      firstHeaderValue(req.headers["x-api-key"]) ??
-      firstHeaderValue(req.headers["x-api-token"])
-    )?.trim() || null
-  );
+  return process.env.ELIZA_API_TOKEN?.trim() || null;
 }
 
 function sendJsonResponse(

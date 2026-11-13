@@ -15,7 +15,7 @@ import {
 } from "./sessions";
 
 // Node types the cookie header as a string, but raw header arrays reach the
-// parser through `extractHeaderValue`, so both shapes are exercised.
+// parser through `firstHeaderValue`, so both shapes are exercised.
 const req = (cookie: string | string[] | undefined) =>
   ({ headers: { cookie } }) as unknown as Pick<IncomingMessage, "headers">;
 

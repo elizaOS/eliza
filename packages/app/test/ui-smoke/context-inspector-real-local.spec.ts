@@ -268,11 +268,9 @@ test.describe("real-local context inspector", () => {
       adapter: string | null;
       counts: {
         declaredSteps: number;
-        indexedSteps: number;
         llmCalls: number;
-        materializedTrajectories: number;
-        normalizedStepRows: number;
-        snapshotBytes: number;
+        stepBytes: number;
+        stepRows: number;
         trajectories: number;
       };
       engine: string | null;
@@ -282,7 +280,7 @@ test.describe("real-local context inspector", () => {
       sourceSha: string | null;
     };
     expect(databaseState).toEqual({
-      schema: "eliza.context-inspector-db-state/v1",
+      schema: "eliza.context-inspector-db-state/v2",
       runId,
       sourceSha: configuredSourceSha,
       engine: "pglite",
@@ -291,14 +289,12 @@ test.describe("real-local context inspector", () => {
       counts: {
         trajectories: 21,
         declaredSteps: 21,
-        indexedSteps: 21,
-        normalizedStepRows: 0,
+        stepRows: 21,
         llmCalls: 21,
-        materializedTrajectories: 21,
-        snapshotBytes: expect.any(Number),
+        stepBytes: expect.any(Number),
       },
     });
-    expect(databaseState.counts.snapshotBytes).toBeGreaterThan(21_000);
+    expect(databaseState.counts.stepBytes).toBeGreaterThan(21_000);
 
     const screenshotPath = testInfo.outputPath(
       "context-inspector-real-local-desktop.png",

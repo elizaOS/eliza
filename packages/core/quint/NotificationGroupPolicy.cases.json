@@ -6,11 +6,11 @@
 		"plugins/plugin-assistant/src/services/approval/store.ts"
 	],
 	"conformance": "packages/core/scripts/quint-notification-conformance.mjs",
-	"bounds": "One notification group, three allocated row IDs, wall clock 0 through 2, one queued write, two non-silent inputs and representative silent, permanent, explicit-expiry and count-override inputs.",
-	"fairness": "RequestFinishes assumes weak fairness of the serial writer's successful settlement. An admitted write can wait forever without fairness.",
+	"bounds": "One notification group, three allocated row IDs, wall clock 0 through 2, one queued write, two non-silent inputs and representative silent, permanent, explicit-expiry and count-override inputs. Triage uses all nine supported categories, default or four explicit priorities, unspecified/permanent/explicit expiry, one admitted row, a three-value wall clock that can move in either direction, and read/unread state.",
+	"fairness": "RequestFinishes assumes weak fairness of the serial writer's successful settlement. An admitted write can wait forever without fairness. AdmissionSettles assumes weak fairness of successful persistence in the triage case.",
 	"limitations": [
 		"This case projects a row to its identity, title, silent priority, expiration, count and read mark. Exact projection uses the approval owner's unread, permanent, no-coalesced-count predicate.",
-		"Time advances monotonically within the finite clock. A default silent lifetime is one model tick. The real suite checks the 24-hour value and explicit timestamps and null.",
+		"The grouped case advances wall time monotonically. The triage case checks clock corrections in both directions without pruning durable history. A default silent lifetime is one model tick. The real SQLite scenario checks all 135 category, priority and expiry combinations with the actual 24-hour interval.",
 		"Write failure and ambiguous persistence are in NotificationDurability. Tenant ownership, cross-process writers, mixed group histories and arbitrary callbacks are outside this case."
 	],
 	"cases": [
@@ -55,6 +55,43 @@
 					"expect": "counterexample",
 					"assumptions": [
 						"No fairness. The serial writer can stutter forever after admission."
+					]
+				}
+			]
+		},
+		{
+			"name": "triage-policy",
+			"main": "NotificationTriagePolicy",
+			"init": "init",
+			"step": "step",
+			"invariants": ["PriorityMatchesProducer", "ExpiryMatchesProducer"],
+			"temporal": [
+				"WallClockPreservesHistory",
+				"AdmissionSettles",
+				"AdmissionSettlesWithoutFairness"
+			],
+			"maxSteps": 20,
+			"samples": 300,
+			"temporalChecks": [
+				{
+					"property": "WallClockPreservesHistory",
+					"expect": "holds",
+					"assumptions": [
+						"No fairness. A clock correction changes visibility without mutating the retained row."
+					]
+				},
+				{
+					"property": "AdmissionSettles",
+					"expect": "holds",
+					"assumptions": [
+						"Weak fairness of persist. This case assumes storage can accept the write. NotificationDurability covers persistence failures."
+					]
+				},
+				{
+					"property": "AdmissionSettlesWithoutFairness",
+					"expect": "counterexample",
+					"assumptions": [
+						"No fairness. A pending notification can wait indefinitely before its write."
 					]
 				}
 			]

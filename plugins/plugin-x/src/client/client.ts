@@ -953,16 +953,6 @@ export class Client {
   }
 
   /**
-   * Get current authentication credentials
-   * @returns {TwitterAuth | null} Current authentication or null if not authenticated
-   * @deprecated Use {@link isAuthenticated} for state or
-   * {@link withAuthenticatedSession} for credential-bound work.
-   */
-  public getAuth(): TwitterAuth | null {
-    return this.auth ?? null;
-  }
-
-  /**
    * Check if client is properly authenticated with Twitter API v2 credentials
    * @returns {boolean} True if authenticated
    */

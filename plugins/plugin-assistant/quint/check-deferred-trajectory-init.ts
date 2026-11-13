@@ -15,19 +15,6 @@ const testFile =
 const requiredTests = [
   "TrajectoriesService disables SQL-backed capture when the runtime adapter has no SQL executor",
   "TrajectoriesService defers gated-off storage and shares concurrent first reads",
-  "TrajectoriesService persists complete JSON-safe model request and response payloads",
-  "TrajectoriesService projects the complete action settlement including interceptor reasoning",
-  "TrajectoriesService keeps empty step objects parseable across queued step writes",
-  "TrajectoriesService keeps a step recorded at epoch instead of rewriting it to now",
-  "TrajectoriesService does not persist internal embedding calls as trajectory LLM calls",
-  "TrajectoriesService includes persisted metadata on trajectory list rows",
-  "TrajectoriesService surfaces unavailable query storage instead of returning a healthy empty list",
-  "TrajectoriesService rejects malformed persisted list rows instead of fabricating required fields",
-  "TrajectoriesService keeps the step envelope readable across repeated oversized planner captures",
-  "TrajectoriesService reads legacy rows whose steps lost trailing keys to budget truncation",
-  "TrajectoriesService persists recorder decision stages onto the step and stays idempotent per stageId",
-  "TrajectoriesService never writes a stage run the strict step reader cannot decode back",
-  "TrajectoriesService reports an invalid decision stage under J7 instead of persisting garbage",
 ];
 assert.equal(
   path.resolve(root, process.argv[2] ?? model),

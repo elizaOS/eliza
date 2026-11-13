@@ -14,8 +14,8 @@ Run commands from the repository root:
 
 ```bash
 bun run test:scripts
-node packages/scripts/run-script-tests.ts --inventory
-node packages/scripts/audit-scripts.ts
+bun packages/scripts/run-script-tests.ts --inventory
+bun packages/scripts/audit-scripts.ts
 bun run verify
 ```
 
@@ -41,6 +41,13 @@ a CI admission lane; root `test` runs end-to-end checks.
 Relative module imports resolve from their source file; operational outputs and
 repository configuration resolve from the checkout root. Keep those paths
 correct when moving tools between subdirectories.
+
+Main promotion runs complete Quint partitions in the main PR, merge queue and
+canonical main Full validation. Other branches skip hosted models; local model
+and owning conformance checks remain required before merge. Production effect
+consumers also verify the exact-source successful main Full manifest, its current
+run attempt and all source-bound rows, while retaining staging tree certification.
+The existing manifest and certificate formats are unchanged.
 
 ## Generated test output
 
@@ -68,9 +75,11 @@ exit status still gates the package result. No counts are inferred from stdout.
 
 ## Release preparation
 
-`bun run build:npm` builds package outputs. Native desktop installers are built by `release-electrobun.yml`; the npm cohort still includes the desktop source package.
+`bun run build:npm` builds package outputs.
 
-Use `bun run release:candidate --help` for candidate, verification, and publication commands, or the protected `release.yaml` workflow. Direct `release`, `release:next`, and `release:beta` publication shortcuts are retired. Prepare one exact cohort version and public access before pinning the source SHA. Source manifests keep `workspace:*` ranges; only each packed tarball pins them to the exact cohort version, and the source bytes are restored before the next check. The cohort in `release-cohort.json` contains the surviving publishable packages. Npm channels `latest`, `next`, and `beta` remain distinct from desktop channels.
+Use `bun run release:candidate --help` for candidate, verification, and publication commands, or the protected `release.yaml` workflow. Direct `release`, `release:next`, and `release:beta` publication shortcuts are retired. Prepare one exact cohort version and public access before pinning the source SHA. Source manifests keep `workspace:*` ranges; only each packed tarball pins them to the exact cohort version, and the source bytes are restored before the next check. The cohort in `release-cohort.json` contains the surviving publishable packages.
+
+The npm workflow skips app stores by default. Set `publish_stores` to `true` to also run configured store lanes after npm and GitHub finalization. A store lane skips its build and upload when required credentials or app identity settings are absent. Invalid credentials and failed builds or uploads still fail that lane.
 
 The protected **Mobile App Auth Registration Admin** workflow has a read-only
 `inventory` operation for Alpha Phone recovery. It reports only presence of the

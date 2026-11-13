@@ -95,7 +95,7 @@ function parseArgs(argv) {
     else if (a === "--json") args.json = true;
     else if (a === "--help" || a === "-h") {
       console.log(
-        "Usage: node thirty_turn_endurance_harness.mjs [--bundle DIR] [--tier TIER] [--backend cpu|metal|vulkan|cuda] [--bin-dir DIR] [--e2e-report PATH] [--turns N] [--report PATH] [--json]",
+        "Usage: bun thirty_turn_endurance_harness.mjs [--bundle DIR] [--tier TIER] [--backend cpu|metal|vulkan|cuda] [--bin-dir DIR] [--e2e-report PATH] [--turns N] [--report PATH] [--json]",
       );
       process.exit(0);
     } else {

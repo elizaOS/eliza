@@ -64,7 +64,7 @@ and does nothing by itself:
   never accepted.
 - `downloadRequested`: nothing is downloaded. The http(s) address can carry access
   tokens, so keep it out of models and logs.
-- `externalLinkRequested`: a tapped `tel:`, `mailto:`, `market:` or `intent:` link.
+- `externalLinkRequested`: a tapped `tel:`, `mailto:`, `sms:`, `geo:`, `market:` or `intent:` link.
   `openExternalLink` opens only that link with a fresh Intent; `tel:` opens the dialer
   and places no call. Script attempts are dropped.
 - `identityProviderRequested`: Google and Facebook sign-in pages refuse embedded
@@ -193,8 +193,10 @@ that overlaps the isolated or keyed surface profiles above.
 - A tapped `target=_blank` link or `window.open` from the selected, committed tab
   opens a tab in the opener's profile (`tabOpened`); untapped pop-ups are refused.
   A pop-up may close itself.
-- `tel:`, `mailto:`, `intent:` and `market:` links are handed to Android once per
-  tap, never to the host's own schemes or package.
+- `tel:`, `mailto:`, `sms:`/`smsto:`, `geo:`, `intent:` and `market:` links are handed to
+  Android once per tap. `tel:` opens the dial pad and `sms:` opens a compose screen; no call is
+  placed and nothing is sent. These mail, phone, text and map links also open when the host is
+  the handler. `intent:` and `market:` links never open the host's own schemes or package.
 - `clearBrowsingData` closes normal tabs and clears the persistent profile,
   saved tabs, history, permissions and download history (bookmarks remain);
   `clearSiteData` clears one site of the selected tab. The product confirms first.
@@ -228,7 +230,7 @@ Android device tests exercise ownership, storage isolation, real WebView page
 reads, navigation/back/reload, and visibility after rejected presentation:
 
 ```bash
-node packages/app/scripts/android-native-plugins.ts --serial emulator-5554 --plugin plugin-native-browser-surface
+bun packages/app/scripts/android-native-plugins.ts --serial emulator-5554 --plugin plugin-native-browser-surface
 ```
 
 The bridge fixture exports native screenshots and complete page-read results.
@@ -256,7 +258,7 @@ those.
 isolated world. This checks DOM effects and document/reference isolation, not
 Android installation or the native reply proxy. The generated native asset shares
 the existing browser command implementation; `build` regenerates it and
-`node plugins/plugin-native-browser-surface/scripts/build-control-channel.mjs --check`
+`bun plugins/plugin-native-browser-surface/scripts/build-control-channel.mjs --check`
 checks that it is current.
 The same test routes commands through the authenticated native-host HTTP gateway
 and surface client. It checks complete observations, real click/fill readback,
@@ -468,7 +470,7 @@ Android helpers for the same hosts (they need AndroidX WebKit with
   `BrowserBlobCapture` copies a page-created `blob:` file through an isolated world. The host
   passes its preference name, its "is this review still current" check and its cookie reader.
 - `BrowserExternalHandoff.intentFor(raw, ownPackage, hostSchemes)` builds the implicit intent for
-  a `mailto:`, `tel:` (dial only), `market:` or `intent:` link with no component, selector, clip
+  a `mailto:`, `tel:` (dial only), `sms:`/`smsto:` (compose only), `geo:`, `market:` or `intent:` link with no component, selector, clip
   data, extras or grant flags; `fallback` reads a safe HTTPS `browser_fallback_url`, and
   `browserProbe`/`genericHttps` find general browsers for an external page handoff.
 - `BrowserBookmarkStore` and `BrowserSessionStore` keep bookmarks, normal-tab history and tabs,

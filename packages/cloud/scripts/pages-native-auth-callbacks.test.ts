@@ -1,15 +1,18 @@
 import { describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
+  nativeBillingReturnFallback,
   nativeSignInCallbackFallback,
   onRequest,
 } from "../../app/functions/_middleware.ts";
+import { runPool } from "../../scripts/lib/test-task-pool.ts";
 import {
   callbacks,
   prepareConfig,
+  verifyBillingReturns,
   verifyCallbacks,
 } from "./pages-native-auth-callbacks.ts";
 
@@ -151,82 +154,115 @@ describe("Pages native callback deployment", () => {
         ).success,
       ).toBe(true);
       const run = (step: Step, env: Record<string, string>, output: string) =>
-        spawnSync("bash", ["-c", step.run], {
-          cwd: temporary,
-          encoding: "utf8",
-          timeout: 30_000,
-          env: {
-            PATH: process.env.PATH,
-            CHECKOUT_DIR: temporary,
-            RUNNER_TEMP: temporary,
-            GITHUB_OUTPUT: output,
-            ...env,
+        new Promise<{ status: number; stdout: string; stderr: string }>(
+          (resolve, reject) => {
+            execFile(
+              "bash",
+              ["-c", step.run],
+              {
+                cwd: temporary,
+                encoding: "utf8",
+                timeout: 30_000,
+                env: {
+                  PATH: process.env.PATH,
+                  CHECKOUT_DIR: temporary,
+                  RUNNER_TEMP: temporary,
+                  GITHUB_OUTPUT: output,
+                  ...env,
+                },
+              },
+              (error, stdout, stderr) => {
+                if (error && (error.killed || typeof error.code !== "number")) {
+                  reject(error);
+                  return;
+                }
+                resolve({
+                  status: error ? Number(error.code) : 0,
+                  stdout,
+                  stderr,
+                });
+              },
+            );
           },
-        });
-      for (const [environment, callback] of [
+        );
+      const configurations = [
         ["staging", stage],
         ["production", production],
         ["staging", browserStage],
         ["production", browserProduction],
-      ] as const) {
-        const context = {
-          inputs: { target_environment: environment },
-          vars: { [binding]: JSON.stringify([callback], null, 2) },
-          secrets: {},
-        };
-        const resolvedFile = path.join(temporary, `${environment}-resolved`);
-        const resolved = run(
-          resolver,
-          environmentFor(resolver, context),
-          resolvedFile,
-        );
-        expect(resolved.status).toBe(0);
-        expect(resolved.stderr).toBe("");
-        const stepOutputs = await outputs(resolvedFile);
-        const jobOutputs = Object.fromEntries(
-          Object.entries(protectedJob.outputs).map(([key, value]) => [
-            key,
-            interpolate(value, {
-              steps: { "native-callbacks": { outputs: stepOutputs } },
-            }),
-          ]),
-        );
-        const bareContext = {
-          inputs: context.inputs,
-          vars: {},
-          secrets: {},
-          needs: {
-            "resolve-pages-environment-config": { outputs: jobOutputs },
-          },
-        };
-        const preparedFile = path.join(temporary, `${environment}-prepared`);
-        const prepared = run(
-          prepare,
-          environmentFor(prepare, bareContext),
-          preparedFile,
-        );
-        expect(prepared.status).toBe(0);
-        expect(prepared.stderr).toBe("");
-        expect(JSON.parse(prepared.stdout).nativeCallbacks).toBe(1);
-        const preparedOutputs = await outputs(preparedFile);
-        const saved = JSON.parse(
-          await readFile(
-            path.join(preparedOutputs.directory, "wrangler.json"),
-            "utf8",
-          ),
-        );
-        const selected =
-          environment === "production" ? saved.env.production : saved;
-        expect(JSON.parse(selected.vars[binding])).toEqual([callback]);
-        const missing = run(
-          prepare,
-          { ...environmentFor(prepare, bareContext), [binding]: "" },
-          path.join(temporary, "missing"),
-        );
-        expect(missing.status).toBe(1);
-        expect(missing.stdout).toContain("configuration did not transfer");
+      ] as const;
+      // Each case owns its output files. Join every child before cleanup.
+      for (const result of await runPool(
+        [...configurations],
+        async ([environment, callback], index) => {
+          const context = {
+            inputs: { target_environment: environment },
+            vars: { [binding]: JSON.stringify([callback], null, 2) },
+            secrets: {},
+          };
+          const resolvedFile = path.join(
+            temporary,
+            `${index}-${environment}-resolved`,
+          );
+          const resolved = await run(
+            resolver,
+            environmentFor(resolver, context),
+            resolvedFile,
+          );
+          expect(resolved.status).toBe(0);
+          expect(resolved.stderr).toBe("");
+          const stepOutputs = await outputs(resolvedFile);
+          const jobOutputs = Object.fromEntries(
+            Object.entries(protectedJob.outputs).map(([key, value]) => [
+              key,
+              interpolate(value, {
+                steps: { "native-callbacks": { outputs: stepOutputs } },
+              }),
+            ]),
+          );
+          const bareContext = {
+            inputs: context.inputs,
+            vars: {},
+            secrets: {},
+            needs: {
+              "resolve-pages-environment-config": { outputs: jobOutputs },
+            },
+          };
+          const preparedFile = path.join(
+            temporary,
+            `${index}-${environment}-prepared`,
+          );
+          const prepared = await run(
+            prepare,
+            environmentFor(prepare, bareContext),
+            preparedFile,
+          );
+          expect(prepared.status).toBe(0);
+          expect(prepared.stderr).toBe("");
+          expect(JSON.parse(prepared.stdout).nativeCallbacks).toBe(1);
+          const preparedOutputs = await outputs(preparedFile);
+          const saved = JSON.parse(
+            await readFile(
+              path.join(preparedOutputs.directory, "wrangler.json"),
+              "utf8",
+            ),
+          );
+          const selected =
+            environment === "production" ? saved.env.production : saved;
+          expect(JSON.parse(selected.vars[binding])).toEqual([callback]);
+          const missing = await run(
+            prepare,
+            { ...environmentFor(prepare, bareContext), [binding]: "" },
+            path.join(temporary, `missing-${index}`),
+          );
+          expect(missing.status).toBe(1);
+          expect(missing.stdout).toContain("configuration did not transfer");
+        },
+        4,
+      )) {
+        if (!result.ok) throw result.error;
       }
-      for (const invalidCallback of [
+      const invalidCallbacks = [
         { ...stage, privateKey: "must-not-be-output" },
         {
           ...browserStage,
@@ -273,24 +309,33 @@ describe("Pages native callback deployment", () => {
           ...browserStage,
           browserSignIn: { ...browserStage.browserSignIn, storageKey },
         })),
-      ]) {
-        const invalid = run(
-          resolver,
-          {
-            TARGET_ENVIRONMENT: "staging",
-            [binding]: JSON.stringify([invalidCallback]),
-          },
-          path.join(temporary, "invalid"),
-        );
-        expect(invalid.status).toBe(1);
-        expect(invalid.stderr).not.toContain("must-not-be-output");
+      ];
+      for (const result of await runPool(
+        invalidCallbacks,
+        async (invalidCallback, index) => {
+          const invalid = await run(
+            resolver,
+            {
+              TARGET_ENVIRONMENT: "staging",
+              [binding]: JSON.stringify([invalidCallback]),
+            },
+            path.join(temporary, `invalid-${index}`),
+          );
+          expect(invalid.status).toBe(1);
+          expect(invalid.stderr).not.toContain("must-not-be-output");
+        },
+        4,
+      )) {
+        if (!result.ok) throw result.error;
       }
       const emptyFile = path.join(temporary, "empty");
       expect(
-        run(
-          resolver,
-          { TARGET_ENVIRONMENT: "staging", [binding]: "" },
-          emptyFile,
+        (
+          await run(
+            resolver,
+            { TARGET_ENVIRONMENT: "staging", [binding]: "" },
+            emptyFile,
+          )
         ).status,
       ).toBe(0);
       expect(await outputs(emptyFile)).toEqual({
@@ -488,6 +533,111 @@ describe("Pages native callback deployment", () => {
     }
   });
 
+  test("the derived billing return of each native callback is probed against the real middleware", async () => {
+    const alpha = {
+      redirectUri: "https://cloud-staging.eliza.app/alphaphone/auth/callback",
+      androidPackage: "ai.alphacompute.alphaphone",
+      appName: "AlphaPhone",
+    };
+    // `stage` has no `/auth/callback` suffix, so it has no billing return.
+    const { config } = prepareConfig(
+      canonical,
+      directory,
+      "staging",
+      JSON.stringify([stage, alpha]),
+      {},
+    );
+    const probed: URL[] = [];
+    const request = async (url: URL) => {
+      probed.push(url);
+      return onRequest({
+        request: new Request(url),
+        env: config.vars as Record<string, string>,
+        next: async () => new Response("Eliza SPA"),
+      });
+    };
+    expect(await verifyCallbacks(config, "staging", request)).toBe(2);
+    probed.length = 0;
+    expect(await verifyBillingReturns(config, "staging", request)).toBe(1);
+    expect(probed.map((url) => `${url.origin}${url.pathname}`)).toEqual([
+      "https://cloud-staging.eliza.app/alphaphone/billing/return",
+    ]);
+    // The served page forwards the session id and result, and nothing else.
+    const body = await (await request(probed[0])).text();
+    expect(body).toContain(
+      "intent://cloud-staging.eliza.app/alphaphone/billing/return?session_id=cs_test_nativeBillingReturnDeploymentProbe&amp;result=success#Intent;scheme=https;package=ai.alphacompute.alphaphone;end",
+    );
+    expect(body).not.toContain("deployment-probe.invalid");
+    expect(body).not.toContain("<script");
+
+    // A deployment that serves the SPA, another status, a weaker header or a
+    // page that echoes request data on the billing return fails verification.
+    const served = (
+      change: (body: string, headers: Headers) => string,
+      status = 200,
+    ) =>
+      verifyBillingReturns(config, "staging", async (url) => {
+        const response = nativeBillingReturnFallback(url, alpha);
+        const headers = new Headers(response.headers);
+        return new Response(change(await response.text(), headers), {
+          status,
+          headers,
+        });
+      });
+    expect(await served((text) => text)).toBe(1);
+    await expect(
+      verifyBillingReturns(
+        config,
+        "staging",
+        async () => new Response("Eliza SPA"),
+      ),
+    ).rejects.toThrow("native_billing_return_headers_mismatch");
+    await expect(served((text) => text, 302)).rejects.toThrow(
+      "native_billing_return_status_mismatch",
+    );
+    await expect(
+      served((text, headers) => {
+        headers.set(
+          "content-security-policy",
+          `${headers.get("content-security-policy")}; script-src 'unsafe-inline'`,
+        );
+        return text;
+      }),
+    ).rejects.toThrow("native_billing_return_headers_mismatch");
+    await expect(
+      served((text, headers) => {
+        headers.delete("cache-control");
+        return text;
+      }),
+    ).rejects.toThrow("native_billing_return_headers_mismatch");
+    for (const change of [
+      (text: string) =>
+        text.replace("&amp;result=success", "&amp;result=success&amp;next=x"),
+      (text: string) =>
+        text.replace("ai.alphacompute.alphaphone", "app.example.other"),
+      (text: string) => text.replace("</main>", "<script>1</script></main>"),
+      (text: string) =>
+        text.replace("to finish.", "to finish. Payment received."),
+    ]) {
+      await expect(served(change)).rejects.toThrow(
+        "native_billing_return_body_mismatch",
+      );
+    }
+    // No configured callback has a billing return: nothing is probed.
+    const none = prepareConfig(
+      canonical,
+      directory,
+      "staging",
+      JSON.stringify([stage]),
+      {},
+    );
+    expect(
+      await verifyBillingReturns(none.config, "staging", async () => {
+        throw new Error("unexpected probe");
+      }),
+    ).toBe(0);
+  });
+
   test("production injection preserves preview and every other production binding", () => {
     const source = JSON.stringify([production]);
     const { config } = prepareConfig(
@@ -534,6 +684,42 @@ describe("Pages native callback deployment", () => {
     expect(prepareConfig(canonical, directory, "staging", "", {}).count).toBe(
       0,
     );
+  });
+
+  test("a product deployment's callbacks are checked against its own origins", () => {
+    const deployment = {
+      CLOUD_DEPLOYMENT_ID: "alpha",
+      CLOUD_WEB_ORIGIN: "https://alpha.example",
+      NEXT_PUBLIC_APP_URL: "https://cloud.alpha.example",
+      NEXT_PUBLIC_API_URL: "https://api.alpha.example",
+      STEWARD_TENANT_ID: "alphacloud",
+      CLOUD_PUBLIC_SERVICE_NAME: "Alpha Cloud",
+      R2_PUBLIC_HOST: "blob.alpha.example",
+      NEXT_PUBLIC_ASSETS_CDN_URL: "https://assets.alpha.example",
+      SENDGRID_FROM_EMAIL: "noreply@alpha.example",
+      CLOUD_BILLING_URL: "https://cloud.alpha.example/billing",
+    };
+    const own = {
+      ...stage,
+      redirectUri: "https://cloud.alpha.example/auth/example/callback",
+    };
+    expect(callbacks(JSON.stringify([own]), "production", deployment)).toEqual([
+      own,
+    ]);
+    // An Eliza callback is foreign to a product deployment, and a product
+    // callback is foreign to Eliza.
+    expect(() =>
+      callbacks(JSON.stringify([production]), "production", deployment),
+    ).toThrow("native_callback_environment_mismatch");
+    expect(() => callbacks(JSON.stringify([own]), "production", {})).toThrow(
+      "native_callback_environment_mismatch",
+    );
+    // An incomplete product deployment is never checked against Eliza's origins.
+    expect(() =>
+      callbacks(JSON.stringify([production]), "production", {
+        CLOUD_DEPLOYMENT_ID: "alpha",
+      }),
+    ).toThrow(/requires CLOUD_WEB_ORIGIN/);
   });
 
   test("invalid config, cross-environment callbacks and duplicates fail before deployment", () => {

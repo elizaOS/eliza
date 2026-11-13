@@ -149,6 +149,7 @@ export interface ScheduledTaskRunnerDepsBundle {
 export type ScheduledTaskRunnerDepsProvider = (
   runtime: IAgentRuntime,
   agentId: string,
+  now?: () => Date,
 ) => ScheduledTaskRunnerDepsBundle;
 const depsProvidersByRuntime = new WeakMap<
   IAgentRuntime,
@@ -490,7 +491,9 @@ function buildRunner(
   opts: GetScheduledTaskRunnerOptions,
 ): ScheduledTaskRunnerHandle {
   const provider = getScheduledTaskRunnerDeps(runtime);
-  const deps = (provider ?? defaultRunnerDeps)(runtime, opts.agentId);
+  const deps = provider
+    ? provider(runtime, opts.agentId, opts.now ?? SYSTEM_CLOCK)
+    : defaultRunnerDeps(runtime, opts.agentId);
   const gates = deps.gates ?? createTaskGateRegistry();
   if (!deps.gates) registerBuiltInGates(gates);
   const completionChecks =
@@ -584,6 +587,7 @@ function buildRunner(
 }
 const SYSTEM_CLOCK = (): Date => new Date();
 interface RunnerCacheEntry {
+  provider: ScheduledTaskRunnerDepsProvider | null;
   runner: ScheduledTaskRunnerHandle;
   /** Mutable clock the cached runner reads through on every `now()` call. */
   clock: {
@@ -591,8 +595,8 @@ interface RunnerCacheEntry {
   };
 }
 /**
- * Long-lived runner host. Builds the runner ONCE per `agentId` from the
- * injected deps provider and caches it. The runner construction work
+ * Long-lived runner host. Caches the runner per `agentId` and deps provider.
+ * A deferred consumer can replace the initial fallback binding. The construction work
  * (registry wiring, dispatcher binding) is stable across ticks, so the tick
  * reads the cached runner instead of rebuilding it every minute.
  *
@@ -656,14 +660,19 @@ export class ScheduledTaskRunnerService extends Service {
     return service;
   }
   getRunner(opts: GetScheduledTaskRunnerOptions): ScheduledTaskRunnerHandle {
+    const runtime = this.runtime;
+    if (!runtime) {
+      throw new Error(
+        "ScheduledTaskRunnerService: runtime is not bound; was the service started?",
+      );
+    }
+    const provider = getScheduledTaskRunnerDeps(runtime);
     let entry = this.runners.get(opts.agentId);
-    if (!entry) {
-      const runtime = this.runtime;
-      if (!runtime) {
-        throw new Error(
-          "ScheduledTaskRunnerService: runtime is not bound; was the service started?",
-        );
-      }
+    // Optional consumers can load after the fallback has seeded its tasks.
+    // Subsequent operations use the consumer's dispatcher over the same durable
+    // store. In-flight operations retain their captured dispatcher and the
+    // store's existing claim and effect guards.
+    if (!entry || entry.provider !== provider) {
       const clock = { now: SYSTEM_CLOCK };
       // The runner captures the REF, not the caller's closure — rebinding
       // `clock.now` below retargets the cached runner's clock per call.
@@ -671,7 +680,7 @@ export class ScheduledTaskRunnerService extends Service {
         agentId: opts.agentId,
         now: () => clock.now(),
       });
-      entry = { runner, clock };
+      entry = { runner, clock, provider };
       this.runners.set(opts.agentId, entry);
     }
     entry.clock.now = opts.now ?? SYSTEM_CLOCK;

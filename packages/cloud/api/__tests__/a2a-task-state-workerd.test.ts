@@ -1,9 +1,18 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { runWithCloudBindings } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import type { TaskStoreEntry } from "@elizaos/cloud-shared/lib/services/a2a-task-store";
+import type { Task } from "@elizaos/cloud-shared/lib/types/a2a";
+import type { RuntimeDurableObjectNamespace } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 import { Miniflare } from "miniflare";
+import * as workerAuth from "../../shared/src/lib/auth/workers-hono-auth";
+
+import platformRoute from "../a2a/route";
+
+const platform = new Hono().route("/api/a2a", platformRoute);
 
 describe("Cloudflare A2A tasks through the existing service", () => {
   let worker: Miniflare;
@@ -490,6 +499,160 @@ describe("Cloudflare A2A tasks through the existing service", () => {
       { id: "short", fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/) },
     ]);
   });
+  async function holdPlatformTaskRead(taskId: string, organization: string) {
+    const namespace = await worker.getDurableObjectNamespace("A2A_TASK_STATE");
+    const captured = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const conditionalWrites: boolean[] = [];
+    let hold = true;
+    const state: RuntimeDurableObjectNamespace = {
+      getByName(name) {
+        const stub = namespace.get(namespace.idFromName(name));
+        return {
+          async fetch(input, init) {
+            const request = new Request(input, init);
+            const payload = await request.text();
+            const body = JSON.parse(payload) as {
+              operation: string;
+              taskId: string;
+              version?: string;
+            };
+            const receipt = await stub.fetch(request.url, {
+              method: request.method,
+              body: payload,
+            });
+            const text = await receipt.text();
+            if (body.taskId === taskId && body.operation === "get" && hold) {
+              hold = false;
+              captured.resolve();
+              await release.promise;
+            }
+            if (
+              body.taskId === taskId &&
+              body.operation === "set" &&
+              body.version
+            ) {
+              conditionalWrites.push(JSON.parse(text) as boolean);
+            }
+            return new Response(text, {
+              status: receipt.status,
+              headers: Object.fromEntries(receipt.headers),
+            });
+          },
+        };
+      },
+    };
+    const env = {
+      CLOUD_A2A_STATE_BACKEND: "cloudflare",
+      A2A_TASK_STATE: state,
+    };
+    const actor = { id: "user", organization_id: organization } as Awaited<
+      ReturnType<typeof workerAuth.requireUserOrApiKeyWithOrg>
+    >;
+    const auth = spyOn(
+      workerAuth,
+      "requireUserOrApiKeyWithOrg",
+    ).mockResolvedValue(actor);
+    return {
+      restoreAuth: () => auth.mockRestore(),
+      captured: captured.promise,
+      release: release.resolve,
+      conditionalWrites,
+      async rpc(method: string, params: Record<string, unknown>) {
+        const response = await runWithCloudBindings(env, () =>
+          platform.request(
+            "/api/a2a",
+            {
+              method: "POST",
+              body: JSON.stringify({
+                jsonrpc: "2.0",
+                method,
+                id: method,
+                params,
+              }),
+            },
+            env,
+          ),
+        );
+        expect(response.status).toBe(200);
+        return (await response.json()) as {
+          result?: Task;
+          error?: { code: number };
+        };
+      },
+    };
+  }
+
+  test("stale platform cancellation preserves completed history and artifacts", async () => {
+    const id = "terminal-after-completion";
+    const organization = "terminal-completion";
+    await ok({ operation: "set", taskId: id, entry: entry(id, organization) });
+    const held = await holdPlatformTaskRead(id, organization);
+    const cancellation = held.rpc("tasks/cancel", { id });
+    try {
+      await held.captured;
+      const completed = await held.rpc("message/send", {
+        message: {
+          role: "user",
+          parts: [{ type: "data", data: { skill: "cloud.capabilities.list" } }],
+        },
+        metadata: { taskId: id },
+      });
+      expect(completed.result?.status.state).toBe("completed");
+      expect(completed.result?.history).toHaveLength(2);
+      expect(completed.result?.artifacts).toHaveLength(1);
+      held.release();
+      const canceled = await cancellation;
+      const stored = await held.rpc("tasks/get", { id });
+      expect({
+        lateState: canceled.result?.status.state,
+        lateError: canceled.error?.code,
+        storedState: stored.result?.status.state,
+        writes: held.conditionalWrites,
+      }).toEqual({
+        lateState: undefined,
+        lateError: -32000,
+        storedState: "completed",
+        writes: [false],
+      });
+      expect(stored.result).toEqual(completed.result);
+    } finally {
+      held.release();
+      held.restoreAuth();
+    }
+  }, 60_000);
+
+  test("competing platform cancellations acknowledge exactly one stored outcome", async () => {
+    const id = "terminal-cancellation";
+    const organization = "terminal-race";
+    await ok({ operation: "set", taskId: id, entry: entry(id, organization) });
+    const held = await holdPlatformTaskRead(id, organization);
+    const stale = held.rpc("tasks/cancel", { id });
+    try {
+      await held.captured;
+      const winner = await held.rpc("tasks/cancel", { id });
+      expect(winner.result?.status.state).toBe("canceled");
+      held.release();
+      const canceled = await stale;
+      const stored = await held.rpc("tasks/get", { id });
+      expect({
+        lateState: canceled.result?.status.state,
+        lateError: canceled.error?.code,
+        storedState: stored.result?.status.state,
+        writes: held.conditionalWrites,
+      }).toEqual({
+        lateState: undefined,
+        lateError: -32000,
+        storedState: "canceled",
+        writes: [true, false],
+      });
+      expect(stored.result).toEqual(winner.result);
+    } finally {
+      held.release();
+      held.restoreAuth();
+    }
+  }, 60_000);
+
   test("selected store refuses missing bindings instead of falling back to mock Redis", async () => {
     await worker.dispose();
     worker = start(false);

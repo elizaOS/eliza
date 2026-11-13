@@ -18,7 +18,7 @@
  * prints the table, and sets the exit code.
  *
  * Usage:
- *   node scripts/check-startup-budget.ts \
+ *   bun scripts/check-startup-budget.ts \
  *     [--budgets <perf-budgets.json>] \
  *     [--trace <capture-startup-trace artifact> --tti-target <name>] \
  *     [--build-timing <run-mobile-build timing json> --build-target <name>] \

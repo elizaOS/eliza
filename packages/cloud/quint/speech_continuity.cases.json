@@ -7,16 +7,25 @@
     "packages/cloud/api/v1/voice/speech/route.ts",
     "packages/host/src/voice/speech-relay-session.ts",
     "packages/host/src/voice/speech-relay-session.test.ts",
-    "packages/host/src/voice/speech-retirement-session.test.ts"
+    "packages/host/src/voice/speech-retirement-session.test.ts",
+    "packages/cloud/quint/check-speech-continuity.mjs",
+    "packages/host/src/voice/speech-window-share.ts",
+    "packages/host/src/voice/speech-window-share.dfy",
+    "packages/host/src/voice/speech-window-share.dfy.gen"
   ],
   "bounds": {
     "assumptions": [
-      "Three billing windows, one owner and one transport. Provider success and eventual settlement are not assumed."
+      "Three billing windows, one owner and one transport, with idempotent per-kind settlement. Safety does not assume provider success or eventual settlement. Conditional progress uses the explicit fair-completion assumptions below.",
+      "A stopped renewal returns without granting its window. Failed credit settlement retains that window for idempotent retry. An additive quota refund with unknown acknowledgement is retained without replay; confirmed independent money remains separate.",
+      "A settled window abstracts matching terminal receipts; an ungranted window requires actual zero receipts. Missing, nonzero or mismatched receipts are failed settlement and retain ownership."
     ],
-    "progress": "Safety only. Live providers, deadlines and delivery are verified separately."
+    "progress": "After Stop, confirmation follows only if pending admission/refusal and stopped-renewal work returns, each funded window obtains its terminal settlement receipt, quota release returns a known or unknown result, and confirmation runs. Weak fairness expresses these assumptions; it does not promise provider availability, settlement success, transport closure or a wall-clock deadline. Confirmation requires independently terminal money. An unknown quota-refund acknowledgement stays unknown; this property does not imply a successful refund or successful overall cleanup."
   },
   "limitations": [
-    "Three-window safety abstraction. Controlled provider boundaries verify backend settlement and retirement. Browser, native client and live provider qualification are separate."
+    "Three-window safety abstraction. Controlled real-relay tests replay Stop during quota, admission and extension waits, zero-settlement failure/retry, and one-shot quota uncertainty. The model aggregates per-kind credit receipts by window and does not establish physical provider closure, timing, browser, native client or live-provider qualification.",
+    "Conditional progress applies to the modeled idempotent per-kind receipt path. A failed generic immutable settlement remains unconfirmed; no successful retry is promised for that legacy contract.",
+    "The separate LemmaScript proof covers usage-share bounds and conservation for finite safe integer counters with safe index multiplication. It does not prove asynchronous lifecycle behavior or caller compliance with those arithmetic assumptions.",
+    "The production Cloud caller limits sessions to 1\u2013120 windows and applies server-owned stream budgets. Generic host consumers must satisfy the helper\u2019s safe-integer and multiplication preconditions for this arithmetic proof; no new runtime cap is imposed."
   ],
   "cases": [
     {
@@ -24,13 +33,29 @@
       "main": "speech_continuity",
       "init": "init",
       "step": "step",
-      "invariants": [
-        "safety"
-      ],
-      "temporal": [],
+      "invariants": ["safety"],
+      "temporal": ["FairStopConfirmsMoney", "UnfairStopConfirmsMoney"],
       "maxSteps": 30,
       "samples": 1000,
-      "deadlock": false
+      "deadlock": false,
+      "temporalChecks": [
+        {
+          "property": "FairStopConfirmsMoney",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of admission/refusal completion, stopped-renewal completion, each funded window terminal settlement, quota-result completion and confirmation.",
+            "Terminal settlement availability is assumed for conditional progress only; provider closure and wall-clock completion are outside this model. Quota acknowledgement may remain unknown and is never replayed.",
+            "The quota outcome may be permanently unknown. No transition resolves or retries it; independently terminal money allows confirmation while preserving that unknown field."
+          ]
+        },
+        {
+          "property": "UnfairStopConfirmsMoney",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness or external completion is assumed. Stop may retain an unresolved admission or unacknowledged settlement indefinitely."
+          ]
+        }
+      ]
     }
   ],
   "conformance": "packages/cloud/quint/check-speech-continuity.mjs"

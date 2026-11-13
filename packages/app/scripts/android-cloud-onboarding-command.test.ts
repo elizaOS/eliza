@@ -135,12 +135,13 @@ test("the public lane executes build, install, and one locked Playwright spec", 
 });
 
 test("the build and install aliases dispatch their executable argv", () => {
-  expect(runPackageScript("build:android:cloud:debug", ["node"])).toEqual([
+  expect(runPackageScript("build:android:cloud:debug", ["bun"])).toEqual([
     {
-      tool: "node",
+      tool: "bun",
       argv: [
         "../../packages/app/scripts/run-mobile-build.ts",
-        "android-cloud-debug",
+        "android-cloud",
+        "--debug",
       ],
       env: {
         live: null,
@@ -151,9 +152,9 @@ test("the build and install aliases dispatch their executable argv", () => {
       },
     },
   ]);
-  expect(runPackageScript("install:android:adb", ["node"])).toEqual([
+  expect(runPackageScript("install:android:adb", ["bun"])).toEqual([
     {
-      tool: "node",
+      tool: "bun",
       argv: ["scripts/android-adb-install.ts"],
       env: {
         live: null,

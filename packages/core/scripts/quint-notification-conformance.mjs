@@ -11,6 +11,7 @@ const packageRoot = path.resolve(
 );
 const repositoryRoot = path.resolve(packageRoot, "../..");
 const models = [
+	"NotificationHydration.qnt",
 	"NotificationDurability.qnt",
 	"NotificationGroupPolicy.qnt",
 	"NativeNotificationCursor.qnt",
@@ -25,6 +26,13 @@ if (
 }
 
 const requiredNames = new Set([
+	"NotificationService rejects malformed persisted coordinates without overwriting the inbox",
+	"NotificationService retains valid coordinate gaps and empty inbox watermarks across startup",
+	"NotificationService recovers a repaired coordinate snapshot through the runtime lifecycle",
+	"NotificationService restores committed migration coordinates after a lost acknowledgement",
+	"NotificationService refuses an unencodable legacy coordinate map before replacing history",
+	"NotificationService retains replacement cooldown when an older successful recovery receipt arrives late",
+	"NotificationService keeps recovery backoff when real log event and agent-error observers throw",
 	"NotificationService creates, stores, and returns a stamped notification",
 	"NotificationService preserves exact lifeops reminder bodies in storage and events while generic bodies normalize",
 	"NotificationService rejects an empty title",
@@ -118,6 +126,8 @@ const child = spawn(
 		"run",
 		"test/notification.test.ts",
 		"--maxWorkers=1",
+		"--no-cache",
+		`--fsModuleCachePath=${path.join(path.dirname(reportPath), "module-cache")}`,
 		"--retry=0",
 		"--reporter=json",
 		`--outputFile=${reportPath}`,

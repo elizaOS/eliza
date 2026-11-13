@@ -87,7 +87,7 @@ export type {
   StartLifeOpsHealthConnectorRequest,
   StartLifeOpsHealthConnectorResponse,
   SyncLifeOpsHealthConnectorRequest,
-} from "./lifeops.js";
+} from "@elizaos/contracts";
 
 export {
   isBuiltinActivitySignalSource,
@@ -100,4 +100,4 @@ export {
   LIFEOPS_HEALTH_SIGNAL_SOURCES,
   LIFEOPS_HEALTH_SLEEP_STAGES,
   LIFEOPS_UNCLEAR_REASONS,
-} from "./lifeops.js";
+} from "@elizaos/contracts";

@@ -119,6 +119,7 @@ android {
   // AGP's asset merger does not honor AndroidSourceDirectorySet exclusions.
   def runtimeAssets = tasks.register('stageElizaConsumerRuntimeAssets', Sync) {
    from new File(profile.runtimeMain, 'assets')
+   // riscv64 is retired; an older checkout may still hold its staged assets.
    exclude 'agent/arm64-v8a/**', 'agent/x86_64/**', 'agent/riscv64/**'
    into layout.buildDirectory.dir('generated/eliza-consumer-runtime-assets')
   }

@@ -19,7 +19,6 @@ import {
   Lock,
   type LucideIcon,
   Mic,
-  Monitor,
   Palette,
   RefreshCw,
   Server,
@@ -86,11 +85,6 @@ const AppsManagementSection = lazy(() =>
 );
 const ConnectorsSection = lazy(() =>
   import("./ConnectorsSection").then((m) => ({ default: m.ConnectorsSection })),
-);
-const DesktopIntegrationSection = lazy(() =>
-  import("./DesktopIntegrationSection").then((m) => ({
-    default: m.DesktopIntegrationSection,
-  })),
 );
 const RuntimeSettingsSection = lazy(() =>
   import("./RuntimeSettingsSection").then((m) => ({
@@ -373,18 +367,6 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
     hue: "accent",
     labelKey: "settings.sections.connectors.label",
     Component: ConnectorsSection,
-  },
-  {
-    ...nonCatalogMeta("desktop-integration"),
-    catalog: false,
-    icon: Monitor,
-    tone: "neutral",
-    hue: "slate",
-    labelKey: "settings.sections.desktopIntegration.label",
-    defaultTitle: "Desktop app",
-    order: -1,
-    requires: ["desktop-bridge"],
-    Component: DesktopIntegrationSection,
   },
   // System group order mirrors SETTINGS_SECTION_META: personalization first
   // (appearance, background), then infrastructure (runtime, wallet), then

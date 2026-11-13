@@ -261,7 +261,7 @@ const planFormat = planFlag || "text";
 if (helpFlag) {
   process.stdout.write(
     [
-      "Usage: node packages/scripts/run-all-tests.ts [options]",
+      "Usage: bun packages/scripts/run-all-tests.ts [options]",
       "",
       "Options:",
       "  --no-cloud           Skip cloud package tasks and the final cloud test step.",
@@ -435,9 +435,6 @@ const TEST_FILE_SKIP_DIRS = new Set([
   "node_modules",
   "target",
 ]);
-const ADDITIONAL_PACKAGE_DIRS = [
-  path.join(repoRoot, "packages", "app", "platforms", "electrobun"),
-];
 const NO_CLOUD_PACKAGE_DIRS = new Set([path.join("packages", "cloud", "e2e")]);
 const ROOT_PR_E2E_EXCLUDED_PACKAGE_DIRS = new Set([
   path.join("packages", "homepage"),
@@ -502,13 +499,6 @@ function collectPackageJsonPaths() {
   for (const relDir of listWorkspaceDirs({ repoRoot })) {
     if (inExcludedSubtree(relDir)) continue;
     packageJsonPaths.add(path.join(repoRoot, relDir, "package.json"));
-  }
-
-  for (const packageDir of ADDITIONAL_PACKAGE_DIRS) {
-    const packageJsonPath = path.join(packageDir, "package.json");
-    if (fs.existsSync(packageJsonPath)) {
-      packageJsonPaths.add(packageJsonPath);
-    }
   }
 
   return [...packageJsonPaths].sort((left, right) => left.localeCompare(right));
@@ -806,7 +796,7 @@ function isSingleVitestWrapperCommand(command) {
   if (/[;&|]/.test(commandWithoutEnv)) {
     return false;
   }
-  return /^node\s+(?:\.\.\/)+scripts\/run-vitest\.ts\s+run\b/.test(
+  return /^(?:bun|node)\s+(?:\.\.\/)+scripts\/run-vitest\.ts\s+run\b/.test(
     commandWithoutEnv,
   );
 }
@@ -814,7 +804,7 @@ function isSingleVitestWrapperCommand(command) {
 function isSingleVitestBatchWrapperCommand(command) {
   // The agent's mobile-entry preflight must succeed before its final batch
   // runner receives the JUnit arguments appended to the package command.
-  return /^(?:bun\s+run\s+test:mobile-workspace-entry\s+&&\s+)?node\s+scripts\/run-vitest-batches\.ts$/.test(
+  return /^(?:bun\s+run\s+test:mobile-workspace-entry\s+&&\s+)?(?:bun|node)\s+scripts\/run-vitest-batches\.ts$/.test(
     stripLeadingEnvAssignments(command),
   );
 }
@@ -838,14 +828,14 @@ function unwrapKnownBunTestSupervisors(command) {
   let current = stripLeadingEnvAssignments(command);
   for (let depth = 0; depth < 3; depth += 1) {
     const flakeRetry = current.match(
-      /^node\s+(?:\.\.\/)+packages\/scripts\/run-with-flake-retry\.ts\s+(?:'[^']*'|"[^"]*"|\S+)\s+--\s+(.+)$/,
+      /^(?:bun|node)\s+(?:\.\.\/)+packages\/scripts\/run-with-flake-retry\.ts\s+(?:'[^']*'|"[^"]*"|\S+)\s+--\s+(.+)$/,
     );
     if (flakeRetry) {
       current = flakeRetry[1];
       continue;
     }
     const deadline = current.match(
-      /^node\s+(?:\.\.\/)+packages\/scripts\/run-with-deadline\.ts\s+[1-9]\d*\s+--\s+(.+)$/,
+      /^(?:bun|node)\s+(?:\.\.\/)+packages\/scripts\/run-with-deadline\.ts\s+[1-9]\d*\s+--\s+(.+)$/,
     );
     if (deadline) {
       current = deadline[1];
@@ -857,7 +847,7 @@ function unwrapKnownBunTestSupervisors(command) {
 }
 
 function isSingleIsolatedBunTestWrapperCommand(command) {
-  return /^node\s+(?:scripts|(?:\.\.\/)+packages\/scripts\/plugins\/plugin-workflow)\/run-isolated-tests\.ts$/.test(
+  return /^(?:bun|node)\s+(?:scripts|(?:\.\.\/)+packages\/scripts\/plugins\/plugin-workflow)\/run-isolated-tests\.ts$/.test(
     unwrapKnownBunTestSupervisors(command),
   );
 }

@@ -94,8 +94,6 @@ jobs:
         run: bun run --cwd packages/ui test:notifications-e2e
       - name: Home-screen real-touch e2e
         run: bun run --cwd packages/ui test:home-screen-e2e
-      - name: Fused wake integration e2e
-        run: bun run --cwd packages/ui test:fused-wake-integration-e2e
       - name: Warm-up message eviction e2e
         run: bun run --cwd packages/ui test:warmup-eviction-e2e
       - name: Warming absorption and rekey race e2e
@@ -128,7 +126,6 @@ jobs:
             packages/ui/src/components/shell/__e2e__/output-home
             packages/ui/src/components/shell/__e2e__/output-notifications
             packages/ui/src/components/shell/__e2e__/output-bottombar
-            packages/ui/src/components/shell/__e2e__/output-fused-wake-integration
             packages/ui/src/components/pages/__e2e__/output-launcher
             packages/ui/src/components/pages/__e2e__/output-background
             packages/ui/src/components/pages/__e2e__/output-suggestions

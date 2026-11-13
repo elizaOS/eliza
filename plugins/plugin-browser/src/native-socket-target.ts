@@ -603,9 +603,7 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
   }
 
   async start(env: NodeJS.ProcessEnv = process.env): Promise<void> {
-    const android = [env.ELIZA_PLATFORM, env.ELIZA_MOBILE_PLATFORM].includes(
-      "android",
-    );
+    const android = env.ELIZA_PLATFORM === "android";
     if (android) {
       this.androidSocketPath = androidNativeBrowserSocketPath(
         env.ELIZA_BROWSER_ANDROID_APPLICATION,

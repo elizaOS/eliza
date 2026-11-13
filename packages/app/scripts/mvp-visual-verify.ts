@@ -17,7 +17,7 @@
  * mutated; the audit stays the source of truth for what was captured.
  *
  * Usage:
- *   node scripts/mvp-visual-verify.ts [--input <dir>] [--baseline <dir>]
+ *   bun scripts/mvp-visual-verify.ts [--input <dir>] [--baseline <dir>]
  *                                      [--update-baseline] [--viewport <name>]...
  *                                      [--require-state <slug[@viewport]>]...
  *                                      [--require-baseline-states]

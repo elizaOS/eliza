@@ -40,11 +40,11 @@ jobs:
             echo 'run=false' >> "$GITHUB_OUTPUT"
           fi
       - if: steps.changes.outputs.run == 'true'
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: '24.15.0'
       - if: steps.changes.outputs.run == 'true'
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78
         with:
           distribution: temurin
           java-version: '21'
@@ -110,7 +110,7 @@ jobs:
 
       - name: Install native build tools
         if: steps.changes.outputs.run == 'true'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake ninja-build
+        run: bash "$GITHUB_WORKSPACE/packages/scripts/github/install-apt-packages.sh" --no-install-recommends cmake ninja-build
       - name: Build ABI 19 engines and link both JNI surfaces
         if: steps.changes.outputs.run == 'true'
         env:

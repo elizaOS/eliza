@@ -105,7 +105,7 @@ function requireValue(argv, index, flag) {
 
 function printHelp() {
   console.log(`Usage:
-  node plugins/plugin-local-inference/native/verify/asr_bench_real_recorded_workflow.mjs \\
+  bun plugins/plugin-local-inference/native/verify/asr_bench_real_recorded_workflow.mjs \\
     --init-fixture \\
     --out plugins/plugin-local-inference/native/reports/local-e2e/2026-05-16/asr-wer-real-recorded-2b-needs-corpus-20260516.json
 

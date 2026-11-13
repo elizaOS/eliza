@@ -25,7 +25,7 @@
  * when an unavailable native lane must fail the run.
  *
  * Usage:
- *   node scripts/walkthrough-device-matrix.ts --platform ios|android|device|all
+ *   bun scripts/walkthrough-device-matrix.ts --platform ios|android|device|all
  *     [--serial <android-serial>] [--avd <name>] [--ios-device <name>]
  *     [--duration 30] [--require android|ios|device] [--skip-android-drive]
  */

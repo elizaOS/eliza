@@ -1,5 +1,10 @@
 [
 	{
+		"source": "packages/core/src/types/agent-api.ts",
+		"sha256": "11e3c505f8e971fe525cdcbf259ab9c16f11b7ca574e77ac86307fcab19542d4",
+		"reason": "Declares agent automation modes, stream event envelopes and the protocol version. The Agent API and event service own request admission, subscriptions and event publication."
+	},
+	{
 		"source": "packages/core/src/types/agent-event.ts",
 		"sha256": "5cc08f64661cf4451a7becca2c12e01f6941c8a65163c2c5979175aa94b8c33f",
 		"reason": "Declares event payloads and listener signatures. The agent event service owns per-run sequencing, listener registration, and the last heartbeat."
@@ -13,5 +18,70 @@
 		"source": "packages/core/src/types/connector-setup.ts",
 		"sha256": "0ff9d0ec41efc7b30ed74dc52714b832970ccdee59d3981c96553bc81699ac91",
 		"reason": "Declares the serialized setup response and constructs error envelopes from its inputs. Connector setup handlers own the pairing and configuration transitions."
+	},
+	{
+		"source": "packages/core/src/types/database.ts",
+		"sha256": "b2a5fb374667e17d10677155ec1e29620d8f0d3be0cab26262d3a7e72d7ef2b7",
+		"reason": "Declares storage adapter operations, selectors and result shapes. Adapter and runtime implementations own transactions, persistence and request lifetimes."
+	},
+	{
+		"source": "packages/core/src/types/evaluator.ts",
+		"sha256": "612a58bf221c910d5d3823d7a029026db7f412f0bfd1ba91e755f3be12237e39",
+		"reason": "Declares evaluator inputs, prepared context, evidence and results. Runtime dispatch and each evaluator own invocation and result handling."
+	},
+	{
+		"source": "packages/core/src/types/hook.ts",
+		"sha256": "bbf0a7a1edb863a488f185f70815569b589462d6562d1a65978a09a4f94b2edc",
+		"reason": "Declares hook requirements, event payloads, configuration and a default priority. The hook service owns registration, execution and removal."
+	},
+	{
+		"source": "packages/core/src/types/memory.ts",
+		"sha256": "0c0cd9a54d7276a76c2b22188b7cb62774e380e331a032fb7385ce81612f27e2",
+		"reason": "Declares memory records, source ranges, revisions and share grants. Runtime memory services and adapters own access, persistence and mutation."
+	},
+	{
+		"source": "packages/core/src/types/message-service.ts",
+		"sha256": "78ff666809e387b23d1a2e73893aee6b9c2f7dd115ed77b8e370936186845f81",
+		"reason": "Declares message processing options, turn outcomes and reply recovery receipts. The message service and its callers own turn admission, processing and settlement."
+	},
+	{
+		"source": "packages/core/src/types/payment.ts",
+		"sha256": "72eaba887a2bb737d7dd8d7d4ed2cae70443a49cfd7da311d899a8194888f6b8",
+		"reason": "Declares payment configuration and x402 validation results. Payment handlers own authorization, provider calls and settlement."
+	},
+	{
+		"source": "packages/core/src/types/runtime.ts",
+		"sha256": "eccb15d579cc9f9372fffb582a4317181ae1c36921a6726eca7f53e59c88cb94",
+		"reason": "Declares the runtime and connector interfaces and fixed target labels. AgentRuntime and host adapters own service lifecycle, dispatch and cancellation."
+	},
+	{
+		"source": "packages/core/src/types/state.ts",
+		"sha256": "6645a01a5764f962508f88a6b999fdbe08292570d8c839c89047e5d09f671833",
+		"reason": "Declares model context and action plan values and failure shapes. Runtime composition and action execution own creation and updates."
+	},
+	{
+		"source": "packages/core/src/types/streaming.ts",
+		"sha256": "71ed5ab8ba21baffecef493b6d9914b1e53c113076e06f765b340d572a6a737f",
+		"reason": "Declares streamed tool, action and evaluation payloads and callbacks. Runtime stream handlers own production, cancellation and delivery."
+	},
+	{
+		"source": "packages/core/src/types/surface-manifest.ts",
+		"sha256": "94b5d2d9a81cc4afa1e6578200d691970f14790f7670c569bf05dc5a3e23add3",
+		"reason": "Declares view isolation, capability and shell policy fields. The app view host owns navigation and surface lifetime."
+	},
+	{
+		"source": "packages/core/src/types/task.ts",
+		"sha256": "58428f703c2ffcea56e6cc8815a832627f17e613e35e38a08a0ba410b85f4707",
+		"reason": "Declares task records, status labels and executor interfaces. TaskService and the scheduler own registration, admission, dispatch and retirement."
+	},
+	{
+		"source": "packages/core/src/types/trajectory-export.ts",
+		"sha256": "b9e040a37f09d64bffdb5dcf25f16ecc8d5ac6cfec9f2ed6a7e606701319a146",
+		"reason": "Declares versioned trajectory, reward and training export records. Runtime trajectory recorders and export consumers own capture and durable publication."
+	},
+	{
+		"source": "packages/core/src/types/trigger.ts",
+		"sha256": "cbd3a971db064585b3c309f4e22301c7e4cef81d55003d2eb417526f6fd38940",
+		"reason": "Declares trigger configuration, wake modes, status labels and run records. Scheduling and workflow services own registration, firing and result publication."
 	}
 ]

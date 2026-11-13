@@ -24,6 +24,7 @@ import {
   assertJobExecutionAuthority,
   lockJobExecutionAuthority,
 } from "../../db/repositories/job-execution-authority";
+import { jobsRepository } from "../../db/repositories/jobs";
 import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";
 import { isValidUUID } from "../utils/validation";
@@ -274,10 +275,20 @@ export function buildContainerExecutorDeps(
       ),
     isAppDeploymentCurrent: (appId, deploymentGeneration) =>
       appsService.isDeploymentGenerationCurrent(appId, deploymentGeneration),
-    markAppDeployed: async (appId, deploymentGeneration, productionUrl) => {
+    markAppDeployed: async (appId, deploymentGeneration, productionUrl, containerId) => {
       // App ids are UUIDs; a non-UUID project_name (a plain /v1/containers row,
       // which is not an app) is skipped so this never mis-updates or UUID-casts.
       if (!isValidUUID(appId)) return;
+      const handoff =
+        deploymentGeneration && executionAuthority
+          ? await jobsRepository.findAppDeployProvisionHandoff(
+              appId,
+              executionAuthority.organizationId,
+              deploymentGeneration,
+            )
+          : undefined;
+      const ownsContainerLink =
+        handoff?.containerId === containerId && handoff.jobId === executionAuthority?.jobId;
       await appsService.updateDeploymentGeneration(
         appId,
         deploymentGeneration,
@@ -285,6 +296,7 @@ export function buildContainerExecutorDeps(
           deployment_status: "deployed",
           production_url: productionUrl,
           last_deployed_at: new Date(),
+          ...(ownsContainerLink ? { metadata: { containerId } } : {}),
         },
         ["deploying"],
         executionAuthority,

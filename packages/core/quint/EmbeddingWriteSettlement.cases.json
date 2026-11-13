@@ -1,0 +1,86 @@
+{
+	"sources": [
+		"packages/core/src/services/embedding.ts",
+		"packages/core/src/utils/batch-queue.ts",
+		"packages/core/src/runtime/data-mutations.ts",
+		"packages/core/src/runtime.ts",
+		"plugins/plugin-sql/src/base.ts",
+		"packages/core/test/embedding.activation-retry.pglite.test.ts",
+		"packages/core/quint/check-core-concurrency.mjs",
+		"packages/scripts/lib/vitest-conformance.ts",
+		"packages/scripts/lib/test-output.ts",
+		"packages/scripts/run-vitest.ts",
+		"packages/scripts/run-with-deadline.ts"
+	],
+	"bounds": [
+		"One queued item or one batch of two. The batch inference result supplies both items. The batch settles its writes and observers in order before any failed item falls back to a single request. Each item has at most two single attempts in this projection.",
+		"The adapter atomically compares the admitted source with one possible edit. The confirmed result is a stored vector or a stale-source refusal. A modeled write rejection occurs before commit. Diagnostic logging and completion publication may fail after the result, and neither starts another attempt.",
+		"Real AgentRuntime, repeat worker and PGlite cases verify stored vector readback, exact stale-source refusal, preservation of each batch item, and retry after a known uncommitted write rejection. Inference is a local fixture and diagnostic failures are controlled at their caller boundaries.",
+		"Independent batches, source reversion, lost storage acknowledgement, provider durability, task shutdown and individual event subscribers remain outside this projection. The fairness assumption does not guarantee successful inference, storage or observation."
+	],
+	"conformance": "packages/core/quint/check-core-concurrency.mjs",
+	"cases": [
+		{
+			"name": "single-item-settlement",
+			"main": "EmbeddingSingleWrite",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"ExactSourceReceipt",
+				"ReceiptClosesRetry",
+				"OnlyStoredNotifies"
+			],
+			"temporal": ["FairItemsSettle", "ItemsSettle"],
+			"temporalChecks": [
+				{
+					"property": "FairItemsSettle",
+					"expect": "holds",
+					"assumptions": [
+						"Weak fairness of batch admission and inference settlement, each enabled single attempt, storage settlement, logging and notification. The model allows a finite retry budget and terminal exhaustion. No success or wall-clock limit is assumed."
+					]
+				},
+				{
+					"property": "ItemsSettle",
+					"expect": "counterexample",
+					"assumptions": [
+						"No fairness. Inference, storage or an observation can remain pending indefinitely."
+					]
+				}
+			],
+			"maxSteps": 28,
+			"samples": 1000
+		},
+		{
+			"name": "two-item-batch-settlement",
+			"main": "EmbeddingBatchWrite",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"ExactSourceReceipt",
+				"ReceiptClosesRetry",
+				"OnlyStoredNotifies"
+			],
+			"temporal": ["FairItemsSettle", "ItemsSettle"],
+			"temporalChecks": [
+				{
+					"property": "FairItemsSettle",
+					"expect": "holds",
+					"assumptions": [
+						"Weak fairness of batch admission and inference settlement, each enabled single attempt, storage settlement, logging and notification. The model allows a finite retry budget and terminal exhaustion. No success or wall-clock limit is assumed."
+					]
+				},
+				{
+					"property": "ItemsSettle",
+					"expect": "counterexample",
+					"assumptions": [
+						"No fairness. Inference, storage or an observation can remain pending indefinitely."
+					]
+				}
+			],
+			"maxSteps": 28,
+			"samples": 1000
+		}
+	]
+}

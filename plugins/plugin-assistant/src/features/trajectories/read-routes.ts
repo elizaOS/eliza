@@ -527,7 +527,7 @@ export async function tryHandleTrajectoryReadRoutes(options: {
         traceId: url.searchParams.get("traceId") || undefined,
         batchId: url.searchParams.get("batchId") || undefined,
         // The SQL reader filters + counts by `search` (id/scenario_id/
-        // batch_id/metadata/steps_json LIKE). On mobile this owns
+        // batch_id/metadata/step row LIKE). On mobile this owns
         // /api/trajectories, so without forwarding `search` the viewer's
         // search box returned the full unfiltered list.
         search: url.searchParams.get("search") || undefined,

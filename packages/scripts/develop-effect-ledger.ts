@@ -26,7 +26,7 @@ const DEFAULT_REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../..",
 );
-const DEFAULT_REGISTRY = ".github/develop-effects.json";
+const DEFAULT_REGISTRY = ".github/staging-effects.json";
 const API_VERSION = "2026-03-10";
 const LEDGER_SCHEMA_VERSION = 1;
 const PAGE_SIZE = 100;
@@ -97,9 +97,8 @@ function readJson(filePath) {
 }
 
 function assertPromotionBranches(sourceBranch, targetBranch) {
-  const nextBranch = { develop: "staging", staging: "main" }[sourceBranch];
-  if (!nextBranch || targetBranch !== nextBranch) {
-    throw new Error("promotion must follow develop -> staging -> main");
+  if (sourceBranch !== "staging" || targetBranch !== "main") {
+    throw new Error("promotion must follow staging -> main");
   }
 }
 
@@ -120,7 +119,7 @@ export function validateRegistry(registry) {
     );
   }
   const branch = registry.sourceBranch ?? registry.promotion?.sourceBranch;
-  if (!["develop", "staging", "main"].includes(branch))
+  if (!["staging", "main"].includes(branch))
     throw new Error("invalid registry source branch");
   for (const effect of registry.effects) {
     assertObject(effect, "effect");
@@ -158,7 +157,7 @@ export function validateRegistry(registry) {
   if (branch === "main") {
     if (registry.promotion !== null)
       throw new Error(
-        "promotion must follow develop -> staging -> main; main is terminal",
+        "promotion must follow staging -> main; main is terminal",
       );
     return registry;
   }
@@ -260,14 +259,9 @@ export function buildEffectPlans({ expected, observed, registry, repoRoot }) {
   };
 }
 
-export function validateSourceRun(
-  run,
-  sourceSha,
-  sourceRunId,
-  sourceBranch = "develop",
-) {
-  if (!["develop", "staging", "main"].includes(sourceBranch)) {
-    throw new Error("source branch must be develop, staging, or main");
+export function validateSourceRun(run, sourceSha, sourceRunId, sourceBranch) {
+  if (!["staging", "main"].includes(sourceBranch)) {
+    throw new Error("source branch must be staging or main");
   }
   assertObject(run, "source workflow run");
   assertFullSha(sourceSha, "source SHA");
@@ -795,22 +789,21 @@ export async function reconcileBranchEffects({
   context,
 }) {
   let productionCertification;
-  if (sourceBranch !== "develop") {
-    const incoming = await verifyMergedPromotion(api, sourceBranch, sourceSha);
+  const incoming = await verifyMergedPromotion(api, sourceBranch, sourceSha);
+  if (sourceBranch === "main") {
     const previousRegistry = validateRegistry(
       readJson(
         path.join(repoRoot, `.github/${incoming.sourceBranch}-effects.json`),
       ),
     );
     await verifyIncomingEffectProofs(api, incoming, previousRegistry);
-    if (sourceBranch === "main") {
-      productionCertification = await requireProductionCertification({
-        api,
-        repository: context.repository,
-        treeSha: incoming.treeSha,
-        repoRoot,
-      });
-    }
+    productionCertification = await requireProductionCertification({
+      api,
+      repository: context.repository,
+      treeSha: incoming.treeSha,
+      sourceSha,
+      repoRoot,
+    });
   }
   const completed = new Map();
   for (const plan of plans.plans) {
@@ -840,11 +833,11 @@ async function reconcileCommand(args) {
   const sourceRunId = requireString(args, "source-run-id");
   const sourceBranch = requireString(args, "source-branch");
   if (
-    !["develop", "staging", "main"].includes(sourceBranch) ||
+    !["staging", "main"].includes(sourceBranch) ||
     environment("GITHUB_REF_NAME") !== sourceBranch
   ) {
     throw new Error(
-      "source branch must match the develop, staging, or main workflow ref",
+      "source branch must match the staging or main workflow ref",
     );
   }
   assertFullSha(sourceSha, "source SHA");
@@ -906,11 +899,11 @@ async function awaitSourceCommand(args) {
   const sourceRunId = requireString(args, "source-run-id");
   const sourceBranch = requireString(args, "source-branch");
   if (
-    !["develop", "staging", "main"].includes(sourceBranch) ||
+    !["staging", "main"].includes(sourceBranch) ||
     environment("GITHUB_REF_NAME") !== sourceBranch
   ) {
     throw new Error(
-      "source branch must match the develop, staging, or main workflow ref",
+      "source branch must match the staging or main workflow ref",
     );
   }
   const api = new GitHubApi({

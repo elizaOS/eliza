@@ -18,6 +18,7 @@ import {
   isLoopbackRemoteAddress,
   proxyClientHeaderBlocksLocalTrust,
 } from "@elizaos/agent/api/loopback-trust";
+import { getProvidedApiToken } from "@elizaos/core";
 import { isLoopbackBindHost } from "@elizaos/core/protocol";
 import type { RuntimeEnvRecord } from "@elizaos/host/protocol";
 import type {
@@ -30,7 +31,6 @@ import {
   parseSessionCookie,
   readLastActivityHeader,
 } from "./sessions.js";
-import { getProvidedApiToken } from "./tokens.js";
 export type AuthContextSource =
   | "cookie"
   | "bearer-session"

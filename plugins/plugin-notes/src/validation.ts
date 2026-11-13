@@ -4,6 +4,11 @@ import {
   parseNoteFormat as parseRichNoteFormat,
 } from "./note-format.js";
 import { NOTE_ID_REGEXP } from "./note-id.js";
+import {
+  NOTES_RECORDING_ID,
+  NOTES_TRASH_CLEANUP_LIMIT,
+  notesTrashRecordingReferences,
+} from "./trash-retention.js";
 /**
  * Runtime validation for every untrusted Notes boundary. Persisted JSON,
  * HTTP bodies, and agent capability params are normalized here before domain
@@ -21,6 +26,7 @@ import {
   NOTES_SCHEMA_VERSION,
   type NoteFormat,
   type NotesDocument,
+  type NotesTrashRecordingCleanup,
   type StickyColor,
   type StickyNote,
   type UpdateNoteInput,
@@ -493,6 +499,65 @@ export function parseStickyNote(
   return note;
 }
 
+export function parseNotesTrashRecordingCleanup(
+  value: unknown,
+): NotesTrashRecordingCleanup {
+  const field = "trashRecordingCleanup";
+  const receipt = requireRecord(value, field);
+  assertOnlyKeys(
+    receipt,
+    ["operationId", "noteId", "audioId", "deletedAt"],
+    field,
+  );
+  const noteId = parseEntityId(receipt.noteId, field);
+  if (
+    !NOTES_RECORDING_ID.test(noteId) ||
+    typeof receipt.operationId !== "string" ||
+    !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+      receipt.operationId,
+    ) ||
+    typeof receipt.audioId !== "string" ||
+    !NOTES_RECORDING_ID.test(receipt.audioId)
+  ) {
+    throw validationError("Invalid Notes recording cleanup receipt.", field);
+  }
+  return {
+    operationId: receipt.operationId,
+    noteId,
+    audioId: receipt.audioId,
+    deletedAt: parseTimestamp(receipt.deletedAt, field),
+  };
+}
+
+export function parseNotesTrashErase(value: unknown):
+  | { scope: "all"; expectedRevision: number }
+  | {
+      scope: "entry";
+      expectedRevision: number;
+      id: string;
+      deletedAt: string;
+    } {
+  const input = requireRecord(value, "notes trash erase");
+  const expectedRevision = parseRevision(input.expectedRevision);
+  if (input.scope === "all") {
+    assertOnlyKeys(input, ["scope", "expectedRevision"], "notes trash erase");
+    return { scope: "all", expectedRevision };
+  }
+  if (input.scope !== "entry")
+    throw validationError("Select a Notes Trash erase scope.", "scope");
+  assertOnlyKeys(
+    input,
+    ["scope", "expectedRevision", "id", "deletedAt"],
+    "notes trash erase",
+  );
+  return {
+    scope: "entry",
+    expectedRevision,
+    id: parseEntityId(input.id),
+    deletedAt: parseTimestamp(input.deletedAt, "deletedAt"),
+  };
+}
+
 export function parseNotesDocument(value: unknown): NotesDocument {
   const record = requireRecord(value, "notes state");
   assertOnlyKeys(
@@ -504,6 +569,7 @@ export function parseNotesDocument(value: unknown): NotesDocument {
       "notes",
       "trash",
       "noteRevisions",
+      "trashRecordingCleanup",
     ],
     "notes state",
   );
@@ -551,6 +617,42 @@ export function parseNotesDocument(value: unknown): NotesDocument {
     };
   });
   const revision = parseRevision(record.revision);
+  let trashRecordingCleanup: NotesTrashRecordingCleanup[] | undefined;
+  if (record.trashRecordingCleanup !== undefined) {
+    const pending = record.trashRecordingCleanup;
+    if (!Array.isArray(pending) || pending.length > NOTES_TRASH_CLEANUP_LIMIT)
+      throw validationError(
+        "Invalid Notes recording cleanup list.",
+        "trashRecordingCleanup",
+      );
+    const retainedAudio = new Set(
+      [...notes, ...trash.map((entry) => entry.note)].flatMap(
+        notesTrashRecordingReferences,
+      ),
+    );
+    const operations = new Set<string>();
+    const recordingIds = new Set<string>();
+    const retiredNoteIds = new Set<string>();
+    trashRecordingCleanup = pending.map((value) => {
+      const receipt = parseNotesTrashRecordingCleanup(value);
+      if (
+        operations.has(receipt.operationId) ||
+        recordingIds.has(receipt.audioId) ||
+        retiredNoteIds.has(receipt.noteId) ||
+        allIds.has(receipt.noteId) ||
+        retainedAudio.has(receipt.audioId)
+      ) {
+        throw validationError(
+          "Notes recording cleanup conflicts with a retained identity.",
+          "trashRecordingCleanup",
+        );
+      }
+      operations.add(receipt.operationId);
+      recordingIds.add(receipt.audioId);
+      retiredNoteIds.add(receipt.noteId);
+      return receipt;
+    });
+  }
   let noteRevisions: Record<string, number> | undefined;
   if (record.noteRevisions !== undefined) {
     const revisions = requireRecord(record.noteRevisions, "noteRevisions");
@@ -579,6 +681,7 @@ export function parseNotesDocument(value: unknown): NotesDocument {
     notes,
     trash,
     ...(noteRevisions === undefined ? {} : { noteRevisions }),
+    ...(trashRecordingCleanup === undefined ? {} : { trashRecordingCleanup }),
   };
 }
 

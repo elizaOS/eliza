@@ -256,7 +256,9 @@ describe("POST /api/v1/subscription/redeem", () => {
         (await standard.request("/", { headers: { authorization } }, ENV))
           .status,
       ).toBe(200);
-    const sharedKeys = [...counts.keys()];
+    const sharedCounts = new Map(counts);
+    const sharedTtls = new Map(ttls);
+    expect(sharedCounts.size).toBe(1);
     const deps = redeemDeps({ rateLimit: rateLimitDeps });
     const res = await post(createSubscriptionRedeemRoute(deps), {
       code: "ABCD-EFGH-JKMN-PQRS",
@@ -264,9 +266,9 @@ describe("POST /api/v1/subscription/redeem", () => {
     });
     expect(res.status).toBe(200);
     // Redeem neither counted against nor re-armed the shared counter's window.
-    for (const key of sharedKeys) {
-      expect(counts.get(key)).toBe(REDEEM_LIMIT_PER_CREDENTIAL + 3);
-      expect(ttls.get(key)).toBe(RateLimitPresets.STANDARD.windowMs);
+    for (const [key, count] of sharedCounts) {
+      expect(counts.get(key)).toBe(count);
+      expect(ttls.get(key)).toBe(sharedTtls.get(key));
     }
     expect(
       [...counts.keys()].filter((key) => key.includes("subscription-redeem")),

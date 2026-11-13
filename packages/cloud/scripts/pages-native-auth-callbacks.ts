@@ -10,9 +10,14 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
-import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
+import {
+  type CloudDeploymentEnv,
+  resolveCloudCallbackOrigins,
+} from "@elizaos/cloud-shared/lib/deployment/cloud-deployment";
 import {
   type NativeAuthCallback,
+  nativeBillingReturnFallback,
+  nativeBillingReturnPath,
   nativeSignInCallbackFallback,
   selectNativeAuthCallback,
 } from "../../app/functions/_middleware.ts";
@@ -38,22 +43,22 @@ function selectedConfig(config: Config, environment: Environment): Config {
 export function callbacks(
   raw: unknown,
   environment: Environment,
+  deploymentEnv: CloudDeploymentEnv = process.env,
 ): NativeAuthCallback[] {
   if (raw === undefined || raw === "") return [];
+  // Callbacks may only name this deployment's own origins. An incomplete
+  // product deployment throws here rather than being checked against Eliza's.
+  const deployment = resolveCloudCallbackOrigins(deploymentEnv, environment);
   // The serving boundary validates the entire list even when no entry matches.
-  selectNativeAuthCallback(
-    raw,
-    new URL(ELIZA_DOMAIN_CONTRACTS[environment].cloudAppOrigin),
-  );
+  selectNativeAuthCallback(raw, new URL(deployment.appOrigin));
   const entries = JSON.parse(raw as string) as NativeAuthCallback[];
-  const contract = ELIZA_DOMAIN_CONTRACTS[environment];
-  const origins = new Set([contract.cloudAppOrigin, contract.marketingOrigin]);
+  const origins = new Set([deployment.appOrigin, deployment.webOrigin]);
   if (
     entries.some(
       (entry) =>
         !origins.has(new URL(entry.redirectUri).origin) ||
         (entry.browserSignIn !== undefined &&
-          entry.browserSignIn.apiOrigin !== contract.cloudApiOrigin),
+          entry.browserSignIn.apiOrigin !== deployment.apiOrigin),
     )
   ) {
     throw new Error("native_callback_environment_mismatch");
@@ -189,7 +194,7 @@ export async function verifyCallbacks(
         (key === "content-security-policy"
           ? actualCsp
           : response.headers.get(key)) !==
-          (key === "content-security-policy" ? expectedCsp : value)
+        (key === "content-security-policy" ? expectedCsp : value)
       )
         throw new Error("native_callback_headers_mismatch");
     }
@@ -197,6 +202,50 @@ export async function verifyCallbacks(
       throw new Error("native_callback_body_mismatch");
   }
   return entries.length;
+}
+
+/** A well-formed provider session identifier that names no real checkout. */
+const BILLING_RETURN_PROBE_SESSION =
+  "cs_test_nativeBillingReturnDeploymentProbe";
+
+/**
+ * Probes the checkout return Cloud derives for each native callback (its
+ * `/auth/callback` replaced by `/billing/return`). The deployed page must be
+ * byte-for-byte the script-free fallback for that app: the same headers, the
+ * forwarded session id and result, and nothing else from the request. A
+ * callback with another shape has no billing return and is not probed.
+ */
+export async function verifyBillingReturns(
+  config: Config,
+  environment: Environment,
+  request: (url: URL, init?: RequestInit) => Promise<Response> = fetch,
+): Promise<number> {
+  const vars = object(selectedConfig(config, environment).vars ?? {});
+  let verified = 0;
+  for (const callback of callbacks(vars[BINDING], environment)) {
+    const billingReturnPath = nativeBillingReturnPath(callback.redirectUri);
+    if (billingReturnPath === null) continue;
+    const url = new URL(billingReturnPath, callback.redirectUri);
+    url.searchParams.set("session_id", BILLING_RETURN_PROBE_SESSION);
+    url.searchParams.set("result", "success");
+    // The page must drop every parameter it does not forward.
+    url.searchParams.set("next", "https://deployment-probe.invalid/");
+    const expected = nativeBillingReturnFallback(url, callback);
+    const response = await request(url, {
+      redirect: "manual",
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (response.status !== 200)
+      throw new Error("native_billing_return_status_mismatch");
+    for (const [key, value] of expected.headers) {
+      if (response.headers.get(key) !== value)
+        throw new Error("native_billing_return_headers_mismatch");
+    }
+    if ((await response.text()) !== (await expected.text()))
+      throw new Error("native_billing_return_body_mismatch");
+    verified += 1;
+  }
+  return verified;
 }
 
 async function main(): Promise<void> {
@@ -259,11 +308,16 @@ async function main(): Promise<void> {
     const configPath = flags.get("--config");
     if (!configPath || flags.size !== 2)
       throw new Error("pages_callback_arguments_invalid");
-    const count = await verifyCallbacks(
-      object(JSON.parse(await readFile(configPath, "utf8"))),
-      environment,
+    const config = object(JSON.parse(await readFile(configPath, "utf8")));
+    const count = await verifyCallbacks(config, environment);
+    const billingReturns = await verifyBillingReturns(config, environment);
+    console.log(
+      JSON.stringify({
+        nativeCallbacks: count,
+        nativeBillingReturns: billingReturns,
+        verified: true,
+      }),
     );
-    console.log(JSON.stringify({ nativeCallbacks: count, verified: true }));
   } else {
     throw new Error("pages_callback_arguments_invalid");
   }

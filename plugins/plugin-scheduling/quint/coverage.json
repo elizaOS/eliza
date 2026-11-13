@@ -24,5 +24,46 @@
       "plugins/plugin-scheduling/src/scheduled-task/runner-host-admission.integration.test.ts",
       "plugins/plugin-scheduling/src/scheduled-task/record-store.test.ts"
     ]
+  },
+  {
+    "id": "plugin-scheduling.ScheduledTaskOwnerBinding",
+    "model": "plugins/plugin-scheduling/quint/ScheduledTaskOwnerBinding.qnt",
+    "sources": [
+      "plugins/plugin-scheduling/src/scheduled-task/runner-service.ts"
+    ],
+    "invariants": [
+      "NewOperationsUseOwner",
+      "OneDeliveryAcrossRebind",
+      "DeliveryHasClaim",
+      "TypeOK"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One deferred first-wins registration, one shared task and two callers.",
+      "Work already started retains its dispatcher; the shared store claim is not reset. Real SQL behavior is checked by the implementation case.",
+      "Bounded safety only. Completion requires fair execution of an accepted operation; network/provider liveness and hot unregistration are outside this model."
+    ],
+    "implementationTests": [
+      "plugins/plugin-scheduling/src/scheduled-task/sql-persistence.test.ts"
+    ]
+  },
+  {
+    "id": "plugin-scheduling.ScheduledDriverTeardown",
+    "model": "plugins/plugin-scheduling/quint/ScheduledDriverTeardown.qnt",
+    "sources": [
+      "plugins/plugin-scheduling/src/plugin.ts",
+      "plugins/plugin-scheduling/src/scheduled-task/standalone-tick.ts",
+      "packages/core/src/plugin-lifecycle.ts",
+      "plugins/plugin-sqlite/adapter.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One runtime, two worker generations, one deferred hook per generation and one canonical driver row. Real runtime and file-backed SQLite cases hold the first insert across unload, verify cleanup and fresh reload after acknowledged and unacknowledged commits, and resume an obsolete seed callback after reload.",
+      "Progress requires fair database and teardown settlement. A failed cleanup can retain the canonical row for later reconciliation. Running worker effects, multiple runtimes, legacy duplicate rows, consumer-host takeover and unbounded progress remain outside the model."
+    ],
+    "implementationTests": [
+      "plugins/plugin-scheduling/src/scheduled-task/record-startup.test.ts"
+    ]
   }
 ]

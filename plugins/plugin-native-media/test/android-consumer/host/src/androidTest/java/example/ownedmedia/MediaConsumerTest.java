@@ -23,6 +23,52 @@ import org.junit.Test;
 
 public final class MediaConsumerTest {
   @Test
+  public void chosenCropKeepsRealRotatedPixelsAndOneDurableCopyIdentity() throws Exception {
+    Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+    ContentResolver resolver = context.getContentResolver();
+    String namespace = "crop" + UUID.randomUUID().toString().replace("-", "");
+    OwnedMediaConfig config = OwnedMediaConfig.builder(namespace).edits("Pictures/OwnedCropReview/", "edit-")
+        .captures("Pictures/OwnedCropReview/", "capture-").build();
+    Bitmap bitmap = Bitmap.createBitmap(80, 40, Bitmap.Config.ARGB_8888); bitmap.eraseColor(Color.RED);
+    ByteArrayOutputStream encoded = new ByteArrayOutputStream(); assertTrue(bitmap.compress(Bitmap.CompressFormat.JPEG, 95, encoded)); bitmap.recycle();
+    OwnedCaptures captures = new OwnedCaptures(context, config);
+    OwnedPhotoEdits edits = new OwnedPhotoEdits(context, config);
+    Uri original = null, copy = null;
+    try {
+      OwnedCaptures.Result kept = captures.keep(UUID.randomUUID().toString(), Base64.getEncoder().encodeToString(encoded.toByteArray()));
+      assertTrue(kept.message, kept.saved); original = item(kept.id);
+      byte[] sourceBytes = read(resolver, original);
+      String revision;
+      try (Cursor row = resolver.query(original, new String[] {"date_added", "_size", "generation_modified", "is_trashed"}, null, null, null)) {
+        assertNotNull(row); assertTrue(row.moveToFirst());
+        revision = OwnedMediaSelection.revision(Build.VERSION.SDK_INT, row.getLong(0), row.getLong(1), row.getLong(2), row.getInt(3));
+      }
+      String token = edits.begin(kept.id, revision).getString("sessionId");
+      PhotoCrop crop = PhotoCrop.rect(.25, 0, .5, .5);
+      JSONObject preview = edits.preview(token, 90, crop, "none");
+      assertEquals(20, preview.getInt("width")); assertEquals(40, preview.getInt("height"));
+      JSONObject saved = edits.save(token, 90, crop, "none"); assertEquals("saved", saved.getString("status")); copy = item(saved.getString("id"));
+      assertEquals(saved.getString("id"), edits.save(token, 90, crop, "none").getString("id"));
+      try { edits.save(token, 90, PhotoCrop.rect(0, 0, .5, .5), "none"); fail("Changed rectangle reused an operation"); }
+      catch (IllegalArgumentException expected) { /* Existing effect identity cannot authorize a different edit. */ }
+      try { edits.replace(token, 90, crop, "none"); fail("Copy receipt became Replace authority"); }
+      catch (IllegalArgumentException expected) { /* Copy and Replace remain separate effects. */ }
+      assertArrayEquals(sourceBytes, read(resolver, original));
+      byte[] bytes = read(resolver, copy); Bitmap result = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+      assertNotNull(result); assertEquals(20, result.getWidth()); assertEquals(40, result.getHeight()); result.recycle();
+      JSONObject record = new JSONObject(context.getSharedPreferences(config.preferences("photo-edit-results"), 0).getString(token, null));
+      assertEquals(crop.rectKey(), record.getString("cropRect"));
+      edits.close();
+      assertEquals(saved.getString("id"), new OwnedPhotoEdits(context, config).result(token).getString("id"));
+      try (Cursor rows = resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, new String[] {"_id"}, "_display_name=? AND owner_package_name=?", new String[] {config.editName(token), context.getPackageName()}, null)) {
+        assertNotNull(rows); assertEquals(1, rows.getCount());
+      }
+    } finally {
+      edits.close(); if (copy != null) resolver.delete(copy, null, null); if (original != null) resolver.delete(original, null, null);
+      context.deleteSharedPreferences(config.preferences("kept-captures")); context.deleteSharedPreferences(config.preferences("photo-edit-results"));
+    }
+  }
+  @Test
   public void interruptedPhotoCopyRemovesOnlyItsPendingRow() throws Exception {
     Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
     ContentResolver resolver = context.getContentResolver();
