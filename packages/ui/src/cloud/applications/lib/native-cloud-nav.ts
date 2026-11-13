@@ -22,18 +22,17 @@ import {
   DEFAULT_DIRECT_CLOUD_API_BASE_URL,
   resolveDirectCloudAppBase,
 } from "@elizaos/plugin-browser/remote-control/cloud-endpoints";
-import { isElectrobunRuntime } from "../../../bridge/electrobun-runtime";
 import { getBootConfig } from "../../../config/boot-config-store";
 import { openExternalUrl } from "../../../utils/openExternalUrl";
 
 /**
- * True only inside a native (Capacitor iOS/Android) or Electrobun runtime — the
+ * True only inside a native (Capacitor iOS/Android) runtime — the
  * surfaces that mount the Applications pages via `NativeAppsStudio` rather than
  * the apex `CloudRouterShell`. Always false on web, so every web path is
  * unchanged.
  */
 export function isNativeAppsStudioRuntime(): boolean {
-  return Capacitor.isNativePlatform() || isElectrobunRuntime();
+  return Capacitor.isNativePlatform();
 }
 
 /**

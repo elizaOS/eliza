@@ -144,8 +144,7 @@ function readSessionStorageApiBase(): string | undefined {
 
 /**
  * Resolve an API path (e.g. "/api/avatar/vrm") to a full URL reachable from
- * the renderer. In desktop shells the page origin is electrobun:// or
- * file://, so bare /api/... paths resolve to the SPA instead of the backend.
+ * the renderer. When the page origin is file://, bare /api/... paths resolve to the SPA instead of the backend.
  *
  * Resolution order: boot-config `apiBase` (via `getElizaApiBase()`) →
  * `sessionStorage` fallback. The boot config is the current client-owned source

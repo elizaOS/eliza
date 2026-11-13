@@ -83,7 +83,6 @@
     "audit:surface-realm-writers": "bun scripts/scan-reserved-storage-writers.ts",
     "audit:design": "bun scripts/audit-design.ts",
     "design:build": "vite build --config stories/vite.config.ts",
-    "test:node": "bun test --timeout=120000 ./src/components/pages/browser-wallet-consent-format.node.test.ts",
     "test:progressive-speech-e2e": "bun src/voice/__e2e__/run-progressive-speech.mjs",
     "test:batch-voice-package": "bun scripts/verify-batch-voice-package.ts",
     "test:mobile-workspaces-style": "bun scripts/verify-mobile-workspace-styles.mjs"

@@ -13,7 +13,6 @@ import {
   openAppPath,
   seedAppStorage,
 } from "./helpers";
-import { installDesktopBridgeFixture } from "./helpers/desktop-bridge";
 import { VIEW_ROUTES } from "./view-routes";
 
 // Coarse-pointer mobile emulation: the `@media (pointer: coarse)` touch floor
@@ -466,7 +465,6 @@ test.describe("tap-target rendered-geometry + role/DOM coherence gate", () => {
       page,
     }) => {
       if (view.id !== "chat") await hideChatOverlay(page);
-      if (view.id === "desktop") await installDesktopBridgeFixture(page);
       if (view.id === "files") {
         const hash = "a".repeat(64);
         await page.route("**/api/files", (route) =>

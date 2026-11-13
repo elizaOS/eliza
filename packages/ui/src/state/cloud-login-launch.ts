@@ -23,7 +23,6 @@
  * cloud-resume marker (first-run-cloud-resume.ts) finish onboarding on return.
  */
 
-import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { configuredStewardApiUrlOverride } from "../cloud/shell/steward-config";
 import { ELIZA_CLOUD_DIRECT_API_BY_HOST } from "../cloud/shell/steward-url";
 import { currentOwnedElizaPagesOrigin } from "../utils/cloud-agent-base";
@@ -47,102 +46,6 @@ export interface DirectCloudLoginSession {
   browserUrl?: string;
   sessionId?: string;
   error?: string;
-}
-
-type DirectCloudLoginSessionStarter = () => Promise<DirectCloudLoginSession>;
-
-// CLI sessions live for ten minutes server-side. Stop offering a prepared
-// session after five so a user who clicks near the cache boundary still has
-// the full five-minute desktop completion window once Safari opens.
-const PREPARED_DESKTOP_LOGIN_MAX_AGE_MS = 5 * 60_000;
-
-let preparedDesktopLogin: {
-  baseKey: string;
-  preparedAt: number;
-  request: Promise<DirectCloudLoginSession>;
-  result: DirectCloudLoginSession | null;
-} | null = null;
-
-function cloudBaseKey(cloudApiBase: string): string {
-  return cloudApiBase.trim().replace(/\/+$/, "");
-}
-
-function isPreparedDesktopLoginFresh(
-  prepared: NonNullable<typeof preparedDesktopLogin>,
-  cloudApiBase: string,
-): boolean {
-  return (
-    prepared.baseKey === cloudBaseKey(cloudApiBase) &&
-    Date.now() - prepared.preparedAt < PREPARED_DESKTOP_LOGIN_MAX_AGE_MS
-  );
-}
-
-/**
- * Begin the server-issued CLI-session request while the desktop sign-in CTA is
- * visible. The click can then hand the finished URL straight to macOS instead
- * of putting a database/network round trip between the gesture and Safari.
- * Plain web and native mobile do not pre-create unused sessions here.
- */
-export function prepareDesktopCloudLoginSession(
-  cloudApiBase: string,
-  start: DirectCloudLoginSessionStarter,
-): Promise<DirectCloudLoginSession> | null {
-  if (!isElectrobunRuntime()) return null;
-  if (
-    preparedDesktopLogin &&
-    isPreparedDesktopLoginFresh(preparedDesktopLogin, cloudApiBase)
-  ) {
-    return preparedDesktopLogin.request;
-  }
-
-  preparedDesktopLogin = null;
-  const request = Promise.resolve().then(start);
-  preparedDesktopLogin = {
-    baseKey: cloudBaseKey(cloudApiBase),
-    preparedAt: Date.now(),
-    request,
-    result: null,
-  };
-
-  // Only a completed successful warm-up is safe for the deliberate click to
-  // consume. A request started before the desktop RPC bridge is ready can stay
-  // pending indefinitely, so the click must start a fresh request in that case.
-  void request.then(
-    (result) => {
-      if (preparedDesktopLogin?.request !== request) return;
-      if (result.ok) {
-        preparedDesktopLogin.result = result;
-      } else {
-        preparedDesktopLogin = null;
-      }
-    },
-    () => {
-      if (preparedDesktopLogin?.request === request) {
-        preparedDesktopLogin = null;
-      }
-    },
-  );
-  return request;
-}
-
-/** Consume a fresh, completed session exactly once for the matching Cloud base. */
-export function takePreparedDesktopCloudLoginSession(
-  cloudApiBase: string,
-): Promise<DirectCloudLoginSession> | null {
-  const prepared = preparedDesktopLogin;
-  preparedDesktopLogin = null;
-  if (
-    !prepared?.result ||
-    !isPreparedDesktopLoginFresh(prepared, cloudApiBase)
-  ) {
-    return null;
-  }
-  return Promise.resolve(prepared.result);
-}
-
-/** Test isolation for the module-level warm-session slot. */
-export function __resetPreparedDesktopCloudLoginSessionForTests(): void {
-  preparedDesktopLogin = null;
 }
 
 /**
@@ -181,10 +84,6 @@ export function hasSameOriginStewardLogin(): boolean {
  * a popup/tab the flow would immediately abandon.
  */
 export function preOpenCloudLoginWindow(): Window | null {
-  // Electrobun must not create a renderer popup: `window.open` is hosted by
-  // the app WebView, not the system browser. The eventual login URL goes
-  // through desktopOpenExternal instead (see useCloudState).
-  if (isElectrobunRuntime()) return null;
   if (isPlainWebPlatform() && hasSameOriginStewardLogin()) {
     const loopbackTarget = loopbackStewardDevelopmentTarget();
     if (

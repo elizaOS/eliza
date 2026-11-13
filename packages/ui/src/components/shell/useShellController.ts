@@ -24,8 +24,6 @@ import { buildVoiceTurnSignal } from "@elizaos/voice";
 import * as React from "react";
 import type { ImageAttachment } from "../../api/client-types-chat";
 import type { AsrProvider } from "../../api/client-types-config";
-import { subscribeDesktopBridgeEvent } from "../../bridge/electrobun-rpc";
-import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import {
   APP_PAUSE_EVENT,
   APP_RESUME_EVENT,
@@ -55,14 +53,12 @@ import {
 } from "../../state/persistence";
 import { goHome } from "../../state/shell-surface-store";
 import { type AppContextValue, deriveAgentReady } from "../../state/types";
-import { openDesktopSettingsWindow } from "../../utils/desktop-workspace";
 import { voiceCaptureDebug } from "../../utils/voice-capture-debug";
 import { createVoiceTurnAggregator } from "../../voice/batch-conversation";
 import type { TurnAggregator } from "../../voice/end-of-turn";
 import {
   type MicrophonePermissionState,
   queryMicrophonePermission,
-  requestDesktopMicrophoneAccess,
 } from "../../voice/local-asr-capture";
 import { TranscriptSessionAccumulator } from "../../voice/transcript-session";
 import {
@@ -754,19 +750,8 @@ export function useShellController(): ShellController {
   );
   // Jump to Settings from the chat's no_provider gate. Stable identity.
   const openSettings = React.useCallback(() => {
-    if (isElectrobunRuntime()) {
-      void openDesktopSettingsWindow().catch((error: unknown) => {
-        // error-policy:J4 surface native window failures so Settings can be retried
-        setActionNotice(
-          `Settings could not open. ${error instanceof Error ? error.message : String(error)}`,
-          "error",
-          6000,
-        );
-      });
-      return;
-    }
     setTab("settings");
-  }, [setTab, setActionNotice]);
+  }, [setTab]);
   // Commit the home half of the shared rail before the route changes so the
   // destination cannot paint one frame of the launcher with the wrong surface.
   const navigateHome = React.useCallback(() => {
@@ -1706,27 +1691,6 @@ export function useShellController(): ShellController {
   // path) only when the mic should open.
   const gateEngageOnMicPermission = React.useCallback(
     (onProceed: () => void): void => {
-      if (micPermissionRef.current === "prompt" && isElectrobunRuntime()) {
-        // DESKTOP FIRST USE: the macOS app process has not been asked for the
-        // microphone yet. Ask through the native host from this tap (the same
-        // request Settings → Permissions makes) so the system prompt appears
-        // from the chat capture path instead of the WKWebView capture being
-        // refused before any prompt. `null` means no macOS bridge answered;
-        // getUserMedia then owns the prompt.
-        void requestDesktopMicrophoneAccess().then((requested) => {
-          if (requested) {
-            setMicPermission(requested);
-            micPermissionRef.current = requested;
-          }
-          if (requested === "denied") {
-            surfaceMicDeniedAtEngage();
-            return;
-          }
-          if (authGateRef.current.gated || captureRef.current) return;
-          onProceed();
-        });
-        return;
-      }
       if (micPermissionRef.current !== "denied") {
         // Fast path: proceed now, refresh the ref for next time in the
         // background.
@@ -1852,10 +1816,9 @@ export function useShellController(): ShellController {
     });
   }, []);
   // Keep the last-known grant live instead of latching a stale "denied": a
-  // grant made in the detached Settings window, System Settings, or another
-  // app surface is picked up when this window regains focus/visibility or the
-  // desktop host reports a microphone permission change. This passive refresh
-  // never toasts; engage paths own the actionable notice.
+  // grant made in system settings or another app surface is picked up when
+  // this window regains focus/visibility. This passive refresh never toasts;
+  // engage paths own the actionable notice.
   React.useEffect(() => {
     if (typeof window === "undefined") return;
     let disposed = false;
@@ -1874,22 +1837,10 @@ export function useShellController(): ShellController {
     };
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", onVisibility);
-    const unsubscribe = subscribeDesktopBridgeEvent({
-      rpcMessage: "permissionsChanged",
-      ipcChannel: "permissions:changed",
-      listener: (payload) => {
-        const id =
-          typeof payload === "object" && payload !== null && "id" in payload
-            ? (payload as { id: unknown }).id
-            : undefined;
-        if (id === "microphone") refresh();
-      },
-    });
     return () => {
       disposed = true;
       window.removeEventListener("focus", refresh);
       document.removeEventListener("visibilitychange", onVisibility);
-      unsubscribe();
     };
   }, []);
   const open = React.useCallback(() => {
@@ -2336,12 +2287,8 @@ export function useShellController(): ShellController {
     // fresh probe clears the denial and we actually engage. On the fast
     // (non-denied) path onProceed runs synchronously and re-persists
     // immediately, so the rollback+re-save is a no-op net change.
-    // The gate is async (and may block) on the denied recovery path and on the
-    // desktop first-use native request path.
-    const gateMayBlock =
-      micPermissionRef.current === "denied" ||
-      (micPermissionRef.current === "prompt" && isElectrobunRuntime());
-    if (gateMayBlock) {
+    // The gate is async (and may block) on the denied recovery path.
+    if (micPermissionRef.current === "denied") {
       saveContinuousChatMode(priorContinuousModeRef.current);
     }
     gateEngageOnMicPermission(() => {

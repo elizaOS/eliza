@@ -1,11 +1,10 @@
 /**
  * Full-screen blocking overlay shown when the backend connection has failed and
  * realtime reconnect attempts are exhausted (`backendConnection.state` ===
- * "failed" with `showDisconnectedUI`). Offers a restart affordance: relaunch the
- * Electrobun desktop app when running under it, else reload the page.
+ * "failed" with `showDisconnectedUI`). Offers a restart affordance that reloads
+ * the page.
  */
 import { useState } from "react";
-import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { useAppSelectorShallow } from "../../state/app-store";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader } from "../ui/card";
@@ -14,15 +13,13 @@ const OVERLAY_SHELL_CLASS =
   "fixed inset-0 z-[1001] flex min-h-screen w-full items-center justify-center overflow-hidden bg-bg/80 px-4 py-6 font-body text-txt  sm:px-6";
 
 export function ConnectionLostOverlay() {
-  const { backendConnection, relaunchDesktop, retryBackendConnection, t } =
+  const { backendConnection, retryBackendConnection, t } =
     useAppSelectorShallow((s) => ({
       backendConnection: s.backendConnection,
-      relaunchDesktop: s.relaunchDesktop,
       retryBackendConnection: s.retryBackendConnection,
       t: s.t,
     }));
   const [busy, setBusy] = useState<"restart" | null>(null);
-  const desktopRuntime = isElectrobunRuntime();
 
   if (
     backendConnection.state !== "failed" ||
@@ -35,11 +32,6 @@ export function ConnectionLostOverlay() {
     if (busy) return;
     setBusy("restart");
     try {
-      if (desktopRuntime) {
-        await relaunchDesktop();
-        return;
-      }
-
       if (typeof window !== "undefined") {
         window.location.reload();
       }
@@ -99,7 +91,7 @@ export function ConnectionLostOverlay() {
                     defaultValue: "Restarting...",
                   })
                 : t("finetuningview.Restart", {
-                    defaultValue: desktopRuntime ? "Restart App" : "Restart",
+                    defaultValue: "Restart",
                   })}
             </Button>
             <Button

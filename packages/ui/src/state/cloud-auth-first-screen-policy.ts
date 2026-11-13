@@ -8,17 +8,16 @@ export interface CloudAuthFirstScreenHost {
   cloudOnlyBranding: boolean;
   isAgentlessCloudOrigin: boolean;
   isNative: boolean;
-  isDesktopShell: boolean;
 }
 
 /**
  * Cloud-only branding identifies product capabilities, not necessarily the
  * authority serving the page. Only the Cloud control plane owns browser login;
- * native and desktop cloud-only clients may also initiate that login directly.
+ * native cloud-only clients may also initiate that login directly.
  */
 export function cloudAuthFirstScreenOwnsHost(
   host: CloudAuthFirstScreenHost,
 ): boolean {
   if (!host.cloudOnlyBranding) return false;
-  return host.isAgentlessCloudOrigin || host.isNative || host.isDesktopShell;
+  return host.isAgentlessCloudOrigin || host.isNative;
 }

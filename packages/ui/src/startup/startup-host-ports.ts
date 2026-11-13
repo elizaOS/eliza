@@ -7,14 +7,12 @@ export type StartupRuntimeClient = Pick<
   | "fetch"
   | "getAuthStatus"
   | "getBaseUrl"
-  | "getBootProgress"
   | "getCloudCompatAgent"
   | "getCloudCompatAgents"
   | "getCodingAgentStatus"
   | "getConfig"
   | "getFirstRunOptions"
   | "getFirstRunStatus"
-  | "getLaunchProgress"
   | "getRestAuthToken"
   | "getStatus"
   | "getStreamSettings"
@@ -39,7 +37,6 @@ export type NativeStartupBootState = {
 /** Explicit dependencies for the existing startup coordinator and phase algorithms. */
 export interface StartupHostPorts {
   readonly platform: {
-    readonly isElectrobunRuntime: typeof import("../bridge/electrobun-runtime.js").isElectrobunRuntime;
     readonly isAndroid: typeof import("../platform/init.js").isAndroid;
     readonly isIOS: typeof import("../platform/init.js").isIOS;
     readonly isNative: typeof import("../platform/init.js").isNative;
@@ -48,7 +45,6 @@ export interface StartupHostPorts {
   };
   readonly transport: {
     readonly client: StartupRuntimeClient;
-    readonly invokeDesktopBridgeRequestWithTimeout: typeof import("../bridge/electrobun-rpc.js").invokeDesktopBridgeRequestWithTimeout;
     readonly primeAuthStatusProbe: typeof import("../hooks/useAuthStatus.js").primeAuthStatusProbe;
     readonly getAndroidLocalAgentBootStateForUrl: (
       url: string | null | undefined,

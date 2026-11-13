@@ -207,16 +207,6 @@ export interface AgentHostBridge {
     res: HttpServerResponse,
     runtime: AgentRuntime | null,
   ): Promise<boolean>;
-  /**
-   * One-shot desktop session bootstrap. The host owns browser-session
-   * persistence, while the agent owns the packaged HTTP listener, so this
-   * handler must cross the bridge before the generic API auth gate runs.
-   */
-  handleDesktopAuthBootstrapRoute?(
-    req: HttpIncomingMessage,
-    res: HttpServerResponse,
-    runtime: AgentRuntime | null,
-  ): Promise<boolean>;
 }
 
 function rejectUnavailableVaultWrite(): Promise<never> {

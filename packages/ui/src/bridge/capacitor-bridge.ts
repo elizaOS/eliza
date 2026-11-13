@@ -11,7 +11,6 @@
 
 import { Capacitor } from "@capacitor/core";
 import { BRIDGE_READY_EVENT, dispatchAppEvent } from "../events";
-import { isElectrobunRuntime } from "./electrobun-runtime";
 
 // Import the plugin bridge
 import {
@@ -28,14 +27,6 @@ const isNative = Capacitor.isNativePlatform();
 const isIOS = platform === "ios";
 const isAndroid = platform === "android";
 
-function isDesktopPlatform(): boolean {
-  return isElectrobunRuntime();
-}
-
-function isWebPlatform(): boolean {
-  return platform === "web" && !isElectrobunRuntime();
-}
-
 /**
  * Capability flags indicating what features are available
  */
@@ -43,7 +34,7 @@ export interface CapacitorCapabilities {
   /** Whether we're running in a native container */
   native: boolean;
   /** Platform identifier */
-  platform: "ios" | "android" | "electrobun" | "web";
+  platform: "ios" | "android" | "web";
   /** Haptic feedback support */
   haptics: boolean;
   /** Camera capture support */
@@ -68,21 +59,18 @@ export interface CapacitorCapabilities {
  * Get the current platform capabilities
  */
 export function getCapabilities(): CapacitorCapabilities {
-  const isDesktop = isDesktopPlatform();
   return {
     native: isNative,
-    platform: (isDesktop
-      ? "electrobun"
-      : platform) as CapacitorCapabilities["platform"],
+    platform: platform as CapacitorCapabilities["platform"],
     haptics: isNative && (isIOS || isAndroid),
     camera: isNative,
     microphone: isNative,
-    screenCapture: isNative && !isDesktop, // Desktop uses a separate capture path
+    screenCapture: isNative,
     fileSystem: isNative,
     notifications: isNative,
     geolocation: true, // Available on web too via browser API
-    background: isNative && !isDesktop,
-    voiceWake: isNative && (isIOS || isAndroid), // macOS via Swabble handled separately
+    background: isNative,
+    voiceWake: isNative && (isIOS || isAndroid),
   };
 }
 
@@ -241,9 +229,7 @@ export interface ElizaBridge {
     isNative: boolean;
     isIOS: boolean;
     isAndroid: boolean;
-    isDesktop: boolean;
     isWeb: boolean;
-    isMacOS: boolean;
   };
 }
 
@@ -251,7 +237,6 @@ export interface ElizaBridge {
  * Create the global bridge object
  */
 function createBridge(): ElizaBridge {
-  const isDesktop = isDesktopPlatform();
   return {
     capabilities: getCapabilities(),
     pluginCapabilities: getPluginCapabilities(),
@@ -266,9 +251,7 @@ function createBridge(): ElizaBridge {
       isNative,
       isIOS,
       isAndroid,
-      isDesktop,
-      isWeb: isWebPlatform(),
-      isMacOS: isDesktop, // Electrobun is used for macOS/desktop
+      isWeb: platform === "web",
     },
   };
 }

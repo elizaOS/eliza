@@ -324,20 +324,6 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     headerless: true,
   },
   {
-    // installDesktopPermissionsBridge injects __ELIZA_ELECTROBUN_RPC__, so
-    // isElectrobunRuntime() is true here and /desktop renders the full desktop
-    // workspace branch (not the "tools only available" fallback). Assert on the
-    // always-rendered controls of that branch, which mount before any desktop
-    // RPC resolves, rather than the RPC-gated "Paths" list.
-    name: "desktop workspace deep link",
-    path: "/desktop",
-    readyChecks: [
-      { text: "Refresh Diagnostics" },
-      { text: "Desktop Dev Stack" },
-    ],
-    timeoutMs: 60_000,
-  },
-  {
     name: "settings voice path",
     path: "/settings/voice",
     readyChecks: [{ selector: '[data-testid="settings-shell"]' }],
@@ -471,7 +457,7 @@ function formatPageIssue(kind: string, value: unknown): string {
 
 // In keyless loopback mode the local stack answers 501 for any
 // dev-only or optional endpoint it does not model (e.g. /api/dev/stack,
-// /api/dev/console-log, /api/update/status). The renderer already degrades
+// /api/update/status). The renderer already degrades
 // gracefully on those — the page still mounts and the ready checks still pass —
 // but the browser emits a failed-resource console error for the request. That
 // is a loopback-environment artifact,
@@ -499,62 +485,6 @@ function installPageIssueGuards(page: Page): string[] {
     issues.push(formatPageIssue("pageerror", error));
   });
   return issues;
-}
-
-async function installDesktopPermissionsBridge(page: Page): Promise<void> {
-  await page.addInitScript((permissions) => {
-    const secureStore = new Map<string, string>();
-    const existing = window.__ELIZA_ELECTROBUN_RPC__;
-    window.__ELIZA_ELECTROBUN_RPC__ = {
-      request: {
-        ...(existing?.request ?? {}),
-        // Injecting __ELIZA_ELECTROBUN_RPC__ makes isElectrobunRuntime() →
-        // isDesktopPlatform() true, so the /desktop deep link and desktop
-        // viewport probes mount the full desktop workspace and run
-        // initializeDesktopShell() (main.tsx). That startup path validates the
-        // native contract before rendering: it throws
-        // "[desktop-shell] Native Electrobun bridge is unavailable" unless
-        // desktopGetVersion resolves a real runtime (not "N/A"/"unknown"), and
-        // it throws again unless desktopRegisterShortcut returns
-        // { success: true } (the command palette; the push-to-talk shortcut is
-        // best-effort and would console.warn — failing the strict page gating —
-        // without this same success stub). desktopSetTrayMenu is best-effort but
-        // stubbed for parity. This is the minimum desktop startup contract the
-        // other booting ui-smoke fixtures rely on (see injectFullCapabilityHost
-        // in onboarding-to-home.shared.ts); without it every probe aborts.
-        desktopGetVersion: async () => ({ runtime: "playwright-smoke" }),
-        desktopRegisterShortcut: async () => ({ success: true }),
-        desktopSetTrayMenu: async () => undefined,
-        permissionsGetAll: async () => permissions,
-        permissionsIsShellEnabled: async () => false,
-        permissionsGetPlatform: async () => "linux",
-        // The injected RPC marker declares a complete desktop host, so its
-        // protected-storage boundary must exist too. Keep credentials inside
-        // this native-boundary stand-in rather than letting the renderer's
-        // fail-closed storage bridge report the deliberately incomplete host.
-        secureStoreGet: async (params) => {
-          const { kind } = params as { kind: string };
-          return secureStore.has(kind)
-            ? { ok: true, value: secureStore.get(kind) }
-            : { ok: false, reason: "not_found" };
-        },
-        secureStoreSet: async (params) => {
-          const { kind, value } = params as { kind: string; value: string };
-          secureStore.set(kind, value);
-          return { ok: true };
-        },
-        secureStoreDelete: async (params) => {
-          const { kind } = params as { kind: string };
-          const deleted = secureStore.delete(kind);
-          return deleted
-            ? { ok: true, deleted: true }
-            : { ok: false, reason: "not_found" };
-        },
-      },
-      onMessage: existing?.onMessage ?? (() => {}),
-      offMessage: existing?.offMessage ?? (() => {}),
-    };
-  }, EMPTY_PERMISSIONS);
 }
 
 async function installSupplementalSafeRoutes(page: Page): Promise<void> {
@@ -968,7 +898,6 @@ async function clickSafeAllowlist(
 }
 
 test.beforeEach(async ({ page }) => {
-  await installDesktopPermissionsBridge(page);
   // Mark permissions already primed so the soft-ask "Set up Eliza" overlay never
   // pops over a routed view mid-sweep (it renders above the shell and its buttons
   // would otherwise be the first ones a header probe reaches). first-run is

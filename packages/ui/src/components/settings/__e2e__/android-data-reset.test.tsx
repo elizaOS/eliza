@@ -50,7 +50,6 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
-  delete (window as { __electrobunWindowId?: unknown }).__electrobunWindowId;
 });
 
 describe("Reset app data availability", () => {
@@ -63,7 +62,7 @@ describe("Reset app data availability", () => {
       });
     expect(probe("android", true)).toBe(true);
     expect(probe("android", false)).toBe(false);
-    for (const platform of ["web", "ios", "desktop"]) {
+    for (const platform of ["web", "ios"]) {
       expect(probe(platform, true)).toBe(false);
     }
     expect(
@@ -94,14 +93,6 @@ describe("Reset app data availability", () => {
     render(<AndroidDataResetGroup />);
     expect(screen.getByTestId(ROW).textContent).toContain("Reset app data");
     expect(capacitor.registered).toContain("ElizaDataReset");
-  });
-
-  it("stays hidden in the desktop shell, which has its own Reset App flow", () => {
-    capacitor.platform = "android";
-    capacitor.plugins.add(ANDROID_DATA_RESET_PLUGIN);
-    (window as { __electrobunWindowId?: unknown }).__electrobunWindowId = 1;
-    render(<AndroidDataResetGroup />);
-    expect(screen.queryByTestId(ROW)).toBeNull();
   });
 });
 

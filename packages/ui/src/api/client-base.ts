@@ -32,7 +32,6 @@ import {
   isElizaDedicatedAgentHostname,
 } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { readStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
-import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import { getBootConfig, setBootConfig } from "../config/boot-config-store";
 import { NETWORK_STATUS_CHANGE_EVENT } from "../events";
 import { hydrateAndroidLocalAgentTokenForUrl } from "../first-run/local-agent-token";
@@ -80,8 +79,6 @@ import type {
   WsEventHandler,
 } from "./client-types-core";
 import { ApiError, isCloudAgentGoneError } from "./client-types-core";
-import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
-import { isDesktopLocalApiBaseUrl } from "./desktop-local-api-base";
 import {
   getHostRequestTransport,
   hostRequestOwnerId,
@@ -1029,11 +1026,7 @@ export class ElizaClient implements ElizaClientFetch {
   hasToken(): boolean {
     return Boolean(this.apiToken);
   }
-  /**
-   * Bearer token sent on app REST requests (compat API). Used when the
-   * Electrobun main process relays HTTP so it can match the renderer-injected
-   * token in external-desktop / Vite-proxy setups.
-   */
+  /** Bearer token sent on app REST requests (compat API). */
   getRestAuthToken(): string | null {
     return this.apiToken;
   }
@@ -2328,7 +2321,7 @@ export class ElizaClient implements ElizaClientFetch {
       host = parsed.host;
       wsProtocol = parsed.protocol === "https:" ? "wss:" : "ws:";
     } else {
-      // In non-HTTP environments (electrobun://, file://, etc.)
+      // In non-HTTP environments (file://, etc.)
       // window.location.host may be empty or a non-routable value like "-".
       const loc = window.location;
       if (loc.protocol !== "http:" && loc.protocol !== "https:") return;
@@ -3104,22 +3097,4 @@ export class ElizaClient implements ElizaClientFetch {
         : {}),
     };
   }
-}
-
-export async function invokeLocalDesktopRpc<T>(
-  baseUrl: string,
-  options: {
-    rpcMethod: string;
-    ipcChannel: string;
-    params?: unknown;
-  },
-): Promise<T | null> {
-  if (
-    !isDesktopLocalApiBaseUrl(baseUrl) ||
-    isDesktopExternalApiBaseUrl(baseUrl) ||
-    isRemoteRelayRestAdapterBase(baseUrl)
-  ) {
-    return null;
-  }
-  return invokeDesktopBridgeRequest<T>(options);
 }

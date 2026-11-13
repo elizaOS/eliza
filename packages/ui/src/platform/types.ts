@@ -1,7 +1,6 @@
 /**
  * Shared shim types for the platform permission/first-run clients — the narrow
- * client/history/storage surfaces the desktop and mobile implementations depend
- * on.
+ * client/history/storage surfaces the platform implementations depend on.
  */
 import type { client as appClient } from "../api/client";
 
@@ -9,23 +8,12 @@ import type { client as appClient } from "../api/client";
 
 export type PermissionsClientLike = Pick<
   typeof appClient,
-  | "getPermissions"
-  | "getPermission"
-  | "requestPermission"
-  | "openPermissionSettings"
-  | "refreshPermissions"
-  | "setShellEnabled"
-  | "isShellEnabled"
+  "getPermission" | "requestPermission"
 >;
 
 export type PermissionsPatchState = {
-  getPermissions: PermissionsClientLike["getPermissions"];
   getPermission: PermissionsClientLike["getPermission"];
   requestPermission: PermissionsClientLike["requestPermission"];
-  openPermissionSettings: PermissionsClientLike["openPermissionSettings"];
-  refreshPermissions: PermissionsClientLike["refreshPermissions"];
-  setShellEnabled: PermissionsClientLike["setShellEnabled"];
-  isShellEnabled: PermissionsClientLike["isShellEnabled"];
 };
 
 // ── first-run-reset ────────────────────────────────────────────────────

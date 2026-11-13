@@ -57,14 +57,6 @@ function brandName(): string {
   return !name || name === "Eliza" ? "elizaOS" : name;
 }
 
-function isManagedDesktopStartupSurface(): boolean {
-  if (typeof window === "undefined") return false;
-  const desktopSurface = new URLSearchParams(window.location.search).get(
-    "desktopSurface",
-  );
-  return desktopSurface === "workspace" || desktopSurface === "settings";
-}
-
 // Host-overridable brand glyph (whitelabel seam); falls back to the elizaOS mark.
 function BrandMark(props: { className?: string }) {
   const Mark = getBootConfig().brandMark ?? ElizaMark;
@@ -72,12 +64,11 @@ function BrandMark(props: { className?: string }) {
 }
 
 export function StartupShell({ view, onRetry }: StartupShellProps) {
-  const managedDesktopSurface = isManagedDesktopStartupSurface();
   // The loading splash is delay-gated (see STARTUP_SPLASH_DELAY_MS): it renders
   // only once the loading state has persisted past the threshold, so a fast
   // cached boot that becomes ready first never flashes it.
   const splashElapsed = useDelayElapsed(
-    view.kind === "loading" && !managedDesktopSurface,
+    view.kind === "loading",
     STARTUP_SPLASH_DELAY_MS,
   );
 
@@ -124,10 +115,6 @@ export function StartupShell({ view, onRetry }: StartupShellProps) {
   }
 
   if (view.kind === "loading") {
-    // The native managed-window preboot classifier already paints a neutral
-    // charcoal canvas. Keep that exact first paint until the real Workspace or
-    // Settings shell is ready; never replace it with branded black loading UI.
-    if (managedDesktopSurface) return null;
     return splashElapsed ? (
       <StartupLoading phase={view.phase} status={view.status} />
     ) : null;

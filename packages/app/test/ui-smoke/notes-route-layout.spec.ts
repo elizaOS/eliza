@@ -9,7 +9,6 @@ import {
   openAppPath,
   seedAppStorage,
 } from "./helpers";
-import { installDesktopBridgeFixture } from "./helpers/desktop-bridge";
 
 async function installCloudSession(page: Page): Promise<void> {
   await page.route("**/api/cloud/login", async (route) => {
@@ -68,7 +67,6 @@ function rectanglesOverlap(
 test("Notes retains an in-flight edit and failed draft across app navigation", async ({
   page,
 }) => {
-  await installDesktopBridgeFixture(page);
   await seedAppStorage(page, {
     "eliza:permissions-primed": "1",
     "elizaos.desktop.pinned-tabs": JSON.stringify([

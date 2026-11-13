@@ -141,7 +141,6 @@ describe("hosted public renderer entry policy", () => {
       hostname: "cloud.eliza.app",
       webShellEnabled: true,
       chatHarnessEnabled: false,
-      desktopShell: false,
       forceApexConsole: false,
     };
     for (const pathname of [
@@ -152,9 +151,6 @@ describe("hosted public renderer entry policy", () => {
       "/dashboard/billing",
     ]) {
       expect(shouldUsePublicWebEntry({ ...common, pathname })).toBe(true);
-      expect(
-        shouldUsePublicWebEntry({ ...common, pathname, desktopShell: true }),
-      ).toBe(false);
       expect(
         shouldUsePublicWebEntry({
           ...common,
@@ -171,18 +167,14 @@ describe("hosted public renderer entry policy", () => {
     ).toBe(false);
   });
 
-  it("never bypasses the established desktop, disabled-shell, or harness boot", () => {
+  it("never bypasses the established disabled-shell or harness boot", () => {
     const common = {
       pathname: "/login",
       hostname: "eliza.app",
       webShellEnabled: true,
       chatHarnessEnabled: false,
-      desktopShell: false,
       forceApexConsole: false,
     };
-    expect(shouldUsePublicWebEntry({ ...common, desktopShell: true })).toBe(
-      false,
-    );
     expect(shouldUsePublicWebEntry({ ...common, webShellEnabled: false })).toBe(
       false,
     );

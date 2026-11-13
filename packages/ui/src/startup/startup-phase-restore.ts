@@ -5,7 +5,6 @@ import {
 import type { UiLanguage } from "@elizaos/core/protocol";
 import type { FirstRunOptions } from "@elizaos/host/protocol";
 import { resolveDirectCloudAuthApiBase } from "@elizaos/plugin-browser/remote-control/cloud-endpoints";
-import { getBackendStartupTimeoutMs } from "../bridge/electrobun-runtime.js";
 import { normalizeCloudApiKeyToken } from "../cloud/lib/cloud-api-key-token.js";
 import {
   ANDROID_LOCAL_AGENT_IPC_BASE,
@@ -25,7 +24,10 @@ import { isLoopbackHostname } from "../state/runtime-url-trust.js";
 import type { StartupEvent } from "../state/startup-coordinator.js";
 import { buildStaticFirstRunOptions } from "../state/startup-first-run-options.js";
 import { runStartupProbeWithTimeout } from "../state/startup-probe.js";
-import { STARTUP_TIMING_POLICY } from "../state/startup-timing-policy.js";
+import {
+  getBackendStartupTimeoutMs,
+  STARTUP_TIMING_POLICY,
+} from "../state/startup-timing-policy.js";
 import {
   buildCloudSharedAgentApiBase,
   buildDedicatedCloudAgentApiBase,
@@ -91,15 +93,8 @@ export function createStartupRestore(ports: StartupHostPorts) {
     isTrustedRestoreApiBaseUrl,
     isOnboardingReplayRequested,
   } = ports.configuration;
-  const {
-    client,
-    invokeDesktopBridgeRequestWithTimeout,
-    primeAuthStatusProbe,
-  } = ports.transport;
-  const { isElectrobunRuntime, isAndroid, isIOS, isNative } = ports.platform;
-
-  const DESKTOP_RESTORE_RPC_TIMEOUT_MS =
-    STARTUP_TIMING_POLICY.desktopRestoreRpcTimeoutMs;
+  const { client, primeAuthStatusProbe } = ports.transport;
+  const { isAndroid, isIOS, isNative } = ports.platform;
 
   /**
    * A stored Steward JWT with at least this many seconds of life left restores
@@ -360,38 +355,17 @@ export function createStartupRestore(ports: StartupHostPorts) {
     return getElizaApiBase() ?? null;
   }
 
-  async function getDesktopRuntimeModeForStartup(): Promise<{
-    mode?: string;
-  } | null> {
-    const result = await invokeDesktopBridgeRequestWithTimeout<{
-      mode?: string;
-    }>({
-      rpcMethod: "desktopGetRuntimeMode",
-      ipcChannel: "desktop:getRuntimeMode",
-      timeoutMs: DESKTOP_RESTORE_RPC_TIMEOUT_MS,
-    });
-    return result.status === "ok" ? result.value : null;
-  }
-
-  async function requestDesktopAgentStartForStartup(): Promise<void> {
-    await invokeDesktopBridgeRequestWithTimeout({
-      rpcMethod: "agentStart",
-      ipcChannel: "agent:start",
-      timeoutMs: DESKTOP_RESTORE_RPC_TIMEOUT_MS,
-    });
-  }
-
   /**
    * Resolve the Steward refresh endpoint for the current target. Hosted web uses
    * the same-origin cookie path (the HttpOnly `steward-refresh-token` cookie
    * travels automatically), so we return `undefined` to let
    * {@link refreshCloudStewardSession} fall back to its same-origin default.
-   * Native/Electrobun has no same-origin cookie, so refresh against the configured
+   * Native has no same-origin cookie, so refresh against the configured
    * Cloud API base (Bearer-refresh). Mirrors
    * `resolveStewardRefreshEndpoint` in `state/useCloudState.ts`.
    */
   function resolveRestoreStewardRefreshEndpoint(): string | undefined {
-    if (!isNative && !isElectrobunRuntime()) return undefined;
+    if (!isNative) return undefined;
     const cloudBase =
       getBootConfig().cloudApiBase?.trim() ||
       RESTORE_DEFAULT_DIRECT_CLOUD_BASE_URL;
@@ -524,16 +498,12 @@ export function createStartupRestore(ports: StartupHostPorts) {
   async function applyRestoredConnection(args: {
     restoredActiveServer: PersistedActiveServer;
     clientRef: Pick<typeof client, "setBaseUrl" | "setToken">;
-    startLocalRuntime?: () => Promise<void>;
   }) {
-    const { restoredActiveServer, clientRef, startLocalRuntime } = args;
+    const { restoredActiveServer, clientRef } = args;
     if (restoredActiveServer.kind === "local") {
       // Don't clear an already-set token: "local" means the agent runs
       // on this machine, not that the dashboard is unauthenticated.
       clientRef.setBaseUrl(restoredLocalApiBase());
-      if (startLocalRuntime) {
-        await startLocalRuntime();
-      }
       return;
     }
     if (restoredActiveServer.kind === "cloud") {
@@ -556,10 +526,10 @@ export function createStartupRestore(ports: StartupHostPorts) {
       }
       const restoreProbeToken = readStoredStewardToken()?.trim() || null;
       // Capture the host-injected owner key before clientRef.setToken(null)
-      // mutates boot config. Native/Electrobun device-code sessions may have no
+      // mutates boot config. Native device-code sessions may have no
       // persisted active-server token and rely exclusively on this credential.
       const nativeOwnerApiKey =
-        isNative || isElectrobunRuntime()
+        isNative
           ? (normalizeCloudApiKeyToken(resolved.accessToken) ??
             normalizeCloudApiKeyToken(getElizaApiToken()))
           : null;
@@ -729,75 +699,9 @@ export function createStartupRestore(ports: StartupHostPorts) {
     }
   }
 
-  /**
-   * True when `clientBaseUrl` is the embedded agent the desktop shell itself
-   * hosts: a loopback origin equal to the shell-injected live API base. A
-   * persisted `remote` record reconciled onto that base (for example a record
-   * saved while the embedded API listened on 31337, restored after it moved to
-   * 31338) is the embedded agent, not an externally running backend.
-   */
-  function isDesktopEmbeddedApiBase(
-    clientBaseUrl: string | null | undefined,
-    liveApiBase: string | null | undefined,
-  ): boolean {
-    if (!clientBaseUrl || !liveApiBase) return false;
-    try {
-      const client = new URL(clientBaseUrl);
-      const live = new URL(liveApiBase);
-      return (
-        isLoopbackHostname(client.hostname) &&
-        isLoopbackHostname(live.hostname) &&
-        client.origin === live.origin
-      );
-    } catch {
-      // error-policy:J3 an unparsable base is not the shell's embedded agent.
-      return false;
-    }
-  }
-
-  /**
-   * Classify the restored runtime target against the desktop shell's actual
-   * hosting mode rather than the persisted record's kind alone.
-   *
-   * - A loopback backend the shell does NOT host (non-"local" shell mode, e.g.
-   *   "external") is already running elsewhere: treat it as `remote-backend` so
-   *   the coordinator skips the local agent-readiness poll.
-   * - A persisted `remote` record that resolves to the shell's own embedded API
-   *   while the shell hosts the embedded agent ("local" mode) is the embedded
-   *   agent: classify it `embedded-local` so startup requests the local runtime,
-   *   and first-run/runtime readiness is verified instead of assumed. Without
-   *   this the renderer skipped local startup and reached ready against an
-   *   unconfigured first-run backend (#30744).
-   */
-  function resolveDesktopRestoredTarget(args: {
-    target: "embedded-local" | "cloud-managed" | "remote-backend";
-    serverKind: PersistedActiveServer["kind"];
-    clientBaseUrl: string | null | undefined;
-    liveApiBase: string | null | undefined;
-    shellRuntimeMode: string | undefined;
-  }): "embedded-local" | "cloud-managed" | "remote-backend" {
-    if (
-      args.target === "embedded-local" &&
-      args.shellRuntimeMode &&
-      args.shellRuntimeMode !== "local"
-    ) {
-      return "remote-backend";
-    }
-    if (
-      args.target === "remote-backend" &&
-      args.serverKind === "remote" &&
-      args.shellRuntimeMode === "local" &&
-      isDesktopEmbeddedApiBase(args.clientBaseUrl, args.liveApiBase)
-    ) {
-      return "embedded-local";
-    }
-    return args.target;
-  }
-
   function canRestoreActiveServer(args: {
     server: PersistedActiveServer;
     clientApiAvailable: boolean;
-    isDesktop: boolean;
   }): boolean {
     if (args.server.apiBase) {
       // The bundled mobile on-device agent (`eliza-local-agent://ipc`) is a
@@ -828,7 +732,7 @@ export function createStartupRestore(ports: StartupHostPorts) {
       return true;
     }
     if (args.server.kind === "local") {
-      return args.isDesktop || args.clientApiAvailable;
+      return args.clientApiAvailable;
     }
     if (args.server.kind === "cloud") {
       // A persisted cloud agent without a concrete apiBase is still restorable
@@ -925,24 +829,6 @@ export function createStartupRestore(ports: StartupHostPorts) {
       }
     }
     if (cancelled.current) return;
-    const isDesktop = isElectrobunRuntime();
-    // One desktop runtime-mode RPC per restore run: both consumers (the local
-    // agent autostart gate in startLocalRuntime and the embedded-local target
-    // reclassification before dispatch) share this memo instead of dialing the
-    // 5s-timeout bridge twice. Per-run — not module-scoped — because the shell's
-    // mode can change between restore retries. The mode is shell config, stable
-    // within a single startup, so sharing one result is safe.
-    let desktopRuntimeModePromise: Promise<{
-      mode?: string;
-    } | null> | null = null;
-    const desktopRuntimeMode = (): Promise<{
-      mode?: string;
-    } | null> => {
-      desktopRuntimeModePromise ??= getDesktopRuntimeModeForStartup().catch(
-        () => null,
-      );
-      return desktopRuntimeModePromise;
-    };
     // Probe the API when there is evidence of a prior install, or when no
     // persisted server exists (covers headless/VPS setups where config was
     // set via files without going through UI firstRun).
@@ -964,11 +850,9 @@ export function createStartupRestore(ports: StartupHostPorts) {
         probed = await detectExistingFirstRunConnection({
           client,
           cloudOnlyBranding: getBootConfig().branding.cloudOnly === true,
-          timeoutMs: isDesktop
-            ? Math.min(getBackendStartupTimeoutMs(), 30000)
-            : committedMobileOnDeviceMode
-              ? Math.min(getBackendStartupTimeoutMs(), 45000)
-              : Math.min(getBackendStartupTimeoutMs(), 3500),
+          timeoutMs: committedMobileOnDeviceMode
+            ? Math.min(getBackendStartupTimeoutMs(), 45000)
+            : Math.min(getBackendStartupTimeoutMs(), 3500),
           waitForBootingAgent: committedMobileOnDeviceMode,
         });
       } catch (err) {
@@ -1015,7 +899,6 @@ export function createStartupRestore(ports: StartupHostPorts) {
       !canRestoreActiveServer({
         server: restoredActiveServer,
         clientApiAvailable: client.apiAvailable,
-        isDesktop,
       })
     ) {
       preserveCloudAuthTokenForFirstRun(restoredActiveServer);
@@ -1038,29 +921,9 @@ export function createStartupRestore(ports: StartupHostPorts) {
       dispatch({ type: "NO_SESSION", hadPriorFirstRun: hadPrior });
       return;
     }
-    // Only a restored kind:"local" server ever consumes the runtime mode (both
-    // call sites below), so kick the RPC off for exactly that case — it then
-    // runs while the sync restore gates above settle instead of serializing
-    // inside startLocalRuntime.
-    if (isDesktop && restoredActiveServer.kind === "local") {
-      void desktopRuntimeMode();
-    }
     await applyRestoredConnection({
       restoredActiveServer,
       clientRef: client,
-      startLocalRuntime: async () => {
-        try {
-          const runtimeMode = await desktopRuntimeMode();
-          if (runtimeMode && runtimeMode.mode !== "local") {
-            return;
-          }
-          await requestDesktopAgentStartForStartup();
-        } catch (err) {
-          logger.warn(
-            `[startup-phase-restore] desktop agent bridge request failed: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        }
-      },
     });
     if (
       isManagedCloudSharedAgentBase(restoredActiveServer.apiBase) &&
@@ -1093,52 +956,14 @@ export function createStartupRestore(ports: StartupHostPorts) {
       shouldPreserveCompletedFirstRun: preserveCompleted,
       hadPriorFirstRun: hadPrior,
     };
-    // Desktop: classify against the shell's actual hosting mode (see
-    // resolveDesktopRestoredTarget). A non-"local" shell has skipped its
-    // embedded agent, so a loopback "local" record is an already-running remote;
-    // a loopback "remote" record that resolves to the shell's own embedded API
-    // in "local" mode is the embedded agent and must go through local startup.
-    let resolvedTarget = activeServerToTarget(restoredActiveServer);
-    if (
-      isDesktop &&
-      (resolvedTarget === "embedded-local" ||
-        (resolvedTarget === "remote-backend" &&
-          isDesktopEmbeddedApiBase(client.getBaseUrl(), getElizaApiBase())))
-    ) {
-      const runtimeMode = await desktopRuntimeMode();
-      if (cancelled.current) return;
-      const classified = resolveDesktopRestoredTarget({
-        target: resolvedTarget,
-        serverKind: restoredActiveServer.kind,
-        clientBaseUrl: client.getBaseUrl(),
-        liveApiBase: getElizaApiBase(),
-        shellRuntimeMode: runtimeMode?.mode,
-      });
-      if (classified === "embedded-local" && resolvedTarget !== classified) {
-        logger.info(
-          `[startup-phase-restore] persisted remote record resolves to the desktop shell's embedded agent (${client.getBaseUrl()}); starting the local runtime`,
-        );
-        try {
-          await requestDesktopAgentStartForStartup();
-        } catch (err) {
-          logger.warn(
-            `[startup-phase-restore] desktop agent bridge request failed: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        }
-        if (cancelled.current) return;
-      }
-      resolvedTarget = classified;
-    }
     dispatch({
       type: "SESSION_RESTORED",
-      target: resolvedTarget,
+      target: activeServerToTarget(restoredActiveServer),
     });
   }
   return {
     reconcileMobileRestoredActiveServer,
     applyRestoredConnection,
-    isDesktopEmbeddedApiBase,
-    resolveDesktopRestoredTarget,
     canRestoreActiveServer,
     runRestoringSession,
   };

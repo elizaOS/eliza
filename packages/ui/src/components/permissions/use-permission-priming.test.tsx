@@ -22,10 +22,6 @@ vi.mock("../../api/client", () => ({
 }));
 vi.mock("../../platform/init", () => ({
   isNative: false,
-  isDesktopPlatform: () => false,
-}));
-vi.mock("../../platform/desktop-permissions-client", () => ({
-  checkDesktopPermissionFresh: vi.fn(),
 }));
 vi.mock("../../platform/mobile-permissions-client", () => ({
   createMobileSignalsPermissionsRegistry: () => registry,

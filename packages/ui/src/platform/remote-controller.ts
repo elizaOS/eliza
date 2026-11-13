@@ -1,6 +1,6 @@
 /**
- * Renderer adapter for the native remote-controller identity. The desktop main
- * process retains private signing/decryption keys; this module only forwards
+ * Renderer adapter for the native remote-controller identity. The native mobile
+ * plugin retains private signing/decryption keys; this module only forwards
  * public identity, encrypted commands, and opaque result envelopes.
  */
 import { Capacitor } from "@capacitor/core";
@@ -15,7 +15,6 @@ import {
   type RemoteTargetPublicIdentity,
   type SignedRemoteCommand,
 } from "@elizaos/contracts";
-import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 
 interface NativeRemoteControllerPlugin {
   getOrCreateIdentity(input: {
@@ -101,12 +100,6 @@ function isUnsupportedNativeIOS(): boolean {
     Capacitor.isPluginAvailable?.("RemoteControllerIdentity") !== true
   );
 }
-function desktopPlatform(): "macos" | "windows" | "linux" {
-  const platform = navigator.platform.toLowerCase();
-  if (platform.includes("win")) return "windows";
-  if (platform.includes("linux")) return "linux";
-  return "macos";
-}
 export async function getOrCreateRemoteControllerIdentity(input: {
   ownerId: string;
   displayName?: string;
@@ -131,29 +124,9 @@ export async function getOrCreateRemoteControllerIdentity(input: {
     }
     return identity;
   }
-  const platform = desktopPlatform();
-  const identity =
-    await invokeDesktopBridgeRequest<RemoteControllerPublicIdentity>({
-      rpcMethod: "remoteControllerGetOrCreateIdentity",
-      ipcChannel: "remoteController:getOrCreateIdentity",
-      params: {
-        ownerId: input.ownerId,
-        displayName:
-          input.displayName ??
-          (platform === "linux"
-            ? "My Linux computer"
-            : platform === "windows"
-              ? "My Windows PC"
-              : "My Mac"),
-        platform,
-      },
-    });
-  if (!identity) {
-    throw new Error(
-      "Secure device pairing requires the Eliza desktop app so private keys stay in OS credential storage.",
-    );
-  }
-  return identity;
+  throw new Error(
+    "Secure remote control requires the native mobile controller.",
+  );
 }
 export async function createRemoteCommand(input: {
   ownerId: string;
@@ -195,32 +168,9 @@ export async function createRemoteCommand(input: {
       throw new Error("Secure mobile command signing is unavailable.");
     return result;
   }
-  const result = await invokeDesktopBridgeRequest<{
-    commandId: string;
-    expiresAt: number;
-    command: SignedRemoteCommand;
-    envelope: EncryptedRemoteControlEnvelope;
-    recoveredPending: boolean;
-    bindingDigest: string;
-  }>({
-    rpcMethod: "remoteControllerCreateCommand",
-    ipcChannel: "remoteController:createCommand",
-    params: {
-      ownerId: input.ownerId,
-      grantId: input.grantId,
-      grantRevision: input.grantRevision,
-      sessionId: input.sessionId,
-      controllerDeviceId: input.controller.deviceId,
-      controllerKeyId: input.controller.keyId,
-      targetRuntimeId: input.target.runtimeId,
-      targetKeyId: input.target.keyId,
-      targetEncryptionPublicKeyJwk: input.target.encryptionPublicKeyJwk,
-      action: input.action,
-      payload: input.payload,
-    },
-  });
-  if (!result) throw new Error("Secure remote command signing is unavailable.");
-  return result;
+  throw new Error(
+    "Secure remote control requires the native mobile controller.",
+  );
 }
 export async function acknowledgeRemoteCommandEnqueue(input: {
   ownerId: string;
@@ -241,16 +191,9 @@ export async function acknowledgeRemoteCommandEnqueue(input: {
     }
     return result.acknowledged;
   }
-  const result = await invokeDesktopBridgeRequest<{
-    acknowledged: boolean;
-  }>({
-    rpcMethod: "remoteControllerAcknowledgeEnqueue",
-    ipcChannel: "remoteController:acknowledgeEnqueue",
-    params: input,
-  });
-  if (!result)
-    throw new Error("Secure remote enqueue acknowledgement is unavailable.");
-  return result.acknowledged;
+  throw new Error(
+    "Secure remote control requires the native mobile controller.",
+  );
 }
 export async function openRemoteCommandResult(input: {
   ownerId: string;
@@ -274,18 +217,9 @@ export async function openRemoteCommandResult(input: {
       throw new Error("Secure mobile result decryption is unavailable.");
     return result;
   }
-  const result = await invokeDesktopBridgeRequest<{
-    status: string;
-    result?: RemoteJsonValue;
-    errorCode?: string;
-  }>({
-    rpcMethod: "remoteControllerOpenResult",
-    ipcChannel: "remoteController:openResult",
-    params: input,
-  });
-  if (!result)
-    throw new Error("Secure remote result decryption is unavailable.");
-  return result;
+  throw new Error(
+    "Secure remote control requires the native mobile controller.",
+  );
 }
 export async function openRemoteCommandStartReceipt(input: {
   ownerId: string;
@@ -310,18 +244,9 @@ export async function openRemoteCommandStartReceipt(input: {
       );
     return result;
   }
-  const result = await invokeDesktopBridgeRequest<{
-    startedAt: number;
-    executionId: string;
-  }>({
-    rpcMethod: "remoteControllerOpenStartReceipt",
-    ipcChannel: "remoteController:openStartReceipt",
-    params: input,
-  });
-  if (!result) {
-    throw new Error("Secure remote start receipt verification is unavailable.");
-  }
-  return result;
+  throw new Error(
+    "Secure remote control requires the native mobile controller.",
+  );
 }
 export async function clearRemoteControllerSessionState(input: {
   ownerId: string;
@@ -340,12 +265,5 @@ export async function clearRemoteControllerSessionState(input: {
     }
     return result.cleared;
   }
-  const result = await invokeDesktopBridgeRequest<{
-    cleared: boolean;
-  }>({
-    rpcMethod: "remoteControllerClearSessionState",
-    ipcChannel: "remoteController:clearSessionState",
-    params: input,
-  });
-  return result?.cleared ?? false;
+  return false;
 }

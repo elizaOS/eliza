@@ -241,18 +241,6 @@ export function getElizaCoreRolesEntry(repoRoot: string): string {
       );
 }
 
-export function getAppCoreBridgeStubPath(repoRoot: string): string {
-  const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
-  return path.join(
-    elizaWorkspaceRoot,
-    "packages",
-    "app",
-    "test",
-    "stubs",
-    "app-bridge.ts",
-  );
-}
-
 export function getAppCorePluginFallbackPath(repoRoot: string): string {
   const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
   return path.join(

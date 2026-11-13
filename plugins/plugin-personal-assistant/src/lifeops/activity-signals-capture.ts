@@ -1,7 +1,7 @@
 /**
  * Captures owner-consented presence, health and screen-time signals in the
- * renderer service host. One instance owns browser listeners, mobile monitoring
- * and desktop polling; stop awaits native teardown before replacement starts.
+ * renderer service host. One instance owns browser listeners and mobile
+ * monitoring; stop awaits native teardown before replacement starts.
  *
  * Signal requests serialize within an API authority. An unsupported LifeOps
  * route stands down until that authority changes; generic transient failures
@@ -40,8 +40,6 @@ import {
   isApiError,
   isAuthenticatedNow,
   isCloudAgentGoneError,
-  isElectrobunRuntime,
-  loadDesktopWorkspaceSnapshot,
   subscribeAuthStatus,
 } from "@elizaos/ui";
 
@@ -62,7 +60,6 @@ const APP_SIGNAL_DEDUP_WINDOW_MS = 5_000;
 const RUNTIME_READY_POLL_MS = 5_000;
 const ACTIVITY_SIGNALS_CAPABILITY_RETRY_MS = 60_000;
 const PAGE_HEARTBEAT_MS = 60_000;
-const DESKTOP_POWER_POLL_MS = 60_000;
 // Health sleep data drives wake detection; five-minute polling keeps morning
 // anchors timely without running while mobile monitoring is stopped.
 const MOBILE_HEALTH_POLL_MS = 5 * 60_000;
@@ -105,9 +102,6 @@ function isNativeCapacitorRuntime(): boolean {
 }
 
 function resolveActivityPlatform(): string {
-  if (isElectrobunRuntime()) {
-    return "desktop_app";
-  }
   if (isNativeCapacitorRuntime()) {
     return "mobile_app";
   }
@@ -505,60 +499,19 @@ export function startLifeOpsActivitySignalCapture(
     });
   };
 
-  const emitDesktopSnapshot = async (reason: string): Promise<void> => {
-    try {
-      if (!isElectrobunRuntime()) {
-        return;
-      }
-      const snapshot = await loadDesktopWorkspaceSnapshot();
-      if (!snapshot.supported || !snapshot.power) {
-        return;
-      }
-
-      const state =
-        snapshot.power.idleState === "locked"
-          ? "locked"
-          : snapshot.power.idleState === "idle"
-            ? "idle"
-            : snapshot.window.focused && document.visibilityState === "visible"
-              ? "active"
-              : "background";
-      await sendSignal({
-        source: "desktop_power",
-        state,
-        idleState: snapshot.power.idleState,
-        idleTimeSeconds: Math.max(0, Math.trunc(snapshot.power.idleTime)),
-        onBattery: snapshot.power.onBattery,
-        metadata: {
-          reason,
-          windowFocused: snapshot.window.focused,
-          windowVisible: snapshot.window.visible,
-          documentVisibility: document.visibilityState,
-        },
-      });
-    } catch (error) {
-      // error-policy:J7 the desktop snapshot poll must not kill the capture
-      // loop; unexpected failures are surfaced through reportCaptureError.
-      reportCaptureError(error);
-    }
-  };
-
   const handleVisibilityChange = (): void => {
     emitPageState("visibilitychange");
   };
   const handleFocus = (): void => {
     emitPageState("focus");
-    void emitDesktopSnapshot("focus");
   };
   const handleBlur = (): void => {
     emitPageState("blur");
-    void emitDesktopSnapshot("blur");
   };
   const handleResume = (): void => {
     emitLifecycleState("active");
     emitPageState("resume");
     void refreshMobileHealthSnapshot("resume").catch(reportCaptureError);
-    void emitDesktopSnapshot("resume");
     // A permission granted in OS Settings while the app was backgrounded
     // becomes effective here: startMobileSignals re-checks consent and is a
     // cheap no-op when monitoring is already running.
@@ -568,13 +521,10 @@ export function startLifeOpsActivitySignalCapture(
     emitLifecycleState("background");
     emitPageState("pause");
     void refreshMobileHealthSnapshot("pause").catch(reportCaptureError);
-    void emitDesktopSnapshot("pause");
   };
 
   const mobileSignals =
-    isNativeCapacitorRuntime() &&
-    !isElectrobunRuntime() &&
-    Capacitor.isPluginAvailable("MobileSignals")
+    isNativeCapacitorRuntime() && Capacitor.isPluginAvailable("MobileSignals")
       ? MobileSignals
       : null;
   let mobileSignalsHandle: { remove: () => Promise<void> } | null = null;
@@ -768,7 +718,6 @@ export function startLifeOpsActivitySignalCapture(
         return;
       }
       emitPageState(reason);
-      void emitDesktopSnapshot(reason);
       void refreshMobileHealthSnapshot(reason).catch(reportCaptureError);
     })().catch(reportCaptureError);
   };
@@ -863,9 +812,6 @@ export function startLifeOpsActivitySignalCapture(
       emitPageState("heartbeat");
     }
   }, PAGE_HEARTBEAT_MS);
-  const desktopPoller = window.setInterval(() => {
-    void emitDesktopSnapshot("poll");
-  }, DESKTOP_POWER_POLL_MS);
 
   // Full teardown ownership (#17110): every synchronous release below (event
   // listeners, intervals) happens before any await, so a caller that invokes
@@ -921,7 +867,6 @@ export function startLifeOpsActivitySignalCapture(
       mobileHealthPoller = null;
     }
     window.clearInterval(pageHeartbeat);
-    window.clearInterval(desktopPoller);
 
     return Promise.all(pending).then(() => undefined);
   };

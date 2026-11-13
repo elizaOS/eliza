@@ -20,7 +20,6 @@ import {
   useMemo,
   useRef,
 } from "react";
-import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import {
   buildCommands as buildCommandPaletteCommands,
   type CommandItem,
@@ -32,17 +31,9 @@ import { COMMAND_PALETTE_EVENT, dispatchNavigateViewEvent } from "../../events";
 import { useAvailableViews } from "../../hooks/useAvailableViews";
 import { useBugReport } from "../../hooks/useBugReport.hooks";
 import { SHORTCUT_OPEN_COMMAND_PALETTE } from "../../hooks/useKeyboardShortcuts";
-import { logger } from "../../logger.ts";
 import type { Tab } from "../../navigation";
-import { TOAST_TTL_MS } from "../../state/action-notice";
 import { useAppSelectorShallow } from "../../state/app-store";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
-import {
-  openDesktopSettingsWindow,
-  openDesktopSurfaceWindow,
-  openDesktopWorkspaceWindow,
-  requestDesktopBridge,
-} from "../../utils/desktop-workspace";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import {
@@ -70,7 +61,6 @@ export function CommandPalette() {
     loadWorkbench,
     activeGameViewerUrl,
     setState,
-    setActionNotice,
     t,
   } = useAppSelectorShallow((s) => ({
     commandPaletteOpen: s.commandPaletteOpen,
@@ -87,7 +77,6 @@ export function CommandPalette() {
     loadWorkbench: s.loadWorkbench,
     activeGameViewerUrl: s.activeGameViewerUrl,
     setState: s.setState,
-    setActionNotice: s.setActionNotice,
     t: s.t,
   }));
   const { open: openBugReport } = useBugReport();
@@ -102,7 +91,6 @@ export function CommandPalette() {
   const agentState = agentStatus?.state ?? "stopped";
   const currentGameViewerUrl =
     typeof activeGameViewerUrl === "string" ? activeGameViewerUrl : "";
-  const desktopRuntime = isElectrobunRuntime();
 
   // Every registered, loadable, user-visible GUI view becomes a palette nav
   // entry so the palette is a complete launcher across all plugins (#8792). The
@@ -146,40 +134,6 @@ export function CommandPalette() {
       loadLogs,
       loadWorkbench,
       openBugReport,
-      desktopRuntime,
-      focusDesktopMainWindow: () => {
-        void requestDesktopBridge<void>(
-          "desktopFocusWindow",
-          "desktop:focusWindow",
-        );
-      },
-      openDesktopWorkspaceWindow: () => {
-        void openDesktopWorkspaceWindow().catch((error: unknown) => {
-          // error-policy:J4 a native window launch failure becomes a visible
-          // shell notice instead of an unhandled command rejection. The catch
-          // is unconditional, so the cause is logged rather than discarded — a
-          // programming error here would otherwise leave nothing behind but
-          // generic retry text.
-          logger.error(
-            { error },
-            "[CommandPalette] desktop workspace launch failed",
-          );
-          setActionNotice(
-            t("desktop.workspace.launchFailed", {
-              defaultValue:
-                "Unable to open the desktop workspace. Please retry.",
-            }),
-            "error",
-            TOAST_TTL_MS.notificationInterruptive,
-          );
-        });
-      },
-      openDesktopSettingsWindow: (tabHint?: string) => {
-        void openDesktopSettingsWindow(tabHint);
-      },
-      openDesktopSurfaceWindow: (surface, options) => {
-        void openDesktopSurfaceWindow(surface, options);
-      },
     });
   }, [
     agentState,
@@ -195,10 +149,7 @@ export function CommandPalette() {
     loadSkills,
     loadLogs,
     loadWorkbench,
-    setActionNotice,
     openBugReport,
-    desktopRuntime,
-    t,
   ]);
 
   // Filter commands by query

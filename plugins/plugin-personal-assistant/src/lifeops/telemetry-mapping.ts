@@ -65,9 +65,6 @@ function normalizeDevicePlatform(value: string): LifeOpsDevicePlatform {
   if (normalized.includes("ipad")) {
     return "ipados_capacitor";
   }
-  if (normalized.includes("electrobun")) {
-    return "macos_electrobun";
-  }
   if (normalized.includes("macos") || normalized.includes("desktop")) {
     return "macos_desktop";
   }

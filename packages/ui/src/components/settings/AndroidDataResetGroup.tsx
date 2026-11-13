@@ -39,8 +39,8 @@ const DEFAULT_PROBES: AndroidDataResetProbes = {
 
 /**
  * True only in the Android app whose native host registered the reset plugin.
- * Desktop (Electrobun), web, iOS and Android builds without the host (the Play
- * thin client strips it) all answer false.
+ * Web, iOS and Android builds without the host (the Play thin client strips
+ * it) all answer false.
  */
 export function isAndroidDataResetAvailable(
   probes: AndroidDataResetProbes = DEFAULT_PROBES,

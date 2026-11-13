@@ -1,7 +1,7 @@
 import type { AgentRequestTransport } from "./transport";
 
 /** Transport policy belongs to the application host; standalone web UI uses fetch. */
-export type HostTransportPurpose = "agent" | "csrf" | "cloud";
+export type HostTransportPurpose = "agent" | "csrf";
 export type HostTransportSelector = (
   url: string,
   purpose: HostTransportPurpose,

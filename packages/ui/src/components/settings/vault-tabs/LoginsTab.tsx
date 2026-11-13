@@ -12,10 +12,10 @@ import { useAgentElement } from "../../../agent-surface/useAgentElement";
 // fetch targets the page origin unauthenticated, which breaks remote/token-
 // authed runtimes (e.g. the Android local agent).
 import { client } from "../../../api/client";
-import { openBrowserWebsite } from "../../../bridge/system-browser";
 import { loadPasswordProviderSettings } from "../../../platform/password-provider-settings";
 import { useTranslation } from "../../../state/TranslationContext.hooks";
 import { confirmDesktopAction } from "../../../utils/desktop-dialogs";
+import { openExternalUrl } from "../../../utils/openExternalUrl";
 import { Alert } from "../../ui/alert";
 import { Badge, type BadgeProps } from "../../ui/badge";
 import { Button } from "../../ui/button";
@@ -650,7 +650,7 @@ function ExternalRowAction({ login }: { login: SavedLogin }) {
     try {
       const settings = await loadPasswordProviderSettings();
       const provider = login.source === "1password" ? "1password" : "bitwarden";
-      await openBrowserWebsite(settings.webVaults[provider]);
+      await openExternalUrl(settings.webVaults[provider]);
     } catch {
       // error-policy:J4 Never substitute a US vault after a configured destination fails.
       setError(

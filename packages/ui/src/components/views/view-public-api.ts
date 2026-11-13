@@ -94,7 +94,6 @@ export { HomeLauncherSurface } from "../../components/shell/HomeLauncherSurface.
 export { HomePill } from "../../components/shell/HomePill.js";
 export { HomeScreen } from "../../components/shell/HomeScreen.js";
 export { initializeIosKeyboardAccessoryBar } from "../../components/shell/ios-chat-accessory-bar.js";
-export { KioskViewCanvas } from "../../components/shell/KioskViewCanvas.js";
 export {
   NotificationsDataBoot,
   NotificationsShellBoot,
@@ -107,8 +106,6 @@ export { StartupScreen } from "../../components/shell/StartupScreen.js";
 export { StartupShell } from "../../components/shell/StartupShell.js";
 export { SystemWarningBanner } from "../../components/shell/SystemWarningBanner.js";
 export { TrayLauncher } from "../../components/shell/TrayLauncher.js";
-export { useBarSurfaceWindows } from "../../components/shell/useBarSurfaceWindows.js";
-export { useKioskViewSurfaces } from "../../components/shell/useKioskViewSurfaces.js";
 export { VoiceCaptureHud } from "../../components/shell/VoiceCaptureHud.js";
 export { TranscriptPlayer } from "../../components/transcripts/TranscriptPlayer.js";
 export { ArtifactPrivacyControls } from "../../components/transcripts/TranscriptsView.js";
@@ -404,8 +401,6 @@ export {
   useRoutableViews,
 } from "../../hooks/useAvailableViews.js";
 export { useBugReportState } from "../../hooks/useBugReport.hooks.js";
-export { useContextMenu } from "../../hooks/useContextMenu.js";
-export { useDesktopTabs } from "../../hooks/useDesktopTabs.js";
 export { useSecretsManagerModalState } from "../../hooks/useSecretsManagerModal.js";
 export { useSecretsManagerShortcut } from "../../hooks/useSecretsManagerShortcut.js";
 export { createTranslator } from "../../i18n/index.js";
@@ -501,4 +496,3 @@ export {
 export { TaskChoice } from "../chat/TaskChoice.js";
 export { DiffReviewPanel } from "../composites/DiffReviewPanel.js";
 export { PageLoadingState } from "../composites/page-panel/content-state.js";
-export { DesktopTabBar } from "../DesktopTabBar.js";

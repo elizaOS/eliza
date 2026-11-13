@@ -15,7 +15,6 @@ import {
   seedAppStorage,
   UI_SMOKE_CPU_ONLY_HARDWARE,
 } from "./helpers";
-import { installReadyDesktopStatusBridge } from "./helpers/desktop-status-bridge";
 import { navigateHomeLauncher } from "./helpers/launcher-navigation";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 import { seedStewardSession } from "./helpers/test-auth";
@@ -880,7 +879,7 @@ test.describe("assistant home app flow", () => {
     // through `addInitScript` instead: it runs on the next `page.goto`
     // (openReadyChat) before any view mounts and installs the guard, so the
     // writes land in the pre-guard shell context, matching how the other ready-
-    // state gates here (seedAssistantFlowStorage / installReadyDesktopStatusBridge)
+    // state gates here (seedAssistantFlowStorage)
     // are seeded.
     await page.addInitScript(() => {
       try {
@@ -900,7 +899,6 @@ test.describe("assistant home app flow", () => {
         // Sandboxed or opaque-origin frames can deny Web Storage access.
       }
     });
-    await installReadyDesktopStatusBridge(page);
     const readyAssistantApi = await installAssistantFlowRoutes(page);
 
     await openReadyChat(page);
@@ -1089,7 +1087,6 @@ test.describe("assistant home app flow", () => {
     page,
   }) => {
     await seedAssistantFlowStorage(page);
-    await installReadyDesktopStatusBridge(page);
     await installAssistantFlowRoutes(page);
 
     await openReadyChat(page, "/chat");

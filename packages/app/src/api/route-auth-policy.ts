@@ -132,7 +132,6 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
   ),
   // Public at this outer gate only so the route can authenticate the native
   // desktop through its stricter loopback + owned one-shot socket proof.
-  publicExact("auth.desktop-bootstrap", "POST", "/api/auth/desktop-bootstrap"),
   publicExact("auth.setup", "POST", "/api/auth/setup"),
   publicExact("auth.login.password", "POST", "/api/auth/login/password"),
   publicExact("auth.status", "GET", "/api/auth/status"),
@@ -163,7 +162,6 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
 
   sessionExact("dev.stack", "GET", "/api/dev/stack"),
   sessionExact("dev.route-catalog", "GET", "/api/dev/route-catalog"),
-  sessionExact("dev.console-log", "GET", "/api/dev/console-log"),
   sessionExact("dev.voice-latency", "GET", "/api/dev/voice-latency"),
   sessionExact(
     "dev.device-resource-metrics",

@@ -13,13 +13,9 @@ import {
   packageNameToAppRouteSlug,
 } from "@elizaos/core/protocol";
 
-import { Pin, PinOff } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api/client";
 import type { LogEntry } from "../../api/client-types-core";
-import { invokeDesktopBridgeRequest } from "../../bridge/electrobun-rpc";
-import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
-import { useBranding } from "../../config/branding-react.hooks";
 import {
   useDocumentVisibility,
   useIntervalWhenDocumentVisible,
@@ -27,7 +23,7 @@ import {
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useTimeout } from "../../hooks/useTimeout";
-import { useAppSelector, useAppSelectorShallow } from "../../state/app-store";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { safeAttachmentUrl } from "../../utils/attachment-url";
 import { formatTime } from "../../utils/format";
 import {
@@ -210,418 +206,6 @@ function heroHealthProgress(
     tone: value > 50 ? "success" : value > 25 ? "warning" : "danger",
   };
 }
-export function DesktopGameWindowControls({
-  gameWindowId,
-}: {
-  gameWindowId: string | null;
-}) {
-  const t = useAppSelector((s) => s.t);
-  const [busyAction, setBusyAction] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [alwaysOnTop, setAlwaysOnTop] = useState(false);
-  const [boundsLabel, setBoundsLabel] = useState(
-    t("gameview.BoundsUnavailable", { defaultValue: "Bounds unavailable." }),
-  );
-  const [gpuWindowId, setGpuWindowId] = useState<string | null>(null);
-  const branding = useBranding();
-  const refresh = useCallback(async () => {
-    if (!gameWindowId) {
-      setBoundsLabel(
-        t("gameview.WaitingForNativeGameWindow", {
-          defaultValue: "Waiting for native game window.",
-        }),
-      );
-      setAlwaysOnTop(false);
-    } else {
-      const bounds = await invokeDesktopBridgeRequest<{
-        x: number;
-        y: number;
-        width: number;
-        height: number;
-      }>({
-        rpcMethod: "canvasGetBounds",
-        ipcChannel: "canvas:getBounds",
-        params: { id: gameWindowId },
-      });
-      if (bounds) {
-        setBoundsLabel(
-          `${bounds.width}x${bounds.height} @ ${bounds.x},${bounds.y}`,
-        );
-      }
-      try {
-        const windows = await invokeDesktopBridgeRequest<{
-          windows: Array<{
-            id: string;
-            alwaysOnTop: boolean;
-          }>;
-        }>({
-          rpcMethod: "canvasListWindows",
-          ipcChannel: "canvas:listWindows",
-        });
-        const currentWindow = windows?.windows.find(
-          (item) => item.id === gameWindowId,
-        );
-        setAlwaysOnTop(currentWindow?.alwaysOnTop ?? false);
-      } catch {
-        // non-fatal: pin state defaults to false on poll failure
-      }
-    }
-    const gpuWindows = await invokeDesktopBridgeRequest<{
-      windows: Array<{
-        id: string;
-      }>;
-    }>({
-      rpcMethod: "gpuWindowList",
-      ipcChannel: "gpuWindow:list",
-    });
-    setGpuWindowId(gpuWindows?.windows[0]?.id ?? null);
-  }, [gameWindowId, t]);
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-  const runAction = useCallback(
-    async (
-      id: string,
-      action: () => Promise<void>,
-      successMessage?: string,
-      refreshAfter = true,
-    ) => {
-      setBusyAction(id);
-      setError(null);
-      setMessage(null);
-      try {
-        await action();
-        if (refreshAfter) {
-          await refresh();
-        }
-        if (successMessage) {
-          setMessage(successMessage);
-        }
-      } catch (err) {
-        setError(
-          err instanceof Error
-            ? err.message
-            : t("gameview.NativeGameActionFailed", {
-                defaultValue: "Native game action failed.",
-              }),
-        );
-      } finally {
-        setBusyAction(null);
-      }
-    },
-    [refresh, t],
-  );
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <Badge asChild variant="metaDefault" size="metaCompact">
-        <span>{boundsLabel}</span>
-      </Badge>
-      <Button
-        variant="outlineAccent"
-        size="tiny"
-        onClick={() =>
-          void runAction(
-            "game-native-refresh",
-            async () => {},
-            t("gameview.NativeGameStateRefreshed", {
-              defaultValue: "Native game state refreshed.",
-            }),
-          )
-        }
-        disabled={busyAction === "game-native-refresh"}
-      >
-        {t("gameview.RefreshNativeState", {
-          defaultValue: "Refresh Native State",
-        })}
-      </Button>
-      <Button
-        variant="outlineAccent"
-        size="tiny"
-        onClick={() =>
-          void runAction(
-            "game-native-focus",
-            async () => {
-              if (!gameWindowId) {
-                throw new Error(
-                  t("gameview.GameWindowNotReadyYet", {
-                    defaultValue: "Game window not ready yet.",
-                  }),
-                );
-              }
-              await invokeDesktopBridgeRequest<void>({
-                rpcMethod: "canvasFocus",
-                ipcChannel: "canvas:focus",
-                params: { id: gameWindowId },
-              });
-            },
-            t("gameview.FocusedNativeGameWindow", {
-              defaultValue: "Focused native game window.",
-            }),
-            false,
-          )
-        }
-        disabled={!gameWindowId || busyAction === "game-native-focus"}
-      >
-        {t("gameview.FocusWindow", { defaultValue: "Focus Window" })}
-      </Button>
-      <Button
-        variant="outlineAccent"
-        size="tiny"
-        onClick={() =>
-          void runAction(
-            "game-native-show",
-            async () => {
-              if (!gameWindowId) {
-                throw new Error(
-                  t("gameview.GameWindowNotReadyYet", {
-                    defaultValue: "Game window not ready yet.",
-                  }),
-                );
-              }
-              await invokeDesktopBridgeRequest<void>({
-                rpcMethod: "canvasShow",
-                ipcChannel: "canvas:show",
-                params: { id: gameWindowId },
-              });
-            },
-            t("gameview.ShownNativeGameWindow", {
-              defaultValue: "Shown native game window.",
-            }),
-            false,
-          )
-        }
-        disabled={!gameWindowId || busyAction === "game-native-show"}
-      >
-        {t("gameview.ShowWindow", { defaultValue: "Show Window" })}
-      </Button>
-      <Button
-        variant="outlineAccent"
-        size="tiny"
-        onClick={() =>
-          void runAction(
-            "game-native-hide",
-            async () => {
-              if (!gameWindowId) {
-                throw new Error(
-                  t("gameview.GameWindowNotReadyYet", {
-                    defaultValue: "Game window not ready yet.",
-                  }),
-                );
-              }
-              await invokeDesktopBridgeRequest<void>({
-                rpcMethod: "canvasHide",
-                ipcChannel: "canvas:hide",
-                params: { id: gameWindowId },
-              });
-            },
-            t("gameview.HidNativeGameWindow", {
-              defaultValue: "Hid native game window.",
-            }),
-            false,
-          )
-        }
-        disabled={!gameWindowId || busyAction === "game-native-hide"}
-      >
-        {t("gameview.HideWindow", { defaultValue: "Hide Window" })}
-      </Button>
-      <Button
-        variant={alwaysOnTop ? "default" : "outlineAccent"}
-        size="tiny"
-        onClick={() =>
-          void runAction(
-            "game-native-always-on-top",
-            async () => {
-              if (!gameWindowId) {
-                throw new Error(
-                  t("gameview.GameWindowNotReadyYet", {
-                    defaultValue: "Game window not ready yet.",
-                  }),
-                );
-              }
-              const next = !alwaysOnTop;
-              const result = await invokeDesktopBridgeRequest<{
-                success: boolean;
-              }>({
-                rpcMethod: "canvasSetAlwaysOnTop",
-                ipcChannel: "canvas:setAlwaysOnTop",
-                params: { id: gameWindowId, flag: next },
-              });
-              if (!result?.success) {
-                throw new Error(
-                  t("gameview.GameWindowNoLongerOpen", {
-                    defaultValue: "Game window is no longer open.",
-                  }),
-                );
-              }
-              setAlwaysOnTop(next);
-            },
-            alwaysOnTop
-              ? t("gameview.NativeGameWindowNormal", {
-                  defaultValue: "Native game window acts like a normal window.",
-                })
-              : t("gameview.NativeGameWindowPinned", {
-                  defaultValue: "Native game window stays on top.",
-                }),
-          )
-        }
-        disabled={!gameWindowId || busyAction === "game-native-always-on-top"}
-      >
-        {alwaysOnTop ? (
-          <PinOff className="size-3.5" aria-hidden="true" />
-        ) : (
-          <Pin className="size-3.5" aria-hidden="true" />
-        )}
-        {alwaysOnTop
-          ? t("gameview.NormalWindow", { defaultValue: "Normal Window" })
-          : t("gameview.KeepOnTop", { defaultValue: "Keep On Top" })}
-      </Button>
-      <Button
-        variant="outlineAccent"
-        size="tiny"
-        onClick={() =>
-          void runAction(
-            "game-native-snapshot",
-            async () => {
-              if (!gameWindowId) {
-                throw new Error(
-                  t("gameview.GameWindowNotReadyYet", {
-                    defaultValue: "Game window not ready yet.",
-                  }),
-                );
-              }
-              const snapshot = await invokeDesktopBridgeRequest<{
-                data: string;
-              } | null>({
-                rpcMethod: "canvasSnapshot",
-                ipcChannel: "canvas:snapshot",
-                params: { id: gameWindowId, format: "png" },
-              });
-              if (!snapshot?.data) {
-                throw new Error(
-                  t("gameview.SnapshotUnavailable", {
-                    defaultValue: "Snapshot unavailable.",
-                  }),
-                );
-              }
-            },
-            t("gameview.CapturedNativeGameSnapshot", {
-              defaultValue: "Captured native game snapshot.",
-            }),
-            false,
-          )
-        }
-        disabled={!gameWindowId || busyAction === "game-native-snapshot"}
-      >
-        {t("gameview.SnapshotWindow", { defaultValue: "Snapshot Window" })}
-      </Button>
-      <Button
-        variant="outlineAccent"
-        size="tiny"
-        onClick={() =>
-          void runAction(
-            "game-gpu-window",
-            async () => {
-              const created = await invokeDesktopBridgeRequest<{
-                id: string;
-              }>({
-                rpcMethod: "gpuWindowCreate",
-                ipcChannel: "gpuWindow:create",
-                params: {
-                  id: "gpu-diagnostics",
-                  title: `${branding.appName} GPU Diagnostics`,
-                  width: 640,
-                  height: 360,
-                },
-              });
-              const nextGpuWindowId = created?.id ?? gpuWindowId;
-              if (nextGpuWindowId) {
-                await invokeDesktopBridgeRequest<void>({
-                  rpcMethod: "gpuWindowShow",
-                  ipcChannel: "gpuWindow:show",
-                  params: { id: nextGpuWindowId },
-                });
-                await invokeDesktopBridgeRequest<void>({
-                  rpcMethod: "gpuWindowGetInfo",
-                  ipcChannel: "gpuWindow:getInfo",
-                  params: { id: nextGpuWindowId },
-                });
-                setGpuWindowId(nextGpuWindowId);
-              }
-            },
-            t("gameview.GpuDiagnosticsWindowReady", {
-              defaultValue: "GPU diagnostics window ready.",
-            }),
-          )
-        }
-        disabled={busyAction === "game-gpu-window"}
-      >
-        {t("gameview.LaunchGpuDiagnostics", {
-          defaultValue: "Launch GPU Diagnostics",
-        })}
-      </Button>
-      {gpuWindowId && (
-        <>
-          <Button
-            variant="outlineAccent"
-            size="tiny"
-            onClick={() =>
-              void runAction(
-                "game-gpu-show",
-                async () => {
-                  await invokeDesktopBridgeRequest<void>({
-                    rpcMethod: "gpuWindowShow",
-                    ipcChannel: "gpuWindow:show",
-                    params: { id: gpuWindowId },
-                  });
-                },
-                t("gameview.GpuDiagnosticsWindowShown", {
-                  defaultValue: "GPU diagnostics window shown.",
-                }),
-                false,
-              )
-            }
-            disabled={busyAction === "game-gpu-show"}
-          >
-            {t("gameview.ShowGpuWindow", {
-              defaultValue: "Show GPU Window",
-            })}
-          </Button>
-          <Button
-            variant="outlineAccent"
-            size="tiny"
-            onClick={() =>
-              void runAction(
-                "game-gpu-hide",
-                async () => {
-                  await invokeDesktopBridgeRequest<void>({
-                    rpcMethod: "gpuWindowHide",
-                    ipcChannel: "gpuWindow:hide",
-                    params: { id: gpuWindowId },
-                  });
-                },
-                t("gameview.GpuDiagnosticsWindowHidden", {
-                  defaultValue: "GPU diagnostics window hidden.",
-                }),
-                false,
-              )
-            }
-            disabled={busyAction === "game-gpu-hide"}
-          >
-            {t("gameview.HideGpuWindow", {
-              defaultValue: "Hide GPU Window",
-            })}
-          </Button>
-        </>
-      )}
-      {(message || error) && (
-        <span className={`text-2xs ${error ? "text-danger" : "text-ok"}`}>
-          {error ?? message}
-        </span>
-      )}
-    </div>
-  );
-}
 export function FullscreenView() {
   const runApi = useAppRunApiSupport();
   if (runApi === "supported") return <FullscreenRunView />;
@@ -681,7 +265,6 @@ function FullscreenRunView() {
     setActionNotice: s.setActionNotice,
     t: s.t,
   }));
-  const isElectrobun = isElectrobunRuntime();
   const isCompactLayout = useMediaQuery("(max-width: 1023px)");
   const [stopping, setStopping] = useState(false);
   const [attachingViewer, setAttachingViewer] = useState(false);
@@ -702,8 +285,6 @@ function FullscreenRunView() {
   const [sessionState, setSessionState] = useState<AppSessionState | null>(
     activeGameSession,
   );
-  const [gameWindowId, setGameWindowId] = useState<string | null>(null);
-  const gameWindowIdRef = useRef<string | null>(null);
   const appRunsRef = useRef(appRuns);
   const activeGameRunIdRef = useRef(activeGameRunId);
   const activeGameAppRef = useRef(activeGameApp);
@@ -721,12 +302,6 @@ function FullscreenRunView() {
   const useEmbeddedViewer = useMemo(
     () => shouldUseEmbeddedAppViewer(activeGameRun),
     [activeGameRun],
-  );
-  const useNativeGameWindow = Boolean(
-    isElectrobun &&
-      activeGameRun?.viewer?.url &&
-      activeGameRun.viewerAttachment === "attached" &&
-      !useEmbeddedViewer,
   );
   const resolvedActiveGameViewerUrl = useMemo(
     () => resolveEmbeddedViewerUrl(activeGameViewerUrl),
@@ -1227,57 +802,6 @@ function FullscreenRunView() {
     3000,
     showLogsPanel,
   );
-  // Open the game URL in an isolated Electrobun BrowserWindow.
-  // Runs whenever the viewer URL or game title changes and we're inside the desktop app.
-  useEffect(() => {
-    if (!useNativeGameWindow || !resolvedActiveGameViewerUrl) return;
-    let cancelled = false;
-    void invokeDesktopBridgeRequest<{
-      id: string;
-    }>({
-      rpcMethod: "gameOpenWindow",
-      ipcChannel: "game:openWindow",
-      params: {
-        url: resolvedActiveGameViewerUrl,
-        title:
-          activeGameDisplayName ||
-          activeGameApp ||
-          t("common.game", { defaultValue: "Game" }),
-      },
-    })
-      .then((result) => {
-        if (cancelled) return;
-        if (result?.id) {
-          gameWindowIdRef.current = result.id;
-          setGameWindowId(result.id);
-          setConnectionStatus("connected");
-        }
-      })
-      .catch(() => {
-        // error-policy:J4 native game window unavailable — the iframe
-        // fallback is already rendered, so the game is still playable.
-      });
-    return () => {
-      cancelled = true;
-      // Close the game window when FullscreenView unmounts or the URL changes
-      if (gameWindowIdRef.current) {
-        // error-policy:J6 best-effort teardown of the native game window.
-        void invokeDesktopBridgeRequest({
-          rpcMethod: "canvasDestroyWindow",
-          ipcChannel: "canvas:destroyWindow",
-          params: { id: gameWindowIdRef.current },
-        }).catch(() => undefined);
-        gameWindowIdRef.current = null;
-        setGameWindowId(null);
-      }
-    };
-  }, [
-    activeGameApp,
-    activeGameDisplayName,
-    resolvedActiveGameViewerUrl,
-    t,
-    useNativeGameWindow,
-  ]);
   // Re-enter "connecting" when the active viewer session changes.
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-run on viewer session change.
   useEffect(() => {
@@ -1285,17 +809,8 @@ function FullscreenRunView() {
       setConnectionStatus("connecting");
       return;
     }
-    if (useNativeGameWindow) {
-      setConnectionStatus("connecting");
-      return;
-    }
     setConnectionStatus("connected");
-  }, [
-    activeGamePostMessageAuth,
-    useEmbeddedViewer,
-    useNativeGameWindow,
-    viewerSessionKey,
-  ]);
+  }, [activeGamePostMessageAuth, useEmbeddedViewer, viewerSessionKey]);
   const resetActiveGameState = useCallback(() => {
     setSessionState(null);
     setState("activeGameRunId", "");
@@ -1857,7 +1372,7 @@ function FullscreenRunView() {
     variant: "default" | "outline",
     className?: string,
   ) => {
-    if (!openableUrl || isElectrobun) {
+    if (!openableUrl) {
       return (
         <Button
           variant={variant}
@@ -1930,30 +1445,6 @@ function FullscreenRunView() {
           <div role="alert" className="max-w-md text-xs leading-6 text-muted">
             {VIEWER_AUTH_BLOCKED_MESSAGE}
           </div>
-        </Card>
-      );
-    }
-    if (useNativeGameWindow) {
-      return (
-        <Card
-          variant="transparentSquare"
-          flow="column"
-          gap="default"
-          tone="mutedStrong"
-          className="h-full w-full items-center justify-center"
-        >
-          {gameWindowId ? (
-            <>
-              <span className="text-sm font-semibold text-txt">
-                {activeGameDisplayName || activeGameApp}
-              </span>
-              <span className="text-xs text-muted">
-                {t("game.openInNativeWindow")}
-              </span>
-            </>
-          ) : (
-            <span className="text-xs italic">{t("common.launching")}</span>
-          )}
         </Card>
       );
     }
@@ -2047,9 +1538,6 @@ function FullscreenRunView() {
           >
             {detachingViewer ? "Detaching…" : "Detach viewer"}
           </Button>
-        ) : null}
-        {useNativeGameWindow ? (
-          <DesktopGameWindowControls gameWindowId={gameWindowId} />
         ) : null}
         {hasViewer ? (
           <Button

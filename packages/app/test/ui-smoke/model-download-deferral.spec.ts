@@ -9,7 +9,6 @@ import {
   installRenderTelemetryGuard,
   seedAppStorage,
 } from "./helpers";
-import { installDesktopBridgeFixture } from "./helpers/desktop-bridge";
 
 const DOWNLOAD_MODEL_ID = "eliza-1-4b";
 const DOWNLOAD_MODEL = {
@@ -84,13 +83,6 @@ async function fulfillJson(
   });
 }
 
-async function injectFullCapabilityHost(page: Page): Promise<void> {
-  await installDesktopBridgeFixture(page);
-  await page.addInitScript(() => {
-    (window as unknown as Record<string, number>).__electrobunWindowId = 1;
-  });
-}
-
 async function routeFirstRunIncomplete(page: Page): Promise<void> {
   await page.route("**/api/auth/status", async (route) => {
     if (route.request().method() !== "GET") {
@@ -117,7 +109,6 @@ test("selecting on-device inference drops the user into chat while the model dow
   await installRenderTelemetryGuard(page);
   await installDefaultAppRoutes(page);
   await routeFirstRunIncomplete(page);
-  await injectFullCapabilityHost(page);
 
   // Accept the first-run profile submission (POST /api/first-run).
   await page.route("**/api/first-run", async (route) => {

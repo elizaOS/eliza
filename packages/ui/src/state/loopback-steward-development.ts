@@ -2,7 +2,6 @@
  * Classifies explicitly configured loopback Steward development without loading
  * the agent API client. Public login and app login share this host/tenant gate.
  */
-import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import {
   configuredStewardApiUrlOverride,
   configuredStewardTenantId,
@@ -22,7 +21,6 @@ function isCapacitorNativeRuntime(): boolean {
 export function isPlainWebPlatform(): boolean {
   if (typeof window === "undefined") return false;
   if (isCapacitorNativeRuntime()) return false;
-  if (isElectrobunRuntime()) return false;
   return true;
 }
 

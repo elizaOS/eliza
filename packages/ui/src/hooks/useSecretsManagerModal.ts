@@ -8,10 +8,8 @@ import { useCallback, useEffect, useState } from "react";
  * Global open/close state for the Vault modal.
  *
  * Backed by `window.dispatchEvent` rather than a React context so any
- * code path (renderer keydown, bun-side menu accelerator dispatched
- * via `subscribeDesktopBridgeEvent`, an inline Settings launcher
- * button) can trigger open/close without context plumbing through the
- * tree.
+ * code path (renderer keydown, an inline Settings launcher button) can
+ * trigger open/close without context plumbing through the tree.
  *
  * The dispatch contract carries an optional initial tab plus optional
  * focus targets so cross-tab jumps (e.g. Routing rule chip → Secrets

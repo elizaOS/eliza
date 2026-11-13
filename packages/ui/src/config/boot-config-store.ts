@@ -58,8 +58,6 @@ export interface ClientMiddleware {
   forceFreshFirstRun?: boolean;
   /** Mask cloud status when a local provider is active. */
   preferLocalProvider?: boolean;
-  /** Bridge permissions to native desktop layer. */
-  desktopPermissions?: boolean;
 }
 /** Where a home tile sends you. Mirrors HomeTileTarget in shell/HomeScreen. */
 export type HomeScreenNavTarget =

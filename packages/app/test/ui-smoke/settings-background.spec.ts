@@ -17,7 +17,6 @@ import {
   seedAppStorage,
   UI_SMOKE_CPU_ONLY_HARDWARE,
 } from "./helpers";
-import { installReadyDesktopStatusBridge } from "./helpers/desktop-status-bridge";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 
 const SCREENSHOT_DIR = testOutputPath("aesthetic-audit", "settings-background");
@@ -330,7 +329,6 @@ test.describe("Settings appearance and model controls", () => {
       color: "#ef5a1f",
       imageUrl: "/bg-sunset.webp",
     });
-    await installReadyDesktopStatusBridge(page);
     await installSettingsBackgroundRoutes(page, {
       catalog: [
         {
@@ -395,7 +393,6 @@ test.describe("Settings appearance and model controls", () => {
         color: "#ef5a1f",
         imageUrl: "/bg-sunset.webp",
       });
-      await installReadyDesktopStatusBridge(page);
       await installSettingsBackgroundRoutes(page);
       await page.route("**/api/cloud/status", (route) =>
         fulfillJson(route, {
@@ -464,7 +461,6 @@ test.describe("Settings appearance and model controls", () => {
       color: "#ef5a1f",
       imageUrl: "/bg-sunset.webp",
     });
-    await installReadyDesktopStatusBridge(page);
     await installSettingsBackgroundRoutes(page);
     await openAppPath(page, "/settings?shell=settings#ai-model");
     const scroller = page.getByTestId("settings-scroll-region");
@@ -502,7 +498,6 @@ test.describe("Settings appearance and model controls", () => {
       color: "#ef5a1f",
       imageUrl: "/bg-sunset.webp",
     });
-    await installReadyDesktopStatusBridge(page);
     await installSettingsBackgroundRoutes(page);
     await openAppPath(page, "/settings?shell=settings");
     const general = page.getByRole("button", { name: "General", exact: true });
@@ -563,7 +558,6 @@ test.describe("Settings appearance and model controls", () => {
       page,
     }) => {
       const wallpaper = await busyWallpaperDataUrl();
-      await installReadyDesktopStatusBridge(page);
       await installSettingsBackgroundRoutes(page);
       await seedSettingsBackgroundStorage(page, {
         mode,
@@ -624,7 +618,6 @@ test.describe("Settings appearance and model controls", () => {
       color: "#ef5a1f",
       imageUrl: wallpaper,
     });
-    await installReadyDesktopStatusBridge(page);
     await installSettingsBackgroundRoutes(page);
 
     for (const [name, viewport] of [

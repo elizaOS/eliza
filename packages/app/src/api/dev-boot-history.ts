@@ -75,7 +75,7 @@ export async function buildBootHistoryPayload(
     restarts,
     failedPlugins: getLastFailedPluginDetails(),
     hints: [
-      "latestBoot===null means no completed boot record is stored — check restarts and /api/dev/console-log.",
+      "latestBoot===null means no completed boot record is stored — check restarts and the dev server log.",
       "watch===true means the API is running under an active dev watcher (ELIZA_DESKTOP_API_WATCH, ELIZA_DEV_SOURCE_WATCH, or --watch); inspect restarts if source edits are bouncing the API.",
     ],
   };

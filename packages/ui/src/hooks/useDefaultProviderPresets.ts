@@ -14,7 +14,7 @@
  */
 
 import { useMemo } from "react";
-import { isDesktopPlatform, isWebPlatform } from "../platform/init";
+import { isWebPlatform } from "../platform/init";
 import {
   type DefaultVoiceProviderResult,
   type PresetPlatform,
@@ -26,8 +26,8 @@ import { useRuntimeMode } from "./useRuntimeMode";
 export interface UseDefaultProviderPresetsOptions {
   /**
    * Test-only override for the platform detection. Production code
-   * should leave this undefined and trust `isDesktopPlatform()` /
-   * `isWebPlatform()` from the platform module.
+   * should leave this undefined and trust `isWebPlatform()` from the
+   * platform module.
    */
   platformOverride?: PresetPlatform;
   /**
@@ -55,7 +55,6 @@ export interface UseDefaultProviderPresetsResult {
 }
 
 function detectPlatform(): PresetPlatform {
-  if (isDesktopPlatform()) return "desktop";
   if (isWebPlatform()) return "web";
   // Capacitor surfaces (ios, android) fall here.
   return "mobile";

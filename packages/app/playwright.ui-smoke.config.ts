@@ -109,12 +109,6 @@ const aiQaCaptureEnabled = process.env.ELIZA_AI_QA_CAPTURE === "1";
 // dedicated tool run via `audit:cloud`, not part of the default e2e smoke.
 const AUDIT_CLOUD_SPEC = /cloud-surfaces-aesthetic-audit\.spec\.ts/;
 const auditCloudEnabled = projectRequested("audit-cloud");
-// Focused light/dark contrast proof for the Applications dropdown/select
-// popovers (#14232): renders the two touched surfaces in BOTH themes with the
-// SelectContent popover open. Run via `--project=audit-app-dropdown`; kept out
-// of the default e2e lane like the other dedicated aesthetic-audit tools.
-const AUDIT_APP_DROPDOWN_SPEC = /applications-dropdown-contrast\.spec\.ts/;
-const auditAppDropdownEnabled = projectRequested("audit-app-dropdown");
 // The WebKit lane (#10104/#10722): the assertion-grade dashboard specs, the
 // core shell smoke, and the input-modality spec on a real Desktop Safari
 // engine. WebKit-only behavior differences are real (for example,
@@ -216,7 +210,6 @@ export default defineConfig({
         AUDIT_APP_SPEC,
         AUDIT_PROJECT_WORKER_CONTRACT_SPEC,
         AUDIT_CLOUD_SPEC,
-        AUDIT_APP_DROPDOWN_SPEC,
         /viewport-zoom-visualviewport\.spec\.ts/,
       ],
       use: {
@@ -356,25 +349,6 @@ export default defineConfig({
               // Playwright routing and turn deterministic empty states into
               // CORS failures; service-worker behavior has dedicated tests.
               ...BLOCK_PRODUCTION_SERVICE_WORKER,
-              ...withChromiumLaunchOptions(),
-            },
-          },
-        ]
-      : []),
-    ...(auditAppDropdownEnabled
-      ? [
-          {
-            // Applications dropdown/select light+dark contrast proof (#14232), run
-            // via `--project=audit-app-dropdown`. Like audit-cloud it needs the
-            // renderer built with VITE_PLAYWRIGHT_TEST_AUTH=true so the Steward auth
-            // shell serves the app-detail route.
-            name: "audit-app-dropdown",
-            testMatch: [
-              AUDIT_APP_DROPDOWN_SPEC,
-              AUDIT_PROJECT_WORKER_CONTRACT_SPEC,
-            ],
-            use: {
-              ...devices["Desktop Chrome"],
               ...withChromiumLaunchOptions(),
             },
           },

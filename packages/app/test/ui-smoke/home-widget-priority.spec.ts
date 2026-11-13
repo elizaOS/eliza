@@ -15,7 +15,6 @@ import {
   seedAppStorage,
   UI_SMOKE_CPU_ONLY_HARDWARE,
 } from "./helpers";
-import { installReadyDesktopStatusBridge } from "./helpers/desktop-status-bridge";
 import { launcherGrid } from "./helpers/launcher-navigation";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 
@@ -521,7 +520,6 @@ test.describe("home widget priority (#9143)", () => {
   }) => {
     await rm(SCREENSHOT_DIR, { force: true, recursive: true });
     await seedHomeWidgetStorage(page);
-    await installReadyDesktopStatusBridge(page);
     await installHomeWidgetRoutes(page);
 
     // The /chat home (HomeScreen) mounts the unified <WidgetHost slot="home">

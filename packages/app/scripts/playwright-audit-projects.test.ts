@@ -90,10 +90,10 @@ describe("audit-project propagation contract", () => {
     ).toEqual(["audit-app", "audit-cloud"]);
     expect(
       resolveRequestedAuditProjects({
-        argv: ["--project=audit-app-dropdown"],
+        argv: ["--project=audit-app"],
         serialized: "audit-cloud",
       }),
-    ).toEqual(["audit-cloud", "audit-app-dropdown"]);
+    ).toEqual(["audit-app", "audit-cloud"]);
   });
 
   test("rejects unsupported propagated names", () => {

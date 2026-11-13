@@ -1,6 +1,6 @@
 /**
  * Selects the lightweight hosted public and account-management renderer without changing the
- * native, desktop, chat-harness, or agent-application boot paths.
+ * native, chat-harness, or agent-application boot paths.
  *
  * Keep these exact pathname patterns aligned with the routes registered by
  * the app Cloud route registration. Near misses deliberately fall through
@@ -13,7 +13,6 @@ export interface WebEntryDecisionInput {
   hostname: string;
   webShellEnabled: boolean;
   chatHarnessEnabled: boolean;
-  desktopShell: boolean;
   forceApexConsole: boolean;
 }
 
@@ -62,11 +61,7 @@ export function isHostedPublicPath(pathname: string): boolean {
 
 /** Decide which renderer entry may execute before any application modules load. */
 export function shouldUsePublicWebEntry(input: WebEntryDecisionInput): boolean {
-  if (
-    !input.webShellEnabled ||
-    input.chatHarnessEnabled ||
-    input.desktopShell
-  ) {
+  if (!input.webShellEnabled || input.chatHarnessEnabled) {
     return false;
   }
   if (isHostedPublicPath(input.pathname)) return true;

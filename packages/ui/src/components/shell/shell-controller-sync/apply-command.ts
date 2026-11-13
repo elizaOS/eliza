@@ -1,10 +1,5 @@
 /**
- * Owner-side inverse of the follower controller: run a follower's typed command
- * against the one live `useShellController` engine (#16442). The owner window is
- * the sole place mic capture, TTS, and the conversation session actually happen;
- * every follower interaction arrives here as a command and is applied exactly
- * once (the coordinator dedupes before calling this).
- *
+ * Run a typed shell command against the one live `useShellController` engine.
  * The switch is exhaustive so a command added to the union without a handler is
  * a compile error, never a silent drop.
  */
@@ -71,12 +66,6 @@ export function applyShellControllerCommand(
         command.direction === "prev"
           ? controller.conversationNav.goPrev()
           : controller.conversationNav.goNext(),
-      );
-    case "routeOsIntent":
-      return Promise.reject(
-        new Error(
-          "OS intents must be evaluated by the owner routing authority",
-        ),
       );
     default: {
       const _exhaustive: never = command;

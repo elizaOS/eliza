@@ -10,7 +10,6 @@ import { Capacitor } from "@capacitor/core";
 import type { PermissionId } from "@elizaos/core/protocol";
 import { openPermissionSettings } from "@elizaos/core/protocol";
 import { useState } from "react";
-import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { openMobilePermissionSettings } from "../../platform/mobile-permissions-client";
 import { cn } from "../../utils/cn";
 import { Alert } from "../ui/alert";
@@ -31,7 +30,7 @@ export interface PermissionRecoveryCalloutProps {
 }
 function isNativeMobileRuntime(): boolean {
   try {
-    return Capacitor.isNativePlatform() && !isElectrobunRuntime();
+    return Capacitor.isNativePlatform();
   } catch {
     // error-policy:J4 capability probe — no Capacitor runtime means the
     // web-flavored recovery copy is shown.

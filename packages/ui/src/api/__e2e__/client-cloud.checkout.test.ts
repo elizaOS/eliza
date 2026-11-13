@@ -3,13 +3,10 @@
 import {
   clearStoredStewardToken,
   replaceStoredStewardTokenIfCurrent,
-  STEWARD_TOKEN_KEY,
   writeStoredStewardToken,
 } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { JSDOM } from "jsdom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { DesktopSecureStoreKind } from "../../bridge/electrobun-rpc";
-import { initializeStorageBridge } from "../../bridge/storage-bridge";
 import { resolveCloudApiBase } from "../../platform/ios-runtime";
 import {
   hasSameOriginStewardLogin,
@@ -174,97 +171,24 @@ it.each([
   },
 );
 
-it.each(["native", "electrobun"])(
-  "preserves the installed managed runtime credential on %s",
-  async (platform) => {
-    const desktop =
-      platform === "electrobun"
-        ? new JSDOM("", {
-            url: "https://staging.eliza-app.pages.dev/chat",
-          })
-        : null;
-    const protectedValues = new Map<DesktopSecureStoreKind, string>();
-    let rawGetItem: Storage["getItem"] | undefined;
-    if (desktop) {
-      vi.stubGlobal("window", desktop.window);
-      vi.stubGlobal("localStorage", desktop.window.localStorage);
-      vi.stubGlobal("CustomEvent", desktop.window.CustomEvent);
-      rawGetItem = desktop.window.localStorage.getItem.bind(
-        desktop.window.localStorage,
-      );
-      Object.defineProperty(desktop.window, "__electrobunWindowId", {
-        configurable: true,
-        value: 1,
-      });
-    } else vi.stubGlobal("Capacitor", { isNativePlatform: () => true });
-    try {
-      if (desktop) {
-        await expect(writeStoredStewardToken("old-account")).rejects.toThrow(
-          "Protected storage rejected write",
-        );
-        expect(rawGetItem?.(STEWARD_TOKEN_KEY)).toBeNull();
-        Object.defineProperty(desktop.window, "__ELIZA_ELECTROBUN_RPC__", {
-          configurable: true,
-          value: {
-            request: {
-              secureStoreGet: async ({
-                kind,
-              }: {
-                kind: DesktopSecureStoreKind;
-              }) =>
-                protectedValues.has(kind)
-                  ? { ok: true, value: protectedValues.get(kind) }
-                  : { ok: false, reason: "not_found" },
-              secureStoreSet: async ({
-                kind,
-                value,
-              }: {
-                kind: DesktopSecureStoreKind;
-                value: string;
-              }) => {
-                protectedValues.set(kind, value);
-                return { ok: true };
-              },
-              secureStoreDelete: async ({
-                kind,
-              }: {
-                kind: DesktopSecureStoreKind;
-              }) => {
-                protectedValues.delete(kind);
-                return { ok: true, deleted: true };
-              },
-            },
-            onMessage: vi.fn(),
-            offMessage: vi.fn(),
-          },
-        });
-        await initializeStorageBridge();
-      }
-      await writeStoredStewardToken("old-account");
-      const client = new ElizaClient(
-        "https://api-staging.eliza.app/api/v1/eliza/agents/personal%3A00000001-1111-5111-8111-111111111111",
-        "eliza_owner-key",
-      );
-      expect(
-        await replaceStoredStewardTokenIfCurrent("old-account", "new-account"),
-      ).toBe(true);
-      expect(client.getRestAuthToken()).toBe("eliza_owner-key");
-      if (desktop) {
-        expect(protectedValues.get("session.steward_token")).toBe(
-          "new-account",
-        );
-        expect(rawGetItem?.(STEWARD_TOKEN_KEY)).toBeNull();
-      }
-      await clearStoredStewardToken();
-      expect(client.getRestAuthToken()).toBe("eliza_owner-key");
-      if (desktop)
-        expect(protectedValues.has("session.steward_token")).toBe(false);
-    } finally {
-      vi.unstubAllGlobals();
-      desktop?.window.close();
-    }
-  },
-);
+it("preserves the installed managed runtime credential on native", async () => {
+  vi.stubGlobal("Capacitor", { isNativePlatform: () => true });
+  try {
+    await writeStoredStewardToken("old-account");
+    const client = new ElizaClient(
+      "https://api-staging.eliza.app/api/v1/eliza/agents/personal%3A00000001-1111-5111-8111-111111111111",
+      "eliza_owner-key",
+    );
+    expect(
+      await replaceStoredStewardTokenIfCurrent("old-account", "new-account"),
+    ).toBe(true);
+    expect(client.getRestAuthToken()).toBe("eliza_owner-key");
+    await clearStoredStewardToken();
+    expect(client.getRestAuthToken()).toBe("eliza_owner-key");
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
 
 it("keeps a build-pinned remote credential outside account session ownership", async () => {
   const base = "https://paired.example.test";
@@ -417,37 +341,29 @@ it("does not grant owned Pages boot or bearer authority to other URL shapes", ()
   }
 });
 
-it("keeps native and Electrobun off the owned Pages direct-login path", () => {
-  for (const platform of ["native", "electrobun"]) {
-    const dom = new JSDOM("", {
-      url: "https://staging.eliza-app.pages.dev/chat",
-    });
-    vi.stubGlobal("window", dom.window);
-    vi.stubGlobal("localStorage", dom.window.localStorage);
-    vi.stubGlobal("CustomEvent", dom.window.CustomEvent);
-    if (platform === "native")
-      vi.stubGlobal("Capacitor", { isNativePlatform: () => true });
-    else
-      Object.defineProperty(dom.window, "__electrobunWindowId", {
-        configurable: true,
-        value: 1,
-      });
-    try {
-      expect(currentOwnedElizaPagesOrigin()).toBeNull();
-      expect(
-        resolveCloudApiBase({ VITE_ELIZA_CLOUD_BASE: "https://eliza.app" }),
-      ).toBe("https://eliza.app");
-      expect(
-        shouldUseSameTabCloudLogin({ closed: false } as Window, {
-          hasAgentProxy: false,
-        }),
-      ).toBe(false);
-      const base = `${dom.window.location.origin}/api/v1/eliza/agents/personal%3A00000001-1111-5111-8111-111111111111`;
-      expect(isManagedCloudSharedAgentBase(base)).toBe(false);
-      expect(isTrustedCloudApiBaseUrl(base)).toBe(false);
-    } finally {
-      vi.unstubAllGlobals();
-      dom.window.close();
-    }
+it("keeps native off the owned Pages direct-login path", () => {
+  const dom = new JSDOM("", {
+    url: "https://staging.eliza-app.pages.dev/chat",
+  });
+  vi.stubGlobal("window", dom.window);
+  vi.stubGlobal("localStorage", dom.window.localStorage);
+  vi.stubGlobal("CustomEvent", dom.window.CustomEvent);
+  vi.stubGlobal("Capacitor", { isNativePlatform: () => true });
+  try {
+    expect(currentOwnedElizaPagesOrigin()).toBeNull();
+    expect(
+      resolveCloudApiBase({ VITE_ELIZA_CLOUD_BASE: "https://eliza.app" }),
+    ).toBe("https://eliza.app");
+    expect(
+      shouldUseSameTabCloudLogin({ closed: false } as Window, {
+        hasAgentProxy: false,
+      }),
+    ).toBe(false);
+    const base = `${dom.window.location.origin}/api/v1/eliza/agents/personal%3A00000001-1111-5111-8111-111111111111`;
+    expect(isManagedCloudSharedAgentBase(base)).toBe(false);
+    expect(isTrustedCloudApiBaseUrl(base)).toBe(false);
+  } finally {
+    vi.unstubAllGlobals();
+    dom.window.close();
   }
 });

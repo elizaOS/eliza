@@ -6,7 +6,6 @@ export const FOCUSED_APP_SHELL_MODES = [
   "voice-selftest",
   "voice-workbench",
   "launcher",
-  "kiosk",
 ] as const;
 
 export type FocusedAppShellMode = (typeof FOCUSED_APP_SHELL_MODES)[number];

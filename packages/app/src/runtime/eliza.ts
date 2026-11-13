@@ -107,11 +107,11 @@ export interface StartElizaOptionsExt extends StartElizaOptions {
   onEmbeddingProgress?: EmbeddingProgressCallback;
   /**
    * Local-agent IPC mode: the frontend reaches the runtime over native IPC
-   * (Capacitor / Electrobun RPC / stdio bridge), not an HTTP port. When set,
+   * (Capacitor / stdio bridge), not an HTTP port. When set,
    * `startEliza` skips binding the API TCP listener unless the operator opts
    * back in via `ELIZA_API_EXPOSE_PORT`. The in-process route kernel is still
    * initialized so the IPC bridge can drive `dispatchRoute`. Default
-   * false/unset — the desktop Electrobun launcher, `eliza start`, and the plain
+   * false/unset — `eliza start` and the plain
    * server-only path leave this unset and keep binding the port exactly as
    * today. (#12180)
    */

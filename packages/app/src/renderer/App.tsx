@@ -67,8 +67,6 @@ import {
   cloudAuthFirstScreenOwnsHost,
   cn,
   createNavigateViewHandler,
-  type DesktopBottomBarSurfaceState,
-  DesktopTabBar,
   DeveloperTabHost,
   DynamicPluginFallback,
   DynamicViewLoader,
@@ -92,8 +90,6 @@ import {
   HomeScreen,
   type HomeTileTarget,
   hasUsableStoredStewardToken,
-  invokeDesktopBridgeRequest,
-  invokeDesktopBridgeRequestWithTimeout,
   isAndroidCloudBuild,
   isAospShellEnabled,
   isAppWindowRoute,
@@ -101,7 +97,6 @@ import {
   isBootstrapGateRequired,
   isCharacterSectionPath,
   isDynamicViewLoadingAllowed,
-  isElectrobunRuntime,
   isElizaCloudHostedLocation,
   isElizaCloudRuntimeLocked,
   isImmersiveWallpaperRoute,
@@ -112,7 +107,6 @@ import {
   isTrustedHostedCloudOnboardingBase,
   isWalletSectionPath,
   KeepAliveViewHost,
-  KioskViewCanvas,
   LauncherSurface,
   listAppShellPages,
   listenForNavigateViewRequests,
@@ -157,7 +151,6 @@ import {
   SurfaceRealmScope,
   SystemWarningBanner,
   setActiveSurfaceRealmScope,
-  setDesktopBottomBarSurfaceState,
   shellHistory,
   shouldClearReportedView,
   shouldShowCloudAgentReauthNotice,
@@ -165,7 +158,6 @@ import {
   shouldUseHashNavigation,
   subscribeAppShellPages,
   subscribeAuthStatus,
-  subscribeDesktopBridgeEvent,
   TAB_PATHS,
   TrayLauncher,
   tabFromPath,
@@ -176,17 +168,13 @@ import {
   useAppSelectorShallow,
   useAuthStatus,
   useAvailableViews,
-  useBarSurfaceWindows,
   useBootConfig,
   useBranding,
   useBugReportState,
   useChatComposer,
   useChatInputRef,
-  useContextMenu,
-  useDesktopTabs,
   useEnabledViewKinds,
   useFirstRunChatRelease,
-  useKioskViewSurfaces,
   useRemoteConnectRequests,
   useRoutableViews,
   useSecretsManagerModalState,
@@ -226,7 +214,6 @@ import {
   LazyCharacterSkillsView,
   LazyClockView,
   LazyDatabasePageView,
-  LazyDesktopWorkspaceSection,
   LazyFilesView,
   LazyLiveMeetingPageView,
   LazyLogsView,
@@ -255,10 +242,7 @@ import { FirstRunConductorMount } from "./onboarding/use-first-run-conductor";
 // Import the page registry from its standalone module, NOT the
 // `app-shell-components` barrel — that barrel statically re-exports every page
 // view, so importing through it folds all of them back into the main chunk.
-// DesktopTabBar stays static: it is already pulled
-// eagerly elsewhere in the app graph (plugin-loader / boot-config), so a
-// lazy() boundary here would only fold back into main. The remaining page
-// views are lazy-split below.
+// The page views are lazy-split below.
 /** Check if we're in pop-out mode (StreamView only, no chrome). */
 function useIsPopout(): boolean {
   const [popout] = useState(() => {
@@ -273,9 +257,7 @@ function useIsPopout(): boolean {
 /**
  * Shell mode for focused native surfaces. The OS launches the same app
  * bundle with `--shell-mode=chat-overlay` (transparent assistant overlay),
- * `--shell-mode=launcher` (full home view), or
- * `--shell-mode=kiosk` (the locked appliance shell: a single fullscreen
- * view-manager surface with an always-visible bottom chat pill). The mode is
+ * or `--shell-mode=launcher` (full home view). The mode is
  * read from the URL (`?shellMode=` / `?shell-mode=`) or the
  * `ELIZAOS_SHELL_MODE` global the native shell may inject. Unset = full app.
  */
@@ -314,29 +296,6 @@ function ChatOverlayShell({
   onFirstRunChatMounted: (epoch: number) => void;
   firstRunMountEpoch: number | null;
 }) {
-  // The bar has no inline tab system, so "show a view" / "show the launcher"
-  // intents open dedicated on-demand desktop windows instead (#9953 Phase 3).
-  useBarSurfaceWindows();
-  const controller = useShellControllerContext();
-  const overlayOpen = controller?.isOpen ?? false;
-  // Escape collapses the overlay first — while it is open, AssistantOverlay's
-  // own Escape handler closes it. Once already collapsed, Escape hides the
-  // desktop window entirely (#12184) so the pill dismisses to the background
-  // like a summoned panel. Desktop-only (web has no window to hide).
-  useEffect(() => {
-    if (typeof document === "undefined" || !isElectrobunRuntime()) {
-      return undefined;
-    }
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key !== "Escape" || overlayOpen) return;
-      void invokeDesktopBridgeRequest<void>({
-        rpcMethod: "desktopHideWindow",
-        ipcChannel: "desktop:hideWindow",
-      });
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [overlayOpen]);
   return (
     <>
       <GlassStyles />
@@ -372,28 +331,6 @@ function TrayPopoverShell() {
     >
       <TrayLauncher />
       <WidgetHost slot="home" layout="stack" surface="tray" />
-    </div>
-  );
-}
-/**
- * Locked appliance shell for the Linux OS kiosk window. The Electrobun bundle
- * runs as the entire GUI: a single fullscreen, frameless, non-closable
- * toplevel. This surface IS the view manager — agent-spawned dynamic views
- * mount in-canvas (see `KioskViewCanvas`) and an always-visible bottom chat
- * pill talks to the local OS agent. No header / tabs / desktop chrome.
- */
-function KioskShell() {
-  const surfaces = useKioskViewSurfaces();
-  return (
-    <div
-      data-testid="kiosk-shell"
-      className="fixed inset-0 flex flex-col overflow-hidden bg-bg"
-    >
-      <div className="min-h-0 flex-1">
-        <KioskViewCanvas surfaces={surfaces} />
-      </div>
-      {/* Always-visible bottom chat pill + assistant overlay. */}
-      <ShellFoundationMount />
     </div>
   );
 }
@@ -1462,7 +1399,6 @@ function buildStaticTabRenderers(): Record<
     runtime: wrap(<LazyRuntimeView />),
     database: wrapOverlayAware(<LazyDatabasePageView />),
     logs: wrap(<LazyLogsView />),
-    desktop: wrap(<LazyDesktopWorkspaceSection />),
     settings: ({
       settingsInitialSection,
       settingsNavigatePayload,
@@ -1862,7 +1798,6 @@ type ShellContentProps = {
   availableViewsForLayout: ViewRegistryEntry[];
   cloudAuthenticated: boolean;
   customActionsPanelOpen: boolean;
-  desktopTabBar: ReactNode;
   isChat: boolean;
   isFullBleed: boolean;
   screenBackgroundPolicy: AppShellBackgroundPolicy;
@@ -1918,7 +1853,7 @@ function ChatRouteShellContent(props: ShellContentProps): ReactNode {
 /**
  * The single routed shell for every view. ViewRouter already resolves every tab
  * — static page views, dynamic plugin pages, and remote view bundles — so the
- * shell only adds the desktop tab bar and per-tab padding around it. Chat is the
+ * shell only adds per-tab padding around it. Chat is the
  * always-present ChatOverlay floating over this base, never embedded
  * per-view.
  */
@@ -1933,7 +1868,6 @@ function RoutedShellContent(props: ShellContentProps): ReactNode {
       : APP_SHELL_CLASS;
   return (
     <div key={`tab-shell-${props.tab}`} className={shellClass}>
-      {props.desktopTabBar}
       <main className={routedShellMainClass(props.tab)}>
         {props.viewLayout ? (
           <ViewLayoutSurface
@@ -2022,7 +1956,6 @@ function ShellContent(props: ShellContentProps): ReactNode {
           aria-hidden={!showNotes || undefined}
           style={{ display: showNotes ? "flex" : "none" }}
         >
-          {showNotes ? props.desktopTabBar : null}
           <main className={routedShellMainClass("notes")}>
             <ViewSurfaceFrame declaration={retainedNotes.current.registration}>
               <RegisteredAppShellPage
@@ -2092,9 +2025,7 @@ function ShellFoundationMount({
   firstRunMountEpoch?: number | null;
 } = {}) {
   const controller = useShellControllerContext();
-  const hasController = controller !== null;
   const shellIsOpen = controller?.isOpen ?? false;
-  const shellPhase = controller?.phase;
   const { firstRunComplete, startupPhase } = useAppSelectorShallow((state) => ({
     firstRunComplete: state.firstRunComplete,
     startupPhase: state.startupCoordinator.phase,
@@ -2121,27 +2052,6 @@ function ShellFoundationMount({
       firstRunPinnedOpen ||
       firstRunJustCompleted ||
       keepChatOpenAfterFirstRun);
-  const [shellPreviewHostReady, setShellPreviewHostReady] = useState(false);
-  const [shellHostDetent, setShellHostDetent] = useState<
-    "pill" | "input" | "half" | "full"
-  >(shellIsOpen ? "input" : "pill");
-  const setActionNotice = useAppSelector((state) => state.setActionNotice);
-  const handleWindowBoundsFailure = useCallback((): void => {
-    if (shellIsOpen) controller?.close();
-    setActionNotice(
-      "Desktop chat window resize failed. Close and reopen Eliza to retry.",
-      "error",
-      6000,
-    );
-  }, [controller, setActionNotice, shellIsOpen]);
-  const syncNativeSurfaceState = useCallback(
-    (state: DesktopBottomBarSurfaceState): void => {
-      void setDesktopBottomBarSurfaceState(state).catch(
-        handleWindowBoundsFailure,
-      );
-    },
-    [handleWindowBoundsFailure],
-  );
   const focusComposerOnOpenRef = useRef(false);
   const { setChatInput } = useChatComposer();
   const chatInputRef = useChatInputRef();
@@ -2226,51 +2136,6 @@ function ShellFoundationMount({
     return () => document.removeEventListener(PUSH_TO_TALK_HOLD_EVENT, onHold);
   }, []);
   useEffect(() => {
-    if (!hasController) return undefined;
-    // While the shared mobile sheet is open, its five-state callback owns the
-    // exact native frame (including full work-area maximization). The legacy
-    // expanded/hover RPC remains the compatibility path for the resting pill.
-    if (shouldMountWebChatPanel) return undefined;
-    let cancelled = false;
-    setShellPreviewHostReady(false);
-    void (async () => {
-      if (cancelled) return;
-      await invokeDesktopBridgeRequestWithTimeout<undefined>({
-        rpcMethod: "desktopSetBottomBarExpanded",
-        ipcChannel: "desktop:setBottomBarExpanded",
-        params: {
-          expanded: shellIsOpen && shellHostDetent !== "input",
-          hovered:
-            useWebChatPanel &&
-            (shellPhase === "listening" ||
-              (shellIsOpen && shellHostDetent === "input")),
-        },
-        timeoutMs: 1000,
-      });
-      if (
-        !cancelled &&
-        useWebChatPanel &&
-        shellPhase === "listening" &&
-        !shellIsOpen
-      ) {
-        // Paint hover and Fn-listening lanes only after the native host is
-        // 600px wide. Before this acknowledgement, wide DOM is clipped through
-        // the resting 96px WKWebView and appears as a narrow center slice.
-        setShellPreviewHostReady(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    hasController,
-    shouldMountWebChatPanel,
-    shellHostDetent,
-    shellIsOpen,
-    shellPhase,
-    useWebChatPanel,
-  ]);
-  useEffect(() => {
     if (!useWebChatPanel || !shellIsOpen || !focusComposerOnOpenRef.current) {
       return;
     }
@@ -2286,7 +2151,6 @@ function ShellFoundationMount({
   }, [shellIsOpen, useWebChatPanel]);
   const openSharedDesktopComposer = useCallback(() => {
     focusComposerOnOpenRef.current = useWebChatPanel;
-    if (useWebChatPanel) setShellHostDetent("input");
     controller?.open();
   }, [controller, useWebChatPanel]);
   useEffect(() => {
@@ -2315,8 +2179,6 @@ function ShellFoundationMount({
         onFirstRunChatMounted={onFirstRunChatMounted}
         firstRunMountEpoch={firstRunMountEpoch}
         onPilledChange={closeWebChatWhenPilled}
-        onDetentChange={setShellHostDetent}
-        onStateChange={syncNativeSurfaceState}
       />
     );
   }
@@ -2351,7 +2213,6 @@ function ShellFoundationMount({
         }}
         onHoldCancel={controller.cancelRecording}
         showComposerPreview={!useWebChatPanel}
-        previewHostReady={!useWebChatPanel || shellPreviewHostReady}
       />
       {!useWebChatPanel ? (
         <AssistantOverlay
@@ -2397,8 +2258,6 @@ function ChatOverlayMount({
   onFirstRunChatMounted,
   firstRunMountEpoch = null,
   onPilledChange,
-  onDetentChange,
-  onStateChange,
   voiceEntryPolicy,
 }: {
   voiceEntryPolicy?: SenseVoiceEntryPolicy;
@@ -2410,8 +2269,6 @@ function ChatOverlayMount({
   onFirstRunChatMounted?: (epoch: number) => void;
   firstRunMountEpoch?: number | null;
   onPilledChange?: (pilled: boolean) => void;
-  onDetentChange?: (detent: "pill" | "input" | "half" | "full") => void;
-  onStateChange?: (state: DesktopBottomBarSurfaceState) => void;
 }): ReactNode {
   const t = useAppSelector((state) => state.t);
   const [wakeStopUnconfirmed, setWakeStopUnconfirmed] = useState(false);
@@ -2562,8 +2419,6 @@ function ChatOverlayMount({
         releaseFirstRunToFull={releaseFirstRunToFull}
         onFirstRunReleaseHandled={onFirstRunReleaseHandled}
         onPilledChange={onPilledChange}
-        onDetentChange={onDetentChange}
-        onStateChange={onStateChange}
       />
     </>
   );
@@ -2831,7 +2686,6 @@ function AppContent() {
       ? getOverlayApp(activeOverlayApp)
       : undefined;
   const overlayAppSurfaceActive = Boolean(resolvedOverlayApp);
-  useContextMenu();
   const cloudPairToken = getCloudPairTokenFromLocation();
   const isElizaCloudHosted = isElizaCloudHostedLocation();
   const activeAgentProfile = useAppSelector((s) => s.activeAgentProfile);
@@ -2957,16 +2811,7 @@ function AppContent() {
   const [settingsNavigatePayload, setSettingsNavigatePayload] =
     useState<unknown>(undefined);
   const [settingsNavigateSequence, setSettingsNavigateSequence] = useState(0);
-  // Desktop tab bar — persisted pinned tabs for the Electrobun shell.
-  const {
-    tabs: desktopTabs,
-    openTab: openDesktopTab,
-    closeTab: closeDesktopTab,
-  } = useDesktopTabs();
-  const [activeDesktopTabId, setActiveDesktopTabId] = useState<string | null>(
-    null,
-  );
-  const { views: availableViewsForDesktopTabs } = useRoutableViews();
+  const { views: routableViews } = useRoutableViews();
   const [viewLayout, setViewLayout] = useState<ActiveViewLayout | null>(null);
   const navigationPath = useCurrentNavigationPath();
   const enabledKinds = useEnabledViewKinds();
@@ -2996,7 +2841,7 @@ function AppContent() {
   const screenBackgroundPolicy = useActiveScreenBackgroundPolicy({
     tab,
     navigationPath,
-    availableViews: availableViewsForDesktopTabs,
+    availableViews: routableViews,
     dynamicPage: activeDynamicPage,
     viewLayout,
   });
@@ -3013,7 +2858,7 @@ function AppContent() {
   const activeViewSurface = useActiveViewSurface({
     tab,
     navigationPath,
-    availableViews: availableViewsForDesktopTabs,
+    availableViews: routableViews,
     dynamicPage: activeDynamicPage,
     viewLayout,
     enabledKinds,
@@ -3096,7 +2941,6 @@ function AppContent() {
   const [editingAction, setEditingAction] = useState<
     import("@elizaos/contracts").CustomActionDef | null
   >(null);
-  const [desktopShuttingDown, setDesktopShuttingDown] = useState(false);
   const isChat = tab === "chat";
   const isSettingsPage = tab === "settings";
   const isWalletPage = tab === "inventory";
@@ -3160,16 +3004,10 @@ function AppContent() {
   // the user to a specific view by path or view ID.
   // When the target is "/views" or "/apps" (legacy launcher aliases), we also
   // directly set the tab so the nav bar becomes visible.
-  // On desktop, also open the view as a desktop tab if desktopTabEnabled.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const baseHandler = createNavigateViewHandler({
-      availableViewsForDesktopTabs,
-      closeDesktopTab,
-      desktopTabs,
-      invokeDesktopBridgeRequest,
-      openDesktopTab,
-      setActiveDesktopTabId,
+      availableViews: routableViews,
       setTab,
       setTabForPath: (routeTab) => setTab(routeTab, { history: "preserve" }),
       setViewLayout,
@@ -3214,13 +3052,7 @@ function AppContent() {
       return handled;
     };
     return listenForNavigateViewRequests(handleNavigateView);
-  }, [
-    setTab,
-    availableViewsForDesktopTabs,
-    closeDesktopTab,
-    desktopTabs,
-    openDesktopTab,
-  ]);
+  }, [setTab, routableViews]);
   useEffect(() => {
     if (tab !== "views" && viewLayout) {
       setViewLayout(null);
@@ -3246,67 +3078,9 @@ function AppContent() {
         // Ignore bridge failures so web and desktop shells keep working.
       });
   }, []);
-  useEffect(() => {
-    return subscribeDesktopBridgeEvent({
-      rpcMessage: "desktopShutdownStarted",
-      ipcChannel: "desktop:shutdownStarted",
-      listener: () => {
-        setDesktopShuttingDown(true);
-      },
-    });
-  }, []);
-  // Handle desktop tab navigation: clicking a tab navigates to its path.
-  // Closing the active tab falls back to the chat view.
-  const handleDesktopTabClick = useCallback(
-    (viewId: string) => {
-      const dtab = desktopTabs.find((t) => t.viewId === viewId);
-      if (!dtab) return;
-      setViewLayout(null);
-      setActiveDesktopTabId(viewId);
-      try {
-        if (typeof window === "undefined") return;
-        if (window.location.protocol === "file:") {
-          window.location.hash = dtab.path;
-        } else {
-          shellHistory.pushState(null, "", dtab.path);
-          window.dispatchEvent(new PopStateEvent("popstate"));
-        }
-      } catch {
-        // sandboxed — ignore
-      }
-    },
-    [desktopTabs],
-  );
-  const handleDesktopTabClose = useCallback(
-    (viewId: string) => {
-      setViewLayout(null);
-      closeDesktopTab(viewId);
-      if (activeDesktopTabId === viewId) {
-        setActiveDesktopTabId(null);
-        setTab("chat");
-      }
-    },
-    [closeDesktopTab, activeDesktopTabId, setTab],
-  );
-  const handleOpenViewManagerFromTabBar = useCallback(() => {
-    setViewLayout(null);
-    setTab("views");
-  }, [setTab]);
   const handleClearViewLayout = useCallback(() => {
     setViewLayout(null);
   }, []);
-  // desktopTabBar is computed here (after handlers) so the memo below can
-  // reference a stable value. Rendered inside each shell variant, not at the
-  // outer level, so Header + TabBar + content stack correctly per shell.
-  const desktopTabBar = (
-    <DesktopTabBar
-      tabs={desktopTabs}
-      activeViewId={activeDesktopTabId}
-      onTabClick={handleDesktopTabClick}
-      onTabClose={handleDesktopTabClose}
-      onOpenViewManager={handleOpenViewManagerFromTabBar}
-    />
-  );
   const bugReport = useBugReportState();
   // Loading is handled entirely by StartupScreen.
   const androidCloudAuthAutoStart = isAndroidCloudBuild();
@@ -3320,7 +3094,6 @@ function AppContent() {
       cloudOnlyBranding: branding.cloudOnly === true,
       isAgentlessCloudOrigin,
       isNative,
-      isDesktopShell: isElectrobunRuntime(),
     }) ||
       (isNative &&
         ((isAndroidCloudBuild() && branding.cloudOnly !== false) ||
@@ -3389,10 +3162,9 @@ function AppContent() {
       <ShellContent
         actionNotice={actionNotice}
         mobileHome={sharedMobileApplication}
-        availableViewsForLayout={availableViewsForDesktopTabs}
+        availableViewsForLayout={routableViews}
         cloudAuthenticated={cloudAuthenticated}
         customActionsPanelOpen={customActionsPanelOpen}
-        desktopTabBar={desktopTabBar}
         isChat={isChat}
         isFullBleed={isFullBleed}
         screenBackgroundPolicy={screenBackgroundPolicy}
@@ -3420,8 +3192,7 @@ function AppContent() {
       settingsInitialSection,
       settingsNavigatePayload,
       settingsNavigateSequence,
-      desktopTabBar,
-      availableViewsForDesktopTabs,
+      routableViews,
       cloudAuthenticated,
       viewLayout,
       handleClearViewLayout,
@@ -3687,19 +3458,6 @@ function AppContent() {
     // The loading phase is handled above so the shell's poll-heavy hooks never
     // mount until the session is known.
   }
-  // OS kiosk window — the locked appliance shell: a fullscreen in-window
-  // view-manager canvas plus an always-visible bottom chat pill. No app
-  // chrome, no tabs. The pill is enabled here regardless of web/native gating.
-  if (shellMode === "kiosk") {
-    return (
-      <BugReportProvider value={bugReport}>
-        <ShellControllerProvider>
-          <KioskShell />
-        </ShellControllerProvider>
-        <BugReportModal />
-      </BugReportProvider>
-    );
-  }
   // The app shell renders once paintable (the agent may still be warming up —
   // the chat composer queues sends until first-turn capability fades in; views
   // show their own loading states until the runtime is live). No deprecated
@@ -3926,22 +3684,6 @@ function AppContent() {
           }}
         />
         <ConnectionLostOverlay />
-        {desktopShuttingDown ? (
-          <div
-            className="fixed inset-0 z-[1000] flex items-center justify-center bg-bg/80 "
-            role="status"
-            aria-live="polite"
-          >
-            <div className="rounded-sm border border-border/60 bg-card/95 px-6 py-5 text-center ">
-              <div className="text-base font-semibold text-txt">
-                Shutting down…
-              </div>
-              <div className="mt-1 text-sm text-muted">
-                Closing services and saving state.
-              </div>
-            </div>
-          </div>
-        ) : null}
         {/* Explicit native sign-in also comes from branded local-runtime hosts.
           The broker renders nothing until requested; only Cloud builds auto-start. */}
         <AndroidNativeCloudSignInHost />

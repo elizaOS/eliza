@@ -2,9 +2,8 @@
  * Service worker registration for view-bundle offline caching.
  *
  * Only registers in production builds and only on platforms that support
- * service workers natively. Capacitor (iOS/Android) and Electrobun (desktop)
- * are excluded — they either prohibit SW or run in webview contexts where SW
- * support is unreliable.
+ * service workers natively. Capacitor (iOS/Android) is excluded — its
+ * webview contexts make SW support unreliable.
  */
 
 function isCapacitorNative(): boolean {
@@ -21,19 +20,6 @@ function isCapacitorNative(): boolean {
     // error-policy:J4 capability probe — no Capacitor bridge means not native
     return false;
   }
-}
-
-function isElectrobunHost(): boolean {
-  const win = globalThis as {
-    __electrobunWindowId?: number;
-    __electrobunWebviewId?: number;
-    __ELIZA_ELECTROBUN_RPC__?: unknown;
-  };
-  return (
-    typeof win.__electrobunWindowId === "number" ||
-    typeof win.__electrobunWebviewId === "number" ||
-    win.__ELIZA_ELECTROBUN_RPC__ !== undefined
-  );
 }
 
 let registrationStarted = false;
@@ -89,7 +75,6 @@ export function registerViewServiceWorker(): void {
   if (!import.meta.env.PROD) return;
   if (!("serviceWorker" in navigator)) return;
   if (isCapacitorNative()) return;
-  if (isElectrobunHost()) return;
   if (registrationStarted) return;
   registrationStarted = true;
 

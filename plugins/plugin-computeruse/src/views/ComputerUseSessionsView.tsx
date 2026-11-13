@@ -1,15 +1,9 @@
 /**
  * Renders live computer-use sessions as a responsive monitor grid. It polls
  * authenticated snapshots and read-only frames, keeps failures visibly
- * distinct from empty/loading state, and can detach into the desktop host's
- * native always-on-top app window.
+ * distinct from empty/loading state.
  */
-import {
-  Button,
-  client,
-  isElectrobunRuntime,
-  openDesktopAppWindow,
-} from "@elizaos/ui";
+import { Button, client } from "@elizaos/ui";
 
 import {
   type ReactElement,
@@ -163,10 +157,8 @@ export interface ComputerUseSessionsViewApi {
 
 export interface ComputerUseSessionsViewProps {
   api?: ComputerUseSessionsViewApi;
-  openFloatingWindow?: () => Promise<boolean>;
   snapshotPollMs?: number;
   framePollMs?: number;
-  desktopRuntime?: boolean;
 }
 
 const defaultApi: ComputerUseSessionsViewApi = {
@@ -216,16 +208,6 @@ const defaultApi: ComputerUseSessionsViewApi = {
     return response;
   },
 };
-
-async function defaultOpenFloatingWindow(): Promise<boolean> {
-  const opened = await openDesktopAppWindow({
-    slug: "computer-use-sessions-pip",
-    title: "Computer Sessions",
-    path: "/computer-use-sessions",
-    alwaysOnTop: true,
-  });
-  return opened !== null;
-}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error
@@ -363,10 +345,8 @@ function SessionPreview({
 
 export function ComputerUseSessionsView({
   api = defaultApi,
-  openFloatingWindow = defaultOpenFloatingWindow,
   snapshotPollMs = SNAPSHOT_POLL_MS,
   framePollMs = FRAME_POLL_MS,
-  desktopRuntime = isElectrobunRuntime(),
 }: ComputerUseSessionsViewProps = {}): ReactElement {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [frames, setFrames] = useState<Record<string, SessionFrame>>({});
@@ -516,18 +496,6 @@ export function ComputerUseSessionsView({
     [selectedId, sessions],
   );
 
-  const openFloating = useCallback(async () => {
-    setActionError(null);
-    try {
-      const opened = await openFloatingWindow();
-      if (!opened)
-        setActionError("Floating windows are available in the desktop app.");
-    } catch (error) {
-      // error-policy:J4 desktop bridge failures are visible in the view.
-      setActionError(errorMessage(error));
-    }
-  }, [openFloatingWindow]);
-
   const controlSession = useCallback(
     async (
       session: SessionSnapshot,
@@ -551,16 +519,6 @@ export function ComputerUseSessionsView({
     <section className="flex h-full min-h-0 w-full flex-col bg-background text-foreground">
       <header className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
         <h1 className="text-base font-semibold">Computer sessions</h1>
-        {desktopRuntime ? (
-          <Button
-            size="touch"
-            data-agent-id="computer-sessions-open-floating"
-            onClick={() => void openFloating()}
-            type="button"
-          >
-            Open floating
-          </Button>
-        ) : null}
       </header>
 
       {actionError ? (

@@ -246,7 +246,6 @@ const LOCAL_APP_PROTOCOLS = new Set([
 	"tauri:",
 	"capacitor:",
 	"capacitor-electron:",
-	"electrobun:",
 ]);
 
 type LocalHttpAuthority = {

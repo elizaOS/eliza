@@ -509,7 +509,7 @@ export function CloudRouterShell({
             a dedicated <Route> makes react-router swap route elements when
             the app navigates `/` -> `/chat`, which REMOUNTS the whole app
             subtree and re-reads mount-time URL state (`?shellMode=`), so
-            `?shellMode=voice-selftest|voice-workbench|kiosk|...` surfaces
+            `?shellMode=voice-selftest|voice-workbench|...` surfaces
             were torn down moments after mounting. */}
           {marketingHomeElement && marketingHost ? (
             <Route path="/" element={marketingHomeElement} />

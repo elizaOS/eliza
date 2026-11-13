@@ -67,7 +67,7 @@ const DATA_URI_IMG = /^data:image\//i;
 const DATA_URI_VID = /^data:video\//i;
 const DATA_URI_AUD = /^data:audio\//i;
 const MEDIA_URL_PREFIX =
-  /^(https?:|data:|blob:|file:|capacitor:|electrobun:|app:|\/|\.\/|\.\.\/)/i;
+  /^(https?:|data:|blob:|file:|capacitor:|app:|\/|\.\/|\.\.\/)/i;
 const MEDIA_SCAN_PAGE_SIZE = 500;
 
 function mediaScanSortColumn(table: {
@@ -198,7 +198,7 @@ function extractUrlsFromValue(val: string): string[] {
 
   // Absolute URL/scheme match
   const urlRegex =
-    /(?:https?:\/\/|file:\/\/|blob:|capacitor:\/\/|electrobun:\/\/|app:\/\/)[^\s"'<>]+/gi;
+    /(?:https?:\/\/|file:\/\/|blob:|capacitor:\/\/|app:\/\/)[^\s"'<>]+/gi;
   const matches = val.match(urlRegex);
   if (matches) {
     for (const match of matches) urls.add(match);

@@ -8,7 +8,6 @@
  */
 
 import { Capacitor } from "@capacitor/core";
-import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 
 /** Frontend platform identifier matching the server-side AgentPlatform type. */
 export type FrontendPlatform = "ios" | "android" | "web" | "desktop";
@@ -17,16 +16,10 @@ export type FrontendPlatform = "ios" | "android" | "web" | "desktop";
  * Detect the current frontend platform.
  *
  * Resolution order:
- * 1. Electrobun desktop shell — via `isElectrobunRuntime()` (the renderer's
- *    `__electrobunWindowId`/`__electrobunWebviewId` + RPC bridge, the same
- *    signal platform/init.ts uses).
- * 2. Capacitor.getPlatform() — set by the Capacitor runtime on iOS/Android.
- * 3. Default: "web".
+ * 1. Capacitor.getPlatform() — set by the Capacitor runtime on iOS/Android.
+ * 2. Default: "web".
  */
 export function getFrontendPlatform(): FrontendPlatform {
-  if (isElectrobunRuntime()) {
-    return "desktop";
-  }
   const getPlatform = (Capacitor as { getPlatform?: () => unknown })
     .getPlatform;
   const p = typeof getPlatform === "function" ? getPlatform() : "web";

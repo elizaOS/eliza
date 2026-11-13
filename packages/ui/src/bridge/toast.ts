@@ -8,7 +8,6 @@ import { Capacitor } from "@capacitor/core";
 import { toast as sonner } from "sonner";
 import type { ActionTone } from "../state/action-notice";
 import { getActionNoticeSink } from "../state/app-store";
-import { isElectrobunRuntime } from "./electrobun-runtime";
 import { deliverSystemNotification } from "./notification-delivery";
 
 type ToastFunction = typeof sonner.success;
@@ -43,7 +42,7 @@ function feedback(fallback: ToastFunction, tone: ActionTone): ToastFunction {
         typeof cancel === "function" ? { id, cancel } : null;
       return id;
     }
-    if (!Capacitor.isNativePlatform() && !isElectrobunRuntime()) {
+    if (!Capacitor.isNativePlatform()) {
       return options === undefined
         ? fallback(message)
         : fallback(message, options);

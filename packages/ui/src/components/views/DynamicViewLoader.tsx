@@ -403,16 +403,12 @@ async function importUiBridgeCompat(
 ): Promise<Record<string, unknown>> {
   const [
     capacitor,
-    rpc,
-    runtime,
     windowBridge,
     nativePlugins,
     pluginBridge,
     storage,
   ] = await Promise.all([
     import("../../bridge/capacitor-bridge"),
-    import("../../bridge/electrobun-rpc"),
-    import("../../bridge/electrobun-runtime"),
     import("../../bridge/eliza-window-bridge"),
     import("../../bridge/native-plugins"),
     import("../../bridge/plugin-bridge"),
@@ -422,8 +418,6 @@ async function importUiBridgeCompat(
   // this object. Storage methods below bind authority to the importing view.
   const bridge = {
     ...capacitor,
-    ...rpc,
-    ...runtime,
     ...windowBridge,
     ...nativePlugins,
     ...pluginBridge,

@@ -34,7 +34,7 @@ import type { PluginInfo } from "../../api/client-types-config";
 import { dispatchConnectRequest } from "../../events";
 import { normalizeRemoteAgentUrl } from "../../first-run/adopt-remote-first-run";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
-import { isDesktopPlatform, isNative } from "../../platform/init";
+import { isNative } from "../../platform/init";
 import {
   createMobileSignalsPermissionsRegistry,
   openMobilePermissionSettings,
@@ -1249,7 +1249,7 @@ export function MessagePermissionCard({
   }));
   const permissionRegistry = useMemo(
     () =>
-      isNative && !isDesktopPlatform()
+      isNative
         ? createMobileSignalsPermissionsRegistry(undefined, client)
         : createClientPermissionsRegistry(client),
     [],
@@ -1273,7 +1273,7 @@ export function MessagePermissionCard({
   return renderPermissionCardFromPayload(payload, {
     registry: permissionRegistry,
     onOpenSettings: async (permission) => {
-      if (isNative && !isDesktopPlatform()) {
+      if (isNative) {
         await openMobilePermissionSettings(permission);
         return;
       }

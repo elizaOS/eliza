@@ -408,7 +408,6 @@ const TAB_ICON_NAMES: Partial<Record<BuiltinTab, string>> = {
   memories: "BrainCircuit",
   runtime: "Terminal",
   database: "Database",
-  desktop: "Monitor",
   settings: "Settings",
   vault: "KeyRound",
   logs: "ScrollText",
@@ -440,7 +439,6 @@ const BUILTIN_TAB_ORDER: Partial<Record<BuiltinTab, number>> =
       "database",
       "logs",
       "stream",
-      "desktop",
     ].map((id, index) => [id, index * 10]),
   );
 

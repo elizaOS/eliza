@@ -2,8 +2,8 @@
  * Settings → Permissions section (the `permissions` section id). Lists the OS-
  * level permissions the agent depends on (from SYSTEM_PERMISSIONS/CAPABILITIES),
  * shows each one's granted/denied status, and requests or reconciles them across
- * platforms — mobile via the native mobile-signals plugin, desktop via the
- * bridge. Also hosts the permission-priming card.
+ * platforms — mobile via the native mobile-signals plugin, web via the
+ * browser Permissions API. Also hosts the permission-priming card.
  */
 
 import type { PermissionId, PermissionState } from "@elizaos/core/protocol";
@@ -16,12 +16,7 @@ import {
 import { useBootConfig } from "../../config/boot-config-react.hooks";
 import { appNameInterpolationVars } from "../../config/branding-base";
 import { useBranding } from "../../config/branding-react.hooks";
-import {
-  isDesktopPlatform,
-  isNative,
-  isWebPlatform,
-  platform as runtimePlatform,
-} from "../../platform/init";
+import { isWebPlatform, platform as runtimePlatform } from "../../platform/init";
 import {
   createMobileSignalsPermissionsRegistry,
   openMobilePermissionSettings,
@@ -30,52 +25,15 @@ import { useAppSelector } from "../../state/app-store";
 import { PermissionPrimingModal } from "../permissions/PermissionPrimingModal";
 import { resolvePrimingSet } from "../permissions/permission-priming";
 import { StreamingPermissionsSettingsView } from "../permissions/StreamingPermissions";
-import { CapabilityToggle, PermissionRow } from "./permission-controls";
+import { PermissionRow } from "./permission-controls";
 import { useDesktopPermissionsState } from "./permission-controls.hooks";
-import { CAPABILITIES, SYSTEM_PERMISSIONS } from "./permission-types";
+import { SYSTEM_PERMISSIONS } from "./permission-types";
 import { SettingsActionButton } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
 type WebsiteBlockerSettingsCardComponent = NonNullable<
   ReturnType<typeof useBootConfig>["websiteBlockerSettingsCard"]
 >;
-
-// Per-platform description / grant-note strings, keyed by platform.
-type DesktopPlatform = "darwin" | "win32" | "linux";
-
-interface PlatformCopy {
-  grantNote: { key: string; defaultValue: string };
-}
-
-const PLATFORM_COPY: Record<DesktopPlatform, PlatformCopy> = {
-  darwin: {
-    grantNote: {
-      key: "permissionssection.MacGrantAccessNote",
-      defaultValue:
-        "macOS requires Accessibility permission for computer control. Open System Settings → Privacy & Security to grant access.",
-    },
-  },
-  win32: {
-    grantNote: {
-      key: "permissionssection.WindowsGrantPermissionsNote",
-      defaultValue:
-        "Windows may not list this app by name here. Use Privacy settings to enable microphone and camera access, then test them in the app.",
-    },
-  },
-  linux: {
-    grantNote: {
-      key: "permissionssection.GrantPermissionsNote",
-      defaultValue:
-        "Grant permissions to enable features like voice input and computer control.",
-    },
-  },
-};
-
-function platformCopy(platform: string | null | undefined): PlatformCopy {
-  if (platform === "darwin") return PLATFORM_COPY.darwin;
-  if (platform === "win32") return PLATFORM_COPY.win32;
-  return PLATFORM_COPY.linux;
-}
 
 /* ── Streaming permission views (mobile / web) ──────────────────── */
 
@@ -561,134 +519,6 @@ function LocalWebsiteBlockingCard({
   );
 }
 
-/* ── Desktop permission view ────────────────────────────────────── */
-
-function DesktopPermissionsView() {
-  const t = useAppSelector((s) => s.t);
-  const plugins = useAppSelector((s) => s.plugins);
-  const handlePluginToggle = useAppSelector((s) => s.handlePluginToggle);
-  const { websiteBlockerSettingsCard: WebsiteBlockerSettingsCard } =
-    useBootConfig();
-  const {
-    handleOpenSettings,
-    handleRequest,
-    handleToggleShell,
-    loading,
-    permissions,
-    platform,
-    shellEnabled,
-  } = useDesktopPermissionsState();
-
-  const arePermissionsGranted = useCallback(
-    (requiredPerms: PermissionId[]): boolean => {
-      if (!permissions) return false;
-      return requiredPerms.every((id) => {
-        const state = permissions[id];
-        return (
-          state?.status === "granted" || state?.status === "not-applicable"
-        );
-      });
-    },
-    [permissions],
-  );
-
-  const applicablePermissions = useMemo(
-    () =>
-      SYSTEM_PERMISSIONS.filter((def) => {
-        if (!permissions) return true;
-        const state = permissions[def.id];
-        return state?.status !== "not-applicable";
-      }),
-    [permissions],
-  );
-
-  if (loading) {
-    return (
-      <p className="py-6 text-center text-xs text-muted">
-        {t("permissionssection.LoadingPermissions", {
-          defaultValue: "Loading permissions...",
-        })}
-      </p>
-    );
-  }
-
-  if (!permissions) {
-    return (
-      <p className="py-6 text-center text-xs text-muted">
-        {t("permissionssection.UnableToLoadPermi", {
-          defaultValue: "Unable to load permissions.",
-        })}
-      </p>
-    );
-  }
-
-  const copy = platformCopy(platform);
-
-  return (
-    <SettingsStack>
-      <SettingsGroup
-        title={t("permissionssection.SystemPermissions", {
-          defaultValue: "System Permissions",
-        })}
-        footer={t(copy.grantNote.key, {
-          defaultValue: copy.grantNote.defaultValue,
-        })}
-      >
-        {applicablePermissions.map((def) => {
-          const state = permissions[def.id];
-          return (
-            <PermissionRow
-              key={def.id}
-              def={def}
-              status={state?.status ?? "not-determined"}
-              reason={state?.reason}
-              platform={platform}
-              canRequest={state?.canRequest ?? false}
-              onRequest={() => handleRequest(def.id)}
-              onOpenSettings={() => handleOpenSettings(def.id)}
-              isShell={def.id === "shell"}
-              shellEnabled={shellEnabled}
-              onToggleShell={def.id === "shell" ? handleToggleShell : undefined}
-            />
-          );
-        })}
-      </SettingsGroup>
-
-      {WebsiteBlockerSettingsCard ? (
-        <WebsiteBlockerSettingsCard
-          mode="desktop"
-          permission={permissions["website-blocking"]}
-          platform={platform}
-          onRequestPermission={() => handleRequest("website-blocking")}
-          onOpenPermissionSettings={() =>
-            handleOpenSettings("website-blocking")
-          }
-        />
-      ) : null}
-
-      <SettingsGroup title={t("common.capabilities")}>
-        {CAPABILITIES.map((cap) => {
-          const plugin = plugins.find((p) => p.id === cap.id) ?? null;
-          const permissionsGranted = arePermissionsGranted(
-            cap.requiredPermissions,
-          );
-          return (
-            <CapabilityToggle
-              key={cap.id}
-              cap={cap}
-              plugin={plugin}
-              permissionsGranted={permissionsGranted}
-              onToggle={(enabled) => {
-                if (plugin) void handlePluginToggle(cap.id, enabled);
-              }}
-            />
-          );
-        })}
-      </SettingsGroup>
-    </SettingsStack>
-  );
-}
-
 /**
  * Re-trigger for the onboarding permission-priming modal. Lets a user who
  * declined or mis-tapped a permission during onboarding re-run the guided
@@ -749,8 +579,7 @@ function PermissionPrimingSettingsCard() {
 
 function PermissionsSectionBody() {
   if (isWebPlatform()) return <WebPermissionsView />;
-  if (isNative && !isDesktopPlatform()) return <MobilePermissionsView />;
-  return <DesktopPermissionsView />;
+  return <MobilePermissionsView />;
 }
 
 export function PermissionsSection() {

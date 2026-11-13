@@ -35,18 +35,13 @@ export const CORS_ALLOWED_HEADERS = [
  */
 export function buildCorsAllowedPorts(): Set<string> {
   const runtimePorts = resolveRuntimePorts(process.env);
-  const ports = new Set([
+  return new Set([
     String(runtimePorts.desktopApiPort),
     String(runtimePorts.desktopUiPort),
     String(runtimePorts.serverOnlyPort),
     String(process.env.ELIZA_GATEWAY_PORT?.trim() || "18789"),
     String(process.env.ELIZA_HOME_PORT?.trim() || "2142"),
   ]);
-  // Electrobun renderer static server picks a free port in the 5174–5200
-  // range. Allow the full range so cross-origin fetches from WKWebView
-  // to the local API succeed.
-  for (let p = 5174; p <= 5200; p++) ports.add(String(p));
-  return ports;
 }
 /**
  * Comma-separated explicit origins allowed by the operator (e.g. a
@@ -107,13 +102,11 @@ const CAPACITOR_WEBVIEW_ORIGINS: ReadonlySet<string> = new Set([
  * these origins; they are used by packaged/native app shells.
  */
 const NATIVE_WEBVIEW_PROTOCOLS: ReadonlySet<string> = new Set([
-  "views:",
   "capacitor:",
   "capacitor-electron:",
   "ionic:",
   "app:",
   "tauri:",
-  "electrobun:",
 ]);
 /**
  * URL.origin returns the literal string "null" for non-special schemes

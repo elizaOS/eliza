@@ -525,7 +525,7 @@ function sessionCookieExpiresAt(session: SessionCookieSource): number {
 }
 /**
  * Should the cookie carry the `Secure` attribute? Plan §4.1: drop `Secure`
- * only when bound on loopback (the Electrobun shell). Detect via the same
+ * only when bound on loopback. Detect via the same
  * env helpers as the rest of the runtime.
  */
 function shouldEmitSecureFlag(env: RuntimeEnvRecord): boolean {

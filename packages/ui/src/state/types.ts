@@ -637,12 +637,9 @@ export interface AppActions {
   handleStop: () => Promise<void>;
   handleRestart: () => Promise<void>;
   handleReset: () => Promise<void>;
-  /** After main-process app-menu reset (Electrobun): sync local React state + client. */
-  handleResetAppliedFromMain: (payload: unknown) => Promise<void>;
   retryStartup: () => void;
   dismissRestartBanner: () => void;
   showRestartBanner: () => void;
-  relaunchDesktop: () => Promise<void>;
   triggerRestart: () => Promise<void>;
   retryBackendConnection: () => void;
   restartBackend: () => Promise<void>;

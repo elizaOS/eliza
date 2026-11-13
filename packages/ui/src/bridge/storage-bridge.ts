@@ -19,13 +19,6 @@ import {
 import { MOBILE_RUNTIME_MODE_STORAGE_KEY } from "../first-run/mobile-runtime-mode";
 import { logger } from "../logger.ts";
 import { runAsPrivilegedShell } from "../surface-realm-channel";
-import {
-  type DesktopSecureStoreKind,
-  desktopSecureStoreDelete,
-  desktopSecureStoreGet,
-  desktopSecureStoreSet,
-} from "./electrobun-rpc";
-import { isElectrobunRuntime } from "./electrobun-runtime";
 
 /**
  * Lazy-load the @capacitor/preferences module on demand. Keeping it out of the
@@ -110,7 +103,13 @@ const SYNCED_KEYS = new Set([
   "eliza:e2e-wallet:autologin",
 ]);
 
-const PROTECTED_STORAGE_KIND = new Map<string, DesktopSecureStoreKind>([
+type ProtectedStorageKind =
+  | "session.device_auth"
+  | "session.steward_token"
+  | "runtime.active_server"
+  | "runtime.agent_profiles";
+
+const PROTECTED_STORAGE_KIND = new Map<string, ProtectedStorageKind>([
   ["eliza.device.auth", "session.device_auth"],
   [STEWARD_TOKEN_KEY, "session.steward_token"],
   ["elizaos:active-server", "runtime.active_server"],
@@ -165,7 +164,7 @@ function serializedProtectedStoreDelete(key: string): Promise<void> {
 }
 
 function isProtectedStorageHost(): boolean {
-  return isNativePlatform() || isElectrobunRuntime();
+  return isNativePlatform();
 }
 
 async function protectedStoreGet(key: string): Promise<string | null> {
@@ -180,14 +179,6 @@ async function protectedStoreGet(key: string): Promise<string | null> {
     if (result.error === "not_found") return null;
     throw new Error("Native protected storage is unavailable");
   }
-  if (isElectrobunRuntime()) {
-    const result = await desktopSecureStoreGet(kind);
-    if (result?.ok) {
-      return typeof result.value === "string" ? result.value : null;
-    }
-    if (result?.reason === "not_found") return null;
-    throw new Error("Desktop protected storage is unavailable");
-  }
   return null;
 }
 
@@ -197,9 +188,6 @@ async function protectedStoreSet(key: string, value: string): Promise<boolean> {
   if (isNativePlatform()) {
     const { ElizaSecureStore } = await loadNativeSecureStore();
     return (await ElizaSecureStore.set({ key: kind, value })).ok;
-  }
-  if (isElectrobunRuntime()) {
-    return (await desktopSecureStoreSet(kind, value))?.ok === true;
   }
   return false;
 }
@@ -214,11 +202,6 @@ async function protectedStoreDelete(key: string): Promise<void> {
     const result = await ElizaSecureStore.remove({ key: kind });
     if (result.ok || result.error === "not_found") return;
     throw new Error("Native protected storage rejected deletion");
-  }
-  if (isElectrobunRuntime()) {
-    const result = await desktopSecureStoreDelete(kind);
-    if (result?.ok || result?.reason === "not_found") return;
-    throw new Error("Desktop protected storage rejected deletion");
   }
   throw new Error("Protected storage is unavailable");
 }
@@ -327,7 +310,7 @@ export async function initializeStorageBridge(): Promise<void> {
     return;
   }
 
-  if (!isNativePlatform() && !isElectrobunRuntime()) {
+  if (!isNativePlatform()) {
     return;
   }
 
@@ -361,7 +344,7 @@ export async function initializeStorageBridge(): Promise<void> {
   // with a few short retries until the plugin answers, then hydrate. The probe
   // can't distinguish "plugin cold" from "key genuinely unset", so it is capped
   // and never blocks first paint for more than a moment.
-  let pluginResponded = isElectrobunRuntime();
+  let pluginResponded = false;
   if (isNativePlatform()) {
     for (
       let attempt = 0;
@@ -477,7 +460,7 @@ function setupStorageProxy(): void {
     return;
   }
 
-  if (!isNativePlatform() && !isElectrobunRuntime()) {
+  if (!isNativePlatform()) {
     return;
   }
 

@@ -7,7 +7,6 @@
  */
 import { ExternalLink } from "lucide-react";
 import { type CSSProperties, useEffect, useRef } from "react";
-import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { getBootConfig } from "../../config/boot-config-store";
 import { useAppSelector } from "../../state/app-store";
 import { formatUptime } from "../../utils/format";
@@ -33,7 +32,6 @@ export function StatusBar({
   frameCount: number;
 }) {
   const t = useAppSelector((s) => s.t);
-  const isElectrobun = isElectrobunRuntime();
   const popoutPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -112,7 +110,7 @@ export function StatusBar({
         </Button>
 
         {/* Popout button — non-Electrobun only */}
-        {!IS_POPOUT && !isElectrobun && (
+        {!IS_POPOUT && (
           <Button
             variant="outlineMuted"
             size="icon-lg"

@@ -504,20 +504,6 @@
   accent-color: var(--accent);
 }
 
-/* macOS desktop: reserve space for traffic lights (close/min/max buttons)
-   when the title bar is hidden with hiddenInset. The .desktop class is
-   added by the Electrobun shell at startup. */
-body.desktop {
-  padding-top: env(safe-area-inset-top, 0px);
-  padding-left: env(safe-area-inset-left, 0px);
-}
-
-@supports not (padding-top: env(safe-area-inset-top)) {
-  body.desktop {
-    padding-top: 0px;
-  }
-}
-
 /* ─── Mobile (native iOS / Android) lockdown ───
    The native shell is a fixed-viewport app: no pinch zoom, no rubber-band
    bounce, no two-finger drag, no callout/long-press menu, no scrollbars.

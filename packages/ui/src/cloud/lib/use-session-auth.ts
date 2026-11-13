@@ -16,7 +16,6 @@ import { Capacitor } from "@capacitor/core";
 import { getElizaApiToken } from "@elizaos/host/protocol";
 import { readStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { useContext, useEffect, useState } from "react";
-import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { getBootConfig } from "../../config/boot-config-store";
 import {
   LocalStewardAuthContext,
@@ -66,7 +65,7 @@ function readPlaywrightTestSession(): StewardSessionUser {
   };
 }
 function isNativeCloudRuntime(): boolean {
-  return Capacitor.isNativePlatform() || isElectrobunRuntime();
+  return Capacitor.isNativePlatform();
 }
 function nativeCloudApiKey(): string | null {
   if (!isNativeCloudRuntime()) return null;

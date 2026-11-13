@@ -9,14 +9,12 @@
  */
 
 import { Capacitor } from "@capacitor/core";
-import { isElectrobunRuntime } from "./electrobun-runtime";
 import {
   type ContactsPluginLike,
   type GenericNativePlugin,
   getCameraPlugin,
   getCanvasPlugin,
   getContactsPlugin,
-  getDesktopPlugin,
   getGatewayPlugin,
   getLocationPlugin,
   getMessagesPlugin,
@@ -37,18 +35,6 @@ const platform = Capacitor.getPlatform();
 const isNative = Capacitor.isNativePlatform();
 const _isIOS = platform === "ios";
 const _isAndroid = platform === "android";
-
-function isDesktopPlatform(): boolean {
-  return isElectrobunRuntime();
-}
-
-function _isWebPlatform(): boolean {
-  return platform === "web" && !isElectrobunRuntime();
-}
-
-function _isMacOSPlatform(): boolean {
-  return isDesktopPlatform();
-}
 
 /**
  * Plugin capability flags
@@ -109,30 +95,18 @@ export interface PluginCapabilities {
   system: {
     available: boolean;
   };
-  /** Desktop features (macOS/Electrobun) */
-  desktop: {
-    available: boolean;
-    tray: boolean;
-    shortcuts: boolean;
-    menu: boolean;
-  };
 }
 
 /**
  * Get plugin capabilities for the current platform
  */
 export function getPluginCapabilities(): PluginCapabilities {
-  const isDesktop = isDesktopPlatform();
   return {
     gateway: {
       available: true, // Web fallback available
-      // Discovery requires a real mDNS/Bonjour backend. Capacitor iOS/Android
-      // ship one natively; Electrobun desktop has an equivalent bonjour-service
-      // backend behind the `gateway:*` desktop RPC methods
-      // (app/platforms/electrobun/src/native/gateway.ts). Gating on
-      // `isNative` alone reported desktop as discovery-incapable, so the LAN
-      // scan never ran there even though the backend was live.
-      discovery: isNative || isDesktop,
+      // Discovery requires a real mDNS/Bonjour backend; Capacitor iOS/Android
+      // ship one natively.
+      discovery: isNative,
       websocket: true, // WebSocket available on all platforms
     },
     voiceWake: {
@@ -152,7 +126,7 @@ export function getPluginCapabilities(): PluginCapabilities {
     location: {
       available: hasGeolocation(),
       gps: isNative,
-      background: isNative && !isDesktop,
+      background: isNative,
     },
     screenCapture: {
       available: isNative || hasDisplayMedia(),
@@ -173,12 +147,6 @@ export function getPluginCapabilities(): PluginCapabilities {
     },
     system: {
       available: isNative && platform === "android",
-    },
-    desktop: {
-      available: isDesktop,
-      tray: isDesktop,
-      shortcuts: isDesktop,
-      menu: isDesktop,
     },
   };
 }
@@ -275,8 +243,6 @@ export interface ElizaPlugins {
   messages: WrappedPlugin<MessagesPluginLike>;
   /** Android system plugin */
   system: WrappedPlugin<SystemPluginLike>;
-  /** Desktop plugin (macOS/Electrobun) */
-  desktop: WrappedPlugin<GenericNativePlugin>;
   /** Plugin capabilities */
   capabilities: PluginCapabilities;
 }
@@ -288,14 +254,9 @@ let pluginsInstance: ElizaPlugins | null = null;
  * Initialize and get the plugins interface
  */
 export function getPlugins(): ElizaPlugins {
-  if (pluginsInstance) {
-    if (pluginsInstance.desktop.isNative === isDesktopPlatform()) {
-      return pluginsInstance;
-    }
-  }
+  if (pluginsInstance) return pluginsInstance;
 
   const capabilities = getPluginCapabilities();
-  const isDesktop = isDesktopPlatform();
 
   pluginsInstance = {
     gateway: {
@@ -353,11 +314,6 @@ export function getPlugins(): ElizaPlugins {
       isNative: isNative,
       hasFallback: capabilities.system.available,
     },
-    desktop: {
-      plugin: wrapPlugin(getDesktopPlugin(), "Desktop"),
-      isNative: isDesktop,
-      hasFallback: false,
-    },
     capabilities,
   };
 
@@ -380,8 +336,7 @@ export function isFeatureAvailable(
     | "phone"
     | "contacts"
     | "messages"
-    | "system"
-    | "desktopTray",
+    | "system",
 ): boolean {
   const caps = getPluginCapabilities();
 
@@ -410,8 +365,6 @@ export function isFeatureAvailable(
       return caps.messages.available;
     case "system":
       return caps.system.available;
-    case "desktopTray":
-      return caps.desktop.tray;
     default:
       return false;
   }

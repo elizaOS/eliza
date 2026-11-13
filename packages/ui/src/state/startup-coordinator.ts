@@ -398,28 +398,6 @@ export const INITIAL_STARTUP_STATE: StartupState = {
 
 // ── Policy factories ─────────────────────────────────────────────────
 
-export function createDesktopPolicy(options?: {
-  cloudOnly?: boolean;
-}): PlatformPolicy {
-  if (options?.cloudOnly === true) {
-    return {
-      supportsLocalRuntime: false,
-      allowLocalOriginRecovery: false,
-      backendTimeoutMs: 180_000,
-      agentReadyTimeoutMs: 180_000,
-      probeForExistingInstall: false,
-      defaultTarget: "cloud-managed",
-    };
-  }
-  return {
-    supportsLocalRuntime: true,
-    backendTimeoutMs: 180_000,
-    agentReadyTimeoutMs: 300_000,
-    probeForExistingInstall: true,
-    defaultTarget: "embedded-local",
-  };
-}
-
 export function createWebPolicy(): PlatformPolicy {
   return {
     supportsLocalRuntime: false,

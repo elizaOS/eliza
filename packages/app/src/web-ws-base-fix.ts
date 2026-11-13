@@ -3,7 +3,6 @@
  */
 import { Capacitor } from "@capacitor/core";
 import { setElizaApiBase } from "@elizaos/host/protocol";
-import { isElectrobunRuntime } from "@elizaos/ui";
 
 declare global {
   interface Window {
@@ -48,8 +47,6 @@ function sameOriginRestBase(): string {
  */
 function isPlainWebSameOriginContext(): boolean {
   if (typeof window === "undefined") return false;
-  // Desktop shell needs the injected loopback API base.
-  if (isElectrobunRuntime()) return false;
   // Capacitor iOS/Android use their own native/injected bases.
   if (Capacitor.isNativePlatform()) return false;
   const loc = window.location;

@@ -15,7 +15,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ElizaClient } from "../../api/client-base";
-import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { Button } from "../../components/ui/button";
 import { isAndroid } from "../../platform/init";
 import { EXPECTED_PHRASE, KNOWN_PHRASE_WAV_DATA_URL } from "./known-phrase";
@@ -47,16 +46,15 @@ declare global {
 
 function detectPlatform(): VoiceSelfTestPlatform {
   if (isAndroid) return "android";
-  if (isElectrobunRuntime()) return "desktop";
   return "web";
 }
 
 function resolveTtsRoute(
   platform: VoiceSelfTestPlatform,
 ): "/api/tts/local-inference" | "/api/tts/cloud" {
-  // Desktop and Android both run the on-device fused omnivoice TTS, so the
-  // self-test exercises the real local voice path on those platforms. Only the
-  // web build (no on-device inference engine) falls back to cloud TTS.
+  // Android runs the on-device fused omnivoice TTS, so the self-test exercises
+  // the real local voice path there. The web build (no on-device inference
+  // engine) falls back to cloud TTS.
   return platform === "web" ? "/api/tts/cloud" : "/api/tts/local-inference";
 }
 

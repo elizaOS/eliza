@@ -98,8 +98,8 @@ process.env.VITEST = "true";
 // Keep test output focused on failures; individual tests can override.
 process.env.LOG_LEVEL ??= "error";
 // ---------------------------------------------------------------------------
-// Bun global shim — Electrobun desktop shell tests run in the Bun runtime,
-// but the Vitest pool is Node. Install a minimal shim so that module-level
+// Bun global shim — app host code runs in the Bun runtime, but the Vitest
+// pool is Node. Install a minimal shim so that module-level
 // code referencing the Bun global (e.g. Bun.spawn, Bun.version) does not
 // throw ReferenceError at import time. Individual tests override Bun.spawn
 // with vi.fn() in their own setup blocks.

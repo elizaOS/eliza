@@ -30,7 +30,7 @@ export function iconImageSource(
   const value = icon?.trim();
   if (!value) return null;
   if (
-    /^(https?:|data:image\/|blob:|file:|capacitor:|electrobun:|app:|\/|\.\/|\.\.\/)/i.test(
+    /^(https?:|data:image\/|blob:|file:|capacitor:|app:|\/|\.\/|\.\.\/)/i.test(
       value,
     )
   ) {
@@ -41,13 +41,13 @@ export function iconImageSource(
 /**
  * Convert a heroImage/icon src into a runtime-safe URL.
  *
- * Root-relative paths fail under non-http origins (electrobun://, file://)
+ * Root-relative paths fail under non-http origins (file://)
  * because the page origin isn't the static asset host. Route them through
  * the appropriate runtime resolver so they hit the API/asset base instead.
  */
 export function resolveRuntimeImageUrl(value: string): string {
   // Absolute URLs, data/blob URIs, and custom schemes are already runtime-safe.
-  if (/^(https?:|data:|blob:|file:|capacitor:|electrobun:|app:)/i.test(value)) {
+  if (/^(https?:|data:|blob:|file:|capacitor:|app:)/i.test(value)) {
     if (isLimitedCloudAgentApiResourceUrl(value)) {
       return "";
     }

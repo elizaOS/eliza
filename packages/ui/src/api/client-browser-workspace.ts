@@ -1,9 +1,7 @@
 /**
- * ElizaClient extension for the desktop browser workspace: snapshot, open, and
- * navigate tabs through the Electrobun bridge.
+ * ElizaClient extension for the agent browser workspace: snapshot, open, and
+ * navigate tabs over the agent API.
  */
-import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
-import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import type {
   BrowserWorkspaceSnapshot,
   BrowserWorkspaceTab,
@@ -34,31 +32,10 @@ declare module "./client-base.js" {
   }
 }
 
-async function requestDesktopBrowserWorkspace<T>(options: {
-  rpcMethod: string;
-  ipcChannel: string;
-  params?: unknown;
-}): Promise<T | null> {
-  if (!isElectrobunRuntime()) {
-    return null;
-  }
-
-  return invokeDesktopBridgeRequest<T>(options);
-}
-
 ElizaClient.prototype.getBrowserWorkspace = async function (
   this: ElizaClient,
   request?: Pick<RequestInit, "signal">,
 ) {
-  const bridged =
-    await requestDesktopBrowserWorkspace<BrowserWorkspaceSnapshot>({
-      rpcMethod: "browserWorkspaceGetSnapshot",
-      ipcChannel: "browser-workspace:getSnapshot",
-    });
-  if (bridged) {
-    return bridged;
-  }
-
   return this.fetch(
     "/api/browser-workspace",
     request?.signal ? { signal: request.signal } : undefined,
@@ -69,17 +46,6 @@ ElizaClient.prototype.openBrowserWorkspaceTab = async function (
   this: ElizaClient,
   request,
 ) {
-  const bridged = await requestDesktopBrowserWorkspace<{
-    tab: BrowserWorkspaceTab;
-  }>({
-    rpcMethod: "browserWorkspaceOpenTab",
-    ipcChannel: "browser-workspace:openTab",
-    params: request,
-  });
-  if (bridged) {
-    return bridged;
-  }
-
   return this.fetch("/api/browser-workspace/tabs", {
     method: "POST",
     body: JSON.stringify(request),
@@ -91,18 +57,6 @@ ElizaClient.prototype.navigateBrowserWorkspaceTab = async function (
   id,
   url,
 ) {
-  const params = { id, url } satisfies NavigateBrowserWorkspaceTabRequest;
-  const bridged = await requestDesktopBrowserWorkspace<{
-    tab: BrowserWorkspaceTab;
-  }>({
-    rpcMethod: "browserWorkspaceNavigateTab",
-    ipcChannel: "browser-workspace:navigateTab",
-    params,
-  });
-  if (bridged) {
-    return bridged;
-  }
-
   return this.fetch(
     `/api/browser-workspace/tabs/${encodeURIComponent(id)}/navigate`,
     {
@@ -119,17 +73,6 @@ ElizaClient.prototype.showBrowserWorkspaceTab = async function (
   this: ElizaClient,
   id,
 ) {
-  const bridged = await requestDesktopBrowserWorkspace<{
-    tab: BrowserWorkspaceTab;
-  }>({
-    rpcMethod: "browserWorkspaceShowTab",
-    ipcChannel: "browser-workspace:showTab",
-    params: { id },
-  });
-  if (bridged) {
-    return bridged;
-  }
-
   return this.fetch(
     `/api/browser-workspace/tabs/${encodeURIComponent(id)}/show`,
     {
@@ -142,17 +85,6 @@ ElizaClient.prototype.hideBrowserWorkspaceTab = async function (
   this: ElizaClient,
   id,
 ) {
-  const bridged = await requestDesktopBrowserWorkspace<{
-    tab: BrowserWorkspaceTab;
-  }>({
-    rpcMethod: "browserWorkspaceHideTab",
-    ipcChannel: "browser-workspace:hideTab",
-    params: { id },
-  });
-  if (bridged) {
-    return bridged;
-  }
-
   return this.fetch(
     `/api/browser-workspace/tabs/${encodeURIComponent(id)}/hide`,
     {
@@ -165,15 +97,6 @@ ElizaClient.prototype.closeBrowserWorkspaceTab = async function (
   this: ElizaClient,
   id,
 ) {
-  const bridged = await requestDesktopBrowserWorkspace<{ closed: boolean }>({
-    rpcMethod: "browserWorkspaceCloseTab",
-    ipcChannel: "browser-workspace:closeTab",
-    params: { id },
-  });
-  if (bridged) {
-    return bridged;
-  }
-
   return this.fetch(`/api/browser-workspace/tabs/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
@@ -184,15 +107,6 @@ ElizaClient.prototype.snapshotBrowserWorkspaceTab = async function (
   id,
   request?: Pick<RequestInit, "signal">,
 ) {
-  const bridged = await requestDesktopBrowserWorkspace<{ data: string }>({
-    rpcMethod: "browserWorkspaceSnapshotTab",
-    ipcChannel: "browser-workspace:snapshotTab",
-    params: { id },
-  });
-  if (bridged) {
-    return bridged;
-  }
-
   return this.fetch(
     `/api/browser-workspace/tabs/${encodeURIComponent(id)}/snapshot`,
     request?.signal ? { signal: request.signal } : undefined,

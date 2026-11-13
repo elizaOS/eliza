@@ -2,7 +2,7 @@
  * Shared window-size constants and the pop-out-mode detector for the agent
  * screen-stream view (StreamView). `IS_POPOUT` reads the `popout` flag that
  * `openStreamPopout` (popout-url.ts) sets, from either the query string or the
- * hash (file:/electrobun: origins route it through the hash).
+ * hash (file: origins route it through the hash).
  */
 
 /** Detect popout mode from URL. */

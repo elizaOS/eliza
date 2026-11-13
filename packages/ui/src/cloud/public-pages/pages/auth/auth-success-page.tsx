@@ -20,7 +20,6 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { isElectrobunRuntime } from "../../../../bridge/electrobun-runtime";
 import { Button } from "../../../../components/ui/button";
 import { getBootConfig } from "../../../../config/boot-config-store";
 import { ApiError, api, readCloudBearerToken } from "../../../lib/api-client";
@@ -38,7 +37,7 @@ const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
  */
 function isBrowserLoopbackWebOrigin(): boolean {
   if (typeof window === "undefined") return false;
-  if (Capacitor.isNativePlatform() || isElectrobunRuntime()) return false;
+  if (Capacitor.isNativePlatform()) return false;
   return LOOPBACK_HOSTS.has(window.location.hostname.toLowerCase());
 }
 

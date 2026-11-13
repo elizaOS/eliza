@@ -191,10 +191,6 @@ export const VIEW_OCR_POLICIES = {
       "Filter tables",
     ],
   }),
-  "builtin-desktop": expected({
-    requireAll: ["Desktop"],
-    requireAny: ["Desktop workspace", "Electrobun desktop runtime"],
-  }),
   "builtin-settings": expected({
     requireAny: ["Models & Providers", "Voice", "Appearance", "Basics"],
   }),

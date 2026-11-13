@@ -20,8 +20,8 @@
  *    boot, but a half-wiped session leaks cloud/remote credentials).
  *  - All other callbacks are uncaught by design. If any throws, the entire
  *    cascade aborts and the failure surfaces to the calling lifecycle (the
- *    `handleResetAppliedFromMain` / `handleReset` callers in
- *    `useChatLifecycle.ts` show the desktop alert + log the warning). We do
+ *    `handleReset` caller in
+ *    `useChatLifecycle.ts` shows the alert + logs the warning). We do
  *    NOT swallow failures or default-fill state — that would mask a broken
  *    pipeline with apparent success.
  *  - The cascade is the sole caller of each deps-record callback. No code

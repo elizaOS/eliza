@@ -1,8 +1,7 @@
 /**
- * Cross-platform clipboard write: prefers the desktop bridge, then the async
- * Clipboard API, falling back to a legacy execCommand path for older webviews.
+ * Cross-platform clipboard write: prefers the async Clipboard API, falling back
+ * to a legacy execCommand path for older webviews.
  */
-import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 
 function copyWithLegacyDomApi(text: string): boolean {
   if (typeof document === "undefined") return false;
@@ -28,14 +27,6 @@ function copyWithLegacyDomApi(text: string): boolean {
 }
 
 export async function copyTextToClipboard(text: string): Promise<void> {
-  const bridged = await invokeDesktopBridgeRequest<void>({
-    rpcMethod: "desktopWriteToClipboard",
-    ipcChannel: "desktop:writeToClipboard",
-    params: { text },
-  });
-
-  if (bridged !== null) return;
-
   if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
     // error-policy:J4 the async API existing does NOT mean the write succeeds:
     // permissions policy, a non-focused document, or a headless harness reject

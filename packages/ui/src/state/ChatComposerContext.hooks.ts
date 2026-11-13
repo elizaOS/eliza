@@ -73,8 +73,7 @@ export const ChatComposerCtx =
 
 /**
  * Stable ref to the current draft text (mirrors chat input state) so helpers
- * like useContextMenu can append quoted text without subscribing to every
- * keystroke re-render.
+ * can append quoted text without subscribing to every keystroke re-render.
  */
 export const ChatInputRefCtx = createContext<RefObject<string> | null>(null);
 

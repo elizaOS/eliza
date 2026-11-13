@@ -18,10 +18,6 @@ import {
   type CompatRuntimeState,
   isLoopbackRemoteAddress,
 } from "./compat-route-shared";
-import {
-  isAllowedDevConsoleLogPath,
-  readDevConsoleLogTail,
-} from "./dev-console-log";
 import { buildRouteCatalog } from "./dev-route-catalog";
 import { resolveDevStackFromEnv } from "./dev-stack";
 import { getPerfSnapshot } from "./perf-instrument";
@@ -142,7 +138,6 @@ function parseInferenceTimingLog(log: Log): InferenceTurnSummary | null {
  *
  * - `GET /api/dev/stack`
  * - `GET /api/dev/route-catalog`
- * - `GET /api/dev/console-log`
  * - `GET /api/dev/voice-latency`
  * - `GET /api/dev/inference-timing`
  * - `GET /api/dev/boot-history`
@@ -195,52 +190,6 @@ export async function handleDevCompatRoutes(
       return true;
     }
     sendJsonResponse(res, 200, buildRouteCatalog());
-    return true;
-  }
-  // ── GET /api/dev/console-log ────────────────────────────────────────
-  if (method === "GET" && url.pathname === "/api/dev/console-log") {
-    if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) {
-      sendJsonErrorResponse(res, 403, "loopback only");
-      return true;
-    }
-    if (!(await ensureRouteAuthorized(req, res, state))) {
-      return true;
-    }
-    const logPath = process.env.ELIZA_DESKTOP_DEV_LOG_PATH?.trim();
-    if (!logPath || !isAllowedDevConsoleLogPath(logPath)) {
-      sendJsonResponse(res, 404, {
-        error: "dev console log not configured",
-        hint: "Set ELIZA_DESKTOP_DEV_LOG_PATH to a desktop-dev-console.log file under the state directory.",
-      });
-      return true;
-    }
-    const maxLines = parseCanonicalInteger(url.searchParams.get("maxLines"), {
-      min: 1,
-    });
-    const maxBytes = parseCanonicalInteger(url.searchParams.get("maxBytes"), {
-      min: 1,
-    });
-    if (maxLines === "invalid" || maxBytes === "invalid") {
-      sendJsonErrorResponse(
-        res,
-        400,
-        "maxLines and maxBytes must be canonical positive integers",
-      );
-      return true;
-    }
-    const result = readDevConsoleLogTail(logPath, {
-      maxLines,
-      maxBytes,
-    });
-    if (result.ok === false) {
-      sendJsonResponse(res, 404, { error: result.error });
-      return true;
-    }
-    res.writeHead(200, {
-      "Content-Type": "text/plain; charset=utf-8",
-      "Cache-Control": "no-store",
-    });
-    res.end(result.body);
     return true;
   }
   // ── GET /api/dev/voice-latency ──────────────────────────────────────

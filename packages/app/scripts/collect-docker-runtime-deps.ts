@@ -69,7 +69,6 @@ const EXCLUDE = new Set([
   "@capacitor/keyboard",
   "@capacitor/preferences",
   "@capacitor/push-notifications",
-  "electrobun",
 ]);
 
 function readJson(p) {

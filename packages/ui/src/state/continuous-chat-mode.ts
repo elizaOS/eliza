@@ -1,7 +1,4 @@
-/**
- * Resolves persisted voice mode and the native-appliance bootstrap request.
- * URL input is untrusted and cannot enable capture without a native host.
- */
+/** Resolves the persisted continuous voice chat mode. */
 export type ContinuousChatModeValue = "off" | "vad-gated" | "always-on";
 
 export function normalizeContinuousChatMode(
@@ -13,12 +10,6 @@ export function normalizeContinuousChatMode(
 
 export function resolveContinuousChatMode(
   stored: string | null,
-  search = "",
-  trustedApplianceHost = false,
 ): ContinuousChatModeValue {
-  if (stored !== null) return normalizeContinuousChatMode(stored);
-  return trustedApplianceHost &&
-    new URLSearchParams(search).get("elizaOSAlwaysOnVoice") === "1"
-    ? "always-on"
-    : "off";
+  return stored === null ? "off" : normalizeContinuousChatMode(stored);
 }

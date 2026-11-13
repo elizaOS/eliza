@@ -89,12 +89,6 @@ vi.mock("../../src/renderer/transports/ios-local-agent-transport", () => ({
   isIosInProcessLocalAgentBase: () => false,
   isTerminalIosNativeAgentBootErrorMessage: () => false,
 }));
-vi.mock("../../src/renderer/transports/desktop-local-agent-transport", () => ({
-  desktopLocalAgentTransportForUrl: async () => null,
-}));
-vi.mock("../../src/renderer/transports/desktop-http-transport", () => ({
-  desktopHttpTransportForUrl: () => null,
-}));
 vi.mock("../../src/renderer/transports/remote-relay-transport", () => ({
   remoteRelayTransportForUrl: () => null,
 }));

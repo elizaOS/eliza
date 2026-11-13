@@ -291,14 +291,13 @@ function currentPlatform(): AppUpdatePlatform {
   return "web";
 }
 export async function getApplicationUpdateSnapshot(options?: {
-  desktop?: boolean;
   appName?: string;
   appId?: string | null;
   version?: string | null;
   build?: string | null;
 }): Promise<ApplicationUpdateSnapshot> {
   const nativeInfo = await readNativeAppInfo();
-  const platform = options?.desktop ? "desktop" : currentPlatform();
+  const platform = currentPlatform();
   const buildVariant = getBuildVariant();
   const policy = resolveAppUpdatePolicy({
     platform,

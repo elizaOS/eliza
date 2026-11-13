@@ -10,7 +10,6 @@ import { fetchWithCsrf } from "../api/csrf-client";
 import { isTerminalHostAgentBootError } from "../api/host-transport";
 import { getShaderPreset } from "../backgrounds/shader-presets";
 import { normalizeUniforms } from "../backgrounds/shader-schema";
-import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { removeStorageValue, setStorageValue } from "../bridge/storage-bridge";
 import { getBootConfig } from "../config/boot-config-store";
 import { DEFAULT_UI_LANGUAGE, normalizeLanguage } from "../i18n";
@@ -522,7 +521,6 @@ function normalizeLastNativeTab(tab: unknown): Tab {
     case "voice":
     case "runtime":
     case "database":
-    case "desktop":
     case "settings":
     case "logs":
       return tab;
@@ -733,9 +731,9 @@ export function saveWalletEnabled(value: boolean): void {
 const CONTINUOUS_CHAT_MODE_KEY = "eliza:voice:continuous-chat-mode";
 export function loadContinuousChatMode(): ContinuousChatModeValue {
   return tryLocalStorage(() => {
-    const stored = localStorage.getItem(CONTINUOUS_CHAT_MODE_KEY);
-    const search = typeof window === "undefined" ? "" : window.location.search;
-    return resolveContinuousChatMode(stored, search, isElectrobunRuntime());
+    return resolveContinuousChatMode(
+      localStorage.getItem(CONTINUOUS_CHAT_MODE_KEY),
+    );
   }, "off");
 }
 export function saveContinuousChatMode(mode: ContinuousChatModeValue): void {

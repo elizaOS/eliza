@@ -7,7 +7,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../api/client";
 import type { StartupShellView } from "../components/shell/startup-shell-types";
-import { ensureStoreBuildWorkspaceFolder } from "../first-run/ensure-store-build-workspace-folder";
 import { useAppSelectorShallow } from "./app-store";
 import { runStartupProbe } from "./startup-probe";
 import type { StartupErrorReason, StartupErrorState } from "./types";
@@ -76,10 +75,6 @@ export function useStartupShellController(): StartupShellController {
   coordinatorStateRef.current = startupCoordinator.state;
 
   useRemoteConnectRequests();
-
-  useEffect(() => {
-    void ensureStoreBuildWorkspaceFolder();
-  }, []);
 
   useEffect(() => {
     if (phase !== "first-run-required") {

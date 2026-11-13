@@ -21,7 +21,6 @@ import { ElizaError } from "@elizaos/core/protocol";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ElizaClient } from "../../api/client-base";
 import { fetchWithCsrf } from "../../api/csrf-client";
-import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
 import { isAndroid } from "../../platform/init";
 import { resolveApiUrl } from "../../utils/asset-url";
@@ -53,15 +52,14 @@ declare global {
 
 function detectPlatform(): VoiceWorkbenchPlatform {
   if (isAndroid) return "android";
-  if (isElectrobunRuntime()) return "desktop";
   return "web";
 }
 
 function resolveTtsRoute(
   platform: VoiceWorkbenchPlatform,
 ): "/api/tts/local-inference" | "/api/tts/cloud" {
-  // Desktop and Android run the on-device fused omnivoice TTS; only the web
-  // build (no on-device inference engine) falls back to cloud TTS.
+  // Android runs the on-device fused omnivoice TTS; the web build (no
+  // on-device inference engine) falls back to cloud TTS.
   return platform === "web" ? "/api/tts/cloud" : "/api/tts/local-inference";
 }
 

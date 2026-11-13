@@ -21,10 +21,6 @@ import {
 } from "../api/client-cloud";
 
 import type { CloudCompatAgent } from "../api/client-types-cloud";
-import {
-  getDesktopRuntimeMode,
-  invokeDesktopBridgeRequest,
-} from "../bridge/electrobun-rpc";
 import { getAgentPlugin } from "../bridge/native-plugins";
 import {
   clearPendingCloudHandoff,
@@ -37,12 +33,7 @@ import { silentlyRepointToDedicated } from "../cloud/handoff/silent-repoint";
 import { runJoinFlow } from "../cloud/join/lib/run-join-flow";
 import { getBootConfig } from "../config/boot-config-store";
 import { clearForceFreshFirstRun } from "../platform/first-run-reset";
-import {
-  isAndroid,
-  isDesktopPlatform,
-  isIOS,
-  isNative,
-} from "../platform/init";
+import { isAndroid, isIOS, isNative } from "../platform/init";
 import { addAgentProfile, removeAgentProfile } from "../state/agent-profiles";
 import { runAgentSessionRecovery } from "../state/agent-session-recovery-runner";
 import {
@@ -284,7 +275,7 @@ async function pairDedicatedCloudAgentInCurrentWindow(opts: {
     cloudApiBase: opts.cloudApiBase,
     agentId: opts.agentId,
     cloudToken: opts.cloudToken,
-    consumeRedirectInProcess: isNative && !isDesktopPlatform(),
+    consumeRedirectInProcess: isNative,
     onPairedInProcess: (apiToken) => {
       if (opts.containerBase) {
         silentlyRepointToDedicated({
@@ -340,37 +331,6 @@ async function startMobileLocalAgent(): Promise<void> {
       mode: "local",
     });
   }
-}
-
-async function startLocalRuntime(): Promise<void> {
-  if (isDesktopPlatform()) {
-    try {
-      // error-policy:J4 mode probe — unknown mode proceeds with the local
-      // start below, whose failure is handled explicitly
-      const desktopRuntimeMode = await getDesktopRuntimeMode().catch(
-        () => null,
-      );
-      if (desktopRuntimeMode && desktopRuntimeMode.mode !== "local") {
-        return;
-      }
-      await invokeDesktopBridgeRequest({
-        rpcMethod: "agentStart",
-        ipcChannel: "agent:start",
-      });
-      return;
-    } catch (error) {
-      // error-policy:J4 the bridge start can fail when the agent is already
-      // running — probe the API; only rethrow when it is truly unreachable
-      try {
-        await client.getAuthStatus();
-        return;
-      } catch {
-        // error-policy:J2 agent unreachable — surface the original failure
-        throw error;
-      }
-    }
-  }
-  await startMobileLocalAgent();
 }
 
 async function waitForAgentApi(): Promise<void> {
@@ -444,7 +404,7 @@ async function finishLocal(
   const clientBase = localAgentClientBase(apiBase);
   client.setBaseUrl(clientBase);
   client.setToken(isAndroid || isIOS ? readSyncOnDeviceAgentBearer() : null);
-  await startLocalRuntime();
+  await startMobileLocalAgent();
   await waitForAgentApi();
   if (isAndroid || isIOS) {
     savePersistedActiveServer({

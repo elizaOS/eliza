@@ -1,7 +1,4 @@
-import {
-  ElizaClient,
-  invokeLocalDesktopRpc as invokeLocalDesktopChatRpc,
-} from "./client-base";
+import { ElizaClient } from "./client-base";
 
 /**
  * Chat domain methods — chat, conversations, documents, memory, MCP,
@@ -153,9 +150,6 @@ type InboxMessagesOptions = {
   roomId?: string;
   roomSource?: string;
 };
-type InboxChatsOptions = {
-  sources?: string[];
-};
 function setPositiveNumberParam(
   params: URLSearchParams,
   key: string,
@@ -210,34 +204,6 @@ function buildInboxMessagesParams(
   setNonEmptyStringParam(params, "roomId", options?.roomId);
   setNonEmptyStringParam(params, "roomSource", options?.roomSource);
   return params;
-}
-function buildInboxMessagesRpcParams(
-  options: InboxMessagesOptions | undefined,
-): InboxMessagesOptions {
-  const params: InboxMessagesOptions = {};
-  if (typeof options?.limit === "number" && options.limit > 0) {
-    params.limit = options.limit;
-  }
-  if (options?.sources && options.sources.length > 0) {
-    params.sources = options.sources;
-  }
-  if (typeof options?.roomId === "string" && options.roomId.length > 0) {
-    params.roomId = options.roomId;
-  }
-  if (
-    typeof options?.roomSource === "string" &&
-    options.roomSource.length > 0
-  ) {
-    params.roomSource = options.roomSource;
-  }
-  return params;
-}
-function buildInboxChatsRpcParams(
-  options: InboxChatsOptions | undefined,
-): InboxChatsOptions {
-  return options?.sources && options.sources.length > 0
-    ? { sources: options.sources }
-    : {};
 }
 function appendDocumentFilterParams(
   params: URLSearchParams,
@@ -1033,17 +999,6 @@ ElizaClient.prototype.listConversations = async function (
   // AgentNotReadyError if the agent has no port yet; we catch and
   // fall through to HTTP so the sidebar's polling loop sees the same
   // "transport not ready" semantic as before RPC was wired.
-  try {
-    const viaRpc = await invokeLocalDesktopChatRpc<{
-      conversations: Conversation[];
-    }>(this.getBaseUrl(), {
-      rpcMethod: "listConversations",
-      ipcChannel: "agent",
-    });
-    if (viaRpc) return withConversationListDefaults(viaRpc);
-  } catch {
-    /* AgentNotReadyError or any RPC failure → fall through to HTTP */
-  }
   return withConversationListDefaults(
     await this.fetch<{
       conversations: Conversation[];
@@ -1100,17 +1055,6 @@ ElizaClient.prototype.getConversationMessages = async function (
   // `before` load-older page must go straight to HTTP so the server can center
   // the window on the target (around) or page below the cursor (before).
   if (!options?.around && options?.before === undefined) {
-    try {
-      response = await invokeLocalDesktopChatRpc<{
-        messages: ConversationMessage[];
-      }>(this.getBaseUrl(), {
-        rpcMethod: "getConversationMessages",
-        ipcChannel: "agent",
-        params: { id },
-      });
-    } catch {
-      response = null;
-    }
   }
   // The HTTP path is abortable (a rapid conversation swipe cancels the prior
   // in-flight load so stacked requests don't race to set the thread); the
@@ -1169,24 +1113,6 @@ ElizaClient.prototype.getInboxMessages = async function (
   const params = buildInboxMessagesParams(options);
   const query = params.toString();
   const path = query ? `/api/inbox/messages?${query}` : "/api/inbox/messages";
-  try {
-    const viaRpc = await invokeLocalDesktopChatRpc<{
-      messages: Array<
-        ConversationMessage & {
-          roomId: string;
-          source: string;
-        }
-      >;
-      count: number;
-    }>(this.getBaseUrl(), {
-      rpcMethod: "getInboxMessages",
-      ipcChannel: "agent",
-      params: buildInboxMessagesRpcParams(options),
-    });
-    if (viaRpc) return viaRpc;
-  } catch {
-    /* fall through */
-  }
   return this.fetch<{
     messages: Array<
       ConversationMessage & {
@@ -1198,17 +1124,6 @@ ElizaClient.prototype.getInboxMessages = async function (
   }>(path);
 };
 ElizaClient.prototype.getInboxSources = async function (this: ElizaClient) {
-  try {
-    const viaRpc = await invokeLocalDesktopChatRpc<{
-      sources: string[];
-    }>(this.getBaseUrl(), {
-      rpcMethod: "getInboxSources",
-      ipcChannel: "agent",
-    });
-    if (viaRpc) return viaRpc;
-  } catch {
-    /* fall through */
-  }
   return this.fetch<{
     sources: string[];
   }>("/api/inbox/sources");
@@ -1220,34 +1135,6 @@ ElizaClient.prototype.getInboxChats = async function (
   const params = buildSourcesParams(options?.sources);
   const query = params.toString();
   const path = query ? `/api/inbox/chats?${query}` : "/api/inbox/chats";
-  try {
-    const viaRpc = await invokeLocalDesktopChatRpc<{
-      chats: Array<{
-        canSend?: boolean;
-        id: string;
-        source: string;
-        transportSource?: string;
-        worldId?: string;
-        worldLabel: string;
-        roomType?: string;
-        muted?: boolean;
-        mutedScope?: "room" | "server";
-        title: string;
-        avatarUrl?: string;
-        lastMessageText: string;
-        lastMessageAt: number;
-        messageCount: number;
-      }>;
-      count: number;
-    }>(this.getBaseUrl(), {
-      rpcMethod: "getInboxChats",
-      ipcChannel: "agent",
-      params: buildInboxChatsRpcParams(options),
-    });
-    if (viaRpc) return viaRpc;
-  } catch {
-    /* fall through */
-  }
   return this.fetch<{
     chats: Array<{
       canSend?: boolean;

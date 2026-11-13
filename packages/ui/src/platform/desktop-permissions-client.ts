@@ -1,11 +1,10 @@
 /**
- * Desktop permission client: queries/requests OS permissions through the
- * Electrobun bridge, conforming to the shared permissions-client shape.
+ * Renderer permission client: answers camera, microphone, location and
+ * notification permissions from the renderer's own Permissions API and falls
+ * back to the agent API for everything else.
  */
 
 import type { client as appClient } from "../api/client";
-import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
-import { logger } from "../logger.ts";
 import type {
   PermissionsClientLike as ClientLike,
   PermissionsPatchState as PatchState,
@@ -16,7 +15,6 @@ type PatchableClient = ClientLike & { [PATCH_STATE]?: PatchState };
 
 type SystemPermissionId = Parameters<typeof appClient.getPermission>[0];
 type PermissionState = Awaited<ReturnType<typeof appClient.getPermission>>;
-type AllPermissionsState = Awaited<ReturnType<typeof appClient.getPermissions>>;
 
 const RUNTIME_PERMISSION_IDS = ["website-blocking"] as const;
 const RENDERER_PERMISSION_IDS = [
@@ -32,22 +30,8 @@ function isRuntimePermissionId(id: SystemPermissionId): boolean {
 
 export function isRendererPermissionAuthoritative(
   id: SystemPermissionId,
-  nativePlatform: PermissionState["platform"] = currentRendererPlatform(),
-  nativeBridgeAvailable = false,
 ): boolean {
-  if (!(RENDERER_PERMISSION_IDS as readonly string[]).includes(id)) {
-    return false;
-  }
-
-  // WKWebView's Notification.permission describes the embedded page, not the
-  // signed macOS app process registered with UserNotificationCenter. Ordinary
-  // browsers and non-macOS shells have no such bridge, so their renderer API
-  // remains the concrete notification permission boundary.
-  return (
-    id !== "notifications" ||
-    nativePlatform !== "darwin" ||
-    !nativeBridgeAvailable
-  );
+  return (RENDERER_PERMISSION_IDS as readonly string[]).includes(id);
 }
 
 function currentRendererPlatform(): PermissionState["platform"] {
@@ -89,15 +73,10 @@ function mapRendererPermissionState(
 
 async function queryRendererPermission(
   id: SystemPermissionId,
-  nativeState?: PermissionState | null,
 ): Promise<PermissionState | null> {
-  const resolvedPlatform = nativeState?.platform ?? currentRendererPlatform();
+  const resolvedPlatform = currentRendererPlatform();
   if (
-    !isRendererPermissionAuthoritative(
-      id,
-      resolvedPlatform,
-      nativeState !== null && nativeState !== undefined,
-    ) ||
+    !isRendererPermissionAuthoritative(id) ||
     typeof navigator === "undefined"
   ) {
     return null;
@@ -132,15 +111,10 @@ async function queryRendererPermission(
 
 async function requestRendererPermission(
   id: SystemPermissionId,
-  nativeState?: PermissionState | null,
 ): Promise<PermissionState | null> {
-  const resolvedPlatform = nativeState?.platform ?? currentRendererPlatform();
+  const resolvedPlatform = currentRendererPlatform();
   if (
-    !isRendererPermissionAuthoritative(
-      id,
-      resolvedPlatform,
-      nativeState !== null && nativeState !== undefined,
-    ) ||
+    !isRendererPermissionAuthoritative(id) ||
     typeof navigator === "undefined"
   ) {
     return null;
@@ -159,7 +133,7 @@ async function requestRendererPermission(
     } catch {
       // The follow-up query reports denied when the browser has a recorded denial.
     }
-    const checked = await queryRendererPermission(id, nativeState);
+    const checked = await queryRendererPermission(id);
     return checked ? { ...checked, lastRequested } : null;
   }
 
@@ -174,7 +148,7 @@ async function requestRendererPermission(
         );
       },
     );
-    const checked = await queryRendererPermission(id, nativeState);
+    const checked = await queryRendererPermission(id);
     if (checked) return { ...checked, lastRequested };
     return requestedStatus
       ? buildRendererPermissionState(
@@ -200,109 +174,7 @@ async function requestRendererPermission(
       : null;
   }
 
-  return queryRendererPermission(id, nativeState);
-}
-
-async function reconcileRendererPermissions(
-  permissions: AllPermissionsState,
-): Promise<AllPermissionsState> {
-  let changed = false;
-  const nextPermissions = { ...permissions } as AllPermissionsState;
-
-  await Promise.all(
-    RENDERER_PERMISSION_IDS.map(async (id) => {
-      const current = nextPermissions[id];
-      const state = await queryRendererPermission(id, current);
-      if (!state) return;
-      if (
-        current?.status === state.status &&
-        current?.canRequest === state.canRequest
-      ) {
-        return;
-      }
-      nextPermissions[id] = { ...current, ...state };
-      changed = true;
-    }),
-  );
-
-  return changed ? nextPermissions : permissions;
-}
-
-/**
- * Build the explicit "authoritative runtime check failed" state for a runtime
- * permission (`website-blocking`). The desktop shell's bridged
- * `permissionsGetAll` snapshot can carry an optimistic `granted` for a
- * security-relevant blocking control; when the authoritative runtime check
- * throws we must NOT keep advertising it as granted, or the permissions UI
- * tells the user a blocking control is enforced when its true state is
- * unverified. `not-determined` is the fail-closed representation: the UI
- * renders it as "Request Approval" (unconfirmed/actionable), never as active.
- */
-function unverifiedRuntimePermissionState(
-  id: SystemPermissionId,
-  previous: PermissionState | undefined,
-): PermissionState {
-  return {
-    ...(previous ?? {}),
-    id,
-    status: "not-determined",
-    canRequest: true,
-    reason:
-      "Runtime permission check is temporarily unavailable; status is unverified.",
-    lastChecked: Date.now(),
-    platform: previous?.platform ?? currentRendererPlatform(),
-  } as PermissionState;
-}
-
-export async function mergeRuntimePermissions(
-  permissions: AllPermissionsState,
-  getPermission: (id: SystemPermissionId) => Promise<PermissionState>,
-): Promise<AllPermissionsState> {
-  const nextPermissions = { ...permissions } as AllPermissionsState;
-
-  await Promise.all(
-    RUNTIME_PERMISSION_IDS.map(async (id) => {
-      try {
-        nextPermissions[id] = await getPermission(id);
-      } catch (error) {
-        // error-policy:J4 the authoritative runtime check for a
-        // security-relevant permission (website-blocking) failed. Do NOT
-        // silently retain the possibly-optimistic bridged snapshot, which
-        // fabricates a "granted"/enforced state the runtime can't confirm.
-        // Fail closed to an explicit unverified state and surface the error
-        // so the permissions UI shows "unconfirmed" instead of "protected".
-        logger.warn(
-          { error, permissionId: id },
-          "[desktop-permissions] runtime permission check failed; marking unverified",
-        );
-        nextPermissions[id] = unverifiedRuntimePermissionState(
-          id,
-          nextPermissions[id],
-        );
-      }
-    }),
-  );
-
-  return nextPermissions;
-}
-
-/** Re-probe one desktop permission after the user changes an OS setting. */
-export async function checkDesktopPermissionFresh(
-  id: SystemPermissionId,
-): Promise<PermissionState> {
-  const bridged = await invokeDesktopBridgeRequest<PermissionState>({
-    rpcMethod: "permissionsCheck",
-    ipcChannel: "permissions:check",
-    params: { id, forceRefresh: true },
-  });
-  const rendererState = await queryRendererPermission(id, bridged);
-  if (rendererState) return rendererState;
-  if (bridged === null) {
-    throw new Error(
-      `[desktop-permissions] native bridge unavailable while refreshing ${id}`,
-    );
-  }
-  return bridged;
+  return queryRendererPermission(id);
 }
 
 export function installDesktopPermissionsClientPatch(
@@ -314,108 +186,28 @@ export function installDesktopPermissionsClientPatch(
     return () => {};
   }
 
-  const originalGetPermissions = client.getPermissions.bind(client);
   const originalGetPermission = client.getPermission.bind(client);
   const originalRequestPermission = client.requestPermission.bind(client);
-  const originalOpenPermissionSettings =
-    client.openPermissionSettings.bind(client);
-  const originalRefreshPermissions = client.refreshPermissions.bind(client);
-  const originalSetShellEnabled = client.setShellEnabled.bind(client);
-  const originalIsShellEnabled = client.isShellEnabled.bind(client);
 
   patchableClient[PATCH_STATE] = {
-    getPermissions: client.getPermissions,
     getPermission: client.getPermission,
     requestPermission: client.requestPermission,
-    openPermissionSettings: client.openPermissionSettings,
-    refreshPermissions: client.refreshPermissions,
-    setShellEnabled: client.setShellEnabled,
-    isShellEnabled: client.isShellEnabled,
   } satisfies PatchState;
-
-  client.getPermissions = async () => {
-    const bridged = await invokeDesktopBridgeRequest<AllPermissionsState>({
-      rpcMethod: "permissionsGetAll",
-      ipcChannel: "permissions:getAll",
-    });
-    if (bridged === null) {
-      return originalGetPermissions();
-    }
-    return reconcileRendererPermissions(
-      await mergeRuntimePermissions(bridged, originalGetPermission),
-    );
-  };
 
   client.getPermission = async (id: SystemPermissionId) => {
     if (isRuntimePermissionId(id)) {
       return originalGetPermission(id);
     }
-    const bridged = await invokeDesktopBridgeRequest<PermissionState>({
-      rpcMethod: "permissionsCheck",
-      ipcChannel: "permissions:check",
-      params: { id },
-    });
-    const rendererState = await queryRendererPermission(id, bridged);
-    return rendererState ?? bridged ?? originalGetPermission(id);
+    return (await queryRendererPermission(id)) ?? originalGetPermission(id);
   };
 
   client.requestPermission = async (id: SystemPermissionId) => {
     if (isRuntimePermissionId(id)) {
       return originalRequestPermission(id);
     }
-    const bridged = await invokeDesktopBridgeRequest<PermissionState>({
-      rpcMethod: "permissionsRequest",
-      ipcChannel: "permissions:request",
-      params: { id },
-    });
-    const rendererState = await requestRendererPermission(id, bridged);
-    return rendererState ?? bridged ?? originalRequestPermission(id);
-  };
-
-  client.openPermissionSettings = async (id: SystemPermissionId) => {
-    if (isRuntimePermissionId(id)) {
-      return originalOpenPermissionSettings(id);
-    }
-    const bridged = await invokeDesktopBridgeRequest<void>({
-      rpcMethod: "permissionsOpenSettings",
-      ipcChannel: "permissions:openSettings",
-      params: { id },
-    });
-    if (bridged !== null) {
-      return;
-    }
-    return originalOpenPermissionSettings(id);
-  };
-
-  client.refreshPermissions = async () => {
-    const bridged = await invokeDesktopBridgeRequest<AllPermissionsState>({
-      rpcMethod: "permissionsGetAll",
-      ipcChannel: "permissions:getAll",
-      params: { forceRefresh: true },
-    });
-    if (bridged === null) {
-      return originalRefreshPermissions();
-    }
-    return reconcileRendererPermissions(
-      await mergeRuntimePermissions(bridged, originalGetPermission),
+    return (
+      (await requestRendererPermission(id)) ?? originalRequestPermission(id)
     );
-  };
-
-  client.setShellEnabled = async (enabled: boolean) => {
-    const bridged = await invokeDesktopBridgeRequest<PermissionState>({
-      rpcMethod: "permissionsSetShellEnabled",
-      ipcChannel: "permissions:setShellEnabled",
-      params: { enabled },
-    });
-    return bridged ?? originalSetShellEnabled(enabled);
-  };
-
-  client.isShellEnabled = async () => {
-    const bridged = await invokeDesktopBridgeRequest<boolean>({
-      rpcMethod: "permissionsIsShellEnabled",
-      ipcChannel: "permissions:isShellEnabled",
-    });
-    return bridged ?? originalIsShellEnabled();
   };
 
   return () => {
@@ -423,13 +215,8 @@ export function installDesktopPermissionsClientPatch(
     if (!patchState) {
       return;
     }
-    client.getPermissions = patchState.getPermissions;
     client.getPermission = patchState.getPermission;
     client.requestPermission = patchState.requestPermission;
-    client.openPermissionSettings = patchState.openPermissionSettings;
-    client.refreshPermissions = patchState.refreshPermissions;
-    client.setShellEnabled = patchState.setShellEnabled;
-    client.isShellEnabled = patchState.isShellEnabled;
     delete patchableClient[PATCH_STATE];
   };
 }

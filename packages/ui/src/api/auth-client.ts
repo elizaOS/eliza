@@ -17,8 +17,6 @@ import {
   readStoredStewardToken,
   writeStoredStewardToken,
 } from "@elizaos/plugin-elizacloud/steward-session-client";
-import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
-import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { normalizeCloudApiKeyToken } from "../cloud/lib/cloud-api-key-token";
 import { getBootConfig } from "../config/boot-config-store";
 import { isNative } from "../platform/init";
@@ -33,8 +31,6 @@ import {
   refreshCloudStewardSession,
 } from "./client-cloud";
 import { fetchWithCsrf } from "./csrf-client";
-import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
-import { isDesktopLocalApiBaseUrl } from "./desktop-local-api-base";
 import { isPasswordAuthTransportConfidential } from "./password-auth-transport-policy";
 // ── Shared response shapes ────────────────────────────────────────────────────
 export interface AuthIdentity {
@@ -379,7 +375,7 @@ export async function authMe(): Promise<AuthMeResult> {
   if (isManagedCloudSharedAgentBase(authBase())) {
     let token = readStoredStewardToken()?.trim();
     const hasNativeOwnerApiKey =
-      (isNative || isElectrobunRuntime()) &&
+      isNative &&
       Boolean(
         normalizeCloudApiKeyToken(getBootConfig().apiToken) ??
           normalizeCloudApiKeyToken(getElizaApiToken()),
@@ -451,59 +447,6 @@ export async function authMe(): Promise<AuthMeResult> {
         ownerConfigured: true,
       },
     };
-  }
-  // Prefer typed Electrobun RPC. The bun-side composer throws
-  // AgentNotReadyError if the agent has no port yet — we catch and
-  // fall through to HTTP, which then surfaces a transport error to
-  // the polling loop. The composer NEVER returns a 401-shaped
-  // temporary "not ready" response (the bug that flashed an unwanted
-  // LoginView). When the agent does return an authoritative 401,
-  // its body lands in `unauthorized` and we map to AuthMeResult.
-  try {
-    const viaRpc =
-      !isDesktopLocalApiBaseUrl(requestBase) ||
-      isDesktopExternalApiBaseUrl(requestBase)
-        ? null
-        : await invokeDesktopBridgeRequest<{
-            identity?: AuthIdentity;
-            session?: AuthSessionInfo;
-            access?: AuthAccessInfo;
-            unauthorized?: {
-              reason: string;
-              access: AuthAccessInfo;
-            };
-          }>({ rpcMethod: "getAuthMe", ipcChannel: "agent" });
-    if (!requestIsCurrent()) return { ok: false, status: 503 };
-    if (viaRpc) {
-      if (viaRpc.identity && viaRpc.session) {
-        if (!viaRpc.access || !Object.hasOwn(ROLE_RANK, viaRpc.access.role))
-          return { ok: false, status: 503 };
-        return {
-          ok: true,
-          identity: viaRpc.identity,
-          session: viaRpc.session,
-          access: viaRpc.access,
-        };
-      }
-      if (viaRpc.unauthorized) {
-        const reason = viaRpc.unauthorized.reason;
-        return {
-          ok: false,
-          status: 401,
-          reason:
-            reason === "remote_password_not_configured"
-              ? "remote_password_not_configured"
-              : reason === "remote_auth_required"
-                ? "remote_auth_required"
-                : "server_error",
-          access: viaRpc.unauthorized.access,
-        };
-      }
-      // Snapshot was structurally complete but neither branch — fall
-      // through to HTTP for a fresh probe.
-    }
-  } catch {
-    /* AgentNotReadyError or any RPC failure → fall through to HTTP */
   }
   // A native response or HTTP failure cannot continue under a new selection.
   if (!requestIsCurrent()) return { ok: false, status: 503 };

@@ -50,111 +50,16 @@ function ensureStorage(
 }
 
 // ---------------------------------------------------------------------------
-// Mock @elizaos/app bridge modules — the real electrobun RPC module
-// relies on native Electrobun bindings that are unavailable in the test
-// environment.
+// Mock @elizaos/app bridge modules — the real modules rely on native
+// bindings that are unavailable in the test environment.
 // ---------------------------------------------------------------------------
-
-type RpcMessageHandler = (
-  message: string,
-  listener: (payload: unknown) => void,
-) => void;
-type RpcRequestMap = Record<string, (params?: unknown) => unknown>;
-
-interface ElectrobunTestWindow {
-  __electrobunWindowId?: number;
-  __electrobunWebviewId?: number;
-  __ELIZA_ELECTROBUN_RPC__?: unknown;
-}
-
-function isInjectedElectrobunRuntime(): boolean {
-  if (typeof window === "undefined") return false;
-  const w = window as ElectrobunTestWindow;
-  return (
-    typeof w.__electrobunWindowId === "number" ||
-    typeof w.__electrobunWebviewId === "number"
-  );
-}
 
 // Shared bridge mock implementation — used by both module paths
 function createBridgeMock(extraExports: Record<string, unknown> = {}) {
-  function getElectrobunRendererRpc() {
-    if (typeof window === "undefined") return null;
-    const w = window as ElectrobunTestWindow;
-    return w.__ELIZA_ELECTROBUN_RPC__ ?? null;
-  }
-
   return {
-    getElectrobunRendererRpc,
-    isElectrobunRuntime: isInjectedElectrobunRuntime,
-    getBackendStartupTimeoutMs: () =>
-      isInjectedElectrobunRuntime() ? 180_000 : 30_000,
-    invokeDesktopBridgeRequest: async (options: {
-      rpcMethod: string;
-      params?: unknown;
-    }) => {
-      const rpc = getElectrobunRendererRpc() as Record<string, unknown> | null;
-      const request = (rpc?.request as RpcRequestMap)?.[options.rpcMethod];
-      if (request) return await request(options.params);
-      return null;
-    },
-    subscribeDesktopBridgeEvent: (options: {
-      rpcMessage: string;
-      listener: (payload: unknown) => void;
-    }) => {
-      const rpc = getElectrobunRendererRpc() as Record<string, unknown> | null;
-      if (rpc) {
-        (rpc.onMessage as RpcMessageHandler)(
-          options.rpcMessage,
-          options.listener,
-        );
-        return () => {
-          (rpc.offMessage as RpcMessageHandler)(
-            options.rpcMessage,
-            options.listener,
-          );
-        };
-      }
-      return () => {};
-    },
-    invokeDesktopBridgeRequestWithTimeout: async (options: {
-      rpcMethod: string;
-      ipcChannel?: string;
-      params?: unknown;
-      timeoutMs: number;
-    }) => {
-      const rpc = getElectrobunRendererRpc() as Record<string, unknown> | null;
-      const request = (rpc?.request as RpcRequestMap)?.[options.rpcMethod];
-      if (!request) return { status: "missing" as const };
-      const call = request(options.params) as Promise<unknown>;
-      type RaceWinner =
-        | { tag: "done"; value: unknown }
-        | { tag: "reject"; error: unknown }
-        | { tag: "timeout" };
-      let tid: ReturnType<typeof setTimeout> | undefined;
-      const timeoutPromise = new Promise<RaceWinner>((resolve) => {
-        tid = setTimeout(() => resolve({ tag: "timeout" }), options.timeoutMs);
-      });
-      const settledPromise: Promise<RaceWinner> = call.then(
-        (value) => ({ tag: "done" as const, value }),
-        (error: unknown) => ({ tag: "reject" as const, error }),
-      );
-      try {
-        const winner = await Promise.race([settledPromise, timeoutPromise]);
-        if (tid !== undefined) clearTimeout(tid);
-        if (winner.tag === "timeout") return { status: "timeout" as const };
-        if (winner.tag === "reject")
-          return { status: "rejected" as const, error: winner.error };
-        return { status: "ok" as const, value: winner.value };
-      } catch (error: unknown) {
-        if (tid !== undefined) clearTimeout(tid);
-        return { status: "rejected" as const, error };
-      }
-    },
+    getBackendStartupTimeoutMs: () => 30_000,
     initializeCapacitorBridge: () => {},
     initializeStorageBridge: async () => {},
-    scanProviderCredentials: vi.fn(async () => []),
-    ElectrobunRendererRpc: {},
     // src/app-config.ts calls this at module load; any test that transitively
     // imports app-config (e.g. keyboard-dictation) needs it on the mock.
     resolveAppBranding: (appConfig: {
@@ -178,8 +83,6 @@ vi.mock("@elizaos/app", () =>
     isNative: false,
     isIOS: false,
     isAndroid: false,
-    isDesktop: () => false,
-    isMacOS: () => false,
     getPluginCapabilities: () => ({
       gateway: { available: true, websocket: true, discovery: false },
       voiceWake: { available: false },
@@ -188,7 +91,6 @@ vi.mock("@elizaos/app", () =>
       location: { available: false, gps: false, background: false },
       screenCapture: { available: false },
       canvas: { available: true },
-      desktop: { available: false, tray: false, shortcuts: false, menu: false },
     }),
     isFeatureAvailable: (feature: string) => {
       const map: Record<string, boolean> = {
@@ -200,22 +102,15 @@ vi.mock("@elizaos/app", () =>
         location: false,
         backgroundLocation: false,
         screenCapture: false,
-        desktopTray: false,
       };
       return map[feature] ?? false;
     },
-    buildLocalizedTrayMenu: vi.fn(() => []),
-    DesktopSurfaceNavigationRuntime: class {},
-    DesktopTrayRuntime: class {},
     DetachedShellRoot: vi.fn(),
     runIosFullBunSmokeIfRequested: vi.fn(async () => false),
   }),
 );
 
 vi.mock("../src/runtime/desktop", () => ({
-  buildLocalizedTrayMenu: vi.fn(() => []),
-  DesktopSurfaceNavigationRuntime: class {},
-  DesktopTrayRuntime: class {},
   DetachedShellRoot: vi.fn(),
 }));
 

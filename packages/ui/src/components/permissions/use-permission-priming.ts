@@ -10,8 +10,7 @@ import type {
 } from "@elizaos/core/protocol";
 import * as React from "react";
 import { client } from "../../api/client";
-import { checkDesktopPermissionFresh } from "../../platform/desktop-permissions-client";
-import { isDesktopPlatform, isNative } from "../../platform/init";
+import { isNative } from "../../platform/init";
 import {
   createMobileSignalsPermissionsRegistry,
   openMobilePermissionSettings,
@@ -103,12 +102,12 @@ function isSatisfied(status: PrimingItemStatus): boolean {
   );
 }
 function selectRegistry(): IPermissionsRegistry {
-  return isNative && !isDesktopPlatform()
+  return isNative
     ? createMobileSignalsPermissionsRegistry(undefined, client)
     : createClientPermissionsRegistry(client);
 }
 async function openSettingsFor(id: PermissionId): Promise<void> {
-  if (isNative && !isDesktopPlatform()) {
+  if (isNative) {
     await openMobilePermissionSettings(id);
     return;
   }
@@ -294,10 +293,7 @@ export function usePermissionPriming(
         // Returning from System Settings must bypass PermissionManager's
         // short-lived cache for this exact permission; refreshing every prober
         // would couple recovery to unrelated OS integrations.
-        const state =
-          !host && isDesktopPlatform()
-            ? await checkDesktopPermissionFresh(id)
-            : await registry.check(id);
+        const state = await registry.check(id);
         if (generation.current !== owner) return;
         patch(id, {
           status: state.status,

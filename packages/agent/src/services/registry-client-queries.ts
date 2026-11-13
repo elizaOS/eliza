@@ -136,9 +136,7 @@ export function resolveAppHeroImage(
   const value = heroImage?.trim();
   if (
     value &&
-    /^(https?:|data:image\/|blob:|file:|capacitor:|electrobun:|app:|\/)/i.test(
-      value,
-    )
+    /^(https?:|data:image\/|blob:|file:|capacitor:|app:|\/)/i.test(value)
   ) {
     return value;
   }

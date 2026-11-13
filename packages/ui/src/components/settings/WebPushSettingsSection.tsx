@@ -8,7 +8,6 @@ import { Capacitor } from "@capacitor/core";
 import { BellRing } from "lucide-react";
 import { useCallback, useState } from "react";
 import { deliverSystemNotification } from "../../bridge/notification-delivery";
-import { isDesktopPlatform } from "../../platform/init";
 import { useWebPush } from "../../state/notifications/useWebPush";
 import { SettingsActionButton, SettingsSwitchRow } from "./settings-agent-rows";
 import { SettingsGroup, SettingsStack } from "./settings-layout";
@@ -67,7 +66,7 @@ export function WebPushSettingsSection() {
   const [testBusy, setTestBusy] = useState(false);
   const [testError, setTestError] = useState<string | null>(null);
   const view = describeState(state);
-  const native = isDesktopPlatform() || Capacitor.isNativePlatform();
+  const native = Capacitor.isNativePlatform();
 
   const onToggle = useCallback(
     (checked: boolean) => {

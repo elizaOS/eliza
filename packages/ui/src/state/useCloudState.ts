@@ -58,8 +58,6 @@ import {
 } from "../api/client-cloud";
 import type { CloudCredits, CloudStatus } from "../api/client-types-cloud";
 import type { NativeCloudSessionPort } from "../app/native-cloud-session.js";
-import { invokeDesktopBridgeRequestWithTimeout } from "../bridge/electrobun-rpc";
-import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { isAppModeHost } from "../cloud/app-mode/app-mode";
 import { publishCloudAuthComplete } from "../cloud/cloud-auth-complete-signal";
 import { sanitizeLoginReturnTo } from "../cloud/public-pages/lib/login-return-to";
@@ -80,10 +78,7 @@ import {
 } from "../platform/ios-cloud-auth";
 import { isViteDevUiShell } from "../platform/vite-dev-ui-shell";
 import { isCloudStatusAuthenticated } from "../utils/cloud-status";
-import {
-  confirmDesktopAction,
-  yieldHttpAfterNativeMessageBox,
-} from "../utils/desktop-dialogs";
+import { confirmDesktopAction } from "../utils/desktop-dialogs";
 import { isSafeNavigationUrl } from "../utils/navigation-url";
 import {
   closeExternalBrowser,
@@ -91,14 +86,12 @@ import {
   openExternalUrl,
 } from "../utils/openExternalUrl";
 import { scrubPersistedAgentProfileTokens } from "./agent-profiles";
-import { bindDirectCloudLoginToPersonalAgent } from "./bind-direct-cloud-login";
 import {
   CLOUD_LOGIN_POPUP_NAME,
   isLoopbackStagingStewardDevelopment,
   navigateToSameTabCloudLogin,
   shouldUseSameTabCloudLogin,
   takeClaimedCloudLoginWindow,
-  takePreparedDesktopCloudLoginSession,
 } from "./cloud-login-launch";
 import { clearCloudPairApiToken } from "./cloud-pair-token";
 import {
@@ -389,38 +382,17 @@ function isCapacitorAssetBase(baseUrl: string): boolean {
     return false;
   }
 }
-function isCloudOnlyElectrobunAssetBase(baseUrl: string): boolean {
-  if (
-    typeof window === "undefined" ||
-    !isElectrobunRuntime() ||
-    Reflect.get(window, "__ELIZA_DESKTOP_RUNTIME_MODE__") !== "cloud"
-  ) {
-    return false;
-  }
-  try {
-    const parsed = new URL(baseUrl, window.location.href);
-    return (
-      parsed.origin === window.location.origin &&
-      isPrivateNetworkHost(parsed.hostname)
-    );
-  } catch {
-    // error-policy:J3 malformed base URL fails closed (not an asset base).
-    return false;
-  }
-}
 function hasCloudLoginBackend(): boolean {
   if (isCapacitorNativeRuntime()) return false;
   const explicitBase =
     typeof client.getBaseUrl === "function" ? client.getBaseUrl().trim() : "";
   if (explicitBase) {
-    if (isCloudOnlyElectrobunAssetBase(explicitBase)) return false;
     return (
       !isConfiguredCloudSiteBase(explicitBase) &&
       !isCapacitorAssetBase(explicitBase)
     );
   }
   if (isDevUiPortWithoutEmbeddedBackend()) return false;
-  if (isCloudOnlyElectrobunAssetBase(window.location.origin)) return false;
   return isSameOriginLocalHttpBackend();
 }
 function canPollCloudStatus(): boolean {
@@ -441,7 +413,7 @@ function canPollCloudStatus(): boolean {
   // transport. Its status/credits requests go to the Cloud control plane
   // with the user's Steward session, never the runtime's billing credential.
   if (hasDirectCloudAccountTransport(client)) return true;
-  if (isCapacitorNativeRuntime() || isElectrobunRuntime()) return true;
+  if (isCapacitorNativeRuntime()) return true;
   if (explicitBase && isConfiguredCloudSiteBase(explicitBase)) return true;
   return hasCloudLoginBackend() && supportsFullAppShellRoutes(explicitBase);
 }
@@ -449,12 +421,12 @@ type PollIntent = "ambient" | "session-verification";
 /**
  * Resolve the Steward refresh endpoint for the current target. On hosted web
  * the same-origin cookie path works (the HttpOnly `steward-refresh-token`
- * cookie travels automatically). On native/Electrobun there is no same-origin
+ * cookie travels automatically). On native there is no same-origin
  * cookie, so refresh against the configured cloud API base (Bearer-refresh).
  * Returns `undefined` to use the shared default.
  */
 function resolveStewardRefreshEndpoint(): string | undefined {
-  if (!isCapacitorNativeRuntime() && !isElectrobunRuntime()) return undefined;
+  if (!isCapacitorNativeRuntime()) return undefined;
   const cloudBase =
     getBootConfig().cloudApiBase?.trim() || DEFAULT_DIRECT_CLOUD_BASE_URL;
   const apiBase = resolveDirectCloudAuthApiBase(cloudBase);
@@ -1493,15 +1465,7 @@ export function useCloudState({
           error?: string;
         };
         if (useDirectAuth) {
-          const prepared = takePreparedDesktopCloudLoginSession(cloudApiBase);
-          resp = prepared
-            ? await prepared
-            : await client.cloudLoginDirect(cloudApiBase);
-          // The warm-up is speculative. If it failed while the CTA was idle,
-          // retry on the deliberate click instead of surfacing a stale result.
-          if (prepared && !resp.ok) {
-            resp = await client.cloudLoginDirect(cloudApiBase);
-          }
+          resp = await client.cloudLoginDirect(cloudApiBase);
         } else {
           resp = await client.cloudLogin();
         }
@@ -1562,18 +1526,7 @@ export function useCloudState({
             completeLogin();
             return loginCompletion;
           }
-          // Electrobun's `window.open` is another renderer/WebView surface,
-          // not the user's browser. Sending Cloud authentication there makes a
-          // click appear to activate Eliza while no system login window opens.
-          // Desktop owns external navigation through its native RPC instead.
-          if (isElectrobunRuntime()) {
-            const opened = await openExternalUrl(resp.browserUrl);
-            if (!opened) {
-              setElizaCloudLoginError(
-                `Couldn't open the sign-in browser. Open this link to log in: ${resp.browserUrl}`,
-              );
-            }
-          } else if (isCapacitorNativeRuntime()) {
+          if (isCapacitorNativeRuntime()) {
             // Native sign-in is owned by the dismissible Capacitor Browser
             // surface. A renderer `window.open` here escapes to an unowned
             // browser and strands the user outside the app (#30853).
@@ -1710,13 +1663,7 @@ export function useCloudState({
                   );
                   return;
                 }
-                if (isElectrobunRuntime()) {
-                  await bindDirectCloudLoginToPersonalAgent({
-                    client,
-                    cloudApiBase: authenticatedCloudApiBase,
-                    token: poll.token,
-                  });
-                } else if (shouldBindClientToDirectCloud) {
+                if (shouldBindClientToDirectCloud) {
                   client.setBaseUrl(authenticatedCloudApiBase, {
                     persist: false,
                   });
@@ -2002,8 +1949,6 @@ export function useCloudState({
         await signOutNativeCloudSession();
         return;
       }
-      const MAIN_CONFIRM_DISCONNECT_MS = 300000;
-      const MAIN_POST_ONLY_MS = 12000;
       const RENDERER_DISCONNECT_MS = 12000;
       const skipConfirmation = opts?.skipConfirmation === true;
       if (disconnectLocked || isElizaCloudRuntimeLocked()) {
@@ -2017,91 +1962,7 @@ export function useCloudState({
       setElizaCloudDisconnecting(true);
       try {
         const wasConnected = elizaCloudConnected;
-        let needRendererDisconnect = true;
-        if (isElectrobunRuntime()) {
-          if (!skipConfirmation) {
-            const combined = await invokeDesktopBridgeRequestWithTimeout<
-              | {
-                  cancelled: true;
-                }
-              | {
-                  ok: true;
-                }
-              | {
-                  ok: false;
-                  error?: string;
-                }
-            >({
-              rpcMethod: "agentCloudDisconnectWithConfirm",
-              ipcChannel: "agent:cloudDisconnectWithConfirm",
-              params: {
-                apiBase: client.getBaseUrl().trim() || undefined,
-                bearerToken: client.getRestAuthToken() ?? undefined,
-              },
-              timeoutMs: MAIN_CONFIRM_DISCONNECT_MS,
-            });
-            if (combined.status === "ok" && combined.value) {
-              const v = combined.value;
-              if ("cancelled" in v && v.cancelled) {
-                return;
-              }
-              if ("ok" in v) {
-                if (
-                  v.ok === false &&
-                  typeof v.error === "string" &&
-                  v.error.trim()
-                ) {
-                  throw new Error(v.error.trim());
-                }
-                if (v.ok === true) {
-                  needRendererDisconnect = false;
-                }
-              }
-            }
-          }
-          if (needRendererDisconnect) {
-            if (
-              !skipConfirmation &&
-              !(await confirmDesktopAction({
-                title: "Disconnect from Eliza Cloud",
-                message:
-                  "The agent will need a local AI provider to continue working.",
-                confirmLabel: "Disconnect",
-                cancelLabel: "Cancel",
-                type: "warning",
-              }))
-            ) {
-              return;
-            }
-            if (!skipConfirmation) {
-              await yieldHttpAfterNativeMessageBox();
-            }
-            const postOutcome = await invokeDesktopBridgeRequestWithTimeout<{
-              ok: boolean;
-              error?: string;
-            }>({
-              rpcMethod: "agentPostCloudDisconnect",
-              ipcChannel: "agent:postCloudDisconnect",
-              params: {
-                apiBase: client.getBaseUrl().trim() || undefined,
-                bearerToken: client.getRestAuthToken() ?? undefined,
-              },
-              timeoutMs: MAIN_POST_ONLY_MS,
-            });
-            if (postOutcome.status === "ok" && postOutcome.value) {
-              const mr = postOutcome.value;
-              if (mr.ok === true) {
-                needRendererDisconnect = false;
-              } else if (
-                mr.ok === false &&
-                typeof mr.error === "string" &&
-                mr.error.trim()
-              ) {
-                throw new Error(mr.error.trim());
-              }
-            }
-          }
-        } else if (!skipConfirmation) {
+        if (!skipConfirmation) {
           if (
             !(await confirmDesktopAction({
               title: "Disconnect from Eliza Cloud",
@@ -2114,22 +1975,19 @@ export function useCloudState({
           ) {
             return;
           }
-          await yieldHttpAfterNativeMessageBox();
         }
-        if (needRendererDisconnect) {
-          await Promise.race([
-            client.cloudDisconnect(),
-            new Promise<never>((_, reject) => {
-              window.setTimeout(() => {
-                reject(
-                  new Error(
-                    `Disconnect timed out after ${RENDERER_DISCONNECT_MS / 1000}s`,
-                  ),
-                );
-              }, RENDERER_DISCONNECT_MS);
-            }),
-          ]);
-        }
+        await Promise.race([
+          client.cloudDisconnect(),
+          new Promise<never>((_, reject) => {
+            window.setTimeout(() => {
+              reject(
+                new Error(
+                  `Disconnect timed out after ${RENDERER_DISCONNECT_MS / 1000}s`,
+                ),
+              );
+            }, RENDERER_DISCONNECT_MS);
+          }),
+        ]);
         // Confirm the protected credential is durably absent before any
         // signed-out UI or logical account state is published. A denied native
         // deletion stays in the connected/error path and cannot rehydrate a

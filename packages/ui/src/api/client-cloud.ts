@@ -3,7 +3,6 @@ import {
   AGENT_TRANSFER_MIN_PASSWORD_LENGTH,
   agentTransferPasswordByteLength,
 } from "@elizaos/contracts";
-import { getHostRequestTransport } from "./host-transport";
 import { nativeJsonRequestData as directCloudBodyData } from "./native-http-codec";
 /**
  * Cloud domain methods — cloud billing, compat agents, sandbox,
@@ -28,7 +27,6 @@ import {
   STEWARD_REFRESH_ENDPOINT,
   writeStoredStewardToken,
 } from "@elizaos/plugin-elizacloud/steward-session-client";
-import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import {
   type AgentReadinessProbe,
   type AuthedAgentFetch,
@@ -307,7 +305,6 @@ function resolveDedicatedCloudAgentControlPlaneApiBase(
   // so their configured environment is the authoritative control plane.
   if (
     shouldUseNativeCloudHttp() ||
-    isElectrobunRuntime() ||
     isTrustedLocalCloudPage()
   ) {
     return resolveConfiguredDirectCloudApiBase();
@@ -625,7 +622,6 @@ export function forgetPendingCloudLogin(sessionId: string): void {
 function resolveCloudCliLoginReturnUrl(sessionId: string): string | null {
   if (
     shouldUseNativeCloudHttp() ||
-    isElectrobunRuntime() ||
     typeof window === "undefined"
   ) {
     return null;
@@ -669,7 +665,7 @@ function shouldUseNativeCloudHttp(): boolean {
 
 function shouldUseNativeStewardRefreshHttp(endpoint: string): boolean {
   if (!/^https?:\/\//i.test(endpoint)) return false;
-  return Capacitor.isNativePlatform() || isElectrobunRuntime();
+  return Capacitor.isNativePlatform();
 }
 
 /**
@@ -708,11 +704,6 @@ function resolveBrowserCloudApiRequestUrl(url: string): string {
   }
 }
 
-/**
- * Fetch a direct Cloud API URL through the Electrobun desktop HTTP bridge when
- * available, bypassing the WKWebView CORS block on loopback renderer origins.
- * Falls back to a regular fetch() on web/native platforms.
- */
 const directCloudAbsoluteDeadlineBySignal = new WeakMap<AbortSignal, number>();
 
 function throwIfDirectCloudDispatchDeadlineElapsed(
@@ -729,17 +720,8 @@ function throwIfDirectCloudDispatchDeadlineElapsed(
 async function directCloudFetch(
   url: string,
   init?: RequestInit,
-  timeoutMs?: number,
 ): Promise<Response> {
   throwIfDirectCloudDispatchDeadlineElapsed(init?.signal);
-  const transport = await getHostRequestTransport(url, "cloud");
-  if (transport) {
-    return transport.request(
-      url,
-      init ?? {},
-      timeoutMs === undefined ? undefined : { timeoutMs },
-    );
-  }
   return fetchAgentTransport.request(url, init ?? {}, undefined);
 }
 
@@ -849,7 +831,7 @@ async function clearStoredStewardTokenIfCurrent(token: string): Promise<void> {
 
 function readDirectCloudToken(client: ElizaClient): string | null {
   // A managed app may be connected to a dedicated agent while rendering
-  // account settings from hosted web, Capacitor, Electrobun, or localhost.
+  // account settings from hosted web, Capacitor, or localhost.
   // The agent base owns the client's REST token regardless of the page host;
   // only the independently stored Steward session may cross to the control
   // plane.
@@ -1042,7 +1024,6 @@ function isDirectCloudAuthMissing(client: ElizaClient): boolean {
   const dedicatedControlPlaneRequired =
     isDedicatedCloudAgentClient(client) &&
     (shouldUseNativeCloudHttp() ||
-      isElectrobunRuntime() ||
       isTrustedLocalCloudPage() ||
       isPageServedFromDirectCloudHost());
   return (
@@ -1174,11 +1155,7 @@ async function fetchDirectCloudWithTimeout<T>(
 
   try {
     response = await Promise.race([
-      directCloudFetch(
-        url,
-        { ...init, signal: controller.signal },
-        DIRECT_CLOUD_HTTP_TIMEOUT_MS,
-      ),
+      directCloudFetch(url, { ...init, signal: controller.signal }),
       aborted,
     ]);
     // Keep the same request deadline alive until the body is fully consumed.

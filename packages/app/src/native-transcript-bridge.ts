@@ -1,6 +1,6 @@
 /**
  * Forwards the renderer's real transcript-event stream into the active native
- * host. Capacitor and Electrobun reduce the same envelope independently; the
+ * host. Capacitor reduces the envelope independently; the
  * validated host projection then replaces the renderer fold in the shipped
  * React chat surface.
  */
@@ -9,8 +9,6 @@ import { Capacitor } from "@capacitor/core";
 import type { TranscriptEventStream } from "@elizaos/contracts";
 import {
   acceptNativeTranscriptViewModel,
-  invokeDesktopBridgeRequest,
-  isElectrobunRuntime,
   logger,
   NATIVE_TRANSCRIPT_RENDERER_EVENT,
   type NativeTranscriptViewSource,
@@ -84,14 +82,6 @@ export function installNativeTranscriptPlatformBridge(): void {
       Capacitor.registerPlugin<NativeTranscriptPlugin>("NativeTranscript");
     publishStream = (stream) => plugin.publishStream(stream);
     nativeSource = nativeCapacitorSource();
-  } else if (isElectrobunRuntime()) {
-    publishStream = (stream) =>
-      invokeDesktopBridgeRequest({
-        rpcMethod: "nativeTranscriptPublishStream",
-        ipcChannel: "native-transcript:publishStream",
-        params: stream,
-      });
-    nativeSource = "desktop";
   }
 
   const onStream = (event: Event): void => {

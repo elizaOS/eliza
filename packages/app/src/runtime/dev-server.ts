@@ -637,7 +637,6 @@ async function main() {
   if (actualPort !== port) {
     logger.error(
       `${getLogPrefix()} [CRITICAL] API bound to port ${actualPort} but orchestrator expected ${port}. ` +
-        `Electrobun renderer has ELIZA_DESKTOP_API_BASE pointing at the wrong port. ` +
         `Kill the process using port ${port} or set ELIZA_API_PORT to a free port.`,
     );
   }

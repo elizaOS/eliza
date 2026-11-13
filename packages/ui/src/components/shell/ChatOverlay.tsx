@@ -76,7 +76,6 @@ import {
   GLASS_SHEET_FILL,
 } from "../../glass/tokens";
 import { useConversationRenderWindow } from "../../hooks/useConversationRenderWindow";
-import { useDesktopBridgeEvent } from "../../hooks/useDesktopBridgeEvent";
 import {
   LAYOUT_SHIFT_INTENT_ATTR,
   LAYOUT_SHIFT_INTENT_TRANSIENT,
@@ -307,7 +306,6 @@ export type ChatState =
   | "OPEN_UNDER_HALF"
   | "OPEN_HALF_OR_OVER"
   | "MAXIMIZED";
-export type ChatSurfaceState = ChatState | "INPUT_MENU";
 /**
  * The chat's openness as a SINGLE source of truth — one ordered state machine
  * instead of separate `pilled` boolean + `detent` enum that had to be hand-kept
@@ -525,8 +523,6 @@ export function ChatOverlay({
   fillHostAtHalf = false,
   onFirstRunReleaseHandled,
   onPilledChange,
-  onDetentChange,
-  onStateChange,
 }: {
   controller: ShellController;
   /** Name shown in the composer placeholder ("Message {agentName}"). Defaults to Eliza. */
@@ -560,10 +556,6 @@ export function ChatOverlay({
    * entire transition local to the shared chat surface.
    */
   onPilledChange?: (pilled: boolean) => void;
-  /** Reports the settled visible footprint to transparent desktop hosts. */
-  onDetentChange?: (detent: "pill" | "input" | "half" | "full") => void;
-  /** Native hosts use this to grow the transparent pill window with the sheet. */
-  onStateChange?: (state: ChatSurfaceState) => void;
 }): React.JSX.Element {
   const [chatActionsOpen, setChatActionsOpen] = React.useState(false);
   const {
@@ -2524,15 +2516,6 @@ export function ChatOverlay({
         : baseH >= halfH - 1
           ? "OPEN_HALF_OR_OVER"
           : "OPEN_UNDER_HALF";
-  // The actions menu is portaled above the composer. INPUT's shallow 64px
-  // native desktop host would clip that portal at the window boundary. The
-  // dedicated INPUT_MENU host adds height only: it retains INPUT's exact width
-  // and bottom anchor so opening the floating menu cannot resize the composer.
-  const nativeSurfaceState: ChatSurfaceState =
-    chatActionsOpen && chatState === "INPUT" ? "INPUT_MENU" : chatState;
-  React.useEffect(() => {
-    onStateChange?.(nativeSurfaceState);
-  }, [nativeSurfaceState, onStateChange]);
   // The status header is gated on the LIVE rendered height, NOT the settled enum
   // — otherwise dragging the panel below half keeps the top strip mounted on a
   // too-short panel. It shows only when the panel actually renders at/over half
@@ -3338,23 +3321,6 @@ export function ChatOverlay({
     closeSheet();
     inputRef.current?.blur();
   }, [closeSheet, pinnedOpen]);
-  // The transparent desktop host only receives pointer events inside its
-  // current native bounds. Clicking another app/window therefore cannot reach
-  // the document-level outside-tap detector above, but the native shell does
-  // report that focus loss (including a macOS key-window polling fallback).
-  // Fold an open conversation to the compact composer, and forcibly close the
-  // controlled actions portal so its temporary tall host bounds are released.
-  // Onboarding stays pinned because collapse() owns that existing guard.
-  useDesktopBridgeEvent(
-    {
-      rpcMessage: "desktopWindowBlur",
-      ipcChannel: "desktop:windowBlur",
-    },
-    () => {
-      setChatActionsOpen(false);
-      if (sheetOpen) collapse();
-    },
-  );
   // Dismiss the keyboard and return to the resting state from BEFORE the composer
   // was focused — the single restore path shared by every "drop the keyboard"
   // gesture (tap the grabber, tap the scrim, tap outside the panel). A sheet that
@@ -4896,9 +4862,6 @@ export function ChatOverlay({
           : expanded
             ? "full"
             : "half";
-  React.useEffect(() => {
-    onDetentChange?.(detentLabel === "collapsed" ? "input" : detentLabel);
-  }, [detentLabel, onDetentChange]);
   // Onboarding-state probe: the newest first-run CHOICE turn's step id + option
   // values, surfaced as sr-only static AX text (mirrors chat-detent-probe /
   // home-launcher-page-probe) so an on-device XCUITest can observe and drive

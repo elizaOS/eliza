@@ -1,7 +1,7 @@
 /**
  * Chooses the renderer boot boundary before the full application module graph
  * evaluates. Hosted public routes load their dedicated shell; every native,
- * desktop, harness, and agent-app route retains the established main entry.
+ * harness, and agent-app route retains the established main entry.
  */
 
 import { renderBootFailure } from "./boot-failure";
@@ -11,27 +11,11 @@ declare const __ELIZA_WEB_SHELL__: boolean | undefined;
 declare const __ELIZA_PUBLIC_WEB_ENTRY__: boolean | undefined;
 declare const __ELIZA_CHAT_UI_HARNESS__: boolean | undefined;
 
-type ShellWindow = Window & {
-  __electrobunWindowId?: number;
-  __electrobunWebviewId?: number;
-  __ELIZA_ELECTROBUN_RPC__?: unknown;
-};
-
-function hasDesktopShellMarker(): boolean {
-  const runtimeWindow = window as ShellWindow;
-  return (
-    typeof runtimeWindow.__electrobunWindowId === "number" ||
-    typeof runtimeWindow.__electrobunWebviewId === "number" ||
-    runtimeWindow.__ELIZA_ELECTROBUN_RPC__ !== undefined
-  );
-}
-
 const entryDecisionInput = {
   pathname: window.location.pathname,
   hostname: window.location.hostname,
   webShellEnabled: __ELIZA_WEB_SHELL__ === true,
   chatHarnessEnabled: __ELIZA_CHAT_UI_HARNESS__ === true,
-  desktopShell: hasDesktopShellMarker(),
   forceApexConsole:
     import.meta.env?.DEV === true &&
     import.meta.env?.VITE_FORCE_APEX_CONSOLE === "true",

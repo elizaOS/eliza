@@ -526,10 +526,9 @@ export async function installJourneyRoutes(
     // cloud-only sign-in is the default since #15244/#15532, so opt back in
     // the same way first-run-startup.spec.ts and onboarding-to-home.shared.ts do.
     "eliza:enable-runtime-chooser": "1",
-    // The injected __electrobunWindowId makes the platform read as desktop,
-    // which arms the post-onboarding permission-priming modal (#12331); its
-    // overlay would swallow every mid-journey click. Mark it already shown,
-    // matching assistant-home-flow / home-widget-priority / all-pages.
+    // The post-onboarding permission-priming modal (#12331) overlay would
+    // swallow every mid-journey click. Mark it already shown, matching
+    // assistant-home-flow / home-widget-priority / all-pages.
     "eliza:permissions-primed": "1",
   });
   await installDefaultAppRoutes(page);

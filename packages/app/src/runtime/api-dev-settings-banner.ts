@@ -122,17 +122,8 @@ export function formatApiDevSettingsBannerText(
         "export ELIZA_RENDERER_URL=http://127.0.0.1:<vite>/ (desktop dev)",
     },
     {
-      setting: "ELIZA_DESKTOP_DEV_LOG_PATH",
-      effective: env.ELIZA_DESKTOP_DEV_LOG_PATH?.trim() || "—",
-      source: env.ELIZA_DESKTOP_DEV_LOG_PATH?.trim()
-        ? "env set — orchestrator forwarded"
-        : "default (unset)",
-      change:
-        "set by dev orchestrator; GET /api/dev/console-log tails this file",
-    },
-    {
       setting: "Dev hooks",
-      effective: "/api/dev/stack, /api/dev/console-log",
+      effective: "/api/dev/stack",
       source: "derived — dev server",
       change: `GET http://127.0.0.1:${actualPort}/api/dev/stack etc.`,
     },

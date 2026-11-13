@@ -1226,10 +1226,6 @@ export function getCanvasPlugin(): GenericNativePlugin {
   return getNativePlugin<GenericNativePlugin>("Canvas");
 }
 
-export function getDesktopPlugin(): GenericNativePlugin {
-  return getNativePlugin<GenericNativePlugin>("Desktop");
-}
-
 export function getWebsiteBlockerPlugin(): WebsiteBlockerPluginLike {
   const plugins = getCapacitorPlugins();
   return (plugins.ElizaWebsiteBlocker ??

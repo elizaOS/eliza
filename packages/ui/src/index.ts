@@ -190,20 +190,6 @@ export {
   getClockHost,
   subscribeClockHost,
 } from "./bridge/clock-host.js";
-export {
-  type DesktopBottomBarSurfaceState,
-  getDesktopRuntimeMode,
-  getElectrobunRendererRpc,
-  invokeDesktopBridgeRequest,
-  invokeDesktopBridgeRequestWithTimeout,
-  openDesktopAppWindow,
-  setDesktopBottomBarSurfaceState,
-  subscribeDesktopBridgeEvent,
-} from "./bridge/electrobun-rpc.js";
-export {
-  getBackendStartupTimeoutMs,
-  isElectrobunRuntime,
-} from "./bridge/electrobun-runtime.js";
 export type { ElizaWindowBridge } from "./bridge/eliza-window-bridge.js";
 export {
   installElizaBridge,
@@ -326,7 +312,6 @@ export { PageLoadingState } from "./components/composites/page-panel/content-sta
 export { PagePanel } from "./components/composites/page-panel/index.js";
 export { CustomActionEditor } from "./components/custom-actions/CustomActionEditor.js";
 export { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel.js";
-export { DesktopTabBar } from "./components/DesktopTabBar.js";
 export { AppsPageView } from "./components/pages/AppsPageView.js";
 export { LauncherSurface } from "./components/pages/LauncherSurface.js";
 export { PluginPageFrame } from "./components/pages/PluginPageFrame.js";
@@ -389,7 +374,6 @@ export {
   type HomeTileTarget,
 } from "./components/shell/HomeScreen.js";
 export { initializeIosKeyboardAccessoryBar } from "./components/shell/ios-chat-accessory-bar.js";
-export { KioskViewCanvas } from "./components/shell/KioskViewCanvas.js";
 export {
   NotificationsDataBoot,
   NotificationsShellBoot,
@@ -412,8 +396,6 @@ export { StartupScreen } from "./components/shell/StartupScreen.js";
 export { StartupShell } from "./components/shell/StartupShell.js";
 export { SystemWarningBanner } from "./components/shell/SystemWarningBanner.js";
 export { TrayLauncher } from "./components/shell/TrayLauncher.js";
-export { useBarSurfaceWindows } from "./components/shell/useBarSurfaceWindows.js";
-export { useKioskViewSurfaces } from "./components/shell/useKioskViewSurfaces.js";
 export { VoiceCaptureHud } from "./components/shell/VoiceCaptureHud.js";
 export { TranscriptPlayer } from "./components/transcripts/TranscriptPlayer.js";
 export { ArtifactPrivacyControls } from "./components/transcripts/TranscriptsView.js";
@@ -877,8 +859,6 @@ export {
   type ViewRegistryEntry,
 } from "./hooks/useAvailableViews.js";
 export { useBugReportState } from "./hooks/useBugReport.hooks.js";
-export { useContextMenu } from "./hooks/useContextMenu.js";
-export { useDesktopTabs } from "./hooks/useDesktopTabs.js";
 export { useSecretsManagerModalState } from "./hooks/useSecretsManagerModal.js";
 export { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut.js";
 export { useVoiceChat } from "./hooks/useVoiceChat.js";
@@ -1173,7 +1153,6 @@ export {
 export { cloudAuthFirstScreenOwnsHost } from "./state/cloud-auth-first-screen-policy.js";
 export {
   claimCloudLoginWindow,
-  prepareDesktopCloudLoginSession,
   releaseClaimedCloudLoginWindow,
 } from "./state/cloud-login-launch.js";
 export { hasUsableStoredStewardToken } from "./state/cloud-steward-login.js";
@@ -1251,7 +1230,6 @@ export {
   savePersistedActiveServer,
   savePersistedFirstRunComplete,
 } from "./state/persistence.js";
-export { getPushToTalkAccelerator } from "./state/push-to-talk-hotkey.js";
 export { removeProfileWithoutStaleSelection } from "./state/runtime-profile-removal.js";
 export {
   installBuildConfiguredRemoteApiBaseUrl,
@@ -1266,7 +1244,6 @@ export { clearSharedCloudAccountBinding } from "./state/shared-cloud-account-bin
 export { deriveUiShellModeForTab } from "./state/shell-routing.js";
 export type { RuntimeTarget } from "./state/startup-coordinator.js";
 export {
-  createDesktopPolicy,
   createElizaOSPolicy,
   createMobilePolicy,
   createNativeLocalRuntimePolicy,
@@ -1328,7 +1305,6 @@ export {
 export { useAppShellState } from "./state/useAppShellState.js";
 export { useCharacterState } from "./state/useCharacterState.js";
 export { useChatCallbacks } from "./state/useChatCallbacks.js";
-export { getChatOverlayHotkey } from "./state/useChatOverlayHotkey.js";
 export { useChatState } from "./state/useChatState.js";
 export { useCloudState } from "./state/useCloudState.js";
 export { useDataLoaders } from "./state/useDataLoaders.js";
@@ -1395,12 +1371,6 @@ export { isCloudStatusReasonApiKeyOnly } from "./utils/cloud-status.js";
 export { cn } from "./utils/cn.js";
 export { confirmDesktopAction } from "./utils/desktop-dialogs.js";
 export {
-  type DesktopClickAuditItem,
-  loadDesktopWorkspaceSnapshot,
-  openDesktopSettingsWindow,
-  openDesktopWorkspaceWindow,
-} from "./utils/desktop-workspace.js";
-export {
   isDocumentImageFile,
   MAX_DOCUMENT_IMAGE_PROCESSING_BYTES,
   maybeCompressDocumentUploadImage,
@@ -1448,7 +1418,6 @@ export {
   loadContextInspectorView,
   loadConversationsSidebar,
   loadDatabasePageView,
-  loadDesktopWorkspaceSection,
   loadDeveloperWorkspace,
   loadFilesView,
   loadLiveMeetingPage,

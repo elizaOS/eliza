@@ -21,8 +21,6 @@ import type {
   StreamEventEnvelope,
 } from "../api/client-types-core";
 import { isHostInProcessAgentBase } from "../api/host-transport";
-import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
-import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { deliverSystemNotification } from "../bridge/notification-delivery";
 import { dispatchElizaCloudStatusUpdated } from "../events";
 import {
@@ -35,8 +33,6 @@ import { enableForceFreshFirstRun } from "../platform/first-run-reset";
 import { alertDesktopMessage } from "../utils/desktop-dialogs";
 import { inferAgentRuntimeTarget } from "./agent-runtime-target";
 import { completeResetLocalStateAfterServerWipe as runCompleteResetLocalStateAfterServerWipe } from "./complete-reset-local-state-after-wipe";
-import { handleResetAppliedFromMainCore } from "./handle-reset-applied-from-main";
-import { parseAgentStatusFromMainMenuResetPayload } from "./parsers";
 import {
   clearAvatarIndex,
   clearPersistedActiveServer,
@@ -450,24 +446,9 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     client.resetConnection();
   }, []);
   const restartBackend = useCallback(async () => {
-    const restarted = await invokeDesktopBridgeRequest({
-      rpcMethod: "agentRestart",
-      ipcChannel: "agent:restart",
-    });
-    if (restarted === null) {
-      await client.restart();
-    }
+    await client.restart();
     resetBackendConnection();
   }, [resetBackendConnection]);
-  const relaunchDesktop = useCallback(async () => {
-    const relaunched = await invokeDesktopBridgeRequest<void>({
-      rpcMethod: "desktopRelaunch",
-      ipcChannel: "desktop:relaunch",
-    });
-    if (relaunched === null) {
-      await handleRestart();
-    }
-  }, [handleRestart]);
   const showDesktopNotification = useCallback(
     async (options: {
       title: string;
@@ -760,33 +741,6 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
       coordinatorResetRef,
     ],
   );
-  const handleResetAppliedFromMain = useCallback(
-    async (payload: unknown) => {
-      await handleResetAppliedFromMainCore(payload, {
-        performanceNow: () => performance.now(),
-        isLifecycleBusy: () => lifecycleBusyRef.current,
-        getActiveLifecycleAction: () =>
-          lifecycleActionRef.current ?? lifecycleAction ?? "reset",
-        beginLifecycleAction,
-        finishLifecycleAction,
-        setActionNotice,
-        parseTrayResetPayload: parseAgentStatusFromMainMenuResetPayload,
-        completeResetLocalState: completeResetLocalStateAfterServerWipe,
-        alertDesktopMessage,
-        logResetInfo,
-        logResetWarn,
-      });
-    },
-    [
-      lifecycleAction,
-      beginLifecycleAction,
-      finishLifecycleAction,
-      setActionNotice,
-      completeResetLocalStateAfterServerWipe,
-      lifecycleActionRef,
-      lifecycleBusyRef,
-    ],
-  );
   const completeConnectedAgentStateAfterServerWipe = useCallback(
     async (postResetAgentStatus: AgentStatus | null): Promise<void> => {
       if (postResetAgentStatus != null) {
@@ -925,7 +879,6 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     logResetInfo(
       "handleReset: starting (POST /api/agent/reset + restart path)",
       {
-        electrobun: isElectrobunRuntime(),
         target: resetTarget.kind,
         targetLabel: resetTarget.label,
         apiBase:
@@ -938,25 +891,6 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     try {
       const resetApiBase = client.getBaseUrl();
       const resetViaCurrentRuntime = async (): Promise<void> => {
-        if (isElectrobunRuntime()) {
-          const desktopResult = await invokeDesktopBridgeRequest<{
-            ok: boolean;
-            error?: string;
-          }>({
-            rpcMethod: "agentPostReset",
-            ipcChannel: "agent:postReset",
-            params: {
-              apiBase: resetApiBase || undefined,
-              bearerToken: activeServer?.accessToken,
-            },
-          });
-          if (desktopResult != null) {
-            if (!desktopResult.ok) {
-              throw new Error(desktopResult.error || "Desktop reset failed");
-            }
-            return;
-          }
-        }
         logResetDebug("handleReset: calling client.resetAgent()");
         await client.resetAgent();
         logResetDebug("handleReset: client.resetAgent() completed");
@@ -1012,85 +946,19 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
         return;
       }
       let postResetAgentStatus: AgentStatus | null = null;
-      logResetDebug(
-        "handleReset: invoking desktop bridge agentRestartClearLocalDb",
-      );
-      const BRIDGE_RESTART_MS = 150000;
+      logResetInfo("handleReset: calling client.restartAndWait(120s)");
       try {
-        postResetAgentStatus = await Promise.race([
-          invokeDesktopBridgeRequest<AgentStatus>({
-            rpcMethod: "agentRestartClearLocalDb",
-            ipcChannel: "agent:restartClearLocalDb",
-          }),
-          new Promise<AgentStatus | null>((_, reject) => {
-            window.setTimeout(() => {
-              reject(
-                Object.assign(
-                  new Error(
-                    `agentRestartClearLocalDb exceeded ${BRIDGE_RESTART_MS / 1000}s`,
-                  ),
-                  { name: "ResetBridgeTimeout" },
-                ),
-              );
-            }, BRIDGE_RESTART_MS);
-          }),
-        ]);
-        logResetDebug("handleReset: bridge agentRestartClearLocalDb settled", {
-          hasResult: postResetAgentStatus != null,
-          state: postResetAgentStatus?.state ?? null,
-          port: postResetAgentStatus?.port ?? null,
+        postResetAgentStatus = await client.restartAndWait(120000);
+        logResetDebug("handleReset: restartAndWait completed", {
+          state: postResetAgentStatus.state,
+          port: postResetAgentStatus.port,
         });
-        if (postResetAgentStatus == null && isElectrobunRuntime()) {
-          logResetWarn(
-            "handleReset: agentRestartClearLocalDb RPC returned null — bridge request missing; will rely on HTTP restart path",
-          );
-        }
-      } catch (bridgeErr) {
-        postResetAgentStatus = null;
-        if (
-          bridgeErr instanceof Error &&
-          bridgeErr.name === "ResetBridgeTimeout"
-        ) {
-          logResetWarn(
-            "handleReset: agentRestartClearLocalDb timed out — falling back to HTTP restart",
-            bridgeErr,
-          );
-        } else {
-          logResetWarn(
-            "handleReset: bridge agentRestartClearLocalDb threw (will try HTTP restart)",
-            bridgeErr,
-          );
-        }
-      }
-      const embeddedRestartedOk =
-        postResetAgentStatus != null &&
-        (postResetAgentStatus.state === "running" ||
-          postResetAgentStatus.state === "starting");
-      logResetDebug("handleReset: embedded restart decision", {
-        embeddedRestartedOk,
-        bridgeState: postResetAgentStatus?.state ?? null,
-      });
-      if (!embeddedRestartedOk) {
-        logResetInfo(
-          "handleReset: calling client.restartAndWait(120s) — external API or bridge inactive",
-        );
-        try {
-          postResetAgentStatus = await client.restartAndWait(120000);
-          logResetDebug("handleReset: restartAndWait completed", {
-            state: postResetAgentStatus.state,
-            port: postResetAgentStatus.port,
-          });
-          setAgentStatus(postResetAgentStatus);
-        } catch (httpErr) {
-          postResetAgentStatus = null;
-          logResetWarn(
-            "handleReset: client.restartAndWait failed — UI may be stale until manual restart",
-            httpErr,
-          );
-        }
-      }
-      if (postResetAgentStatus != null) {
         setAgentStatus(postResetAgentStatus);
+      } catch (httpErr) {
+        logResetWarn(
+          "handleReset: client.restartAndWait failed — UI may be stale until manual restart",
+          httpErr,
+        );
       }
       const elapsedMs = Math.round(performance.now() - resetStartedAt);
       logResetInfo(
@@ -1135,11 +1003,9 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     triggerRestart,
     retryBackendConnection,
     restartBackend,
-    relaunchDesktop,
     showDesktopNotification,
     notifyHeartbeatEvent,
     completeResetLocalStateAfterServerWipe,
-    handleResetAppliedFromMain,
     handleReset,
   };
 }

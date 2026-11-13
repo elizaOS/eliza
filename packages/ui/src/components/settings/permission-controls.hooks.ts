@@ -16,10 +16,6 @@ import {
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api/client";
-import {
-  invokeDesktopBridgeRequest,
-  subscribeDesktopBridgeEvent,
-} from "../../bridge/electrobun-rpc";
 import { logger } from "../../logger.ts";
 import { isRendererPermissionAuthoritative } from "../../platform/desktop-permissions-client";
 import { SETTINGS_REFRESH_DELAYS_MS } from "./permission-types";
@@ -206,7 +202,6 @@ export interface DesktopPermissionsSnapshot {
   permissions: AllPermissionsState;
   platform: string;
   shellEnabled: boolean;
-  nativeBridgeAvailable: boolean;
 }
 export async function reconcileRendererMediaPermissions(
   snapshot: DesktopPermissionsSnapshot,
@@ -218,13 +213,7 @@ export async function reconcileRendererMediaPermissions(
     if (!current || current.status === "restricted") {
       continue;
     }
-    if (
-      !isRendererPermissionAuthoritative(
-        id,
-        current.platform,
-        snapshot.nativeBridgeAvailable,
-      )
-    ) {
+    if (!isRendererPermissionAuthoritative(id)) {
       continue;
     }
     const rendererStatus = await probeRendererMediaPermission(id);
@@ -271,7 +260,7 @@ async function mergeRuntimePermissionsIntoSnapshot(
         }
         nextPermissions[id] = permission;
       } catch {
-        // Keep the bridged snapshot when the runtime-side permission route is
+        // Keep the snapshot when the runtime-side permission route is
         // unavailable. This avoids breaking the whole panel on transient API
         // startup delays.
       }
@@ -313,41 +302,17 @@ export function useDesktopPermissionsState() {
   }, []);
   const loadPermissionsSnapshot = useCallback(
     async (forceRefresh = false): Promise<DesktopPermissionsSnapshot> => {
-      const [bridgedPermissions, bridgedShellEnabled, bridgedPlatform] =
-        await Promise.all([
-          invokeDesktopBridgeRequest<AllPermissionsState>({
-            rpcMethod: "permissionsGetAll",
-            ipcChannel: "permissions:getAll",
-            params: forceRefresh ? { forceRefresh: true } : undefined,
-          }),
-          invokeDesktopBridgeRequest<boolean>({
-            rpcMethod: "permissionsIsShellEnabled",
-            ipcChannel: "permissions:isShellEnabled",
-          }),
-          invokeDesktopBridgeRequest<string>({
-            rpcMethod: "permissionsGetPlatform",
-            ipcChannel: "permissions:getPlatform",
-          }),
-        ]);
-      if (forceRefresh && bridgedPermissions === null) {
+      if (forceRefresh) {
         await client.refreshPermissions();
       }
-      const permissions = bridgedPermissions ?? (await client.getPermissions());
+      const permissions = await client.getPermissions();
       if (!isAllPermissionsState(permissions)) {
         throw new Error("Invalid permissions payload.");
       }
-      const shellEnabled =
-        bridgedShellEnabled === null
-          ? await client.isShellEnabled()
-          : bridgedShellEnabled;
       const snapshot = {
         permissions,
-        platform: bridgedPlatform ?? "unknown",
-        shellEnabled,
-        nativeBridgeAvailable:
-          bridgedPermissions !== null ||
-          bridgedShellEnabled !== null ||
-          bridgedPlatform !== null,
+        platform: "unknown",
+        shellEnabled: await client.isShellEnabled(),
       };
       const runtimeMergedSnapshot =
         await mergeRuntimePermissionsIntoSnapshot(snapshot);
@@ -417,15 +382,6 @@ export function useDesktopPermissionsState() {
     };
   }, [clearScheduledSettingsRefreshes]);
   useEffect(() => {
-    return subscribeDesktopBridgeEvent({
-      rpcMessage: "permissionsChanged",
-      ipcChannel: "permissions:changed",
-      listener: () => {
-        void replaceSnapshot(true);
-      },
-    });
-  }, [replaceSnapshot]);
-  useEffect(() => {
     if (typeof document === "undefined" || typeof window === "undefined") {
       return;
     }
@@ -467,25 +423,15 @@ export function useDesktopPermissionsState() {
           }
           return;
         }
-        const bridged = await invokeDesktopBridgeRequest<PermissionState>({
-          rpcMethod: "permissionsRequest",
-          ipcChannel: "permissions:request",
-          params: { id },
-        });
         if (
           isRendererPermissionId(id) &&
-          isRendererPermissionAuthoritative(
-            id,
-            bridged?.platform ??
-              (platform as PermissionState["platform"] | undefined),
-            bridged !== null,
-          )
+          isRendererPermissionAuthoritative(id)
         ) {
           const rendererStatus = await requestRendererPermission(id);
-          if (!rendererStatus && bridged === null) {
+          if (!rendererStatus) {
             await client.requestPermission(id);
           }
-        } else if (bridged === null) {
+        } else {
           await client.requestPermission(id);
         }
         const snapshot = await replaceSnapshot(true);
@@ -502,25 +448,12 @@ export function useDesktopPermissionsState() {
         );
       }
     },
-    [platform, replaceSnapshot, scheduleSettingsRefreshes],
+    [replaceSnapshot, scheduleSettingsRefreshes],
   );
   const handleOpenSettings = useCallback(
     async (id: PermissionId) => {
       try {
-        if (isRuntimePermissionId(id)) {
-          await client.openPermissionSettings(id);
-          await replaceSnapshot(true);
-          scheduleSettingsRefreshes();
-          return;
-        }
-        const opened = await invokeDesktopBridgeRequest({
-          rpcMethod: "permissionsOpenSettings",
-          ipcChannel: "permissions:openSettings",
-          params: { id },
-        });
-        if (opened === null) {
-          await client.openPermissionSettings(id);
-        }
+        await client.openPermissionSettings(id);
         await replaceSnapshot(true);
         scheduleSettingsRefreshes();
       } catch (err) {
@@ -534,15 +467,7 @@ export function useDesktopPermissionsState() {
   const handleToggleShell = useCallback(
     async (enabled: boolean) => {
       try {
-        const bridgeToggle = invokeDesktopBridgeRequest<PermissionState>({
-          rpcMethod: "permissionsSetShellEnabled",
-          ipcChannel: "permissions:setShellEnabled",
-          params: { enabled },
-        });
-        await Promise.allSettled([
-          bridgeToggle,
-          client.setShellEnabled(enabled),
-        ]);
+        await client.setShellEnabled(enabled);
         await replaceSnapshot(true);
       } catch {
         // shell toggle failed; user can retry

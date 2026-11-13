@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import { logger } from "../logger.js";
 import {
-  createDesktopPolicy,
   createElizaOSPolicy,
   createMobilePolicy,
   createNativeLocalRuntimePolicy,
@@ -73,11 +72,9 @@ export function createStartupCoordinator(ports: StartupHostPorts) {
   const { client } = ports.transport;
   const {
     enforceDeviceRamPolicyOnPersistedRuntimeModeAtBoot,
-    getBootConfig,
     reconcilePersistedMobileRuntimeModeAtBoot,
   } = ports.configuration;
-  const { isAndroid, isElizaOS, isIOS, isNative, isElectrobunRuntime } =
-    ports.platform;
+  const { isAndroid, isElizaOS, isIOS, isNative } = ports.platform;
   const { markStartup } = ports.services;
   const { runRestoringSession } = createStartupRestore(ports);
   const { runPollingBackend } = createStartupPoll(ports);
@@ -174,11 +171,6 @@ export function createStartupCoordinator(ports: StartupHostPorts) {
   }
 
   function detectPlatformPolicy(): PlatformPolicy {
-    if (isElectrobunRuntime()) {
-      return createDesktopPolicy({
-        cloudOnly: getBootConfig().branding.cloudOnly === true,
-      });
-    }
     // ElizaOS check must come before the generic mobile branch — both are
     // native, but ElizaOS bundles the on-device agent and needs the longer
     // backend timeout (vanilla mobile is cloud-only with a fast-fail budget).

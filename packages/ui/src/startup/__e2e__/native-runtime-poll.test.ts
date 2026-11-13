@@ -9,7 +9,7 @@ function fixture() {
   const cancelled = { current: false };
   const run = { current: 1 };
   const ports = {
-    platform: { isAndroid: true, isIOS: false, isCapacitorNative: () => true, isElectrobunRuntime: () => false },
+    platform: { isAndroid: true, isIOS: false, isCapacitorNative: () => true },
     configuration: { supportsFullAppShellRoutes: () => true },
     transport: {
       client: {

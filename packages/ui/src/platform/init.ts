@@ -2,7 +2,6 @@
 
 import { Capacitor } from "@capacitor/core";
 import { userAgentHasElizaOSMarker } from "@elizaos/host/protocol";
-import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { getBootConfig, setBootConfig } from "../config/boot-config-store";
 import {
   clearStandaloneBottomReclaim,
@@ -28,9 +27,7 @@ function detectPlatform(): {
   return { platform: "web", isNative: false };
 }
 const detected = detectPlatform();
-export const platform = isElectrobunRuntime()
-  ? "electrobun"
-  : detected.platform;
+export const platform = detected.platform;
 export const isNative = detected.isNative;
 export const isIOS = platform === "ios";
 export const isAndroid = platform === "android";
@@ -80,9 +77,6 @@ export function isStandalonePwa(): boolean {
     )?.standalone === true
   );
 }
-export function isDesktopPlatform(): boolean {
-  return platform === "electrobun";
-}
 /**
  * True when the APK is running on the AOSP ElizaOS variant (the system
  * app on a Eliza-branded device), as opposed to the same APK installed
@@ -101,9 +95,9 @@ export function isElizaOS(): boolean {
   if (typeof navigator === "undefined") return false;
   return userAgentHasElizaOSMarker(navigator.userAgent ?? "");
 }
-/** True when the runtime can spin up a local agent — desktop or dev server. */
+/** True when the runtime can spin up a local agent — the dev server. */
 export function canRunLocal(): boolean {
-  return isDesktopPlatform() || Boolean(import.meta.env.DEV);
+  return Boolean(import.meta.env.DEV);
 }
 /**
  * True when the onboarding runtime selector should offer the **Local** card.
@@ -118,7 +112,7 @@ export function canSelectLocalRuntime(): boolean {
 }
 
 export function isWebPlatform(): boolean {
-  return detected.platform === "web" && !isElectrobunRuntime();
+  return detected.platform === "web";
 }
 // ── Share target ────────────────────────────────────────────────────
 export interface ShareTargetFile {
@@ -238,8 +232,7 @@ export function setupPlatformStyles(): void {
   // home-screen gestures instead of iOS WebKit's page-pan/edge-nav (which
   // otherwise fires pointercancel and silently drops the swipe-up-open + rail
   // flick). Scoped to `platform === "web"`: the native App Store / Play Store
-  // build already locks down via `native`, and desktop (electrobun) must keep
-  // its window scroll/trackpad behavior.
+  // build already locks down via `native`.
   if (platform === "web" && isStandalonePwa()) {
     document.body.classList.add("pwa-standalone");
   }

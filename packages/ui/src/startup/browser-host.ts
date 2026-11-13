@@ -17,8 +17,6 @@ import {
 } from "../api/client-cloud.js";
 import { fetchWithCsrf } from "../api/csrf-client.js";
 import { isPasswordAuthTransportConfidential } from "../api/password-auth-transport-policy.js";
-import { invokeDesktopBridgeRequestWithTimeout } from "../bridge/electrobun-rpc.js";
-import { isElectrobunRuntime } from "../bridge/electrobun-runtime.js";
 import { resumePendingCloudHandoff } from "../cloud/handoff/resume-pending-handoff.js";
 import { dispatchCompletedActionNavigation } from "../completed-action-navigation.js";
 import { prefetchAppsCatalog } from "../components/apps/load-apps-catalog.js";
@@ -102,7 +100,6 @@ export function createBrowserStartupHost(
 ): StartupHostPorts {
   return {
     platform: {
-      isElectrobunRuntime,
       isAndroid,
       isIOS,
       isNative,
@@ -112,7 +109,6 @@ export function createBrowserStartupHost(
     },
     transport: {
       client,
-      invokeDesktopBridgeRequestWithTimeout,
       primeAuthStatusProbe,
       fetchWithCsrf,
       ...options.native,

@@ -7,7 +7,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api/client";
 import { isApiError } from "../../api/client-types-core";
-import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { getBootConfig } from "../../config/boot-config-store";
 import { getCached, setCached } from "../../hooks/resource-cache";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
@@ -30,7 +29,6 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
   }));
   const { branding } = getBootConfig();
   const agentName = agentStatus?.agentName ?? branding.appName ?? "Eliza";
-  const isElectrobun = isElectrobunRuntime();
 
   // Seed from the shared cache so a revisit paints the last-known status
   // instantly and revalidates silently, instead of flashing a spinner.
@@ -99,7 +97,7 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
         const result = await client.streamGoLive();
         setStreamLive(result.live);
 
-        if (result.live && !IS_POPOUT && !isElectrobun) {
+        if (result.live && !IS_POPOUT) {
           openStreamPopout(getBootConfig().apiBase);
         }
       }
@@ -116,7 +114,7 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
       loadingRef.current = false;
       setStreamLoading(false);
     }
-  }, [isElectrobun, streamLive]);
+  }, [streamLive]);
 
   return (
     <ShellViewAgentSurface viewId="stream">

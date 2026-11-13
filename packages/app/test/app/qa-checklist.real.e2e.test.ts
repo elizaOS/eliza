@@ -1975,9 +1975,6 @@ async function _resolveLiveUiUrl(): Promise<string> {
         rendererUrl?: string | null;
         uiPort?: number | null;
       };
-      desktopDevLog?: {
-        filePath?: string | null;
-      };
     }>("/api/dev/stack");
 
     if (stack.desktop?.rendererUrl) {
@@ -1987,17 +1984,6 @@ async function _resolveLiveUiUrl(): Promise<string> {
     if (typeof stack.desktop?.uiPort === "number" && stack.desktop.uiPort > 0) {
       candidates.push(`http://127.0.0.1:${stack.desktop.uiPort}`);
       candidates.push(`http://localhost:${stack.desktop.uiPort}`);
-    }
-
-    const devLogPath = stack.desktopDevLog?.filePath?.trim();
-    if (devLogPath) {
-      const logContent = await fs.readFile(devLogPath, "utf8");
-      const rendererMatches = logContent.match(
-        /https?:\/\/(?:127\.0\.0\.1|localhost):\d+/g,
-      );
-      if (rendererMatches) {
-        candidates.push(...rendererMatches.map(stripTrailingSlash));
-      }
     }
   } catch {
     // Fall back to static guesses below.

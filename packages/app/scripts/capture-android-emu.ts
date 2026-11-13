@@ -16,7 +16,6 @@ import { existsSync, statSync, writeFileSync } from "node:fs";
 import { startChunkedAndroidScreenRecord } from "./lib/android-capture.ts";
 import { resolveAdb, resolveSerial } from "./lib/android-device.ts";
 import {
-  captureBackendLog,
   evidenceBaseName,
   evidencePath,
   logFor,
@@ -208,8 +207,6 @@ async function main() {
     evidencePath(base, "logcat.txt"),
   );
   log(logcatPath ? `logcat → ${logcatPath}` : "logcat empty");
-  const backendLog = captureBackendLog(base);
-  if (backendLog) log(`backend log → ${backendLog}`);
 
   mirrorToRecordings(PLATFORM, pngPath);
   if (recorded) mirrorToRecordings(PLATFORM, mp4Path);

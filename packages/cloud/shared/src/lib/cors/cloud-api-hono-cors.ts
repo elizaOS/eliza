@@ -37,10 +37,10 @@ import { isFirstPartyOrigin } from "./first-party-origin";
 export { isFirstPartyOrigin } from "./first-party-origin";
 
 /**
- * The Eliza mobile/desktop app's Capacitor/Electrobun WebView document origins.
- * On native the WebView origin is `https://localhost` (android/iosScheme="https",
- * see packages/app/capacitor.config.ts) or `capacitor://localhost` (iOS default);
- * desktop uses `electrobun://`. These talk to a SHARED-runtime agent's REST surface
+ * The Eliza mobile app's Capacitor WebView document origins. On native the
+ * WebView origin is `https://localhost` (android/iosScheme="https", see
+ * packages/app/capacitor.config.ts) or `capacitor://localhost` (iOS default).
+ * These talk to a SHARED-runtime agent's REST surface
  * on `api.eliza.app` (`/api/v1/eliza/agents/:id/api/...`) and must read SSE chat
  * streams cross-origin via the native browser fetch (CapacitorWebFetch). That read
  * is credentialed/browser-enforced, so CORS must reflect the specific origin +

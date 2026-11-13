@@ -1,4 +1,3 @@
-import { getHostRequestTransport } from "../../api/host-transport";
 import { nativeJsonRequestData as nativeRequestData } from "../../api/native-http-codec";
 /**
  * Typed fetch wrapper for the cloud surfaces hosted inside the Eliza app.
@@ -7,11 +6,11 @@ import { nativeJsonRequestData as nativeRequestData } from "../../api/native-htt
  * - injects credentials (the steward-token cookie + `Authorization: Bearer`
  *   from localStorage when present)
  * - resolves the API base URL (same-origin in web browsers, the single
- *   allowlisted Eliza Cloud API host on native/Electrobun, configured base URL
+ *   allowlisted Eliza Cloud API host on native, configured base URL
  *   only in SSR/scripts)
  * - throws structured {@link ApiError} on non-2xx responses
  *
- * On a native (Capacitor) or Electrobun runtime the dashboard's WebView origin
+ * On a native (Capacitor) runtime the dashboard's WebView origin
  * is a synthetic bundle host (`https://localhost`, `file:`, …) with the embedded
  * LOCAL agent behind it — NOT Eliza Cloud. A same-origin `/api/*` call would hit
  * that local agent. So on those runtimes ONLY, this transport resolves requests
@@ -43,14 +42,13 @@ import {
   readStoredStewardToken,
 } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { readCsrfTokenFromCookie } from "../../api/auth/csrf-cookie";
-import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { getBootConfig } from "../../config/boot-config-store";
 import { logger } from "../../logger.ts";
 import { isLoopbackStagingStewardDevelopment } from "../../state/loopback-steward-development";
 import { normalizeCloudApiKeyToken } from "./cloud-api-key-token";
 import { decodeJwtPayload } from "./jwt";
 
-// The single Eliza Cloud API host the native/Electrobun transport is allowed to
+// The single Eliza Cloud API host the native transport is allowed to
 // reach cross-origin. Kept deliberately narrow: only this exact host relaxes the
 // same-origin throw — every other absolute cross-origin URL still throws.
 const ELIZA_CLOUD_API_HOSTS = new Set([
@@ -59,16 +57,16 @@ const ELIZA_CLOUD_API_HOSTS = new Set([
 ]);
 const STATE_CHANGING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 /**
- * True only inside a native (Capacitor iOS/Android) or Electrobun desktop
+ * True only inside a native (Capacitor iOS/Android)
  * runtime — the surfaces whose WebView origin is NOT Eliza Cloud. Reuses the
  * existing runtime detectors (no new probes). On the web this is always false,
  * so every web code path below is unchanged.
  */
 function isNativeCloudRuntime(): boolean {
-  return Capacitor.isNativePlatform() || isElectrobunRuntime();
+  return Capacitor.isNativePlatform();
 }
 /**
- * Resolve the absolute Eliza Cloud API base for the native/Electrobun transport,
+ * Resolve the absolute Eliza Cloud API base for the native transport,
  * from `getBootConfig().cloudApiBase` (falling back to the production API host).
  * A configured web/auth host is normalized to the API host so relative
  * `/api/*` paths resolve onto the allowlisted Cloud API origin.
@@ -120,7 +118,7 @@ function getApiBaseUrl(): string {
   // loopback lane to staging; never infer its authority from a selected agent.
   if (usesLoopbackCliAccountTransport())
     return STAGING_DIRECT_CLOUD_API_BASE_URL;
-  // Native/Electrobun: the dashboard's WebView origin (`https://localhost`,
+  // Native: the dashboard's WebView origin (`https://localhost`,
   // `file:`, …) fronts the embedded LOCAL agent, not Eliza Cloud, so a
   // same-origin `/api/*` call would hit the wrong backend. Resolve to the single
   // allowlisted Cloud API host instead (requests then ride `CapacitorHttp`).
@@ -140,7 +138,7 @@ function resolveApiUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) {
     const parsed = new URL(path);
     if (typeof window !== "undefined") {
-      // Native/Electrobun ONLY: allow an absolute URL when — and only when — it
+      // Native ONLY: allow an absolute URL when — and only when — it
       // targets the single allowlisted Cloud API host. Every other cross-origin
       // absolute URL still throws, on native exactly as on web, so this never
       // opens a general cross-origin bridge.
@@ -181,7 +179,7 @@ function readStewardToken(): string | null {
 /**
  * Delete the stored Steward JWT if it is still the one being retired, then
  * only broadcast logout once the delete actually succeeded. `clearStoredStewardToken()`
- * is async and can reject (a native/Electrobun protected-storage delete can be
+ * is async and can reject (a native protected-storage delete can be
  * denied), so this awaits it: a denied delete must never announce "cleared" —
  * that would tell every listener the credential is gone while it is still
  * live in protected storage.
@@ -213,7 +211,7 @@ async function readLiveNativeStewardToken(
 }
 /**
  * Resolve the Cloud bearer for the auth header. The Steward session JWT stays
- * first (canonical, unchanged). On native/Electrobun ONLY, fall back to the
+ * first (canonical, unchanged). On native ONLY, fall back to the
  * owner cloud API key: device-code sign-in never writes `STEWARD_TOKEN_KEY` —
  * it stores the cloud API key on the agent client, which mirrors it into boot
  * config (see `ElizaClient.setToken`). So
@@ -234,7 +232,7 @@ export async function readCloudBearerToken(): Promise<string | null> {
   // Resolve the supported owner-key fallback before expiry cleanup dispatches
   // the canonical session-clear event. That event may synchronously remove the
   // rejected account target from boot config; the already-validated fallback
-  // must remain usable for this request on native/Electrobun (#11930).
+  // must remain usable for this request on native (#11930).
   const nativeCloudApiKey = nativeRuntime
     ? (normalizeCloudApiKeyToken(getBootConfig().apiToken) ??
       normalizeCloudApiKeyToken(getElizaApiToken()))
@@ -469,23 +467,10 @@ export async function apiFetch(
   const url = resolveApiUrl(path);
   const requestBody =
     json !== undefined ? JSON.stringify(json) : (body ?? null);
-  // Electrobun has its own main-process HTTP bridge; CapacitorHttp is not
-  // installed in the macOS shell and otherwise falls back to a CORS-blocked
-  // WKWebView request. Capacitor keeps its native plugin, while web retains the
-  // original same-origin fetch path.
-  const desktopTransport = await getHostRequestTransport(url, "cloud");
+  // Capacitor keeps its native plugin, while web retains the original
+  // same-origin fetch path.
   let res: Response;
-  if (desktopTransport) {
-    res = await requestNativeResponseWithAbort(
-      () =>
-        desktopTransport.request(
-          url,
-          { ...rest, headers, body: requestBody },
-          { timeoutMs: NATIVE_HTTP_TIMEOUT_MS },
-        ),
-      rest.signal,
-    );
-  } else if (Capacitor.isNativePlatform()) {
+  if (Capacitor.isNativePlatform()) {
     res = await requestNativeResponseWithAbort(
       () =>
         nativeApiFetch(url, {

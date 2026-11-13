@@ -1,9 +1,7 @@
 /**
  * Deadline math for the agent-ready wait loop: an absolute cap plus a sliding
- * extension applied while the agent stays in `starting`. Electrobun gets a
- * longer floor. Consumed by the startup coordinator's poll loop.
+ * extension applied while the agent stays in `starting`. Consumed by the startup coordinator's poll loop.
  */
-import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { AGENT_READY_TIMEOUT_MS } from "./types";
 
 /** Hard cap from first agent-wait loop iteration (first successful getStatus). */
@@ -16,9 +14,6 @@ export const AGENT_STARTING_SLIDE_MS = 180_000;
  * Initial wait before the first sliding extension applies (avoids instant max deadline).
  */
 export function getAgentReadyTimeoutMs(): number {
-  if (typeof globalThis.window !== "undefined" && isElectrobunRuntime()) {
-    return Math.max(AGENT_READY_TIMEOUT_MS, 300_000);
-  }
   return Math.max(AGENT_READY_TIMEOUT_MS, 180_000);
 }
 

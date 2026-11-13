@@ -26,10 +26,6 @@ import { getCloudAuthToken } from "../api/client-cloud";
 import type { VoiceConfig } from "../api/client-types-config";
 import { fetchWithCsrf, requestViaAgentTransport } from "../api/csrf-client";
 import {
-  getElectrobunRendererRpc,
-  invokeDesktopBridgeRequest,
-} from "../bridge/electrobun-rpc";
-import {
   getElizaPlayVoicePlugin,
   getTalkModePlugin,
   type TalkModeErrorEvent,
@@ -241,22 +237,7 @@ function warnDirectCloudTtsFallback(target: string, error: unknown): void {
 }
 function shouldPreferNativeTalkMode(): boolean {
   if (typeof window === "undefined") return false;
-  return Capacitor.isNativePlatform() || !!getElectrobunRendererRpc();
-}
-function isWindowsElectrobunRenderer(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    !!getElectrobunRendererRpc() &&
-    typeof process !== "undefined" &&
-    process.platform === "win32"
-  );
-}
-function shouldAutoRestartBrowserRecognition(): boolean {
-  if (typeof window === "undefined") return false;
-  if (isWindowsElectrobunRenderer()) {
-    return false;
-  }
-  return true;
+  return Capacitor.isNativePlatform();
 }
 function shouldUseLocalInferenceAsr(config: VoiceConfig | null): boolean {
   return config?.asr?.provider === "local-inference";
@@ -321,9 +302,7 @@ interface VoiceTranscriptUpdateMetadata {
 // ── Test-visible internals ───────────────────────────────────────────
 export const __voiceChatInternals = {
   CAPTURE_PAUSE_GRACE_MS,
-  isWindowsElectrobunRenderer,
   shouldPreferNativeTalkMode,
-  shouldAutoRestartBrowserRecognition,
   shouldUseLocalInferenceAsr,
   resumeAudioContextForPlayback,
   splitFirstSentence,
@@ -1102,7 +1081,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       };
       recognition.onend = () => {
         if (
-          shouldAutoRestartBrowserRecognition() &&
           enabledRef.current &&
           listeningModeRef.current === mode
         ) {
@@ -1166,11 +1144,9 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             .checkPermissions()
             .catch(() => permissions);
         }
-        const directRpc = getElectrobunRendererRpc();
         const result = await talkMode.start({
           config: {
             stt: {
-              ...(directRpc ? { engine: "web" as const } : {}),
               language: options.lang ?? "en-US",
               modelSize: "base",
               sampleRate: 16000,
@@ -2001,13 +1977,8 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       const requestedLocale = normalizeSpeechLocale(options.lang);
       const words = text.trim().split(/\s+/).length;
       const estimatedMs = Math.max(1200, (words / 3) * 1000);
-      const useTalkModeTts = !synth && Boolean(getElectrobunRendererRpc());
       ttsDebug("speakBrowser:enter", {
-        path: synth
-          ? "speechSynthesis"
-          : useTalkModeTts
-            ? "talkmode-bridge"
-            : "no-synth",
+        path: synth ? "speechSynthesis" : "no-synth",
         segment: task.segment,
         append: task.append,
         textChars: text.trim().length,
@@ -2031,45 +2002,14 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         };
         activeTaskFinishRef.current = finish;
         if (!synth) {
-          if (!getElectrobunRendererRpc()) {
-            ttsDebug("play:browser:no-synth", {
-              segment: task.segment,
-              textChars: text.trim().length,
-              preview: ttsDebugTextPreview(text),
-              engine: "none",
-              note: "No SpeechSynthesis or Talk Mode bridge; no playback emitted",
-            });
-            finish();
-            return;
-          }
-          ttsDebug("play:talkmode:dispatch", {
+          ttsDebug("play:browser:no-synth", {
             segment: task.segment,
-            append: task.append,
             textChars: text.trim().length,
             preview: ttsDebugTextPreview(text),
-            engine: "native-talkmode-bridge",
-            note: "No window.speechSynthesis — routing TTS to main-process talkmodeSpeak",
+            engine: "none",
+            note: "No SpeechSynthesis; no playback emitted",
           });
-          void invokeDesktopBridgeRequest<void>({
-            rpcMethod: "talkmodeSpeak",
-            ipcChannel: "talkmode:speak",
-            params: { text: text.trim() },
-          }).catch((err: unknown) => {
-            ttsDebug("play:talkmode:speak-failed", {
-              segment: task.segment,
-              preview: ttsDebugTextPreview(text),
-              err: formatNamedVoiceError(err),
-            });
-          });
-          emitPlaybackStart({
-            text,
-            segment: task.segment,
-            provider: "browser",
-            cached: false,
-            startedAtMs: performance.now(),
-            ...task.telemetry,
-          });
-          speechTimeoutRef.current = setTimeout(finish, estimatedMs);
+          finish();
           return;
         }
         const utterance = new SpeechSynthesisUtterance(text.trim());

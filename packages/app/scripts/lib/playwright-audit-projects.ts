@@ -6,7 +6,6 @@
 export const UI_SMOKE_AUDIT_PROJECTS = Object.freeze([
   "audit-app",
   "audit-cloud",
-  "audit-app-dropdown",
 ]);
 
 export const UI_SMOKE_AUDIT_PROJECTS_ENV =

@@ -9,8 +9,6 @@ import {
 } from "@elizaos/core/protocol";
 import type { ViewRegistryEntry } from "../hooks/useAvailableViews";
 import type { Tab } from "../navigation";
-import type { DesktopWorkspaceSurface } from "../utils/desktop-workspace";
-import { DESKTOP_WORKSPACE_SURFACES } from "../utils/desktop-workspace";
 
 const ROUTINE_CODING_AGENT_RE =
   /^\[.+?\] (?:Approved:|Responded:|Sent keys:|Turn done, continuing:|Idle for \d+[smh])/;
@@ -40,12 +38,7 @@ export * from "./coding-agent-session-state";
 
 // ── Typed command registry ───────────────────────────────────────────────
 
-export type CommandCategory =
-  | "agent"
-  | "navigation"
-  | "refresh"
-  | "utility"
-  | "desktop";
+export type CommandCategory = "agent" | "navigation" | "refresh" | "utility";
 
 export interface CommandDef {
   id: string;
@@ -141,14 +134,6 @@ export interface BuildCommandsArgs {
   loadLogs: () => void;
   loadWorkbench: () => void;
   openBugReport: () => void;
-  desktopRuntime: boolean;
-  focusDesktopMainWindow: () => void;
-  openDesktopWorkspaceWindow: () => void;
-  openDesktopSettingsWindow: (tabHint?: string) => void;
-  openDesktopSurfaceWindow: (
-    surface: DesktopWorkspaceSurface,
-    options?: { browse?: string },
-  ) => void;
 }
 
 export function buildCommands(args: BuildCommandsArgs): CommandItem[] {
@@ -167,11 +152,6 @@ export function buildCommands(args: BuildCommandsArgs): CommandItem[] {
     loadLogs,
     loadWorkbench,
     openBugReport,
-    desktopRuntime,
-    focusDesktopMainWindow,
-    openDesktopWorkspaceWindow,
-    openDesktopSettingsWindow,
-    openDesktopSurfaceWindow,
   } = args;
 
   const commands: CommandItem[] = [];
@@ -237,36 +217,6 @@ export function buildCommands(args: BuildCommandsArgs): CommandItem[] {
         setAppsSubTab();
       },
     });
-  }
-
-  if (desktopRuntime) {
-    commands.push(
-      {
-        id: "desktop-open-workspace",
-        label: "Open Desktop Workspace",
-        category: "desktop",
-        action: openDesktopWorkspaceWindow,
-      },
-      {
-        id: "desktop-open-voice-controls",
-        label: "Open Voice Controls",
-        category: "desktop",
-        action: () => openDesktopSettingsWindow("voice"),
-      },
-      {
-        id: "desktop-focus-main-window",
-        label: "Focus Main Window",
-        category: "desktop",
-        action: focusDesktopMainWindow,
-      },
-      ...DESKTOP_WORKSPACE_SURFACES.map((surface) => ({
-        id: `desktop-command-${surface.id}`,
-        label: `Open ${surface.label}`,
-        category: "desktop" as const,
-        hint: surface.description,
-        action: () => openDesktopSurfaceWindow(surface.id),
-      })),
-    );
   }
 
   // Refresh

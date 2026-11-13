@@ -1,5 +1,10 @@
-/** Renderer-safe adapter for fingerprint inspection and native SSH tunnels. */
-import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
+/**
+ * Renderer adapter for fingerprint inspection and native SSH tunnels. Only the
+ * removed Electrobun desktop host provided the tunnel, so no host serves these
+ * requests now: they fail with an explicit unsupported error.
+ */
+
+const SSH_RUNTIME_UNSUPPORTED = "SSH runtimes are not supported in this app.";
 
 export interface SshHostInspection {
   target: string;
@@ -29,69 +34,37 @@ export interface SshRuntimeStatus {
   lastError: string | null;
 }
 
-export async function inspectSshHost(input: {
+export async function inspectSshHost(_input: {
   runtimeId: string;
   target: string;
   sshPort: number;
 }): Promise<SshHostInspection> {
-  const result = await invokeDesktopBridgeRequest<SshHostInspection>({
-    rpcMethod: "sshRuntimeInspectHost",
-    ipcChannel: "sshRuntime:inspectHost",
-    params: input,
-  });
-  if (!result) {
-    throw new Error("SSH setup is available in the Eliza desktop app.");
-  }
-  return result;
+  throw new Error(SSH_RUNTIME_UNSUPPORTED);
 }
 
 export async function startSshRuntime(
-  input: SshRuntimeEnrollment,
+  _input: SshRuntimeEnrollment,
 ): Promise<{ apiBase: string; localPort: number; fingerprint: string }> {
-  const result = await invokeDesktopBridgeRequest<{
-    apiBase: string;
-    localPort: number;
-    fingerprint: string;
-  }>({
-    rpcMethod: "sshRuntimeStart",
-    ipcChannel: "sshRuntime:start",
-    params: input,
-  });
-  if (!result) {
-    throw new Error("SSH setup is available in the Eliza desktop app.");
-  }
-  return result;
+  throw new Error(SSH_RUNTIME_UNSUPPORTED);
 }
 
-export async function stopSshRuntime(runtimeId: string): Promise<boolean> {
-  const result = await invokeDesktopBridgeRequest<{ stopped: boolean }>({
-    rpcMethod: "sshRuntimeStop",
-    ipcChannel: "sshRuntime:stop",
-    params: { runtimeId },
-  });
-  return result?.stopped ?? false;
+export async function stopSshRuntime(_runtimeId: string): Promise<boolean> {
+  return false;
 }
 
 export async function getSshRuntimeStatus(
-  runtimeId: string,
+  _runtimeId: string,
 ): Promise<SshRuntimeStatus> {
-  const result = await invokeDesktopBridgeRequest<SshRuntimeStatus>({
-    rpcMethod: "sshRuntimeStatus",
-    ipcChannel: "sshRuntime:status",
-    params: { runtimeId },
-  });
-  return (
-    result ?? {
-      running: false,
-      localPort: null,
-      startedAt: null,
-      reconnectState: "stopped",
-      lastError: null,
-    }
-  );
+  return {
+    running: false,
+    localPort: null,
+    startedAt: null,
+    reconnectState: "stopped",
+    lastError: null,
+  };
 }
 
-export async function requestSshRuntime(input: {
+export async function requestSshRuntime(_input: {
   runtimeId: string;
   credentialRef?: string;
   path: string;
@@ -105,16 +78,5 @@ export async function requestSshRuntime(input: {
   headers: Record<string, string>;
   body: string;
 }> {
-  const result = await invokeDesktopBridgeRequest<{
-    status: number;
-    statusText: string;
-    headers: Record<string, string>;
-    body: string;
-  }>({
-    rpcMethod: "sshRuntimeRequest",
-    ipcChannel: "sshRuntime:request",
-    params: input,
-  });
-  if (!result) throw new Error("The SSH runtime transport is unavailable.");
-  return result;
+  throw new Error(SSH_RUNTIME_UNSUPPORTED);
 }

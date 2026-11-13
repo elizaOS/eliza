@@ -1,8 +1,6 @@
 /** Native device lifecycle stays on the local host even when the selected agent is remote. */
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import type { RemoteTargetPublicIdentity } from "@elizaos/contracts";
-import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
-import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 
 interface NativeLocalReply {
   status: number;
@@ -19,7 +17,7 @@ const localAgent = registerPlugin<{
 }>("Agent");
 
 export function supportsNativeRemoteTarget(): boolean {
-  return Capacitor.getPlatform() === "android" || isElectrobunRuntime();
+  return Capacitor.getPlatform() === "android";
 }
 
 async function requestLocalDevice<T>(
@@ -40,14 +38,10 @@ async function requestLocalDevice<T>(
   };
   // Android's Agent.request injects the device token in native code and always
   // dispatches to its local socket. It cannot inherit a selected Cloud URL/token.
-  const response =
+  const response: NativeLocalReply | null =
     Capacitor.getPlatform() === "android"
       ? await localAgent.request(input)
-      : await invokeDesktopBridgeRequest<NativeLocalReply>({
-          rpcMethod: "localAgentRequest",
-          ipcChannel: "agent:localAgentRequest",
-          params: input,
-        });
+      : null;
   if (!response || response.status < 200 || response.status >= 300)
     throw new Error(
       `Local device request failed${response ? ` (${response.status})` : ""}.`,
@@ -85,8 +79,7 @@ async function invokeRemoteTargetRequest<T>(input: {
   ipcChannel: string;
   params: Record<string, unknown>;
 }): Promise<T | null> {
-  if (Capacitor.getPlatform() !== "android")
-    return invokeDesktopBridgeRequest<T>(input);
+  if (Capacitor.getPlatform() !== "android") return null;
   const route = androidRoutes[input.rpcMethod];
   if (!route) throw new Error("Unsupported local device operation.");
   const read = route === "identity" || route === "status";

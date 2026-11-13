@@ -223,11 +223,8 @@ function notificationsPayload() {
   };
 }
 
-// A full-capability host (real API base + an Electrobun bridge) so the
-// onboarding offers — and ENABLES — the Local runtime card. `__electrobunWindowId`
-// makes isElectrobunRuntime()→isDesktopPlatform() true, which is what
-// canSelectLocalRuntime() keys off (without it the Local card is rendered but
-// disabled on a cloud-only host).
+// A full-capability host (real API base) so the onboarding offers the Local
+// runtime card.
 //
 // The local first-run path resolves the on-device agent base via
 // resolveFirstRunLocalAgentApiBase() → getElizaApiBase() (which reads the
@@ -240,37 +237,8 @@ function notificationsPayload() {
 export async function injectFullCapabilityHost(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const origin = window.location.origin;
-    const secureStore = new Map<string, string>();
     const win = window as unknown as Record<string, unknown>;
     win.__ELIZAOS_APP_BOOT_CONFIG__ = { apiBase: origin };
-    win.__electrobunWindowId = 1;
-    win.__ELIZA_ELECTROBUN_RPC__ = {
-      request: {
-        desktopGetVersion: async () => ({ runtime: "playwright-smoke" }),
-        desktopRegisterShortcut: async () => ({ success: true }),
-        desktopSetTrayMenu: async () => undefined,
-        secureStoreGet: async ({ kind }: { kind: string }) =>
-          secureStore.has(kind)
-            ? { ok: true, value: secureStore.get(kind) }
-            : { ok: false, reason: "not_found" },
-        secureStoreSet: async ({
-          kind,
-          value,
-        }: {
-          kind: string;
-          value: string;
-        }) => {
-          secureStore.set(kind, value);
-          return { ok: true };
-        },
-        secureStoreDelete: async ({ kind }: { kind: string }) => ({
-          ok: true,
-          deleted: secureStore.delete(kind),
-        }),
-      },
-      onMessage: () => {},
-      offMessage: () => {},
-    };
     // Production remains cloud-only by default (#13377). These helpers also run
     // against packaged builds where Vite's development default is absent, so
     // opt in explicitly; the production default is covered by

@@ -10,16 +10,11 @@ import {
   isElizaDedicatedAgentHostname,
   LEGACY_ELIZA_DOMAIN_CONTRACTS,
 } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
-import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { isCapacitorNativeRuntime } from "../platform/native-probe";
 
 /** The current browser's first-party Pages proxy; never a sibling preview. */
 export function currentOwnedElizaPagesOrigin(): string | null {
-  if (
-    typeof window === "undefined" ||
-    isCapacitorNativeRuntime() ||
-    isElectrobunRuntime()
-  ) {
+  if (typeof window === "undefined" || isCapacitorNativeRuntime()) {
     return null;
   }
   const url = normalizeHttpUrl(window.location.href);

@@ -8,8 +8,6 @@ export type {
 export const {
   reconcileMobileRestoredActiveServer,
   applyRestoredConnection,
-  isDesktopEmbeddedApiBase,
-  resolveDesktopRestoredTarget,
   canRestoreActiveServer,
   runRestoringSession,
 } = canonicalStartupRestore;

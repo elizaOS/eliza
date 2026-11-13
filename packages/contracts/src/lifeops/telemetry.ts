@@ -94,6 +94,7 @@ export interface LifeOpsActivitySignal {
 
 export type LifeOpsDevicePlatform =
   | "macos_desktop"
+  /** Stored records from the removed desktop app; never emitted now. */
   | "macos_electrobun"
   | "ios_capacitor"
   | "ipados_capacitor"

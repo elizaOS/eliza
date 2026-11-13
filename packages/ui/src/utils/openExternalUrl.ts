@@ -1,19 +1,15 @@
 /**
- * Opens an external URL on the current platform: desktop bridge, Capacitor
- * in-app browser, or a new tab, so links leave the app shell safely.
+ * Opens an external URL on the current platform: Capacitor in-app browser or
+ * a new tab, so links leave the app shell safely.
  *
  * These helpers are the central enforcement point for wire-supplied
  * navigation targets (billing checkout links, connector OAuth `authUrl`s,
  * login `browserUrl`s, server-signed download URLs, plugin-declared links):
  * every URL passes the `isSafeNavigationUrl` scheme allowlist before any
  * platform handoff, and a rejected URL never reaches `window.open`,
- * `popup.location.href`, the Electrobun bridge, or the Capacitor browser.
+ * `popup.location.href`, or the Capacitor browser.
  */
 import { Capacitor, registerPlugin } from "@capacitor/core";
-import {
-  getElectrobunRendererRpc,
-  invokeDesktopBridgeRequestWithTimeout,
-} from "../bridge/electrobun-rpc";
 import { isSafeNavigationUrl } from "./navigation-url";
 
 interface CapacitorBrowserPlugin {
@@ -75,24 +71,7 @@ export async function openExternalUrl(
     return true;
   }
 
-  const bridged = await invokeDesktopBridgeRequestWithTimeout<void>({
-    rpcMethod: "desktopOpenExternal",
-    ipcChannel: "desktop:openExternal",
-    params: { url },
-    timeoutMs: 10_000,
-  });
-
-  if (bridged !== null && bridged.status === "ok") return true;
-
-  // Inside Electrobun — never fall through to window.open() which spawns an
-  // unmanaged BrowserView to an external URL and crashes the shell.
-  if (getElectrobunRendererRpc() !== undefined) {
-    // desktopOpenExternal RPC returned null — skip window.open fallback to
-    // avoid spawning an unmanaged BrowserView inside Electrobun.
-    return false;
-  }
-
-  // Non-desktop (web browser) fallback.
+  // Web browser fallback.
   if (typeof window === "undefined" || typeof window.open !== "function") {
     return false;
   }
@@ -139,7 +118,6 @@ export async function listenForExternalBrowserFinished(
  * ```
  */
 export function preOpenWindow(target = "_blank"): Window | null {
-  if (getElectrobunRendererRpc() !== undefined) return null; // Desktop uses RPC
   // Capacitor native: openExternalUrl uses the Browser plugin (no
   // gesture-context dependency). Avoid window.open here because WKWebView's
   // delegate would route "about:blank" to UIApplication.shared.open and
@@ -154,7 +132,7 @@ export function preOpenWindow(target = "_blank"): Window | null {
 
 /**
  * Navigate a pre-opened window to the real URL, or fall back to
- * `openExternalUrl` if the pre-open was blocked / we're on desktop.
+ * `openExternalUrl` if the pre-open was blocked or skipped.
  *
  * Returns `false` when the URL fails the navigation scheme allowlist — the
  * pre-opened about:blank popup is same-origin, so an unchecked `javascript:`
@@ -191,7 +169,7 @@ export function navigatePreOpenedWindow(
     popup.location.href = url;
     return true;
   }
-  // Fallback — desktop RPC or retry window.open
+  // Fallback — Capacitor browser or retry window.open
   void openExternalUrl(url);
   return true;
 }

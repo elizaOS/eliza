@@ -154,16 +154,6 @@ export function subscribeAuthStatus(): () => void {
   return () => {};
 }
 
-export function isElectrobunRuntime(): boolean {
-  return false;
-}
-
-export async function loadDesktopWorkspaceSnapshot(): Promise<{
-  supported: boolean;
-}> {
-  return { supported: false };
-}
-
 export const Badge = PassthroughComponent;
 export const Alert = TestAlert;
 export const AlertDescription = TestAlertDescription;
