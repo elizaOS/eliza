@@ -249,7 +249,7 @@ export async function createSpeechRelaySession(
   if (
     !Number.isSafeInteger(maxWindows) ||
     maxWindows < 1 ||
-    (maxWindows > 1 && (!ports.extend || requireRetirementProof))
+    (maxWindows > 1 && !ports.extend)
   )
     throw new SpeechRelayError("identity", "Invalid speech window budget");
   let deadline = Math.min(
@@ -283,12 +283,16 @@ export async function createSpeechRelaySession(
     Promise<void | Partial<SpeechSettlementOutcome>>
   >();
   let preparation: Promise<void> | undefined;
+  let renewal: Promise<void> | undefined;
   let closeFailed = false;
   let closingSettled = false;
   let retirementEvidence: SpeechRetirementEvidence | undefined;
   let confirmedSttDrain: CartesiaInkDrainReceipt | undefined;
   let quotaRelease: Promise<void> | undefined;
   const completedAccounting: Partial<SpeechSettlementOutcome> = {};
+  const windowAccounting = new Map<number, Partial<SpeechSettlementOutcome>>([
+    [0, completedAccounting],
+  ]);
   let lastSettlementDetails:
     | Parameters<SpeechRelayCreditReservation["settle"]>[0]
     | undefined;
@@ -297,9 +301,40 @@ export async function createSpeechRelaySession(
     | Promise<void | Partial<SpeechSettlementOutcome>>
     | undefined;
   const settlementInputs = new Map<
-    "stt" | "tts",
+    string,
     Parameters<SpeechRelayCreditReservation["settle"]>[0]
   >();
+  function windowDetails(
+    details: Parameters<SpeechRelayCreditReservation["settle"]>[0],
+    index: number,
+  ): Parameters<SpeechRelayCreditReservation["settle"]>[0] {
+    if (index >= windows) return UNGRANTED_SETTLEMENT;
+    const pcmWindow =
+      (SPEECH_RELAY_BUDGET.pcmBytesPerSecond * SPEECH_RELAY_BUDGET.durationMs) /
+      1000;
+    const share = (total: number, size: number) =>
+      index === windows - 1
+        ? Math.max(0, total - index * size)
+        : Math.min(size, Math.max(0, total - index * size));
+    return {
+      ...details,
+      pcmBytes: share(details.pcmBytes, pcmWindow),
+      ttsCharacters: share(
+        details.ttsCharacters,
+        SPEECH_RELAY_BUDGET.ttsCharacters,
+      ),
+      dispatched: {
+        stt:
+          details.dispatched?.stt === true &&
+          (index === 0 || share(attemptedPcmBytes, pcmWindow) > 0),
+        tts:
+          details.dispatched?.tts === true &&
+          (index === 0 ||
+            share(details.ttsCharacters, SPEECH_RELAY_BUDGET.ttsCharacters) >
+              0),
+      },
+    };
+  }
   const streams = new Map<string, ReturnType<SpeechRelayPorts["openTts"]>>(),
     usedIds = new Set<string>(),
     finishedIds = new Set<string>(),
@@ -318,6 +353,7 @@ export async function createSpeechRelaySession(
       const failures: unknown[] = [];
       // Admission can still be returning a reservation when shutdown wins.
       await preparation?.catch(() => {});
+      await renewal?.catch(() => {});
       const ttsClosing = dispatched.tts
         ? Promise.resolve()
             .then(
@@ -465,40 +501,53 @@ export async function createSpeechRelaySession(
         } catch (error) {
           failures.push(error);
         }
-      } else if (credits)
-        for (const kind of ["stt", "tts"] as const) {
-          // A settled conservative target is immutable too. Later provider
-          // evidence must not revise it or block the other provider's settlement.
-          if (
-            completedAccounting[kind] ||
-            (kind === "tts" && ttsStopped === "unknown")
-          )
-            continue;
-          try {
-            // Freeze even a failed attempt: money may have committed before its
-            // acknowledgement or progress write failed. New evidence cannot
-            // replace that target on the retry.
-            const fixed = settlementInputs.get(kind) ?? details;
-            settlementInputs.set(kind, fixed);
-            const result = await credits.settle(fixed, [kind]);
-            if (result?.[kind]) completedAccounting[kind] = result[kind];
-          } catch (error) {
-            failures.push(error);
+      } else if (credits) {
+        for (const [index, reservation] of reservations.entries()) {
+          const accounting = windowAccounting.get(index) ?? {};
+          windowAccounting.set(index, accounting);
+          for (const kind of ["stt", "tts"] as const) {
+            if (
+              accounting[kind] ||
+              (kind === "tts" &&
+                ttsStopped === "unknown" &&
+                windowDetails(details, index).dispatched?.tts === true)
+            )
+              continue;
+            try {
+              // Freeze each window independently before the first settlement attempt.
+              const key = `${index}:${kind}`;
+              const fixed =
+                settlementInputs.get(key) ?? windowDetails(details, index);
+              settlementInputs.set(key, fixed);
+              const result = await reservation.settle(fixed, [kind]);
+              if (result?.[kind]) accounting[kind] = result[kind];
+            } catch (error) {
+              failures.push(error);
+            }
           }
         }
-      const accounting = completedAccounting;
+      }
       const canonicalActualMoney =
         requireRetirementProof &&
-        windows === 1 &&
-        accounting.stt?.terminal === true &&
-        accounting.tts?.terminal === true &&
-        accounting.stt.requestId === `speech:${scope.cloudSessionId}:stt` &&
-        accounting.tts.requestId === `speech:${scope.cloudSessionId}:tts` &&
-        accounting.stt.state === "actual" &&
-        (accounting.tts.state === "actual" ||
-          (accounting.tts.state === "conservative" &&
-            accounting.tts.basis === "submitted_counter_provider_unconfirmed" &&
-            ttsStopped === "transport_closed"));
+        reservations.length >= windows &&
+        reservations.every((_, index) => {
+          const accounting = windowAccounting.get(index);
+          const suffix = index ? `:${index}` : "";
+          return (
+            accounting?.stt?.terminal === true &&
+            accounting.tts?.terminal === true &&
+            accounting.stt.requestId ===
+              `speech:${scope.cloudSessionId}:stt${suffix}` &&
+            accounting.tts.requestId ===
+              `speech:${scope.cloudSessionId}:tts${suffix}` &&
+            accounting.stt.state === "actual" &&
+            (accounting.tts.state === "actual" ||
+              (accounting.tts.state === "conservative" &&
+                accounting.tts.basis ===
+                  "submitted_counter_provider_unconfirmed" &&
+                ttsStopped === "transport_closed"))
+          );
+        });
       const noDispatchProof =
         !credits && !providerMayHaveStarted
           ? ports.noDispatchMoneyProof?.(scope)
@@ -606,22 +655,26 @@ export async function createSpeechRelaySession(
         !closingSettled ||
         !credits?.supportsPerKindSettlement ||
         !lastSettlementDetails ||
-        retirementEvidence?.tts !== "unknown" ||
-        completedAccounting.tts
+        retirementEvidence?.tts !== "unknown"
       )
         return Promise.resolve();
       if (finalTtsAccounting) return finalTtsAccounting;
-      const fixed = settlementInputs.get("tts") ?? {
-        ...lastSettlementDetails,
-        ttsAccountingBasis: "submitted_counter_provider_unconfirmed" as const,
-      };
-      settlementInputs.set("tts", fixed);
-      const reservation = credits;
+      const details = lastSettlementDetails;
       const attempt = (async () => {
-        const result = await reservation.settle(fixed, ["tts"]);
-        if (result?.tts) completedAccounting.tts = result.tts;
-        // Provider status and accounting proof remain unknown/conservative.
-        // Persisted admission progress retains the exact bounded charge basis.
+        for (const [index, reservation] of reservations.entries()) {
+          const accounting = windowAccounting.get(index) ?? {};
+          windowAccounting.set(index, accounting);
+          if (accounting.tts) continue;
+          const key = `${index}:tts`;
+          const fixed = settlementInputs.get(key) ?? {
+            ...windowDetails(details, index),
+            ttsAccountingBasis:
+              "submitted_counter_provider_unconfirmed" as const,
+          };
+          settlementInputs.set(key, fixed);
+          const result = await reservation.settle(fixed, ["tts"]);
+          if (result?.tts) accounting.tts = result.tts;
+        }
       })();
       finalTtsAccounting = attempt;
       void attempt.catch(() => {
@@ -663,7 +716,9 @@ export async function createSpeechRelaySession(
     timer.unref?.();
     if (windows >= maxWindows) return;
     renewTimer = setTimeout(
-      () => void renew(),
+      () => {
+        renewal = renew();
+      },
       Math.max(1, deadline - SPEECH_RELAY_RENEW_LEAD_MS - now()),
     );
     renewTimer.unref?.();
@@ -688,6 +743,14 @@ export async function createSpeechRelaySession(
       if (closed) return;
       held = await ports.reserveCredits(scope, SPEECH_RELAY_BUDGET);
       if (closed) return;
+      if (requireRetirementProof && !held.supportsPerKindSettlement)
+        throw new SpeechRelayError(
+          "identity",
+          "Speech renewal requires per-kind settlement",
+        );
+      await held.beforeProviderDispatch("stt");
+      await held.beforeProviderDispatch("tts");
+      if (closed || now() >= deadline) return;
       // From here closing owns this reservation (and settles it to zero
       // unless the window was granted first).
       reservations.push(held);
