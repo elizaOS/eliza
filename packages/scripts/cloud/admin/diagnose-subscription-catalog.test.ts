@@ -143,6 +143,7 @@ describe("checkout diagnostic redaction", () => {
   test("unknown stacks and invalid positions cannot enter the tail", () => {
     for (const frame of [
       "    at /other.js:42:700",
+      `    at /${"segment/".repeat(128)}other.js:42:700`,
       "    at /worker.js?private:42:700",
       "    at /worker.js:0:1",
       "    at /worker.js:9007199254740992:1",

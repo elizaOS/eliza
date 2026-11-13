@@ -109,7 +109,7 @@ function typeErrorLocation(
   if (!(error instanceof TypeError) || typeof error.stack !== "string") return;
   for (const frame of error.stack.split("\n").slice(1)) {
     const match =
-      /^\s+at (?:[^()\r\n]+ \()?(?:async )?(?:(?:file:\/\/\/|\/)(?:[^()\s]+\/)*)?(?:worker|index)\.js:([1-9]\d*):([1-9]\d*)\)?$/.exec(
+      /^\s+at (?:[^()\r\n]+ \()?(?:async )?(?:(?:file:\/\/\/|\/)(?:[^()\s]+\/)?)?(?:worker|index)\.js:([1-9]\d*):([1-9]\d*)\)?$/.exec(
         frame,
       );
     if (!match) continue;
