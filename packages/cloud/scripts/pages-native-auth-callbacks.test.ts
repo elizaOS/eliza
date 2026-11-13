@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -8,6 +8,7 @@ import {
   nativeSignInCallbackFallback,
   onRequest,
 } from "../../app/functions/_middleware.ts";
+import { runPool } from "../../scripts/lib/test-task-pool.ts";
 import {
   callbacks,
   prepareConfig,
@@ -153,82 +154,115 @@ describe("Pages native callback deployment", () => {
         ).success,
       ).toBe(true);
       const run = (step: Step, env: Record<string, string>, output: string) =>
-        spawnSync("bash", ["-c", step.run], {
-          cwd: temporary,
-          encoding: "utf8",
-          timeout: 30_000,
-          env: {
-            PATH: process.env.PATH,
-            CHECKOUT_DIR: temporary,
-            RUNNER_TEMP: temporary,
-            GITHUB_OUTPUT: output,
-            ...env,
+        new Promise<{ status: number; stdout: string; stderr: string }>(
+          (resolve, reject) => {
+            execFile(
+              "bash",
+              ["-c", step.run],
+              {
+                cwd: temporary,
+                encoding: "utf8",
+                timeout: 30_000,
+                env: {
+                  PATH: process.env.PATH,
+                  CHECKOUT_DIR: temporary,
+                  RUNNER_TEMP: temporary,
+                  GITHUB_OUTPUT: output,
+                  ...env,
+                },
+              },
+              (error, stdout, stderr) => {
+                if (error && (error.killed || typeof error.code !== "number")) {
+                  reject(error);
+                  return;
+                }
+                resolve({
+                  status: error ? Number(error.code) : 0,
+                  stdout,
+                  stderr,
+                });
+              },
+            );
           },
-        });
-      for (const [environment, callback] of [
+        );
+      const configurations = [
         ["staging", stage],
         ["production", production],
         ["staging", browserStage],
         ["production", browserProduction],
-      ] as const) {
-        const context = {
-          inputs: { target_environment: environment },
-          vars: { [binding]: JSON.stringify([callback], null, 2) },
-          secrets: {},
-        };
-        const resolvedFile = path.join(temporary, `${environment}-resolved`);
-        const resolved = run(
-          resolver,
-          environmentFor(resolver, context),
-          resolvedFile,
-        );
-        expect(resolved.status).toBe(0);
-        expect(resolved.stderr).toBe("");
-        const stepOutputs = await outputs(resolvedFile);
-        const jobOutputs = Object.fromEntries(
-          Object.entries(protectedJob.outputs).map(([key, value]) => [
-            key,
-            interpolate(value, {
-              steps: { "native-callbacks": { outputs: stepOutputs } },
-            }),
-          ]),
-        );
-        const bareContext = {
-          inputs: context.inputs,
-          vars: {},
-          secrets: {},
-          needs: {
-            "resolve-pages-environment-config": { outputs: jobOutputs },
-          },
-        };
-        const preparedFile = path.join(temporary, `${environment}-prepared`);
-        const prepared = run(
-          prepare,
-          environmentFor(prepare, bareContext),
-          preparedFile,
-        );
-        expect(prepared.status).toBe(0);
-        expect(prepared.stderr).toBe("");
-        expect(JSON.parse(prepared.stdout).nativeCallbacks).toBe(1);
-        const preparedOutputs = await outputs(preparedFile);
-        const saved = JSON.parse(
-          await readFile(
-            path.join(preparedOutputs.directory, "wrangler.json"),
-            "utf8",
-          ),
-        );
-        const selected =
-          environment === "production" ? saved.env.production : saved;
-        expect(JSON.parse(selected.vars[binding])).toEqual([callback]);
-        const missing = run(
-          prepare,
-          { ...environmentFor(prepare, bareContext), [binding]: "" },
-          path.join(temporary, "missing"),
-        );
-        expect(missing.status).toBe(1);
-        expect(missing.stdout).toContain("configuration did not transfer");
+      ] as const;
+      // Each case owns its output files. Join every child before cleanup.
+      for (const result of await runPool(
+        [...configurations],
+        async ([environment, callback], index) => {
+          const context = {
+            inputs: { target_environment: environment },
+            vars: { [binding]: JSON.stringify([callback], null, 2) },
+            secrets: {},
+          };
+          const resolvedFile = path.join(
+            temporary,
+            `${index}-${environment}-resolved`,
+          );
+          const resolved = await run(
+            resolver,
+            environmentFor(resolver, context),
+            resolvedFile,
+          );
+          expect(resolved.status).toBe(0);
+          expect(resolved.stderr).toBe("");
+          const stepOutputs = await outputs(resolvedFile);
+          const jobOutputs = Object.fromEntries(
+            Object.entries(protectedJob.outputs).map(([key, value]) => [
+              key,
+              interpolate(value, {
+                steps: { "native-callbacks": { outputs: stepOutputs } },
+              }),
+            ]),
+          );
+          const bareContext = {
+            inputs: context.inputs,
+            vars: {},
+            secrets: {},
+            needs: {
+              "resolve-pages-environment-config": { outputs: jobOutputs },
+            },
+          };
+          const preparedFile = path.join(
+            temporary,
+            `${index}-${environment}-prepared`,
+          );
+          const prepared = await run(
+            prepare,
+            environmentFor(prepare, bareContext),
+            preparedFile,
+          );
+          expect(prepared.status).toBe(0);
+          expect(prepared.stderr).toBe("");
+          expect(JSON.parse(prepared.stdout).nativeCallbacks).toBe(1);
+          const preparedOutputs = await outputs(preparedFile);
+          const saved = JSON.parse(
+            await readFile(
+              path.join(preparedOutputs.directory, "wrangler.json"),
+              "utf8",
+            ),
+          );
+          const selected =
+            environment === "production" ? saved.env.production : saved;
+          expect(JSON.parse(selected.vars[binding])).toEqual([callback]);
+          const missing = await run(
+            prepare,
+            { ...environmentFor(prepare, bareContext), [binding]: "" },
+            path.join(temporary, `missing-${index}`),
+          );
+          expect(missing.status).toBe(1);
+          expect(missing.stdout).toContain("configuration did not transfer");
+        },
+        4,
+      )) {
+        if (!result.ok) throw result.error;
       }
-      for (const invalidCallback of [
+      const invalidCallbacks = [
         { ...stage, privateKey: "must-not-be-output" },
         {
           ...browserStage,
@@ -275,24 +309,33 @@ describe("Pages native callback deployment", () => {
           ...browserStage,
           browserSignIn: { ...browserStage.browserSignIn, storageKey },
         })),
-      ]) {
-        const invalid = run(
-          resolver,
-          {
-            TARGET_ENVIRONMENT: "staging",
-            [binding]: JSON.stringify([invalidCallback]),
-          },
-          path.join(temporary, "invalid"),
-        );
-        expect(invalid.status).toBe(1);
-        expect(invalid.stderr).not.toContain("must-not-be-output");
+      ];
+      for (const result of await runPool(
+        invalidCallbacks,
+        async (invalidCallback, index) => {
+          const invalid = await run(
+            resolver,
+            {
+              TARGET_ENVIRONMENT: "staging",
+              [binding]: JSON.stringify([invalidCallback]),
+            },
+            path.join(temporary, `invalid-${index}`),
+          );
+          expect(invalid.status).toBe(1);
+          expect(invalid.stderr).not.toContain("must-not-be-output");
+        },
+        4,
+      )) {
+        if (!result.ok) throw result.error;
       }
       const emptyFile = path.join(temporary, "empty");
       expect(
-        run(
-          resolver,
-          { TARGET_ENVIRONMENT: "staging", [binding]: "" },
-          emptyFile,
+        (
+          await run(
+            resolver,
+            { TARGET_ENVIRONMENT: "staging", [binding]: "" },
+            emptyFile,
+          )
         ).status,
       ).toBe(0);
       expect(await outputs(emptyFile)).toEqual({
