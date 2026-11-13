@@ -1664,12 +1664,14 @@ test("a consent warm instantiates the session object without a ledger, and one m
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          // Use a fresh loopback socket after the expected 404 response.
+          Connection: "close",
           "x-test-session": session,
         },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       },
     );
-    // Consume each response before Bun/Miniflare reuses its loopback connection.
+    // Finish each request before the next real Workerd state transition.
     await result.arrayBuffer();
     return result;
   };
