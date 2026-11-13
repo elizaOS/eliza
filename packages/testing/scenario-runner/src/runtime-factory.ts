@@ -1,9 +1,14 @@
+import { redirectTwilioFetch } from "../../scripts/mocks/start-mocks.ts";
 import {
   createMockEffectCapture,
   createRemoteMockEffectCapture,
 } from "./effect-observation.ts";
 import { createScenarioRuntimeLifecycle } from "./runtime-lifecycle.ts";
-import { parseSyntheticWorldConfiguration } from "./synthetic-world-settings.ts";
+import {
+  LLM_MOCK_BASE_URL_SETTINGS,
+  parseSyntheticWorldConfiguration,
+  withoutLlmMockBaseUrls,
+} from "./synthetic-world-settings.ts";
 /**
  * Build a real AgentRuntime for scenario execution. Uses PGLite for storage
  * (no SQL mocks) and registers either the first available live LLM provider
@@ -913,25 +918,32 @@ export function resolveScenarioProviderConfig(
 }
 
 /**
- * Live lane: `prepareMockedTestEnvironment` boots the wire-level LLM mocks and
- * points `OPENAI_BASE_URL` / `ANTHROPIC_BASE_URL` at them. Left set, every
+ * Live lane: the wire-level LLM mocks (in-process or a leased world) point
+ * `OPENAI_BASE_URL` / `ANTHROPIC_BASE_URL` at themselves. Left set, every
  * "live" model call is silently answered by the mock server — Stage 1 returns
  * empty completions and scenarios fall back to REPLY — so live-lane trajectory
  * evidence would actually be mock traffic. Live means live: when a live
- * provider is selected, drop each LLM base URL that still names the mock (the
- * provider's own env, applied before this call, wins); connector mocks
- * (gmail, etc.) stay. The deterministic provider lane keeps everything as-is.
+ * provider is selected, each LLM base URL in process.env goes back to the
+ * provider's own value, else to the value the process had before the mocks
+ * started (unless that value is itself a mock URL), else is removed. Connector
+ * mocks (gmail, etc.) stay. The deterministic provider lane keeps everything.
  */
-export function clearLlmWireMockEnvForLiveProvider(
-  providerName: RuntimeFactoryResult["providerConfig"]["name"],
-  mockEnv: Readonly<Record<string, string>>,
+export function restoreLlmBaseUrlsForLiveProvider(
+  providerConfig: Pick<RuntimeFactoryResult["providerConfig"], "name" | "env">,
+  ownValues: Readonly<Record<string, string | undefined>>,
+  mockSettings: readonly Readonly<Record<string, string>>[],
   env: NodeJS.ProcessEnv = process.env,
 ): void {
-  if (providerName === DETERMINISTIC_MODEL_PROVIDER_NAME) return;
-  for (const key of ["OPENAI_BASE_URL", "ANTHROPIC_BASE_URL"]) {
-    if (mockEnv[key] !== undefined && env[key] === mockEnv[key]) {
-      delete env[key];
-    }
+  if (providerConfig.name === DETERMINISTIC_MODEL_PROVIDER_NAME) return;
+  for (const key of LLM_MOCK_BASE_URL_SETTINGS) {
+    const own = ownValues[key];
+    const value =
+      providerConfig.env[key] ??
+      (own !== undefined && !mockSettings.some((s) => s[key] === own)
+        ? own
+        : undefined);
+    if (value === undefined) delete env[key];
+    else env[key] = value;
   }
 }
 
@@ -999,6 +1011,9 @@ export async function createScenarioRuntime(
       );
     }
     let selectedProviderPlugin: Plugin | null = null;
+    const ownLlmBaseUrls = Object.fromEntries(
+      LLM_MOCK_BASE_URL_SETTINGS.map((key) => [key, process.env[key]]),
+    );
     const preparedEnvironment = await prepareScenarioExecutionEnvironment(
       executionProfile,
       loadTestMocks,
@@ -1007,14 +1022,23 @@ export async function createScenarioRuntime(
     const { testMocks, mockedEnvironment } = preparedEnvironment;
     if (mockedEnvironment)
       lifecycle.own("mocked environment", () => mockedEnvironment.cleanup());
+    // A leased world's Twilio mock is reachable only by redirecting fetch.
+    const worldTwilioBase = worldConfiguration?.endpoints.twilio;
+    if (worldTwilioBase)
+      lifecycle.own(
+        "twilio fetch redirect",
+        redirectTwilioFetch(worldTwilioBase),
+      );
     for (const [key, value] of Object.entries(providerConfig.env)) {
       process.env[key] = value;
     }
-    if (mockedEnvironment)
-      clearLlmWireMockEnvForLiveProvider(
-        providerConfig.name,
-        mockedEnvironment.envVars,
-      );
+    restoreLlmBaseUrlsForLiveProvider(providerConfig, ownLlmBaseUrls, [
+      mockedEnvironment?.envVars ?? {},
+      worldSettings ?? {},
+    ]);
+    const liveModel = providerConfig.name !== DETERMINISTIC_MODEL_PROVIDER_NAME;
+    const mockRuntimeSettings = (settings: Record<string, string>) =>
+      liveModel ? withoutLlmMockBaseUrls(settings) : settings;
     if (executionProfile === "provider-qualified") {
       assertProviderQualifiedEnvironment();
     }
@@ -1210,9 +1234,13 @@ export async function createScenarioRuntime(
     // Seeds and providers read runtime settings, not the process environment.
     // Keep compatibility mocks scoped to the runtime that owns their cleanup.
     if (mockedEnvironment)
-      applyRuntimeSettings(runtime, mockedEnvironment.envVars);
+      applyRuntimeSettings(
+        runtime,
+        mockRuntimeSettings(mockedEnvironment.envVars),
+      );
     applyRuntimeSettings(runtime, providerConfig.env);
-    if (worldSettings) applyRuntimeSettings(runtime, worldSettings);
+    if (worldSettings)
+      applyRuntimeSettings(runtime, mockRuntimeSettings(worldSettings));
     if (skipEmbeddingPlugin) {
       disableScenarioEmbeddingCapability(runtime);
     }

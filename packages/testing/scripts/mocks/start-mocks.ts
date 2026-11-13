@@ -321,6 +321,28 @@ export function mockEnvironmentSettings(
   return out;
 }
 
+const TWILIO_API_ORIGIN = "https://api.twilio.com";
+
+/**
+ * Sends Twilio REST calls made in this process to the Twilio mock; the Twilio
+ * client has no base-URL setting. Returns the function that restores fetch.
+ */
+export function redirectTwilioFetch(mockBase: string): () => void {
+  const realFetch = globalThis.fetch;
+  const base = mockBase.replace(/\/+$/, "");
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = input instanceof Request ? input.url : String(input);
+    if (!url.startsWith(`${TWILIO_API_ORIGIN}/`)) return realFetch(input, init);
+    const target = `${base}${url.slice(TWILIO_API_ORIGIN.length)}`;
+    return input instanceof Request
+      ? realFetch(new Request(target, input), init)
+      : realFetch(target, init);
+  }) as typeof fetch;
+  return () => {
+    globalThis.fetch = realFetch;
+  };
+}
+
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
