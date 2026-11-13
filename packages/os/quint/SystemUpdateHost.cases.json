@@ -12,14 +12,14 @@
     "packages/os/android/system-updater/sepolicy/seapp_contexts",
     "packages/os/android/system-updater/AndroidManifest.xml"
   ],
-  "bounds": "One device, one candidate and binary current eligibility. Model safety covers stop/crash and policy changes; cryptographic checks, Android timing, storage and device behavior still require native qualification.",
+  "bounds": "One device, one candidate and binary current eligibility. Model safety covers stop/crash and policy changes; cryptographic checks, Android timing, storage and device behavior still require native qualification. Presentation covers three observer generations and progress at 0, 50 and 100 percent.",
   "cases": [
     {
       "name": "interleavings",
       "main": "SystemUpdateHost",
       "init": "init",
       "step": "step",
-      "invariants": ["NoUnverifiedApply", "NoReplay", "UnknownNeverActive"],
+      "invariants": ["NoUnverifiedApply", "NoReplay", "UnknownNeverActive", "ValidProgress"],
       "temporal": [],
       "maxSteps": 20,
       "samples": 200
@@ -29,7 +29,7 @@
       "main": "SystemUpdateHost",
       "init": "init",
       "step": "stableStep",
-      "invariants": ["NoUnverifiedApply", "NoReplay", "UnknownNeverActive"],
+      "invariants": ["NoUnverifiedApply", "NoReplay", "UnknownNeverActive", "ValidProgress"],
       "temporal": ["StableDeliveryCompletes"],
       "temporalChecks": [
         {
