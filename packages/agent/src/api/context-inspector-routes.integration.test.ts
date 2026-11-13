@@ -16,6 +16,7 @@ import {
 } from "@elizaos/core";
 import {
   createBaseTrajectory,
+  ensureTrajectoriesTable,
   saveTrajectory,
   trajectoriesPlugin,
 } from "@elizaos/plugin-assistant";
@@ -134,6 +135,9 @@ async function harness(options: {
   fixtures.push(fixture);
   const { runtime } = fixture;
   await runtime.getServiceLoadPromise("trajectories");
+  // Persistence is off by default under test, so the service defers its DDL;
+  // these fixtures write rows directly and need the schema first.
+  await ensureTrajectoriesTable(runtime);
   for (const roomId of [ROOM, OTHER_ROOM]) {
     await runtime.ensureConnection({
       entityId: USER,

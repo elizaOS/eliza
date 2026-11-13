@@ -313,6 +313,16 @@ it("exports every owned match beyond viewer and archive page sizes", async () =>
     FROM trajectories CROSS JOIN generate_series(1, 10001) n
     WHERE id = ${sqlQuote(templateId)}`,
   );
+  await executeRawSql(
+    fixture.runtime,
+    `INSERT INTO trajectory_steps
+    (id, trajectory_id, ordinal, parent_step_id, step_type, name, started_at,
+     ended_at, payload, script)
+    SELECT id || '-archive-' || n, 'archive-' || n, ordinal, NULL, step_type,
+      name, started_at, ended_at, payload, script
+    FROM trajectory_steps CROSS JOIN generate_series(1, 10001) n
+    WHERE trajectory_id = ${sqlQuote(templateId)}`,
+  );
   const zip = await service.exportTrajectoriesZip({ source: "zip-pages" });
   expect(
     zip.entries.filter((entry) => entry.name.endsWith("/trajectory.json")),
