@@ -4,7 +4,10 @@
     "packages/cloud/shared/src/lib/services/mobile-client-registry.test.ts",
     "packages/cloud/shared/src/lib/services/mobile-client-registry.planner.test.mjs",
     "packages/cloud/shared/src/lib/services/mobile-app-auth.ts",
-    "packages/cloud/shared/src/db/repositories/mobile-app-auth-clients.test.ts"
+    "packages/cloud/shared/src/db/repositories/mobile-app-auth-clients.test.ts",
+    "packages/cloud/shared/src/db/repositories/mobile-app-auth-clients.ts",
+    "packages/cloud/api/__tests__/native-callback.pglite.test.ts",
+    "packages/cloud/quint/check-reviewed-cloud.mjs"
   ],
   "bounds": "One canonical client and one installed-client alias; boolean presence, enabled state, exact binding equality and chained-alias state.",
   "cases": [
@@ -23,5 +26,6 @@
     "Exact binding equality includes the app UUID, callback, enabled flag and credential lifetime. Existing parser regression cases exercise each mismatch separately.",
     "Grant acknowledgement, key expiry and account/organization authority are still enforced by the unchanged owner-credential path and modeled separately. This model does not authorize a database or registry mutation.",
     "Recovery requires an operator-provided matching alias and a new read; there is no unconditional liveness claim while configuration keeps changing. Live deployment and retained-token acceptance need separate evidence."
-  ]
+  ],
+  "conformance": "packages/cloud/quint/check-reviewed-cloud.mjs"
 }

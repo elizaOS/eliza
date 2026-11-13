@@ -6,7 +6,11 @@
     "packages/app/functions/_native-auth-callback-config.ts",
     ".github/workflows/cloud-cf-release.yml",
     "packages/cloud/api/__tests__/native-callback.pglite.test.ts",
-    "packages/scripts/lib/test-task-pool.ts"
+    "packages/scripts/lib/test-task-pool.ts",
+    "packages/cloud/shared/src/lib/auth/browser-sign-in.ts",
+    "packages/cloud/shared/src/lib/auth/native-auth-callback-config.ts",
+    "packages/cloud/shared/src/lib/auth/native-callback-fallback.ts",
+    "packages/cloud/api/src/bootstrap-app.ts"
   ],
   "conformance": "packages/app/quint/check-browser-sign-in.mjs",
   "bounds": {

@@ -299,3 +299,30 @@ test("Pages uses the current database callback and browser-start registration", 
   );
   expect(await (await pages(callback)).text()).toBe("SPA");
 });
+
+test("installed client aliases share one current callback policy and refuse conflicting policies", async () => {
+  const id = randomUUID();
+  const redirect = "https://eliza.app/alias-check/auth/callback";
+  await dbWrite.execute(`INSERT INTO apps (id, name, app_url, allowed_origins, is_active, is_approved)
+    VALUES ('${id}', 'Alias App', 'https://eliza.app', '["${redirect}"]'::jsonb, true, true)`);
+  for (const client of ["org.example.legacy", "org.example.current"]) {
+    await dbWrite.execute(`INSERT INTO mobile_app_auth_clients
+      (client_id, app_id, redirect_uri, android_package_name, callback_android_package, enabled)
+      VALUES ('${client}', '${id}', '${redirect}', '${client}', 'org.example.current', true)`);
+  }
+  const env = {
+    ENVIRONMENT: "production",
+    ELIZA_MOBILE_APP_AUTH_ENABLED: "true",
+  };
+  const response = await app.request(redirect, {}, env as never);
+  expect(response.status).toBe(200);
+  expect(await response.text()).toContain("package=org.example.current;end");
+  await dbWrite.execute(
+    "UPDATE mobile_app_auth_clients SET callback_android_package='org.example.other' WHERE client_id='org.example.legacy'",
+  );
+  expect((await app.request(redirect, {}, env as never)).status).toBe(503);
+  await dbWrite.execute(
+    "UPDATE mobile_app_auth_clients SET enabled=false WHERE client_id='org.example.legacy'",
+  );
+  expect((await app.request(redirect, {}, env as never)).status).toBe(200);
+});
