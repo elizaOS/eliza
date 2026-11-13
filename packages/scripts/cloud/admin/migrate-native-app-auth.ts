@@ -1,6 +1,8 @@
 /** One-time import of the protected deployment registry before database-only cutover. */
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { Client } from "pg";
 import {
   readDatabaseIdentityConfig,
@@ -425,6 +427,24 @@ if (import.meta.main) {
           project: process.env.PAGES_PROJECT ?? "eliza-app",
           environment,
         }));
+    // Reuse the canonical production effect gate immediately before BEGIN.
+    // The gate verifies exact main source and tree-bound staging evidence; a
+    // branch name or database identity alone cannot authorize this mutation.
+    if (environment === "production" && !process.argv.includes("--verify")) {
+      const root = path.resolve(import.meta.dirname, "../../../..");
+      execFileSync(
+        process.execPath,
+        [
+          "--conditions=eliza-source",
+          path.join(
+            root,
+            "packages/cloud/scripts/production-effect-certification.ts",
+          ),
+          process.env.GITHUB_SHA ?? "",
+        ],
+        { cwd: root, env: process.env, stdio: "inherit", timeout: 180_000 },
+      );
+    }
     const result = process.argv.includes("--verify")
       ? await verifyNativeRegistryMigration(database, environment)
       : await migrateNativeRegistry(

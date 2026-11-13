@@ -25,6 +25,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   # Do not import while a release can change the deployed registration source.
@@ -59,6 +60,7 @@ jobs:
 
       - name: Import or verify existing native registrations
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           OPERATION: ${{ inputs.operation }}
           ENVIRONMENT: ${{ inputs.target_environment }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
