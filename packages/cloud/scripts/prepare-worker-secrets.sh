@@ -540,14 +540,6 @@ do
   queue_secret "$name"
 done
 
-if [ "$ELIZA_MOBILE_APP_AUTH_ENABLED" = "true" ]; then
-  if ! has_nonblank_value "$ELIZA_MOBILE_APP_AUTH_APP_ID"; then
-    echo "::error::Enabled mobile App Auth requires the protected ELIZA_MOBILE_APP_AUTH_APP_ID secret"
-    exit 1
-  fi
-  queue_secret ELIZA_MOBILE_APP_AUTH_APP_ID || exit 1
-fi
-
 # Routing toggles: presence changes code paths, so unset must delete.
 # A failed removal must fail the step. Configured toggle values join
 # the exact Worker deploy rather than mutating an earlier version.

@@ -3,8 +3,8 @@
     "packages/cloud/shared/src/lib/services/mobile-client-registry.ts",
     "packages/cloud/shared/src/lib/services/mobile-client-registry.test.ts",
     "packages/cloud/shared/src/lib/services/mobile-client-registry.planner.test.mjs",
-    "packages/scripts/cloud/admin/plan-mobile-client-addition.ts",
-    "packages/scripts/cloud/admin/plan-mobile-client-addition.test.mjs"
+    "packages/cloud/shared/src/lib/services/mobile-app-auth.ts",
+    "packages/cloud/shared/src/db/repositories/mobile-app-auth-clients.test.ts"
   ],
   "bounds": "One canonical client and one installed-client alias; boolean presence, enabled state, exact binding equality and chained-alias state.",
   "cases": [
@@ -13,9 +13,7 @@
       "main": "MobileClientCompatibility",
       "init": "init",
       "step": "step",
-      "invariants": [
-        "safety"
-      ],
+      "invariants": ["safety"],
       "maxSteps": 40,
       "samples": 1000,
       "temporal": []
