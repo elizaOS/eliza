@@ -1208,8 +1208,8 @@ it("uses the current client clock when a reminder plan needs extraction", async 
 it.each(["destination", "alert", "destination and alert"])(
   "recovers unresolved %s from verification while retaining supplied reminder timing",
   async (unresolved) => {
-  vi.useFakeTimers({ toFake: ["Date"] });
-  vi.setSystemTime(new Date("2026-11-11T12:00:00Z"));
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-11T12:00:00Z"));
     const createPlan = {
       mode: "create",
       requestKind: "unspecified",
