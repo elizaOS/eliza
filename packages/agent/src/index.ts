@@ -1,5 +1,7 @@
 /** Public agent host, runtime, transport, and service APIs. */
 
+// Preserve the public host export while Core owns the implementation.
+export { tokenMatches } from "@elizaos/core";
 export {
   connectAccountAction,
   messageWantsAccountConnect,

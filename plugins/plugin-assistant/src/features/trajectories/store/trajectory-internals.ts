@@ -648,6 +648,31 @@ function parseCanonicalJsonObject(
   }
   return record as Record<string, JsonValue>;
 }
+export function parseSteps(
+  value: unknown,
+  trajectoryId = "unknown",
+): PersistedStep[] {
+  if (value === undefined || value === null) return [];
+  const parsed = parseJsonValue(value);
+  const records = Array.isArray(parsed)
+    ? parsed
+    : (() => {
+        const record = asRecord(parsed);
+        const nested = record
+          ? parseJsonValue(readRecordValue(record, ["steps"]))
+          : undefined;
+        return Array.isArray(nested) ? nested : null;
+      })();
+  if (!records) {
+    throw new ElizaError("Persisted trajectory steps are invalid", {
+      code: "TRAJECTORY_ROW_INVALID",
+      context: { trajectoryId, field: "steps_json" },
+    });
+  }
+  return records.map((step, index) =>
+    parsePersistedStepObject(step, trajectoryId, index),
+  );
+}
 export function sqlQuote(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
@@ -833,7 +858,10 @@ export async function ensureTrajectoriesTable(
   runtime: IAgentRuntime,
 ): Promise<boolean> {
   const key = runtime as object;
-  if (schemaVersions.get(key) === SCHEMA_VERSION) return true;
+  if (schemaVersions.get(key) === SCHEMA_VERSION) {
+    await forwardMigrateStepsJsonToRows(runtime);
+    return true;
+  }
   const existing = trajectorySchemaInitializationPromises.get(key);
   if (existing) return existing;
   const initialization = initializeTrajectoriesTable(runtime);
@@ -870,6 +898,7 @@ async function initializeTrajectoriesTable(
           name: "reward_components_json",
           def: "TEXT NOT NULL DEFAULT '{}'",
         },
+        { name: "steps_json", def: "TEXT NOT NULL DEFAULT '[]'" },
         { name: "scenario_id", def: "TEXT" },
         { name: "trace_id", def: "TEXT" },
         { name: "episode_id", def: "TEXT" },
@@ -924,6 +953,7 @@ async function initializeTrajectoriesTable(
         episode_id TEXT,
         batch_id TEXT,
         group_index INTEGER,
+        steps_json TEXT NOT NULL DEFAULT '[]',
         metadata TEXT NOT NULL DEFAULT '{}',
         metadata_json TEXT NOT NULL DEFAULT '{}',
         metrics_json TEXT NOT NULL DEFAULT '{}',
@@ -986,6 +1016,10 @@ async function initializeTrajectoriesTable(
       runtime,
       `CREATE INDEX IF NOT EXISTS idx_trajectory_steps_ordinal ON trajectory_steps(trajectory_id, ordinal)`,
     );
+    // A trajectory becomes row-authoritative only after its complete legacy
+    // snapshot commits in one transaction; failed trajectories remain
+    // readable from steps_json and are eligible for the next retry.
+    await forwardMigrateStepsJsonToRows(runtime);
     if (needsRecreate) {
       coreLogger.warn(
         "[trajectory-persistence] Recreated trajectories table with updated schema",
@@ -1057,6 +1091,122 @@ async function ensureTrajectoryStepsConstraintSchema(
     await execute(`DROP TABLE trajectory_steps`);
     await execute(`ALTER TABLE ${migrationTable} RENAME TO trajectory_steps`);
   });
+}
+// Dedicated rows become canonical per trajectory. The parent snapshot remains
+// a bounded compatibility projection for readers that predate the row store.
+const stepsForwardMigrationRan = new WeakSet<object>();
+const stepsForwardMigrationPromises = new WeakMap<object, Promise<boolean>>();
+async function forwardMigrateStepsJsonToRows(
+  runtime: IAgentRuntime,
+): Promise<boolean> {
+  const key = runtime as object;
+  if (stepsForwardMigrationRan.has(key)) return true;
+  const existing = stepsForwardMigrationPromises.get(key);
+  if (existing) return existing;
+  const migration = runForwardStepsMigration(runtime);
+  stepsForwardMigrationPromises.set(key, migration);
+  try {
+    const succeeded = await migration;
+    if (succeeded) stepsForwardMigrationRan.add(key);
+    return succeeded;
+  } finally {
+    if (stepsForwardMigrationPromises.get(key) === migration) {
+      stepsForwardMigrationPromises.delete(key);
+    }
+  }
+}
+async function runForwardStepsMigration(
+  runtime: IAgentRuntime,
+): Promise<boolean> {
+  try {
+    // Find trajectories that have steps_json content but no rows yet.
+    const result = await executeRawSql(
+      runtime,
+      `SELECT t.id AS id, CAST(t.steps_json AS TEXT) AS steps_json
+       FROM trajectories t
+       LEFT JOIN trajectory_steps s ON s.trajectory_id = t.id
+       WHERE s.id IS NULL
+         AND t.steps_json IS NOT NULL
+         AND CAST(t.steps_json AS TEXT) <> ''
+         AND CAST(t.steps_json AS TEXT) <> '[]'`,
+    );
+    const rows = extractRequiredRows(result, {
+      operation: "discover legacy trajectory steps",
+    });
+    if (rows.length === 0) return true;
+    let migrated = 0;
+    let failed = false;
+    for (const row of rows) {
+      const record = asRecord(row);
+      if (!record) {
+        failed = true;
+        continue;
+      }
+      const trajectoryId = toText(record.id, "");
+      if (!trajectoryId) {
+        failed = true;
+        continue;
+      }
+      const stepsRaw = record.steps_json;
+      const parsed = parseJsonValue(stepsRaw);
+      if (!Array.isArray(parsed)) {
+        failed = true;
+        continue;
+      }
+      try {
+        const steps = parsed.map((stepValue, index) =>
+          normalizeMigratedStep(stepValue, trajectoryId, index),
+        );
+        await executeRawSqlTransaction(runtime, async (execute) => {
+          await replaceStepsForTrajectoryInternal(
+            trajectoryId,
+            steps,
+            execute,
+            true,
+          );
+        });
+        migrated += steps.length;
+      } catch (error) {
+        // error-policy:J7 The complete legacy snapshot remains authoritative
+        // after rollback, while diagnostics keep this trajectory retryable.
+        failed = true;
+        warnRuntime(
+          runtime,
+          `forwardMigrateStepsJsonToRows: failed trajectory ${trajectoryId}`,
+          error,
+        );
+        runtime.reportError("TrajectoryStorage.migrateSteps", error, {
+          trajectoryId,
+          diagnosticOnly: true,
+        });
+      }
+    }
+    if (migrated > 0) {
+      coreLogger.info(
+        `[trajectory-persistence] Forward-migrated ${migrated} step rows from steps_json into trajectory_steps`,
+      );
+    }
+    return !failed;
+  } catch (err) {
+    // error-policy:J7 legacy JSON remains authoritative until a complete retry
+    // commits, so migration diagnostics cannot block ordinary reads.
+    warnRuntime(
+      runtime,
+      "forwardMigrateStepsJsonToRows: migration query failed; legacy steps_json still readable",
+      err,
+    );
+    runtime.reportError("TrajectoryStorage.migrateSteps", err, {
+      diagnosticOnly: true,
+    });
+    return false;
+  }
+}
+function normalizeMigratedStep(
+  value: unknown,
+  trajectoryId: string,
+  index: number,
+): PersistedStep {
+  return parsePersistedStepObject(value, trajectoryId, index);
 }
 // ---------------------------------------------------------------------------
 // Normalization helpers
@@ -1927,6 +2077,10 @@ export function parsePersistedTrajectoryRow(
     createdAt,
     updatedAt,
   });
+  const steps = parseSteps(
+    readRecordValue(row, ["steps_json", "stepsJson", "steps"]),
+    id,
+  );
   const optionalRowString = (
     keys: string[],
     field: string,
@@ -2019,8 +2173,7 @@ export function parsePersistedTrajectoryRow(
     episodeId,
     batchId: normalizedMetadata.batchId,
     groupIndex,
-    // Steps live in trajectory_steps; loadTrajectoryById reads them.
-    steps: [],
+    steps,
     metadata: normalizedMetadata.metadata,
     metrics: parsedMetrics,
     rewardComponents,
@@ -2058,7 +2211,16 @@ export async function loadTrajectoryById(
       });
     }
     const trajectory = parsePersistedTrajectoryRow(row, stepId);
-    trajectory.steps = await loadTrajectorySteps(runtime, stepId);
+    // Prefer steps from the dedicated trajectory_steps table when present.
+    // Falls back to the legacy steps_json blob (already populated from
+    // parsePersistedTrajectoryRow) when the dedicated table has no rows.
+    const stepsFromTable = await loadAllStepsFromDedicatedTable(
+      runtime,
+      stepId,
+    );
+    if (stepsFromTable !== null) {
+      trajectory.steps = stepsFromTable;
+    }
     return trajectory;
   } catch (error) {
     // error-policy:J2 a database read failure is distinct from a successful
@@ -2070,11 +2232,14 @@ export async function loadTrajectoryById(
     });
   }
 }
-/** Loads a trajectory's step rows in ordinal order. */
-async function loadTrajectorySteps(
+/**
+ * Loads the canonical step rows, using `null` solely to signal that a
+ * trajectory has not yet been promoted from its compatibility snapshot.
+ */
+async function loadAllStepsFromDedicatedTable(
   runtime: IAgentRuntime,
   trajectoryId: string,
-): Promise<PersistedStep[]> {
+): Promise<PersistedStep[] | null> {
   const safeId = sqlQuote(trajectoryId);
   try {
     const result = await executeRawSql(
@@ -2087,6 +2252,7 @@ async function loadTrajectorySteps(
       operation: "load dedicated steps",
       trajectoryId,
     });
+    if (rows.length === 0) return null;
     return rows.map((row, index) => {
       const record = asRecord(row);
       if (!record) {
@@ -3024,9 +3190,42 @@ export async function loadTrajectoryByStepId(
       })[0],
     )?.trajectory_id,
   );
-  return dedicatedTrajectoryId
-    ? loadTrajectoryById(runtime, dedicatedTrajectoryId)
-    : null;
+  if (dedicatedTrajectoryId) {
+    return loadTrajectoryById(runtime, dedicatedTrajectoryId);
+  }
+  const stepPattern = sqlQuote(`%"stepId":"${normalizedStepId}"%`);
+  try {
+    const result = await executeRawSql(
+      runtime,
+      `SELECT * FROM trajectories
+       WHERE agent_id = ${sqlQuote(runtime.agentId)}
+         AND COALESCE(steps_json::text, '') LIKE ${stepPattern}
+         AND NOT EXISTS (
+           SELECT 1 FROM trajectory_steps s WHERE s.trajectory_id = trajectories.id
+         )
+       ORDER BY updated_at DESC, created_at DESC
+       LIMIT 1`,
+    );
+    const rows = extractRequiredRows(result, {
+      operation: "search legacy trajectory steps",
+      stepId: normalizedStepId,
+      agentId: runtime.agentId,
+    });
+    if (rows.length === 0) return null;
+    const row = asRecord(rows[0]);
+    if (!row) {
+      throw persistedRowError(normalizedStepId, "row");
+    }
+    return parsePersistedTrajectoryRow(row, normalizedStepId);
+  } catch (error) {
+    // error-policy:J2 a failed search cannot be represented as no matching
+    // trajectory because callers use null as the valid not-found result.
+    throw new ElizaError("Could not search trajectories by step", {
+      code: "TRAJECTORY_STEP_SEARCH_FAILED",
+      cause: error,
+      context: { stepId: normalizedStepId },
+    });
+  }
 }
 function normalizeStepForPersistence(
   trajectoryId: string,
