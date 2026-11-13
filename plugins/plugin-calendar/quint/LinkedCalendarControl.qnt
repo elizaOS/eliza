@@ -1,18 +1,24 @@
-// One durable owner row, two destination identities and one reviewed pause key.
-module LinkedCalendarControl {
+// One durable owner row shared by control, dispatch and reviewed mapping edits.
+module LinkedCalendarControlState {
+  type Mapping = { destination: int, providerId: int, handoffKey: bool, disposition: str }
+  type MappingReceipt = { revision: int, operation: str, requestDestination: int, after: Mapping }
   type Control = {
     revision: int, paused: bool, destination: int,
     lease: int, issued: int, receiptRevision: int, result: str,
+    mapping: Mapping, mappingReceipt: MappingReceipt,
   }
   var s: Control
 
   pure val maxRevision = 6
   pure val maxIssued = 2
+  pure val originalMapping = { destination: 1, providerId: 1, handoffKey: false, disposition: "clean" }
   pure def reviewInputs(current: int): Set[int] =
     if (current == 0) Set(0, 1) else Set(current, current - 1)
   action init = s' = {
     revision: 0, paused: true, destination: 0,
     lease: 0, issued: 0, receiptRevision: 0, result: "initial",
+    mapping: originalMapping,
+    mappingReceipt: { revision: 0, operation: "none", requestDestination: 0, after: originalMapping },
   }
 
   action update(operation: str, expected: int, destination: int): bool = {
@@ -66,7 +72,7 @@ module LinkedCalendarControl {
   // Reopening or reconstructing a repository reads the same durable row.
   action reopen = s' = s.with("result", "reopened")
 
-  action step = any {
+  action controlStep(checkPauseReceipt: bool): bool = any {
     {
       nondet expected = reviewInputs(s.revision).oneOf()
       nondet destination = Set(0, 1, 2).oneOf()
@@ -77,12 +83,13 @@ module LinkedCalendarControl {
       nondet expected = reviewInputs(s.revision).oneOf()
       update(op, expected, 0)
     },
-    {
+    all {
+      checkPauseReceipt,
       nondet expected = reviewInputs(s.revision).union(
         if (s.receiptRevision == 0) Set() else Set(s.receiptRevision - 1)
       ).oneOf()
       nondet durable = Set(false, true).oneOf()
-      reviewedPause(expected, durable)
+      reviewedPause(expected, durable),
     },
     {
       nondet expected = reviewInputs(s.revision).oneOf()
@@ -128,6 +135,12 @@ module LinkedCalendarControl {
     (s.lease == 2).leadsTo(s.lease != 2),
   }
   temporal FairDispatchSettles = receiveOwnerSettlement.weakFair(s) implies DispatchSettles
+}
+
+module LinkedCalendarControl {
+  import LinkedCalendarControlState.*
+
+  action step = controlStep(true)
 
   run PauseWaitsForExactOwnerTest = init.then(update("select", 0, 1))
     .then(update("resume", 1, 0)).then(acquire(2, 1)).then(reviewedPause(2, true))
@@ -152,4 +165,106 @@ module LinkedCalendarControl {
     .then(reviewedPause(1, true)).expect(s.result == "key-conflict" and s.revision == 1)
     .then(update("select", 1, 1)).then(reviewedPause(0, true))
     .expect(s.result == "superseded" and s.revision == 2 and s.receiptRevision == 1)
+}
+
+module LinkedCalendarMapping {
+  import LinkedCalendarControlState.*
+
+  action editMapping(operation: str, expected: int, exactLinkReview: bool,
+      destination: int, receiptWriteSucceeds: bool): bool = {
+    val receipt = s.mappingReceipt
+    val sameRequest = expected + 1 == receipt.revision and exactLinkReview and
+      operation == receipt.operation and destination == receipt.requestDestination
+    val allowed = s.paused and s.lease == 0 and expected == s.revision and
+      s.revision < maxRevision and exactLinkReview and
+      (operation == "retain-local" or (s.destination != 0 and
+        destination == s.destination and destination != s.mapping.destination))
+    val nextMapping = if (operation == "retain-local")
+      s.mapping.with("disposition", "local-only")
+    else { destination: destination, providerId: 0, handoffKey: true, disposition: "create" }
+    s' = if (receipt.revision > 0) s.with("result",
+      if (sameRequest and s.revision == receipt.revision) "mapping-replayed" else "refused")
+    else if (not(allowed)) s.with("result", "refused")
+    else if (not(receiptWriteSucceeds)) s.with("result", "mapping-rolled-back")
+    else {
+      ...s, revision: s.revision + 1, mapping: nextMapping, result: "mapping-committed",
+      mappingReceipt: { revision: s.revision + 1, operation: operation,
+        requestDestination: destination, after: nextMapping },
+    }
+  }
+
+  val mappingReviewInputs = reviewInputs(s.revision).union(
+    if (s.mappingReceipt.revision == 0) Set() else Set(s.mappingReceipt.revision - 1)
+  )
+
+  action step = any {
+    controlStep(false),
+    {
+      nondet expected = mappingReviewInputs.oneOf()
+      nondet exactLinkReview = Set(false, true).oneOf()
+      nondet durable = Set(false, true).oneOf()
+      editMapping("retain-local", expected, exactLinkReview, 0, durable)
+    },
+    {
+      nondet expected = mappingReviewInputs.oneOf()
+      nondet exactLinkReview = Set(false, true).oneOf()
+      nondet destination = Set(1, 2).oneOf()
+      nondet durable = Set(false, true).oneOf()
+      editMapping("rebind", expected, exactLinkReview, destination, durable)
+    },
+  }
+
+  val MappingHasDurableReceipt = if (s.mappingReceipt.revision == 0)
+    s.mapping == originalMapping
+  else s.mappingReceipt.revision <= s.revision and s.mappingReceipt.after == s.mapping
+
+  val RetainLocalPreservesProviderIdentity = (s.mappingReceipt.operation == "retain-local") implies
+    s.mapping == originalMapping.with("disposition", "local-only")
+
+  val RebindStagesFreshCreate = (s.mappingReceipt.operation == "rebind") implies
+    s.mapping.destination == s.mappingReceipt.requestDestination and
+    s.mapping.destination != originalMapping.destination and
+    s.mapping.providerId == 0 and s.mapping.handoffKey and s.mapping.disposition == "create"
+
+  temporal MappingCommitRequiresDrainedPause = always((
+    next(s.mappingReceipt) != s.mappingReceipt implies
+      s.mappingReceipt.revision == 0 and s.paused and s.lease == 0 and
+      next(s.paused) and next(s.lease) == 0 and next(s.destination) == s.destination and
+      next(s.revision) == s.revision + 1 and next(s.mappingReceipt.revision) == next(s.revision) and
+      (next(s.mappingReceipt.operation) == "rebind" implies next(s.mapping.destination) == s.destination)
+  ).orKeep(s))
+
+  temporal MappingReplayAndRollbackPreserveRows = always((
+    (next(s.result) == "mapping-replayed" or next(s.result) == "mapping-rolled-back") implies
+      next(s.with("result", "irrelevant")) == s.with("result", "irrelevant")
+  ).orKeep(s))
+
+  run RebindStagesFreshCreateTest = init.then(update("select", 0, 2))
+    .then(editMapping("rebind", 1, true, 1, true)).expect(s.result == "refused")
+    .then(editMapping("rebind", 1, true, 2, false))
+    .expect(s.result == "mapping-rolled-back" and s.revision == 1 and s.mapping == originalMapping)
+    .then(editMapping("rebind", 1, true, 2, true)).expect(RebindStagesFreshCreate)
+    .then(reopen).then(editMapping("rebind", 1, true, 2, true))
+    .expect(s.result == "mapping-replayed" and s.revision == 2)
+    .then(update("pause", 2, 0)).then(editMapping("rebind", 1, true, 2, true))
+    .expect(s.result == "refused" and s.revision == 3 and s.mappingReceipt.revision == 2)
+
+  run RetainLocalRollsBackAndReplaysTest = init.then(update("select", 0, 2))
+    .then(editMapping("retain-local", 1, false, 0, true)).expect(s.result == "refused")
+    .then(editMapping("retain-local", 1, true, 0, false))
+    .expect(s.result == "mapping-rolled-back" and s.revision == 1 and s.mapping == originalMapping)
+    .then(editMapping("retain-local", 1, true, 0, true))
+    .expect(RetainLocalPreservesProviderIdentity and s.result == "mapping-committed")
+    .then(editMapping("rebind", 1, true, 2, true)).expect(s.result == "refused")
+    .then(reopen).then(editMapping("retain-local", 1, true, 0, true))
+    .expect(s.result == "mapping-replayed" and s.revision == 2)
+
+  run MappingWaitsForAdmittedOwnerTest = init.then(update("select", 0, 2))
+    .then(update("resume", 1, 0)).then(acquire(2, 2)).then(update("pause", 2, 0))
+    .then(editMapping("retain-local", 3, true, 0, true))
+    .expect(s.result == "refused" and s.lease == 1 and s.mapping == originalMapping)
+    .then(editMapping("rebind", 3, true, 2, true))
+    .expect(s.result == "refused" and s.lease == 1 and s.mapping == originalMapping)
+    .then(settle(1, -1)).then(editMapping("rebind", 3, true, 2, true))
+    .expect(s.result == "mapping-committed" and s.revision == 4)
 }
