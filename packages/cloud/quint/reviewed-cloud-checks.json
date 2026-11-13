@@ -543,5 +543,28 @@
         "Pages failures report only request stage and numeric provider codes"
       ]
     }
+  ],
+  "StagingStripeBindings.qnt": [
+    {
+      "file": "packages/cloud/scripts/prepare-worker-secrets.test.ts",
+      "required": [
+        "a full test catalog is checked before preparation and provider failure stops it",
+        "billing rate is preserved rather than passed to the toggle deletion loop",
+        "blank production sources accept existing key and billing rate without reading values",
+        "caller passes the billing secret through the reusable workflow into preparation",
+        "full production preparation with configured Stripe inputs preserves only the intended bindings",
+        "full staging preparation with blank Stripe inputs preserves only the intended bindings",
+        "full staging preparation with configured Stripe inputs preserves only the intended bindings",
+        "invalid configured billing rates fail without printing their values",
+        "operator catalog preflight still rejects a known wrong price and release mode rejects provider drift",
+        "production ignores staging Stripe input and never checks or rotates its catalog",
+        "production with a blank provider source rejects a missing billing rate before mutation",
+        "queued key and positive billing rate can initialize a Cartesia deployment",
+        "release catalog preflight verifies both exact plans without claiming the optional negative fixture",
+        "staging only requires batch billing when Cartesia is explicitly selected",
+        "staging preserves an entirely blank Stripe catalog and refuses each partial replacement",
+        "staging rejects live keys and malformed independent Stripe inputs without logging their values"
+      ]
+    }
   ]
 }
