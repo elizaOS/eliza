@@ -163,7 +163,6 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
 
   sessionExact("dev.stack", "GET", "/api/dev/stack"),
   sessionExact("dev.route-catalog", "GET", "/api/dev/route-catalog"),
-  sessionExact("dev.cursor-screenshot", "GET", "/api/dev/cursor-screenshot"),
   sessionExact("dev.console-log", "GET", "/api/dev/console-log"),
   sessionExact("dev.voice-latency", "GET", "/api/dev/voice-latency"),
   sessionExact(
