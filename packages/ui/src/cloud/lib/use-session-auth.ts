@@ -49,7 +49,7 @@ const PLAYWRIGHT_TEST_USER_EMAIL = "local-live-test-user@agent.local";
  * A build-time constant, so production bundles drop every test sign-in branch.
  */
 const PLAYWRIGHT_TEST_AUTH_ENABLED =
-  import.meta.env.VITE_PLAYWRIGHT_TEST_AUTH === "true";
+  import.meta.env?.VITE_PLAYWRIGHT_TEST_AUTH === "true";
 function hasCookie(name: string, value?: string): boolean {
   if (typeof document === "undefined") return false;
   const expected = value ? `${name}=${value}` : `${name}=`;

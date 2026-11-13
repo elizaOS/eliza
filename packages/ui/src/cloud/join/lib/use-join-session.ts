@@ -16,7 +16,7 @@ import { LocalStewardAuthContext } from "../../shell/StewardProvider";
 
 // A build-time constant, so production bundles drop every test sign-in branch.
 const PLAYWRIGHT_TEST_AUTH_ENABLED =
-  import.meta.env.VITE_PLAYWRIGHT_TEST_AUTH === "true";
+  import.meta.env?.VITE_PLAYWRIGHT_TEST_AUTH === "true";
 
 function tokenIsLive(token: string): boolean {
   const payload = decodeJwtPayload(token);
