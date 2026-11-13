@@ -11,6 +11,10 @@ on:
         description: Read the selected staging test checkout and validate its captured invoice
         type: boolean
         default: false
+      reconcile_checkout:
+        description: Reconcile the selected already-paid Stripe test checkout on staging
+        type: boolean
+        default: false
       checkout_tail:
         description: Observe safe checkout failure markers for five minutes on staging
         type: boolean
@@ -39,7 +43,7 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile --ignore-scripts
       - name: Require one diagnostic mode
-        if: ${{ inputs.checkout_readback && inputs.checkout_tail }}
+        if: ${{ (inputs.checkout_readback && inputs.checkout_tail) || (inputs.reconcile_checkout && !inputs.checkout_readback) }}
         run: exit 1
       - name: Read-only catalog diagnosis
         if: ${{ !inputs.checkout_readback && !inputs.checkout_tail }}
@@ -63,6 +67,7 @@ jobs:
           APP_BILLING_ENVIRONMENT: test
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           CHECKOUT_SESSION_ID: ${{ secrets.STRIPE_DIAGNOSTIC_CHECKOUT_SESSION_ID }}
+          RECONCILE_CHECKOUT: ${{ inputs.reconcile_checkout == true && '1' || '0' }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}
           DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
@@ -86,6 +91,7 @@ jobs:
             console.log(JSON.stringify({ failure: {
               stage, name: safe(error?.name), type: safe(error?.type), code,
               sqlstate: code && /^[0-9A-Z]{5}$/.test(code) ? code : undefined,
+              reason: safe(error?.context?.reason),
               statusCode: typeof error?.statusCode === 'number' ? error.statusCode : undefined,
             }}));
             process.exitCode = 1;
@@ -126,6 +132,7 @@ jobs:
             if (!uuid.test(session.metadata?.organization_id ?? '') ||
                 !uuid.test(session.metadata?.command_id ?? '')) throw new Error('Checkout database identity missing');
             let database;
+            let databaseIdentityVerified = false;
             let databaseStage = 'database_configuration';
             try {
               if (!process.env.DATABASE_URL) throw new Error('Database connection missing');
@@ -184,6 +191,7 @@ jobs:
               `, [session.metadata.organization_id, session.metadata.command_id,
                   reference(session.subscription), reference(session.invoice), account?.id ?? null, reference(session.customer)]);
               if (snapshot.rows.length !== 1) throw new Error('Database snapshot missing');
+              databaseIdentityVerified = true;
               console.log(JSON.stringify({ database: { identityVerified: true, readOnly: true, ...snapshot.rows[0] } }));
             } catch (error) { failure(databaseStage, error); }
             finally {
@@ -237,6 +245,16 @@ jobs:
                 customerMatchesSession: reference(charge.customer) === reference(session.customer),
                 paymentIntentMatchesInvoice: reference(charge.payment_intent) === parsed.data.payment_intent,
               }}));
+            }
+            if (process.env.RECONCILE_CHECKOUT === '1') {
+              if (!databaseIdentityVerified || session.status !== 'complete' || session.payment_status !== 'paid' ||
+                  !parsed.success || invoice.livemode !== false || !subscription || subscription.livemode !== false) {
+                throw new Error('Selected paid test checkout is not verified');
+              }
+              stage = 'reconcile_existing_paid_test_checkout';
+              const { reconcileSubscriptionCheckout } = await import('./packages/cloud/shared/src/lib/services/subscription-checkout.ts');
+              await reconcileSubscriptionCheckout(session.id, session.metadata.organization_id);
+              console.log(JSON.stringify({ reconciliation: { completed: true, existingPaidTestCheckout: true } }));
             }
           } catch (error) {
             failure(stage, error);
