@@ -61,6 +61,7 @@ regexes = [
 # historical additions remain in this branch's required commit-range scan.
 [[allowlists]]
 description = "Synthetic reply-body discriminator in the phone privacy test"
+targetRules = ["generic-api-key"]
 condition = "AND"
 paths = ['''^plugins/plugin-native-phone/test/reply-draft-route\.test\.ts$''']
 regexTarget = "secret"
@@ -536,6 +537,7 @@ regexes = ['''^0d0f3c61-6f1b-4e59-9a55-0c6f6f4b2a10$''']
 # Exact reviewed fixture content and file.
 [[allowlists]]
 description = "Historical security model scope description"
+targetRules = ["generic-api-key"]
 condition = "AND"
 paths = ['''^packages/agent/quint/SecurityEscapeRetirement\.cases\.json$''']
 regexTarget = "line"
@@ -544,6 +546,7 @@ regexes = ['''^\s*"domain": "Three finite synchronous policy projections: produc
 # Exact reviewed fixture content and file.
 [[allowlists]]
 description = "Historical synthetic outgoing message fixture"
+targetRules = ["generic-api-key"]
 condition = "AND"
 paths = ['''^plugins/plugin-native-phone/test/reply-draft-route\.test\.ts$''']
 regexTarget = "line"
