@@ -159,7 +159,6 @@ import {
   subscribeAppShellPages,
   subscribeAuthStatus,
   TAB_PATHS,
-  TrayLauncher,
   tabFromPath,
   topLevelAuthGateOwnsSurface,
   useActiveAgentAuthority,
@@ -188,7 +187,6 @@ import {
   VoiceSelfTestShell,
   VoiceWorkbenchShell,
   WalletSectionNav,
-  WidgetHost,
 } from "@elizaos/ui";
 import { X } from "lucide-react";
 import {
@@ -313,25 +311,6 @@ function ChatOverlayShell({
         />
       </div>
     </>
-  );
-}
-/**
- * Native tray popover surface (#9953 Phase 4 / #12184). Renders the compact
- * launcher (the `DESKTOP_VIEW_WINDOWS` catalog + "Open Eliza", registered by
- * the desktop host) above the shell widget registry's "home" slot inside the
- * frameless, transparent, always-on-top window the native tray anchors near its
- * icon — no app chrome. Each widget self-hides when it has nothing to show, so
- * the popover is a compact at-a-glance panel + one-click launcher.
- */
-function TrayPopoverShell() {
-  return (
-    <div
-      data-testid="tray-popover-shell"
-      className="fixed inset-0 flex flex-col gap-3 overflow-y-auto bg-transparent p-3"
-    >
-      <TrayLauncher />
-      <WidgetHost slot="home" layout="stack" surface="tray" />
-    </div>
   );
 }
 function surfaceOwnsViewport(
@@ -3317,17 +3296,6 @@ function AppContent() {
           <BootRecoveryConductorMount />
           <ShellOverlays actionNotice={actionNotice} />
         </ShellControllerProvider>
-        <BugReportModal />
-      </BugReportProvider>
-    );
-  }
-  // Native tray popover window — render JUST the widget surface, no app chrome
-  // or onboarding gate. The native tray anchors this transparent, always-on-top
-  // window beside its icon (#9953 Phase 4).
-  if (shellMode === "tray-popover") {
-    return (
-      <BugReportProvider value={bugReport}>
-        <TrayPopoverShell />
         <BugReportModal />
       </BugReportProvider>
     );

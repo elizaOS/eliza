@@ -401,19 +401,14 @@ async function importUiAppNavigateViewCompat(
 async function importUiBridgeCompat(
   boundScope = getActiveSurfaceRealmScope(),
 ): Promise<Record<string, unknown>> {
-  const [
-    capacitor,
-    windowBridge,
-    nativePlugins,
-    pluginBridge,
-    storage,
-  ] = await Promise.all([
-    import("../../bridge/capacitor-bridge"),
-    import("../../bridge/eliza-window-bridge"),
-    import("../../bridge/native-plugins"),
-    import("../../bridge/plugin-bridge"),
-    import("../../bridge/storage-bridge"),
-  ]);
+  const [capacitor, windowBridge, nativePlugins, pluginBridge, storage] =
+    await Promise.all([
+      import("../../bridge/capacitor-bridge"),
+      import("../../bridge/eliza-window-bridge"),
+      import("../../bridge/native-plugins"),
+      import("../../bridge/plugin-bridge"),
+      import("../../bridge/storage-bridge"),
+    ]);
   // Only view-facing bridge leaves are projected; raw shell channels never enter
   // this object. Storage methods below bind authority to the importing view.
   const bridge = {

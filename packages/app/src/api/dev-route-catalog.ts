@@ -23,9 +23,9 @@ export const ELIZA_DEV_ROUTE_CATALOG_SCHEMA_VERSION = 1 as const;
  * the existing feature-flag / platform-gate logic in `packages/ui/src/navigation/index.ts`
  * and `App.tsx`.
  */
-export type DevRouteVisibility = "all" | "android" | "desktop" | "dev-mode";
+export type DevRouteVisibility = "all" | "android" | "dev-mode";
 
-export type DevRoutePlatformGate = "ios" | "android" | "desktop" | "web" | null;
+export type DevRoutePlatformGate = "ios" | "android" | "web" | null;
 
 export interface DevRouteEntry {
   /** Built-in tab id from `@elizaos/ui` (`BuiltinTab`). */
@@ -380,16 +380,6 @@ const ROUTES: DevRouteEntry[] = [
     featureFlag: null,
     requiresAuth: true,
     platformGate: null,
-  },
-  {
-    tabId: "desktop",
-    path: "/desktop",
-    label: "Desktop",
-    group: "Hidden",
-    visibility: "desktop",
-    featureFlag: null,
-    requiresAuth: true,
-    platformGate: "desktop",
   },
   {
     tabId: "background",

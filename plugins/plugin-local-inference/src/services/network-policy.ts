@@ -13,12 +13,9 @@
  * - **iOS** (Capacitor / native): `@capacitor/network` for connection type
  *   plus our native bridge that reads `NWPathMonitor.path.isExpensive`.
  *   `isExpensive == true` is Apple's "treat as metered" flag.
- * - **Desktop** (Electron/Electrobun): platform-specific OS shims —
- *   WinRT `NetworkCostType` on Windows, NetworkManager dbus
- *   `ActiveConnection.Metered` on Linux, `NWPathMonitor` on macOS.
- *   When no shim is available, falls back to `metered: false` on a wired
- *   link and `metered: null` (unknown) on Wi-Fi; the policy turns
- *   `unknown` into `ask` so the user is never surprised.
+ * - **Server / CLI on a desktop OS**: no OS probe; the node-default probe
+ *   reports `unknown`, which the policy turns into `ask` so the user is
+ *   never surprised.
  * - **Headless server / CLI** (`ELIZA_NETWORK_POLICY=headless` or
  *   `process.stdout.isTTY === false && process.env.CI !== undefined`):
  *   skip auto-update entirely. The `eliza models update` CLI invocation
@@ -56,9 +53,6 @@ export interface NetworkProbe {
 		| "android-host"
 		| "capacitor-android"
 		| "capacitor-ios"
-		| "electron-darwin"
-		| "electron-win32"
-		| "electron-linux"
 		| "headless";
 	probe(): Promise<RawNetworkState>;
 }
@@ -179,38 +173,6 @@ export function capacitorIosProbe(): NetworkProbe {
 	};
 }
 
-/**
- * Electron / desktop probe. Calls into a process-bridge-exposed function
- * (Electrobun: `Bun.napi`/`electrobunNative.networkPolicyProbe`; classic
- * Electron: `electronAPI.networkPolicyProbe`) that wraps the OS call.
- * Returns `unknown` when no bridge is wired (development-mode browser
- * preview), which downgrades to `ask` on `wifi-*` and `auto` on
- * `ethernet-unmetered` per the matrix.
- */
-export function electronDesktopProbe(): NetworkProbe {
-	const detectId = (): NetworkProbe["id"] => {
-		if (process.platform === "darwin") return "electron-darwin";
-		if (process.platform === "win32") return "electron-win32";
-		return "electron-linux";
-	};
-	return {
-		id: detectId(),
-		async probe(): Promise<RawNetworkState> {
-			const bridge = readGlobalDesktopBridge();
-			if (!bridge) return { connectionType: "unknown", metered: null };
-			try {
-				const res = await bridge.networkPolicyProbe();
-				return {
-					connectionType: res.connectionType ?? "unknown",
-					metered: res.metered ?? null,
-				};
-			} catch {
-				return { connectionType: "unknown", metered: null };
-			}
-		},
-	};
-}
-
 interface CapacitorBridge {
 	Network?: {
 		getStatus?: () => Promise<{
@@ -267,21 +229,6 @@ async function readIosMeteredShim(): Promise<boolean | null> {
 	}
 }
 
-interface DesktopBridge {
-	networkPolicyProbe(): Promise<{
-		connectionType?: RawNetworkState["connectionType"];
-		metered?: boolean | null;
-	}>;
-}
-
-function readGlobalDesktopBridge(): DesktopBridge | null {
-	const g = globalThis as {
-		electrobunNative?: DesktopBridge;
-		electronAPI?: DesktopBridge;
-	};
-	return g.electrobunNative ?? g.electronAPI ?? null;
-}
-
 /**
  * Pick the active probe based on platform heuristics. Order:
  *
@@ -290,8 +237,7 @@ function readGlobalDesktopBridge(): DesktopBridge | null {
  * 3. Capacitor android bridge present → Android probe.
  * 4. Capacitor iOS bridge present → iOS probe (`process.platform` !==
  *    `android` and a `Capacitor` global exists).
- * 5. Desktop bridge present → desktop probe.
- * 6. Otherwise → node-default (returns `unknown`).
+ * 5. Otherwise → node-default (returns `unknown`).
  */
 export function pickActiveProbe(): NetworkProbe {
 	const socketName = process.env.ELIZA_BIONIC_INFERENCE_SOCK?.trim();
@@ -324,7 +270,6 @@ export function pickActiveProbe(): NetworkProbe {
 	const platform = g.Capacitor?.getPlatform?.();
 	if (platform === "android") return capacitorAndroidProbe();
 	if (platform === "ios") return capacitorIosProbe();
-	if (readGlobalDesktopBridge() !== null) return electronDesktopProbe();
 	return NODE_DEFAULT_PROBE;
 }
 

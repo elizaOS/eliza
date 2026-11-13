@@ -1,7 +1,6 @@
 /** Selects an exact connected browser profile for this agent's searches. */
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../api/client";
-import { isDesktopLocalApiBaseUrl } from "../../api/desktop-local-api-base";
 import { isMobileLocalAgentUrl } from "../../first-run/mobile-runtime-mode";
 import {
   getActiveAgentAuthority,
@@ -23,9 +22,7 @@ export function BrowserSearchSettings(): React.JSX.Element {
   const base = client.getBaseUrl?.() ?? "";
   const remote =
     (active !== undefined && active.kind !== "local") ||
-    Boolean(
-      base && !isMobileLocalAgentUrl(base) && !isDesktopLocalApiBaseUrl(base),
-    );
+    Boolean(base && !isMobileLocalAgentUrl(base));
   return remote ? (
     <RemoteBrowserSearchSettings key={authority} authority={authority} />
   ) : (

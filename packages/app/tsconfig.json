@@ -58,9 +58,6 @@
       "@elizaos/capacitor-agent": [
         "../../plugins/plugin-native-agent/src/index.ts"
       ],
-      "@elizaos/capacitor-desktop": [
-        "../../plugins/plugin-native-desktop/src/index.ts"
-      ],
       "@elizaos/plugin-native-inference/llama": [
         "../../plugins/plugin-native-inference/src/llama/index.ts"
       ],

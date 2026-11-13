@@ -53,11 +53,6 @@
       "nodeResolve": true
     },
     {
-      "packageName": "plugin-native-desktop",
-      "globalName": "capacitorDesktop",
-      "nodeResolve": true
-    },
-    {
       "packageName": "plugin-native-eliza-tasks",
       "globalName": "capacitorElizaTasks",
       "nodeResolve": true

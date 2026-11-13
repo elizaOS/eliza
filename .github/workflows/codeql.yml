@@ -86,7 +86,6 @@ jobs:
               - 'plugins/plugin-native-camera/**'
               - 'plugins/plugin-native-canvas/**'
               - 'plugins/plugin-native-contacts/**'
-              - 'plugins/plugin-native-desktop/**'
               - 'plugins/plugin-native-eliza-tasks/**'
               - 'plugins/plugin-native-filesystem/**'
               - 'plugins/plugin-native-gateway/**'

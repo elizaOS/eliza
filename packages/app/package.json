@@ -205,7 +205,6 @@
     "@elizaos/capacitor-calendar": "workspace:*",
     "@elizaos/capacitor-camera": "workspace:*",
     "@elizaos/capacitor-canvas": "workspace:*",
-    "@elizaos/capacitor-desktop": "workspace:*",
     "@elizaos/capacitor-gateway": "workspace:*",
     "@elizaos/capacitor-location": "workspace:*",
     "@elizaos/capacitor-mobile-signals": "workspace:*",

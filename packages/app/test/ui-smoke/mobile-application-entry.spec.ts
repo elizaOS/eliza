@@ -649,7 +649,6 @@ test("Home Calendar ranks the current visible feed and retires held old-owner re
       },
     }),
   );
-  let futureMinutes: number | null = null;
   let owner = "First",
     feedState = "complete",
     feedReads = 0,
@@ -681,8 +680,7 @@ test("Home Calendar ranks the current visible feed and retires held old-owner re
   const windows: { timeMin: string | null; timeMax: string | null }[] = [];
   const payload = (url: URL, label: string) => {
     const start = new Date(clock);
-    if (futureMinutes === null) start.setHours(0, 0, 0, 0);
-    else start.setTime(clock.getTime() + futureMinutes * 60000);
+    start.setHours(0, 0, 0, 0);
     const result = {
       state: feedState,
       source: "cache",
@@ -784,10 +782,6 @@ test("Home Calendar ranks the current visible feed and retires held old-owner re
   ];
   expect(publicApiAssets, "one compiled public host API").toHaveLength(1);
   const clientPath = `/assets/${publicApiAssets[0]}`;
-  const originalToken = await page.evaluate(async (path) => {
-    const { client } = await import(path);
-    return client.getRestAuthToken();
-  }, clientPath);
   const initial = { feed: feedReads, sources: sourceReads };
   await page.keyboard.press("Escape");
   await page.screenshot({ path: info.outputPath("home-shared-feed.png") });
@@ -918,36 +912,6 @@ test("Home Calendar ranks the current visible feed and retires held old-owner re
   await page.screenshot({
     path: info.outputPath("home-partial-unconfirmed.png"),
   });
-  feedState = "complete";
-  await page.evaluate(
-    async ({ path, token }) => {
-      const { client } = await import(path);
-      client.setToken(token);
-    },
-    { path: clientPath, token: originalToken },
-  );
-  await page.goto("/chat?shellMode=tray-popover", {
-    waitUntil: "domcontentloaded",
-  });
-  await expect(page.getByTestId("tray-popover-shell")).toBeVisible();
-  await expect(card).toHaveCount(0);
-  futureMinutes = 45;
-  await page.evaluate(() => {
-    Object.defineProperty(document, "visibilityState", {
-      configurable: true,
-      value: "hidden",
-    });
-    document.dispatchEvent(new Event("visibilitychange"));
-  });
-  await page.evaluate(() => {
-    Object.defineProperty(document, "visibilityState", {
-      configurable: true,
-      value: "visible",
-    });
-    document.dispatchEvent(new Event("visibilitychange"));
-  });
-  await expect(card).toContainText("Second today");
-  await page.screenshot({ path: info.outputPath("tray-near-event.png") });
   await info.attach("request-counts", {
     body: JSON.stringify({
       initial,

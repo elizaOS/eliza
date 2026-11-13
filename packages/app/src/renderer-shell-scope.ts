@@ -33,8 +33,6 @@ export function resolveRendererShellKind(
   switch (inputs.windowShellRoute.mode) {
     case "chat-overlay":
       return "chat-overlay";
-    case "tray-popover":
-      return "tray-popover";
     case "settings":
     case "surface":
       return "detached";

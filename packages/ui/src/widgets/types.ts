@@ -42,8 +42,6 @@ export interface PluginWidgetDeclaration extends CorePluginWidgetDeclaration {
 }
 /** Props passed to every widget React component. */
 export interface WidgetProps {
-  /** Explicit host surface; compact tray glance windows may differ from Home. */
-  surface?: "application" | "tray";
   pluginId: string;
   pluginState?: PluginInfo;
   events?: ActivityEvent[];

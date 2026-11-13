@@ -303,10 +303,7 @@ function resolveDedicatedCloudAgentControlPlaneApiBase(
   // Native app shells, packaged desktop, and local app development are all
   // first-party Cloud CORS origins. They have no Cloud page hostname to map,
   // so their configured environment is the authoritative control plane.
-  if (
-    shouldUseNativeCloudHttp() ||
-    isTrustedLocalCloudPage()
-  ) {
+  if (shouldUseNativeCloudHttp() || isTrustedLocalCloudPage()) {
     return resolveConfiguredDirectCloudApiBase();
   }
   return null;
@@ -620,10 +617,7 @@ export function forgetPendingCloudLogin(sessionId: string): void {
 }
 
 function resolveCloudCliLoginReturnUrl(sessionId: string): string | null {
-  if (
-    shouldUseNativeCloudHttp() ||
-    typeof window === "undefined"
-  ) {
+  if (shouldUseNativeCloudHttp() || typeof window === "undefined") {
     return null;
   }
   try {

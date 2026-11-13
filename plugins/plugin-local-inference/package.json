@@ -12,12 +12,6 @@
 			"import": "./dist/index.js",
 			"default": "./dist/index.js"
 		},
-		"./voice-wake": {
-			"eliza-source": "./src/voice-wake.ts",
-			"types": "./src/voice-wake.ts",
-			"import": "./dist/voice-wake.js",
-			"default": "./dist/voice-wake.js"
-		},
 		"./runtime": {
 			"eliza-source": "./src/runtime/index.ts",
 			"types": "./src/runtime/index.ts",

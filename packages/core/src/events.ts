@@ -35,7 +35,6 @@ export const STOP_EMOTE_EVENT = "eliza:stop-emote" as const;
 export const AGENT_READY_EVENT = "eliza:agent-ready" as const;
 export const BRIDGE_READY_EVENT = "eliza:bridge-ready" as const;
 export const SHARE_TARGET_EVENT = "eliza:share-target" as const;
-export const TRAY_ACTION_EVENT = "eliza:tray-action" as const;
 
 // ── App state ────────────────────────────────────────────────────────────
 export const APP_RESUME_EVENT = "eliza:app-resume" as const;
@@ -306,7 +305,6 @@ export type ElizaDocumentEventName =
 	| typeof AGENT_READY_EVENT
 	| typeof BRIDGE_READY_EVENT
 	| typeof SHARE_TARGET_EVENT
-	| typeof TRAY_ACTION_EVENT
 	| typeof APP_RESUME_EVENT
 	| typeof APP_PAUSE_EVENT
 	| typeof CONNECT_EVENT

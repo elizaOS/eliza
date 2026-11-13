@@ -210,7 +210,6 @@
         "@elizaos/capacitor-calendar": "workspace:*",
         "@elizaos/capacitor-camera": "workspace:*",
         "@elizaos/capacitor-canvas": "workspace:*",
-        "@elizaos/capacitor-desktop": "workspace:*",
         "@elizaos/capacitor-gateway": "workspace:*",
         "@elizaos/capacitor-location": "workspace:*",
         "@elizaos/capacitor-mobile-signals": "workspace:*",
@@ -2377,21 +2376,6 @@
         "react-dom": "^19.3.1",
       },
     },
-    "plugins/plugin-native-desktop": {
-      "name": "@elizaos/capacitor-desktop",
-      "version": "2.0.6",
-      "devDependencies": {
-        "@capacitor/core": "^8.3.1",
-        "@rollup/plugin-node-resolve": "^16.0.0",
-        "@typescript/native": "npm:typescript@^7.0.2",
-        "rollup": "^4.68.0",
-        "typescript": "^6.0.3",
-        "vitest": "^5.1.0",
-      },
-      "peerDependencies": {
-        "@capacitor/core": "^8.3.1",
-      },
-    },
     "plugins/plugin-native-eliza-tasks": {
       "name": "@elizaos/capacitor-eliza-tasks",
       "version": "2.0.6",
@@ -3906,8 +3890,6 @@
     "@elizaos/capacitor-camera": ["@elizaos/capacitor-camera@workspace:plugins/plugin-native-camera"],
 
     "@elizaos/capacitor-canvas": ["@elizaos/capacitor-canvas@workspace:plugins/plugin-native-canvas"],
-
-    "@elizaos/capacitor-desktop": ["@elizaos/capacitor-desktop@workspace:plugins/plugin-native-desktop"],
 
     "@elizaos/capacitor-eliza-tasks": ["@elizaos/capacitor-eliza-tasks@workspace:plugins/plugin-native-eliza-tasks"],
 
@@ -9894,8 +9876,6 @@
     "@elizaos/capacitor-camera/@capacitor/core": ["@capacitor/core@8.5.2", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-agnQbGdhGw/KZFuLf7H9SY2o+oE7upkr/WPQsYaokXP6f9chaE8iVmbKkfN6SVl4w3pmz7oZ3Ur1hbkmy1hx+w=="],
 
     "@elizaos/capacitor-canvas/@capacitor/core": ["@capacitor/core@8.5.2", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-agnQbGdhGw/KZFuLf7H9SY2o+oE7upkr/WPQsYaokXP6f9chaE8iVmbKkfN6SVl4w3pmz7oZ3Ur1hbkmy1hx+w=="],
-
-    "@elizaos/capacitor-desktop/@capacitor/core": ["@capacitor/core@8.5.2", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-agnQbGdhGw/KZFuLf7H9SY2o+oE7upkr/WPQsYaokXP6f9chaE8iVmbKkfN6SVl4w3pmz7oZ3Ur1hbkmy1hx+w=="],
 
     "@elizaos/capacitor-eliza-tasks/@capacitor/core": ["@capacitor/core@8.5.2", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-agnQbGdhGw/KZFuLf7H9SY2o+oE7upkr/WPQsYaokXP6f9chaE8iVmbKkfN6SVl4w3pmz7oZ3Ur1hbkmy1hx+w=="],
 

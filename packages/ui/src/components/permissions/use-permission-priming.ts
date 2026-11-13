@@ -309,7 +309,7 @@ export function usePermissionPriming(
         if (generation.current === owner) patch(id, { recheckError: true });
       }
     },
-    [host, patch, registry],
+    [patch, registry],
   );
   const skipAll = React.useCallback(() => {
     requestingRef.current.clear();

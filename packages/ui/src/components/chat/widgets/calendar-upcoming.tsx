@@ -30,7 +30,6 @@ const FEED_TIMEOUT_MS = 8000;
 const CALENDAR_REFRESH_INTERVAL_MS = 60000;
 const URGENT_WINDOW_MS = 2 * 60 * 60000;
 const THRESHOLD_EPSILON_MS = 1000;
-const TRAY_LOOKAHEAD_MS = 18 * 60 * 60000;
 const EMPTY_EVENTS: readonly OverviewCalendarEvent[] = [];
 type CalendarSnapshot = Omit<
   OverviewCalendarSnapshot<OverviewCalendarEvent>,
@@ -121,11 +120,7 @@ function useCalendarShellNow(events: readonly OverviewCalendarEvent[]): number {
       let next = midnight.getTime();
       for (const event of events) {
         const start = Date.parse(event.startAt);
-        for (const at of [
-          start - TRAY_LOOKAHEAD_MS,
-          start - URGENT_WINDOW_MS,
-          start,
-        ])
+        for (const at of [start - URGENT_WINDOW_MS, start])
           if (at > now) next = Math.min(next, at);
       }
       timeout = window.setTimeout(
@@ -144,7 +139,6 @@ function useCalendarShellNow(events: readonly OverviewCalendarEvent[]): number {
 
 export function CalendarUpcomingWidget({
   slot,
-  surface,
   spanClassName = DEFAULT_SPAN,
 }: WidgetProps) {
   const t = useAppSelector((state) => state.t);
@@ -244,14 +238,7 @@ export function CalendarUpcomingWidget({
       ),
     [snapshot, authority, allowed, now],
   );
-  const candidates =
-    surface === "tray"
-      ? selection.candidates.filter((event) => {
-          const start = Date.parse(event.startAt);
-          return start >= now && start - now <= TRAY_LOOKAHEAD_MS;
-        })
-      : selection.candidates;
-  const event = candidates[0],
+  const event = selection.candidates[0],
     start = event ? Date.parse(event.startAt) : NaN,
     until = start - now;
   const urgent =
@@ -263,7 +250,7 @@ export function CalendarUpcomingWidget({
       : null,
   );
   if (now === 0 || !selection.verified || !event) return null;
-  const label = surface === "tray" ? t("common.next") : t("common.calendar");
+  const label = t("common.calendar");
   const title = event.title.trim() || "(untitled)",
     when = event.isAllDay
       ? "all day"
@@ -285,7 +272,11 @@ export function CalendarUpcomingWidget({
             when
           )
         }
-        badge={candidates.length > 1 ? `+${candidates.length - 1}` : undefined}
+        badge={
+          selection.candidates.length > 1
+            ? `+${selection.candidates.length - 1}`
+            : undefined
+        }
         tone={urgent ? "warn" : "default"}
         testId="chat-widget-calendar-upcoming"
         ariaLabel={`${label}: ${title} ${when}. Open calendar.`}

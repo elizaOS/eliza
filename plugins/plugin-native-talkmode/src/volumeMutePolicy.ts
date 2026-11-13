@@ -5,11 +5,7 @@
  * whether capture, indicators, and in-flight TTS should continue under mute.
  */
 
-export type TalkModeAudioPlatform =
-  | "ios"
-  | "android"
-  | "electrobun"
-  | "browser";
+export type TalkModeAudioPlatform = "ios" | "android" | "browser";
 
 export type TalkModeCaptureIndicator = "recording" | "idle";
 
@@ -23,7 +19,6 @@ export type TalkModeTtsProgressPolicy = "continue";
 export type TalkModeTtsOutputChannel =
   | "ios-play-and-record-voice-chat"
   | "android-voice-communication"
-  | "desktop-system-output"
   | "browser-speech-synthesis-output";
 
 export interface VolumeMutePolicy {
@@ -61,7 +56,6 @@ export type TalkModeAudioPolicyEvent =
 const TTS_OUTPUT_CHANNEL_BY_PLATFORM = {
   ios: "ios-play-and-record-voice-chat",
   android: "android-voice-communication",
-  electrobun: "desktop-system-output",
   browser: "browser-speech-synthesis-output",
 } as const satisfies Record<TalkModeAudioPlatform, TalkModeTtsOutputChannel>;
 

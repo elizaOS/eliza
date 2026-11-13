@@ -64,7 +64,6 @@ export type RendererShellKind =
   | "popout"
   | "detached"
   | "chat-overlay"
-  | "tray-popover"
   | "phone-companion"
   | "app-window"
   | "embed";

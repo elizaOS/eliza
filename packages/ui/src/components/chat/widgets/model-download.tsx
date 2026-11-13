@@ -18,7 +18,6 @@ import {
 } from "react";
 import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
 import { client } from "../../../api/client";
-import { isDesktopExternalApiBaseUrl } from "../../../api/desktop-external-api-base";
 import {
   readPersistedMobileRuntimeMode,
   subscribeToMobileRuntimeMode,
@@ -108,10 +107,7 @@ function appendTokenParam(url: string): string {
   return `${url}${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`;
 }
 function supportsLocalInferenceStatus(): boolean {
-  const baseUrl = client.getBaseUrl();
-  return (
-    supportsFullAppShellRoutes(baseUrl) && !isDesktopExternalApiBaseUrl(baseUrl)
-  );
+  return supportsFullAppShellRoutes(client.getBaseUrl());
 }
 function rowsFromReadiness(
   slots: Record<

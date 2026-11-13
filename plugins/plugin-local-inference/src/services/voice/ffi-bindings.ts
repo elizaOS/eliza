@@ -9,7 +9,7 @@
  * `eliza_inference_*` symbol declared in `ffi.h`, and exposes a typed
  * handle (`ElizaInferenceFfi`) the voice lifecycle calls into.
  *
- * Runtime: production runs under Bun (Electrobun shell, Capacitor
+ * Runtime: production runs under Bun (server, CLI and the Capacitor
  * bridge), so the loader uses `bun:ffi`. Tests that need to actually
  * load a `.dylib` against a stub library spawn a `bun` subprocess —
  * see `ffi-bindings.test.ts`. Calling this loader from a non-Bun
@@ -1006,7 +1006,7 @@ export function loadElizaInferenceFfi(dylibPath: string): ElizaInferenceFfi {
 		throw new VoiceLifecycleError(
 			"kernel-missing",
 			`[ffi-bindings] Cannot load libelizainference: current runtime is not Bun. ` +
-				`The fused omnivoice FFI uses bun:ffi (production runs under Bun via Electrobun + Capacitor). ` +
+				`The fused omnivoice FFI uses bun:ffi (production runs under Bun). ` +
 				`process.versions=${JSON.stringify(process.versions)}`,
 		);
 	}

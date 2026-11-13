@@ -105,7 +105,6 @@ export { StartupFailureView } from "../../components/shell/StartupFailureView.js
 export { StartupScreen } from "../../components/shell/StartupScreen.js";
 export { StartupShell } from "../../components/shell/StartupShell.js";
 export { SystemWarningBanner } from "../../components/shell/SystemWarningBanner.js";
-export { TrayLauncher } from "../../components/shell/TrayLauncher.js";
 export { VoiceCaptureHud } from "../../components/shell/VoiceCaptureHud.js";
 export { TranscriptPlayer } from "../../components/transcripts/TranscriptPlayer.js";
 export { ArtifactPrivacyControls } from "../../components/transcripts/TranscriptsView.js";
@@ -364,7 +363,6 @@ export {
   PUSH_TO_TALK_HOLD_EVENT,
   PUSH_TO_TALK_TOGGLE_EVENT,
   SHARE_TARGET_EVENT,
-  TRAY_ACTION_EVENT,
   useViewEvent,
   VIEW_EVENTS,
 } from "../../events/index.js";

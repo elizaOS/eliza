@@ -11,7 +11,6 @@
     "@elizaos/capacitor-camera",
     "@elizaos/capacitor-canvas",
     "@elizaos/plugin-native-contacts",
-    "@elizaos/capacitor-desktop",
     "@elizaos/capacitor-eliza-tasks",
     "@elizaos/capacitor-gateway",
     "@elizaos/plugin-native-inference",

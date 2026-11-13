@@ -1346,7 +1346,7 @@ export class LocalInferenceEngine {
 	 *
 	 * Gated behind a complete real backend chain (AGENTS.md §3 — no silent
 	 * backend-mode "voice"):
-	 *   - a `MicSource` (caller-supplied, or `DesktopMicSource` under Electrobun),
+	 *   - a `MicSource` (caller-supplied, or the `DesktopMicSource` CLI recorder),
 	 *   - a Silero v5 GGML VAD (caller-supplied detector, or `createSileroVadDetector()` — runs through libelizainference's native VAD ABI),
 	 *   - a working ASR (the bridge's `createStreamingTranscriber` throws
 	 *     `AsrUnavailableError` when the fused decoder is unavailable — the
@@ -1363,7 +1363,7 @@ export class LocalInferenceEngine {
 	 */
 	async startVoiceSession(opts: {
 		roomId: string;
-		/** Mic source. Defaults to a `DesktopMicSource` (Electrobun). */
+		/** Mic source. Defaults to a `DesktopMicSource` (CLI recorder). */
 		micSource?: import("./voice/types").MicSource;
 		/** VAD detector. Defaults to `createSileroVadDetector()`. */
 		vad?: import("./voice/vad").VadDetector;

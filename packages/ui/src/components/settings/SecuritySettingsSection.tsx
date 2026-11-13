@@ -338,8 +338,7 @@ function AccessModeSection({
         defaultValue: "Remote session",
       });
       detail = t("security.access.remote.detail", {
-        defaultValue:
-          "This browser is signed in remotely. Localhost and Electrobun still use local access on the host machine.",
+        defaultValue: "Signed in from another machine.",
       });
       status = t("security.access.status.signedIn", {
         defaultValue: "Signed in",

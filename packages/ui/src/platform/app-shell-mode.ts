@@ -2,7 +2,6 @@
 
 export const FOCUSED_APP_SHELL_MODES = [
   "chat-overlay",
-  "tray-popover",
   "voice-selftest",
   "voice-workbench",
   "launcher",

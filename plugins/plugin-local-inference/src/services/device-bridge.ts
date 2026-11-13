@@ -8,7 +8,7 @@
  * Mac disconnects, new requests fall through to the phone automatically.
  *
  * Scoring (higher = preferred):
- *   - desktop / electrobun: 100 base
+ *   - desktop:              100 base
  *   - ios / android:        10 base
  *   - per GB of total RAM:  +2
  *   - per GB of VRAM:       +5 (dedicated GPU wins big)
@@ -353,7 +353,7 @@ function scoreDevice(
 ): number {
 	const cap = device.capabilities;
 	const platformBase =
-		cap.platform === "desktop" || cap.platform === "electrobun"
+		cap.platform === "desktop"
 			? 100
 			: cap.platform === "ios" || cap.platform === "android"
 				? 10

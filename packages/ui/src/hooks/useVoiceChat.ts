@@ -1080,10 +1080,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         }
       };
       recognition.onend = () => {
-        if (
-          enabledRef.current &&
-          listeningModeRef.current === mode
-        ) {
+        if (enabledRef.current && listeningModeRef.current === mode) {
           try {
             recognition.start();
             // Surface the silent restart as a brief pulse so the UI can show a

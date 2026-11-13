@@ -84,7 +84,6 @@ export async function buildLocalInferencePlugin(
 			// at load and start an engine thread from their own module.
 			"./src/host-tts-worker.ts",
 			"./src/host-asr-worker.ts",
-			"./src/voice-wake.ts",
 			"./src/voice-workbench.ts",
 		],
 		root: "./src",
@@ -123,7 +122,6 @@ export async function buildLocalInferencePlugin(
 	await smokeImport(
 		new URL("./dist/actions/generate-media.js", import.meta.url).href,
 	);
-	await smokeImport(new URL("./dist/voice-wake.js", import.meta.url).href);
 	await smokeImport(new URL("./dist/voice-workbench.js", import.meta.url).href);
 
 	console.log(

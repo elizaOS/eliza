@@ -1,5 +1,5 @@
 /**
- * Implements browser speech recognition and Electrobun audio capture for the
+ * Implements browser speech recognition for the
  * Swabble Capacitor surface, with session-owned callback and resource cleanup.
  */
 import { WebPlugin } from "@capacitor/core";
@@ -17,65 +17,6 @@ import type {
   SwabbleStartOptions,
   SwabbleStartResult,
 } from "./definitions";
-
-type ElectrobunRequestHandler = (params?: unknown) => Promise<unknown>;
-type ElectrobunMessageListener = (payload: unknown) => void;
-
-interface ElectrobunRendererRpc {
-  request: Record<string, ElectrobunRequestHandler>;
-  onMessage: (messageName: string, listener: ElectrobunMessageListener) => void;
-  offMessage: (
-    messageName: string,
-    listener: ElectrobunMessageListener,
-  ) => void;
-}
-
-type DesktopBridgeWindow = Window & {
-  __ELIZA_ELECTROBUN_RPC__?: ElectrobunRendererRpc;
-};
-
-function getDesktopBridgeWindow(): DesktopBridgeWindow | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  return window as DesktopBridgeWindow;
-}
-
-function getElectrobunRendererRpc(): ElectrobunRendererRpc | null {
-  const w = getDesktopBridgeWindow();
-  return w?.__ELIZA_ELECTROBUN_RPC__ ?? null;
-}
-
-async function invokeDesktopBridgeRequest<T>(options: {
-  rpcMethod: string;
-  ipcChannel: string;
-  params?: unknown;
-}): Promise<T | null> {
-  const rpc = getElectrobunRendererRpc();
-  const request = rpc?.request?.[options.rpcMethod];
-  if (request) {
-    return (await request(options.params)) as T;
-  }
-
-  return null;
-}
-
-function subscribeDesktopBridgeEvent(options: {
-  rpcMessage: string;
-  ipcChannel: string;
-  listener: ElectrobunMessageListener;
-}): () => void {
-  const rpc = getElectrobunRendererRpc();
-  if (rpc) {
-    rpc.onMessage(options.rpcMessage, options.listener);
-    return () => {
-      rpc.offMessage(options.rpcMessage, options.listener);
-    };
-  }
-
-  return () => {};
-}
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -316,11 +257,6 @@ function stoppedBeforeStart(): SwabbleStartResult {
   };
 }
 
-type NativeAudioCaptureResult =
-  | { status: "started" }
-  | { status: "retired" }
-  | { status: "failed"; error: string };
-
 export class SwabbleWeb extends WebPlugin {
   private recognition: SpeechRecognitionInstance | null = null;
   private config: SwabbleConfig | null = null;
@@ -337,253 +273,9 @@ export class SwabbleWeb extends WebPlugin {
   private mediaStream: MediaStream | null = null;
   private levelInterval: ReturnType<typeof setInterval> | null = null;
 
-  // Native IPC state (Electrobun)
-  private captureStream: MediaStream | null = null;
-  private captureContext: AudioContext | null = null;
-  private captureProcessor: ScriptProcessorNode | null = null;
-  private bridgeSubscriptions: Array<() => void> = [];
-  private usingNativeIpc = false;
-  // Incremented by every stop(). A start() captures the value before its first
-  // await and re-checks it after each await: the native bridge start and the
-  // capture getUserMedia (which can sit on a permission prompt) both yield, and
-  // a stop() landing in between must win over the resuming start().
-  private startGeneration = 0;
-
-  private getRendererRpc() {
-    return getElectrobunRendererRpc() ?? null;
-  }
-
-  private subscribeDesktopEvent(options: {
-    rpcMessage: string;
-    ipcChannel: string;
-    listener: (payload: unknown) => void;
-  }): void {
-    this.bridgeSubscriptions.push(subscribeDesktopBridgeEvent(options));
-  }
-
-  private async invokeDesktopRequest<T>(options: {
-    rpcMethod: string;
-    ipcChannel: string;
-    params?: unknown;
-  }): Promise<T | null> {
-    return await invokeDesktopBridgeRequest<T>(options);
-  }
-
-  private setupNativeListeners(): void {
-    this.removeNativeListeners();
-    this.subscribeDesktopEvent({
-      rpcMessage: "swabbleWakeWord",
-      ipcChannel: "swabble:wakeWord",
-      listener: (payload) => {
-        this.notifyListeners("wakeWord", payload as Record<string, unknown>);
-      },
-    });
-    this.subscribeDesktopEvent({
-      rpcMessage: "swabbleStateChanged",
-      ipcChannel: "swabble:stateChange",
-      listener: (payload) => {
-        const listening =
-          typeof (payload as { listening?: unknown }).listening === "boolean"
-            ? (payload as { listening: boolean }).listening
-            : false;
-        this.isActive = listening;
-        this.notifyListeners("stateChange", {
-          state: listening ? "listening" : "idle",
-        });
-      },
-    });
-    this.subscribeDesktopEvent({
-      rpcMessage: "swabbleTranscript",
-      ipcChannel: "swabble:transcript",
-      listener: (payload) => {
-        this.notifyListeners("transcript", payload as Record<string, unknown>);
-      },
-    });
-    this.subscribeDesktopEvent({
-      rpcMessage: "swabbleError",
-      ipcChannel: "swabble:error",
-      listener: (payload) => {
-        this.notifyListeners("error", payload as Record<string, unknown>);
-      },
-    });
-  }
-
-  private removeNativeListeners(): void {
-    for (const unsubscribe of this.bridgeSubscriptions) {
-      unsubscribe();
-    }
-    this.bridgeSubscriptions = [];
-  }
-
-  /**
-   * Opens the microphone feeding native (Whisper) transcription. Reports when
-   * a stop() retired `generation` while getUserMedia was pending (for example
-   * while the OS permission prompt was open), or when capture failed. Any
-   * stream acquired for a retired start is released instead of being installed.
-   */
-  private async startNativeAudioCapture(
-    generation: number,
-    sampleRate = 16000,
-  ): Promise<NativeAudioCaptureResult> {
-    const rpcRequest = this.getRendererRpc()?.request?.swabbleAudioChunk;
-    let stream: MediaStream | null;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch (err) {
-      if (generation !== this.startGeneration) return { status: "retired" };
-      // error-policy:J1 microphone is the sole audio source feeding native
-      // (Whisper) transcription; a denied/failed capture must surface to the
-      // app's error listener, not silently leave the bridge with no audio.
-      const message = `Microphone capture failed: ${err instanceof Error ? err.message : String(err)}`;
-      this.notifyListeners("error", {
-        code: "mic-permission",
-        message,
-        recoverable: false,
-      });
-      return { status: "failed", error: message };
-    }
-    if (generation !== this.startGeneration) {
-      stream?.getTracks().forEach((t) => {
-        t.stop();
-      });
-      return { status: "retired" };
-    }
-    if (!stream) {
-      const message = "Microphone capture failed: no audio stream was returned";
-      this.notifyListeners("error", {
-        code: "mic-permission",
-        message,
-        recoverable: false,
-      });
-      return { status: "failed", error: message };
-    }
-    this.captureStream = stream;
-    this.captureContext = new AudioContext();
-    const source = this.captureContext.createMediaStreamSource(stream);
-    const processor = this.captureContext.createScriptProcessor(4096, 1, 1);
-    this.captureProcessor = processor;
-    const inputRate = this.captureContext.sampleRate;
-    processor.onaudioprocess = (e: AudioProcessingEvent) => {
-      const input = e.inputBuffer.getChannelData(0);
-      this.notifyListeners("audioLevel", {
-        level: this.computeRms(input),
-        peak: this.computePeak(input),
-      });
-      const ratio = inputRate / sampleRate;
-      const out = new Float32Array(Math.round(input.length / ratio));
-      for (let i = 0; i < out.length; i++) {
-        let acc = 0;
-        let cnt = 0;
-        const start = Math.round(i * ratio);
-        const end = Math.round((i + 1) * ratio);
-        for (let j = start; j < end && j < input.length; j++) {
-          acc += input[j];
-          cnt++;
-        }
-        out[i] = cnt > 0 ? acc / cnt : 0;
-      }
-      const bytes = new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
-      let binary = "";
-      for (let i = 0; i < bytes.length; i++) {
-        binary += String.fromCharCode(bytes[i]);
-      }
-      if (rpcRequest) {
-        // error-policy:J5 fire-and-forget per-frame audio stream to the native
-        // bridge; a persistent backend failure surfaces via the "swabbleError"
-        // bridge event wired in setupNativeListeners(), so a per-frame reject
-        // here must not tear down the audio-processing loop.
-        void rpcRequest({ data: btoa(binary) }).catch(() => {});
-      }
-    };
-    source.connect(processor);
-    const sink = this.captureContext.createGain();
-    sink.gain.value = 0;
-    processor.connect(sink);
-    sink.connect(this.captureContext.destination);
-    return { status: "started" };
-  }
-
-  private computeRms(samples: Float32Array): number {
-    if (samples.length === 0) return 0;
-    let sum = 0;
-    for (let i = 0; i < samples.length; i++) {
-      sum += samples[i] * samples[i];
-    }
-    return Math.sqrt(sum / samples.length);
-  }
-
-  private computePeak(samples: Float32Array): number {
-    let peak = 0;
-    for (let i = 0; i < samples.length; i++) {
-      const value = Math.abs(samples[i]);
-      if (value > peak) peak = value;
-    }
-    return peak;
-  }
-
-  private stopNativeAudioCapture(): void {
-    this.captureProcessor?.disconnect();
-    this.captureProcessor = null;
-    this.captureContext?.close();
-    this.captureContext = null;
-    this.captureStream?.getTracks().forEach((t) => {
-      t.stop();
-    });
-    this.captureStream = null;
-  }
-
   async start(options: SwabbleStartOptions): Promise<SwabbleStartResult> {
     if (this.isActive) return { started: true };
     const config = normalizeConfig(options.config);
-    const generation = this.startGeneration;
-
-    // Delegate to the native desktop bridge when available.
-    const rpc = this.getRendererRpc();
-    if (rpc) {
-      let result: SwabbleStartResult | null = null;
-      try {
-        result = await this.invokeDesktopRequest<SwabbleStartResult>({
-          rpcMethod: "swabbleStart",
-          ipcChannel: "swabble:start",
-          params: { ...options, config },
-        });
-      } catch {
-        // error-policy:J4 native desktop bridge failed; degrade to the Web Speech API path below
-        // Fall through to Web Speech API
-      }
-      if (generation !== this.startGeneration) {
-        // stop() ran while the native bridge was starting. It found no native
-        // session to release, so stop the one the bridge just started.
-        if (result?.started) this.requestNativeStop();
-        return stoppedBeforeStart();
-      }
-      if (result?.started) {
-        this.isActive = true;
-        this.usingNativeIpc = true;
-        this.config = config;
-        this.setupNativeListeners();
-        const capture = await this.startNativeAudioCapture(
-          generation,
-          config.sampleRate ?? 16000,
-        );
-        // A stop() during the microphone request already tore the native
-        // session down; the acquired stream was released above.
-        if (capture.status === "retired") return stoppedBeforeStart();
-        if (capture.status === "failed") {
-          this.isActive = false;
-          this.usingNativeIpc = false;
-          this.removeNativeListeners();
-          this.requestNativeStop();
-          this.notifyListeners("stateChange", {
-            state: "error",
-            reason: "mic-permission",
-          });
-          return { started: false, error: capture.error };
-        }
-        return result;
-      }
-    }
-
     const SpeechRecognitionAPI = getSpeechRecognition();
     if (!SpeechRecognitionAPI) {
       return {
@@ -790,36 +482,9 @@ export class SwabbleWeb extends WebPlugin {
     this.analyser = null;
   }
 
-  private requestNativeStop(): void {
-    // The renderer has already released its capture and reported idle; a
-    // failed native stop is surfaced to the error listener instead of becoming
-    // an unhandled rejection.
-    void this.invokeDesktopRequest({
-      rpcMethod: "swabbleStop",
-      ipcChannel: "swabble:stop",
-    }).catch((err: unknown) => {
-      this.notifyListeners("error", {
-        code: "native-stop",
-        message: `Native speech stop failed: ${err instanceof Error ? err.message : String(err)}`,
-        recoverable: true,
-      });
-    });
-  }
-
   async stop(): Promise<void> {
-    this.startGeneration += 1;
     this.isActive = false;
     this.wakeBuffer = "";
-
-    // Clean up native IPC if in native mode
-    if (this.usingNativeIpc) {
-      this.usingNativeIpc = false;
-      this.removeNativeListeners();
-      this.stopNativeAudioCapture();
-      this.requestNativeStop();
-      this.notifyListeners("stateChange", { state: "idle" });
-      return;
-    }
 
     const recognition = this.recognition;
     this.recognition = null;
@@ -849,15 +514,6 @@ export class SwabbleWeb extends WebPlugin {
         this.recognition.lang = options.config.locale;
       }
     }
-
-    // Sync to native IPC if active
-    if (this.usingNativeIpc) {
-      void this.invokeDesktopRequest({
-        rpcMethod: "swabbleUpdateConfig",
-        ipcChannel: "swabble:updateConfig",
-        params: options.config,
-      });
-    }
   }
 
   async checkPermissions(): Promise<SwabblePermissionStatus> {
@@ -877,17 +533,8 @@ export class SwabbleWeb extends WebPlugin {
       // error-policy:J4 Permissions API cannot query microphone here; keep the "prompt" default
       /* permissions.query not supported for microphone in some browsers */
     }
-    let speechRecognition: SwabblePermissionStatus["speechRecognition"] =
+    const speechRecognition: SwabblePermissionStatus["speechRecognition"] =
       getSpeechRecognition() ? "granted" : "not_supported";
-    const whisperStatus = await this.invokeDesktopRequest<{
-      available: boolean;
-    }>({
-      rpcMethod: "swabbleIsWhisperAvailable",
-      ipcChannel: "swabble:isWhisperAvailable",
-    });
-    if (whisperStatus?.available) {
-      speechRecognition = "granted";
-    }
 
     return {
       microphone,

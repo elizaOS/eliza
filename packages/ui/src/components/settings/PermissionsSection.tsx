@@ -16,7 +16,10 @@ import {
 import { useBootConfig } from "../../config/boot-config-react.hooks";
 import { appNameInterpolationVars } from "../../config/branding-base";
 import { useBranding } from "../../config/branding-react.hooks";
-import { isWebPlatform, platform as runtimePlatform } from "../../platform/init";
+import {
+  isWebPlatform,
+  platform as runtimePlatform,
+} from "../../platform/init";
 import {
   createMobileSignalsPermissionsRegistry,
   openMobilePermissionSettings,

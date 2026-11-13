@@ -19,8 +19,7 @@ export type WindowShellRoute =
   | { mode: "main" }
   | { mode: "settings"; tab?: string }
   | { mode: "surface"; tab: DetachedSurfaceTab }
-  | { mode: "chat-overlay" }
-  | { mode: "tray-popover" };
+  | { mode: "chat-overlay" };
 
 export interface DetachedShellTarget {
   settingsSection?: string;
@@ -34,10 +33,6 @@ export function parseWindowShellRoute(search: string): WindowShellRoute {
 
   if (shellMode === "chat-overlay") {
     return { mode: "chat-overlay" };
-  }
-
-  if (shellMode === "tray-popover") {
-    return { mode: "tray-popover" };
   }
 
   if (shell === "settings") {
@@ -73,13 +68,9 @@ export function isDetachedWindowShell(
   route: WindowShellRoute,
 ): route is Exclude<
   WindowShellRoute,
-  { mode: "main" } | { mode: "chat-overlay" } | { mode: "tray-popover" }
+  { mode: "main" } | { mode: "chat-overlay" }
 > {
-  return (
-    route.mode !== "main" &&
-    route.mode !== "chat-overlay" &&
-    route.mode !== "tray-popover"
-  );
+  return route.mode !== "main" && route.mode !== "chat-overlay";
 }
 
 export function isChatOverlayWindowShell(
@@ -107,7 +98,7 @@ export function resolveDetachedShellTarget(
     throw new Error("Main windows do not have a detached shell target");
   }
 
-  if (route.mode === "chat-overlay" || route.mode === "tray-popover") {
+  if (route.mode === "chat-overlay") {
     throw new Error(
       `${route.mode} windows do not have a detached shell target`,
     );
@@ -150,11 +141,7 @@ export function syncDetachedShellLocation(
     href?: string;
   },
 ): boolean {
-  if (
-    route.mode === "main" ||
-    route.mode === "chat-overlay" ||
-    route.mode === "tray-popover"
-  ) {
+  if (route.mode === "main" || route.mode === "chat-overlay") {
     return false;
   }
 

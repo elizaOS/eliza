@@ -11,7 +11,7 @@
  * This module supplies that seam: it adapts an {@link OpenWakeWordDetector}
  * firing into a canonical {@link FusedWakeEventDetail} and hands it to a
  * {@link FusedWakeSink}. The host wires the sink to its renderer transport
- * (Capacitor event / Electrobun RPC / WebSocket push) where the renderer's
+ * (Capacitor event or WebSocket push) where the renderer's
  * `emitFusedWake` dispatches the `eliza:fused-wake` window event. The event
  * shape is the same `@elizaos/core` contract the renderer consumes, so the
  * two halves can never drift.

@@ -528,11 +528,10 @@ export function createStartupRestore(ports: StartupHostPorts) {
       // Capture the host-injected owner key before clientRef.setToken(null)
       // mutates boot config. Native device-code sessions may have no
       // persisted active-server token and rely exclusively on this credential.
-      const nativeOwnerApiKey =
-        isNative
-          ? (normalizeCloudApiKeyToken(resolved.accessToken) ??
-            normalizeCloudApiKeyToken(getElizaApiToken()))
-          : null;
+      const nativeOwnerApiKey = isNative
+        ? (normalizeCloudApiKeyToken(resolved.accessToken) ??
+          normalizeCloudApiKeyToken(getElizaApiToken()))
+        : null;
       const usesLocalDockerCredential = isCloudPairLoopbackOrigin(
         resolved.apiBase,
       );

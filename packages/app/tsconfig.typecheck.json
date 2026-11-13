@@ -26,9 +26,6 @@
       "@elizaos/plugin-native-inference/*": [
         "../../plugins/plugin-native-inference/src/*"
       ],
-      "@elizaos/capacitor-desktop": [
-        "../../plugins/plugin-native-desktop/src/index.ts"
-      ],
       "@elizaos/plugin-native-contacts/bridge/*": [
         "../../plugins/plugin-native-contacts/src/*"
       ],

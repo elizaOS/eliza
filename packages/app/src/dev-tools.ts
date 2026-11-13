@@ -244,11 +244,7 @@ function renderFallbackHeading(text: string): string {
 }
 
 /** Subsystem printed as giant ASCII above each dev settings table. */
-export type DevSubsystemBannerKind =
-  | "orchestrator"
-  | "vite"
-  | "api"
-  | "electrobun";
+export type DevSubsystemBannerKind = "orchestrator" | "vite" | "api";
 
 /** Renders a plain boxed heading (short marker) for the given subsystem. */
 export function renderDevSubsystemFigletHeading(

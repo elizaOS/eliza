@@ -735,7 +735,7 @@ export interface VerifyResult {
 
 /** JSON response shapes for the backend local-inference API. No runtime implementations. */
 export interface DeviceCapabilities {
-  platform: "ios" | "android" | "web" | "electrobun" | "desktop";
+  platform: "ios" | "android" | "web" | "desktop";
   deviceModel: string;
   machineId?: string;
   osVersion?: string;

@@ -1,7 +1,7 @@
 # @elizaos/capacitor-swabble
 
 Capacitor plugin that adds wake-word detection and live speech transcription to Eliza
-agents across iOS, Android, browser, and desktop (Electrobun/Whisper.cpp).
+agents across iOS, Android and browser.
 
 See [bridge definitions](src/definitions.ts) for the native API. Native targets require their SDKs, registered bridge, and OS permissions.
 

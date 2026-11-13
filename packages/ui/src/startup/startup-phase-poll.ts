@@ -635,15 +635,7 @@ export function createStartupPoll(ports: StartupHostPorts) {
       deps.setFirstRunLoading(false);
       dispatch({ type: "BACKEND_UNAVAILABLE_FIRST_RUN" });
     };
-    const cloudOnlyDesktopRenderer =
-      typeof window !== "undefined" &&
-      (
-        window as {
-          __ELIZA_DESKTOP_RUNTIME_MODE__?: unknown;
-        }
-      ).__ELIZA_DESKTOP_RUNTIME_MODE__ === "cloud";
-    const freshCloudOnlyTarget =
-      policy.defaultTarget === "cloud-managed" || cloudOnlyDesktopRenderer;
+    const freshCloudOnlyTarget = policy.defaultTarget === "cloud-managed";
     if (
       !cancelled.current &&
       effectRunRef.current === effectRunId &&
@@ -667,28 +659,6 @@ export function createStartupPoll(ports: StartupHostPorts) {
       backendTimeoutMs: policy.backendTimeoutMs,
       nativeFailureBudgetMs,
     });
-    const restoredManagedCloud =
-      ctx?.restoredActiveServer?.kind === "cloud" ||
-      ctx?.persistedActiveServer?.kind === "cloud";
-    if (
-      cloudOnlyDesktopRenderer &&
-      restoredManagedCloud &&
-      !supportsFullAppShellRoutes(client.getBaseUrl()) &&
-      (deps.firstRunCompletionCommittedRef.current ||
-        ctx?.shouldPreserveCompletedFirstRun === true)
-    ) {
-      // A returning managed Cloud target is a limited chat adapter, not an app
-      // shell. Its /api/auth/status and /api/first-run routes are unsupported and
-      // can each consume a full network timeout before the existing in-loop
-      // limited-base branch reaches the same conclusion. Advance immediately;
-      // starting-runtime owns the real per-agent proxy readiness probe next, so
-      // this skips only irrelevant shell probes, never runtime verification.
-      deps.setFirstRunCloudProvisionedContainer(false);
-      deps.setFirstRunComplete(true);
-      deps.setFirstRunLoading(false);
-      dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });
-      return;
-    }
     // Stall detector (issue #11030 root-cause instrumentation): a startup probe
     // that neither resolves nor rejects is invisible to every failure path —
     // the loop just stops, no poll-failure entries, no timeout card. Arm a
