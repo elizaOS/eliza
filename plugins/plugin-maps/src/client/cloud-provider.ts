@@ -363,6 +363,11 @@ export function cloudMapsFailure(
         "unconfigured",
         "Cloud Maps is not available yet.",
       );
+    if (code === "maps_funding_changed")
+      return new MapsFailure(
+        "unavailable",
+        "Your plan changed. Try the Maps request again.",
+      );
     if (
       code === "maps_admission_unknown" ||
       code === "maps_request_already_admitted" ||
@@ -373,6 +378,11 @@ export function cloudMapsFailure(
         "This Maps request could not be confirmed. It will not retry automatically.",
       );
     switch (failure.status) {
+      case 402:
+        return new MapsFailure(
+          "unauthorized",
+          "Add balance or choose a plan to use Maps.",
+        );
       case 401:
         return new MapsFailure("unauthorized", "Sign in to Cloud to use Maps.");
       // An authenticated 404 means this Cloud deployment does not serve Maps yet (#412).

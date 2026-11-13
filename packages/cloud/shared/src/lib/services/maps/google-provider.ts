@@ -346,12 +346,17 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
           async apply(target, receiver, args) {
             await observer.beforeRequest?.();
             const response: Response = await Reflect.apply(target, receiver, args);
-            // Google bills successful empty/NOT_FOUND results, including 404.
-            // Other failures are not all unbilled: leave ambiguous responses
-            // unresolved until the existing billing owner reconciles them.
+            // Google bills successful no-result/unknown-place responses too.
+            // Authentication, quota and server errors are not billable; a 400
+            // can be billable or not, so leave an unclassified result unknown.
             // https://developers.google.com/maps/reporting-and-monitoring/reporting
-            if (price && (response.ok || response.status === 404)) observer(price);
-            else if ([401, 403, 429, 500, 502, 503, 504].includes(response.status))
+            if ((response.status === 200 || response.status === 404) && price) observer(price);
+            else if (
+              response.status === 401 ||
+              response.status === 403 ||
+              response.status === 429 ||
+              response.status >= 500
+            )
               observer.requestRejected?.();
             return response;
           },
@@ -813,14 +818,17 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
       signal,
       reportPrice,
       undefined,
-      [200, 404],
+      [200, 400, 404],
     );
     const json = (await responseJson(response)) as { status?: unknown; results?: unknown } | null;
     switch (json?.status) {
       case "OK":
+        if (response.status !== 200) throw invalidResponse(response.status);
         reportPrice?.(this.creditPrice("geocode", {}));
         break;
       case "ZERO_RESULTS":
+        if (response.status !== 200 && response.status !== 404)
+          throw invalidResponse(response.status);
         reportPrice?.(this.creditPrice("geocode", {}));
         return [];
       case "OVER_QUERY_LIMIT":
