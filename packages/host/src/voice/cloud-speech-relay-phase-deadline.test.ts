@@ -10,6 +10,7 @@ function fixture(
   readyMs: number,
   signal?: AbortSignal,
   consentMs = 0,
+  consentResets = 0,
 ) {
   const id = crypto.randomUUID();
   const expiry = new Date(Date.now() + 60000).toISOString();
@@ -23,6 +24,12 @@ function fixture(
     async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
       const url = new URL(String(input));
       requests.push(url.pathname);
+      if (url.pathname.endsWith("/consent") && consentResets > 0) {
+        consentResets--;
+        throw Object.assign(new Error("Connection reset"), {
+          code: "ECONNRESET",
+        });
+      }
       if (url.pathname.endsWith("/consent") && consentMs > 0)
         await sleep(consentMs, undefined, {
           signal: init?.signal ?? undefined,
@@ -121,6 +128,56 @@ function fixture(
     },
   };
 }
+
+test("consent retries one connection reset before its single paid admission", async () => {
+  const f = fixture(0, 0, undefined, 0, 1);
+  try {
+    const ports = await f.pending;
+    expect(f.requests.filter((path) => path.endsWith("/consent"))).toHaveLength(
+      2,
+    );
+    expect(f.requests.filter((path) => path.endsWith("/session"))).toHaveLength(
+      1,
+    );
+    await ports.close();
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("repeated consent resets stop before any paid admission", async () => {
+  const f = fixture(0, 0, undefined, 0, 2);
+  try {
+    await expect(f.pending).rejects.toMatchObject({ code: "ECONNRESET" });
+    expect(f.requests.filter((path) => path.endsWith("/consent"))).toHaveLength(
+      2,
+    );
+    expect(f.requests.filter((path) => path.endsWith("/session"))).toHaveLength(
+      0,
+    );
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("Stop cancels the consent reset delay before another request", async () => {
+  const abort = new AbortController();
+  const f = fixture(0, 0, abort.signal, 0, 1);
+  const settled = f.pending.catch((error) => error);
+  await sleep(20);
+  abort.abort();
+  try {
+    expect(await settled).toBeInstanceOf(Error);
+    expect(f.requests.filter((path) => path.endsWith("/consent"))).toHaveLength(
+      1,
+    );
+    expect(f.requests.filter((path) => path.endsWith("/session"))).toHaveLength(
+      0,
+    );
+  } finally {
+    f.cleanup();
+  }
+});
 
 test("cold consent can finish just beyond ten seconds without a false startup failure", async () => {
   const f = fixture(0, 0, undefined, 10_100);

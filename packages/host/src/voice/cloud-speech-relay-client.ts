@@ -201,8 +201,8 @@ const PRE_ADMISSION_CACHE_WARMING_CODES = new Set([
   "inference_admission_cache_warming",
 ]);
 
-// This refusal is emitted before authentication admits the operation. Never
-// replay a generic 503, network failure, or an already-admitted speech request.
+// This refusal is emitted before authentication admits the operation. A generic
+// 503 does not establish that a paid speech request can be replayed.
 function warmingDelay(
   response: Response,
   body: Record<string, unknown>,
@@ -545,20 +545,40 @@ export async function createCloudSpeechRelayPorts(
             finishAdmission = resolve;
           });
         }
-        response = await (options.fetch ?? fetch)(new URL(path, origin), {
-          method: "POST",
-          redirect: "error",
-          headers: {
-            authorization: `Bearer ${credential}`,
-            "content-type": "application/json",
-            [SPEECH_RETIREMENT_HEADER]: "1",
-            ...(journal ? { [SPEECH_RECOVERY_HEADER]: "1" } : {}),
-            ...(mintIntent ? { [SPEECH_MINT_INTENT_HEADER]: mintIntent } : {}),
-          },
-          body: encoded,
-          // Drain a dispatched mint for its cleanup identity if Stop wins.
-          signal: requestSignal,
-        });
+        try {
+          response = await (options.fetch ?? fetch)(new URL(path, origin), {
+            method: "POST",
+            redirect: "error",
+            headers: {
+              authorization: `Bearer ${credential}`,
+              "content-type": "application/json",
+              [SPEECH_RETIREMENT_HEADER]: "1",
+              ...(journal ? { [SPEECH_RECOVERY_HEADER]: "1" } : {}),
+              ...(mintIntent
+                ? { [SPEECH_MINT_INTENT_HEADER]: mintIntent }
+                : {}),
+            },
+            body: encoded,
+            // Drain a dispatched mint for its cleanup identity if Stop wins.
+            signal: requestSignal,
+          });
+        } catch (error) {
+          const causes = [
+            error,
+            error instanceof Error ? error.cause : undefined,
+          ];
+          const reset = causes.some(
+            (cause) =>
+              cause instanceof Error &&
+              "code" in cause &&
+              cause.code === "ECONNRESET",
+          );
+          // Consent precedes paid admission. Retry one reset within its existing deadline.
+          if (path !== SPEECH_RELAY_ROUTES.consent || attempt !== 0 || !reset)
+            throw error;
+          await waitForWarming(100, startupSignal);
+          continue;
+        }
         headersMs = performance.now() - started;
         httpTraceId = undefined;
         try {
