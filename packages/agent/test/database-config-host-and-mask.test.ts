@@ -30,7 +30,6 @@ beforeEach(async () => {
   vi.stubEnv("ELIZA_STATE_DIR", dir);
   vi.stubEnv("ELIZA_CONFIG_PATH", configPath);
   vi.stubEnv("ELIZA_PERSIST_CONFIG_PATH", configPath);
-  vi.stubEnv("ELIZA_API_BIND_HOST", "127.0.0.1");
   vi.stubEnv("POSTGRES_URL", undefined);
   vi.stubEnv("DATABASE_URL", undefined);
 });

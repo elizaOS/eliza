@@ -15,7 +15,6 @@ it("fills the inbox limit past newer persisted rows that cannot render", async (
     ELIZA_STATE_DIR: directory,
     ELIZA_CONFIG_PATH: path.join(directory, "config.json"),
     ELIZA_PERSIST_CONFIG_PATH: path.join(directory, "config.json"),
-    ELIZA_API_BIND_HOST: "127.0.0.1",
     ELIZA_API_TOKEN: "",
     ELIZA_REQUIRE_LOCAL_AUTH: "0",
   })) {
@@ -125,7 +124,6 @@ it("answers inbox and character history reads with 503 before the runtime exists
     ELIZA_STATE_DIR: directory,
     ELIZA_CONFIG_PATH: path.join(directory, "config.json"),
     ELIZA_PERSIST_CONFIG_PATH: path.join(directory, "config.json"),
-    ELIZA_API_BIND_HOST: "127.0.0.1",
     ELIZA_API_TOKEN: "",
     ELIZA_REQUIRE_LOCAL_AUTH: "0",
   })) {
@@ -161,7 +159,6 @@ it("keeps an inbox reply that the connector leaves for the caller to save", asyn
     ELIZA_STATE_DIR: directory,
     ELIZA_CONFIG_PATH: path.join(directory, "config.json"),
     ELIZA_PERSIST_CONFIG_PATH: path.join(directory, "config.json"),
-    ELIZA_API_BIND_HOST: "127.0.0.1",
     ELIZA_API_TOKEN: "",
     ELIZA_REQUIRE_LOCAL_AUTH: "0",
   })) {
