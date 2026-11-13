@@ -25,6 +25,7 @@ import { users } from "@elizaos/cloud-shared/db/schemas/users";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import { drizzle } from "drizzle-orm/pglite";
+import { mobileAppAuthClients } from "../../shared/src/db/schemas/mobile-app-auth-clients";
 import { mobileAppAuthGrants } from "../../shared/src/db/schemas/mobile-app-auth-grants";
 
 const OWNER = "22222222-2222-4222-8222-222222222222";
@@ -391,6 +392,7 @@ beforeAll(async () => {
     apps,
     authEvents,
     mobileAppAuthGrants,
+    mobileAppAuthClients,
   ]) {
     const config = getTableConfig(table);
     for (const column of config.columns) {
@@ -433,7 +435,7 @@ beforeEach(async () => {
   limiter = "disabled";
   counters.clear();
   await pg.exec(
-    "TRUNCATE mobile_app_auth_grants, apps, api_keys, users, organizations, auth_events",
+    "TRUNCATE mobile_app_auth_grants, mobile_app_auth_clients, apps, api_keys, users, organizations, auth_events",
   );
   for (const id of [ORG, OTHER_ORG]) {
     await pg.query(

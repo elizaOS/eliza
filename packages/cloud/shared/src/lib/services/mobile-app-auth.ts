@@ -261,12 +261,7 @@ export async function resolveMobileCredentialRegistration(
     return invalid("invalid_client", "Mobile credential has no acknowledged authorization");
   }
   let registration: MobileAppAuthRegistration;
-  let dbClient = null;
-  try {
-    dbClient = await mobileAppAuthClientsRepository.findRegisteredMobileClient(grant.client_id);
-  } catch {
-    dbClient = null;
-  }
+  const dbClient = await mobileAppAuthClientsRepository.findRegisteredMobileClient(grant.client_id);
   if (dbClient) {
     if (!dbClient.client.enabled || !dbClient.app.is_active || !dbClient.app.is_approved) {
       return invalid("invalid_client", "Mobile client is disabled or unapproved");
@@ -486,12 +481,7 @@ async function renewalRegistration(
 ): Promise<MobileAppAuthRegistration> {
   const { grant, app } = authority;
   let registration: MobileAppAuthRegistration;
-  let dbClient = null;
-  try {
-    dbClient = await mobileAppAuthClientsRepository.findRegisteredMobileClient(grant.client_id);
-  } catch {
-    dbClient = null;
-  }
+  const dbClient = await mobileAppAuthClientsRepository.findRegisteredMobileClient(grant.client_id);
   if (dbClient) {
     if (!dbClient.client.enabled || !dbClient.app.is_active || !dbClient.app.is_approved) {
       return refuseRenewal(

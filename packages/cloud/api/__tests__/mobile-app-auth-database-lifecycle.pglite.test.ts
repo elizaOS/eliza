@@ -317,3 +317,59 @@ test("E2E database-only client lifecycle: asset links -> signin -> exchange -> a
   }
   expect(resolveFailed).toBe(true);
 });
+test("Database outage fails closed: rethrows error rather than silently serving stale env fallback", async () => {
+  const envWithStaleConfig = {
+    ...env(),
+    ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: JSON.stringify([
+      {
+        clientId: DB_CLIENT_ID,
+        appId: APP_ID,
+        redirectUri: DB_REDIRECT_URI,
+        enabled: true,
+      },
+    ]),
+    ELIZA_ANDROID_ASSET_LINKS_JSON: JSON.stringify([
+      {
+        relation: ["delegate_permission/common.handle_all_urls"],
+        target: {
+          namespace: "android_app",
+          package_name: ANDROID_PKG,
+          sha256_cert_fingerprints: [ANDROID_FINGERPRINT],
+        },
+      },
+    ]),
+  };
+
+  // Temporarily rename table to simulate complete database / query outage
+  await pg.exec(
+    "ALTER TABLE mobile_app_auth_clients RENAME TO mobile_app_auth_clients_outage",
+  );
+
+  try {
+    // 1. Asset links route returns 500 error instead of masking outage with stale env fallback (200)
+    const assetLinksRes = await assetLinksApp.request(
+      "/",
+      {},
+      envWithStaleConfig as never,
+    );
+    expect(assetLinksRes.status).toBe(500);
+
+    // 2. Credential resolution rethrows DB error instead of masking outage with stale env fallback
+    let resolveFailed = false;
+    try {
+      await resolveMobileCredentialRegistration(envWithStaleConfig as never, {
+        id: randomUUID(),
+        user_id: USER_ID,
+        organization_id: ORG_ID,
+        source_app_id: APP_ID,
+      });
+    } catch {
+      resolveFailed = true;
+    }
+    expect(resolveFailed).toBe(true);
+  } finally {
+    await pg.exec(
+      "ALTER TABLE mobile_app_auth_clients_outage RENAME TO mobile_app_auth_clients",
+    );
+  }
+});

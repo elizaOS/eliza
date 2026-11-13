@@ -12,7 +12,6 @@
 import { mobileAppAuthClientsRepository } from "@elizaos/cloud-shared/db/repositories/mobile-app-auth-clients";
 import {
   ANDROID_ASSET_LINKS_ENV,
-  type AndroidAssetLinkStatement,
   parseAndroidAssetLinksConfig,
 } from "@elizaos/cloud-shared/lib/auth/android-asset-links";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
@@ -24,15 +23,8 @@ const app = new Hono<AppEnv>();
 const ASSET_LINKS_CACHE_CONTROL = "public, max-age=3600";
 
 app.get("/", async (c) => {
-  let statements: AndroidAssetLinkStatement[] = [];
-  try {
-    statements =
-      await mobileAppAuthClientsRepository.listActiveAndroidAssetLinks();
-  } catch (error) {
-    logger.error("[assetlinks] failed to query statements from database", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
+  let statements =
+    await mobileAppAuthClientsRepository.listActiveAndroidAssetLinks();
 
   if (statements.length === 0 && c.env?.ELIZA_ANDROID_ASSET_LINKS_JSON) {
     const parsed = parseAndroidAssetLinksConfig(
