@@ -11,7 +11,7 @@
   "conformance": "packages/cloud/quint/check-maps-credit-funding.mjs",
   "bounds": {
     "domain": "Two logical request IDs, three initial credit units, one or two unit quotes, at most two provider calls per request, one account and mutable plan/credential standing.",
-    "atomicity": "Admission and settlement rely on the existing authoritative organization billing owner. Maps replay receipts precede provider dispatch.",
+    "atomicity": "Admission and settlement rely on the existing authoritative organization billing owner. Maps replay receipts precede provider dispatch. The first provider call checks credential standing; subrequests within the same operation reuse its acknowledged dispatch promise.",
     "progress": "Progress assumes weak fairness of provider observation and settlement. The no-fairness property is expected to produce a liveness counterexample."
   },
   "limitations": [
@@ -25,13 +25,8 @@
       "main": "maps_credit_funding",
       "init": "init",
       "step": "step",
-      "invariants": [
-        "safety"
-      ],
-      "temporal": [
-        "SettlesWhenObserved",
-        "NoFairnessSettles"
-      ],
+      "invariants": ["safety"],
+      "temporal": ["SettlesWhenObserved", "NoFairnessSettles"],
       "maxSteps": 40,
       "samples": 1000,
       "temporalChecks": [
