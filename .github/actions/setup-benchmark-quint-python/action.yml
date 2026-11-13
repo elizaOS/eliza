@@ -15,7 +15,7 @@ runs:
       run: |
         bun -e '
           import { quintShardForFile } from "./packages/scripts/lib/quint-shards.ts";
-          const models = ["BenchmarkProcessOwner", "BenchmarkOutputLock", "AcceptanceGroupSignal"];
+          const models = ["BenchmarkProcessOwner", "BenchmarkOutputLock", "BenchmarkRunGroupRecovery", "AcceptanceGroupSignal"];
           const selected = models.some(name => quintShardForFile(`packages/benchmarks/quint/${name}.qnt`, 4) === Number(process.env.QUINT_SHARD));
           console.log(`needed=${selected}`);
         ' >> "$GITHUB_OUTPUT"

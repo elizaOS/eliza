@@ -52,5 +52,26 @@
       "Existing threaded and subprocess tests exercise real lock exclusion, protected-body failure, nested refusal and the publication decorator. This evidence uses the local POSIX filesystem.",
       "Process crash, lock-file replacement, OS and filesystem errors, cross-key deadlocks, Windows and durable artifact publication remain outside this projection."
     ]
+  },
+  {
+    "id": "benchmarks.BenchmarkRunGroupRecovery",
+    "model": "packages/benchmarks/quint/BenchmarkRunGroupRecovery.qnt",
+    "sources": [
+      "packages/benchmarks/orchestrator/db.py",
+      "packages/benchmarks/orchestrator/cohort.py",
+      "packages/benchmarks/orchestrator/runner.py",
+      "packages/benchmarks/orchestrator/cli.py"
+    ],
+    "invariants": [
+      "FinishedGroupUnchanged",
+      "PlainFailureWaitsForRows",
+      "ResumeDispatchNeedsRetirement"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Three durable groups and six rows. A stale sweep updates eligible rows only, preserves completed groups, and closes a namespaceless group only after its last running row settles. Namespaced recovery records a resumable pause without inventing a quota reset.",
+      "One exact resume can retire its previous attempt before worker dispatch. Admission and retirement are separate commits. Existing SQLite and cohort tests check persisted states, retirement timestamps, and the worker-boundary ordering.",
+      "Progress assumes eventual commit or error. Concurrent database writers, SQLite and process crash internals, quota timing, checkpoint replay, worker execution and artifact publication are outside this model."
+    ]
   }
 ]
