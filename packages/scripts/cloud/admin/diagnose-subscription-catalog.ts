@@ -291,9 +291,9 @@ if (import.meta.main) {
         "json",
         "--method",
         checkoutTail ? "POST" : "GET",
-        ...(checkoutTail
-          ? ["--sampling-rate", "1"]
-          : ["--header", `x-eliza-catalog-diagnostic:${nonce}`]),
+        ...(!checkoutTail
+          ? ["--header", `x-eliza-catalog-diagnostic:${nonce}`]
+          : []),
       ],
       { ...options, stdio: ["ignore", "pipe", "pipe"] },
     );
