@@ -8,6 +8,7 @@
   --txt: #111;
   --foreground: #111;
   --muted: #707070;
+  --muted-strong: #333;
   --muted-foreground: #707070;
   --input: #f4f4f4;
   --surface: #f4f4f4;
@@ -21,7 +22,7 @@
 .alpha-hosted-login main { transition: opacity 180ms ease; }
 .alpha-hosted-login main[data-alpha-ready="false"] { opacity: 0; pointer-events: none; }
 .alpha-hosted-login main[data-alpha-ready="true"] { opacity: 1; }
-.alpha-hosted-login .alpha-sign-in-mark { filter: invert(12%) sepia(100%) saturate(7463%) hue-rotate(245deg) brightness(91%) contrast(146%); }
+.alpha-hosted-login .alpha-sign-in-mark { background: #1800ff; border-radius: 50%; padding: 6px; }
 .alpha-hosted-login button, .alpha-hosted-login input { border-radius: 1rem; }
 .alpha-hosted-login fieldset > button:only-child { grid-column: 1 / -1; }
 @media (prefers-reduced-motion: reduce) { .alpha-hosted-login main { transition: none; } }

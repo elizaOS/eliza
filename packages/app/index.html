@@ -2,6 +2,30 @@
 <html lang="en" dir="ltr">
 
 <head>
+  <script>
+    // Alpha billing keeps its presentation across the existing OAuth return.
+    (() => {
+      if (location.pathname !== '/login') return;
+      const query = new URLSearchParams(location.search);
+      let returnTo = query.get('returnTo');
+      if (!returnTo && (query.has('code') || query.has('state') || query.has('error'))) {
+        try {
+          const pending = JSON.parse(sessionStorage.getItem('eliza.login.oauth.returnTo') || 'null');
+          if (pending && pending.expiresAt >= Date.now()) returnTo = pending.returnTo;
+        } catch (_) { /* Presentation falls back to the ordinary login. */ }
+      }
+      if (query.get('app') === 'alpha' ||
+          (typeof returnTo === 'string' && returnTo.startsWith('/') &&
+           new URL(returnTo, location.origin).searchParams.get('app') === 'alpha')) {
+        document.documentElement.classList.add('alpha-signin-entry');
+      }
+    })();
+  </script>
+  <style>
+    html.alpha-signin-entry, .alpha-signin-entry body,
+    .alpha-signin-entry #eliza-preboot-shell { background: #fff; }
+    .alpha-signin-entry .eliza-preboot-shell__content { visibility: hidden; }
+  </style>
   <!-- Polyfill for three.js TSL WebGPU enum access.
        Three.js assumes self.GPUShaderStage exists when self is defined,
        but many browsers have self without WebGPU support. -->
