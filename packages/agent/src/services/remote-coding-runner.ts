@@ -1260,7 +1260,7 @@ function hasRunnerCredentials(config: RemoteCodingRunnerConfig): boolean {
 
 function runnerUnavailableReason(config: RemoteCodingRunnerConfig): string {
   if (config.provider === "eliza-cloud") {
-    return "Eliza Cloud runner requires a direct remote runner URL or ELIZA_CLOUD_API_KEY/ELIZACLOUD_API_KEY for coding-container provisioning.";
+    return "Eliza Cloud runner requires a direct remote runner URL or ELIZAOS_CLOUD_API_KEY for coding-container provisioning.";
   }
   return "Home runner requires ELIZA_HOME_REMOTE_RUNNER_URL.";
 }
@@ -1779,9 +1779,7 @@ function cloudApiBaseUrl(
   if (provider !== "eliza-cloud") return undefined;
   return normalizeCloudApiBaseUrl(
     readSetting(runtime, "ELIZA_CLOUD_SANDBOX_API_BASE_URL") ??
-      readSetting(runtime, "ELIZA_CLOUD_API_BASE_URL") ??
       readSetting(runtime, "ELIZAOS_CLOUD_BASE_URL") ??
-      readSetting(runtime, "ELIZA_CLOUD_BASE_URL") ??
       DEFAULT_ELIZA_CLOUD_API_BASE_URL,
   );
 }
@@ -1793,10 +1791,8 @@ function cloudApiToken(
   if (provider !== "eliza-cloud") return undefined;
   return (
     readSetting(runtime, "ELIZA_CLOUD_SANDBOX_TOKEN") ??
-    readSetting(runtime, "ELIZA_CLOUD_API_KEY") ??
-    readSetting(runtime, "ELIZA_CLOUD_AUTH_TOKEN") ??
     readSetting(runtime, "ELIZAOS_CLOUD_API_KEY") ??
-    readSetting(runtime, "ELIZACLOUD_API_KEY")
+    readSetting(runtime, "ELIZA_CLOUD_AUTH_TOKEN")
   );
 }
 
@@ -1820,7 +1816,7 @@ function remoteHttpToken(
   if (provider === "eliza-cloud") {
     return (
       readSetting(runtime, "ELIZA_CLOUD_SANDBOX_TOKEN") ??
-      readSetting(runtime, "ELIZA_CLOUD_API_KEY") ??
+      readSetting(runtime, "ELIZAOS_CLOUD_API_KEY") ??
       readSetting(runtime, "ELIZA_CLOUD_AUTH_TOKEN")
     );
   }

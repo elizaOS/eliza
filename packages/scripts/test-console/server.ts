@@ -239,7 +239,6 @@ export const routes = {
     if (result.status === "authenticated" && result.apiKey) {
       setConnection("eliza-cloud", {
         ELIZAOS_CLOUD_API_KEY: result.apiKey,
-        ELIZA_CLOUD_API_KEY: result.apiKey,
       });
     }
     json(res, 200, { status: result.status });
