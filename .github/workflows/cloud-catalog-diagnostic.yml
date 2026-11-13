@@ -92,6 +92,9 @@ jobs:
               stage, name: safe(error?.name), type: safe(error?.type), code,
               sqlstate: code && /^[0-9A-Z]{5}$/.test(code) ? code : undefined,
               reason: safe(error?.context?.reason),
+              sourceFrames: typeof error?.stack === 'string'
+                ? [...error.stack.matchAll(/(?:packages|plugins)\/[A-Za-z0-9_./-]+\.[cm]?[jt]sx?:\d+:\d+/g)].map(match => match[0])
+                : [],
               statusCode: typeof error?.statusCode === 'number' ? error.statusCode : undefined,
             }}));
             process.exitCode = 1;
@@ -251,8 +254,9 @@ jobs:
                   !parsed.success || invoice.livemode !== false || !subscription || subscription.livemode !== false) {
                 throw new Error('Selected paid test checkout is not verified');
               }
-              stage = 'reconcile_existing_paid_test_checkout';
+              stage = 'load_checkout_reconciliation';
               const { reconcileSubscriptionCheckout } = await import('./packages/cloud/shared/src/lib/services/subscription-checkout.ts');
+              stage = 'reconcile_existing_paid_test_checkout';
               await reconcileSubscriptionCheckout(session.id, session.metadata.organization_id);
               console.log(JSON.stringify({ reconciliation: { completed: true, existingPaidTestCheckout: true } }));
             }
