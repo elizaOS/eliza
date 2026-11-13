@@ -6,7 +6,7 @@ import {
   stopTaskScheduler,
   TaskService,
 } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/testing/runtime";
+import { createTestRuntime } from "../../../testing/src/runtime.ts";
 import type { startEmbeddedLogin } from "../../src/server/runtime";
 
 import {
