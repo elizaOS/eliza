@@ -24,6 +24,7 @@ import {
   MobileAppAuthProtocolError,
   type MobileAppAuthRegistration,
 } from "@elizaos/cloud-shared/lib/services/mobile-app-auth";
+import { SubscriptionCatalogError } from "@elizaos/cloud-shared/lib/services/subscription-catalog";
 import type { EntitlementPlanSummary } from "@elizaos/cloud-shared/lib/services/subscription-entitlement-token";
 import { ElizaError } from "@elizaos/core";
 import type { SubscriptionCheckoutConfirmRouteDependencies } from "../v1/subscriptions/checkout/confirm/route";
@@ -381,6 +382,99 @@ function confirmDeps(
 }
 
 describe("POST /api/v1/subscriptions/checkout/confirm", () => {
+  test("reports a caught database failure without exposing its query or tenant", async () => {
+    const messages: unknown[][] = [];
+    const original = console.error;
+    console.error = (...args) => messages.push(args);
+    try {
+      const { deps } = confirmDeps(SESSION, {
+        reconcile: async () => {
+          throw new Error("private query with private tenant", {
+            cause: Object.assign(new Error("private SQL values"), {
+              name: "error",
+              code: "23514",
+              constraint: "billing_subscriptions_app_shape",
+            }),
+          });
+        },
+      });
+      const response = await post(
+        createSubscriptionCheckoutConfirmRoute(deps),
+        { sessionId: "cs_test_private" },
+      );
+      expect(response.status).toBe(500);
+      expect((await bodyOf(response)).code).toBe("internal_error");
+    } finally {
+      console.error = original;
+    }
+    expect(messages).toEqual([
+      [
+        "[SubscriptionCheckoutConfirm] Failed",
+        {
+          phase: "reconciliation",
+          name: "Error",
+          cause: {
+            name: "error",
+            sqlstate: "23514",
+            constraint: "billing_subscriptions_app_shape",
+          },
+        },
+      ],
+    ]);
+    expect(JSON.stringify(messages)).not.toContain("private");
+  });
+
+  test("retains known catalog and publication codes without their private context", async () => {
+    const messages: unknown[][] = [];
+    const original = console.error;
+    console.error = (...args) => messages.push(args);
+    try {
+      for (const error of [
+        new SubscriptionCatalogError(
+          "SUBSCRIPTION_CATALOG_STRIPE_KEY_INVALID",
+          "private catalog detail",
+          { privateValue: "private" },
+        ),
+        new ElizaError("private clock detail", {
+          code: "PRIMARY_DATABASE_CLOCK_UNAVAILABLE",
+          context: { privateValue: "private" },
+        }),
+      ]) {
+        const { deps } = confirmDeps(SESSION, {
+          reconcile: async () => {
+            throw error;
+          },
+        });
+        const response = await post(
+          createSubscriptionCheckoutConfirmRoute(deps),
+          { sessionId: "cs_test_private" },
+        );
+        expect(response.status).toBe(500);
+      }
+    } finally {
+      console.error = original;
+    }
+    expect(messages).toEqual([
+      [
+        "[SubscriptionCheckoutConfirm] Failed",
+        {
+          phase: "reconciliation",
+          name: "SubscriptionCatalogError",
+          code: "SUBSCRIPTION_CATALOG_STRIPE_KEY_INVALID",
+        },
+      ],
+      [
+        "[SubscriptionCheckoutConfirm] Failed",
+        {
+          phase: "reconciliation",
+          name: "ElizaError",
+          code: "PRIMARY_DATABASE_CLOCK_UNAVAILABLE",
+        },
+      ],
+    ]);
+    expect(JSON.stringify(messages)).not.toContain("private");
+  });
+
   test("settles the caller organization's session and returns the entitlement", async () => {
     for (const caller of [MOBILE, SESSION]) {
       const { deps, reconciled } = confirmDeps(caller);

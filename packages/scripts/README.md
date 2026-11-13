@@ -107,3 +107,11 @@ and metrics are disabled. No provider configuration or payment is changed.
 Production requires `main`. A 503 without a captured code fails the diagnostic;
 it does not prove a missing binding. Compare binding presence and the captured
 code before repairing provider configuration.
+
+The same workflow has a temporary, staging-only checkout tail. It observes
+normal checkout confirmation requests for five minutes and makes no request of
+its own. It emits only request/status counts and the two fixed checkout/policy
+failure markers with known error identifiers. Headers, bodies, tenant IDs,
+messages, SQL and unrelated logs never leave memory. A capture with no matching
+request fails. Use this to diagnose the existing payment flow, then remove the
+temporary capture mode after qualification.

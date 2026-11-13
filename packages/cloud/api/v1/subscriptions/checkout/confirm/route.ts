@@ -25,7 +25,7 @@ import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { checkoutFailure } from "../_boundary";
+import { checkoutFailure, checkoutFailureDiagnostic } from "../_boundary";
 
 const schema = z
   .object({ sessionId: z.string().regex(/^cs_(test|live)_[A-Za-z0-9]+$/) })
@@ -52,12 +52,14 @@ export function createSubscriptionCheckoutConfirmRoute(
   const app = new Hono<AppEnv>();
   app.post("/", moneyRateLimit(RateLimitPresets.STANDARD), async (c) => {
     c.header("Cache-Control", "no-store");
+    let phase = "authorization";
     try {
       const { user, mobileCredential } = await dependencies.authorize(c);
       // A mobile credential acts only while its native client is still the
       // registered, enabled client it was issued under.
       if (mobileCredential)
         await dependencies.resolveRegistration(c.env, mobileCredential);
+      phase = "request_validation";
       const decoded = await decodeRequestJson(c.req);
       if (!decoded.ok)
         return c.json(
@@ -69,10 +71,12 @@ export function createSubscriptionCheckoutConfirmRoute(
           400,
         );
       const { sessionId } = schema.parse(decoded.value);
+      phase = "reconciliation";
       const data = await dependencies.reconcile(
         sessionId,
         user.organization_id,
       );
+      phase = "response";
       // The subscription is committed. A failed summary read must not report the
       // purchase as failed; the client can read the entitlement route.
       let summary: EntitlementPlanSummary | null = null;
@@ -98,7 +102,14 @@ export function createSubscriptionCheckoutConfirmRoute(
       });
     } catch (error) {
       // error-policy:J1 Return sanitized failures without exposing provider objects.
-      return checkoutFailure(c, error);
+      const response = checkoutFailure(c, error);
+      if (response.status >= 500) {
+        logger.error("[SubscriptionCheckoutConfirm] Failed", {
+          phase,
+          ...checkoutFailureDiagnostic(error),
+        });
+      }
+      return response;
     }
   });
   return app;
