@@ -61,9 +61,22 @@ module ScheduledTaskPendingOccurrence {
     settledPending' = settledPending, dismissedFrom' = dismissedFrom,
     events' = events
   }
-  action step = any {
-    tick, settle("skipped"), settle("completed"), dismiss, finished
+  // Clock delivery may pause. Fair ticks are an assumption, not a time bound.
+  action stutter = all {
+    day' = day, status' = status, usedUp' = usedUp, dispatched' = dispatched,
+    settledPending' = settledPending, dismissedFrom' = dismissedFrom,
+    events' = events
   }
+  action step = any {
+    tick, settle("skipped"), settle("completed"), dismiss, finished, stutter
+  }
+  val ModelState = {
+    day: day, status: status, usedUp: usedUp, dispatched: dispatched,
+    settledPending: settledPending, dismissedFrom: dismissedFrom, events: events
+  }
+  temporal OccurrencesAdvanceWithoutFairness = (day <= Days).leadsTo(day > Days)
+  temporal OccurrencesAdvance = tick.weakFair(ModelState)
+    .implies(OccurrencesAdvanceWithoutFairness)
   val SettledPendingNeverDispatched =
     settledPending.forall(d => not(has(dispatched, d)))
   val DispatchOncePerOccurrence =

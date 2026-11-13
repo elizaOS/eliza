@@ -10,7 +10,7 @@
     "plugins/plugin-scheduling/src/scheduled-task/runner-pending-occurrence.test.ts"
   ],
   "conformance": "plugins/plugin-scheduling/quint/check-pending-occurrence.mjs",
-  "bounds": "One daily recurring task over three occurrences, created the evening before the first. Before each tick the owner may skip, complete or dismiss the row once if it is scheduled or fired. All 22 generated verb/tick sequences are replayed through the production runner (apply, resolveDueDecision, fireWithResult with allowTerminalRefire as the standalone tick calls them) with in-memory stores, once with a cron trigger and once with a during_window trigger; after every step the row status and the dispatched occurrences must match the model. Interval triggers, applyWithResult and a snoozed row are separate tests in runner-pending-occurrence.test.ts; reopen, gates and the global pause keep their existing coverage.",
+  "bounds": "One daily recurring task over three occurrences, created the evening before the first. Before each tick the owner may skip, complete or dismiss the row once if it is scheduled or fired. All 22 generated verb/tick sequences are replayed through the production runner (apply, resolveDueDecision, fireWithResult with allowTerminalRefire as the standalone tick calls them) with in-memory stores, once with a cron trigger and once with a during_window trigger; after every step the row status and the dispatched occurrences must match the model. Interval triggers, applyWithResult and a snoozed row are separate tests in runner-pending-occurrence.test.ts; reopen, gates and the global pause keep their existing coverage. Under weak fairness of the daily tick, the three-occurrence horizon is eventually consumed. Explicit stuttering permits a paused clock, so the same progress claim without fairness must fail. No wall-clock or external delivery bound is proved.",
   "cases": [
     {
       "name": "owner-verbs-over-three-occurrences",
@@ -24,9 +24,25 @@
         "DismissStopsDispatch",
         "TypeOK"
       ],
-      "temporal": [],
+      "temporal": ["OccurrencesAdvance", "OccurrencesAdvanceWithoutFairness"],
       "maxSteps": 8,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "OccurrencesAdvance",
+          "expect": "holds",
+          "assumptions": [
+            "Every continuously enabled daily tick eventually runs (weak fairness). Each tick and any owner verb settle. This checks advancement through the three modeled occurrences, not a wall-clock deadline or provider delivery success."
+          ]
+        },
+        {
+          "property": "OccurrencesAdvanceWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No tick fairness is assumed. Clock delivery may pause forever before a pending occurrence, so a temporal loop counterexample is required."
+          ]
+        }
+      ]
     }
   ]
 }
