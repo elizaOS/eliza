@@ -16,7 +16,6 @@ type Step = {
   with?: Record<string, string>;
   env?: Record<string, string>;
 };
-type Workflow = { jobs: Record<string, { steps: Step[] }> };
 type Action = {
   inputs: Record<string, { default: string }>;
   runs: { steps: Step[] };
@@ -96,29 +95,6 @@ function runLifecycle(
   }
 }
 
-function workspaceSetup(workflowPath: string, jobName: string): Step {
-  const workflow = readYaml(workflowPath) as Workflow;
-  const step = workflow.jobs[jobName]?.steps.find(
-    (candidate) => candidate.uses === "./.github/actions/setup-bun-workspace",
-  );
-  if (!step)
-    throw new Error(`${workflowPath}:${jobName} has no workspace setup`);
-  return step;
-}
-
-function namedStep(
-  workflowPath: string,
-  jobName: string,
-  stepName: string,
-): Step {
-  const workflow = readYaml(workflowPath) as Workflow;
-  const step = workflow.jobs[jobName]?.steps.find(
-    (candidate) => candidate.name === stepName,
-  );
-  if (!step) throw new Error(`${workflowPath}:${jobName} has no ${stepName}`);
-  return step;
-}
-
 describe("CI fused inference setup ownership", () => {
   const action = readYaml(
     ".github/actions/setup-bun-workspace/action.yml",
@@ -154,36 +130,6 @@ describe("CI fused inference setup ownership", () => {
     expect(install.with?.["run-postinstall"]).toBe("false");
     expect(install.with?.["install-command"]).toBe(
       "bun install --frozen-lockfile --ignore-scripts",
-    );
-  });
-
-  test("desktop artifact owners enter the installer", () => {
-    for (const [workflow, job] of [
-      [".github/workflows/electrobun-contract.yml", "flatpak-e2e"],
-    ]) {
-      const input = workspaceSetup(workflow, job).with?.[
-        "setup-fused-inference"
-      ];
-      const install = action.runs.steps.find(
-        (step) => step.name === "Install dependencies",
-      );
-      if (!install) throw new Error("Workspace setup has no install step");
-      runLifecycle(
-        install,
-        input ?? action.inputs["setup-fused-inference"].default,
-        ["install"],
-        true,
-      );
-    }
-    runLifecycle(
-      namedStep(
-        ".github/workflows/release-electrobun.yml",
-        "build",
-        "Run repository postinstall patches",
-      ),
-      "true",
-      ["run", "postinstall"],
-      true,
     );
   });
 });

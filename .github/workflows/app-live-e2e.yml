@@ -57,7 +57,7 @@ on:
         options: [baseline, bare-weather, typed-weather, behavior, full]
         default: baseline
       run_only_requested:
-        description: "Skip the default local/walkthrough/desktop lanes and run only explicitly selected opt-in lanes."
+        description: "Skip the default local/walkthrough lanes and run only explicitly selected opt-in lanes."
         type: boolean
         default: false
 
@@ -755,79 +755,8 @@ jobs:
             bun run --cwd packages/app install:android:adb
             bun run --cwd packages/app test:sim:local-chat:android:live
 
-  # Desktop (Electrobun) packaged e2e. The build + agent boot run on a standard
-  # runner and catch real packaged-app bugs (e.g. a missing JSON import attribute
-  # that breaks the wallet plugin on boot). The renderer-driving assertions need a
-  # real GPU display (the app uses WebGPU); on GPU-less runners the build + launch
-  # still validate, so the renderer step is best-effort.
-  desktop-packaged:
-    name: desktop packaged (build + boot + renderer)
-    if: ${{ !inputs.run_shared_runtime && (github.event_name != 'workflow_dispatch' || !inputs.run_only_requested) }}
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 60
-    env:
-      PGLITE_WASM_MODE: node
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          submodules: false
-
-      - name: Install WebKitGTK + xvfb for the Electrobun webview
-        # libayatana-appindicator3-1: libNativeWrapper.so (tray support) links
-        # against it; without it every packaged spec dies at launch with
-        # ERR_DLOPEN_FAILED before the test bridge comes up (the lane was red
-        # for 5+ days with "Packaged app exited before the desktop test bridge
-        # became ready").
-        # scrot/imagemagick/x11-apps/ffmpeg: ScreenCaptureManager tries, in
-        # order, scrot, ImageMagick import, ffmpeg x11grab, then xwd+ffmpeg for
-        # /main-window/screenshot. ffmpeg also stitches the walkthrough MP4.
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            xvfb libwebkit2gtk-4.1-0 libgtk-3-0 mesa-utils libgl1-mesa-dri \
-            libayatana-appindicator3-1 scrot imagemagick x11-apps ffmpeg
-
-      - name: Setup Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Setup workspace dependencies
-        uses: ./.github/actions/setup-bun-workspace
-        with:
-          setup-python: "true"
-          install-protoc: "true"
-          bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --frozen-lockfile --ignore-scripts
-          install-native-deps: "false"
-          skip-avatar-clone: "true"
-          no-vision-deps: "true"
-
-      - name: Install Playwright runner
-        run: packages/scripts/github/install-playwright-browsers.sh chromium
-
-      # Build the packaged desktop app (catches build/packaging breaks). Run from
-      # the repo root so desktop-build.ts resolves packages/app.
-      - name: Build the Electrobun desktop app
-        run: bun packages/app/scripts/desktop-build.ts build
-
-      # Launch + drive the packaged app under a virtual display + software GL.
-      - name: Run packaged desktop e2e (xvfb)
-        run: xvfb-run -a --server-args="-screen 0 1920x1080x24" bun run --cwd packages/app test:desktop:packaged
-
-      - name: Upload desktop-packaged artifacts
-        if: ${{ always() }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-        with:
-          name: app-live-e2e-desktop
-          path: |
-            packages/app/playwright-report/
-            test-results/app/
-          if-no-files-found: ignore
-          retention-days: 7
-
   # A nightly that is always red is indistinguishable from no lane: without an
-  # alert, nobody notices the desktop loop has no green unattended cadence and
+  # alert, nobody notices the app loop has no green unattended cadence and
   # regressions accumulate silently (issue #13681). This job turns a red
   # scheduled run into an actionable signal by commenting on the tracking issue
   # with the per-job results and a link to the run. Scheduled runs only —
@@ -840,7 +769,6 @@ jobs:
         walkthrough-live,
         cloud-live,
         cloud-live-staging,
-        desktop-packaged,
       ]
     if: ${{ !inputs.run_shared_runtime && (always() && github.event_name == 'schedule' && contains(needs.*.result, 'failure')) }}
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
@@ -855,20 +783,18 @@ jobs:
           R_WALK: ${{ needs.walkthrough-live.result }}
           R_CLOUD: ${{ needs.cloud-live.result }}
           R_CLOUD_STAGING: ${{ needs.cloud-live-staging.result }}
-          R_DESKTOP: ${{ needs.desktop-packaged.result }}
         with:
           github-token: ${{ github.token }}
           script: |
             const body = [
               "## 🌙 Nightly App Live E2E failed (scheduled run)",
               "",
-              "The only scheduled desktop-packaged lane went red. Per-job results:",
+              "A scheduled app live lane went red. Per-job results:",
               "",
               `- app live chat: \`${process.env.R_CHAT}\``,
               `- full walkthrough: \`${process.env.R_WALK}\``,
               `- cloud login+personal-identity+chat (production): \`${process.env.R_CLOUD}\``,
               `- cloud login+personal-identity+chat (staging): \`${process.env.R_CLOUD_STAGING}\``,
-              `- desktop packaged (build+boot+renderer): \`${process.env.R_DESKTOP}\``,
               "",
               `Run log: ${process.env.RUN_URL}`,
               "",

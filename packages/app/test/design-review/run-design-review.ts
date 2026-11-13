@@ -14,12 +14,9 @@ import {
   type Route,
 } from "@playwright/test";
 import { createServer as createViteServer, type ViteDevServer } from "vite";
-import {
-  type MockApiServer,
-  startMockApiServer,
-} from "../electrobun-packaged/mock-api";
 import { captureScreenshotWithQualityRetry } from "../ui-smoke/helpers/screenshot-quality";
 import { getFreePort } from "../utils/get-free-port.mjs";
+import { type MockApiServer, startMockApiServer } from "./mock-api";
 
 type ShellMode = "native";
 type ViewId =

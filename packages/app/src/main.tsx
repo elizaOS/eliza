@@ -604,26 +604,6 @@ function applyCloudPairSessionToken(): void {
   }
 }
 
-/**
- * Adds `eliza-electrobun-frameless` for CSS `-webkit-app-region` (Chromium/CEF).
- * macOS WKWebView move/resize are still driven by native overlays in
- * window-effects.mm; this class mainly marks the shell and helps non-WK engines.
- */
-function shouldEnableElectrobunMacWindowDrag(): boolean {
-  if (!isElectrobunRuntime() || typeof document === "undefined") return false;
-  if (isStandaloneWindowShell(windowShellRoute)) return false;
-  if (typeof navigator === "undefined") return false;
-  const ua = navigator.userAgent;
-  return /Mac/i.test(ua) && !/(iPhone|iPad|iPod)/i.test(ua);
-}
-
-if (shouldEnableElectrobunMacWindowDrag()) {
-  document.documentElement.classList.add(
-    "eliza-electrobun-frameless",
-    "eliza-electrobun-macos-titlebar",
-  );
-}
-
 // Dev escape hatches: ?reset forces a truly fresh first-run session by
 // clearing persisted state; ?onboarding-replay=1 (dev builds only, #14382)
 // re-runs onboarding as a non-destructive client overlay on the SAME agent —

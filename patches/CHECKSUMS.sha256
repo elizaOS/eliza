@@ -40,7 +40,6 @@ eb1e6558a98efff8652869c24268810f5ed63a177dc33e797a8a628706744574  ./@solana%2Ftr
 99fb0f0123666c66fc0f540c2c6bb2475511e2d7d7895d229847fc39396ab681  ./@solana%2Ftransaction-messages@5.5.1.patch
 54d113ce8bf872cc56f25582cbe29c0b4e524327f8e6560dfd1e3b9f3a18ba79  ./@solana%2Ftransactions@5.5.1.patch
 fa9033e52dfdaa941f137a52504117b0b5405490696a007d6fd8bab807a8dfea  ./bigint-buffer@1.1.5.patch
-ef8a1244eaaafff1998317e9289174ec6398e64f089388df5a0adfcd1f8a6daa  ./electrobun@1.18.1.patch
 343e506742c0a7e26acadf91aa7c65a1fa9259fea615744374bc94a7a48e49ca  ./llama-cpp-capacitor@0.1.5-bge-cache-upgrade.patch
 18128260c133e6b2dc53d62d8e50f62b2c061e63e86750ef58a43c3e128999b2  ./llama-cpp-capacitor@0.1.5-bge-upgrade.patch
 ac106fafa24e1684fb23d30ef7ea4d5aaaa3a586ba0d7db14d1b835288790142  ./llama-cpp-capacitor@0.1.5.patch

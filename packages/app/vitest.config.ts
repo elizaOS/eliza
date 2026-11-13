@@ -128,7 +128,6 @@ export default defineConfig({
       "test/utils/**/*.test.{ts,tsx,mjs}",
       "test/ui-smoke/**/*.test.{ts,tsx,mjs}",
       "test/view-screenshots/**/*.test.{ts,tsx,mjs}",
-      "test/electrobun-packaged/**/*.test.{ts,tsx,mjs}",
       "test/audit/**/*.test.{ts,tsx,mjs}",
       "test/android/**/*.test.{ts,tsx,mjs}",
       "test/main-bootstrap.test.tsx",

@@ -38,7 +38,7 @@ bun run dev
 ```
 
 `bun install` also prepares submodules and patches, provisions supported host
-build prerequisites, and builds or verifies the staged desktop
+build prerequisites, and builds or verifies the staged host
 `libelizainference`. The embedding GGUF remains runtime-managed and downloads
 automatically during local-inference warmup. Fetch archived artifact fixtures explicitly with
 `bun packages/scripts/fetch-archive-artifacts.ts` when needed.
@@ -94,8 +94,7 @@ could not be shown to pass on it, or must prove behavior on Node:
   Bun: the `packages/os/android` Makefile, AOSP and
   Pixel scripts in `packages/os/scripts/android`, `compile-libllama.ts` (patch
   step), the iOS xcframework and engine scripts (`build-xcframework.ts`,
-  `mobile/ios/engine.ts`), `paradee-voice/build-native.ts`, Mac App Store
-  signing in `desktop-build.ts`, and the SMS gateway and Cloud gateway
+  `mobile/ios/engine.ts`), `paradee-voice/build-native.ts`, and the SMS gateway and Cloud gateway
   maintenance scripts.
 
 ## Benchmark
@@ -115,7 +114,7 @@ the selected provider's credentials and may incur usage costs.
 
 ### Eliza
 
-Eliza is the user-facing agent app for web, desktop, and mobile targets. Its
+Eliza is the user-facing agent app for web and mobile targets. Its
 capabilities are supplied by the runtime and installed plugins, including:
 
 - chat, voice, memory, knowledge, and document workflows;
