@@ -308,12 +308,7 @@ function buildRuntimeTargets(
       profile.kind !== "local" || profile.id === visibleLocalProfile?.id,
   );
   const profiles = visibleProfiles.map((profile) =>
-    profileTarget(
-      profile,
-      registry.activeProfileId,
-      directory,
-      sessions,
-    ),
+    profileTarget(profile, registry.activeProfileId, directory, sessions),
   );
   const representedHostIds = new Set(
     visibleProfiles.flatMap((profile) =>
