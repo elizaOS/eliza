@@ -42,11 +42,11 @@ kind: the creation of either of two to-dos, and each other kind on the first.
 pure val clientValues = Set("a", "b")
 pure val seqValues = Set(1, 2, 3)
 pure val opValues =
-  Set({ kind: "create", id: "x", title: "milk", done: false })
-    .union(Set({ kind: "create", id: "y", title: "eggs", done: false }))
-    .union(Set({ kind: "done", id: "x", title: "", done: true }))
-    .union(Set({ kind: "rename", id: "x", title: "oat milk", done: false }))
-    .union(Set({ kind: "remove", id: "x", title: "", done: false }))
+  Set(Create({ id: "x", title: "milk" }))
+    .union(Set(Create({ id: "y", title: "" })))
+    .union(Set(SetDone({ id: "x", done: true })))
+    .union(Set(Rename({ id: "x", title: "eggs" })))
+    .union(Set(Remove({ id: "x" })))
 ```
 
 ## Story: Change the list over HTTP
@@ -67,7 +67,7 @@ pure def answered(s: Server, client: str, seq: int): bool =
   s.log.some(h => h.client == client and h.seq == seq)
 
 pure def acceptedAs(s: Server, client: str, seq: int, op: Op): bool =
-  s.log.some(h => h.client == client and h.seq == seq and h.ok and sameOp(h.op, op))
+  s.log.some(h => h.client == client and h.seq == seq and h.ok and h.op == op)
 ```
 
 ### A new request whose edit makes sense is applied, raising the version by one
@@ -80,8 +80,7 @@ pure def allows(s: Server, client: str, seq: int, op: Op): bool =
   not(answered(s, client, seq)) and opAllowed(s.todos, op)
 
 pure def commit(client: str, s: Server, seq: int, op: Op): Server =
-  val v = s.version + 1
-  { todos: applyOp(s.todos, op), version: v, log: s.log.append({ client: client, seq: seq, op: op, ok: true }) }
+  { todos: applyOp(s.todos, op), version: s.version + 1, log: s.log.append({ client: client, seq: seq, op: op, ok: true }) }
 ```
 
 ### A new request whose edit does not make sense is refused, which is logged with its edit and changes nothing else
@@ -166,33 +165,4 @@ pure def stepNoToDoIsForgotten(before: Server, after: Server): bool =
 
 ```quint
 pure def sometimesATombstone(s: Server): bool = s.todos.some(t => t.deleted)
-```
-
-## Story: Other specs can rely on the server's rules
-
-> As the author of a spec that runs the server inside a larger system, I
-> want the server's state invariants stated as laws, so that my proofs can
-> use them rather than prove them again.
-
-### Answering a new request keeps the server's state invariants
-
-For this law, the server's rules are its three state invariants: the version
-counts accepted edits, requests are logged once, and to-do ids are unique.
-Step and reachability rules are checked separately. What is proved about
-imported transitions can be called when their obligations were proved in
-the same run.
-
-```quint
-pure val sValues =
-  Set(initial).union(Set({
-    todos: List({ id: "x", title: "milk", done: false, deleted: false }),
-    version: 1,
-    log: List({ client: "a", seq: 1, op: { kind: "create", id: "x", title: "milk", done: false }, ok: true }),
-  }))
-
-pure def rulesHold(s: Server): bool =
-  alwaysTheVersionCountsTheChanges(s) and alwaysNoRequestIsAnsweredTwice(s) and alwaysIdsAreUnique(s)
-
-pure def lawARequestKeepsTheRules(s: Server, client: str, seq: int, op: Op): bool =
-  (rulesHold(s) and canRequest(s, client, seq)) implies rulesHold(request(s, client, seq, op))
 ```

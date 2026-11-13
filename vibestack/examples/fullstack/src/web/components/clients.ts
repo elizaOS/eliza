@@ -8,4 +8,4 @@ export const synced: Client = {
 };
 
 /** Offline, with a to-do the server has not heard of, after the server refused an edit. */
-export const offline: Client = { ...synced, online: false, made: 3, refusals: 1, pending: [{ seq: 3, op: { kind: "create", id: "a-3", title: "bread", done: false } }] };
+export const offline: Client = { ...synced, online: false, made: 3, refusals: 1, pending: [{ seq: 3, op: { tag: "Create", id: "a-3", title: "bread" } }] };

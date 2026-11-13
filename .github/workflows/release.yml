@@ -1,0 +1,25 @@
+name: release
+
+# A v* tag that names the version in package.json builds the packaged `spec`
+# command, runs the tools' self-test and attaches the tarball to a GitHub
+# release (CONTRIBUTING.md, "Releasing").
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - run: test "v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
+      - run: pnpm pack
+      - run: pnpm selftest
+      - run: gh release create "$GITHUB_REF_NAME" vibestack-*.tgz --verify-tag --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}

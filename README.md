@@ -31,7 +31,7 @@ Help me build a new project from https://github.com/lalalune/vibestack.
 Start by asking what I want to build, who it is for, and its main workflows.
 Then:
 1. Use the template in a new project directory, or use my existing copy.
-   Read AGENTS.md and README.md in full and follow their skills.
+   Read AGENTS.md in full and follow the skills it names.
 2. Check for Node.js 26+ and Dafny 4.11 on PATH, run pnpm install, and follow
    the README's "Set up a new project" section.
 3. Write my stories in spec/app/index.md, with rules and Quint under each.
@@ -44,8 +44,8 @@ Then:
    my request before running pnpm accept.
 ```
 
-[![Start in ChatGPT](https://img.shields.io/badge/Start_in_ChatGPT-212121?style=for-the-badge)](https://chatgpt.com/?q=Help%20me%20build%20a%20new%20project%20from%20https%3A%2F%2Fgithub.com%2Flalalune%2Fvibestack.%0A%0AStart%20by%20asking%20what%20I%20want%20to%20build%2C%20who%20it%20is%20for%2C%20and%20its%20main%20workflows.%0AThen%3A%0A1.%20Use%20the%20template%20in%20a%20new%20project%20directory%2C%20or%20use%20my%20existing%20copy.%0A%20%20%20Read%20AGENTS.md%20and%20README.md%20in%20full%20and%20follow%20their%20skills.%0A2.%20Check%20for%20Node.js%2026%2B%20and%20Dafny%204.11%20on%20PATH%2C%20run%20pnpm%20install%2C%20and%20follow%0A%20%20%20the%20README's%20%22Set%20up%20a%20new%20project%22%20section.%0A3.%20Write%20my%20stories%20in%20spec%2Fapp%2Findex.md%2C%20with%20rules%20and%20Quint%20under%20each.%0A4.%20Build%20the%20app%20in%20apps%2Fapp%3A%20its%20shell%20in%20VibeLang%20on%20the%20generated%20code%20in%0A%20%20%20gen%2F%2C%20its%20interface%20in%20React.%20Add%20journey%20tests%20through%20the%20real%20UI%2C%0A%20%20%20API%2C%20storage%2C%20or%20other%20services.%0A5.%20Run%20pnpm%20check%20and%20fix%20failures%20until%20only%20my%20review%20remains.%0A%20%20%20Never%20edit%20generated%20files%20or%20weaken%20rules%20to%20pass%20checks.%0A6.%20Show%20me%20how%20to%20run%20the%20app%2C%20summarize%20what%20needs%20review%2C%20and%20wait%20for%0A%20%20%20my%20request%20before%20running%20pnpm%20accept.)
-[![Start in Claude](https://img.shields.io/badge/Start_in_Claude-B54A32?style=for-the-badge)](https://claude.ai/new?q=Help%20me%20build%20a%20new%20project%20from%20https%3A%2F%2Fgithub.com%2Flalalune%2Fvibestack.%0A%0AStart%20by%20asking%20what%20I%20want%20to%20build%2C%20who%20it%20is%20for%2C%20and%20its%20main%20workflows.%0AThen%3A%0A1.%20Use%20the%20template%20in%20a%20new%20project%20directory%2C%20or%20use%20my%20existing%20copy.%0A%20%20%20Read%20AGENTS.md%20and%20README.md%20in%20full%20and%20follow%20their%20skills.%0A2.%20Check%20for%20Node.js%2026%2B%20and%20Dafny%204.11%20on%20PATH%2C%20run%20pnpm%20install%2C%20and%20follow%0A%20%20%20the%20README's%20%22Set%20up%20a%20new%20project%22%20section.%0A3.%20Write%20my%20stories%20in%20spec%2Fapp%2Findex.md%2C%20with%20rules%20and%20Quint%20under%20each.%0A4.%20Build%20the%20app%20in%20apps%2Fapp%3A%20its%20shell%20in%20VibeLang%20on%20the%20generated%20code%20in%0A%20%20%20gen%2F%2C%20its%20interface%20in%20React.%20Add%20journey%20tests%20through%20the%20real%20UI%2C%0A%20%20%20API%2C%20storage%2C%20or%20other%20services.%0A5.%20Run%20pnpm%20check%20and%20fix%20failures%20until%20only%20my%20review%20remains.%0A%20%20%20Never%20edit%20generated%20files%20or%20weaken%20rules%20to%20pass%20checks.%0A6.%20Show%20me%20how%20to%20run%20the%20app%2C%20summarize%20what%20needs%20review%2C%20and%20wait%20for%0A%20%20%20my%20request%20before%20running%20pnpm%20accept.)
+[![Start in ChatGPT](https://img.shields.io/badge/Start_in_ChatGPT-212121?style=for-the-badge)](https://chatgpt.com/?q=Help%20me%20build%20a%20new%20project%20from%20https%3A%2F%2Fgithub.com%2Flalalune%2Fvibestack.%0A%0AStart%20by%20asking%20what%20I%20want%20to%20build%2C%20who%20it%20is%20for%2C%20and%20its%20main%20workflows.%0AThen%3A%0A1.%20Use%20the%20template%20in%20a%20new%20project%20directory%2C%20or%20use%20my%20existing%20copy.%0A%20%20%20Read%20AGENTS.md%20in%20full%20and%20follow%20the%20skills%20it%20names.%0A2.%20Check%20for%20Node.js%2026%2B%20and%20Dafny%204.11%20on%20PATH%2C%20run%20pnpm%20install%2C%20and%20follow%0A%20%20%20the%20README's%20%22Set%20up%20a%20new%20project%22%20section.%0A3.%20Write%20my%20stories%20in%20spec%2Fapp%2Findex.md%2C%20with%20rules%20and%20Quint%20under%20each.%0A4.%20Build%20the%20app%20in%20apps%2Fapp%3A%20its%20shell%20in%20VibeLang%20on%20the%20generated%20code%20in%0A%20%20%20gen%2F%2C%20its%20interface%20in%20React.%20Add%20journey%20tests%20through%20the%20real%20UI%2C%0A%20%20%20API%2C%20storage%2C%20or%20other%20services.%0A5.%20Run%20pnpm%20check%20and%20fix%20failures%20until%20only%20my%20review%20remains.%0A%20%20%20Never%20edit%20generated%20files%20or%20weaken%20rules%20to%20pass%20checks.%0A6.%20Show%20me%20how%20to%20run%20the%20app%2C%20summarize%20what%20needs%20review%2C%20and%20wait%20for%0A%20%20%20my%20request%20before%20running%20pnpm%20accept.)
+[![Start in Claude](https://img.shields.io/badge/Start_in_Claude-B54A32?style=for-the-badge)](https://claude.ai/new?q=Help%20me%20build%20a%20new%20project%20from%20https%3A%2F%2Fgithub.com%2Flalalune%2Fvibestack.%0A%0AStart%20by%20asking%20what%20I%20want%20to%20build%2C%20who%20it%20is%20for%2C%20and%20its%20main%20workflows.%0AThen%3A%0A1.%20Use%20the%20template%20in%20a%20new%20project%20directory%2C%20or%20use%20my%20existing%20copy.%0A%20%20%20Read%20AGENTS.md%20in%20full%20and%20follow%20the%20skills%20it%20names.%0A2.%20Check%20for%20Node.js%2026%2B%20and%20Dafny%204.11%20on%20PATH%2C%20run%20pnpm%20install%2C%20and%20follow%0A%20%20%20the%20README's%20%22Set%20up%20a%20new%20project%22%20section.%0A3.%20Write%20my%20stories%20in%20spec%2Fapp%2Findex.md%2C%20with%20rules%20and%20Quint%20under%20each.%0A4.%20Build%20the%20app%20in%20apps%2Fapp%3A%20its%20shell%20in%20VibeLang%20on%20the%20generated%20code%20in%0A%20%20%20gen%2F%2C%20its%20interface%20in%20React.%20Add%20journey%20tests%20through%20the%20real%20UI%2C%0A%20%20%20API%2C%20storage%2C%20or%20other%20services.%0A5.%20Run%20pnpm%20check%20and%20fix%20failures%20until%20only%20my%20review%20remains.%0A%20%20%20Never%20edit%20generated%20files%20or%20weaken%20rules%20to%20pass%20checks.%0A6.%20Show%20me%20how%20to%20run%20the%20app%2C%20summarize%20what%20needs%20review%2C%20and%20wait%20for%0A%20%20%20my%20request%20before%20running%20pnpm%20accept.)
 
 ## Why
 
@@ -84,7 +84,7 @@ would call true or false.
 | Shell | HTTP, storage, queues and every other effect, in VibeLang on Effect 4 | `types`: the `vibelang` compiler over `src/`, tests and `gen/` |
 | Interface | React with Vite, Tailwind CSS v4, shadcn/ui on Radix, tokens from `packages/design-system`, components in `packages/ui` with generated stories | `types`, ESLint and Stylelint rules for tokens, Storybook and browser tests |
 | Tests | Whole journeys in Vitest with `@effect/vitest` and Playwright, citing the rule each step serves; conformance runs of the real app against the spec | `tests`, `traces` |
-| Workspace | Node 26, pnpm workspaces, Turborepo; ESLint boundaries, Knip and Madge | `pnpm verify`, CI on every push |
+| Workspace | Node 26, pnpm workspaces, Turborepo; ESLint boundaries, Knip, Madge and jscpd | `pnpm verify`, CI on every push |
 
 ```mermaid
 flowchart LR
@@ -206,9 +206,12 @@ import { Machine, machine, apply, decodeEvent, decodeState } from "../gen/app.ef
 
 `Machine` holds the state and changes it only by an event the rules allow:
 `receive(input)` decodes an untrusted value and applies it, failing with
-`NotAnEvent` or `Rejected`. A shell that stores state builds its own service
-on `apply` and passes what it loads through `decodeState`
-([shell skill](.claude/skills/shell/SKILL.md)).
+`NotAnEvent` or `Rejected`. A shell that stores state provides `stored(key)`
+in place of `machine()`, over a `KeyValueStore` layer (`layerFileSystem`,
+`layerStorage` or `layerMemory`). A React component reads and drives a
+`Machine` with `useMachine` from `gen/<name>.react.ts`. If the spec uses a
+sender parameter named `by`, authenticate that sender in your shell and pass
+it separately ([`shell` skill](.claude/skills/shell/SKILL.md)).
 
 | Write | In | Following |
 |---|---|---|
@@ -256,19 +259,40 @@ Before committing your application's starting point:
 
 ## Using it from another package
 
-The tools are also the `spec` command of this package. In an existing
-project, `spec init [<dir>]` adds what the stack needs without replacing
-anything you have: all four skills in `.claude/skills/` and their relative
-links in `.agents/skills/`, the spec reference in `SPEC.md`, the procedure in
-`AGENTS.md` between `<!-- vibestack:start -->` markers (and `CLAUDE.md`
-importing it), a `tsconfig.json` and `vitest.config.ts` for VibeLang, an
-empty `spec/index.md`, `.gitignore` entries for what the tools own, and the
-`dev`, `check`, `gen`, `accept`, `build` and `test` scripts with the
-VibeLang and Effect packages at the versions the tools are tested with. Run
-it again after an upgrade to refresh the procedure.
+The toolchain is a package with a `spec` command, installed from a tarball
+made with `pnpm pack`, which builds it.
+
+```sh
+pnpm add -D /path/to/vibestack-0.1.0.tgz
+pnpm exec spec init          # adds what is missing; updates only its own marked instructions
+pnpm exec spec new           # fill an empty spec/index.md
+pnpm exec spec new <name>    # a starter spec/<name>/index.md
+pnpm check
+```
+
+| `spec init` adds | |
+|---|---|
+| `.claude/skills/` (`sync`, `shell`, `prove`, `design`), `AGENTS.md` | the agent's procedure and its skills; existing AGENTS content is kept around a marked Vibestack section, which a later `init` refreshes |
+| `SPEC.md` | the spec reference |
+| `.agents/skills/` | links to the same skills in `.claude/skills/` |
+| `.claude/settings.json` | Claude Code refuses edits to `gen/`, `.spec-cache/`, `.studio/`, `spec/lock.json` and `lemmascript.json`, and asks before `pnpm accept` |
+| `CLAUDE.md` | imports `AGENTS.md`, preserving any existing instructions |
+| an empty `spec/index.md` | |
+| `tsconfig.json` | for the VibeLang compiler: `src`, `test`, `gen/*.ts` and `gen/*.vibe`, emitting to `dist/`, with the compiler's declarations in `.vibe/declarations` |
+| `vitest.config.ts` | the one Vitest configuration, `project()` from `vibestack/testing/vitest.ts` ([AGENTS.md, "Tests"](AGENTS.md#tests)) |
+| `.gitignore` | `gen/`, `.spec-cache/`, `.studio/`, `dist/`, `.vibe/` |
+| `package.json` | scripts `dev`, `check`, `gen`, `accept`, `build` (`vibelang`) and `test` (`vitest run`); the VibeLang toolchain it lacks, at its pins, with the `@effect/platform-node-shared` override that keeps one Effect; `packageManager` (`pnpm@10.24.0`), `engines.node` (`>=26`, the Node `spec` refuses to run below) and `"type": "module"` if unset |
+
+It replaces no file that exists, and no script or dependency already there.
 It writes no tests: `check` adds a `test` script on the one Vitest
 configuration when `test/` first appears, and a driver to fill in when
 `src/` first keeps a machine's state.
+
+`spec` works on `spec/**/*.md`, and optionally `src/`, the package's
+[tests](AGENTS.md#tests) and a `tsconfig.json`, in the directory it is run from. Without a `tsconfig.json`, a package containing `src/` or `test/` fails the
+types stage; a spec-only package reports that there is no code to typecheck. To hand the generated code to another package, compile `gen/*.ts`
+with `tsc`; it has no dependencies. `gen/*.effect.vibe` needs the VibeLang
+toolchain.
 
 ## Commands
 
@@ -281,14 +305,13 @@ current one. Installed as a package, use `pnpm exec spec <command> [<dir>]`.
 | `pnpm studio [<dir>]` | Opens Studio alone, on one project |
 | `pnpm check [<dir>] [--json]` | Checks spec, source and tests; ends with a `next:` line ([JSON shape](CONTRIBUTING.md#changing-the-tools)) |
 | `pnpm quick` | Types, lint and tests of what changed |
-| `pnpm verify` | Everything CI runs: build, types, tests, browser tests, checks, lint, Knip, Madge and the selftest, for every workspace package |
+| `pnpm verify` | Everything CI runs: build, types, tests, browser tests, checks, lint, Knip, Madge, jscpd and the selftest, for every workspace package |
 | `pnpm gen [<dir>]` | Generates `gen/` only |
 | `node vibestack/spec.ts watch [<dir>]` | Rechecks when a spec, source file or test changes |
 | `pnpm accept [<dir>]` | The user's sign-off: checks afresh and records what `review` lists, [all or nothing](SPEC.md#review) |
 | `pnpm accept unproved` | Records the listed obligations as simulated only. The user's decision |
 | `pnpm new [<path>]` | Fills an empty root index or creates a child [starter spec](SPEC.md#writing-a-spec) |
 | `node vibestack/spec.ts init [<dir>]` | Sets up an existing project ([above](#using-it-from-another-package)) |
-| `node vibestack/spec.ts migrate [<dir>]` | Consolidates old review ledgers into `spec/lock.json`, keeping their approvals |
 | `pnpm demo` | Runs the order example's scripted checkout session |
 | `pnpm examples` | Installs and checks every example, outside CI |
 | `pnpm selftest` | Breaks the pipeline one way at a time and checks each break is caught |
@@ -298,7 +321,7 @@ current one. Installed as a package, use `pnpm exec spec <command> [<dir>]`.
 |---|---|
 | 0 | green |
 | 1 | a `✗`, or an error |
-| 2 | bad arguments; prints the usage line |
+| 2 | bad arguments; prints the usage to stderr (`spec --help` prints it and exits 0) |
 
 CI runs `pnpm verify` on each pull request and push with the same fixed
 profile as local checks, and a fresh nightly run with a larger fixed profile

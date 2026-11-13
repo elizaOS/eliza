@@ -52,11 +52,11 @@ pure val whoValues = Set("a", "b")
 pure val iValues = Set(0, 1, 2)
 pure val seqValues = Set(0, 1, 2)
 pure val opValues =
-  Set({ kind: "create", id: "x", title: "milk", done: false })
-    .union(Set({ kind: "create", id: "y", title: "eggs", done: false }))
-    .union(Set({ kind: "done", id: "x", title: "", done: true }))
-    .union(Set({ kind: "rename", id: "y", title: "bread", done: false }))
-    .union(Set({ kind: "remove", id: "x", title: "", done: false }))
+  Set(Create({ id: "x", title: "milk" }))
+    .union(Set(Create({ id: "y", title: "eggs" })))
+    .union(Set(SetDone({ id: "x", done: true })))
+    .union(Set(Rename({ id: "y", title: "bread" })))
+    .union(Set(Remove({ id: "x" })))
 ```
 
 ### Helpers
@@ -68,10 +68,9 @@ pure def withClient(who: str, c: C::Client, sys: System): System =
 pure def other(who: str): str = if (who == "a") "b" else "a"
 pure def isClient(who: str): bool = who == "a" or who == "b"
 
-pure val noOp: Op = { kind: "create", id: "", title: "", done: false }
+pure val noOp: Op = Create({ id: "", title: "" })
 pure val noMsg: Msg = { kind: Push, client: "", seq: 0, op: noOp, version: -1, todos: List() }
 pure def msgAt(net: List[Msg], i: int): Msg = if (i >= 0 and i < net.length()) net.nth(i) else noMsg
-pure def dropAt(net: List[Msg], i: int): List[Msg] = net.removeAt(i)
 
 pure def isRequest(m: Msg): bool = m.kind == Request or m.kind == Forged
 pure def oldest(c: C::Client): C::Pending =
@@ -83,7 +82,7 @@ pure def answer(kind: MsgKind, who: str, seq: int, s: S::Server): Msg =
   { kind: kind, client: who, seq: seq, op: noOp, version: s.version, todos: s.todos }
 pure def pastAt(h: List[List[Todo]], v: int): List[Todo] = if (v >= 0 and v < h.length()) h.nth(v) else List()
 pure def isPast(h: List[List[Todo]], v: int, todos: List[Todo]): bool =
-  v >= 0 and v < h.length() and sameTodos(pastAt(h, v), todos)
+  v >= 0 and v < h.length() and pastAt(h, v) == todos
 ```
 
 ## Story: Edit together, online or not
@@ -111,10 +110,10 @@ The edit must make sense on the list the user sees, and only tabs `a` and `b`
 act.
 
 ```quint
-pure def canAct(sys: System, who: str, op: Op): bool = isClient(who) and opAllowed(C::view(clientOf(sys, who)), op)
+pure def canAct(sys: System, who: str, op: Op): bool = isClient(who) and C::canQueue(clientOf(sys, who), op)
 pure def act(sys: System, who: str, op: Op): System =
   val c = clientOf(sys, who)
-  val queued = C::queue(op, c)
+  val queued = C::queue(c, op)
   val sent =
     if (c.online and c.pending.length() == 0) sys.net.append(request(who, { seq: queued.made, op: op })) else sys.net
   withClient(who, queued, { ...sys, net: sent })
@@ -181,7 +180,7 @@ pure def answerNew(m: Msg, rest: List[Msg], sys: System): System =
 pure def canServe(sys: System, i: int): bool = isRequest(msgAt(sys.net, i))
 pure def serve(sys: System, i: int): System =
   val m = msgAt(sys.net, i)
-  val rest = dropAt(sys.net, i)
+  val rest = sys.net.removeAt(i)
   if (S::answered(sys.server, m.client, m.seq)) repeatAnswer(m, rest, sys) else answerNew(m, rest, sys)
 ```
 
@@ -201,14 +200,14 @@ pure def canDeliver(sys: System, i: int): bool =
   i >= 0 and i < sys.net.length() and not(isRequest(m)) and clientOf(sys, m.client).online
 pure def deliver(sys: System, i: int): System =
   val m = msgAt(sys.net, i)
-  withClient(m.client, receive(m, clientOf(sys, m.client)), { ...sys, net: dropAt(sys.net, i) })
+  withClient(m.client, receive(m, clientOf(sys, m.client)), { ...sys, net: sys.net.removeAt(i) })
 ```
 
 ### The network may lose or repeat any message
 
 ```quint
 pure def canLose(sys: System, i: int): bool = i >= 0 and i < sys.net.length()
-pure def lose(sys: System, i: int): System = { ...sys, net: dropAt(sys.net, i) }
+pure def lose(sys: System, i: int): System = { ...sys, net: sys.net.removeAt(i) }
 
 pure def canDuplicate(sys: System, i: int): bool = i >= 0 and i < sys.net.length()
 pure def duplicate(sys: System, i: int): System = { ...sys, net: sys.net.append(msgAt(sys.net, i)) }
@@ -234,6 +233,9 @@ pure def forge(sys: System, who: str, seq: int, op: Op): System =
 > see the server's current list.
 
 ### The server and both tabs keep their own state rules
+
+Every `always` rule of the server's spec and of the client's holds of the
+server and of each tab in every state of the system.
 
 ```quint
 pure def alwaysEachPartKeepsItsRules(sys: System): bool = and {
@@ -263,7 +265,7 @@ pure def alwaysNoTabIsAheadOfTheServer(sys: System): bool =
 ```quint
 pure def alwaysTheHistoryEndsWithTheCurrentList(sys: System): bool =
   sys.history.length() == sys.server.version + 1
-    and sameTodos(pastAt(sys.history, sys.server.version), sys.server.todos)
+    and pastAt(sys.history, sys.server.version) == sys.server.todos
 ```
 
 ### The history only grows: a step leaves it as it was or adds one list at its end
@@ -298,8 +300,8 @@ pure def sometimesBothTabsAgree(sys: System): bool = and {
   sys.a.made >= 1, sys.b.made >= 1,
   sys.a.pending.length() == 0, sys.b.pending.length() == 0,
   sys.a.seen == sys.server.version, sys.b.seen == sys.server.version,
-  sameTodos(C::view(sys.a), C::view(sys.b)),
-  sameTodos(C::view(sys.a), sys.server.todos),
+  C::view(sys.a) == C::view(sys.b),
+  C::view(sys.a) == sys.server.todos,
 }
 ```
 
@@ -313,7 +315,7 @@ initial system and on one with an edit already queued.
 pure def sometimesQueuedOffline(sys: System): bool = not(sys.a.online) and sys.a.pending.length() >= 2
 pure def sometimesARefusedEdit(sys: System): bool = sys.a.refusals + sys.b.refusals >= 1
 
-pure val sysValues = Set(initial).union(Set({ ...initial, a: C::create(C::initial, "x", "milk") }))
+pure val sysValues = Set(initial).union(Set({ ...initial, a: C::queue(C::initial, Create({ id: "x", title: "milk" })) }))
 
 pure def lawATabCanQueueAnEditWhileOffline(sys: System, who: str, op: Op): bool =
   val c = clientOf(sys, who)
@@ -349,14 +351,15 @@ in a tab's name with a different edit is not.
 ```quint
 pure def alwaysARetryIsTheSameEdit(sys: System): bool =
   sys.net.every(m => m.kind != Request
-    or clientOf(sys, m.client).pending.every(p => p.seq != m.seq or sameOp(p.op, m.op)))
+    or clientOf(sys, m.client).pending.every(p => p.seq != m.seq or p.op == m.op))
 ```
 
 ### Every request, acknowledgement and refusal of a tab belongs to an edit the tab has numbered, and every acknowledgement and refusal to one the server answered
 
-Discovered by the proof: without it, an acknowledgement left on the network
-could carry the number the tab gives its next edit, and acknowledge that edit
-before it was sent. A tab's request is one the tab sent.
+A push of a change carries no number, and a forged request is not the
+tab's, so neither belongs to an edit. Discovered by the proof: without it, an
+acknowledgement left on the network could carry the number the tab gives its
+next edit, and acknowledge that edit before it was sent.
 
 ```quint
 pure def numbered(sys: System, who: str, seq: int): bool =
@@ -448,9 +451,9 @@ user is alone, the server has accepted every queued edit it answered, as
 that edit; an acknowledgement of the oldest queued edit carries the current
 version; once the oldest edit is applied, applying it again changes nothing;
 until it is, and whenever nothing is queued, the tab has seen the current
-version; a copy on its way to the
-tab that is newer than the tab's is at the current version; what the user sees is the server's list with the
-queued edits applied; each edit not yet applied makes sense after the ones
+version; a copy on its way to the tab that is newer than the tab's is at the
+current version; what the user sees is the server's list with the queued
+edits applied; each edit not yet applied makes sense after the ones
 before it; and no refusal is on its way for a queued edit.
 
 ```quint
@@ -474,10 +477,10 @@ pure def inStep(sys: System, who: str): bool =
     c.pending.every(p => not(S::answered(s, who, p.seq)) or S::acceptedAs(s, who, p.seq, p.op)),
     sys.net.every(m => m.kind != Ack or m.client != who or c.pending.length() == 0 or m.seq != oldest(c).seq
       or m.version == s.version),
-    not(oldestAnswered(sys, who)) or sameTodos(applyOp(s.todos, oldest(c).op), s.todos),
+    not(oldestAnswered(sys, who)) or applyOp(s.todos, oldest(c).op) == s.todos,
     oldestAnswered(sys, who) or c.seen == s.version,
     sys.net.every(m => isRequest(m) or m.client != who or m.version <= c.seen or m.version == s.version),
-    sameTodos(C::view(c), replay(s.todos, c.pending)),
+    C::view(c) == replay(s.todos, c.pending),
     allowedInTurn(s.todos, unapplied(sys, who)),
     sys.net.every(m => m.kind != Refusal or m.client != who or not(C::waiting(c, m.seq))),
   }

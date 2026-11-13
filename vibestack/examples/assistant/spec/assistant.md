@@ -366,9 +366,9 @@ type SecretCard = str
 
 ### The model sees nothing secret
 
-What the model is shown to choose its next action: the turn, the page and the
-bill. `Seen` has no secret field, so `check` refuses any of its fields that
-the card could reach.
+What the model is shown to choose its next action: the turn and its budget,
+the page, whether a request is waiting, and the bill. `Seen` has no secret
+field, so `check` refuses any of its fields that the card could reach.
 
 ```quint
 type Seen = { phase: Phase, budget: int, page: Page, waiting: bool, bill: Bill }

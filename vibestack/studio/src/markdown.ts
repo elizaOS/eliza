@@ -24,6 +24,21 @@ export const nodesOfOutline = (file: string, o: Outline): OutlineNode[] => o.sto
   })];
 });
 
+/** How list `a` becomes `b`, by their longest common subsequence: each item kept (" "), removed ("-") or added ("+"), named by where it is in both. */
+export function edits<T>(a: T[], b: T[]): { op: " " | "+" | "-"; item: T; at: string }[] {
+  const n = a.length, m = b.length;
+  const t = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) t[i][j] = a[i] === b[j] ? t[i + 1][j + 1] + 1 : Math.max(t[i + 1][j], t[i][j + 1]);
+  const out: ReturnType<typeof edits<T>> = [];
+  for (let i = 0, j = 0; i < n || j < m; ) {
+    const at = `${i}:${j}`;
+    if (i < n && j < m && a[i] === b[j]) { out.push({ op: " ", item: a[i], at }); i++; j++; }
+    else if (i < n && (j >= m || t[i + 1][j] >= t[i][j + 1])) out.push({ op: "-", item: a[i++], at });
+    else out.push({ op: "+", item: b[j++], at });
+  }
+  return out;
+}
+
 /** Specs in the order the rail lists them: a directory's index.md before the specs in it. */
 const orderKey = (file: string) => file.replace(/(?:^spec\/|\/)index\.md$/, "/");
 export const specOrder = (a: string, b: string) => orderKey(a).localeCompare(orderKey(b));

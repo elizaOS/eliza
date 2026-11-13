@@ -12,8 +12,9 @@ import { importedMeanings, originalColumn, type Spec } from "./parse.ts";
 import { defines } from "./review.ts";
 import { entry, recall, store, type Memory } from "./cache.ts";
 import { plainText } from "./scan.ts";
-import { codeDirOf, codeDirs, filesUnder, owner, readSrc, type SrcFile } from "./util.ts";
+import { codeDirOf, codeDirs, filesUnder, manifest, owner, readSrc, type SrcFile } from "./util.ts";
 import { effectAdapter } from "./gen/vibe.ts";
+import { reactHook } from "./gen/react.ts";
 
 const ANNOTATIONS = ["backend", "pure", "requires", "ensures", "invariant", "decreases", "type", "ghost", "assert"];
 
@@ -56,7 +57,7 @@ export function generated(root: string, spec: Spec, ir: any, models: Map<string,
   const model = generate(ir, spec.name, spec.file, (d) => origins.get(d), models);
   fs.writeFileSync(path.join(dir, `${spec.name}.ts`), model.ts);
   fs.writeFileSync(path.join(dir, `${spec.name}.run.qnt`), model.harness);
-  fs.writeFileSync(path.join(dir, `${spec.name}.effect.vibe`), effectAdapter(spec.name, model.source, model.ts, namespace(root)));
+  writeFaces(root, dir, spec, model.ts);
   if (model.opaques.length) fs.writeFileSync(path.join(dir, `${spec.name}.sim.qnt`), simulated(spec.qnt, model.opaques));
   writeConformance(root, model);
   models.set(spec.name, model);
@@ -64,13 +65,22 @@ export function generated(root: string, spec: Spec, ir: any, models: Map<string,
 }
 
 /**
+ * Into `to`, the gen/ of the package in `dir`, what gen/<name>.ts (`text`) is for its shell: the Effect adapter, whose
+ * `Machine` key carries the package's name, and the React hook where the package depends on react.
+ */
+function writeFaces(dir: string, to: string, spec: Spec, text: string) {
+  const pkg = manifest(dir);
+  fs.writeFileSync(path.join(to, `${spec.name}.effect.vibe`), effectAdapter(spec.name, spec.file, text, namespace(dir, pkg.name)));
+  const hook = ["dependencies", "devDependencies", "peerDependencies"].some((kind) => pkg[kind]?.react) && reactHook(spec.name, spec.file, text);
+  if (hook) fs.writeFileSync(path.join(to, `${spec.name}.react.ts`), hook);
+}
+
+/**
  * What tells the `Machine` services of one package from another's (gen/vibe.ts): the package's name, or else its path
  * from the workspace or repository root, "." for that root, or its directory's name where there is neither. Never
  * where a checkout happens to be, which would differ from one machine to the next in generated and built code.
  */
-function namespace(dir: string): string {
-  const manifest = path.join(dir, "package.json");
-  const name: unknown = fs.existsSync(manifest) ? JSON.parse(fs.readFileSync(manifest, "utf8")).name : undefined;
+function namespace(dir: string, name: unknown): string {
   if (typeof name === "string" && name) return name;
   const real = fs.realpathSync(dir);
   for (let up = real; ; up = path.dirname(up)) {
@@ -82,8 +92,8 @@ function namespace(dir: string): string {
 /**
  * Each owner's gen/, written anew from the root's: the modules of its specs and of every spec they import, under the
  * root's module names, with the types their drivers are written to, so that a package imports only from its own gen/.
- * An Effect adapter is written for the owner, whose name its `Machine` key carries: that is the package the service
- * runs in.
+ * The Effect adapter and the React hook are written for the owner (`writeFaces`): that is the package the service runs
+ * in.
  * A module not generated, because its spec is not valid, is not there.
  */
 export function mirrorGen(root: string, specs: Spec[]) {
@@ -98,8 +108,7 @@ export function mirrorGen(root: string, specs: Spec[]) {
     if (!files.length) continue;
     fs.mkdirSync(to, { recursive: true });
     for (const f of [...files, "package.json", ...files.some((f) => f.endsWith(".conformance.ts")) ? ["_conformance.ts"] : []]) fs.copyFileSync(path.join(from, f), path.join(to, f));
-    for (const spec of specs) if (files.includes(`${spec.name}.ts`))
-      fs.writeFileSync(path.join(to, `${spec.name}.effect.vibe`), effectAdapter(spec.name, spec.file, fs.readFileSync(path.join(from, `${spec.name}.ts`), "utf8"), namespace(path.join(root, dir))));
+    for (const spec of specs) if (files.includes(`${spec.name}.ts`)) writeFaces(path.join(root, dir), to, spec, fs.readFileSync(path.join(from, `${spec.name}.ts`), "utf8"));
   }
 }
 

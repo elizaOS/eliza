@@ -1,18 +1,19 @@
 // The Components view: every React component the story generator found, its generated stories as live previews,
-// and its links to the spec model, source and design document. It reads the catalog `vibestack/stories/cli.ts gen`
-// writes (vibestack/stories/meta.ts declares the same shape), as the server collects it from the project.
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Effect, ManagedRuntime, Stream } from "effect";
-import { Input, cn } from "@repo/ui";
+// and its spec model, source and design document. It reads the catalog `vibestack/stories/cli.ts gen` writes
+// (../../../stories/emit.ts, `ComponentIndex`), as the server collects it from the project (../project.ts, `componentsOf`).
+import { useEffect, useState } from "react";
+import { Effect, ManagedRuntime } from "effect";
+import { Button, Checkbox, EmptyState, Input, cn } from "@repo/ui";
 import { Machine, machine } from "../../gen/components.effect.vibe";
-import { enabled, initial, type Event } from "../../gen/components.ts";
+import { useMachine } from "../../gen/components.react.ts";
+import { initial, type Event } from "../../gen/components.ts";
 import { S, select } from "./studio.ts";
 import { Code } from "./text.tsx";
-import type { Component, ComponentIndex, Prop } from "../catalog.ts";
+import type { Component, ComponentIndex, Prop } from "../../../stories/emit.ts";
 
 type Arg = string | number | boolean;
 
-/** Where Storybook serves previews when the catalog does not say: `pnpm storybook`'s port. */
+/** Where Storybook serves previews: `pnpm storybook`'s port. */
 const STORYBOOK = "http://localhost:6006";
 
 /** Storybook's `args` URL parameter: `key:value;…`, with `!` marking a boolean. */
@@ -41,51 +42,52 @@ function matching(index: ComponentIndex, query: string): Component[] {
 
 const typeOf = (p: Prop) => (p.options ? p.options.map((o) => JSON.stringify(o)).join(" | ") : p.kind);
 const isArg = (v: unknown): v is Arg => typeof v === "string" || typeof v === "number" || typeof v === "boolean";
-const Link = ({ onClick, href, children }: { onClick?: () => void; href?: string; children: string }) =>
-  href ? <a href={href} className="font-mono text-xs text-primary">{children}</a>
-    : <button type="button" onClick={onClick} className="font-mono text-xs text-primary">{children}</button>;
+/** A file of the project, by its path from the root: one of the specs opens in the Specs view, any other in the editor. */
+const File = ({ path }: { path: string }) => (S.specs.some((s) => s.file === path)
+  ? <Button variant="ghost" size="sm" className="h-auto px-1 py-0 font-mono text-xs text-primary" onClick={() => select(path)}>{path}</Button>
+  : <a href={encodeURI(`vscode://file/${S.snap?.project.root.replaceAll("\\", "/").replace(/^\/+/, "")}/${path.replace(/#.*$/, "")}`)} className="font-mono text-xs text-primary">{path}</a>);
 
-/** A component's model or design document, opened in the Specs view if it is one of the project's specs. */
-const open = (path: string) => { if (S.specs.some((s) => s.file === path)) select(path); };
+/** Which component and story the view shows, for as long as the page is open. */
+const catalog = ManagedRuntime.make(machine());
 
 /** The generated catalog's selected preview. @model spec/components.md */
 export function Components({ index }: { index: ComponentIndex }) {
-  const storybook = index.storybook.url || STORYBOOK;
-  const sourceUrl = (file: string) => encodeURI(`vscode://file/${S.snap!.project.root.replaceAll("\\", "/").replace(/^\/+/, "")}/${file}`);
   const [query, setQuery] = useState("");
-  const runtimeRef = useRef<ManagedRuntime.ManagedRuntime<Machine, never> | null>(null);
-  const [selection, setSelection] = useState(initial);
-  const [edits, setEdits] = useState<Record<string, Arg>>({});
-  const catalogKey = JSON.stringify(index.components.map((c) => [c.id, c.stories.map((s) => s.id)]));
-  const send = useCallback((event: Event) => runtimeRef.current?.runFork(Effect.flatMap(Effect.service(Machine), (catalog) => catalog.send(event))), []);
-  useEffect(() => {
-    const active = ManagedRuntime.make(machine());
-    runtimeRef.current = active;
-    const updates = active.runFork(Effect.flatMap(Effect.service(Machine), (catalog) => Stream.runForEach(catalog.changes, (next) => Effect.sync(() => { setSelection(next); setEdits({}); }))));
-    return () => { runtimeRef.current = null; updates.interruptUnsafe(); void active.dispose(); };
-  }, []);
-  useEffect(() => {
-    const entries = JSON.parse(catalogKey) as [string, string[]][];
-    send({ type: "load", counts: entries.map(([, stories]) => stories.length), key: catalogKey });
-  }, [catalogKey, send]);
+  const { state: selection = initial, can, send } = useMachine(catalog);
   const component = index.components[selection.component];
   const story = component?.stories[selection.story];
   // spec/components.md, "Choosing a component selects its first story and clears prop overrides"; spec/components.md, "Choosing a story stays within its component and clears prop overrides"
-  const choose = send;
+  const shown = `${selection.key} ${selection.component} ${selection.story}`;
+  const [edited, setEdited] = useState<{ shown: string; args: Record<string, Arg> }>({ shown, args: {} });
+  const edits = edited.shown === shown ? edited.args : {};
+  const choose = (event: Event) => { setEdited({ shown: "", args: {} }); void send(event); };
+  // spec/components.md, "Loading a catalog selects its first component and that component's first story"
+  const key = JSON.stringify(index.components.map((c) => [c.id, c.stories.map((s) => s.id)]));
+  useEffect(() => {
+    const counts = (JSON.parse(key) as [string, string[]][]).map(([, stories]) => stories.length);
+    void catalog.runPromiseExit(Effect.flatMap(Effect.service(Machine), (m) => m.send({ type: "load", counts, key })));
+  }, [key]);
+  /** Whether Storybook answers; a fetch it cannot answer fails, one it answers is opaque. */
+  const [storybook, setStorybook] = useState<boolean>();
+  useEffect(() => {
+    const asking = new AbortController();
+    fetch(STORYBOOK, { mode: "no-cors", signal: asking.signal }).then(() => setStorybook(true), () => { if (!asking.signal.aborted) setStorybook(false); });
+    return () => asking.abort();
+  }, []);
   const found = matching(index, query);
 
   const control = (p: Prop) => {
     const current = edits[p.name] ?? story?.args[p.name] ?? p.default;
-    const set = (v: Arg) => setEdits({ ...edits, [p.name]: v });
-    const field = "rounded-md border border-input bg-background px-2 py-1";
-    if (p.kind === "boolean") return <label key={p.name} className="flex items-center gap-2"><input type="checkbox" checked={current === true} onChange={(e) => set(e.target.checked)} />{p.name}</label>;
+    const set = (v: Arg) => setEdited({ shown, args: { ...edits, [p.name]: v } });
+    if (p.kind === "boolean") return <label key={p.name} className="flex items-center gap-2"><Checkbox checked={current === true} onCheckedChange={(on) => set(on === true)} />{p.name}</label>;
     if (p.options?.every(isArg)) return (
-      <label key={p.name} className="flex items-center gap-2">{p.name}
-        <select className={field} value={String(current)} onChange={(e) => set(p.options![e.target.selectedIndex])}>{p.options.map((o) => <option key={String(o)}>{String(o)}</option>)}</select>
-      </label>);
+      <div key={p.name} role="group" aria-label={p.name} className="flex items-center gap-1">{p.name}
+        {p.options.map((o) => <Button key={String(o)} variant={o === current ? "secondary" : "ghost"} size="sm" aria-pressed={o === current} onClick={() => set(o)}>{String(o)}</Button>)}
+      </div>);
+    // Keyed by the story, so a field starts from each story's own value.
     if (p.kind === "number" || p.kind === "string") return (
-      <label key={p.name} className="flex items-center gap-2">{p.name}
-        <input className={field} type={p.kind === "number" ? "number" : "text"} value={isArg(current) ? String(current) : ""}
+      <label key={`${story?.id} ${p.name}`} className="flex items-center gap-2">{p.name}
+        <Input className="h-8 w-40" type={p.kind === "number" ? "number" : "text"} defaultValue={isArg(current) ? String(current) : ""}
           onChange={(e) => set(p.kind === "number" ? Number(e.target.value) : e.target.value)} />
       </label>);
     return null;
@@ -99,7 +101,7 @@ export function Components({ index }: { index: ComponentIndex }) {
           <div key={pkg} className="flex flex-col">
             <h3 className="mt-3 mb-1 text-xs font-medium text-muted-foreground">{pkg}</h3>
             {found.filter((c) => c.package === pkg).map((c) => (
-              <button key={c.id} type="button" aria-current={c === component} disabled={!enabled(selection, { type: "chooseComponent", at: index.components.indexOf(c) })} onClick={() => choose({ type: "chooseComponent", at: index.components.indexOf(c) })}
+              <button key={c.id} type="button" aria-current={c === component} disabled={!can({ type: "chooseComponent", at: index.components.indexOf(c) })} onClick={() => choose({ type: "chooseComponent", at: index.components.indexOf(c) })}
                 className={cn("rounded-md px-2 py-1 text-left hover:bg-accent", c === component && "bg-accent text-primary")}>{c.name}</button>
             ))}
           </div>
@@ -110,10 +112,12 @@ export function Components({ index }: { index: ComponentIndex }) {
           <h2 className="text-lg font-semibold">{component.name}</h2>
           {component.description && <p className="text-muted-foreground">{component.description}</p>}
           {component.diagnostics.map((d) => <p key={d} role="alert" className="text-destructive">{d}</p>)}
-          {story && <iframe title={`${component.name}: ${story.name}`} src={previewUrl(storybook, story.id, edits)} className="h-70 w-full rounded-lg border border-border bg-card" />}
+          {story && (storybook === false
+            ? <EmptyState title="Storybook is not running" className="rounded-lg border border-border"><Code>pnpm --filter {component.package} storybook</Code></EmptyState>
+            : <iframe title={`${component.name}: ${story.name}`} src={previewUrl(STORYBOOK, story.id, edits)} className="h-70 w-full rounded-lg border border-border bg-card" />)}
           <div role="group" aria-label="Stories" className="flex flex-wrap gap-x-4 gap-y-2">
             {component.stories.map((s, at) => (
-              <button key={s.id} type="button" aria-pressed={s === story} disabled={!enabled(selection, { type: "chooseStory", at })} onClick={() => choose({ type: "chooseStory", at })}
+              <button key={s.id} type="button" aria-pressed={s === story} disabled={!can({ type: "chooseStory", at })} onClick={() => choose({ type: "chooseStory", at })}
                 className={cn("rounded-md px-2 py-1 hover:bg-accent", s === story && "bg-accent text-primary")}>{s.name}</button>
             ))}
           </div>
@@ -132,12 +136,10 @@ export function Components({ index }: { index: ComponentIndex }) {
           </table>
           {component.model && <Code>{`${component.model.state}\n${component.model.events.join("  ")}`}</Code>}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            {component.model && <Link onClick={() => open(component.model!.spec)}>{component.model.spec}</Link>}
-            {(component.design ?? []).map((d) => <Link key={d} href={sourceUrl(d.split("#")[0])}>{d}</Link>)}
-            <Link href={sourceUrl(`${component.source.file}:${component.source.line}`)}>{`${component.source.file}:${component.source.line}`}</Link>
+            {[...(component.model ? [component.model.spec] : []), ...(component.design ?? []), `${component.source.file}:${component.source.line}`].map((path) => <File key={path} path={path} />)}
           </div>
         </section>
-      ) : <p className="text-muted-foreground">No components yet</p>}
+      ) : <EmptyState title="No components yet" />}
     </div>
   );
 }

@@ -121,9 +121,13 @@ export function plan(c: Found, cap: number): Plan {
   }
 
   for (const key of meta?.extra ?? []) diagnostics.push(`${c.name}: \`${key}\` is no field of ComponentMeta (vibestack/stories/meta.ts) and is not read; remove it from ${basename(meta!.file)}`);
-  for (const key of meta?.play ?? []) if (!all.some((s) => s.name === pascal(key))) diagnostics.push(`${c.name}: \`play\` names "${key}", which is no story of it`);
   const manual = c.manual;
   const kept = all.filter((s) => !manual?.exports.includes(s.name)).slice(0, cap);
+  for (const key of meta?.play ?? []) {
+    if (kept.some((s) => s.name === pascal(key))) continue;
+    const why = !all.some((s) => s.name === pascal(key)) ? "is no story of it" : manual?.exports.includes(pascal(key)) ? `${basename(manual.file)} writes by hand` : `is past the cap of ${cap} stories`;
+    diagnostics.push(`${c.name}: \`play\` names "${key}", which ${why}`);
+  }
   const theirs = manual?.id ?? manual?.title;
   if (manual && !theirs) diagnostics.push(`${c.name}: ${basename(manual.file)} needs \`title: "${title}"\` in its default export to sit with the generated stories`);
   return {

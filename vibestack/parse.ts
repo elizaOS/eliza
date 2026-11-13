@@ -139,6 +139,9 @@ export function parseSpec(root: string, file: string, text = fs.readFileSync(loc
     declare(block, rule!);
   }
   const tangled = qnt.join("\n");
+  // The tangler's own names (expandListHelpers, expandBuiltins) tell the translator what a fold or a call stands for.
+  const forged = bareQuint(tangled).split("\n").findIndex((l) => /\bstd_/.test(l));
+  if (forged >= 0) throw new Error(`${file}:${forged + 1}: a name beginning std_ is reserved for generated collection operations`);
   try {
     const sources = importsOf(tangled);
     const spec: Spec = { name, file, preamble, references, links: [], rules, stories, imports: sources.map((i) => i.module), uses: sources, qnt: "", tangled, meaning: "", builtins: [] };

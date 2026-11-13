@@ -54,4 +54,5 @@ recording and posting, is never sent again.
 - **A rename left a name in a cell twice.** Fixed: a rename removes duplicate
   names from every owners cell.
 
-Every obligation of the three specs is proved; none rests on simulation alone.
+Dafny proves every obligation, with the help of `spec/*.proof.dfy`; none is
+accepted as simulated only.

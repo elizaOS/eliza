@@ -1,6 +1,6 @@
 // The studio's server: the shell around spec/index.md. Every change to the session is an event sent to the generated
 // `Machine`; this file only runs the jobs the session allows, writes the specs, keeps the manifest (./doc.ts), and
-// serves the page (./page.ts) with the modules it imports. What it reads of a project is ./project.ts.
+// serves the page (./page/, as ../vite.config.ts builds it). What it reads of a project is ./project.ts.
 // README, "Studio".
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer"
 import * as HttpServerRequest from "effect/http/HttpServerRequest"
@@ -9,10 +9,10 @@ import { ChildProcess } from "effect/process"
 import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
 import { Machine, enabled, machine } from "../gen/index.effect.vibe"
 import type { Event, Session } from "../gen/index.ts"
-import { promptFor, type Manifest } from "./doc.ts"
+import { promptFor } from "./doc.ts"
 import {
   NODE, PUBLIC, SPEC, checkCommand, createServer, finder, interactive, manifestFile, opener, ownedFiles, buildPage, appScript, servedAt, buildable, buildCommand, componentsOf,
-  planPublish, projectName, readManifest, skillPath, specsOf, stateFile, studioRoot, verdictOf, type Check, type JobView, type Publish, type Snapshot,
+  planPublish, projectName, readManifest, readTree, skillPath, stateFile, studioRoot, verdictOf, type Check, type JobView, type Publish, type Snapshot,
 } from "./project.ts"
 
 const DEEPLINK_LIMIT = 5000 // characters of a prompt a claude-cli:// link carries
@@ -95,51 +95,50 @@ effect function studio(project: Project, agents: Record<string, Agent>) {
   const lock = try Semaphore.make(1)
   const changed = PubSub.publish(ticks, undefined)
   const running = () => Object.values(jobs).find((j) => j.status === "running")
+  const failed = (job: Job, e: unknown) => { job.status = "failed"; job.log.push(`✗ ${messageOf(e)}`) }
 
   /** The session moves only by an event it allows; refused, the page hears why. */
   effect function act(event: Event): Session!Refused {
-    return session.send(event) catch effect () => {
-      const busy = running()
-      throw new Refused({ status: 409, message: busy ? `${busy.label} is still running` : `${event.type} is not allowed now` })
-    }
+    return session.send(event) catch effect () => { throw notNow(event.type) }
   }
+  /** Why the session refuses `what` now. */
+  const notNow = (what: string) => new Refused({ status: 409, message: running() ? `${running()!.label} is still running` : `${what} is not allowed now` })
 
   const clearManifest = effect {
     try files.remove(stateFile(root), { force: true })
     try files.remove(manifestFile(root), { force: true })
   }
 
+  /** Run a program in the project, colours off: `each` hears every line it prints, and whether on standard output. Gives its exit code. */
+  effect function spawned([program, args]: [string, string[]], each: (line: string, out: boolean) => void!!, options: { input?: string; env?: Record<string, string> } = {}) {
+    return try scoped(effect {
+      const child = try spawner.spawn(ChildProcess.make(program, args, {
+        cwd: root, extendEnv: true, env: { FORCE_COLOR: "0", NO_COLOR: "1", ...options.env },
+        stdin: options.input === undefined ? "ignore" : Stream.encodeText(Stream.make(options.input)),
+      }))
+      const lines = (stream: Stream.Stream<Uint8Array, unknown>, out: boolean) => Stream.runForEach(Stream.splitLines(Stream.decodeText(stream)), (line) => each(line, out))
+      try.all [lines(child.stdout, true), lines(child.stderr, false)]
+      return try child.exitCode as number
+    })
+  }
+
   /** Run the program behind the job the session has just started; `done` hears how it ended, unless it was stopped. */
-  effect function run(kind: Kind, label: string, [program, args]: [string, string[]], input: string | undefined, read: (line: string) => string | undefined, done: (job: Job, out: string) => void!unknown) {
+  effect function run(kind: Kind, label: string, command: [string, string[]], input: string | undefined, read: (line: string) => string | undefined, done: (job: Job, out: string) => void!unknown) {
     const job: Job = { label, status: "running", started: Date.now(), log: [] }
     jobs[kind] = job
-    const lines = (stream: Stream.Stream<Uint8Array, unknown>, keep: (line: string) => void) =>
-      Stream.runForEach(Stream.splitLines(Stream.decodeText(stream)), (line) => effect {
-        keep(line)
+    const out: string[] = []
+    job.fiber = try Effect.forkIn(effect {
+      const code = spawned(command, (line, std) => effect {
+        if (std) out.push(line)
         const shown = read(line)
         if (shown?.trim()) { job.log.push(shown); try changed }
-      })
-    const work = effect { return scoped(effect {
-      const command = ChildProcess.make(program, args, {
-        cwd: root, extendEnv: true, env: { FORCE_COLOR: "0", NO_COLOR: "1" },
-        stdin: input === undefined ? "ignore" : Stream.encodeText(Stream.make(input)),
-      })
-      const child = try spawner.spawn(command)
-      const out: string[] = []
-      try.all [lines(child.stdout, (l) => out.push(l)), lines(child.stderr, () => {})]
-      return { code: try child.exitCode as number, out: out.join("\n") }
-    }) catch (e) => {
-      job.log.push(`✗ ${messageOf(e)}`)
-      return { code: -1, out: "" }
-    } }
-    job.fiber = try Effect.forkIn(effect {
-      const { code, out } = try work
+      }, { input }) catch (e) => {
+        job.log.push(`✗ ${messageOf(e)}`)
+        return -1
+      }
       job.finished = Date.now()
       job.status = code === 0 ? "passed" : "failed"
-      done(job, out) catch (e) => {
-        job.status = "failed"
-        job.log.push(`✗ ${messageOf(e)}`)
-      }
+      done(job, out.join("\n")) catch (e) => failed(job, e)
       try changed
     }, scope)
     try changed
@@ -156,17 +155,12 @@ effect function studio(project: Project, agents: Record<string, Agent>) {
     try act({ type: "preview" })
     app.url = undefined
     app.log = []
-    const lines = (stream: Stream.Stream<Uint8Array, unknown>) => Stream.runForEach(Stream.splitLines(Stream.decodeText(stream)), (line) => effect {
-      app.url ??= servedAt(line)
-      if (line.trim()) app.log = [...app.log.slice(-199), line]
-      try changed
-    })
     app.fiber = try Effect.forkIn(effect {
-      scoped(effect {
-        const child = try spawner.spawn(ChildProcess.make("pnpm", ["run", script], { cwd: root, extendEnv: true, env: { FORCE_COLOR: "0", NO_COLOR: "1", BROWSER: "none" } }))
-        try.all [lines(child.stdout), lines(child.stderr)]
-        try child.exitCode
-      }) catch (e) => { app.log = [...app.log, `✗ ${messageOf(e)}`] }
+      spawned(["pnpm", ["run", script]], (line) => effect {
+        app.url ??= servedAt(line)
+        if (line.trim()) app.log = [...app.log.slice(-199), line]
+        try changed
+      }, { env: { BROWSER: "none" } }) catch (e) => { app.log = [...app.log, `✗ ${messageOf(e)}`] }
       // An app that stops by itself is no longer running.
       act({ type: "endPreview" }) catch () => undefined
       try changed
@@ -178,15 +172,25 @@ effect function studio(project: Project, agents: Record<string, Agent>) {
     try changed
   }
 
-  /** The check the session is now waiting on (`job == Checking`). */
+  /**
+   * The check the session is now waiting on (`job == Checking`). `spec check --json` prints each result as a line as
+   * it is reported, which the pages see at once, and then the whole answer as its last line.
+   */
   effect function runCheck() {
-    try run("check", "check", [NODE, [SPEC, "check", "--json"]], undefined, () => undefined, (job, out) => effect {
-      const found: Omit<Check, "finished"> | undefined = Effect.try(() => JSON.parse(out)) catch () => undefined
-      if (found) {
-        check = { ...found, finished: Date.now() }
-        job.log.push(found.next)
-      } else job.log.push(out.trim() || "the check did not finish")
-      const verdict = found ? verdictOf(found.results) : "Failing"
+    const now: Check = { results: [] }
+    check = now
+    const line = (text: string): any => { try { return JSON.parse(text) } catch { return undefined } }
+    try run("check", "check", [NODE, [SPEC, "check", "--json"]], undefined, (text) => {
+      const result = line(text)
+      // What is not JSON, such as a crash on standard error, is shown as it is.
+      if (!result?.stage) return result ? undefined : text
+      now.results.push(result)
+      return `${result.stage === "skipped" ? "-" : result.ok ? "✓" : "✗"} ${result.stage} ${result.summary}`
+    }, (job, out) => effect {
+      const found: Check | undefined = line(out.trimEnd().split("\n").at(-1) ?? "")
+      if (found?.next !== undefined) check = { ...found, finished: Date.now() }
+      job.log.push(found?.next ?? "the check did not finish")
+      const verdict = check?.finished ? verdictOf(check.results) : "Failing"
       job.status = verdict === "Failing" ? "failed" : "passed"
       try act({ type: "checked", verdict })
     })
@@ -202,8 +206,8 @@ effect function studio(project: Project, agents: Record<string, Agent>) {
   /** Everything the page shows for the project. */
   effect function snapshot(): Snapshot!(PlatformError.PlatformError | Error) {
     // The specs; what is wrong if they cannot be read.
-    const read: { manifest?: Manifest; specs: ReturnType<typeof specsOf>; problem?: string } =
-      effect { return { manifest: readManifest(root), specs: specsOf(root) } } catch (e) => ({ problem: e.message, specs: [] })
+    const read: Pick<Snapshot, "manifest" | "specs" | "review" | "problem"> =
+      effect { return { manifest: readManifest(root), ...readTree(root) } } catch (e) => ({ problem: e.message, specs: [], review: [] })
     const context = { skill: skillPath(root), check: checkCommand(root) }
     const shown = []
     for (const [id, a] of Object.entries(agents)) shown.push({
@@ -217,12 +221,9 @@ effect function studio(project: Project, agents: Record<string, Agent>) {
 
   effect function publish(body: Publish) {
     // The request carries edits, so the session as the page sees it has some (spec/index.md, "Only edits can be published, and not while a job runs").
-    if (!enabled({ ...(try session.get()), unpublished: true }, { type: "publish", changes: 0 })) {
-      const busy = running()
-      throw new Refused({ status: 409, message: busy ? `${busy.label} is still running` : "publish is not allowed now" })
-    }
     const plan = planPublish(root, body)
     if (plan.status !== 200) throw new Refused({ status: plan.status, message: plan.body.error, conflicts: plan.body.conflicts })
+    if (!enabled({ ...(try session.get()), unpublished: true }, { type: "publish", changes: 0 })) throw notNow("publish")
     for (const f of body.files) {
       const target = path.join(root, f.file)
       if (f.text === null) for (const ext of [".md", ".proof.dfy"]) try files.remove(target.replace(/\.md$/, ext), { force: true })
@@ -238,7 +239,6 @@ effect function studio(project: Project, agents: Record<string, Agent>) {
       try files.writeFileString(stateFile(root), JSON.stringify(plan.state, null, 2) + "\n")
       try files.writeFileString(manifestFile(root), JSON.stringify(manifest, null, 2) + "\n")
     }
-    check = undefined
     try act({ type: "edit" })
     try act({ type: "publish", changes: manifest.changes.length })
     try runCheck()
@@ -254,17 +254,21 @@ effect function studio(project: Project, agents: Record<string, Agent>) {
     const command = agent.command({ root, check })
     try act({ type: "sync" })
     try run("agent", agent.label, command, prompt, readable, (job) => effect {
-      // The review ledgers and Studio's state are the tools' to write: a sync that touched them is not trusted.
+      // The review ledgers and Studio's state are the tools' to write: what a sync did to them is undone, and it is not trusted.
       // Whatever happens here, the sync ends (spec/index.md, "A sync that ends well leaves nothing waiting and checks again").
       effect {
         const now = ownedFiles(root)
         const changedFiles = [...new Set([...Object.keys(owned), ...Object.keys(now)])].filter((f) => owned[f] !== now[f])
-        if (changedFiles.length) { job.status = "failed"; job.log.push(`✗ the agent changed ${changedFiles.join(", ")}: not marked synced`) }
+        for (const f of changedFiles) {
+          if (!(f in owned)) try files.remove(path.join(root, f))
+          else {
+            try files.makeDirectory(path.dirname(path.join(root, f)), { recursive: true })
+            try files.writeFileString(path.join(root, f), owned[f])
+          }
+        }
+        if (changedFiles.length) { job.status = "failed"; job.log.push(`✗ the agent changed, and Studio put back, ${changedFiles.join(", ")}: not marked synced`) }
         if (job.status === "passed") try clearManifest
-      } catch (e) => {
-        job.status = "failed"
-        job.log.push(`✗ ${messageOf(e)}`)
-      }
+      } catch (e) => failed(job, e)
       const ok = job.status === "passed"
       try act({ type: "synced", ok })
       if (ok) try runCheck()
@@ -321,12 +325,14 @@ effect function studio(project: Project, agents: Record<string, Agent>) {
     }
   }
 
-  // Changes to the specs reach every page, whoever made them, and make the last verdict unknown (spec/index.md).
+  // Changes to the specs reach every page, whoever made them, once they stop for a moment; when no job runs they are
+  // checked (spec/index.md, "A change to the specs on disk is checked when no job runs and nothing is unpublished").
   if (try files.exists(path.join(root, "spec"))) try Effect.forkIn(effect {
-    return Stream.runForEach(Stream.debounce(files.watch(path.join(root, "spec"), { recursive: true }), "150 millis"), () => effect {
-      act({ type: "touch" }) catch () => undefined
+    return Stream.runForEach(Stream.debounce(Stream.retry(files.watch(path.join(root, "spec"), { recursive: true }), Schedule.spaced("1 second")), "300 millis"), () => lock.withPermits(1)(effect {
+      const was = (try session.get()).job
+      if ((try act({ type: "touch" })).job !== was) try runCheck()
       try PubSub.publish(touched, undefined)
-    }) catch () => undefined
+    })) catch () => undefined
   }, scope)
 
   const frame = (event: string, data: unknown) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
@@ -356,6 +362,7 @@ effect function studio(project: Project, agents: Record<string, Agent>) {
       if (request.headers["content-type"]?.split(";")[0].trim().toLowerCase() !== "application/json") throw new Refused({ status: 415, message: "send application/json" })
       const text = request.text catch () => ""
       const body: any = text ? try Effect.try({ try: () => JSON.parse(text), catch: () => new Refused({ status: 400, message: "the body is not JSON" }) }) : {}
+      if (body === null || typeof body !== "object") throw new Refused({ status: 400, message: "the body is not a JSON object" })
       return json(200, try lock.withPermits(1)(post(route, body)))
     },
   }
@@ -400,7 +407,7 @@ export effect function startStudio({ projects, open = projects[0].id, port = 432
       return try live.handle(request.method, url.pathname, request)
     } catch (e) => json(e instanceof Refused ? e.status : 400, e instanceof Refused && e.conflicts ? { error: e.message, conflicts: e.conflicts } : { error: messageOf(e) })
     return HttpServerResponse.setHeaders(response, {
-      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src http://localhost:* http://127.0.0.1:*; base-uri 'none'; object-src 'none'; frame-ancestors 'none'",
+      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src http://localhost:* http://127.0.0.1:*; connect-src 'self' http://localhost:*; base-uri 'none'; object-src 'none'; frame-ancestors 'none'",
       "x-content-type-options": "nosniff",
     })
   }

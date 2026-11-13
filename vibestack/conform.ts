@@ -8,7 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import { pathToFileURL } from "node:url";
-import { check, compareObservation, ConformanceError, departure, replay, transition, type Found, type Line, type Oracle, type Sent } from "./conformance.ts";
+import { budget, check, compareObservation, ConformanceError, departure, replay, transition, type Found, type Line, type Oracle, type Sent } from "./conformance.ts";
 import type { Model } from "./gen.ts";
 import { heading, type Spec } from "./parse.ts";
 import type { Step } from "./simulate.ts";

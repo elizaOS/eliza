@@ -10,3 +10,4 @@ export * from "./components/Label.tsx";
 export * from "./components/Progress.tsx";
 export * from "./components/Skeleton.tsx";
 export * from "./components/Spinner.tsx";
+export * from "./components/Textarea.tsx";
