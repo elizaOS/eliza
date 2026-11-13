@@ -185,7 +185,7 @@ const manifest = {
   schema: "gpt55_harvest_manifest",
   schemaVersion: 1,
   generatedAt: new Date().toISOString(),
-  repoRoot: REPO_ROOT,
+  repoRoot: ".",
   goal: "Run every elizaOS scenario+benchmark+e2e through the configured API model, harvest correct eliza_native_v1 trajectories, GEPA-repair failures, fine-tune on Nebius.",
   provider: {
     mechanism: "API provider selected by packages/testing/src/live-provider.ts",
