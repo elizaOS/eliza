@@ -55,6 +55,9 @@ const suites = [
       "no capture opens over a release that is still refused",
       "the real hook retains failed Stop across retry and starts only after release",
       "Stop cancels a restart that is still releasing a retained capture",
+      "unmount retries a retained release without starting a new capture",
+      "disable retries a retained release without starting a new capture",
+      "changeConversation retries a retained release without starting a new capture",
     ],
   },
 ];

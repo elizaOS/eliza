@@ -912,15 +912,21 @@ export function useRealtimeVoiceSession(
       }
       const client = clientRef.current;
       clientRef.current = null;
-      // error-policy:J6 Component teardown has already detached ownership of the client.
-      if (client) void teardownClient(client).catch(() => {});
+      // error-policy:J6 Unmount retries retained release; the hook already reports failures.
+      if (client || retainedClientsRef.current.size > 0)
+        void teardownClient(client ?? undefined).catch(() => {});
     };
   }, [teardownClient]);
 
   // If the flag flips off while a session is live, tear it down — the batch
   // path takes over and a stale realtime socket must not linger.
   useEffect(() => {
-    if (!flagEnabled && (clientRef.current || startingRef.current)) {
+    if (
+      !flagEnabled &&
+      (clientRef.current ||
+        startingRef.current ||
+        retainedClientsRef.current.size > 0)
+    ) {
       void stop().catch(() => {});
     }
   }, [flagEnabled, stop]);
@@ -940,9 +946,9 @@ export function useRealtimeVoiceSession(
         clientRef.current ||
         startingRef.current,
     );
-    if (!shouldRestart) return;
+    if (!shouldRestart && retainedClientsRef.current.size === 0) return;
 
-    identityRestartPendingRef.current = true;
+    identityRestartPendingRef.current = shouldRestart;
     const changeGen = ++identityChangeGenRef.current;
     let cancelled = false;
     void (async () => {
@@ -958,6 +964,7 @@ export function useRealtimeVoiceSession(
         idsRef.current;
       identityRestartPendingRef.current = false;
       if (
+        shouldRestart &&
         !refusedRef.current &&
         flagEnabled &&
         nextAgentId &&

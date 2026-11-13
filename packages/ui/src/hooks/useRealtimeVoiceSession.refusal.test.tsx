@@ -24,6 +24,8 @@ function fixture() {
     batches = 0,
     notices = 0;
   let stopRefused = false;
+  let flagEnabled = true;
+  let conversationId = "conversation";
   const sockets: Socket[] = [],
     clients: VoiceSessionClient[] = [];
   class Socket implements VoiceWebSocketLike {
@@ -77,8 +79,8 @@ function fixture() {
   function useConsumer() {
     const voice = useRealtimeVoiceSession({
       agentId: "agent",
-      conversationId: "conversation",
-      flagEnabled: true,
+      conversationId,
+      flagEnabled,
       getConsentNonce: async () => "nonce",
       createClient: (options) => {
         if (!options.fetch) throw Error("Missing isolated voice fixture fetch");
@@ -171,6 +173,14 @@ function fixture() {
     allowStop() {
       stopRefused = false;
     },
+    disable() {
+      flagEnabled = false;
+      view.rerender();
+    },
+    changeConversation() {
+      conversationId = "next-conversation";
+      view.rerender();
+    },
     get mints() {
       return mints;
     },
@@ -254,6 +264,40 @@ test("Stop cancels a restart that is still releasing a retained capture", async 
   expect(f.mints).toBe(1);
   expect(f.captures).toBe(0);
 });
+
+test.each(["unmount", "disable", "changeConversation"] as const)(
+  "%s retries a retained release without starting a new capture",
+  async (retire) => {
+    const f = fixture();
+    let started!: ReturnType<typeof f.view.result.current.voice.start>;
+    await act(async () => {
+      started = f.view.result.current.voice.start();
+      await flush();
+      f.sockets[0].frame({
+        t: "ready",
+        sessionId: "session-1",
+        traceId: "ready-1",
+      });
+      await flush();
+    });
+    expect((await started).kind).toBe("live");
+    f.refuseStop();
+    await act(async () => {
+      await expect(f.view.result.current.voice.stop()).rejects.toMatchObject({
+        code: "release_unconfirmed",
+      });
+    });
+    expect(f.captures).toBe(1);
+    f.allowStop();
+    await act(async () => {
+      if (retire === "unmount") f.view.unmount();
+      else f[retire]();
+      await flush();
+    });
+    expect(f.captures).toBe(0);
+    expect(f.mints).toBe(1);
+  },
+);
 
 test("the real hook retains failed Stop across retry and starts only after release", async () => {
   const f = fixture();
