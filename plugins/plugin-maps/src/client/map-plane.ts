@@ -168,6 +168,8 @@ export class MapPlane {
     const opening = worldwide ? options.initialView : undefined;
     const mapOptions: MapOptions = {
       container,
+      // Keep loaded raster tiles visible while replacement zoom levels arrive.
+      cancelPendingTileRequestsWhileZooming: !raster,
       center: opening
         ? [opening.center.longitude, opening.center.latitude]
         : worldwide
@@ -394,6 +396,12 @@ export class MapPlane {
     });
     this.map.on("error", (event) => {
       if (this.destroyed) return;
+      if ("name" in event.error && event.error.name === "AbortError") return;
+      // A failed tile does not retire the already usable map.
+      if ("tile" in event && event.tile && this.styleReady) {
+        container.dataset.mapTileError = "true";
+        return;
+      }
       const message = String(event.error?.message || "");
       container.dataset.mapError = /worker/i.test(message)
         ? "worker-load"
