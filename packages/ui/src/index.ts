@@ -1061,10 +1061,6 @@ export {
   startRendererServiceHost,
 } from "./platform/renderer-services.js";
 export {
-  deleteRuntimeCredentialRecord,
-  storeRuntimeCredential,
-} from "./platform/runtime-credential-store.js";
-export {
   configureRuntimeManagement,
   type LocalRuntimeManagementRequest,
 } from "./platform/runtime-management.js";
