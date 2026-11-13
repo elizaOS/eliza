@@ -891,6 +891,10 @@ export class EvaluatorService extends BaseService {
               baseInterval: 1000,
               maxFailures: 5,
               ...task.metadata,
+              // A cancelled row can be recreated for the same message while
+              // its previous model call is still running. Fence that old run
+              // from retaining evidence or deleting the replacement task.
+              reconciliationRevision: uuidv4(),
             },
           });
       }
@@ -1176,31 +1180,39 @@ export class EvaluatorService extends BaseService {
             // Other admitted pages are different input and still run. The
             // failed page stays in the journal until a later job sees new
             // evidence. Deleting the job here would drop those other pages.
-            if (
+            const allNonRetryableErrors =
               result.errors.length &&
-              result.errors.every((entry) => entry.retryable === false)
+              result.errors.every((entry) => entry.retryable === false);
+            const newlyBlocked = result.nonRetryableEvidenceIds.filter(
+              (id) => !blocked.has(id),
+            );
+            // An independent retryable failure must not re-buy a page that
+            // already exhausted its output. Keep that block through backoff.
+            if (
+              newlyBlocked.length > 0 &&
+              (result.hasMoreEvidence || !allNonRetryableErrors)
             ) {
-              const newlyBlocked = result.nonRetryableEvidenceIds.filter(
-                (id) => !blocked.has(id),
-              );
-              if (result.hasMoreEvidence && newlyBlocked.length > 0) {
-                const retained = await this.retainBlockedEvidence(task, [
+              if (
+                !(await this.retainBlockedEvidence(task, [
                   ...blocked,
                   ...newlyBlocked,
-                ]);
-                if (retained) {
-                  this.runtime.logger.warn(
-                    {
-                      src: "service:evaluator",
-                      taskId: task.id,
-                      errors: result.errors,
-                      blockedEvidenceIds: [...blocked, ...newlyBlocked],
-                    },
-                    "Background memory page stopped: deferred evidence remains",
-                  );
-                  return undefined;
-                }
+                ]))
+              )
+                return this.finishBackgroundTask(task);
+              if (allNonRetryableErrors) {
+                this.runtime.logger.warn(
+                  {
+                    src: "service:evaluator",
+                    taskId: task.id,
+                    errors: result.errors,
+                    blockedEvidenceIds: [...blocked, ...newlyBlocked],
+                  },
+                  "Background memory page stopped: deferred evidence remains",
+                );
+                return undefined;
               }
+            }
+            if (allNonRetryableErrors) {
               this.runtime.logger.warn(
                 {
                   src: "service:evaluator",

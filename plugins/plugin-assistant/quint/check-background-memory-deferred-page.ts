@@ -14,6 +14,12 @@ const testFile =
   "plugins/plugin-assistant/src/services/evaluator-deferred-page.test.ts";
 const requiredTests = [
   "deferred evidence after an output limit continues a deferred evidence page after a persistent output-limit stop",
+  "deferred evidence after an output limit retains blocked evidence across a retryable failure and then completes the deferred page",
+  "deferred evidence after an output limit blocks a non-retryable page when an independent evaluator also has a retryable failure",
+  "deferred evidence after an output limit does not retain stale blocked evidence after the task revision changes during inference",
+  "deferred evidence after an output limit does not resurrect a task cancelled during inference",
+  "deferred evidence after an output limit preserves a replacement task when an earlier cancelled attempt completes",
+  "deferred evidence after an output limit leaves task evidence pending when shutdown closes admission during inference",
 ];
 assert.equal(
   path.resolve(root, process.argv[2] ?? model),
@@ -34,8 +40,6 @@ const child = spawnSync(
     path.join(root, "packages/scripts/run-vitest.ts"),
     "run",
     "src/services/evaluator-deferred-page.test.ts",
-    "-t",
-    "continues a deferred evidence page after a persistent output-limit stop",
     "--cache=false",
     "--maxWorkers=1",
     "--reporter=json",

@@ -107,43 +107,72 @@ async function execute(runtime: AgentRuntime, task: Task) {
   return worker.execute(runtime, {}, task);
 }
 
+async function setupDeferredPages() {
+  const { runtime, service, message } = await setup();
+  const observed: Record<string, string[]> = { lead: [], lag: [] };
+  runtime.registerEvaluator(lane("lead", observed.lead));
+  runtime.useModel = vi.fn(async () =>
+    JSON.stringify({ lead: { ok: true } }),
+  ) as AgentRuntime["useModel"];
+  await service.enqueue(message, state, { phase: "post_turn" });
+  await execute(runtime, await job(runtime));
+  expect(runtime.useModel).toHaveBeenCalledTimes(1);
+  const next = {
+    ...message,
+    id: stringToUuid("deferred-page-after-output-limit"),
+    createdAt: 20,
+    content: {
+      text: "The complete next source, with its detail intact.",
+    },
+  };
+  await runtime.upsertMemory(next, "messages");
+  const stored = await runtime.getMemories({
+    tableName: "messages",
+    roomId: message.roomId,
+    unique: false,
+    includeEmbedding: false,
+  });
+  const budget =
+    Math.max(
+      ...stored.map(
+        (row) => new TextEncoder().encode(JSON.stringify(row)).byteLength,
+      ),
+    ) + 1;
+  vi.spyOn(runtime, "getSetting").mockImplementation((key) =>
+    key === "MEMORY_EVIDENCE_BATCH_BYTES" ? String(budget) : null,
+  );
+  runtime.registerEvaluator(lane("lag", observed.lag));
+  await service.enqueue(next, state, { phase: "post_turn" });
+  return { runtime, service, message, next, observed };
+}
+
+function outputLimit() {
+  return { text: "", finishReason: "length", toolCalls: [], usage: {} };
+}
+
+function heldOutput() {
+  let release!: () => void;
+  let started!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const entered = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  return {
+    entered,
+    release,
+    run: async () => {
+      started();
+      await pending;
+      return outputLimit();
+    },
+  };
+}
+
 describe("deferred evidence after an output limit", () => {
   it("continues a deferred evidence page after a persistent output-limit stop", async () => {
-    const { runtime, service, message } = await setup();
-    const observed: Record<string, string[]> = { lead: [], lag: [] };
-    runtime.registerEvaluator(lane("lead", observed.lead));
-    runtime.useModel = vi.fn(async () =>
-      JSON.stringify({ lead: { ok: true } }),
-    ) as AgentRuntime["useModel"];
-    await service.enqueue(message, state, { phase: "post_turn" });
-    await execute(runtime, await job(runtime));
-    expect(runtime.useModel).toHaveBeenCalledTimes(1);
-    const next = {
-      ...message,
-      id: stringToUuid("deferred-page-after-output-limit"),
-      createdAt: 20,
-      content: {
-        text: "The complete next source, with its detail intact.",
-      },
-    };
-    await runtime.upsertMemory(next, "messages");
-    const stored = await runtime.getMemories({
-      tableName: "messages",
-      roomId: message.roomId,
-      unique: false,
-      includeEmbedding: false,
-    });
-    const budget =
-      Math.max(
-        ...stored.map(
-          (row) => new TextEncoder().encode(JSON.stringify(row)).byteLength,
-        ),
-      ) + 1;
-    vi.spyOn(runtime, "getSetting").mockImplementation((key) =>
-      key === "MEMORY_EVIDENCE_BATCH_BYTES" ? String(budget) : null,
-    );
-    runtime.registerEvaluator(lane("lag", observed.lag));
-    await service.enqueue(next, state, { phase: "post_turn" });
+    const { runtime, message, next, observed } = await setupDeferredPages();
     const prompts: string[] = [];
     runtime.useModel = vi.fn(async (_type, params) => {
       const input = params as { messages?: Array<{ content: string }> };
@@ -193,5 +222,143 @@ describe("deferred evidence after an output limit", () => {
     expect(lead?.messages.map((row) => row.id)).toEqual([next.id]);
     expect(lag?.pendingOutput).toBeUndefined();
     expect(lead?.pendingOutput).toBeUndefined();
+  });
+
+  it("retains blocked evidence across a retryable failure and then completes the deferred page", async () => {
+    const { runtime, observed, next } = await setupDeferredPages();
+    runtime.useModel = vi.fn(async () =>
+      outputLimit(),
+    ) as AgentRuntime["useModel"];
+    await execute(runtime, await job(runtime));
+    const retained = await job(runtime);
+    const blocked = retained.metadata?.nonRetryableEvidenceIds;
+    runtime.useModel = vi.fn(async () => {
+      throw new Error("Temporary provider outage");
+    }) as AgentRuntime["useModel"];
+    await expect(execute(runtime, retained)).rejects.toMatchObject({
+      code: "EVALUATOR_JOB_PENDING",
+    });
+    expect((await job(runtime)).metadata?.nonRetryableEvidenceIds).toEqual(
+      blocked,
+    );
+    runtime.useModel = vi.fn(async () =>
+      JSON.stringify({ lead: { ok: true } }),
+    ) as AgentRuntime["useModel"];
+    expect(await execute(runtime, await job(runtime))).toEqual({
+      preserveTask: true,
+    });
+    expect(observed.lead).toContain(next.id);
+    expect(await runtime.getTasksByName("POST_TURN_MEMORY")).toEqual([]);
+  });
+
+  it("blocks a non-retryable page when an independent evaluator also has a retryable failure", async () => {
+    const { runtime, observed, next } = await setupDeferredPages();
+    const transient = {
+      ...lane("transient", []),
+      shouldRun: async () => {
+        throw new Error("Temporary evaluator dependency failure");
+      },
+    };
+    runtime.registerEvaluator(transient);
+    runtime.useModel = vi.fn(async () =>
+      outputLimit(),
+    ) as AgentRuntime["useModel"];
+    await expect(execute(runtime, await job(runtime))).rejects.toMatchObject({
+      code: "EVALUATOR_JOB_PENDING",
+    });
+    expect((await job(runtime)).metadata?.nonRetryableEvidenceIds).toHaveLength(
+      1,
+    );
+    runtime.evaluators.splice(runtime.evaluators.indexOf(transient), 1);
+    runtime.useModel = vi.fn(async () =>
+      JSON.stringify({ lead: { ok: true } }),
+    ) as AgentRuntime["useModel"];
+    expect(await execute(runtime, await job(runtime))).toEqual({
+      preserveTask: true,
+    });
+    expect(observed.lead).toContain(next.id);
+    expect(await runtime.getTasksByName("POST_TURN_MEMORY")).toEqual([]);
+  });
+
+  it("does not retain stale blocked evidence after the task revision changes during inference", async () => {
+    const { runtime } = await setupDeferredPages();
+    const held = heldOutput();
+    runtime.useModel = vi.fn(held.run) as AgentRuntime["useModel"];
+    const first = await job(runtime);
+    const running = execute(runtime, first);
+    await held.entered;
+    if (!first.roomId) throw new Error("Missing task room");
+    await runtime.roomHandlerQueue.withLease(first.roomId, () =>
+      runtime.updateTask(first.id, {
+        metadata: {
+          ...first.metadata,
+          reconciliationRevision: "revised-during-inference",
+        },
+      }),
+    );
+    held.release();
+    expect(await running).toEqual({ preserveTask: true });
+    const current = await job(runtime);
+    expect(current.metadata?.reconciliationRevision).toBe(
+      "revised-during-inference",
+    );
+    expect(current.metadata?.nonRetryableEvidenceIds).toBeUndefined();
+    runtime.useModel = vi.fn(async () =>
+      outputLimit(),
+    ) as AgentRuntime["useModel"];
+    expect(await execute(runtime, current)).toBeUndefined();
+    expect((await job(runtime)).metadata?.nonRetryableEvidenceIds).toHaveLength(
+      1,
+    );
+  });
+
+  it("does not resurrect a task cancelled during inference", async () => {
+    const { runtime } = await setupDeferredPages();
+    const held = heldOutput();
+    runtime.useModel = vi.fn(held.run) as AgentRuntime["useModel"];
+    const first = await job(runtime);
+    const running = execute(runtime, first);
+    await held.entered;
+    await runtime.deleteTask(first.id);
+    held.release();
+    expect(await running).toEqual({ preserveTask: true });
+    expect(await runtime.getTask(first.id)).toBeNull();
+  });
+
+  it("preserves a replacement task when an earlier cancelled attempt completes", async () => {
+    const { runtime, service, next } = await setupDeferredPages();
+    const held = heldOutput();
+    runtime.useModel = vi.fn(held.run) as AgentRuntime["useModel"];
+    const first = await job(runtime);
+    const running = execute(runtime, first);
+    await held.entered;
+    await runtime.deleteTask(first.id);
+    await service.enqueue(next, state, { phase: "post_turn" });
+    const replacement = await job(runtime);
+    held.release();
+    expect(await running).toEqual({ preserveTask: true });
+    const current = await job(runtime);
+    expect(current.metadata?.reconciliationRevision).not.toBe(
+      first.metadata?.reconciliationRevision,
+    );
+    expect(current.metadata).toEqual(replacement.metadata);
+    expect(current.metadata?.nonRetryableEvidenceIds).toBeUndefined();
+  });
+
+  it("leaves task evidence pending when shutdown closes admission during inference", async () => {
+    const { runtime } = await setupDeferredPages();
+    const held = heldOutput();
+    runtime.useModel = vi.fn(held.run) as AgentRuntime["useModel"];
+    const first = await job(runtime);
+    const running = execute(runtime, first);
+    await held.entered;
+    runtime.roomHandlerQueue.closeAdmissions("runtime-stop");
+    held.release();
+    await expect(running).rejects.toMatchObject({
+      code: "ROOM_HANDLER_QUEUE_CLOSED",
+    });
+    expect(
+      (await job(runtime)).metadata?.nonRetryableEvidenceIds,
+    ).toBeUndefined();
   });
 });

@@ -2,21 +2,21 @@
   "sources": [
     "plugins/plugin-assistant/src/services/evaluator.ts",
     "plugins/plugin-assistant/src/services/evaluator-deferred-page.test.ts",
-    "plugins/plugin-assistant/quint/check-background-memory-deferred-page.ts"
+    "plugins/plugin-assistant/quint/check-background-memory-deferred-page.ts",
+    "plugins/plugin-assistant/src/services/evaluator-deferred-page.live.test.ts"
   ],
   "bounds": {
-    "domain": "Two evidence pages. Each page is bought at most once. The job stays live while a page is still pending.",
+    "domain": "Two pages and two task generations with asynchronous provider completion, bounded retry, task cancellation/recreation and shutdown/reopen.",
     "assumptions": [
-      "Weak fairness assumes an enabled success or non-retryable failure of the selected page eventually runs. No wall-clock deadline is proved. A retryable provider error, a changed evidence revision, and a third page are outside this instance.",
-      "The blocked page is the page that just stopped. The other page is different input. The implementation records that block on the task before the scheduler runs the job again.",
-      "The failed page stays uncommitted in the journal. A later job with a new evidence id may select it. This model does not include that later job."
+      "Weak fairness requires scheduler admission, one enabled provider completion and reopening after shutdown. Cancellation is an allowed terminal result. No wall-clock deadline is proved.",
+      "The finite domain has two evidence pages, two task generations, one retryable failure, one cancellation and one shutdown/reopen. A new generation represents changed evidence or recreation of a cancelled deterministic task id.",
+      "The model covers task retention and finalization only. Journal mutation and processor effects are checked by the real-runtime conformance tests, not modeled as separate database transactions."
     ]
   },
   "limitations": [
-    "Two evidence pages. Each page is bought at most once. The job stays live while a page is still pending.",
-    "Weak fairness assumes an enabled success or non-retryable failure of the selected page eventually runs. No wall-clock deadline is proved. A retryable provider error, a changed evidence revision, and a third page are outside this instance.",
-    "The blocked page is the page that just stopped. The other page is different input. The implementation records that block on the task before the scheduler runs the job again.",
-    "The failed page stays uncommitted in the journal. A later job with a new evidence id may select it. This model does not include that later job."
+    "Weak fairness requires scheduler admission, one enabled provider completion and reopening after shutdown. Cancellation is an allowed terminal result. No wall-clock deadline is proved.",
+    "The finite domain has two evidence pages, two task generations, one retryable failure, one cancellation and one shutdown/reopen. A new generation represents changed evidence or recreation of a cancelled deterministic task id.",
+    "The model covers task retention and finalization only. Journal mutation and processor effects are checked by the real-runtime conformance tests, not modeled as separate database transactions."
   ],
   "cases": [
     {
@@ -26,9 +26,11 @@
       "step": "step",
       "invariants": [
         "TypeOK",
-        "AtMostOnePurchase",
+        "AtMostOneTerminalPurchase",
         "PendingPageKeepsTask",
-        "BlockedPageIsFailed"
+        "BlockedPageIsFailed",
+        "NoBlockedReadmission",
+        "NoStaleTaskWrites"
       ],
       "temporal": [
         "PagesSettle",
@@ -40,26 +42,26 @@
           "property": "PagesSettle",
           "expect": "holds",
           "assumptions": [
-            "Weak fairness assumes an enabled success or non-retryable failure of the selected page eventually runs. No wall-clock deadline is proved. A retryable provider error, a changed evidence revision, and a third page are outside this instance."
+            "Weak fairness requires scheduler admission, one enabled provider completion and reopening after shutdown. Cancellation is an allowed terminal result. No wall-clock deadline is proved."
           ]
         },
         {
           "property": "TaskFinishes",
           "expect": "holds",
           "assumptions": [
-            "Weak fairness assumes an enabled success or non-retryable failure of the selected page eventually runs. No wall-clock deadline is proved. A retryable provider error, a changed evidence revision, and a third page are outside this instance."
+            "Weak fairness requires scheduler admission, one enabled provider completion and reopening after shutdown. Cancellation is an allowed terminal result. No wall-clock deadline is proved."
           ]
         },
         {
           "property": "TaskFinishesWithoutFairness",
           "expect": "counterexample",
           "assumptions": [
-            "No fairness is assumed. The job may stutter forever while a page is still pending. A temporal loop counterexample is required."
+            "Without fairness a live task may stutter forever. A loop counterexample is required."
           ]
         }
       ],
-      "maxSteps": 12,
-      "samples": 200,
+      "maxSteps": 24,
+      "samples": 500,
       "deadlock": false
     }
   ],
