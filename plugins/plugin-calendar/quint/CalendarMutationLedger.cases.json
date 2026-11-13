@@ -1,0 +1,89 @@
+{
+  "sources": [
+    "plugins/plugin-calendar/src/mutations/ledger.ts",
+    "plugins/plugin-calendar/src/mutations/execution.ts",
+    "plugins/plugin-calendar/src/mutations/schema.ts",
+    "plugins/plugin-calendar/src/mutations/types.ts",
+    "plugins/plugin-calendar/src/internal/sql.ts",
+    "plugins/plugin-sql/src/schema/approvalRequests.ts",
+    "plugins/plugin-calendar/test/calendar-mutation-retry-invalidate.pglite.test.ts",
+    "plugins/plugin-calendar/vitest.config.ts",
+    "plugins/plugin-calendar/quint/check-mutation-ledger.mjs",
+    "packages/scripts/lib/test-output.ts",
+    "packages/scripts/lib/vitest-conformance.ts",
+    "packages/scripts/run-with-deadline.ts"
+  ],
+  "bounds": {
+    "domain": "One reviewed request and its paired Calendar attempt and approval records. At most two claims of that request and one runtime restart observed by inspection. The model distinguishes a current callback receipt, a receipt provided at reconciliation, and owner confirmation without a receipt. A legacy retry may start with the approval still executing. An attempt created during a transaction is projected with the transaction outcome.",
+    "implementation": "Real local PGlite transactions and the Calendar migrator. The suite checks concurrent claim exclusion, exact receipt replay after restart, orphan quarantine, owner confirmation without a receipt, matching reconciliation receipt, retry after confirmed non-delivery, stale-token rejection, and both retry invalidation forms. The replay path checks that the controlled port receives no calls.",
+    "limitations": "The reviewed request binding and readable receipt validity are preconditions. Provider calls, receipt provenance validation, write-only receipts, SQL process and storage failures, preflight retry before any claim, post-claim invalidation, general approval-queue decisions, and arbitrary retry counts are separate. Restart is projected together with its first ledger inspection. Claims settle only under the stated callback and transaction fairness assumption. Reconciliation needs valid external evidence under a separate fairness assumption."
+  },
+  "conformance": "plugins/plugin-calendar/quint/check-mutation-ledger.mjs",
+  "cases": [
+    {
+      "name": "reviewed-calendar-mutation-ledger",
+      "main": "CalendarMutationLedger",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "PairedDurableRows",
+        "ExactClaimAndReconciliation",
+        "ReplayRequiresDurableReceipt"
+      ],
+      "temporal": [
+        "DurableReceiptIsImmutable",
+        "RefusedTokenPreservesRows",
+        "FairClaimSettles",
+        "FairReconciliationSettles",
+        "ClaimSettles",
+        "ReconciliationSettles"
+      ],
+      "temporalChecks": [
+        {
+          "property": "DurableReceiptIsImmutable",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. A committed receipt is terminal for the same reviewed request."
+          ]
+        },
+        {
+          "property": "RefusedTokenPreservesRows",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. A settlement needs the live executing claim token."
+          ]
+        },
+        {
+          "property": "FairClaimSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of callback delivery and an available settlement transaction while a claim is executing. A callback can report success, refusal or ambiguity. Restart inspection can also quarantine the claim."
+          ]
+        },
+        {
+          "property": "FairReconciliationSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of valid external evidence reaching an available reconciliation transaction while the exact attempt awaits reconciliation."
+          ]
+        },
+        {
+          "property": "ClaimSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. An executing attempt can wait indefinitely for settlement or restart inspection."
+          ]
+        },
+        {
+          "property": "ReconciliationSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. Valid external evidence can remain unavailable indefinitely."
+          ]
+        }
+      ],
+      "maxSteps": 14,
+      "samples": 500
+    }
+  ]
+}
