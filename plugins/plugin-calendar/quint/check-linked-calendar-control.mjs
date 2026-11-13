@@ -44,10 +44,12 @@ const result = spawnSync(
   process.execPath,
   [
     path.join(root, "packages/scripts/run-with-deadline.ts"),
-    "240000",
+    // Seventeen real PGlite cases each keep their existing 30s test timeout.
+    // Allow that bounded suite plus cold workspace module collection to finish.
+    "600000",
     "--",
     process.execPath,
-    path.join(root, "node_modules/vitest/vitest.mjs"),
+    path.join(root, "packages/scripts/run-vitest.ts"),
     "run",
     "--config",
     "vitest.config.ts",
