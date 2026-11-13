@@ -129,7 +129,6 @@
         "ELIZA_ONBOARDING_APP_URL": "https://cloud-staging.eliza.app",
         "ELIZA_ONBOARDING_LOGIN_APP_URL": "https://staging.eliza.app",
         "ELIZA_MOBILE_APP_AUTH_ENABLED": "true",
-        "ELIZA_MOBILE_APP_AUTH_APP_ID": "689a1597-85e7-43ca-b000-8c6392d79465",
         "NEXT_PUBLIC_SOLANA_RPC_URL": "https://api.mainnet-beta.solana.com",
         "GITHUB_ORG_NAME": "eliza-cloud-apps",
         "GITHUB_TEMPLATE_REPO": "eliza-cloud-apps/cloud-apps-template",
