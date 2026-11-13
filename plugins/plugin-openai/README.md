@@ -16,20 +16,21 @@ text uses the existing Unicode cleanup.
 
 ## Using an OpenAI-compatible gateway
 
-Set `OPENAI_BASE_URL` to the gateway's OpenAI-compatible endpoint, put the
-gateway key in `OPENAI_API_KEY`, and name a model for each size the gateway
-serves. Sizes left unset fall back: nano and medium to small, mega to large.
+For text generation, set `OPENAI_BASE_URL` to the gateway's Chat Completions
+base URL and `OPENAI_API_KEY` to its key. Leave `ELIZA_PROVIDER` unset for
+a generic gateway, and set both small and large model IDs to models it serves:
 
 ```env
 OPENAI_API_KEY=your-gateway-key
-OPENAI_BASE_URL=https://api.teamorouter.com/v1   # e.g. TeamoRouter
-OPENAI_SMALL_MODEL=glm-5.3-flash
-OPENAI_LARGE_MODEL=claude-sonnet-5-5
+OPENAI_BASE_URL=https://gateway.example.com/v1
+OPENAI_SMALL_MODEL=your-small-model
+OPENAI_LARGE_MODEL=your-large-model
 ```
 
-Embeddings use `OPENAI_BASE_URL` too unless `OPENAI_EMBEDDING_URL` is set. If
-the gateway has no embeddings endpoint, point `OPENAI_EMBEDDING_URL` and
-`OPENAI_EMBEDDING_API_KEY` at a provider that does.
+Without other model overrides, nano and medium use the small model, and mega
+uses the large model. Embeddings use the same base URL and key by default.
+If the gateway has no embeddings endpoint, set `OPENAI_EMBEDDING_URL`,
+`OPENAI_EMBEDDING_API_KEY`, and `OPENAI_EMBEDDING_MODEL` for an embedding provider.
 
 ## Development
 
