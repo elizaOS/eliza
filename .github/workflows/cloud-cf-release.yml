@@ -69,6 +69,20 @@ on:
         required: false
       CEREBRAS_API_KEY:
         required: false
+      STRIPE_SECRET_KEY:
+        required: false
+      STRIPE_PLUS_PRODUCT_ID:
+        required: false
+      STRIPE_PLUS_MONTHLY_PRICE_ID:
+        required: false
+      STRIPE_PRO_PRODUCT_ID:
+        required: false
+      STRIPE_PRO_MONTHLY_PRICE_ID:
+        required: false
+      STRIPE_WEBHOOK_SECRET:
+        required: false
+      STRIPE_PUBLISHABLE_KEY:
+        required: false
       CLOUDFLARE_ACCOUNT_ID:
         required: false
       CLOUDFLARE_API_TOKEN:
@@ -1427,6 +1441,14 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          # Only staging can receive test billing bindings from this release path.
+          STRIPE_SECRET_KEY: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.STRIPE_SECRET_KEY || '' }}
+          STRIPE_PLUS_PRODUCT_ID: ${{ steps.env.outputs.deploy_environment == 'staging' && (vars.STRIPE_PLUS_PRODUCT_ID || secrets.STRIPE_PLUS_PRODUCT_ID) || '' }}
+          STRIPE_PLUS_MONTHLY_PRICE_ID: ${{ steps.env.outputs.deploy_environment == 'staging' && (vars.STRIPE_PLUS_MONTHLY_PRICE_ID || secrets.STRIPE_PLUS_MONTHLY_PRICE_ID) || '' }}
+          STRIPE_PRO_PRODUCT_ID: ${{ steps.env.outputs.deploy_environment == 'staging' && (vars.STRIPE_PRO_PRODUCT_ID || secrets.STRIPE_PRO_PRODUCT_ID) || '' }}
+          STRIPE_PRO_MONTHLY_PRICE_ID: ${{ steps.env.outputs.deploy_environment == 'staging' && (vars.STRIPE_PRO_MONTHLY_PRICE_ID || secrets.STRIPE_PRO_MONTHLY_PRICE_ID) || '' }}
+          STRIPE_WEBHOOK_SECRET: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.STRIPE_WEBHOOK_SECRET || '' }}
+          STRIPE_PUBLISHABLE_KEY: ${{ steps.env.outputs.deploy_environment == 'staging' && (vars.STRIPE_PUBLISHABLE_KEY || secrets.STRIPE_PUBLISHABLE_KEY) || '' }}
           INFERENCE_AUTH_PROBE_TOKEN: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.INFERENCE_AUTH_PROBE_TOKEN || '' }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           FAL_KEY: ${{ secrets.FAL_KEY }}
@@ -1790,6 +1812,7 @@ jobs:
           DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
           ELIZA_MOBILE_APP_AUTH_ENABLED: ${{ contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.ELIZA_MOBILE_APP_AUTH_ENABLED) && 'true' || 'false' }}
           VOICE_REALTIME_WS_ENABLED: ${{ (steps.env.outputs.deploy_environment == 'production' || contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED)) && 'true' || 'false' }}
+          STRIPE_BINDING_NAMES: ${{ steps.worker-secrets.outputs.stripe_binding_names }}
         run: |
           set -euo pipefail
           secret_inventory="$(bunx wrangler@4.116.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
@@ -1820,6 +1843,7 @@ jobs:
               "ELIZA_APP_TELEGRAM_BOT_TOKEN",
               "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET",
             ];
+            required.push(...(process.env.STRIPE_BINDING_NAMES || "").split(/\s+/).filter(Boolean));
             // Production batch STT requires its operator-owned billing rate.
             if (process.env.DEPLOY_ENVIRONMENT === "production") {
               required.push("CARTESIA_API_KEY", "CARTESIA_STT_USD_PER_CREDIT");
