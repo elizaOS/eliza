@@ -5,8 +5,11 @@ import {
   VoiceSessionRefusedError,
   type VoiceWebSocketLike,
 } from "./voice-session-client";
-import type { MicAudioContextLike } from "./voice-session-mic-capture";
 import * as micCapture from "./voice-session-mic-capture";
+import {
+  type MicAudioContextLike,
+  VoiceMicReleaseError,
+} from "./voice-session-mic-capture";
 import type {
   PlaybackAudioContextLike,
   PlaybackScriptNodeLike,
@@ -85,6 +88,7 @@ function harness(
     holdMint = false,
     stopOnMint = false,
     invalidMint = false,
+    sourceDisconnectFault: Error | undefined,
     releaseMint: (() => void) | undefined;
   let stateObserver: ((state: VoiceSessionClient["state"]) => void) | undefined;
   const processors: Array<{
@@ -160,7 +164,12 @@ function harness(
     sampleRate: 16000,
     state: "running",
     destination: node(),
-    createMediaStreamSource: () => node(),
+    createMediaStreamSource: () => ({
+      ...node(),
+      disconnect() {
+        if (sourceDisconnectFault) throw sourceDisconnectFault;
+      },
+    }),
     createScriptProcessor: () => {
       const processor = { ...node(), onaudioprocess: null };
       processors.push(processor);
@@ -226,6 +235,9 @@ function harness(
       let stopped = false;
       const track = {
         enabled: true,
+        get readyState() {
+          return stopped ? "ended" : "live";
+        },
         stop() {
           if (!stopped) {
             stopped = true;
@@ -312,6 +324,9 @@ function harness(
     },
     invalidNextMint() {
       invalidMint = true;
+    },
+    failSourceDisconnect() {
+      sourceDisconnectFault = new Error("source disconnect refused");
     },
     stopOnNextMint() {
       stopOnMint = true;
@@ -1179,4 +1194,172 @@ test("late local-barge ACK cannot retire a later admitted turn or its PCM", asyn
   expect(h.client.state.playbackTraceId).toBe("C");
   expect(h.tracks[0].enabled).toBe(false);
   expect(h.mints).toBe(1);
+});
+
+function refuseTrackStop(track: { stop(): void }) {
+  const stop = track.stop;
+  track.stop = () => {
+    throw new Error("track stop refused");
+  };
+  return () => {
+    track.stop = stop;
+  };
+}
+
+test("Stop ends a live track past a throwing disconnect, and resolving proves it", async () => {
+  const h = harness();
+  await h.client.start();
+  await h.settle();
+  expect(h.activeCaptures).toBe(1);
+  h.failSourceDisconnect();
+  await h.client.stop();
+  expect(h.activeCaptures).toBe(0);
+  expect(h.errors).toEqual([]);
+});
+
+test("a track that refuses keeps Stop rejected until that capture's own retry confirms", async () => {
+  const h = harness();
+  await h.client.start();
+  await h.settle();
+  const allow = refuseTrackStop(h.tracks[0]);
+  await expect(h.client.stop()).rejects.toBeInstanceOf(VoiceMicReleaseError);
+  expect(h.activeCaptures).toBe(1);
+  await expect(h.client.stop()).rejects.toMatchObject({
+    code: "release_unconfirmed",
+  });
+  expect(h.activeCaptures).toBe(1);
+  allow();
+  await h.client.stop();
+  expect(h.activeCaptures).toBe(0);
+  await h.client.stop();
+});
+
+test("no capture opens over a release that is still refused", async () => {
+  const h = harness();
+  await h.client.start();
+  await h.settle();
+  const allow = refuseTrackStop(h.tracks[0]);
+  await expect(h.client.stop()).rejects.toBeInstanceOf(VoiceMicReleaseError);
+  await h.client.start();
+  await h.settle();
+  expect(h.captures).toBe(1);
+  expect(h.errors.at(-1)).toBeInstanceOf(VoiceMicReleaseError);
+  allow();
+  await h.client.stop();
+  await h.client.start();
+  await h.settle();
+  expect(h.captures).toBe(2);
+  expect(h.maxCaptures).toBe(1);
+  expect(h.activeCaptures).toBe(1);
+});
+
+test("recovery after a peer close opens no second capture over a refused release", async () => {
+  const h = harness();
+  await h.client.start();
+  await h.settle();
+  const allow = refuseTrackStop(h.tracks[0]);
+  h.sockets[0].close();
+  await h.settle();
+  expect(h.captures).toBe(1);
+  expect(h.errors.at(-1)).toBeInstanceOf(VoiceMicReleaseError);
+  allow();
+  await h.client.stop();
+  expect(h.activeCaptures).toBe(0);
+});
+
+test("a stop the client ran itself leaves a refused release for the owner's Stop to find", async () => {
+  const unhandled = vi.fn();
+  process.on("unhandledRejection", unhandled);
+  try {
+    const h = harness();
+    await h.client.start();
+    await h.settle();
+    const allow = refuseTrackStop(h.tracks[0]);
+    h.sockets[0].frame({
+      t: "error",
+      code: "insufficient_credits",
+      retryable: false,
+    });
+    await h.settle();
+    vi.useRealTimers();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(unhandled).not.toHaveBeenCalled();
+    await expect(h.client.stop()).rejects.toBeInstanceOf(VoiceMicReleaseError);
+    allow();
+    await h.client.stop();
+    expect(h.activeCaptures).toBe(0);
+  } finally {
+    process.off("unhandledRejection", unhandled);
+  }
+});
+
+test("a new capture asks a refused release again first, and opens once it confirms", async () => {
+  const h = harness();
+  await h.client.start();
+  await h.settle();
+  const allow = refuseTrackStop(h.tracks[0]);
+  await expect(h.client.stop()).rejects.toBeInstanceOf(VoiceMicReleaseError);
+  allow();
+  await h.client.start();
+  await h.settle();
+  expect(h.captures).toBe(2);
+  expect(h.maxCaptures).toBe(1);
+  expect(h.activeCaptures).toBe(1);
+  await h.client.stop();
+});
+
+test("a capture superseded before it attached keeps its refused release for Stop", async () => {
+  const h = harness();
+  const refusal = new VoiceMicReleaseError(async () => {});
+  const stop = vi.fn(async () => {});
+  stop.mockRejectedValueOnce(refusal);
+  const spy = vi.spyOn(micCapture, "startVoiceMicCapture");
+  try {
+    let open!: () => void;
+    const opened = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    spy.mockImplementation(async () => {
+      await opened;
+      return {
+        active: false,
+        stop,
+        setMuted() {},
+        backend: "scriptprocessor",
+      } as unknown as micCapture.VoiceMicCapture;
+    });
+    const retry = vi.spyOn(refusal, "retryRelease");
+    await h.client.start();
+    await h.settle();
+    const stopped = h.client.stop();
+    open();
+    await expect(stopped).rejects.toBe(refusal);
+    expect(stop).toHaveBeenCalledOnce();
+    await h.client.stop();
+    expect(retry).toHaveBeenCalledOnce();
+  } finally {
+    spy.mockRestore();
+  }
+});
+
+test("a release refused while a capture failed to start is held for Stop", async () => {
+  const h = harness();
+  let refused = true;
+  const retryRelease = vi.fn(async () => {
+    if (refused) throw new VoiceMicReleaseError(retryRelease);
+  });
+  const spy = vi
+    .spyOn(micCapture, "startVoiceMicCapture")
+    .mockRejectedValue(new VoiceMicReleaseError(retryRelease));
+  try {
+    await h.client.start();
+    await h.settle();
+    await expect(h.client.stop()).rejects.toBeInstanceOf(VoiceMicReleaseError);
+    expect(retryRelease).toHaveBeenCalledOnce();
+    refused = false;
+    await h.client.stop();
+    expect(retryRelease).toHaveBeenCalledTimes(2);
+  } finally {
+    spy.mockRestore();
+  }
 });
