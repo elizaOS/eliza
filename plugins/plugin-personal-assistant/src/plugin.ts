@@ -220,7 +220,6 @@ import {
   registerAppLifeOpsEventKinds,
   registerBuiltinTelemetryFamilies,
   registerDefaultBlockerPack,
-  registerDefaultFeatureFlagPack,
   registerDefaultWorkflowStepPack,
   registerEventKindRegistry,
   registerFamilyRegistry,
@@ -1106,10 +1105,6 @@ const rawPersonalAssistantPlugin: Plugin = {
         workflowStepRegistry?: typeof workflowStepRegistry;
       }
     ).workflowStepRegistry = workflowStepRegistry;
-    // FeatureFlagRegistry — open-key registry covering the 10 closed
-    // `LifeOpsFeatureKey` built-ins plus any 3rd-party plugin contributions.
-    // Audit C top-1 finding (`docs/audit/rigidity-hunt-audit.md`).
-    registerDefaultFeatureFlagPack(runtime);
     const activitySignalBus = createActivitySignalBus({ familyRegistry });
     registerActivitySignalBus(runtime, activitySignalBus);
     // Structural runtime property (same pattern as anchorRegistry /

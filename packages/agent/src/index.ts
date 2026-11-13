@@ -161,7 +161,6 @@ export {
   resolveTerminalRunClientId,
   resolveTerminalRunRejection,
   resolveWebSocketUpgradeRejection,
-  tokenMatches,
 } from "./api/server-helpers-auth.ts";
 export { isSafeResetStateDir } from "./api/server-helpers-config.ts";
 export {

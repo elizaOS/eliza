@@ -48,7 +48,7 @@ import { FfiStreamingBackend } from "./ffi-streaming-backend";
 import { estimateDecodeTokens, recordDecodeThroughput } from "./live-signals";
 import { MemoryMonitor } from "./memory-monitor";
 import { listInstalledModels } from "./registry";
-import { resolveDefaultPoolSize } from "./session-pool";
+import { DEFAULT_POOL_SIZE } from "./session-pool";
 import type { InstalledModel } from "./types";
 import type { CoordinatorRuntime } from "./voice/cancellation-coordinator";
 import {
@@ -176,16 +176,11 @@ export function resolveIdleUnloadMs(): number {
  * have in flight at once — derived from the running server's slot count
  * (each speculative response needs a slot's KV) but never more than half of
  * them (the other half stays available for confirmed turns + tool calls).
- * Floors at 1. Override via `ELIZA_LOCAL_MAX_SPECULATIVE_RESPONSES`.
+ * Floors at 1.
  */
 export function resolveMaxConcurrentSpeculativeResponses(
 	parallelSlots: number,
 ): number {
-	const raw = process.env.ELIZA_LOCAL_MAX_SPECULATIVE_RESPONSES?.trim();
-	if (raw) {
-		const parsed = Number.parseInt(raw, 10);
-		if (Number.isFinite(parsed) && parsed >= 1) return parsed;
-	}
 	return Math.max(1, Math.floor(parallelSlots / 2));
 }
 
@@ -582,46 +577,6 @@ export class LocalInferenceEngine {
 		return resolveMaxConcurrentSpeculativeResponses(this.activeParallel());
 	}
 
-	/**
-	 * Auto-tune the running server's `--parallel` (J4): when the conversation
-	 * high-water mark has outgrown the configured slot count AND there's RAM
-	 * headroom for the extra KV slots, resize/restart llama.cpp with the larger
-	 * value so new conversations get their own slot instead of thrashing.
-	 * Returns `true` when a resize was performed. No-op when the FFI backend
-	 * isn't loaded. Best-effort: a failed restart leaves the old `--parallel`
-	 * in place and logs.
-	 */
-	async maybeAutoResizeParallel(): Promise<boolean> {
-		if (this.activeBackendId() !== "llama-cpp") return false;
-		if (!this.dispatcher.hasLoadedModel()) return false;
-		const running = this.dispatcher.parallelSlots();
-		const recommended = conversationRegistry.recommendedParallel(running);
-		if (recommended <= running) return false;
-		// Only grow when free RAM is comfortably above the low-water line —
-		// adding KV slots under pressure would just trigger the monitor.
-		const sample = await this.memoryMonitor.sample();
-		if (this.memoryMonitor.isUnderPressure(sample)) {
-			console.warn(
-				`[local-inference] Conversation high-water mark wants --parallel ${recommended} (running ${running}) but RAM is tight (free ${sample.effectiveFreeMb} MB) — not resizing. Slot thrashing may occur; consider a smaller tier or more RAM.`,
-			);
-			return false;
-		}
-		try {
-			const resized = await this.dispatcher.resizeParallel(recommended);
-			if (resized) {
-				console.info(
-					`[local-inference] Resized llama.cpp --parallel ${running} → ${recommended} (conversation high-water mark grew).`,
-				);
-			}
-			return resized;
-		} catch (err) {
-			console.warn(
-				`[local-inference] --parallel resize to ${recommended} failed: ${err instanceof Error ? err.message : String(err)}`,
-			);
-			return false;
-		}
-	}
-
 	async available(): Promise<boolean> {
 		return this.dispatcher.available();
 	}
@@ -992,8 +947,7 @@ export class LocalInferenceEngine {
 	 * Recommended `--parallel` value given the current conversation
 	 * high-water mark plus a small headroom (max(2, 25%)), never below the
 	 * running slot count. Delegates to `ConversationRegistry.recommendedParallel`
-	 * so the math lives in one place. When this exceeds `parallelSlots()` the
-	 * engine can grow the running server (`maybeAutoResizeParallel`).
+	 * so the math lives in one place.
 	 */
 	recommendedParallel(): number {
 		return conversationRegistry.recommendedParallel(this.activeParallel());
@@ -1003,27 +957,17 @@ export class LocalInferenceEngine {
 	 * Emit a one-line warning when the running `--parallel` slot count is
 	 * below the recommended value (high-water mark + headroom). Returns true
 	 * when a warning was emitted. No-op when the FFI backend isn't loaded.
-	 * The actual resize is `maybeAutoResizeParallel()`
-	 * — kept separate from this hot-path check so a `useModel` call never
-	 * blocks on (or is interrupted by) a server restart; the auto-resize is
-	 * opted into via `ELIZA_LOCAL_AUTO_RESIZE_PARALLEL=1`, in which case this
-	 * also kicks one off fire-and-forget.
 	 */
 	warnIfParallelTooLow(logger?: { warn: (msg: string) => void }): boolean {
 		if (this.activeBackendId() !== "llama-cpp") return false;
 		const actual = this.dispatcher.parallelSlots();
 		const recommended = conversationRegistry.recommendedParallel(actual);
 		if (recommended <= actual) return false;
-		const message = `[local-inference] Conversation high-water mark (${conversationRegistry.highWater()}) exceeds running --parallel ${actual}. Recommended: ${recommended}. Restart llama.cpp with ELIZA_LOCAL_PARALLEL=${recommended} or higher (or set ELIZA_LOCAL_AUTO_RESIZE_PARALLEL=1) to avoid slot thrashing.`;
+		const message = `[local-inference] Conversation high-water mark (${conversationRegistry.highWater()}) exceeds running --parallel ${actual}. Recommended: ${recommended}. Restart llama.cpp with ELIZA_LOCAL_PARALLEL=${recommended} or higher to avoid slot thrashing.`;
 		if (logger?.warn) {
 			logger.warn(message);
 		} else {
 			console.warn(message);
-		}
-		if (process.env.ELIZA_LOCAL_AUTO_RESIZE_PARALLEL === "1") {
-			void this.maybeAutoResizeParallel().catch(() => {
-				// Best-effort; the warning above already told the operator what to do.
-			});
 		}
 		return true;
 	}
@@ -2374,7 +2318,7 @@ export class LocalInferenceEngine {
 		if (this.activeBackendId() === "llama-cpp") {
 			return this.dispatcher.parallelSlots();
 		}
-		return resolveDefaultPoolSize(process.env.ELIZA_LOCAL_SESSION_POOL_SIZE);
+		return DEFAULT_POOL_SIZE;
 	}
 
 	/**
