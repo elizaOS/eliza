@@ -157,6 +157,19 @@ jobs:
         env:
           PLAYWRIGHT_INSTALL_CWD: packages/ui
         run: packages/scripts/github/install-playwright-browsers.sh chromium
+      - name: Prepare pinned grammar parser for conformance
+        env:
+          QUINT_SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          selected="$(bun -e '
+            import { quintShardForFile } from "./packages/scripts/lib/quint-shards.ts";
+            console.log(quintShardForFile("packages/core/quint/GrammarClassEscape.qnt", 4) === Number(process.env.QUINT_SHARD));
+          ')"
+          if [ "$selected" = "true" ]; then
+            c++ --version
+            git submodule update --init --depth 1 -- plugins/plugin-local-inference/native/llama.cpp
+          fi
       - name: Prepare benchmark process conformance
         uses: ./.github/actions/setup-benchmark-quint-python
         with:
