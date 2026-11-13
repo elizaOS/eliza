@@ -17,13 +17,13 @@ mkdirSync(output, { recursive: true });
 const directory = mkdtempSync(path.join(output, "run-"));
 const report = path.join(directory, "vitest.json");
 const file = "test/google-calendar-watch.pglite.test.ts";
-const testName = (name) => `Google Calendar push lifecycle ${name}`;
+const suite = "Google Calendar push lifecycle";
 const required = [
   "keeps the replacement lease when an older scheduled sync fails",
   "keeps a stopped channel terminal when its old scheduled sync fails",
   "keeps a pending stop when its scheduled sync fails with the old lease token",
   "records a terminal failure while the scheduled sync still owns the lease",
-].map(testName);
+];
 const outsideProjection = [
   "installs one maintenance task when Calendar starts before the deferred runner",
   "does not create or accept push channels when the webhook is disabled",
@@ -36,10 +36,10 @@ const outsideProjection = [
   "maintenance recreates a structural retry for a stranded pending notification",
   "renews with overlap and stops the old channel through ScheduledTask dispatch",
   "revokes live channels through the runner before connector-account deletion",
-].map(testName);
-const selector = required.map((name) =>
-  name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-);
+];
+// Vitest selects paths with ` > ` and writes space-separated names in JSON.
+const selector = required.map((name) => RegExp.escape(`${suite} > ${name}`));
+const reportName = (name) => `${suite} ${name}`;
 const result = spawnSync(
   process.execPath,
   [
@@ -74,8 +74,8 @@ assert.equal(result.status, 0, `Calendar watch tests failed: ${log}`);
 requireVitestConformance(
   JSON.parse(readFileSync(report, "utf8")),
   path.join(calendar, file),
-  [...required, ...outsideProjection],
-  outsideProjection,
+  [...required, ...outsideProjection].map(reportName),
+  outsideProjection.map(reportName),
 );
 console.log(
   `Passed ${required.length} internal Calendar watch cases. ${report}`,

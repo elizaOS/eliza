@@ -861,7 +861,7 @@ export class GoogleCalendarWatchLifecycle {
         });
         if (!failure.retryable) {
           // A fatal result belongs to the same lease as completion or retry.
-          const recorded = await this.repo.markError({
+          await this.repo.markError({
             agentId: this.runtime.agentId,
             channelId: claimed.channelId,
             failedAt: this.now().toISOString(),
@@ -872,10 +872,7 @@ export class GoogleCalendarWatchLifecycle {
             error: failure,
             syncLeaseToken: leaseToken,
           });
-          return {
-            kind:
-              recorded && failure.bindingMismatch ? "unauthorized" : "settled",
-          };
+          return { kind: failure.bindingMismatch ? "unauthorized" : "settled" };
         }
         const released = await this.repo.releaseFailedSync({
           agentId: this.runtime.agentId,
