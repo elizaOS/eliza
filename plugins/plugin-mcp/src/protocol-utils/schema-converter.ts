@@ -62,6 +62,13 @@ interface JsonSchemaProperty {
   oneOf?: JsonSchemaProperty[];
   anyOf?: JsonSchemaProperty[];
   allOf?: JsonSchemaProperty[];
+  not?: JsonSchemaProperty;
+  if?: JsonSchemaProperty;
+  then?: JsonSchemaProperty;
+  else?: JsonSchemaProperty;
+  prefixItems?: JsonSchemaProperty[];
+  dependentSchemas?: Record<string, JsonSchemaProperty>;
+  patternProperties?: Record<string, JsonSchemaProperty>;
   nullable?: boolean;
 }
 
@@ -100,6 +107,12 @@ function hasPinnedConstraints(prop: JsonSchemaProperty): boolean {
     prop.const !== undefined ||
     prop.enum !== undefined ||
     COMBINATORS.some((key) => Array.isArray(prop[key]) && prop[key].some(hasPinnedConstraints)) ||
+    [prop.not, prop.if, prop.then, prop.else].some(
+      (child) => child !== undefined && hasPinnedConstraints(child)
+    ) ||
+    (Array.isArray(prop.prefixItems) && prop.prefixItems.some(hasPinnedConstraints)) ||
+    Object.values(prop.dependentSchemas ?? {}).some(hasPinnedConstraints) ||
+    Object.values(prop.patternProperties ?? {}).some(hasPinnedConstraints) ||
     Object.values(prop.properties ?? {}).some(hasPinnedConstraints) ||
     (Array.isArray(prop.items)
       ? prop.items.some(hasPinnedConstraints)

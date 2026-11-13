@@ -34,6 +34,18 @@ const UNSATISFIABLE = "MCP_PINNED_SCHEMA_UNSATISFIABLE";
 const UNSUPPORTED = "MCP_PINNED_SCHEMA_UNSUPPORTED";
 
 describe("exact pinned MCP argument schemas", () => {
+  it("refuses pins under unsupported schema applicators", () => {
+    for (const property of [
+      { type: "string", not: { const: "forbidden" } },
+      // biome-ignore lint/suspicious/noThenProperty: JSON Schema uses then as data, not a promise method.
+      { type: "string", if: { const: "conditional" }, then: { minLength: 2 } },
+      { type: "array", prefixItems: [{ const: "first" }] },
+      { type: "object", dependentSchemas: { value: { const: "dependent" } } },
+      { type: "object", patternProperties: { "^x": { enum: ["fixed"] } } },
+    ])
+      refuses(property, UNSUPPORTED);
+  });
+
   for (const value of ["fast", 1, false, null]) {
     it(`projects const ${JSON.stringify(value)} as a singleton enum`, () => {
       const result = roundtrip({ const: value });

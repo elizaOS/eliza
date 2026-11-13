@@ -8,6 +8,17 @@ import { testOutputPath } from "../lib/test-output.ts";
 const root = path.resolve(import.meta.dirname, "../../..");
 const model = path.basename(process.argv[2] ?? "");
 const suites = {
+  "McpArgumentAdmission.qnt": {
+    cwd: "packages/cloud/shared",
+    file: "src/lib/eliza/plugin-mcp/actions/dynamic-tool-actions.test.ts",
+    config: "packages/scripts/vitest/default.config.ts",
+    timeout: 1_200_000,
+    match: "MCP dynamic action parameter boundary",
+    names: [
+      "blocks invalid constraints before dispatch and preserves valid arguments",
+      "blocks an optional null over a real MCP transport and forwards an allowed null",
+    ].map((name) => `MCP dynamic action parameter boundary ${name}`),
+  },
   "TurnCancellation.qnt": {
     cwd: "packages/core",
     file: "test/use-model-cancellation.test.ts",
@@ -39,6 +50,7 @@ const result = spawnSync(
   [
     path.join(root, "packages/scripts/run-vitest.ts"),
     "run",
+    ...(suite.config ? ["--config", path.join(root, suite.config)] : []),
     suite.file,
     "-t",
     suite.match,
@@ -46,7 +58,11 @@ const result = spawnSync(
     "--reporter=json",
     `--outputFile=${report}`,
   ],
-  { cwd: path.join(root, suite.cwd), encoding: "utf8", timeout: 180000 },
+  {
+    cwd: path.join(root, suite.cwd),
+    encoding: "utf8",
+    timeout: suite.timeout ?? 180000,
+  },
 );
 writeFileSync(log, `${result.stdout ?? ""}\n${result.stderr ?? ""}`);
 if (result.error) throw result.error;
