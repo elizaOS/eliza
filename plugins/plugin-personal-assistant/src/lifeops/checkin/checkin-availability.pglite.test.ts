@@ -189,15 +189,89 @@ describe("check-in source availability and generation failures", () => {
     },
   );
 
+  it("does not report old Google cache refreshes as recent Calendar changes", async () => {
+    await db.exec(`CREATE SCHEMA app_calendar;
+      CREATE TABLE app_calendar.life_calendar_events (
+        id text, agent_id text, side text, title text,
+        start_at text, end_at text, status text, html_link text,
+        updated_at text, is_all_day boolean,
+        provider text, metadata_json text
+      );
+      INSERT INTO app_calendar.life_calendar_events VALUES
+        ('old', 'checkin-availability', 'owner', 'Old cached event',
+         '2026-12-01T18:00:00.000Z', '2026-12-01T19:00:00.000Z', 'confirmed', null,
+         '2026-11-12T15:00:00.000Z', false, 'google', '{"createdAt":"2025-01-01T00:00:00.000Z"}'),
+        ('unknown', 'checkin-availability', 'owner', 'Unknown provider revision',
+         '2026-12-01T18:00:00.000Z', '2026-12-01T19:00:00.000Z', 'confirmed', null,
+         '2026-11-12T15:00:00.000Z', false, 'google', '{}'),
+        ('changed', 'checkin-availability', 'owner', 'Provider edit',
+         '2026-12-01T18:00:00.000Z', '2026-12-01T19:00:00.000Z', 'confirmed', null,
+         '2026-11-12T15:00:00.000Z', false, 'google', '{"updatedAt":"2026-11-12T15:00:00.000Z"}'),
+        ('local', 'checkin-availability', 'owner', 'Local edit',
+         '2026-12-01T18:00:00.000Z', '2026-12-01T19:00:00.000Z', 'confirmed', null,
+         '2026-11-12T15:00:00.000Z', false, 'eliza', '{}'),
+        ('today', 'checkin-availability', 'owner', 'Today',
+         '2026-11-12T18:00:00.000Z', '2026-11-12T19:00:00.000Z', 'confirmed', null,
+         '2026-11-12T15:00:00.000Z', false, 'google', '{}');`);
+    for (const [id, title, updatedAt] of [
+      ["offset", "Provider offset edit", "2026-11-11T09:30:00-08:00"],
+      ["no-fraction", "Provider edit without fraction", "2026-11-12T13:00:00Z"],
+      ...Array.from({ length: 45 }, (_, i) => [
+        `invalid-${i}`,
+        `Malformed provider revision ${i}`,
+        i % 2 === 0 ? "not-a-date" : 1762959600000,
+      ]),
+    ]) {
+      await db.query(
+        `INSERT INTO app_calendar.life_calendar_events VALUES
+          ($1, 'checkin-availability', 'owner', $2,
+           '2026-12-01T18:00:00.000Z', '2026-12-01T19:00:00.000Z', 'confirmed', null,
+           '2026-11-12T15:00:00.000Z', false, 'google', $3)`,
+        [id, title, JSON.stringify({ updatedAt })],
+      );
+    }
+    await db.query(
+      `INSERT INTO app_calendar.life_calendar_events VALUES
+        ('other-owner', 'other-owner', 'owner', 'Other owner event',
+         '2026-12-01T18:00:00.000Z', '2026-12-01T19:00:00.000Z', 'confirmed', null,
+         '2026-11-12T15:00:00.000Z', false, 'google', $1)`,
+      [JSON.stringify({ updatedAt: "2026-11-12T15:00:00.000Z" })],
+    );
+    const before = await db.query(
+      "SELECT * FROM app_calendar.life_calendar_events ORDER BY id",
+    );
+    const report = await new CheckinService(runtime).runMorningCheckin({
+      now: new Date("2026-11-12T16:00:00.000Z"),
+      timezone: "America/Los_Angeles",
+    });
+    const section = report.briefingSections.find(
+      (item) => item.key === "calendar_changes",
+    );
+    expect(section?.items.map((item) => item.title).sort()).toEqual([
+      "Local edit",
+      "Provider edit",
+      "Provider edit without fraction",
+      "Provider offset edit",
+      "Today",
+    ]);
+    expect(section?.error).toBeNull();
+    expect(section?.summary).toContain("4 calendar items added or updated");
+    expect(
+      await db.query(
+        "SELECT * FROM app_calendar.life_calendar_events ORDER BY id",
+      ),
+    ).toEqual(before);
+  });
+
   it("binds Calendar source identity and times before rendering one owner-local agenda entry", async () => {
     await db.exec(`
       CREATE SCHEMA app_calendar;
       CREATE TABLE app_calendar.life_calendar_events (
         id text PRIMARY KEY, agent_id text, side text, title text,
         start_at text, end_at text, status text, html_link text, updated_at text,
-        is_all_day boolean NOT NULL DEFAULT false
+        is_all_day boolean NOT NULL DEFAULT false, provider text NOT NULL DEFAULT 'eliza', metadata_json text NOT NULL DEFAULT '{}'
       );
-      INSERT INTO app_calendar.life_calendar_events VALUES (
+      INSERT INTO app_calendar.life_calendar_events (id, agent_id, side, title, start_at, end_at, status, html_link, updated_at, is_all_day) VALUES (
         'calendar-event', 'checkin-availability', 'owner', 'QA walkthrough',
         '2026-10-06T18:00:00.000Z', '2026-10-06T18:15:00.000Z',
         'confirmed', null, '2026-10-06T14:00:00.000Z', false
@@ -247,9 +321,9 @@ describe("check-in source availability and generation failures", () => {
         CREATE TABLE app_calendar.life_calendar_events (
           id text PRIMARY KEY, agent_id text, side text, title text,
           start_at text, end_at text, status text, html_link text, updated_at text,
-          is_all_day boolean NOT NULL DEFAULT false
+          is_all_day boolean NOT NULL DEFAULT false, provider text NOT NULL DEFAULT 'eliza', metadata_json text NOT NULL DEFAULT '{}'
         );
-        INSERT INTO app_calendar.life_calendar_events VALUES (
+        INSERT INTO app_calendar.life_calendar_events (id, agent_id, side, title, start_at, end_at, status, html_link, updated_at, is_all_day) VALUES (
           'all-day-event', 'checkin-availability', 'owner', 'All-day source',
           '2026-10-06T00:00:00.000Z', '2026-10-07T00:00:00.000Z',
           'confirmed', null, '2026-10-06T14:00:00.000Z', true
@@ -342,7 +416,7 @@ describe("check-in source availability and generation failures", () => {
         CREATE TABLE app_calendar.life_calendar_events (
           id text PRIMARY KEY, agent_id text, side text, title text,
           start_at text, end_at text, status text, html_link text, updated_at text,
-          is_all_day boolean NOT NULL DEFAULT false
+          is_all_day boolean NOT NULL DEFAULT false, provider text NOT NULL DEFAULT 'eliza', metadata_json text NOT NULL DEFAULT '{}'
         );`);
       const midnight = (date: string) => `${date}T00:00:00.000Z`;
       const rows = [
@@ -405,7 +479,7 @@ describe("check-in source availability and generation failures", () => {
       ];
       for (const [id, title, start, end, status, allDay] of rows)
         await db.query(
-          `INSERT INTO app_calendar.life_calendar_events VALUES
+          `INSERT INTO app_calendar.life_calendar_events (id, agent_id, side, title, start_at, end_at, status, html_link, updated_at, is_all_day) VALUES
            ($1, 'checkin-availability', 'owner', $2, $3, $4, $5, NULL, $6, $7)`,
           [
             id,
@@ -546,10 +620,10 @@ describe("check-in source availability and generation failures", () => {
       await db.exec(`CREATE SCHEMA app_calendar;
       CREATE TABLE app_calendar.life_calendar_events (
         id text, agent_id text, title text, start_at text, end_at text,
-        status text, html_link text, updated_at text,
-        is_all_day boolean NOT NULL DEFAULT false
+        side text NOT NULL DEFAULT 'owner', status text, html_link text, updated_at text,
+        is_all_day boolean NOT NULL DEFAULT false, provider text NOT NULL DEFAULT 'eliza', metadata_json text NOT NULL DEFAULT '{}'
       );
-      INSERT INTO app_calendar.life_calendar_events VALUES
+      INSERT INTO app_calendar.life_calendar_events (id, agent_id, title, start_at, end_at, status, html_link, updated_at, is_all_day) VALUES
         ('owner-day', 'checkin-availability', 'Owner-zone meeting',
          '2026-10-03T05:00:00.000Z', '2026-10-03T06:00:00.000Z',
          'confirmed', NULL, '2026-10-02T18:00:00.000Z', false),

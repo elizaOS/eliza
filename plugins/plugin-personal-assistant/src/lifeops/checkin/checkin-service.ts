@@ -1412,22 +1412,53 @@ async function collectCalendarChangeSection(
   const today = calendarDayPredicate(day);
   const sinceIso = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
   try {
-    const rows = await executeRawSql(
+    const sourceRows = await executeRawSql(
       runtime,
       `SELECT id, title, start_at, end_at, status, is_all_day, html_link, updated_at,
-              ${today} AS is_today
+              provider, metadata_json, ${today} AS is_today
          FROM app_calendar.life_calendar_events
         WHERE agent_id = ${sqlQuote(agentId)}
           AND side = 'owner'
           AND (
             ${today}
+            OR provider = 'google'
             OR updated_at >= ${sqlQuote(sinceIso)}
-          )
-        ORDER BY
-          CASE WHEN updated_at >= ${sqlQuote(sinceIso)} THEN 0 ELSE 1 END,
-          start_at ASC
-        LIMIT 40`,
+          )`,
     );
+    const sinceMs = Date.parse(sinceIso);
+    const isChanged = (row: Record<string, unknown>) =>
+      (parseMs(toText(row.updated_at)) ?? 0) >= sinceMs;
+    // A Google refresh changes the cache clock, not the provider's edit clock.
+    // Parse metadata in the existing decoder and never cast untrusted timestamp
+    // text in SQL. Unknown provider revisions remain unknown, even after sync.
+    const rows = sourceRows
+      .map((row) => {
+        if (row.provider !== "google") return row;
+        const metadata = parseJsonRecord(row.metadata_json);
+        const source = [
+          metadata.updatedAt,
+          metadata.updated,
+          metadata.createdAt,
+        ].find(
+          (value) => value !== undefined && value !== null && value !== "",
+        );
+        const sourceMs = typeof source === "string" ? parseMs(source) : null;
+        return {
+          ...row,
+          updated_at:
+            sourceMs === null ? null : new Date(sourceMs).toISOString(),
+        };
+      })
+      .filter((row) => toBoolean(row.is_today) || isChanged(row))
+      .sort(
+        (left, right) =>
+          Number(isChanged(right)) - Number(isChanged(left)) ||
+          toText(left.start_at).localeCompare(toText(right.start_at)) ||
+          toText(left.id).localeCompare(toText(right.id)),
+      )
+      // Keep the existing briefing window, after validating and ranking source
+      // clocks so stale or malformed cache rows cannot crowd out real changes.
+      .slice(0, 40);
     const todayCount = rows.filter((row) => toBoolean(row.is_today)).length;
     const changedCount = rows.filter(
       (row) => (parseMs(toText(row.updated_at)) ?? 0) >= Date.parse(sinceIso),
