@@ -175,9 +175,7 @@ export async function createRealTestRuntime(
     if (enabled && token?.trim()) plugins.push(await loadPlugin(specifier));
   }
   plugins.push(...(options.plugins ?? []));
-  const configuredHosts =
-    process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH?.trim() ||
-    process.env.SELFCONTROL_HOSTS_FILE_PATH?.trim();
+  const configuredHosts = process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH?.trim();
   const hostsRoot = configuredHosts
     ? undefined
     : fs.mkdtempSync(path.join(os.tmpdir(), "eliza-test-hosts-"));
@@ -220,7 +218,6 @@ export async function createRealTestRuntime(
       settings: {
         ...providerConfig?.env,
         WEBSITE_BLOCKER_HOSTS_FILE_PATH: hostsFile,
-        SELFCONTROL_HOSTS_FILE_PATH: hostsFile,
       },
       configureRuntime: (runtime) => {
         installHttpPluginLifecycle(runtime);

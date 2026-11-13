@@ -321,9 +321,7 @@ export async function resolveSelfControlHostsFilePath(
   // A phone's hosts file is not the app's to edit; only a native backend blocks there.
   if (isMobilePlatform()) return null;
   const override =
-    config.hostsFilePath?.trim() ||
-    process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH ||
-    process.env.SELFCONTROL_HOSTS_FILE_PATH;
+    config.hostsFilePath?.trim() || process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH;
   const candidate = override
     ? resolveUserPath(override)
     : defaultHostsFilePath();

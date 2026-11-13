@@ -165,8 +165,6 @@ runs:
           echo "ELIZA_KOKORO_DEFAULT_VOICE_ID=af_bella"
           echo "ELIZA_SPEAKER_GGUF=$BUNDLE/speaker/wespeaker-resnet34-lm.gguf"
           echo "ELIZA_DIARIZ_GGUF=$BUNDLE/diariz/pyannote-segmentation-3.0-ifgo-epoch2.gguf"
-          echo "ELIZA_TEST_SPEAKER_GGUF=$BUNDLE/speaker/wespeaker-resnet34-lm.gguf"
-          echo "ELIZA_TEST_DIARIZ_GGUF=$BUNDLE/diariz/pyannote-segmentation-3.0-ifgo-epoch2.gguf"
           echo "ELIZA_VOICE_REAL_MODEL_DIR=$BUNDLE"
         } >> "$GITHUB_ENV"
 

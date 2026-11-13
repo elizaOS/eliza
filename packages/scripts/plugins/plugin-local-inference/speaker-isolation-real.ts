@@ -21,8 +21,8 @@
  *
  * Env:
  *   ELIZA_INFERENCE_LIBRARY / ELIZA_INFERENCE_LIB_DIR — fused lib
- *   ELIZA_DIARIZ_GGUF  (or ELIZA_TEST_DIARIZ_GGUF)  — pyannote-segmentation-3.0.gguf
- *   ELIZA_SPEAKER_GGUF (or ELIZA_TEST_SPEAKER_GGUF) — wespeaker-resnet34-lm.gguf
+ *   ELIZA_DIARIZ_GGUF  — pyannote-segmentation-3.0.gguf
+ *   ELIZA_SPEAKER_GGUF — wespeaker-resnet34-lm.gguf
  *   ELIZA_KOKORO_MODEL_DIR — Kokoro model for one-time corpus synthesis
  *   SPEAKER_ISO_MIN_ACC (default 0.8) / SPEAKER_ISO_MAX_DER (default 0.6)
  */
@@ -64,12 +64,8 @@ const WINDOW_SAMPLES = BENCH_SAMPLE_RATE * 5; // pyannote 5 s window
 const MIN_EMBED_SAMPLES = BENCH_SAMPLE_RATE; // WeSpeaker needs ≥1 s
 
 const { ffi, libPath } = bootFusedFfi(gates);
-const diarizGguf = (
-  process.env.ELIZA_DIARIZ_GGUF ?? process.env.ELIZA_TEST_DIARIZ_GGUF
-)?.trim();
-const speakerGguf = (
-  process.env.ELIZA_SPEAKER_GGUF ?? process.env.ELIZA_TEST_SPEAKER_GGUF
-)?.trim();
+const diarizGguf = process.env.ELIZA_DIARIZ_GGUF?.trim();
+const speakerGguf = process.env.ELIZA_SPEAKER_GGUF?.trim();
 if (!diarizGguf || !existsSync(diarizGguf)) {
   gates.skip(
     "no diarizer GGUF (set ELIZA_DIARIZ_GGUF to pyannote-segmentation-3.0.gguf)",

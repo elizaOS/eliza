@@ -175,7 +175,6 @@ async function startLiveRuntime(options?: {
       ELIZA_PORT: String(apiPort),
       ELIZA_API_PORT: String(apiPort),
       WEBSITE_BLOCKER_HOSTS_FILE_PATH: hostsFilePath,
-      SELFCONTROL_HOSTS_FILE_PATH: hostsFilePath,
       ELIZA_DISABLE_LOCAL_EMBEDDINGS: "1",
       ALLOW_NO_DATABASE: "",
       DISCORD_API_TOKEN: "",

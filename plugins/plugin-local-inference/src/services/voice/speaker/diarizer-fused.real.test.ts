@@ -40,9 +40,9 @@ const DIARIZ_WINDOW_SAMPLES = 16_000 * 5; // 5 s @ 16 kHz
 const isBun = typeof (globalThis as { Bun?: unknown }).Bun !== "undefined";
 const LIB_PATH = resolveFusedLibraryPath(null, process.env);
 // The native diariz_open needs a pyannote-segmentation GGUF. Provide one via
-// ELIZA_TEST_DIARIZ_GGUF; the diarize assertion skips honestly when it isn't
+// ELIZA_DIARIZ_GGUF; the diarize assertion skips honestly when it isn't
 // supplied — it is never faked.
-const DIARIZ_GGUF = process.env.ELIZA_TEST_DIARIZ_GGUF?.trim();
+const DIARIZ_GGUF = process.env.ELIZA_DIARIZ_GGUF?.trim();
 const HAVE_MODEL = !!DIARIZ_GGUF && existsSync(DIARIZ_GGUF);
 
 describe.skipIf(!isBun || !LIB_PATH)("FusedDiarizer — real FFI", () => {

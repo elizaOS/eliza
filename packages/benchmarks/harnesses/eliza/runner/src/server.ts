@@ -1468,7 +1468,6 @@ export async function startBenchmarkServer() {
   if (process.env.COMPUTER_USE_ENABLED === "1" && !lifecycleProfile) {
     try {
       process.env.COMPUTER_USE_ENABLED ??= "1";
-      process.env.COMPUTERUSE_MODE ??= "local";
       const computeruseName = "@elizaos/plugin-computeruse";
       const computeruseModule = (await import(
         resolveElizaPluginImportSpecifier(computeruseName)

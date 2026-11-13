@@ -1255,14 +1255,8 @@ export class CloudBootstrapMessageService implements IMessageService {
         .map((v) => v.trim())
         .filter(Boolean);
     }
-    const customChannels = normalizeEnvList(
-      runtime.getSetting("ALWAYS_RESPOND_CHANNELS") ||
-        runtime.getSetting("SHOULD_RESPOND_BYPASS_TYPES"),
-    );
-    const customSources = normalizeEnvList(
-      runtime.getSetting("ALWAYS_RESPOND_SOURCES") ||
-        runtime.getSetting("SHOULD_RESPOND_BYPASS_SOURCES"),
-    );
+    const customChannels = normalizeEnvList(runtime.getSetting("ALWAYS_RESPOND_CHANNELS"));
+    const customSources = normalizeEnvList(runtime.getSetting("ALWAYS_RESPOND_SOURCES"));
     const respondChannels = new Set(
       [...alwaysRespondChannels.map((t) => t.toString()), ...customChannels].map((s) =>
         s.trim().toLowerCase(),

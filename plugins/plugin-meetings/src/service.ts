@@ -510,8 +510,7 @@ export class MeetingService extends Service {
     }
     const accessToken =
       request.accessToken?.trim() ||
-      this.settingString("ELIZA_ZOOM_ACCESS_TOKEN") ||
-      this.settingString("ZOOM_ACCESS_TOKEN");
+      this.settingString("ELIZA_ZOOM_ACCESS_TOKEN");
     if (!accessToken) {
       throw new ZoomCloudImportError(
         "invalid_request",

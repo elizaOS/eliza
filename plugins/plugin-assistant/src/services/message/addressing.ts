@@ -319,12 +319,10 @@ export function messageBypassesResponseEvaluation(
   message: Memory,
 ): boolean {
   const configuredChannels = normalizeResponseBypassList(
-    runtime.getSetting("ALWAYS_RESPOND_CHANNELS") ??
-      runtime.getSetting("SHOULD_RESPOND_BYPASS_TYPES"),
+    runtime.getSetting("ALWAYS_RESPOND_CHANNELS"),
   );
   const configuredSources = normalizeResponseBypassList(
-    runtime.getSetting("ALWAYS_RESPOND_SOURCES") ??
-      runtime.getSetting("SHOULD_RESPOND_BYPASS_SOURCES"),
+    runtime.getSetting("ALWAYS_RESPOND_SOURCES"),
   );
   const channel = String(message.content?.channelType ?? "")
     .trim()

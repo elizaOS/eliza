@@ -1089,8 +1089,6 @@ export async function createScenarioRuntime(
       );
     const prevWebsiteBlockerHostsFilePath =
       process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH;
-    const prevSelfControlHostsFilePath =
-      process.env.SELFCONTROL_HOSTS_FILE_PATH;
     const prevSkillsDir = process.env.SKILLS_DIR;
     const scenarioSkillsRoot =
       executionProfile === "simulated" &&
@@ -1121,8 +1119,7 @@ export async function createScenarioRuntime(
     if (
       executionProfile === "simulated" &&
       (options?.isolateFilesystemState === true ||
-        (!prevWebsiteBlockerHostsFilePath?.trim() &&
-          !prevSelfControlHostsFilePath?.trim()))
+        !prevWebsiteBlockerHostsFilePath?.trim())
     ) {
       scenarioHostsRoot = fs.mkdtempSync(
         path.join(os.tmpdir(), "scenario-runner-hosts-"),
@@ -1138,7 +1135,6 @@ export async function createScenarioRuntime(
         "utf8",
       );
       process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH = scenarioHostsFilePath;
-      process.env.SELFCONTROL_HOSTS_FILE_PATH = scenarioHostsFilePath;
     }
 
     const skipEmbeddingPlugin =
@@ -1606,9 +1602,7 @@ export async function createScenarioRuntime(
       hostsFilePath:
         scenarioHostsRoot !== null
           ? path.join(scenarioHostsRoot, "hosts")
-          : (prevWebsiteBlockerHostsFilePath ??
-            prevSelfControlHostsFilePath ??
-            null),
+          : (prevWebsiteBlockerHostsFilePath ?? null),
       executionProfile,
       registeredPluginPackages: [...registeredPluginPackages].sort(),
       scenarioDeclaredActionNames: [

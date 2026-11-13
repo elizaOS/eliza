@@ -39,9 +39,9 @@ const MIN_SAMPLES = 16_000;
 const isBun = typeof (globalThis as { Bun?: unknown }).Bun !== "undefined";
 const LIB_PATH = resolveFusedLibraryPath(null, process.env);
 // The native speaker_open needs a WeSpeaker GGUF. Provide one via
-// ELIZA_TEST_SPEAKER_GGUF (e.g. wespeaker-resnet34-lm.gguf); the encode
+// ELIZA_SPEAKER_GGUF (e.g. wespeaker-resnet34-lm.gguf); the encode
 // assertions skip honestly when it isn't supplied — they are never faked.
-const SPEAKER_GGUF = process.env.ELIZA_TEST_SPEAKER_GGUF?.trim();
+const SPEAKER_GGUF = process.env.ELIZA_SPEAKER_GGUF?.trim();
 const HAVE_MODEL = !!SPEAKER_GGUF && existsSync(SPEAKER_GGUF);
 
 describe.skipIf(!isBun || !LIB_PATH)("FusedSpeakerEncoder — real FFI", () => {

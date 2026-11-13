@@ -1070,9 +1070,7 @@ export class AcpService extends Service {
           : parsedCli.command
         : configuredCli;
     this.transportMode =
-      normalizeTransportMode(
-        this.setting("ELIZA_ACP_TRANSPORT") ?? this.setting("ACPX_TRANSPORT"),
-      ) ?? "native";
+      normalizeTransportMode(this.setting("ELIZA_ACP_TRANSPORT")) ?? "native";
     this.defaultAgent =
       normalizeTaskAgentAdapter(
         this.setting("BENCHMARK_TASK_AGENT") ??
@@ -1082,20 +1080,16 @@ export class AcpService extends Service {
     this.defaultApprovalPreset = normalizeApprovalPreset(
       boolSetting(this.setting("ACPX_APPROVE_ALL")) === true
         ? "approve-all"
-        : (this.setting("ELIZA_ACP_DEFAULT_APPROVAL") ??
-            this.setting("ELIZA_DEFAULT_APPROVAL_PRESET")),
+        : this.setting("ELIZA_DEFAULT_APPROVAL_PRESET"),
     );
     this.agentSelectionStrategy =
-      this.setting("ELIZA_ACP_AGENT_SELECTION_STRATEGY") ??
-      this.setting("ELIZA_AGENT_SELECTION_STRATEGY") ??
-      "fixed";
+      this.setting("ELIZA_AGENT_SELECTION_STRATEGY") ?? "fixed";
     this.maxSessions =
       parsePositiveInt(this.setting("ELIZA_ACP_MAX_SESSIONS")) ?? 8;
     this.systemHeadroom =
       parsePositiveInt(this.setting("ELIZA_ACP_SYSTEM_SESSION_HEADROOM")) ?? 2;
     this.sessionTimeoutMs = parsePositiveInt(
-      this.setting("ACPX_DEFAULT_TIMEOUT_MS") ??
-        this.setting("ELIZA_ACP_PROMPT_TIMEOUT_MS"),
+      this.setting("ACPX_DEFAULT_TIMEOUT_MS"),
     );
     this.warmSpawnEnabled =
       boolSetting(this.setting("ELIZA_ACP_WARM_SPAWN")) === true &&
@@ -3330,9 +3324,7 @@ export class AcpService extends Service {
   }
 
   private codexAcpSandboxMode(): CodexSandboxMode | undefined {
-    const raw =
-      this.setting("ELIZA_CODEX_ACP_SANDBOX_MODE") ??
-      this.setting("ELIZA_CODEX_SANDBOX_MODE");
+    const raw = this.setting("ELIZA_CODEX_ACP_SANDBOX_MODE");
     const mode = normalizeCodexSandboxMode(raw);
     if (raw?.trim() && !mode) {
       this.log("warn", "Ignoring invalid Codex ACP sandbox mode", {
@@ -3344,9 +3336,7 @@ export class AcpService extends Service {
   }
 
   private codexAcpApprovalPolicy(): string | undefined {
-    const raw =
-      this.setting("ELIZA_CODEX_ACP_APPROVAL_POLICY") ??
-      this.setting("ELIZA_CODEX_APPROVAL_POLICY");
+    const raw = this.setting("ELIZA_CODEX_ACP_APPROVAL_POLICY");
     const policy = normalizeCodexApprovalPolicy(raw);
     if (raw?.trim() && !policy) {
       this.log("warn", "Ignoring invalid Codex ACP approval policy", {
@@ -3423,7 +3413,6 @@ export class AcpService extends Service {
               ELIZA_CODEX_ACP_LANDLOCK: this.setting(
                 "ELIZA_CODEX_ACP_LANDLOCK",
               ),
-              ELIZA_CODEX_LANDLOCK: this.setting("ELIZA_CODEX_LANDLOCK"),
             },
           });
     const sandboxMode = forceNoLandlockFallback
@@ -6105,9 +6094,7 @@ export class AcpService extends Service {
   }
 
   private shouldDisableTerminalCapability(): boolean {
-    const configured = boolSetting(
-      this.setting("ELIZA_ACP_NO_TERMINAL") ?? this.setting("ACPX_NO_TERMINAL"),
-    );
+    const configured = boolSetting(this.setting("ACPX_NO_TERMINAL"));
     return configured === true;
   }
 
