@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-maps",
-  "version": "2.0.5",
+  "version": "2.0.6",
   "type": "module",
   "description": "Provider-neutral place search, routing, saved places, sharing, and navigation handoffs for Eliza agents.",
   "main": "./dist/index.js",
@@ -84,12 +84,12 @@
     "vitest": "^5.1.0",
     "@elizaos/testing": "workspace:*",
     "@capacitor/core": "^8.5.2",
-    "maplibre-gl": "^6.16.0"
+    "maplibre-gl": "^6.17.0"
   },
   "peerDependencies": {
     "react-dom": "^19.0.0",
     "@capacitor/core": "^8.5.2",
-    "maplibre-gl": "^6.16.0"
+    "maplibre-gl": "^6.17.0"
   },
   "publishConfig": {
     "access": "public"

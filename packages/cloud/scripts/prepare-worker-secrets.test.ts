@@ -41,7 +41,7 @@ cat "$FIXTURE_INVENTORY"
 `,
     );
     writeFileSync(
-      join(root, "node"),
+      join(root, "bun"),
       `#!/bin/sh
 case "$1" in
   ../scripts/validate-staging-session-cutover.ts) exit 77 ;;
@@ -50,7 +50,7 @@ exec "$FIXTURE_NODE" "$@"
 `,
     );
     chmodSync(join(root, "bunx"), 0o700);
-    chmodSync(join(root, "node"), 0o700);
+    chmodSync(join(root, "bun"), 0o700);
     return spawnSync("bash", [script], {
       encoding: "utf8",
       env: {
@@ -160,6 +160,12 @@ cat "$FIXTURE_INVENTORY"
 exec "$FIXTURE_NODE" "$FIXTURE_DRIVER" "$@"
 `,
     );
+    writeFileSync(
+      join(root, "bun"),
+      `#!/bin/sh
+exec "$FIXTURE_NODE" "$FIXTURE_DRIVER" "$@"
+`,
+    );
     // Only external CLI boundaries are mocked. All shell queue/deletion logic
     // and the existing name verifier execute unchanged; no network is allowed.
     writeFileSync(
@@ -195,6 +201,7 @@ if (name === "ensure-worker-secret-absent.ts") {
     );
     chmodSync(join(root, "bunx"), 0o700);
     chmodSync(join(root, "node"), 0o700);
+    chmodSync(join(root, "bun"), 0o700);
     const env: Record<string, string> = {};
     // Empty optional settings simulate a protected environment which cannot
     // recover the existing secrets; never inherit actual host credentials.

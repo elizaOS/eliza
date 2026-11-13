@@ -88,7 +88,7 @@ const NEVER_COPIED = new Set([
 
 /** A path no source tarball may contain. */
 const FORBIDDEN_FILE =
-  /(^|\/)\.env($|\.)|(^|\/)\.dev\.vars|(^|\/)\.npmrc$|\.(pem|key|p8|p12)$|\.test\.[cm]?[jt]sx?$|(^|\/)(__tests__|__fixtures__|__mocks__|fixtures|test-support)\//;
+  /(^|\/)\.env($|\.)|(^|\/)\.dev\.vars|(^|\/)\.npmrc$|\.(pem|key|p8|p12)$|(?:\.(?:test|fixture)|-test-(?:fixtures?|support|provider|harness))\.[cm]?[jt]sx?$|(^|\/)(__tests__|__fixtures__|__mocks__|fixtures|test-support)\//;
 
 const PRODUCT_WORKER = `// The product's whole Worker: upstream's fetch and scheduled handlers and its
 // Durable Object classes, from the installed package.
