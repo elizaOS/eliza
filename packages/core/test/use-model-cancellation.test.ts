@@ -330,4 +330,72 @@ describe("AgentRuntime.useModel cancellation", () => {
 		expect(turn.signal.aborted).toBe(false);
 		expect(callerParams.signal).toBe(caller.signal);
 	});
+
+	// The structured prompt executor detaches streaming with
+	// runWithStreamingContext(undefined, ...) inside a turn that has registered
+	// no action policy yet.
+	it.each([
+		["no context", undefined],
+		["a same-turn context without a signal", { messageId: "nested-turn" }],
+	] as const)(
+		"cancels a nested scope with %s when the turn aborts",
+		async (_label, nested) => {
+			const runtime = makeRuntime();
+			const started = Promise.withResolvers<void>();
+			let observedSignal: AbortSignal | undefined;
+			runtime.registerModel(
+				ModelType.TEXT_LARGE,
+				vi.fn(async (_rt: unknown, params: Record<string, unknown>) => {
+					const signal = (params as { signal?: AbortSignal }).signal;
+					observedSignal = signal;
+					started.resolve();
+					return new Promise<string>((_resolve, reject) => {
+						signal?.addEventListener("abort", () => reject(signal.reason), {
+							once: true,
+						});
+					});
+				}),
+				"primary",
+				100,
+			);
+			const turn = new AbortController();
+			const reason = new Error("turn cancelled");
+			const pending = runWithStreamingContext(
+				{ messageId: "nested-turn", abortSignal: turn.signal },
+				() =>
+					runWithStreamingContext(nested, () =>
+						runtime.useModel(ModelType.TEXT_LARGE, { prompt: "hello" }),
+					),
+			);
+			await started.promise;
+			expect(observedSignal).toBe(turn.signal);
+			const rejection = expect(pending).rejects.toBe(reason);
+			turn.abort(reason);
+			await rejection;
+		},
+	);
+
+	it("does not give a nested scope for another turn this turn's signal", async () => {
+		const runtime = makeRuntime();
+		let observedSignal: AbortSignal | undefined;
+		runtime.registerModel(
+			ModelType.TEXT_LARGE,
+			vi.fn(async (_rt: unknown, params: Record<string, unknown>) => {
+				observedSignal = (params as { signal?: AbortSignal }).signal;
+				return "other turn ok";
+			}),
+			"primary",
+			100,
+		);
+		const turn = new AbortController();
+		const result = await runWithStreamingContext(
+			{ messageId: "outer-turn", abortSignal: turn.signal },
+			() =>
+				runWithStreamingContext({ messageId: "other-turn" }, () =>
+					runtime.useModel(ModelType.TEXT_LARGE, { prompt: "hello" }),
+				),
+		);
+		expect(result).toBe("other turn ok");
+		expect(observedSignal).toBeUndefined();
+	});
 });
