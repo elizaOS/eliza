@@ -362,7 +362,7 @@
     "start:embedded": "bun src/server/embedded.ts",
     "start": "bun src/server/start.ts",
     "test:railpack": "bun test test/login/railpack-runtime.test.ts",
-    "test:browser": "bun run build && bun test test/login/browser-login.test.ts",
+    "test:browser": "bun run build && bun test test/login/browser-login.test.ts test/login/sdk-session-expiry-model.browser.test.ts",
     "test:credentials": "bun ../scripts/run-vitest.ts run",
     "test:login": "bun test --timeout 30000 --isolate src/sdk/__tests__ src/server/__tests__ && bun run test:railpack",
     "test:native-host": "bun test --timeout=120000 ./native-host/*.test.mjs ./native-host/staging-acceptance.process-test.mjs",
