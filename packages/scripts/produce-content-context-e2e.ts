@@ -62,7 +62,7 @@ export function parseContentContextE2EArgs(argv) {
     const name = argument.slice(2, equals === -1 ? undefined : equals);
     const key = names.get(name);
     if (!key) throw new Error(`unknown argument: --${name}`);
-    let value;
+    let value: string | undefined;
     if (equals === -1) {
       index += 1;
       value = argv[index];
@@ -99,7 +99,7 @@ function exactKeys(value, keys, label) {
 }
 
 function strictJson(bytes, label) {
-  let text;
+  let text: string;
   try {
     text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch (error) {
@@ -269,7 +269,7 @@ export function readTraceZipMembers(bytes) {
     if (dataEnd > centralOffset)
       throw new Error("browser trace ZIP member is truncated");
     const compressed = archive.subarray(dataOffset, dataEnd);
-    let body;
+    let body: Buffer;
     try {
       body =
         method === 0 ? Buffer.from(compressed) : inflateRawSync(compressed);
