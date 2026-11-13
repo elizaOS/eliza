@@ -13,6 +13,8 @@ const cases = [
   {
     owner: "plugin-inbox",
     file: "plugins/plugin-inbox/test/inbox-aggregate.real-runtime.test.ts",
+    pattern:
+      "host-selected Gmail|managed Gmail with other cached|failed managed Gmail",
     names: [
       "InboxDomain on a real runtime uses the host-selected Gmail reader without replaying legacy cached mail",
       "InboxDomain on a real runtime combines managed Gmail with other cached channels without legacy Gmail rows",
@@ -22,6 +24,7 @@ const cases = [
   {
     owner: "plugin-personal-assistant",
     file: "plugins/plugin-personal-assistant/src/lifeops/checkin/checkin-availability.pglite.test.ts",
+    pattern: "includes the current managed Gmail mailbox",
     names: [
       "check-in source availability and generation failures includes the current managed Gmail mailbox through the canonical Inbox service",
     ],
@@ -29,9 +32,6 @@ const cases = [
 ];
 for (const item of cases) {
   const report = path.join(directory, `${item.owner}.json`);
-  const pattern = item.names
-    .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-    .join("|");
   const result = spawnSync(
     process.execPath,
     [
@@ -46,7 +46,7 @@ for (const item of cases) {
       item.file,
       "--maxWorkers=1",
       "--testNamePattern",
-      pattern,
+      item.pattern,
       "--reporter=json",
       `--outputFile=${report}`,
     ],
