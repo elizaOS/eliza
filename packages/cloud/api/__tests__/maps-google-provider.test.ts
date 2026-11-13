@@ -860,6 +860,73 @@ describe("Google Map Tiles", () => {
     expect(calls.at(-1)?.url.searchParams.get("session")).toBe("session-2");
   });
 
+  test("a tile burst uses durable Maps admission without the generic 60-request bucket", async () => {
+    const { provider } = tiles();
+    let authenticated = 0,
+      admitted = 0,
+      genericCalls = 0;
+    const dependencies: MapsRouteDependencies = {
+      authenticate: async () => {
+        authenticated++;
+        return {
+          id: "91000000-0000-4000-8000-000000000001",
+          organization_id: "92000000-0000-4000-8000-000000000001",
+        };
+      },
+      admitRequest: async () => {
+        admitted++;
+        return async () => {};
+      },
+      entitlement: async () => ({
+        entitled: true,
+        planKey: "plus_monthly",
+        planEffectiveUntil: null,
+      }),
+      admit: async () => ({ allowed: true }),
+      provider: () => provider,
+    };
+    const { Hono } = await import("hono");
+    const app = new Hono().route(
+      "/api/v1/maps/tiles/:z/:x/:y",
+      createMapsRoute("tiles", dependencies),
+    );
+    const environment = {
+      NODE_ENV: "test",
+      CLOUD_RATE_STATE_BACKEND: "cloudflare",
+      RATE_LIMIT_STATE: {
+        getByName: () => ({
+          fetch: async (_url: string, init: RequestInit) => {
+            const input = JSON.parse(String(init.body));
+            genericCalls++;
+            return Response.json({
+              allowed: genericCalls <= input.maxRequests,
+              count: genericCalls,
+              remaining: Math.max(0, input.maxRequests - genericCalls),
+              resetAt: Date.now() + 60_000,
+              retryAfter: 60,
+            });
+          },
+        }),
+      },
+    };
+    for (let index = 0; index < 65; index++) {
+      const response = await app.request(
+        "/api/v1/maps/tiles/2/1/3",
+        {
+          headers: {
+            "cf-connecting-ip": "203.0.113.220",
+            "Idempotency-Key": `tile-burst-${index}`,
+          },
+        },
+        environment,
+      );
+      expect(response.status).toBe(200);
+    }
+    expect(authenticated).toBe(65);
+    expect(admitted).toBe(65);
+    expect(genericCalls).toBe(0);
+  });
+
   test("the tiles route serves image bytes and validates the tile address", async () => {
     const { provider } = tiles();
     const dependencies: MapsRouteDependencies = {
