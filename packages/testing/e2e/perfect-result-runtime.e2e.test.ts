@@ -276,6 +276,7 @@ test.each([false, true])(
     });
     const inbound = createMessageMemory({
       id: randomUUID() as UUID,
+      agentId: runtime.agentId,
       entityId: userId,
       roomId,
       content: {
