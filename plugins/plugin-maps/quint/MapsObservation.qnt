@@ -125,15 +125,15 @@ module MapsInitialSearch {
     s' = if (s.live and s.provider and s.waiting and s.query == s.queued)
       { ...s, queued: 0, waiting: false, started: s.query }
       else { ...s, queued: 0 } }
-  action fail = all { s.queued > 0, s' = { ...s, queued: 0, waiting: false } }
+  action discoveryFailed = all { s.queued > 0, s' = { ...s, queued: 0, waiting: false } }
   action typeOnly = s' = { ...s, waiting: false }
-  action step = any { activate, replace, leave, resume, fail, s' = s }
+  action step = any { activate, replace, leave, resume, discoveryFailed, s' = s }
   val CurrentVisibleSearchOnly = s.started > 0 implies
     (s.started == s.query and s.provider)
   temporal ContinuationSettles = (s.queued > 0).leadsTo(s.queued == 0)
   temporal FairContinuationSettles = resume.weakFair(s) implies ContinuationSettles
   run typedTextDoesNotSubmitTest = init.then(typeOnly).then(activate).expect(s.queued == 0 and s.started == 0)
-  run failedDiscoveryDoesNotSubmitTest = init.then(activate).then(fail).expect(s.started == 0)
+  run failedDiscoveryDoesNotSubmitTest = init.then(activate).then(discoveryFailed).expect(s.started == 0)
   run initialVisibleSearchResumesTest = init.then(activate).then(resume).expect(s.started == 1)
   run replacedQueryDoesNotResumeTest = init.then(activate).then(replace).then(resume).expect(s.started == 0)
   run hiddenSearchDoesNotResumeTest = init.then(activate).then(leave).then(resume).expect(s.started == 0)
