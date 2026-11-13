@@ -25,8 +25,9 @@ module maps_credit_funding {
         .with("quote", s.quote.set(key, price)).with("held", s.held.set(key, cost))
     else s' = s
   }
+  // Subrequests reuse the first acknowledged dispatch within this one request.
   action dispatch(key: int): bool = all {
-    s.active, s.phase.get(key).in(Set("reserved", "observed")),
+    (s.active or s.calls.get(key) > 0), s.phase.get(key).in(Set("reserved", "observed")),
     s.calls.get(key) < 2, s.observed.get(key) < s.quote.get(key),
     s' = s.with("phase", s.phase.set(key, "inflight"))
       .with("calls", s.calls.set(key, s.calls.get(key) + 1)),
@@ -90,6 +91,10 @@ module maps_credit_funding {
   run partialUnknownRetainsFullQuoteTest = init.then(admit(0, 2)).then(dispatch(0))
     .then(providerResult(0, "accepted", 1)).then(dispatch(0))
     .then(providerResult(0, "lost", 1)).then(settle(0))
+    .expect(s.balance == 1 and s.charged.get(0) == 2 and safety)
+  run revocationAfterFirstCallPreservesUnknownCostTest = init.then(admit(0, 2))
+    .then(dispatch(0)).then(providerResult(0, "accepted", 1)).then(revoke)
+    .then(dispatch(0)).then(providerResult(0, "lost", 1)).then(settle(0))
     .expect(s.balance == 1 and s.charged.get(0) == 2 and safety)
   run sameRequestCannotReadmitTest = init.then(admit(0, 2)).then(admit(0, 2))
     .then(settle(0)).then(admit(0, 2)).expect(s.balance == 3 and s.phase.get(0) == "settled" and safety)
