@@ -26,11 +26,12 @@ module speech_continuity {
   action stop = all { open, providerCloseRequested' = true, open' = false, pending' = pending,
     granted' = granted, recorded' = recorded, funded' = funded,
     settled' = settled, confirmed' = confirmed }
-  action settle = { nondet window = recorded.oneOf(); all { providerCloseRequested' = providerCloseRequested,
-    not(open), funded.contains(window),
+  action settleWindow(window: int): bool = all { providerCloseRequested' = providerCloseRequested,
+    not(open), recorded.contains(window), funded.contains(window),
     settled' = settled.union(Set(window)), open' = open, pending' = pending,
     granted' = granted, recorded' = recorded, funded' = funded,
-    confirmed' = confirmed } }
+    confirmed' = confirmed }
+  action settle = { nondet window = recorded.oneOf(); settleWindow(window) }
   action refuse = all { providerCloseRequested' = providerCloseRequested, pending >= 0, not(funded.contains(pending)),
     settled' = settled.union(Set(pending)), pending' = -1,
     open' = open, granted' = granted, recorded' = recorded, funded' = funded,
@@ -47,6 +48,10 @@ module speech_continuity {
   val safety = PaidBeforeExtension and ReceiptBeforeConfirmation and StopStartsProviderShutdown
   run continuousRenewal = init.then(reserve).then(admission).then(extend)
     .then(reserve).then(admission).then(extend).expect(open and granted.size() == 3 and safety)
+  run ungrantedSettlementRetry = init.then(reserve).then(stop).then(admission)
+    .then(idle).expect(not(confirmed) and not(settled.contains(1)))
+    .then(settleWindow(1)).then(settleWindow(0)).then(confirm)
+    .expect(confirmed and safety)
   run stopDuringAdmission = init.then(reserve).then(stop).then(admission)
     .expect(not(open) and providerCloseRequested and pending >= 0 and granted == Set(0) and not(confirmed) and safety)
 }
