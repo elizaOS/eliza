@@ -281,7 +281,10 @@ export function createMapsRoute(
   dependencies: MapsRouteDependencies = defaultMapsRouteDependencies,
 ): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
-  app.use("*", rateLimit(RateLimitPresets.STANDARD));
+  // A map needs many tile requests per gesture. Tiles retain the global ingress
+  // limiter, authentication and durable Maps allowance below, without consuming
+  // the shared 60-request API bucket used by interactive data operations.
+  if (operation !== "tiles") app.use("*", rateLimit(RateLimitPresets.STANDARD));
   const handler = async (c: AppContext) => {
     let user: MapsCaller;
     try {
