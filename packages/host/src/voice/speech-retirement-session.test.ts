@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import {
   createSpeechRelaySession,
   type SpeechRelayCreditReservation,
@@ -108,6 +108,62 @@ const identity = {
   userId: "owner",
   cloudSessionId: "session",
 };
+test("paid renewal retains one STT connection and settles each window once", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(1_000);
+  const p = ports();
+  const events: unknown[] = [];
+  const original = p.value.reserveCredits;
+  let window = 0,
+    opened = 0;
+  const open = p.value.openStt;
+  p.value.openStt = (...args) => {
+    opened++;
+    return open(...args);
+  };
+  p.value.reserveCredits = async (...args) => {
+    const index = window++;
+    const admission = await original(...args);
+    return {
+      ...admission,
+      settle: async (details, kinds) => {
+        const result = await admission.settle(details, kinds);
+        for (const kind of ["stt", "tts"] as const)
+          if (result?.[kind])
+            result[kind].requestId += index ? `:${index}` : "";
+        return result;
+      },
+    };
+  };
+  p.value.maxWindows = 2;
+  p.value.extend = async (_scope, expiresAt) => expiresAt;
+  p.value.emit = (event) => events.push(event);
+  try {
+    const session = await createSpeechRelaySession(
+      identity,
+      "consent",
+      p.value,
+    );
+    await vi.advanceTimersByTimeAsync(50_000);
+    expect(events).toContainEqual({
+      t: "extended",
+      expiresAt: new Date(111_000).toISOString(),
+    });
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(opened).toBe(1);
+    expect(p.handle.evidence()).toBeUndefined();
+    await session.close();
+    expect(p.handle.evidence()).toMatchObject({
+      accounting: "settled_actual",
+      moneyTerminal: true,
+    });
+    expect(p.money).toBe(4);
+    await session.close();
+    expect(p.money).toBe(4);
+  } finally {
+    vi.useRealTimers();
+  }
+});
 test("trusted STT drain and actual settlement yield explicit evidence", async () => {
   const p = ports();
   const session = await createSpeechRelaySession(identity, "consent", p.value);
@@ -464,3 +520,207 @@ for (const releaseCommitted of [false, true]) {
     ).toBe(false);
   });
 }
+
+for (const failedKind of ["stt", "tts"] as const) {
+  test(`late unused ${failedKind} settlement stays owned across retirement retry`, async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const p = ports();
+    const reserve = p.value.reserveCredits;
+    let index = 0;
+    let release!: () => void;
+    let failure = true;
+    const attempts = { stt: 0, tts: 0 };
+    p.value.maxWindows = 2;
+    p.value.extend = async (_scope, end) => end;
+    p.value.reserveCredits = async (...args) => {
+      const window = index++;
+      if (window === 1)
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      const reservation = await reserve(...args);
+      return {
+        ...reservation,
+        settle: async (details, kinds = ["stt", "tts"]) => {
+          if (window === 1) {
+            expect(details).toMatchObject({
+              pcmBytes: 0,
+              ttsCharacters: 0,
+              dispatched: { stt: false, tts: false },
+            });
+            for (const kind of kinds) attempts[kind]++;
+            if (failure && kinds.includes(failedKind))
+              throw Error("Lost settlement reply");
+          }
+          const result = await reservation.settle(details, kinds);
+          for (const kind of kinds)
+            if (result?.[kind] && window)
+              result[kind].requestId += `:${window}`;
+          return result;
+        },
+      };
+    };
+    try {
+      const session = await createSpeechRelaySession(
+        identity,
+        "consent",
+        p.value,
+      );
+      await vi.advanceTimersByTimeAsync(50_000);
+      const closing = session.close();
+      release();
+      await expect(closing).rejects.toThrow("cleanup was not confirmed");
+      expect(p.handle.evidence()?.moneyTerminal).not.toBe(true);
+      const completedStt = attempts.stt;
+      failure = false;
+      await p.handle.retryRetirement();
+      expect(p.handle.evidence()).toMatchObject({
+        accounting: "settled_actual",
+        moneyTerminal: true,
+      });
+      if (failedKind === "tts") expect(attempts.stt).toBe(completedStt);
+      const completed = { ...attempts };
+      await p.handle.retryRetirement();
+      expect(attempts).toEqual(completed);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+}
+
+test("a lost unused-quota reply stays unknown and is never replayed", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(1_000);
+  const p = ports();
+  let released = 0;
+  p.value.maxWindows = 2;
+  p.value.extend = async () => 0;
+  const reserve = p.value.reserveCredits;
+  let index = 0;
+  p.value.reserveCredits = async (...args) => {
+    const window = index++;
+    const reservation = await reserve(...args);
+    return {
+      ...reservation,
+      settle: async (details, kinds) => {
+        const result = await reservation.settle(details, kinds);
+        for (const kind of ["stt", "tts"] as const)
+          if (result?.[kind] && window) result[kind].requestId += `:${window}`;
+        return result;
+      },
+    };
+  };
+  p.value.usageStore.release = async () => {
+    released++;
+    throw Error("Reply lost after quota release");
+  };
+  try {
+    const session = await createSpeechRelaySession(
+      identity,
+      "consent",
+      p.value,
+    );
+    await vi.advanceTimersByTimeAsync(50_000);
+    await session.close();
+    expect(p.handle.evidence()).toMatchObject({
+      moneyTerminal: true,
+      quotaRelease: "unknown",
+    });
+    await p.handle.retryRetirement();
+    expect(released).toBe(1);
+    expect(p.handle.evidence()?.quotaRelease).toBe("unknown");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("a nonzero unused settlement proof cannot confirm retirement", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(1_000);
+  const p = ports();
+  const reserve = p.value.reserveCredits;
+  let index = 0;
+  p.value.maxWindows = 2;
+  p.value.extend = async () => 0;
+  p.value.reserveCredits = async (...args) => {
+    const window = index++;
+    const reservation = await reserve(...args);
+    return {
+      ...reservation,
+      settle: async (details, kinds) => {
+        const result = await reservation.settle(details, kinds);
+        for (const kind of ["stt", "tts"] as const)
+          if (result?.[kind] && window) {
+            result[kind].requestId += `:${window}`;
+            result[kind].amountUsd = "1";
+          }
+        return result;
+      },
+    };
+  };
+  try {
+    const session = await createSpeechRelaySession(
+      identity,
+      "consent",
+      p.value,
+    );
+    await vi.advanceTimersByTimeAsync(50_000);
+    await expect(session.close()).rejects.toThrow("cleanup was not confirmed");
+    expect(p.handle.evidence()?.moneyTerminal).not.toBe(true);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("close retries a transient unused settlement once and keeps its zero target", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(1_000);
+  const p = ports();
+  const reserve = p.value.reserveCredits;
+  let index = 0;
+  const attempts = { stt: 0, tts: 0 };
+  p.value.maxWindows = 2;
+  p.value.extend = async () => 0;
+  p.value.reserveCredits = async (...args) => {
+    const window = index++;
+    const reservation = await reserve(...args);
+    return {
+      ...reservation,
+      settle: async (details, kinds = ["stt", "tts"]) => {
+        if (window) {
+          expect(details).toMatchObject({
+            pcmBytes: 0,
+            ttsCharacters: 0,
+            dispatched: { stt: false, tts: false },
+          });
+          for (const kind of kinds) attempts[kind]++;
+          if (kinds.includes("stt") && attempts.stt === 1)
+            throw Error("Temporary transport failure");
+        }
+        const result = await reservation.settle(details, kinds);
+        for (const kind of ["stt", "tts"] as const)
+          if (result?.[kind] && window) result[kind].requestId += `:${window}`;
+        return result;
+      },
+    };
+  };
+  try {
+    const session = await createSpeechRelaySession(
+      identity,
+      "consent",
+      p.value,
+    );
+    await vi.advanceTimersByTimeAsync(50_000);
+    await session.close();
+    expect(attempts).toEqual({ stt: 2, tts: 1 });
+    expect(p.handle.evidence()).toMatchObject({
+      moneyTerminal: true,
+      accounting: "settled_actual",
+    });
+    await p.handle.retryRetirement();
+    expect(attempts).toEqual({ stt: 2, tts: 1 });
+  } finally {
+    vi.useRealTimers();
+  }
+});
