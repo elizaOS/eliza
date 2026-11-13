@@ -11,7 +11,8 @@
     "packages/cloud/scripts/ensure-worker-secret-absent.ts",
     "packages/cloud/scripts/ensure-worker-secret-absent.test.ts",
     "packages/cloud/scripts/retire-pages-native-callback-binding.ts",
-    "packages/cloud/scripts/retire-pages-native-callback-binding.test.ts"
+    "packages/cloud/scripts/retire-pages-native-callback-binding.test.ts",
+    "packages/cloud/scripts/production-effect-certification.ts"
   ],
   "conformance": "packages/cloud/quint/check-reviewed-cloud.mjs",
   "bounds": "One environment, one complete four-client source snapshot, empty or committed database, staged rows, and atomic receipt. Release admission has absent, unbound, bound, or invalid markers; boolean schema, identity, source availability and retained-row state. Retry and rollback preserve committed state; a bound marker permits later reviewed row deletion without source reads. Post-cutover retirement models three obsolete Worker bindings and one Pages callback binding, retained global-enable and Stripe bindings, expected or unexpected binding type, immutable both-environment certification, latest prepared state and active deployment state.",

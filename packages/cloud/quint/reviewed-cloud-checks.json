@@ -608,7 +608,8 @@
         "refuses malformed Pages binding types without mutation",
         "refuses unverified Pages removal or changes to other variables",
         "Pages provider failures disclose no response, token or binding value",
-        "Pages retirement runs after source and production checks before canonical upload"
+        "Pages retirement runs after source and production checks before canonical upload",
+        "production CLI refuses an uncertified PATCH and leaves verification read-only"
       ]
     }
   ],

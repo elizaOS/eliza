@@ -1,5 +1,15 @@
 import { expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   RETIRED_NATIVE_CALLBACK_BINDING as name,
   PagesNativeBindingRetirementError,
@@ -232,4 +242,91 @@ test("Pages retirement runs after source and production checks before canonical 
   expect(phase.slice(0, cleanup)).toContain(
     'if [ "$EVENT_NAME" != "pull_request" ]; then',
   );
+});
+
+test("production CLI refuses an uncertified PATCH and leaves verification read-only", () => {
+  const directory = mkdtempSync(join(tmpdir(), "native-pages-retirement-"));
+  const script = fileURLToPath(
+    new URL("./retire-pages-native-callback-binding.ts", import.meta.url),
+  );
+  try {
+    for (const mode of ["wrong-ref", "wrong-head", "verify"] as const) {
+      const calls = join(directory, `${mode}.calls`);
+      const preload = join(directory, `${mode}.preload.ts`);
+      const binding =
+        mode === "verify"
+          ? {}
+          : { [name]: { type: "plain_text", value: "synthetic-callback" } };
+      const project = {
+        name: "eliza-app",
+        canonical_deployment: { id: "deployed" },
+        deployment_configs: {
+          production: {
+            env_vars: binding,
+            wrangler_config_hash: "a".repeat(64),
+          },
+        },
+      };
+      const deployment = {
+        id: "deployed",
+        project_name: "eliza-app",
+        environment: "production",
+        env_vars: binding,
+        deployment_trigger: {
+          metadata: { branch: "main", commit_hash: "b".repeat(40) },
+        },
+        latest_stage: { name: "deploy", status: "success" },
+      };
+      writeFileSync(
+        preload,
+        `import {appendFileSync} from 'node:fs';
+globalThis.fetch = async (url, init) => {
+  if (!String(url).startsWith('https://api.cloudflare.com/')) throw Error('Unexpected fixture request');
+  appendFileSync(${JSON.stringify(calls)}, (init?.method ?? 'GET') + '\\n');
+  return Response.json({success:true,result:String(url).endsWith('/deployments/deployed')?${JSON.stringify(deployment)}:${JSON.stringify(project)}});
+};\n`,
+      );
+      const child = spawnSync(
+        process.execPath,
+        [
+          "--preload",
+          preload,
+          script,
+          ...(mode === "verify" ? ["--verify"] : []),
+        ],
+        {
+          cwd: directory,
+          encoding: "utf8",
+          timeout: 15_000,
+          env: {
+            PATH: process.env.PATH,
+            HOME: process.env.HOME,
+            CLOUDFLARE_ACCOUNT_ID: "a".repeat(32),
+            CLOUDFLARE_API_TOKEN: "synthetic-token",
+            PAGES_PROJECT: "eliza-app",
+            TARGET_ENVIRONMENT: "production",
+            GITHUB_REF:
+              mode === "wrong-head" ? "refs/heads/main" : "refs/heads/develop",
+            GITHUB_REF_NAME: mode === "wrong-head" ? "main" : "develop",
+            GITHUB_SHA: "b".repeat(40),
+            GITHUB_TOKEN: "",
+            GITHUB_API_URL: "http://127.0.0.1:9",
+            GITHUB_REPOSITORY: "elizaOS/eliza",
+          },
+        },
+      );
+      expect(child.error).toBeUndefined();
+      expect(child.status).toBe(mode === "verify" ? 0 : 1);
+      expect(existsSync(calls)).toBe(true);
+      expect(readFileSync(calls, "utf8").trim().split("\n")).toEqual([
+        "GET",
+        "GET",
+      ]);
+      if (mode === "verify") expect(child.stdout.trim()).toBe("verified");
+      else expect(child.stderr).toContain("Production certification");
+      expect(child.stderr).not.toContain("synthetic-token");
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
