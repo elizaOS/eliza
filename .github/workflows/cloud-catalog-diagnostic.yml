@@ -7,6 +7,10 @@ on:
         type: choice
         required: true
         options: [staging, production]
+      checkout_readback:
+        description: Read the selected staging test checkout and validate its captured invoice
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -23,7 +27,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6.1.0
         with:
-          node-version: "24"
+          node-version: "24.15.0"
       - name: Set up Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.1.2
         with:
@@ -31,8 +35,57 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile --ignore-scripts
       - name: Read-only catalog diagnosis
+        if: ${{ !inputs.checkout_readback }}
         env:
           ELIZA_OPERATOR_ENVIRONMENT: ${{ inputs.target_environment }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: bun packages/scripts/cloud/admin/diagnose-subscription-catalog.ts
+      - name: Read-only staging checkout diagnosis
+        if: ${{ inputs.checkout_readback }}
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+          ENVIRONMENT: staging
+          APP_BILLING_ENVIRONMENT: test
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          CHECKOUT_SESSION_ID: ${{ secrets.STRIPE_DIAGNOSTIC_CHECKOUT_SESSION_ID }}
+        run: |
+          bun --conditions=eliza-source - <<'BUN'
+          import { requireStripe } from './packages/cloud/shared/src/lib/stripe.ts';
+          import { initialInvoiceSchema } from './packages/cloud/shared/src/lib/services/stripe-settled-invoice-schema.ts';
+          if (process.env.TARGET_ENVIRONMENT !== 'staging' ||
+              !/^(sk|rk)_test_/.test(process.env.STRIPE_SECRET_KEY ?? '') ||
+              !/^cs_test_[A-Za-z0-9]+$/.test(process.env.CHECKOUT_SESSION_ID ?? '')) {
+            throw new Error('A selected staging test checkout is required');
+          }
+          const stripe = requireStripe();
+          try {
+            const session = await stripe.checkout.sessions.retrieve(process.env.CHECKOUT_SESSION_ID);
+            if (session.livemode || session.mode !== 'subscription' ||
+                session.metadata?.app !== 'eliza-cloud') throw new Error('Unexpected checkout authority');
+            console.log(JSON.stringify({ checkout: {
+              status: session.status, paymentStatus: session.payment_status, livemode: session.livemode,
+              hasCommand: Boolean(session.metadata?.command_id),
+              hasOrganization: Boolean(session.metadata?.organization_id),
+            }}));
+            if (typeof session.invoice !== 'string') throw new Error('Captured invoice missing');
+            const invoice = await stripe.invoices.retrieve(session.invoice);
+            const parsed = initialInvoiceSchema.safeParse(invoice);
+            console.log(JSON.stringify({ invoice: {
+              status: invoice.status, paid: invoice.paid, livemode: invoice.livemode,
+              schemaValid: parsed.success,
+              issues: parsed.success ? [] : parsed.error.issues.map(issue => ({ path: issue.path, code: issue.code })),
+            }}));
+            if (typeof session.subscription !== 'string') throw new Error('Subscription missing');
+            const subscription = await stripe.subscriptions.retrieve(session.subscription);
+            console.log(JSON.stringify({ subscription: {
+              status: subscription.status, livemode: subscription.livemode,
+              cancelAtPeriodEnd: subscription.cancel_at_period_end,
+            }}));
+          } catch (error) {
+            console.log(JSON.stringify({ failure: {
+              name: error?.name, type: error?.type, code: error?.code, statusCode: error?.statusCode,
+            }}));
+            process.exitCode = 1;
+          }
+          BUN
