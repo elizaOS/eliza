@@ -329,13 +329,14 @@ function assertSummaryReportDate(
     "giu",
   );
   const reportLabelLead = new Set([
+    "a",
     "the",
     "this",
+    "our",
+    "my",
     "your",
-    "today's",
-    "today’s",
-    "tonight's",
-    "tonight’s",
+    "today",
+    "tonight",
     "morning",
     "evening",
     "night",
@@ -353,7 +354,9 @@ function assertSummaryReportDate(
   const claims = [...summary.matchAll(declarations)]
     .filter(([, lead, keyword]) => {
       if (lead === undefined || /^today/i.test(keyword)) return true;
-      const word = lead.toLowerCase();
+      // A possessive lead names the report like its base word
+      // ("This morning's brief", "Tonight's summary").
+      const word = lead.toLowerCase().replace(/['’]s$/, "");
       // A hyphenated lead names the report through its last part
       // ("Late-night check-in", "Mid-morning brief").
       const labelsReport =

@@ -967,6 +967,11 @@ describe("check-in source availability and generation failures", () => {
     "Your check-in as of Friday, October 2, 2026.",
     "Late-night check-in for Friday, October 2, 2026.",
     "Mid-morning brief for Friday, October 2, 2026.",
+    "Good morning, here is a brief for Friday, October 2, 2026.",
+    "Here is our summary for Friday, October 2, 2026.",
+    "Here is my check-in for Friday, October 2, 2026.",
+    "This morning's brief for Friday, October 2, 2026.",
+    "This evening's summary for Friday, October 2, 2026.",
   ])("refuses an unsupported current-day declaration: %s", async (text) => {
     modelResponse = text;
     await expect(
