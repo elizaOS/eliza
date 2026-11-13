@@ -294,7 +294,10 @@ test.each([false, true])(
         if (message.text) replies.push(message.text);
         return [];
       },
-      streaming ? { onStreamChunk: async () => {} } : {},
+      {
+        abortSignal: new AbortController().signal,
+        ...(streaming ? { onStreamChunk: async () => {} } : {}),
+      },
     );
     const stored = JSON.parse(
       await readFile(
