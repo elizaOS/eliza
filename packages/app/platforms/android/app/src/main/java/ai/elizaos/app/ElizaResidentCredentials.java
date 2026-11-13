@@ -44,11 +44,11 @@ final class ElizaResidentCredentials {
     /** Read-only request fence over existing lifecycle/intent state; reserves no authority. */
     static final class Observation {
         private final long intent, epoch;
-        private final ElizaAgentService.RequestObservation runtime;
+        private final ElizaCredentialRetirement.RequestObservation runtime;
         private Observation() {
             synchronized (LIFECYCLE) {
                 if (mutationEpoch != -1) throw new IllegalStateException("Credential mutation pending");
-                intent = INTENTS.current(); epoch = lifecycleEpoch; runtime = ElizaAgentService.observeRequests();
+                intent = INTENTS.current(); epoch = lifecycleEpoch; runtime = ElizaCredentialRetirement.observeRequests();
             }
         }
         boolean same(Observation other) { return other != null && intent == other.intent && epoch == other.epoch && runtime.same(other.runtime); }

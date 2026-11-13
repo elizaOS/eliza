@@ -104,6 +104,11 @@ import android.content.Context;
 
 /** This packaging excludes the resident service and its assets. No process is stopped here. */
 final class ElizaCredentialRetirement {
+    static final class RequestObservation {
+        boolean same(RequestObservation other) { return other != null; }
+        <T> T withCurrent(java.util.concurrent.Callable<T> effect) throws Exception { return effect.call(); }
+    }
+    static RequestObservation observeRequests() { return new RequestObservation(); }
     static long reserve() { return 0; }
     static void request(Context context, long request) { }
     static boolean stopped(Context context) { return true; }
