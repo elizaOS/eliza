@@ -478,9 +478,6 @@ export async function createApp(
   // also mounts /api/ twins of these two files; those are never advertised.
   app.route("/.well-known/openid-configuration", oidcDiscoveryRoute);
   app.route("/.well-known/oidc/jwks.json", oidcJwksRoute);
-  // Android App Link verification fetches this from the link host's root and
-  // never follows a redirect; the Pages middleware proxies it from eliza.app.
-  app.route("/.well-known/assetlinks.json", assetLinksRoute);
 
   // Rate-limit config guard (#9853 P1.1) — never let production silently serve
   // with rate limiting OFF. The limiters fall open whenever REDIS_RATE_LIMITING
@@ -553,6 +550,10 @@ export async function createApp(
       { bindingName: "GLOBAL_RATE_LIMITER" },
     ),
   );
+
+  // Android verification needs a direct root response. Its registration lookup
+  // uses the database, so admit it only after the same global ingress limiter.
+  app.route("/.well-known/assetlinks.json", assetLinksRoute);
 
   // A single database authority serves native callbacks and browser loopback launches.
   // Every lookup is behind the global IP limiter, including ordinary Pages misses.

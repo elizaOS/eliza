@@ -83,6 +83,29 @@ afterAll(async () => {
 });
 
 describe("hosted native callback and billing return routes", () => {
+  test("root asset links is limited before database registration lookup", async () => {
+    const keys: string[] = [];
+    const response = await app.request(
+      "https://eliza.app/.well-known/assetlinks.json",
+      {
+        headers: { "CF-Connecting-IP": "192.0.2.57" },
+      },
+      {
+        ENVIRONMENT: "staging",
+        ELIZA_MOBILE_APP_AUTH_ENABLED: "true",
+        GLOBAL_RATE_LIMITER: {
+          limit: async ({ key }: { key: string }) => {
+            keys.push(key);
+            return { success: false };
+          },
+        },
+      } as never,
+    );
+    expect(response.status).toBe(429);
+    expect(keys).toEqual(["global:ip:192.0.2.57"]);
+    expect(response.headers.get("Retry-After")).toBe("60");
+  });
+
   test("serves fallback HTML for database-registered client without any environment variable", async () => {
     const res = await app.request(
       "https://eliza.app/auth/callback?code=synthetic-code-12345&state=synthetic-state-67890",

@@ -214,6 +214,7 @@ test("E2E database-only client lifecycle: asset links -> signin -> exchange -> a
   // 1. Asset Links HTTP Route: Serves statements dynamically from DB rows without env vars
   const assetLinksRes = await assetLinksApp.request("/", {}, env() as never);
   expect(assetLinksRes.status).toBe(200);
+  expect(assetLinksRes.headers.get("Cache-Control")).toBe("no-store");
   const assetLinks = await assetLinksRes.json();
   expect(assetLinks).toEqual([
     {

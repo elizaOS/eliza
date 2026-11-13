@@ -20,7 +20,7 @@ const RELEASE = Array.from({ length: 32 }, (_, index) =>
 const DEBUG = Array.from({ length: 32 }, () => "AB").join(":");
 
 describe("GET /.well-known/assetlinks.json", () => {
-  test("serves database statements as direct, cacheable JSON", async () => {
+  test("serves current database statements as direct, uncached JSON", async () => {
     spy?.mockRestore();
     spy = spyOn(
       mobileAppAuthClientsRepository,
@@ -38,7 +38,7 @@ describe("GET /.well-known/assetlinks.json", () => {
     const response = await route.request("/", {}, {});
     expect(response.status).toBe(200);
     expect(response.headers.get("Content-Type")).toContain("application/json");
-    expect(response.headers.get("Cache-Control")).toBe("public, max-age=3600");
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(response.headers.get("Location")).toBeNull();
     const body = await response.json();
     expect(body).toEqual([

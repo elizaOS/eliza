@@ -15,14 +15,12 @@ import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 
-const ASSET_LINKS_CACHE_CONTROL = "public, max-age=3600";
-
 app.get("/", async (c) => {
   const statements =
     await mobileAppAuthClientsRepository.listActiveAndroidAssetLinks(c.env);
 
   return c.json(statements, 200, {
-    "Cache-Control": ASSET_LINKS_CACHE_CONTROL,
+    "Cache-Control": "no-store",
     "Content-Type": "application/json",
     "X-Content-Type-Options": "nosniff",
   });

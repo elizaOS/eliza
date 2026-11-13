@@ -9,6 +9,7 @@
     "packages/cloud/quint/reviewed-cloud-checks.json",
     "packages/cloud/shared/src/lib/auth/private-owner-credential.ts",
     "packages/cloud/api/src/bootstrap-app.ts",
+    "packages/cloud/api/.well-known/assetlinks.json/route.ts",
     "packages/app/functions/_middleware.ts",
     "packages/cloud/api/__tests__/native-callback.pglite.test.ts"
   ],
