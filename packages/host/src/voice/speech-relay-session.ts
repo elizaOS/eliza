@@ -353,7 +353,6 @@ export async function createSpeechRelaySession(
       const failures: unknown[] = [];
       // Admission can still be returning a reservation when shutdown wins.
       await preparation?.catch(() => {});
-      await renewal?.catch(() => {});
       const ttsClosing = dispatched.tts
         ? Promise.resolve()
             .then(
@@ -423,6 +422,9 @@ export async function createSpeechRelaySession(
         ttsStopped === "unknown"
       )
         failures.push(Error("TTS transport retirement remains unconfirmed"));
+      // Stop provider transports before joining slow renewal admission.
+      // Its late reservation must still settle before retirement completes.
+      await renewal?.catch(() => {});
       const details = {
         pcmBytes,
         ttsCharacters: ttsStopped === "not_dispatched" ? 0 : ttsCharacters,
