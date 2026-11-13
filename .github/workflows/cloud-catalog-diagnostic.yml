@@ -60,6 +60,18 @@ jobs:
           }
           const stripe = requireStripe();
           try {
+            const matchingWebhooks = [];
+            for await (const endpoint of stripe.webhookEndpoints.list({ limit: 100 })) {
+              if (endpoint.url === 'https://api-staging.eliza.app/api/stripe/webhook') {
+                matchingWebhooks.push({
+                  status: endpoint.status, apiVersion: endpoint.api_version,
+                  livemode: endpoint.livemode, enabledEvents: endpoint.enabled_events,
+                });
+              }
+            }
+            console.log(JSON.stringify({ webhook: {
+              matchingCount: matchingWebhooks.length, endpoints: matchingWebhooks,
+            }}));
             const session = await stripe.checkout.sessions.retrieve(process.env.CHECKOUT_SESSION_ID);
             if (session.livemode || session.mode !== 'subscription' ||
                 session.metadata?.app !== 'eliza-cloud') throw new Error('Unexpected checkout authority');
