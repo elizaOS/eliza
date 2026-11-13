@@ -1,6 +1,7 @@
 package ai.elizaos.app;
 
 import ai.eliza.plugins.messages.ReviewedSmsSend;
+import ai.eliza.plugins.messages.SmsSendJournal;
 import android.app.Service;
 import android.content.Intent;
 import android.net.Uri;
@@ -8,6 +9,8 @@ import android.os.IBinder;
 import android.telephony.SubscriptionManager;
 import android.text.TextUtils;
 import android.util.Log;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -38,7 +41,7 @@ public class ElizaRespondViaMessageService extends Service {
         }
         String message = firstNonEmpty(intent.getStringExtra(Intent.EXTRA_TEXT), intent.getStringExtra("sms_body"));
         Uri data = intent.getData();
-        String[] recipients = ElizaSmsReplyProposals.recipients(data == null ? null : data.getSchemeSpecificPart());
+        String[] recipients = recipients(data == null ? null : data.getSchemeSpecificPart());
         int subscriptionId = intent.getIntExtra(SubscriptionManager.EXTRA_SUBSCRIPTION_INDEX, -1);
         if (subscriptionId < 0) subscriptionId = ElizaSmsReviewedSend.defaultSubscription();
         // One operation per quick reply: a repeat of this ID reads its record and never sends again.
@@ -74,5 +77,37 @@ public class ElizaRespondViaMessageService extends Service {
             return first;
         }
         return second;
+    }
+
+    /**
+     * A dialable SMS address in the contract's shape ({@code +} and 2 to 20 digits), or null. Visual
+     * separators are dropped; letters (alphanumeric sender IDs), short codes with letters and dial
+     * strings are refused, since no reply can be sent to them.
+     */
+    static String normalizeAddress(String raw) {
+        if (raw == null) return null;
+        String number = raw.trim().replaceAll("[\\s().-]", "");
+        return SmsSendJournal.NUMBER.matcher(number).matches() ? number : null;
+    }
+
+    /**
+     * The recipients of an {@code sms:}/{@code smsto:} scheme-specific part (already URI-decoded), in
+     * order, without duplicates. Null when any recipient is not a dialable number or there are more
+     * than the contract allows, so a partial recipient list is never sent.
+     */
+    static String[] recipients(String schemeSpecificPart) {
+        if (schemeSpecificPart == null) return null;
+        String value = schemeSpecificPart;
+        int query = value.indexOf('?');
+        if (query >= 0) value = value.substring(0, query);
+        List<String> found = new ArrayList<>();
+        for (String raw : value.split("[,;]")) {
+            if (raw.trim().isEmpty()) continue;
+            String number = normalizeAddress(raw);
+            if (number == null) return null;
+            if (!found.contains(number)) found.add(number);
+        }
+        if (found.isEmpty() || found.size() > SmsSendJournal.MAX_RECIPIENTS) return null;
+        return found.toArray(new String[0]);
     }
 }

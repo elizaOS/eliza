@@ -38,10 +38,8 @@ in `/auth/callback` it also probes the derived checkout return
 a well-formed session id and the result. This does not register an
 OAuth client or change Android App Link verification.
 
-Gateway deployment, verification, homepage readiness, and DNS operations belong
-here. Invoke them with `bun run --cwd packages/cloud/scripts sms-gateway:verify:cloud-prod`
-or the corresponding `sms-gateway:*` command in this package. Device installation
-and pairing remain in the app package.
+Homepage readiness and DNS operations belong here. Invoke them with
+`bun run --cwd packages/cloud/scripts homepage:check` or `homepage:dns`.
 
 The protected Environment variable `ELIZA_LOGIN_API_URL` selects a login hosting
 cutover for the canonical Cloud CF release. Set it only after state transfer and

@@ -63,8 +63,8 @@ jobs:
     name: Android emulator bundle
     if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'android'
     runs-on: ubuntu-24.04
-    # The host-backed emulator target omits the unused embedded-agent build;
-    # this cap covers the real renderer build, APK install, and device probes.
+    # Both runs build the android-system APK, the only target that allows the
+    # host-agent cleartext route; this cap covers its build, install, and probes.
     timeout-minutes: 90
     env:
       ELIZA_MOBILE_REPO_ROOT: ${{ github.workspace }}
@@ -127,6 +127,22 @@ jobs:
           org.gradle.workers.max=2
           org.gradle.daemon=false
           EOF
+
+      # The android-system release APK installs only when signed. Generate a
+      # disposable identity so this fork-safe run needs no repository secret.
+      - name: Generate a disposable release signing key
+        run: |
+          keystore="$RUNNER_TEMP/eliza-device-e2e.jks"
+          keytool -genkeypair -keystore "$keystore" -storepass android \
+            -alias androiddebugkey -keypass android \
+            -dname "CN=Eliza Device E2E,O=elizaOS,C=US" \
+            -keyalg RSA -keysize 2048 -validity 1 -noprompt
+          {
+            echo "ELIZAOS_KEYSTORE_PATH=$keystore"
+            echo "ELIZAOS_KEYSTORE_PASSWORD=android"
+            echo "ELIZAOS_KEY_ALIAS=androiddebugkey"
+            echo "ELIZAOS_KEY_PASSWORD=android"
+          } >> "$GITHUB_ENV"
 
       # KVM enables a usable emulator on GitHub ubuntu runners.
       - name: Enable KVM

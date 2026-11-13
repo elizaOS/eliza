@@ -1,6 +1,6 @@
 /**
- * Frozen build-target definitions for the Android lanes (sideload, host e2e,
- * cloud, SMS gateway, AOSP): web target, gradle flags, cleartext policy, overlay options, and
+ * Frozen build-target definitions for the two Android targets (cloud, with
+ * its debug mode, and AOSP system): web target, gradle flags, cleartext policy, overlay options, and
  * agent-runtime settings per lane.
  */
 import {
@@ -27,39 +27,6 @@ function freezeAndroidBuildTarget(target) {
 }
 
 export const ANDROID_BUILD_TARGETS = Object.freeze({
-  android: freezeAndroidBuildTarget({
-    target: "android",
-    webTarget: "android",
-    buildMobileAgentBundle: true,
-    preflightKey: "sideload",
-    overlayOptions: { includeAospRoleLaunchers: false },
-    cleartextPolicy: { allowCleartext: true, label: "sideload" },
-    agentRuntime: { bunChannel: "stable" },
-    gradle: {
-      metadataVariant: "debug",
-      finalTask: ":app:assembleDebug",
-      includeWebsiteBlockerUnitTest: true,
-      includeAospFlagFromEnv: true,
-      passFlagsToMetadata: false,
-    },
-    artifactAuditKey: "sideload",
-  }),
-  "android-host-e2e": freezeAndroidBuildTarget({
-    target: "android-host-e2e",
-    webTarget: "android",
-    env: { ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB: "1" },
-    overlayOptions: { includeAospRoleLaunchers: false },
-    cleartextPolicy: { allowCleartext: true, label: "host-e2e" },
-    gradle: {
-      flags: ["-PelizaStripAgentAssets=true"],
-      metadataVariant: "debug",
-      finalTask: ":app:assembleDebug",
-      includeWebsiteBlockerUnitTest: true,
-      includeAospFlagFromEnv: true,
-      passFlagsToMetadata: false,
-    },
-    artifactAuditKey: "hostE2e",
-  }),
   "android-cloud": freezeAndroidBuildTarget({
     target: "android-cloud",
     webTarget: "android-cloud",
@@ -76,24 +43,6 @@ export const ANDROID_BUILD_TARGETS = Object.freeze({
     },
     artifactAuditKey: "cloud",
     postBuildKey: "logCloudRelease",
-  }),
-  "android-sms-gateway": freezeAndroidBuildTarget({
-    target: "android-sms-gateway",
-    webTarget: "android-cloud-debug",
-    env: { ELIZA_ANDROID_CLOUD_BUILD: "1" },
-    includeSmsGatewayEnvDefaults: true,
-    afterToolchainResolvedKey: "smsGatewaySecret",
-    cleartextPolicy: { allowCleartext: false, label: "sms-gateway" },
-    stripSourceKey: "smsGateway",
-    auditSourceKey: "smsGateway",
-    gradle: {
-      flags: ANDROID_CLOUD_GRADLE_FLAGS,
-      metadataVariant: "debug",
-      finalTask: ":app:assembleDebug",
-      passFlagsToMetadata: true,
-    },
-    artifactAuditKey: "smsGateway",
-    postBuildKey: "preserveSmsGateway",
   }),
   "android-system": freezeAndroidBuildTarget({
     target: "android-system",

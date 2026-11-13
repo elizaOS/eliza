@@ -98,8 +98,7 @@ could not be shown to pass on it, or must prove behavior on Node:
   Pixel scripts in `packages/os/scripts/android`, `compile-libllama.ts` (patch
   step), the iOS xcframework and engine scripts (`build-xcframework.ts`,
   `mobile/ios/engine.ts`), `paradee-voice/build-native.ts`, Mac App Store
-  signing in `desktop-build.ts`, and the SMS gateway and Cloud gateway
-  maintenance scripts.
+  signing in `desktop-build.ts`, and the Cloud gateway maintenance scripts.
 
 ## Benchmark
 

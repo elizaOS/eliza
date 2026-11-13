@@ -739,6 +739,22 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
+      # The android-system release APK, the target with the on-device agent,
+      # installs only when signed. A disposable identity needs no secret.
+      - name: Generate a disposable release signing key
+        run: |
+          keystore="$RUNNER_TEMP/eliza-local-chat.jks"
+          keytool -genkeypair -keystore "$keystore" -storepass android \
+            -alias androiddebugkey -keypass android \
+            -dname "CN=Eliza Local Chat Smoke,O=elizaOS,C=US" \
+            -keyalg RSA -keysize 2048 -validity 1 -noprompt
+          {
+            echo "ELIZAOS_KEYSTORE_PATH=$keystore"
+            echo "ELIZAOS_KEYSTORE_PASSWORD=android"
+            echo "ELIZAOS_KEY_ALIAS=androiddebugkey"
+            echo "ELIZAOS_KEY_PASSWORD=android"
+          } >> "$GITHUB_ENV"
+
       # android-emulator-runner provides the booted AVD + adb; the script builds
       # and installs the APK, then runs the live on-device local-chat smoke, which
       # stages the GGUF and asserts a real model reply.
@@ -751,8 +767,7 @@ jobs:
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           disable-animations: true
           script: |
-            bun run --cwd packages/app build:android
-            bun run --cwd packages/app install:android:adb
+            bun run --cwd packages/app install:android:adb --build
             bun run --cwd packages/app test:sim:local-chat:android:live
 
   # Desktop (Electrobun) packaged e2e. The build + agent boot run on a standard
