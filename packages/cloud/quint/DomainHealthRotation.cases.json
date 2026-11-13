@@ -1,0 +1,44 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/lib/services/managed-domains.ts",
+    "packages/cloud/shared/src/lib/services/domain-health.ts",
+    "packages/cloud/shared/src/db/schemas/managed-domains.ts",
+    "packages/cloud/shared/src/lib/services/__tests__/domain-health-batch-rotation.pglite.test.ts",
+    "packages/cloud/quint/check-reviewed-cloud.mjs",
+    "packages/cloud/quint/reviewed-cloud-checks.json"
+  ],
+  "bounds": {
+    "domain": "Three eligible rows and one excluded row, two serialized ticks, up to two rows per tick. Zero represents an unchecked row. Equal timestamps use ascending row ID.",
+    "conformance": "A real PGlite database runs the production selector and syncStatus. The existing regression now records one live result and four failed probes, then reads the next batch and the retained failure rows. No HTTP requests are made.",
+    "gaps": "Overlapping ticks, concurrent status edits, database refusal, provider behavior and clock rollback are outside this proof. A successful storage update has a stamp later than all existing eligible stamps. The model abstracts this with a monotonic counter."
+  },
+  "conformance": "packages/cloud/quint/check-reviewed-cloud.mjs",
+  "cases": [
+    {
+      "name": "bounded-oldest-first-rotation",
+      "main": "DomainHealthRotation",
+      "init": "init",
+      "step": "step",
+      "invariants": ["SelectionOrder", "StoredResults", "BoundedRotation"],
+      "temporal": ["FairRotation", "AllChecked"],
+      "temporalChecks": [
+        {
+          "property": "FairRotation",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of tick admission and settlement of each selected row. Settlement may record a reachable or unreachable origin. Both outcomes require a confirmed storage write."
+          ]
+        },
+        {
+          "property": "AllChecked",
+          "expect": "counterexample",
+          "assumptions": [
+            "Without fairness a tick can stay unadmitted or a selected row can remain pending indefinitely."
+          ]
+        }
+      ],
+      "maxSteps": 15,
+      "samples": 500
+    }
+  ]
+}
