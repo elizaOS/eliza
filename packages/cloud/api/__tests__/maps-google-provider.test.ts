@@ -347,6 +347,59 @@ describe("Google Places and Geocoding", () => {
     );
   });
 
+  test("map taps prefer the nearest named place and retain address lookup when none is nearby", async () => {
+    let nearby = true;
+    const { calls, provider } = google((url) => {
+      if (url.pathname.endsWith("places:searchNearby")) {
+        return Response.json({
+          places: nearby
+            ? [
+                {
+                  id: PLACE_ID,
+                  displayName: { text: "Starbucks" },
+                  formattedAddress: "Place du Casino, Monaco",
+                  location: CASINO,
+                },
+              ]
+            : [],
+        });
+      }
+      return Response.json({
+        status: "OK",
+        results: [
+          {
+            place_id: PLACE_ID,
+            formatted_address: "Place du Casino, Monaco",
+            geometry: {
+              location: { lat: CASINO.latitude, lng: CASINO.longitude },
+            },
+          },
+        ],
+      });
+    });
+    expect(
+      await provider.reverse({
+        coordinate: CASINO,
+        preferPlace: true,
+        radiusMeters: 40,
+      }),
+    ).toMatchObject({ id: PLACE_ID, name: "Starbucks", coordinate: CASINO });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url.href).toBe(
+      "https://places.googleapis.com/v1/places:searchNearby",
+    );
+    expect(calls[0].body).toMatchObject({
+      maxResultCount: 1,
+      rankPreference: "DISTANCE",
+      locationRestriction: { circle: { center: CASINO, radius: 40 } },
+    });
+    nearby = false;
+    expect(
+      await provider.reverse({ coordinate: CASINO, preferPlace: true }),
+    ).toMatchObject({ id: PLACE_ID });
+    expect(calls[2].url.pathname).toBe("/maps/api/geocode/json");
+  });
+
   test("outages and malformed bodies are typed failures that never echo the key", async () => {
     const { provider } = google(() => new Response("busy", { status: 503 }));
     expect(await refusal(provider.search({ query: "casino" }))).toBe(
