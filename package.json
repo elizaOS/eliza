@@ -291,6 +291,7 @@
     "fast-uri": "^3.1.9"
   },
   "patchedDependencies": {
+    "@cloudflare/workers-types@5.20261110.1": "patches/@cloudflare%2Fworkers-types@5.20261110.1.patch",
     "@electric-sql/pglite-socket@0.1.6": "patches/@electric-sql%2Fpglite-socket@0.1.6.patch",
     "sql.js@1.14.2": "patches/sql.js@1.14.2.patch",
     "telegraf@4.16.3": "patches/telegraf@4.16.3.patch",
