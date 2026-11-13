@@ -1,0 +1,62 @@
+{
+  "sources": [
+    "plugins/plugin-calendar/src/google-watch/lifecycle.ts",
+    "plugins/plugin-calendar/src/google-watch/repository.ts",
+    "plugins/plugin-calendar/src/internal/sql.ts",
+    "plugins/plugin-calendar/test/google-calendar-watch.pglite.test.ts",
+    "plugins/plugin-calendar/vitest.config.ts",
+    "plugins/plugin-calendar/quint/check-watch-sync-settlement.mjs",
+    "packages/scripts/lib/test-output.ts",
+    "packages/scripts/lib/vitest-conformance.ts",
+    "packages/scripts/run-with-deadline.ts"
+  ],
+  "bounds": {
+    "domain": "One active watch channel, one durable pending cursor, one initial worker that reports terminal failure, one replacement worker that reports success, and one stop. A lease can expire once. Settlement uses the exact token and a live channel state for terminal failure. Expiry alone does not replace the token.",
+    "implementation": "Actual Calendar watch lifecycle and real PGlite repository via the internal scheduled retry entry. A controlled local sync callback gives independent settlement of the two workers. The repository's terminal stop and pending cursor are exercised directly. There are no provider calls in these cases.",
+    "limitations": "Initial notification admission, authentication, provider data writes, concurrent-account quotas, simultaneous new cursor arrivals, renewal, retryable failures, restarts and multiple channels are separate. The complete owning implementation file contains its existing loopback and controlled provider cases. The model does not assert callback cancellation or elapsed-time progress."
+  },
+  "conformance": "plugins/plugin-calendar/quint/check-watch-sync-settlement.mjs",
+  "cases": [
+    {
+      "name": "watch-notification-settlement-owner",
+      "main": "CalendarWatchSyncSettlement",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "ExactAttemptAccounting",
+        "ErrorRequiresCurrentFailure",
+        "StoppedClearsPending"
+      ],
+      "temporal": [
+        "SupersededFailurePreservesDurableState",
+        "FairPendingWorkSettles",
+        "PendingWorkSettles"
+      ],
+      "temporalChecks": [
+        {
+          "property": "SupersededFailurePreservesDurableState",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. The terminal-failure write is an atomic update with exact lease and live-state conditions."
+          ]
+        },
+        {
+          "property": "FairPendingWorkSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of each admitted callback outcome and the stop confirmation. Settled callback outcomes can fail. No provider progress is assumed before admission."
+          ]
+        },
+        {
+          "property": "PendingWorkSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. An admitted callback or a stop confirmation can remain pending."
+          ]
+        }
+      ],
+      "maxSteps": 14,
+      "samples": 500
+    }
+  ]
+}
