@@ -81,22 +81,12 @@ Use `bun run release:candidate --help` for candidate, verification, and publicat
 
 The npm workflow skips app stores by default. Set `publish_stores` to `true` to also run configured store lanes after npm and GitHub finalization. A store lane skips its build and upload when required credentials or app identity settings are absent. Invalid credentials and failed builds or uploads still fail that lane.
 
-The protected **Native App Auth Database Migration** workflow performs the
-one-time preparation for database-owned native registrations. It reads the
-current protected registry and Android bindings, fetches the complete deployed
-Pages callback configuration, and verifies the database identity before writing.
-An exact app/callback match is required for enabled clients. The transaction
-preserves disabled entries and aliases, refuses conflicts, and records an import
-receipt. The follow-up verification compares every imported field. The first
-database-only release completes the import after schema migration and before
-Worker or Pages activation. A completed, versioned, identity-bound marker skips
-all legacy inputs on later releases; it does not require historical rows to remain.
-Preparation markers receive an exact readback before they are bound once. Remove
-the temporary release import phase and legacy environment bindings after both
-environments complete cutover. Later reviewed database changes do not use the
-manual workflow. Production import
-also requires the existing exact-source main Full manifest and tree-bound
-staging certification; the importer runs that canonical gate before writing.
+Native App Auth registration is database-owned. Normal releases do not read or
+restore the retired deployment registry. The historical importer at
+`cloud/admin/migrate-native-app-auth.ts` remains for explicit recovery of an
+unchanged original snapshot, with database identity and production certification
+checks. It refuses conflicting rows; it is not a client administration command.
+Current registrations and renames use reviewed database changes.
 
 The protected **Cloud Catalog Diagnostic** workflow checks only the five Stripe
 catalog binding names. It then makes one unauthenticated plans request with a

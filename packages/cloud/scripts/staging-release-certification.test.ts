@@ -493,29 +493,43 @@ describe("Cloud CF workflow staging certification gate", () => {
     expect(validate).toContain("Certified staging policy bytes admitted");
   });
 
-  test("imports native registrations after certified schema migration and before runtime activation", () => {
+  test("post-cutover releases retire native bindings without importing clients and retain certified ordering", () => {
     const release = parse(releaseWorkflow);
     const migrate = release.jobs["migrate-db"];
     const schema = migrate.steps.findIndex(
       (step) => step.name === "Run migrations",
     );
-    const prepare = migrate.steps.findIndex(
-      (step) =>
-        step.name ===
-        "Complete one-time native registration import before activation",
+    expect(releaseWorkflow).not.toContain("migrate-native-app-auth.ts");
+    expect(releaseWorkflow).not.toContain(
+      "secrets.ELIZA_MOBILE_APP_AUTH_APP_ID",
     );
-    expect(prepare).toBeGreaterThan(schema);
+    expect(releaseWorkflow).not.toContain(
+      "secrets.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON",
+    );
+    expect(releaseWorkflow).not.toContain(
+      "vars.ELIZA_ANDROID_ASSET_LINKS_JSON",
+    );
+    for (const name of [
+      "ELIZA_MOBILE_APP_AUTH_APP_ID",
+      "ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON",
+      "ELIZA_ANDROID_ASSET_LINKS_JSON",
+    ]) {
+      expect(release.on.workflow_call.secrets[name]).toBeUndefined();
+      expect(parse(workflow).jobs.release.secrets[name]).toBeUndefined();
+    }
     expect(migrate.environment).toBe(`\${{ inputs.target_environment }}`);
     expect(migrate.steps[schema].run).toContain(
       "production-effect-certification.ts main-validation",
     );
-    expect(migrate.steps[prepare].if).toBe(migrate.steps[schema].if);
-    expect(migrate.steps[prepare].run).toContain(
-      "migrate-native-app-auth.ts --release",
-    );
+    const deploy = release.jobs["deploy-api"].steps.find(
+      (step) => step.name === "Deploy to Cloudflare Workers",
+    ).run;
     expect(
-      migrate.steps[prepare].env.ELIZA_NATIVE_AUTH_CALLBACKS_JSON,
-    ).toBeUndefined();
+      deploy.indexOf("production-effect-certification.ts main-validation"),
+    ).toBeLessThan(deploy.indexOf("--versions --binding-type secret_text"));
+    expect(
+      deploy.indexOf("--versions --binding-type secret_text"),
+    ).toBeLessThan(deploy.indexOf(`bunx wrangler deploy "\${args[@]}"`));
     expect(release.jobs["deploy-api"].needs).toContain("migrate-db");
     expect(release.jobs["deploy-api"].if).toContain(
       "needs.migrate-db.result == 'success'",

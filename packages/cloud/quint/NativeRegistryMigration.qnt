@@ -41,6 +41,39 @@ module NativeRegistryMigration {
     .then(begin(true, true)).then(rollback).expect(storedRows == 4 and receiptRows == 4)
 }
 
+// Post-cutover retirement changes only the next uploaded version. A failed
+// upload preserves the active Worker; unrelated bindings survive every step.
+module NativeRegistryRetirement {
+  pure val legacy = Set("app-id", "clients", "asset-links", "pages-callback")
+  pure val retained = Set("global-enable", "stripe")
+  type State = { certified: bool, expectedType: bool, prepared: Set[str], active: Set[str] }
+  var s: State
+  action init = s' = { certified: false, expectedType: true, prepared: legacy.union(retained), active: legacy.union(retained) }
+  action certify = s' = s.with("certified", true)
+  action setType(expected: bool): bool = s' = s.with("expectedType", expected)
+  action retire(name: str): bool = all {
+    name.in(legacy),
+    s' = if (s.certified and s.expectedType) s.with("prepared", s.prepared.exclude(Set(name))) else s
+  }
+  action upload(succeeded: bool): bool =
+    s' = if (s.certified and succeeded) s.with("active", s.prepared) else s
+  action step = any {
+    certify,
+    { nondet expected = Bool.oneOf(); setType(expected) },
+    { nondet name = legacy.oneOf(); retire(name) },
+    { nondet succeeded = Bool.oneOf(); upload(succeeded) }
+  }
+  val safety = all {
+    retained.subseteq(s.prepared), retained.subseteq(s.active),
+    s.prepared.subseteq(legacy.union(retained)), s.active.subseteq(legacy.union(retained)),
+    not(s.certified) implies (s.prepared == legacy.union(retained) and s.active == legacy.union(retained))
+  }
+  run prematureRetirementRefusedTest = init.then(retire("clients")).expect(s.prepared == s.active)
+  run unexpectedTypeRefusedTest = init.then(certify).then(setType(false)).then(retire("clients")).expect(s.prepared == s.active)
+  run failedUploadPreservesActiveTest = init.then(certify).then(retire("clients")).then(upload(false)).expect("clients".in(s.active))
+  run retryIsIdempotentTest = init.then(certify).then(retire("clients")).then(retire("clients")).then(upload(true)).expect(not("clients".in(s.active)) and retained.subseteq(s.active))
+}
+
 // Release admission is independent of the retained historical client count.
 // A reviewed deletion after cutover must not re-import the legacy registry.
 module NativeRegistryRelease {
