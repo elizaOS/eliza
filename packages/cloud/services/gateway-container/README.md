@@ -14,7 +14,7 @@ Before activation, verify the image and configuration, then stop and drain the
 old gateway. Deploy with `GATEWAY_ENABLED=true`. Verify health, authenticated
 routing, provider callbacks, and retained receipts before retiring the old host.
 After the canonical API release changes routing, run
-`DEPLOY_ENVIRONMENT=staging node packages/cloud/scripts/verify-served-webhook-gateway.ts`
+`DEPLOY_ENVIRONMENT=staging bun packages/cloud/scripts/verify-served-webhook-gateway.ts`
 from the repository root (use `production` for production). This checks the served
 API reaches the healthy Cloudflare image using an invalid verification handshake;
 it sends no provider message. Direct gateway health alone is not cutover proof.

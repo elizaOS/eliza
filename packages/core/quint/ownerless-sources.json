@@ -1,7 +1,7 @@
 [
 	{
 		"source": "packages/core/src/types/agent-api.ts",
-		"sha256": "dd814ef5042eb6a2a0b99b38d4efb0a2dfbdaee90b73cb6941851c3ef0a0472b",
+		"sha256": "11e3c505f8e971fe525cdcbf259ab9c16f11b7ca574e77ac86307fcab19542d4",
 		"reason": "Declares agent automation modes, stream event envelopes and the protocol version. The Agent API and event service own request admission, subscriptions and event publication."
 	},
 	{

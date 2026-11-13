@@ -59,7 +59,7 @@ const defaultGatewayPhoneLabel = "Eliza Cloud Gateway (+14159611510)";
 
 function usage() {
   return [
-    "Usage: node packages/app/scripts/install-android-sms-gateway.ts [options]",
+    "Usage: bun packages/app/scripts/install-android-sms-gateway.ts [options]",
     "",
     "Options:",
     "  --apk <path>           APK to install. Defaults to preserved .eliza-local artifact, then generated APK.",
@@ -1112,11 +1112,11 @@ async function runDoctor({ apk, adbPath }) {
   if (!deviceReady) {
     if (wirelessPairingServices.length > 0) {
       console.log(
-        `[android-sms-gateway] next: pair wireless debugging with: node packages/app/scripts/install-android-sms-gateway.ts --pair ${wirelessPairingServices[0].endpoint} --connect auto --wait-device 60 --grant-role --clear-logcat --watch-logs 60`,
+        `[android-sms-gateway] next: pair wireless debugging with: bun packages/app/scripts/install-android-sms-gateway.ts --pair ${wirelessPairingServices[0].endpoint} --connect auto --wait-device 60 --grant-role --clear-logcat --watch-logs 60`,
       );
     } else if (wirelessConnectServices.length > 0) {
       console.log(
-        `[android-sms-gateway] next: wireless adb is advertising ${wirelessConnectServices[0].endpoint}, but no device is connected. Open Android Developer Options > Wireless debugging > Pair device with pairing code, then run: node packages/app/scripts/install-android-sms-gateway.ts --pair auto --wait-pair 300 --connect auto --wait-device 60 --grant-role --clear-logcat --watch-logs 60`,
+        `[android-sms-gateway] next: wireless adb is advertising ${wirelessConnectServices[0].endpoint}, but no device is connected. Open Android Developer Options > Wireless debugging > Pair device with pairing code, then run: bun packages/app/scripts/install-android-sms-gateway.ts --pair auto --wait-pair 300 --connect auto --wait-device 60 --grant-role --clear-logcat --watch-logs 60`,
       );
     }
     console.log(

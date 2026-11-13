@@ -280,6 +280,79 @@ public final class NativeProviderSlot {
     return NativeProviderAdmission.providerIdentity(retained);
   }
 
+  /**
+   * Whether a clear has nothing to retire: the slot is empty, or holds a selection that is already
+   * unbound with only its owner's saved keys. A record that cannot be read is never "retired", so it
+   * takes the fenced clear and fails there.
+   */
+  public static boolean providerSlotRetired(String saved) {
+    if (saved == null) return true;
+    try {
+      return saved.equals(NativeProviderAdmission.unbindProvider(saved));
+    } catch (Exception unreadable) {
+      return false;
+    }
+  }
+
+  /** Reserves the caller's credential intent and answers the store whose writes that intent fences. */
+  public interface FencedStore {
+    Store reserve() throws Exception;
+  }
+
+  /** The slot's identity after {@link #clearProviderSlotIfBound}, and what the call did to get there. */
+  public static final class ClearOutcome {
+    public final JSONObject identity;
+    /**
+     * True only when the fenced pass found a binding and retired it. False when nothing was written:
+     * the slot was already empty or retired, either at the first observation or by the time the
+     * reserved intent re-read it.
+     */
+    public final boolean cleared;
+    /**
+     * True when a credential intent was reserved, superseding older ones. Always true when {@link
+     * #cleared}; also true without a write when a binding was observed but another clear retired it
+     * before this call's intent re-read the slot. That reservation cannot be avoided without
+     * reading under the credential lock.
+     */
+    public final boolean reserved;
+
+    ClearOutcome(JSONObject identity, boolean cleared, boolean reserved) {
+      this.identity = identity;
+      this.cleared = cleared;
+      this.reserved = reserved;
+    }
+  }
+
+  /**
+   * Clears the provider binding only when one is present. An automatic unbound start calls this
+   * instead of reserving a credential intent up front: clearing an already-empty (or already
+   * retired) slot writes nothing, so it must not supersede a sign-in that is waiting to bind or an
+   * acknowledgement that is being retried. {@code observer} reads the slot and checks only the
+   * bridge lifetime in {@code assertCurrent}; it never carries a credential intent. {@code fenced}
+   * is called at most once, and only when the slot holds a binding: it reserves the new intent
+   * (superseding older ones exactly as an unconditional clear does today) and returns the store
+   * fenced by it, which {@link #clearProviderSlot} then uses, re-reading the slot under that intent.
+   *
+   * <p>An empty observation is a clear that happened at that instant; a binding committed afterwards
+   * by a newer or pending intent is that intent's result, not something this call may remove.
+   *
+   * <p>Only an automatic unbound (re)start may use this. An owner-initiated clear (sign-out, provider
+   * change) must keep reserving unconditionally and call {@link #clearProviderSlot}: on an empty slot
+   * this method supersedes nothing, so an in-flight bind would complete after the owner signed out.
+   */
+  public static ClearOutcome clearProviderSlotIfBound(Store observer, FencedStore fenced, boolean onlyIfPresent)
+      throws Exception {
+    String observed = observer.readProvider();
+    observer.assertCurrent();
+    if (providerSlotRetired(observed))
+      return new ClearOutcome(NativeProviderAdmission.providerIdentity(observed), false, false);
+    Store store = fenced.reserve();
+    // What the reserved intent itself finds decides "cleared": a clear that won the race in between
+    // left nothing to retire, and clearProviderSlot then writes nothing.
+    boolean bound = !providerSlotRetired(store.readProvider());
+    return new ClearOutcome(clearProviderSlot(store, onlyIfPresent), bound, true);
+  }
+
   /** Provider, Cloud and managed-Google variables an unbound launch must not inherit. */
   public static final String[] PROVIDER_ENVIRONMENT = {
     "ELIZAOS_CLOUD_API_KEY", "ELIZAOS_CLOUD_BASE_URL", "ELIZAOS_CLOUD_SMALL_MODEL", "ELIZAOS_CLOUD_LARGE_MODEL",
@@ -328,11 +401,29 @@ public final class NativeProviderSlot {
       java.io.File filesDirectory,
       Map<String, String> env,
       long now) {
+    return applyLaunchEnvironment(runtimeProfile, provider, cloudSaved, nativeLibraryDirectory, filesDirectory, env, now,
+        NativeProviderAdmission.CLOUD_PROVIDER_BASE);
+  }
+
+  /**
+   * As above for a product that runs its own Cloud: an elizacloud selection sends its credential
+   * to {@code cloudProviderBase} (see {@link NativeProviderAdmission#requireCloudProviderBase}).
+   */
+  public static boolean applyLaunchEnvironment(
+      String runtimeProfile,
+      JSONObject provider,
+      String cloudSaved,
+      java.io.File nativeLibraryDirectory,
+      java.io.File filesDirectory,
+      Map<String, String> env,
+      long now,
+      String cloudProviderBase) {
+    NativeProviderAdmission.requireCloudProviderBase(cloudProviderBase);
     boolean bound = false;
     if (provider != null) {
       Map<String, String> applied = new java.util.HashMap<>(env);
       try {
-        NativeProviderAdmission.applyProviderEnvironment(provider, cloudSaved, applied, now);
+        NativeProviderAdmission.applyProviderEnvironment(provider, cloudSaved, applied, now, cloudProviderBase);
         env.clear();
         env.putAll(applied);
         bound = true;

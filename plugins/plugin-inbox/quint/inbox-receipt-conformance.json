@@ -1,0 +1,32 @@
+{
+  "test/mailbox/operation-journal.test.ts": [
+    "InboxOperation persists dispatching before the single dispatch and records the receipt",
+    "InboxOperation never dispatches again after a lost reply and resolves only from the receipt",
+    "InboxOperation keeps an observed dispatched receipt when a later read returns prepared",
+    "InboxOperation keeps an observed outcome-unknown receipt when a later read returns prepared",
+    "InboxOperation discards an attempted operation only while the provider reports it as prepared",
+    "InboxOperation refuses a server review that changed recipients or attachments",
+    "InboxOperation binds a composer review to the exact email and content",
+    "InboxOperation discards only an undispatched review for a withdrawn grant",
+    "InboxOperation refuses a saved record of another owner and stops after an account change",
+    "InboxOperation keeps local copies after a reload until the provider reports the same send again",
+    "retains an attempted operation when its owner retires during the discard receipt read",
+    "retains an attempted operation when its discard write conflicts"
+  ],
+  "test/mailbox/review-controller.test.ts": [
+    "createMailReviewController dispatches a send once, only for the exact reviewed composer email",
+    "createMailReviewController renders a retained attachment review without encoding its bytes and rechecks them on confirmation",
+    "createMailReviewController shows an unknown outcome as uncertain and never re-enables Send",
+    "createMailReviewController lets the owner discard an attempted send that Gmail reports as not sent",
+    "createMailReviewController offers a reviewed Undo after a confirmed trash",
+    "createMailReviewController refuses actions the account has not granted",
+    "createMailReviewController discards an undispatched review when change access is withdrawn",
+    "createMailReviewController tells the owner when a withdrawal applied by a reset cannot discard the review",
+    "createMailReviewController shows Cloud's refusal instead of the transport error",
+    "createMailReviewController asks for sign-in again when the host reports the session expired",
+    "createMailReviewController reports a failed capability read apart from a missing grant",
+    "createMailReviewController offers a reviewed permanent delete of the Gmail draft a sent email came from",
+    "createMailReviewController does not offer a Gmail draft delete after sending a local-only email",
+    "createMailReviewController stops at an account change before dispatch"
+  ]
+}

@@ -22,14 +22,22 @@ nested `AGENTS.md` files.
   problem must report it privately to the human in the current work session;
   the human decides whether to write and submit an issue.
 - Prove a useful improvement with before-and-after behavior or relevant scores.
-  Prefer cleanup, removal, and reuse. Combine duplicate types and functions.
-  Add new types or code only when necessary. Explain the research, alternatives,
-  and reason for the chosen implementation.
+  Prefer cleanup, removal, and reuse. Combine duplicate types and functions and
+  clean up as you go. Add new types or code only when necessary. Add a script
+  only when it does something no existing script does. Explain the research,
+  alternatives, and reason for the chosen implementation.
+- Update the existing code. Do not patch over legacy behavior, add a new version
+  beside the old one, or add a flag to introduce a change: change the underlying
+  code to be the new thing. Add a conditional path only for a strong reason, and
+  state that reason in the change. Environment variables and flags are only for
+  values that are really configurable: secrets, machine paths, and settings a
+  person changes between runs.
 - Do not create work for minor points with no useful effect, unnecessary tests,
   defensive code, validation, or truncation. Preserve required safety boundaries.
 - Validate real behavior end to end and attach results for the reviewed commit.
-  Use existing tests. Avoid new unit tests, mock-only proof, and tests that repeat
-  the implementation. For documentation-only work, check the text and links.
+  Use existing tests. Add a test only for a new feature or new functionality.
+  Avoid new unit tests, mock-only proof, and tests that repeat the
+  implementation. For documentation-only work, check the text and links.
 - Every UI PR must include an uploaded MP4 explainer and walkthrough with video
   evidence of the complete user flow, plus detailed steps to test the change.
 - Write all issues and PRs in ASD-STE100 Simplified Technical English. Use short,
@@ -41,7 +49,12 @@ nested `AGENTS.md` files.
   the evidence checklist: [Slop bounty contributions](CONTRIBUTING.md#slop-bounty-contributions).
 
 - Preserve unrelated changes in this shared working tree.
-- Use pinned Bun 1.4.2 and Node 24.15.0, ESM, and the repository's Biome config.
+- Use pinned Bun 1.4.2 for the product, builds, and repository scripts
+  (`bun <script>.ts`). Node 24.15.0 runs only the lanes that fail on Bun:
+  Vitest, Quint conformance replays, the remaining `node --test` suites,
+  Wrangler, `node --check`, packed-package consumer checks, published install
+  scripts, and some native and device build paths. See
+  [README.md](README.md#runtimes). Use ESM and the repository's Biome config.
 - Keep core independent of hosts; hosts compose assistant behavior, storage,
   and model providers. Validate untrusted input at boundaries.
 - Preserve authorization, tenant isolation, cancellation, and effect receipts.
@@ -50,7 +63,11 @@ nested `AGENTS.md` files.
 - Strongly model every feature's application state in Quint. Keep source-linked
   states, transitions, safety invariants, concurrency, cancellation, failure and
   recovery paths current. Check progress under explicit fairness assumptions.
-  Run `bun run test:quint` and the implementation conformance checks before merge.
+  Run `bun run test:quint` and the implementation conformance checks locally
+  before you merge a PR. Hosted CI also runs four complete partitions for
+  pull requests and merge-queue candidates into `main`, main pushes and manual
+  main validation. Other branches skip hosted Quint. Production effects require
+  the successful exact-source main Full manifest and existing staging certification.
   Record bounds and coverage gaps. Follow [PRD.md](PRD.md#state-correctness).
 - Keep model-facing context and recorded training data complete. Preserve the
   existing authorized source-selection/restoration contract; do not add silent

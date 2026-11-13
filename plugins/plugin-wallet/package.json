@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-wallet",
-  "version": "2.0.4",
+  "version": "2.0.6",
   "description": "Non-custodial wallet for elizaOS agents \u2014 EVM + Solana, ERC-6551 token-bound accounts, on-chain spend policies, x402 micropayments, CCTP bridge, Li.Fi swap routing, Jupiter routing, multi-DEX LP management (Raydium/Orca/Meteora on Solana, Uniswap/Aerodrome on EVM), Hyperliquid perps, Polymarket, Aave/Morpho lending, and Clanker token launches. Replaces plugin-evm + plugin-solana + plugin-raydium + plugin-orca + plugin-meteora + plugin-jupiter + plugin-lp-manager + plugin-clanker behind one canonical action+provider surface.",
   "type": "module",
   "license": "MIT",
@@ -56,7 +56,7 @@
     }
   },
   "scripts": {
-    "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-wallet -- bun run build:unlocked",
+    "build": "bun ../../packages/scripts/with-package-build-lock.ts plugins/plugin-wallet -- bun run build:unlocked",
     "build:unlocked": "bun run build.ts && bun run build:ui-types && bun run build:views",
     "build:views": "vite build --config vite.config.views.ts",
     "build:ui-types": "tsc6 --noCheck -p tsconfig.ui.json",
@@ -68,7 +68,7 @@
     "format:check": "bunx @biomejs/biome format .",
     "test": "vitest run --config ./vitest.config.ts",
     "test:watch": "vitest --config ./vitest.config.ts",
-    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist"
+    "clean": "bun ../../packages/scripts/rm-path-recursive.ts dist"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*",

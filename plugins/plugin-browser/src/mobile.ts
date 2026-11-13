@@ -12,7 +12,6 @@ import {
   readViewInteractionClientId,
 } from "@elizaos/core/protocol";
 import type { HttpPlugin } from "@elizaos/host/protocol";
-import { resolveAppAliasedEnvValue as resolveAliasedEnvValue } from "@elizaos/host/protocol";
 import {
   browserDomainPolicyRequestForCommand,
   evaluateBrowserDomainPolicies,
@@ -73,7 +72,7 @@ export class BrowserService extends Service {
     const service = new BrowserService(runtime);
     if (
       [
-        resolveAliasedEnvValue("ELIZA_PLATFORM"),
+        process.env.ELIZA_PLATFORM?.trim(),
         process.env.ELIZA_MOBILE_PLATFORM,
       ].includes("android")
     ) {

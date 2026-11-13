@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-knowledge",
-  "version": "2.0.4",
+  "version": "2.0.6",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
@@ -49,7 +49,7 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "bun run build:js && bun run build:views && bun run build:types",
-    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
+    "clean": "bun ../../packages/scripts/rm-path-recursive.ts dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "vite build --config vite.config.views.ts",
     "build:types": "tsc6 --noCheck -p tsconfig.build.json",

@@ -71,6 +71,8 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  /** Bounded streamed PCM per utterance: 30 s at 24 kHz (about 2.9 MB of floats), never more. */
  public static final int STREAM_CAPACITY=LocalSpeechEngine.STREAM_RATE*30;
  public static final String CALL_MESSAGE="Speech is paused while a phone call is active";
+ /** The end reason of a live capture that a draft recording replaced. */
+ public static final String CAPTURE_REPLACED="capture-replaced";
  /** Fixed answer when the activity can no longer show a prompt. It names no cause as certain. */
  public static final String LAUNCH_CLOSED="Android could not show this request; the app may have closed. Reopen it and try again.";
  private static final int REQUEST_TIMEOUT_MS=120000;
@@ -245,7 +247,9 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  /** Cancels the request {@code requestId} and the playback it prepared (reported as failed). */
  protected final void cancelSpeech(String requestId){SpeechRequestGate.Request request=gate.get(requestId);if(request!=null)request.cancel();if(Objects.equals(playbackRequestId,requestId)){appendEpoch++;clearPlayback();notifyListeners("playbackFailed",new JSObject());}}
  /** True while a clip, a streamed utterance or a request holds the speaker. */
- protected final boolean speakerBusy(){return playbackFile!=null||streamPlayback!=null||!gate.idle();}
+ protected final boolean speakerBusy(){return playbackBusy()||!gate.idle();}
+ /** A publishing request already owns the gate. Only prior playback can block it here. */
+ private boolean playbackBusy(){return playbackFile!=null||streamPlayback!=null;}
  @PluginMethod public void cancel(PluginCall call){main.post(this::closeOutputWarmup);SpeechRequestGate.Request request=gate.get(call.getString("requestId",""));if(request!=null){main.post(()->appendEpoch++);request.cancel();}call.resolve();}
 
  // ---- Recording drafts ----------------------------------------------------------------------
@@ -259,7 +263,30 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  /** Capacitor's own permission request launches through the activity; see {@link #launch}. */
  @Override @PluginMethod public void requestPermissions(PluginCall call){launch(call,()->super.requestPermissions(call));}
  @PermissionCallback private void microphonePermission(PluginCall call){Long admitted=permissionEpochs.remove(call.getCallbackId());if(admitted==null||admitted!=epoch.get()){call.reject("Recording cancelled");return;}if(getPermissionState("microphone")!=PermissionState.GRANTED){call.reject("Microphone permission denied","permission-denied");return;}startRecording(call,admitted);}
- private void startRecording(PluginCall call,long admitted){main.post(()->{if(destroyed||!speechForeground||sensitiveSurfaceActive()||gate.draining()||admitted!=epoch.get()){call.reject("Recording cancelled");return;}if(focus!=null&&focus.callActive()){call.reject(CALL_MESSAGE,SpeechAudioFocusPolicy.CALL_ACTIVE);return;}try{int limit=call.getInt("maxDurationMs",LocalVoiceRecording.LONG_LIMIT_MS);if(limit!=LocalVoiceRecording.SHORT_LIMIT_MS&&limit!=LocalVoiceRecording.LONG_LIMIT_MS)throw new IllegalArgumentException("Unsupported capture duration");call.resolve(js(capture.start(limit)));}catch(Exception error){call.reject("Microphone could not start");}});}
+ private boolean refuseRecording(PluginCall call,long admitted){
+  if(destroyed||!speechForeground||sensitiveSurfaceActive()||gate.draining()||admitted!=epoch.get()){call.reject("Recording cancelled");return true;}
+  if(focus!=null&&focus.callActive()){call.reject(CALL_MESSAGE,SpeechAudioFocusPolicy.CALL_ACTIVE);return true;}
+  if(getPermissionState("microphone")!=PermissionState.GRANTED){call.reject("Microphone permission denied","permission-denied");return true;}
+  return false;
+ }
+ private void startRecording(PluginCall call,long admitted){main.post(()->{
+  if(refuseRecording(call,admitted))return;
+  final int limit;
+  try{limit=call.getInt("maxDurationMs",LocalVoiceRecording.LONG_LIMIT_MS);capture.checkStart(limit);}
+  catch(Exception error){call.reject("Microphone could not start");return;}
+  // Use the live controller's serial worker for both microphone modes. Its
+  // interruption fence is immediate; draft acquisition waits for actual release.
+  live.interruptAndDrain(CAPTURE_REPLACED,()->{
+   if(refuseRecording(call,admitted))return;
+   try{
+    JSONObject started=capture.start(limit);
+    if(destroyed||!speechForeground||sensitiveSurfaceActive()||gate.draining()||admitted!=epoch.get()||getPermissionState("microphone")!=PermissionState.GRANTED||(focus!=null&&focus.callActive())){
+     capture.interrupt(LiveCaptureController.CANCELLED);call.reject("Recording cancelled");return;
+    }
+    call.resolve(js(started));
+   }catch(Exception error){call.reject("Microphone could not start");}
+  },()->call.reject("Voice unavailable"));
+ });}
  @PluginMethod public void getRecordingMetrics(PluginCall call){main.post(()->{try{call.resolve(js(capture.metrics(call.getString("recordingId"))));}catch(RuntimeException error){call.reject("Recording metrics are no longer available");}});}
  @PluginMethod public void stopRecording(PluginCall call){main.post(()->{try{call.resolve(js(capture.stop()));}catch(Exception error){call.reject("Recording could not be saved");}});}
  private void finishDrain(boolean complete,String error){
@@ -386,7 +413,7 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   if(reply){VoiceLatencyProbe.TRIALS.mark(trial,"tts-ready",System.nanoTime());if(localEngine.loads()!=loadsBefore)VoiceLatencyProbe.TRIALS.engineLoaded(trial,"tts-load");}
   if(request.cancelled||destroyed){Arrays.fill(audio,(byte)0);throw new IOException();}
   File file=File.createTempFile(playbackPrefix,".wav",getContext().getCacheDir());CountDownLatch completed=new CountDownLatch(1);
-  try{try(OutputStream out=new FileOutputStream(file)){out.write(audio);}main.post(()->{try{if(request.cancelled||destroyed){file.delete();request.failure="Voice request cancelled";return;}if(Boolean.FALSE.equals(call.getBoolean("replace",true))&&(playbackFile!=null||streamPlayback!=null)){file.delete();request.failure="Speaker is in use";request.failureCode="playback-busy";return;}clearPlayback();playbackFile=file;playbackRequestId=call.getString("requestId");playbackId=UUID.randomUUID().toString();playbackLocalReply=reply;playbackTrial=trial;playbackLeadIn=clip[0];playbackFrames=clip[1];playbackRate=clip[2];JSObject out=new JSObject();out.put("playbackId",playbackId);out.put("execution","device");request.result=out;}catch(RuntimeException error){request.failure="Playback preparation failed";file.delete();}finally{completed.countDown();}});if(!completed.await(10,TimeUnit.SECONDS)){request.cancel();file.delete();throw new IOException("Playback preparation timed out");}}catch(Exception error){file.delete();throw error;}finally{Arrays.fill(audio,(byte)0);}
+  try{try(OutputStream out=new FileOutputStream(file)){out.write(audio);}main.post(()->{try{if(request.cancelled||destroyed){file.delete();request.failure="Voice request cancelled";return;}if(Boolean.FALSE.equals(call.getBoolean("replace",true))&&playbackBusy()){file.delete();request.failure="Speaker is in use";request.failureCode="playback-busy";return;}clearPlayback();playbackFile=file;playbackRequestId=call.getString("requestId");playbackId=UUID.randomUUID().toString();playbackLocalReply=reply;playbackTrial=trial;playbackLeadIn=clip[0];playbackFrames=clip[1];playbackRate=clip[2];JSObject out=new JSObject();out.put("playbackId",playbackId);out.put("execution","device");request.result=out;}catch(RuntimeException error){request.failure="Playback preparation failed";file.delete();}finally{completed.countDown();}});if(!completed.await(10,TimeUnit.SECONDS)){request.cancel();file.delete();throw new IOException("Playback preparation timed out");}}catch(Exception error){file.delete();throw error;}finally{Arrays.fill(audio,(byte)0);}
  },append);}
  /**
   * Speech worker: reserves a segment of the streamed utterance being spoken for an appended
@@ -502,7 +529,7 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   CountDownLatch published=new CountDownLatch(1);String[] refusal={null};
   main.post(()->{try{
    if(request.cancelled||destroyed){refusal[0]="cancelled";return;}
-   if(Boolean.FALSE.equals(call.getBoolean("replace",true))&&(playbackFile!=null||streamPlayback!=null)){refusal[0]="playback-busy";return;}
+   if(Boolean.FALSE.equals(call.getBoolean("replace",true))&&playbackBusy()){refusal[0]="playback-busy";return;}
    clearPlayback();streamPlayback=playback;playbackRequestId=call.getString("requestId");playbackId=id;playbackLocalReply=reply;playbackTrial=trial;
    // Synthesis is now paced by playback: the request deadline no longer applies; the queue and writer bound stalls.
    Runnable deadline=request.deadline;if(deadline!=null)main.removeCallbacks(deadline);
@@ -538,7 +565,7 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   */
  protected final void publishPreparedAudio(PluginCall call,SpeechRequestGate.Request request,byte[] audio)throws Exception{
   CountDownLatch completed=new CountDownLatch(1);
-  File file=File.createTempFile(playbackPrefix,".audio",getContext().getCacheDir());try{try(FileOutputStream out=new FileOutputStream(file)){out.write(audio);}if(request.cancelled||destroyed)throw new IOException();main.post(()->{try{if(request.cancelled||destroyed){file.delete();request.failure="Voice request cancelled";return;}if(Boolean.FALSE.equals(call.getBoolean("replace",true))&&playbackFile!=null){file.delete();request.failure="Speaker is in use";request.failureCode="playback-busy";return;}clearPlayback();playbackFile=file;playbackRequestId=call.getString("requestId");playbackId=UUID.randomUUID().toString();JSObject value=new JSObject();value.put("playbackId",playbackId);request.result=value;}catch(RuntimeException error){request.failure="Playback preparation failed";file.delete();}finally{completed.countDown();}});completed.await();}catch(Exception error){file.delete();throw error;}finally{Arrays.fill(audio,(byte)0);}
+  File file=File.createTempFile(playbackPrefix,".audio",getContext().getCacheDir());try{try(FileOutputStream out=new FileOutputStream(file)){out.write(audio);}if(request.cancelled||destroyed)throw new IOException();main.post(()->{try{if(request.cancelled||destroyed){file.delete();request.failure="Voice request cancelled";return;}if(Boolean.FALSE.equals(call.getBoolean("replace",true))&&playbackBusy()){file.delete();request.failure="Speaker is in use";request.failureCode="playback-busy";return;}clearPlayback();playbackFile=file;playbackRequestId=call.getString("requestId");playbackId=UUID.randomUUID().toString();JSObject value=new JSObject();value.put("playbackId",playbackId);request.result=value;}catch(RuntimeException error){request.failure="Playback preparation failed";file.delete();}finally{completed.countDown();}});completed.await();}catch(Exception error){file.delete();throw error;}finally{Arrays.fill(audio,(byte)0);}
  }
  @PluginMethod public void play(PluginCall call){main.post(()->{try{if(streamPlayback!=null&&Objects.equals(playbackId,call.getString("playbackId"))){playStream(call);return;}if(playbackFile==null||!Objects.equals(playbackId,call.getString("playbackId"))){call.reject("Playback unavailable");return;}if(player!=null){player.release();player=null;}if(preparingPlayback!=null)preparingPlayback.reject("Playback replaced");preparingPlayback=call;MediaPlayer next=new MediaPlayer();player=next;next.setAudioAttributes(SpeechAudioFocus.ATTRIBUTES);next.setDataSource(playbackFile.getAbsolutePath());final String activePlaybackId=playbackId;next.setOnCompletionListener(p->{if(player==p){clearPlayback(false);JSObject event=new JSObject();event.put("playbackId",activePlaybackId);notifyListeners("playbackEnded",event);}});next.setOnErrorListener((p,what,extra)->{if(player==p){clearPlayback(false);JSObject event=new JSObject();event.put("playbackId",activePlaybackId);notifyListeners("playbackFailed",event);}return true;});next.setOnPreparedListener(p->{if(player==p&&!destroyed){try{String refusal=focus.acquire();if(refusal!=null){preparingPlayback=null;clearPlayback();call.reject(refusalMessage(refusal),refusal);return;}p.start();if(playbackLocalReply)VoiceLatencyProbe.playbackStarted(playbackTrial,getContext(),p,main,playbackLeadIn,playbackFrames,playbackRate,()->player==p&&!destroyed);preparingPlayback=null;call.resolve();}catch(RuntimeException error){clearPlayback();}}else call.reject("Playback cancelled");});next.prepareAsync();}catch(Exception error){clearPlayback();call.reject("Playback unavailable");}});}
  private static String refusalMessage(String refusal){return SpeechAudioFocusPolicy.CALL_ACTIVE.equals(refusal)?CALL_MESSAGE:"Another app is using the speaker";}
@@ -605,6 +632,9 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  private final LiveCaptureController live=new LiveCaptureController(new LiveCaptureController.Host(){
   public boolean open(long admitted){return !destroyed&&speechForeground&&admitted==epoch.get();}
   public boolean canStart(long admitted){return open(admitted)&&!sensitiveSurfaceActive()&&(focus==null||!focus.callActive());}
+  public void beforeCapture(long admitted,boolean reopen){
+   if(!reopen&&capture!=null)capture.finishBeforeCapture();
+  }
   public LiveVoiceCapture capture(String id,LiveVoiceCapture.Sink sink,boolean echoCancel)throws Exception{return capture(id,sink,LiveCaptureOptions.of(echoCancel));}
   public LiveVoiceCapture capture(String id,LiveVoiceCapture.Sink sink,LiveCaptureOptions options)throws Exception{return new LiveVoiceCapture(getContext(),VoiceAssets.sharedInference(getContext()),id,sink,options);}
   // Only while the streamed reply is audible; the renderer decides whether it is the user or the reply's echo. Nothing stops here.
@@ -660,6 +690,8 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   LiveCaptureController.Route route=Boolean.TRUE.equals(call.getBoolean("nativeAsr",false))?residentRoute(owner):null;
   // startMs/endHangoverMs: the VAD start run and end hangover in whole 32 ms windows; bargeIn/bargeInMs: liveCaptureBargeIn reports.
   final LiveCaptureOptions options=LiveCaptureOptions.of(Boolean.TRUE.equals(call.getBoolean("echoCancel",false)),call.getInt("startMs"),call.getInt("endHangoverMs"),Boolean.TRUE.equals(call.getBoolean("bargeIn",false)),call.getInt("bargeInMs"));
+  // The serial controller calls Host.beforeCapture immediately before native
+  // acquisition. A user start finalizes a draft there; an automatic reopen never does.
   live.start(ticket,options,route,call.getString("roomId",null),Boolean.TRUE.equals(call.getBoolean("reopen",false)),new LiveCaptureController.Started(){
    public void started(String id,int sampleRate,boolean echoCancelled,boolean piped){call.resolve(new JSObject().put("captureId",id).put("sampleRate",sampleRate).put("echoCancelled",echoCancelled).put("nativeAsr",piped).put("startMs",options.startMs()).put("endHangoverMs",options.endHangoverMs()).put("bargeInMs",options.bargeIn?options.bargeInMs():0));}
    public void refused(String message,String code){if(code==null)call.reject(message);else call.reject(message,code);}

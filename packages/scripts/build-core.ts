@@ -12,11 +12,11 @@
  * `bun run build:core` are unaffected. The only difference is that the package
  * set is now declarative data with a drift self-test instead of a wall of flags.
  *
- * Any extra args are forwarded to Turbo, so `node build-core.ts --force` works.
+ * Any extra args are forwarded to Turbo, so `bun build-core.ts --force` works.
  *
  * Usage:
- *   node packages/scripts/build-core.ts            # build the core set
- *   node packages/scripts/build-core.ts --force    # … forwarding extra turbo args
+ *   bun packages/scripts/build-core.ts            # build the core set
+ *   bun packages/scripts/build-core.ts --force    # … forwarding extra turbo args
  */
 import { spawnSync } from "node:child_process";
 import path from "node:path";

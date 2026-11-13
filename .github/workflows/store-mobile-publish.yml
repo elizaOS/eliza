@@ -134,7 +134,7 @@ jobs:
 
       - name: Setup Java
         if: steps.credentials.outputs.ready == 'true'
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78
         with:
           distribution: temurin
           java-version: "21"
@@ -288,7 +288,7 @@ jobs:
         run: |
           bash packages/app/scripts/prepare-ios-cocoapods.sh
           bun run --cwd packages/app cap:sync:ios
-          node packages/app/scripts/run-mobile-build.ts ios-overlay
+          bun packages/app/scripts/run-mobile-build.ts ios-overlay
         env:
           ELIZAOS_VERSION_NAME: ${{ steps.plan.outputs.ios_marketing_version }}
           ELIZAOS_VERSION_CODE: ${{ steps.plan.outputs.ios_build_number }}

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-browser",
-  "version": "2.0.4",
+  "version": "2.0.6",
   "type": "module",
   "description": "Browser automation through the embedded desktop workspace, JSDOM, and optional Stagehand targets.",
   "main": "./dist/index.js",
@@ -63,7 +63,7 @@
     "format:check": "bunx @biomejs/biome format .",
     "test": "vitest run && bun run test:remote-control",
     "build": "bun run build:js && bun run build:types",
-    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
+    "clean": "bun ../../packages/scripts/rm-path-recursive.ts dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:types": "tsc6 --noCheck -p tsconfig.build.json",
     "test:remote-control": "bun test --conditions=eliza-source test/remote-control"
@@ -75,15 +75,14 @@
     "@elizaos/plugin-assistant": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
     "drizzle-orm": "0.45.4",
-    "linkify-it": "5.0.2",
+    "linkify-it": "6.1.0",
     "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
     "@types/jsdom": "^30.0.0",
-    "@types/linkify-it": "5.0.0",
     "bun-types": "1.4.2",
     "jsdom": "^31.0.0",
-    "puppeteer-core": "^24.37.5",
+    "puppeteer-core": "^25.16.0",
     "tsup": "^9.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",

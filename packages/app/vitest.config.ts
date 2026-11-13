@@ -7,10 +7,14 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 import baseConfig from "../../packages/scripts/vitest/default.config";
 import { compoundVitestEvidence } from "../scripts/lib/compound-test-evidence.ts";
+import { discoverScriptTestLanes } from "./scripts/lib/script-test-lanes.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+const scriptTestLanes = discoverScriptTestLanes(here);
 
 const unitExcludes = [
+  ...scriptTestLanes["node:test"],
+  ...scriptTestLanes["bun:test"],
   "dist/**",
   "**/node_modules/**",
   "**/*.live.test.{ts,tsx}",
@@ -132,6 +136,7 @@ export default defineConfig({
       "test/dev-auth/**/*.test.{ts,tsx,mjs}",
       "test/design-review/**/*.test.{ts,tsx,mjs}",
       "test/pages-middleware-serving.test.ts",
+      "test/pages-native-auth-config-parity.test.ts",
       "test/native-callback-contract.test.ts",
       "test/dev-http-proxy.test.ts",
     ],

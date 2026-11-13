@@ -69,7 +69,6 @@ jobs:
     env:
       ELIZA_MOBILE_REPO_ROOT: ${{ github.workspace }}
       ELIZA_WEBVIEW_DEBUG: "1"
-      ELIZA_BUN_RISCV64_OPTIONAL: "1"
       ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB: "1"
       # This host-backed mobile lane does not use desktop fused inference.
       ELIZA_SKIP_FUSED_INFERENCE_SETUP: "1"
@@ -98,7 +97,7 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: ${{ env.BUN_VERSION }}
-      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78
         with:
           distribution: temurin
           java-version: "21"
@@ -241,7 +240,7 @@ jobs:
       # ios-e2e.ts owns the whole lane — simulator boot, app build, install,
       # auth deep-link drive — inside one bundle root.
       - name: iOS device-bundle run
-        run: node packages/app/scripts/ios-e2e.ts --skip-local-chat --output "$ELIZA_DEVICE_BUNDLE_ROOT/ios"
+        run: bun packages/app/scripts/ios-e2e.ts --skip-local-chat --output "$ELIZA_DEVICE_BUNDLE_ROOT/ios"
 
       - name: Upload iOS simulator bundle
         if: always()

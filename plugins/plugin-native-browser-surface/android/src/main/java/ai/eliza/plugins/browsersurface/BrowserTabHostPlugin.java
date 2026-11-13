@@ -41,7 +41,7 @@ import java.util.*;
  * once no tab (for example their pop-up) still uses them, and again at the next start.
  *
  * <p>The host owns pop-ups (a tapped {@code target=_blank} or {@code window.open} becomes a tab in
- * the opener's profile), app links ({@code tel:}, {@code mailto:}, {@code intent:}, {@code market:}
+ * the opener's profile), app links ({@code tel:}, {@code mailto:}, {@code sms:}, {@code geo:}, {@code intent:}, {@code market:}
  * handed to Android once per tap), confirmed clearing of all or one site's data, find in page,
  * site permission and HTTP sign-in prompts, engine-attested login fields, downloads, fullscreen
  * video, sharing and the reviewed page excerpt read in an isolated world.
@@ -76,7 +76,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
   }
  };
  private void resetHostDocument() {
-  presentedId=null;cancelFile();if(reading!=null)reading.cancel();
+  selectPresentation(null);cancelFile();if(reading!=null)reading.cancel();
   if(downloads!=null)downloads.dismissDialogs();
   dismissSiteDialogs();exitFullscreen(true);
   ArrayList<Tab> all=new ArrayList<>(tabs.values());tabs.clear();
@@ -89,6 +89,13 @@ public abstract class BrowserTabHostPlugin extends Plugin {
  private String session;
  private long sequence;
  private String presentedId;
+ private long presentationRevision;
+ private void selectPresentation(String id) {
+  if(!Objects.equals(presentedId,id)){
+   presentedId=id;
+   presentationRevision++;
+  }
+ }
  private boolean paused;
  private boolean destroyed;
  private BrowserDownloads downloads;
@@ -413,7 +420,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
    t.web.setWebViewClient(new WebViewClient() {
     @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
      String target = r.getUrl().toString();
-     // mailto/tel/intent/market belong to other apps. The current page stays.
+     // mailto/tel/sms/geo/intent/market belong to other apps. The current page stays.
      if (BrowserExternalHandoff.external(target)) { if (r.isForMainFrame()) handoff(t, target, r.hasGesture()); return true; }
      // A page that already shows keeps showing: only a tap gets a notice, a script's scheme probe stays silent.
      if (!safe(target)) { if (r.isForMainFrame()) { if (t.committed && t.error.isEmpty()) { if (r.hasGesture()) notice(t,"This address type is not supported."); } else fail(t,"This address type is not supported."); } return true; }
@@ -567,8 +574,11 @@ public abstract class BrowserTabHostPlugin extends Plugin {
   * BrowserSitePrompt plans the request: only the selected, shown page may use a device sensor, even
   * with a stored Allow; private tabs never read or store decisions. The result lists the kinds granted. */
  private void sitePermission(Tab t,String origin,List<String> kinds,java.util.function.Consumer<Set<String>> result){
-  long revision=t.navigation;
-  java.util.function.BooleanSupplier current=()->!destroyed&&!t.dead&&tabs.get(t.id)==t&&t.navigation==revision&&Objects.equals(origin,BrowserWebOrigin.of(t.web.getUrl()));
+  long revision=t.navigation, selection=presentationRevision;
+  // Android's permission dialog can pause the host without changing its selected presentation.
+  // An explicit withdrawal or tab switch retires the request even if this tab returns.
+  java.util.function.BooleanSupplier current=()->!destroyed&&!t.dead&&tabs.get(t.id)==t&&t.navigation==revision
+   &&presentationRevision==selection&&Objects.equals(presentedId,t.id)&&Objects.equals(origin,BrowserWebOrigin.of(t.web.getUrl()));
   BrowserSitePrompt.Plan plan=BrowserSitePrompt.plan(origin,kinds,promptable(t),t.priv,this::grantable,sessionStore::permission);
   for(String kind:plan.unavailable)notice(t,BrowserSitePrompt.unavailableNotice(kind));
   java.util.function.Consumer<Set<String>> runtime=decided->{
@@ -577,6 +587,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
    if(missing.isEmpty()){result.accept(decided);return;}
    if(runtimeResult!=null){result.accept(Collections.emptySet());return;}
    runtimeResult=answers->{
+    if(!current.getAsBoolean()){result.accept(Collections.emptySet());return;}
     LinkedHashSet<String> final_=new LinkedHashSet<>();for(String kind:decided)if(androidGranted(kind))final_.add(kind);else notice(t,"Android has not allowed "+config().appName+" to use your "+kind+". You can allow it in Android Settings.");
     result.accept(current.getAsBoolean()?final_:Collections.emptySet());
    };
@@ -585,10 +596,12 @@ public abstract class BrowserTabHostPlugin extends Plugin {
   if(plan.asked.isEmpty()){runtime.accept(plan.granted(false));return;}
   boolean[] answered={false};
   AlertDialog dialog=new AlertDialog.Builder(getActivity()).setTitle(BrowserSitePrompt.title(plan.asked)).setMessage(BrowserSitePrompt.message(Uri.parse(origin).getHost(),plan.asked,t.priv))
-   .setPositiveButton("Allow",(d,w)->{answered[0]=true;siteDialogCancel=null;
+   .setPositiveButton("Allow",(d,w)->{if(answered[0]||siteDialog!=d)return;answered[0]=true;siteDialogCancel=null;
+    if(!current.getAsBoolean()){result.accept(Collections.emptySet());return;}
     if(!t.priv)for(String kind:plan.asked)try{sessionStore.setPermission(origin,kind,true);}catch(Exception unavailable){}
     runtime.accept(plan.granted(true));})
-   .setNegativeButton("Don't allow",(d,w)->{answered[0]=true;siteDialogCancel=null;
+   .setNegativeButton("Don't allow",(d,w)->{if(answered[0]||siteDialog!=d)return;answered[0]=true;siteDialogCancel=null;
+    if(!current.getAsBoolean()){result.accept(Collections.emptySet());return;}
     if(!t.priv)for(String kind:plan.asked)try{sessionStore.setPermission(origin,kind,false);}catch(Exception unavailable){}
     runtime.accept(plan.granted(false));})
    .create();
@@ -789,7 +802,11 @@ public abstract class BrowserTabHostPlugin extends Plugin {
    if(info.activityInfo!=null&&own.equals(info.activityInfo.packageName))return true;
   return false;
  }
- /** Hand a tapped mailto/tel/intent/market link to Android. The page stays loaded. */
+ /**
+  * Hand a tapped mailto/tel/sms/geo/intent/market link to Android. The page stays loaded. A mail,
+  * phone, text or map link goes to Android also when this host is the handler (a host that is the
+  * dialer still opens its dial pad; no call is placed). Other links never open this host.
+  */
  private void handoff(Tab t,String raw,boolean gesture) {
   if(paused||destroyed||t.dead||tabs.get(t.id)!=t)return;
   // A tapped target=_blank link to another app first opens a pop-up tab whose
@@ -804,7 +821,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
    if(!gesture){notice(t,"Blocked a link to another app that opened without a tap.");return;}
   }
   Intent intent=BrowserExternalHandoff.intentFor(raw,getContext().getPackageName(),config().hostSchemes);
-  if(intent==null||ownsRoute(intent)){notice(report,"This link type is not supported.");if(fresh)closePopup(t);return;}
+  if(intent==null||(!BrowserExternalLinkPolicy.systemLink(raw)&&ownsRoute(intent))){notice(report,"This link type is not supported.");if(fresh)closePopup(t);return;}
   for(Tab tab:tabs.values())disableAutofill(tab);
   try{getActivity().startActivity(intent);if(fresh)closePopup(t);}
   catch(android.content.ActivityNotFoundException missing){
@@ -853,7 +870,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
  }
  /** Invalid geometry withdraws the old input authority rather than routing through stale chrome. */
  private void rejectPresentation(PluginCall call,String reason) {
-  presentedId=null;cancelFile();dismissSiteDialogs();exitFullscreen(true);if(reading!=null)reading.check();
+  selectPresentation(null);cancelFile();dismissSiteDialogs();exitFullscreen(true);if(reading!=null)reading.check();
   for(Tab tab:tabs.values()){disableAutofill(tab);tab.frame.setHostRectsReceived(false);tab.frame.setVisibility(View.GONE);}
   call.reject(reason);
  }
@@ -884,7 +901,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
    }
   }
   // Revoke selected-tab authority before any synchronous framework callback.
-  presentedId=nextId;if(reading!=null)reading.check();
+  selectPresentation(nextId);if(reading!=null)reading.check();
   for(Tab old:tabs.values())if(!Objects.equals(old.id,presentedId)){disableAutofill(old);clearFind(old);if(siteDialogTab==old)dismissSiteDialogs();if(fullscreenTab==old)exitFullscreen(true);old.frame.setVisibility(View.GONE);}
   Tab t=tabs.get(call.getString("id")); if(t!=null) { float d=getContext().getResources().getDisplayMetrics().density;
    presentLayer(t,layer,host,branch);

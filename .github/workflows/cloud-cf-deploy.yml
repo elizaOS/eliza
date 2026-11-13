@@ -684,7 +684,7 @@ jobs:
           fi
 
           result="$(
-            node packages/cloud/scripts/staging-release-certification.ts verify \
+            bun packages/cloud/scripts/staging-release-certification.ts verify \
               --cert "${files[0]}" \
               --run-json "${RUNNER_TEMP}/staging-certification-run.json" \
               --artifact-json "${RUNNER_TEMP}/staging-certification-artifact.json" \
@@ -795,7 +795,7 @@ jobs:
           git show "${POLICY_SHA}:packages/cloud/scripts/production-hyperdrive-binding-admission.ts" > "$trusted_admission"
           chmod 0500 "$trusted_admission"
           result="$(
-            node packages/cloud/scripts/staging-release-certification.ts verify \
+            bun packages/cloud/scripts/staging-release-certification.ts verify \
               --cert "${files[0]}" \
               --run-json "${RUNNER_TEMP}/recovery-policy-certification-run.json" \
               --artifact-json "${RUNNER_TEMP}/recovery-policy-certification-artifact.json" \
@@ -1013,7 +1013,7 @@ jobs:
           evidence_dir="$RUNNER_TEMP/production-binding-recovery-authority"
           report="$evidence_dir/report.json"
           if ! GITHUB_TOKEN='${{ github.token }}' \
-            node packages/cloud/scripts/canonical-deploy-source-guard.ts \
+            bun packages/cloud/scripts/canonical-deploy-source-guard.ts \
             --run-sha "$GITHUB_SHA" \
             --canonical-ref refs/heads/main \
             > "$evidence_dir/freshness.stdout" \
@@ -1049,7 +1049,7 @@ jobs:
             bunx wrangler deploy --env production --dry-run \
               --outdir "$output_dir/bundle"
           ) > "$output_dir/dry-run.stdout" 2> "$output_dir/dry-run.stderr"
-          node packages/cloud/scripts/canonical-deploy-source-guard.ts \
+          bun packages/cloud/scripts/canonical-deploy-source-guard.ts \
             --run-sha "$GITHUB_SHA" \
             --canonical-ref refs/heads/main \
             > "$output_dir/freshness.stdout" \

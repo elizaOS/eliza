@@ -149,6 +149,7 @@ export interface ScheduledTaskRunnerDepsBundle {
 export type ScheduledTaskRunnerDepsProvider = (
   runtime: IAgentRuntime,
   agentId: string,
+  now?: () => Date,
 ) => ScheduledTaskRunnerDepsBundle;
 const depsProvidersByRuntime = new WeakMap<
   IAgentRuntime,
@@ -490,7 +491,9 @@ function buildRunner(
   opts: GetScheduledTaskRunnerOptions,
 ): ScheduledTaskRunnerHandle {
   const provider = getScheduledTaskRunnerDeps(runtime);
-  const deps = (provider ?? defaultRunnerDeps)(runtime, opts.agentId);
+  const deps = provider
+    ? provider(runtime, opts.agentId, opts.now ?? SYSTEM_CLOCK)
+    : defaultRunnerDeps(runtime, opts.agentId);
   const gates = deps.gates ?? createTaskGateRegistry();
   if (!deps.gates) registerBuiltInGates(gates);
   const completionChecks =

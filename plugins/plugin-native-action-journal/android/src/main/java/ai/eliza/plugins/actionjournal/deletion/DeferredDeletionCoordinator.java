@@ -175,8 +175,7 @@ public final class DeferredDeletionCoordinator {
  }
 
  private static String reminderWindow(JSONObject row, JSONObject time) throws Exception {
-  if (!time.getString("continuity").equals(row.getString("continuity")) || time.getLong("elapsed") < row.getLong("createdElapsed")) return "clock-changed";
-  return time.getLong("elapsed") < row.getLong("expiresElapsed") ? "open" : "expired";
+  return DeletionDeadline.window(row.getString("continuity"), row.getLong("createdElapsed"), row.getLong("expiresElapsed"), time.getString("continuity"), time.getLong("elapsed"));
  }
 
  /** Rows the Undo notice shows for the visible owner, each tagged with its {@code kind}. */

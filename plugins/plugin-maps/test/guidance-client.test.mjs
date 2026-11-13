@@ -85,6 +85,55 @@ test("the upcoming maneuver stays fixed until the device has come near it", asyn
   assert.equal(last.then, undefined);
 });
 
+test("a maneuver that no fix came near is passed after two fixes clear beyond it", async () => {
+  const { advanceStep } = await import("../src/client/guidance.ts");
+  const { routeProgress } = await import("../src/client/route-distance.ts");
+  const at = (latitude, longitude = 0) => ({ latitude, longitude });
+  const step = (coordinate) => ({
+    instruction: "",
+    coordinate,
+    distanceMeters: 1,
+  });
+  const after = (hold, route, coordinate, onRoute = true) =>
+    advanceStep(
+      hold,
+      route,
+      routeProgress(coordinate, route),
+      { coordinate, accuracyMeters: 8 },
+      onRoute,
+    );
+  // A straight line north. The turn is 111 m from the start.
+  const straight = {
+    geometry: [at(0), at(0.003)],
+    steps: [step(at(0)), step(at(0.001)), step(at(0.003))],
+    durationSeconds: 60,
+  };
+  const held = { index: 1, cleared: 0 };
+  assert.deepEqual(after(held, straight, at(0.0008)), { index: 2, cleared: 0 });
+  // The watch lost the turn. The first fix is 111 m beyond it.
+  const once = after(held, straight, at(0.002));
+  assert.deepEqual(once, { index: 1, cleared: 1 });
+  assert.deepEqual(after(once, straight, at(0.0021)), { index: 2, cleared: 0 });
+  // One jumping fix, an off-route fix and the last step do not pass a maneuver.
+  assert.deepEqual(after(once, straight, at(0.0005)), held);
+  assert.deepEqual(after(once, straight, at(0.0021), false), held);
+  assert.deepEqual(
+    after({ index: 2, cleared: 0 }, straight, at(0.0031, 0.001)),
+    { index: 2, cleared: 0 },
+  );
+  // The route goes north and returns 11 m to the east. A fix on the return
+  // line is still near the line before the U-turn, so the U-turn stays.
+  const back = {
+    geometry: [at(0), at(0.003), at(0.003, 0.0001), at(0, 0.0001)],
+    steps: [step(at(0)), step(at(0.003)), step(at(0, 0.0001))],
+    durationSeconds: 60,
+  };
+  const fix = at(0.001, 0.0001);
+  const progress = routeProgress(fix, back);
+  assert.ok(progress.alongMeters > progress.maneuverAlongMeters[1]);
+  assert.deepEqual(after(after(held, back, fix), back, fix), held);
+});
+
 function bridge() {
   const calls = [],
     listeners = [],

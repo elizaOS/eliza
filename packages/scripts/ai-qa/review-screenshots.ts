@@ -17,7 +17,7 @@
  * actually review. Model: `AI_QA_VISION_MODEL` (default a vision-capable Haiku).
  *
  * Usage:
- *   node packages/scripts/ai-qa/review-screenshots.ts [--run-dir reports/ai-qa/<id>]
+ *   bun packages/scripts/ai-qa/review-screenshots.ts [--run-dir reports/ai-qa/<id>]
  *     [--concurrency 4] [--strict]
  */
 

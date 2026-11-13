@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/contracts",
-  "version": "2.0.4",
+  "version": "2.0.6",
   "description": "Browser-safe shared domain contracts and validation for Eliza hosts, plugins and renderers.",
   "type": "module",
   "license": "MIT",
@@ -174,7 +174,7 @@
     }
   },
   "scripts": {
-    "build": "tsc6 --noCheck -p tsconfig.emit.json && node ../scripts/rewrite-dist-relative-imports-node-esm.ts packages/contracts",
+    "build": "tsc6 --noCheck -p tsconfig.emit.json && bun ../scripts/rewrite-dist-relative-imports-node-esm.ts packages/contracts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint:check": "bunx @biomejs/biome check src",
     "lint": "bunx @biomejs/biome check --write src",

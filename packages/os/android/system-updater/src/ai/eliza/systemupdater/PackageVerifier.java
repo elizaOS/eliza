@@ -3,14 +3,24 @@ package ai.eliza.systemupdater;
 
 import android.os.Build;
 import android.os.RecoverySystem;
+import android.system.ErrnoException;
+import android.system.Os;
+import android.system.OsConstants;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileOutputStream;
+import java.io.FileDescriptor;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
 import java.security.cert.CertificateFactory;
@@ -21,14 +31,14 @@ import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
-/** Validate the complete OTA with Android's verifier, then extract its signed A/B payload. */
+/** Validate the complete OTA and its signed A/B payload. Only a pre-apply scratch owner can extract. */
 final class PackageVerifier {
     private static final int METADATA_LIMIT = 64 * 1024;
     private static final long MAX_PACKAGE = 12L * 1024 * 1024 * 1024;
 
     static VerifiedPayload verify(File ota, File outputDirectory, String expectedSha256,
             long expectedLength, String expectedFingerprint, long expectedTimestamp,
-            String product, String device, String otaCertificateSha256)
+            String product, String device, String otaCertificateSha256, Path scratch)
             throws IOException, GeneralSecurityException {
         if (!expectedSha256.matches("[0-9a-f]{64}")
                 || !otaCertificateSha256.matches("[0-9a-f]{64}")
@@ -81,39 +91,17 @@ final class PackageVerifier {
                 throw new IOException("Payload directory is unavailable");
             }
             File destination = new File(outputDirectory, expectedSha256 + ".payload");
-            long requiredSpace = (destination.exists() ? 0 : size) + 2L * 1024 * 1024 * 1024;
-            if (outputDirectory.getUsableSpace() < requiredSpace) {
-                throw new IOException("Insufficient space to verify the update payload");
-            }
-            if (destination.exists()) {
+            boolean retained = hasRetainedPayload(destination);
+            if (!retained && scratch == null) throw new IOException("Held update payload is unavailable");
+            requirePayloadSpace(outputDirectory, destination, size);
+            if (retained) {
                 if (!destination.isFile() || !destination.getCanonicalFile().equals(destination.getAbsoluteFile())
                         || destination.length() != size || !digestBase64(destination).equals(fileHash)) {
                     throw new IOException("Retained payload differs");
                 }
             } else {
-                File partial = File.createTempFile("payload-", ".partial", outputDirectory);
-                try {
-                    MessageDigest hash = MessageDigest.getInstance("SHA-256");
-                    long copied = 0;
-                    try (InputStream input = zip.getInputStream(entry);
-                            FileOutputStream output = new FileOutputStream(partial)) {
-                        byte[] buffer = new byte[1024 * 1024];
-                        int count;
-                        while ((count = input.read(buffer)) != -1) {
-                            if (Thread.currentThread().isInterrupted()) throw new IOException("OTA verification cancelled");
-                            copied += count;
-                            if (copied > size) throw new IOException("Payload exceeds signed length");
-                            output.write(buffer, 0, count); hash.update(buffer, 0, count);
-                        }
-                        output.getFD().sync();
-                    }
-                    if (copied != size || !Base64.getEncoder().encodeToString(hash.digest()).equals(fileHash)) {
-                        throw new IOException("Payload hash differs");
-                    }
-                    Files.move(partial.toPath(), destination.toPath(), StandardCopyOption.ATOMIC_MOVE);
-                } finally {
-                    Files.deleteIfExists(partial.toPath());
-                }
+                Path partial = createExtractionScratch(scratch);
+                extractPayload(zip, entry, partial, destination.toPath(), size, fileHash);
             }
             String[] headers = {"FILE_HASH=" + fileHash, "FILE_SIZE=" + size,
                     "METADATA_HASH=" + metadataHash, "METADATA_SIZE=" + metadataSize,
@@ -121,6 +109,161 @@ final class PackageVerifier {
             return new VerifiedPayload(destination, expectedFingerprint, expectedSha256,
                     timestamp, headers);
         }
+    }
+
+    static boolean hasRetainedPayload(File destination) throws IOException {
+        BasicFileAttributes retained = attributes(destination.toPath());
+        if (retained == null) return false;
+        if (!retained.isRegularFile()) throw new IOException("Invalid retained payload path");
+        return true;
+    }
+
+    /** The serial updater is the only writer. This namespace never supplies an engine descriptor. */
+    static Path reclaimExtractionScratch(Path directory) throws IOException {
+        Path slot = directory.resolve("pre-apply-payload-scratch-v1");
+        Path marker = slot.resolve("owner");
+        Path partial = slot.resolve("payload.partial");
+        BasicFileAttributes slotState = attributes(slot);
+        if (slotState == null) return partial;
+        if (!slotState.isDirectory()) throw new IOException("Invalid pre-apply scratch directory");
+        try (DirectoryStream<Path> entries = Files.newDirectoryStream(slot)) {
+            for (Path entry : entries) {
+                if (!entry.equals(marker) && !entry.equals(partial)) {
+                    throw new IOException("Unexpected pre-apply scratch entry");
+                }
+            }
+        }
+        BasicFileAttributes owner = attributes(marker);
+        BasicFileAttributes bytes = attributes(partial);
+        if ((owner != null && (!owner.isRegularFile() || owner.size() != 0))
+                || (bytes != null && (owner == null || !bytes.isRegularFile()))) {
+            throw new IOException("Unrecognized pre-apply scratch ownership");
+        }
+        if (bytes != null) Files.delete(partial);
+        return partial;
+    }
+
+    static Path createExtractionScratch(Path partial) throws IOException {
+        Path slot = partial.getParent();
+        Path marker = slot.resolve("owner");
+        if (attributes(slot) == null) {
+            try { Os.mkdir(slot.toString(), 0777); }
+            catch (ErrnoException failure) { throw scratchFailure(failure); }
+        }
+        if (attributes(marker) == null) createScratchFile(marker);
+        // Persist the reservation before any payload bytes can exist under it.
+        forceScratchDirectory(slot.getParent());
+        forceScratchDirectory(slot);
+        createScratchFile(partial);
+        return partial;
+    }
+
+    private static void createScratchFile(Path path) throws IOException {
+        new ScratchFile(path, OsConstants.O_WRONLY | OsConstants.O_CREAT | OsConstants.O_EXCL, 0666).close();
+    }
+
+    private static void forceScratchDirectory(Path path) throws IOException {
+        try (ScratchFile directory = new ScratchFile(path, OsConstants.O_RDONLY, 0)) {
+            directory.force();
+        }
+    }
+
+    private static void forceDirectory(Path path) throws IOException {
+        try (FileChannel directory = FileChannel.open(path, StandardOpenOption.READ)) {
+            directory.force(true);
+        }
+    }
+
+    // NIO may turn a local errno into a generic IOException. Keep the numeric error
+    // at the operations that allocate, write or sync the owned pre-promotion scratch.
+    private static IOException scratchFailure(ErrnoException failure) {
+        return failure.errno == OsConstants.ENOSPC || failure.errno == OsConstants.EDQUOT
+                ? new StorageDeferred(failure) : new IOException(failure);
+    }
+
+    private static void checkScratchInterrupted() throws IOException {
+        if (Thread.currentThread().isInterrupted()) throw new IOException("OTA verification cancelled");
+    }
+
+    private static final class ScratchFile implements AutoCloseable {
+        private final FileDescriptor descriptor;
+
+        ScratchFile(Path path, int flags, int mode) throws IOException {
+            try { descriptor = Os.open(path.toString(), flags | OsConstants.O_NOFOLLOW | OsConstants.O_CLOEXEC, mode); }
+            catch (ErrnoException failure) { throw scratchFailure(failure); }
+        }
+
+        void write(byte[] buffer, int count) throws IOException {
+            int offset = 0;
+            while (offset < count) {
+                checkScratchInterrupted();
+                int written;
+                try { written = Os.write(descriptor, buffer, offset, count - offset); }
+                catch (ErrnoException failure) { throw scratchFailure(failure); }
+                if (written <= 0) throw new IOException("Scratch write made no progress");
+                offset += written;
+            }
+        }
+
+        void force() throws IOException {
+            checkScratchInterrupted();
+            try { Os.fsync(descriptor); }
+            catch (ErrnoException failure) { throw scratchFailure(failure); }
+        }
+
+        @Override public void close() throws IOException {
+            try { Os.close(descriptor); }
+            catch (ErrnoException failure) { throw new IOException(failure); }
+        }
+    }
+
+    private static BasicFileAttributes attributes(Path path) throws IOException {
+        try { return Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS); }
+        catch (NoSuchFileException absent) { return null; }
+    }
+
+    static void extractPayload(ZipFile zip, ZipEntry entry, Path partial, Path destination,
+            long size, String fileHash) throws IOException, GeneralSecurityException {
+        try {
+            MessageDigest hash = MessageDigest.getInstance("SHA-256");
+            long copied = 0;
+            try (InputStream input = zip.getInputStream(entry);
+                    ScratchFile file = new ScratchFile(partial, OsConstants.O_WRONLY, 0)) {
+                byte[] buffer = new byte[1024 * 1024];
+                int count;
+                while ((count = input.read(buffer)) != -1) {
+                    checkScratchInterrupted();
+                    copied += count;
+                    if (copied > size) throw new IOException("Payload exceeds signed length");
+                    file.write(buffer, count); hash.update(buffer, 0, count);
+                }
+                file.force();
+            }
+            if (copied != size || !Base64.getEncoder().encodeToString(hash.digest()).equals(fileHash)) {
+                throw new IOException("Payload hash differs");
+            }
+            // A native write or sync can return after the Java task was cancelled.
+            checkScratchInterrupted();
+            Files.move(partial, destination, StandardCopyOption.ATOMIC_MOVE);
+            if (!partial.getParent().equals(destination.getParent())) {
+                // Both entries must be durable before the runner records a verified payload.
+                forceDirectory(destination.getParent());
+                forceDirectory(partial.getParent());
+            }
+        } finally {
+            Files.deleteIfExists(partial);
+        }
+    }
+
+    static final class StorageDeferred extends IOException {
+        StorageDeferred() { this(null); }
+        StorageDeferred(Throwable cause) { super("Insufficient space to verify the update payload", cause); }
+    }
+
+    static void requirePayloadSpace(File outputDirectory, File destination, long size)
+            throws StorageDeferred {
+        long requiredSpace = (destination.exists() ? 0 : size) + 2L * 1024 * 1024 * 1024;
+        if (outputDirectory.getUsableSpace() < requiredSpace) throw new StorageDeferred();
     }
 
     private static void verifyTrustStore(String expected) throws IOException, GeneralSecurityException {

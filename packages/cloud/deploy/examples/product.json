@@ -1,0 +1,271 @@
+{
+  "id": "example-product",
+  "environments": {
+    "staging": {
+      "workerName": "example-product-cloud-api-staging",
+      "accountId": "00000000000000000000000000000000",
+      "routes": [
+        {
+          "pattern": "api-staging.example.org/*",
+          "zone": "example.org"
+        },
+        {
+          "pattern": "blob-staging.example.org/*",
+          "zone": "example.org"
+        }
+      ],
+      "origins": {
+        "web": "https://staging.example.org",
+        "app": "https://cloud-staging.example.org",
+        "api": "https://api-staging.example.org"
+      },
+      "tenantId": "example-product-staging",
+      "serviceName": "Example Product Cloud",
+      "blobHost": "blob-staging.example.org",
+      "assetsBase": "https://blob-staging.example.org",
+      "mailFrom": "noreply@example.org",
+      "billingUrl": "https://cloud-staging.example.org/cloud/billing",
+      "entitlement": {
+        "issuer": "https://api-staging.example.org",
+        "audience": "example-product"
+      },
+      "resources": {
+        "hyperdriveId": "00000000000000000000000000000011",
+        "kvNamespaceId": "00000000000000000000000000000012",
+        "r2Bucket": "example-product-blob-staging",
+        "rateLimitNamespaceIds": {
+          "GLOBAL_RATE_LIMITER": "2001",
+          "CHAT_ROUTE_RATE_LIMITER": "2002",
+          "DASHBOARD_CHAT_ROUTE_RATE_LIMITER": "2003",
+          "MOBILE_API_KEY_INGRESS_LIMITER": "2004"
+        }
+      },
+      "durableObjectTransfers": {
+        "InferenceAdmissionGate": "example-product-cloud-admission-staging"
+      },
+      "vars": {
+        "LOGIN_API_URL": "https://login-staging.example.org",
+        "ELIZA_MOBILE_APP_AUTH_ENABLED": "true",
+        "CACHE_ENABLED": "true",
+        "CACHE_BACKEND": "auto",
+        "VOICE_SPEECH_RELAY_ENABLED": "true"
+      },
+      "secrets": [
+        "DATABASE_URL",
+        "STEWARD_JWT_SECRET",
+        "SECRETS_MASTER_KEY",
+        "CRON_SECRET",
+        "ELIZA_ENTITLEMENT_SIGNING_KEY",
+        "ELIZA_ENTITLEMENT_SIGNING_KEY_ID"
+      ],
+      "components": {
+        "login": {
+          "workerName": "example-product-login-staging",
+          "host": "login-staging.example.org",
+          "enabled": true,
+          "container": {
+            "maxInstances": 1,
+            "instanceType": "standard-1"
+          },
+          "vars": {
+            "APP_URL": "https://staging.example.org",
+            "EMAIL_FROM": "login@example.org",
+            "EMAIL_AUTH_REDIRECT_BASE_URL": "https://cloud-staging.example.org",
+            "PASSKEY_RP_ID": "example.org",
+            "PASSKEY_ORIGIN": "https://staging.example.org",
+            "STEWARD_DEFAULT_TENANT_ID": "example-product-staging"
+          },
+          "secrets": [
+            "DATABASE_URL",
+            "STEWARD_MASTER_PASSWORD",
+            "STEWARD_JWT_SECRET",
+            "STEWARD_KDF_SALT",
+            "STEWARD_AUDIT_HMAC_KEY",
+            "STEWARD_RATE_LIMIT_TOKEN",
+            "STEWARD_AGGREGATION_TOKEN",
+            "STEWARD_SPEND_METRICS_TOKEN",
+            "STEWARD_REQUEST_SIGNING_SECRET"
+          ]
+        },
+        "speech": {
+          "workerName": "example-product-cloud-speech-staging",
+          "hostsSessions": true,
+          "vars": {
+            "CACHE_ENABLED": "true",
+            "CACHE_BACKEND": "auto",
+            "DIRECT_REDIS_BACKEND": "redis-rest",
+            "VOICE_SPEECH_RELAY_ENABLED": "true"
+          },
+          "secrets": [
+            "CARTESIA_API_KEY",
+            "CARTESIA_STT_USD_PER_CREDIT",
+            "DATABASE_URL",
+            "KV_REST_API_URL",
+            "KV_REST_API_TOKEN"
+          ]
+        },
+        "admission": {
+          "workerName": "example-product-cloud-admission-staging",
+          "vars": {
+            "CACHE_ENABLED": "true",
+            "CACHE_BACKEND": "auto",
+            "VOICE_SPEECH_RELAY_ENABLED": "true"
+          },
+          "secrets": []
+        },
+        "web": {
+          "projectName": "example-product-web-staging",
+          "nativeAuthCallbacks": [
+            {
+              "redirectUri": "https://cloud-staging.example.org/example/auth/callback",
+              "androidPackage": "org.example.product",
+              "appName": "Example Product",
+              "browserSignIn": {
+                "startPath": "/example/auth/browser-start",
+                "returnPath": "/auth/return",
+                "storageKey": "example-product:browser-sign-in",
+                "apiOrigin": "https://api-staging.example.org",
+                "tenant": "example-product-staging"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "production": {
+      "workerName": "example-product-cloud-api",
+      "accountId": "00000000000000000000000000000000",
+      "routes": [
+        {
+          "pattern": "api.example.org/*",
+          "zone": "example.org"
+        },
+        {
+          "pattern": "blob.example.org/*",
+          "zone": "example.org"
+        }
+      ],
+      "origins": {
+        "web": "https://example.org",
+        "app": "https://cloud.example.org",
+        "api": "https://api.example.org",
+        "firstParty": ["https://www.example.org"]
+      },
+      "tenantId": "example-product",
+      "serviceName": "Example Product Cloud",
+      "blobHost": "blob.example.org",
+      "assetsBase": "https://blob.example.org",
+      "mailFrom": "noreply@example.org",
+      "billingUrl": "https://cloud.example.org/cloud/billing",
+      "entitlement": {
+        "issuer": "https://api.example.org",
+        "audience": "example-product"
+      },
+      "resources": {
+        "hyperdriveId": "00000000000000000000000000000021",
+        "kvNamespaceId": "00000000000000000000000000000022",
+        "r2Bucket": "example-product-blob",
+        "rateLimitNamespaceIds": {
+          "GLOBAL_RATE_LIMITER": "2011",
+          "CHAT_ROUTE_RATE_LIMITER": "2012",
+          "DASHBOARD_CHAT_ROUTE_RATE_LIMITER": "2013",
+          "MOBILE_API_KEY_INGRESS_LIMITER": "2014"
+        }
+      },
+      "placement": {
+        "mode": "smart"
+      },
+      "durableObjectTransfers": {
+        "InferenceAdmissionGate": "example-product-cloud-admission"
+      },
+      "vars": {
+        "LOGIN_API_URL": "https://login.example.org",
+        "ELIZA_MOBILE_APP_AUTH_ENABLED": "true",
+        "CACHE_ENABLED": "true",
+        "CACHE_BACKEND": "auto",
+        "VOICE_SPEECH_RELAY_ENABLED": "true"
+      },
+      "secrets": [
+        "DATABASE_URL",
+        "STEWARD_JWT_SECRET",
+        "SECRETS_MASTER_KEY",
+        "CRON_SECRET",
+        "ELIZA_ENTITLEMENT_SIGNING_KEY",
+        "ELIZA_ENTITLEMENT_SIGNING_KEY_ID"
+      ],
+      "components": {
+        "login": {
+          "workerName": "example-product-login",
+          "host": "login.example.org",
+          "enabled": true,
+          "container": {
+            "maxInstances": 1,
+            "instanceType": "standard-1"
+          },
+          "vars": {
+            "APP_URL": "https://example.org",
+            "EMAIL_FROM": "login@example.org",
+            "EMAIL_AUTH_REDIRECT_BASE_URL": "https://cloud.example.org",
+            "PASSKEY_RP_ID": "example.org",
+            "PASSKEY_ORIGIN": "https://example.org",
+            "STEWARD_DEFAULT_TENANT_ID": "example-product"
+          },
+          "secrets": [
+            "DATABASE_URL",
+            "STEWARD_MASTER_PASSWORD",
+            "STEWARD_JWT_SECRET",
+            "STEWARD_KDF_SALT",
+            "STEWARD_AUDIT_HMAC_KEY",
+            "STEWARD_RATE_LIMIT_TOKEN",
+            "STEWARD_AGGREGATION_TOKEN",
+            "STEWARD_SPEND_METRICS_TOKEN",
+            "STEWARD_REQUEST_SIGNING_SECRET"
+          ]
+        },
+        "speech": {
+          "workerName": "example-product-cloud-speech",
+          "hostsSessions": true,
+          "vars": {
+            "CACHE_ENABLED": "true",
+            "CACHE_BACKEND": "auto",
+            "DIRECT_REDIS_BACKEND": "redis-rest",
+            "VOICE_SPEECH_RELAY_ENABLED": "true"
+          },
+          "secrets": [
+            "CARTESIA_API_KEY",
+            "CARTESIA_STT_USD_PER_CREDIT",
+            "DATABASE_URL",
+            "KV_REST_API_URL",
+            "KV_REST_API_TOKEN"
+          ]
+        },
+        "admission": {
+          "workerName": "example-product-cloud-admission",
+          "vars": {
+            "CACHE_ENABLED": "true",
+            "CACHE_BACKEND": "auto",
+            "VOICE_SPEECH_RELAY_ENABLED": "true"
+          },
+          "secrets": []
+        },
+        "web": {
+          "projectName": "example-product-web",
+          "nativeAuthCallbacks": [
+            {
+              "redirectUri": "https://cloud.example.org/example/auth/callback",
+              "androidPackage": "org.example.product",
+              "appName": "Example Product",
+              "browserSignIn": {
+                "startPath": "/example/auth/browser-start",
+                "returnPath": "/auth/return",
+                "storageKey": "example-product:browser-sign-in",
+                "apiOrigin": "https://api.example.org",
+                "tenant": "example-product"
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

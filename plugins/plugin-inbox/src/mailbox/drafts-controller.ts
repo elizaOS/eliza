@@ -1128,7 +1128,13 @@ export function createMailDraftsController(
       (!validLocalMailDraft(value, owner) ||
         new TextEncoder().encode(JSON.stringify(value)).length > DRAFT_BYTES)
     ) {
-      toast("Draft is too large or contains an invalid subject.");
+      toast(
+        [value.cc || [], value.bcc || []].some(
+          (list) => list.length > 20 || !list.every(literalMailAddress),
+        )
+          ? "Cc or Bcc contains an invalid address or more than 20 addresses."
+          : "Draft is too large or contains an invalid subject.",
+      );
       return;
     }
     const token = epoch,

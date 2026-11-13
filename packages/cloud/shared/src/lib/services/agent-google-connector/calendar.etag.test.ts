@@ -22,6 +22,7 @@ const ETAG = '"3181161784712000"';
 const EVENT = {
   id: "event-1",
   etag: ETAG,
+  updated: "2026-11-01T12:00:00.000Z",
   summary: "Standup",
   start: { dateTime: "2026-11-06T10:00:00.000Z" },
   end: { dateTime: "2026-11-06T10:30:00.000Z" },
@@ -90,6 +91,11 @@ describe("Google Calendar event revisions", () => {
     expect(new URL(requests[0].url).searchParams.get("fields")).toContain("items(id,etag,");
     expect(feed.events.map((event) => event.etag)).toEqual([ETAG, null]);
     expect(feed.events.map((event) => event.metadata.etag)).toEqual([ETAG, null]);
+    expect(new URL(requests[0].url).searchParams.get("fields")).toContain("created,updated,");
+    expect(feed.events.map((event) => event.metadata.updatedAt)).toEqual([
+      EVENT.updated,
+      EVENT.updated,
+    ]);
   });
 
   test("PATCH sends If-Match and returns the new revision; without it no precondition is sent", async () => {

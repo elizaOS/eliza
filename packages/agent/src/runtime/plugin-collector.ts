@@ -30,7 +30,6 @@ import {
   lifeOpsPassiveConnectorsSetting,
   normalizeFirstRunProviderId,
   type ResolvedElizaCloudTopology,
-  readAliasedEnv,
   resolveDeploymentTargetInConfig,
   resolveElizaCloudTopology,
   resolveServiceRoutingInConfig,
@@ -92,7 +91,7 @@ function orchestratorCompatPluginRequested(
   if (typeof fromDefaults === "boolean") {
     return fromDefaults;
   }
-  const raw = readAliasedEnv("ELIZA_AGENT_ORCHESTRATOR")?.toLowerCase();
+  const raw = process.env.ELIZA_AGENT_ORCHESTRATOR?.trim().toLowerCase();
   if (raw === "0" || raw === "false" || raw === "no") {
     return false;
   }
@@ -441,7 +440,7 @@ export function collectPluginNames(
   );
   const isCloudContainer = devCloudSnapshot
     ? devCloudSnapshot.values.ELIZA_CLOUD_PROVISIONED?.trim() === "1"
-    : readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1";
+    : process.env.ELIZA_CLOUD_PROVISIONED?.trim() === "1";
   const storeBuild = isStoreBuildVariant();
   const cloudExplicitlyDisabled = config.cloud?.enabled === false;
   // `ELIZA_LOCAL_LLAMA=1` is the AOSP / on-device signal that the in-process
@@ -550,12 +549,12 @@ export function collectPluginNames(
     !onMobile &&
     process.env.ELIZA_PLUGIN_SET?.trim().toLowerCase() === "lean-chat";
   const leanWorkflows =
-    readAliasedEnv("ELIZA_LEAN_CHAT_WORKFLOWS") === "1" &&
+    process.env.ELIZA_LEAN_CHAT_WORKFLOWS?.trim() === "1" &&
     (config as ElizaConfig & { workflow?: { enabled?: boolean } }).workflow
       ?.enabled !== false;
   const mobileWorkflows =
     isAndroidMobile() &&
-    readAliasedEnv("ELIZA_MOBILE_WORKFLOWS") === "1" &&
+    process.env.ELIZA_MOBILE_WORKFLOWS?.trim() === "1" &&
     (config as ElizaConfig & { workflow?: { enabled?: boolean } }).workflow
       ?.enabled !== false;
   const seedCorePlugins = onMobile
@@ -1008,7 +1007,7 @@ export function collectPluginNames(
     // to yield the slot (ELIZAOS_CLOUD_USE_EMBEDDINGS=false unless the operator
     // explicitly pinned it true) so the two providers don't both register.
     const localEmbeddingsOptIn =
-      readAliasedEnv("ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS") === "1" &&
+      process.env.ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS?.trim() === "1" &&
       effectiveCloudEnvValue("ELIZAOS_CLOUD_USE_EMBEDDINGS")
         ?.trim()
         .toLowerCase() !== "true";

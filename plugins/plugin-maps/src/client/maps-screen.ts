@@ -1,6 +1,7 @@
 /**
  * The phone Maps screen as a framework-free controller: search, place detail,
- * saved places, directions with an explicit origin, foreground turn-by-turn
+ * saved places, directions from the device position or a chosen starting point,
+ * foreground turn-by-turn
  * guidance, screen-off sessions, voice, sharing, cross-app hand-offs and the
  * agent's navigation surface. Hosts render `view()` in their own markup (or
  * the shared React view) and supply platform ports. Nothing here invents a
@@ -23,10 +24,13 @@ import type {
   MapsNavigationSurface,
 } from "./device-navigation.ts";
 import {
+  advanceStep,
   atStep,
   guidanceDistance,
+  guidanceDuration,
   guidanceView,
   maneuverIcon,
+  type StepHold,
 } from "./guidance.ts";
 import type { MapsLocation, Position } from "./location.ts";
 import type { MapOverlay } from "./map-plane.ts";
@@ -145,7 +149,10 @@ export type MapsScreenMode =
 export type MapsScreenResult = Readonly<{
   key: string;
   name: string;
+  /** Address or coordinates, led by `distance` when it is known. */
   detail: string;
+  /** Straight-line distance from the device position, in locale units. */
+  distance?: string;
   saved: boolean;
 }>;
 
@@ -201,6 +208,9 @@ export interface MapsScreenView {
     address: string;
     hours?: string;
     website?: string;
+    /** The provider's phone number as shown, and its `tel:` link for a Call control. */
+    phone?: string;
+    phoneHref?: string;
     canDirections: boolean;
     saved: boolean;
     editingName: boolean;
@@ -229,6 +239,8 @@ export interface MapsScreenView {
     remaining: string;
     offRoute: boolean;
     canReroute: boolean;
+    /** False after the user moved the map; Recenter resumes following. */
+    cameraFollowing: boolean;
     background: boolean;
     voiceEnabled: boolean;
   };
@@ -248,6 +260,10 @@ const MODE_LABEL: Record<TravelMode, string> = {
   walk: "Walk",
   bicycle: "Bike",
 };
+/** Origin field text for a route planned from the device position. */
+const CURRENT_LOCATION = "Your location";
+/** Below this zoom the visible map is too wide for its centre to mean "here". */
+const VIEWPORT_BIAS_ZOOM = 9;
 const COORDINATES = /^([+-]?\d+(?:\.\d+)?)\s*,\s*([+-]?\d+(?:\.\d+)?)$/;
 const coordLabel = (point: Coordinate) =>
   `${point.latitude.toFixed(5)}, ${point.longitude.toFixed(5)}`;
@@ -285,7 +301,7 @@ export class MapsScreenController {
   private originMode = false;
   private navigating = false;
   private arrived = false;
-  private navStep = 0;
+  private navStep: StepHold = { index: 0, cleared: 0 };
   private navFix?: Position;
   private navRouteId = "";
   private follow = true;
@@ -316,6 +332,7 @@ export class MapsScreenController {
   private recenterSelection?: MapsScreenSelection;
   private recenterPosition?: Coordinate;
   private locationTimeout?: ReturnType<typeof setTimeout>;
+  private viewport?: Coordinate;
   private readonly releaseListeners = new Set<() => void>();
   private readonly lifecycle = {
     releases: 0,
@@ -507,6 +524,18 @@ export class MapsScreenController {
     this.invalidate();
   }
 
+  /**
+   * The map plane settled on a visible area. Its centre ranks later searches
+   * when the map is zoomed to a region; it is sent only with a search the user
+   * makes, to the same Maps service, and never to the agent.
+   */
+  setViewport(center: Coordinate, zoom: number): void {
+    this.viewport =
+      Number.isFinite(zoom) && zoom >= VIEWPORT_BIAS_ZOOM
+        ? coordinate(center)
+        : undefined;
+  }
+
   // ---- search ---------------------------------------------------------------
 
   /** Another app opened Maps with a one-use search (e.g. an event's location). */
@@ -574,6 +603,7 @@ export class MapsScreenController {
       return;
     }
     this.host.discardHandoff?.();
+    this.cancelLocate();
     const intent = ++this.searchIntent;
     this.selected = undefined;
     this.searching = true;
@@ -630,7 +660,7 @@ export class MapsScreenController {
         return;
       }
       this.message = "";
-      void this.ensure().search(requested);
+      void this.ensure().search(requested, this.viewport);
     })();
   }
 
@@ -652,6 +682,7 @@ export class MapsScreenController {
       return true;
     }
     if (this.directions || this.navigating) {
+      this.cancelLocate();
       this.directions = false;
       void this.stopGuidance().catch(() => {});
       this.message = "";
@@ -857,6 +888,16 @@ export class MapsScreenController {
     this.invalidate();
   }
 
+  /** A newer choice replaces a pending location request. A late fix does not change it. */
+  private cancelLocate(): void {
+    if (!this.locating) return;
+    this.locating = false;
+    this.recenterOnly = false;
+    clearTimeout(this.locationTimeout);
+    this.locationTimeout = undefined;
+    this.controller?.cancelLocate();
+  }
+
   /** Recenter: follow the device during navigation, otherwise a new location request. */
   recenter(): void {
     if (this.navigating) {
@@ -887,7 +928,10 @@ export class MapsScreenController {
 
   // ---- directions -----------------------------------------------------------
 
-  /** Directions for the selected place; the origin stays explicit. */
+  /**
+   * Directions for the selected place. With location already granted the route
+   * starts from a fresh device fix; otherwise the user names a starting point.
+   */
   openDirections(): void {
     const item = this.selected;
     const snapshot = this.state;
@@ -915,6 +959,24 @@ export class MapsScreenController {
           },
           false,
         );
+      if (!this.originText.trim())
+        void this.host.locationGranted().then(
+          (granted) => {
+            // Never a permission prompt, and never over a starting point the user began.
+            if (
+              granted &&
+              this.usable() &&
+              this.selected === item &&
+              this.directions &&
+              !this.navigating &&
+              !this.originMode &&
+              !this.originText.trim() &&
+              !this.state?.route.value
+            )
+              this.locate();
+          },
+          () => {},
+        );
     }
     this.invalidate();
   }
@@ -929,7 +991,18 @@ export class MapsScreenController {
   planOrigin(): void {
     const selected = this.selected;
     if (!selected) return;
+    this.cancelLocate();
     const text = this.originText.trim();
+    if (
+      text === CURRENT_LOCATION &&
+      this.state?.origin &&
+      this.state.position.phase === "ready"
+    ) {
+      this.message = "";
+      void this.ensure().planRoute();
+      this.invalidate();
+      return;
+    }
     const match = text.match(COORDINATES);
     if (match) {
       try {
@@ -943,7 +1016,8 @@ export class MapsScreenController {
         this.originMode = false;
         void this.ensure().planRoute();
       } catch {
-        this.message = "Enter origin latitude, longitude.";
+        this.message =
+          "That starting point is not a valid latitude, longitude.";
       }
       this.invalidate();
       return;
@@ -956,7 +1030,8 @@ export class MapsScreenController {
     }
     const configured = this.state?.provider.status === "configured";
     if (!configured && !this.ensure().savedMatches(text).length) {
-      this.message = "Enter origin latitude, longitude.";
+      this.message =
+        "Enter a saved place or latitude, longitude as the starting point.";
       this.invalidate();
       return;
     }
@@ -1015,11 +1090,12 @@ export class MapsScreenController {
       this.invalidate();
       return;
     }
+    this.cancelLocate();
     this.host.voice.pause();
     this.arrived = false;
     this.navigating = true;
     this.follow = true;
-    this.navStep = 0;
+    this.navStep = { index: 0, cleared: 0 };
     this.offRoute = false;
     this.rerouting = false;
     this.navFix = undefined;
@@ -1146,7 +1222,7 @@ export class MapsScreenController {
         this.directions = false;
         this.originMode = false;
         this.searching = false;
-        this.locating = false;
+        this.cancelLocate();
         this.message = "";
         return this.showAgentPlace(place, resolveDetails);
       },
@@ -1155,14 +1231,14 @@ export class MapsScreenController {
         ++this.searchIntent;
         this.originMode = false;
         this.searching = false;
-        this.locating = false;
+        this.cancelLocate();
         this.originText = "";
         const controller = this.ensure();
         controller.clearOrigin();
         controller.setMode(travelMode);
         this.directions = true;
         this.message =
-          "Your agent asked for directions. Use current location or enter an origin to plan the route, then tap Start.";
+          "Your agent asked for directions. Use your location or enter a starting point to plan the route, then tap Start.";
         return this.showAgentPlace(place, resolveDetails);
       },
       locationGranted: () => this.host.locationGranted(),
@@ -1207,6 +1283,7 @@ export class MapsScreenController {
       },
       planFrom: async (origin) => {
         const controller = this.ensure();
+        this.cancelLocate();
         this.originMode = false;
         this.originText = coordLabel(origin);
         controller.setOrigin(origin);
@@ -1340,6 +1417,11 @@ export class MapsScreenController {
       : snapshot.position.phase === "ready"
         ? snapshot.position.value || undefined
         : undefined;
+    // Only a device fix gives result rows a distance; a typed origin is not "here".
+    const here =
+      snapshot.position.phase === "ready"
+        ? snapshot.position.value?.coordinate
+        : undefined;
     const savedOrigins = choosingOrigin
       ? controller.savedMatches(this.originText)
       : [];
@@ -1358,12 +1440,19 @@ export class MapsScreenController {
             saved: false,
           })),
         ]
-      : snapshot.search.value.map((item) => ({
-          key: `place:${item.providerId}:${item.id}`,
-          name: item.name,
-          detail: item.address || coordLabel(item.coordinate),
-          saved: false,
-        }));
+      : snapshot.search.value.map((item) => {
+          const distance = here
+            ? guidanceDistance(greatCircle(here, item.coordinate))
+            : "";
+          const detail = item.address || coordLabel(item.coordinate);
+          return {
+            key: `place:${item.providerId}:${item.id}`,
+            name: item.name,
+            detail: distance ? `${distance} · ${detail}` : detail,
+            ...(distance ? { distance } : {}),
+            saved: false,
+          };
+        });
     const mapsAppText = this.mapsAppText();
     if (mapsAppText) this.readMapsApp();
     const view: MapsScreenView = {
@@ -1449,22 +1538,32 @@ export class MapsScreenController {
     if (selected) {
       const existing = this.savedFor(selected);
       const detail = this.detail();
+      const dialNumber = detail?.phone?.replace(/[() .-]/g, "");
+      const phoneHref =
+        dialNumber && /^\+?[0-9]+$/.test(dialNumber)
+          ? `tel:${dialNumber}`
+          : undefined;
       view.place = {
         origin: selected.origin,
         ...(selected.providerId ? { providerId: selected.providerId } : {}),
         name: selected.label,
         meta:
-          (selected.origin === "saved"
+          selected.origin === "saved"
             ? "Saved on this device"
             : selected.origin === "location"
-              ? "Device location"
+              ? "Your location"
               : selected.origin === "provider"
                 ? "Place"
-                : "Coordinates") +
-          (detail?.phone ? ` · Phone ${detail.phone}` : ""),
+                : "Coordinates",
         address: detail?.address || coordLabel(selected.coordinate),
         ...(detail?.openingHours ? { hours: detail.openingHours } : {}),
         ...(detail?.website ? { website: detail.website } : {}),
+        ...(detail?.phone
+          ? {
+              phone: detail.phone,
+              ...(phoneHref ? { phoneHref } : {}),
+            }
+          : {}),
         canDirections: controller.capabilities().modes.length > 0,
         saved: !!existing,
         editingName: !!selected.editingName,
@@ -1477,7 +1576,7 @@ export class MapsScreenController {
         name: selected.label,
         originText: this.originText,
         duration: route
-          ? `${Math.max(1, Math.round(route.durationSeconds / 60))} min`
+          ? guidanceDuration(route.durationSeconds)
           : snapshot.route.phase === "loading"
             ? "Planning…"
             : "No route",
@@ -1487,7 +1586,7 @@ export class MapsScreenController {
         via: route
           ? (snapshot.originLabel ? `From ${snapshot.originLabel} · ` : "") +
             (route.steps[0]?.instruction || "")
-          : "Choose a real origin to calculate a route.",
+          : "Choose a starting point to see a route.",
         modes: MODES.map((choice) => ({
           mode: choice,
           selected: snapshot.mode === choice,
@@ -1497,7 +1596,7 @@ export class MapsScreenController {
         routes: snapshot.routeOptions.map((option, index) => ({
           id: option.id,
           label: index === 0 ? "Recommended" : `Alternative ${index}`,
-          duration: `${Math.max(1, Math.round(option.durationSeconds / 60))} min`,
+          duration: guidanceDuration(option.durationSeconds),
           meta: guidanceDistance(option.distanceMeters),
           via: option.steps[0]?.instruction || "",
           selected: option.id === route?.id,
@@ -1511,7 +1610,7 @@ export class MapsScreenController {
           ? atStep(
               routeProgress(this.navFix.coordinate, route),
               route.steps,
-              this.navStep,
+              this.navStep.index,
             )
           : undefined;
       const guidance = progress
@@ -1555,6 +1654,7 @@ export class MapsScreenController {
           this.offRoute &&
           usableNavigationFix(this.navFix, this.now()) &&
           !this.rerouting,
+        cameraFollowing: this.follow,
         background: this.backgroundRunning,
         voiceEnabled: this.host.voice.enabled,
       };
@@ -1582,7 +1682,7 @@ export class MapsScreenController {
         this.message = `${next.route.error.message} The current route was kept.`;
       } else if (replacement) {
         this.rerouting = false;
-        this.navStep = 0;
+        this.navStep = { index: 0, cleared: 0 };
         this.navRouteId = replacement.id;
         this.host.voice.pause();
         this.message = "New route ready.";
@@ -1615,7 +1715,7 @@ export class MapsScreenController {
           origin: "location",
         };
       else if (this.directions) {
-        this.originText = coordLabel(position.coordinate);
+        this.originText = CURRENT_LOCATION;
         void this.controller?.planRoute();
       }
       this.searching = false;
@@ -1666,17 +1766,15 @@ export class MapsScreenController {
     } else {
       const nearest = distanceToRoute(fix.coordinate, current.geometry);
       this.offRoute = nearest > Math.max(75, fix.accuracyMeters * 2);
-      // A maneuver is passed once a fix comes within 40 m of it.
-      while (
-        this.navStep < current.steps.length - 1 &&
-        greatCircle(fix.coordinate, current.steps[this.navStep].coordinate) < 40
-      )
-        this.navStep++;
-      const reading = atStep(
-        routeProgress(fix.coordinate, current),
-        current.steps,
+      const progress = routeProgress(fix.coordinate, current);
+      this.navStep = advanceStep(
         this.navStep,
+        current,
+        progress,
+        fix,
+        !this.offRoute,
       );
+      const reading = atStep(progress, current.steps, this.navStep.index);
       const guidance = guidanceView(
         reading,
         new Date(this.now()),
@@ -1801,6 +1899,7 @@ export class MapsScreenController {
   }
 
   private chooseOrigin(candidate: Place | SavedPlace): void {
+    this.cancelLocate();
     this.originMode = false;
     this.originText = "label" in candidate ? candidate.label : candidate.name;
     this.message = "";
@@ -1810,11 +1909,12 @@ export class MapsScreenController {
 
   private editOrigin(text: string): void {
     const choosing = this.choosingOrigin();
+    this.cancelLocate();
     this.originText = text;
     this.ensure().clearOrigin();
     this.message = choosing
       ? `Press Enter to search again for a starting point to ${this.selected?.label ?? ""}.`
-      : "Press Enter to search for this origin or calculate a route from coordinates.";
+      : "Press Enter to search for this starting point.";
     this.invalidate();
   }
 
@@ -1989,9 +2089,32 @@ export class MapsScreenController {
         this.contextRevision,
         read,
       );
-    } else if (selectionChanged && this.searching && this.query.trim())
-      this.host.publishContext?.("map-search", this.searchIdentity, token);
-    else if (selectionChanged) {
+    } else if (selectionChanged && this.searching && this.query.trim()) {
+      // Bind the observation to the admitted search and complete result source.
+      // An unchanged render is stable; a changed area/provider/result is not.
+      const snapshot = this.state;
+      const provider = snapshot?.provider;
+      const key = JSON.stringify([
+        "map-search",
+        this.query.trim(),
+        snapshot?.query ?? "",
+        provider?.status === "configured"
+          ? [provider.providerId, provider.connectionId, provider.revision]
+          : [provider?.status ?? "unconfigured"],
+        snapshot?.searchNear ?? null,
+        snapshot?.search.phase ?? "idle",
+        snapshot?.search.value ?? [],
+      ]);
+      if (key !== this.contextKey) {
+        this.contextKey = key;
+        ++this.contextRevision;
+      }
+      this.host.publishContext?.(
+        "map-search",
+        this.searchIdentity,
+        this.contextRevision,
+      );
+    } else if (selectionChanged) {
       this.contextKey = "";
       this.host.clearContext?.();
     }

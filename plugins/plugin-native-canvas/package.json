@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-canvas",
-  "version": "2.0.4",
+  "version": "2.0.6",
   "description": "Creates interactive canvases with layers, drawing primitives, and A2UI integration.",
   "keywords": [
     "canvas",
@@ -37,8 +37,8 @@
     "url": "https://github.com/elizaOS/eliza"
   },
   "scripts": {
-    "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-canvas -- bun run build:unlocked",
-    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
+    "build": "bun ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-canvas -- bun run build:unlocked",
+    "clean": "bun ../../packages/scripts/rm-path-recursive.ts dist",
     "prepublishOnly": "bun run build",
     "watch": "tsc6 --watch",
     "build:unlocked": "bun run clean && tsc6 && bunx rollup -c rollup.config.mjs",

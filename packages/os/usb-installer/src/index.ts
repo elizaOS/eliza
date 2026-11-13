@@ -1,1 +1,0 @@
-export { InstallerApp } from "./InstallerApp";

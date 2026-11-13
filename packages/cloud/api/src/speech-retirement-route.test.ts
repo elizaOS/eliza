@@ -47,9 +47,10 @@ mock.module("@elizaos/cloud-shared/lib/voice-session/consent-nonce", () => ({
     return true;
   },
 }));
+const coordinator = await import("./speech-relay-coordinator");
 mock.module("./speech-relay-coordinator", () => ({
+  ...coordinator,
   speechTokenDigest: () => "a".repeat(64),
-  speechRelayMaxWindows: () => 2,
 }));
 const { default: app } = await import("../v1/voice/speech/route");
 const nonce = "00000000-0000-4000-8000-000000000001";

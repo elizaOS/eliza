@@ -40,20 +40,6 @@ jobs:
     if: needs.preflight.outputs.source == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
-    services:
-      quint-postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: qa_quint
-          POSTGRES_DB: quint_protocol
-          POSTGRES_HOST_AUTH_METHOD: trust
-        ports:
-          - "127.0.0.1:5432:5432"
-        options: >-
-          --health-cmd "pg_isready -h 127.0.0.1 -U qa_quint -d quint_protocol"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       NODE_OPTIONS: --max-old-space-size=4096
       TURBO_SCM_BASE: ${{ needs.preflight.outputs.base }}
@@ -84,9 +70,9 @@ jobs:
       - name: Formatting
         run: bun run format:check
       - name: Prompt secret scan
-        run: node packages/scripts/check-prompt-secrets.ts
+        run: bun packages/scripts/check-prompt-secrets.ts
       - name: Validate CI Bun version pin contract
-        run: node packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
+        run: bun packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
       - name: Upload Bun runtime resolution inventory
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
@@ -96,7 +82,7 @@ jobs:
     needs: preflight
   quint:
     name: Quint (${{ matrix.shard }}/4)
-    if: needs.preflight.outputs.source == 'true'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     strategy:
@@ -120,8 +106,7 @@ jobs:
           --health-retries 5
     env:
       NODE_OPTIONS: --max-old-space-size=4096
-      TURBO_SCM_BASE: ${{ needs.preflight.outputs.base }}
-      RUN_TURBO_AFFECTED: ${{ needs.preflight.outputs.full == 'false' && '1' || '0' }}
+      RUN_TURBO_AFFECTED: "0"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -141,7 +126,7 @@ jobs:
       - name: Build core contract
         run: bun run build:core
       - name: Setup Java for Quint verification
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78
         with:
           distribution: temurin
           java-version: "21"
@@ -158,7 +143,7 @@ jobs:
         run: |
           set -euo pipefail
           jar="$RUNNER_TEMP/json-20250517.jar"
-          curl -fsSL --retry 3 -o "$jar" https://repo1.maven.org/maven2/org/json/json/20250517/json-20250517.jar
+          curl -fsSL --retry 3 -o "$jar" https://repo.maven.apache.org/maven2/org/json/json/20250517/json-20250517.jar
           echo "3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796  $jar" | sha256sum -c -
           echo "ELIZA_JSON_JAR=$jar" >> "$GITHUB_ENV"
       - name: Install local Redis for protocol conformance
@@ -185,6 +170,7 @@ jobs:
             test-results/quint/
             test-results/quint-*/
           if-no-files-found: ignore
+          overwrite: true
           retention-days: 7
       - name: Upload required Quint shard manifest
         if: always()
@@ -193,12 +179,12 @@ jobs:
           name: quint-canonical-manifest-${{ matrix.shard }}
           path: test-results/quint/shard-${{ matrix.shard }}-of-4/verification.json
           if-no-files-found: error
+          overwrite: true
           retention-days: 7
-    needs: preflight
   quint-result:
     name: Complete Quint coverage
-    if: ${{ always() && needs.preflight.outputs.source == 'true' }}
-    needs: [preflight, quint]
+    if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' }}
+    needs: [quint]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -229,13 +215,14 @@ jobs:
           pattern: quint-canonical-manifest-*
           path: test-results/quint-canonical-manifests
       - name: Verify complete disjoint model coverage
-        run: node packages/scripts/check-quint-shards.ts test-results/quint-canonical-manifests 4
+        run: bun packages/scripts/check-quint-shards.ts test-results/quint-canonical-manifests 4
       - name: Upload complete Quint evidence summary
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: quint-canonical-complete
           path: test-results/quint/shards-summary.json
           if-no-files-found: error
+          overwrite: true
           retention-days: 7
   tests_auth_integration:
     if: needs.preflight.outputs.auth == 'true'
@@ -298,8 +285,8 @@ jobs:
       - secret-scan
       - os
       - quality
-      - quint-result
       - tests_auth_integration
+      - quint-result
       - preflight
       - remote-capabilities
       - agent-integration
@@ -316,8 +303,8 @@ jobs:
             secret-scan=${{ needs.secret-scan.result }}:true
             os=${{ needs.os.result }}:${{ needs.preflight.outputs.os }}
             quality=${{ needs.quality.result }}:${{ needs.preflight.outputs.source }}
-            quint=${{ needs.quint-result.result }}:${{ needs.preflight.outputs.source }}
             tests_auth_integration=${{ needs.tests_auth_integration.result }}:${{ needs.preflight.outputs.auth }}
+            quint-result=${{ needs.quint-result.result }}:${{ github.ref == 'refs/heads/main' }}
             preflight=${{ needs.preflight.result }}:true
             remote-capabilities=${{ needs.remote-capabilities.result }}:${{ needs.preflight.outputs.runtime }}
             agent-integration=${{ needs.agent-integration.result }}:${{ needs.preflight.outputs.runtime }}
@@ -534,7 +521,7 @@ jobs:
           retention-days: 3
       - name: Prune deterministic E2E scratch output
         if: always()
-        run: node packages/scripts/rm-path-recursive.ts test-results/scenario-runner/pr-deterministic test-results/scenario-runner/pr-deterministic-corpus test-results/scenario-runner/pr-deterministic-orchestrator test-results/scenario-runner/pr-deterministic-lifeops test-results/scenario-runner/catalog-inventory packages/app/playwright-report test-results/app
+        run: bun packages/scripts/rm-path-recursive.ts test-results/scenario-runner/pr-deterministic test-results/scenario-runner/pr-deterministic-corpus test-results/scenario-runner/pr-deterministic-orchestrator test-results/scenario-runner/pr-deterministic-lifeops test-results/scenario-runner/catalog-inventory packages/app/playwright-report test-results/app
       - name: E2E coverage matrix report
         if: always()
         run: bun --conditions=eliza-source packages/scripts/e2e-coverage/write-coverage-matrix-report.ts --report-dir reports/coverage

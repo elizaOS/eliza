@@ -31,9 +31,9 @@
  * Commandment 9 + the TEE contract: decrypted weights/keys stay in process
  * memory and never leak to logs, env dumps, or crash reports.
  *
- *   node packages/scripts/audit-tee-secret-leak.ts            # gate
- *   node packages/scripts/audit-tee-secret-leak.ts --json     # machine output
- *   node packages/scripts/audit-tee-secret-leak.ts --self-test
+ *   bun packages/scripts/audit-tee-secret-leak.ts            # gate
+ *   bun packages/scripts/audit-tee-secret-leak.ts --json     # machine output
+ *   bun packages/scripts/audit-tee-secret-leak.ts --self-test
  */
 
 import fs from "node:fs";

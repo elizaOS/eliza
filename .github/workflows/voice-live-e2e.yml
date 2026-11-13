@@ -109,7 +109,7 @@ jobs:
       - name: Emit matrix probe report
         run: |
           set -euo pipefail
-          node packages/app/scripts/voice/voice-matrix.ts --out "$RUNNER_TEMP/voice-platform-matrix"
+          bun packages/app/scripts/voice/voice-matrix.ts --out "$RUNNER_TEMP/voice-platform-matrix"
 
       - name: Upload matrix probe report
         if: always()
@@ -250,7 +250,7 @@ jobs:
           ELIZA_VOICE_LIVE_CLOUDFLARE: ""
         run: |
           set -euo pipefail
-          node packages/app/scripts/voice/voice-matrix.ts \
+          bun packages/app/scripts/voice/voice-matrix.ts \
             --platform web.live.cloudflare-roundtrip \
             --out "$RUNNER_TEMP/voice-web-live-ungated"
 
@@ -259,7 +259,7 @@ jobs:
           ELIZA_VOICE_LIVE_CLOUDFLARE: ""
         run: |
           set -euo pipefail
-          node packages/app/scripts/voice/voice-matrix.ts \
+          bun packages/app/scripts/voice/voice-matrix.ts \
             --run \
             --require-green \
             --platform web.failure-paths \
@@ -288,7 +288,7 @@ jobs:
           ELIZA_UI_SMOKE_BACKEND_LOG_PATH: ${{ runner.temp }}/voice-web-live/private-backend.log
         run: |
           set -euo pipefail
-          node packages/app/scripts/voice/voice-matrix.ts \
+          bun packages/app/scripts/voice/voice-matrix.ts \
             --run \
             --require-green \
             --platform web.live.cloudflare-roundtrip \
@@ -648,7 +648,7 @@ jobs:
           set -euo pipefail
           PRIVATE_LOG=$(mktemp "$RUNNER_TEMP/voice-paradee-phonon.XXXXXX")
           trap 'rm -f "$PRIVATE_LOG"' EXIT
-          if ! (cd packages/app && node ../scripts/run-vitest.ts run --config vitest.host.config.ts \
+          if ! (cd packages/app && bun ../scripts/run-vitest.ts run --config vitest.host.config.ts \
             src/api/standalone-asr-service.test.ts -t "standalone speech on libelizainference" --reporter=verbose) \
             > "$PRIVATE_LOG" 2>&1; then
             echo "phase=paradee-phonon status=failed code=PARADEE_PHONON_FAILED" >&2
@@ -882,7 +882,7 @@ jobs:
       - name: Run iOS matrix
         run: |
           set -euo pipefail
-          node packages/app/scripts/voice/voice-matrix.ts --run --require-green --platform ios --out "$RUNNER_TEMP/voice-ios-matrix"
+          bun packages/app/scripts/voice/voice-matrix.ts --run --require-green --platform ios --out "$RUNNER_TEMP/voice-ios-matrix"
 
       - name: Upload iOS matrix
         if: always()
@@ -934,7 +934,7 @@ jobs:
       - name: Run Android matrix
         run: |
           set -euo pipefail
-          node packages/app/scripts/voice/voice-matrix.ts --run --require-green --platform android --out "$RUNNER_TEMP/voice-android-matrix"
+          bun packages/app/scripts/voice/voice-matrix.ts --run --require-green --platform android --out "$RUNNER_TEMP/voice-android-matrix"
 
       - name: Upload Android matrix
         if: always()

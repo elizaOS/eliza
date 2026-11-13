@@ -23,7 +23,7 @@ import {
 } from "@elizaos/cloud-shared/lib/services/account-deletion-export";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
+import { getAuditDispatcher } from "../../../src/services/audit-dispatcher-singleton";
 
 interface DataExportDependencies {
   collect: typeof collectPortableAccountDeletionExport;

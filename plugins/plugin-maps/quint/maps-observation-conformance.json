@@ -1,0 +1,36 @@
+{
+  "nodeFiles": [
+    "plugins/plugin-maps/test/maps-screen.test.mjs",
+    "plugins/plugin-maps/test/map-plane.test.mjs",
+    "plugins/plugin-maps/test/navigation-client.test.mjs"
+  ],
+  "nodeRequired": [
+    "search observations retire when the same query has changed area",
+    "search observations retire when the same query has changed results",
+    "a pending search cannot reuse the prior empty-result observation",
+    "a settled world-copy viewport reports a valid wrapped search coordinate",
+    "Directions start from the device position when location is already granted",
+    "a provider phone number is a separate, callable field; Recenter reflects camera following",
+    "a newer search, origin or Start retires a pending location request",
+    "a retired location cleanup failure cannot overwrite a newer accepted fix",
+    "an unsupported provider phone remains visible without a fabricated Call target",
+    "a host chooses where a worldwide basemap opens; a regional map keeps its coverage",
+    "new result pins are brought into view once; selection, routes and following keep the camera"
+  ],
+  "viewFile": "plugins/plugin-maps/test/maps-screen-view.test.tsx",
+  "viewRequired": [
+    "MapsScreen view focuses Search after Enter coordinates (navigating: false)",
+    "MapsScreen view focuses Search after Enter coordinates (navigating: true)",
+    "MapsScreen view measures scaled hosts in layout pixels so sheets keep their clearance",
+    "MapsScreen view searches, opens a place, plans directions and starts guidance",
+    "MapsScreen view drives the host map plane and reports its readiness",
+    "MapsScreen view retries a failed plane without replacing the selected place or route",
+    "MapsScreen view recovers the screen when current viewport copyright becomes ready",
+    "MapsScreen view shows navigation notices while preserving guidance controls",
+    "MapsScreen view bounds sheets above host controls and separates panels in a wide, short view",
+    "MapsScreen view reflows enlarged text into one reading column with sticky navigation actions",
+    "MapsScreen review ports and phone links forwards settled area and gestures while Recenter resumes following",
+    "MapsScreen review ports and phone links renders an actionable phone only for a valid dial target: +377 98 06 20 00",
+    "MapsScreen review ports and phone links renders an actionable phone only for a valid dial target: +++"
+  ]
+}

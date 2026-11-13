@@ -22,9 +22,13 @@ function fixture(provider: "eliza" | "google" = "eliza") {
     agentId: agent,
     ...source,
     title: "Selected QA",
+    accountEmail: "selected-owner@example.test",
+    calendarSummary: "Selected owner calendar",
+    description: `${"Complete selected event detail.\n".repeat(4096)}FINAL_SELECTED_DETAIL`,
     startAt: "2026-11-02T23:00:00Z",
     endAt: "2026-11-02T23:05:00Z",
     timezone: "America/Los_Angeles",
+    isAllDay: false,
     metadata: { etag: '"v1"' },
     status: "confirmed",
   };
@@ -62,7 +66,11 @@ function fixture(provider: "eliza" | "google" = "eliza") {
     },
   } as Memory;
   const snapshot = {
-    feed: { state: "complete", events: [event] },
+    feed: {
+      state: "complete",
+      events: [event],
+      sources: [{ status: "fresh", summary: "UNSELECTED_SOURCE_SENTINEL" }],
+    },
     calendars: [source],
   };
   const service = {
@@ -100,6 +108,11 @@ const run = (f: ReturnType<typeof fixture>) => {
 describe("current selected canonical Calendar read", () => {
   it("reads a selected Google event through second-precision filters and emits its versioned receipt", async () => {
     const f = fixture("google");
+    const neighbor = {
+      ...f.event,
+      id: "neighbor-event",
+      title: "Another event",
+    };
     // Google ignores fractional seconds and excludes events starting at timeMax.
     f.service.getCalendarFeedSnapshot.mockImplementation(
       async (_url, query) => {
@@ -109,16 +122,24 @@ describe("current selected canonical Calendar read", () => {
           ...f.snapshot,
           feed: {
             ...f.snapshot.feed,
-            events:
-              Date.parse(f.event.startAt) < timeMax &&
-              Date.parse(f.event.endAt) > timeMin
-                ? [f.event]
-                : [],
+            events: [f.event, neighbor].filter(
+              (event) =>
+                Date.parse(event.startAt) < timeMax &&
+                Date.parse(event.endAt) > timeMin,
+            ),
           },
         };
       },
     );
     const result = await run(f);
+    expect(result).toMatchObject({ data: { event: f.event } });
+    expect(JSON.stringify(result.data)).not.toContain(
+      "UNSELECTED_SOURCE_SENTINEL",
+    );
+    expect(result.promptData?.event).toMatchObject({
+      ...f.event,
+      displayDate: "Monday, November 2, 2026",
+    });
     expect(result).toMatchObject({
       success: true,
       data: {
@@ -145,6 +166,27 @@ describe("current selected canonical Calendar read", () => {
       timeMax: "2026-11-02T23:00:01.000Z",
     });
   });
+  it("refuses a selection replaced while its authorized feed read is pending", async () => {
+    const f = fixture("google");
+    let entered!: () => void;
+    const querying = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    let release!: (snapshot: typeof f.snapshot) => void;
+    f.service.getCalendarFeedSnapshot.mockImplementation(() => {
+      entered();
+      return new Promise((resolve) => {
+        release = resolve;
+      });
+    });
+    const reading = run(f);
+    await querying;
+    f.target.id = "replacement-event";
+    release(f.snapshot);
+    await expect(reading).rejects.toMatchObject({
+      code: "CALENDAR_SELECTED_RECORD_UNAVAILABLE",
+    });
+  });
   it("supplies the computed weekday for an all-day selected event", async () => {
     const f = fixture("google");
     Object.assign(f.event, {
@@ -161,7 +203,62 @@ describe("current selected canonical Calendar read", () => {
       startAt: f.event.startAt,
       endAt: f.event.endAt,
     });
-    expect(result.promptData?.event).not.toHaveProperty("accountEmail");
+    expect(result.promptData?.event).toHaveProperty(
+      "accountEmail",
+      f.event.accountEmail,
+    );
+  });
+  it.each([
+    [
+      "America/Los_Angeles",
+      "2026-11-11T00:00:00Z",
+      "Tuesday, November 10, 2026",
+    ],
+    [
+      "Pacific/Kiritimati",
+      "2026-11-11T23:00:00Z",
+      "Thursday, November 12, 2026",
+    ],
+    ["UTC", "2026-11-11T00:00:00Z", "Wednesday, November 11, 2026"],
+  ])(
+    "keeps the whole timed selected event and computes its date in %s",
+    async (timeZone, startAt, displayDate) => {
+      const f = fixture("google");
+      Object.assign(f.context, { timeZone });
+      Object.assign(f.event, {
+        startAt,
+        endAt: new Date(Date.parse(startAt) + 60000).toISOString(),
+      });
+      const result = await run(f);
+      expect(result.data?.event).toEqual(f.event);
+      expect(result.promptData?.event).toMatchObject({
+        ...f.event,
+        displayDate,
+      });
+      expect(result.promptData?.event).toHaveProperty(
+        "description",
+        f.event.description,
+      );
+      expect(result.effectReceipts).toMatchObject([
+        { resource: { id: f.target.id, version: f.target.revision } },
+      ]);
+    },
+  );
+
+  it("preserves the all-day civil date when its canonical timestamp has an offset", async () => {
+    const f = fixture("google");
+    Object.assign(f.context, { timeZone: "America/Los_Angeles" });
+    Object.assign(f.event, {
+      startAt: "2026-11-11T00:00:00+14:00",
+      endAt: "2026-11-12T00:00:00+14:00",
+      isAllDay: true,
+    });
+    const result = await run(f);
+    expect(result.promptData?.event).toMatchObject({
+      ...f.event,
+      displayDate: "Wednesday, November 11, 2026",
+      displayTime: "all day",
+    });
   });
   it.each([
     "wrong-owner",

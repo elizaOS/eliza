@@ -263,6 +263,7 @@ export function buildCheckinSummaryPrompt(
     report.kind === "morning"
       ? "Tone: concise start-of-day briefing, with what matters now and first next steps."
       : "Tone: concise evening recap sent before the owner's predicted bedtime, with what happened, loose ends, and tomorrow carry-forward.",
+    "Lead with useful priorities. Omit empty categories, raw source counts, disconnected optional services, and timezone identifiers. Never quote authentication codes. Keep the brief to the few items that need attention.",
     "Write a short, natural message for the owner. Use plain words and only a few paragraphs or bullets. Do not mention internal names such as LifeOps, report JSON, collectors, operational status, or escalation levels. No markdown table or emojis.",
     "Do not put a date or time in the heading. If the body mentions the report time, copy the supplied local report time exactly; do not calculate or invent another date.",
   ];
@@ -308,6 +309,95 @@ export function buildCheckinSummaryPrompt(
   );
   return lines.join("\n");
 }
+/** Check explicit report-date declarations against the supplied owner-local clock. */
+function assertSummaryReportDate(
+  summary: string,
+  report: Omit<CheckinReport, "summaryText">,
+): void {
+  const months =
+    "(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)";
+  const weekdays =
+    "(?:Mon(?:day)?|Tue(?:sday)?|Wed(?:nesday)?|Thu(?:rsday)?|Fri(?:day)?|Sat(?:urday)?|Sun(?:day)?)";
+  const day = "\\d{1,2}(?:st|nd|rd|th)?";
+  const named = `(?:${weekdays},?\\s+)?(?:${months}\\s+${day}|${day}\\s+${months})(?:,?\\s+\\d{4})?`;
+  const date = `(?:${named}|\\d{4}-\\d{2}-\\d{2}|\\d{1,2}/\\d{1,2}/\\d{4}|${weekdays})`;
+  const declarations = new RegExp(
+    `\\b(?:as\\s+of|today(?:\\s+is)?[,:]?|(?:brief(?:ing)?|summary|check-in)\\s*(?:for|dated|[:–—]))\\s+(${date})\\b`,
+    "gi",
+  );
+  const claims = [...summary.matchAll(declarations)];
+  if (claims.length === 0) return;
+  const normalize = (value: string) =>
+    value
+      .toLowerCase()
+      .replace(/(\d)(?:st|nd|rd|th)\b/g, "$1")
+      .replace(/[,.]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  const allowed = new Set<string>();
+  if (report.timezone) {
+    const reference = new Date(report.generatedAt);
+    for (const locale of ["en-US", "en-GB"]) {
+      for (const month of ["long", "short"] as const) {
+        for (const year of ["numeric", undefined] as const) {
+          for (const weekday of ["long", "short", undefined] as const) {
+            allowed.add(
+              normalize(
+                new Intl.DateTimeFormat(locale, {
+                  timeZone: report.timezone,
+                  month,
+                  year,
+                  weekday,
+                  day: "numeric",
+                }).format(reference),
+              ),
+            );
+          }
+        }
+      }
+    }
+    const local = getZonedDateParts(reference, report.timezone);
+    allowed.add(
+      `${local.year}-${String(local.month).padStart(2, "0")}-${String(local.day).padStart(2, "0")}`,
+    );
+    for (const month of [
+      String(local.month),
+      String(local.month).padStart(2, "0"),
+    ]) {
+      for (const day of [
+        String(local.day),
+        String(local.day).padStart(2, "0"),
+      ]) {
+        allowed.add(`${month}/${day}/${local.year}`);
+      }
+    }
+    allowed.add(
+      normalize(
+        new Intl.DateTimeFormat("en-US", {
+          timeZone: report.timezone,
+          weekday: "long",
+        }).format(reference),
+      ),
+    );
+    allowed.add(
+      normalize(
+        new Intl.DateTimeFormat("en-US", {
+          timeZone: report.timezone,
+          weekday: "short",
+        }).format(reference),
+      ),
+    );
+  }
+  if (claims.some((claim) => !allowed.has(normalize(claim[1])))) {
+    throw new ElizaError(
+      "Check-in summary does not match the supplied local report date",
+      {
+        code: "CHECKIN_SUMMARY_DATE_MISMATCH",
+      },
+    );
+  }
+}
+
 function newReportId(): string {
   const maybeCrypto = (
     globalThis as {
@@ -1819,7 +1909,6 @@ export class CheckinService {
   private async renderSummary(
     report: Omit<CheckinReport, "summaryText">,
   ): Promise<string> {
-    if (report.kind === "morning") return renderMorningCheckinReport(report);
     if (typeof this.runtime.useModel !== "function") {
       throw new ElizaError(
         "Check-in summary requires a configured text model",
@@ -1840,7 +1929,9 @@ export class CheckinService {
         code: "CHECKIN_SUMMARY_EMPTY",
       });
     }
-    return response.trim();
+    const summary = response.trim();
+    assertSummaryReportDate(summary, report);
+    return summary;
   }
   private async persistReport(report: CheckinReport, now: Date): Promise<void> {
     const agentId = String(this.runtime.agentId);

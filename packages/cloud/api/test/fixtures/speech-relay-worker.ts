@@ -17,10 +17,34 @@ export class TestSpeechRelayCoordinator extends SpeechRelayCoordinator {
   override async fetch(request: Request): Promise<Response> {
     const path = new URL(request.url).pathname;
     const stats = ((globalThis as any).__speechStats ??= {});
+    if (path === "/test-bootstrap-state") {
+      const storage = this.fixtureState.storage;
+      const record = await storage.get<{ phase: string; expiresAt: number }>(
+        "session",
+      );
+      return Response.json({
+        phase: record?.phase ?? null,
+        expiresAt: record?.expiresAt ?? null,
+        alarmAt: await storage.getAlarm(),
+      });
+    }
     if (path === "/test-ledger")
       return Response.json(
         (await this.fixtureState.storage.get("session")) ?? null,
       );
+    if (path === "/test-expire-preparation") {
+      // Advance only the persisted expiry fact; the production mint transition
+      // must still reject it before any provider or admission work.
+      const record =
+        await this.fixtureState.storage.get<Record<string, unknown>>("session");
+      if (record?.phase !== "prepared")
+        return new Response(null, { status: 409 });
+      await this.fixtureState.storage.put("session", {
+        ...record,
+        expiresAt: Date.now() - 1,
+      });
+      return Response.json({ expired: true });
+    }
     if (
       path === "/test-hold-import" ||
       path === "/test-release-import" ||

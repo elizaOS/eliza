@@ -1,4 +1,5 @@
-import { findCheckoutSessionForOrder } from "@/api-app/checkout-reconciliation";
+import { getCloudDeployment } from "@elizaos/cloud-shared/lib/deployment/cloud-deployment";
+import { findCheckoutSessionForOrder } from "../../src/checkout-reconciliation";
 /**
  * POST /api/stripe/create-checkout-session
  *
@@ -144,19 +145,7 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
     if (!/^[a-z]{3}$/.test(stripeCurrency)) {
       return c.json({ error: "Payment currency is misconfigured" }, 503);
     }
-    const allowedOrigins = [
-      c.env.NEXT_PUBLIC_APP_URL,
-      "http://localhost:3000",
-      "http://localhost:3001",
-      "http://localhost:4455",
-      "https://elizaos.ai",
-      "https://www.elizaos.ai",
-      "https://os.eliza.app",
-      // Transitional legacy storefront origin.
-      "https://os.elizacloud.ai",
-      "https://eliza.ai",
-      "https://www.eliza.ai",
-    ].filter(Boolean) as string[];
+    const allowedOrigins = getCloudDeployment().checkoutReturnOrigins;
     const clientRequestKey = c.req.header("idempotency-key")?.trim();
     if (!hardwareSku && !clientRequestKey) {
       return c.json(

@@ -44,8 +44,6 @@ export type DeletionPhase =
   | "undone"
   | "deleted"
   | "conflict"
-  | "permission-required"
-  | "owner-changed"
   | "unknown";
 
 export type DeletionWindowState = "open" | "expired" | "clock-changed";

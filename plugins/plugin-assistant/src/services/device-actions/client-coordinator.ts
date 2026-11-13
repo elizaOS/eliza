@@ -21,6 +21,7 @@
  * journal store, executors and recovery readers, and a small profile with the
  * owner-facing product name, record copy and view admission policy.
  */
+import { NOTES_LIST_FILTER_CAPABILITY } from "@elizaos/contracts";
 import {
   browserDestinationMatches,
   directBrowserDestination,
@@ -639,6 +640,14 @@ export function validateReviewableDeviceOperation(
 // ── Screen binding ──────────────────────────────────────────────────────────
 
 export const CAMERA_CONTEXT_NOTICE = "Open Camera to take the requested photo.";
+/**
+ * Thrown by a device executor that refused before it started any effect, with
+ * a reason the owner can read. The attempt closes as failed with that reason.
+ * Any other executor failure stays an unknown outcome.
+ */
+export class DeviceActionNotStarted extends Error {
+  override readonly name = "DeviceActionNotStarted";
+}
 /** A pending proposal that does not fit the current screen. Its message is shown to the owner. */
 export class ContextNotice extends Error {
   override readonly name = "ContextNotice";
@@ -856,9 +865,11 @@ export function assertProposalContext<C extends DeviceContextEnvelope>(
     !notesOrganizeContextAllowed(context, operation)
   )
     throw new ContextNotice(
-      operation.type === "notes_record"
-        ? "Open Notes to record a voice note."
-        : "Open Home or Notes to review this Notes action.",
+      operation.type === "notes_list_filter"
+        ? "Open the Notes list to filter it."
+        : operation.type === "notes_record"
+          ? "Open Notes to record a voice note."
+          : "Open Home or Notes to review this Notes action.",
     );
   if (isFilesOperation(operation) && !filesContextAllowed(operation, context))
     throw new ContextNotice(
@@ -1362,7 +1373,11 @@ export class DeviceActionCoordinator<
       throw Error("Files access was not negotiated with this agent");
     if (
       isNotesOrganizeOperation(op) &&
-      !this.capability(NOTES_ORGANIZE_CAPABILITY)
+      !this.capability(
+        op.type === "notes_list_filter"
+          ? NOTES_LIST_FILTER_CAPABILITY
+          : NOTES_ORGANIZE_CAPABILITY,
+      )
     )
       throw Error("Notes folders were not negotiated with this agent");
     if (
@@ -2300,14 +2315,16 @@ export class DeviceActionCoordinator<
         attemptId: claimed.attemptId,
       });
       let result: ExecutionResult;
+      let notDispatched = false;
       try {
         signal.throwIfAborted();
-        if (p.expiresAt <= Date.now()) throw new Error("Expired action");
         const bindingHash = await this.bindingHash(
           this.session.sessionId,
           p,
           operationId,
         );
+        if (p.expiresAt <= Date.now())
+          throw new DeviceActionNotStarted("This action expired.");
         execution.markDispatched(reserved.entry);
         const journalIdentity = { scope: this.scope, proposalId: p.id };
         if (isForegroundReviewOperation(p.operation)) {
@@ -2343,14 +2360,23 @@ export class DeviceActionCoordinator<
             journalIdentity,
             p.calendarAgendaSource,
           );
-      } catch {
+      } catch (error) {
         // `markDispatched` runs before any port call, so an attempt that never
-        // reached it had no effect; one that did stays uncertain.
-        result = execution.dispatched
-          ? { status: "unknown", summary: UNKNOWN_SUMMARY }
-          : { status: "failed", summary: NOT_DISPATCHED_SUMMARY };
+        // reached it had no effect, and an executor that throws
+        // DeviceActionNotStarted refused before its effect. Any other failure
+        // after dispatch stays uncertain.
+        const refused = error instanceof DeviceActionNotStarted;
+        notDispatched = refused || !execution.dispatched;
+        result = notDispatched
+          ? {
+              status: "failed",
+              summary:
+                refused && error.message
+                  ? `${NOT_DISPATCHED_SUMMARY} ${error.message}`
+                  : NOT_DISPATCHED_SUMMARY,
+            }
+          : { status: "unknown", summary: UNKNOWN_SUMMARY };
       }
-      const notDispatched = !execution.dispatched;
       const typed: TypedResults = notDispatched
         ? {}
         : await this.typedResults(p, result, operationId, context);
@@ -2359,7 +2385,13 @@ export class DeviceActionCoordinator<
         proposalId,
         status: result.status,
         summary: result.summary,
-        result: { operationId, ...definedResults(typed) },
+        result: {
+          operationId,
+          ...definedResults(typed),
+          ...(result.status === "failed"
+            ? { dispatch: notDispatched ? "not_started" : "attempted" }
+            : {}),
+        },
       });
       if (execution.dispatched) execution.settle(reserved.entry);
       // A completed device effect is journaled even if the UI epoch was cancelled.
@@ -3009,7 +3041,7 @@ export class DeviceActionCoordinator<
         ...identity,
         status: "failed",
         summary: NOT_DISPATCHED_SUMMARY,
-        result: { operationId: entry.operationId },
+        result: { operationId: entry.operationId, dispatch: "not_started" },
       });
     } else {
       if (entry.attemptId !== p.attemptId) return entry;
@@ -3030,6 +3062,7 @@ export class DeviceActionCoordinator<
         result: {
           operationId: entry.operationId,
           ...(smsResult ? { smsResult } : {}),
+          ...(status === "failed" ? { dispatch: "attempted" } : {}),
         },
       });
     }
@@ -3665,13 +3698,25 @@ const UNKNOWN_SUMMARY =
   "Action outcome needs review. It will not be repeated automatically.";
 const NOT_DISPATCHED_SUMMARY = "Not started. Nothing was sent.";
 const NOT_DISPATCHED_CODE = "DEVICE_NOT_DISPATCHED";
-/** A journal entry this device finished before dispatch: failed, with no typed result. */
+/** A journal entry this device finished with no effect: failed, with no typed result. */
 function notDispatchedEntry(entry: DeviceJournalEntry): boolean {
+  const result = entry.result;
+  if (
+    entry.phase !== "terminal" ||
+    entry.status !== "failed" ||
+    result?.operationId !== entry.operationId
+  )
+    return false;
+  if (result.dispatch === "not_started")
+    return Object.keys(result).every(
+      (key) => key === "operationId" || key === "dispatch",
+    );
+  // Old coordinator records used one fixed no-call summary. New failures
+  // always carry a marker; executor display copy cannot acquire this authority.
   return (
-    entry.phase === "terminal" &&
-    entry.status === "failed" &&
+    result.dispatch === undefined &&
     entry.summary === NOT_DISPATCHED_SUMMARY &&
-    Object.keys(entry.result ?? {}).every((key) => key === "operationId")
+    Object.keys(result).every((key) => key === "operationId")
   );
 }
 function receiptOutcome(

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-agent",
-  "version": "2.0.4",
+  "version": "2.0.6",
   "description": "Starts, stops, and monitors the embedded Eliza agent runtime.",
   "keywords": [
     "agent-runtime",
@@ -39,8 +39,8 @@
     "directory": "plugins/plugin-native-agent"
   },
   "scripts": {
-    "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-agent -- bun run build:unlocked",
-    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
+    "build": "bun ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-agent -- bun run build:unlocked",
+    "clean": "bun ../../packages/scripts/rm-path-recursive.ts dist",
     "test": "vitest run",
     "prepublishOnly": "bun run build",
     "watch": "tsc6 --watch",
@@ -50,7 +50,7 @@
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "test:native-host": "node scripts/test-native-host.mjs && node --test test/provider-admission/provider-admission.node.mjs test/connection/connection.node.mjs"
+    "test:native-host": "node scripts/test-native-host.mjs && bun test --timeout=120000 ./test/provider-admission/provider-admission.node.mjs ./test/connection/connection.node.mjs"
   },
   "dependencies": {
     "@elizaos/capacitor-secure-store": "workspace:*"

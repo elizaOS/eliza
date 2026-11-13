@@ -14,6 +14,11 @@ import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  fileSourceResolver,
+  newIdGenerator,
+  parse,
+} from "@informalsystems/quint";
 import { z } from "zod";
 import { parseQuintShard, selectQuintShard } from "./lib/quint-shards.ts";
 import { testOutputPath } from "./lib/test-output.ts";
@@ -294,6 +299,39 @@ export function loadQuintModels(directory: string): Model[] {
   }
   if (models.length === 0) throw new Error("No Quint specifications found");
   return models;
+}
+
+/** Select only run declarations from the same resolved module table as quint test. */
+export function quintTestMatch(file: string, main: string): string {
+  const source = readFileSync(file, "utf8");
+  const lookup = fileSourceResolver().lookupPath(
+    path.dirname(file),
+    path.basename(file),
+  );
+  const parsed = parse(newIdGenerator(), file, lookup, source);
+  if (parsed.errors.length) {
+    throw new Error(
+      `Cannot select Quint scenarios in ${file}: ${parsed.errors.map((error) => error.message).join("; ")}`,
+    );
+  }
+  const definitions = parsed.resolver.collector.definitionsByModule.get(main);
+  if (!definitions)
+    throw new Error(`Quint module ${main} not found in ${file}`);
+  const names = [
+    ...new Set(
+      [...definitions.values()]
+        .flat()
+        .filter(
+          (definition) =>
+            definition.kind === "def" && definition.qualifier === "run",
+        )
+        .map((definition) => definition.name),
+    ),
+  ].sort();
+  const escaped = names.map((name) =>
+    name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+  );
+  return escaped.length ? `^(?:${escaped.join("|")})$` : "(?!)";
 }
 
 export function selectQuintModels(
@@ -620,7 +658,16 @@ export async function main(
         const endpoint = simulate ? undefined : await availableEndpoint();
         const commands = [
           ["typecheck", path.join(directory, model.file)],
-          ["test", ...common, "--backend", "typescript", "--seed", "20261107"],
+          [
+            "test",
+            ...common,
+            "--backend",
+            "typescript",
+            "--seed",
+            "20261107",
+            "--match",
+            quintTestMatch(path.join(directory, model.file), item.main),
+          ],
           [
             simulate ? "run" : "verify",
             ...common,

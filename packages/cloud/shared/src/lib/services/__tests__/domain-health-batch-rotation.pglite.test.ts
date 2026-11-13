@@ -25,6 +25,7 @@ const ORGANIZATION_ID = "00000000-0000-4000-8000-000000009001";
 let closeDatabaseConnectionsForTests: typeof import("../../../db/client").closeDatabaseConnectionsForTests;
 let dbWrite: typeof import("../../../db/client").dbWrite;
 let listCloudflareNeedingHealthCheck: typeof import("../managed-domains").listCloudflareNeedingHealthCheck;
+let syncStatus: typeof import("../managed-domains").syncStatus;
 
 function idFor(index: number): string {
   return `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`;
@@ -32,7 +33,7 @@ function idFor(index: number): string {
 
 beforeAll(async () => {
   ({ closeDatabaseConnectionsForTests, dbWrite } = await import("../../../db/client"));
-  ({ listCloudflareNeedingHealthCheck } = await import("../managed-domains"));
+  ({ listCloudflareNeedingHealthCheck, syncStatus } = await import("../managed-domains"));
 
   await dbWrite.execute(
     sql.raw(`
@@ -111,14 +112,14 @@ beforeAll(async () => {
       VALUES ${neverCheckedValues}
     `),
   );
-});
+}, 60_000);
 
 afterAll(async () => {
   await closeDatabaseConnectionsForTests();
 });
 
 describe("domain health check batch selection", () => {
-  test("probes never-checked and longest-waiting domains first", async () => {
+  test("checks oldest eligible domains and rotates persisted outcomes", async () => {
     const batch = await listCloudflareNeedingHealthCheck(BATCH);
 
     expect(batch.length).toBe(BATCH);
@@ -131,5 +132,37 @@ describe("domain health check batch selection", () => {
       `checked-${CHECKED_ROWS - 2}.example`,
       `checked-${CHECKED_ROWS - 3}.example`,
     ]);
+
+    for (const [index, row] of batch.entries()) {
+      const live = index === 0;
+      const saved = await syncStatus({
+        domainId: row.id,
+        isLive: live,
+        healthCheckError: live ? null : "health probe returned 503",
+      });
+      expect(saved.isLive).toBe(live);
+      expect(saved.healthCheckError).toBe(live ? null : "health probe returned 503");
+      expect(saved.lastHealthCheck).not.toBeNull();
+      if (row.lastHealthCheck && saved.lastHealthCheck) {
+        expect(saved.lastHealthCheck.getTime()).toBeGreaterThan(row.lastHealthCheck.getTime());
+      }
+    }
+    const next = await listCloudflareNeedingHealthCheck(BATCH);
+    expect(next.map((row) => row.domain)).toEqual(
+      Array.from({ length: BATCH }, (_, index) => `checked-${CHECKED_ROWS - 4 - index}.example`),
+    );
+    const backlog = await listCloudflareNeedingHealthCheck(CHECKED_ROWS + NEVER_CHECKED_ROWS);
+    expect(backlog.map((row) => row.id)).not.toContain(batch[0]?.id);
+    expect(
+      backlog
+        .slice(-4)
+        .map((row) => row.id)
+        .sort(),
+    ).toEqual(
+      batch
+        .slice(1)
+        .map((row) => row.id)
+        .sort(),
+    );
   });
 });

@@ -6,8 +6,8 @@ Workflow YAML owns triggers and permissions; package scripts own product checks.
 PR admission includes mock-backed payment replay Playwright proof. Device
 qualification is available through `workflow_dispatch` or `workflow_call` from
 authorized callers. Android packaging runs on demand through `android-build.yml`.
-Develop validation retains affected integration and browser lanes. The shared
-selector compares against the last successfully validated ancestor and follows
+Full validation runs on pushes to `staging` and `main`, the promotion steps, and
+retains affected integration and browser lanes. The shared selector compares against the last successfully validated ancestor and follows
 reverse workspace dependencies; shared tooling, unknown paths,
 and unavailable history require full validation. Unit-test fan-out and platform,
 RISC-V, and live smoke workflows are retired. Cloud browser/database jobs run in
@@ -15,16 +15,19 @@ parallel with static checks. Manual certification and protected release workflow
 remain available for target-specific qualification.
 Live deployment requires the protected environment gates.
 
+The `develop` to `staging` promotion pull request is opened by hand and merged
+with a merge commit whose tree is identical to the promoted `develop` head.
+Staging effects are admitted on the green Develop Full run for the `staging`
+head plus that merged pull request; a direct push, fast-forward, or squash to
+`staging` fails reconciliation and deploys nothing. The agent image build on
+`staging` publishes the moving `:staging` tag, which is the default staging
+sandbox image.
+
 Apps deployment is paused because the feature is unused. The Apps worker workflow
 is disabled in GitHub Actions and is absent from the staging and main effect
 registries. Both API environments set `APPS_DEPLOY_ENABLED=0`, so new app container
 deploy requests return `503` without creating a job. Resume these controls together
 only after the Apps service is approved and qualified.
-
-`staging-launch-gate.yml` is the manual exact-SHA staging certification. It
-runs front door, first turn, reload, messaging, and routing against the staging
-head that Pages and the API Worker both serve, and uploads privacy-safe lane
-receipts plus one composed receipt naming the owner of the first failed lane.
 
 `deploy-gateway-webhook.yml` deploys these fixed targets:
 
@@ -43,5 +46,5 @@ Validate workflow syntax and executable references from the repository root:
 
 ```bash
 actionlint -config-file .github/actionlint.yaml
-node packages/scripts/audit-scripts.ts
+bun packages/scripts/audit-scripts.ts
 ```
