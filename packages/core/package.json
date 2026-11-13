@@ -150,15 +150,14 @@
 		"typescript": "^6.0.3",
 		"tsx": "^4.21.0",
 		"vitest": "^5.1.0",
-		"dotenv": "^17.2.3",
-		"@types/markdown-it": "^14.1.2"
+		"dotenv": "^17.2.3"
 	},
 	"dependencies": {
 		"zod": "^4.6.5",
 		"adze": "^2.2.5",
 		"json5": "^2.2.3",
 		"file-type": "^22.0.0",
-		"markdown-it": "^14.3.3",
+		"markdown-it": "^15.0.3",
 		"yaml": "^2.9.1"
 	},
 	"publishConfig": {
