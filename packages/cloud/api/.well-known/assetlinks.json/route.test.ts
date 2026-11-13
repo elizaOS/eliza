@@ -1,6 +1,18 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
+import { mobileAppAuthClientsRepository } from "@elizaos/cloud-shared/db/repositories/mobile-app-auth-clients";
 import { parseAndroidAssetLinksConfig } from "@elizaos/cloud-shared/lib/auth/android-asset-links";
 import route from "./route";
+
+let spy: ReturnType<typeof spyOn>;
+beforeAll(() => {
+  spy = spyOn(
+    mobileAppAuthClientsRepository,
+    "listActiveAndroidAssetLinks",
+  ).mockResolvedValue([]);
+});
+afterAll(() => {
+  spy?.mockRestore();
+});
 
 const RELEASE = Array.from({ length: 32 }, (_, index) =>
   index.toString(16).padStart(2, "0").toUpperCase(),
