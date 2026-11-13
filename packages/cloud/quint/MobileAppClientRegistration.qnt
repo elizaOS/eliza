@@ -23,22 +23,24 @@ module MobileAppClientRegistration {
     policy' = p, entrypoint' = path, admitted' = false
   }
   action resolve = all { policy' = policy, entrypoint' = entrypoint, admitted' = permits(policy, entrypoint) }
+  // One observed authority fact changes per step. All combinations remain reachable,
+  // with a bounded branching factor for complete graph enumeration.
   action step = any {
     resolve,
-    {
-      nondet databaseAvailable = Bool.oneOf(); nondet clientPresent = Bool.oneOf();
-      nondet clientEnabled = Bool.oneOf(); nondet appActive = Bool.oneOf();
-      nondet appApproved = Bool.oneOf(); nondet enabledExactly = Bool.oneOf();
-      nondet environmentValid = Bool.oneOf(); nondet callbackValid = Bool.oneOf();
-      nondet originAllowed = Bool.oneOf(); nondet ttlValid = Bool.oneOf();
-      nondet grantMatches = Bool.oneOf(); nondet path = allowedPaths.oneOf();
-      configure({ databaseAvailable: databaseAvailable, clientPresent: clientPresent,
-        clientEnabled: clientEnabled, appActive: appActive, appApproved: appApproved,
-        enabledExactly: enabledExactly, environmentValid: environmentValid,
-        callbackValid: callbackValid, originAllowed: originAllowed, ttlValid: ttlValid,
-        grantMatches: grantMatches }, path)
-    }
+    configure(policy.with("databaseAvailable", not(policy.databaseAvailable)), entrypoint),
+    configure(policy.with("clientPresent", not(policy.clientPresent)), entrypoint),
+    configure(policy.with("clientEnabled", not(policy.clientEnabled)), entrypoint),
+    configure(policy.with("appActive", not(policy.appActive)), entrypoint),
+    configure(policy.with("appApproved", not(policy.appApproved)), entrypoint),
+    configure(policy.with("enabledExactly", not(policy.enabledExactly)), entrypoint),
+    configure(policy.with("environmentValid", not(policy.environmentValid)), entrypoint),
+    configure(policy.with("callbackValid", not(policy.callbackValid)), entrypoint),
+    configure(policy.with("originAllowed", not(policy.originAllowed)), entrypoint),
+    configure(policy.with("ttlValid", not(policy.ttlValid)), entrypoint),
+    configure(policy.with("grantMatches", not(policy.grantMatches)), entrypoint),
+    { nondet path = allowedPaths.oneOf(); configure(policy, path) }
   }
+
   val safety = admitted implies permits(policy, entrypoint)
   run validDbClientAuthorizedTest = init.then(resolve).expect(admitted)
   run disabledDbClientRefusedTest = init.then(configure(validPolicy.with("clientEnabled", false), "registration")).then(resolve).expect(not(admitted))
