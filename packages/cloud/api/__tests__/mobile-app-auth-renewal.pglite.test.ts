@@ -451,6 +451,11 @@ beforeEach(async () => {
     "INSERT INTO apps(id,is_active,is_approved) VALUES($1,true,true)",
     [APP],
   );
+  await pg.query(
+    `INSERT INTO mobile_app_auth_clients(client_id, app_id, redirect_uri, enabled, created_at, updated_at)
+     VALUES($1, $2, $3, true, now(), now())`,
+    [CLIENT.clientId, APP, CLIENT.redirectUri],
+  );
 });
 
 afterAll(async () => {
@@ -686,17 +691,34 @@ test("a disabled, removed or re-registered client is refused with 401", async ()
     expect(answer.body.code).toBe("authentication_required");
   };
 
-  registry = [{ ...CLIENT, enabled: false }];
+  await pg.query(
+    "UPDATE mobile_app_auth_clients SET enabled=false WHERE client_id=$1",
+    [CLIENT.clientId],
+  );
   await refused();
-  registry = [];
+  await pg.query("DELETE FROM mobile_app_auth_clients WHERE client_id=$1", [
+    CLIENT.clientId,
+  ]);
   await refused();
-  registry = [
-    { ...CLIENT, redirectUri: "https://eliza.app/other/auth/callback" },
-  ];
+  await pg.query(
+    `INSERT INTO mobile_app_auth_clients(client_id, app_id, redirect_uri, enabled, created_at, updated_at)
+     VALUES($1, $2, $3, true, now(), now())`,
+    [CLIENT.clientId, APP, "https://eliza.app/other/auth/callback"],
+  );
   await refused();
-  registry = [{ ...CLIENT, appId: "44444444-4444-4444-8444-444444444445" }];
+  await pg.query(
+    "UPDATE mobile_app_auth_clients SET app_id=$1, redirect_uri=$2 WHERE client_id=$3",
+    [
+      "44444444-4444-4444-8444-444444444445",
+      CLIENT.redirectUri,
+      CLIENT.clientId,
+    ],
+  );
   await refused();
-  registry = [CLIENT];
+  await pg.query(
+    "UPDATE mobile_app_auth_clients SET app_id=$1, redirect_uri=$2 WHERE client_id=$3",
+    [APP, CLIENT.redirectUri, CLIENT.clientId],
+  );
   await refused({ ENVIRONMENT: "staging" });
 
   await pg.query("UPDATE apps SET is_active=false WHERE id=$1", [APP]);
@@ -708,12 +730,8 @@ test("a disabled, removed or re-registered client is refused with 401", async ()
   await refused();
   await pg.query("UPDATE apps SET is_approved=true WHERE id=$1", [APP]);
 
-  // A switched-off or unreadable server configuration is an outage to retry,
-  // never a revoked key.
-  for (const overrides of [
-    { ELIZA_MOBILE_APP_AUTH_ENABLED: "false" },
-    { ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: "{not json" },
-  ]) {
+  // A switched-off server configuration is an outage to retry, never a revoked key.
+  for (const overrides of [{ ELIZA_MOBILE_APP_AUTH_ENABLED: "false" }]) {
     const answer = await renew(first.secret, pkce().binding, {
       env: overrides,
     });

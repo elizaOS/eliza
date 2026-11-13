@@ -124,14 +124,6 @@ export interface Bindings {
   CLOUD_PUBLIC_SERVICE_PRIVACY_JSON?: string;
   /** Global mobile app-auth lifecycle kill switch; only "true" enables it. */
   ELIZA_MOBILE_APP_AUTH_ENABLED?: string;
-  /** Server-owned registrations for independently branded native clients. */
-  ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON?: string;
-  /**
-   * Digital Asset Links statements served at `/.well-known/assetlinks.json`:
-   * a JSON array of `{ package_name, sha256_cert_fingerprints[], relations? }`.
-   * Malformed config is served as `[]`.
-   */
-  ELIZA_ANDROID_ASSET_LINKS_JSON?: string;
 
   // ---- Database (Railway Postgres via the Hyperdrive binding in cloud, PGlite locally) ----
   DATABASE_URL: string;

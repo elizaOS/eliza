@@ -1,13 +1,12 @@
 // Formal state model for database-backed mobile App Auth client registration.
 // Covers database client resolution, active app authority, enabled status,
-// redirect URI matching, and fail-closed legacy fallback behavior.
+// redirect URI matching, and fail-closed behavior (no environment fallback).
 module MobileAppClientRegistration {
   var clientInDb: bool
   var clientActive: bool
   var appActive: bool
   var appApproved: bool
   var redirectMatches: bool
-  var envFallbackPresent: bool
   var authorized: bool
 
   action init = all {
@@ -16,7 +15,6 @@ module MobileAppClientRegistration {
     appActive' = true,
     appApproved' = true,
     redirectMatches' = true,
-    envFallbackPresent' = false,
     authorized' = false
   }
 
@@ -25,31 +23,28 @@ module MobileAppClientRegistration {
     activeClient: bool,
     activeApp: bool,
     approvedApp: bool,
-    redirect: bool,
-    fallback: bool
+    redirect: bool
   ): bool = all {
     clientInDb' = inDb,
     clientActive' = activeClient,
     appActive' = activeApp,
     appApproved' = approvedApp,
     redirectMatches' = redirect,
-    envFallbackPresent' = fallback,
     authorized' = false
   }
 
-  // Database is primary authority; fallback is only reached when client is absent from database.
-  // A disabled or unapproved client in the database fails closed and never defers to fallback.
+  // Database is the sole authority; clients absent from the database cannot be authorized.
+  // Disabled clients or unapproved apps in the database fail closed.
   action resolve = all {
     clientInDb' = clientInDb,
     clientActive' = clientActive,
     appActive' = appActive,
     appApproved' = appApproved,
     redirectMatches' = redirectMatches,
-    envFallbackPresent' = envFallbackPresent,
     authorized' = if (clientInDb) {
       clientActive and appActive and appApproved and redirectMatches
     } else {
-      envFallbackPresent and appActive and appApproved and redirectMatches
+      false
     }
   }
 
@@ -61,45 +56,38 @@ module MobileAppClientRegistration {
       nondet activeApp = Bool.oneOf();
       nondet approvedApp = Bool.oneOf();
       nondet redirect = Bool.oneOf();
-      nondet fallback = Bool.oneOf();
-      configure(inDb, activeClient, activeApp, approvedApp, redirect, fallback)
+      configure(inDb, activeClient, activeApp, approvedApp, redirect)
     }
   }
 
-  // Safety invariant: authorization requires active and approved app, matching redirect, and valid client
+  // Safety invariant: authorization strictly requires database presence, active client, active & approved app, and matching redirect
   val safety = authorized implies (
-    appActive and appApproved and redirectMatches and
-    (if (clientInDb) clientActive else envFallbackPresent)
+    clientInDb and clientActive and appActive and appApproved and redirectMatches
   )
 
   // Test cases proving state transitions
   run validDbClientAuthorizedTest = init
-    .then(configure(true, true, true, true, true, false))
+    .then(configure(true, true, true, true, true))
     .then(resolve)
     .expect(authorized)
 
   run disabledDbClientRefusedTest = init
-    .then(configure(true, false, true, true, true, true))
+    .then(configure(true, false, true, true, true))
     .then(resolve)
     .expect(not(authorized))
 
   run unapprovedAppDbClientRefusedTest = init
-    .then(configure(true, true, true, false, true, false))
+    .then(configure(true, true, true, false, true))
     .then(resolve)
     .expect(not(authorized))
 
   run mismatchedRedirectRefusedTest = init
-    .then(configure(true, true, true, true, false, false))
+    .then(configure(true, true, true, true, false))
     .then(resolve)
     .expect(not(authorized))
 
-  run envFallbackAuthorizedWhenDbMissingTest = init
-    .then(configure(false, true, true, true, true, true))
-    .then(resolve)
-    .expect(authorized)
-
-  run disabledDbClientBlocksEnvFallbackTest = init
-    .then(configure(true, false, true, true, true, true))
+  run absentDbClientRefusedTest = init
+    .then(configure(false, true, true, true, true))
     .then(resolve)
     .expect(not(authorized))
 }
