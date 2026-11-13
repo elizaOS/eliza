@@ -30,11 +30,12 @@ BEGIN
   WHERE "app_url" = 'https://eliza.app'
      OR "allowed_origins" @> '["https://eliza.app/auth/callback"]'::jsonb;
 
-  IF matching_count = 1 THEN
+  IF matching_count >= 1 THEN
     SELECT "id" INTO target_app_id
     FROM "apps"
     WHERE "app_url" = 'https://eliza.app'
        OR "allowed_origins" @> '["https://eliza.app/auth/callback"]'::jsonb
+    ORDER BY "is_approved" DESC, "is_active" DESC, "created_at" ASC
     LIMIT 1;
 
     INSERT INTO "mobile_app_auth_clients" (

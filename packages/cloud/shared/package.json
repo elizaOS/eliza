@@ -178,6 +178,7 @@
     "./lib/auth/authentication-state": "./src/lib/auth/authentication-state.ts",
     "./lib/auth/jwt-internal": "./src/lib/auth/jwt-internal.ts",
     "./lib/auth/mobile-api-key": "./src/lib/auth/mobile-api-key.ts",
+    "./lib/auth/native-callback-fallback": "./src/lib/auth/native-callback-fallback.ts",
     "./lib/auth/playwright-test-session": "./src/lib/auth/playwright-test-session.ts",
     "./lib/auth/service-key": "./src/lib/auth/service-key.ts",
     "./lib/auth/service-key-hono-worker": "./src/lib/auth/service-key-hono-worker.ts",

@@ -102,8 +102,6 @@ export interface Bindings {
    * while it is absent or false, subject to the primary database control.
    */
   AUTO_TOP_UP_DURABLE_ENABLED?: string;
-  /** Registered active and approved `apps.id` for the native Cloud client. */
-  ELIZA_MOBILE_APP_AUTH_APP_ID?: string;
   /**
    * Cloud deployment identity (see lib/deployment/cloud-deployment.ts). Unset
    * or "eliza" is the eliza.app deployment. Any other id is a product Cloud

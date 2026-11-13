@@ -35,7 +35,6 @@ import type { ApiKey, NewApiKey } from "../../db/schemas/api-keys";
 import type { MobileAppAuthEnvironment } from "../../db/schemas/mobile-app-auth-grants";
 import { logger } from "../utils/logger";
 import { apiKeysService, isMobileApiKeySecret } from "./api-keys";
-import { selectRegisteredMobileClient } from "./mobile-client-registry";
 import { MOBILE_CHECKOUT_RETURN_SUFFIX } from "./subscription-checkout-contract";
 
 export const MOBILE_APP_AUTH_CLIENT_ID = "ai.elizaos.app";
@@ -100,7 +99,6 @@ export interface MobileAppAuthRegistration {
 
 export interface MobileAppAuthRuntimeEnv {
   ENVIRONMENT?: unknown;
-  ELIZA_MOBILE_APP_AUTH_APP_ID?: unknown;
   ELIZA_MOBILE_APP_AUTH_ENABLED?: unknown;
 }
 
@@ -153,10 +151,10 @@ function requireEnvironment(value: unknown): MobileAppAuthEnvironment {
   return value;
 }
 
-export function resolveMobileAppAuthRegistration(
+export async function resolveMobileAppAuthRegistration(
   env: MobileAppAuthRuntimeEnv,
   clientId: string = MOBILE_APP_AUTH_CLIENT_ID,
-): MobileAppAuthRegistration {
+): Promise<MobileAppAuthRegistration> {
   const environment = requireEnvironment(env.ENVIRONMENT);
   if (env.ELIZA_MOBILE_APP_AUTH_ENABLED === "false") {
     return invalid(
@@ -170,47 +168,23 @@ export function resolveMobileAppAuthRegistration(
       `${MOBILE_APP_AUTH_ENABLED_ENV} must be exactly true or false`,
     );
   }
-  if (clientId !== MOBILE_APP_AUTH_CLIENT_ID) {
-    const selected = selectRegisteredMobileClient(
-      env.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON,
-      clientId,
-      {
-        clientId: MOBILE_APP_AUTH_CLIENT_ID,
-        appId: env.ELIZA_MOBILE_APP_AUTH_APP_ID,
-        redirectUri: MOBILE_APP_AUTH_REDIRECT_URI,
-      },
-    );
-    if (!selected.ok)
-      return invalid(
-        selected.code,
-        selected.code === "invalid_client"
-          ? "Unknown or disabled mobile App Auth client"
-          : "Invalid server mobile client registry",
-      );
-    const { credentialTtlSeconds, ...registration } = selected.registration;
-    return {
-      ...registration,
-      environment,
-      scopes: MOBILE_APP_AUTH_SCOPES,
-      credentialTtlSeconds: credentialTtlSeconds ?? MOBILE_APP_AUTH_CREDENTIAL_TTL_SECONDS,
-    };
-  }
+  const dbClient = await mobileAppAuthClientsRepository.findRegisteredMobileClient(clientId);
   if (
-    typeof env.ELIZA_MOBILE_APP_AUTH_APP_ID !== "string" ||
-    !UUID_RE.test(env.ELIZA_MOBILE_APP_AUTH_APP_ID)
+    !dbClient ||
+    !dbClient.client.enabled ||
+    !dbClient.app.is_active ||
+    !dbClient.app.is_approved
   ) {
-    return invalid(
-      "server_configuration_error",
-      `${MOBILE_APP_AUTH_APP_ID_ENV} must be a registered app UUID`,
-    );
+    return invalid("invalid_client", "Unknown or disabled mobile App Auth client");
   }
   return {
-    appId: env.ELIZA_MOBILE_APP_AUTH_APP_ID,
-    clientId: MOBILE_APP_AUTH_CLIENT_ID,
+    appId: dbClient.app.id,
+    clientId: dbClient.client.client_id,
     environment,
-    redirectUri: MOBILE_APP_AUTH_REDIRECT_URI,
+    redirectUri: dbClient.client.redirect_uri,
     scopes: MOBILE_APP_AUTH_SCOPES,
-    credentialTtlSeconds: MOBILE_APP_AUTH_CREDENTIAL_TTL_SECONDS,
+    credentialTtlSeconds:
+      dbClient.client.credential_ttl_seconds ?? MOBILE_APP_AUTH_CREDENTIAL_TTL_SECONDS,
   };
 }
 

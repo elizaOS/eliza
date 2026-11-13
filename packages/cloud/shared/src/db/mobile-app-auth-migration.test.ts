@@ -61,7 +61,7 @@ beforeAll(async () => {
   await dbWrite.execute("CREATE TABLE organizations (id uuid PRIMARY KEY)");
   await dbWrite.execute("CREATE TABLE users (id uuid PRIMARY KEY)");
   await dbWrite.execute(
-    "CREATE TABLE apps (id uuid PRIMARY KEY, app_url text, allowed_origins jsonb DEFAULT '[]'::jsonb)",
+    "CREATE TABLE apps (id uuid PRIMARY KEY, app_url text, allowed_origins jsonb DEFAULT '[]'::jsonb, is_approved boolean DEFAULT true, is_active boolean DEFAULT true, created_at timestamp with time zone DEFAULT now())",
   );
   await dbWrite.execute("CREATE TABLE api_keys (id uuid PRIMARY KEY)");
   await applyMigration(migrationUrl);
@@ -264,5 +264,27 @@ describe("0574 mobile App Auth client registration migration", () => {
       `SELECT client_id FROM mobile_app_auth_clients WHERE client_id = 'ai.test.cascadetest'`,
     );
     expect(after.rows).toHaveLength(0);
+  });
+
+  test("seeds client registration deterministically when multiple matching apps exist", async () => {
+    // Clean existing seed if present
+    await dbWrite.execute("DELETE FROM mobile_app_auth_clients WHERE client_id = 'ai.elizaos.app'");
+    // Insert a staging app matching the same URL/origins but created later
+    const stagingAppId = "66666666-6666-4666-8666-666666666666";
+    await dbWrite.execute(
+      `INSERT INTO apps (id, app_url, is_approved, is_active, created_at)
+       VALUES ('${stagingAppId}', 'https://eliza.app', true, true, now() + interval '1 hour')
+       ON CONFLICT (id) DO NOTHING`,
+    );
+
+    // Re-apply migration statement for seeding
+    await applyMigration(clientRegistrationMigrationUrl);
+
+    const seeded = await dbWrite.execute(
+      "SELECT client_id, app_id FROM mobile_app_auth_clients WHERE client_id = 'ai.elizaos.app'",
+    );
+    expect(seeded.rows).toHaveLength(1);
+    // Should choose APP_ID because it has an earlier created_at
+    expect(seeded.rows[0]?.app_id).toBe(APP_ID);
   });
 });
