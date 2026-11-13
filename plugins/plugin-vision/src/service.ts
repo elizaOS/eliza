@@ -530,7 +530,7 @@ export class VisionService extends Service {
       // mobile platform env ElizaAgentService sets; a no-op everywhere else.
       // Static imports (not dynamic) so the source is in the mobile agent
       // bundle — a code-split chunk can't be loaded there (no filesystem).
-      if (process.env.ELIZA_MOBILE_PLATFORM === "android") {
+      if (process.env.ELIZA_PLATFORM === "android") {
         registerMobileCameraSource(new FileBridgeCameraSource());
       }
 

@@ -343,7 +343,6 @@ const IOS_FULL_BUN_ARGV = [
 ];
 const IOS_FULL_BUN_ENV: Record<string, string> = {
   ELIZA_PLATFORM: "ios",
-  ELIZA_MOBILE_PLATFORM: "ios",
   ELIZA_RUNTIME_MODE: "local-safe",
   ELIZA_IOS_LOCAL_BACKEND: "1",
   ELIZA_IOS_BUN_STARTUP_TIMEOUT_MS: "300000",

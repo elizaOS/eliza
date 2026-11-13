@@ -692,13 +692,7 @@ const DEFAULT_MOBILE_CONTEXT_CEILING = 8192;
  */
 function isMobileLocalInferenceRuntime(): boolean {
 	if (typeof process === "undefined" || !process.env) return false;
-	const platform = (
-		process.env.ELIZA_MOBILE_PLATFORM ||
-		resolvePlatform() ||
-		""
-	)
-		.trim()
-		.toLowerCase();
+	const platform = resolvePlatform();
 	return platform === "ios" || platform === "android";
 }
 

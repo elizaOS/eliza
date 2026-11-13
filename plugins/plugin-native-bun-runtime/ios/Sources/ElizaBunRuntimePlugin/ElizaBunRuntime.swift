@@ -752,7 +752,6 @@ enum IosRuntimePolicy {
         }
 
         sanitized["ELIZA_PLATFORM"] = "ios"
-        sanitized["ELIZA_MOBILE_PLATFORM"] = "ios"
 
         let resolvedMode = normalizeExecutionMode(sanitized["ELIZA_RUNTIME_MODE"]) ?? safeLocalExecutionMode
         sanitized["ELIZA_RUNTIME_MODE"] = resolvedMode == "local-yolo" ? safeLocalExecutionMode : resolvedMode
