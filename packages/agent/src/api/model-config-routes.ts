@@ -115,12 +115,7 @@ const DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com/v1";
  */
 function resolveAnthropicBaseURL(
   readSetting: (key: string) => string | undefined,
-  options: {
-    mockBaseURL?: string;
-  } = {},
 ): string {
-  const mockBaseURL = options.mockBaseURL?.trim();
-  if (mockBaseURL) return mockBaseURL;
   return (
     readSetting("ANTHROPIC_BASE_URL")?.trim() || DEFAULT_ANTHROPIC_BASE_URL
   );
@@ -731,12 +726,9 @@ export function resolveActiveChat(
     family === "ELIZAOS_CLOUD"
       ? resolveElizaCloudBaseURL(readSetting)
       : family === "ANTHROPIC"
-        ? resolveAnthropicBaseURL(readSetting, {
-            mockBaseURL: processEnv.ELIZA_MOCK_ANTHROPIC_BASE,
-          })
-        : resolveOpenAIBaseURL(
-            (key) => (key === "ELIZA_PROVIDER" ? provider : readSetting(key)),
-            { mockBaseURL: processEnv.ELIZA_MOCK_OPENAI_BASE },
+        ? resolveAnthropicBaseURL(readSetting)
+        : resolveOpenAIBaseURL((key) =>
+            key === "ELIZA_PROVIDER" ? provider : readSetting(key),
           );
   const endpoint =
     hostOf(baseURL) ??

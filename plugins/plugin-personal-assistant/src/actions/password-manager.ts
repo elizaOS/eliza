@@ -245,21 +245,16 @@ export async function runPasswordManagerHandler(
           subaction,
           itemId,
           field,
-          fixtureMode: result.fixtureMode === true,
         },
         `[${ACTION_NAME}] Copied ${field} for item ${itemId} to clipboard`,
       );
-      const fixtureSuffix = result.fixtureMode
-        ? " [fixture backend: no actual clipboard write — test/benchmark mode]"
-        : "";
       return {
-        text: `Copied ${field} for item '${itemId}' to clipboard (scheduled to clear in ${result.expiresInSeconds}s).${fixtureSuffix}`,
+        text: `Copied ${field} for item '${itemId}' to clipboard (scheduled to clear in ${result.expiresInSeconds}s).`,
         success: true,
         values: {
           success: true,
           field,
           expiresInSeconds: result.expiresInSeconds,
-          fixtureMode: result.fixtureMode === true,
         },
         data: {
           actionName: ACTION_NAME,
@@ -267,7 +262,6 @@ export async function runPasswordManagerHandler(
           itemId,
           field,
           expiresInSeconds: result.expiresInSeconds,
-          fixtureMode: result.fixtureMode === true,
         },
       };
     }
