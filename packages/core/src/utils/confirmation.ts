@@ -127,13 +127,18 @@ const UNSPACED_NEGATIVE_WORDS = [...NEGATIVE_WORDS].filter((word) =>
  * stems is a no. 안녕 ("hello") also starts with 안, so it is not a no.
  */
 const KOREAN_NEGATIVE_STEMS = ["아니", "않", "안", "못", "취소", "그만"];
+// These ordinary compound words are not refusals. Keep their noun particles with the
+// compound, without exempting other words that start with a no stem.
+const KOREAN_NONNEGATIVE_COMPOUND =
+	/^(?:그만큼(?:만|은|의)?|취소선(?:[은는이가을를도만]|으로|로)?)$/u;
 /** A verb that ends in "-지 마", "-지 말", "-지 않" or "-지 못" ("하지마"). */
 const KOREAN_NEGATED_VERB = /지[마말않못]/u;
 
 function isKoreanNegativeWord(word: string): boolean {
 	return (
 		(KOREAN_NEGATIVE_STEMS.some((stem) => word.startsWith(stem)) &&
-			!word.startsWith("안녕")) ||
+			!word.startsWith("안녕") &&
+			!KOREAN_NONNEGATIVE_COMPOUND.test(word)) ||
 		KOREAN_NEGATED_VERB.test(word)
 	);
 }
