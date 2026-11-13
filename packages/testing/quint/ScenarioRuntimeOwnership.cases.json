@@ -10,13 +10,39 @@
   ],
   "conformance": "packages/testing/quint/check-scenario-runtime-ownership.mjs",
   "bounds": {
-    "domain": "One scenario runtime with one competing acquisition, one known mock origin per LLM setting, live or deterministic model selection and success/failure cleanup.",
-    "limitations": "The model abstracts URLs and mock origins as identities; only known leased/mock endpoints are classified. Environment/fetch restoration assumes owned callbacks return, and cleanup may fail and quarantine the process. Conformance uses actual process ownership plus real loopback HTTP, not a live LLM or a complete generated-schedule refinement."
+    "domain": "One scenario runtime with one competing acquisition, one known mock origin per LLM setting, independently modeled original environment and selected provider, and success/failure cleanup.",
+    "limitations": "The model abstracts URLs and mock origins as identities; only known leased/mock endpoints are classified. The fetch-restoring assignment returns normally while other owned disposers may fail and quarantine the process. Original environment values are restored even when originally synthetic. Conformance uses actual process ownership plus real loopback HTTP, not a live LLM or a complete generated-schedule refinement."
   },
   "cases": [
     {
       "name": "live",
       "main": "ScenarioRuntimeLive",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "LiveHasNoMockEndpoint",
+        "BadLiveSelectionCannotStart",
+        "ClosedRestoresProcess",
+        "FailedCleanupQuarantinesOwner",
+        "ActiveUntilCleanup"
+      ],
+      "temporal": ["CleanupSettles"],
+      "temporalChecks": [
+        {
+          "property": "CleanupSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of cleanup completion with either a successful or failed outcome. No successful cleanup or real provider response is assumed."
+          ]
+        }
+      ],
+      "maxSteps": 30,
+      "samples": 1000
+    },
+    {
+      "name": "restored-live",
+      "main": "ScenarioRuntimeRestoredLive",
       "init": "init",
       "step": "step",
       "invariants": [

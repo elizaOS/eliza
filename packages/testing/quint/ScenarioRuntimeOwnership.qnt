@@ -2,9 +2,10 @@
 module ScenarioRuntimeOwnership {
   const Live: bool
   const ConfiguredMock: bool
+  const OriginalMock: bool
   var s: { phase: str, active: bool, envMock: bool, runtimeMock: bool,
     fetchOwned: bool, deniedSecond: bool, rejected: bool }
-  action init = s' = { phase: "idle", active: false, envMock: ConfiguredMock,
+  action init = s' = { phase: "idle", active: false, envMock: OriginalMock,
     runtimeMock: false, fetchOwned: false, deniedSecond: false, rejected: false }
   action acquire = all { s.phase == "idle", s' = {...s, phase: "prepare", active: true} }
   action prepare = all { s.phase == "prepare", s' = {...s,
@@ -19,14 +20,14 @@ module ScenarioRuntimeOwnership {
     s' = {...s, phase: "closing"} }
   action cleanup(success: bool): bool = all { s.phase == "closing", s' = {...s,
     phase: if (success) "closed" else "failed", active: not(success),
-    envMock: ConfiguredMock, fetchOwned: false} }
+    envMock: OriginalMock, fetchOwned: false} }
   action step = any { acquire, prepare, configure, secondAcquire, close,
     cleanup(true), cleanup(false), s' = s }
   val TypeOK = Set("idle", "prepare", "configure", "ready", "closing", "closed", "failed").contains(s.phase)
   val LiveHasNoMockEndpoint = Live and s.phase == "ready" implies not(s.envMock or s.runtimeMock)
   val BadLiveSelectionCannotStart = Live and ConfiguredMock implies s.phase != "ready"
   val ClosedRestoresProcess = Set("closed", "failed").contains(s.phase) implies
-    (s.envMock == ConfiguredMock and not(s.fetchOwned))
+    (s.envMock == OriginalMock and not(s.fetchOwned))
   val FailedCleanupQuarantinesOwner = s.phase == "failed" implies s.active
   val ActiveUntilCleanup = Set("prepare", "configure", "ready", "closing").contains(s.phase) implies s.active
   temporal CleanupSettles = any {cleanup(true), cleanup(false)}.weakFair(s)
@@ -36,6 +37,7 @@ module ScenarioRuntimeOwnership {
   run failedCleanupKeepsOwnership = init.then(acquire).then(close).then(cleanup(false))
     .then(secondAcquire).expect(FailedCleanupQuarantinesOwner and s.deniedSecond)
 }
-module ScenarioRuntimeLive { import ScenarioRuntimeOwnership(Live = true, ConfiguredMock = false).* }
-module ScenarioRuntimeBadLive { import ScenarioRuntimeOwnership(Live = true, ConfiguredMock = true).* }
-module ScenarioRuntimeDeterministic { import ScenarioRuntimeOwnership(Live = false, ConfiguredMock = true).* }
+module ScenarioRuntimeLive { import ScenarioRuntimeOwnership(Live = true, ConfiguredMock = false, OriginalMock = false).* }
+module ScenarioRuntimeRestoredLive { import ScenarioRuntimeOwnership(Live = true, ConfiguredMock = false, OriginalMock = true).* }
+module ScenarioRuntimeBadLive { import ScenarioRuntimeOwnership(Live = true, ConfiguredMock = true, OriginalMock = true).* }
+module ScenarioRuntimeDeterministic { import ScenarioRuntimeOwnership(Live = false, ConfiguredMock = true, OriginalMock = true).* }
