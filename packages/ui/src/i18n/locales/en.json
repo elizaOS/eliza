@@ -8487,7 +8487,7 @@
   "settings.runtime.manageRuntimesHelp": "Saved local, cloud, and remote agents.",
   "settings.runtime.manageRuntimesLabel": "My Runtimes",
   "settings.devicesRuntimes.cloudLoading": "Loading paired devices…",
-  "settings.devicesRuntimes.cloudSignedOut": "Sign in to Eliza Cloud to pair devices. Local and verified SSH runtimes remain available.",
+  "settings.devicesRuntimes.cloudSignedOut": "Sign in to Eliza Cloud to pair devices. Local runtimes remain available.",
   "settings.devicesRuntimes.empty": "No runtimes are configured yet.",
   "settings.runtime.modeGroupTitle": "Runtime",
   "settings.runtime.sandboxGroupTitle": "Sandbox build",

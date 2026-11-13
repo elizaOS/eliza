@@ -98,9 +98,6 @@ vi.mock("../../src/renderer/transports/desktop-http-transport", () => ({
 vi.mock("../../src/renderer/transports/remote-relay-transport", () => ({
   remoteRelayTransportForUrl: () => null,
 }));
-vi.mock("../../src/renderer/transports/ssh-runtime-transport", () => ({
-  sshRuntimeTransportForUrl: () => null,
-}));
 
 import "../../src/renderer/transports/configure.ts";
 

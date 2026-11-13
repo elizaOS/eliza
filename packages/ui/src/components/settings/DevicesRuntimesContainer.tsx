@@ -6,7 +6,7 @@ import type {
   RemotePairingClaimReceipt,
   RemoteSessionSummary,
 } from "@elizaos/plugin-browser/remote-control/cloud-client";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   RemoteCloudRequestError,
   RemoteControlAuthenticationRequiredError,
@@ -21,16 +21,7 @@ import {
   supportsNativeRemoteTarget,
 } from "../../platform/remote-target";
 import { subscribeRemoteControllerPairingIntents } from "../../platform/remote-target-pairing-intent";
-import { deleteRuntimeCredentialRecord } from "../../platform/runtime-credential-store";
 import { executeRuntimeManagementCommand } from "../../platform/runtime-management";
-import type {
-  SshHostInspection,
-  SshRuntimeStatus,
-} from "../../platform/ssh-runtime";
-import {
-  getSshRuntimeStatus,
-  startSshRuntime,
-} from "../../platform/ssh-runtime";
 import type {
   AgentProfile,
   AgentProfileRegistry,
@@ -46,7 +37,6 @@ import type {
   DevicePairingView,
   DeviceRuntimeTarget,
   LinuxRemoteTargetView,
-  SshConnectInput,
 } from "./DevicesRuntimesSection";
 import { DevicesRuntimesSection } from "./DevicesRuntimesSection";
 
@@ -61,46 +51,6 @@ function isCloudAuthenticationRequired(cause: unknown): boolean {
     cause instanceof RemoteControlAuthenticationRequiredError ||
     (cause instanceof RemoteCloudRequestError && cause.status === 401)
   );
-}
-async function startSshWithCredentialCleanup(
-  runtimeId: string,
-  input: SshConnectInput,
-  dependencies: {
-    start: typeof startSshRuntime;
-    deleteCredential: typeof deleteRuntimeCredentialRecord;
-  } = {
-    start: startSshRuntime,
-    deleteCredential: deleteRuntimeCredentialRecord,
-  },
-): Promise<void> {
-  try {
-    await dependencies.start({
-      runtimeId,
-      target: input.target,
-      sshPort: input.sshPort,
-      remoteApiPort: input.remoteApiPort,
-      expectedFingerprint: input.expectedFingerprint,
-      identityFile: input.identityFile,
-      credentialRef: runtimeId,
-    });
-  } catch (cause) {
-    if (input.accessToken) {
-      try {
-        await dependencies.deleteCredential(runtimeId);
-      } catch (cleanupCause) {
-        // error-policy:J2 preserve both the primary tunnel failure and the
-        // security-relevant credential cleanup failure.
-        throw new AggregateError(
-          [cause, cleanupCause],
-          "SSH connection failed and its stored credential could not be removed.",
-          { cause },
-        );
-      }
-    }
-    // error-policy:J2 the primary start failure crosses unchanged after
-    // successful cleanup.
-    throw cause;
-  }
 }
 function platformName(platform: RemoteHostSummary["platform"]): string {
   if (platform === "macos") return "Mac";
@@ -178,34 +128,10 @@ function restoredRelayProfile(
 function profileTarget(
   profile: AgentProfile,
   activeId: string | null,
-  sshStatuses: ReadonlyMap<string, SshRuntimeStatus>,
   directory: RemoteHostDirectory | null,
   sessions: ReadonlyMap<string, RemoteSessionSummary[]>,
 ): DeviceRuntimeTarget {
   const selected = profile.id === activeId;
-  if (profile.connectionMode === "ssh") {
-    const sshStatus = sshStatuses.get(profile.id);
-    const running = sshStatus?.running ?? false;
-    const blocked = sshStatus?.reconnectState === "blocked";
-    return {
-      id: profile.id,
-      label: profile.label,
-      detail: `VPS over SSH · ${profile.ssh?.target ?? "Unknown target"}`,
-      kind: "ssh",
-      status: blocked ? "error" : running ? "connected" : "offline",
-      selected,
-      activity: blocked
-        ? "Reconnect blocked"
-        : running
-          ? "Tunnel active"
-          : "Tunnel stopped",
-      error: blocked
-        ? (sshStatus.lastError ??
-          "The SSH tunnel could not be restored. Inspect the host and reconnect manually.")
-        : undefined,
-      canRemove: true,
-    };
-  }
   if (profile.connectionMode === "relay" && profile.remoteRelay) {
     const relay = profile.remoteRelay;
     const host = directory?.hosts.find(
@@ -363,7 +289,6 @@ function resolveRelayRevocationAuthority(
 }
 function buildRuntimeTargets(
   registry: AgentProfileRegistry,
-  sshStatuses: ReadonlyMap<string, SshRuntimeStatus>,
   directory: RemoteHostDirectory | null,
   sessions: ReadonlyMap<string, RemoteSessionSummary[]>,
   controller: RemoteControllerPublicIdentity | null,
@@ -386,7 +311,6 @@ function buildRuntimeTargets(
     profileTarget(
       profile,
       registry.activeProfileId,
-      sshStatuses,
       directory,
       sessions,
     ),
@@ -428,8 +352,6 @@ interface RuntimeRemovalDependencies {
     controllerDeviceId: string;
     sessionId: string;
   }) => Promise<unknown>;
-  stopSsh: (runtimeId: string) => Promise<unknown>;
-  deleteCredential: (runtimeId: string) => Promise<unknown>;
   removeProfile: (profileId: string) => void;
 }
 async function removeRuntimeWithAuthority(
@@ -440,10 +362,6 @@ async function removeRuntimeWithAuthority(
   if (relayAuthority) {
     await revokeRelayAuthorityWithCleanup(relayAuthority, dependencies);
     return;
-  }
-  if (profile.connectionMode === "ssh") {
-    await dependencies.stopSsh(profile.id);
-    await dependencies.deleteCredential(profile.credentialRef ?? profile.id);
   }
   dependencies.removeProfile(profile.id);
 }
@@ -473,19 +391,12 @@ export function DevicesRuntimesContainer({
   const [sessions, setSessions] = useState<Map<string, RemoteSessionSummary[]>>(
     () => new Map(),
   );
-  const [sshStatuses, setSshStatuses] = useState<Map<string, SshRuntimeStatus>>(
-    () => new Map(),
-  );
   const [linuxTarget, setLinuxTarget] = useState<LinuxRemoteTargetView | null>(
     null,
   );
   const [pairing, setPairing] = useState<DevicePairingView | null>(null);
   const [controllerClaim, setControllerClaim] =
     useState<ControllerPairingClaimView | null>(null);
-  const [sshInspection, setSshInspection] = useState<SshHostInspection | null>(
-    null,
-  );
-  const pendingSshId = useRef(crypto.randomUUID());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cloudState, setCloudState] = useState<
@@ -496,16 +407,6 @@ export function DevicesRuntimesContainer({
     setCloudState("loading");
     const nextRegistry = loadAgentProfileRegistry();
     setRegistry(nextRegistry);
-    const sshProfiles = nextRegistry.profiles.filter(
-      (profile) => profile.connectionMode === "ssh",
-    );
-    const statuses = await Promise.all(
-      sshProfiles.map(
-        async (profile) =>
-          [profile.id, await getSshRuntimeStatus(profile.id)] as const,
-      ),
-    );
-    setSshStatuses(new Map(statuses));
     const targetPlatform = desktopTargetPlatform();
     if (supportsNativeRemoteTarget() && targetPlatform) {
       try {
@@ -611,14 +512,8 @@ export function DevicesRuntimesContainer({
     }
   }, []);
   const targets = useMemo(() => {
-    return buildRuntimeTargets(
-      registry,
-      sshStatuses,
-      directory,
-      sessions,
-      controller,
-    );
-  }, [controller, directory, registry, sessions, sshStatuses]);
+    return buildRuntimeTargets(registry, directory, sessions, controller);
+  }, [controller, directory, registry, sessions]);
   const onSelect = (id: string) =>
     run(async () => {
       const result = switchRuntimeNonDestructive(id);
@@ -655,38 +550,6 @@ export function DevicesRuntimesContainer({
         runtimeId: id,
       });
       if (!outcome.ok) throw new Error(outcome.error);
-    });
-  const onRetry = (id: string) =>
-    run(async () => {
-      const outcome = await executeRuntimeManagementCommand({
-        op: "retry",
-        runtimeId: id,
-      });
-      if (!outcome.ok) throw new Error(outcome.error);
-      await refresh();
-    });
-  const onInspectSsh = (input: { target: string; sshPort: number }) =>
-    run(async () => {
-      const outcome = await executeRuntimeManagementCommand({
-        op: "inspect_ssh",
-        runtimeId: pendingSshId.current,
-        ...input,
-      });
-      if (!outcome.ok) throw new Error(outcome.error);
-      setSshInspection(outcome.data?.inspection as SshHostInspection);
-    });
-  const onConnectSsh = (input: SshConnectInput) =>
-    run(async () => {
-      const runtimeId = pendingSshId.current;
-      const outcome = await executeRuntimeManagementCommand({
-        op: "connect_ssh",
-        runtimeId,
-        ...input,
-      });
-      if (!outcome.ok) throw new Error(outcome.error);
-      pendingSshId.current = crypto.randomUUID();
-      setSshInspection(null);
-      await refresh();
     });
   const onEnrollLinuxTarget = (managedNetwork: boolean) =>
     run(async () => {
@@ -871,19 +734,15 @@ export function DevicesRuntimesContainer({
       targets={targets}
       pairing={pairing}
       controllerClaim={controllerClaim}
-      sshInspection={sshInspection}
       linuxTarget={linuxTarget}
       busy={busy}
       error={error}
       cloudState={cloudState}
       onRefresh={() => run(refresh)}
       onSelect={onSelect}
-      onRetry={onRetry}
       onPair={onPair}
       onRevoke={onRevoke}
       onRemove={onRemove}
-      onInspectSsh={onInspectSsh}
-      onConnectSsh={onConnectSsh}
       onEnrollLinuxTarget={onEnrollLinuxTarget}
       onCreateTargetPairing={onCreateTargetPairing}
       onConfirmTargetPairing={onConfirmTargetPairing}
@@ -903,6 +762,5 @@ export const devicesRuntimesInternals = {
   resolveRelayRevocationAuthority,
   revokeRelayAuthorityWithCleanup,
   revokeLinuxHostCloudFirst,
-  startSshWithCredentialCleanup,
   restoredRelayProfile,
 };

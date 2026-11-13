@@ -677,7 +677,7 @@ export function createStartupHydration(ports: StartupHostPorts) {
     );
     // Owner-approved Devices & Runtimes operations use an explicit first-shell
     // claim before execution. This prevents two connected renderer tabs from
-    // applying the same pairing/revoke/SSH mutation after one agent request.
+    // applying the same pairing/revoke mutation after one agent request.
     const unbindManageRuntime = client.onWsEvent(
       "shell:manage-runtime",
       (data: Record<string, unknown>) => {

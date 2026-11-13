@@ -24,7 +24,6 @@ const claims = new Map<string, { token: string | null; expiresAt: number }>();
 let defaultProposalStore: RuntimeManagementProposalStore | undefined;
 const READ_ONLY_OPERATIONS = new Set<RuntimeManagementRequest["op"]>([
   "list",
-  "inspect_ssh",
 ]);
 
 export interface RuntimeManagementRouteContext {
@@ -44,14 +43,6 @@ function boundedString(value: unknown, max = 512): string | undefined {
   if (typeof value !== "string") return undefined;
   const normalized = value.trim();
   return normalized && normalized.length <= max ? normalized : undefined;
-}
-
-function boundedPort(value: unknown): number | undefined {
-  return Number.isSafeInteger(value) &&
-    Number(value) >= 1 &&
-    Number(value) <= 65535
-    ? Number(value)
-    : undefined;
 }
 
 function parseRequest(
@@ -88,11 +79,6 @@ function parseRequest(
     targetId: boundedString(body.targetId),
     runtimeId: boundedString(body.runtimeId),
     label: boundedString(body.label, 256),
-    target: boundedString(body.target, 512),
-    sshPort: boundedPort(body.sshPort),
-    remoteApiPort: boundedPort(body.remoteApiPort),
-    expectedFingerprint: boundedString(body.expectedFingerprint, 256),
-    identityFile: boundedString(body.identityFile, 1024),
     apiBase: boundedString(body.apiBase, 2048),
     managedNetwork:
       typeof body.managedNetwork === "boolean"

@@ -79,13 +79,6 @@ function hasValidNativeRemoteBinding(profile: AgentProfile): boolean {
           `eliza-remote://session/${profile.remoteRelay.sessionId}`,
     );
   }
-  if (profile.connectionMode === "ssh") {
-    return Boolean(
-      profile.ssh &&
-        profile.credentialRef === profile.id &&
-        profile.apiBase === `eliza-ssh://runtime/${profile.id}`,
-    );
-  }
   return false;
 }
 
@@ -117,7 +110,6 @@ export function switchRuntimeNonDestructive(
     !(
       hasValidNativeRemoteBinding(profile) ||
       (profile.connectionMode !== "relay" &&
-        profile.connectionMode !== "ssh" &&
         isTrustedRestoreApiBaseUrl(profile.apiBase))
     )
   ) {

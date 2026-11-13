@@ -1,13 +1,11 @@
-/** Accessible Devices & Runtimes settings surface for local, Cloud, relay, and SSH targets. */
+/** Accessible Devices & Runtimes settings surface for local, Cloud, and relay targets. */
 import encodeQR from "@paulmillr/qr";
 import {
   Check,
   CircleAlert,
   Cloud,
   HardDrive,
-  KeyRound,
   Link2,
-  LoaderCircle,
   MonitorSmartphone,
   RefreshCw,
   Server,
@@ -16,7 +14,6 @@ import {
   Unplug,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import type { SshHostInspection } from "../../platform/ssh-runtime";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { cn } from "../../utils/cn";
 import { Button } from "../ui/button";
@@ -30,7 +27,7 @@ export interface DeviceRuntimeTarget {
   id: string;
   label: string;
   detail: string;
-  kind: "local" | "cloud" | "relay" | "ssh" | "vps";
+  kind: "local" | "cloud" | "relay" | "vps";
   status: RuntimeTargetStatus;
   selected: boolean;
   activity: string;
@@ -65,16 +62,6 @@ export interface ControllerPairingClaimView {
   capabilities: string[];
 }
 
-export interface SshConnectInput {
-  label: string;
-  target: string;
-  sshPort: number;
-  remoteApiPort: number;
-  identityFile?: string;
-  accessToken?: string;
-  expectedFingerprint: string;
-}
-
 export interface LinuxRemoteTargetView {
   hostId: string | null;
   enrolled: boolean;
@@ -90,22 +77,15 @@ export interface DevicesRuntimesSectionProps {
   targets: DeviceRuntimeTarget[];
   pairing?: DevicePairingView | null;
   controllerClaim?: ControllerPairingClaimView | null;
-  sshInspection?: SshHostInspection | null;
   linuxTarget?: LinuxRemoteTargetView | null;
   busy?: boolean;
   error?: string | null;
   cloudState?: "loading" | "available" | "signed-out" | "error";
   onRefresh: () => void | Promise<void>;
   onSelect: (id: string) => void | Promise<void>;
-  onRetry: (id: string) => void | Promise<void>;
   onPair: (id: string, code: string) => void | Promise<void>;
   onRevoke: (id: string) => void | Promise<void>;
   onRemove: (id: string) => void | Promise<void>;
-  onInspectSsh: (input: {
-    target: string;
-    sshPort: number;
-  }) => void | Promise<void>;
-  onConnectSsh: (input: SshConnectInput) => void | Promise<void>;
   onEnrollLinuxTarget?: (managedNetwork: boolean) => void | Promise<void>;
   onCreateTargetPairing?: () => void | Promise<void>;
   onConfirmTargetPairing?: (
@@ -460,7 +440,6 @@ const KIND_ICON = {
   local: HardDrive,
   cloud: Cloud,
   relay: MonitorSmartphone,
-  ssh: KeyRound,
   vps: Server,
 } as const;
 
@@ -603,7 +582,6 @@ function RuntimeCard({
   target,
   busy,
   onSelect,
-  onRetry,
   onPair,
   onRevoke,
   onRemove,
@@ -611,7 +589,6 @@ function RuntimeCard({
   target: DeviceRuntimeTarget;
   busy: boolean;
   onSelect: () => void;
-  onRetry: () => void;
   onPair: (code: string) => void;
   onRevoke: () => void;
   onRemove: () => void;
@@ -715,17 +692,6 @@ function RuntimeCard({
             </Button>
           </form>
         ) : null}
-        {target.status === "offline" || target.status === "error" ? (
-          <Button
-            type="button"
-            size="touch"
-            variant="outline"
-            disabled={busy}
-            onClick={onRetry}
-          >
-            <RefreshCw className="mr-1.5 size-4" aria-hidden /> Retry
-          </Button>
-        ) : null}
         {target.canRevoke && !confirming ? (
           <Button
             type="button"
@@ -786,241 +752,19 @@ function RuntimeCard({
   );
 }
 
-function AdvancedSsh({
-  busy,
-  inspection,
-  onInspect,
-  onConnect,
-}: {
-  busy: boolean;
-  inspection?: SshHostInspection | null;
-  onInspect: DevicesRuntimesSectionProps["onInspectSsh"];
-  onConnect: DevicesRuntimesSectionProps["onConnectSsh"];
-}) {
-  const [label, setLabel] = useState("");
-  const [target, setTarget] = useState("");
-  const [sshPort, setSshPort] = useState("22");
-  const [remoteApiPort, setRemoteApiPort] = useState("3000");
-  const [identityFile, setIdentityFile] = useState("");
-  const [accessToken, setAccessToken] = useState("");
-  const inspectedTarget =
-    inspection?.target === target.trim() &&
-    inspection.sshPort === Number(sshPort);
-  const valid =
-    label.trim() &&
-    target.trim() &&
-    Number(sshPort) > 0 &&
-    Number(remoteApiPort) > 0;
-
-  return (
-    <details className="rounded-xl border border-border bg-card p-4">
-      <summary className="min-h-11 cursor-pointer select-none py-2 text-sm font-semibold text-txt-strong">
-        Advanced SSH
-      </summary>
-      <p className="mb-4 text-xs leading-relaxed text-muted">
-        Eliza verifies the server SHA256 host fingerprint before connecting.
-        Private keys remain in your SSH agent or at their original local path;
-        they are never copied to Eliza Cloud.
-      </p>
-      <form
-        className="grid gap-4 sm:grid-cols-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (busy || !valid) return;
-          if (!inspection || !inspectedTarget) {
-            void onInspect({ target: target.trim(), sshPort: Number(sshPort) });
-            return;
-          }
-          if (inspection.changed) return;
-          void (async () => {
-            await onConnect({
-              label: label.trim(),
-              target: target.trim(),
-              sshPort: Number(sshPort),
-              remoteApiPort: Number(remoteApiPort),
-              identityFile: identityFile.trim() || undefined,
-              accessToken: accessToken.trim() || undefined,
-              expectedFingerprint: inspection.preferredFingerprint,
-            });
-            setAccessToken("");
-          })();
-        }}
-      >
-        <label
-          htmlFor="ssh-runtime-label"
-          className="grid gap-1.5 text-xs text-muted"
-        >
-          Name
-          <Input
-            required
-            id="ssh-runtime-label"
-            density="relaxed"
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            placeholder="Production VPS"
-            autoComplete="off"
-          />
-        </label>
-        <label
-          htmlFor="ssh-runtime-target"
-          className="grid gap-1.5 text-xs text-muted"
-        >
-          SSH target
-          <Input
-            required
-            id="ssh-runtime-target"
-            density="relaxed"
-            value={target}
-            onChange={(e) => setTarget(e.target.value)}
-            placeholder="user@host.example"
-            autoCapitalize="none"
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </label>
-        <label
-          htmlFor="ssh-runtime-port"
-          className="grid gap-1.5 text-xs text-muted"
-        >
-          SSH port
-          <Input
-            required
-            id="ssh-runtime-port"
-            density="relaxed"
-            type="number"
-            min={1}
-            max={65535}
-            value={sshPort}
-            onChange={(e) => setSshPort(e.target.value)}
-            inputMode="numeric"
-          />
-        </label>
-        <label
-          htmlFor="ssh-runtime-api-port"
-          className="grid gap-1.5 text-xs text-muted"
-        >
-          Remote Eliza port
-          <Input
-            required
-            id="ssh-runtime-api-port"
-            density="relaxed"
-            type="number"
-            min={1}
-            max={65535}
-            value={remoteApiPort}
-            onChange={(e) => setRemoteApiPort(e.target.value)}
-            inputMode="numeric"
-          />
-        </label>
-        <label
-          htmlFor="ssh-runtime-identity"
-          className="grid gap-1.5 text-xs text-muted"
-        >
-          Private key path (optional)
-          <Input
-            id="ssh-runtime-identity"
-            density="relaxed"
-            value={identityFile}
-            onChange={(e) => setIdentityFile(e.target.value)}
-            placeholder="/home/me/.ssh/id_ed25519"
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </label>
-        <label
-          htmlFor="ssh-runtime-token"
-          className="grid gap-1.5 text-xs text-muted"
-        >
-          Runtime access token (optional)
-          <Input
-            id="ssh-runtime-token"
-            density="relaxed"
-            type="password"
-            value={accessToken}
-            onChange={(e) => setAccessToken(e.target.value)}
-            autoComplete="new-password"
-          />
-        </label>
-        {inspection && inspectedTarget ? (
-          <div
-            className={cn(
-              "sm:col-span-2 rounded-lg border p-3",
-              inspection.changed
-                ? "border-destructive/50 bg-destructive/5"
-                : "border-accent/35 bg-accent/5",
-            )}
-            role="status"
-          >
-            <p className="flex items-center gap-2 text-xs font-semibold text-txt-strong">
-              {inspection.changed ? (
-                <CircleAlert className="size-4 text-destructive" aria-hidden />
-              ) : (
-                <ShieldCheck className="size-4 text-accent" aria-hidden />
-              )}
-              {inspection.changed
-                ? "Host key changed: connection blocked"
-                : "Verify this host fingerprint"}
-            </p>
-            <code className="mt-2 block break-all text-xs text-txt-strong">
-              {inspection.preferredFingerprint}
-            </code>
-            {inspection.changed ? (
-              <p className="mt-2 text-xs text-destructive">
-                The saved key does not match this server. Remove the saved
-                runtime from Devices &amp; Runtimes, then re-enroll it only
-                after confirming the new fingerprint outside Eliza.
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-        <div className="sm:col-span-2 flex flex-wrap items-center gap-3">
-          <Button
-            type="submit"
-            size="touch"
-            disabled={
-              busy || !valid || Boolean(inspectedTarget && inspection?.changed)
-            }
-          >
-            {busy ? (
-              <LoaderCircle
-                className="mr-1.5 size-4 motion-safe:animate-spin"
-                aria-hidden
-              />
-            ) : (
-              <ShieldCheck className="mr-1.5 size-4" aria-hidden />
-            )}
-            {inspection && inspectedTarget
-              ? inspection.changed
-                ? "Host key changed"
-                : "Fingerprint verified, connect"
-              : "Inspect fingerprint"}
-          </Button>
-          <span className="text-xs text-muted">
-            No password or private key is sent to Cloud.
-          </span>
-        </div>
-      </form>
-    </details>
-  );
-}
-
 export function DevicesRuntimesSection({
   targets,
   pairing,
   controllerClaim,
-  sshInspection,
   linuxTarget,
   busy = false,
   error,
   cloudState = "loading",
   onRefresh,
   onSelect,
-  onRetry,
   onPair,
   onRevoke,
   onRemove,
-  onInspectSsh,
-  onConnectSsh,
   onEnrollLinuxTarget,
   onCreateTargetPairing,
   onConfirmTargetPairing,
@@ -1051,7 +795,7 @@ export function DevicesRuntimesSection({
         >
           {t("settings.devicesRuntimes.cloudSignedOut", {
             defaultValue:
-              "Sign in to Eliza Cloud to pair devices. Local and verified SSH runtimes remain available.",
+              "Sign in to Eliza Cloud to pair devices. Local runtimes remain available.",
           })}
         </div>
       ) : null}
@@ -1101,7 +845,6 @@ export function DevicesRuntimesSection({
               target={target}
               busy={busy}
               onSelect={() => void onSelect(target.id)}
-              onRetry={() => void onRetry(target.id)}
               onPair={(code) => void onPair(target.id, code)}
               onRevoke={() => void onRevoke(target.id)}
               onRemove={() => void onRemove(target.id)}
@@ -1124,12 +867,6 @@ export function DevicesRuntimesSection({
           onRevoke={onRevokeLinuxTarget}
         />
       ) : null}
-      <AdvancedSsh
-        busy={busy}
-        inspection={sshInspection}
-        onInspect={onInspectSsh}
-        onConnect={onConnectSsh}
-      />
     </SettingsStack>
   );
 }
