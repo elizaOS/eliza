@@ -346,8 +346,13 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
           async apply(target, receiver, args) {
             await observer.beforeRequest?.();
             const response: Response = await Reflect.apply(target, receiver, args);
-            if (response.status === 200 && price) observer(price);
-            else if (response.status !== 200) observer.requestRejected?.();
+            // Google bills successful empty/NOT_FOUND results, including 404.
+            // Other failures are not all unbilled: leave ambiguous responses
+            // unresolved until the existing billing owner reconciles them.
+            // https://developers.google.com/maps/reporting-and-monitoring/reporting
+            if (price && (response.ok || response.status === 404)) observer(price);
+            else if ([401, 403, 429, 500, 502, 503, 504].includes(response.status))
+              observer.requestRejected?.();
             return response;
           },
         })
@@ -808,8 +813,8 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
       signal,
       reportPrice,
       undefined,
+      [200, 404],
     );
-    if (response.status !== 200) throw invalidResponse(response.status);
     const json = (await responseJson(response)) as { status?: unknown; results?: unknown } | null;
     switch (json?.status) {
       case "OK":
@@ -821,9 +826,8 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
       case "OVER_QUERY_LIMIT":
       case "OVER_DAILY_LIMIT":
       case "REQUEST_DENIED":
-        reportPrice?.requestRejected?.();
-        throw unavailable(json.status);
       case "UNKNOWN_ERROR":
+        reportPrice?.requestRejected?.();
         throw unavailable(json.status);
       default:
         throw invalidResponse(typeof json?.status === "string" ? json.status : undefined);

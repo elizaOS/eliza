@@ -6,7 +6,10 @@
     "packages/cloud/quint/check-maps-credit-funding.mjs",
     "packages/cloud/shared/src/lib/services/maps/google-provider.ts",
     "packages/cloud/shared/src/lib/services/maps/contract.ts",
-    "packages/cloud/shared/src/lib/services/organization-inference-admission.ts"
+    "packages/cloud/shared/src/lib/services/organization-inference-admission.ts",
+    "packages/cloud/api/__tests__/maps-google-provider.test.ts",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/scripts/lib/test-output.ts"
   ],
   "conformance": "packages/cloud/quint/check-maps-credit-funding.mjs",
   "bounds": {

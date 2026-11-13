@@ -22,6 +22,7 @@ const required = new Set([
   "a plan change releases the new reservation and refuses provider dispatch",
   "a duplicate credit-funded request is rejected before another reservation",
   "billable response is observed before a failed response body is buffered",
+  "Google billing follows business results across HTTP status classes",
 ]);
 const names = new Set();
 for (const [index, spec] of [

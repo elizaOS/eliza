@@ -619,9 +619,12 @@ plan or sufficient purchased credits (`402 insufficient_credits`). Plans include
 Maps through their Maps allowance. Without a plan, Google requests reserve the
 published global API unit cost with no platform markup and settle the observed
 provider calls. Account-wide Google discounts and free caps require later invoice
-reconciliation. Metadata does not incur a charge. Duplicate request IDs do not
-start another provider call. An unknown provider outcome retains its reservation
-until the existing billing owner resolves it. The
+reconciliation. Known billable empty and not-found results retain their cost.
+Known authentication, quota and server refusals do not incur a charge.
+Unclassified provider responses settle conservatively at the reserved estimate.
+Metadata does not incur a charge. Duplicate request IDs do not
+start another provider call. An unknown provider outcome fixes the conservative
+settlement choice. A retry keeps that choice. The
 `admit` hook in `src/lib/maps-route.ts` applies the Maps request buckets while
 `ELIZA_CLOUD_PLAN_RATE_LIMITS` is set: `429 rate_limited` with `Retry-After`
 and `retryAfterSeconds` in the body. The buckets run after the plan read, so a

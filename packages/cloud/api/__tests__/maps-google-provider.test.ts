@@ -71,6 +71,115 @@ test("billable response is observed before a failed response body is buffered", 
   expect(prices).toEqual([0.032]);
 });
 
+test("Google billing follows business results across HTTP status classes", async () => {
+  let responseStatus = 200;
+  let responseBody: object = {};
+  const server = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    fetch: () => Response.json(responseBody, { status: responseStatus }),
+  });
+  try {
+    const provider = mapsProviderFromEnv(ENV, (_input, init) =>
+      fetch(server.url, init),
+    )!;
+    for (const item of [
+      {
+        operation: "geocode",
+        status: 200,
+        business: "ZERO_RESULTS",
+        cost: 0.005,
+        rejected: 0,
+        failed: false,
+      },
+      {
+        operation: "geocode",
+        status: 404,
+        business: "ZERO_RESULTS",
+        cost: 0.005,
+        rejected: 0,
+        failed: false,
+      },
+      {
+        operation: "geocode",
+        status: 200,
+        business: "UNKNOWN_ERROR",
+        cost: null,
+        rejected: 1,
+        failed: true,
+      },
+      {
+        operation: "geocode",
+        status: 503,
+        business: "UNKNOWN_ERROR",
+        cost: null,
+        rejected: 1,
+        failed: true,
+      },
+      {
+        operation: "geocode",
+        status: 400,
+        business: "INVALID_REQUEST",
+        cost: null,
+        rejected: 0,
+        failed: true,
+      },
+      {
+        operation: "details",
+        status: 404,
+        business: "NOT_FOUND",
+        cost: 0.02,
+        rejected: 0,
+        failed: false,
+      },
+    ] as const) {
+      responseStatus = item.status;
+      responseBody =
+        item.operation === "details"
+          ? { error: { status: item.business } }
+          : { status: item.business, results: [] };
+      const prices: number[] = [];
+      let rejected = 0;
+      let dispatched = 0;
+      const observer = Object.assign(
+        (price: { amountUsd: number }) => prices.push(price.amountUsd),
+        {
+          beforeRequest: async () => {
+            dispatched++;
+          },
+          requestRejected: () => {
+            rejected++;
+          },
+        },
+      );
+      let failed = false;
+      try {
+        if (item.operation === "details")
+          expect(
+            await provider.details({ id: PLACE_ID }, undefined, observer),
+          ).toBeNull();
+        else
+          expect(
+            await provider.geocode(
+              { query: "No matching place" },
+              undefined,
+              observer,
+            ),
+          ).toEqual([]);
+      } catch (error) {
+        expect(error).toBeInstanceOf(MapsServiceError);
+        failed = true;
+      }
+      expect(failed).toBe(item.failed);
+      expect(prices).toEqual(item.cost === null ? [] : [item.cost]);
+      expect(rejected).toBe(item.rejected);
+      expect(dispatched).toBe(1);
+    }
+  } finally {
+    await server.stop(true);
+  }
+});
+
 interface Call {
   url: URL;
   init: RequestInit;
