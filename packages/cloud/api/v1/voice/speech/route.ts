@@ -234,7 +234,7 @@ app.post("/session", async (c) => {
   url.search = `?sessionId=${sessionId}`;
   c.header("Cache-Control", "no-store");
   // Retirement v1 attests one bounded window. Do not offer an unbound renewal.
-  if (!proofVersion && speechRelayMaxWindows(c.env) > 1)
+  if (speechRelayMaxWindows(c.env) > 1)
     c.header(SPEECH_RELAY_EXTEND_HEADER, SPEECH_RELAY_EXTEND_OFFER);
   return timer.apply(
     c.json({

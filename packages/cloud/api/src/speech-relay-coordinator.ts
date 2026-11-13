@@ -569,7 +569,7 @@ export class SpeechRelayCoordinator {
               // a second socket can never reuse the consumed session capability.
               const task = this.open(ledger, {
                 reportTimings: hello.timings === true,
-                extendable: hello.extend === true && ledger.proofVersion !== 1,
+                extendable: hello.extend === true,
               });
               this.openingTask = task;
               void task.then(() => {
@@ -679,9 +679,9 @@ export class SpeechRelayCoordinator {
         if (!record) throw Error("Speech session missing");
         if (
           this.stopped ||
-          record.proofVersion === 1 ||
           record.sessionId !== ledger.sessionId ||
           record.expiresAt !== previousEnd ||
+          Date.now() >= record.expiresAt ||
           (record.phase !== "starting" && record.phase !== "active")
         )
           return record;
@@ -752,10 +752,7 @@ export class SpeechRelayCoordinator {
             void this.close();
           };
           const retire = () => retireSpeech();
-          const maxWindows =
-            ledger.proofVersion !== 1 && extendable
-              ? speechRelayMaxWindows(this.env)
-              : 1;
+          const maxWindows = extendable ? speechRelayMaxWindows(this.env) : 1;
           // The revocation fence and paid admission are independent round trips.
           // Start the fence now and join it before any provider opens, so a
           // provider still never starts without a live revocation subscription.
@@ -886,6 +883,7 @@ export class SpeechRelayCoordinator {
                                 record,
                                 kind,
                                 progress,
+                                budgetWindow,
                               );
                             }).then(() => {})
                         : undefined,

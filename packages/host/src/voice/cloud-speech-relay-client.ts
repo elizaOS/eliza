@@ -16,6 +16,8 @@ import {
   SPEECH_ADMISSION_OUTCOME_HEADER,
   SPEECH_MINT_INTENT_HEADER,
   SPEECH_RECOVERY_HEADER,
+  SPEECH_RELAY_EXTEND_HEADER,
+  SPEECH_RELAY_EXTEND_OFFER,
   SPEECH_RELAY_ROUTES,
   SPEECH_RETIREMENT_HEADER,
   type SpeechRelayServerControl,
@@ -88,6 +90,8 @@ export interface CloudSpeechRelayClientOptions {
   credential(): Promise<string>;
   /** Pin owner/credential revision and local agent generation for this whole session. */
   assertCurrent(): void;
+  /** Trusted host callback after a paid window and its revocation fence renew. */
+  onLeaseExtended?(expiresAt: number): void;
   /** Stable owner/runtime/environment lineage, independent of key rotation; explicit reconciliation only. */
   assertRetirementLineage?(): void;
   signal?: AbortSignal;
@@ -255,6 +259,7 @@ export async function createCloudSpeechRelayPorts(
   reconcileRetirement?(credential: string): Promise<void>;
   sessionId: string;
   expiresAt: number;
+  renewable?: boolean;
 }> {
   if (options.enabled !== true)
     throw new CloudSpeechRelayClientError(
@@ -301,7 +306,9 @@ export async function createCloudSpeechRelayPorts(
     socket: WebSocket | undefined,
     expiryTimer: ReturnType<typeof setTimeout> | undefined,
     sessionId: string | undefined,
-    expiry = 0;
+    expiry = 0,
+    extendOffered = false,
+    windows = 1;
   let stt: ((event: CartesiaInkRealtimeEvent) => void) | undefined;
   const pendingStt: CartesiaInkRealtimeEvent[] = [];
   const contexts = new Map<
@@ -637,6 +644,11 @@ export async function createCloudSpeechRelayPorts(
         admissionState = "identified";
       }
       assertCurrent();
+      if (mintRequest)
+        extendOffered =
+          options.onLeaseExtended !== undefined &&
+          response.headers.get(SPEECH_RELAY_EXTEND_HEADER) ===
+            SPEECH_RELAY_EXTEND_OFFER;
       returned = true;
       return result;
     } finally {
@@ -1071,6 +1083,7 @@ export async function createCloudSpeechRelayPorts(
             t: "hello",
             token: minted.token,
             errorReasons: true,
+            ...(extendOffered ? { extend: true } : {}),
           });
         } catch {
           fail(
@@ -1113,7 +1126,7 @@ export async function createCloudSpeechRelayPorts(
             );
             outputBytes += pcm.length;
             receivedPcmFrames++;
-            requireValue(outputBytes <= 8 * 1024 * 1024);
+            requireValue(outputBytes <= 8 * 1024 * 1024 * windows);
             const context = contexts.get(id);
             if (!context) {
               requireValue(retired.has(id));
@@ -1231,6 +1244,26 @@ export async function createCloudSpeechRelayPorts(
   }
   function handleControl(input: SpeechRelayServerControl) {
     const frame = record(input);
+
+    if (frame.t === "extended") {
+      requireValue(extendOffered);
+      exact(frame, ["t", "expiresAt"]);
+      const next =
+        typeof frame.expiresAt === "string"
+          ? Date.parse(frame.expiresAt)
+          : Number.NaN;
+      requireValue(
+        Number.isFinite(next) &&
+          next > expiry &&
+          next <= expiry + 60_000 &&
+          new Date(next).toISOString() === frame.expiresAt,
+      );
+      options.onLeaseExtended?.(next);
+      expiry = next;
+      windows++;
+      armExpiry();
+      return;
+    }
 
     if (frame.t === "error") {
       exact(
@@ -1389,7 +1422,7 @@ export async function createCloudSpeechRelayPorts(
                 bytes.byteLength % 2 === 0,
             );
             uplinkBytes += bytes.byteLength;
-            requireValue(uplinkBytes <= (60000 / 1000) * 32000);
+            requireValue(uplinkBytes <= (60000 / 1000) * 32000 * windows);
             const currentSocket = socket;
             requireValue(currentSocket && currentSocket.readyState === 1);
             currentSocket.send(new Uint8Array(bytes));
@@ -1416,7 +1449,7 @@ export async function createCloudSpeechRelayPorts(
     tts: {
       createStream(_options, callbacks) {
         assertCurrent();
-        requireValue(++contextsCreated <= 64);
+        requireValue(++contextsCreated <= 64 * windows);
         const id = crypto.randomUUID();
         let resolve!: () => void, reject!: (error: Error) => void;
         const closedPromise = new Promise<void>((yes, no) => {
@@ -1459,7 +1492,7 @@ export async function createCloudSpeechRelayPorts(
             requireValue(
               typeof phrase.text === "string" &&
                 phrase.text.length <= 1024 &&
-                ttsCharacters + phrase.text.length <= 4096 &&
+                ttsCharacters + phrase.text.length <= 4096 * windows &&
                 typeof phrase.continueContext === "boolean" &&
                 (phrase.flush === undefined ||
                   typeof phrase.flush === "boolean"),
@@ -1503,5 +1536,13 @@ export async function createCloudSpeechRelayPorts(
     },
   };
   requireValue(sessionId);
-  return { speechPorts, ...retirement, sessionId, expiresAt: expiry };
+  return {
+    speechPorts,
+    ...retirement,
+    sessionId,
+    get expiresAt() {
+      return expiry;
+    },
+    renewable: extendOffered,
+  };
 }

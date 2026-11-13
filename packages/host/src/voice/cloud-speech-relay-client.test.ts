@@ -83,19 +83,24 @@ async function fixture() {
       const wsUrl = `${server.url.origin.replace("http:", "ws:")}/api/v1/voice/speech/ws?sessionId=${sessionId}`;
       if (mode === "expired") expiry = new Date(Date.now() - 1).toISOString();
       if (mode === "short") expiry = new Date(Date.now() + 150).toISOString();
-      return Response.json({
-        sessionId,
-        token,
-        expiresAt: expiry,
-        version: 1,
-        ...(mode === "legacy-mint" ? {} : { retirementProofVersion: 1 }),
-        wsUrl:
-          mode === "foreign"
-            ? "wss://other.invalid/api/v1/voice/speech/ws?sessionId=" +
-              sessionId
-            : wsUrl,
-        ...(mode === "extra" ? { apiKey: "must-reject" } : {}),
-      });
+      return Response.json(
+        {
+          sessionId,
+          token,
+          expiresAt: expiry,
+          version: 1,
+          ...(mode === "legacy-mint" ? {} : { retirementProofVersion: 1 }),
+          wsUrl:
+            mode === "foreign"
+              ? "wss://other.invalid/api/v1/voice/speech/ws?sessionId=" +
+                sessionId
+              : wsUrl,
+          ...(mode === "extra" ? { apiKey: "must-reject" } : {}),
+        },
+        {
+          headers: mode === "renewable" ? { "X-Eliza-Speech-Extend": "1" } : {},
+        },
+      );
     },
     (request) => {
       const url = new URL(request.url);
@@ -224,6 +229,22 @@ async function fixture() {
     },
   };
 }
+test("negotiated paid extensions retain the Cloud socket and notify the owning host", async () => {
+  const f = await fixture();
+  f.mode("renewable");
+  const extensions: number[] = [];
+  const client = await createCloudSpeechRelayPorts({
+    ...f.options,
+    onLeaseExtended: (deadline) => extensions.push(deadline),
+  });
+  expect(f.controls[0]).toMatchObject({ t: "hello", extend: true });
+  const deadline = Date.parse(f.expiry) + 50_000;
+  f.send({ t: "extended", expiresAt: new Date(deadline).toISOString() });
+  await until(() => extensions.length === 1);
+  expect(client.expiresAt).toBe(deadline);
+  expect(f.connections).toBe(1);
+  await client.close();
+});
 test("server-only client uses account auth only for fixed HTTP routes, then canonical STT and one streamed Sonic context", async () => {
   const f = await fixture(),
     client = await createCloudSpeechRelayPorts(f.options),

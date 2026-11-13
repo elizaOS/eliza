@@ -38,9 +38,10 @@ mock.module("@elizaos/cloud-shared/lib/voice-session/consent-nonce", () => ({
   }),
   consumeConsentNonce: async () => true,
 }));
+const coordinator = await import("./speech-relay-coordinator");
 mock.module("./speech-relay-coordinator", () => ({
+  ...coordinator,
   speechTokenDigest: () => "a".repeat(64),
-  speechRelayMaxWindows: () => 2,
 }));
 const { default: app } = await import("../v1/voice/speech/route");
 const nonce = "00000000-0000-4000-8000-000000000001";
@@ -93,7 +94,7 @@ test("new mint persists and acknowledges requested proof version", async () => {
     },
     env() as never,
   );
-  expect(res.headers.get(SPEECH_RELAY_EXTEND_HEADER)).toBeNull();
+  expect(res.headers.get(SPEECH_RELAY_EXTEND_HEADER)).toBe("1");
   expect((await responseObject(res)).retirementProofVersion).toBe(1);
   expect(data.calls[0].body.proofVersion).toBe(1);
 });

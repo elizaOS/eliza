@@ -1,0 +1,39 @@
+{
+  "sources": [
+    "packages/cloud/api/src/speech-retirement-state.ts",
+    "packages/cloud/api/src/speech-relay-coordinator.ts",
+    "packages/cloud/api/v1/voice/speech/route.ts",
+    "packages/host/src/voice/speech-relay-session.ts",
+    "packages/host/src/voice/cloud-speech-relay-client.ts",
+    "packages/host/src/voice/session.ts",
+    "packages/host/src/voice/protocol.ts",
+    "packages/host/src/voice/ws-handler.ts",
+    "packages/app/src/api/self-hosted-voice.ts",
+    "packages/ui/src/voice/voice-session-client-core.ts",
+    "packages/ui/src/voice/voice-session-protocol.ts",
+    "packages/ui/src/voice/voice-session-state.ts"
+  ],
+  "bounds": {
+    "assumptions": [
+      "Three billing windows, one owner and one transport. Provider success and eventual settlement are not assumed."
+    ],
+    "progress": "Safety only. Live providers, deadlines and delivery are verified separately."
+  },
+  "limitations": [
+    "The finite model abstracts protocol parsing and real provider transport. Runtime tests cover the linked implementation. Full source and live browser/Pixel verification remain separate."
+  ],
+  "cases": [
+    {
+      "name": "paid-continuity",
+      "main": "speech_continuity",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 30,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ],
+  "conformance": "packages/cloud/quint/check-speech-continuity.mjs"
+}

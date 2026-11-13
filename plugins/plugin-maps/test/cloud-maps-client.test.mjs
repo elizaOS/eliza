@@ -690,6 +690,24 @@ assert.match(
     1,
     "A retry hint never schedules another provider request",
   );
+  await assert.rejects(provider.search("Port", new AbortController().signal));
+  assert.equal(calls, 1, "The same pause blocks a second request");
+  await maps.initializeCloudMaps();
+  await assert.rejects(provider.search("Port", new AbortController().signal));
+  assert.equal(calls, 1, "Reopening retains the account pause");
+  const originalNow = Date.now;
+  const afterPause = Date.now() + 43000;
+  Date.now = () => afterPause;
+  try {
+    await assert.rejects(provider.search("Port", new AbortController().signal));
+    assert.equal(calls, 2, "Requests resume after the server pause expires");
+  } finally {
+    Date.now = originalNow;
+  }
+  maps.retireCloudMaps();
+  await maps.initializeCloudMaps();
+  await assert.rejects(provider.search("Port", new AbortController().signal));
+  assert.equal(calls, 3, "Retiring the account clears its pause");
 }
 
 assert.equal(

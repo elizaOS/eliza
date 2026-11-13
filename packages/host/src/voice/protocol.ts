@@ -39,6 +39,7 @@ export interface ClientHelloFrame {
   uplinkCodec: VoiceUplinkCodec;
   downlinkCodec: VoiceDownlinkCodec;
   sampleRate: number;
+  leaseRenewal?: true;
 }
 
 export interface ClientAudioMetaFrame {
@@ -110,7 +111,9 @@ export type ServerControlFrame =
       uiContext?: boolean;
       playbackCompletion?: boolean;
       turnTerminal?: true;
+      leaseExpiresAt?: number;
     }
+  | { t: "lease_extended"; sessionId: string; expiresAt: number }
   | { t: "stt_partial"; text: string; traceId: string }
   | { t: "stt_eager_eot"; traceId: string }
   | { t: "stt_final"; text: string; traceId: string }
@@ -335,6 +338,8 @@ function parseHello(
   if (v.turnTerminal !== undefined && v.turnTerminal !== true) {
     return fail("hello_bad_capability", "invalid turn-terminal capability");
   }
+  if (v.leaseRenewal !== undefined && v.leaseRenewal !== true)
+    return fail("hello_bad_capability", "invalid lease renewal capability");
   const uplinkCodec = v.uplinkCodec;
   if (
     typeof uplinkCodec !== "string" ||
@@ -359,6 +364,7 @@ function parseHello(
       t: "hello",
       token: v.token,
       ...(v.turnTerminal === true ? { turnTerminal: true as const } : {}),
+      ...(v.leaseRenewal === true ? { leaseRenewal: true as const } : {}),
       protocol: VOICE_SESSION_PROTOCOL_VERSION,
       uplinkCodec: uplinkCodec as VoiceUplinkCodec,
       downlinkCodec: downlinkCodec as VoiceDownlinkCodec,
