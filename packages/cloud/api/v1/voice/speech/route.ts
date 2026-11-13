@@ -89,10 +89,7 @@ app.post("/consent", async (c) => {
     return c.json({ error: "speech_retirement_unavailable" }, 503);
   const timer = bootstrapTimer(c);
   const caller = await timer.time("speech_identity_rate", () =>
-    requireGenerativeRouteCaller(c, {
-      rateLimitEndpoint: "standard",
-      retryCredentialCheckTimeout: true,
-    }),
+    requireGenerativeRouteCaller(c, { rateLimitEndpoint: "standard" }),
   );
   const recovering = c.req.header(SPEECH_RECOVERY_HEADER) === "1";
   // Prepared sessions already hold an atomic, expiring consent record. Their

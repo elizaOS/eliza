@@ -2,10 +2,7 @@
   "sources": [
     "packages/app/functions/_middleware.ts",
     "packages/app/functions/_browser-sign-in.ts",
-    "packages/cloud/scripts/pages-browser-sign-in.test.ts",
-    "packages/app/functions/_native-auth-callback-config.ts",
-    ".github/workflows/cloud-cf-release.yml",
-    "packages/cloud/scripts/pages-native-auth-callbacks.test.ts"
+    "packages/cloud/scripts/pages-browser-sign-in.test.ts"
   ],
   "conformance": "packages/app/quint/check-browser-sign-in.mjs",
   "bounds": {

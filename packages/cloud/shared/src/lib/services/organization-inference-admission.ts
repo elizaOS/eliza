@@ -16,8 +16,9 @@ import { withCanonicalSettlementReceipt } from "./inference-settlement-receipt";
  * dispatch after it. Every other committed balance change (top-ups, refunds,
  * non-inference debits) republishes the projection to the gate, and the gate
  * keeps the newest balance revision, so affordability is decided against the
- * committed balance rather than the snapshot's. A cold or superseded snapshot
- * is refilled inline, and an aged snapshot is refilled once before it refuses.
+ * committed balance rather than the snapshot's. An aged snapshot still decides
+ * its request and is refreshed under `waitUntil`; only a request with no
+ * snapshot, or one refused for a superseded policy generation, refills inline.
  *
  * Hosts without a Worker lifetime keep a synchronous reservation because they
  * have no Durable Object to fence a deferred charge.
@@ -63,11 +64,15 @@ import {
   inferenceSettlementAmounts,
   isInferenceAdmissionPolicyStaleError,
   markInferenceAdmissionLeaseDispatched,
+  rebaseStaleInferenceAdmissionLease,
   settleInferenceAdmissionLease,
 } from "./inference-admission-gate";
 import {
   fillInferenceAdmissionSnapshot,
   getInferenceAdmissionSnapshotCacheFirst,
+  peekInferenceAdmissionSnapshot,
+  peekInferenceAdmissionSnapshotInIsolate,
+  refreshInferenceAdmissionSnapshotOffResponse,
   refreshStaleInferenceAdmissionSnapshot,
 } from "./inference-admission-snapshot";
 import {
@@ -237,42 +242,83 @@ function attachInferenceAdmissionLease(
   params: OrganizationInferenceAdmissionParams,
   /** Balance observed by the settling transaction; omitted lanes read it after debit. */
   settledBalance?: () => InferenceAdmissionBalanceObservation | undefined,
+  /**
+   * The balance this lane leases against in a refilled snapshot, or undefined
+   * when that snapshot funds the organization through the other lane.
+   */
+  rebaseOnFreshSnapshot?: (
+    fresh: InferenceAdmissionSnapshot,
+  ) => { balanceUsd: number; balanceRevision: string } | undefined,
 ): OrganizationInferenceAdmission {
   const settleAuthoritatively = admission.settle;
   const settleUnknownAuthoritatively = admission.settleUnknown;
   type SettlementChoice = { kind: "actual"; actualCostUsd: number } | { kind: "unknown" };
   let choice: SettlementChoice | undefined;
   let settlement: Promise<CreditReconciliationResult | null> | null = null;
+  // error-policy:J2 add request identity and preserve the established
+  // transport-facing standing, balance, and availability error types.
+  const dispatchRefusal = (error: unknown): unknown => {
+    if (error instanceof InferenceCredentialRevokedError) {
+      logger.warn(
+        "[OrganizationInferenceAdmission] blocked provider dispatch at combined credential and balance gate",
+        {
+          organizationId: params.context.organizationId,
+          userId: params.context.userId,
+          requestId: params.context.requestId,
+          credentialKind: params.credential?.kind ?? "unavailable",
+          reason: error.reason,
+        },
+      );
+      return error;
+    }
+    if (error instanceof InferenceAdmissionLeaseRejectedError) {
+      return new InsufficientCreditsError(
+        error.requiredUsd,
+        error.availableUsd,
+        "cached_balance_gate",
+      );
+    }
+    if (error instanceof InferenceAdmissionGateUnavailableError) {
+      return admissionUnavailable(params, error);
+    }
+    return error;
+  };
+  let stalePolicyRepairUsed = false;
   const markProviderDispatched = async (): Promise<void> => {
     try {
       await markInferenceAdmissionLeaseDispatched(lease);
+      return;
     } catch (error) {
-      // error-policy:J2 add request identity and preserve the established
-      // transport-facing standing, balance, and availability error types.
-      if (error instanceof InferenceCredentialRevokedError) {
-        logger.warn(
-          "[OrganizationInferenceAdmission] blocked provider dispatch at combined credential and balance gate",
-          {
-            organizationId: params.context.organizationId,
-            userId: params.context.userId,
-            requestId: params.context.requestId,
-            credentialKind: params.credential?.kind ?? "unavailable",
-            reason: error.reason,
-          },
-        );
-        throw error;
+      if (
+        !rebaseOnFreshSnapshot ||
+        stalePolicyRepairUsed ||
+        !isInferenceAdmissionPolicyStaleError(error)
+      ) {
+        throw dispatchRefusal(error);
       }
-      if (error instanceof InferenceAdmissionLeaseRejectedError) {
-        throw new InsufficientCreditsError(
-          error.requiredUsd,
-          error.availableUsd,
-          "cached_balance_gate",
-        );
+      // A deferred commit meets the gate for the first time here, so this is
+      // where a snapshot from before a policy change is refused. The gate
+      // recorded nothing: refill from the primary, decide again, commit once.
+      stalePolicyRepairUsed = true;
+      const fresh = await refreshAfterStalePolicy(params);
+      if (fresh.billingHold === true) {
+        throw new BillingHoldActiveError(params.context.organizationId, "0.000000");
       }
-      if (error instanceof InferenceAdmissionGateUnavailableError) {
-        throw admissionUnavailable(params, error);
+      const observation = rebaseOnFreshSnapshot(fresh);
+      if (
+        !observation ||
+        !rebaseStaleInferenceAdmissionLease(lease, {
+          ...observation,
+          policyGeneration: fresh.authority.generation,
+        })
+      ) {
+        throw dispatchRefusal(error);
       }
-      throw error;
+    }
+    try {
+      await markInferenceAdmissionLeaseDispatched(lease);
+    } catch (error) {
+      throw dispatchRefusal(error);
     }
   };
   const run = (requestedChoice: SettlementChoice): Promise<CreditReconciliationResult | null> => {
@@ -465,33 +511,55 @@ async function admitWithoutGate(
 }
 
 /**
- * A refusal decided from a snapshot older than this refills the snapshot from
- * the primary once and retries. It matches the isolate projection lifetime, so
- * an organization that stays refused costs at most one primary read per isolate
- * in this window, while a top-up or hold release missed by the cached snapshot
- * is honored on the next request.
+ * A refusal decided from a snapshot older than this refreshes the snapshot
+ * from the primary after the response. It matches the isolate projection
+ * lifetime, so an organization that stays refused costs at most one primary
+ * read per isolate in this window, while a top-up or hold release missed by
+ * the cached snapshot is honored by the requests that can read that refresh
+ * (see `admitFromSnapshot` for the bound).
  */
 const REFUSAL_REFILL_MIN_AGE_MS = 5_000;
 
 /**
- * The snapshot a Worker request is admitted from: the one carried by the
- * combined auth decision while it is no older than the shared projection,
- * else the organization projection read cache-first (a cold cache is filled
- * inline). A snapshot that cannot prove hold standing or subscriber funding is
- * refilled from the primary once instead of failing.
+ * The snapshot a Worker request is admitted from. A snapshot carried by the
+ * combined auth decision (or the isolate's newer copy of it) decides the
+ * request at any age; one older than the shared projection lifetime is
+ * refreshed under `waitUntil` for later requests. The organization gate keeps
+ * the committed balance and the policy-generation fence, so an aged snapshot
+ * cannot overspend or dispatch under a superseded policy. Only a request with
+ * no snapshot reads the shared cache and, when that is cold too, the primary.
+ * A carried snapshot that would refuse for a billing hold is the one decision
+ * the gate cannot correct, and the auth entry keeps carrying it until its own
+ * refresh; such a request reads the published projection and uses it when it
+ * is newer, so the refill scheduled by one refusal serves every isolate.
+ * A snapshot that cannot prove hold standing or subscriber funding is not a
+ * usable decision and is filled from the primary once.
  */
 async function workerAdmissionSnapshot(
   params: OrganizationInferenceAdmissionParams,
 ): Promise<InferenceAdmissionSnapshot> {
+  const organizationId = params.context.organizationId;
   const carried = params.admissionSnapshot;
-  let snapshot: InferenceAdmissionSnapshot =
-    isInferenceAdmissionSnapshot(carried) &&
-    snapshotAgeMs(carried) <= CacheTTL.inference.orgAdmission * 1000
-      ? carried
-      : await getInferenceAdmissionSnapshotCacheFirst(params.context.organizationId);
+  let snapshot: InferenceAdmissionSnapshot;
+  if (isInferenceAdmissionSnapshot(carried)) {
+    const local = peekInferenceAdmissionSnapshotInIsolate(organizationId);
+    snapshot = local && local.balance.balanceAt > carried.balance.balanceAt ? local : carried;
+    if (snapshot.billingHold === true) {
+      const published = await peekInferenceAdmissionSnapshot(organizationId);
+      if (published && published.balance.balanceAt > snapshot.balance.balanceAt) {
+        snapshot = published;
+      }
+    }
+  } else {
+    snapshot = await getInferenceAdmissionSnapshotCacheFirst(organizationId);
+  }
   if (!snapshotIsComplete(snapshot)) {
-    snapshot = await fillInferenceAdmissionSnapshot(params.context.organizationId);
+    snapshot = await fillInferenceAdmissionSnapshot(organizationId);
     if (!snapshotIsComplete(snapshot)) throw admissionUnavailable(params);
+    return snapshot;
+  }
+  if (params.executionCtx && snapshotAgeMs(snapshot) > CacheTTL.inference.orgAdmission * 1000) {
+    refreshInferenceAdmissionSnapshotOffResponse(organizationId, params.executionCtx);
   }
   return snapshot;
 }
@@ -517,9 +585,17 @@ function snapshotIsComplete(snapshot: InferenceAdmissionSnapshot): boolean {
  * the committed balance. The gate also refuses a snapshot whose policy
  * generation was superseded or while a policy/hold mutation is open (see the
  * standing fence in `inference-policy-fence.ts`); that refusal refills the
- * projection inline and retries once. A balance or hold refusal decided from
- * an aged snapshot refills it once too, so a stale snapshot never refuses a
- * funded organization by itself.
+ * projection inline and retries once, at the lease for an immediate commit
+ * and at the provider boundary for a deferred one (see
+ * `attachInferenceAdmissionLease`). A balance or hold refusal decided from
+ * an aged snapshot stands for this request and refreshes the projection under
+ * `waitUntil`. Later requests are admitted once they can read that refill:
+ * the same isolate at once, other isolates after the shared cache propagates
+ * it. Refusals from a stale hold can therefore repeat while the refill is in
+ * flight or propagating, and once more if the shared entry expires
+ * (`CacheTTL.inference.orgAdmission`) before the auth entry is rewritten. A
+ * hold carried by a snapshot younger than `REFUSAL_REFILL_MIN_AGE_MS` schedules
+ * no refill, so its refusals last until the snapshot reaches that age.
  */
 async function admitFromSnapshot(
   params: OrganizationInferenceAdmissionParams,
@@ -547,23 +623,14 @@ async function admitFromSnapshot(
     if (!isStandingRefusal(error) || snapshotAgeMs(snapshot) < REFUSAL_REFILL_MIN_AGE_MS) {
       throw error;
     }
-    let refreshed: InferenceAdmissionSnapshot;
-    try {
-      refreshed = await fillInferenceAdmissionSnapshot(params.context.organizationId);
-    } catch (fillError) {
-      // error-policy:J2 an aged snapshot alone must not refuse; without the
-      // primary the refusal is unproven, so report it as retryable.
-      throw admissionUnavailable(params, fillError);
+    if (params.executionCtx) {
+      refreshInferenceAdmissionSnapshotOffResponse(
+        params.context.organizationId,
+        params.executionCtx,
+        { force: true },
+      );
     }
-    if (!snapshotIsComplete(refreshed)) throw admissionUnavailable(params);
-    if (
-      refreshed.billingHold === snapshot.billingHold &&
-      refreshed.balance.balanceRevision === snapshot.balance.balanceRevision &&
-      refreshed.authority.generation === snapshot.authority.generation
-    ) {
-      throw error;
-    }
-    return await admitOnce(refreshed);
+    throw error;
   }
 }
 
@@ -736,6 +803,15 @@ async function admitSubscriberViaDurableObject(
     lease,
     params,
     () => settledBalance,
+    (fresh) => {
+      if (!fresh.subscriptionFunded || !fresh.funding) return undefined;
+      settledBalance = {
+        balanceUsd: fresh.funding.balanceUsd,
+        balanceRevision: fresh.funding.balanceRevision,
+        balanceView: "funding",
+      };
+      return settledBalance;
+    },
   );
 }
 
@@ -883,7 +959,13 @@ async function admitCreditsViaDurableObject(
       },
       affiliateAttribution,
     };
-    return attachInferenceAdmissionLease(result, inferenceLease, params);
+    return attachInferenceAdmissionLease(
+      result,
+      inferenceLease,
+      params,
+      undefined,
+      creditBalanceInFreshSnapshot,
+    );
   }
 
   // A zero-cost outcome can settle against the admission observation. The
@@ -941,7 +1023,23 @@ async function admitCreditsViaDurableObject(
     inferenceLease,
     params,
     () => settledBalance,
+    (fresh) => {
+      const balance = creditBalanceInFreshSnapshot(fresh);
+      if (balance) settledBalance = balance;
+      return balance;
+    },
   );
+}
+
+/** The credit balance of a refilled snapshot, unless it now funds through a subscription. */
+function creditBalanceInFreshSnapshot(
+  fresh: InferenceAdmissionSnapshot,
+): { balanceUsd: number; balanceRevision: string } | undefined {
+  if (fresh.subscriptionFunded && fresh.funding) return undefined;
+  return {
+    balanceUsd: fresh.balance.balanceUsd,
+    balanceRevision: fresh.balance.balanceRevision,
+  };
 }
 
 /** Map pricing/affiliate policy failures to retryable admission errors. */

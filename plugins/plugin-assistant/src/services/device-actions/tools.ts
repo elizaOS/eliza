@@ -91,6 +91,7 @@ const capabilityBoundTypes = new Set([
   "maps_read_selected",
   "reminder_create_after",
   "notes_filter",
+  "notes_list_filter",
   "notes_move",
   "notes_folder_create",
   "notes_restore",
@@ -157,6 +158,11 @@ const declarations = [
     "DEVICE_NOTES_FILTER",
     "notes_filter",
     "Filter the Notes list on this phone by text, folder name and/or kind (text, list, voice, link). Read-only: the phone shows the matching notes with a clearable filter and returns no note content to the agent.",
+  ],
+  [
+    "DEVICE_CANONICAL_NOTES_FILTER",
+    "notes_list_filter",
+    "Filter the open Notes list by text or kind (text, list, voice, link). The phone shows the filtered list with a clearable filter and returns no note content. Requires the canonical Notes list to be open.",
   ],
   [
     "DEVICE_NOTE_MOVE",

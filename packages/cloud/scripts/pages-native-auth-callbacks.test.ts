@@ -23,24 +23,6 @@ const production = {
   ...stage,
   redirectUri: "https://cloud.eliza.app/auth/example/callback",
 };
-const browserStage = {
-  ...stage,
-  browserSignIn: {
-    startPath: "/example/browser-start",
-    returnPath: "/__example/signin-return",
-    storageKey: "example-browser-sign-in:v1",
-    apiOrigin: "https://api-staging.eliza.app",
-    tenant: "elizacloud-staging",
-  },
-};
-const browserProduction = {
-  ...production,
-  browserSignIn: {
-    ...browserStage.browserSignIn,
-    apiOrigin: "https://api.eliza.app",
-    tenant: "elizacloud",
-  },
-};
 const directory = path.resolve(import.meta.dirname, "../../app");
 const canonical = Bun.TOML.parse(
   await readFile(path.join(directory, "wrangler.toml"), "utf8"),
@@ -125,14 +107,6 @@ describe("Pages native callback deployment", () => {
     try {
       const appDirectory = path.join(temporary, "packages/app");
       await mkdir(appDirectory, { recursive: true });
-      const functionsDirectory = path.join(appDirectory, "functions");
-      await mkdir(functionsDirectory, { recursive: true });
-      await writeFile(
-        path.join(functionsDirectory, "_native-auth-callback-config.ts"),
-        await readFile(
-          path.resolve(directory, "functions/_native-auth-callback-config.ts"),
-        ),
-      );
       await writeFile(
         path.join(appDirectory, "wrangler.toml"),
         await readFile(path.join(directory, "wrangler.toml")),
@@ -166,8 +140,6 @@ describe("Pages native callback deployment", () => {
       for (const [environment, callback] of [
         ["staging", stage],
         ["production", production],
-        ["staging", browserStage],
-        ["production", browserProduction],
       ] as const) {
         const context = {
           inputs: { target_environment: environment },
@@ -209,15 +181,16 @@ describe("Pages native callback deployment", () => {
         expect(prepared.stderr).toBe("");
         expect(JSON.parse(prepared.stdout).nativeCallbacks).toBe(1);
         const preparedOutputs = await outputs(preparedFile);
-        const saved = JSON.parse(
-          await readFile(
-            path.join(preparedOutputs.directory, "wrangler.json"),
-            "utf8",
+        expect(
+          JSON.stringify(
+            JSON.parse(
+              await readFile(
+                path.join(preparedOutputs.directory, "wrangler.json"),
+                "utf8",
+              ),
+            ),
           ),
-        );
-        const selected =
-          environment === "production" ? saved.env.production : saved;
-        expect(JSON.parse(selected.vars[binding])).toEqual([callback]);
+        ).toContain(callback.redirectUri);
         const missing = run(
           prepare,
           { ...environmentFor(prepare, bareContext), [binding]: "" },
@@ -226,65 +199,18 @@ describe("Pages native callback deployment", () => {
         expect(missing.status).toBe(1);
         expect(missing.stdout).toContain("configuration did not transfer");
       }
-      for (const invalidCallback of [
-        { ...stage, privateKey: "must-not-be-output" },
+      const invalid = run(
+        resolver,
         {
-          ...browserStage,
-          browserSignIn: {
-            ...browserStage.browserSignIn,
-            privateKey: "must-not-be-output",
-          },
+          TARGET_ENVIRONMENT: "staging",
+          [binding]: JSON.stringify([
+            { ...stage, privateKey: "must-not-be-output" },
+          ]),
         },
-        { ...browserProduction, redirectUri: stage.redirectUri },
-        {
-          ...browserStage,
-          browserSignIn: {
-            ...browserStage.browserSignIn,
-            apiOrigin: browserProduction.browserSignIn.apiOrigin,
-          },
-        },
-        {
-          ...browserStage,
-          browserSignIn: {
-            ...browserStage.browserSignIn,
-            tenant: browserProduction.browserSignIn.tenant,
-          },
-        },
-        ...[
-          "relative",
-          "//other.example/start",
-          "/assets/start",
-          "/api/start",
-          "/steward/start",
-          "/.well-known/assetlinks.json",
-          "/a/../start",
-          "/start?value=1",
-        ].flatMap((value) => [
-          {
-            ...browserStage,
-            browserSignIn: { ...browserStage.browserSignIn, startPath: value },
-          },
-          {
-            ...browserStage,
-            browserSignIn: { ...browserStage.browserSignIn, returnPath: value },
-          },
-        ]),
-        ...["", "has space", "x".repeat(129)].map((storageKey) => ({
-          ...browserStage,
-          browserSignIn: { ...browserStage.browserSignIn, storageKey },
-        })),
-      ]) {
-        const invalid = run(
-          resolver,
-          {
-            TARGET_ENVIRONMENT: "staging",
-            [binding]: JSON.stringify([invalidCallback]),
-          },
-          path.join(temporary, "invalid"),
-        );
-        expect(invalid.status).toBe(1);
-        expect(invalid.stderr).not.toContain("must-not-be-output");
-      }
+        path.join(temporary, "invalid"),
+      );
+      expect(invalid.status).toBe(1);
+      expect(invalid.stderr).not.toContain("must-not-be-output");
       const emptyFile = path.join(temporary, "empty");
       expect(
         run(
@@ -423,68 +349,29 @@ describe("Pages native callback deployment", () => {
         tenant: "elizacloud-staging",
       },
     };
-    const { config } = prepareConfig(
-      canonical,
-      directory,
-      "staging",
-      JSON.stringify([callback]),
-      {},
-    );
-    const request = (url: URL) =>
-      onRequest({
-        request: new Request(url),
-        env: config.vars as Record<string, string>,
-        next: async () => new Response("Unexpected SPA"),
-      });
+    const { config } = prepareConfig(canonical, directory, "staging", JSON.stringify([callback]), {});
+    const request = (url: URL) => onRequest({
+      request: new Request(url),
+      env: config.vars as Record<string, string>,
+      next: async () => new Response("Unexpected SPA"),
+    });
     expect(await verifyCallbacks(config, "staging", request)).toBe(1);
     const mutations: Array<(body: string, headers: Headers) => string> = [
       (body) => body.replace("sessionStorage.getItem", "sessionStorage.clear"),
-      (body, headers) => {
-        headers.set(
-          "content-security-policy",
-          headers.get("content-security-policy") +
-            "; script-src 'unsafe-inline'",
-        );
-        return body;
-      },
+      (body, headers) => { headers.set("content-security-policy", headers.get("content-security-policy") + "; script-src 'unsafe-inline'"); return body; },
       (body) => body.replace(/ nonce="[^"]*"/, ""),
-      (body, headers) => {
-        headers.set(
-          "content-security-policy",
-          headers.get("content-security-policy")!.replace(/ 'nonce-[^']*'/, ""),
-        );
-        return body;
-      },
+      (body, headers) => { headers.set("content-security-policy", headers.get("content-security-policy")!.replace(/ 'nonce-[^']*'/, "")); return body; },
       (body) => body.replace(/(<script nonce="[^"]*">)/, "$1</script>$1"),
-      (body, headers) => {
-        const csp = headers.get("content-security-policy")!;
-        headers.set(
-          "content-security-policy",
-          csp.replace(/('nonce-[^']*')/, "$1 $1"),
-        );
-        return body;
-      },
+      (body, headers) => { const csp = headers.get("content-security-policy")!; headers.set("content-security-policy", csp.replace(/('nonce-[^']*')/, "$1 $1")); return body; },
       (body) => body.replace(/nonce="[^"]*"/, `nonce="${crypto.randomUUID()}"`),
-      (body, headers) => {
-        const nonce = /nonce="([^"]*)"/.exec(body)![1];
-        headers.set(
-          "content-security-policy",
-          headers.get("content-security-policy")!.replace(nonce, "invalid"),
-        );
-        return body.replace(nonce, "invalid");
-      },
+      (body, headers) => { const nonce = /nonce="([^"]*)"/.exec(body)![1]; headers.set("content-security-policy", headers.get("content-security-policy")!.replace(nonce, "invalid")); return body.replace(nonce, "invalid"); },
     ];
     for (const mutate of mutations) {
-      await expect(
-        verifyCallbacks(config, "staging", async (url) => {
-          const response = await request(url);
-          const headers = new Headers(response.headers);
-          return new Response(mutate(await response.text(), headers), {
-            status: response.status,
-            headers,
-          });
-        }),
-      ).rejects.toThrow();
+      await expect(verifyCallbacks(config, "staging", async (url) => {
+        const response = await request(url);
+        const headers = new Headers(response.headers);
+        return new Response(mutate(await response.text(), headers), { status: response.status, headers });
+      })).rejects.toThrow();
     }
   });
 

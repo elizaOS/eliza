@@ -18,6 +18,7 @@ import android.telecom.TelecomManager;
 import android.util.Log;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.security.GeneralSecurityException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -72,8 +73,11 @@ final class UpdateRunner {
     }
 
     private void execute(Run run) {
-        JournalStore store = new JournalStore(context.getFilesDir());
         try {
+            // Android exposes app storage through /data/user/0 as well as /data/data.
+            // Bind the trusted framework directory once before validating child paths.
+            File directory = context.getFilesDir().getCanonicalFile();
+            JournalStore store = new JournalStore(directory);
             if (!context.getResources().getBoolean(R.bool.os_update_enabled)) {
                 finish(run, "System updates are not configured"); return;
             }
@@ -90,9 +94,7 @@ final class UpdateRunner {
                     context.getResources().getStringArray(R.array.os_update_hosts),
                     context.getString(R.string.os_update_product), context.getString(R.string.os_update_device));
             UpdateChannel.Candidate candidate = channel.discover();
-            boolean unapplied = current.phase == UpdateJournal.Phase.DOWNLOADING
-                    || current.phase == UpdateJournal.Phase.VERIFIED;
-            if (unapplied && (candidate == null || !current.targetBuild.equals(candidate.fingerprint)
+            if (current.isUnapplied() && (candidate == null || !current.targetBuild.equals(candidate.fingerprint)
                     || !current.packageSha256.equals(candidate.sha256))) {
                 UpdateJournal idle = current.cancelUnapplied();
                 store.write(current, idle); current = idle;
@@ -108,20 +110,23 @@ final class UpdateRunner {
                     || !current.packageSha256.equals(candidate.sha256)) {
                 finish(run, "The offered update changed; the earlier candidate remains held"); return;
             }
-            File ota = new File(context.getFilesDir(), candidate.sha256 + ".zip");
+            boolean unapplied = current.isUnapplied();
+            Path scratch = unapplied
+                    ? PackageVerifier.reclaimExtractionScratch(directory.toPath()) : null;
+            File ota = new File(directory, candidate.sha256 + ".zip");
             if (!ota.exists()) {
                 if (current.phase != UpdateJournal.Phase.DOWNLOADING) {
                     finish(run, "The verified update package is unavailable"); return;
                 }
                 status(context, "Downloading system update");
-                ota = channel.download(candidate, context.getFilesDir());
+                ota = channel.download(candidate, directory);
             }
             status(context, "Verifying system update");
-            run.verifying = true;
-            VerifiedPayload payload = PackageVerifier.verify(ota, context.getFilesDir(),
+            run.verifying = unapplied;
+            VerifiedPayload payload = PackageVerifier.verify(ota, directory,
                     candidate.sha256, candidate.bytes, candidate.fingerprint, candidate.timestamp,
                     context.getString(R.string.os_update_product), context.getString(R.string.os_update_device),
-                    context.getString(R.string.os_update_ota_certificate));
+                    context.getString(R.string.os_update_ota_certificate), scratch);
             run.verifying = false;
             if (current.phase == UpdateJournal.Phase.DOWNLOADING) {
                 UpdateJournal next = current.verified(android.os.Build.FINGERPRINT,
@@ -226,6 +231,10 @@ final class UpdateRunner {
             try {
                 JournalStore store = new JournalStore(context.getFilesDir());
                 UpdateJournal before = store.read();
+                if (failure instanceof PackageVerifier.StorageDeferred && before.isUnapplied()) {
+                    finish(run, "Waiting for enough storage to verify the system update");
+                    return;
+                }
                 store.write(before, before.failedBeforeApply());
             } catch (Exception unconfirmed) {
                 Log.w("ElizaSystemUpdater", "Rejected-package state is unconfirmed", unconfirmed);

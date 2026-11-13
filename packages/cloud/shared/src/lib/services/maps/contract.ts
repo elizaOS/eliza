@@ -160,8 +160,6 @@ export interface MapsCoverage {
     placeDetails: true;
     geocode: true;
     reverseGeocode: true;
-    /** Map taps can ask for the nearest named place before address lookup. */
-    placeLookup?: boolean;
     modes: MapsTravelMode[];
     alternatives: boolean;
     traffic: MapsTraffic;
@@ -241,13 +239,7 @@ export const mapsTextSearchRequestSchema = z
   })
   .strict();
 
-export const mapsReverseRequestSchema = z
-  .object({
-    coordinate: coordinateSchema,
-    preferPlace: z.boolean().optional(),
-    radiusMeters: z.number().finite().positive().max(50_000).optional(),
-  })
-  .strict();
+export const mapsReverseRequestSchema = z.object({ coordinate: coordinateSchema }).strict();
 
 /** An id the configured geocoder issued; each geocoder validates its own format. */
 export const mapsPlaceDetailsRequestSchema = z

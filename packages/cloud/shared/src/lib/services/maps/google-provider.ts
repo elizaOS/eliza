@@ -57,7 +57,6 @@ const GOOGLE_OPERATOR = "Google";
 const PLACES_URL = "https://places.googleapis.com/v1/";
 /** Absolute: a relative `places:searchText` would parse `places:` as a URL scheme. */
 const SEARCH_TEXT_URL = "https://places.googleapis.com/v1/places:searchText";
-const SEARCH_NEARBY_URL = "https://places.googleapis.com/v1/places:searchNearby";
 const GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json";
 const ROUTES_URL = "https://routes.googleapis.com/directions/v2:computeRoutes";
 const TILES_URL = "https://tile.googleapis.com/v1/";
@@ -326,7 +325,6 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
         placeDetails: true,
         geocode: true,
         reverseGeocode: true,
-        placeLookup: true,
         modes: this.transit
           ? ["drive", "walk", "bicycle", "transit"]
           : ["drive", "walk", "bicycle"],
@@ -406,34 +404,6 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
 
   async reverse(request: MapsReverseRequest, signal?: AbortSignal): Promise<MapsPlace | null> {
     this.requireCovered(request.coordinate);
-    if (request.preferPlace) {
-      const response = await upstreamFetch(
-        new URL(SEARCH_NEARBY_URL),
-        {
-          method: "POST",
-          headers: this.googleHeaders(SEARCH_FIELDS, { "content-type": "application/json" }),
-          body: JSON.stringify({
-            maxResultCount: 1,
-            rankPreference: "DISTANCE",
-            locationRestriction: {
-              circle: { center: request.coordinate, radius: request.radiusMeters ?? 60 },
-            },
-            ...(this.language ? { languageCode: this.language } : {}),
-            ...(this.region ? { regionCode: this.region } : {}),
-          }),
-        },
-        signal,
-        this.fetchImpl,
-      );
-      if (response.status !== 200) throw invalidResponse(response.status);
-      const body = await responseJson(response);
-      if (!body || typeof body !== "object" || Array.isArray(body)) throw invalidResponse();
-      const places = (body as { places?: unknown }).places;
-      if (places !== undefined && (!Array.isArray(places) || places.length > 1))
-        throw invalidResponse();
-      const [nearest] = this.covered((places ?? []).map((entry) => this.placeCandidate(entry)));
-      if (nearest) return nearest;
-    }
     const url = new URL(GEOCODE_URL);
     url.searchParams.set(
       "latlng",
@@ -617,8 +587,7 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
       maxZoomRects?: unknown;
     } | null;
     const copyright = boundedText(json?.copyright, 500);
-    if (copyright === undefined && json?.copyright !== undefined && json.copyright !== "")
-      throw invalidResponse();
+    if (!copyright) throw invalidResponse();
     const maxZoom = Array.isArray(json?.maxZoomRects)
       ? json.maxZoomRects.reduce<number | undefined>((best, rect) => {
           const zoom = finiteNumber((rect as { maxZoom?: unknown } | null)?.maxZoom);
@@ -627,7 +596,7 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
       : undefined;
     return {
       providerId: this.providerId,
-      copyright: copyright ?? TILE_ATTRIBUTION,
+      copyright,
       ...(maxZoom !== undefined ? { maxZoom } : {}),
     };
   }
@@ -640,7 +609,14 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
     const url = new URL(`2dtiles/${request.z}/${request.x}/${request.y}`, TILES_URL);
     url.searchParams.set("session", session.token);
     url.searchParams.set("key", this.apiKey);
-    return upstreamFetch(url, { method: "GET" }, signal, this.fetchImpl, [200, 401, 403, 404]);
+    // Fetch the current tile without retaining provider content in an HTTP cache.
+    return upstreamFetch(
+      url,
+      { method: "GET", cache: "no-store" },
+      signal,
+      this.fetchImpl,
+      [200, 401, 403, 404],
+    );
   }
 
   private tileSessionKey(): string {

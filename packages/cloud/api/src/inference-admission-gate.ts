@@ -7,6 +7,10 @@
  * resetting an active quota window. The object never queries Postgres or Redis.
  */
 
+import {
+  CACHE_CIRCUIT_CLOCK_PATH,
+  CACHE_CIRCUIT_ID_PREFIX,
+} from "@elizaos/cloud-shared/lib/cache/cache-circuit-clock";
 import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import { isAffiliateBillingAttribution } from "@elizaos/cloud-shared/lib/services/affiliate-billing-attribution";
 import type { InferenceBalanceFence } from "@elizaos/cloud-shared/lib/services/credits";
@@ -712,6 +716,7 @@ export class InferenceAdmissionGate {
   // comes from the distinct Durable Object identity selected by the caller.
   private rateLimitOperationQueue: Promise<void> = Promise.resolve();
   private fundedBudgetController?: import("./inference-funded-budget-controller").InferenceFundedBudgetController;
+  private cacheCircuitClock?: import("./cache-circuit-clock").CacheCircuitClock;
 
   private async fundedBudgets() {
     if (!this.fundedBudgetController) {
@@ -2012,6 +2017,23 @@ export class InferenceAdmissionGate {
   }
 
   private async route(request: Request): Promise<Response> {
+    const route = new URL(request.url).pathname;
+    const objectName = this.state.id?.name;
+    const clockIdentity =
+      objectName?.startsWith(CACHE_CIRCUIT_ID_PREFIX) === true;
+    if (clockIdentity || route === CACHE_CIRCUIT_CLOCK_PATH) {
+      if (
+        !clockIdentity ||
+        route !== CACHE_CIRCUIT_CLOCK_PATH ||
+        request.method !== "POST"
+      )
+        return new Response("Not found", { status: 404 });
+      if (!this.cacheCircuitClock) {
+        const { CacheCircuitClock } = await import("./cache-circuit-clock");
+        this.cacheCircuitClock = new CacheCircuitClock(this.state, objectName!);
+      }
+      return this.cacheCircuitClock.handle(request);
+    }
     if (
       new URL(request.url).pathname === "/speech/subscribe" &&
       request.headers.get("Upgrade")?.toLowerCase() === "websocket"

@@ -112,32 +112,6 @@ async function fixture({
         },
       ]);
     }
-    if (u.pathname.endsWith("/calendar/feed"))
-      return Response.json({
-        calendarId: "primary",
-        syncedAt: "2026-11-12T12:00:00.000Z",
-        events: [
-          { updatedAt: "2026-10-01T10:00:00.000Z" },
-          { updated: "2026-10-02T10:00:00.000Z" },
-          {},
-        ].map((metadata, index) => ({
-          externalId: `event-${index}`,
-          calendarId: "primary",
-          title: "Saved event",
-          description: "",
-          location: "",
-          status: "confirmed",
-          startAt: "2026-11-24T19:00:00.000Z",
-          endAt: "2026-11-24T19:30:00.000Z",
-          isAllDay: false,
-          timezone: "America/Los_Angeles",
-          htmlLink: null,
-          conferenceLink: null,
-          organizer: null,
-          metadata,
-          attendees: [],
-        })),
-      });
     const body = init.body ? JSON.parse(init.body) : null;
     if (u.pathname.endsWith("/operations")) {
       const review = { from: "owned@example.invalid", ...body.proposal },
@@ -501,36 +475,6 @@ test("switches revoke Gmail and Calendar writes before provider dispatch", async
     assert.equal(f.dispatches(), 0);
     const receipt = await f.call({ send: { operation: "receipt", id } });
     assert.equal(receipt.data.send.state, "prepared");
-  } finally {
-    await f.host.close();
-  }
-});
-
-test("managed Calendar keeps provider revision times across cache refreshes", async () => {
-  const f = await fixture();
-  try {
-    const sources = await f.call({ calendar: { operation: "sources" } });
-    assert.equal(sources.status, 200);
-    const selected = sources.data.calendars[0];
-    const result = await f.call({
-      calendar: {
-        operation: "feed",
-        grantId: selected.grantId,
-        calendarId: selected.calendarId,
-        timeMin: "2026-11-01T00:00:00.000Z",
-        timeMax: "2026-12-01T00:00:00.000Z",
-        timeZone: "America/Los_Angeles",
-      },
-    });
-    assert.equal(result.status, 200);
-    assert.deepEqual(
-      result.data.feed.events.map((event) => event.updatedAt),
-      [
-        "2026-10-01T10:00:00.000Z",
-        "2026-10-02T10:00:00.000Z",
-        "2026-11-12T12:00:00.000Z",
-      ],
-    );
   } finally {
     await f.host.close();
   }

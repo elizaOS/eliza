@@ -1,10 +1,7 @@
 /** Owner-only Google tools. Provider credentials remain in the private Cloud
  * store; Gmail sends use the canonical prepared-review/dispatch/receipt flow. */
 import { createHash } from "node:crypto";
-import {
-  calendarAgentWrite,
-  managedCalendarUpdatedAt,
-} from "../../../../../plugins/plugin-calendar/src/service/managed-calendar-host.ts";
+import { calendarAgentWrite } from "../../../../../plugins/plugin-calendar/src/service/managed-calendar-host.ts";
 import {
   type CalendarCacheBucket,
   createCalendarReadTiming,
@@ -703,10 +700,10 @@ export function createManagedGoogleAgentHost(
             grantId: input.grantId,
             connectorAccountId: input.grantId,
             syncedAt: result.syncedAt,
-            updatedAt: managedCalendarUpdatedAt(
-              event.metadata,
-              result.syncedAt,
-            ),
+            updatedAt:
+              typeof event.metadata.updated === "string"
+                ? event.metadata.updated
+                : result.syncedAt,
             calendarSummary: calendar.summary,
           })),
         };

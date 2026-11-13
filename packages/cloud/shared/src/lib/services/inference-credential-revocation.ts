@@ -35,12 +35,7 @@ export type InferenceCredentialCheck =
       rateLimit?: number;
       expiresAt?: number | null;
     }
-  | {
-      kind: "steward_session";
-      userId: string;
-      stewardUserId: string;
-      issuedAt: number;
-    };
+  | { kind: "steward_session"; userId: string; stewardUserId: string; issuedAt: number };
 
 export type InferenceSubjectDisableReason = "account" | "moderation" | "membership";
 
@@ -53,15 +48,13 @@ interface RevocationResponse {
 export class InferenceCredentialRevocationUnavailableError extends ElizaError {
   override readonly name = "InferenceCredentialRevocationUnavailableError";
   readonly statusCode = 503;
-  readonly credentialCheckTimedOut: boolean;
 
-  constructor(message: string, options?: { cause?: unknown; credentialCheckTimedOut?: boolean }) {
+  constructor(message: string, options?: { cause?: unknown }) {
     super(message, {
       code: "INFERENCE_CREDENTIAL_REVOCATION_UNAVAILABLE",
       cause: options?.cause,
       severity: "ephemeral",
     });
-    this.credentialCheckTimedOut = options?.credentialCheckTimedOut === true;
   }
 }
 
@@ -175,10 +168,7 @@ async function gateRequest(
     // error-policy:J2 transport failure must stay fail-closed with its cause.
     throw new InferenceCredentialRevocationUnavailableError(
       `Inference revocation boundary is unavailable deadlineExceeded=${controller.signal.aborted} ${describeBoundaryCause(error)}`,
-      {
-        cause: error,
-        credentialCheckTimedOut: operation === "check" && controller.signal.aborted,
-      },
+      { cause: error },
     );
   } finally {
     clearTimeout(timeout);
@@ -280,11 +270,7 @@ export async function setInferenceSubjectActive(
   active: boolean,
   reason: InferenceSubjectDisableReason,
 ): Promise<void> {
-  await commitMutation(organizationId, "/subject/set-active", {
-    userId,
-    active,
-    reason,
-  });
+  await commitMutation(organizationId, "/subject/set-active", { userId, active, reason });
 }
 
 /** Revoke Steward sessions issued at or before the supplied immutable iat. */
@@ -293,10 +279,7 @@ export async function revokeInferenceSessionsThrough(
   userId: string,
   issuedAt: number,
 ): Promise<void> {
-  await commitMutation(organizationId, "/session/revoke-through", {
-    userId,
-    issuedAt,
-  });
+  await commitMutation(organizationId, "/session/revoke-through", { userId, issuedAt });
 }
 
 /** Disable or re-enable one Steward-subject to Cloud-user identity binding. */

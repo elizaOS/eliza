@@ -1,7 +1,7 @@
 /** Errors safe to expose across the restricted renderer bridge. */
 export class NativeHostError extends Error {
-  constructor(message, { status, code } = {}) {
-    super(message);
+  constructor(message, { status, code, cause } = {}) {
+    super(message, cause === undefined ? undefined : { cause });
     this.name = "NativeHostError";
     this.status = status;
     this.code = code;

@@ -97,6 +97,7 @@ import {
   CALENDAR_DETAIL_ALIASES,
   CALENDAR_DETAILS_PARAMETER_SCHEMA,
 } from "../calendar-action-schema.js";
+import { calendarReadPromptProjection } from "../calendar-read-result.js";
 import { calendarRecordPolicyFailure } from "../internal/calendar-record-policy.js";
 import {
   CALENDAR_TIME_ZONE_ALIASES,
@@ -5679,7 +5680,7 @@ export function createCalendarActionRunner(
       }): Promise<ActionResult> => {
         const effectReceipt = normalizeEffectReceipt(payload.effectReceipt);
         if (!payload.interaction || typeof payload.text !== "string") {
-          return {
+          const result: ActionResult = {
             success: payload.success,
             transcriptVisibility: "internal",
             turnComplete: false,
@@ -5713,6 +5714,13 @@ export function createCalendarActionRunner(
               ),
             },
           };
+          // Every host, including the full personal assistant, receives the
+          // same local-time facts. Do not depend on one registration wrapper.
+          return subaction === "feed" ||
+            subaction === "search_events" ||
+            subaction === "next_event"
+            ? { ...result, ...calendarReadPromptProjection(result.data) }
+            : result;
         }
         // Approval choices and permission cards are explicit interaction
         // protocols. Preserve their exact text and binding, without synthesis.
