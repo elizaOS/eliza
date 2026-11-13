@@ -334,15 +334,50 @@ export interface MapsRoutesResponse {
  * endpoints, enforce their own coverage and throw `MapsServiceError` for
  * unsupported regions, modes, missing routes and outages.
  */
+export interface MapsProviderPrice {
+  amountUsd: number;
+  sku: string;
+  priceVersion: string;
+}
+export type MapsPriceObserver = ((price: MapsProviderPrice) => void) & {
+  beforeRequest?: () => Promise<void>;
+  requestRejected?: () => void;
+};
 export interface MapsProviderAdapter {
+  /** Published provider unit price for a validated request; never includes platform markup. */
+  creditPrice?(operation: MapsOperation, request: unknown): MapsProviderPrice;
   coverage(): MapsCoverage;
-  geocode(request: MapsTextSearchRequest, signal?: AbortSignal): Promise<MapsPlace[]>;
-  reverse(request: MapsReverseRequest, signal?: AbortSignal): Promise<MapsPlace | null>;
-  search(request: MapsTextSearchRequest, signal?: AbortSignal): Promise<MapsPlace[]>;
-  details(request: MapsPlaceDetailsRequest, signal?: AbortSignal): Promise<MapsPlace | null>;
-  routes(request: MapsRoutesRequest, signal?: AbortSignal): Promise<MapsRoute[]>;
+  geocode(
+    request: MapsTextSearchRequest,
+    signal?: AbortSignal,
+    reportPrice?: MapsPriceObserver,
+  ): Promise<MapsPlace[]>;
+  reverse(
+    request: MapsReverseRequest,
+    signal?: AbortSignal,
+    reportPrice?: MapsPriceObserver,
+  ): Promise<MapsPlace | null>;
+  search(
+    request: MapsTextSearchRequest,
+    signal?: AbortSignal,
+    reportPrice?: MapsPriceObserver,
+  ): Promise<MapsPlace[]>;
+  details(
+    request: MapsPlaceDetailsRequest,
+    signal?: AbortSignal,
+    reportPrice?: MapsPriceObserver,
+  ): Promise<MapsPlace | null>;
+  routes(
+    request: MapsRoutesRequest,
+    signal?: AbortSignal,
+    reportPrice?: MapsPriceObserver,
+  ): Promise<MapsRoute[]>;
   /** Raster tile; only providers whose coverage carries `tiles` implement it. */
-  tile?(request: MapsTileRequest, signal?: AbortSignal): Promise<MapsTile>;
+  tile?(
+    request: MapsTileRequest,
+    signal?: AbortSignal,
+    reportPrice?: MapsPriceObserver,
+  ): Promise<MapsTile>;
   /** Copyright for a visible area; only providers that serve tiles implement it. */
   viewport?(request: MapsViewportRequest, signal?: AbortSignal): Promise<MapsViewportResponse>;
 }
