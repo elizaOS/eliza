@@ -356,6 +356,9 @@ export function resolveCalendarPresetStart(
   });
 }
 
+/** Existing timed-create fallback when both end and duration are omitted. */
+export const DEFAULT_TIMED_CALENDAR_EVENT_DURATION_MINUTES = 60;
+
 export function resolveCalendarEventRange(
   request: CreateLifeOpsCalendarEventRequest,
   now: Date,
@@ -401,7 +404,8 @@ export function resolveCalendarEventRange(
     };
   }
   const durationMinutes =
-    normalizeOptionalMinutes(request.durationMinutes, "durationMinutes") ?? 60;
+    normalizeOptionalMinutes(request.durationMinutes, "durationMinutes") ??
+    DEFAULT_TIMED_CALENDAR_EVENT_DURATION_MINUTES;
   if (durationMinutes <= 0) {
     fail(400, "durationMinutes must be greater than 0");
   }

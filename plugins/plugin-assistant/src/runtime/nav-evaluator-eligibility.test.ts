@@ -77,6 +77,7 @@ test("actual evaluator changes only cloned eligibility enum; raw applied verdict
     "availableReceiptIds",
     "params",
     "isDeliveredNavigationOnlyTurn",
+    "decisionState = { intents: [] }",
     source.slice(start, end) + "return responseSchema;",
   );
   const original = {
@@ -89,7 +90,7 @@ test("actual evaluator changes only cloned eligibility enum; raw applied verdict
   const schema = apply(
     original,
     [],
-    { trajectory: replay() },
+    { context: { metadata: {} }, trajectory: replay() },
     isDeliveredNavigationOnlyTurn,
   );
   expect(schema.properties.replyEffectStatus.enum).toEqual([
@@ -107,7 +108,7 @@ test("actual evaluator changes only cloned eligibility enum; raw applied verdict
     apply(
       original,
       ["real-mutation-receipt"],
-      { trajectory: replay() },
+      { context: { metadata: {} }, trajectory: replay() },
       isDeliveredNavigationOnlyTurn,
     ).properties.replyEffectStatus.enum,
   ).toContain("applied");
@@ -115,7 +116,11 @@ test("actual evaluator changes only cloned eligibility enum; raw applied verdict
     apply(
       original,
       [],
-      { trajectory: replay(), hasUnresolvedToolFailure: true },
+      {
+        context: { metadata: {} },
+        trajectory: replay(),
+        hasUnresolvedToolFailure: true,
+      },
       isDeliveredNavigationOnlyTurn,
     ).properties.replyEffectStatus.enum,
   ).toContain("applied");

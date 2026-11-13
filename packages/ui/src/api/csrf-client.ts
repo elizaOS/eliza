@@ -1,4 +1,4 @@
-import { getHostRequestTransport } from "./host-transport";
+import { getHostRequestTransport, hostRequestOwnerId } from "./host-transport";
 
 /**
  * Authenticated fetch helper for dashboard API requests.
@@ -44,6 +44,12 @@ export async function fetchWithCsrf(
   if (url.startsWith("/") && !url.startsWith("//")) {
     url = resolveApiUrl(url);
   }
+  const capturedContext = {
+    ...context,
+    ownerId: Object.hasOwn(context, "ownerId")
+      ? context.ownerId
+      : hostRequestOwnerId(url),
+  };
   const method = (init.method ?? "GET").toUpperCase();
   const headers = new Headers(init.headers);
   const isDedicatedAgentRequest = isDedicatedCloudAgentBase(url);
@@ -78,7 +84,7 @@ export async function fetchWithCsrf(
     credentials: isDedicatedAgentRequest ? "omit" : "include",
     headers,
   };
-  return requestViaAgentTransport(url, requestInit, context);
+  return requestViaAgentTransport(url, requestInit, capturedContext);
 }
 /**
  * Route a caller-authenticated request through the canonical platform
@@ -89,10 +95,14 @@ export async function requestViaAgentTransport(
   init: RequestInit = {},
   context: AgentRequestContext = {},
 ): Promise<Response> {
+  const ownerId = Object.hasOwn(context, "ownerId")
+    ? context.ownerId
+    : hostRequestOwnerId(url);
   const transport =
     (await getHostRequestTransport(url, "csrf", init)) ?? fetchAgentTransport;
   return transport.request(url, init, {
     timeoutMs: context.timeoutMs ?? defaultFetchTimeoutMs(url, init),
+    ownerId,
     ...(context.responseType ? { responseType: context.responseType } : {}),
   });
 }

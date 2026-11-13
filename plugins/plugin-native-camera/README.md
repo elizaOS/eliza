@@ -5,6 +5,13 @@ recording across web, iOS, and Android.
 
 See [bridge definitions](src/definitions.ts) for the native API. Native targets require their SDKs, registered bridge, and OS permissions.
 
+Use `checkCameraPermission` and `requestCameraPermission` for a camera-only
+permission control. These methods do not request microphone or photo-library
+access and do not start preview. Android retires pending requests when its
+plugin closes. The older `checkPermissions` and `requestPermissions` remain
+available for existing callers; their combined result is not a device-library
+scope. Photo-library controls must use the owned-media library's scope API.
+
 ## Host ports
 
 [`host-ports`](src/host-ports.ts) holds the camera rules every host surface

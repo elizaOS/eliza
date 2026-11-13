@@ -8,14 +8,17 @@ import {
   runWithTrajectoryContext,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
+import { boundNotesRequest } from "./__tests__/helpers/bound-notes-request.ts";
 import { notesAction } from "./action.js";
 import { inferSelectedNotesUpdate } from "./native-note-update.js";
-import { NotesService } from "./service.js";
+import { notesPlugin } from "./plugin.js";
+import { NOTES_SERVICE_TYPE, NotesService } from "./service.js";
 import { NotesStore } from "./store.js";
 import { noteTextEditSchema } from "./types.js";
 import { parseUpdateNoteInput } from "./validation.js";
 
 const dirs: string[] = [];
+const serviceRuntimes = new WeakMap<NotesService, IAgentRuntime>();
 afterEach(async () => {
   for (const dir of dirs.splice(0))
     await fs.rm(dir, { recursive: true, force: true });
@@ -23,14 +26,19 @@ afterEach(async () => {
 async function setup() {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "notes-append-"));
   dirs.push(dir);
+  let service: NotesService;
   const runtime = {
     agentId: randomUUID(),
+    actions: notesPlugin.actions,
+    getService: (type: string) =>
+      type === NOTES_SERVICE_TYPE ? service : null,
     getServiceLoadPromise: async () => ({ broadcastWs: () => {} }),
   } as unknown as IAgentRuntime;
-  const service = new NotesService(runtime, {
+  service = new NotesService(runtime, {
     store: new NotesStore({ filePath: path.join(dir, "notes.json") }),
   });
   await service.initialize();
+  serviceRuntimes.set(service, runtime);
   return service;
 }
 const append = (text: string) => ({
@@ -114,20 +122,18 @@ describe("lossless Notes append", () => {
     const created = await service.createNoteWithCommit({
       content: "Packing\nPack a jacket.",
     });
-    const runtime = { getService: () => service } as unknown as IAgentRuntime;
-    const result = await notesAction.handler(
-      runtime,
-      { content: { text: "Add Bring water to that note." } } as Memory,
-      undefined,
-      {
-        parameters: {
-          action: "update",
-          noteId: created.value.id,
-          expectedRevision: created.snapshot.revision,
-          ...append("\nBring water"),
-        },
-      } as never,
-    );
+    const runtime = serviceRuntimes.get(service);
+    if (!runtime) throw Error("Missing actual service runtime fixture");
+    const request = await boundNotesRequest(runtime, {
+      text: "Add Bring water to that note.",
+      operations: ["update"],
+    });
+    const result = await request.handler(notesAction, {
+      action: "update",
+      noteId: created.value.id,
+      expectedRevision: created.snapshot.revision,
+      ...append("\nBring water"),
+    });
     expect(result?.success).toBe(true);
     expect(service.getNote(created.value.id)?.body).toBe(
       "\nPack a jacket.\nBring water",
@@ -149,6 +155,31 @@ describe("lossless Notes append", () => {
     expect(inline.value.title).toBe("Packing");
     expect(inline.value.body).toBe("\nBring water!");
   });
+  it.each([
+    [
+      "packing\ncharger, passport, socks",
+      "packing\ncharger, passport, socks, eggs",
+    ],
+    ["shop\n牛奶、鸡蛋", "shop\n牛奶、鸡蛋、eggs"],
+    ["groceries\n- milk\n- bread\n", "groceries\n- milk\n- bread\n- eggs"],
+    ["todo\n1. milk\n2. bread", "todo\n1. milk\n2. bread\n3. eggs"],
+    ["todo\n- [x] milk", "todo\n- [x] milk\n- [ ] eggs"],
+    ["ideas\nmilk\nbread, butter", "ideas\nmilk\nbread, butter\neggs"],
+    ["Packing\nPack a jacket.", "Packing\nPack a jacket.\neggs"],
+    ["Packing", "Packing\neggs"],
+  ])(
+    "adds one item in the plain list form of %j",
+    async (content, expected) => {
+      const service = await setup();
+      const created = await service.createNoteWithCommit({ content });
+      const changed = await service.updateNoteWithCommit(
+        created.value.id,
+        { textEdit: { action: "append", field: "item", text: "eggs" } },
+        created.snapshot.revision,
+      );
+      expect(changed.value.title + changed.value.body).toBe(expected);
+    },
+  );
   it("keeps checklist append on its authored path without modifying existing items", async () => {
     const service = await setup();
     const created = await service.createNoteWithCommit({
@@ -186,6 +217,18 @@ describe("lossless Notes append", () => {
       ],
       custom: { untouched: true },
     });
+    // The item form of a text append reaches the same checklist operation.
+    const item = await service.updateNoteWithCommit(
+      created.value.id,
+      { textEdit: { action: "append", field: "item", text: "Socks" } },
+      changed.snapshot.revision,
+    );
+    expect(item.value.format?.data?.items).toEqual([
+      { t: "Pack a jacket.", done: true, custom: "keep" },
+      { t: "Bring water", done: false },
+      { t: "Socks", done: false },
+    ]);
+    expect(item.value.body).toBe(created.value.body);
   });
   it("keeps an empty checklist on the authored append route", async () => {
     const service = await setup();

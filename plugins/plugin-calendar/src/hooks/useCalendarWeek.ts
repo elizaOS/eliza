@@ -25,14 +25,14 @@ import {
 
 const calendarClient = client as typeof client & CalendarClientMethods;
 
-export type CalendarViewMode = "day" | "week" | "month";
-export type CalendarSurfaceStatus =
-  | "loading"
-  | "empty"
-  | "ready"
-  | "partial"
-  | "unavailable"
-  | "error";
+import type {
+  CalendarViewMode,
+  CalendarWorkspaceState,
+  CalendarWorkspaceStatus,
+} from "../components/CalendarWorkspace.js";
+
+export type { CalendarViewMode } from "../components/CalendarWorkspace.js";
+export type CalendarSurfaceStatus = CalendarWorkspaceStatus;
 
 export type CalendarIssueKind =
   | "runtime_unavailable"
@@ -57,26 +57,12 @@ export interface UseCalendarWeekOptions {
   baseDate?: Date;
 }
 
-export interface UseCalendarWeekResult {
-  events: LifeOpsCalendarEvent[];
+export interface UseCalendarWeekResult extends CalendarWorkspaceState {
   feedState: LifeOpsCalendarFeedState | null;
   sources: LifeOpsCalendarSourceHealth[];
-  status: CalendarSurfaceStatus;
   loading: boolean;
-  refreshing: boolean;
   issue: CalendarIssue | null;
-  /** @deprecated Prefer the typed `issue` field. */
-  error: string | null;
-  viewMode: CalendarViewMode;
-  setViewMode: (mode: CalendarViewMode) => void;
-  baseDate: Date;
-  windowStart: Date;
-  windowEnd: Date;
-  refresh: () => Promise<void>;
   goToDate: (date: Date) => void;
-  goToToday: () => void;
-  goPrevious: () => void;
-  goNext: () => void;
 }
 
 interface CalendarSnapshot {

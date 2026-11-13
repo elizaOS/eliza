@@ -397,6 +397,144 @@ describe("tryHandleTrajectoryReadRoutes", () => {
     expect(fullAgain.get().body).toEqual(body);
   });
 
+  it("exposes control decisions without exposing stage payloads", async () => {
+    const privateText = "PRIVATE-STAGE-CONTENT";
+    const stages = [
+      {
+        schemaVersion: 1,
+        stageId: "planner-1",
+        kind: "planner",
+        iteration: 1,
+        startedAt: 1,
+        endedAt: 2,
+        latencyMs: 1,
+        payload: {
+          model: {
+            response: privateText,
+            messages: [{ content: privateText }],
+            toolCalls: [{ name: privateText, args: { text: privateText } }],
+          },
+        },
+      },
+      ...["CONTINUE", "FINISH", "NEXT_RECOMMENDED", privateText].map(
+        (decision, index) => ({
+          schemaVersion: 1,
+          stageId: `evaluation-${index}`,
+          kind: "evaluation",
+          iteration: index + 1,
+          startedAt: 2,
+          endedAt: 3,
+          latencyMs: 1,
+          payload: {
+            evaluation: {
+              decision,
+              success: false,
+              protocolFailure: true,
+              requestFullyCovered: false,
+              gated: true,
+              llmCallSkipped: true,
+              typedReadAwaitingEvidence: true,
+              typedReadFinal: false,
+              typedReadRendered: false,
+              thought: privateText,
+              messageToUser: privateText,
+              reason: privateText,
+              raw: { privateText },
+              extra: privateText,
+            },
+          },
+        }),
+      ),
+      {
+        schemaVersion: 1,
+        stageId: "malformed",
+        kind: "evaluation",
+        startedAt: 3,
+        endedAt: 4,
+        latencyMs: 1,
+        payload: {
+          evaluation: {
+            decision: { text: privateText },
+            success: "false",
+            protocolFailure: 1,
+            gated: privateText,
+          },
+        },
+      },
+    ];
+    const service = {
+      getTrajectoryDetail: async (id: string) => ({
+        trajectoryId: id,
+        agentId: "agent-1",
+        startTime: 1,
+        endTime: 4,
+        metrics: { finalStatus: "completed" },
+        metadata: {},
+        steps: [
+          {
+            stepId: "step-1",
+            llmCalls: [],
+            providerAccesses: [],
+            semanticStages: stages,
+          },
+        ],
+      }),
+    };
+    const response = mockRes();
+    await tryHandleTrajectoryReadRoutes({
+      pathname: "/api/trajectories/decisions",
+      method: "GET",
+      url: url("/api/trajectories/decisions?includePayloads=0"),
+      runtime: runtimeWith(service),
+      res: response.res,
+    });
+    const body = response.get().body as {
+      stageDecisions: Record<string, unknown>[];
+      semanticStages: { payload: unknown }[];
+    };
+    expect(body.stageDecisions[0]).toEqual({
+      stageId: "planner-1",
+      kind: "planner",
+      iteration: 1,
+      toolCallCount: 1,
+    });
+    expect(body.stageDecisions.slice(1, 4).map((row) => row.decision)).toEqual([
+      "CONTINUE",
+      "FINISH",
+      "NEXT_RECOMMENDED",
+    ]);
+    expect(body.stageDecisions[1]).toMatchObject({
+      success: false,
+      protocolFailure: true,
+      requestFullyCovered: false,
+      gated: true,
+      llmCallSkipped: true,
+      typedReadAwaitingEvidence: true,
+      typedReadFinal: false,
+      typedReadRendered: false,
+    });
+    expect(body.stageDecisions[4]).not.toHaveProperty("decision");
+    expect(body.stageDecisions[5]).toEqual({
+      stageId: "malformed",
+      kind: "evaluation",
+    });
+    expect(
+      body.semanticStages.every(
+        (stage) => JSON.stringify(stage.payload) === "{}",
+      ),
+    ).toBe(true);
+    expect(JSON.stringify(body)).not.toContain(privateText);
+    const full = mockRes();
+    await tryHandleTrajectoryReadRoutes({
+      pathname: "/api/trajectories/decisions",
+      method: "GET",
+      url: url("/api/trajectories/decisions"),
+      runtime: runtimeWith(service),
+      res: full.res,
+    });
+    expect(JSON.stringify(full.get().body)).toContain(privateText);
+  });
+
   it("returns LLM-only detail without fabricating a tool event", async () => {
     const service = {
       getTrajectoryDetail: async (id: string) => ({
@@ -440,6 +578,7 @@ describe("tryHandleTrajectoryReadRoutes", () => {
       trajectory: { id: "llm-only", status: "completed", llmCallCount: 1 },
       llmCalls: [{ id: "c0", response: "hello" }],
       toolEvents: [],
+      stageDecisions: [],
     });
   });
 

@@ -14,6 +14,7 @@ const plan = {
   mode: "create",
   requestKind: "reminder",
   nativeProjection: "in_app_only",
+  notificationMode: "none",
   title: "Check packing list",
   description: null,
   cadenceKind: "once",

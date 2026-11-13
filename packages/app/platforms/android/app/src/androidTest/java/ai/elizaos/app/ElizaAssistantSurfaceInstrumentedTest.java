@@ -19,13 +19,14 @@ import androidx.test.ext.junit.runners.AndroidJUnit4;
 import java.util.List;
 
 /**
- * Retail-path (non-{@code assumeSystemEliza}) assertions that Eliza's Android
+ * Retail-path (non-{@code assumeImageEliza}) assertions that Eliza's Android
  * assistant surfaces survived install-time manifest parsing on ANY debug build.
  *
- * The pre-existing {@code ElizaOsInstrumentedTest} only asserts held default
- * roles, and every one of its cases {@code assumeSystemEliza()}-gates to the
- * {@code /system/priv-app/Eliza/} AOSP APK — so on a normal sideload/CI APK it
- * vacuously assume-skips and the {@code :app:} androidTest run proves nothing.
+ * {@code ElizaOsInstrumentedTest} asserts the image contract (install path,
+ * held roles, default grants), and every one of its cases
+ * {@code assumeImageEliza()}-gates to the image-installed APK at
+ * {@code /product/app/Eliza/} (or {@code /system/app/Eliza/} on a GSI) — so on
+ * a normal sideload/CI APK it assume-skips and proves nothing there.
  * This class fixes that (#13581): its assertions run on the plain debug APK the
  * emulator installs, so wiring {@code :app:connectedDebugAndroidTest} into CI
  * is not green-by-skip.

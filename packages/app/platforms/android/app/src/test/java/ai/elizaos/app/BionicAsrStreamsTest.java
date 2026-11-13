@@ -10,6 +10,9 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.json.JSONObject;
 import org.junit.Test;
 
@@ -32,6 +35,10 @@ public final class BionicAsrStreamsTest {
         long fed;
         boolean cancelNextDecode;
         RuntimeException faultOnPartial;
+        /** When set, finish blocks until released or cancelled (the context-wide flag). */
+        CountDownLatch finishEntered;
+        CountDownLatch releaseFinish;
+        volatile boolean contextCancelled;
 
         @Override public int supported(long ctx) { return streaming ? 1 : 0; }
 
@@ -57,9 +64,25 @@ public final class BionicAsrStreamsTest {
             return "secret words " + fed;
         }
 
-        @Override public String finish(long stream) { return "secret final " + fed; }
+        @Override public String finish(long stream) {
+            if (releaseFinish != null) {
+                contextCancelled = false; // the native decode clears the flag when it starts
+                finishEntered.countDown();
+                try {
+                    while (!releaseFinish.await(5, TimeUnit.MILLISECONDS)) {
+                        if (contextCancelled) throw new CancellationException("cancelled");
+                    }
+                } catch (InterruptedException e) {
+                    throw new IllegalStateException(e);
+                }
+            }
+            return "secret final " + fed;
+        }
 
-        @Override public void cancel(long stream) { cancelled.add(stream); }
+        @Override public void cancel(long stream) {
+            cancelled.add(stream);
+            contextCancelled = true; // like eliza_inference_asr_cancel(ctx)
+        }
 
         @Override public void close(long stream) {
             closed.add(stream);
@@ -160,17 +183,88 @@ public final class BionicAsrStreamsTest {
         assertFalse(call(c, "asr_stream_close").getBoolean("closed"));
     }
 
+    /** Run finish for {@code client} on another thread; returns once it is decoding. */
+    private Thread finishInBackground(BionicAsrStreams.Client client, AtomicReference<JSONObject> result)
+            throws Exception {
+        fake.finishEntered = new CountDownLatch(1);
+        fake.releaseFinish = new CountDownLatch(1);
+        final Thread t = new Thread(() -> {
+            try {
+                result.set(call(client, "asr_stream_finish"));
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+        });
+        t.start();
+        assertTrue(fake.finishEntered.await(5, TimeUnit.SECONDS));
+        return t;
+    }
+
     @Test
-    public void cancelByIdSignalsTheStreamAndTheDecodeAnswersCancelled() throws Exception {
+    public void cancelByIdStopsThatStreamsDecode() throws Exception {
         final BionicAsrStreams.Client c = new BionicAsrStreams.Client();
         final String id = call(c, "asr_stream_open").getString("streamId");
+        final AtomicReference<JSONObject> result = new AtomicReference<>();
+        final Thread t = finishInBackground(c, result);
         assertTrue(new JSONObject(streams.cancel(id)).getBoolean("signalled"));
-        assertEquals(1, fake.cancelled.size());
+        t.join(5000);
+        assertEquals("CANCELLED", result.get().getString("code"));
         assertFalse(new JSONObject(streams.cancel("unknown")).getBoolean("signalled"));
+        // The stream survives a cancelled decode.
+        fake.releaseFinish = null;
         fake.cancelNextDecode = true;
         assertEquals("CANCELLED", call(c, "asr_stream_partial").getString("code"));
-        // The stream survives a cancelled decode.
         assertTrue(call(c, "asr_stream_partial").getBoolean("ok"));
+    }
+
+    @Test
+    public void cancellingAnotherStreamLeavesTheRunningFinishAlone() throws Exception {
+        final BionicAsrStreams.Client a = new BionicAsrStreams.Client();
+        final BionicAsrStreams.Client b = new BionicAsrStreams.Client();
+        final String idA = call(a, "asr_stream_open").getString("streamId");
+        call(b, "asr_stream_open");
+        final AtomicReference<JSONObject> result = new AtomicReference<>();
+        final Thread t = finishInBackground(b, result);
+        assertFalse(new JSONObject(streams.cancel(idA)).getBoolean("signalled"));
+        fake.releaseFinish.countDown();
+        t.join(5000);
+        assertTrue(result.get().toString(), result.get().getBoolean("ok"));
+        assertTrue("no native cancel while B decodes", fake.cancelled.isEmpty());
+    }
+
+    @Test
+    public void streamCancelDoesNotStopABatchTranscription() throws Exception {
+        final BionicAsrStreams.Client a = new BionicAsrStreams.Client();
+        final String idA = call(a, "asr_stream_open").getString("streamId");
+        final List<String> batchSignals = new ArrayList<>();
+        assertFalse("no batch running", streams.cancelBatch(() -> batchSignals.add("asr")));
+        streams.beginBatch();
+        try {
+            assertFalse(new JSONObject(streams.cancel(idA)).getBoolean("signalled"));
+            assertTrue(fake.cancelled.isEmpty());
+            assertTrue(streams.cancelBatch(() -> batchSignals.add("asr")));
+        } finally {
+            streams.endBatch();
+        }
+        assertEquals(1, batchSignals.size());
+    }
+
+    @Test
+    public void cancelCurrentStopsWhicheverDecodeRuns() throws Exception {
+        final BionicAsrStreams.Client c = new BionicAsrStreams.Client();
+        call(c, "asr_stream_open");
+        final List<String> batchSignals = new ArrayList<>();
+        streams.cancelCurrent(() -> batchSignals.add("asr"));
+        assertTrue("nothing decoding, nothing signalled", fake.cancelled.isEmpty() && batchSignals.isEmpty());
+        final AtomicReference<JSONObject> result = new AtomicReference<>();
+        final Thread t = finishInBackground(c, result);
+        streams.cancelCurrent(() -> batchSignals.add("asr"));
+        t.join(5000);
+        assertEquals("CANCELLED", result.get().getString("code"));
+        streams.beginBatch();
+        streams.cancelCurrent(() -> batchSignals.add("asr"));
+        streams.endBatch();
+        assertEquals(1, batchSignals.size());
     }
 
     @Test
@@ -186,6 +280,7 @@ public final class BionicAsrStreamsTest {
         assertEquals(0, streams.openCount());
         assertTrue(fake.open.isEmpty());
         assertEquals(2, fake.closed.size());
+        assertTrue("closing an idle stream must not cancel the shared context", fake.cancelled.isEmpty());
         assertEquals("NO_STREAM", call(b, "asr_stream_partial").getString("code"));
     }
 

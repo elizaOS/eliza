@@ -11,7 +11,9 @@
  * the shared agent DATABASE_URL — is asserted as a unit test.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { type AppDatabaseMode, DEFAULT_APP_DATABASE_MODE } from "./app-database-mode";
+import type { JobExecutionAuthority } from "./job-execution-authority";
 import { RESERVED_PLATFORM_ENV_KEYS, stripReservedEnvKeys } from "./reserved-env-keys";
 
 export interface DeployAppRequest {
@@ -82,7 +84,36 @@ export interface DeployAppResult {
  * `AppDeploymentsService` invokes it after marking the app `building`.
  */
 export interface AppDeployRunner {
-  run(appId: string, deploymentGeneration: string, options?: AppDeployRunOptions): Promise<void>;
+  run(
+    appId: string,
+    deploymentGeneration: string,
+    options?: AppDeployRunOptions,
+    executionAuthority?: JobExecutionAuthority,
+  ): Promise<void>;
+}
+
+/** The app already has a durable failed outcome for this generation. */
+export class AppDeployGenerationFailedError extends ElizaError {
+  constructor(deploymentGeneration: string, cause?: unknown) {
+    super(`App deployment generation ${deploymentGeneration} failed`, {
+      code: "APP_DEPLOY_GENERATION_FAILED",
+      severity: "ephemeral",
+      cause,
+    });
+  }
+}
+
+export class AppDeployHandoffUnconfirmedError extends ElizaError {
+  constructor(deploymentGeneration: string, cause?: unknown) {
+    super(
+      `Provision handoff is unconfirmed for app deployment generation ${deploymentGeneration}`,
+      {
+        code: "APP_DEPLOY_HANDOFF_UNCONFIRMED",
+        severity: "fatal",
+        cause,
+      },
+    );
+  }
 }
 
 /**

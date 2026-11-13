@@ -17,6 +17,7 @@ import {
   type ActionCatalogParent,
   normalizeActionName,
 } from "./action-catalog";
+import { nativeOwnedDomains } from "./native-owned-domains.ts";
 export type RetrievalStageName =
   | "exact"
   | "regex"
@@ -144,8 +145,9 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
   RUN_SCRIPT: ["SHELL", "TERMINAL_SHELL"],
   RUN_PYTHON: ["SHELL", "TERMINAL_SHELL"],
   // Todo-shaped candidates hint BOTH todo owners: the personal-assistant
-  // umbrella and plugin-todos' TODO parent. Deployments load one or the
-  // other; the resolver keeps whichever is registered. Without these the
+  // umbrella and plugin-todos' TODO parent. Only one is registered: the host
+  // withholds plugin-todos' TODO action when the personal assistant loads, so
+  // the resolver keeps whichever exists. Without these the
   // names Stage-1 actually emits ("add a todo: buy milk" → CREATE_TODO,
   // "what todos do i have" → USER_TODOS_READ, live trajectories
   // tj-060255231afe39 / tj-06105af841e1c1) resolve to nothing — the
@@ -186,13 +188,15 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
   OWNER_REMINDERS: ["TRIGGER"],
   OWNER_ALARMS: ["TRIGGER"],
   OWNER_ROUTINES: ["TRIGGER"],
-  // Alarm-shaped candidates: same dual hint as reminders/habits — the
-  // owner umbrella plus the always-registered TRIGGER scheduler.
-  ADD_ALARM: ["OWNER_ALARMS", "TRIGGER"],
-  SET_ALARM: ["OWNER_ALARMS", "TRIGGER"],
-  CREATE_ALARM: ["OWNER_ALARMS", "TRIGGER"],
-  ALARM_CREATE: ["OWNER_ALARMS", "TRIGGER"],
-  WAKE_ME_UP: ["OWNER_ALARMS", "TRIGGER"],
+  // Alarm-shaped candidates hint the device Clock proposal first: it is the
+  // only path that rings, and it validates only on an authenticated device
+  // turn, so hosts without one keep the owner umbrella plus the
+  // always-registered TRIGGER scheduler.
+  ADD_ALARM: ["PROPOSE_DEVICE_ACTION", "OWNER_ALARMS", "TRIGGER"],
+  SET_ALARM: ["PROPOSE_DEVICE_ACTION", "OWNER_ALARMS", "TRIGGER"],
+  CREATE_ALARM: ["PROPOSE_DEVICE_ACTION", "OWNER_ALARMS", "TRIGGER"],
+  ALARM_CREATE: ["PROPOSE_DEVICE_ACTION", "OWNER_ALARMS", "TRIGGER"],
+  WAKE_ME_UP: ["PROPOSE_DEVICE_ACTION", "OWNER_ALARMS", "TRIGGER"],
   // Coding/repo-shaped candidates bind to the TASKS coding umbrella. Stage-1
   // invents CODE_*/PR spellings for repo asks ("add a one-line description to
   // the readme and put up a pr" → CODE_EDIT + CODE_PR_CREATE, live
@@ -347,7 +351,7 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
   OWNER_DELETE_REMINDER: ["OWNER_REMINDERS", "TRIGGER"],
   OWNER_CREATE_REMINDER: ["OWNER_REMINDERS", "TRIGGER"],
   OWNER_DELETE_ALARM: ["OWNER_ALARMS", "TRIGGER"],
-  OWNER_CREATE_ALARM: ["OWNER_ALARMS", "TRIGGER"],
+  OWNER_CREATE_ALARM: ["PROPOSE_DEVICE_ACTION", "OWNER_ALARMS", "TRIGGER"],
   OWNER_DELETE_ROUTINE: ["OWNER_ROUTINES", "TRIGGER"],
   OWNER_CREATE_ROUTINE: ["OWNER_ROUTINES", "TRIGGER"],
   // Bare "SEARCH" is a routine Stage-1 invention for open-web asks ("latest
@@ -818,13 +822,27 @@ export function preferredOperationNames(
     ],
     rename: ["rename"],
     delete: ["delete", "remove", "erase"],
-    get: ["get", "read", "retrieve"],
+    get: ["get", "read", "retrieve", "query"],
     next: ["next", "upcoming"],
     open: ["open", "navigate"],
     close: ["close"],
     send: ["send"],
   };
   const wanted = new Set<string>();
+  // A retrospective operation is evidence being asked about, not necessarily
+  // a new command to repeat it ("what did I write ..."). Keep observation
+  // operations alongside lexical matches. This is only retrieval: it grants
+  // no write authority and never removes a compound request's mutation tools.
+  if (
+    /\bdid\s+(?:i|we|you|they|he|she)\s+(?:(?:ever|already|previously)\s+)?(?:create|add|write|save|update|edit|change|modify|replace|rename|append|prepend|delete|remove|erase|send)\b/iu.test(
+      query,
+    )
+  ) {
+    wanted.add("get");
+    wanted.add("read");
+    wanted.add("list");
+    wanted.add("search");
+  }
   // An imperative scheduling outcome creates a record. A schedule mentioned
   // as data ("read my schedule") and rescheduling retain their own operations.
   if (/^\s*schedule\s+(?:an?\s+|one(?:[- ]time)?\s+|new\s+)?/iu.test(query))
@@ -857,11 +875,30 @@ export function preferredOperationNames(
     }
     if (operation === "open") wanted.add("show");
   }
-  return new Set(
-    names.filter((name) =>
-      tokenizeActionSearchText(name).some((term) => wanted.has(term)),
-    ),
+  const preferred = names.filter((name) =>
+    tokenizeActionSearchText(name).some((term) => wanted.has(term)),
   );
+  // Deleting a record and setting it again is an edit. Stage 1 split "actually
+  // make it 30 minutes" into "delete pending 20 minute stretch reminder" + "set
+  // stretch reminder for 30 minutes from now" (live tj-d24d0ef3e2f2ed); offered
+  // only TRIGGER_DELETE, the planner deleted the reminder and could not set it
+  // again. A delete that comes with a new value keeps its own update sibling
+  // (TRIGGER_DELETE -> TRIGGER_UPDATE), not every update in the family.
+  if (
+    wanted.has("delete") &&
+    (wanted.has("create") ||
+      ["set", "make", "schedule"].some((term) => words.has(term)))
+  ) {
+    const key = (name: string) => tokenizeActionSearchText(name).join(" ");
+    const byKey = new Map(names.map((name) => [key(name), name]));
+    for (const name of [...preferred]) {
+      const update = byKey.get(
+        key(name).replace(/(^| )delete(?= |$)/u, "$1update"),
+      );
+      if (update) preferred.push(update);
+    }
+  }
+  return new Set(preferred);
 }
 
 function scoreExactHints(
@@ -1182,10 +1219,48 @@ export function parentAliasesForCandidateAction(actionName: string): string[] {
   }
   return aliases;
 }
+const DEVICE_REMINDER_TOOLS_BY_OPERATION: ReadonlyArray<
+  [RegExp, readonly string[]]
+> = [
+  [/(?:^|_)(?:CANCEL|DELETE|REMOVE)(?:_|$)/, ["DEVICE_REMINDER_CANCEL"]],
+  [/(?:^|_)(?:COMPLETE|DONE|FINISH)(?:_|$)/, ["DEVICE_REMINDER_COMPLETE"]],
+  [/(?:^|_)SNOOZE(?:_|$)/, ["DEVICE_REMINDER_SNOOZE"]],
+  [
+    /(?:^|_)(?:UPDATE|CHANGE|EDIT|FIX|RESCHEDULE)(?:_|$)/,
+    ["DEVICE_REMINDER_UPDATE"],
+  ],
+  [/(?:^|_)(?:LIST|READ|GET|SHOW)(?:_|$)/, ["DEVICE_REMINDER_READ"]],
+];
+
+/**
+ * A domain the host's native store owns (ELIZA_NATIVE_OWNED_DOMAINS) has its
+ * owner surface withheld, so its hints must not fall back to TRIGGER: alarms
+ * go to the reviewed Clock handoff and reminders (and to-dos, when native) to
+ * the device reminder tools.
+ */
+function nativeOwnedParentAliases(
+  normalized: string,
+  aliases: readonly string[],
+): readonly string[] {
+  const domains = nativeOwnedDomains();
+  if (domains.size === 0) return aliases;
+  const names = (name: string) => normalized === name || aliases.includes(name);
+  if (domains.has("alarms") && names("OWNER_ALARMS"))
+    return ["PROPOSE_DEVICE_ACTION"];
+  if (
+    (domains.has("reminders") && names("OWNER_REMINDERS")) ||
+    (domains.has("todos") && (names("OWNER_TODOS") || names("TODO")))
+  ) {
+    for (const [operation, tools] of DEVICE_REMINDER_TOOLS_BY_OPERATION)
+      if (operation.test(normalized)) return tools;
+    return ["DEVICE_REMINDER_CREATE", "DEVICE_REMINDER_CREATE_AFTER"];
+  }
+  return aliases;
+}
 function explicitParentAliasesForCandidateAction(actionName: string): string[] {
   const normalized = normalizeActionName(actionName);
   const explicit = CANDIDATE_ACTION_PARENT_ALIASES[normalized];
-  if (explicit) return [...explicit];
+  if (explicit) return [...nativeOwnedParentAliases(normalized, explicit)];
   // Arithmetic-shaped inventions (CALC_RESULT, DO_MATH, MULTIPLY_NUMBERS …)
   // are open-ended — Stage 1 produces a fresh spelling per turn — so they
   // hint the deterministic evaluator by family; admission still passes

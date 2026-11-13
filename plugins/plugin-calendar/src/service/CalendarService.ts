@@ -36,6 +36,7 @@ import type {
   LifeOpsConnectorGrant,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
+  LifeOpsGoogleConnectorStatus,
   LifeOpsIcsCalendarSource,
   LifeOpsIcsCalendarSyncResponse,
   LifeOpsLinkedCalendarControl,
@@ -58,11 +59,14 @@ import type {
 } from "@elizaos/contracts";
 import {
   ElizaError,
+  getStreamingContext,
   type IAgentRuntime,
   logger,
+  Semaphore,
   Service,
   SsrfBlockedError,
   stableStringify,
+  timeInferenceSpan,
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
@@ -150,6 +154,7 @@ import {
   elizaCalendarSummary,
   isElizaCalendarEventId,
   isElizaCalendarGrant,
+  restoreElizaCalendarEvent,
   updateElizaCalendarEvent,
 } from "../internal/eliza-calendar.js";
 import { CalendarServiceError, fail } from "../internal/errors.js";
@@ -233,12 +238,15 @@ import {
   GoogleLinkedCalendarProviderPort,
   type LinkedCalendarEventRecord,
   type LinkedCalendarLocalPort,
+  type LinkedCalendarProviderPort,
   LinkedCalendarReconciler,
   LinkedCalendarRepository,
   type LinkedCalendarSemanticEvent,
 } from "./linked-calendar-sync.js";
 import {
+  attachManagedCalendarReadDiagnostic,
   createManagedCalendarRead,
+  MANAGED_CALENDAR_REQUEST_TIMEOUT_MS,
   managedCalendarPlaceholder,
 } from "./managed-calendar-read.js";
 import { ManagedLinkedCalendarProviderPort } from "./managed-linked-calendar.js";
@@ -273,6 +281,12 @@ type GoogleCalendarSyncBatch = {
 const CALENDAR_FEED_FRESHNESS_MS = 60_000;
 const DEFAULT_ICS_SYNC_LEASE_MS = 30_000;
 const CALENDAR_SOURCE_UNSUPPORTED = "CALENDAR_SOURCE_UNSUPPORTED";
+/** Managed owner feeds one service reads at once, across every overlapping
+ * aggregate read. Each one verifies the owner over the private broker. */
+const MANAGED_CALENDAR_FEED_CONCURRENCY = 4;
+/** An uncertain write may still be in flight until twice the request timeout. */
+const LINKED_CALENDAR_RECOVERY_SETTLE_MS =
+  2 * MANAGED_CALENDAR_REQUEST_TIMEOUT_MS;
 export const MAX_GOOGLE_CALENDAR_EVENTS = 10_000;
 
 type CalendarSecretsService = {
@@ -563,11 +577,14 @@ function calendarSourceError(error: unknown): LifeOpsCalendarSourceError {
     };
   }
   if (error instanceof ElizaError) {
-    return {
-      code: error.code,
-      message: error.message,
-      retryable: error.severity === "ephemeral",
-    };
+    return attachManagedCalendarReadDiagnostic(
+      {
+        code: error.code,
+        message: error.message,
+        retryable: error.severity === "ephemeral",
+      },
+      error,
+    );
   }
   return {
     code: "CALENDAR_SOURCE_ERROR",
@@ -1394,6 +1411,9 @@ export class CalendarService extends Service {
     process.env,
     fetch,
   );
+  private readonly managedFeedReads = new Semaphore(
+    MANAGED_CALENDAR_FEED_CONCURRENCY,
+  );
   private gate: CalendarHostGate;
   private microsoftPort: MicrosoftGraphCalendarPort;
   private readonly googleWatch: GoogleCalendarWatchLifecycle;
@@ -1556,22 +1576,55 @@ export class CalendarService extends Service {
           );
         }
       },
+      restore: async (eventId, providerEvent, previousRevision) => {
+        if (providerEvent.recurrence?.length)
+          throw new CalendarServiceError(
+            409,
+            "The built-in calendar cannot represent this recurring series. Review the linked event before syncing.",
+            "LINKED_CALENDAR_RECURRENCE_UNSUPPORTED",
+          );
+        const receipt = await this.repo.insertCalendarEventIfAbsent(
+          restoreElizaCalendarEvent({
+            agentId: this.agentId(),
+            eventId,
+            title: providerEvent.title,
+            description: providerEvent.description,
+            location: providerEvent.location,
+            startAt: providerEvent.startAt,
+            endAt: providerEvent.endAt,
+            timeZone: providerEvent.timeZone ?? "UTC",
+            isAllDay: providerEvent.isAllDay,
+            attendees: providerEvent.attendees.map((attendee) => ({
+              email: attendee.email,
+              optional: attendee.optional === true,
+            })),
+            revision: previousRevision + 1,
+            now: new Date(),
+          }),
+        );
+        if (!receipt.inserted) {
+          throw new CalendarServiceError(
+            409,
+            "The linked Eliza event reappeared during reconciliation.",
+            "LINKED_CALENDAR_LOCAL_CAS_REJECTED",
+          );
+        }
+        return {
+          eventId: receipt.event.id,
+          revision: Number(receipt.event.metadata.version),
+          event: this.linkedSemanticEvent(receipt.event),
+        };
+      },
     };
   }
 
-  private linkedReconciler(
+  private linkedProviderPort(
     connectorAccountId: string,
-    onProviderMutation?: () => void,
-  ): LinkedCalendarReconciler {
+  ): LinkedCalendarProviderPort {
     if (this.managedCalendar?.acceptsGrantId(connectorAccountId)) {
-      return new LinkedCalendarReconciler(
-        this.linkedRepo,
-        this.linkedLocalPort(),
-        new ManagedLinkedCalendarProviderPort(
-          this.managedCalendar,
-          managedCalendarDeleteEnabled(process.env),
-        ),
-        onProviderMutation,
+      return new ManagedLinkedCalendarProviderPort(
+        this.managedCalendar,
+        managedCalendarDeleteEnabled(process.env),
       );
     }
     const google = this.runtime.getService("google");
@@ -1582,10 +1635,19 @@ export class CalendarService extends Service {
         "GOOGLE_CALENDAR_SERVICE_UNAVAILABLE",
       );
     }
+    return new GoogleLinkedCalendarProviderPort(
+      google as IGoogleWorkspaceService,
+    );
+  }
+
+  private linkedReconciler(
+    connectorAccountId: string,
+    onProviderMutation?: () => void,
+  ): LinkedCalendarReconciler {
     return new LinkedCalendarReconciler(
       this.linkedRepo,
       this.linkedLocalPort(),
-      new GoogleLinkedCalendarProviderPort(google as IGoogleWorkspaceService),
+      this.linkedProviderPort(connectorAccountId),
       onProviderMutation,
     );
   }
@@ -1806,21 +1868,47 @@ export class CalendarService extends Service {
   async listLinkedCalendarEventViews(): Promise<
     LifeOpsLinkedCalendarEventView[]
   > {
-    const links = await this.listLinkedCalendarEvents();
+    const records = await this.linkedRepo.listForAgent(this.agentId());
     return Promise.all(
-      links.map(async (link) => {
-        const event = await this.getCalendarEventById(link.localEventId);
-        return {
-          ...link,
+      records.map(async (record) => {
+        const event = await this.getCalendarEventById(record.localEventId);
+        const view: LifeOpsLinkedCalendarEventView = {
+          ...this.publicLinkedCalendar(record),
           event: event
             ? {
                 title: event.title,
                 startAt: event.startAt,
                 endAt: event.endAt,
                 isAllDay: event.isAllDay,
+                location: event.location,
               }
             : null,
         };
+        if (record.state === "conflicted") {
+          // The owner chooses a side, so a conflict also shows Google's copy.
+          try {
+            const provider = await this.linkedProviderPort(
+              record.connectorAccountId,
+            ).get(record);
+            view.providerEvent =
+              provider && !provider.event.deleted
+                ? {
+                    title: provider.event.title,
+                    startAt: provider.event.startAt,
+                    endAt: provider.event.endAt,
+                    isAllDay: provider.event.isAllDay,
+                    location: provider.event.location,
+                  }
+                : null;
+          } catch (error) {
+            // error-policy:J7 One unreadable Google copy must not hide the
+            // review list; an absent providerEvent means it could not be read.
+            this.runtime.reportError("calendar:linked-conflict-read", error, {
+              linkId: record.id,
+            });
+          }
+        }
+        return view;
       }),
     );
   }
@@ -1834,7 +1922,16 @@ export class CalendarService extends Service {
       pendingDispatch: control.dispatch
         ? { linkId: control.dispatch.linkId }
         : null,
+      conflicts: await this.linkedConflictCount(control.destination),
     };
+  }
+
+  private async linkedConflictCount(
+    destination: LifeOpsLinkedCalendarControl["destination"],
+  ): Promise<number> {
+    return destination
+      ? this.linkedRepo.countConflicted(this.agentId(), destination)
+      : 0;
   }
 
   private async verifyLinkedDestination(
@@ -2075,11 +2172,20 @@ export class CalendarService extends Service {
               "LINKED_CALENDAR_RECOVERY_IDENTITY_MISMATCH",
             );
           }
-          if (
-            !(await this.linkedReconciler(
-              record.connectorAccountId,
-            ).recoverDispatch(record))
-          ) {
+          // Anchor the settle window at the later of dispatch and the row's
+          // last checkpoint, which the quarantine writes after the failure.
+          const anchors = [current.dispatch.acquiredAt, record.updatedAt]
+            .map((value) => (value ? Date.parse(value) : Number.NaN))
+            .filter(Number.isFinite);
+          const recovered = await this.linkedReconciler(
+            record.connectorAccountId,
+          ).recoverDispatch(record, {
+            dispatchedAt: anchors.length
+              ? new Date(Math.max(...anchors))
+              : null,
+            settleMs: LINKED_CALENDAR_RECOVERY_SETTLE_MS,
+          });
+          if (recovered === "unresolved") {
             throw new CalendarServiceError(
               409,
               "The provider outcome is still uncertain or the events differ. Sync remains paused; no provider write was retried.",
@@ -2115,9 +2221,9 @@ export class CalendarService extends Service {
     return this.publicLinkedControlMutation(committed);
   }
 
-  private publicLinkedControlMutation(
+  private async publicLinkedControlMutation(
     mutation: LinkedCalendarControlMutation,
-  ): LifeOpsLinkedCalendarControlMutationResult {
+  ): Promise<LifeOpsLinkedCalendarControlMutationResult> {
     return {
       revision: mutation.control.revision,
       paused: mutation.control.paused,
@@ -2125,6 +2231,7 @@ export class CalendarService extends Service {
       pendingDispatch: mutation.control.dispatch
         ? { linkId: mutation.control.dispatch.linkId }
         : null,
+      conflicts: await this.linkedConflictCount(mutation.control.destination),
       receipt: mutation.receipt,
     };
   }
@@ -3753,19 +3860,58 @@ export class CalendarService extends Service {
     }
   }
 
-  private async discoverCalendars(
+  /** Authorized catalog and preference observation; no event feeds are read or synchronized. */
+  async discoverCalendars(
     requestUrl: URL,
     request?: ListLifeOpsCalendarsRequest,
+    signal?: AbortSignal,
   ): Promise<CalendarSourceDiscovery> {
+    signal?.throwIfAborted();
     const mode = normalizeOptionalConnectorMode(request?.mode, "mode");
     const side = normalizeOptionalConnectorSide(request?.side, "side");
-    const targetsNonGoogleProvider =
+    const managedCalendar = this.managedCalendar;
+    const exactManagedGrant =
+      !!request?.grantId && managedCalendar?.acceptsGrantId(request.grantId);
+    // A managed grant belongs to the owner broker's own namespace. The
+    // standard connector catalog cannot supply it, but an aggregate read
+    // still discovers both sources.
+    const skipStandardGoogle =
+      exactManagedGrant ||
       isMicrosoftCalendarGrantId(request?.grantId) ||
       isAppleCalendarGrant(request?.grantId) ||
       isElizaCalendarGrant(request?.grantId);
-    const statuses = targetsNonGoogleProvider
-      ? []
-      : await this.gate.getGoogleConnectorAccounts(requestUrl, side);
+    const discoverManaged =
+      managedCalendar?.acceptsGrantId(request?.grantId) &&
+      side !== "agent" &&
+      (!mode || mode === "cloud_managed");
+    // The standard account catalog and managed owner broker are independent.
+    // Keep their results separate and cancel the broker if standard discovery fails.
+    const managedAbort =
+      discoverManaged && !skipStandardGoogle
+        ? new AbortController()
+        : undefined;
+    const managedSignal =
+      managedAbort && signal
+        ? AbortSignal.any([managedAbort.signal, signal])
+        : (managedAbort?.signal ?? signal);
+    const [statuses, managedDiscovery] = await Promise.all([
+      skipStandardGoogle
+        ? Promise.resolve<LifeOpsGoogleConnectorStatus[]>([])
+        : timeInferenceSpan("calendar:discovery:google-accounts", () =>
+            this.gate.getGoogleConnectorAccounts(requestUrl, side),
+          ),
+      discoverManaged && managedCalendar
+        ? timeInferenceSpan("calendar:discovery:managed-sources", () =>
+            managedCalendar.sources(managedSignal),
+          ).then(
+            (calendars) => ({ calendars }),
+            (error: unknown) => ({ error }),
+          )
+        : null,
+    ]).catch((error: unknown) => {
+      managedAbort?.abort(error);
+      throw error;
+    });
     const grants = statuses
       .filter(hasGoogleConnectorGrant)
       .map((status) => status.grant)
@@ -3790,9 +3936,13 @@ export class CalendarService extends Service {
       );
       for (const grant of grants) {
         try {
-          const entries = await listCalendars({
-            accountId: accountIdForGrant(grant),
-          });
+          const entries = await timeInferenceSpan(
+            "calendar:discovery:google-calendars",
+            () =>
+              listCalendars({
+                accountId: accountIdForGrant(grant),
+              }),
+          );
           summaries.push(
             ...entries.map((entry) =>
               lifeOpsCalendarSummaryFromGoogle({ entry, grant }),
@@ -3819,10 +3969,14 @@ export class CalendarService extends Service {
     if (shouldIncludeMicrosoftCalendar({ mode, grantId: request?.grantId })) {
       let microsoftAccounts: MicrosoftCalendarAccount[] = [];
       try {
-        microsoftAccounts = await this.microsoftPort.listAccounts({
-          side,
-          grantId: request?.grantId,
-        });
+        microsoftAccounts = await timeInferenceSpan(
+          "calendar:discovery:microsoft-accounts",
+          () =>
+            this.microsoftPort.listAccounts({
+              side,
+              grantId: request?.grantId,
+            }),
+        );
       } catch (error) {
         // error-policy:J4 Microsoft discovery remains an explicit failed
         // source so healthy Google/Apple accounts still produce a partial feed.
@@ -3879,7 +4033,10 @@ export class CalendarService extends Service {
           continue;
         }
         try {
-          const calendars = await this.microsoftPort.listCalendars(account);
+          const calendars = await timeInferenceSpan(
+            "calendar:discovery:microsoft-calendars",
+            () => this.microsoftPort.listCalendars(account),
+          );
           summaries.push(
             ...calendars.map((calendar) =>
               lifeOpsCalendarSummaryFromMicrosoft({ account, calendar }),
@@ -3904,11 +4061,15 @@ export class CalendarService extends Service {
       }
     }
     if (shouldIncludeAppleCalendar({ mode, side, grantId: request?.grantId })) {
-      const appleCalendars = await listNativeAppleCalendars({
-        agentId: this.agentId(),
-        side: "owner",
-        runtime: this.runtime,
-      });
+      const appleCalendars = await timeInferenceSpan(
+        "calendar:discovery:apple-calendars",
+        () =>
+          listNativeAppleCalendars({
+            agentId: this.agentId(),
+            side: "owner",
+            runtime: this.runtime,
+          }),
+      );
       if (appleCalendars.ok) {
         summaries.push(...appleCalendars.data);
       } else if (
@@ -3946,8 +4107,14 @@ export class CalendarService extends Service {
         );
       }
     }
-    if (shouldIncludeIcsCalendars({ mode, side, grantId: request?.grantId })) {
-      const icsSources = await this.repo.listIcsCalendarSources(this.agentId());
+    if (
+      !exactManagedGrant &&
+      shouldIncludeIcsCalendars({ mode, side, grantId: request?.grantId })
+    ) {
+      const icsSources = await timeInferenceSpan(
+        "calendar:discovery:ics-sources",
+        () => this.repo.listIcsCalendarSources(this.agentId()),
+      );
       summaries.push(
         ...icsSources
           .filter((source) =>
@@ -3956,24 +4123,38 @@ export class CalendarService extends Service {
           .map(icsCalendarSummary),
       );
     }
-    if (
-      this.managedCalendar?.acceptsGrantId(request?.grantId) &&
-      side !== "agent" &&
-      (!mode || mode === "cloud_managed")
-    ) {
+    if (managedDiscovery) {
       try {
-        const managed = await this.managedCalendar.sources();
+        signal?.throwIfAborted();
+        if ("error" in managedDiscovery) throw managedDiscovery.error;
         summaries.push(
-          ...managed.filter(
+          ...managedDiscovery.calendars.filter(
             (calendar) =>
               !request?.grantId || calendar.grantId === request.grantId,
           ),
         );
       } catch (error) {
+        signal?.throwIfAborted();
         const calendar = managedCalendarPlaceholder(request?.grantId);
         const sourceError = calendarSourceError(error);
+        let diagnosticOnly = false;
+        try {
+          if (
+            error instanceof ElizaError &&
+            sourceError.code === "MANAGED_CALENDAR_READ_UNAVAILABLE"
+          ) {
+            const severity = Object.getOwnPropertyDescriptor(error, "severity");
+            diagnosticOnly =
+              !!severity &&
+              Object.hasOwn(severity, "value") &&
+              (severity.value === undefined || severity.value === "ephemeral");
+          }
+        } catch {
+          // Unreadable classification stays on the normal reporting path.
+        }
         this.runtime.reportError("calendar:list-managed-source", error, {
           source: calendarSourceKey(calendar),
+          ...(diagnosticOnly ? { diagnosticOnly: true } : {}),
         });
         failures.push(
           calendarSourceHealth({
@@ -3985,21 +4166,34 @@ export class CalendarService extends Service {
         );
       }
     }
-    const preferences = await ensureCalendarFeedIncludes(
-      this.runtime,
-      summaries.map((summary) => ({
-        provider: summary.provider,
-        side: summary.side,
-        grantId: summary.grantId,
-        connectorAccountId: summary.connectorAccountId,
-        calendarId: summary.calendarId,
-        // The built-in calendar is the zero-config product surface. External
-        // accounts remain discoverable but enter the aggregate feed only after
-        // the owner explicitly enables them in Calendar Sources.
-        initialIncluded:
-          summary.provider === ELIZA_CALENDAR_PROVIDER ||
-          (summary.provider === "ics" && summary.includeInFeed),
-      })),
+    signal?.throwIfAborted();
+    const preferences = await timeInferenceSpan(
+      "calendar:discovery:preferences",
+      () =>
+        ensureCalendarFeedIncludes(
+          this.runtime,
+          summaries.map((summary) => {
+            // A managed host lists the owner's own calendars and declares which
+            // ones its product shows by default; that default holds until the
+            // owner chooses otherwise for the source.
+            const managed = this.managedCalendar?.owns(summary) === true;
+            return {
+              provider: summary.provider,
+              side: summary.side,
+              grantId: summary.grantId,
+              connectorAccountId: summary.connectorAccountId,
+              calendarId: summary.calendarId,
+              // The built-in calendar is the zero-config product surface. Other
+              // external accounts remain discoverable but enter the aggregate feed
+              // only after the owner explicitly enables them in Calendar Sources.
+              initialIncluded:
+                summary.provider === ELIZA_CALENDAR_PROVIDER ||
+                ((summary.provider === "ics" || managed) &&
+                  summary.includeInFeed === true),
+              ...(managed ? { followInitialUntilChosen: true } : {}),
+            };
+          }),
+        ),
     );
     return {
       calendars: summaries.map((summary) => {
@@ -4357,6 +4551,25 @@ export class CalendarService extends Service {
         this.googleSyncLocks.delete(key);
       }
     }
+  }
+
+  private async withManagedCalendarFeedLock<T>(
+    grantId: string,
+    calendarId: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    // Register under the grant admission lock, without holding it during I/O.
+    // Calendars stay concurrent; a purge can fence admission and drain them all.
+    const { read } = await this.withGoogleSyncLock(
+      `managed:${grantId}`,
+      async () => ({
+        read: this.withGoogleSyncLock(
+          `managed:${grantId}:${calendarId}`,
+          operation,
+        ),
+      }),
+    );
+    return read;
   }
 
   private async syncGoogleCalendarFeed(args: {
@@ -5521,7 +5734,31 @@ export class CalendarService extends Service {
     requestUrl: URL,
     request: GetLifeOpsCalendarFeedRequest = {},
     now = new Date(),
+    signal?: AbortSignal,
   ): Promise<LifeOpsCalendarFeed> {
+    return (
+      await this.getCalendarFeedSnapshot(requestUrl, request, now, signal)
+    ).feed;
+  }
+
+  /** One authorized discovery observation for feed health and its full versioned catalog.
+   * The snapshot is request-local: no catalog or owner authority is cached between reads.
+   */
+  async getCalendarFeedSnapshot(
+    requestUrl: URL,
+    request: GetLifeOpsCalendarFeedRequest = {},
+    now = new Date(),
+    signal?: AbortSignal,
+  ): Promise<{
+    feed: LifeOpsCalendarFeed;
+    calendars: LifeOpsCalendarSummary[];
+  }> {
+    const turnSignal = getStreamingContext()?.abortSignal;
+    const requestSignal =
+      signal && turnSignal && signal !== turnSignal
+        ? AbortSignal.any([signal, turnSignal])
+        : (signal ?? turnSignal);
+    requestSignal?.throwIfAborted();
     const mode = normalizeOptionalConnectorMode(request.mode, "mode");
     const side = normalizeOptionalConnectorSide(request.side, "side");
     const explicitCalendarId = normalizeOptionalString(request.calendarId);
@@ -5540,11 +5777,14 @@ export class CalendarService extends Service {
     const forceSync =
       normalizeOptionalBoolean(request.forceSync, "forceSync") ?? false;
 
-    const discovery = await this.discoverCalendars(requestUrl, {
-      mode,
-      side,
-      grantId: request.grantId,
-    });
+    const discovery = await timeInferenceSpan("calendar:feed:discovery", () =>
+      this.discoverCalendars(
+        requestUrl,
+        { mode, side, grantId: request.grantId },
+        requestSignal,
+      ),
+    );
+    requestSignal?.throwIfAborted();
     const listedCalendars = discovery.calendars;
     const discoveryFailures = discovery.failures.filter((source) => {
       if (request.grantId && source.key.grantId !== request.grantId) {
@@ -5573,14 +5813,17 @@ export class CalendarService extends Service {
     if (calendars.length === 0) {
       if (discoveryFailures.length > 0) {
         return {
-          calendarId: explicitCalendarId ?? "all",
-          events: [],
-          source: "cache",
-          state: "unavailable",
-          sources: discoveryFailures,
-          timeMin,
-          timeMax,
-          syncedAt: null,
+          calendars: listedCalendars,
+          feed: {
+            calendarId: explicitCalendarId ?? "all",
+            events: [],
+            source: "cache",
+            state: "unavailable",
+            sources: discoveryFailures,
+            timeMin,
+            timeMax,
+            syncedAt: null,
+          },
         };
       }
       if (
@@ -5650,38 +5893,56 @@ export class CalendarService extends Service {
           selectionVersion: 0,
         };
         return {
-          calendarId: disconnected.calendarId,
-          events: [],
-          source: "cache",
-          state: "unavailable",
-          sources: [
-            calendarSourceHealth({
-              calendar: disconnected,
-              status: "disconnected",
-              syncedAt: null,
-              error: {
-                code: "CALENDAR_SOURCE_DISCONNECTED",
-                message: "No authorized calendar source is connected.",
-                retryable: true,
-              },
-            }),
-          ],
-          timeMin,
-          timeMax,
-          syncedAt: null,
+          calendars: listedCalendars,
+          feed: {
+            calendarId: disconnected.calendarId,
+            events: [],
+            source: "cache",
+            state: "unavailable",
+            sources: [
+              calendarSourceHealth({
+                calendar: disconnected,
+                status: "disconnected",
+                syncedAt: null,
+                error: {
+                  code: "CALENDAR_SOURCE_DISCONNECTED",
+                  message: "No authorized calendar source is connected.",
+                  retryable: true,
+                },
+              }),
+            ],
+            timeMin,
+            timeMax,
+            syncedAt: null,
+          },
         };
       }
     }
-    return this.aggregateCalendarFeedsAcrossCalendars(
-      requestUrl,
-      calendars,
-      timeMin,
-      timeMax,
-      timeZone,
-      forceSync,
-      now,
-      discoveryFailures,
-    );
+    // Managed reads end with this request: when a source branch throws, the
+    // reads still waiting or in flight stop.
+    const reads = new AbortController();
+    try {
+      return {
+        calendars: listedCalendars,
+        feed: await timeInferenceSpan("calendar:feed:aggregate", () =>
+          this.aggregateCalendarFeedsAcrossCalendars(
+            requestUrl,
+            calendars,
+            timeMin,
+            timeMax,
+            timeZone,
+            forceSync,
+            now,
+            discoveryFailures,
+            requestSignal
+              ? AbortSignal.any([requestSignal, reads.signal])
+              : reads.signal,
+          ),
+        ),
+      };
+    } finally {
+      reads.abort();
+    }
   }
 
   private async aggregateCalendarFeedsAcrossCalendars(
@@ -5691,24 +5952,149 @@ export class CalendarService extends Service {
     timeMax: string,
     timeZone: string,
     forceSync: boolean,
-    now = new Date(),
-    discoveryFailures: readonly LifeOpsCalendarSourceHealth[] = [],
+    now: Date,
+    discoveryFailures: readonly LifeOpsCalendarSourceHealth[],
+    signal: AbortSignal,
   ): Promise<LifeOpsCalendarFeed> {
     const sources: (AggregatedCalendarFeedSource & {
       calendar: LifeOpsCalendarSummary;
     })[] = [];
-    for (const calendar of calendars) {
-      if (this.managedCalendar?.owns(calendar)) {
+    // Cost: one broker read per managed source, at most four active per service.
+    // Cancellation removes queued work; it adds no polling or provider calls.
+    // Managed feeds start now under the service's shared bound, admitted in
+    // calendar order, and are consumed in calendar order below. Each settles
+    // alone, so a failed source still degrades and reports on its own. A read
+    // whose request ended while it waited gives its turn back unread.
+    const managed = this.managedCalendar;
+    let pulledManagedChange = false;
+    const managedFeeds = calendars.map((calendar) =>
+      managed?.owns(calendar)
+        ? (async (): Promise<
+            { feed: LifeOpsCalendarFeed } | { error: unknown }
+          > => {
+            let acquired = false;
+            try {
+              await this.managedFeedReads.acquire(signal);
+              acquired = true;
+              signal.throwIfAborted();
+              return {
+                feed: await this.withManagedCalendarFeedLock(
+                  calendar.grantId,
+                  calendar.calendarId,
+                  async () => {
+                    signal.throwIfAborted();
+                    const feed = await timeInferenceSpan(
+                      "calendar:feed:managed-source",
+                      () =>
+                        managed.feed(
+                          calendar,
+                          timeMin,
+                          timeMax,
+                          timeZone,
+                          this.agentId(),
+                          signal,
+                        ),
+                      { provider: calendar.provider },
+                    );
+                    // Use the same canonical cache as ordinary provider reads.
+                    // Selected-event actions still verify the live revision.
+                    for (const event of feed.events) {
+                      signal.throwIfAborted();
+                      await this.repo.upsertCalendarEvent(event, calendar.side);
+                    }
+                    return feed;
+                  },
+                ),
+              };
+            } catch (error) {
+              return { error };
+            } finally {
+              if (acquired) this.managedFeedReads.release();
+            }
+          })()
+        : undefined,
+    );
+    for (const [index, calendar] of calendars.entries()) {
+      signal.throwIfAborted();
+      const managedFeed = managedFeeds[index];
+      if (managedFeed) {
+        const read = await managedFeed;
+        signal.throwIfAborted();
         let feed: LifeOpsCalendarFeed;
-        try {
-          feed = await this.managedCalendar.feed(
-            calendar,
-            timeMin,
-            timeMax,
-            timeZone,
-            this.agentId(),
-          );
-        } catch (error) {
+        if ("feed" in read) {
+          feed = read.feed;
+          // The managed broker bypasses the standard Google cache sync. Pull
+          // changed mapped events through the same reconciler before presenting
+          // local rows. Do not import unrelated events or replay pending writes.
+          const control = await this.linkedControl.read();
+          if (
+            !calendarRecordPolicyFailure() &&
+            !control.paused &&
+            !control.dispatch &&
+            control.destination?.connectorAccountId ===
+              calendar.connectorAccountId &&
+            control.destination.providerCalendarId === calendar.calendarId
+          ) {
+            const links = await this.linkedRepo.listForAgent(this.agentId());
+            for (const link of links) {
+              signal.throwIfAborted();
+              if (
+                link.state !== "clean" ||
+                !link.providerEventId ||
+                link.connectorAccountId !== calendar.connectorAccountId ||
+                link.providerCalendarId !== calendar.calendarId
+              )
+                continue;
+              const remote = feed.events.find(
+                (event) => event.externalId === link.providerEventId,
+              );
+              if (remote && remote.metadata.etag === link.providerEtag)
+                continue;
+              if (!remote) {
+                const local = await this.repo.getCalendarEventById(
+                  this.agentId(),
+                  link.localEventId,
+                );
+                if (
+                  !local ||
+                  (local.isAllDay
+                    ? !allDayEventIntersectsLocalWindow(
+                        local,
+                        timeMin,
+                        timeMax,
+                        timeZone,
+                      )
+                    : Date.parse(local.startAt) >= Date.parse(timeMax) ||
+                      Date.parse(local.endAt) <= Date.parse(timeMin))
+                )
+                  continue;
+              }
+              try {
+                if ((await this.runLinkedCalendarOperation(link)) === "pulled")
+                  pulledManagedChange = true;
+              } catch (error) {
+                // Revoked write access or another admitted sync must not turn
+                // a successful provider read into a failed Calendar feed.
+                if (
+                  !(
+                    (error instanceof CalendarServiceError &&
+                      error.code ===
+                        "LINKED_CALENDAR_DESTINATION_UNAVAILABLE") ||
+                    (error instanceof ElizaError &&
+                      error.code === "LINKED_CALENDAR_DISPATCH_REJECTED")
+                  )
+                )
+                  throw error;
+                this.runtime.reportError(
+                  "calendar:managed-linked-pull",
+                  error,
+                  { linkId: link.id },
+                );
+              }
+            }
+          }
+        } else {
+          const { error } = read;
           const sourceError = calendarSourceError(error);
           this.runtime.reportError("calendar:feed-managed-source", error, {
             source: calendarSourceKey(calendar),
@@ -5728,11 +6114,9 @@ export class CalendarService extends Service {
       if (calendar.provider === ELIZA_CALENDAR_PROVIDER) {
         sources.push({
           calendar,
-          feed: await this.readElizaCalendarFeed({
-            calendar,
-            timeMin,
-            timeMax,
-          }),
+          feed: await timeInferenceSpan("calendar:feed:local", () =>
+            this.readElizaCalendarFeed({ calendar, timeMin, timeMax }),
+          ),
         });
         continue;
       }
@@ -5866,13 +6250,31 @@ export class CalendarService extends Service {
     }
     // Provider synchronization can update or delete the linked local event.
     // Read local snapshots afterwards so this response reflects that change.
+    const maySyncLinkedLocalRecords = calendars.some(
+      (calendar) => calendar.provider !== ELIZA_CALENDAR_PROVIDER,
+    );
     for (const source of sources) {
-      if (source.calendar.provider === ELIZA_CALENDAR_PROVIDER) {
+      if (
+        maySyncLinkedLocalRecords &&
+        source.calendar.provider === ELIZA_CALENDAR_PROVIDER
+      ) {
         source.feed = await this.readElizaCalendarFeed({
           calendar: source.calendar,
           timeMin,
           timeMax,
         });
+      }
+    }
+    if (pulledManagedChange) {
+      for (const source of sources) {
+        if (source.calendar.provider === ELIZA_CALENDAR_PROVIDER) {
+          signal.throwIfAborted();
+          source.feed = await this.readElizaCalendarFeed({
+            calendar: source.calendar,
+            timeMin,
+            timeMax,
+          });
+        }
       }
     }
     const hasLinkedCandidates =
@@ -6366,6 +6768,29 @@ export class CalendarService extends Service {
         "CALENDAR_IMPORTED_DATA_CONFIRMATION_REQUIRED",
       );
     }
+    const purge = () => this.purgeImportedCalendarDataUnlocked(request, now);
+    // Drain reads already admitted for this managed owner grant before deleting
+    // their cache writes. A later read may import again if the source is enabled.
+    return request.provider === "google" &&
+      request.side === "owner" &&
+      request.connectorAccountId === request.grantId &&
+      this.managedCalendar?.acceptsGrantId(request.grantId)
+      ? this.withGoogleSyncLock(`managed:${request.grantId}`, async () => {
+          const prefix = `managed:${request.grantId}:`;
+          await Promise.all(
+            [...this.googleSyncLocks]
+              .filter(([key]) => key.startsWith(prefix))
+              .map(([, settled]) => settled),
+          );
+          return purge();
+        })
+      : purge();
+  }
+
+  private async purgeImportedCalendarDataUnlocked(
+    request: PurgeLifeOpsCalendarImportedDataRequest,
+    now: Date,
+  ): Promise<LifeOpsCalendarImportedDataPurgeReceipt> {
     const events = await this.repo.listCalendarEvents(
       this.agentId(),
       request.provider,

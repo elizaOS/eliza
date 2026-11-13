@@ -86,6 +86,22 @@ export const PRIMING_COPY: Partial<
     rationale:
       "Enable the camera so you can capture photos and video for me to look at.",
   },
+  calendar: {
+    icon: "calendar",
+    titleKey: "permissionpriming.calendar.title",
+    title: "Plan your day",
+    rationaleKey: "permissionpriming.calendar.rationale",
+    rationale:
+      "Allow calendar access to view and save events. You can change access in Settings.",
+  },
+  photos: {
+    icon: "images",
+    titleKey: "permissionpriming.photos.title",
+    title: "Choose your photos",
+    rationaleKey: "permissionpriming.photos.rationale",
+    rationale:
+      "Choose which photos and videos the assistant can use. Selected access does not share your whole library.",
+  },
 };
 /**
  * Explicit per-platform, ordered priming sets. Highest-value first (voice).
@@ -102,7 +118,14 @@ export const PRIMING_COPY: Partial<
  */
 const PRIMING_SETS: Record<PrimingPlatform, readonly PermissionId[]> = {
   ios: ["microphone", "speech-recognition", "notifications", "location"],
-  android: ["microphone", "notifications", "location"],
+  android: [
+    "notifications",
+    "microphone",
+    "camera",
+    "location",
+    "calendar",
+    "photos",
+  ],
   desktop: ["microphone", "notifications", "location"],
   web: [],
 };
@@ -114,6 +137,8 @@ export interface ResolvePrimingOptions {
    * filtered so only ids with priming copy survive.
    */
   only?: readonly PermissionId[];
+  /** Actual installed host capabilities, not package dependencies. */
+  supported?: readonly PermissionId[];
 }
 /**
  * The ordered list of permissions to prime for the current platform. Only ids
@@ -126,7 +151,9 @@ export function resolvePrimingSet(
   const platform = opts.platform ?? getFrontendPlatform();
   const base = opts.only ?? PRIMING_SETS[platform] ?? [];
   const supported = base.filter(
-    (id): id is PermissionId => PRIMING_COPY[id] !== undefined,
+    (id): id is PermissionId =>
+      PRIMING_COPY[id] !== undefined &&
+      (!opts.supported || opts.supported.includes(id)),
   );
   // The Cloud APK proves notification and foreground-location bridges. Voice
   // deliberately keeps its narrower RECORD_AUDIO request at the moment the

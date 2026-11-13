@@ -54,10 +54,10 @@ export type WorkflowRunReconciliation = {
   state: "worker-running" | "outcome-unknown";
   message: string;
 };
-/** A run admitted by a typed local-time schedule. `missed` and `overlap` record an occurrence that did not run. */
+/** A run admitted by a schedule. `missed`, `overlap` and a hosted digest's `unavailable` record an occurrence that did not run. */
 export interface WorkflowRunOccurrence {
   scheduledAt: string;
-  status: "ready" | "missed" | "overlap";
+  status: "ready" | "missed" | "overlap" | "unavailable";
 }
 export interface WorkflowRun {
   id: string;
@@ -261,13 +261,15 @@ export async function workflowSpecDigest(value: unknown): Promise<string> {
 
 /**
  * A scheduled occurrence that the agent settled without running anything
- * (`{status: "missed" | "overlap", scheduledAt, text}` as the execution output).
- * `missed` is an occurrence that came due while the agent was not running
- * (powered-on scheduling records it once and never replays it); `overlap` is one
- * skipped because an earlier run of the same workflow was still active.
+ * (`{status: "missed" | "overlap" | "unavailable", scheduledAt, text}` as the
+ * execution output). `missed` is an occurrence that came due while the agent was
+ * not running (powered-on scheduling records it once and never replays it);
+ * `overlap` is one skipped because an earlier run of the same workflow was still
+ * active; `unavailable` is a hosted digest occurrence its admission settled
+ * because the digest is paused or its source is not current.
  */
 export interface WorkflowOccurrenceNotRun {
-  status: "missed" | "overlap";
+  status: "missed" | "overlap" | "unavailable";
   scheduledAt: string;
   text: string;
   /**
@@ -278,14 +280,21 @@ export interface WorkflowOccurrenceNotRun {
   skippedLocalTime?: string;
 }
 
-/** Reads a raw execution output as an occurrence that did not run, or undefined for any other output. */
+/**
+ * Reads a raw execution output as an occurrence that did not run, or undefined
+ * for any other output. `unavailable` is read only when `hostedDigest` says the
+ * run input carries the hosted digest admission that writes it.
+ */
 export function workflowOccurrenceNotRun(
   value: unknown,
+  hostedDigest = false,
 ): WorkflowOccurrenceNotRun | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value))
     return undefined;
   const p = value as Bag;
-  return (p.status === "missed" || p.status === "overlap") &&
+  return (p.status === "missed" ||
+    p.status === "overlap" ||
+    (hostedDigest && p.status === "unavailable")) &&
     typeof p.text === "string" &&
     typeof p.scheduledAt === "string" &&
     Number.isFinite(Date.parse(p.scheduledAt))
@@ -317,13 +326,22 @@ export function isRecordedMissedExecution(value: unknown): boolean {
     Number.isFinite(Date.parse(p.missedOccurrenceAt))
   );
 }
+/** Whether a run input carries the hosted digest admission that settles its occurrence. */
+function hostedDigestInput(input: unknown): boolean {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return false;
+  const value = (input as Bag).hostedDigest;
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
 function runOccurrence(execution: Bag): WorkflowRunOccurrence | undefined {
   const input = execution.input;
   const record =
     input && typeof input === "object" && !Array.isArray(input)
       ? (input as Bag).typedSchedule
       : undefined;
-  const settled = workflowOccurrenceNotRun(execution.output);
+  const settled = workflowOccurrenceNotRun(
+    execution.output,
+    hostedDigestInput(input),
+  );
   // A generic schedule's occurrence carries no typed admission: its settlement
   // records it, and a missed one only with the engine's missedOccurrenceAt.
   if (record === undefined)
@@ -351,9 +369,13 @@ function reconciliation(value: unknown): WorkflowRunReconciliation | undefined {
   return { state: r.state, message: r.message.slice(0, 2000) };
 }
 /** Present the typed worker's final text; intermediate step inputs remain in the agent receipt. */
-function workflowOutput(value: unknown, runId: string): string {
+function workflowOutput(
+  value: unknown,
+  runId: string,
+  hostedDigest: boolean,
+): string {
   if (typeof value === "string") return value.slice(0, 4000);
-  const settled = workflowOccurrenceNotRun(value);
+  const settled = workflowOccurrenceNotRun(value, hostedDigest);
   if (settled) return settled.text;
   if (Array.isArray(value) && value.length === 1) {
     const item = value[0];
@@ -445,7 +467,11 @@ export function parseWorkflowRun(value: unknown): WorkflowRun {
     ...(typeof error?.message === "string"
       ? { error: error.message.slice(0, 2000) }
       : {}),
-    ...(p.output === undefined ? {} : { output: workflowOutput(p.output, id) }),
+    ...(p.output === undefined
+      ? {}
+      : {
+          output: workflowOutput(p.output, id, hostedDigestInput(p.input)),
+        }),
     ...(settled ? { reconciliation: settled } : {}),
     ...(occurrence ? { occurrence } : {}),
     events: events.slice(-100).map((event: unknown) => {

@@ -22,6 +22,8 @@ import javax.crypto.SecretKey
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -78,6 +80,71 @@ class SecureStoreInstrumentedTest {
     }
 
     private fun set(key: String, value: String) { assertTrue(call("set", key, value).getBoolean("ok")) }
+
+    /** Only the host's retirement wait is supplied; set/remove and Keystore effects are production. */
+    private class GuardedPlugin : SecureStorePlugin() {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        private val intent = AtomicLong()
+        private val first = AtomicBoolean(true)
+        override fun useCredentialWorker(key: String) = true
+        override fun reserveCredentialMutation(key: String): Runnable {
+            val mine = intent.incrementAndGet()
+            return Runnable { check(intent.get() == mine) { "Credential intent changed" } }
+        }
+        override fun <T> mutateCredential(key: String, value: String?, guard: Runnable, effect: NativeSecureStore.Effect<T>): T {
+            if (first.compareAndSet(true, false)) {
+                entered.countDown()
+                check(release.await(5, TimeUnit.SECONDS)) { "Host retirement wait timed out" }
+            }
+            return super.mutateCredential(key, value, guard, effect)
+        }
+        fun closeBridge() { handleOnDestroy() }
+        fun reservations() = intent.get()
+    }
+
+    @Test fun newerRemoveAndSetFenceOlderQueuedMutationsBeforeKeystoreEffects() {
+        val native = NativeSecureStore(InstrumentationRegistry.getInstrumentation().targetContext)
+        for (olderMethod in listOf("set", "remove")) {
+            native.set(second, "test-only original")
+            val plugin = GuardedPlugin()
+            scenario.onActivity { plugin.setBridge(it.bridge) }
+            val oldDone = CountDownLatch(1)
+            val newDone = CountDownLatch(1)
+            var oldResult: JSObject? = null
+            var newResult: JSObject? = null
+            fun dispatch(method: String, result: (JSObject) -> Unit) {
+                val data = JSObject().put("key", second).put("value", "test-only replacement")
+                val call = object : PluginCall(null, "ElizaSecureStore", "guarded-test", method, data) {
+                    override fun resolve(data: JSObject) { result(data) }
+                }
+                if (method == "set") plugin.set(call) else plugin.remove(call)
+            }
+            try {
+                dispatch(olderMethod) { oldResult = it; oldDone.countDown() }
+                assertTrue("first mutation entered the host wait", plugin.entered.await(5, TimeUnit.SECONDS))
+                val newerMethod = if (olderMethod == "set") "remove" else "set"
+                dispatch(newerMethod) { newResult = it; newDone.countDown() }
+                plugin.release.countDown()
+                assertTrue(oldDone.await(5, TimeUnit.SECONDS)); assertTrue(newDone.await(5, TimeUnit.SECONDS))
+                assertEquals("native_error", requireNotNull(oldResult).getString("error"))
+                assertTrue(requireNotNull(newResult).getBoolean("ok"))
+                assertEquals(if (newerMethod == "set") "test-only replacement" else null, native.get(second))
+            } finally { plugin.release.countDown(); plugin.closeBridge() }
+        }
+    }
+
+    @Test fun closedBridgeCannotReserveAnotherCredentialIntent() {
+        val plugin = GuardedPlugin()
+        plugin.closeBridge()
+        var result: JSObject? = null
+        val call = object : PluginCall(null, "ElizaSecureStore", "closed-test", "remove", JSObject().put("key", second)) {
+            override fun resolve(data: JSObject) { result = data }
+        }
+        plugin.remove(call)
+        assertEquals("native_error", requireNotNull(result).getString("error"))
+        assertEquals(0L, plugin.reservations())
+    }
 
     private fun writeLegacyEnvelope(slot: String, value: String) {
         assertTrue(call("status").getBoolean("available"))

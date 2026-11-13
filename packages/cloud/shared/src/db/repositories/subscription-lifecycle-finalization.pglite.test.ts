@@ -505,24 +505,31 @@ describe("atomic terminal subscription finalization", () => {
     },
   );
 
-  test.each([
-    { provider_environment: "live" },
-    { stripe_customer_id: "cus_other" },
-    { stripe_subscription_item_id: "si_other" },
-    { plan_key: "pro_monthly" },
+  // Stable scenario names let the conformance hook require every case even
+  // when the monthly fixture advances. Only the observation data carries dates.
+  for (const [label, changes] of [
+    ["provider_environment", { provider_environment: "live" }],
+    ["customer_id", { stripe_customer_id: "cus_other" }],
+    ["subscription_item_id", { stripe_subscription_item_id: "si_other" }],
+    ["plan_key", { plan_key: "pro_monthly" }],
     // Stripe may advance the period (dunning cancellation), never move it backwards.
-    { current_period_start: new Date(PERIOD_START.getTime() - 86_400_000) },
-    { current_period_start: new Date("invalid") },
-  ])("mismatched provider/plan/period observation fails closed: %j", async (changes) => {
-    const input = await prepare();
-    await expect(
-      operations.finalizeLifecycleEvent({
-        ...input,
-        observation: { ...input.observation, ...changes },
-      }),
-    ).rejects.toMatchObject({ code: "SUBSCRIPTION_LIFECYCLE_UNSUPPORTED" });
-    await expectUnapplied();
-  });
+    [
+      "earlier_period_start",
+      { current_period_start: new Date(PERIOD_START.getTime() - 86_400_000) },
+    ],
+    ["invalid_period_start", { current_period_start: new Date("invalid") }],
+  ] as const) {
+    test(`mismatched provider/plan/period observation fails closed: ${label}`, async () => {
+      const input = await prepare();
+      await expect(
+        operations.finalizeLifecycleEvent({
+          ...input,
+          observation: { ...input.observation, ...changes },
+        }),
+      ).rejects.toMatchObject({ code: "SUBSCRIPTION_LIFECYCLE_UNSUPPORTED" });
+      await expectUnapplied();
+    });
+  }
 
   test("deleted-account, cross-tenant and unavailable authority cannot finalize", async () => {
     const input = await prepare();

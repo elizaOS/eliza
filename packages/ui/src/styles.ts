@@ -6,6 +6,7 @@
  * ".css" extensions out of the box).
  */
 import "./styles/styles.css";
+import "./styles/mobile-workspaces.css";
 import "./styles/brand-gold.css";
 // The shared sheet owns Tailwind; importing the standalone Cloud sheet here
 // would emit base utilities again after responsive overrides.

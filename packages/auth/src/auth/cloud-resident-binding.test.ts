@@ -145,15 +145,16 @@ describe("resident Cloud binding admission", () => {
     const second = harness();
     const admission = await second.controller.admit(signal());
     second.state.credential = { credentialId: "cred-b" };
-    // The bind is cleared rather than left on another account's credential.
-    expect(await second.controller.apply(admission, signal())).toMatchObject({
-      binding: "unbound",
-      failure: { kind: "bind-failed" },
+    await expect(
+      second.controller.apply(admission, signal()),
+    ).rejects.toMatchObject({
+      code: "account-changed",
     });
-    expect(second.calls.slice(-2)).toEqual([
-      "bind cred-a",
-      "clear after failed bind",
-    ]);
+    expect(
+      second.calls.filter(
+        (call) => call.startsWith("bind") || call.startsWith("clear"),
+      ),
+    ).toEqual([]);
 
     const mismatch = harness();
     mismatch.state.identity = {
@@ -165,6 +166,146 @@ describe("resident Cloud binding admission", () => {
       binding: "unbound",
       reason: "account-changed",
     });
+  });
+
+  it("does not clear a newer native binding after an older bind finishes", async () => {
+    let credential = "cred-a";
+    let provider = "cred-a";
+    let nativeIntent = 0;
+    const clears: number[] = [];
+    const { controller } = harness({
+      readCredential: async () => ({ credentialId: credential }),
+      bindProvider: async () => {
+        // Another Activity replaces the credential and binds it while the first
+        // Activity's native result is in flight; its JS signal is not aborted.
+        credential = "cred-b";
+        provider = "cred-b";
+        nativeIntent++;
+      },
+      clearProvider: async () => {
+        // Alpha's clearProvider reserves a NEW intent on invocation. The native
+        // last-intent fence therefore cannot identify this stale JS cleanup.
+        clears.push(++nativeIntent);
+        provider = "";
+      },
+    });
+    const admission = await controller.admit(signal());
+    await expect(controller.apply(admission, signal())).rejects.toMatchObject({
+      code: "account-changed",
+    });
+    expect(provider).toBe("cred-b");
+    expect(clears).toEqual([]);
+  });
+
+  it("does not use an unguarded clear after a bind fails", async () => {
+    const failure = new Error("native bind failed");
+    const stable = harness({
+      bindProvider: async () => {
+        throw failure;
+      },
+    });
+    expect(
+      await stable.controller.apply(
+        await stable.controller.admit(signal()),
+        signal(),
+      ),
+    ).toEqual({
+      binding: "unknown",
+      failure: { kind: "bind-failed", cause: failure },
+    });
+    expect(stable.calls.filter((call) => call.startsWith("clear"))).toEqual([]);
+
+    const changed = harness({
+      bindProvider: async () => {
+        changed.state.credential = { credentialId: "cred-b" };
+        throw failure;
+      },
+    });
+    await expect(
+      changed.controller.apply(
+        await changed.controller.admit(signal()),
+        signal(),
+      ),
+    ).rejects.toMatchObject({ code: "account-changed" });
+    expect(changed.calls.filter((call) => call.startsWith("clear"))).toEqual(
+      [],
+    );
+  });
+
+  for (const replacement of [false, true]) {
+    it(`uses an atomic binding guard when cleanup ${replacement ? "races with replacement" : "still owns the binding"}`, async () => {
+      const failure = new Error("post-bind read failed");
+      let bound = false,
+        failedRead = false,
+        provider = "binding-a";
+      const guards: string[] = [];
+      const { controller, calls } = harness({
+        readCredential: async () => {
+          if (bound && !failedRead) {
+            failedRead = true;
+            throw failure;
+          }
+          return { credentialId: "cred-a" };
+        },
+        bindProvider: async () => {
+          bound = true;
+          return "binding-a";
+        },
+        clearProviderIfCurrent: async (guard) => {
+          guards.push(guard);
+          // A new native binding can commit after the last JS credential read.
+          // Even the same credential must retain its newer generation (ABA).
+          if (replacement) provider = "binding-b";
+          if (provider !== guard) return "changed";
+          provider = "";
+          return "cleared";
+        },
+      });
+      const result = await controller.apply(
+        await controller.admit(signal()),
+        signal(),
+      );
+      expect(result.binding).toBe(replacement ? "unknown" : "unbound");
+      expect(provider).toBe(replacement ? "binding-b" : "");
+      expect(guards).toEqual(["binding-a"]);
+      expect(calls.filter((call) => call.startsWith("clear"))).toEqual([]);
+    });
+  }
+
+  it("keeps successful legacy hosts compatible but cannot clean without guarded support", async () => {
+    const success = harness();
+    expect(
+      (
+        await success.controller.apply(
+          await success.controller.admit(signal()),
+          signal(),
+        )
+      ).binding,
+    ).toBe("cloud");
+    let bound = false,
+      failed = false;
+    const old = harness({
+      bindProvider: async () => {
+        bound = true;
+        return "binding-a";
+      },
+      readCredential: async () => {
+        if (bound && !failed) {
+          failed = true;
+          throw Error("post-bind failure");
+        }
+        return { credentialId: "cred-a" };
+      },
+    });
+    expect(
+      (
+        await old.controller.apply(
+          await old.controller.admit(signal()),
+          signal(),
+        )
+      ).binding,
+    ).toBe("unknown");
+    expect(old.calls.filter((call) => call.startsWith("clear"))).toEqual([]);
   });
 
   it("unbinds a rejected or revoked sign-in", async () => {

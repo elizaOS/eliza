@@ -32,6 +32,7 @@ public class MainActivity extends BridgeActivity {
 
     private static final int REQUEST_CODE_POST_NOTIFICATIONS = 1001;
 
+    private Intent initialDeepLinkIntent;
     private SharedPreferences wakePreferences;
     private final SharedPreferences.OnSharedPreferenceChangeListener wakePreferenceListener =
         (preferences, key) -> {
@@ -95,7 +96,8 @@ public class MainActivity extends BridgeActivity {
         }
 
         captureNativeNotification(getIntent());
-        DeepLinkBufferPlugin.captureIntent(this, getIntent());
+        initialDeepLinkIntent = getIntent();
+        DeepLinkBufferPlugin.captureIntent(this, initialDeepLinkIntent);
         ElizaReminderMessagingService.onReminderOpened(this, getIntent());
         registerPlugin(DeepLinkBufferPlugin.class);
         registerPlugin(AgentPlugin.class);
@@ -106,9 +108,14 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ElizaBgePlugin.class);
         registerPlugin(ResourceProbePlugin.class);
         registerPlugin(CredentialManagerPlugin.class);
+        registerPlugin(ElizaCloudSignInPlugin.class);
+        // BridgeActivity appends this list after generated plugins, so the resident-aware
+        // secure-store binding cannot be replaced by the generic auto-discovered plugin.
+        initialPlugins.add(ElizaSecureStorePlugin.class);
         registerPlugin(GlassBridgePlugin.class);
         registerPlugin(NativeTranscriptPlugin.class);
         registerPlugin(SlotClockPlugin.class);
+        registerPlugin(ElizaCalendarPlugin.class);
         // Reset app data: native review and device credential decide; the renderer passes nothing.
         registerPlugin(ElizaDataResetPlugin.class);
         // BridgeActivity appends these after discovery, before the first JS export.
@@ -152,7 +159,12 @@ public class MainActivity extends BridgeActivity {
         // the cold-boot path; this is the fast path when the user opens the
         // app.
         if (ElizaAgentService.shouldAutoStart(this)) {
-            ElizaAgentService.start(this);
+            try {
+                ElizaAgentService.start(this);
+            } catch (ai.eliza.plugins.agent.runtime.CredentialShutdownLease.Pending pending) {
+                // The credential writer or its delayed stop ACK still owns runtime startup.
+                Log.i(TAG, "Agent auto-start deferred until credential retirement completes");
+            }
             // Ask for notification consent only once the user (or the device
             // image) has actually committed to running the on-device agent —
             // keep first paint free of a cold permission ask and let
@@ -173,7 +185,9 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onNewIntent(Intent intent) {
         captureNativeNotification(intent);
-        DeepLinkBufferPlugin.captureIntent(this, intent);
+        // BridgeActivity.load also dispatches the already captured launch Intent.
+        if (intent != initialDeepLinkIntent) DeepLinkBufferPlugin.captureIntent(this, intent);
+        initialDeepLinkIntent = null;
         ElizaReminderMessagingService.onReminderOpened(this, intent);
         super.onNewIntent(intent);
         if (getBridge() != null) getBridge().triggerWindowJSEvent("eliza:sense-invocation");

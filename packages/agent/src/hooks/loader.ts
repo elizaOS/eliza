@@ -77,6 +77,9 @@ export async function loadHooks(
 ): Promise<LoadHooksResult> {
   const { internalConfig, elizaConfig = {} } = options;
 
+  // Reload replaces the registry even when the new configuration disables it.
+  clearHooks();
+
   // Check if hooks are enabled
   if (internalConfig?.enabled === false) {
     logger.info("[hooks] Internal hooks disabled");
@@ -88,9 +91,6 @@ export async function loadHooks(
       failed: [],
     };
   }
-
-  // Clear existing hooks (for reload)
-  clearHooks();
 
   // Validate config-supplied extraDirs: only allow paths under the state dir
   // to prevent config injection from scanning attacker-controlled directories.

@@ -21,6 +21,83 @@
  */
 
 const HEX64 = /^[0-9a-f]{64}$/;
+const CLOUD_VOICE_FORMATS = new Map([
+  ["cloud-voice-qualification-v1", "cloud-voice-admission-v1"],
+  // Preserve the exact installed consumer receipt format on legacy reads/writes.
+  ["alpha-cloud-voice-qualification-v1", "alpha-cloud-voice-admission-v1"],
+]);
+const CLOUD_VOICE_ADMISSION_FORMATS = new Set(CLOUD_VOICE_FORMATS.values());
+
+export const CLOUD_VOICE_CHECKS = Object.freeze([
+  "consent",
+  "session",
+  "acousticInput",
+  "blueBar",
+  "transcript",
+  "audibleSpeakerReply",
+  "mute",
+  "unmute",
+  "stopReleased",
+]);
+
+/** Bind an external, content-free Cloud QA receipt to one exact APK. */
+export function cloudVoiceAdmission(apkSha256, evidence, evidenceSha256) {
+  const format = CLOUD_VOICE_FORMATS.get(evidence?.format);
+  const rows =
+    format && Array.isArray(evidence.results)
+      ? evidence.results.filter((row) => row?.apkSha256 === apkSha256)
+      : [];
+  const row = rows.length === 1 ? rows[0] : null;
+  const admission = {
+    format: format ?? "cloud-voice-admission-v1",
+    apkSha256,
+    evidenceSha256: HEX64.test(evidenceSha256 ?? "") ? evidenceSha256 : null,
+    provider: row?.provider === "cartesia" ? "cartesia" : null,
+    outcome:
+      row?.outcome === "passed" || row?.outcome === "failed"
+        ? row.outcome
+        : "missing",
+    checks: Object.fromEntries(
+      CLOUD_VOICE_CHECKS.map((name) => [name, row?.checks?.[name] === true]),
+    ),
+  };
+  return admission;
+}
+
+export function cloudVoiceBlockers(row, provider) {
+  if (provider !== "cartesia")
+    return ["Cloud speech release policy is not configured"];
+  const voice = row.cloudVoice;
+  if (
+    !CLOUD_VOICE_ADMISSION_FORMATS.has(voice?.format) ||
+    !HEX64.test(voice.evidenceSha256 ?? "")
+  )
+    return ["Cloud voice qualification evidence is missing or invalid"];
+  const problems = [];
+  if (!HEX64.test(row.sha256 ?? "") || voice.apkSha256 !== row.sha256)
+    problems.push("Cloud voice evidence does not match this APK");
+  if (voice.provider !== provider)
+    problems.push(
+      "Cloud voice evidence does not qualify the selected provider",
+    );
+  if (voice.outcome !== "passed")
+    problems.push("Cloud voice qualification did not pass");
+  const missing = CLOUD_VOICE_CHECKS.filter(
+    (name) => voice.checks?.[name] !== true,
+  );
+  if (missing.length)
+    problems.push(`Cloud voice checks are incomplete: ${missing.join(", ")}`);
+  if (row.voiceHost?.packaged !== false)
+    problems.push("Cloud speech profile must not package on-device voice");
+  if (
+    !Array.isArray(row.voiceHost?.differences) ||
+    row.voiceHost.differences.length
+  )
+    problems.push(
+      "Cloud speech profile has missing or failed voice asset verification",
+    );
+  return problems;
+}
 
 /**
  * @param {Record<string, any>} row one `results[]` entry with mode "release"
@@ -32,6 +109,7 @@ const HEX64 = /^[0-9a-f]{64}$/;
  *   signerFile?: string,
  *   image?: {platformCertificateSha256?: unknown},
  *   licenceBlocks?: (item: string) => boolean,
+ *   cloudVoiceProvider?: "cartesia",
  * }} [options]
  * @returns {string[]}
  */
@@ -45,6 +123,7 @@ export function apkReleaseBlockers(
     signerFile = "the product release signer",
     image,
     licenceBlocks = () => false,
+    cloudVoiceProvider,
   } = {},
 ) {
   const blockers = [];
@@ -92,26 +171,33 @@ export function apkReleaseBlockers(
   // On-device voice is the only local speech route: a release without it has no local
   // speech. A packaged bundle must match its record byte for byte and the record must be
   // qualified (device acceptance); bytes never qualify it.
-  const voice = row.voiceHost;
-  if (
-    !voice ||
-    typeof voice !== "object" ||
-    Array.isArray(voice) ||
-    typeof voice.packaged !== "boolean"
-  )
-    blockers.push("on-device voice admission was not recorded");
-  else if (!voice.packaged)
-    blockers.push(
-      "no on-device voice packaged (local speech would be unavailable)",
-    );
-  else {
-    const missing = [
-      (!Array.isArray(voice.differences) || voice.differences.length) &&
-        "bytes differ from the voice-host record",
-      voice.qualified !== true && "device qualification pending",
-    ].filter(Boolean);
-    if (missing.length)
-      blockers.push(`unqualified on-device voice (${missing.join(", ")})`);
+  const profile = row.runtimeProfile ?? "native";
+  if (profile === "cloud") {
+    blockers.push(...cloudVoiceBlockers(row, cloudVoiceProvider));
+  } else if (profile !== "native") {
+    blockers.push("APK runtime profile is unknown");
+  } else {
+    const voice = row.voiceHost;
+    if (
+      !voice ||
+      typeof voice !== "object" ||
+      Array.isArray(voice) ||
+      typeof voice.packaged !== "boolean"
+    )
+      blockers.push("on-device voice admission was not recorded");
+    else if (!voice.packaged)
+      blockers.push(
+        "no on-device voice packaged (local speech would be unavailable)",
+      );
+    else {
+      const missing = [
+        (!Array.isArray(voice.differences) || voice.differences.length) &&
+          "bytes differ from the voice-host record",
+        voice.qualified !== true && "device qualification pending",
+      ].filter(Boolean);
+      if (missing.length)
+        blockers.push(`unqualified on-device voice (${missing.join(", ")})`);
+    }
   }
   // The product's licence check must have been run and recorded; only the items its policy
   // names block. Open-source licence flags are never read here.

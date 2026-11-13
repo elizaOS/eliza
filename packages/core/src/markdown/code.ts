@@ -16,44 +16,56 @@ export type FenceSpan = {
 	indent: string;
 };
 
-/**
- * Parse all fenced code block spans from a string.
- *
- * Handles both backtick (```) and tilde (~~~) fences,
- * with proper matching of closing markers.
- *
- * @param buffer - The text to parse
- * @returns Array of fence spans found
- */
-export function parseFenceSpans(buffer: string): FenceSpan[] {
-	const spans: FenceSpan[] = [];
-	let open:
-		| {
-				start: number;
-				markerChar: string;
-				markerLen: number;
-				openLine: string;
-				marker: string;
-				indent: string;
-		  }
-		| undefined;
+type OpenFence = {
+	start: number;
+	markerChar: string;
+	markerLen: number;
+	openLine: string;
+	marker: string;
+	indent: string;
+};
 
-	let offset = 0;
-	while (offset <= buffer.length) {
+/**
+ * Resumable line scan behind {@link parseFenceSpans}. `spans` holds the
+ * fences closed so far; `open` is the fence still open at `offset`, the start
+ * of the next unscanned line. Scanning a prefix yields exactly the spans a
+ * full parse reports for that prefix, because fence state depends only on
+ * earlier lines.
+ */
+export type FenceScan = {
+	spans: FenceSpan[];
+	open: OpenFence | undefined;
+	offset: number;
+	done: boolean;
+};
+
+export function startFenceScan(): FenceScan {
+	return { spans: [], open: undefined, offset: 0, done: false };
+}
+
+/** Scan every line of `buffer` that starts at or before `lastLineStart`. */
+export function advanceFenceScan(
+	buffer: string,
+	scan: FenceScan,
+	lastLineStart: number,
+): void {
+	while (!scan.done && scan.offset <= lastLineStart) {
+		const offset = scan.offset;
 		const nextNewline = buffer.indexOf("\n", offset);
 		const lineEnd = nextNewline === -1 ? buffer.length : nextNewline;
 		const rawLine = buffer.slice(offset, lineEnd);
 		// Treat the carriage return in CRLF input as a line ending, not fence info.
 		const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
 
-		const match = line.match(/^( {0,3})(`{3,}|~{3,})(.*)$/);
+		const match = FENCE_LINE_RE.exec(line);
+		const open = scan.open;
 		if (match && (open || match[2][0] !== "`" || !match[3].includes("`"))) {
 			const indent = match[1];
 			const marker = match[2];
 			const markerChar = marker[0];
 			const markerLen = marker.length;
 			if (!open) {
-				open = {
+				scan.open = {
 					start: offset,
 					markerChar,
 					markerLen,
@@ -68,49 +80,87 @@ export function parseFenceSpans(buffer: string): FenceSpan[] {
 				// a line like "```js" inside an open fence is content, not a closer.
 				/^[ \t]*$/.test(match[3])
 			) {
-				const end = lineEnd;
-				spans.push({
+				scan.spans.push({
 					start: open.start,
-					end,
+					end: lineEnd,
 					openLine: open.openLine,
 					marker: open.marker,
 					indent: open.indent,
 				});
-				open = undefined;
+				scan.open = undefined;
 			}
 		}
 
 		if (nextNewline === -1) {
-			break;
+			scan.done = true;
+			const unclosed = scan.open;
+			if (unclosed) {
+				scan.spans.push({
+					start: unclosed.start,
+					end: buffer.length,
+					openLine: unclosed.openLine,
+					marker: unclosed.marker,
+					indent: unclosed.indent,
+				});
+				scan.open = undefined;
+			}
+			return;
 		}
-		offset = nextNewline + 1;
+		scan.offset = nextNewline + 1;
 	}
+}
 
-	if (open) {
-		spans.push({
-			start: open.start,
-			end: buffer.length,
-			openLine: open.openLine,
-			marker: open.marker,
-			indent: open.indent,
-		});
-	}
+const FENCE_LINE_RE = /^( {0,3})(`{3,}|~{3,})(.*)$/;
 
-	return spans;
+/**
+ * Parse all fenced code block spans from a string.
+ *
+ * Handles both backtick (```) and tilde (~~~) fences,
+ * with proper matching of closing markers.
+ *
+ * @param buffer - The text to parse
+ * @returns Array of fence spans found, ordered and non-overlapping
+ */
+export function parseFenceSpans(buffer: string): FenceSpan[] {
+	const scan = startFenceScan();
+	advanceFenceScan(buffer, scan, buffer.length);
+	return scan.spans;
 }
 
 /**
- * Find the fence span that contains a given index.
- *
- * @param spans - Array of fence spans to search
- * @param index - Position to check
- * @returns The fence span containing the index, or undefined
+ * Find the fence span strictly containing `index` (`start < index < end`).
+ * `spans` must be ordered and non-overlapping, as {@link parseFenceSpans}
+ * returns them.
  */
 export function findFenceSpanAt(
-	spans: FenceSpan[],
+	spans: readonly FenceSpan[],
 	index: number,
 ): FenceSpan | undefined {
-	return spans.find((span) => index > span.start && index < span.end);
+	const span = spans[lastSpanStartingBefore(spans, index)];
+	return span && index < span.end ? span : undefined;
+}
+
+/**
+ * Index of the last span whose start is before `index`, or -1. Ordered,
+ * non-overlapping spans make that span the only candidate to contain `index`.
+ */
+function lastSpanStartingBefore(
+	spans: readonly FenceSpan[],
+	index: number,
+): number {
+	let lo = 0;
+	let hi = spans.length - 1;
+	let found = -1;
+	while (lo <= hi) {
+		const mid = (lo + hi) >>> 1;
+		if (spans[mid].start < index) {
+			found = mid;
+			lo = mid + 1;
+		} else {
+			hi = mid - 1;
+		}
+	}
+	return found;
 }
 
 /**
@@ -120,178 +170,11 @@ export function findFenceSpanAt(
  * @param index - Position to check
  * @returns True if safe to break (not inside a fence)
  */
-export function isSafeFenceBreak(spans: FenceSpan[], index: number): boolean {
-	return !findFenceSpanAt(spans, index);
-}
-
-/**
- * Detects backtick-delimited inline code while preserving state across streamed
- * chunks. Parsing sweeps ordered fence spans once, while arbitrary membership
- * queries use binary search, so hostile fence-heavy input remains bounded.
- */
-
-/**
- * State for tracking open inline code spans across chunks.
- */
-export type InlineCodeState = {
-	/** Whether we're currently inside an inline code span */
-	open: boolean;
-	/** Number of backticks in the opening sequence */
-	ticks: number;
-};
-
-/**
- * Create initial inline code state.
- */
-export function createInlineCodeState(): InlineCodeState {
-	return { open: false, ticks: 0 };
-}
-
-type InlineCodeSpansResult = {
-	spans: Array<[number, number]>;
-	state: InlineCodeState;
-};
-
-/**
- * Index for checking if positions are inside code.
- */
-export type CodeSpanIndex = {
-	/** Updated inline code state after processing */
-	inlineState: InlineCodeState;
-	/** Check if an index is inside any code (fence or inline) */
-	isInside: (index: number) => boolean;
-};
-
-/**
- * Build an index for checking if positions are inside code spans.
- *
- * This handles both fenced code blocks and inline code spans.
- * State can be passed in for streaming scenarios.
- *
- * @param text - The text to analyze
- * @param inlineState - Optional state from previous chunk
- * @returns Index object with isInside() method
- */
-export function buildCodeSpanIndex(
-	text: string,
-	inlineState?: InlineCodeState,
-): CodeSpanIndex {
-	const fenceSpans = parseFenceSpans(text);
-	const startState = inlineState
-		? { open: inlineState.open, ticks: inlineState.ticks }
-		: createInlineCodeState();
-	const { spans: inlineSpans, state: nextInlineState } = parseInlineCodeSpans(
-		text,
-		fenceSpans,
-		startState,
-	);
-
-	return {
-		inlineState: nextInlineState,
-		isInside: (index: number) =>
-			isInsideFenceSpan(index, fenceSpans) ||
-			isInsideInlineSpan(index, inlineSpans),
-	};
-}
-
-function parseInlineCodeSpans(
-	text: string,
-	fenceSpans: FenceSpan[],
-	initialState: InlineCodeState,
-): InlineCodeSpansResult {
-	const spans: Array<[number, number]> = [];
-	let open = initialState.open;
-	let ticks = initialState.ticks;
-	let openStart = open ? 0 : -1;
-
-	let i = 0;
-	let fenceIndex = 0;
-	while (i < text.length) {
-		while (fenceIndex < fenceSpans.length && fenceSpans[fenceIndex].end <= i) {
-			fenceIndex += 1;
-		}
-		const fence = fenceSpans[fenceIndex];
-		if (fence && i >= fence.start) {
-			i = fence.end;
-			fenceIndex += 1;
-			continue;
-		}
-
-		if (text[i] !== "`") {
-			i += 1;
-			continue;
-		}
-
-		const runStart = i;
-		let runLength = 0;
-		while (i < text.length && text[i] === "`") {
-			runLength += 1;
-			i += 1;
-		}
-
-		if (!open) {
-			open = true;
-			ticks = runLength;
-			openStart = runStart;
-			continue;
-		}
-
-		if (runLength === ticks) {
-			spans.push([openStart, i]);
-			open = false;
-			ticks = 0;
-			openStart = -1;
-		}
-	}
-
-	if (open) {
-		spans.push([openStart, text.length]);
-	}
-
-	return {
-		spans,
-		state: { open, ticks },
-	};
-}
-
-function findOrderedRange<T>(
-	spans: readonly T[],
+export function isSafeFenceBreak(
+	spans: readonly FenceSpan[],
 	index: number,
-	bounds: (span: T) => readonly [number, number],
-): T | undefined {
-	let lo = 0;
-	let hi = spans.length - 1;
-	while (lo <= hi) {
-		const mid = lo + Math.floor((hi - lo) / 2);
-		const span = spans[mid];
-		const [start, end] = bounds(span);
-		if (index < start) {
-			hi = mid - 1;
-		} else if (index >= end) {
-			lo = mid + 1;
-		} else {
-			return span;
-		}
-	}
-	return undefined;
-}
-
-function findFenceSpanAtInclusive(
-	spans: FenceSpan[],
-	index: number,
-): FenceSpan | undefined {
-	return findOrderedRange(spans, index, (span) => [span.start, span.end]);
-}
-
-function isInsideFenceSpan(index: number, spans: FenceSpan[]): boolean {
-	return findFenceSpanAtInclusive(spans, index) !== undefined;
-}
-
-function isInsideInlineSpan(
-	index: number,
-	spans: Array<[number, number]>,
 ): boolean {
-	return findOrderedRange(spans, index, (span) => span) !== undefined;
+	return !findFenceSpanAt(spans, index);
 }
 
 /** Removes an optional whole-value Markdown code fence with a linear delimiter scan. */
@@ -305,12 +188,17 @@ export function unwrapWholeCodeFence(
 	if (fenceLength < 3 || value.length < fenceLength * 2) {
 		return null;
 	}
-	const lowerValue = value.toLowerCase();
+	// Lowercase only the label region, not the whole (possibly large) value.
+	let longestLanguage = 0;
+	for (const language of languages) {
+		longestLanguage = Math.max(longestLanguage, language.length);
+	}
+	const lowerLabel = value
+		.slice(fenceLength, fenceLength + longestLanguage)
+		.toLowerCase();
 	const acceptedLanguage = [...languages]
 		.sort((left, right) => right.length - left.length)
-		.find((language) =>
-			lowerValue.startsWith(language.toLowerCase(), fenceLength),
-		);
+		.find((language) => lowerLabel.startsWith(language.toLowerCase()));
 	let cursor = acceptedLanguage
 		? fenceLength + acceptedLanguage.length
 		: fenceLength;

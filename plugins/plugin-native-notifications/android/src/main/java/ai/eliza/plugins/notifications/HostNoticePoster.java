@@ -104,5 +104,13 @@ public class HostNoticePoster implements NoticeDelivery.Poster {
    PendingIntent pending=PendingIntent.getActivity(context,0,launch(action,token),PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_NO_CREATE);if(pending!=null)pending.cancel();
   }}catch(Exception failure){throw new IllegalStateException("Stale notice tap could not be invalidated",failure);}
  }
- @Override public boolean matches(String id,String title,String body){for(StatusBarNotification row:manager().getActiveNotifications())if(row.getId()==0&&tag(id).equals(row.getTag())){Notification notice=row.getNotification();return channelFor(id).equals(notice.getChannelId())&&title.contentEquals(notice.extras.getCharSequence(Notification.EXTRA_TITLE,""))&&body.contentEquals(notice.extras.getCharSequence(Notification.EXTRA_BIG_TEXT,notice.extras.getCharSequence(Notification.EXTRA_TEXT,"")));}return false;}
+ private StatusBarNotification active(String id){for(StatusBarNotification row:manager().getActiveNotifications())if(row.getId()==0&&tag(id).equals(row.getTag()))return row;return null;}
+ private static CharSequence text(Notification notice){return notice.extras.getCharSequence(Notification.EXTRA_BIG_TEXT,notice.extras.getCharSequence(Notification.EXTRA_TEXT,""));}
+ /** Android shows at most 1024 characters of text, so a longer accepted body matches its exact prefix. */
+ @Override public boolean matches(String id,String title,String body){StatusBarNotification row=active(id);if(row==null)return false;Notification notice=row.getNotification();return channelFor(id).equals(notice.getChannelId())&&title.contentEquals(notice.extras.getCharSequence(Notification.EXTRA_TITLE,""))&&NoticeDelivery.sameText(body,text(notice));}
+ @Override public boolean shown(String id){return active(id)!=null;}
+ @Override public String[] shownText(String id){
+  StatusBarNotification row=active(id);if(row==null||!channelFor(id).equals(row.getNotification().getChannelId()))return null;
+  Notification notice=row.getNotification();return new String[]{String.valueOf(notice.extras.getCharSequence(Notification.EXTRA_TITLE,"")),String.valueOf(text(notice))};
+ }
 }

@@ -41,16 +41,22 @@ function hasHistoricalTerminal(
 			[HISTORICAL_EFFECT_TERMINALS]?: readonly HistoricalEffectTerminal[];
 		}
 	)[HISTORICAL_EFFECT_TERMINALS];
-	return (
-		proofs?.some(
-			(proof) =>
-				proof.requestSourceEventId === requestSourceEventId &&
-				["done", "rejected", "expired"].includes(proof.state) &&
-				(proof.originalReceiptHash === hashStableJson(receipt) ||
-					hashStableJson(proof.terminalReceipt) === hashStableJson(receipt)),
-		) === true
+	if (!proofs?.length) return false;
+	const receiptHash = hashStableJson(receipt);
+	return proofs.some(
+		(proof) =>
+			proof.requestSourceEventId === requestSourceEventId &&
+			HISTORICAL_TERMINAL_STATES.has(proof.state) &&
+			(proof.originalReceiptHash === receiptHash ||
+				hashStableJson(proof.terminalReceipt) === receiptHash),
 	);
 }
+
+const HISTORICAL_TERMINAL_STATES: ReadonlySet<string> = new Set([
+	"done",
+	"rejected",
+	"expired",
+]);
 
 const SOURCE_ID_PATTERN = /^h[1-9]\d*$/;
 
@@ -141,6 +147,7 @@ export function withRequiredCompletionSourceIdentity(
 	// Offer only this request's authorized identities. Keep canonical host
 	// parsers unchanged; strict providers need literal choices instead of regexes.
 	const sourceIds = snapshot.sources.map(({ id }) => id);
+	const sourceIdSet = new Set(sourceIds);
 	const properties = { ...completion.properties };
 	for (const name of SOURCE_LIST_FIELDS) {
 		const field = properties[name];
@@ -162,7 +169,7 @@ export function withRequiredCompletionSourceIdentity(
 				enum: Array.isArray(items.enum)
 					? items.enum.filter(
 							(id): id is string =>
-								typeof id === "string" && sourceIds.includes(id),
+								typeof id === "string" && sourceIdSet.has(id),
 						)
 					: sourceIds,
 			},
@@ -239,7 +246,7 @@ export function collectCompletionContextSources(
 	context: ContextObject,
 ): Array<{ id: string; event: ContextSegmentEvent }> {
 	const sources: Array<{ id: string; event: ContextSegmentEvent }> = [];
-	for (const event of context.events ?? []) {
+	for (const event of context.events) {
 		if (
 			event.type !== "segment" ||
 			event.source !== "prior-dialogue" ||
@@ -417,7 +424,7 @@ export function completionContextSources(context: ContextObject): {
 			contextId: context.id,
 			roomId: context.metadata?.roomId,
 			messageId: context.metadata?.messageId,
-			sources: sources.map(({ id, event }) => ({ id, event })),
+			sources,
 			// Include exact historical outcomes in the source-set identity as well:
 			// changed historical evidence cannot reuse an earlier relevance review.
 			navigationEvidence: context.events.filter(
@@ -450,7 +457,7 @@ export function selectCompletionContext(
 	const selectedIds = new Set(
 		SOURCE_LIST_FIELDS.flatMap((key) => selection[key]),
 	);
-	if ([...selectedIds].some((id) => !sourceIds.has(id))) return complete;
+	for (const id of selectedIds) if (!sourceIds.has(id)) return complete;
 	const omittedEvents = new Set<ContextEvent>(
 		sources.filter(({ id }) => !selectedIds.has(id)).map(({ event }) => event),
 	);
@@ -474,6 +481,12 @@ export function selectCompletionContext(
 	};
 }
 
+const PLANNER_QUERY_TOKEN_SURFACE_MODES: ReadonlySet<string> = new Set([
+	"full",
+	"tiered",
+	"relay-delivery",
+]);
+
 /** Tokenized retrieval queries are diagnostics, not authored dialogue. Keep the
  * complete array in the source event and restore it through RESTORE_CONTEXT;
  * preserve all other routing, permission, patch, and execution fields inline. */
@@ -494,7 +507,7 @@ export function referencePlannerQueryTokens(context: ContextObject): {
 			!surface ||
 			typeof surface !== "object" ||
 			Array.isArray(surface) ||
-			!["full", "tiered", "relay-delivery"].includes(String(surface.mode)) ||
+			!PLANNER_QUERY_TOKEN_SURFACE_MODES.has(String(surface.mode)) ||
 			!Array.isArray(surface.queryTokens) ||
 			!surface.queryTokens.every((token) => typeof token === "string")
 		)

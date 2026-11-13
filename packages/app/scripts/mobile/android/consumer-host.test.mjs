@@ -248,6 +248,7 @@ test("toolchain is hash pinned and optional runtime preserves exact native bytes
     JSON.stringify('host "literal" $value'),
   );
   assert.equal(normalized.preserveRuntimeBytes, true);
+  assert.equal(normalized.nativeLibraries, null);
   // A staged runtime cannot be packaged with stripped libraries.
   options.profile.preserveRuntimeBytes = false;
   assert.throws(generate, /requires runtime byte preservation/);
@@ -524,6 +525,7 @@ test("build types, test mocks, admission and staged assets are normalized data",
     releaseMinify: true,
     kotlin: false,
     preserveRuntimeBytes: true,
+    nativeLibraries: "extract-16k",
     buildTypes: {
       debug: { abiFilters: ["arm64-v8a", "x86_64"] },
       release: {
@@ -577,6 +579,7 @@ test("build types, test mocks, admission and staged assets are normalized data",
     fs.realpathSync(path.join(options.consumerRoot, relative));
   assert.equal(profile.kotlin, false);
   assert.equal(profile.preserveRuntimeBytes, true);
+  assert.equal(profile.nativeLibraries, "extract-16k");
   assert.deepEqual(profile.buildTypes.release.proguardFiles, [
     real("rules.pro"),
   ]);
@@ -653,6 +656,7 @@ test("build types, test mocks, admission and staged assets are normalized data",
     (p) => (p.dependencies[0].toolchainVersion = "unknownVersion"),
     (p) => (p.dependencies[0].coordinate = "androidx.webkit:webkit:1.0.0"),
     (p) => (p.kotlin = "false"),
+    (p) => (p.nativeLibraries = "aligned"),
   ]) {
     const next = structuredClone(options.profile);
     mutate(next);

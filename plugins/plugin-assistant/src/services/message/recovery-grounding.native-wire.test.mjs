@@ -159,13 +159,17 @@ test("the same derived verdict schema also reaches the direct OpenAI/Cerebras ha
   assert.equal(r.requests[0].body.response_format.type, "json_schema");
   assert.ok(r.requests[0].body.response_format.json_schema.schema);
   assert.equal(r.requests[0].body.response_format.json_schema.strict, true);
+  // A plain verdict object needs no union envelope on the strict wire.
+  const wire = r.requests[0].body.response_format.json_schema.schema;
+  assert.equal(wire.properties.__eliza_response, undefined);
   assert.deepEqual(
-    r.requests[0].body.response_format.json_schema.schema.properties
-      .__eliza_response.anyOf,
+    wire.properties,
     sanitize(f.calls[0].responseSchema, true, "$", undefined, {
       preserveStructure: true,
-    }).anyOf,
+    }).properties,
   );
-  assert.ok(f.calls[0].responseSchema.anyOf);
+  // Strict decoding cannot choose a full-context read the caller would reject.
+  assert.equal(JSON.stringify(wire).includes("contextRequest"), false);
+  assert.ok(f.calls[0].responseSchema.properties.claims);
   assert.equal(f.calls[0].providerOptions.eliza.thinking, "off");
 });

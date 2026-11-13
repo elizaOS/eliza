@@ -335,6 +335,13 @@ final class ElizaVoiceNative {
 
     static native int nativeParadeeUnloadVoice(long ctxHandle, String voiceId);
 
+    /**
+     * ABI v21: the range synthesis on slot {@code voiceId} clamps speed to, within
+     * the architecture's [0.25, 4] and spanning 1.0; 0, 0 restores the model's
+     * validated range. Throws on any other range or an unknown slot.
+     */
+    static native int nativeParadeeSetVoiceSpeedRange(long ctxHandle, String voiceId, float minSpeed, float maxSpeed);
+
     static native String nativeParadeeVoiceInfo(long ctxHandle, String voiceId);
 
     static native String nativeParadeePhonemizeVoice(long ctxHandle, String voiceId, byte[] utf8Text);

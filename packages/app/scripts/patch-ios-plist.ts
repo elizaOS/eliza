@@ -198,7 +198,7 @@ function main() {
   );
 }
 
-// `node patch-ios-plist.ts --check` verifies without writing.
+// `bun patch-ios-plist.ts --check` verifies without writing.
 function check() {
   if (!existsSync(TARGET_PATH)) {
     console.log("[patch-ios-plist] no Info.plist; nothing to check.");

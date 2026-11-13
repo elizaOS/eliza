@@ -1,12 +1,14 @@
 /**
  * PairingService - Manages secure DM access via pairing codes.
  *
+ * State contracts live in quint/PairingIdentity.qnt and quint/PairingAdmission.qnt.
  * This service handles the pairing workflow for messaging channels:
  * 1. Unknown users send a DM and receive a pairing code
  * 2. Bot owner approves the code via CLI or API
  * 3. User is added to the allowlist and can now send DMs
  */
 
+import { randomUUID } from "node:crypto";
 import { compareMemoryIds } from "../database";
 import { ElizaError } from "../errors";
 import {
@@ -25,6 +27,7 @@ import {
 	type UpsertPairingRequestParams,
 	type UpsertPairingRequestResult,
 } from "../types/pairing";
+import { asUUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service, ServiceType } from "../types/service";
 import { stringToUuid } from "../utils/string-to-uuid.js";
@@ -63,7 +66,7 @@ export class PairingService extends Service {
 	private pairingConfig: Required<PairingConfig>;
 
 	/**
-	 * Last-issued pairing-reply timestamps keyed `${channel}:${senderId}`.
+	 * Last-issued pairing-reply timestamps keyed by the channel/sender tuple.
 	 * Reply suppression is deliberately decoupled from request-row existence:
 	 * eviction, expiry cleanup, or manual deletion of the requests table must
 	 * not re-arm an unsolicited pairing reply for a sender who was already
@@ -140,8 +143,7 @@ export class PairingService extends Service {
 	/**
 	 * Generate a unique code that doesn't conflict with existing codes.
 	 */
-	private async generateUniqueCode(channel: PairingChannel): Promise<string> {
-		const existingRequests = await this.listPendingRequests(channel);
+	private generateUniqueCode(existingRequests: PairingRequest[]): string {
 		const existingCodes = new Set(
 			existingRequests.map((r) => r.code.toUpperCase()),
 		);
@@ -155,13 +157,6 @@ export class PairingService extends Service {
 		throw new Error(
 			"Failed to generate unique pairing code after 500 attempts",
 		);
-	}
-
-	/**
-	 * Check if a pairing request is expired.
-	 */
-	private isExpired(request: PairingRequest): boolean {
-		return this.isExpiredAt(request, Date.now());
 	}
 
 	private isExpiredAt(request: PairingRequest, now: number): boolean {
@@ -179,9 +174,10 @@ export class PairingService extends Service {
 	private cleanupExpiredRequests(requests: PairingRequest[]): PairingRequest[] {
 		const validRequests: PairingRequest[] = [];
 		const expiredIds: PairingRequest["id"][] = [];
+		const now = Date.now();
 
 		for (const request of requests) {
-			if (this.isExpired(request)) {
+			if (this.isExpiredAt(request, now)) {
 				expiredIds.push(request.id);
 			} else {
 				validRequests.push(request);
@@ -216,7 +212,7 @@ export class PairingService extends Service {
 			if (timeDifference !== 0) {
 				return timeDifference;
 			}
-			return compareMemoryIds(String(b.id), String(a.id));
+			return compareMemoryIds(b.id, a.id);
 		});
 	}
 
@@ -302,7 +298,7 @@ export class PairingService extends Service {
 	 */
 	claimPairingReply(channel: PairingChannel, senderId: string): boolean {
 		const now = Date.now();
-		const key = `${channel}:${senderId}`;
+		const key = JSON.stringify([channel, senderId]);
 		const claimedAt = this.pairingReplyClaims.get(key);
 		if (
 			claimedAt !== undefined &&
@@ -403,12 +399,13 @@ export class PairingService extends Service {
 			return { code: "", created: false, request: undefined };
 		}
 
-		// Generate a new unique code
-		const code = await this.generateUniqueCode(channel);
+		// Generate a code unique among this channel's pending requests (read above,
+		// inside the admission queue).
+		const code = this.generateUniqueCode(existingRequests);
 
 		// Create new request
 		const newRequest: PairingRequest = {
-			id: stringToUuid(`pairing-${channel}-${senderId}-${Date.now()}`),
+			id: asUUID(randomUUID()),
 			channel,
 			senderId,
 			code,
@@ -461,22 +458,13 @@ export class PairingService extends Service {
 			return null;
 		}
 
-		// Delete the pairing request
-		await this.runtime.deletePairingRequest(request.id);
-
-		// Add to allowlist
-		const allowlistEntry: PairingAllowlistEntry = {
-			id: stringToUuid(
-				`allowlist-${channel}-${request.senderId}-${this.runtime.agentId}`,
-			),
+		// Persist the grant before consuming the code so a failed write can retry.
+		const allowlistEntry = await this.addToAllowlist(
 			channel,
-			senderId: request.senderId,
-			createdAt: new Date(),
-			agentId: this.runtime.agentId,
-			metadata: request.metadata,
-		};
-
-		await this.runtime.createPairingAllowlistEntry(allowlistEntry);
+			request.senderId,
+			request.metadata,
+		);
+		await this.runtime.deletePairingRequest(request.id);
 
 		this.runtime.logger.info(
 			{
@@ -563,7 +551,7 @@ export class PairingService extends Service {
 
 		const entry: PairingAllowlistEntry = {
 			id: stringToUuid(
-				`allowlist-${channel}-${senderId}-${this.runtime.agentId}`,
+				JSON.stringify(["allowlist", this.runtime.agentId, channel, senderId]),
 			),
 			channel,
 			senderId,
@@ -573,13 +561,22 @@ export class PairingService extends Service {
 		};
 
 		await this.runtime.createPairingAllowlistEntry(entry);
+		// A competing writer can retain an older row with its own identity and metadata.
+		const persisted = (await this.getAllowlist(channel)).find(
+			(candidate) => candidate.senderId === senderId,
+		);
+		if (!persisted) {
+			throw new ElizaError("Pairing grant was not retained in storage", {
+				code: "PAIRING_ALLOWLIST_NOT_RETAINED",
+			});
+		}
 
 		this.runtime.logger.info(
 			{ src: "service:pairing", channel, senderId },
 			"Added sender to allowlist",
 		);
 
-		return entry;
+		return persisted;
 	}
 
 	/**

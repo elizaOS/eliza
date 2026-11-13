@@ -51,6 +51,10 @@ export interface NativeLiveCapturePort {
   startLiveCapture(input: {
     captureId: string;
     echoCancel: boolean;
+    /** Silence (ms) that closes a VAD segment; the bridge clamps it and older bridges ignore it. */
+    endHangoverMs?: number;
+    /** An automatic reopen: refused, never prompted, after a call, pause or permission loss. */
+    reopen?: true;
     nativeAsr?: true;
     ownerId?: string;
     roomId?: string;
@@ -126,8 +130,16 @@ const level = (value: unknown) =>
     : undefined;
 const sessionChanged = () =>
   Object.assign(Error("The agent session changed."), { status: 409 });
+const fellBehind = () =>
+  Object.assign(Error("Native transcription fell behind."), {
+    code: "live-asr",
+    reason: "backlog",
+  });
 
-/** Most finals a native capture may hold undelivered, and finished turn ids it remembers. */
+/**
+ * Most finals a native capture may hold undelivered (more ends it as fallen behind), and finished
+ * turn ids it remembers to drop duplicate finals and stale partials (the oldest is evicted).
+ */
 export const NATIVE_PENDING_FINALS = 8;
 export const NATIVE_FINISHED_TURNS = 512;
 
@@ -270,22 +282,33 @@ export async function openNativeResidentCapture(
         if (event.error) {
           if (event.error === "ASR_FAILED") {
             if (pending.length >= NATIVE_PENDING_FINALS) {
-              lose(Error("Native transcription session limit reached."));
+              lose(fellBehind());
               return;
             }
             pending.push(null);
             drain();
-          } else lose(Error("Native transcription unavailable."));
+          } else
+            lose(
+              Object.assign(Error("Native transcription unavailable."), {
+                code: "live-asr",
+                ...(typeof event.error === "string"
+                  ? { reason: event.error }
+                  : {}),
+              }),
+            );
           return;
         }
         const final = parseLiveFinal(event.final);
         if (!final || finished.has(final.turnId)) return;
-        if (
-          finished.size >= NATIVE_FINISHED_TURNS ||
-          pending.length >= NATIVE_PENDING_FINALS
-        ) {
-          lose(Error("Native transcription session limit reached."));
+        if (pending.length >= NATIVE_PENDING_FINALS) {
+          lose(fellBehind());
           return;
+        }
+        // Finals arrive in VAD order, so dropping the oldest id keeps the
+        // duplicate check for recent turns without capping the conversation.
+        if (finished.size >= NATIVE_FINISHED_TURNS) {
+          const oldest = finished.values().next().value;
+          if (oldest !== undefined) finished.delete(oldest);
         }
         finished.add(final.turnId);
         if (partialTurn === final.turnId) {
@@ -333,6 +356,10 @@ export async function openNativeResidentCapture(
     const result = await port.startLiveCapture({
       captureId,
       echoCancel: input.echoCancel,
+      ...(input.endHangoverMs !== undefined
+        ? { endHangoverMs: input.endHangoverMs }
+        : {}),
+      ...(input.reopen ? { reopen: true } : {}),
       nativeAsr: true,
       ownerId: input.ownerId,
       ...(input.roomId ? { roomId: input.roomId } : {}),
@@ -484,6 +511,10 @@ export async function openNativeSegmentCapture(
     const result = await port.startLiveCapture({
       captureId,
       echoCancel: input.echoCancel,
+      ...(input.endHangoverMs !== undefined
+        ? { endHangoverMs: input.endHangoverMs }
+        : {}),
+      ...(input.reopen ? { reopen: true } : {}),
     });
     if (result?.captureId !== captureId || result.sampleRate !== 16000)
       throw Error("Live capture identity changed.");
@@ -608,6 +639,7 @@ export function createNativeLiveVoice(options: NativeLiveVoiceOptions) {
         roomId?: string;
         onInterim?: (text: string) => void;
         onLatency?: (latency: LiveVoiceLatency) => void;
+        endHangoverMs?: number;
       } = {},
     ) {
       return liveAssistantListener(open, listen);

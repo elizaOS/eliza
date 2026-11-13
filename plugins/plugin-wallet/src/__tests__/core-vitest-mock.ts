@@ -92,7 +92,11 @@ export function registerAppRoutePluginLoader(): void {}
 
 export async function requireConfirmation(args: {
   readonly runtime: RuntimeCache;
-  readonly message: { readonly entityId?: string; readonly content?: unknown };
+  readonly message: {
+    readonly entityId?: string;
+    readonly roomId?: string;
+    readonly content?: unknown;
+  };
   readonly actionName: string;
   readonly pendingKey: string;
   readonly metadata?: Record<string, unknown>;
@@ -101,7 +105,8 @@ export async function requireConfirmation(args: {
   readonly metadata?: Record<string, unknown>;
 }> {
   const userId = String(args.message.entityId);
-  const cacheKey = `confirmation:${userId}:${args.actionName}:${args.pendingKey}`;
+  const roomId = String(args.message.roomId);
+  const cacheKey = `confirmation:${roomId}:${userId}:${args.actionName}:${args.pendingKey}`;
   const existing = await args.runtime.getCache?.<{
     metadata?: Record<string, unknown>;
   }>(cacheKey);

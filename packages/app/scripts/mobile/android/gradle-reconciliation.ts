@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { androidDir } from "../context.ts";
+import { androidBuildAppId, androidDir } from "../context.ts";
 
 /**
  * Remove the RETIRED llama-cpp-capacitor Android module from the gradle build
@@ -124,7 +124,15 @@ export function reconcilePluginManifestWithGradle(targetAssets) {
     if (nonBundlingThirdPartyPlugins.has(plugin?.pkg)) return false;
     return true;
   };
+  const before = JSON.stringify(plugins);
   const kept = plugins.filter(isCompiledAndUsable);
+  // Replace the discovered class before Bridge constructs it. Registering a
+  // second App plugin later leaves the first plugin's Back callback installed.
+  for (const plugin of kept) {
+    if (plugin.pkg === "@capacitor/app") {
+      plugin.classpath = `${androidBuildAppId}.ReceiptAppPlugin`;
+    }
+  }
 
   // `cap sync` wires `@capacitor/local-notifications` into the gradle project
   // (capacitor.settings.gradle / capacitor.build.gradle) but does NOT emit its
@@ -146,7 +154,6 @@ export function reconcilePluginManifestWithGradle(targetAssets) {
     });
   }
 
-  const before = JSON.stringify(plugins);
   const after = JSON.stringify(kept);
   if (before !== after) {
     const dropped = plugins

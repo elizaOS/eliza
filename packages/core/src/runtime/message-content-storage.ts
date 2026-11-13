@@ -1,9 +1,11 @@
 /** Publishes message bodies and attachments through atomic content-segment storage, rejecting oversized writes when the adapter lacks that capability. */
+
 import { isDeepStrictEqual } from "node:util";
 import { ElizaError } from "../errors";
 import type { Memory } from "../types/memory.js";
 import type { Content, UUID } from "../types/primitives.js";
 import type { IAgentRuntime } from "../types/runtime.js";
+import { utf8ByteLength } from "../utils/unicode";
 import {
 	buildMessageContentProjection,
 	canonicalAttachmentText,
@@ -66,17 +68,15 @@ export function incomingMessagePersistenceSnapshot(
 }
 
 function contentNeedsNativeSegments(content: Content): boolean {
-	const encoder = new TextEncoder();
 	if (
 		typeof content.text === "string" &&
-		encoder.encode(content.text).length >
-			MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES
+		utf8ByteLength(content.text) > MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES
 	) {
 		return true;
 	}
 	return (content.attachments ?? []).some(
 		(attachment) =>
-			encoder.encode(canonicalAttachmentText(attachment)).length >
+			utf8ByteLength(canonicalAttachmentText(attachment)) >
 			MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES,
 	);
 }

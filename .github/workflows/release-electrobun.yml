@@ -147,7 +147,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           REPOSITORY: ${{ github.repository }}
         run: |
-          node packages/scripts/electrobun-release-identity.ts resolve \
+          bun packages/scripts/electrobun-release-identity.ts resolve \
             --repository "$REPOSITORY" \
             --input-tag "$INPUT_TAG" \
             --ref-type "$REF_TYPE" \
@@ -263,7 +263,7 @@ jobs:
 
       - name: Align version with release tag
         run: |
-          node packages/app/scripts/align-electrobun-version.ts
+          bun packages/app/scripts/align-electrobun-version.ts
           node <<'NODE'
           const fs = require("node:fs");
           const version = process.env.RELEASE_VERSION;
@@ -280,11 +280,11 @@ jobs:
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
 
       - name: Ensure avatar assets
-        run: node packages/app/scripts/ensure-avatars.ts
+        run: bun packages/app/scripts/ensure-avatars.ts
 
       - name: Build core dist (server bundle)
         run: |
-          node --input-type=module <<'NODE'
+          bun - <<'NODE'
           import fs from "node:fs";
           import path from "node:path";
 
@@ -321,7 +321,7 @@ jobs:
           node --import tsx packages/scripts/write-build-info.ts
 
       - name: Regression matrix contract
-        run: node packages/app/scripts/validate-regression-matrix.ts --workflow release
+        run: bun packages/app/scripts/validate-regression-matrix.ts --workflow release
 
       # The heavy suites gate on a real Chromium binary; without one they
       # self-skip and run-heavy-e2e.ts fails the lane closed. Install the
@@ -383,7 +383,7 @@ jobs:
 
       - name: Generate release validation manifests
         run: |
-          node packages/app/scripts/generate-static-asset-manifest.ts
+          bun packages/app/scripts/generate-static-asset-manifest.ts
 
       - name: Release readiness checks
         env:
@@ -544,7 +544,7 @@ jobs:
 
       - name: Align version with release tag
         run: |
-          node packages/app/scripts/align-electrobun-version.ts
+          bun packages/app/scripts/align-electrobun-version.ts
           node <<'NODE'
           const fs = require("node:fs");
           const version = process.env.RELEASE_VERSION;
@@ -563,9 +563,9 @@ jobs:
       - name: Stage desktop bundle inputs
         run: |
           if [ "${{ matrix.platform.os }}" = "macos" ] && [ "${{ matrix.platform.artifact-name }}" = "macos-x64" ]; then
-            ELIZA_DESKTOP_COMMAND_PREFIX="arch -x86_64" node packages/app/scripts/desktop-build.ts stage --variant=base
+            ELIZA_DESKTOP_COMMAND_PREFIX="arch -x86_64" bun packages/app/scripts/desktop-build.ts stage --variant=base
           else
-            node packages/app/scripts/desktop-build.ts stage --variant=base
+            bun packages/app/scripts/desktop-build.ts stage --variant=base
           fi
 
       - name: Validate Electrobun runtime copy contract
@@ -751,7 +751,7 @@ jobs:
       - name: Prepare Electrobun core binaries
         run: |
           if [ -f packages/app/scripts/ensure-electrobun-core.ts ]; then
-            node packages/app/scripts/ensure-electrobun-core.ts \
+            bun packages/app/scripts/ensure-electrobun-core.ts \
               --package-dir "${{ steps.resolve-electrobun.outputs.package-dir }}" \
               --target "${{ steps.resolve-electrobun.outputs.core-target }}"
           else
@@ -762,22 +762,22 @@ jobs:
         working-directory: packages/app/platforms/electrobun
         run: |
           out_dir="$RUNNER_TEMP/electrobun-entry-probe"
-          node "$GITHUB_WORKSPACE/packages/scripts/rm-path-recursive.ts" "$out_dir"
+          bun "$GITHUB_WORKSPACE/packages/scripts/rm-path-recursive.ts" "$out_dir"
           bun build src/index.ts --target=bun --packages=external --outdir "$out_dir"
 
       - name: Build patched Electrobun CLI
         shell: bash
         run: |
-          node packages/app/scripts/build-patched-electrobun-cli.ts "${{ steps.resolve-electrobun.outputs.package-dir }}" "${{ matrix.platform.artifact-name }}"
+          bun packages/app/scripts/build-patched-electrobun-cli.ts "${{ steps.resolve-electrobun.outputs.package-dir }}" "${{ matrix.platform.artifact-name }}"
 
       - name: Build Electrobun app
         id: build-electrobun-app
         run: |
           set +e
           if [ "${{ matrix.platform.os }}" = "macos" ] && [ "${{ matrix.platform.artifact-name }}" = "macos-x64" ]; then
-            ELIZA_DESKTOP_COMMAND_PREFIX="arch -x86_64" node packages/app/scripts/desktop-build.ts package --env=${{ needs.prepare.outputs.env }}
+            ELIZA_DESKTOP_COMMAND_PREFIX="arch -x86_64" bun packages/app/scripts/desktop-build.ts package --env=${{ needs.prepare.outputs.env }}
           else
-            node packages/app/scripts/desktop-build.ts package --env=${{ needs.prepare.outputs.env }}
+            bun packages/app/scripts/desktop-build.ts package --env=${{ needs.prepare.outputs.env }}
           fi
           status=$?
           set -e
@@ -798,7 +798,7 @@ jobs:
             exit "$status"
           fi
 
-          VERSION="$(node -p "require('./packages/app/platforms/electrobun/package.json').version")"
+          VERSION="$(bun -p "require('./packages/app/platforms/electrobun/package.json').version")"
           ENV_NAME="${{ needs.prepare.outputs.env }}"
           find -L "$build_dir" -type d -name "Resources" | while read -r res_dir; do
             dest="$res_dir/version.json"
@@ -892,7 +892,7 @@ jobs:
       - name: Inject version.json into bundle (macOS / Linux)
         if: matrix.platform.os != 'windows'
         run: |
-          VERSION="$(node -p "require('./packages/app/platforms/electrobun/package.json').version")"
+          VERSION="$(bun -p "require('./packages/app/platforms/electrobun/package.json').version")"
           ENV_NAME="${{ needs.prepare.outputs.env }}"
           build_root="packages/app/platforms/electrobun/build"
           if [ -d "$build_root" ]; then
@@ -907,11 +907,11 @@ jobs:
       - name: Package Linux desktop installers
         if: matrix.platform.os == 'linux' && steps.build-electrobun-app.outputs.fallback != 'true'
         run: |
-          node packages/app/scripts/package-electrobun-linux.ts \
+          bun packages/app/scripts/package-electrobun-linux.ts \
             --version=${{ needs.prepare.outputs.version }} \
             --channel=${{ needs.prepare.outputs.env }} \
             --arch=x64
-          node packages/app/scripts/package-electrobun-flatpak.ts \
+          bun packages/app/scripts/package-electrobun-flatpak.ts \
             --version=${{ needs.prepare.outputs.version }} \
             --arch=x86_64
 
@@ -1149,6 +1149,13 @@ jobs:
           }
 
           Write-Host "Windows embedding model cache ready: $modelPath"
+
+      - name: Run packaged Windows startup smoke
+        if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'
+        env:
+          ELIZA_DISABLE_LOCAL_EMBEDDINGS: "1"
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: bun run --cwd packages/app test:desktop:packaged:windows
 
       - name: Run Windows clean installer proof
         if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'
@@ -1599,9 +1606,9 @@ jobs:
       - name: Collect public release files
         run: |
           mkdir -p release-files
-          # Public GitHub releases should expose end-user installables, not the
-          # updater transport files. Windows publishes the standalone Inno Setup
-          # installer, not the raw Electrobun bootstrap stub.
+          # Publish installers and updater metadata/payloads together so the OTA
+          # channel manifest can resolve every asset on this GitHub Release.
+          # Windows publishes the Inno Setup installer, not the bootstrap stub.
           find release-artifacts -type f \( \
             -name "*.dmg" -o \
             -name "*.app.tar.gz" -o \
@@ -1613,6 +1620,8 @@ jobs:
             -name "eliza-canary-windows-*.exe.zip" -o \
             -name "*Setup*.tar.gz" -o \
             -name "*.tar.zst" -o \
+            -name "*.patch" -o \
+            -name "*-update.json" -o \
             -name "*.flatpak" -o \
             -name "*.msix" \
           \) -exec cp {} release-files/ \; 2>/dev/null || true
@@ -1748,10 +1757,10 @@ jobs:
             "version": "${VERSION}",
             "updatedAt": "${UPDATED_AT}",
             "platforms": {
-              "macos-arm64": "${BASE_URL}/macos-arm64-update.json",
-              "macos-x64": "${BASE_URL}/macos-x64-update.json",
-              "windows-x64": "${BASE_URL}/windows-x64-update.json",
-              "linux-x64": "${BASE_URL}/linux-x64-update.json"
+              "macos-arm64": "${BASE_URL}/${CHANNEL}-macos-arm64-update.json",
+              "macos-x64": "${BASE_URL}/${CHANNEL}-macos-x64-update.json",
+              "windows-x64": "${BASE_URL}/${CHANNEL}-win-x64-update.json",
+              "linux-x64": "${BASE_URL}/${CHANNEL}-linux-x64-update.json"
             }
           }
           JSON

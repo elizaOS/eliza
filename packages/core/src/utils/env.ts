@@ -2,15 +2,11 @@
 const TRUTHY_ENV_VALUES = new Set(["1", "true", "yes", "y", "on", "enabled"]);
 
 export function isTruthyEnvValue(value: string | undefined | null): boolean {
-	if (typeof value !== "string") return false;
-	const normalized = value.trim().toLowerCase();
-	if (!normalized) return false;
-	return TRUTHY_ENV_VALUES.has(normalized);
+	return (
+		typeof value === "string" &&
+		TRUTHY_ENV_VALUES.has(value.trim().toLowerCase())
+	);
 }
-
-/**
- * Environment-value normalization and explicit alias resolution.
- */
 
 /**
  * Normalize an env value: trim whitespace, return `undefined` for empty/missing.
@@ -50,19 +46,4 @@ export function isEnvDisabled(value: string | undefined): boolean {
  */
 export function isExactTrueEnvFlag(value: string | undefined): boolean {
 	return value === "true";
-}
-
-/** Resolve an explicit alias table without mutating the supplied environment. */
-export function resolveEnvAlias(
-	key: string,
-	aliases: readonly (readonly [string, string])[] | undefined,
-	env: Record<string, string | undefined> | null,
-): string | undefined {
-	if (!env) return undefined;
-	if (env[key]?.trim()) return env[key];
-	for (const [left, right] of aliases ?? []) {
-		const partner = left === key ? right : right === key ? left : undefined;
-		if (partner !== undefined && env[partner]?.trim()) return env[partner];
-	}
-	return undefined;
 }

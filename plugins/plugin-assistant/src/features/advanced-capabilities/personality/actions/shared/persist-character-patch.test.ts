@@ -71,6 +71,7 @@ describe("persistCharacterPatch", () => {
       }),
     ).resolves.toEqual({ success: true });
     expect(persistCharacter).toHaveBeenCalledWith({
+      nameWasExplicitlyEdited: false,
       character: {
         name: "Original",
         bio: ["after"],

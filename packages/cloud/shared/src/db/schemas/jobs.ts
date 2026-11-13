@@ -48,13 +48,19 @@ export const jobs = pgTable(
     webhook_url: text("webhook_url"),
     webhook_status: text("webhook_status"),
     estimated_completion_at: timestamp("estimated_completion_at"),
-    scheduled_for: timestamp("scheduled_for").notNull().defaultNow(),
+    scheduled_for: timestamp("scheduled_for")
+      .notNull()
+      .default(sql`(clock_timestamp() AT TIME ZONE 'UTC')`),
     started_at: timestamp("started_at"),
     execution_generation: uuid("execution_generation"),
     execution_quiesced_at: timestamp("execution_quiesced_at"),
     completed_at: timestamp("completed_at"),
-    created_at: timestamp("created_at").notNull().defaultNow(),
-    updated_at: timestamp("updated_at").notNull().defaultNow(),
+    created_at: timestamp("created_at")
+      .notNull()
+      .default(sql`(clock_timestamp() AT TIME ZONE 'UTC')`),
+    updated_at: timestamp("updated_at")
+      .notNull()
+      .default(sql`(clock_timestamp() AT TIME ZONE 'UTC')`),
   },
   (table) => ({
     type_idx: index("jobs_type_idx").on(table.type),

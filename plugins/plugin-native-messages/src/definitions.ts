@@ -50,6 +50,9 @@ export interface MessagesPermissionStatus {
  * plugin; elsewhere every call is refused before it reaches native code.
  */
 export type {
+  IncompleteSmsMessage,
+  IncompleteSmsThread,
+  SmsIncompleteReason,
   SmsMessage,
   SmsReview,
   SmsSendResult,

@@ -15,7 +15,11 @@ function normalizedTimestamp(value: Date | string | null): Date | null {
 }
 
 export function msWindowTimestampMatch(column: AnyColumn | SQL, value: Date | string | null): SQL {
-  return sql`date_trunc('milliseconds', ${column}) IS NOT DISTINCT FROM ${normalizedTimestamp(value)}`;
+  // These job columns are timestamp-without-time-zone with Drizzle's UTC
+  // representation. An untyped Date parameter is encoded by pg in the process
+  // time zone, so bind explicit UTC text rather than shifting a valid receipt.
+  const timestamp = normalizedTimestamp(value);
+  return sql`date_trunc('milliseconds', ${column}) IS NOT DISTINCT FROM ${timestamp?.toISOString() ?? null}::timestamp`;
 }
 
 /**

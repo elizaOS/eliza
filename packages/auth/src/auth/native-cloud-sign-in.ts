@@ -33,6 +33,7 @@ export type NativeCloudSignInFailureCode =
   | "mfa-browser"
   | "mfa-unsupported"
   | "activation-pending"
+  | "activation-expired"
   | "storage"
   | "rejected"
   | "invalid-request"
@@ -60,6 +61,7 @@ export const NATIVE_CLOUD_SIGN_IN_FAILURE_CODES: ReadonlySet<NativeCloudSignInFa
     "mfa-browser",
     "mfa-unsupported",
     "activation-pending",
+    "activation-expired",
     "storage",
     "rejected",
     "invalid-request",
@@ -76,6 +78,11 @@ export interface NativeCloudSignInAuthenticated<E extends string = string> {
   accountCreated: boolean | null;
   /** What happened to the key this sign-in replaced; absent when none was saved. */
   previousSignIn?: "revoked" | "unconfirmed";
+  /** Native attempt and installed local credential generation; absent on older hosts. */
+  attemptId?: string;
+  credentialId?: string;
+  /** Echo of the caller's immutable interactive request, never a credential. */
+  requestId?: string;
 }
 export interface NativeCloudSignInCodeStarted {
   attemptId: string;
@@ -83,6 +90,7 @@ export interface NativeCloudSignInCodeStarted {
   resendAt: number;
 }
 export interface NativeCloudSignInMfaRequired {
+  requestId?: string;
   attemptId?: string;
   status: "mfa";
   method: "totp" | "sms" | "passkey";
@@ -101,52 +109,186 @@ export interface NativeCloudSignInReadiness {
   phone: boolean;
   email: boolean;
 }
+/** The unretained `signInReadinessChanged` event: a method's readiness changed since the last answer. */
+export interface NativeCloudSignInReadinessChange<E extends string = string> {
+  environment: E;
+  /** Null while the host does not know which methods Cloud is ready for. */
+  readiness: NativeCloudSignInReadiness | null;
+  /** A key is saved but Cloud has not confirmed it yet. */
+  activationPending: boolean;
+}
+/**
+ * Where the saved key's silent renewal stands (`renewSignIn`).
+ * - `current`: not due. `renewed`: a new key is saved; read the saved sign-in again.
+ * - `deferred`: due, but a sign-in is in progress, today's request was used, Cloud could not answer
+ *   or the saved key still awaits its acknowledgement.
+ * - `sign-in-required`: Cloud will not renew this key; it keeps working until it expires, unless
+ *   `keyRefused` says Cloud no longer accepts it at all.
+ * - `unavailable`: this host cannot renew in the background. `signed-out`: no usable saved key.
+ */
+export type NativeCloudSignInRenewalStatus =
+  | "current"
+  | "renewed"
+  | "deferred"
+  | "sign-in-required"
+  | "unavailable"
+  | "signed-out";
+export interface NativeCloudSignInRenewal<E extends string = string> {
+  environment: E;
+  status: NativeCloudSignInRenewalStatus;
+  /**
+   * Show the expiry warning: fewer than three days remain and renewal is impossible or has failed.
+   * Never true while a renewal can still succeed silently.
+   */
+  expiryWarning: boolean;
+  /** Expiry of the saved key; absent when signed out. */
+  expiresAt?: number;
+  /** The installed local credential generation after a renewal. */
+  credentialId?: string;
+  /**
+   * Only with `sign-in-required`, and then always with `expiryWarning`: Cloud answered the renewal
+   * request with 401, so it no longer accepts the saved key. The key is still saved; ask the owner to
+   * sign in now instead of counting its remaining days.
+   */
+  keyRefused?: true;
+}
+/** The retained `signInRenewed` event: the saved key was replaced by a silent renewal. */
+export interface NativeCloudSignInRenewed<E extends string = string> {
+  environment: E;
+  expiresAt: number;
+  credentialId: string;
+}
 
 /** The plugin methods of `CloudSignInPlugin`, as a renderer port. Answers are untrusted until parsed. */
 export interface NativeCloudSignInPort<E extends string = string> {
   serviceInfo?(input: { environment: E }): Promise<unknown>;
+  /** Current installed identity only; available on hosts that emit credentialId. */
+  credentialIdentity?(input: { environment: E }): Promise<unknown>;
   /** Opens Android's native Google account picker; answers only authenticated or MFA metadata. */
-  startGoogle(input: { environment: E }): Promise<unknown>;
-  startEmail(input: { environment: E; email: string }): Promise<unknown>;
-  startPhone?(input: { environment: E; phone: string }): Promise<unknown>;
+  startGoogle(input: { environment: E; requestId?: string }): Promise<unknown>;
+  startEmail(input: {
+    environment: E;
+    email: string;
+    requestId?: string;
+  }): Promise<unknown>;
+  startPhone?(input: {
+    environment: E;
+    phone: string;
+    requestId?: string;
+  }): Promise<unknown>;
   verifyPhone?(input: { attemptId: string; code: string }): Promise<unknown>;
   verifyEmail(input: { attemptId: string; code: string }): Promise<unknown>;
   verifyMfa(input: { attemptId: string; code: string }): Promise<unknown>;
   /** Revalidates a retained MFA event against the current native attempt; no network or secrets. */
   resumeMfa?(input: { attemptId: string; environment: E }): Promise<unknown>;
-  /** Ends the attempt and burns any pending Google record. Idempotent. */
-  cancel(): Promise<void>;
+  /** A supplied request scopes cancellation and pending cleanup to that native attempt.
+   * Unscoped cancellation is retained for older callers; shared views always supply their ID. */
+  cancel(input?: { requestId: string }): Promise<void>;
   /** Clears only the native credential picker session after explicit sign-out. */
   clearCredentialState?(): Promise<void>;
-  /** Which methods the host offers and whether Cloud is ready for in-app sign-in (`inApp`). */
+  /**
+   * Which methods the host offers and whether Cloud is ready for in-app sign-in (`inApp`).
+   * `activationPending: true` means a key is saved but Cloud has not confirmed it yet.
+   */
   status?(input?: {
     environment: E;
     refreshNegative?: boolean;
   }): Promise<unknown>;
   /**
-   * `signInCompleted`: a Google return that completed after the app restarted (no waiting call).
-   * `signInIncomplete`: a return without a sign-in result arrived with no waiting call.
-   * `signInMfaRequired`: a retained hint that must be revalidated through `resumeMfa`.
+   * Renews the saved key when it is due and reports where renewal stands. The host also checks on
+   * load and resume; a renewal never interrupts a sign-in and never removes the working key.
+   */
+  renewSignIn?(input?: { environment: E }): Promise<unknown>;
+  /**
+   * `signInCompleted` (retained): a sign-in completed with no waiting call: a Google return after
+   * the app restarted, or a key Cloud confirmed after its sign-in step had ended (in the same
+   * process or on the next start).
+   * `signInIncomplete` (retained): `{code}`. A return without a sign-in result arrived with no
+   * waiting call, or a saved key was removed because Cloud never confirmed it (`activation-expired`,
+   * also found on the next start).
+   * `signInMfaRequired` (retained): a hint that must be revalidated through `resumeMfa`.
+   * `signInReadinessChanged` (not retained): a method's readiness changed; see
+   * `nativeSignInReadinessChanged`.
+   * `signInRenewed` (retained): the saved key was replaced by a silent renewal; see
+   * `nativeSignInRenewed`.
    */
   addListener?(
-    event: "signInCompleted" | "signInIncomplete" | "signInMfaRequired",
+    event:
+      | "signInCompleted"
+      | "signInIncomplete"
+      | "signInMfaRequired"
+      | "signInReadinessChanged"
+      | "signInRenewed",
     listener: (outcome: unknown) => void,
   ): Promise<unknown>;
 }
 
+/** What a native rejection may carry beside its code (`PluginCall.reject(message, code, data)`). */
+export interface NativeCloudSignInErrorData {
+  /**
+   * The code step is still open with the same attempt and wrong-code budget: the code may be
+   * entered again (a wrong code) or sent again unchanged (no answer, 408, 429 or a server error).
+   */
+  attemptKept?: true;
+  /**
+   * When the next code of that method may be requested (epoch milliseconds). Sent with `cooldown`
+   * and with a send Cloud answered and refused (`rate-limited`). Cloud's longer wait applies to the
+   * method that was asked: an SMS limit does not hold back an email code.
+   */
+  resendAt?: number;
+}
+
+/** Only the documented rejection data survives; anything else the native side sent is dropped. */
+function nativeSignInErrorData(
+  data: { attemptKept?: unknown; resendAt?: unknown } | undefined,
+): NativeCloudSignInErrorData {
+  const kept: NativeCloudSignInErrorData = {};
+  if (data?.attemptKept === true) kept.attemptKept = true;
+  if (
+    typeof data?.resendAt === "number" &&
+    Number.isSafeInteger(data.resendAt) &&
+    data.resendAt > 0
+  )
+    kept.resendAt = data.resendAt;
+  return kept;
+}
+
 export class NativeCloudSignInError extends Error {
   readonly code: NativeCloudSignInFailureCode;
-  constructor(code: NativeCloudSignInFailureCode) {
+  /** Only the documented rejection data; anything else the native side sent is dropped. */
+  readonly data: Readonly<NativeCloudSignInErrorData>;
+  constructor(
+    code: NativeCloudSignInFailureCode,
+    data: NativeCloudSignInErrorData = {},
+  ) {
     super(`Cloud sign-in ${code}`);
     this.code = code;
+    this.data = nativeSignInErrorData(data);
     this.name = "NativeCloudSignInError";
   }
-  /** A native rejection keeps its code only when it is one the client defines. */
+  /** When the next code of the refused method may be requested, if the native side said so. */
+  get resendAt(): number | undefined {
+    return this.data.resendAt;
+  }
+  /** The native side kept the code step: do not leave it or discard what the owner typed. */
+  get attemptKept(): boolean {
+    return this.data.attemptKept === true;
+  }
+  /**
+   * A native rejection keeps its code only when it is one the client defines, and its data only
+   * where the contract documents it (`data.attemptKept === true`, a positive integer
+   * `data.resendAt`).
+   */
   static from(error: unknown): NativeCloudSignInError {
     if (error instanceof NativeCloudSignInError) return error;
-    const code =
+    const row =
       error && typeof error === "object"
-        ? (error as { code?: unknown }).code
+        ? (error as { code?: unknown; data?: unknown })
+        : undefined;
+    const code = row?.code;
+    const data =
+      row?.data && typeof row.data === "object" && !Array.isArray(row.data)
+        ? (row.data as { attemptKept?: unknown; resendAt?: unknown })
         : undefined;
     return new NativeCloudSignInError(
       typeof code === "string" &&
@@ -155,6 +297,7 @@ export class NativeCloudSignInError extends Error {
         )
         ? (code as NativeCloudSignInFailureCode)
         : "unavailable",
+      nativeSignInErrorData(data),
     );
   }
 }
@@ -208,6 +351,8 @@ export function nativeCloudSignInFailureMessage(
       return `This account’s second verification method is not available in ${productName} yet. Use account recovery or contact ${serviceName} support.`;
     case "activation-pending":
       return `Signed in, but ${serviceName} has not confirmed this phone yet. ${productName} retries when it starts again; you can also sign in again.`;
+    case "activation-expired":
+      return `${serviceName} did not confirm this sign-in in time, so you are not signed in. Sign in again.`;
     case "storage":
       return `${productName} could not save the sign-in securely on this phone. Try again.`;
     case "app-link-unverified":
@@ -258,6 +403,9 @@ export function nativeSignInAuthenticated<E extends string>(
         "expiresAt",
         "accountCreated",
         "previousSignIn",
+        "attemptId",
+        "credentialId",
+        "requestId",
       ].includes(key)
     )
       throw new NativeCloudSignInError("unavailable");
@@ -267,10 +415,33 @@ export function nativeSignInAuthenticated<E extends string>(
     row.previousSignIn !== "unconfirmed"
   )
     throw new NativeCloudSignInError("unavailable");
+  const hasIdentity =
+    row.attemptId !== undefined ||
+    row.credentialId !== undefined ||
+    row.requestId !== undefined;
+  if (
+    hasIdentity &&
+    (typeof row.attemptId !== "string" ||
+      !UUID.test(row.attemptId) ||
+      typeof row.credentialId !== "string" ||
+      !UUID.test(row.credentialId) ||
+      (row.requestId !== undefined &&
+        (typeof row.requestId !== "string" || !UUID.test(row.requestId))))
+  )
+    throw new NativeCloudSignInError("unavailable");
   return {
     status: "authenticated",
     environment,
     expiresAt: time(row.expiresAt),
+    ...(hasIdentity
+      ? {
+          attemptId: row.attemptId as string,
+          credentialId: row.credentialId as string,
+        }
+      : {}),
+    ...(row.requestId === undefined
+      ? {}
+      : { requestId: row.requestId as string }),
     accountCreated:
       typeof row.accountCreated === "boolean" ? row.accountCreated : null,
     ...(row.previousSignIn === undefined
@@ -310,6 +481,7 @@ export function nativeSignInVerified<E extends string>(
             "expiresAt",
             "attemptId",
             "environment",
+            "requestId",
           ].includes(key),
       ) ||
       (row.environment !== undefined && row.environment !== environment)
@@ -326,8 +498,16 @@ export function nativeSignInVerified<E extends string>(
       (typeof row.attemptId !== "string" || !ATTEMPT_ID.test(row.attemptId))
     )
       throw new NativeCloudSignInError("unavailable");
+    if (
+      row.requestId !== undefined &&
+      (typeof row.requestId !== "string" || !UUID.test(row.requestId))
+    )
+      throw new NativeCloudSignInError("unavailable");
     return {
       status: "mfa",
+      ...(row.requestId === undefined
+        ? {}
+        : { requestId: row.requestId as string }),
       method: row.method,
       expiresAt: time(row.expiresAt),
       ...(row.attemptId === undefined
@@ -356,9 +536,14 @@ export function nativeSignInGoogleOutcome<E extends string>(
   if (
     Object.keys(row).some(
       (key) =>
-        !["status", "method", "expiresAt", "attemptId", "environment"].includes(
-          key,
-        ),
+        ![
+          "status",
+          "method",
+          "expiresAt",
+          "attemptId",
+          "environment",
+          "requestId",
+        ].includes(key),
     )
   )
     throw new NativeCloudSignInError("unavailable");
@@ -380,6 +565,120 @@ export function nativeSignInReadiness(
     google: row.google === true,
     phone: row.phone === true,
     email: row.email === true,
+  };
+}
+
+/** `status().activationPending`: a key is saved but Cloud has not confirmed it yet. */
+export function nativeSignInActivationPending(value: unknown): boolean {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    (value as Record<string, unknown>).activationPending === true
+  );
+}
+
+/**
+ * The `signInReadinessChanged` event for this deployment. It is a hint to show or hide methods, so
+ * an event for another deployment or with anything but explicit booleans is ignored (null).
+ */
+export function nativeSignInReadinessChanged<E extends string>(
+  value: unknown,
+  environment: E,
+): NativeCloudSignInReadinessChange<E> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  if (row.environment !== environment) return null;
+  for (const key of ["methodsKnown", "inApp", "email", "phone", "google"])
+    if (typeof row[key] !== "boolean") return null;
+  return {
+    environment,
+    readiness: nativeSignInReadiness(row),
+    activationPending: nativeSignInActivationPending(row),
+  };
+}
+
+const RENEWAL_STATUSES: ReadonlySet<string> = new Set([
+  "current",
+  "renewed",
+  "deferred",
+  "sign-in-required",
+  "unavailable",
+  "signed-out",
+]);
+
+/** The answer to `renewSignIn` for exactly this deployment, with nothing but the documented fields. */
+export function nativeSignInRenewal<E extends string>(
+  value: unknown,
+  environment: E,
+): NativeCloudSignInRenewal<E> {
+  const row = object(value);
+  if (
+    row.environment !== environment ||
+    typeof row.status !== "string" ||
+    !RENEWAL_STATUSES.has(row.status) ||
+    typeof row.expiryWarning !== "boolean" ||
+    Object.keys(row).some(
+      (key) =>
+        ![
+          "environment",
+          "status",
+          "expiryWarning",
+          "expiresAt",
+          "credentialId",
+          "keyRefused",
+        ].includes(key),
+    )
+  )
+    throw new NativeCloudSignInError("unavailable");
+  const renewed = row.status === "renewed";
+  // A refused key is reported only as `true`, only when a sign-in is required, and it always warns.
+  if (
+    row.keyRefused !== undefined &&
+    (row.keyRefused !== true ||
+      row.status !== "sign-in-required" ||
+      !row.expiryWarning)
+  )
+    throw new NativeCloudSignInError("unavailable");
+  // Only a renewal installs a credential, and it always says which one and until when.
+  if (
+    renewed
+      ? typeof row.credentialId !== "string" ||
+        !UUID.test(row.credentialId) ||
+        row.expiresAt === undefined ||
+        row.expiryWarning
+      : row.credentialId !== undefined
+  )
+    throw new NativeCloudSignInError("unavailable");
+  return {
+    environment,
+    status: row.status as NativeCloudSignInRenewalStatus,
+    expiryWarning: row.expiryWarning,
+    ...(row.expiresAt === undefined ? {} : { expiresAt: time(row.expiresAt) }),
+    ...(renewed ? { credentialId: row.credentialId as string } : {}),
+    ...(row.keyRefused === true ? { keyRefused: true as const } : {}),
+  };
+}
+
+/** The `signInRenewed` event for exactly this deployment: read the saved sign-in again. */
+export function nativeSignInRenewed<E extends string>(
+  value: unknown,
+  environment: E,
+): NativeCloudSignInRenewed<E> {
+  const row = object(value);
+  if (
+    row.environment !== environment ||
+    typeof row.credentialId !== "string" ||
+    !UUID.test(row.credentialId) ||
+    Object.keys(row).some(
+      (key) => !["environment", "expiresAt", "credentialId"].includes(key),
+    )
+  )
+    throw new NativeCloudSignInError("unavailable");
+  return {
+    environment,
+    expiresAt: time(row.expiresAt),
+    credentialId: row.credentialId,
   };
 }
 

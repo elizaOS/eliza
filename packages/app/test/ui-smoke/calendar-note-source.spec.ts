@@ -182,7 +182,13 @@ for (const width of [1280, 390]) {
       const selected = page.locator('[data-source-note="true"]');
       await expect(selected).toHaveCount(1);
       await expect(selected).toContainText("Bring the updated library card.");
-      await expect(selected).toBeFocused();
+      // The source note opens in its editor; on a narrow screen the editor
+      // replaces the list, so focus follows the note into it.
+      await expect(
+        width < 1024
+          ? page.getByRole("region", { name: "Note editor" })
+          : selected,
+      ).toBeFocused();
       await expect(selected).toHaveCSS("border-left-width", "4px");
       await expect(selected).toHaveCSS("border-left-style", "solid");
       await expect(selected).toHaveCSS(

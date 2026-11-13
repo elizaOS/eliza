@@ -88,6 +88,7 @@ export interface AgentNotification {
 	groupKey?: string;
 	/**
 	 * Structured metadata for renderers / deep-link handlers.
+	 * Returned records and event payloads do not share this data with the inbox.
 	 *
 	 * Reserved key `count` (see {@link NOTIFICATION_COUNT_KEY}): when a producer
 	 * emits N notifications sharing a `groupKey` in a window, the surviving
@@ -113,7 +114,8 @@ export interface AgentNotification {
 
 /**
  * Input to `NotificationService.notify` — the caller supplies the meaningful
- * fields; the service stamps `id`, `createdAt`, and the unread state.
+ * fields; the service captures them when called and stamps `id`, `createdAt`,
+ * and the unread state.
  */
 export interface NotificationInput {
 	title: string;

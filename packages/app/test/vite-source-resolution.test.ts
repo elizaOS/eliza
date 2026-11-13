@@ -329,6 +329,35 @@ describe("workspace package resolution", () => {
   });
 
   test.each(["serve", "build"] as const)(
+    "keeps UI public leaves on the app's source graph with %s aliases",
+    async (command) => {
+      const { server } = await createAppResolutionServer(command);
+      try {
+        for (const [specifier, source] of [
+          ["@elizaos/ui/app/AppProvider", "app/AppProvider.tsx"],
+          ["@elizaos/ui/app/runtime-session", "app/runtime-session.tsx"],
+          ["@elizaos/ui/api/host-transport", "api/host-transport.ts"],
+          [
+            "@elizaos/ui/config/boot-config-store",
+            "config/boot-config-store.ts",
+          ],
+        ]) {
+          const resolved =
+            await server.environments.client.pluginContainer.resolveId(
+              specifier,
+              path.join(appRoot, "src/renderer/browser-consumer.tsx"),
+            );
+          expect(resolved?.id, specifier).toBe(
+            normalizePath(path.resolve(appRoot, "../ui/src", source)),
+          );
+        }
+      } finally {
+        await server.close();
+      }
+    },
+  );
+
+  test.each(["serve", "build"] as const)(
     "resolves the Cloud SDK redemption contract from workspace source with %s aliases",
     async (command) => {
       const { server } = await createAppResolutionServer(command);

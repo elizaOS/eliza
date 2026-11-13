@@ -56,11 +56,6 @@ export function resolveOptimizedPrompt(
 	return injectDemonstrations(optimized.prompt, optimized.fewShotExamples);
 }
 
-/** Retains the complete recorded input. */
-export function trimDemonstrationInput(rawInput: string): string {
-	return completeDemonstrationText(rawInput);
-}
-
 function completeDemonstrationText(value: string): string {
 	if (toWellFormedUnicode(value) !== value)
 		throw new ElizaError(
@@ -87,7 +82,7 @@ function injectDemonstrations(
 		lines.push(`Example ${idx}:`);
 		if (example.input.system !== undefined)
 			lines.push(`System:\n${completeDemonstrationText(example.input.system)}`);
-		lines.push(`Input:\n${trimDemonstrationInput(example.input.user)}`);
+		lines.push(`Input:\n${completeDemonstrationText(example.input.user)}`);
 		lines.push(
 			`Expected:\n${completeDemonstrationText(example.expectedOutput)}`,
 		);

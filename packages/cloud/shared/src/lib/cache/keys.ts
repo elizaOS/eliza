@@ -78,12 +78,8 @@ export const CacheKeys = {
     sessionAuthContext: (stewardSubjectHash: string) => `iac:session-auth:${stewardSubjectHash}:v4`,
     /** Shared-runtime balance + rate policy projection used as one cache read. */
     orgAdmission: (orgId: string) => `iac:org-admission:${orgId}:v3`,
-    /** Org credit-balance snapshot used only as the optimistic fast-path gate hint. */
+    /** Org credit-balance hint the app-funded admission lane leases against. */
     orgBalance: (orgId: string) => `iac:org-balance:${orgId}:v1`,
-    /** Durable pending-charge for Tier-2 optimistic billing; swept by cron backstop. */
-    pendingCharge: (requestId: string) => `iac:pending:${requestId}:v1`,
-    /** Scan prefix for the pending-charge sweep (matches pendingCharge entries). */
-    pendingChargePrefix: () => `iac:pending:`,
   },
   /**
    * App cache keys
@@ -315,18 +311,19 @@ export const CacheTTL = {
    * confirmed-delete invalidation on every credential mutation — revoke/update
    * (api-keys), ban (users), org deactivate (organizations) — all fail-closed
    * (#13417), so the TTL is only the backstop for an invalidation that was
-   * never issued. Active credentials are authoritatively refreshed after 30s
-   * under `waitUntil`, so the response path remains one cache read while the
-   * physical 60s TTL bounds a lost-invalidation window to the same horizon as
-   * the existing moderation decision memo. Idle credentials fail closed and
-   * warm asynchronously after the minute rather than joining Postgres inline.
+   * never issued. Entries are stale-while-revalidate: a request always decides
+   * from the stored entry (one cache read, no Postgres), and an entry older
+   * than the 30s refresh age is re-authorized from Postgres under `waitUntil`,
+   * which rewrites it (positive or denial) so the NEXT request sees the change.
+   * Positive entries are retained long so an idle credential never falls off
+   * into an inline database read; denials are retained briefly.
    */
   inference: {
-    authContext: 60, // 1 min physical bound; active entries refresh off-response after 30s
+    authContext: 7 * 24 * 60 * 60, // 7 days retention; served stale, refreshed off-response after 30s
+    authContextRejection: 10 * 60, // 10 min retention for bounded denials; refreshed off-response after 30s
     orgAdmission: 30, // shared-runtime combined funding, balance, and rate policy projection
-    orgBalance: 15, // 15 seconds - FRESHNESS window: getGateBalanceUsd serves a hint older than this stale-while-revalidate (background refresh) instead of blocking on an authoritative read
+    orgBalance: 15, // 15 seconds - FRESHNESS window: getGateBalanceHint serves a hint older than this stale-while-revalidate (background refresh) instead of blocking on an authoritative read
     orgBalanceStale: 300, // 5 min - physical KV lifetime for stale-while-revalidate; authoritative admission is revisioned/serialized or synchronous
-    pendingCharge: 3600, // 60 min - sweep window = TTL - grace(20m) = 40m, survives cron hiccups
   },
   /**
    * App cache TTLs

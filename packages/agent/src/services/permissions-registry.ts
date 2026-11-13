@@ -12,6 +12,7 @@
 import * as fs from "node:fs";
 import path from "node:path";
 import {
+  ElizaError,
   type IAgentRuntime,
   type IPermissionsRegistry,
   logger,
@@ -120,6 +121,10 @@ export class PermissionRegistry
   private persistTimer: NodeJS.Timeout | null = null;
   private readonly persistence: PersistenceAdapter;
   private readonly persistDebounceMs: number;
+  private readonly probes = new Map<PermissionId, Promise<PermissionState>>();
+  private readonly settingsOperations = new Set<Promise<boolean>>();
+  private stopped = false;
+  private dirty = false;
 
   constructor(runtime: IAgentRuntime, options: PermissionRegistryOptions = {}) {
     super(runtime);
@@ -149,41 +154,72 @@ export class PermissionRegistry
   }
 
   async check(id: PermissionId): Promise<PermissionState> {
-    const prober = this.probers.get(id);
-    if (!prober) {
-      throw new Error(`[PermissionRegistry] no prober registered for ${id}`);
-    }
-    const next = await prober.check();
-    this.commit(id, next);
-    return next;
+    return this.probe(id, async (prober) => prober.check());
   }
 
   async request(
     id: PermissionId,
     opts: { reason: string; feature: { app: string; action: string } },
   ): Promise<PermissionState> {
-    const prober = this.probers.get(id);
-    if (!prober) {
-      throw new Error(`[PermissionRegistry] no prober registered for ${id}`);
-    }
-    const next = await prober.request({ reason: opts.reason });
-    const withRequest: PermissionState = {
-      ...next,
-      lastRequested: Date.now(),
-      lastBlockedFeature: {
-        app: opts.feature.app,
-        action: opts.feature.action,
-        at: Date.now(),
-      },
+    return this.probe(id, async (prober) => {
+      const next = await prober.request({ reason: opts.reason });
+      return {
+        ...next,
+        lastRequested: Date.now(),
+        lastBlockedFeature: { ...opts.feature, at: Date.now() },
+      };
+    });
+  }
+
+  private requireRunning(): void {
+    if (this.stopped)
+      throw new ElizaError("Permission registry has stopped", {
+        code: "PERMISSION_REGISTRY_STOPPED",
+      });
+  }
+
+  private probe(
+    id: PermissionId,
+    operation: (prober: Prober) => Promise<PermissionState>,
+  ): Promise<PermissionState> {
+    this.requireRunning();
+    const previous = this.probes.get(id) ?? Promise.resolve();
+    const pending = previous
+      .catch(() => undefined)
+      .then(async () => {
+        this.requireRunning();
+        const prober = this.probers.get(id);
+        if (!prober)
+          throw new ElizaError(`No permission prober registered for ${id}`, {
+            code: "PERMISSION_PROBER_UNAVAILABLE",
+          });
+        const next = await operation(prober);
+        this.commit(id, next);
+        return next;
+      });
+    this.probes.set(id, pending);
+    const release = () => {
+      if (this.probes.get(id) === pending) this.probes.delete(id);
     };
-    this.commit(id, withRequest);
-    return withRequest;
+    // error-policy:J5 Callers observe the failure; bookkeeping never poisons later probes.
+    void pending.then(release, release);
+    return pending;
   }
 
   async openSettings(id: PermissionId): Promise<boolean> {
+    this.requireRunning();
     const prober = this.probers.get(id);
-    if (!prober?.openSettings) return false;
-    return prober.openSettings();
+    const openSettings = prober?.openSettings;
+    if (!openSettings) return false;
+    const pending = Promise.resolve().then(() => {
+      this.requireRunning();
+      return openSettings.call(prober);
+    });
+    this.settingsOperations.add(pending);
+    const release = () => this.settingsOperations.delete(pending);
+    // error-policy:J5 The caller observes failure; shutdown drains accepted native UI work.
+    void pending.then(release, release);
+    return pending;
   }
 
   recordBlock(
@@ -224,15 +260,24 @@ export class PermissionRegistry
   }
 
   async stop(): Promise<void> {
+    this.stopped = true;
+    // Native probes have no cancellation API. Drain them but fence their late results.
+    await Promise.allSettled([
+      ...this.probes.values(),
+      ...this.settingsOperations,
+    ]);
     if (this.persistTimer) {
       clearTimeout(this.persistTimer);
       this.persistTimer = null;
-      this.flushPersist();
     }
+    this.flushPersist();
+    this.subscribers.clear();
   }
 
   private commit(id: PermissionId, next: PermissionState): void {
+    this.requireRunning();
     this.states.set(id, next);
+    this.dirty = true;
     this.notify();
     this.schedulePersist();
   }
@@ -260,7 +305,12 @@ export class PermissionRegistry
     if (this.persistTimer) clearTimeout(this.persistTimer);
     this.persistTimer = setTimeout(() => {
       this.persistTimer = null;
-      this.flushPersist();
+      try {
+        this.flushPersist();
+      } catch (error) {
+        // error-policy:J7 Retain dirty state for the next mutation or stop retry.
+        this.runtime.reportError("PermissionRegistry.persist", error);
+      }
     }, this.persistDebounceMs);
     if (typeof this.persistTimer.unref === "function") {
       this.persistTimer.unref();
@@ -268,13 +318,19 @@ export class PermissionRegistry
   }
 
   private flushPersist(): void {
+    if (!this.dirty) return;
     try {
       this.persistence.write(this.list());
+      this.dirty = false;
     } catch (err) {
       logger.error(
         { err: err instanceof Error ? err.message : String(err) },
         "[PermissionRegistry] failed to persist state",
       );
+      throw new ElizaError("Permission state persistence failed", {
+        code: "PERMISSION_PERSIST_FAILED",
+        cause: err,
+      });
     }
   }
 }

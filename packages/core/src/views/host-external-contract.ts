@@ -10,9 +10,8 @@
  * imports the wrapped module and calls the factory with an importer backed by
  * its host-external map — sharing the host realm with no `globalThis` bridge.
  *
- * This is the typed contract only; the runtime transform is the `.mjs` above
- * (kept dependency-free so the node-run Playwright smoke stub can import it by
- * path without a build).
+ * This is the typed contract only; the runtime transform is the agent module
+ * named above.
  */
 
 /**

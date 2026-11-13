@@ -1,0 +1,27 @@
+{
+  "sources": [
+    "packages/auth/src/server/auth/token-store.ts",
+    "packages/auth/src/server/auth/store-backends.ts"
+  ],
+  "conformance": "packages/auth/quint/check-auth-publication.mjs",
+  "bounds": "Two namespaces, one challenge per namespace, two publishers with one token each, fixed deadline 2, logical time 0..3. Atomic backend operations and authoritative expiry checks. No challenge renewal or key reuse.",
+  "cases": [
+    {
+      "name": "competing-publishers",
+      "main": "AuthStorePublication",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "OnePublisher",
+        "PublishedBeforeConsumed",
+        "ConsumedTokenStaysAbsent",
+        "ExpiredOperationRefused",
+        "NamespaceIsolation"
+      ],
+      "temporal": [],
+      "maxSteps": 80,
+      "samples": 1000
+    }
+  ]
+}

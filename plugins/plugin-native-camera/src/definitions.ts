@@ -35,24 +35,52 @@ export interface CameraPreviewOptions {
    * preview and ignore it.
    */
   element?: HTMLElement;
+  /**
+   * A `deviceId` from `getDevices`; it wins over `direction`. Android rejects
+   * an unknown id with `INVALID_OPTIONS`.
+   */
   deviceId?: string;
   direction?: CameraDirection;
   resolution?: CameraResolution;
+  /**
+   * Preview frame rate. Android rejects it with `INVALID_OPTIONS`; set
+   * `frameRate` on the recording options instead.
+   */
   frameRate?: number;
   mirror?: boolean;
 }
 
 export interface CameraPreviewResult {
+  /** Requested preview size. */
   width: number;
   height: number;
   deviceId: string;
+  /** Preview size the camera actually bound, upright. Android only. */
+  previewSize?: CameraResolution;
+  /**
+   * Photo size the camera actually bound, upright. Android picks the largest
+   * size the bound stream combination allows, which can be below the sensor
+   * maximum on LIMITED hardware while video capture is bound. Android only.
+   */
+  captureSize?: CameraResolution;
 }
 
 export interface PhotoCaptureOptions {
   quality?: number;
   format?: "jpeg" | "png" | "webp";
+  /**
+   * Output size. Omitted dimensions keep the captured size. Photos are
+   * captured at full resolution and returned as base64 over the bridge, so
+   * a full-size photo costs several megabytes of memory per call; set these
+   * to downscale when that matters.
+   */
   width?: number;
   height?: number;
+  /**
+   * Also save the photo to the gallery. On Android an unscaled JPEG saves the
+   * camera's own file with its EXIF; other saves carry the camera's tags
+   * (never GPS) on the re-encoded image.
+   */
   saveToGallery?: boolean;
   exifOrientation?: boolean;
 }
@@ -108,6 +136,12 @@ export interface CameraPermissionStatus {
   photos: "granted" | "denied" | "prompt" | "limited";
 }
 
+/** Camera-only permission; this never establishes microphone or photo-library access. */
+export type CameraAccessPermissionStatus = Pick<
+  CameraPermissionStatus,
+  "camera"
+>;
+
 export interface CameraErrorEvent {
   code: string;
   message: string;
@@ -120,6 +154,12 @@ export interface CameraFrameEvent {
 }
 
 export interface CameraPlugin {
+  /** Read camera permission without opening a stream or requesting other access. */
+  checkCameraPermission(): Promise<CameraAccessPermissionStatus>;
+
+  /** Request only camera access. Does not start preview, microphone or library access. */
+  requestCameraPermission(): Promise<CameraAccessPermissionStatus>;
+
   /**
    * Get list of available camera devices
    */
@@ -139,6 +179,7 @@ export interface CameraPlugin {
    * Switch to a different camera
    */
   switchCamera(options: {
+    /** Android switches by direction only and rejects this with `INVALID_OPTIONS`. */
     deviceId?: string;
     direction?: CameraDirection;
   }): Promise<CameraPreviewResult>;
@@ -149,7 +190,9 @@ export interface CameraPlugin {
   capturePhoto(options?: PhotoCaptureOptions): Promise<PhotoResult>;
 
   /**
-   * Start recording video
+   * Start recording video. On Android a failed start keeps the preview live;
+   * when the preview could not be restored it rejects `PREVIEW_STOPPED` and
+   * the host must start the preview again.
    */
   startRecording(options?: VideoCaptureOptions): Promise<void>;
 

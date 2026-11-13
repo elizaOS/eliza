@@ -17,7 +17,6 @@ import {
   COMMAND_PALETTE_EVENT,
   clearStandaloneBottomReclaim,
   client,
-  completeAndroidCloudSignIn,
   createPersistedActiveServer,
   createTranslator,
   dedicatedCloudAgentIdFromBase,
@@ -87,7 +86,6 @@ import {
   setBootConfig,
   setStorageValue,
   shellLocalStorage,
-  shouldAcknowledgeAndroidCloudCallback,
   shouldInstallMainWindowFirstRunPatches,
   shouldInstallStandaloneBottomReclaim,
   startRendererServiceHost,
@@ -181,7 +179,6 @@ import {
 import { cachedDynamicImport } from "./app-module-cache";
 import { renderBootFailure } from "./boot-failure";
 import { startVoiceModuleLoad } from "./boot-voice-load";
-import { APP_ENV_ALIASES, APP_ENV_PREFIX } from "./brand-env";
 import { APP_CHARACTER_CATALOG } from "./character-catalog";
 import {
   resolveAppCloudOnlyBranding,
@@ -387,13 +384,6 @@ const WebsiteBlockerSettingsCard =
   lazyNamedComponent<WebsiteBlockerSettingsCardProps>(
     async () => (await importPersonalAssistant()).WebsiteBlockerSettingsCard,
   );
-const BRANDED_WINDOW_KEYS = {
-  shareQueue: `__${APP_ENV_PREFIX}_SHARE_QUEUE__`,
-} as const;
-
-function isShareTargetQueue(value: unknown): value is ShareTargetPayload[] {
-  return Array.isArray(value);
-}
 
 // Resolve the desktop "cloud-only" runtime-mode signal from whichever path is
 // available before React boots. Undefined on web/mobile and on default desktop.
@@ -791,7 +781,6 @@ function buildAppBootConfig(): AppBootConfig {
     vrmAssets: APP_VRM_ASSETS,
     firstRunStyles: APP_STYLE_PRESETS,
     characterCatalog: APP_CHARACTER_CATALOG,
-    envAliases: APP_ENV_ALIASES,
     appBlockerSettingsCard: AppBlockerSettingsCard,
     websiteBlockerSettingsCard: WebsiteBlockerSettingsCard,
     clientMiddleware: {
@@ -835,22 +824,8 @@ function initializeAppModules(): Promise<void> {
 }
 
 function getShareQueue(): ShareTargetPayload[] {
-  const brandedQueue: unknown = Reflect.get(
-    window,
-    BRANDED_WINDOW_KEYS.shareQueue,
-  );
-  const existing =
-    window.__ELIZA_APP_SHARE_QUEUE__ ??
-    (isShareTargetQueue(brandedQueue) ? brandedQueue : undefined);
-  if (existing) {
-    window.__ELIZA_APP_SHARE_QUEUE__ = existing;
-    Reflect.set(window, BRANDED_WINDOW_KEYS.shareQueue, existing);
-    return existing;
-  }
-  const queue: ShareTargetPayload[] = [];
-  window.__ELIZA_APP_SHARE_QUEUE__ = queue;
-  Reflect.set(window, BRANDED_WINDOW_KEYS.shareQueue, queue);
-  return queue;
+  window.__ELIZA_APP_SHARE_QUEUE__ ??= [];
+  return window.__ELIZA_APP_SHARE_QUEUE__;
 }
 
 function dispatchShareTarget(payload: ShareTargetPayload): void {
@@ -1137,19 +1112,6 @@ async function handleAuthCallbackDeepLink(
   path: string,
   url: string,
 ): Promise<boolean> {
-  if (isAndroid && isAndroidCloudBuild()) {
-    try {
-      await completeAndroidCloudSignIn(url);
-      return true;
-    } catch (error) {
-      console.warn(
-        `${APP_LOG_PREFIX} Android Cloud sign-in callback failed:`,
-        error instanceof Error ? error.message : error,
-      );
-      if (shouldAcknowledgeAndroidCloudCallback(error)) return true;
-      throw error;
-    }
-  }
   const outcome = rejectOsDeliveredAuthCallback();
   let activeServerBefore = "";
   try {

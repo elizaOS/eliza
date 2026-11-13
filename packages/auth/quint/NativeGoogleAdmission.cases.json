@@ -1,0 +1,44 @@
+{
+  "sources": [
+    "packages/auth/native-host/cloud-enrollment.mjs",
+    "packages/auth/native-host/cloud-enrollment-google.test.mjs"
+  ],
+  "conformance": "packages/auth/quint/check-native-google-admission.mjs",
+  "bounds": {
+    "domain": "Native Google callback and PKCE exchange admission before durable enrollment.",
+    "limitations": [
+      "Two Google attempts, one host, one in-flight exchange and one cancellation. Start represents a successful app configuration and an empty active/pending credential slot. State and verifier are opaque identities. Expiry is an explicit event before exchange dispatch.",
+      "Malformed return shape, foreign state, matched malformed code, matched failure link and matched valid code represent native callback branches. The model ends at exchange failure or MFA admission. Browser navigation, provider code cryptography, MFA completion, account methods, billing authority and credential activation are separate.",
+      "Native host tests check the parser and attempt behavior. The loopback check verifies the PKCE binding and the typed cancellation fence after a real HTTP exchange is already pending. The model does not prove provider token validation."
+    ]
+  },
+  "cases": [
+    {
+      "name": "single-use-google-exchange",
+      "main": "NativeGoogleAdmission",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "OneExchangePerAttempt",
+        "InvalidShapeOrStateKeepsChallenge",
+        "MatchedFailuresConsumeWithoutDispatch",
+        "ExchangeUsesOwnVerifier",
+        "CancelledExchangeCannotRestoreChallenge"
+      ],
+      "temporal": ["ExchangeAndCancellationSettle"],
+      "temporalChecks": [
+        {
+          "property": "ExchangeAndCancellationSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of exchangeWork and finishCancel settles each dispatched exchange or requested cancellation.",
+            "The provider response or transport error eventually arrives and empty-slot cancellation cleanup returns. The model assumes process survival and does not prove network or scheduler fairness."
+          ]
+        }
+      ],
+      "maxSteps": 24,
+      "samples": 1000
+    }
+  ]
+}

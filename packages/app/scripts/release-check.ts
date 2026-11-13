@@ -72,7 +72,7 @@ const requiredWorkflowSnippets = [
   "name: Validate Release Inputs",
   "bun-version: $" + "{{ env.BUN_VERSION }}",
   "name: Regression matrix contract",
-  "run: node packages/app/scripts/validate-regression-matrix.ts --workflow release",
+  "run: bun packages/app/scripts/validate-regression-matrix.ts --workflow release",
   "name: Run heavy E2E regression suite",
   "run: bun run test:e2e:heavy",
   "name: Run optional cloud live regression suite",
@@ -86,7 +86,7 @@ const requiredWorkflowSnippets = [
   "for attempt in 1 2 3; do",
   `bun install failed on attempt \${attempt}; retrying in 15 seconds`,
   "name: Ensure avatar assets",
-  "node packages/app/scripts/ensure-avatars.ts",
+  "bun packages/app/scripts/ensure-avatars.ts",
   "Install quiet macOS packaging wrappers",
   "packages/app/scripts/electrobun/hdiutil-wrapper.sh",
   "packages/app/scripts/electrobun/xcrun-wrapper.sh",
@@ -95,7 +95,7 @@ const requiredWorkflowSnippets = [
   "ELECTROBUN_REAL_XCRUN: /usr/bin/xcrun",
   "ELECTROBUN_REAL_ZIP: /usr/bin/zip",
   "Stage desktop bundle inputs",
-  "node packages/app/scripts/desktop-build.ts stage --variant=base",
+  "bun packages/app/scripts/desktop-build.ts stage --variant=base",
   "Inject version.json into bundle (Windows)",
   "Inject version.json into bundle (macOS / Linux)",
   '"identifier":"ai.elizaos.Eliza"',
@@ -153,10 +153,10 @@ const requiredWorkflowSnippets = [
   'echo "cache-dir=$package_dir/.cache"',
   "$" + "{{ steps.resolve-electrobun.outputs.cache-dir }}",
   "name: Build patched Electrobun CLI",
-  'node packages/app/scripts/build-patched-electrobun-cli.ts "$' +
+  'bun packages/app/scripts/build-patched-electrobun-cli.ts "$' +
     '{{ steps.resolve-electrobun.outputs.package-dir }}"',
   '"${{ matrix.platform.artifact-name }}"',
-  "node packages/app/scripts/desktop-build.ts package --env=$" +
+  "bun packages/app/scripts/desktop-build.ts package --env=$" +
     "{{ needs.prepare.outputs.env }}",
   "ELIZA_ELECTROBUN_NOTARIZE: 0",
   'ELIZA_DISABLE_LOCAL_EMBEDDINGS: "1"',
@@ -1412,7 +1412,7 @@ function assertStaticAssetManifestIsCurrent() {
   }
 
   console.error(
-    `release-check: static asset manifest is ${result.reason}. Run node packages/app/scripts/generate-static-asset-manifest.ts.`,
+    `release-check: static asset manifest is ${result.reason}. Run bun packages/app/scripts/generate-static-asset-manifest.ts.`,
   );
   console.error(`  - ${result.manifestPath}`);
   process.exit(1);

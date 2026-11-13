@@ -33,14 +33,6 @@ export const MODEL_GATEWAY_TOKEN_KEY = "ELIZA_MODEL_GATEWAY_TOKEN";
 export const MODEL_GATEWAY_STRICT_KEY = "ELIZA_MODEL_GATEWAY_STRICT";
 
 /**
- * Backwards-compatible aliases (kept so existing importers/tests keep working).
- * Prefer the `*_KEY` names above, which mirror the sibling E2 module.
- */
-export const ELIZA_MODEL_GATEWAY_URL = MODEL_GATEWAY_URL_KEY;
-export const ELIZA_MODEL_GATEWAY_TOKEN = MODEL_GATEWAY_TOKEN_KEY;
-export const ELIZA_MODEL_GATEWAY_STRICT = MODEL_GATEWAY_STRICT_KEY;
-
-/**
  * Raw provider keys that must never coexist with the gateway token when
  * strict mode is on, and that are scrubbed from OpenAI-compatible client
  * config when gateway mode is on. Kept small and explicit on purpose.
@@ -93,10 +85,10 @@ export class ModelGatewayStrictError extends Error {
 
 	constructor(offendingVars: RawProviderKeyVar[]) {
 		super(
-			`Model gateway strict mode is enabled (${ELIZA_MODEL_GATEWAY_STRICT}) ` +
+			`Model gateway strict mode is enabled (${MODEL_GATEWAY_STRICT_KEY}) ` +
 				`but raw provider key(s) are set: ${offendingVars.join(", ")}. ` +
 				`Remove them so all model traffic flows through the gateway ` +
-				`(${ELIZA_MODEL_GATEWAY_URL}/${ELIZA_MODEL_GATEWAY_TOKEN}), ` +
+				`(${MODEL_GATEWAY_URL_KEY}/${MODEL_GATEWAY_TOKEN_KEY}), ` +
 				`or disable strict mode.`,
 		);
 		this.name = "ModelGatewayStrictError";
@@ -113,9 +105,9 @@ export class ModelGatewayStrictError extends Error {
 export function resolveModelGateway(
 	getSetting: GetSettingFn,
 ): ModelGatewayResolution {
-	const gatewayURL = trimToUndefined(getSetting(ELIZA_MODEL_GATEWAY_URL));
-	const gatewayToken = trimToUndefined(getSetting(ELIZA_MODEL_GATEWAY_TOKEN));
-	const strict = isTruthyEnvValue(getSetting(ELIZA_MODEL_GATEWAY_STRICT));
+	const gatewayURL = trimToUndefined(getSetting(MODEL_GATEWAY_URL_KEY));
+	const gatewayToken = trimToUndefined(getSetting(MODEL_GATEWAY_TOKEN_KEY));
+	const strict = isTruthyEnvValue(getSetting(MODEL_GATEWAY_STRICT_KEY));
 	const enabled = gatewayURL !== undefined;
 
 	if (!enabled) {

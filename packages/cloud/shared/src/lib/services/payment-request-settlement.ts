@@ -5,8 +5,8 @@
  */
 import { ElizaError } from "@elizaos/core";
 import Decimal from "decimal.js";
-import { and, asc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
-import { writeTransaction } from "../../db/helpers";
+import { and, asc, eq, inArray, isNull, lt, lte, notInArray, or, sql } from "drizzle-orm";
+import { dbWrite, writeTransaction } from "../../db/helpers";
 import {
   MAX_PAYMENT_REQUEST_LEDGER_CENTS,
   type PaymentCallbackState,
@@ -529,8 +529,9 @@ export async function markPaymentCallbackAttempt(
   provider: Extract<PaymentRequestProvider, "stripe" | "oxapay">,
   providerEventId: string,
   result: { dispatched: true } | { dispatched: false; error: string },
-): Promise<void> {
-  await writeTransaction(async (tx) => {
+  claimedUntil: string,
+): Promise<boolean> {
+  return writeTransaction(async (tx) => {
     const [updated] = await tx
       .update(paymentRequestEvents)
       .set({
@@ -538,18 +539,23 @@ export async function markPaymentCallbackAttempt(
         callback_attempts: sql`${paymentRequestEvents.callback_attempts} + 1`,
         callback_last_error: result.dispatched ? null : result.error,
         callback_claimed_until: null,
-        callback_next_attempt_at: result.dispatched ? null : new Date(Date.now() + 60_000),
+        callback_next_attempt_at: result.dispatched
+          ? null
+          : sql`clock_timestamp() + interval '60 seconds'`,
       })
       .where(
         and(
           eq(paymentRequestEvents.event_name, "webhook.received"),
           eq(paymentRequestEvents.provider, provider),
           eq(paymentRequestEvents.provider_event_id, providerEventId),
+          // The exact database timestamp is this attempt's identity. A
+          // successor can only claim after it expires and gets a later value.
+          sql`${paymentRequestEvents.callback_claimed_until} = ${claimedUntil}::timestamptz`,
           inArray(paymentRequestEvents.callback_state, ["pending", "failed"]),
         ),
       )
       .returning();
-    if (!updated) return;
+    if (!updated) return false;
     await tx.insert(paymentRequestEvents).values({
       payment_request_id: updated.payment_request_id,
       event_name: result.dispatched ? "callback.dispatched" : "callback.failed",
@@ -559,6 +565,7 @@ export async function markPaymentCallbackAttempt(
         error: result.dispatched ? undefined : result.error,
       },
     });
+    return true;
   });
 }
 
@@ -569,15 +576,17 @@ interface ClaimedPaymentCallback {
   payload: Record<string, unknown>;
   callbackUrl: string | null;
   callbackSecret: string | null;
+  /** Full PostgreSQL precision; never round-trip this CAS identity through Date. */
+  claimedUntil: string;
 }
 
 async function claimPaymentCallbacks(input?: {
   provider?: "stripe" | "oxapay";
   providerEventId?: string;
   limit?: number;
+  excludeIds?: readonly string[];
 }): Promise<ClaimedPaymentCallback[]> {
-  const now = new Date();
-  const claimedUntil = new Date(now.getTime() + 60_000);
+  const now = sql`clock_timestamp()`;
   const limit = Math.min(Math.max(input?.limit ?? 25, 1), 100);
   return writeTransaction(async (tx) => {
     const conditions = [
@@ -593,6 +602,9 @@ async function claimPaymentCallbacks(input?: {
         lt(paymentRequestEvents.callback_claimed_until, now),
       ),
     ];
+    if (input?.excludeIds?.length) {
+      conditions.push(notInArray(paymentRequestEvents.id, [...input.excludeIds]));
+    }
     if (input?.provider) conditions.push(eq(paymentRequestEvents.provider, input.provider));
     if (input?.providerEventId) {
       conditions.push(eq(paymentRequestEvents.provider_event_id, input.providerEventId));
@@ -613,28 +625,61 @@ async function claimPaymentCallbacks(input?: {
       .limit(limit)
       .for("update", { skipLocked: true });
     if (rows.length === 0) return [];
-    await tx
+    const claims = await tx
       .update(paymentRequestEvents)
-      .set({ callback_claimed_until: claimedUntil })
+      .set({ callback_claimed_until: sql`clock_timestamp() + interval '60 seconds'` })
       .where(
         inArray(
           paymentRequestEvents.id,
           rows.map((row) => row.id),
         ),
-      );
+      )
+      .returning({
+        id: paymentRequestEvents.id,
+        claimedUntil: sql<string>`${paymentRequestEvents.callback_claimed_until}::text`,
+      });
+    const deadlines = new Map(claims.map((claim) => [claim.id, claim.claimedUntil]));
     return rows.map((row) => {
       if (!row.provider || !row.providerEventId) {
         throw new PaymentProviderEventConflictError(
           "Claimed payment callback has no provider identity",
         );
       }
+      const claimedUntil = deadlines.get(row.id);
+      if (!claimedUntil) {
+        throw new PaymentProviderEventConflictError("Payment callback claim was not persisted");
+      }
       return {
         ...row,
         provider: row.provider as "stripe" | "oxapay",
         providerEventId: row.providerEventId,
+        claimedUntil,
       };
     });
   });
+}
+
+/** Returns the primary-clock budget only while this exact attempt still owns dispatch. */
+async function remainingCallbackLeaseMs(job: ClaimedPaymentCallback): Promise<number | null> {
+  const [row] = await dbWrite
+    .select({
+      remainingMs: sql<string>`EXTRACT(EPOCH FROM (${paymentRequestEvents.callback_claimed_until} - clock_timestamp())) * 1000`,
+    })
+    .from(paymentRequestEvents)
+    .where(
+      and(
+        eq(paymentRequestEvents.id, job.id),
+        sql`${paymentRequestEvents.callback_claimed_until} = ${job.claimedUntil}::timestamptz`,
+        inArray(paymentRequestEvents.callback_state, ["pending", "failed"]),
+        sql`${paymentRequestEvents.callback_claimed_until} > clock_timestamp()`,
+      ),
+    );
+  if (!row) return null;
+  const remainingMs = Number(row.remainingMs);
+  if (!Number.isFinite(remainingMs)) {
+    throw new PaymentProviderEventConflictError("Payment callback lease budget is invalid");
+  }
+  return remainingMs;
 }
 
 async function callbackSignature(secret: string, timestamp: string, body: string): Promise<string> {
@@ -660,12 +705,23 @@ export async function dispatchPaymentCallbacks(input?: {
   providerEventId?: string;
   limit?: number;
 }): Promise<{ claimed: number; dispatched: number; failed: number }> {
-  const jobs = await claimPaymentCallbacks(input);
+  const limit = Math.min(Math.max(input?.limit ?? 25, 1), 100);
+  const visited: string[] = [];
+  let claimed = 0;
   let dispatched = 0;
   let failed = 0;
-  for (const job of jobs) {
+  for (let index = 0; index < limit; index++) {
+    // Claim at dispatch time, not before earlier callbacks spend their HTTP
+    // timeout. Exclusions keep a long run from retrying its own failed jobs.
+    const [job] = await claimPaymentCallbacks({ ...input, limit: 1, excludeIds: visited });
+    if (!job) break;
+    visited.push(job.id);
+    claimed++;
     try {
       if (job.callbackUrl) {
+        const budgetStartedAt = performance.now();
+        const remainingMs = await remainingCallbackLeaseMs(job);
+        if (remainingMs === null) continue;
         const body = JSON.stringify(job.payload);
         const timestamp = new Date().toISOString();
         const headers: Record<string, string> = {
@@ -681,32 +737,48 @@ export async function dispatchPaymentCallbacks(input?: {
             body,
           );
         }
+        // Subtract the full local round-trip/signing duration conservatively.
+        // safeFetch checks this signal before and after DNS, keeping a
+        // delayed lookup within this attempt's remaining dispatch budget.
+        const timeoutMs = Math.floor(
+          Math.min(10_000, remainingMs - (performance.now() - budgetStartedAt)),
+        );
+        if (timeoutMs <= 0) continue;
         const response = await safeFetch(job.callbackUrl, {
           method: "POST",
           headers,
           body,
-          signal: AbortSignal.timeout(10_000),
+          signal: AbortSignal.timeout(timeoutMs),
         });
         if (!response.ok) throw new Error(`Callback returned ${response.status}`);
       }
-      await markPaymentCallbackAttempt(job.provider, job.providerEventId, { dispatched: true });
-      dispatched += 1;
+      if (
+        await markPaymentCallbackAttempt(
+          job.provider,
+          job.providerEventId,
+          { dispatched: true },
+          job.claimedUntil,
+        )
+      )
+        dispatched += 1;
     } catch (error) {
       // error-policy:J7 settlement is already durable; retain bounded retry state.
       const message = error instanceof Error ? error.message : String(error);
-      await markPaymentCallbackAttempt(job.provider, job.providerEventId, {
-        dispatched: false,
-        error: message,
-      });
+      const recorded = await markPaymentCallbackAttempt(
+        job.provider,
+        job.providerEventId,
+        { dispatched: false, error: message },
+        job.claimedUntil,
+      );
       logger.warn("[PaymentRequestSettlement] Callback delivery failed", {
         provider: job.provider,
         providerEventId: job.providerEventId,
         error: message,
       });
-      failed += 1;
+      if (recorded) failed += 1;
     }
   }
-  return { claimed: jobs.length, dispatched, failed };
+  return { claimed, dispatched, failed };
 }
 
 export async function sha256Hex(value: string): Promise<string> {

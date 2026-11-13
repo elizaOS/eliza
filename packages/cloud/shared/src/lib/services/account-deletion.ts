@@ -22,7 +22,6 @@ import {
   type AccountDeletionSpoolAuthority,
   createAccountDeletionProviderAdapters,
 } from "./account-deletion-provider-adapters";
-import { purgePersonalOrganizationResources } from "./account-deletion-resource-purge";
 import {
   type AccountDeletionProviderAdapters,
   type AccountDeletionProviderPhase,
@@ -145,8 +144,10 @@ function nextActionForStatus(status: AccountDeletionStatus): AccountDeletionNext
 export function toAccountDeletionRequestDto(
   request: AccountDeletionRequest,
   exportReceipt: AccountDeletionExport | null = null,
+  phaseActionRequired = false,
 ): AccountDeletionStatusDto {
   const status = publicStatus(request.status);
+  const nextAction = nextActionForStatus(status);
   return {
     requestId: request.id,
     status,
@@ -163,7 +164,11 @@ export function toAccountDeletionRequestDto(
           ? "active"
           : "fenced",
     canCancel: status === "reserved" || status === "recovery",
-    nextAction: nextActionForStatus(status),
+    // A phase parked for an operator stops reconciliation; say so.
+    nextAction:
+      phaseActionRequired && nextAction === "wait_for_reconciliation"
+        ? "contact_support"
+        : nextAction,
     export: exportReceipt
       ? {
           status: exportReceipt.status,
@@ -192,7 +197,9 @@ export async function getAccountDeletionStatusByCredential(
   if (!/^[A-Za-z0-9_-]{43}$/.test(statusCredential)) return null;
   const tokenHash = createHash("sha256").update(statusCredential).digest("hex");
   const record = await accountDeletionRequestsRepository.findByStatusTokenHash(tokenHash);
-  return record ? toAccountDeletionRequestDto(record.request, record.exportReceipt) : null;
+  return record
+    ? toAccountDeletionRequestDto(record.request, record.exportReceipt, record.phaseActionRequired)
+    : null;
 }
 
 function hashOpaqueCredential(value: string): string {
@@ -710,6 +717,9 @@ export interface ProcessAccountDeletionResult {
   progressed: number;
   reconciling: number;
   actionRequired: number;
+  /** Requests waiting on a phase the backup-catalog lane owns. */
+  deferredToOtherLane: number;
+  oldestDeferredAgeMs: number | null;
 }
 
 export interface ProcessAccountDeletionResources {
@@ -717,7 +727,6 @@ export interface ProcessAccountDeletionResources {
   adapters?: AccountDeletionProviderAdapters;
   backupAuthority?: AccountDeletionBackupAuthority;
   spoolAuthority?: AccountDeletionSpoolAuthority;
-  purgeOrganizationResources?: typeof purgePersonalOrganizationResources;
 }
 
 function requireProcessAccountDeletionResources(
@@ -735,21 +744,18 @@ function requireProcessAccountDeletionResources(
       severity: "fatal",
     });
   }
-  if (!resources.purgeOrganizationResources && typeof blob.list !== "function") {
-    throw new ElizaError(
-      "Account deletion's default resource purge requires Cloud object listing",
-      {
-        code: "ACCOUNT_DELETION_OBJECT_LISTING_UNAVAILABLE",
-        severity: "fatal",
-      },
-    );
+  if (typeof blob.list !== "function") {
+    throw new ElizaError("Account deletion's resource purge requires Cloud object listing", {
+      code: "ACCOUNT_DELETION_OBJECT_LISTING_UNAVAILABLE",
+      severity: "fatal",
+    });
   }
 }
 
 /**
  * Activates requests whose recovery window has ended, or parks them for an
  * operator. A request the run cannot decide (`account_unavailable`,
- * `provider_work_in_flight`, `not_due`) gets no write and keeps its place at
+ * `provider_work_in_flight`, `export_required`, `not_due`) gets no write and keeps its place at
  * the front of the due set, so the run pages past such requests until `limit`
  * requests were decided or the due set is exhausted.
  */
@@ -785,14 +791,14 @@ export async function activateExpiredRecoveryRequests(input: {
         activated++;
         continue;
       }
+      // export_required means a started export is still settling; activation
+      // retries it on later runs and erases without it once the wait bound ends.
       const activationErrorCode =
         activation.outcome === "transfer_required"
           ? "TRANSFER_REQUIRED"
-          : activation.outcome === "export_required"
-            ? "EXPORT_REQUIRED_BEFORE_ERASURE"
-            : activation.outcome === "identity_deactivation_required"
-              ? "STEWARD_DEACTIVATION_RECONCILIATION_REQUIRED"
-              : null;
+          : activation.outcome === "identity_deactivation_required"
+            ? "STEWARD_DEACTIVATION_RECONCILIATION_REQUIRED"
+            : null;
       if (activationErrorCode) {
         const parked = await accountDeletionRequestsRepository.markRecoveryActionRequired({
           requestId,
@@ -804,6 +810,47 @@ export async function activateExpiredRecoveryRequests(input: {
     }
   }
   return { activated, actionRequired };
+}
+
+export interface ExportParkedRequeueReport {
+  apply: boolean;
+  requests: Array<{ requestId: string; executeAfter: string; parkedAt: string }>;
+  requeued: string[];
+}
+
+/**
+ * Lists requests parked with EXPORT_REQUIRED_BEFORE_ERASURE and, with
+ * `apply`, returns each to expiry activation. Dry-run writes nothing.
+ */
+export async function requeueExportParkedAccountDeletions(input: {
+  apply: boolean;
+  limit: number;
+  now?: Date;
+}): Promise<ExportParkedRequeueReport> {
+  const now = input.now ?? new Date();
+  const parked = await accountDeletionRequestsRepository.findExportParkedRequests(input.limit);
+  const requeued: string[] = [];
+  if (input.apply) {
+    for (const request of parked) {
+      if (
+        await accountDeletionRequestsRepository.requeueExportParkedRequest({
+          requestId: request.id,
+          now,
+        })
+      ) {
+        requeued.push(request.id);
+      }
+    }
+  }
+  return {
+    apply: input.apply,
+    requests: parked.map((request) => ({
+      requestId: request.id,
+      executeAfter: request.execute_after.toISOString(),
+      parkedAt: request.updated_at.toISOString(),
+    })),
+    requeued,
+  };
 }
 
 /**
@@ -877,6 +924,8 @@ export async function processDueAccountDeletions(
     completed: saga.completed,
     progressed: saga.progressed,
     reconciling: saga.reconciling,
+    deferredToOtherLane: saga.deferredToOtherLane,
+    oldestDeferredAgeMs: saga.oldestDeferredAgeMs,
     actionRequired:
       saga.actionRequired +
       activationActionRequired +

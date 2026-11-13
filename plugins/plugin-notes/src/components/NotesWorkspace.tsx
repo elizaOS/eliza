@@ -505,7 +505,11 @@ function WorkspaceSession(
   const formatKind = draft?.format?.kind ?? "text";
   const editor =
     draft && session ? (
-      <section className="notes-workspace-editor" aria-label="Note editor">
+      <section
+        className="notes-workspace-editor"
+        aria-label="Note editor"
+        tabIndex={-1}
+      >
         <div className="notes-workspace-actions">
           <AgentAction
             agentId="notes-back"

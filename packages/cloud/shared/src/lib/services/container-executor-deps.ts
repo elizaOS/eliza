@@ -20,6 +20,11 @@ import { Buffer } from "node:buffer";
 import { ElizaError } from "@elizaos/core";
 import { dbRead, dbWrite } from "../../db/helpers";
 import { containersRepository } from "../../db/repositories/containers";
+import {
+  assertJobExecutionAuthority,
+  lockJobExecutionAuthority,
+} from "../../db/repositories/job-execution-authority";
+import { jobsRepository } from "../../db/repositories/jobs";
 import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";
 import { isValidUUID } from "../utils/validation";
@@ -33,6 +38,7 @@ import { addAppRoute, removeAppRoute } from "./apps-ingress-provisioner";
 import type { ContainerExecutorDeps } from "./container-job-executors";
 import { allocateAppContainerHostPort } from "./docker-port-allocation";
 import { DockerSSHClient } from "./docker-ssh";
+import type { JobExecutionAuthority } from "./job-execution-authority";
 import { listVerifiedAppOrigins } from "./managed-domains";
 
 /** True when the apps-container provision backend has enough env to run. */
@@ -176,16 +182,24 @@ async function allocateHostPort(): Promise<number> {
  * Throws (lazily, when a job actually runs) if the backend isn't configured —
  * so wiring it is always safe; nothing connects until a CONTAINER_* job lands.
  */
-export function buildContainerExecutorDeps(): ContainerExecutorDeps {
-  if (!appsContainersEnabled()) {
+export function buildContainerExecutorDeps(
+  executionAuthority?: JobExecutionAuthority,
+  originalNode?: { id: string; hostname: string },
+): ContainerExecutorDeps {
+  if (
+    !appsContainersEnabled() &&
+    (!originalNode ||
+      process.env.APPS_CONTAINERS_ENABLED === "0" ||
+      !(containersEnv.sshKey() || containersEnv.sshKeyPath()))
+  ) {
     throw new Error(
       "Apps container backend not configured (need CONTAINERS_DOCKER_NODES + CONTAINERS_SSH_KEY/_PATH). " +
         "A CONTAINER_* job was claimed but cannot be provisioned.",
     );
   }
-  const ssh = makeNodeSsh();
-  const nodeHost = selectNodeHost();
-  const nodeId = parseSeedNodeIdOrNull();
+  const ssh = originalNode ? makeBuilderSsh(originalNode.hostname) : makeNodeSsh();
+  const nodeHost = originalNode?.hostname ?? selectNodeHost();
+  const nodeId = originalNode?.id ?? parseSeedNodeIdOrNull();
   if (!nodeId) {
     throw new ElizaError("CONTAINERS_DOCKER_NODES has no durable node id", {
       code: "APP_CONTAINER_NODE_ID_MISSING",
@@ -210,6 +224,7 @@ export function buildContainerExecutorDeps(): ContainerExecutorDeps {
     readDatabase: dbRead,
     writeDatabase: dbWrite,
     repository: containersRepository,
+    executionAuthority,
     errorFactory: (message, options) => new ElizaError(message, options),
   });
 
@@ -241,6 +256,16 @@ export function buildContainerExecutorDeps(): ContainerExecutorDeps {
   return {
     provider,
     store,
+    assertAppNotDeleting: async (appId) => {
+      if (isValidUUID(appId)) await appsService.assertNotDeleting(appId);
+    },
+    assertExecutionCurrent: executionAuthority
+      ? () =>
+          dbWrite.transaction(async (tx) => {
+            await lockJobExecutionAuthority(tx, executionAuthority);
+            await assertJobExecutionAuthority(tx, executionAuthority);
+          })
+      : undefined,
     // Verified custom domains for the app -> bare hostnames, folded into the
     // ingress route's host-match. Reuses the existing CORS verified-origin query
     // (status='active' AND verified=true); only invoked when ingress is wired.
@@ -250,10 +275,20 @@ export function buildContainerExecutorDeps(): ContainerExecutorDeps {
       ),
     isAppDeploymentCurrent: (appId, deploymentGeneration) =>
       appsService.isDeploymentGenerationCurrent(appId, deploymentGeneration),
-    markAppDeployed: async (appId, deploymentGeneration, productionUrl) => {
+    markAppDeployed: async (appId, deploymentGeneration, productionUrl, containerId) => {
       // App ids are UUIDs; a non-UUID project_name (a plain /v1/containers row,
       // which is not an app) is skipped so this never mis-updates or UUID-casts.
       if (!isValidUUID(appId)) return;
+      const handoff =
+        deploymentGeneration && executionAuthority
+          ? await jobsRepository.findAppDeployProvisionHandoff(
+              appId,
+              executionAuthority.organizationId,
+              deploymentGeneration,
+            )
+          : undefined;
+      const ownsContainerLink =
+        handoff?.containerId === containerId && handoff.jobId === executionAuthority?.jobId;
       await appsService.updateDeploymentGeneration(
         appId,
         deploymentGeneration,
@@ -261,8 +296,10 @@ export function buildContainerExecutorDeps(): ContainerExecutorDeps {
           deployment_status: "deployed",
           production_url: productionUrl,
           last_deployed_at: new Date(),
+          ...(ownsContainerLink ? { metadata: { containerId } } : {}),
         },
         ["deploying"],
+        executionAuthority,
       );
     },
     ...ingress,

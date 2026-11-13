@@ -43,6 +43,7 @@ repositories {
 
 dependencies {
     implementation project(':capacitor-android')
+    api project(':elizaos-capacitor-secure-store')
     // OAuthBrowserLauncher uses ComponentActivity and ActivityResultLauncher directly.
     implementation "androidx.activity:activity:$androidxActivityVersion"
     // AuthTabIntent (OAuthBrowserLauncher) first ships in 1.9.0.

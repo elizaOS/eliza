@@ -14,7 +14,8 @@ import type {
   LocalAgentTokenResult,
 } from "./definitions.js";
 
-interface ElizaWindow extends Window {
+/** Optional host publications; this reader does not require a browser-specific Window declaration. */
+interface ElizaWindow {
   /**
    * The renderer's boot-config mirror — the single source of truth for the API
    * base (see packages/ui/src/config/boot-config-store.ts). The host UI, the

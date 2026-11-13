@@ -94,6 +94,31 @@ public final class StreamingSpeechTest {
   check(stall.done.await(10,TimeUnit.SECONDS)&&stall.ended.get()==0&&stall.failed.get()==1&&"playback-failed".equals(stall.failure),"a drain timeout fails instead of ending");
   check(stalling.join(2000),"the stalled writer exits");
 
+  // A track whose head stays at 0 until its start threshold is filled: a short utterance is padded
+  // with silence after the speech and ends instead of timing out.
+  class ThresholdOutput extends FakeOutput {
+   @Override public int startThresholdFrames(){return 4_800;}
+   @Override public synchronized long playedFrames(){return frames>=4_800?frames:0;}
+  }
+  ThresholdOutput gated=new ThresholdOutput();Events gatedEvents=new Events();
+  StreamingSpeechPlayback shortUtterance=new StreamingSpeechPlayback(48_000,24_000,.01f,()->gated,gatedEvents,System::nanoTime);
+  shortUtterance.start();check(shortUtterance.offer(tone(2_400,.4f),false)&&shortUtterance.offer(new float[0],true),"short utterance accepted");
+  check(gatedEvents.done.await(5,TimeUnit.SECONDS)&&gatedEvents.ended.get()==1&&gatedEvents.failed.get()==0,"a sub-threshold utterance ends instead of timing out: "+gatedEvents.failure);
+  check(gated.written.size()==2&&gated.written.get(0).length==2_400&&gated.written.get(0)[0]==.4f,"the speech is written first");
+  check(gated.written.get(1).length==2_400&&zero(gated.written.get(1)),"then silence up to the start threshold");
+  check(shortUtterance.join(2000),"the padded writer exits");
+  ThresholdOutput longGated=new ThresholdOutput();Events longEvents=new Events();
+  StreamingSpeechPlayback longUtterance=new StreamingSpeechPlayback(48_000,24_000,.01f,()->longGated,longEvents,System::nanoTime);
+  longUtterance.start();check(longUtterance.offer(tone(9_600,.4f),false)&&longUtterance.offer(new float[0],true),"long utterance accepted");
+  check(longEvents.done.await(5,TimeUnit.SECONDS)&&longEvents.ended.get()==1&&longGated.written.size()==1,"an utterance over the threshold gets no padding");
+  check(longUtterance.join(2000),"the long writer exits");
+  // A head that resets to 0 on stop() still ends: stop() is not on the drain path.
+  FakeOutput resetting=new FakeOutput(){@Override public synchronized void stop(){stopped=true;frames=0;}};Events resetEvents=new Events();
+  StreamingSpeechPlayback reset=new StreamingSpeechPlayback(48_000,24_000,.01f,()->resetting,resetEvents,System::nanoTime);
+  reset.start();check(reset.offer(tone(2_400,.4f),true),"reset utterance accepted");
+  check(resetEvents.done.await(5,TimeUnit.SECONDS)&&resetEvents.ended.get()==1&&resetting.stopped,"a head reset by stop() ends cleanly");
+  check(reset.join(2000),"the reset writer exits");
+
   // Head-position fallback when the platform never gives a timestamp.
   FakeOutput untimed=new FakeOutput();untimed.timestamps=false;Events fallback=new Events();
   StreamingSpeechPlayback headOnly=new StreamingSpeechPlayback(48_000,24_000,.01f,()->untimed,fallback,System::nanoTime);
@@ -150,9 +175,13 @@ public final class StreamingSpeechTest {
   check(focus.changed(SpeechAudioFocusPolicy.Event.GAIN)==SpeechAudioFocusPolicy.Action.NONE,"regain while unducked does nothing");
   check(focus.changed(SpeechAudioFocusPolicy.Event.LOSS_TRANSIENT)==SpeechAudioFocusPolicy.Action.STOP&&!focus.held(),"transient loss stops and clears");
   check(focus.changed(SpeechAudioFocusPolicy.Event.GAIN)==SpeechAudioFocusPolicy.Action.NONE,"a stopped utterance never resumes on regain");
+  check(focus.released(),"the transiently displaced request is abandoned");
+  check(!focus.released(),"an abandoned request is not abandoned twice");
+  check(!focus.granted(false)&&!focus.released(),"a denied request is never abandoned");
   focus.granted(true);
   check(focus.changed(SpeechAudioFocusPolicy.Event.LOSS)==SpeechAudioFocusPolicy.Action.STOP,"permanent loss stops");
-  focus.granted(true);focus.released();check(!focus.held(),"released after speech");
+  check(focus.released(),"a permanently lost request is abandoned too");
+  focus.granted(true);check(focus.released()&&!focus.held(),"released after speech");
   for(SpeechAudioFocusPolicy.Mode mode:SpeechAudioFocusPolicy.Mode.values()){
    boolean call=mode!=SpeechAudioFocusPolicy.Mode.NORMAL&&mode!=SpeechAudioFocusPolicy.Mode.OTHER;
    check(SpeechAudioFocusPolicy.callActive(mode)==call,"call mode "+mode);

@@ -11,6 +11,7 @@ import {
   type ClockAlarmStatus,
   type ClockHost,
   type ClockProposal,
+  type ClockSavedAlarms,
   type ClockStatus,
   getClockHost,
   subscribeClockHost,
@@ -664,6 +665,128 @@ function OwnedAlarms({ host }: { host: ClockHost }) {
     </section>
   );
 }
+/** Alarms a handoff-only host saved before it moved to Clock. Counts only; review is native. */
+function SavedAlarms({ host }: { host: ClockHost }) {
+  const [saved, setSaved] = useState<ClockSavedAlarms | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const reads = useRef(0);
+  const reload = useRef<(() => Promise<void>) | null>(null);
+  useEffect(() => {
+    let live = true;
+    ++reads.current;
+    setSaved(null);
+    setError(null);
+    setMessage(null);
+    setBusy(false);
+    const load = async () => {
+      if (!live || document.hidden || !host.savedAlarms) return;
+      const read = ++reads.current;
+      try {
+        const next = await host.savedAlarms();
+        if (!live || read !== reads.current) return;
+        setSaved(next);
+        setError(null);
+      } catch (failure) {
+        // error-policy:J4 an unreadable journal is never shown as "nothing left to move".
+        if (!live || read !== reads.current) return;
+        setSaved(null);
+        setError(
+          failure instanceof Error
+            ? failure.message
+            : "Saved Eliza alarms could not be read",
+        );
+      }
+    };
+    reload.current = load;
+    void load();
+    const unsubscribe = host.subscribe(() => {
+      void load();
+    });
+    const resume = () => {
+      if (!document.hidden) void load();
+    };
+    document.addEventListener("visibilitychange", resume);
+    return () => {
+      live = false;
+      ++reads.current;
+      if (reload.current === load) reload.current = null;
+      unsubscribe();
+      document.removeEventListener("visibilitychange", resume);
+    };
+  }, [host]);
+  const waiting = saved ? saved.pending + saved.awaitingConfirmation : 0;
+  if (!error && (!saved || (waiting === 0 && message === null))) return null;
+  const review = async () => {
+    if (!host.reviewSavedAlarm || busy) return;
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await host.reviewSavedAlarm();
+      ++reads.current;
+      setSaved(result.savedAlarms);
+      setMessage(result.message);
+    } catch (failure) {
+      // error-policy:J1 a failed review retires nothing; the alarm keeps ringing natively.
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "Saved alarm review could not be opened",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section aria-label="Saved Eliza alarms" className="mt-8 space-y-3">
+      <h2 className="text-base font-medium">Saved Eliza alarms</h2>
+      {error && (
+        <div className="flex items-center justify-between gap-4">
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+          <Button variant="ghost" onClick={() => void reload.current?.()}>
+            Retry
+          </Button>
+        </div>
+      )}
+      {saved && waiting > 0 && (
+        <>
+          <p className="text-sm text-muted-foreground">
+            {waiting === 1
+              ? "1 alarm saved in Eliza still rings from Eliza."
+              : `${waiting} alarms saved in Eliza still ring from Eliza.`}{" "}
+            Move each one to Clock. Eliza keeps ringing it until you confirm it
+            is saved there.
+          </p>
+          <Button
+            variant="outline"
+            disabled={busy || !host.reviewSavedAlarm}
+            onClick={() => void review()}
+          >
+            {busy
+              ? "Waiting for phone review…"
+              : saved.awaitingConfirmation > 0
+                ? "Confirm alarm saved in Clock"
+                : "Move to Clock"}
+          </Button>
+        </>
+      )}
+      {saved && waiting === 0 && (
+        <p className="text-sm text-muted-foreground">
+          No saved Eliza alarms are left to move.
+        </p>
+      )}
+      {message && (
+        <p role="status" className="text-sm">
+          {message}
+        </p>
+      )}
+    </section>
+  );
+}
 function ClockControls() {
   const now = useSharedNow();
   const host = useSyncExternalStore(
@@ -870,6 +993,7 @@ function ClockControls() {
             <p className="text-sm text-muted-foreground">
               Open Clock on your Android phone to manage alarms.
             </p>
+            {host?.savedAlarms && <SavedAlarms host={host} />}
           </div>
         )}
         {nativeError && (

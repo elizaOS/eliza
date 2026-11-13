@@ -87,7 +87,7 @@ export function PermissionRecoveryCallout({
     <Alert
       variant="warningStrong"
       data-testid={testId}
-      className={cn("p-3 text-left", className)}
+      className={cn("block p-3 text-left", className)}
     >
       <div className="text-sm font-semibold text-txt-strong">{title}</div>
       <p className="mt-1 text-sm leading-snug text-txt">{description}</p>

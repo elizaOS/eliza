@@ -56,11 +56,11 @@ const SYSTEM_TASK_NAMES = new Set([
   'heartbeat',
 ]);
 
-// 30s cache for last-execution data — avoids hammering the workflow runtime on
-// every automations poll. null data = checked and found no executions yet
-// (still cached to avoid re-polling).
+// 30s cache for finished last-execution data — avoids hammering the workflow
+// runtime on every automations poll. No run yet and unfinished runs are never
+// cached, so a run that starts or finishes shows on the next poll.
 type LastExecutionCacheEntry = {
-  data: AutomationLastExecution | null;
+  data: AutomationLastExecution;
   expiresAt: number;
 };
 
@@ -523,31 +523,16 @@ async function fetchLastExecution(
     return cached.data;
   }
   const response = await service.listExecutions({ workflowId, limit: 1 }, ownerEntityId);
-  if (!response.data || response.data.length === 0) {
+  const latest = response.data?.[0];
+  if (!latest) return null;
+  const exec = normalizeLastExecution(latest);
+  if (exec && latest.finished === true) {
     serviceCache.set(cacheKey, {
-      data: null,
+      data: exec,
       expiresAt: Date.now() + LAST_EXECUTION_TTL_MS,
     });
-    return null;
   }
-  const exec = normalizeLastExecution(response.data[0]);
-  serviceCache.set(cacheKey, {
-    data: exec,
-    expiresAt: Date.now() + LAST_EXECUTION_TTL_MS,
-  });
   return exec;
-}
-
-/**
- * Evict the cached execution summary after a mutation that can change what the
- * automations feed should render for one owner's workflow.
- */
-export function invalidateAutomationExecutionCache(
-  service: WorkflowService,
-  ownerEntityId: string,
-  workflowId: string
-): void {
-  lastExecutionCache.get(service)?.delete(JSON.stringify([ownerEntityId, workflowId]));
 }
 
 export async function buildAutomationListResponse(
@@ -599,7 +584,9 @@ export async function buildAutomationListResponse(
       isTriggerTaskOwnedBy(task, ownerEntityId, localOwnerEntityId, runtime.agentId)
     )
     .map((task) => taskToTriggerSummary(task))
-    .filter((trigger): trigger is TriggerSummary => trigger !== null);
+    .filter(
+      (trigger): trigger is TriggerSummary => trigger !== null && trigger.removedAt === undefined
+    );
   const triggerTaskIds = new Set(triggerItems.map((trigger) => trigger.taskId));
   const taskItems = tasks
     .filter((task) => !triggerTaskIds.has(task.id))

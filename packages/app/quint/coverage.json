@@ -1,0 +1,149 @@
+[
+  {
+    "id": "DesktopDynamicViewRetention",
+    "model": "packages/app/quint/DesktopDynamicViewRetention.qnt",
+    "sources": [
+      "packages/app/platforms/electrobun/src/dynamic-views/session-manager.ts",
+      "packages/app/platforms/electrobun/src/dynamic-views/registry.ts",
+      "packages/app/platforms/electrobun/src/dynamic-views/kiosk-canvas.ts",
+      "packages/app/platforms/electrobun/src/rpc-handler-slices.ts",
+      "packages/app/platforms/electrobun/src/dynamic-views/session-retention.test.ts"
+    ],
+    "invariants": [
+      "EveryWindowHasAnAddressableOwner",
+      "OnlyClosedReceiptsCanBePruned"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Five sessions and a retained record target of two. An open trims acknowledged closed history. Opening, open, and failed-initialization canvas owners remain addressable until the managed close succeeds.",
+      "The real kiosk host RPC and canvas implementation check 201 mounts at the production default, a failed initial A2UI send, exact unmount events, and pruning several acknowledged records. The renderer message port is controlled.",
+      "Actual native window closure, renderer delivery, concurrent close of an opening session, failed destruction, session restart and launch authorization are separate obligations."
+    ]
+  },
+  {
+    "id": "AppStartup",
+    "model": "packages/app/quint/AppStartup.qnt",
+    "sources": ["packages/app/src/runtime/startup-state.ts"],
+    "invariants": ["invariant"],
+    "status": "modeled",
+    "limitations": [
+      "Models the exact reducer graph and projection. Host resource readiness and asynchronous startup composition require separate models.",
+      "Invalid transitions are represented as unchanged state plus rejected metadata. Runtime throws are covered by implementation tests.",
+      "Quint ITF traces are replayed through the real implementation by packages/scripts/quint/check-application.ts. This checks sampled trace conformance, not unbounded refinement.",
+      "Finite verification domain. Two runtime-start attempts; complete phase graph and rejected/self transitions. Values beyond these bounds are outside this instance; generation and revision values never wrap."
+    ]
+  },
+  {
+    "id": "MobileDeepLinkReceipt",
+    "model": "packages/app/quint/MobileDeepLinkReceipt.qnt",
+    "sources": [
+      "packages/app/src/mobile-lifecycle.ts",
+      "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/DeepLinkBufferPlugin.java",
+      "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ReceiptAppPlugin.java",
+      "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/MainActivity.java",
+      "packages/app/scripts/mobile/android/templates/main-activity.ts",
+      "packages/app/scripts/mobile/android/gradle-reconciliation.ts",
+      "packages/app/scripts/mobile/android/overlay.ts"
+    ],
+    "invariants": [
+      "invariant",
+      "clearedOnlyAfterTerminal",
+      "receiptsStayDistinct",
+      "finiteBounds"
+    ],
+    "status": "modeled",
+    "limitations": [
+      "Finite receipt protocol after native v2 capability is established. Two distinct captures of one URL, two application attempts per capture, one renderer replacement. Identities never wrap. No proof for larger populations.",
+      "Application readiness, replay, warm delivery, asynchronous success/rejection/unconfirmed failure, delayed receipt acknowledgement and unconfirmed native disk-write responses are modeled. Safety is checked without claiming unconditional progress.",
+      "The native buffer retains the latest capture only. This model does not establish lossless delivery of every older capture across process death.",
+      "Generated ITF traces replay the actual TypeScript lifecycle through native boundary ports. Android capture/peek/ack and warm event identity are separately tested against the production Java plugin under Robolectric. The ports are not a proof of the native bridge or real device scheduling.",
+      "Legacy v1 native shells cannot identify a capture. New JavaScript preserves URL navigation and retains the buffer. Old JavaScript on a v2 shell likewise cannot clear it without a receipt. Replay across renderer boots remains possible.",
+      "MobileDeepLinkDiscovery separately covers bounded version-query, cold alias, App delivery and replay-expiry ordering. Cross-composition with two concurrent capture receipts, iOS echo behavior, native process/disk recovery and HMR listener disposal remain unproved.",
+      "Assumes UUID allocation produces distinct capture identities. Duplicate acknowledgement multiplicity is abstracted by receipt because native compare-and-clear is idempotent. The model does not prove UUID collision resistance.",
+      "The MainActivity mapping covers capture-before-dispatch and the one-shot initial-Intent replay guard. Activity recreation can recapture its current Intent with a fresh receipt, and cross-Activity intent identity is not established by this model.",
+      "Application result truth is supplied by the existing handleDeepLink callback contract. Individual route authorization, trust checks and navigation reducers in main.tsx are outside this receipt protocol.",
+      "Completed receipt identities remain in the replay map for the document lifetime. This finite instance contains two identities and does not establish a memory bound for an arbitrarily long-running renderer.",
+      "SharedPreferences commit=false paths preserve their in-memory update and report an unconfirmed disk result. The native test exercises an actual blocked preference write, but abrupt process death, filesystem durability and recovery from partially persisted storage remain outside this model.",
+      "The production overlay rewrites MainActivity and both receipt classes for a custom Android app ID. A generated custom-package test loads the receipt class named by the reconciled manifest in a real Capacitor bridge. Full custom-app APK packaging and device execution remain unverified."
+    ]
+  },
+  {
+    "id": "MobileDeepLinkDiscovery",
+    "model": "packages/app/quint/MobileDeepLinkDiscovery.qnt",
+    "sources": [
+      "packages/app/src/mobile-lifecycle.ts",
+      "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/DeepLinkBufferPlugin.java",
+      "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ReceiptAppPlugin.java",
+      "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/MainActivity.java",
+      "packages/app/scripts/mobile/android/templates/main-activity.ts",
+      "packages/app/scripts/mobile/android/gradle-reconciliation.ts",
+      "packages/app/scripts/mobile/android/overlay.ts"
+    ],
+    "invariants": [
+      "invariant",
+      "receiptBeforeFallback",
+      "acknowledgementRequiresApplication",
+      "finiteBounds",
+      "deadlineReleasesCold"
+    ],
+    "status": "modeled",
+    "limitations": [
+      "One cold URL, one native version-query result or rejection, one retained App event, one replay-window expiry, readiness and one optional document closure. At most three application attempts. ColdDeliveryProgress assumes weak fairness of enabled readiness and timer steps, and allows closure to end the delivery obligation. UnfairColdDelivery is checked as an expected counterexample.",
+      "Version 1 retains delivery while issuing no unsafe native acknowledgement. Version 2 joins its known channels by capture receipt before fallback. A query that never settles permits URL fallback at the existing 15-second deadline. A receipt arriving after that fallback can represent an already-applied URL and cause another application.",
+      "Generated ITF traces replay the actual TypeScript lifecycle through controlled native/App ports. Native implementation behavior is separately checked under Robolectric. Real-device scheduling and elapsed wall-clock accuracy are outside the replay.",
+      "Two-capture concurrency is checked separately in MobileDeepLinkReceipt. The full cross-product, iOS cold-echo path, native process recovery and every route-specific authorization transition remain outside these two finite instances.",
+      "Document closure stops further model inputs. The controlled-port replay does not establish real browser teardown or scheduling fairness, and neither temporal formula requires a closed host to become ready.",
+      "SharedPreferences commit=false paths preserve their in-memory update and report an unconfirmed disk result. The native test exercises an actual blocked preference write, but abrupt process death, filesystem durability and recovery from partially persisted storage remain outside this model.",
+      "The production overlay rewrites MainActivity and both receipt classes for a custom Android app ID. A generated custom-package test loads the receipt class named by the reconciled manifest in a real Capacitor bridge. Full custom-app APK packaging and device execution remain unverified."
+    ]
+  },
+  {
+    "id": "ResidentCredentialMutation",
+    "model": "packages/app/quint/ResidentCredentialMutation.qnt",
+    "sources": [
+      "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaResidentCredentials.java",
+      "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaCredentialRetirement.java",
+      "plugins/plugin-native-secure-store/android-nativeonly/src/main/java/ai/eliza/plugins/securestore/nativeonly/CredentialMutationConductor.java",
+      "plugins/plugin-native-secure-store/android-nativeonly/src/main/java/ai/eliza/plugins/securestore/nativeonly/CredentialIntentFence.java",
+      "plugins/plugin-native-secure-store/android-nativeonly/src/main/java/ai/eliza/plugins/securestore/nativeonly/CredentialSlotMutation.java",
+      "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/CredentialShutdownLease.java"
+    ],
+    "invariants": [
+      "IntentOwnsCommit",
+      "ChangedCommitRequiresExactStop",
+      "FailedCommitRetainsLaunchFence",
+      "LiveMutationHasItsEpoch",
+      "AbandonedLeaseReleasesOnlyAfterProof"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two Android credential mutations, one slot, one resident stop lease and three replacement values. Exact intent and stop receipt checks fence commit, timeout, abandonment and readback failure.",
+      "Actual Java intent, conductor, slot mutation, lease and extracted lifecycle binding run in the JVM. The clock, resident inventory, Android dispatch and vault use controlled boundaries.",
+      "Real device and storage durability, concurrent out-of-band mutations, reserve-stop failure and arbitrary overlapping owners remain outside this case."
+    ]
+  },
+  {
+    "id": "BrowserSignInReturn",
+    "model": "packages/app/quint/BrowserSignInReturn.qnt",
+    "sources": [
+      "packages/app/functions/_middleware.ts",
+      "packages/app/functions/_browser-sign-in.ts",
+      "packages/cloud/scripts/pages-browser-sign-in.test.ts",
+      "packages/app/functions/_native-auth-callback-config.ts",
+      ".github/workflows/cloud-cf-release.yml",
+      "packages/cloud/scripts/pages-native-auth-callbacks.test.ts"
+    ],
+    "invariants": [
+      "TypeOK",
+      "ExactLiveConsumer",
+      "ConsumedOnce",
+      "IndependentConsumers"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two consumers, one launch per consumer, three logical clock values and no storage failures. Protected configuration is represented by an admitted set, including an empty set. Real parsing and collision checks are exercised by maintained middleware tests.",
+      "The implementation check executes actual middleware responses and their scripts in isolated browser VM contexts. It checks exact callback binding, expiry, state, replay, origin refusal and two independent registrations. It is scenario conformance, not generated-trace equivalence.",
+      "PKCE exchange, OAuth provider correctness, DNS/TLS, browser process death, storage durability, deployment binding transfer and Android App Link verification remain separate contracts. Navigation can fail or never run; no unconditional progress is claimed."
+    ]
+  }
+]

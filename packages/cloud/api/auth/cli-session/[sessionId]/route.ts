@@ -2,10 +2,13 @@
  * GET /api/auth/cli-session/[sessionId]
  * Get the status of a CLI authentication session. Public — used by the CLI to
  * poll for completion. The one reply that carries the API key also says whether
- * this sign-in made the account (`accountCreated`).
+ * this sign-in made the account (`accountCreated`). A session created with a
+ * verifier hash releases the key only when the poll sends the verifier in
+ * `X-Cli-Session-Verifier`; otherwise it answers 403 and keeps the key.
  */
 
 import {
+  CLI_AUTH_SESSION_VERIFIER_HEADER,
   cliAuthSessionsService,
   looksLikeCliAuthSessionId,
 } from "@elizaos/cloud-shared/lib/services/cli-auth-sessions";
@@ -41,9 +44,18 @@ app.get("/", async (c) => {
     }
 
     if (session.status === "authenticated") {
-      const apiKeyData =
-        await cliAuthSessionsService.getAndClearApiKey(sessionId);
+      const apiKeyData = await cliAuthSessionsService.getAndClearApiKey(
+        sessionId,
+        c.req.header(CLI_AUTH_SESSION_VERIFIER_HEADER) ?? null,
+      );
       if (apiKeyData.status === "unavailable") {
+        if (apiKeyData.reason === "verifier-mismatch") {
+          return c.json(
+            { error: "Session verifier required" },
+            403,
+            corsHeaders,
+          );
+        }
         if (
           apiKeyData.reason === "consumed" ||
           apiKeyData.reason === "claim-lost"

@@ -132,58 +132,6 @@ export type AgentEventInput = Omit<AgentEventPayload, "seq" | "ts">;
 export type HeartbeatEventInput = Omit<HeartbeatEventPayload, "ts">;
 
 /**
- * Lifecycle event data types
- */
-export interface LifecycleEventData {
-	type:
-		| "run_start"
-		| "run_end"
-		| "step_start"
-		| "step_end"
-		| "context_loaded"
-		| "action_start"
-		| "action_end";
-	stepName?: string;
-	actionName?: string;
-	duration?: number;
-	success?: boolean;
-	error?: string;
-}
-
-/**
- * Tool event data types
- */
-export interface ToolEventData {
-	type: "tool_call" | "tool_result" | "tool_error";
-	toolName: string;
-	input?: Record<string, unknown>;
-	output?: Record<string, unknown>;
-	duration?: number;
-	error?: string;
-}
-
-/**
- * Assistant event data types
- */
-export interface AssistantEventData {
-	type: "message" | "thought" | "plan" | "reflection";
-	content: string;
-	role?: "assistant" | "user" | "system";
-	tokens?: number;
-}
-
-/**
- * Error event data types
- */
-export interface ErrorEventData {
-	type: "error" | "warning";
-	code?: string;
-	message: string;
-	stack?: string;
-	recoverable?: boolean;
-}
-
-/**
  * Message event data types - for inbound/outbound messages
  */
 export interface MessageEventData {

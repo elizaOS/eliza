@@ -6,6 +6,7 @@ import {
 	ModelType,
 	type ModelTypeName,
 	type ResponseSkeleton,
+	type StructuredStreamField,
 	TEXT_GENERATION_MODEL_TYPES,
 	type TextStreamResult,
 } from "../types/model.js";
@@ -47,32 +48,45 @@ export class NoModelProviderConfiguredError extends ElizaError {
 export const TEXT_GENERATION_MODEL_KEYS: readonly string[] =
 	TEXT_GENERATION_MODEL_TYPES;
 
-export const DEFAULT_RESPONSE_SKELETON_STREAM_FIELDS = new Set([
-	"text",
-	"messageToUser",
-]);
+const TEXT_GENERATION_MODEL_KEY_SET: ReadonlySet<string> = new Set(
+	TEXT_GENERATION_MODEL_KEYS,
+);
 
-export function resolveResponseSkeletonStreamFields(
+/** Exact (unnormalized) membership test for the built-in text-generation slots. */
+export function isTextGenerationModelKey(modelKey: string): boolean {
+	return TEXT_GENERATION_MODEL_KEY_SET.has(modelKey);
+}
+
+/**
+ * The caller-declared stream fields a structured call may release, by field
+ * name, with the part kinds that stream when the value is a parts array.
+ * A free-string field streams only when the skeleton declares it one; a
+ * field with `partKinds` also streams when the skeleton declares any other
+ * value shape for it (the extractor walks only a `[{kind, value}]` array).
+ */
+export function resolveStructuredStreamFields(
 	skeleton: ResponseSkeleton | undefined,
-): string[] {
-	if (!skeleton) {
-		return [];
-	}
+	requested: readonly StructuredStreamField[] | undefined,
+): { fields: string[]; parts: Record<string, readonly string[]> } {
 	const fields: string[] = [];
-	const seen = new Set<string>();
-	for (const span of skeleton.spans) {
-		const key = span.key;
-		if (
-			span.kind === "free-string" &&
-			key &&
-			DEFAULT_RESPONSE_SKELETON_STREAM_FIELDS.has(key) &&
-			!seen.has(key)
-		) {
-			seen.add(key);
-			fields.push(key);
+	const parts: Record<string, readonly string[]> = {};
+	if (!skeleton || !requested?.length) {
+		return { fields, parts };
+	}
+	for (const { field, partKinds } of requested) {
+		if (fields.includes(field)) continue;
+		const span = skeleton.spans.find((entry) => entry.key === field);
+		if (!span) continue;
+		if (span.kind === "free-string") {
+			fields.push(field);
+			continue;
+		}
+		if (partKinds?.length) {
+			fields.push(field);
+			parts[field] = partKinds;
 		}
 	}
-	return fields;
+	return { fields, parts };
 }
 
 export function isTextStreamResult(
@@ -94,7 +108,7 @@ export function assertModelResultPresent(
 	result: unknown,
 	modelType: string,
 ): void {
-	if (!TEXT_GENERATION_MODEL_KEYS.includes(modelType)) return;
+	if (!isTextGenerationModelKey(modelType)) return;
 	if (typeof result === "string") return;
 	if (typeof result === "object" && result !== null) {
 		if (isTextStreamResult(result)) {
@@ -137,45 +151,35 @@ export function readReasoningTokensFromResponse(
 ): number | undefined {
 	if (typeof response !== "object" || response === null) return undefined;
 	const record = response as Record<string, unknown>;
-	const usageRaw = isPlainObject(record.usage) ? record.usage : undefined;
-	const usage = usageRaw as Record<string, unknown> | undefined;
-	const fromUsage =
-		usage && typeof usage.reasoningTokens === "number"
-			? usage.reasoningTokens
-			: undefined;
-	if (fromUsage !== undefined) {
-		return Number.isFinite(fromUsage) && fromUsage >= 0 ? fromUsage : undefined;
+	const usage = isPlainObject(record.usage) ? record.usage : undefined;
+	if (usage && typeof usage.reasoningTokens === "number") {
+		return finiteNonNegative(usage.reasoningTokens);
 	}
 	// Fall back to provider metadata when the adapter did not normalize the
 	// field into the usage object (some OpenAI-compatible paths expose it only
 	// under completion_tokens_details).
-	const providerMetadataRaw = isPlainObject(record.providerMetadata)
+	const providerMetadata = isPlainObject(record.providerMetadata)
 		? record.providerMetadata
 		: undefined;
-	const providerMetadata = providerMetadataRaw as
-		| Record<string, unknown>
-		| undefined;
-	const detailsRaw = providerMetadata
-		? isPlainObject(providerMetadata.completion_tokens_details)
+	const details = !providerMetadata
+		? undefined
+		: isPlainObject(providerMetadata.completion_tokens_details)
 			? providerMetadata.completion_tokens_details
 			: isPlainObject(providerMetadata.completionTokensDetails)
 				? providerMetadata.completionTokensDetails
-				: undefined
-		: undefined;
-	const details = detailsRaw as Record<string, unknown> | undefined;
-	const fromDetails = details
-		? typeof details.reasoning_tokens === "number"
-			? details.reasoning_tokens
-			: typeof details.reasoningTokens === "number"
-				? details.reasoningTokens
-				: undefined
-		: undefined;
-	if (fromDetails !== undefined) {
-		return Number.isFinite(fromDetails) && fromDetails >= 0
-			? fromDetails
-			: undefined;
+				: undefined;
+	if (!details) return undefined;
+	if (typeof details.reasoning_tokens === "number") {
+		return finiteNonNegative(details.reasoning_tokens);
+	}
+	if (typeof details.reasoningTokens === "number") {
+		return finiteNonNegative(details.reasoningTokens);
 	}
 	return undefined;
+}
+
+function finiteNonNegative(value: number): number | undefined {
+	return Number.isFinite(value) && value >= 0 ? value : undefined;
 }
 
 export interface ResolvedModelRegistration {
@@ -184,6 +188,25 @@ export interface ResolvedModelRegistration {
 	modelKey: string;
 	provider: string;
 }
+
+const SLOT_MODEL_SETTINGS: ReadonlyMap<string, string> = new Map([
+	["TEXT_NANO", "NANO_MODEL"],
+	["TEXT_MINI", "MINI_MODEL"],
+	["TEXT_SMALL", "SMALL_MODEL"],
+	["TEXT_LARGE", "LARGE_MODEL"],
+	["TEXT_MEGA", "MEGA_MODEL"],
+	["RESPONSE_HANDLER", "RESPONSE_HANDLER_MODEL"],
+	["ACTION_PLANNER", "ACTION_PLANNER_MODEL"],
+	["REASONING_SMALL", "REASONING_SMALL_MODEL"],
+	["REASONING_LARGE", "REASONING_LARGE_MODEL"],
+	["TEXT_COMPLETION", "COMPLETION_MODEL"],
+]);
+const PROVIDER_MODEL_SETTING_PREFIXES = [
+	"OLLAMA_",
+	"OPENAI_",
+	"ANTHROPIC_",
+	"",
+];
 
 export function resolveProviderModelString(
 	runtime: IAgentRuntime,
@@ -194,26 +217,12 @@ export function resolveProviderModelString(
 	if (effectiveModelId) return effectiveModelId;
 	if (optionsModel) return optionsModel;
 
-	const slotToSetting: Record<string, string> = {
-		TEXT_NANO: "NANO_MODEL",
-		TEXT_MINI: "MINI_MODEL",
-		TEXT_SMALL: "SMALL_MODEL",
-		TEXT_LARGE: "LARGE_MODEL",
-		TEXT_MEGA: "MEGA_MODEL",
-		RESPONSE_HANDLER: "RESPONSE_HANDLER_MODEL",
-		ACTION_PLANNER: "ACTION_PLANNER_MODEL",
-		REASONING_SMALL: "REASONING_SMALL_MODEL",
-		REASONING_LARGE: "REASONING_LARGE_MODEL",
-		TEXT_COMPLETION: "COMPLETION_MODEL",
-	};
-
-	const providerPrefixes = ["OLLAMA_", "OPENAI_", "ANTHROPIC_", ""];
 	for (const candidate of getModelFallbackChain(
 		resolvedModelType as ModelTypeName,
 	)) {
-		const settingKey = slotToSetting[candidate];
+		const settingKey = SLOT_MODEL_SETTINGS.get(candidate);
 		if (!settingKey) continue;
-		for (const prefix of providerPrefixes) {
+		for (const prefix of PROVIDER_MODEL_SETTING_PREFIXES) {
 			const val = runtime.getSetting(`${prefix}${settingKey}`);
 			if (typeof val === "string" && val) return val;
 		}
@@ -231,7 +240,7 @@ export function isCanonicalModelCapabilityDisabled(
 	runtime: Pick<IAgentRuntime, "getSetting">,
 	modelType: string,
 ): boolean {
-	const setting = TEXT_GENERATION_MODEL_KEYS.includes(modelType)
+	const setting = isTextGenerationModelKey(modelType)
 		? runtime.getSetting(CANONICAL_TEXT_CAPABILITY_SETTING)
 		: modelType === ModelType.TEXT_EMBEDDING
 			? runtime.getSetting(CANONICAL_EMBEDDING_CAPABILITY_SETTING)

@@ -17,6 +17,10 @@ import {
   unregisterPluginViews,
 } from "../src/api/views-registry.ts";
 import { viewNavigationField } from "../src/runtime/view-navigation.ts";
+import {
+  resolveViewNavigationTargets,
+  viewNavigationDestination,
+} from "../src/runtime/view-navigation-targets.ts";
 
 const policy = [
   { id: "photos", label: "Photos", path: "/photos" },
@@ -28,6 +32,7 @@ const policy = [
   },
   { id: "camera", label: "Camera", path: "/camera" },
 ];
+const calendar = { id: "calendar", label: "Calendar", path: "/calendar" };
 const runtimes: IAgentRuntime[] = [];
 function runtime() {
   const value = {} as IAgentRuntime;
@@ -85,6 +90,23 @@ it.each([
   JSON.stringify([{ id: "maps", label: "Maps", path: "https://maps.invalid" }]),
   JSON.stringify([{ id: "maps", label: "Maps", path: "/maps/../settings" }]),
   JSON.stringify([{ id: "maps", label: "Maps", path: "/maps?record=private" }]),
+  ...[
+    [],
+    "reminders",
+    ["Reminders"],
+    ["reminders "],
+    [`r${"e".repeat(32)}`],
+    ["a", "b", "c", "d", "e"],
+    ["photos"],
+    ["maps"],
+    ["workflows"],
+    ["settings"],
+    [3],
+  ].map((aliases) => JSON.stringify([...policy, { ...calendar, aliases }])),
+  JSON.stringify([
+    { ...calendar, aliases: ["reminders"] },
+    { id: "todos", label: "Todos", path: "/todos", aliases: ["reminders"] },
+  ]),
 ])(
   "rejects malformed or capability-bearing launch configuration: %s",
   (raw) => {
@@ -294,4 +316,87 @@ it("pins absent native policy before later environment changes", async () => {
     { pluginDir: process.cwd() },
   );
   expect(getView(owner, "notes")?.nativeOs).not.toBe(true);
+});
+
+it("carries trusted navigation aliases to the registered view", () => {
+  const declarations = nativeViewDeclarations(
+    JSON.stringify([...policy, { ...calendar, aliases: ["reminders"] }]),
+    BUILTIN_VIEWS,
+  );
+  expect(declarations.find((view) => view.id === "calendar")).toMatchObject({
+    navigationAliases: ["reminders"],
+  });
+  expect(
+    declarations.find((view) => view.id === "photos")?.navigationAliases,
+  ).toBeUndefined();
+  vi.stubEnv(
+    "ELIZA_NATIVE_VIEW_DECLARATIONS",
+    JSON.stringify([...policy, { ...calendar, aliases: ["reminders"] }]),
+  );
+  const owner = runtime();
+  registerBuiltinViews(owner);
+  const views = listViews(owner, { includeAllKinds: true });
+  expect(
+    resolveViewNavigationTargets(views, " Reminders ").map(
+      ({ view }) => view.id,
+    ),
+  ).toEqual(["calendar"]);
+  expect(resolveViewNavigationTargets(views, "reminders")[0]).toMatchObject({
+    resolvedAlias: "reminders",
+  });
+  const destinations = views.map(viewNavigationDestination);
+  expect(destinations).toContainEqual({
+    id: "calendar",
+    label: "Calendar",
+    aliases: ["reminders"],
+  });
+  expect(destinations.find(({ id }) => id === "chat")?.aliases).toEqual([
+    "home",
+  ]);
+});
+
+it("keeps a shared alias ambiguous across views", () => {
+  const views = [
+    { id: "calendar", label: "Calendar", navigationAliases: ["planner"] },
+    { id: "todos", label: "Todos", navigationAliases: ["planner"] },
+  ];
+  expect(
+    resolveViewNavigationTargets(views, "planner").map(({ view }) => view.id),
+  ).toEqual(["calendar", "todos"]);
+});
+
+it("keeps native aliases when the declared package replaces the fallback", async () => {
+  vi.stubEnv(
+    "ELIZA_NATIVE_VIEW_DECLARATIONS",
+    JSON.stringify([
+      {
+        ...calendar,
+        fallbackFor: "@elizaos/plugin-calendar",
+        aliases: ["reminders"],
+      },
+    ]),
+  );
+  const owner = runtime();
+  registerBuiltinViews(owner);
+  await registerPluginViews(
+    owner,
+    {
+      name: "calendar",
+      description: "Native Calendar test plugin",
+      packageName: "@elizaos/plugin-calendar",
+      views: [
+        {
+          ...calendar,
+          roleGate: { minRole: "OWNER" },
+          bundlePath: "missing/bundle.js",
+        },
+      ],
+    },
+    { pluginDir: process.cwd() },
+  );
+  expect(getView(owner, "calendar")).toMatchObject({
+    pluginName: "calendar",
+    nativeOs: true,
+    navigationAliases: ["reminders"],
+  });
 });

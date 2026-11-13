@@ -16,6 +16,21 @@ export function isKnownUnacceptedProviderStatus(status: number): boolean {
   return KNOWN_UNACCEPTED_STATUSES.has(status);
 }
 
+/**
+ * HTTP status of an ElevenLabs SDK error. Every SDK error owns `statusCode`,
+ * `body` and `rawResponse`; matching that shape lets voice routes classify a
+ * rejection without loading the SDK for requests on other providers.
+ */
+export function elevenLabsSdkErrorStatus(error: unknown): number | undefined {
+  return error instanceof Error &&
+    "statusCode" in error &&
+    "body" in error &&
+    "rawResponse" in error &&
+    typeof error.statusCode === "number"
+    ? error.statusCode
+    : undefined;
+}
+
 /** True only when the failure proves inference was not accepted. */
 export function isKnownUnacceptedProviderError(error: unknown): boolean {
   const seen = new Set<unknown>();

@@ -504,7 +504,7 @@ export async function runProbes(
       : pathExists(gpuServe)
         ? `serve.json present at ${gpuServe}`
         : "GPU/Baidu Unlimited-OCR server not running (falls back to tesseract)",
-    fix: "node packages/scripts/gpu-vision/setup.ts && node packages/scripts/gpu-vision/serve.ts  (GPU host; sets ELIZA_GPU_VISION_URL / serve.json)",
+    fix: "bun packages/scripts/gpu-vision/setup.ts && bun packages/scripts/gpu-vision/serve.ts  (GPU host; sets ELIZA_GPU_VISION_URL / serve.json)",
   });
 
   const appleVision =
@@ -626,7 +626,7 @@ async function main() {
   const options = parseDoctorArgs(process.argv.slice(2));
   if (options.help) {
     console.log(
-      "Usage: node packages/scripts/evidence-doctor.ts [--json] [--strict]\n\n" +
+      "Usage: bun packages/scripts/evidence-doctor.ts [--json] [--strict]\n\n" +
         "  --json            Print a normalized platform report as JSON.\n" +
         "  --strict          Exit non-zero when a REQUIRED tool is missing.\n",
     );

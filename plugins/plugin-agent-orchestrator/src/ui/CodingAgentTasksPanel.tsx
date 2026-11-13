@@ -482,10 +482,10 @@ function ThreadDetailContent({
         ) : (
           <ThreadActionButton
             agentId="action-delete-thread"
-            label={t("codingagenttaskspanel.delete", {
-              defaultValue: "Delete",
+            label={t("codingagenttaskspanel.archive", {
+              defaultValue: "Archive",
             })}
-            description="Delete (archive) the selected task thread"
+            description="Archive the selected task thread"
             variant="secondary"
             disabled={busy}
             onClick={onDelete}
@@ -803,14 +803,14 @@ export function CodingAgentTasksPanel({
       setDetailError(null);
       setMutationError(null);
       setThreads(nextThreads);
-      setSelectedThreadId(nextThreads[0]?.id ?? null);
+      setSelectedThreadId(null);
     } catch (error) {
       setMutationError(
-        t("codingagenttaskspanel.deleteFailed", {
+        t("codingagenttaskspanel.archiveFailed", {
           defaultValue:
             error instanceof Error
-              ? "Failed to delete task: {{error}}"
-              : "Failed to delete task.",
+              ? "Failed to archive task: {{error}}"
+              : "Failed to archive task.",
           error: error instanceof Error ? error.message : undefined,
         }),
       );

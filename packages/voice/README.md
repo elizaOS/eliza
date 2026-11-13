@@ -20,9 +20,21 @@ segment, `send`, `speak`, an optional semantic `endpoint` and the conversation b
 The controller joins the segments of one utterance, asks `endpoint` once per utterance after a
 short gap with a bounded deadline, and always submits after the long gap: an unavailable,
 failing or late endpoint decision is never treated as complete. Resumed speech cancels a
-pending submit, and confirmed speech over echo-cancelled capture interrupts an in-flight reply
-or its playback (barge-in); only fully played sentences count as heard. Generation fencing
-drops late endpoint, reply and playback callbacks, so a submitted turn is never resent. Mute,
+pending submit. A submitted turn closes the capture until its reply has played (the busy hold,
+published as `inputHeld` once the close fulfilled), then reopens it unless Mute, Stop or a binding
+change keeps it closed. The turn is sent only after that close fulfilled; a close that fails ends
+the conversation, with nothing reopened, and so does a Mute close that fails before a turn
+waits on it, at once and also with nothing to send (Unmute never reopens over it). The host
+bounds `close()`: one that never settles keeps the turn unsent until Stop.
+If a pending reopen returns after Stop, the Stop promise waits for that capture's cancellation
+to settle.
+`interruptSpeech()` cuts a playing reply, and only fully played sentences count as heard.
+Optional `openMic` keeps an echo-cancelled full-duplex capture open through ordinary replies;
+resumed speech can replace an unheard speculative turn and interrupt playback. Owner-input
+review still closes capture through the separately approved reply. Optional `pipelineSpeech`
+requires a host that queues sentences in order and settles each at its playback end.
+Generation fencing drops late endpoint, reply and playback callbacks, so a submitted turn is
+never resent. Mute,
 stop, binding changes and owner-input pauses are handled; approvals are never given by voice.
 `ASSISTANT_TIMING_DEFAULTS` are engineering defaults, not measured or accepted values. The module
 has no DOM, storage, network or platform speech imports, and `bun run --cwd packages/voice test`
@@ -37,7 +49,9 @@ when the transport carries the agent event stream, and delivers each turn's fina
 response or the event). `createLiveSegmentStream` maps one continuous capture onto it: one result
 per closed VAD segment (null when the segment produced no transcript), stop reconciliation
 (`cutoff` drops audio stamped after the stop, `close` ends the open segment at it) and `cancel`
-(discard). Its handlers are the `listen` port of `VoiceAssistantSession`.
+(discard). Its handlers are the `listen` port of `VoiceAssistantSession`. Posts go one at a time;
+when more than `LIVE_MAX_UNPOSTED_FRAMES` frames wait for a post, the stream stops with one
+`TRANSPORT` failure.
 When the host opens the capture and its ASR route itself (for example a native plugin that runs
 VAD in the app process and routes segments to the owner's agent), it supplies a
 `LiveCaptureOpener`: `liveAssistantListener` turns it into the assistant's echo-cancelled `listen`
@@ -102,12 +116,12 @@ Eliza Cloud, and it is not Clef, network or latency evidence.
 which products render instead of writing their own copy (`SPEECH_DISCLOSURES`,
 `speechDisclosures({ serviceName, deviceNoun })`, `speechDisclosure(route)`):
 
-| Route | Leaves the device |
-| --- | --- |
-| `local-turn`, `local-stt`, `local-tts` | nothing |
-| `clef-turn` | the current transcript text and at most 6 recent text turns; never audio |
-| `cloud-stt` | the recorded audio |
-| `cloud-tts` | the reply text |
+| Route                                  | Leaves the device                                                        |
+| -------------------------------------- | ------------------------------------------------------------------------ |
+| `local-turn`, `local-stt`, `local-tts` | nothing                                                                  |
+| `clef-turn`                            | the current transcript text and at most 6 recent text turns; never audio |
+| `cloud-stt`                            | the recorded audio                                                       |
+| `cloud-tts`                            | the reply text                                                           |
 
 Only the service name and the device noun can be substituted. The table covers speech routes;
 conversation text sent to a language model is the model setting's disclosure.
@@ -125,6 +139,8 @@ observation cannot shorten a phase. `sendEntry` is the send boundary for an `aut
 enums only, and a host-installed native stage sink links conversation turns to a native monotonic
 collector by a random id. Records never hold text, account, agent or conversation identifiers.
 The host names the storage key and export format so installed records keep their identity.
+A mark does no storage work: changed records go to storage in one deferred write, and
+`records()` and `exportJson()` write them first.
 Vitest covers ordering, validation, review boundaries and sink failures with a fake clock; this
 is not device latency evidence.
 
@@ -143,7 +159,7 @@ Browser consumers can qualify the recorder and PCM conversion in headless Chromi
 
 ```sh
 bun run --cwd packages/voice build
-node packages/voice/test/consumer.mjs
+bun packages/voice/test/consumer.mjs
 ```
 
 It uses real MediaRecorder and Web Audio, never opens a physical microphone and makes no

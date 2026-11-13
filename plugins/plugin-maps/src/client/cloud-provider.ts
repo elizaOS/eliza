@@ -18,7 +18,8 @@ export type CloudMapsRoute =
   | "reverse"
   | "places/search"
   | "places/details"
-  | "routes";
+  | "routes"
+  | "tiles/viewport";
 /** Account-bound Cloud request. Queries and coordinates travel only in the JSON body. */
 export type CloudMapsRequest = (
   route: CloudMapsRoute,
@@ -44,6 +45,15 @@ export type CloudMapsSources = Readonly<{
   search: string;
   routing: string;
 }>;
+/** Raster tiles Cloud proxies (`capabilities.tiles`); fetched with the host's Cloud credential. */
+export type CloudMapsTiles = Readonly<{
+  /** Path template on the Cloud origin, `/api/v1/maps/tiles/{z}/{x}/{y}`. */
+  urlTemplate: string;
+  minZoom: number;
+  maxZoom: number;
+  tileSize: number;
+  attribution: string;
+}>;
 export type CloudMapsCoverage = Readonly<{
   providerId: string;
   revision: string;
@@ -51,6 +61,37 @@ export type CloudMapsCoverage = Readonly<{
   regions: readonly CloudMapsRegion[];
   sources?: CloudMapsSources;
   disclosure?: CloudMapsDisclosure;
+  tiles?: CloudMapsTiles;
+}>;
+/**
+ * One Cloud tile (`GET {urlTemplate}`) with the host's Cloud credential and a
+ * fresh `Idempotency-Key`; resolves to the image bytes.
+ */
+export type CloudMapsTileRequest = (
+  z: number,
+  x: number,
+  y: number,
+  signal: AbortSignal,
+) => Promise<ArrayBuffer>;
+/** A raster basemap drawn from Cloud tiles (map-plane `CloudRasterBasemap`). */
+export type CloudMapsBasemap = Readonly<{
+  kind: "cloud-raster";
+  attribution: string;
+  minZoom: number;
+  maxZoom: number;
+  tileSize: number;
+  tile: CloudMapsTileRequest;
+  /** Provider copyright for the visible area. */
+  copyright(
+    view: Readonly<{
+      zoom: number;
+      north: number;
+      south: number;
+      east: number;
+      west: number;
+    }>,
+    signal: AbortSignal,
+  ): Promise<string>;
 }>;
 /** A Cloud request limit read from a refusal: an exhausted period allowance or a rate limit. */
 export type CloudMapsServiceLimit = Readonly<{
@@ -61,6 +102,10 @@ export type CloudMapsServiceLimit = Readonly<{
 export type CloudMapsOptions = Readonly<{
   /** Reads the limit from a refusal; hosts may pass their shared subscription reader. */
   serviceLimit?: (error: unknown, now: number) => CloudMapsServiceLimit | null;
+  /** Fetches Cloud tiles; without it the provider reports no map plane even when Cloud serves tiles. */
+  tileRequest?: () => CloudMapsTileRequest;
+  /** Whether a transport error means the device is offline; hosts may pass their connection classifier. */
+  isOffline?: (error: unknown) => boolean;
 }>;
 
 /** Human wait time for a retry, rounded up. */
@@ -70,6 +115,22 @@ export function retryWait(ms: number): string {
   const minutes = Math.ceil(secs / 60);
   if (minutes < 90) return `about ${minutes} minutes`;
   return `about ${Math.ceil(minutes / 60)} hours`;
+}
+
+/**
+ * Default offline test for a transport error. "Connection request failed" is
+ * what the native and browser connection transports reject with. A cancelled
+ * request is never offline.
+ */
+export function cloudMapsOffline(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if (/cancel/i.test(error.message)) return false;
+  return (
+    error.message === "Connection request failed" ||
+    /network|offline|timed out|failed to fetch|load failed|internet/i.test(
+      error.message,
+    )
+  );
 }
 
 const DAY_MS = 86_400_000;
@@ -140,7 +201,7 @@ export function describeLocationRecipients(
       ),
   ];
   return targets.length
-    ? `Searches and route points are sent to ${targets.join(" and ")}.`
+    ? `Searches, search areas and route points are sent to ${targets.join(" and ")}.`
     : "";
 }
 
@@ -203,7 +264,28 @@ function sourcesOf(value: unknown): CloudMapsSources | undefined {
     : undefined;
 }
 
-const MODES: readonly TravelMode[] = ["drive", "walk", "bicycle"];
+const MODES: readonly TravelMode[] = ["drive", "walk", "bicycle", "transit"];
+
+function tilesOf(value: unknown): CloudMapsTiles | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const t = value as Record<string, unknown>;
+  const zoom = (v: unknown) =>
+    typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 22;
+  return t.urlTemplate === "/api/v1/maps/tiles/{z}/{x}/{y}" &&
+    zoom(t.minZoom) &&
+    zoom(t.maxZoom) &&
+    (t.minZoom as number) <= (t.maxZoom as number) &&
+    (t.tileSize === 256 || t.tileSize === 512) &&
+    boundedText(t.attribution, 200)
+    ? Object.freeze({
+        urlTemplate: t.urlTemplate,
+        minZoom: t.minZoom as number,
+        maxZoom: t.maxZoom as number,
+        tileSize: t.tileSize as number,
+        attribution: t.attribution as string,
+      })
+    : undefined;
+}
 
 function validBounds(
   value: unknown,
@@ -246,6 +328,7 @@ export function cloudMapsFailure(
   serviceLimit: NonNullable<
     CloudMapsOptions["serviceLimit"]
   > = cloudMapsServiceLimit,
+  isOffline: NonNullable<CloudMapsOptions["isOffline"]> = cloudMapsOffline,
 ): MapsFailure {
   if (error instanceof MapsFailure) return error;
   if (signal?.aborted)
@@ -361,12 +444,7 @@ export function cloudMapsFailure(
         );
     }
   }
-  if (
-    error instanceof Error &&
-    /network|offline|timed out|failed to fetch|load failed|internet/i.test(
-      error.message,
-    )
-  )
+  if (isOffline(error))
     return new MapsFailure(
       "offline",
       "Cloud Maps is unreachable. Check the connection.",
@@ -388,8 +466,11 @@ export function createCloudMaps(
   options: CloudMapsOptions = {},
 ) {
   const serviceLimit = options.serviceLimit ?? cloudMapsServiceLimit;
+  const isOffline = options.isOffline ?? cloudMapsOffline;
   let generation = 0;
   let coverage: CloudMapsCoverage | undefined;
+  let tileFetch: CloudMapsTileRequest | undefined;
+  let viewportRequest: CloudMapsRequest | undefined;
   // Only a provider this instance installed is retired; another configured provider is left alone.
   let installed = false;
   const uninstall = () => {
@@ -398,7 +479,7 @@ export function createCloudMaps(
       configure({ status: "unconfigured" });
     }
   };
-  const diagnostic = { configured: false, error: "" };
+  const diagnostic = { configured: false, error: "", message: "" };
   async function call(
     request: CloudMapsRequest,
     route: CloudMapsRoute,
@@ -408,7 +489,7 @@ export function createCloudMaps(
     try {
       return await request(route, signal, body);
     } catch (error) {
-      throw cloudMapsFailure(error, signal, serviceLimit);
+      throw cloudMapsFailure(error, signal, serviceLimit, isOffline);
     }
   }
   class CloudProvider implements MapsProvider {
@@ -429,14 +510,21 @@ export function createCloudMaps(
     async search(
       query: string,
       signal: AbortSignal,
+      options: Readonly<{ near?: Coordinate }> = {},
     ): Promise<readonly Place[]> {
       const text = query.trim();
       if (!text) return [];
       if (text.length > 300)
         throw new MapsFailure("unsupported", "Search text is too long.");
+      // `near` is a point already on the map; the caller never reads location for it.
+      const near = options.near ? coordinate(options.near) : undefined;
       return this.places(
-        (await call(this.send, "places/search", signal, { query: text }))
-          .places,
+        (
+          await call(this.send, "places/search", signal, {
+            query: text,
+            ...(near ? { near } : {}),
+          })
+        ).places,
       );
     }
     async detail(id: string, signal: AbortSignal): Promise<Place | null> {
@@ -499,9 +587,12 @@ export function createCloudMaps(
   ): Promise<void> {
     const attempt = ++generation;
     coverage = undefined;
+    tileFetch = undefined;
+    viewportRequest = undefined;
     uninstall();
     diagnostic.configured = true;
     diagnostic.error = "";
+    diagnostic.message = "";
     try {
       const captured = captureRequest();
       const request: CloudMapsRequest = async (route, signal, body) => {
@@ -538,8 +629,12 @@ export function createCloudMaps(
         !caps ||
         caps.search !== true ||
         caps.placeDetails !== true ||
-        caps.traffic !== "none" ||
-        caps.transit !== "none" ||
+        (caps.traffic !== "none" && caps.traffic !== "live") ||
+        (caps.transit !== "none" && caps.transit !== "scheduled") ||
+        // Transit routes need the timetables the provider says it serves.
+        (Array.isArray(caps.modes) &&
+          caps.modes.includes("transit") &&
+          caps.transit !== "scheduled") ||
         (caps.alternatives !== undefined &&
           typeof caps.alternatives !== "boolean") ||
         !Array.isArray(caps.modes) ||
@@ -552,7 +647,10 @@ export function createCloudMaps(
         );
       const alternatives = caps.alternatives === true;
       const sources = sourcesOf(meta.sources),
-        disclosure = disclosureOf(meta.disclosure);
+        disclosure = disclosureOf(meta.disclosure),
+        tiles = caps.map === true ? tilesOf(meta.tiles) : undefined;
+      tileFetch =
+        tiles && options.tileRequest ? options.tileRequest() : undefined;
       coverage = Object.freeze({
         providerId: meta.providerId,
         revision: meta.revision as string,
@@ -570,7 +668,9 @@ export function createCloudMaps(
         ),
         ...(sources ? { sources } : {}),
         ...(disclosure ? { disclosure } : {}),
+        ...(tiles ? { tiles } : {}),
       });
+      viewportRequest = request;
       configure(
         {
           status: "configured",
@@ -578,12 +678,13 @@ export function createCloudMaps(
           connectionId: meta.connectionId,
           revision: meta.revision as string,
           capabilities: {
-            map: false,
+            // A map plane only when Cloud serves tiles and this host can fetch them.
+            map: Boolean(tiles && tileFetch),
             search: true,
             placeDetails: true,
             modes: [...(caps.modes as TravelMode[])],
-            traffic: "none",
-            transit: "none",
+            traffic: caps.traffic as "none" | "live",
+            transit: caps.transit === "scheduled" ? "scheduled" : "none",
             offline: { map: false, search: false, routing: false },
             alternatives,
           },
@@ -599,7 +700,11 @@ export function createCloudMaps(
     } catch (error) {
       if (attempt !== generation) return;
       coverage = undefined;
-      diagnostic.error = cloudMapsFailure(error, signal, serviceLimit).code;
+      tileFetch = undefined;
+      viewportRequest = undefined;
+      const refused = cloudMapsFailure(error, signal, serviceLimit, isOffline);
+      diagnostic.error = refused.code;
+      diagnostic.message = refused.message;
     }
   }
   return {
@@ -607,10 +712,67 @@ export function createCloudMaps(
     retireCloudMaps: () => {
       ++generation;
       coverage = undefined;
+      tileFetch = undefined;
+      viewportRequest = undefined;
       diagnostic.error = "unauthorized";
+      diagnostic.message = "Sign in to Cloud to use Maps.";
       uninstall();
     },
     cloudMapsCoverage: () => coverage,
+    /**
+     * The Cloud raster basemap while Cloud serves tiles and the host passed
+     * `tileRequest`. Google's terms require Google results on Google tiles, so
+     * hosts draw this instead of their own basemap when it is present.
+     */
+    cloudMapsBasemap: (): CloudMapsBasemap | undefined => {
+      const tiles = coverage?.tiles,
+        fetchTile = tileFetch,
+        send = viewportRequest,
+        attempt = generation;
+      if (!tiles || !fetchTile || !send) return undefined;
+      return Object.freeze({
+        kind: "cloud-raster" as const,
+        attribution: tiles.attribution,
+        minZoom: tiles.minZoom,
+        maxZoom: tiles.maxZoom,
+        tileSize: tiles.tileSize,
+        tile: async (z: number, x: number, y: number, signal: AbortSignal) => {
+          if (
+            attempt !== generation ||
+            !Number.isInteger(z) ||
+            z < tiles.minZoom ||
+            z > tiles.maxZoom ||
+            !Number.isInteger(x) ||
+            !Number.isInteger(y) ||
+            x < 0 ||
+            y < 0 ||
+            x >= 2 ** z ||
+            y >= 2 ** z
+          )
+            throw new MapsFailure(
+              "unsupported",
+              "This map tile is unavailable.",
+            );
+          try {
+            return await fetchTile(z, x, y, signal);
+          } catch (error) {
+            throw cloudMapsFailure(error, signal, serviceLimit);
+          }
+        },
+        copyright: async (view, signal) => {
+          const result = await call(send, "tiles/viewport", signal, {
+            zoom: Math.max(0, Math.min(22, Math.round(view.zoom))),
+            north: view.north,
+            south: view.south,
+            east: view.east,
+            west: view.west,
+          });
+          return boundedText(result.copyright, 500)
+            ? (result.copyright as string)
+            : tiles.attribution;
+        },
+      });
+    },
     cloudMapsDiagnostics: () => ({ ...diagnostic }),
   };
 }

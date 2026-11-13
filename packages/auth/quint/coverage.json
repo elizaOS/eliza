@@ -1,0 +1,28 @@
+[
+  {
+    "id": "RefreshMutex",
+    "model": "packages/auth/quint/RefreshMutex.qnt",
+    "sources": ["packages/auth/src/auth/refresh-mutex.ts"],
+    "invariants": ["invariant"],
+    "status": "modeled",
+    "limitations": [
+      "Three one-shot callers over two keys. All success/rejection interleavings are enabled. OAuth provider state and credential-file atomicity need separate models.",
+      "Progress requires scheduled callers and settlement of each provider call.",
+      "Finite verification domain. Three callers with one invocation each, two keys, sentinel resolved predecessor 0. Values beyond these bounds are outside this instance; generation and revision values never wrap."
+    ]
+  },
+  {
+    "id": "ExecutionAuthorization",
+    "model": "packages/auth/quint/ExecutionAuthorization.qnt",
+    "sources": [
+      "packages/auth/src/server/api/services/execution-authorization.ts"
+    ],
+    "invariants": ["invariant"],
+    "status": "modeled",
+    "limitations": [
+      "Models the v1 nonce consumer and signed context admission. v2 authorization, policy evaluation, key cryptography and custody backends remain separate obligations.",
+      "Three consumers, one nonce, logical 3-tick TTL.",
+      "Finite verification domain. One nonce, three consumers, time 0..4, expiry 3. Values beyond these bounds are outside this instance; generation and revision values never wrap."
+    ]
+  }
+]

@@ -1,0 +1,45 @@
+{
+  "sources": [
+    "packages/agent/src/security/audit-log.ts",
+    "packages/agent/test/sandbox-audit-durability.test.ts"
+  ],
+  "conformance": "packages/agent/quint/check-signing-audit.mjs",
+  "bounds": {
+    "domain": "Two one-shot records, two sinks, every durable/required flag combination, optional durability requirement, one process restart. Metadata is represented by a captured value and independently mutable views.",
+    "effects": "Append success, failure before commit, and commit followed by failure are distinct. Each durable backend operation is atomic. Sink identities/configuration remain fixed while attached; sink ownership itself is trusted.",
+    "progress": "With at least one configured durable sink when durability is required, weak fairness of sink attachment, append settlement and delivery advancement settles every recorded call. Restart makes unfinished calls lost. Permanent missing durable sinks have no progress guarantee.",
+    "conformance": "The existing real SQLite/ethers suite checks queued delivery, sink failure/fallback, committed-row restart, snapshot ownership, and signing-policy interactions. Scenario conformance does not establish equivalence for all abstract schedules.",
+    "gaps": "More records/sinks, storage corruption, operating-system power loss, retries/idempotency, dynamically mutated sink configuration, process-feed and runtime-log retention, and arbitrary sink internals remain outside this instance."
+  },
+  "cases": [
+    {
+      "name": "outbox-and-ownership",
+      "main": "AuditOutbox",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "CapturedFactsStayOwned",
+        "ResolvedMeetsRequirements",
+        "CommittedRowsWereRecorded",
+        "SinkOrderIsRecordOrder",
+        "CrashPreservesCommittedRows",
+        "OneDeliveryAtATime"
+      ],
+      "temporal": ["PendingCallsSettle"],
+      "maxSteps": 50,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "PendingCallsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in AuditOutbox: PendingCallsSettle = ((not(s.requiresDurable) or s.durable.size() > 0) and FairDelivery).implies( ids.forall(id => always((s.stage.get(id) != \"new\").implies(eventually( terminal.contains(s.stage.get(id)))))))",
+            "Model fairness predicate FairDelivery = and { sinks.forall(sink => attachSink(sink).weakFair(s)), sinks.forall(sink => finishAttachment(sink).weakFair(s)), beginDelivery.weakFair(s), appendAnyOutcome.weakFair(s), finishDelivery.weakFair(s), }",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
+    }
+  ]
+}

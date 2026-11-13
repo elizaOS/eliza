@@ -64,6 +64,7 @@ function memoryIndexedDB() {
             get: (key) =>
               run(() => (staged.has(key) ? { ...staged.get(key) } : undefined)),
             put: (value) => run(() => staged.set(value[keyPath], { ...value })),
+            delete: (key) => run(() => staged.delete(key)),
             add: (value) =>
               run(() => {
                 if (staged.has(value[keyPath])) throw Error("ConstraintError");
@@ -270,4 +271,136 @@ test("expiry leaves a recording a recovery row still covers", async () => {
   assert.equal((await audio.audioRecord("a2", true)).expired, true);
   // Its deletion's owner still purges it.
   assert.equal((await audio.purgeAudio("a1", "n1", covered)).status, "purged");
+});
+
+const recordingOwner = { ownerDigest: "a".repeat(64), folderId: "f-original" };
+test("pending audio and its one-shot canonical claim survive store recreation before exact promotion", async () => {
+  const indexedDB = memoryIndexedDB(),
+    reopen = () =>
+      createNotesAudioStore({ databaseName: "pending", indexedDB });
+  let audio = reopen();
+  await audio.retainPendingAudio("recording", recordingOwner, clip(), "Words");
+  audio = reopen();
+  let pending = await audio.pendingAudio();
+  assert.equal(pending.length, 1);
+  assert.equal(pending[0].recordingSave.phase, "stopped");
+  assert.equal(pending[0].blob.type, "audio/wav");
+  await audio.retainPendingAudio("recording", recordingOwner, clip(), "Words");
+  assert.deepEqual(
+    [...new Uint8Array(await pending[0].blob.arrayBuffer())],
+    [0, 255, 128, 1],
+  );
+  await assert.rejects(audio.audioRecord("recording"), /not saved/);
+  assert.equal(
+    await audio.claimPendingAudio("recording", recordingOwner.ownerDigest),
+    true,
+  );
+  audio = reopen();
+  pending = await audio.pendingAudio();
+  assert.equal(pending[0].recordingSave.phase, "claimed");
+  assert.equal(
+    await audio.claimPendingAudio("recording", recordingOwner.ownerDigest),
+    false,
+    "a lost create response cannot authorize another create",
+  );
+  const saved = await audio.commitPendingAudio(
+    "recording",
+    recordingOwner.ownerDigest,
+    "canonical-note",
+    "Words",
+  );
+  assert.equal(saved.noteId, "canonical-note");
+  assert.equal("blob" in saved, false);
+  assert.deepEqual(await reopen().pendingAudio(), []);
+  assert.equal(
+    (await reopen().audioRecord("recording")).noteId,
+    "canonical-note",
+  );
+  await audio.commitPendingAudio(
+    "recording",
+    recordingOwner.ownerDigest,
+    "canonical-note",
+    "Words",
+  );
+  await assert.rejects(
+    audio.commitPendingAudio(
+      "recording",
+      recordingOwner.ownerDigest,
+      "other-note",
+      "Words",
+    ),
+    /owner changed/,
+  );
+});
+
+test("pending audio refuses other bytes, owners, premature promotion and ambiguous discard", async () => {
+  const audio = store();
+  await audio.retainPendingAudio("recording", recordingOwner, clip(), "Words");
+  await assert.rejects(
+    audio.retainPendingAudio(
+      "recording",
+      recordingOwner,
+      { ...clip(), blob: new Blob(["different"]) },
+      "Words",
+    ),
+    /owner changed/,
+  );
+  await assert.rejects(
+    audio.claimPendingAudio("recording", "b".repeat(64)),
+    /owner changed/,
+  );
+  await assert.rejects(
+    audio.commitPendingAudio(
+      "recording",
+      recordingOwner.ownerDigest,
+      "canonical-note",
+      "Words",
+    ),
+    /owner changed/,
+  );
+  await assert.rejects(
+    audio.retainAudio("recording", "recording", "Words", clip()),
+    /not available/,
+  );
+  await audio.claimPendingAudio("recording", recordingOwner.ownerDigest);
+  await assert.rejects(
+    audio.changeAudioDeleted("recording", "recording", true, op()),
+    /another note/,
+  );
+  await assert.rejects(
+    audio.purgeAudio("recording", "recording", op()),
+    /another note/,
+  );
+  await assert.rejects(
+    audio.discardPendingAudio("recording", recordingOwner.ownerDigest),
+    /Check Notes/,
+  );
+  assert.equal((await audio.pendingAudio()).length, 1);
+  await audio.migrateAudio();
+  assert.equal(
+    (await audio.pendingAudio()).length,
+    1,
+    "maintenance never expires a pending recording",
+  );
+});
+
+test("explicit pending discard removes only unclaimed audio and completed cleanup keeps saved bytes", async () => {
+  const audio = store();
+  await audio.retainPendingAudio("discard", recordingOwner, clip(), "");
+  await assert.rejects(
+    audio.discardPendingAudio("discard", "b".repeat(64)),
+    /owner changed/,
+  );
+  await audio.discardPendingAudio("discard", recordingOwner.ownerDigest);
+  assert.deepEqual(await audio.pendingAudio(), []);
+  await audio.retainPendingAudio("saved", recordingOwner, clip(), "");
+  await audio.claimPendingAudio("saved", recordingOwner.ownerDigest);
+  await audio.commitPendingAudio(
+    "saved",
+    recordingOwner.ownerDigest,
+    "note",
+    "",
+  );
+  await audio.discardPendingAudio("saved", recordingOwner.ownerDigest);
+  assert.equal((await audio.audioRecord("saved")).blob.size, 4);
 });

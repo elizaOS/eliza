@@ -31,6 +31,8 @@ bun run --cwd plugins/plugin-wallet test   # tests
 
 `@elizaos/plugin-wallet/transactions` exposes transaction operations and the shared
 trade quota policy without route registration. The root exports the same symbols.
+`@elizaos/plugin-wallet/lib/trade-safety` exposes only the trade permission and quota
+policy, without `ethers` or the transaction service.
 `@elizaos/plugin-wallet/watcher` owns balance-delta detection and scheduling; hosts
 supply the credential-aware balance source. Trading-profile persistence and
 analytics are also available through `read`; corrupt ledgers reject without

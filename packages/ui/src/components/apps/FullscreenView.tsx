@@ -41,13 +41,20 @@ import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { Input } from "../ui/input";
 import { Progress } from "../ui/progress";
+import { Spinner } from "../ui/spinner";
 import { StatusBadge, type StatusTone } from "../ui/status-badge";
 import {
+  APP_RUN_API_UNSUPPORTED_MESSAGE,
+  useAppRunApiSupport,
+} from "./app-run-api";
+import {
   buildViewerSessionKey,
+  isViewerAuthBlockedBySandbox,
   resolveEmbeddedViewerUrl,
   resolvePostMessageTargetOrigin,
   resolveViewerReadyEventType,
   shouldUseEmbeddedAppViewer,
+  VIEWER_AUTH_BLOCKED_MESSAGE,
 } from "./viewer-auth";
 
 /**
@@ -616,6 +623,27 @@ export function DesktopGameWindowControls({
   );
 }
 export function FullscreenView() {
+  const runApi = useAppRunApiSupport();
+  if (runApi === "supported") return <FullscreenRunView />;
+  return (
+    <Card
+      variant="transparentSquare"
+      flow="column"
+      gap="default"
+      className="h-full items-center justify-center px-6 text-center"
+    >
+      {runApi === "probing" ? (
+        <Spinner className="size-6" />
+      ) : (
+        <div role="alert" className="max-w-md text-sm text-muted">
+          {APP_RUN_API_UNSUPPORTED_MESSAGE}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function FullscreenRunView() {
   useRenderGuard("FullscreenView");
   const { setTimeout } = useTimeout();
   const {
@@ -686,8 +714,6 @@ export function FullscreenView() {
     promise: Promise<AppSessionState | null>;
   } | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
-  const authSentRef = useRef(false);
-  const viewerSessionRef = useRef<string>("");
   const activeGameRun = useMemo(
     () => appRuns.find((run) => run.runId === activeGameRunId) ?? null,
     [activeGameRunId, appRuns],
@@ -944,27 +970,10 @@ export function FullscreenView() {
     15000,
     Boolean(activeGameRunId),
   );
-  // Clean up server-side state when the browser tab closes. `sendBeacon`
-  // is the only request method browsers reliably deliver during unload —
-  // a normal `fetch` would be cancelled. Falls through silently if the
-  // browser is too old or the run is already gone.
-  useEffect(() => {
-    if (!activeGameRunId) return;
-    const handleUnload = () => {
-      const beacon = navigator?.sendBeacon;
-      if (typeof beacon !== "function") return;
-      const baseUrl = client.getBaseUrl();
-      const stopPath = `/api/apps/runs/${encodeURIComponent(activeGameRunId)}/stop`;
-      const stopUrl = baseUrl ? `${baseUrl}${stopPath}` : stopPath;
-      beacon.call(navigator, stopUrl);
-    };
-    window.addEventListener("pagehide", handleUnload);
-    window.addEventListener("beforeunload", handleUnload);
-    return () => {
-      window.removeEventListener("pagehide", handleUnload);
-      window.removeEventListener("beforeunload", handleUnload);
-    };
-  }, [activeGameRunId]);
+  // No unload beacon: a beacon cannot carry the client's Authorization header,
+  // and pagehide/beforeunload also fire on reload, bfcache entry and cancelled
+  // navigations, which would stop runs the user meant to keep. A closed tab's
+  // run is reclaimed by the server's heartbeat sweeper instead.
   const sendChatCommand = useCallback(
     async (rawContent: string) => {
       const content = rawContent.trim();
@@ -1269,12 +1278,9 @@ export function FullscreenView() {
     t,
     useNativeGameWindow,
   ]);
-  // Reset auth handshake state when the active viewer session changes.
+  // Re-enter "connecting" when the active viewer session changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-run on viewer session change.
   useEffect(() => {
-    if (viewerSessionRef.current !== viewerSessionKey) {
-      viewerSessionRef.current = viewerSessionKey;
-      authSentRef.current = false;
-    }
     if (activeGamePostMessageAuth && useEmbeddedViewer) {
       setConnectionStatus("connecting");
       return;
@@ -1301,7 +1307,6 @@ export function FullscreenView() {
       !activeGamePostMessagePayload
     )
       return;
-    if (authSentRef.current) return;
     const expectedReadyType = resolveViewerReadyEventType(
       activeGamePostMessagePayload,
     );
@@ -1309,12 +1314,14 @@ export function FullscreenView() {
     // Fail closed: without a concrete http(s) origin we can neither verify the
     // sender nor safely target the auth payload, so never send it.
     if (!postMessageTargetOrigin) return;
+    // Answer every READY from the current frame: a pane remounted after a
+    // compact-layout tab switch or reattach has a new window, and a frame that
+    // reloads itself keeps its window but needs auth again.
     const onMessage = (
       event: MessageEvent<{
         type?: string;
       }>,
     ) => {
-      if (authSentRef.current) return;
       const iframeWindow = iframeRef.current?.contentWindow;
       if (!iframeWindow || event.source !== iframeWindow) return;
       if (event.data?.type !== expectedReadyType) return;
@@ -1325,13 +1332,7 @@ export function FullscreenView() {
         activeGamePostMessagePayload,
         postMessageTargetOrigin,
       );
-      authSentRef.current = true;
       setConnectionStatus("connected");
-      setActionNotice(
-        t("gameview.ViewerAuthSent", { defaultValue: "Viewer auth sent." }),
-        "info",
-        1800,
-      );
     };
     window.addEventListener("message", onMessage);
     return () => {
@@ -1341,8 +1342,6 @@ export function FullscreenView() {
     activeGamePostMessageAuth,
     activeGamePostMessagePayload,
     postMessageTargetOrigin,
-    setActionNotice,
-    t,
     useEmbeddedViewer,
   ]);
   const handleOpenInNewTab = useCallback(async () => {
@@ -1913,6 +1912,23 @@ export function FullscreenView() {
           </div>
           <div className="flex flex-wrap justify-center gap-2">
             {renderOpenInNewTabButton("outline")}
+          </div>
+        </Card>
+      );
+    }
+    if (
+      useEmbeddedViewer &&
+      isViewerAuthBlockedBySandbox(activeGamePostMessageAuth, activeGameSandbox)
+    ) {
+      return (
+        <Card
+          variant="transparentSquare"
+          flow="column"
+          gap="default"
+          className="h-full items-center justify-center px-6 text-center"
+        >
+          <div role="alert" className="max-w-md text-xs leading-6 text-muted">
+            {VIEWER_AUTH_BLOCKED_MESSAGE}
           </div>
         </Card>
       );

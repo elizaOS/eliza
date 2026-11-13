@@ -8,7 +8,11 @@ import android.provider.ContactsContract
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -60,6 +64,31 @@ class ContactsReaderInstrumentedTest {
             )
         } finally {
             context.contentResolver.delete(rawContactUri, null, null)
+        }
+    }
+
+    @Test
+    fun catalogPagesWithCursorAndRefusesAStaleOne() {
+        val marker = "Elizapage${System.nanoTime()}"
+        val raw = listOf("A", "B", "C").map { insertContact("$marker $it", "+1555000000${it[0].code % 10}") }
+        try {
+            val catalog = ContactsCatalog(context)
+            val first = catalog.list(marker, 2, null, android.os.CancellationSignal())
+            assertEquals(2, first.getJSONArray("contacts").length())
+            assertTrue(first.getBoolean("more"))
+            val next = first.getString("next")
+            val second = catalog.list(marker, 2, next, android.os.CancellationSignal())
+            assertEquals(1, second.getJSONArray("contacts").length())
+            assertFalse(second.getBoolean("more"))
+            assertNull(second.opt("next"))
+            val names = (0 until 2).map { first.getJSONArray("contacts").getJSONObject(it).getString("name") } +
+                second.getJSONArray("contacts").getJSONObject(0).getString("name")
+            assertEquals(listOf("$marker A", "$marker B", "$marker C"), names)
+            try { catalog.list("$marker B", 2, next, android.os.CancellationSignal()); fail("cursor of another query") } catch (expected: IllegalArgumentException) {}
+            context.contentResolver.delete(raw[0], null, null)
+            try { catalog.list(marker, 2, next, android.os.CancellationSignal()); fail("stale cursor") } catch (expected: ContactsCatalog.StaleCursor) {}
+        } finally {
+            raw.forEach { context.contentResolver.delete(it, null, null) }
         }
     }
 

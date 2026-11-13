@@ -18,6 +18,7 @@ import {
 import { mirrorSavedConfigToLive } from "../api/config-state.ts";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import { agentIdentityName } from "../runtime/build-character-config.ts";
+import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 import {
   type RuntimeCharacterLike,
   recordCharacterHistory,
@@ -46,6 +47,7 @@ function cloneJson<T>(value: T): T {
 export function syncCharacterIntoConfig(
   config: ElizaConfig,
   character: RuntimeCharacterLike,
+  options?: { nameWasExplicitlyEdited: boolean },
 ): AgentConfigLike {
   if (!config.agents) config.agents = {};
 
@@ -58,9 +60,16 @@ export function syncCharacterIntoConfig(
   // No name is passed, so this is only a stored identity name: directly in
   // settings, or in settings.extra on a validated (restored) character.
   const identityName = agentIdentityName({ settings: character.settings });
+  const productName = getAgentHostBridge().productCharacter?.name;
+  const inheritedProductName =
+    options?.nameWasExplicitlyEdited === false &&
+    productName !== undefined &&
+    character.name?.trim() === productName.trim();
   const nextAgent = {
     ...primaryAgent,
-    ...(typeof character.name === "string" && character.name.trim()
+    ...(!inheritedProductName &&
+    typeof character.name === "string" &&
+    character.name.trim()
       ? { name: character.name.trim() }
       : {}),
     // Keep the name the ids were derived from before the first rename.
@@ -198,7 +207,15 @@ export class ElizaCharacterPersistenceService
     };
     try {
       const config = loadElizaConfig();
-      const nextAgent = syncCharacterIntoConfig(config, runtimeCharacter);
+      const previousName =
+        params.previousName ?? params.previousCharacter?.name;
+      const nextAgent = syncCharacterIntoConfig(config, runtimeCharacter, {
+        nameWasExplicitlyEdited:
+          params.nameWasExplicitlyEdited ??
+          (params.source !== "restore" &&
+            previousName !== undefined &&
+            previousName !== runtimeCharacter.name),
+      });
       persistence.config = "unknown";
       saveElizaConfig(config);
       mirrorSavedConfigToLive(config);
@@ -215,6 +232,8 @@ export class ElizaCharacterPersistenceService
       persistence.agent = "unknown";
       const updated = await this.runtime.updateAgent(this.runtime.agentId, {
         name:
+          (typeof runtimeCharacter.name === "string" &&
+            runtimeCharacter.name.trim()) ||
           (typeof nextAgent.name === "string" && nextAgent.name.trim()) ||
           this.runtime.character.name,
         metadata: {

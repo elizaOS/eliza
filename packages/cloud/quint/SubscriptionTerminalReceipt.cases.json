@@ -1,0 +1,66 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/db/repositories/subscription-billing-operations.ts",
+    "packages/cloud/shared/src/db/schemas/subscription-billing-operations.ts",
+    "packages/cloud/shared/src/lib/services/stripe-terminal-lifecycle.ts",
+    "packages/cloud/api/src/queue/stripe-event.ts",
+    "packages/cloud/shared/src/db/repositories/subscription-authority.ts",
+    "packages/cloud/shared/src/db/repositories/subscription-entitlements.ts",
+    "packages/cloud/shared/src/db/repositories/subscription-reconciliation.ts",
+    "packages/cloud/shared/src/lib/services/subscription-reconciliation.ts",
+    "packages/cloud/shared/src/db/repositories/subscription-reconciliation.pglite.test.ts",
+    "packages/cloud/shared/src/db/repositories/subscription-billing-operations.pglite.test.ts",
+    "packages/cloud/shared/src/db/repositories/subscription-lifecycle-finalization.pglite.test.ts",
+    "packages/cloud/shared/src/db/migrations/0373_subscription_authority.sql",
+    "packages/cloud/shared/src/db/migrations/0382_subscription_notice_intents.sql",
+    "packages/cloud/quint/check-subscription-terminal-receipt.mjs"
+  ],
+  "bounds": "One event receipt, one original and one possible replacement subscription authority, three fresh leases, database clock 0..5 and two-tick leases. Source revision 1..3 and projection revision 1..4. One independent source revision change, one projection revision change and one recovery publication.",
+  "cases": [
+    {
+      "name": "lease-and-terminal-publication",
+      "main": "SubscriptionTerminalReceipt",
+      "init": "init",
+      "step": "step",
+      "invariants": ["Safety"],
+      "temporal": [
+        "ReceiptAuthority",
+        "FairFinalization",
+        "EveryDraftFinishes"
+      ],
+      "maxSteps": 55,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "ReceiptAuthority",
+          "expect": "holds",
+          "assumptions": [
+            "No scheduler fairness. The final receipt CAS requires the current unexpired lease, commits every durable effect together, and preserves an exact applied receipt."
+          ]
+        },
+        {
+          "property": "FairFinalization",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of finish assumes a staged database transaction eventually commits or rolls back. It makes no assumption of provider success, retry delivery or a new claimant."
+          ]
+        },
+        {
+          "property": "EveryDraftFinishes",
+          "expect": "counterexample",
+          "assumptions": [
+            "Without fairness a staged transaction can remain blocked indefinitely."
+          ]
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "One platform Stripe cancellation event, one organization and one original subscription. Exact event, receipt and provider observation identities are abstracted as equality guards. Invoice renewal, dunning, merchant scope and nonterminal policy remain separate.",
+    "The lease uses database time at entry and again at final receipt CAS. A private draft represents locked source, projection, generation, audit and notice writes. A commit publishes them together or acknowledges an already matching reconciliation publication.",
+    "A failed finalizer rolls back its draft. A current unexpired lease may release for retry. After expiry only a fresh claim can finalize, and the original applied receipt stays historical after authority replacement.",
+    "The finite model compresses revision capture into the claim and abstracts the post-lock checks. It covers stale source and projection revisions and expiry during the draft. PostgreSQL isolation, physical lock waits, provider object validation, live notices and handler delivery retries are outside this proof.",
+    "The conformance suites use real PGlite transactions, inject failures into SQL writes, and check durable billing admission. A loopback Stripe HTTP fixture exercises the actual SDK and queue handler. Live Stripe is outside the evidence."
+  ],
+  "conformance": "packages/cloud/quint/check-subscription-terminal-receipt.mjs"
+}

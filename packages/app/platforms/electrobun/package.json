@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/electrobun",
-	"version": "2.0.12-beta.0",
+	"version": "2.0.6",
 	"type": "module",
 	"files": [
 		"assets",
@@ -14,7 +14,7 @@
 	],
 	"scripts": {
 		"dev": "bun run build:preload && PATH=\"$PWD/../../scripts/electrobun/bin:$PATH\" bunx electrobun dev",
-		"build": "cd ../../../.. && node packages/app/scripts/desktop-build.ts build",
+		"build": "cd ../../../.. && bun packages/app/scripts/desktop-build.ts build",
 		"typecheck": "tsc --noEmit",
 		"test": "bunx vitest run --config vitest.electrobun.config.ts --passWithNoTests",
 		"lint": "bunx @biomejs/biome check $(find src -type f \\( -name '*.ts' -o -name '*.tsx' \\) ! -name '*.d.ts' -print)",
@@ -22,9 +22,9 @@
 		"voice:validate": "bun src/voice/voice-live-validation.ts",
 		"voice:validate:dry": "bun src/voice/voice-live-validation.ts",
 		"voice:validate:live": "bun src/voice/voice-live-validation.ts",
-		"build:preload": "node ../../scripts/build-electrobun-preload.ts",
+		"build:preload": "bun ../../scripts/build-electrobun-preload.ts",
 		"build:native-effects": "bash ../../scripts/electrobun/build-macos-effects.sh",
-		"bench:cloud-login": "node ../../scripts/electrobun/bench-cloud-login.ts"
+		"bench:cloud-login": "bun ../../scripts/electrobun/bench-cloud-login.ts"
 	},
 	"dependencies": {
 		"@elizaos/agent": "workspace:*",
@@ -43,12 +43,12 @@
 	},
 	"devDependencies": {
 		"vite": "^8.3.3",
-		"@biomejs/biome": "2.6.3",
+		"@biomejs/biome": "2.6.6",
 		"@types/bun": "1.4.2",
 		"rcedit": "5.0.2",
 		"@typescript/native": "npm:typescript@^7.0.2",
 		"typescript": "^6.0.3",
-		"vitest": "^5.0.5"
+		"vitest": "^5.1.0"
 	},
 	"publishConfig": {
 		"access": "public"

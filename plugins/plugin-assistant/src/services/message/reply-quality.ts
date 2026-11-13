@@ -138,6 +138,7 @@ export function isRequestedTerseLiteralReply(args: {
 /**
  * Recognize a simple imperative to emit ONE specific literal token, e.g.
  * "Say PONG", "say pong", "please say PONG", "can you say PONG", "reply with OK",
+ * "Reply with exactly READY", "say exactly READY",
  * "respond with the word HELLO", "output PONG!", and the quantified forms
  * "Reply with the single word: PONG" / "reply with one word: PONG" (the
  * acceptance-gate smoke phrasing). The lightweight sibling of
@@ -163,7 +164,7 @@ export function parseSayLiteralInstruction(
     .replace(/^\s*(?:<@!?\d+>\s*|@\S+\s+|[^()\n]{0,80}\(@\d+\)\s*)/u, "")
     .trim();
   const match = body.match(
-    /^(?:(?:can|could|would|will)\s+you\s+|please\s+|just\s+|kindly\s+){0,3}(?:say|reply|respond|answer|output|return|write|type|echo|print)(?:\s+(?:with|back|(?:(?:the|a|an)\s+)?(?:single|one)\s+(?:word|phrase|token)|the\s+(?:word|phrase|token))){0,2}\s*:?\s*(["'“”‘’]?)([\p{L}\p{N}]{1,40})(["'“”‘’]?)(\s+verbatim)?\s*[.!?]*$/iu,
+    /^(?:(?:can|could|would|will)\s+you\s+|please\s+|just\s+|kindly\s+){0,3}(?:say|reply|respond|answer|output|return|write|type|echo|print)(?:\s+(?:with(?:\s+exactly)?|exactly|back|(?:(?:the|a|an)\s+)?(?:single|one)\s+(?:word|phrase|token)|the\s+(?:word|phrase|token))){0,2}\s*:?\s*(["'“”‘’]?)([\p{L}\p{N}]{1,40})(["'“”‘’]?)(\s+verbatim)?\s*[.!?]*$/iu,
   );
   if (!match) return null;
   // Unquoted pronouns refer to prior context rather than the literal word.

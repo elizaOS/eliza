@@ -42,6 +42,7 @@ export class RetentionTask<T> {
   private stopping = false;
   private installed = false;
   private stopOperation: Promise<void> | undefined;
+  private startOperation: Promise<void> | undefined;
   private readonly id;
   private readonly worker: TaskWorker;
 
@@ -107,7 +108,33 @@ export class RetentionTask<T> {
     return config;
   }
 
-  async start(intervalMs: number | undefined): Promise<void> {
+  start(intervalMs: number | undefined): Promise<void> {
+    if (this.stopping) {
+      return Promise.reject(
+        new ElizaError("Retention service is stopped", {
+          code: "RETENTION_SERVICE_STOPPED",
+          context: { worker: this.name },
+        }),
+      );
+    }
+    if (this.startOperation) {
+      return Promise.reject(
+        new ElizaError("Host retention worker is already registered", {
+          code: "RETENTION_WORKER_ALREADY_REGISTERED",
+          context: { worker: this.name },
+        }),
+      );
+    }
+    const operation = this.install(intervalMs);
+    this.startOperation = operation;
+    const release = () => {
+      if (this.startOperation === operation) this.startOperation = undefined;
+    };
+    void operation.then(release, release);
+    return operation;
+  }
+
+  private async install(intervalMs: number | undefined): Promise<void> {
     if (this.runtime.getTaskWorker(this.name)) {
       throw new ElizaError("Host retention worker is already registered", {
         code: "RETENTION_WORKER_ALREADY_REGISTERED",
@@ -201,6 +228,10 @@ export class RetentionTask<T> {
   private async finishStop(): Promise<void> {
     this.stopping = true;
     try {
+      // Startup owns any write already accepted by storage. Drain it before
+      // deleting the schedule, including when stop races getTask/createTask.
+      // The start caller observes its rejection; cleanup still owns the worker.
+      await this.startOperation?.catch(() => undefined);
       if (this.installed) await this.runtime.deleteTask(this.id);
     } finally {
       try {

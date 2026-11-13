@@ -43,10 +43,8 @@ export function resolveMobileBuildPolicy(platform, env = process.env) {
     platform === "ios" && isIosAppStoreLocalRuntimeEnabled(env);
   const capacitorTarget =
     platform === "android-system" ||
-    platform === "android-launcher" ||
     platform === "android-cloud" ||
-    platform === "android-cloud-debug" ||
-    platform === "android-cloud-hybrid"
+    platform === "android-cloud-debug"
       ? "android"
       : platform === "ios-overlay" || platform === "ios-local"
         ? "ios"
@@ -57,15 +55,11 @@ export function resolveMobileBuildPolicy(platform, env = process.env) {
   // is the default sideload/AOSP behavior. Surfaced to the renderer via
   // VITE_ELIZA_ANDROID_RUNTIME_MODE so it can hide the Local picker option.
   const androidRuntimeMode =
-    platform === "android-cloud" ||
-    platform === "android-cloud-debug" ||
-    platform === "android-launcher"
+    platform === "android-cloud" || platform === "android-cloud-debug"
       ? "cloud"
-      : platform === "android-cloud-hybrid"
-        ? "cloud-hybrid"
-        : platform === "android" || platform === "android-system"
-          ? "local"
-          : null;
+      : platform === "android" || platform === "android-system"
+        ? "local"
+        : null;
   const iosRuntimeMode =
     platform === "ios-local"
       ? "local"
@@ -77,13 +71,9 @@ export function resolveMobileBuildPolicy(platform, env = process.env) {
           ? "cloud"
           : null;
   const runtimeExecutionMode =
-    platform === "android-cloud" ||
-    platform === "android-cloud-debug" ||
-    platform === "android-launcher"
+    platform === "android-cloud" || platform === "android-cloud-debug"
       ? "cloud"
-      : platform === "android" ||
-          platform === "android-system" ||
-          platform === "android-cloud-hybrid"
+      : platform === "android" || platform === "android-system"
         ? "local-yolo"
         : platform === "ios-local"
           ? "local-safe"
@@ -99,7 +89,7 @@ export function resolveMobileBuildPolicy(platform, env = process.env) {
   const releaseAuthority =
     platform === "android-cloud"
       ? "google-play"
-      : platform === "android" || platform === "android-cloud-hybrid"
+      : platform === "android"
         ? "github-release-android-package-installer"
         : platform === "android-system"
           ? "aosp-ota"
@@ -107,8 +97,7 @@ export function resolveMobileBuildPolicy(platform, env = process.env) {
             ? "apple-app-store"
             : platform === "ios-local"
               ? "developer-toolchain"
-              : platform === "android-cloud-debug" ||
-                  platform === "android-launcher"
+              : platform === "android-cloud-debug"
                 ? "developer-debug"
                 : "developer-toolchain";
   return {

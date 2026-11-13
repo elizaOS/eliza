@@ -19,6 +19,7 @@ import type {
 	UUID,
 } from "../types/primitives.js";
 import { createHash } from "../utils/crypto-compat";
+import { sha256Hex } from "./trajectory-provider-attribution";
 
 export const MESSAGE_CONTENT_SEGMENT_VERSION = 1 as const;
 export const MESSAGE_CONTENT_SEGMENT_MAX_BYTES = 64 * 1024;
@@ -80,33 +81,33 @@ const decoder = new TextDecoder("utf-8", { fatal: true });
 // package rejects them as v5 namespaces. Keep one RFC namespace and include
 // the parent identity in the name so every accepted elizaOS UUID remains a
 // deterministic, collision-isolated segment owner.
-const MESSAGE_CONTENT_SEGMENT_NAMESPACE =
-	"6ba7b811-9dad-11d1-80b4-00c04fd430c8";
+const MESSAGE_CONTENT_SEGMENT_NAMESPACE_HEX =
+	"6ba7b8119dad11d180b400c04fd430c8";
+const SHA256_HEX = /^[a-f0-9]{64}$/u;
+const REVISION = /^rev:[a-f0-9]{64}$/u;
 
 function bytes(value: string): Uint8Array {
 	return encoder.encode(value);
 }
 
-function sha256(value: string | Uint8Array): string {
-	return createHash("sha256").update(value).digest("hex");
+export function hashAttachmentIdForLocator(attachmentId: string): string {
+	return sha256Hex(`attachment-id\0${attachmentId}`);
 }
 
-export function hashAttachmentIdForLocator(attachmentId: string): string {
-	return sha256(`attachment-id\0${attachmentId}`);
-}
+const UNREADABLE_ATTACHMENT_DESCRIPTIONS: ReadonlySet<string> = new Set([
+	"An image attachment (recognition failed)",
+	"An image attachment (image bytes unavailable)",
+	"An audio/video attachment (transcription failed)",
+	"User-uploaded audio/video attachment (no transcription available)",
+	"Could not process video attachment because the required service is not available.",
+	"A PDF document that could not be converted to text",
+	"A plaintext document that could not be retrieved",
+	"A generic attachment",
+	"A video attachment",
+]);
 
 function isUnreadableAttachmentDescription(value: string): boolean {
-	return [
-		"An image attachment (recognition failed)",
-		"An image attachment (image bytes unavailable)",
-		"An audio/video attachment (transcription failed)",
-		"User-uploaded audio/video attachment (no transcription available)",
-		"Could not process video attachment because the required service is not available.",
-		"A PDF document that could not be converted to text",
-		"A plaintext document that could not be retrieved",
-		"A generic attachment",
-		"A video attachment",
-	].includes(value.trim());
+	return UNREADABLE_ATTACHMENT_DESCRIPTIONS.has(value.trim());
 }
 
 /** Exact text exposed by ATTACHMENT reads, without fallback prose. */
@@ -155,15 +156,13 @@ export function messageContentSegmentId(args: {
 	].join(":");
 	// Preserve the RFC 4122 v5 identities already persisted by earlier versions.
 	const digest = createHash("sha1")
-		.update(
-			Buffer.from(MESSAGE_CONTENT_SEGMENT_NAMESPACE.replaceAll("-", ""), "hex"),
-		)
+		.update(Buffer.from(MESSAGE_CONTENT_SEGMENT_NAMESPACE_HEX, "hex"))
 		.update(name)
 		.digest();
 	const id = Buffer.from(digest.subarray(0, 16));
-	id[6] = (id.readUInt8(6) & 0x0f) | 0x50;
-	id[8] = (id.readUInt8(8) & 0x3f) | 0x80;
-	const hex = Buffer.from(id).toString("hex");
+	id[6] = (id[6] & 0x0f) | 0x50;
+	id[8] = (id[8] & 0x3f) | 0x80;
+	const hex = id.toString("hex");
 	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}` as UUID;
 }
 
@@ -174,7 +173,7 @@ function buildSource(args: {
 	attachmentHash?: string;
 }): { descriptor: MessageContentSourceDescriptor; segments: Memory[] } {
 	const source = bytes(args.text);
-	const digest = sha256(source);
+	const digest = sha256Hex(source);
 	const revision = `rev:${digest}`;
 	const descriptor: MessageContentSourceDescriptor = {
 		kind: args.kind,
@@ -200,7 +199,7 @@ function buildSource(args: {
 			ordinal,
 			byteStart: start,
 			byteEnd: end,
-			segmentSha256: sha256(segmentBytes),
+			segmentSha256: sha256Hex(segmentBytes),
 			timestamp: args.message.createdAt ?? Date.now(),
 		};
 		segments.push({
@@ -225,15 +224,6 @@ function buildSource(args: {
 		descriptor.segmentCount = segments.length;
 	}
 	return { descriptor, segments };
-}
-
-function attachmentDescriptor(
-	value: Media,
-): MessageContentSourceDescriptor | null {
-	const candidate = (value as Media & { textSource?: unknown }).textSource;
-	return isMessageContentSourceDescriptor(candidate, "attachment-text")
-		? candidate
-		: null;
 }
 
 /** Builds the small parent and every immutable segment before publication. */
@@ -297,16 +287,16 @@ export function isMessageContentSourceDescriptor(
 		record.storage === "segments" &&
 		record.version === MESSAGE_CONTENT_SEGMENT_VERSION &&
 		typeof record.revision === "string" &&
-		/^rev:[a-f0-9]{64}$/u.test(record.revision) &&
+		REVISION.test(record.revision) &&
 		typeof record.sha256 === "string" &&
-		/^[a-f0-9]{64}$/u.test(record.sha256) &&
+		SHA256_HEX.test(record.sha256) &&
 		Number.isSafeInteger(record.byteLength) &&
 		(record.byteLength as number) > MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES &&
 		Number.isSafeInteger(record.segmentCount) &&
 		(record.segmentCount as number) > 0 &&
 		(record.kind !== "attachment-text" ||
 			(typeof record.attachmentIdHash === "string" &&
-				/^[a-f0-9]{64}$/u.test(record.attachmentIdHash)))
+				SHA256_HEX.test(record.attachmentIdHash)))
 	);
 }
 
@@ -324,7 +314,10 @@ export function messageTextSourceDescriptor(
 export function attachmentTextSourceDescriptor(
 	attachment: Media,
 ): MessageContentSourceDescriptor | null {
-	return attachmentDescriptor(attachment);
+	const candidate = (attachment as Media & { textSource?: unknown }).textSource;
+	return isMessageContentSourceDescriptor(candidate, "attachment-text")
+		? candidate
+		: null;
 }
 
 /** Finds exactly one committed source descriptor; duplicates fail closed. */
@@ -335,23 +328,23 @@ export function resolveMessageContentSourceDescriptor(
 	if (selector.kind === "message-text") {
 		return messageTextSourceDescriptor(content);
 	}
-	if (!/^[a-f0-9]{64}$/u.test(selector.attachmentIdHash ?? "")) {
+	if (!SHA256_HEX.test(selector.attachmentIdHash ?? "")) {
 		throw new ElizaError("Attachment source selector is invalid", {
 			code: "ATTACHMENT_CONTENT_INVALID_REFERENCE",
 		});
 	}
-	const matches = (content.attachments ?? [])
-		.map(attachmentTextSourceDescriptor)
-		.filter(
-			(descriptor): descriptor is MessageContentSourceDescriptor =>
-				descriptor?.attachmentIdHash === selector.attachmentIdHash,
-		);
-	if (matches.length > 1) {
-		throw new ElizaError("Attachment source descriptor is ambiguous", {
-			code: "ATTACHMENT_CONTENT_CORRUPT",
-		});
+	let match: MessageContentSourceDescriptor | null = null;
+	for (const attachment of content.attachments ?? []) {
+		const descriptor = attachmentTextSourceDescriptor(attachment);
+		if (descriptor?.attachmentIdHash !== selector.attachmentIdHash) continue;
+		if (match) {
+			throw new ElizaError("Attachment source descriptor is ambiguous", {
+				code: "ATTACHMENT_CONTENT_CORRUPT",
+			});
+		}
+		match = descriptor;
 	}
-	return matches[0] ?? null;
+	return match;
 }
 
 /**
@@ -402,8 +395,8 @@ export function authorizeMessageContentRead(args: {
 
 export function messageContentRequiresSegments(content: Content): boolean {
 	if (messageTextSourceDescriptor(content)) return true;
-	return (content.attachments ?? []).some((attachment) =>
-		Boolean(attachmentTextSourceDescriptor(attachment)),
+	return (content.attachments ?? []).some(
+		(attachment) => attachmentTextSourceDescriptor(attachment) !== null,
 	);
 }
 
@@ -476,12 +469,16 @@ export function readMessageContentProjection(args: {
 	});
 	let previousEnd: number | undefined;
 	let previousOrdinal: number | undefined;
+	let firstStart: number | undefined;
+	const encodedSegments: Uint8Array[] = [];
+	let combinedLength = 0;
 	for (const segment of ordered) {
 		const metadata = (segment.metadata ?? {}) as Record<string, unknown>;
 		const start = safeInteger(metadata.byteStart);
 		const end = safeInteger(metadata.byteEnd);
 		const ordinal = safeInteger(metadata.ordinal);
 		const text = segment.content.text;
+		const encoded = typeof text === "string" ? bytes(text) : undefined;
 		if (
 			metadata.type !== "message-content-segment" ||
 			metadata.segmentVersion !== MESSAGE_CONTENT_SEGMENT_VERSION ||
@@ -494,9 +491,10 @@ export function readMessageContentProjection(args: {
 			end <= start ||
 			ordinal === null ||
 			typeof text !== "string" ||
-			bytes(text).length !== end - start ||
+			encoded === undefined ||
+			encoded.length !== end - start ||
 			typeof metadata.segmentSha256 !== "string" ||
-			sha256(text) !== metadata.segmentSha256 ||
+			sha256Hex(text) !== metadata.segmentSha256 ||
 			(previousEnd !== undefined && start !== previousEnd) ||
 			(previousOrdinal !== undefined && ordinal !== previousOrdinal + 1)
 		) {
@@ -505,8 +503,11 @@ export function readMessageContentProjection(args: {
 				context: { messageId: args.messageId, ordinal },
 			});
 		}
+		firstStart ??= start;
 		previousEnd = end;
 		previousOrdinal = ordinal;
+		encodedSegments.push(encoded);
+		combinedLength += encoded.length;
 	}
 	if (args.offset === args.descriptor.byteLength) {
 		return {
@@ -516,28 +517,33 @@ export function readMessageContentProjection(args: {
 			total: args.descriptor.byteLength,
 			revision: args.descriptor.revision,
 			sourceSha256: args.descriptor.sha256,
-			sliceSha256: sha256(""),
+			sliceSha256: sha256Hex(""),
 			returnedSegments: 0,
 			returnedBytes: 0,
 			sourceQueryCount: args.sourceQueryCount ?? 0,
 		};
 	}
-	if (ordered.length === 0) {
+	if (firstStart === undefined) {
 		throw new ElizaError("Message content range is missing", {
 			code: "MESSAGE_CONTENT_CORRUPT",
 			context: { messageId: args.messageId, offset: args.offset },
 		});
 	}
-	const firstStart = safeInteger(
-		(ordered[0].metadata as Record<string, unknown>).byteStart,
-	);
-	if (firstStart === null || firstStart > args.offset) {
+	if (firstStart > args.offset) {
 		throw new ElizaError("Message content range prefix is missing", {
 			code: "MESSAGE_CONTENT_CORRUPT",
 			context: { messageId: args.messageId, offset: args.offset },
 		});
 	}
-	const combined = bytes(ordered.map((row) => row.content.text ?? "").join(""));
+	let combined = encodedSegments[0];
+	if (encodedSegments.length > 1) {
+		combined = new Uint8Array(combinedLength);
+		let writeOffset = 0;
+		for (const encoded of encodedSegments) {
+			combined.set(encoded, writeOffset);
+			writeOffset += encoded.length;
+		}
+	}
 	const localStart = args.offset - firstStart;
 	if (
 		localStart < 0 ||
@@ -599,7 +605,7 @@ export function readMessageContentProjection(args: {
 		total: args.descriptor.byteLength,
 		revision: args.descriptor.revision,
 		sourceSha256: args.descriptor.sha256,
-		sliceSha256: sha256(pageBytes),
+		sliceSha256: sha256Hex(pageBytes),
 		returnedSegments: ordered.length,
 		returnedBytes: pageBytes.length,
 		sourceQueryCount: args.sourceQueryCount ?? 0,

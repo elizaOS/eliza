@@ -1,6 +1,11 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { NativeCloudServiceError } from "./errors.mjs";
-import { createManagedGoogleReadPort } from "./managed-google-read-port.mjs";
+import { mailboxState } from "./mail-fields.mjs";
+import {
+  createManagedGoogleReadPort,
+  isStringList,
+  readDetailFields,
+} from "./managed-google-read-port.mjs";
 
 const reject = (status = 400) => {
   throw new NativeCloudServiceError("Mailbox read unavailable", { status });
@@ -20,8 +25,11 @@ const attachmentTypes = new Set([
 ]);
 /** Versioned host-only inbox projection, separate from task mail reads. The host
  * supplies a credential/owner/grant-fenced, size-bounded GET transport. Render all
- * strings as text, never HTML. No URLs, inline images or provider secrets leave
- * this port. Attaching it to a renderer requires its own explicit read authority. */
+ * strings as text, never HTML. No inline images or provider secrets leave this
+ * port. A read returns the connector's inert `links`, so that a person can review
+ * and open a link. It also returns raw `authenticationResults` for the host only.
+ * Attaching it to a renderer requires its own explicit read authority and must
+ * remove `authenticationResults`. */
 export function createMailboxReadPort({ accountId, request }) {
   if (!id(accountId) || typeof request !== "function") reject();
   const cursorKey = randomBytes(32);
@@ -64,7 +72,15 @@ export function createMailboxReadPort({ accountId, request }) {
     return new URLSearchParams({ side: "owner", grantId: accountId });
   };
   const summary = (value) => {
-    if (!id(value?.externalId) || !id(value.threadId)) reject(502);
+    if (
+      !id(value?.externalId) ||
+      !id(value.threadId) ||
+      !isStringList(value.to) ||
+      !isStringList(value.cc) ||
+      !(typeof value.replyTo === "string" || value.replyTo === null) ||
+      typeof value.isUnread !== "boolean"
+    )
+      reject(502);
     return {
       id: value.externalId,
       threadId: value.threadId,
@@ -73,6 +89,13 @@ export function createMailboxReadPort({ accountId, request }) {
         value.fromEmail === null ? value.from : value.fromEmail,
         1024,
       ),
+      // Each holds an address, or display text when no address parses. A sender
+      // writes these, so one long header must not fail a whole list. The GET
+      // transport bounds the response size.
+      to: [...value.to],
+      cc: [...value.cc],
+      replyTo: value.replyTo,
+      unread: value.isUnread,
       subject: text(value.subject ?? "", 8192),
       receivedAt: text(value.receivedAt, 128),
       snippet: text(value.snippet ?? "", 16384),
@@ -141,6 +164,8 @@ export function createMailboxReadPort({ accountId, request }) {
         value.attachments.length > 100
       )
         reject(502);
+      const fields = readDetailFields(value);
+      if (!fields) reject(502);
       const attachments = value.attachments.map((part) => {
         if (
           typeof part?.partId !== "string" ||
@@ -163,10 +188,16 @@ export function createMailboxReadPort({ accountId, request }) {
         version: 1,
         accountId,
         message: summary(value.message),
+        // The mailbox state a reviewed change names.
+        state: mailboxState(
+          value.message.labels,
+          value.message.metadata?.historyId,
+        ),
         format: "text",
         remoteImages: false,
         bodyText: text(value.bodyText, 1024 * 1024),
         attachments,
+        ...fields,
       };
     },
     async attachment(input) {

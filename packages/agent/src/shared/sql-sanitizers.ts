@@ -30,9 +30,11 @@ export function stripSqlBlockComments(sql: string): string {
   return result;
 }
 
+// PostgreSQL ends a double-dash comment only at \n or \r. Ending it anywhere
+// else would let the scanner read the rest of the comment as code or literals.
 function sqlLineTerminatorLength(sql: string, index: number): number {
   const char = sql.charCodeAt(index);
-  if (char === 0x0a || char === 0x2028 || char === 0x2029) return 1;
+  if (char === 0x0a) return 1;
   if (char === 0x0d) return sql.charCodeAt(index + 1) === 0x0a ? 2 : 1;
   return 0;
 }
@@ -128,12 +130,35 @@ export type ReadOnlySqlScan =
     }
   | { ok: false; reason: string };
 
-function isAsciiIdentifierStart(char: string | undefined): boolean {
-  return char !== undefined && /[A-Za-z_]/.test(char);
+// PostgreSQL's lexer treats every byte >= 0x80 as an identifier character, so
+// `é$x$` is one identifier, not the start of a dollar-quoted string.
+function isSqlIdentifierStart(char: string | undefined): boolean {
+  return (
+    char !== undefined && (/[A-Za-z_]/.test(char) || char.charCodeAt(0) >= 0x80)
+  );
 }
 
-function isAsciiIdentifierPart(char: string | undefined): boolean {
-  return char !== undefined && /[A-Za-z0-9_$]/.test(char);
+function isSqlIdentifierPart(char: string | undefined): boolean {
+  return (
+    char !== undefined &&
+    (/[A-Za-z0-9_$]/.test(char) || char.charCodeAt(0) >= 0x80)
+  );
+}
+
+/** Index of the next token after whitespace and double-dash comments. */
+function skipSqlWhitespace(sql: string, index: number): number {
+  let i = index;
+  while (i < sql.length) {
+    if (/\s/.test(sql.charAt(i))) {
+      i += 1;
+    } else if (sql.startsWith("--", i)) {
+      i += 2;
+      while (i < sql.length && sqlLineTerminatorLength(sql, i) === 0) i += 1;
+    } else {
+      break;
+    }
+  }
+  return i;
 }
 
 /**
@@ -189,8 +214,8 @@ export function scanSqlForReadOnly(sql: string): ReadOnlySqlScan {
       // PostgreSQL treats a block comment as a token separator, so it must not
       // be collapsed away; splitting an identifier with one is rejected.
       if (
-        isAsciiIdentifierPart(sql[commentStart - 1]) &&
-        isAsciiIdentifierPart(sql[i])
+        isSqlIdentifierPart(sql[commentStart - 1]) &&
+        isSqlIdentifierPart(sql[i])
       ) {
         return {
           ok: false,
@@ -203,13 +228,13 @@ export function scanSqlForReadOnly(sql: string): ReadOnlySqlScan {
     }
 
     if (sql[i] === "$") {
-      if (isAsciiIdentifierPart(sql[i - 1])) {
+      if (isSqlIdentifierPart(sql[i - 1])) {
         appendOutside("$");
         i += 1;
         continue;
       }
       let tagEnd = i + 1;
-      if (sql[tagEnd] !== "$" && !isAsciiIdentifierStart(sql[tagEnd])) {
+      if (sql[tagEnd] !== "$" && !isSqlIdentifierStart(sql[tagEnd])) {
         appendOutside("$");
         i += 1;
         continue;
@@ -217,7 +242,7 @@ export function scanSqlForReadOnly(sql: string): ReadOnlySqlScan {
       while (
         tagEnd < sql.length &&
         sql[tagEnd] !== "$" &&
-        isAsciiIdentifierPart(sql[tagEnd])
+        isSqlIdentifierPart(sql[tagEnd])
       ) {
         if (tagEnd - i > MAX_DOLLAR_QUOTE_TAG_LENGTH) {
           return {
@@ -249,7 +274,7 @@ export function scanSqlForReadOnly(sql: string): ReadOnlySqlScan {
       const escapePrefix =
         i > 0 &&
         (sql[i - 1] === "e" || sql[i - 1] === "E") &&
-        !isAsciiIdentifierPart(sql[i - 2]);
+        !isSqlIdentifierPart(sql[i - 2]);
       if (escapePrefix) {
         keywordText = keywordText.slice(0, -1);
         callableText = callableText.slice(0, -1);
@@ -272,6 +297,15 @@ export function scanSqlForReadOnly(sql: string): ReadOnlySqlScan {
         }
       }
       if (!closed) return { ok: false, reason: "Unterminated string literal." };
+      // A literal continued on a later line keeps the E-string's backslash
+      // escapes, which this scanner would read as a plain string.
+      if (escapePrefix && sql[skipSqlWhitespace(sql, i)] === "'") {
+        return {
+          ok: false,
+          reason:
+            "String continuation after an E-string is not allowed in read-only mode.",
+        };
+      }
       appendOutside(" ");
       continue;
     }
@@ -281,7 +315,7 @@ export function scanSqlForReadOnly(sql: string): ReadOnlySqlScan {
         i >= 2 &&
         (sql[i - 2] === "u" || sql[i - 2] === "U") &&
         sql[i - 1] === "&" &&
-        !isAsciiIdentifierPart(sql[i - 3]);
+        !isSqlIdentifierPart(sql[i - 3]);
       if (unicodePrefix) {
         return {
           ok: false,

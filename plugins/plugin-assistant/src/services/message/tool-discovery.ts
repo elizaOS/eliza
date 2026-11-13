@@ -15,10 +15,12 @@ import type {
   ToolDefinition,
 } from "@elizaos/core";
 import {
+  ACTION_RESULT_OVERSIZE_WARNING_TOKENS,
   actionGateRejection,
   DISCOVER_ACTIONS_NAME,
   DISCOVER_TOOLS_NAME,
   ElizaError,
+  estimateActionResultTokens,
   getUserMessageText,
   isDiscoveryActionName,
   isObjectRecord,
@@ -156,9 +158,9 @@ export function createPlannerToolDiscoveryAction(
     "Find authorized operations that are not already exposed, or inspect definitions when explicitly requested. Exposed tools already have complete schemas: call a fitting one directly instead of discovering or loading it again. " +
     "Find authorized operations by query and/or contexts, or load exact names (parents load their families). Exact names plus query must match both; names cannot be combined with contexts. " +
     "mode=load enables complete schemas in the next tool surface; use loaded tools to perform work. " +
-    "Empty load selectors search the current task. mode=describe reads complete descriptions and schemas for exact names or matching queries without enabling tools. With no selectors, mode=describe,names=[] returns the complete authorized catalog with all descriptions and parameter schemas. " +
+    "Empty load selectors search the current task. mode=describe reads complete descriptions and schemas for exact names or matching queries without enabling tools. With no selectors, mode=describe,names=[] returns the complete authorized catalog: every family's full description and parameter schema while they fit the discovery result budget, otherwise every family and child name with its summary (completeDefinitions=false); read full definitions with exact names. " +
     (catalogIndex
-      ? "Without task context, names=[] returns a routing index. "
+      ? "Without task context, names=[] also returns that complete catalog. "
       : "") +
     "Discovery refreshes permissions and never executes domain work. A search miss does not prove a capability is unavailable.";
   const inlineDescription = `${discoveryDescription}\n${renderDiscoveryNameIndex(catalog.parents)}`;
@@ -180,8 +182,8 @@ export function createPlannerToolDiscoveryAction(
       {
         name: "names",
         description: catalogIndex
-          ? "Exact authorized names. If query is also supplied, every name must match that query and fresh authorization; never combine names with contexts. [] searches the current task (routing index only when task context is absent). Use mode=describe,names=[] for the full name index; choose exact names for full definitions."
-          : "Exact authorized parent or child names. If query is also supplied, every name must match that query and fresh authorization; never combine names with contexts. Empty load selectors search the current task; mode=describe,names=[] reads the compact complete name index without loading tools.",
+          ? "Exact authorized names. If query is also supplied, every name must match that query and fresh authorization; never combine names with contexts. [] searches the current task (the complete catalog only when task context is absent). mode=describe,names=[] returns every family's full definition, or every name with its summary when those exceed the result budget; choose exact names to read only the definitions you need."
+          : "Exact authorized parent or child names. If query is also supplied, every name must match that query and fresh authorization; never combine names with contexts. Empty load selectors search the current task; mode=describe,names=[] reads every family's full definition, or every name with its summary when those exceed the result budget, without loading tools.",
         required: false,
         schema: { type: "array", items: { type: "string" } },
       },
@@ -200,18 +202,31 @@ export function createPlannerToolDiscoveryAction(
     ],
     validate: async () => true,
     handler: async (runtime, message, _state, callOptions) => {
-      const mode = isObjectRecord(callOptions?.parameters)
-        ? callOptions.parameters.mode
-        : undefined;
-      let names = isObjectRecord(callOptions?.parameters)
-        ? callOptions.parameters.names
-        : undefined;
-      let query = isObjectRecord(callOptions?.parameters)
-        ? callOptions.parameters.query
-        : undefined;
-      const contexts = isObjectRecord(callOptions?.parameters)
-        ? callOptions.parameters.contexts
-        : undefined;
+      const parameters = isObjectRecord(callOptions?.parameters)
+        ? callOptions.parameters
+        : {};
+      const mode = parameters.mode;
+      // An empty list or blank query selects nothing, so it counts as omitted
+      // instead of colliding with the selector actually sent: describe with
+      // names=[] beside a query was rejected as "not both" and cost a planner
+      // round (live 2026-10-30, tj-786ca91739ceaa). A lone names=[] keeps its
+      // complete-catalog meaning, and describe with no selector reads it too.
+      let query =
+        typeof parameters.query === "string" && !parameters.query.trim()
+          ? undefined
+          : parameters.query;
+      const contexts =
+        Array.isArray(parameters.contexts) && parameters.contexts.length === 0
+          ? undefined
+          : parameters.contexts;
+      const searchSelector = query !== undefined || contexts !== undefined;
+      let names =
+        Array.isArray(parameters.names) &&
+        parameters.names.length === 0 &&
+        searchSelector
+          ? undefined
+          : (parameters.names ??
+            (mode === "describe" && !searchSelector ? [] : undefined));
       const emptyLoad =
         mode !== "describe" &&
         query === undefined &&
@@ -227,7 +242,7 @@ export function createPlannerToolDiscoveryAction(
           return {
             success: false,
             error:
-              "Supply an intent query or exact names to load tools; use mode=describe,names=[] to read the complete authorized name index. No tools were loaded.",
+              "Supply an intent query or exact names to load tools; use mode=describe,names=[] to read the complete authorized catalog. No tools were loaded.",
             data: { readOnlyOperation: true, coachingFailure: true },
           };
         }
@@ -305,11 +320,9 @@ export function createPlannerToolDiscoveryAction(
         if (
           names !== undefined ||
           (mode !== undefined && mode !== "load" && mode !== "describe") ||
-          (query !== undefined &&
-            (typeof query !== "string" || !query.trim())) ||
+          (query !== undefined && typeof query !== "string") ||
           (contexts !== undefined &&
             (!Array.isArray(contexts) ||
-              contexts.length === 0 ||
               !contexts.every(
                 (context): context is string =>
                   typeof context === "string" && context.trim().length > 0,
@@ -400,10 +413,10 @@ export function createPlannerToolDiscoveryAction(
           modelReplyRequired: true,
           text:
             selected.length === 0
-              ? "No matching operations. Rephrase the query or select from availableContexts to retry a scoped search. Explicit mode=describe,names=[] remains available for the complete authorized name index. No tools were loaded or executed."
+              ? "No matching operations. Rephrase the query or select from availableContexts to retry a scoped search. Explicit mode=describe,names=[] remains available for the complete authorized catalog. No tools were loaded or executed."
               : mode === "describe"
                 ? "Complete descriptions and schemas for the selected matching operations. Deferred matches remain discoverable. No tools were enabled or executed."
-                : "Selected matching tools enabled. Deferred matches remain available through exact names, a narrower search or mode=describe,names=[] for the complete name index; no domain work was executed.",
+                : "Selected matching tools enabled. Deferred matches remain available through exact names, a narrower search or mode=describe,names=[] for the complete catalog; no domain work was executed.",
           data: {
             readOnlyOperation: true,
             ...(inferredContexts.length > 0 ? { inferredContexts } : {}),
@@ -479,6 +492,67 @@ export function createPlannerToolDiscoveryAction(
             normalizeActionJsonSchema(action),
           ]),
         );
+        const definitions = completeCatalog.parents.map((parent) => ({
+          name: parent.name,
+          description: parent.source.description,
+          parameters: parameterSchemas.get(parent.name),
+          children: parent.childNames,
+          childDefinitions: parent.children.map((child) => ({
+            name: child.name,
+            description: child.source.description,
+            parameters: parameterSchemas.get(child.name),
+          })),
+        }));
+        // An unscoped read returns full definitions while they fit core's
+        // action-result prompt-size threshold (10,000 estimated tokens), about
+        // a tenth of a request that has drawn a provider TPM 429: the live
+        // 54-family definitions were 407,397 chars, the next planner request
+        // 93,495 tokens, and the evaluator call 4s later got HTTP 429
+        // (2026-10-30, tj-7138d70800aff4). Above it the read returns the
+        // complete index instead: every authorized family and child name with
+        // any authored descriptionCompressed, labeled catalogDetail:"index"
+        // and completeDefinitions:false. This is explicit, not silent
+        // truncation or a hard size limit: no entry is dropped or shortened,
+        // the index is never cut, and exact names return every full definition.
+        if (
+          names.length === 0 &&
+          estimateActionResultTokens(JSON.stringify(definitions)) >
+            ACTION_RESULT_OVERSIZE_WARNING_TOKENS
+        ) {
+          return {
+            success: true,
+            transcriptVisibility: "internal",
+            modelReplyRequired: true,
+            text: "Complete authorized name index: full definitions for every family exceed the discovery result budget, so read them with mode=describe and exact names from this index. No tools were enabled or domain work performed.",
+            data: {
+              readOnlyOperation: true,
+              catalogDetail: "index",
+              completeDefinitions: false,
+              catalog: completeCatalog.parents.map((parent) => {
+                const childSummaries = parent.children.filter(
+                  (child) => child.descriptionCompressed,
+                );
+                return {
+                  name: parent.name,
+                  ...(parent.descriptionCompressed
+                    ? { summary: parent.descriptionCompressed }
+                    : {}),
+                  children: parent.childNames,
+                  ...(childSummaries.length > 0
+                    ? {
+                        childSummaries: Object.fromEntries(
+                          childSummaries.map((child) => [
+                            child.name,
+                            child.descriptionCompressed,
+                          ]),
+                        ),
+                      }
+                    : {}),
+                };
+              }),
+            },
+          };
+        }
         return {
           success: true,
           transcriptVisibility: "internal",
@@ -487,20 +561,7 @@ export function createPlannerToolDiscoveryAction(
             names.length === 0
               ? "Complete authorized catalog with full descriptions and schemas; no domain work was performed."
               : "Complete descriptions and parameter schemas for the requested authorized tools. Other families remain discoverable with mode=describe,names=[]. No tools were enabled or domain work performed.",
-          data: {
-            readOnlyOperation: true,
-            catalog: completeCatalog.parents.map((parent) => ({
-              name: parent.name,
-              description: parent.source.description,
-              parameters: parameterSchemas.get(parent.name),
-              children: parent.childNames,
-              childDefinitions: parent.children.map((child) => ({
-                name: child.name,
-                description: child.source.description,
-                parameters: parameterSchemas.get(child.name),
-              })),
-            })),
-          },
+          data: { readOnlyOperation: true, catalog: definitions },
         };
       }
       // Stage 1 can omit a domain even when the planner explicitly requests

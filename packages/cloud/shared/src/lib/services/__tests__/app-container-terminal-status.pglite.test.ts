@@ -15,7 +15,7 @@
  * by the production repository against a real Postgres engine.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -86,6 +86,15 @@ beforeAll(async () => {
     ({ containers, TERMINAL_CONTAINER_STATUS } = await import("../../../db/schemas/containers"));
     ({ ContainerRepoAppContainerStore } = await import("../app-container-store"));
     await dbWrite.execute(CONTAINERS_DDL);
+    await dbWrite.execute(JOBS_DDL);
+    await dbWrite.execute(`CREATE TABLE docker_nodes (
+      node_id text PRIMARY KEY, allocated_count integer NOT NULL DEFAULT 0,
+      capacity integer NOT NULL, enabled boolean NOT NULL DEFAULT true,
+      placement_state text NOT NULL DEFAULT 'open', updated_at timestamp NOT NULL DEFAULT now()
+    )`);
+    await dbWrite.execute(
+      "INSERT INTO docker_nodes (node_id, capacity) VALUES ('publication-node',10)",
+    );
     // markStoppedForBilling settles accrued compute against the organization;
     // this fixture has no organization rows, so the settlement is a no-op.
     await dbWrite.execute(
@@ -159,7 +168,7 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
  * held open until the test releases it. The SELECT itself is issued and executed
  * unchanged against PGlite; only the continuation is scheduled.
  */
-function readDatabaseGatedAfterSelect(gate: Promise<void>) {
+function readDatabaseGatedAfterSelect(gate: Promise<void>, captured?: () => void) {
   return {
     select: (selection: Record<string, unknown>) => {
       const builder = dbWrite.select(selection as never);
@@ -172,6 +181,7 @@ function readDatabaseGatedAfterSelect(gate: Promise<void>) {
               return {
                 limit: async (count: number) => {
                   const rows = await whereBuilder.limit(count);
+                  captured?.();
                   await gate;
                   return rows;
                 },
@@ -187,10 +197,33 @@ function readDatabaseGatedAfterSelect(gate: Promise<void>) {
 function buildStore(readDatabase: unknown) {
   return new ContainerRepoAppContainerStore({
     readDatabase: readDatabase as never,
-    writeDatabase: dbWrite as never,
+    writeDatabase: {
+      select: (readDatabase as typeof dbWrite).select.bind(readDatabase),
+      update: dbWrite.update.bind(dbWrite),
+      transaction: dbWrite.transaction.bind(dbWrite),
+    } as never,
     repository: containersRepository,
     errorFactory: (message, options) => Object.assign(new Error(message), options),
   });
+}
+
+async function publicationAuthorityFor(id: string) {
+  const [row] = await dbWrite
+    .select({
+      metadata: containers.metadata,
+      createdAtSnapshot: sql<string>`to_char(${containers.created_at}, 'YYYY-MM-DD HH24:MI:SS.US')`,
+    })
+    .from(containers)
+    .where(eq(containers.id, id))
+    .limit(1);
+  return {
+    organizationId: ORG_ID,
+    deploymentGeneration:
+      typeof row?.metadata?.deploymentGeneration === "string"
+        ? row.metadata.deploymentGeneration
+        : null,
+    createdAtSnapshot: row?.createdAtSnapshot ?? "missing",
+  };
 }
 
 const PROVISION_RESULT = {
@@ -209,14 +242,14 @@ describe("app container terminal-status compare-and-set (real PGlite)", () => {
       const store = buildStore(readDatabaseGatedAfterSelect(gate.promise));
 
       // Worker A: CONTAINER_PROVISION. Issues the real SELECT, then parks.
-      const running = store.markRunning(id, PROVISION_RESULT);
+      const running = store.markRunning(id, PROVISION_RESULT, await publicationAuthorityFor(id));
       // Worker B: CONTAINER_DELETE for the SAME container, claimed independently.
       await store.markDeleted(id, ORG_ID);
       expect(await statusOf(id)).toBe(TERMINAL_CONTAINER_STATUS);
       // Worker A's write now lands, after the terminal transition committed.
       gate.resolve();
 
-      await expect(running).rejects.toThrow(/terminal state before it became running/);
+      await expect(running).rejects.toThrow(/retired or changed generation/);
       expect(await statusOf(id)).toBe(TERMINAL_CONTAINER_STATUS);
 
       // The terminal row must also keep the placement metadata write off it.
@@ -266,7 +299,7 @@ describe("app container terminal-status compare-and-set (real PGlite)", () => {
       expect(ready).toBe(true);
       const id = await seedContainer("deploying");
       const store = buildStore(dbWrite);
-      await store.markRunning(id, PROVISION_RESULT);
+      await store.markRunning(id, PROVISION_RESULT, await publicationAuthorityFor(id));
       expect(await statusOf(id)).toBe("running");
       await store.markDeleted(id, ORG_ID);
       expect(await statusOf(id)).toBe(TERMINAL_CONTAINER_STATUS);
@@ -420,3 +453,196 @@ describe("app container status CAS does not over-reject", () => {
     TIMEOUT,
   );
 });
+
+const JOBS_DDL = `CREATE TABLE IF NOT EXISTS jobs (
+        id uuid PRIMARY KEY,
+        type text NOT NULL,
+        status text NOT NULL DEFAULT 'pending',
+        data jsonb NOT NULL,
+        data_storage text NOT NULL DEFAULT 'inline',
+        data_key text,
+        agent_id text,
+        character_id text,
+        result jsonb,
+        result_storage text NOT NULL DEFAULT 'inline',
+        result_key text,
+        error text,
+        error_storage text NOT NULL DEFAULT 'inline',
+        error_key text,
+        attempts integer NOT NULL DEFAULT 0,
+        max_attempts integer NOT NULL DEFAULT 3,
+        execution_interruptions integer NOT NULL DEFAULT 0,
+        retryable_requeues integer NOT NULL DEFAULT 0,
+        organization_id uuid NOT NULL,
+        user_id uuid,
+        api_key_id uuid,
+        generation_id uuid,
+        webhook_url text,
+        webhook_status text,
+        estimated_completion_at timestamp,
+        scheduled_for timestamp NOT NULL DEFAULT now(),
+        started_at timestamp,
+        execution_generation uuid,
+        execution_quiesced_at timestamp,
+        completed_at timestamp,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now(),
+        CONSTRAINT reject_test_delete CHECK (
+          type <> 'container_delete'
+          OR data->>'containerId' <> '00000000-0000-4000-8000-000000515951'
+        )
+      );`;
+
+test(
+  "pending retirement wins against a captured app publication snapshot",
+  async () => {
+    const id = await seedContainer("deploying");
+    const authority = await publicationAuthorityFor(id);
+    const captured = deferred();
+    const release = deferred();
+    const store = buildStore(readDatabaseGatedAfterSelect(release.promise, captured.resolve));
+    const publishing = store.markRunning(id, PROVISION_RESULT, authority);
+    await captured.promise;
+    const { retireContainerWithDeleteJob } = await import("../container-retirement");
+    const retirement = await retireContainerWithDeleteJob(id, ORG_ID);
+    expect(retirement.outcome).toBe("retired");
+    release.resolve();
+    await expect(publishing).rejects.toMatchObject({ code: "APP_CONTAINER_PUBLICATION_STALE" });
+    await store.markError(id, "late provider failure", authority);
+    await store.markCleanupRequired(id, "late cleanup failure", authority);
+    const [after] = await dbWrite.select().from(containers).where(eq(containers.id, id));
+    expect(after!.status).toBe("deleting");
+    expect(after!.metadata.retirement).toMatchObject({ deleteJobId: retirement.jobId });
+    expect(after!.metadata.hostContainerId).toBeUndefined();
+    expect(after!.last_deployed_at).toBeNull();
+  },
+  TIMEOUT,
+);
+
+test(
+  "retirement after the atomic publication preserves its newer ownership metadata",
+  async () => {
+    const id = await seedContainer("deploying");
+    const authority = await publicationAuthorityFor(id);
+    const committed = deferred();
+    const release = deferred();
+    const store = new ContainerRepoAppContainerStore({
+      readDatabase: dbWrite as never,
+      writeDatabase: dbWrite as never,
+      repository: {
+        tryReleaseNodeSlot: containersRepository.tryReleaseNodeSlot.bind(containersRepository),
+        updateStatus: containersRepository.updateStatus.bind(containersRepository),
+        async update(...args: Parameters<typeof containersRepository.update>) {
+          const result = await containersRepository.update(...args);
+          committed.resolve();
+          await release.promise;
+          return result;
+        },
+      },
+      errorFactory: (message, options) => Object.assign(new Error(message), options),
+    });
+    const publishing = store.markRunning(id, PROVISION_RESULT, authority);
+    await committed.promise;
+    const { retireContainerWithDeleteJob } = await import("../container-retirement");
+    const retirement = await retireContainerWithDeleteJob(id, ORG_ID);
+    release.resolve();
+    await publishing;
+    const [after] = await dbWrite.select().from(containers).where(eq(containers.id, id));
+    expect(after!.status).toBe("deleting");
+    expect(after!.metadata.retirement).toMatchObject({ deleteJobId: retirement.jobId });
+    expect(after!.metadata.hostContainerId).toBe(PROVISION_RESULT.hostContainerId);
+  },
+  TIMEOUT,
+);
+
+test(
+  "original generation and microsecond row identity fence late provider publication",
+  async () => {
+    const store = buildStore(dbWrite);
+    const id = await seedContainer("deploying");
+    const firstGeneration = "00000000-0000-4000-8000-0000000000a1";
+    const secondGeneration = "00000000-0000-4000-8000-0000000000a2";
+    await containersRepository.update(id, ORG_ID, {
+      metadata: { deploymentGeneration: firstGeneration },
+    });
+    const authority = await publicationAuthorityFor(id);
+    await containersRepository.update(id, ORG_ID, {
+      metadata: { deploymentGeneration: secondGeneration },
+    });
+    await expect(store.markRunning(id, PROVISION_RESULT, authority)).rejects.toMatchObject({
+      code: "APP_CONTAINER_PUBLICATION_STALE",
+    });
+    const [generation] = await dbWrite.select().from(containers).where(eq(containers.id, id));
+    expect(generation!.metadata.deploymentGeneration).toBe(secondGeneration);
+    expect(generation!.status).toBe("deploying");
+    await expect(
+      store.markRunning(id, PROVISION_RESULT, {
+        ...authority,
+        organizationId: "00000000-0000-4000-8000-000000000099",
+      }),
+    ).rejects.toMatchObject({ code: "APP_CONTAINER_ROW_MISSING" });
+
+    const reused = await seedContainer("deploying");
+    await dbWrite.execute(
+      `UPDATE containers SET created_at = timestamp '2026-11-07 00:00:00.123001' WHERE id='${reused}'`,
+    );
+    const original = await publicationAuthorityFor(reused);
+    await dbWrite.execute(`DELETE FROM containers WHERE id='${reused}'`);
+    await dbWrite.execute(`INSERT INTO containers (id,name,project_name,organization_id,user_id,status,created_at)
+    VALUES ('${reused}','replacement','replacement','${ORG_ID}','${USER_ID}','deploying',timestamp '2026-11-07 00:00:00.123999')`);
+    await expect(store.markRunning(reused, PROVISION_RESULT, original)).rejects.toMatchObject({
+      code: "APP_CONTAINER_PUBLICATION_STALE",
+    });
+    expect(await statusOf(reused)).toBe("deploying");
+  },
+  TIMEOUT,
+);
+
+test(
+  "a superseded provision deletes only its returned Docker id and preserves retirement",
+  async () => {
+    const id = await seedContainer("deploying");
+    const store = buildStore(dbWrite);
+    const { executeContainerProvision } = await import("../container-job-executors");
+    const { retireContainerWithDeleteJob } = await import("../container-retirement");
+    const removed: string[] = [];
+    await dbWrite.execute(
+      "UPDATE docker_nodes SET allocated_count=1 WHERE node_id='publication-node'",
+    );
+    await executeContainerProvision(
+      { id: "late-provision", data: { containerId: id, organizationId: ORG_ID, userId: USER_ID } },
+      {
+        store,
+        provider: {
+          targetNodeId: "publication-node",
+          async provision() {
+            await retireContainerWithDeleteJob(id, ORG_ID);
+            return { containerId: "original-docker-id", hostPort: 21000, network: "app-network" };
+          },
+          async deletePrimaryById(id: string) {
+            removed.push(id);
+          },
+          async delete() {
+            throw new Error("name-based deletion must not run");
+          },
+        } as never,
+      },
+    );
+    expect(removed).toEqual(["original-docker-id"]);
+    const [after] = await dbWrite.select().from(containers).where(eq(containers.id, id));
+    expect(after!.status).toBe("deleting");
+    expect(after!.metadata.retirement).toBeTruthy();
+    expect(after!.metadata.hostContainerId).toBeUndefined();
+    const count = await dbWrite.execute(
+      "SELECT allocated_count FROM docker_nodes WHERE node_id='publication-node'",
+    );
+    expect(count.rows[0]?.allocated_count).toBe(1);
+    expect(after!.metadata.slotReleasedAt).toBeTruthy();
+    await store.markDeleted(id, ORG_ID, "publication-node");
+    const afterDelete = await dbWrite.execute(
+      "SELECT allocated_count FROM docker_nodes WHERE node_id='publication-node'",
+    );
+    expect(afterDelete.rows[0]?.allocated_count).toBe(1);
+  },
+  TIMEOUT,
+);

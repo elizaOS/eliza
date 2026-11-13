@@ -4,7 +4,7 @@
     "path": "tts/paradee/paradee-8m-v1_2.gguf",
     "source": "llama.cpp tools/paradee/convert_paradee_pt_to_gguf.py --version 1.2 --outtype f32 from the sahilmahendrakar/Paradee-8M-v1.2 files pinned in tools/paradee/pins.json",
     "bytes": 31276064,
-    "sha256": "a43118932f7ec01bb3e9f1b92a56b24dd2622011c8fd5c77dca1e353b56e6df6",
+    "sha256": "4b2819180a9e3b096fb71a93d6a719794246ee230f7faa857edcc0bee2a1529e",
     "license": "Apache-2.0",
     "voice": "af_heart"
   },
@@ -23,7 +23,7 @@
     "path": "tts/paradee/delibes-8m-eses.gguf",
     "source": "llama.cpp tools/paradee/convert_paradee_onnx_to_gguf.py --family delibes from the lapislabsai/Delibes-8M-esES fp32 ONNX graphs pinned in tools/paradee/pins.json (\"delibes\")",
     "bytes": 31275328,
-    "sha256": "a2f5acff3ac8218c7973c0a76a449365faace53ee6af4cf0f3bdc1f61868f0da",
+    "sha256": "3b635dc24a8952254066daad77ff64aa08368a8b5a689abf4be05bdf2b0afe51",
     "license": "Apache-2.0",
     "notices": [
       "LICENSE",

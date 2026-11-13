@@ -127,12 +127,21 @@ describe("native runtime profiles", () => {
     expect(
       parseNativeCloudRuntimeDeclaration({ apiBaseUrl: API_BASE }),
     ).toEqual({ apiBaseUrl: API_BASE });
+    for (const hostname of ["localhost", "127.0.0.1", "[::1]", "10.0.2.2"]) {
+      const apiBaseUrl = `https://${hostname}:8877/api/v1`;
+      expect(parseNativeCloudRuntimeDeclaration({ apiBaseUrl })).toEqual({
+        apiBaseUrl,
+      });
+    }
     for (const value of [
       undefined,
       [],
       { apiBaseUrl: "http://cloud.example.com/api/v1" },
       { apiBaseUrl: "https://user:pw@cloud.example.com/api/v1" },
       { apiBaseUrl: "https://cloud.example.com:8443/api/v1" },
+      { apiBaseUrl: "https://localhost.example.com:8877/api/v1" },
+      { apiBaseUrl: "https://127.0.0.1:8877/api/v1#fragment" },
+      { apiBaseUrl: "http://10.0.2.2:8877/api/v1" },
       { apiBaseUrl: "https://cloud.example.com/api/v1/" },
       { apiBaseUrl: "https://cloud.example.com/api/v2" },
       { apiBaseUrl: "https://cloud.example.com/api/v1?x=1" },

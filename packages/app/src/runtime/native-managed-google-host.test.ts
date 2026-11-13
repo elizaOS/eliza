@@ -2,7 +2,12 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, expect, test } from "vitest";
+import {
+  redactLogValue,
+  redactSensitiveLogText,
+} from "../../../core/src/security/log-redaction.ts";
 import {
   startNativeManagedGoogleHost,
   startNativeManagedGoogleHostForBoot,
@@ -37,15 +42,22 @@ function memoryStores(fail?: Error) {
   };
   return { stores, state };
 }
-function fixture(declaration = `{ apiBaseUrl: ${JSON.stringify(API_BASE)} }`) {
+function fixture(
+  declaration = `{ apiBaseUrl: ${JSON.stringify(API_BASE)} }`,
+  expectedToken?: string,
+) {
   const root = fs.realpathSync(
     fs.mkdtempSync(path.join(os.tmpdir(), "native-google-admission-")),
   );
   roots.push(root);
   const entry = path.join(root, "google-host.mjs");
   const bytes = Buffer.from(`export const nativeCloudRuntime = ${declaration};
+  let current;
+  export function assertCurrentForFixture() { current(); }
   export async function startNativeGoogleAgentHost(options) {
-    options.assertCurrent();
+    current = options.assertCurrent;
+    current();
+    ${expectedToken ? `if (options.binding.token !== ${JSON.stringify(expectedToken)}) throw Error("Wrong service credential");` : ""}
     return {port:47899,async close(){}};
   }`);
   fs.writeFileSync(entry, bytes);
@@ -145,29 +157,38 @@ test("boot admission failures leave Google unavailable without stopping the agen
   expect(badToken.env.ELIZA_MANAGED_GMAIL_READ_BROKER).toBeUndefined();
 });
 
-test("orgless Cloud admission prepares routing without publishing Google brokers", async () => {
-  const f = fixture();
-  f.env.ELIZAOS_CLOUD_USE_INFERENCE = "true";
-  delete f.env.ELIZA_NATIVE_GOOGLE_BINDING_JSON;
-  expect(
-    await startNativeManagedGoogleHostForBoot(f.env, undefined, f.stores),
-  ).toBeUndefined();
-  expect(f.state.config).toMatchObject({
-    cloud: { enabled: true, baseUrl: API_BASE },
-    serviceRouting: {
-      embeddings: { backend: "eliza-local-inference", transport: "direct" },
-      llmText: { backend: "elizacloud", transport: "cloud-proxy" },
-    },
-  });
-  expect(f.state.config?.cloud).not.toHaveProperty("apiKey");
-  expect(f.env.ELIZA_MANAGED_GMAIL_READ_BROKER).toBeUndefined();
-  expect(f.env.ELIZA_MANAGED_CALENDAR_READ_BROKER).toBeUndefined();
-});
+test.each([
+  API_BASE,
+  "https://127.0.0.1:8877/api/v1",
+  "https://10.0.2.2:8877/api/v1",
+])(
+  "orgless Cloud admission prepares routing for %s without publishing Google brokers",
+  async (apiBaseUrl) => {
+    const f = fixture(`{ apiBaseUrl: ${JSON.stringify(apiBaseUrl)} }`);
+    f.env.ELIZAOS_CLOUD_BASE_URL = apiBaseUrl;
+    f.env.ELIZAOS_CLOUD_USE_INFERENCE = "true";
+    delete f.env.ELIZA_NATIVE_GOOGLE_BINDING_JSON;
+    expect(
+      await startNativeManagedGoogleHostForBoot(f.env, undefined, f.stores),
+    ).toBeUndefined();
+    expect(f.state.config).toMatchObject({
+      cloud: { enabled: true, baseUrl: apiBaseUrl },
+      serviceRouting: {
+        embeddings: { backend: "eliza-local-inference", transport: "direct" },
+        llmText: { backend: "elizacloud", transport: "cloud-proxy" },
+      },
+    });
+    expect(f.state.config?.cloud).not.toHaveProperty("apiKey");
+    expect(f.env.ELIZA_MANAGED_GMAIL_READ_BROKER).toBeUndefined();
+    expect(f.env.ELIZA_MANAGED_CALENDAR_READ_BROKER).toBeUndefined();
+  },
+);
 
 test("Cloud routing failures stop boot instead of falling back to another provider", async () => {
   for (const variant of [
     { declaration: "undefined" },
     { declaration: '{ apiBaseUrl: "http://cloud.example.com/api/v1" }' },
+    { declaration: `{ apiBaseUrl: ${JSON.stringify(API_BASE)}, extra: true }` },
     { baseUrl: "https://other.example.com/api/v1" },
     { profile: "hosted" },
     { storeFailure: new Error("private-provider-detail") },
@@ -248,4 +269,160 @@ test("bound Google still starts after Cloud preparation", async () => {
     "http://127.0.0.1:47899/__alpha-owner-gmail",
   );
   await host?.close();
+});
+
+test("Cloud Google requests use their admitted service credential after inference changes", async () => {
+  const serviceKey = "synthetic-google-service-key";
+  const f = fixture(undefined, serviceKey);
+  f.env.ELIZAOS_CLOUD_USE_INFERENCE = "true";
+  f.env.ELIZA_NATIVE_GOOGLE_API_KEY = serviceKey;
+  const host = await startNativeManagedGoogleHost(f.env, f.stores);
+  const admitted = await import(pathToFileURL(f.entry).href);
+  try {
+    f.env.ELIZAOS_CLOUD_API_KEY = "synthetic-new-inference-key";
+    expect(() => admitted.assertCurrentForFixture()).not.toThrow();
+    delete f.env.ELIZAOS_CLOUD_API_KEY;
+    expect(() => admitted.assertCurrentForFixture()).not.toThrow();
+
+    f.env.ELIZA_NATIVE_GOOGLE_API_KEY = "synthetic-new-service-key";
+    expect(() => admitted.assertCurrentForFixture()).toThrow(
+      "Native Google owner changed",
+    );
+    f.env.ELIZA_NATIVE_GOOGLE_API_KEY = serviceKey;
+    f.env.ELIZA_NATIVE_GOOGLE_BINDING_JSON = '{"generation":"changed"}';
+    expect(() => admitted.assertCurrentForFixture()).toThrow(
+      "Native Google owner changed",
+    );
+  } finally {
+    await host?.close();
+  }
+});
+
+test("an admitted legacy Cloud Google host keeps its existing credential fence", async () => {
+  const f = fixture(undefined, "synthetic-only");
+  f.env.ELIZAOS_CLOUD_USE_INFERENCE = "true";
+  const host = await startNativeManagedGoogleHost(f.env, f.stores);
+  const admitted = await import(pathToFileURL(f.entry).href);
+  try {
+    delete f.env.ELIZAOS_CLOUD_API_KEY;
+    expect(() => admitted.assertCurrentForFixture()).toThrow(
+      "Native Google owner changed",
+    );
+  } finally {
+    await host?.close();
+  }
+});
+
+function directFixture() {
+  const f = fixture(undefined, "synthetic-google-service-key");
+  const previous = {
+    cloud: { enabled: true, inferenceMode: "cloud", apiKey: "desktop-key" },
+    serviceRouting: {
+      llmText: { backend: "elizacloud", transport: "cloud-proxy" },
+      embeddings: { backend: "elizacloud", transport: "cloud-proxy" },
+    },
+  };
+  f.stores.loadConfig = () => {
+    f.state.calls++;
+    return structuredClone(f.state.config ?? previous);
+  };
+  Object.assign(f.env, {
+    ELIZA_RUNTIME_PROFILE: "native",
+    ELIZA_PROVIDER: "cerebras",
+    CEREBRAS_API_KEY: "synthetic-inference-key",
+    CEREBRAS_BASE_URL: "https://api.cerebras.ai/v1",
+    CEREBRAS_SMALL_MODEL: "qwen-3.8-27b",
+    CEREBRAS_LARGE_MODEL: "qwen-3.8-27b",
+    ELIZAOS_CLOUD_USE_INFERENCE: "false",
+    ELIZA_NATIVE_GOOGLE_API_KEY: "synthetic-google-service-key",
+  });
+  delete f.env.ELIZAOS_CLOUD_API_KEY;
+  return f;
+}
+test("own inference prepares direct routing and retains independently admitted Google services", async () => {
+  const f = directFixture();
+  const host = await startNativeManagedGoogleHostForBoot(
+    f.env,
+    undefined,
+    f.stores,
+  );
+  expect(f.env.ELIZA_MANAGED_CALENDAR_READ_BROKER).toBe(
+    "http://127.0.0.1:47899/__alpha-owner-gmail",
+  );
+  expect(f.env.ELIZAOS_CLOUD_API_KEY).toBeUndefined();
+  expect(f.state.config).toMatchObject({
+    cloud: { enabled: false, inferenceMode: "local" },
+    serviceRouting: {
+      llmText: { backend: "cerebras", transport: "direct" },
+      embeddings: { backend: "eliza-local-inference" },
+    },
+  });
+  expect(JSON.stringify(f.state.config)).not.toContain("synthetic-");
+  expect(f.state.routing).toMatchObject({
+    preferredProvider: { TEXT_SMALL: "openai", TEXT_LARGE: "openai" },
+  });
+  await host?.close();
+  expect(f.env.ELIZA_MANAGED_CALENDAR_READ_BROKER).toBeUndefined();
+  delete f.env.ELIZA_PROVIDER;
+  delete f.env.CEREBRAS_API_KEY;
+  delete f.env.ELIZA_NATIVE_GOOGLE_API_KEY;
+  f.env.ELIZAOS_CLOUD_USE_INFERENCE = "true";
+  f.env.ELIZAOS_CLOUD_API_KEY = "synthetic-google-service-key";
+  const cloud = await startNativeManagedGoogleHostForBoot(
+    f.env,
+    undefined,
+    f.stores,
+  );
+  expect(f.state.config).toMatchObject({
+    cloud: { enabled: true, inferenceMode: "cloud" },
+    serviceRouting: {
+      llmText: { backend: "elizacloud", transport: "cloud-proxy" },
+    },
+  });
+  await cloud?.close();
+});
+test("own inference still prepares and boots after the Cloud account signs out", async () => {
+  const f = directFixture();
+  delete f.env.ELIZA_NATIVE_GOOGLE_BINDING_JSON;
+  delete f.env.ELIZA_NATIVE_GOOGLE_API_KEY;
+  expect(
+    await startNativeManagedGoogleHostForBoot(f.env, undefined, f.stores),
+  ).toBeUndefined();
+  expect(f.state.config).toMatchObject({
+    cloud: { enabled: false },
+    serviceRouting: { llmText: { backend: "cerebras" } },
+  });
+  expect(f.env.ELIZA_MANAGED_CALENDAR_READ_BROKER).toBeUndefined();
+});
+test("direct routing store failure cannot boot with a stale Cloud route", async () => {
+  const f = directFixture(),
+    failing = memoryStores(new Error("private-provider-detail"));
+  await expect(
+    startNativeManagedGoogleHostForBoot(f.env, undefined, failing.stores),
+  ).rejects.toMatchObject({ code: "NATIVE_DIRECT_ROUTING_UNAVAILABLE" });
+  expect(failing.state.config).toBeUndefined();
+});
+
+test("the private Google service key is redacted by shared structured and text logging", () => {
+  const key = "ELIZA_NATIVE_GOOGLE_API_KEY",
+    secret = "synthetic-google-service-key";
+  expect(
+    JSON.stringify(redactLogValue({ [key]: secret }, new WeakSet(), 0)),
+  ).not.toContain(secret);
+  expect(redactSensitiveLogText(`${key}=${secret}`)).not.toContain(secret);
+});
+
+test("the admitted synthetic native recovery endpoint survives direct routing projection", async () => {
+  const f = directFixture();
+  f.env.CEREBRAS_BASE_URL = "http://127.0.0.1:47869/v1";
+  f.env.CEREBRAS_API_KEY = "synthetic-resident-recovery-only";
+  delete f.env.ELIZA_NATIVE_GOOGLE_BINDING_JSON;
+  delete f.env.ELIZA_NATIVE_GOOGLE_API_KEY;
+  expect(
+    await startNativeManagedGoogleHostForBoot(f.env, undefined, f.stores),
+  ).toBeUndefined();
+  expect(f.env.CEREBRAS_BASE_URL).toBe("http://127.0.0.1:47869/v1");
+  expect(f.state.config).toMatchObject({
+    serviceRouting: { llmText: { backend: "cerebras", transport: "direct" } },
+  });
 });

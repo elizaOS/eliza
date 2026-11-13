@@ -1,0 +1,61 @@
+[
+  {
+    "id": "core-PairingIdentity",
+    "model": "packages/core/quint/PairingIdentity.qnt",
+    "sources": [
+      "packages/core/src/services/pairing.ts",
+      "packages/core/src/types/pairing.ts",
+      "plugins/plugin-sql/src/base.ts",
+      "plugins/plugin-sql/src/__tests__/pairing-identity.test.ts",
+      "plugins/plugin-sql/src/schema/pairingAllowlist.ts",
+      "plugins/plugin-sql/src/schema/pairingRequest.ts"
+    ],
+    "invariants": [
+      "IndependentClaimScopes",
+      "ClaimOncePerOwner",
+      "IndependentRequestScopes",
+      "RowsRetainTheirScope",
+      "ReceiptMatchesStoredScope",
+      "GrantIndexesAgree"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Full Unicode values are represented by collision families, including legacy delimiter collisions. Random UUID bit entropy and hash collision probabilities are outside the finite state space.",
+      "SQL conflict decisions are atomic. Between the conflict and the follow-up read another transaction may remove the row, which fails explicitly. Named real SQL tests cover conflict receipts and service readback.",
+      "Only the finite identity projection is proved. Admission, expiry and approval recovery are in PairingAdmission.qnt."
+    ]
+  },
+  {
+    "id": "core-PairingAdmission",
+    "model": "packages/core/quint/PairingAdmission.qnt",
+    "sources": [
+      "packages/core/src/services/pairing.ts",
+      "packages/core/src/types/pairing.ts",
+      "plugins/plugin-sql/src/base.ts",
+      "plugins/plugin-sql/src/__tests__/pairing-identity.test.ts",
+      "plugins/plugin-sql/src/schema/pairingAllowlist.ts",
+      "plugins/plugin-sql/src/schema/pairingRequest.ts"
+    ],
+    "invariants": [
+      "PendingLimit",
+      "SingleAdmission",
+      "AdmissionUsesBoundedRead",
+      "GrantPrecedesConsumption",
+      "SuccessfulApprovalHasGrant",
+      "FailedWriteRetainsCode",
+      "CacheBound",
+      "RetainedLiveClaimSuppressesReply",
+      "UniqueRetainedKeys"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Request admission is serialized within one PairingService instance. Concurrent independent service instances and external inserts are outside this cap proof.",
+      "Waiting JavaScript promises are projected to nondeterministic admission after the current owner releases. FIFO scheduling of multiple waiting callers is not proved.",
+      "Expiry represents the strict request TTL and inclusive reply TTL boundaries. Real tests check exact milliseconds. Clock rollback, capacity above the finite bound and stop/restart cache loss remain environmental cases.",
+      "An approval is eligible when its initial live-code lookup succeeds. Concurrent explicit revocation, a later expiry and external request deletion do not cancel an already admitted approval. No stronger revocation fence is claimed.",
+      "A grant write can commit before a later consumption error. The retry keeps the existing grant. Grant removal by a separate owner action is outside the approval progress case.",
+      "Reply eviction can rearm a sender within the same TTL. Only retained live claims suppress a second reply.",
+      "Conformance uses named real runtime and embedded SQL traces, including triggers for commit/conflict and failure boundaries. It is not a bisimulation proof for every JavaScript schedule."
+    ]
+  }
+]

@@ -42,6 +42,8 @@ dependencies {
 
     // JVM tests of the reviewed-send journal, page cursor and provider mapping.
     testImplementation "junit:junit:$junitVersion"
+    // SmsProviderReader against fake SMS/MMS providers under Android shadows.
+    testImplementation "org.robolectric:robolectric:4.16.1"
 
     // Instrumented test deps (issue #9967 — on-device SMS read).
     androidTestImplementation "androidx.test:core:1.5.0"

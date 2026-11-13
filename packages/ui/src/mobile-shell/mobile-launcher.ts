@@ -15,20 +15,37 @@ import {
   localFavorites,
   observeLauncher,
 } from "@elizaos/capacitor-system/launcher";
+import type { MobileProductRegistration } from "./product-registration";
 import {
   type LauncherViewIdMigration,
   migrateLauncherViewIds,
 } from "./view-id-migration";
-import type {
-  MobileViewRegistration,
-  MobileViewRegistry,
-} from "./view-registry";
+import type { MobileViewRegistration } from "./view-registry";
 
-export type MobileHomeEntry =
-  | { kind: "view"; key: string; view: MobileViewRegistration }
+/** A view projected from the owning application registry. */
+export interface MobileLauncherView {
+  id: string;
+  label: string;
+}
+
+export interface MobileLauncherRegistry<View extends MobileLauncherView> {
+  readonly product: MobileProductRegistration;
+  available(): View[];
+  hostKey(view: View): string;
+  launcherKey(view: View): string;
+  fromLauncherKey(key: string): View | undefined;
+  iconUrl(view: View): string | undefined;
+}
+
+export type MobileHomeEntry<
+  View extends MobileLauncherView = MobileViewRegistration,
+> =
+  | { kind: "view"; key: string; view: View }
   | { kind: "app"; key: string; app: InstalledApp };
 
-export interface MobileShellLauncher {
+export interface MobileShellLauncher<
+  View extends MobileLauncherView = MobileViewRegistration,
+> {
   launcher: Launcher;
   /**
    * Outcome of the one migration of older view ids in the installed
@@ -38,18 +55,20 @@ export interface MobileShellLauncher {
   /** Offers the views available now. Availability can change, so call it before each render. */
   syncViews(): void;
   /** Home: the favorites in saved order, product views and installed apps alike. */
-  homeEntries(): MobileHomeEntry[];
+  homeEntries(): MobileHomeEntry<View>[];
   /** Reads the installed inventory once when Home must show installed favorites. */
   prepareHome(): void;
   /** Follows installs, removals and resume; returns the stop function. */
   observe(options?: { follow?: boolean }): () => void;
 }
 
-export function createMobileShellLauncher(options: {
+export function createMobileShellLauncher<
+  View extends MobileLauncherView = MobileViewRegistration,
+>(options: {
   bridge: LauncherBridge;
-  registry: MobileViewRegistry;
+  registry: MobileLauncherRegistry<View>;
   /** Opens a product view in the shell. */
-  open: (view: MobileViewRegistration) => void;
+  open: (view: View) => void;
   changed: () => void;
   /** Replaces the product's installed favorites record (tests, previews). */
   favorites?: FavoritesStore;
@@ -58,7 +77,7 @@ export function createMobileShellLauncher(options: {
   icons?: boolean;
   /** Exact device mirror keys of product views; never inferred from labels. */
   aliases?: Record<string, string>;
-}): MobileShellLauncher {
+}): MobileShellLauncher<View> {
   const { bridge, registry } = options;
   const { storage: names } = registry.product;
   const prefix = names.launcherBuiltinPrefix;
@@ -90,6 +109,22 @@ export function createMobileShellLauncher(options: {
       },
     };
   }
+  // Resolve saved view keys through the currently admitted registry. A product
+  // alias can outlive the host's route-id spelling; it must remain a view and
+  // must not disappear from Home or become a native package request.
+  const stored = store;
+  store = {
+    read: () =>
+      stored.read()?.map((key) => {
+        const view = registry.fromLauncherKey(key);
+        return view ? registry.launcherKey(view) : key;
+      }) ?? null,
+    write: (keys) => stored.write(keys),
+    ...(stored.legacy ? { legacy: () => stored.legacy?.() ?? false } : {}),
+    ...(stored.legacyHomeDefaults
+      ? { legacyHomeDefaults: () => stored.legacyHomeDefaults?.() ?? false }
+      : {}),
+  };
   // Native plugin proxies resolve methods when they are read, so each method
   // is delegated by name; spreading the bridge would drop them.
   const shellBridge: LauncherBridge = {
@@ -124,7 +159,7 @@ export function createMobileShellLauncher(options: {
       );
     },
     homeEntries: () =>
-      launcher.favoriteApps().map((app): MobileHomeEntry => {
+      launcher.favoriteApps().map((app): MobileHomeEntry<View> => {
         const key = appKey(app);
         const view = registry.fromLauncherKey(key);
         return view ? { kind: "view", key, view } : { kind: "app", key, app };

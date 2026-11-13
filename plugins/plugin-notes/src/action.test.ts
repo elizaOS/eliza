@@ -16,12 +16,15 @@ import {
   type IAgentRuntime,
   type JsonSchema,
   type Memory,
+  type NotesRequestOperation,
   promoteSubactionsToActions,
+  type State,
   satisfiesRoleGate,
   type UUID,
   validateSchema,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { parseEvaluatorOutput } from "../../plugin-assistant/src/runtime/evaluator.ts";
 import {
   __renderRoutingHintsBlockForTests,
   actionResultToPlannerToolResult,
@@ -32,6 +35,11 @@ import { projectToolResultForModel } from "../../plugin-assistant/src/runtime/pl
 import { collectBudgetedStageOneCandidateActions } from "../../plugin-assistant/src/services/message/planned-tool.ts";
 import { createPlannerToolDiscoveryAction } from "../../plugin-assistant/src/services/message/tool-discovery.ts";
 import { __INTERNAL_normalizeNativeToolsForCall } from "../../plugin-openai/models/text.ts";
+import {
+  boundNotesRequest,
+  notesFixturePlannerRuntime,
+  notesFixtureText,
+} from "./__tests__/helpers/bound-notes-request.ts";
 import { notesAction } from "./action.js";
 import { notesPlugin } from "./plugin.js";
 import {
@@ -59,6 +67,7 @@ async function harness(now?: () => Date): Promise<IAgentRuntime> {
   tmpDirs.push(dir);
   const runtime = {
     agentId: randomUUID() as UUID,
+    actions: notesPlugin.actions,
     getService: (type: string) =>
       type === NOTES_SERVICE_TYPE ? service : null,
     // No shell transport is installed in this file-backed domain harness.
@@ -73,24 +82,41 @@ async function harness(now?: () => Date): Promise<IAgentRuntime> {
   return runtime;
 }
 
+// Discovery-only input; no Notes handler uses it as request authority.
+// Handler/executor fixtures below create fresh bound current requests.
 const message = { content: { text: "" } } as unknown as Memory;
 
 async function run(
   runtime: IAgentRuntime,
+  operation: NotesRequestOperation,
   parameters: Record<string, unknown>,
   callback?: Parameters<typeof notesAction.handler>[4],
 ): Promise<ActionResult> {
-  const result = await notesAction.handler(
-    runtime,
-    message,
-    undefined,
-    {
-      parameters,
-    } as never,
+  const request = await boundNotesRequest(runtime, {
+    text: notesFixtureText[operation],
+    operations: [operation],
+  });
+  return request.handler(notesAction, parameters, callback);
+}
+
+async function directNotesHandler(
+  runtime: IAgentRuntime,
+  operation: NotesRequestOperation,
+  original: Memory,
+  _state: State | undefined,
+  options?: Parameters<typeof notesAction.handler>[3],
+  callback?: Parameters<typeof notesAction.handler>[4],
+) {
+  const request = await boundNotesRequest(runtime, {
+    text: original.content?.text || notesFixtureText[operation],
+    operations: [operation],
+    message: original,
+  });
+  return request.handler(
+    notesAction,
+    (options?.parameters ?? {}) as Record<string, unknown>,
     callback,
   );
-  if (!result) throw new Error("NOTES action returned no result.");
-  return result;
 }
 
 async function executorHarness(now?: () => Date): Promise<IAgentRuntime> {
@@ -115,28 +141,21 @@ async function executorHarness(now?: () => Date): Promise<IAgentRuntime> {
   return runtime;
 }
 
-function execute(
+async function execute(
   runtime: IAgentRuntime,
+  operation: NotesRequestOperation,
   call: PlannerToolCall,
   userRoles: Parameters<typeof executePlannedToolCall>[1]["userRoles"] = [
     "OWNER",
   ],
-  sourceText = "Create the requested note.",
+  sourceText = notesFixtureText[operation],
 ) {
-  return executePlannedToolCall(
-    runtime,
-    {
-      message: {
-        id: "message-id" as UUID,
-        entityId: "owner-id" as UUID,
-        roomId: "room-id" as UUID,
-        content: { text: sourceText },
-      } as Memory,
-      activeContexts: ["notes"],
-      userRoles,
-    },
-    call,
-  );
+  const request = await boundNotesRequest(runtime, {
+    text: sourceText,
+    operations: [operation],
+    message: { entityId: "owner-id" as UUID, roomId: "room-id" as UUID },
+  });
+  return request.execute(call, userRoles);
 }
 
 describe("promoted Notes execution", () => {
@@ -148,7 +167,7 @@ describe("promoted Notes execution", () => {
       content: "Weekend packing\nBring water.",
     });
     instant = "2026-10-26T20:42:36.954Z";
-    const deleted = await execute(runtime, {
+    const deleted = await execute(runtime, "delete", {
       name: "NOTES_DELETE",
       params: { noteId: created.value.id },
     });
@@ -286,7 +305,8 @@ describe("promoted Notes execution", () => {
       color: "yellow",
     });
     expect(
-      (await execute(runtime, { name: action.name, params: missing })).success,
+      (await execute(runtime, "update", { name: action.name, params: missing }))
+        .success,
     ).toBe(false);
     expect(service.getNote(original.id)).toEqual(original);
     const params = {
@@ -301,11 +321,219 @@ describe("promoted Notes execution", () => {
     validateSchema(schema, params, "", validErrors);
     expect(validErrors).toEqual([]);
     expect(
-      (await execute(runtime, { name: action.name, params })).success,
+      (await execute(runtime, "update", { name: action.name, params })).success,
     ).toBe(true);
     expect(service.getNote(original.id).body).toBe(
       "\nBring lens. Bring spare cable.",
     );
+  });
+
+  it("keeps the revision token writable after the target and edit on the strict wire", async () => {
+    // Cerebras strict grammars emit keys only in declaration order. The live
+    // planner wrote action, noteId, replacementContent and could never add
+    // expectedRevision, failing NOTES_EDIT_REVISION_REQUIRED until the limit.
+    const wireProperties = (name: string) => {
+      const action = notesPlugin.actions?.find((entry) => entry.name === name);
+      if (!action)
+        throw new Error(`The promoted ${name} action is unavailable`);
+      const tools = __INTERNAL_normalizeNativeToolsForCall(
+        [
+          {
+            name,
+            description: action.description,
+            strict: true,
+            parameters: actionToJsonSchema(action),
+          },
+        ],
+        { cerebrasMode: true },
+      ).tools as Record<string, { inputSchema: { jsonSchema: JsonSchema } }>;
+      return Object.keys(tools[name].inputSchema.jsonSchema.properties ?? {});
+    };
+    const writableInOrder = (properties: string[], keys: string[]) =>
+      keys.every(
+        (key, index) =>
+          properties.includes(key) &&
+          (index === 0 ||
+            properties.indexOf(key) > properties.indexOf(keys[index - 1])),
+      );
+    const update = wireProperties("NOTES_UPDATE");
+    for (const edit of ["replacementContent", "textEdit", "authoredEdit"]) {
+      expect(
+        writableInOrder(update, ["action", "noteId", edit, "expectedRevision"]),
+      ).toBe(true);
+      expect(
+        writableInOrder(update, [
+          "action",
+          "content",
+          edit,
+          "expectedRevision",
+        ]),
+      ).toBe(true);
+    }
+    expect(
+      writableInOrder(wireProperties("NOTES_PATCH"), [
+        "target",
+        "changes",
+        "action",
+        "textEdit",
+        "expectedRevision",
+      ]),
+    ).toBe(true);
+
+    const runtime = await executorHarness();
+    const service = getNotesService(runtime);
+    const created = await service.createNoteWithCommit({
+      content: "Groceries\n- Eggs\n- Oat milk\n- Spinach",
+    });
+    const result = await execute(runtime, "update", {
+      name: "NOTES_UPDATE",
+      params: {
+        action: "update",
+        noteId: created.value.id,
+        textEdit: { action: "append", field: "body", text: "\n- Bread" },
+        expectedRevision: created.snapshot.revision,
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(reconstructNoteContent(service.getNote(created.value.id))).toBe(
+      "Groceries\n- Eggs\n- Oat milk\n- Spinach\n- Bread",
+    );
+  });
+
+  it("adds one item in a plain note's own list form on both edit paths", async () => {
+    // Live tj-792ca892257ad2 ("add eggs to my packing note"): UPDATE
+    // authoredEdit append failed with NOTES_EDIT_CONFLICT on this plain note,
+    // then a PATCH literal " eggs" glued the item to the last one.
+    const runtime = await executorHarness();
+    const service = getNotesService(runtime);
+    const packing = await service.createNoteWithCommit({
+      content: "packing\ncharger, passport, socks",
+    });
+    const viaUpdate = await execute(
+      runtime,
+      "update",
+      {
+        name: "NOTES_UPDATE",
+        params: {
+          action: "update",
+          noteId: packing.value.id,
+          authoredEdit: { field: "checklist", action: "append", text: "eggs" },
+          expectedRevision: packing.snapshot.revision,
+        },
+      },
+      ["OWNER"],
+      "add eggs to my packing note",
+    );
+    expect(viaUpdate.success).toBe(true);
+    const viaPatch = await execute(
+      runtime,
+      "patch",
+      {
+        name: "NOTES_PATCH",
+        params: {
+          target: { kind: "id", value: packing.value.id },
+          changes: [],
+          textEdit: { action: "append", field: "item", text: "sunscreen" },
+          expectedRevision: service.snapshot().revision,
+        },
+      },
+      ["OWNER"],
+      "add sunscreen to my packing note",
+    );
+    expect(viaPatch.success).toBe(true);
+    expect(reconstructNoteContent(service.getNote(packing.value.id))).toBe(
+      "packing\ncharger, passport, socks, eggs, sunscreen",
+    );
+  });
+
+  it("routes a plain append to the operation whose strict wire requires its target and revision", async () => {
+    // Live tj-9fbee52dd6eab4 ("add bread to that note"): the family text sent
+    // append to NOTES_UPDATE, whose strict wire requires no target, edit or
+    // revision. The planner wrote {} and then a literal textEdit with empty
+    // oldText/newText, the form documented as needing no revision, until the
+    // turn errored. Exposed as in that turn, the text must name an operation
+    // whose grammar cannot omit the append's target or revision.
+    const exposed = ["NOTES_CREATE", "NOTES_PATCH", "NOTES_UPDATE"].map(
+      (name) => {
+        const action = notesPlugin.actions?.find(
+          (entry) => entry.name === name,
+        );
+        if (!action)
+          throw new Error(`The promoted ${name} action is unavailable`);
+        return action;
+      },
+    );
+    const planned = buildPlannerToolsFromActions(exposed);
+    const wire = __INTERNAL_normalizeNativeToolsForCall(planned, {
+      cerebrasMode: true,
+    }).tools as Record<string, { inputSchema: { jsonSchema: JsonSchema } }>;
+    const surface = planned.map((tool) => tool.description).join("\n");
+    const appendOperation = /action=(\w+) appends text/.exec(surface)?.[1];
+    const appendSchema =
+      wire[`NOTES_${appendOperation?.toUpperCase()}`]?.inputSchema.jsonSchema;
+    expect(appendSchema?.required).toEqual(
+      expect.arrayContaining(["target", "changes", "expectedRevision"]),
+    );
+    expect(JSON.stringify(appendSchema?.properties?.textEdit)).toContain(
+      '"append"',
+    );
+    // Checklist notes reject a body append; their new item stays on UPDATE.
+    const checklistOperation = /action=(\w+) [^;]*NEW checklist item/.exec(
+      surface,
+    )?.[1];
+    expect(
+      JSON.stringify(
+        wire[`NOTES_${checklistOperation?.toUpperCase()}`]?.inputSchema
+          .jsonSchema.properties?.authoredEdit,
+      ),
+    ).toContain('"checklist"');
+    expect(
+      planned.find((tool) => tool.name === "NOTES_UPDATE")?.description,
+    ).toMatch(/append text to a plain note use NOTES_PATCH/);
+
+    const runtime = await executorHarness();
+    const service = getNotesService(runtime);
+    const other = await service.createNoteWithCommit({
+      content: "Groceries\n- Eggs",
+    });
+    const created = await service.createNoteWithCommit({
+      content: "groceries\n- eggs\n- oat milk\n- spinach",
+    });
+    const append: PlannerToolCall = {
+      name: "NOTES_PATCH",
+      params: {
+        target: { kind: "id", value: created.value.id },
+        changes: [],
+        textEdit: { action: "append", field: "body", text: "\n- bread" },
+        expectedRevision: created.snapshot.revision,
+      },
+    };
+    const expected = "groceries\n- eggs\n- oat milk\n- spinach\n- bread";
+    const first = await execute(
+      runtime,
+      "patch",
+      append,
+      ["OWNER"],
+      "add bread to that note",
+    );
+    expect(first.success).toBe(true);
+    expect(reconstructNoteContent(service.getNote(created.value.id))).toBe(
+      expected,
+    );
+    // The revision still stops a repeated append from adding a second copy.
+    const repeated = await execute(
+      runtime,
+      "patch",
+      append,
+      ["OWNER"],
+      "add bread to that note",
+    );
+    expect(repeated.success).toBe(false);
+    expect(JSON.stringify(repeated)).toContain("NOTES_EDIT_CONFLICT");
+    expect(reconstructNoteContent(service.getNote(created.value.id))).toBe(
+      expected,
+    );
+    expect(service.getNote(other.value.id)).toEqual(other.value);
   });
 
   it.each([undefined, "", "  ", 7, ["Existing"], { title: "Existing" }])(
@@ -318,7 +546,7 @@ describe("promoted Notes execution", () => {
         body: "Keep all text.",
         color: "yellow",
       });
-      const result = await execute(runtime, {
+      const result = await execute(runtime, "update", {
         name: "NOTES_UPDATE",
         params: { text: selector, replacementContent: "Existing\nChanged" },
       });
@@ -332,18 +560,18 @@ describe("promoted Notes execution", () => {
       const runtime = await executorHarness();
       const content = "Exact label\nComplete body with  two spaces.";
       expect(
-        await execute(runtime, {
+        await execute(runtime, "create", {
           name: "NOTES_CREATE",
           params: { [name]: content },
         }),
       ).toMatchObject({ success: true });
-      const originalRead = await execute(runtime, {
+      const originalRead = await execute(runtime, "list", {
         name: "NOTES_LIST",
         params: { [name]: "Exact label" },
       });
       expect(originalRead).toMatchObject({ success: true, data: { count: 1 } });
       expect(
-        await execute(runtime, {
+        await execute(runtime, "update", {
           name: "NOTES_UPDATE",
           params: {
             expectedRevision: originalRead.data?.notesRevision,
@@ -356,7 +584,7 @@ describe("promoted Notes execution", () => {
         { title: "Exact label", body: "\nChanged body." },
       ]);
       expect(
-        await execute(runtime, {
+        await execute(runtime, "delete", {
           name: "NOTES_DELETE",
           params: { [name]: "Exact label" },
         }),
@@ -369,14 +597,14 @@ describe("promoted Notes execution", () => {
     "accepts matching %s replacement and rejects conflicting replacements without writing",
     async (name) => {
       const runtime = await executorHarness();
-      await execute(runtime, {
+      await execute(runtime, "create", {
         name: "NOTES_CREATE",
         params: { content: "Record\nOriginal" },
       });
       const originalSnapshot = getNotesService(runtime).snapshot();
       const replacement = "Record\nChanged  exactly";
       expect(
-        await execute(runtime, {
+        await execute(runtime, "update", {
           name: "NOTES_UPDATE",
           params: {
             content: "Record",
@@ -388,7 +616,7 @@ describe("promoted Notes execution", () => {
       ).toMatchObject({ success: true });
       const before = getNotesService(runtime).listNotes();
       expect(
-        await execute(runtime, {
+        await execute(runtime, "update", {
           name: "NOTES_UPDATE",
           params: {
             content: "Record",
@@ -405,7 +633,7 @@ describe("promoted Notes execution", () => {
     const runtime = await executorHarness();
     const content = "Exact label\nComplete  body";
     expect(
-      await execute(runtime, {
+      await execute(runtime, "create", {
         name: "NOTES_CREATE",
         params: {
           content,
@@ -433,7 +661,7 @@ describe("promoted Notes execution", () => {
     async (params) => {
       const runtime = await executorHarness();
       expect(
-        await execute(runtime, { name: "NOTES_CREATE", params }),
+        await execute(runtime, "create", { name: "NOTES_CREATE", params }),
       ).toMatchObject({ success: false });
       expect(getNotesService(runtime).listNotes()).toEqual([]);
     },
@@ -443,7 +671,7 @@ describe("promoted Notes execution", () => {
     // Before the aliases were declared, every one of these calls was rejected
     // by the core validator with "Unexpected argument" before the handler ran.
     const runtime = await executorHarness();
-    const created = await execute(runtime, {
+    const created = await execute(runtime, "create", {
       name: "NOTES_CREATE",
       params: { text: "Alias check\noriginal body" },
     });
@@ -455,7 +683,7 @@ describe("promoted Notes execution", () => {
       },
     });
 
-    const listed = await execute(runtime, {
+    const listed = await execute(runtime, "list", {
       name: "NOTES_LIST",
       params: { query: "alias" },
     });
@@ -464,7 +692,7 @@ describe("promoted Notes execution", () => {
       data: { count: 1, filterApplied: true, topic: "alias" },
     });
 
-    const updated = await execute(runtime, {
+    const updated = await execute(runtime, "update", {
       name: "NOTES_UPDATE",
       params: {
         title: "Alias check",
@@ -480,7 +708,7 @@ describe("promoted Notes execution", () => {
       },
     });
 
-    const umbrella = await execute(runtime, {
+    const umbrella = await execute(runtime, "create", {
       name: "NOTES",
       params: { action: "create", note: "Second note" },
     });
@@ -490,7 +718,7 @@ describe("promoted Notes execution", () => {
     });
 
     // Notes rejects conflicting alternatives before any store operation.
-    const conflict = await execute(runtime, {
+    const conflict = await execute(runtime, "list", {
       name: "NOTES_LIST",
       params: { content: "second", query: "alias" },
     });
@@ -526,7 +754,7 @@ describe("promoted Notes execution", () => {
       ["createdAt", newer.id],
       ["updatedAt", older.id],
     ]) {
-      const result = await execute(runtime, {
+      const result = await execute(runtime, "list", {
         name: "NOTES_LIST",
         params: { latestBy },
       });
@@ -550,7 +778,10 @@ describe("promoted Notes execution", () => {
         },
       });
     }
-    const all = await execute(runtime, { name: "NOTES_LIST", params: {} });
+    const all = await execute(runtime, "list", {
+      name: "NOTES_LIST",
+      params: {},
+    });
     expect(all.data).not.toHaveProperty("selection");
     expect(all.data).not.toHaveProperty("eligibleMatchCount");
     expect(all.data).toMatchObject({
@@ -595,7 +826,7 @@ describe("promoted Notes execution", () => {
       endAt: "2026-03-09T00:00:00-07:00",
     };
     try {
-      const result = await execute(runtime, {
+      const result = await execute(runtime, "list", {
         name: "NOTES_LIST",
         params: { query: "Fern", dateRange, latestBy: "createdAt" },
       });
@@ -628,7 +859,7 @@ describe("promoted Notes execution", () => {
     const runtime = await executorHarness();
     const service = getNotesService(runtime);
     await service.createNote({ title: "Keep", body: "unchanged" });
-    const result = await execute(runtime, {
+    const result = await execute(runtime, "list", {
       name: "NOTES_LIST",
       params: { content: "absent", latestBy: "updatedAt" },
     });
@@ -656,7 +887,7 @@ describe("promoted Notes execution", () => {
         "not-an-instant";
       const spy = vi.spyOn(service, "snapshot").mockReturnValue(snapshot);
       try {
-        const result = await execute(runtime, {
+        const result = await execute(runtime, "list", {
           name: "NOTES_LIST",
           params: {
             latestBy: "updatedAt",
@@ -689,8 +920,9 @@ describe("promoted Notes execution", () => {
       const service = getNotesService(runtime);
       await service.createNote({ title: "Keep", body: "unchanged" });
       const before = service.snapshot();
-      const result = await notesAction.handler(
+      const result = await directNotesHandler(
         runtime,
+        action as NotesRequestOperation,
         {} as Memory,
         undefined,
         { parameters: { action, latestBy: "createdAt", content: "Keep" } },
@@ -717,8 +949,9 @@ describe("promoted Notes execution", () => {
     "rejects invalid latestBy %j",
     async (latestBy) => {
       const runtime = await executorHarness();
-      const result = await notesAction.handler(
+      const result = await directNotesHandler(
         runtime,
+        "list",
         {} as Memory,
         undefined,
         { parameters: { action: "list", latestBy } },
@@ -774,7 +1007,7 @@ describe("promoted Notes execution", () => {
       startAt: "2026-03-02T00:00:00-08:00",
       endAt: "2026-03-09T00:00:00-07:00",
     };
-    const created = await execute(runtime, {
+    const created = await execute(runtime, "list", {
       name: "NOTES_LIST",
       params: { content: "Fern", dateRange },
     });
@@ -798,7 +1031,7 @@ describe("promoted Notes execution", () => {
         expect.objectContaining(last),
       ]),
     );
-    const edited = await execute(runtime, {
+    const edited = await execute(runtime, "list", {
       name: "NOTES_LIST",
       params: {
         content: "Fern",
@@ -806,7 +1039,7 @@ describe("promoted Notes execution", () => {
       },
     });
     expect(edited).toMatchObject({ success: true, data: { count: 3 } });
-    const absent = await execute(runtime, {
+    const absent = await execute(runtime, "list", {
       name: "NOTES_LIST",
       params: {
         dateRange: {
@@ -861,7 +1094,7 @@ describe("promoted Notes execution", () => {
         color: "yellow",
       });
       const before = await fs.readFile(service.store.filePath, "utf8");
-      const result = await execute(runtime, {
+      const result = await execute(runtime, "list", {
         name: "NOTES_LIST",
         params: { dateRange },
       });
@@ -896,7 +1129,7 @@ describe("promoted Notes execution", () => {
               replacementContent:
                 "Same title\nKeep  both spaces and Mira’s green backpack.",
             };
-      const result = await execute(runtime, {
+      const result = await execute(runtime, "update", {
         name: "NOTES_UPDATE",
         params: { noteId: original.id, ...patch },
       });
@@ -945,7 +1178,7 @@ describe("promoted Notes execution", () => {
       { noteId: "" },
       {},
     ]) {
-      const result = await execute(runtime, {
+      const result = await execute(runtime, "update", {
         name: "NOTES_UPDATE",
         params: {
           ...selector,
@@ -959,6 +1192,7 @@ describe("promoted Notes execution", () => {
     }
     const denied = await execute(
       runtime,
+      "update",
       {
         name: "NOTES_UPDATE",
         params: {
@@ -974,13 +1208,13 @@ describe("promoted Notes execution", () => {
   });
   it("reads exact IDs without substituting matching text or exposing other notes", async () => {
     const runtime = await executorHarness();
-    const created = await run(runtime, {
+    const created = await run(runtime, "create", {
       action: "create",
       content: "Exact read fixture\nComplete original body",
     });
     const id = created.data?.noteId;
     expect(typeof id).toBe("string");
-    await run(runtime, {
+    await run(runtime, "create", {
       action: "create",
       content: `Decoy\n${id}\nnote_missing_qa`,
     });
@@ -993,7 +1227,7 @@ describe("promoted Notes execution", () => {
       deferParentHints: true,
     });
     expect(selected.map((action) => action.name)).toEqual(["NOTES_GET"]);
-    const found = await execute(runtime, {
+    const found = await execute(runtime, "get", {
       name: selected[0].name,
       params: { noteId: id },
     });
@@ -1006,13 +1240,13 @@ describe("promoted Notes execution", () => {
         notes: [created.data?.note],
       },
     });
-    const missingId = await execute(runtime, {
+    const missingId = await execute(runtime, "get", {
       name: "NOTES_GET",
       params: {},
     });
     expect(missingId.success).toBe(false);
     expect(missingId.data).not.toHaveProperty("notes");
-    const absent = await execute(runtime, {
+    const absent = await execute(runtime, "list", {
       name: "NOTES_LIST",
       params: { noteId: "note_missing_qa" },
     });
@@ -1020,7 +1254,7 @@ describe("promoted Notes execution", () => {
       success: true,
       data: { lookupMode: "exact_id", count: 0, notes: [] },
     });
-    const text = await execute(runtime, {
+    const text = await execute(runtime, "list", {
       name: "NOTES_LIST",
       params: { content: "note_missing_qa" },
     });
@@ -1028,13 +1262,14 @@ describe("promoted Notes execution", () => {
       success: true,
       data: { lookupMode: "text", count: 1 },
     });
-    const conflict = await execute(runtime, {
+    const conflict = await execute(runtime, "list", {
       name: "NOTES_LIST",
       params: { noteId: id, content: "Decoy" },
     });
     expect(conflict).toMatchObject({ success: false });
     const denied = await execute(
       runtime,
+      "get",
       { name: "NOTES_GET", params: { noteId: id } },
       ["NONE"],
     );
@@ -1045,16 +1280,16 @@ describe("promoted Notes execution", () => {
 
   it("updates the complete note through the declared replacement field", async () => {
     const runtime = await executorHarness();
-    await execute(runtime, {
+    await execute(runtime, "create", {
       name: "NOTES_CREATE",
       params: { content: "Packing list\nCharger" },
     });
-    const originalRead = await execute(runtime, {
+    const originalRead = await execute(runtime, "list", {
       name: "NOTES_LIST",
       params: { content: "Packing list" },
     });
     expect(originalRead.data?.notes).toMatchObject([{ body: "\nCharger" }]);
-    const result = await execute(runtime, {
+    const result = await execute(runtime, "update", {
       name: "NOTES_UPDATE",
       params: {
         content: "Packing list",
@@ -1071,7 +1306,7 @@ describe("promoted Notes execution", () => {
 
   it("creates, lists, updates, and deletes through the registered children", async () => {
     const runtime = await executorHarness();
-    const created = await execute(runtime, {
+    const created = await execute(runtime, "create", {
       name: "NOTES_CREATE",
       params: {
         content:
@@ -1084,7 +1319,7 @@ describe("promoted Notes execution", () => {
       body: "\nBring the blue notebook and charger; no water.",
     });
     const originalSnapshot = getNotesService(runtime).snapshot();
-    const updated = await execute(runtime, {
+    const updated = await execute(runtime, "update", {
       name: "NOTES_UPDATE",
       params: {
         content: "Conversation context QA",
@@ -1095,7 +1330,7 @@ describe("promoted Notes execution", () => {
     });
     expect(updated.success).toBe(true);
     expect(updated.data?.noteId).toBe(created.data?.noteId);
-    const listed = await execute(runtime, {
+    const listed = await execute(runtime, "list", {
       name: "NOTES_LIST",
       params: { content: "" },
     });
@@ -1106,7 +1341,7 @@ describe("promoted Notes execution", () => {
       },
     ]);
     expect(listed.data?.filterApplied).toBe(false);
-    const deleted = await execute(runtime, {
+    const deleted = await execute(runtime, "delete", {
       name: "NOTES_DELETE",
       params: { content: "Conversation context QA" },
     });
@@ -1120,7 +1355,9 @@ describe("promoted Notes execution", () => {
     expect(deleted.data?.deletedAt).toEqual(expect.any(String));
     expect(deleted.promptData?.deletedAt).toEqual(deleted.data?.deletedAt);
     expect(deleted.data?.note).toEqual(updated.data?.note);
-    expect((await run(runtime, { action: "list" })).data?.notes).toEqual([]);
+    expect(
+      (await run(runtime, "list", { action: "list" })).data?.notes,
+    ).toEqual([]);
 
     for (const result of [created, listed, updated, deleted]) {
       expect(result).toMatchObject({
@@ -1155,6 +1392,11 @@ describe("promoted Notes execution", () => {
 
   it("advances a committed Notes step to queued navigation but still evaluates the final reply", async () => {
     const runtime = await executorHarness();
+    const request = await boundNotesRequest(runtime, {
+      text: "Create the requested note, then open Notes.",
+      operations: ["create"],
+      message: { entityId: "owner-id" as UUID, roomId: "room-id" as UUID },
+    });
     const useModel = vi.fn().mockResolvedValue({
       toolCalls: [
         {
@@ -1185,39 +1427,62 @@ describe("promoted Notes execution", () => {
             modelReplyRequired: true,
             turnComplete: false,
           }
-        : execute(runtime, call),
+        : actionResultToPlannerToolResult(await request.execute(call), {
+            requestOperationIssuer: request.issuer,
+          }),
     );
     const evaluate = vi.fn<
       NonNullable<Parameters<typeof runPlannerLoop>[0]["evaluate"]>
     >(async ({ trajectory }) =>
-      trajectory.steps.at(-1)?.toolCall?.name === "VIEWS"
-        ? {
-            success: true,
-            decision: "FINISH",
-            thought: "The note is saved and navigation completed.",
-            messageToUser: "Your notebook note is saved, and Notes is open.",
-            effectReceiptIds: trajectory.steps.flatMap((step) =>
-              (step.result?.effectReceipts ?? []).map(
-                (receipt) => receipt.receiptId,
-              ),
-            ),
-          }
-        : {
-            success: false,
-            decision: "NEXT_RECOMMENDED",
-            thought: "Opening Notes remains queued.",
-            recommendedToolCallId: "open-notes",
-          },
+      parseEvaluatorOutput(
+        JSON.stringify(
+          trajectory.steps.at(-1)?.toolCall?.name === "VIEWS"
+            ? {
+                success: true,
+                decision: "FINISH",
+                thought: "The note is saved and navigation completed.",
+                messageToUser:
+                  "Your notebook note is saved, and Notes is open.",
+                effectReceiptIds: trajectory.steps.flatMap((step) =>
+                  (step.result?.effectReceipts ?? []).map(
+                    (receipt) => receipt.receiptId,
+                  ),
+                ),
+              }
+            : {
+                success: false,
+                decision: "NEXT_RECOMMENDED",
+                thought: "Opening Notes remains queued.",
+                recommendedToolCallId: "open-notes",
+              },
+        ),
+      ),
     );
 
     const result = await runPlannerLoop({
-      runtime: { useModel },
-      context: { id: "notes-navigation", events: [] },
+      runtime: notesFixturePlannerRuntime(
+        Object.assign(runtime, { useModel }),
+        useModel,
+      ),
+      requestOperationIssuer: request.issuer,
+      context: request.context,
       executeToolCall,
       evaluate,
     });
 
-    expect(useModel).toHaveBeenCalledTimes(1);
+    expect(
+      useModel,
+      JSON.stringify({
+        calls: result.trajectory.steps
+          .filter((step) => step.toolCall)
+          .map((step) => ({
+            name: step.toolCall?.name,
+            success: step.result?.success,
+            receipts: step.result?.effectReceipts?.length ?? 0,
+          })),
+        evaluations: evaluate.mock.calls.length,
+      }),
+    ).toHaveBeenCalledTimes(1);
     expect(executeToolCall.mock.calls.map(([call]) => call.name)).toEqual([
       "NOTES_CREATE",
       "VIEWS",
@@ -1226,7 +1491,9 @@ describe("promoted Notes execution", () => {
     expect(result.finalMessage).toBe(
       "Your notebook note is saved, and Notes is open.",
     );
-    expect((await run(runtime, { action: "list" })).data?.notes).toMatchObject([
+    expect(
+      (await run(runtime, "list", { action: "list" })).data?.notes,
+    ).toMatchObject([
       { title: "Queue contract QA", body: "\nBring the notebook." },
     ]);
   });
@@ -1248,12 +1515,21 @@ describe("promoted Notes execution", () => {
     "rejects incomplete %s arguments before writing: %j",
     async (name, params, missing) => {
       const runtime = await executorHarness();
-      await run(runtime, {
+      await run(runtime, "create", {
         action: "create",
         content: "Existing note\nKeep this body.",
       });
-      const before = (await run(runtime, { action: "list" })).data?.notes;
-      const rejected = await execute(runtime, { name, params });
+      const before = (await run(runtime, "list", { action: "list" })).data
+        ?.notes;
+      const rejected = await execute(
+        runtime,
+        name === "NOTES_CREATE"
+          ? "create"
+          : name === "NOTES_DELETE"
+            ? "delete"
+            : "update",
+        { name, params },
+      );
       expect(rejected.success).toBe(false);
       expect(rejected.effectReceipts).toBeUndefined();
       expect(rejected.verifiedUserFacing).not.toBe(true);
@@ -1261,9 +1537,9 @@ describe("promoted Notes execution", () => {
       expect(rejected.data?.parameterErrors).toEqual(
         expect.arrayContaining([expect.stringContaining(missing)]),
       );
-      expect((await run(runtime, { action: "list" })).data?.notes).toEqual(
-        before,
-      );
+      expect(
+        (await run(runtime, "list", { action: "list" })).data?.notes,
+      ).toEqual(before);
     },
   );
 
@@ -1271,6 +1547,7 @@ describe("promoted Notes execution", () => {
     const runtime = await executorHarness();
     const rejected = await execute(
       runtime,
+      "create",
       {
         name: "NOTES_CREATE",
         params: { content: "Unauthorized note" },
@@ -1279,7 +1556,9 @@ describe("promoted Notes execution", () => {
     );
     expect(rejected.success).toBe(false);
     expect(rejected.effectReceipts).toBeUndefined();
-    expect((await run(runtime, { action: "list" })).data?.notes).toEqual([]);
+    expect(
+      (await run(runtime, "list", { action: "list" })).data?.notes,
+    ).toEqual([]);
   });
 
   it.each([
@@ -1287,14 +1566,25 @@ describe("promoted Notes execution", () => {
     { name: "NOTES", related: false },
     { name: "NOTES_CREATE", related: true },
     { name: "NOTES_CREATE", related: false },
+    { name: "NOTES_CREATE", related: false, bodyOnlyInTitle: true },
+    { name: "NOTES_CREATE", related: false, changedBody: true },
   ])(
-    "retains only unresolved $name failure authority after a related retry: $related",
-    async ({ name, related }) => {
+    "retains only unresolved $name failure authority after a related retry: $related ($bodyOnlyInTitle/$changedBody)",
+    async ({ name, related, bodyOnlyInTitle = false, changedBody = false }) => {
       const runtime = await executorHarness();
+      const request = await boundNotesRequest(runtime, {
+        text: "Create the requested note with its complete supplied content.",
+        operations: ["create"],
+        message: { entityId: "owner-id" as UUID, roomId: "room-id" as UUID },
+      });
       const body = "Bring the blue notebook and charger; no water.";
-      const content = related
-        ? `Conversation context QA\n${body}`
-        : "Dentist appointment\nTuesday afternoon.";
+      const content = bodyOnlyInTitle
+        ? `${body}\nUnrelated note body.`
+        : changedBody
+          ? "Conversation context QA\nBring the blue notebook and charger; add water."
+          : related
+            ? `Conversation context QA\n${body}`
+            : "Dentist appointment\nTuesday afternoon.";
       const useModel = vi
         .fn()
         .mockResolvedValue(
@@ -1316,29 +1606,71 @@ describe("promoted Notes execution", () => {
         });
       const completion = "Hecho. La nota solicitada está guardada.";
       const result = await runPlannerLoop({
-        runtime: { useModel },
-        context: { id: "notes-recovery", events: [] },
-        executeToolCall: (call) => execute(runtime, call),
+        runtime: notesFixturePlannerRuntime(
+          Object.assign(runtime, { useModel }),
+          useModel,
+        ),
+        requestOperationIssuer: request.issuer,
+        context: request.context,
+        executeToolCall: async (call) =>
+          actionResultToPlannerToolResult(await request.execute(call), {
+            requestOperationIssuer: request.issuer,
+          }),
         evaluate: ({ trajectory }) => {
-          const lastResult = trajectory.steps.at(-1)?.result;
-          return lastResult?.success
-            ? {
-                success: true,
+          const last = trajectory.steps.at(-1);
+          const lastResult = last?.result;
+          // The host must first reject the unrelated completion and request
+          // another planning turn. That turn is text-only, so the scripted
+          // judge then ends honestly on the saved retry's receipts; it must
+          // not repeat a false FINISH until the continuation cap.
+          const saved = trajectory.steps.findLast(
+            (step) => step.result?.success,
+          )?.result;
+          if (
+            (lastResult?.success || last?.terminalOnly) &&
+            saved &&
+            useModel.mock.calls.length > 2
+          ) {
+            return parseEvaluatorOutput(
+              JSON.stringify({
+                success: false,
                 decision: "FINISH",
-                thought: "The requested note was saved.",
-                messageToUser: completion,
-                effectReceiptIds: lastResult.effectReceipts?.map(
+                thought:
+                  "The original operation remains unresolved; the separate result is recorded.",
+                messageToUser:
+                  "The first note could not be saved; the second note was saved.",
+                requestFullyCovered: false,
+                replyEffectStatus: "applied",
+                effectReceiptIds: saved.effectReceipts?.map(
                   (receipt) => receipt.receiptId,
                 ),
-              }
-            : {
-                success: false,
-                decision: "CONTINUE",
-                thought: "Correct the missing content.",
-              };
+              }),
+            );
+          }
+          return parseEvaluatorOutput(
+            JSON.stringify(
+              lastResult?.success
+                ? {
+                    success: true,
+                    decision: "FINISH",
+                    thought: "The requested note was saved.",
+                    messageToUser: completion,
+                    effectReceiptIds: lastResult.effectReceipts?.map(
+                      (receipt) => receipt.receiptId,
+                    ),
+                  }
+                : {
+                    success: false,
+                    decision: "CONTINUE",
+                    thought: "Correct the missing content.",
+                  },
+            ),
+          );
         },
       });
-      expect((await run(runtime, { action: "list" })).data?.count).toBe(1);
+      expect((await run(runtime, "list", { action: "list" })).data?.count).toBe(
+        1,
+      );
       expect(
         result.trajectory.steps.filter(
           (step) => step.result?.success === false,
@@ -1350,6 +1682,8 @@ describe("promoted Notes execution", () => {
       } else {
         expect(result.finalMessage).not.toBe(completion);
         expect(useModel.mock.calls.length).toBeGreaterThan(2);
+        expect(result.evaluator?.success).not.toBe(true);
+        expect(result.evaluator?.requestFullyCovered).toBe(false);
       }
     },
   );
@@ -1360,14 +1694,14 @@ describe("NOTES operation parsing", () => {
     "preserves the direct handler's legacy %s content alias",
     async (alias) => {
       const runtime = await harness();
-      const created = await run(runtime, {
+      const created = await run(runtime, "create", {
         action: "create",
         [alias]: "Legacy title",
         body: "Legacy body",
       });
       expect(created.success).toBe(true);
       expect(
-        (await run(runtime, { action: "list" })).data?.notes,
+        (await run(runtime, "list", { action: "list" })).data?.notes,
       ).toMatchObject([{ title: "Legacy title", body: "\nLegacy body" }]);
     },
   );
@@ -1390,13 +1724,13 @@ describe("NOTES operation parsing", () => {
 
   it("refuses an operation it does not implement instead of listing", async () => {
     const runtime = await harness();
-    await run(runtime, {
+    await run(runtime, "create", {
       action: "create",
       content: "spare key under the mat",
     });
 
     // "remove" is plausible planner output: DELETE_NOTE is an advertised simile.
-    const result = await run(runtime, {
+    const result = await run(runtime, "delete", {
       action: "remove",
       content: "spare key",
     });
@@ -1410,9 +1744,12 @@ describe("NOTES operation parsing", () => {
 
   it("still reads when no operation was named at all", async () => {
     const runtime = await harness();
-    await run(runtime, { action: "create", content: "wifi is on the fridge" });
+    await run(runtime, "create", {
+      action: "create",
+      content: "wifi is on the fridge",
+    });
 
-    const result = await run(runtime, {});
+    const result = await run(runtime, "list", {});
 
     expect(result.success).toBe(true);
     expect(result.data).toMatchObject({ count: 1, total: 1 });
@@ -1423,10 +1760,13 @@ describe("NOTES operation parsing", () => {
 
   it("returns structured note facts for one natural model-authored reply", async () => {
     const runtime = await harness();
-    await run(runtime, { action: "create", content: "wifi is on the fridge" });
+    await run(runtime, "create", {
+      action: "create",
+      content: "wifi is on the fridge",
+    });
     const callback = vi.fn();
 
-    const result = await run(runtime, { action: "list" }, callback);
+    const result = await run(runtime, "list", { action: "list" }, callback);
 
     expect(callback).not.toHaveBeenCalled();
     expect(result).toMatchObject({
@@ -1448,8 +1788,8 @@ describe("NOTES operation parsing", () => {
 
   it("treats a strict-provider empty content field as omission for an unfiltered count", async () => {
     const runtime = await harness();
-    await run(runtime, { action: "create", content: "first note" });
-    await run(runtime, { action: "create", content: "second note" });
+    await run(runtime, "create", { action: "create", content: "first note" });
+    await run(runtime, "create", { action: "create", content: "second note" });
     Object.assign(runtime, {
       actions: [notesAction],
       getRoom: vi.fn(async () => ({ worldId: "world-id" })),
@@ -1498,18 +1838,18 @@ describe("NOTES operation parsing", () => {
 
   it("preserves stored identity and timestamps so the model can compare recency", async () => {
     const runtime = await harness();
-    const created = await run(runtime, {
+    const created = await run(runtime, "create", {
       action: "create",
       content: "Recency check\noriginal body",
     });
-    const originalRead = await run(runtime, { action: "list" });
-    const updated = await run(runtime, {
+    const originalRead = await run(runtime, "list", { action: "list" });
+    const updated = await run(runtime, "update", {
       action: "update",
       expectedRevision: originalRead.data?.notesRevision,
       content: "Recency check",
       body: "Recency check\nupdated body",
     });
-    const result = await run(runtime, { action: "list" });
+    const result = await run(runtime, "list", { action: "list" });
 
     expect(result.data?.notes).toMatchObject([updated.data?.note]);
     expect(result.data?.notes).toMatchObject([
@@ -1521,7 +1861,7 @@ describe("NOTES operation parsing", () => {
         body: "\nupdated body",
       },
     ]);
-    const filtered = await run(runtime, {
+    const filtered = await run(runtime, "list", {
       action: "list",
       content: "Recency check",
     });
@@ -1530,16 +1870,19 @@ describe("NOTES operation parsing", () => {
 
   it("keeps a topic-scoped read from exposing unrelated notes", async () => {
     const runtime = await harness();
-    await run(runtime, {
+    await run(runtime, "create", {
       action: "create",
       content: "the plumber comes thursday morning",
     });
-    await run(runtime, {
+    await run(runtime, "create", {
       action: "create",
       content: "spare key under the mat",
     });
 
-    const match = await run(runtime, { action: "list", content: "PLUMBER" });
+    const match = await run(runtime, "list", {
+      action: "list",
+      content: "PLUMBER",
+    });
     expect(match.data?.notes).toMatchObject([
       {
         title: "the plumber comes thursday morning",
@@ -1553,7 +1896,10 @@ describe("NOTES operation parsing", () => {
       filterApplied: true,
     });
 
-    const absent = await run(runtime, { action: "list", query: "dentist" });
+    const absent = await run(runtime, "list", {
+      action: "list",
+      query: "dentist",
+    });
     expect(absent.data?.notes).toEqual([]);
     expect(absent.data).toMatchObject({
       count: 0,
@@ -1564,14 +1910,17 @@ describe("NOTES operation parsing", () => {
 
   it("matches topic-scoped reads across Unicode forms and repeated whitespace", async () => {
     const runtime = await harness();
-    await run(runtime, { action: "create", content: "Café plans" });
-    await run(runtime, {
+    await run(runtime, "create", { action: "create", content: "Café plans" });
+    await run(runtime, "create", {
       action: "create",
       content: "spare key under the mat",
     });
 
     for (const topic of ["Café", "café   plans", "CAFÉ\tPLANS"]) {
-      const match = await run(runtime, { action: "list", content: topic });
+      const match = await run(runtime, "list", {
+        action: "list",
+        content: topic,
+      });
       expect(match.data?.notes).toMatchObject([{ title: "Café plans" }]);
       expect(match.data).toMatchObject({
         count: 1,
@@ -1583,7 +1932,7 @@ describe("NOTES operation parsing", () => {
 
   it("preserves literal colon content through create and full replacement", async () => {
     const runtime = await harness();
-    const created = await run(runtime, {
+    const created = await run(runtime, "create", {
       action: "create",
       content: "Demo check 917: bring the green notebook.",
     });
@@ -1592,15 +1941,15 @@ describe("NOTES operation parsing", () => {
       title: "Demo check 917: bring the green notebook.",
       body: "",
     });
-    const originalRead = await run(runtime, { action: "list" });
-    const updated = await run(runtime, {
+    const originalRead = await run(runtime, "list", { action: "list" });
+    const updated = await run(runtime, "update", {
       action: "update",
       expectedRevision: originalRead.data?.notesRevision,
       content: "Demo check 917",
       replacementContent: "Demo check 917: bring the blue notebook.",
     });
     expect(updated.success).toBe(true);
-    const listed = await run(runtime, { action: "list" });
+    const listed = await run(runtime, "list", { action: "list" });
     expect(listed.data?.notes).toMatchObject([
       { title: "Demo check 917: bring the blue notebook.", body: "" },
     ]);
@@ -1610,7 +1959,7 @@ describe("NOTES operation parsing", () => {
     "preserves a separate create body with title %s",
     async (title) => {
       const runtime = await harness();
-      const created = await run(runtime, {
+      const created = await run(runtime, "create", {
         action: "create",
         content: title,
         body: "Cerebras local note persistence",
@@ -1621,7 +1970,7 @@ describe("NOTES operation parsing", () => {
         title,
         body: "\nCerebras local note persistence",
       });
-      const listed = await run(runtime, { action: "list" });
+      const listed = await run(runtime, "list", { action: "list" });
       expect(listed.data?.notes).toMatchObject([
         {
           title,
@@ -1635,13 +1984,16 @@ describe("NOTES operation parsing", () => {
   it("stores a redundant create body once without removing intentional repeated lines", async () => {
     const runtime = await harness();
     const body = "Bring a charger and water.\nBring a charger and water.";
-    const created = await run(runtime, {
+    const created = await run(runtime, "create", {
       action: "create",
       content: `Checklist\n${body}`,
       body,
     });
     expect(created.success).toBe(true);
-    const listed = await run(runtime, { action: "list", content: "Checklist" });
+    const listed = await run(runtime, "list", {
+      action: "list",
+      content: "Checklist",
+    });
     expect(listed.data?.notes).toMatchObject([
       { title: "Checklist", body: `\n${body}` },
     ]);
@@ -1650,7 +2002,7 @@ describe("NOTES operation parsing", () => {
 
   it("rejects conflicting create bodies without persisting either version", async () => {
     const runtime = await harness();
-    const created = await run(runtime, {
+    const created = await run(runtime, "create", {
       action: "create",
       content: "Checklist\nBring water.",
       body: "Bring a charger.",
@@ -1659,19 +2011,19 @@ describe("NOTES operation parsing", () => {
       success: false,
       error: "NOTES_CONFLICTING_BODY",
     });
-    const listed = await run(runtime, { action: "list" });
+    const listed = await run(runtime, "list", { action: "list" });
     expect(listed.data?.notes).toEqual([]);
   });
 
   it("returns the persisted label and body as evidence after a content update", async () => {
     const runtime = await harness();
-    const created = await run(runtime, {
+    const created = await run(runtime, "create", {
       action: "create",
       content: "Demo checklist",
       body: "charger",
     });
-    const originalRead = await run(runtime, { action: "list" });
-    const updated = await run(runtime, {
+    const originalRead = await run(runtime, "list", { action: "list" });
+    const updated = await run(runtime, "update", {
       action: "update",
       expectedRevision: originalRead.data?.notesRevision,
       content: "Demo checklist",
@@ -1684,7 +2036,7 @@ describe("NOTES operation parsing", () => {
       title: "Demo checklist",
       body: "\ncharger and water",
     });
-    const listed = await run(runtime, {
+    const listed = await run(runtime, "list", {
       action: "list",
       content: "Demo checklist",
     });
@@ -1695,20 +2047,20 @@ describe("NOTES operation parsing", () => {
 
   it("lets the owner create, search/list, update, and delete in one store", async () => {
     const runtime = await harness();
-    const created = await run(runtime, {
+    const created = await run(runtime, "create", {
       action: "create",
       content: "bins go out tuesday",
     });
     expect(created.success).toBe(true);
     expect(created.data?.note).toMatchObject({ title: "bins go out tuesday" });
 
-    const listed = await run(runtime, { action: "list" });
+    const listed = await run(runtime, "list", { action: "list" });
     expect(listed.success).toBe(true);
     expect(listed.data?.notes).toMatchObject([
       { title: "bins go out tuesday", body: "", color: "yellow" },
     ]);
 
-    const updated = await run(runtime, {
+    const updated = await run(runtime, "update", {
       action: "update",
       expectedRevision: listed.data?.notesRevision,
       content: "bins",
@@ -1719,14 +2071,14 @@ describe("NOTES operation parsing", () => {
       title: "bins go out wednesday",
     });
 
-    const deleted = await run(runtime, {
+    const deleted = await run(runtime, "delete", {
       action: "delete",
       content: "wednesday",
     });
     expect(deleted.success).toBe(true);
     expect(deleted.data?.note).toEqual(updated.data?.note);
 
-    const after = await run(runtime, { action: "list" });
+    const after = await run(runtime, "list", { action: "list" });
     expect(after.data).toMatchObject({ count: 0, total: 0, notes: [] });
   });
 });
@@ -1754,7 +2106,7 @@ describe("identical-duplicate notes", () => {
     const before = service.snapshot();
     const results = await Promise.all(
       Array.from({ length: 4 }, () =>
-        execute(runtime, {
+        execute(runtime, "create", {
           name: "NOTES_CREATE",
           params: { content: "i need to buy milk" },
         }),
@@ -1789,29 +2141,35 @@ describe("identical-duplicate notes", () => {
     expect(service.snapshot().revision).toBe(before.revision + 1);
     const saved = await fs.readFile(service.store.filePath, "utf8");
     const snapshot = service.snapshot();
-    await run(runtime, { action: "create", content: "i need to buy milk" });
+    await run(runtime, "create", {
+      action: "create",
+      content: "i need to buy milk",
+    });
     expect(service.snapshot()).toEqual(snapshot);
     expect(await fs.readFile(service.store.filePath, "utf8")).toBe(saved);
-    const listed = await run(runtime, { action: "list" });
+    const listed = await run(runtime, "list", { action: "list" });
     expect(listed.data).toMatchObject({ count: 1, total: 1 });
   });
 
   it("deletes every byte-identical copy as one logical note", async () => {
     const runtime = await harness();
     await seedLegacyCopies(runtime, "i need to buy milk", 4);
-    await run(runtime, {
+    await run(runtime, "create", {
       action: "create",
       content: "spare key under the mat",
     });
 
-    const result = await run(runtime, { action: "delete", content: "milk" });
+    const result = await run(runtime, "delete", {
+      action: "delete",
+      content: "milk",
+    });
     expect(result.success).toBe(true);
     expect(result.data).toMatchObject({
       removedCount: 4,
       note: { title: "i need to buy milk", body: "" },
     });
 
-    const after = await run(runtime, { action: "list" });
+    const after = await run(runtime, "list", { action: "list" });
     expect(after.data?.notes).toMatchObject([
       { title: "spare key under the mat", body: "", color: "yellow" },
     ]);
@@ -1819,11 +2177,17 @@ describe("identical-duplicate notes", () => {
 
   it("still refuses genuinely differing matches as ambiguous", async () => {
     const runtime = await harness();
-    await run(runtime, { action: "create", content: "buy milk at aldi" });
-    await run(runtime, { action: "create", content: "buy milk for the cat" });
+    await run(runtime, "create", {
+      action: "create",
+      content: "buy milk at aldi",
+    });
+    await run(runtime, "create", {
+      action: "create",
+      content: "buy milk for the cat",
+    });
 
     await expect(
-      run(runtime, { action: "delete", content: "milk" }),
+      run(runtime, "delete", { action: "delete", content: "milk" }),
     ).rejects.toMatchObject({ code: "NOTES_AMBIGUOUS_NOTE" });
   });
 
@@ -1831,8 +2195,8 @@ describe("identical-duplicate notes", () => {
     const runtime = await harness();
     await seedLegacyCopies(runtime, "i need to buy milk", 4);
 
-    const originalRead = await run(runtime, { action: "list" });
-    const result = await run(runtime, {
+    const originalRead = await run(runtime, "list", { action: "list" });
+    const result = await run(runtime, "update", {
       action: "update",
       expectedRevision: originalRead.data?.notesRevision,
       content: "milk",
@@ -1840,7 +2204,7 @@ describe("identical-duplicate notes", () => {
     });
 
     expect(result.data).toMatchObject({ consolidatedCount: 3 });
-    const after = await run(runtime, { action: "list" });
+    const after = await run(runtime, "list", { action: "list" });
     expect(after.data).toMatchObject({ count: 1, total: 1 });
     expect(after.data?.notes).toMatchObject([
       { title: "i already bought milk", body: "", color: "yellow" },
@@ -1855,10 +2219,10 @@ describe("identical-duplicate notes", () => {
     await service.createNote({ title: "buy milk", body: "", color: "green" });
 
     await expect(
-      run(runtime, { action: "delete", content: "buy milk" }),
+      run(runtime, "delete", { action: "delete", content: "buy milk" }),
     ).rejects.toMatchObject({ code: "NOTES_AMBIGUOUS_NOTE" });
 
-    const deleted = await run(runtime, {
+    const deleted = await run(runtime, "delete", {
       action: "delete",
       content: "buy milk green",
     });
@@ -1876,13 +2240,13 @@ describe("literal Notes edits", () => {
     });
     const before = service.snapshot();
     const textEdit = { field: "body", oldText: "Green", newText: "Blue" };
-    const rejected = await execute(runtime, {
+    const rejected = await execute(runtime, "patch", {
       name: "NOTES_PATCH",
       params: { target: { kind: "id", value: note.id }, changes: [], textEdit },
     });
     expect(rejected.success).toBe(false);
     expect(service.snapshot()).toEqual(before);
-    const updated = await execute(runtime, {
+    const updated = await execute(runtime, "update", {
       name: "NOTES_UPDATE",
       params: { noteId: note.id, textEdit },
     });
@@ -1907,7 +2271,7 @@ describe("literal Notes edits", () => {
       body: "green",
       color: "slate",
     });
-    const result = await execute(runtime, {
+    const result = await execute(runtime, "update", {
       name: "NOTES_UPDATE",
       params: {
         content: "Literal edit",
@@ -1943,11 +2307,11 @@ describe("literal Notes edits", () => {
     "preserves literal strings when editing %s",
     async (field, oldText, newText, body, title) => {
       const runtime = await executorHarness();
-      await execute(runtime, {
+      await execute(runtime, "create", {
         name: "NOTES_CREATE",
         params: { content: "Exact title\nUse green here." },
       });
-      const result = await execute(runtime, {
+      const result = await execute(runtime, "update", {
         name: "NOTES_UPDATE",
         params: {
           content: "Exact title",
@@ -1966,7 +2330,7 @@ describe("literal Notes edits", () => {
       title: "Exact title",
       body: "green",
     });
-    const result = await execute(runtime, {
+    const result = await execute(runtime, "update", {
       name: "NOTES_UPDATE",
       params: {
         noteId: note.id,
@@ -1981,7 +2345,7 @@ describe("literal Notes edits", () => {
     const runtime = await executorHarness();
     const service = getNotesService(runtime);
     const content = "  Title  \n\n  Body  \n";
-    const created = await execute(runtime, {
+    const created = await execute(runtime, "create", {
       name: "NOTES_CREATE",
       params: { content },
     });
@@ -1989,7 +2353,7 @@ describe("literal Notes edits", () => {
     const note = service.listNotes()[0];
     expect(note.title + note.body).toBe(content);
     const replacementContent = "  Title  \n\n  Updated  \n";
-    const updated = await execute(runtime, {
+    const updated = await execute(runtime, "update", {
       name: "NOTES_UPDATE",
       params: {
         noteId: note.id,
@@ -2013,7 +2377,7 @@ describe("literal Notes edits", () => {
       const service = getNotesService(runtime);
       await service.createNote({ title: "Exact title", body });
       const before = service.snapshot();
-      const result = await execute(runtime, {
+      const result = await execute(runtime, "update", {
         name: "NOTES_UPDATE",
         params: {
           content: "Exact title",
@@ -2030,6 +2394,11 @@ describe("literal Notes edits", () => {
 
   it("finishes a corrected literal edit without reopening reply planning", async () => {
     const runtime = await executorHarness();
+    const request = await boundNotesRequest(runtime, {
+      text: "Apply the requested patch to the saved note.",
+      operations: ["patch"],
+      message: { entityId: "owner-id" as UUID, roomId: "room-id" as UUID },
+    });
     const service = getNotesService(runtime);
     const note = await service.createNote({
       title: "Retry QA",
@@ -2038,6 +2407,11 @@ describe("literal Notes edits", () => {
     const originalSnapshot = service.snapshot();
     const useModel = vi
       .fn()
+      .mockRejectedValue(
+        new Error(
+          "Unexpected extra planner call in the two-attempt literal edit fixture",
+        ),
+      )
       .mockResolvedValueOnce({
         toolCalls: [
           {
@@ -2068,26 +2442,37 @@ describe("literal Notes edits", () => {
         ],
       });
     const result = await runPlannerLoop({
-      runtime: { useModel },
-      context: { id: "literal-edit-retry", events: [] },
-      executeToolCall: (call) => execute(runtime, call),
+      runtime: notesFixturePlannerRuntime(
+        Object.assign(runtime, { useModel }),
+        useModel,
+      ),
+      requestOperationIssuer: request.issuer,
+      context: request.context,
+      executeToolCall: async (call) =>
+        actionResultToPlannerToolResult(await request.execute(call), {
+          requestOperationIssuer: request.issuer,
+        }),
       evaluate: ({ trajectory }) => {
         const last = trajectory.steps.at(-1)?.result;
-        return last?.success
-          ? {
-              success: true,
-              decision: "FINISH",
-              thought: "Verified corrected edit.",
-              messageToUser: "The quotation marks are removed.",
-              effectReceiptIds: last.effectReceipts?.map(
-                (receipt) => receipt.receiptId,
-              ),
-            }
-          : {
-              success: false,
-              decision: "CONTINUE",
-              thought: "Correct the rejected edit.",
-            };
+        return parseEvaluatorOutput(
+          JSON.stringify(
+            last?.success
+              ? {
+                  success: true,
+                  decision: "FINISH",
+                  thought: "Verified corrected edit.",
+                  messageToUser: "The quotation marks are removed.",
+                  effectReceiptIds: last.effectReceipts?.map(
+                    (receipt) => receipt.receiptId,
+                  ),
+                }
+              : {
+                  success: false,
+                  decision: "CONTINUE",
+                  thought: "Correct the rejected edit.",
+                },
+          ),
+        );
       },
     });
     expect(useModel).toHaveBeenCalledTimes(2);
@@ -2106,7 +2491,7 @@ describe("literal Notes edits", () => {
     vi.spyOn(service, "updateNoteWithCommit").mockRejectedValueOnce(
       new Error("Store unavailable"),
     );
-    const result = await execute(runtime, {
+    const result = await execute(runtime, "patch", {
       name: "NOTES_PATCH",
       params: {
         target: { kind: "id", value: note.id },
@@ -2150,12 +2535,15 @@ describe("literal Notes edits", () => {
       textEdit: { field: "body", oldText: "green", newText: "orange" },
     };
     expect(
-      (await execute(runtime, { name: "NOTES_UPDATE", params }, ["MEMBER"]))
-        .success,
+      (
+        await execute(runtime, "update", { name: "NOTES_UPDATE", params }, [
+          "MEMBER",
+        ])
+      ).success,
     ).toBe(false);
     expect(
       (
-        await execute(runtime, {
+        await execute(runtime, "update", {
           name: "NOTES_UPDATE",
           params: { ...params, replacementContent: "Wrong title\nred" },
         })
@@ -2178,13 +2566,17 @@ describe("structured Notes field patches", () => {
         title: "Shared draft",
         body: "Original body",
       });
-      const read = await execute(runtime, {
-        name: readName,
-        params:
-          readName === "NOTES_GET"
-            ? { noteId: note.id }
-            : { content: note.title },
-      });
+      const read = await execute(
+        runtime,
+        readName === "NOTES_GET" ? "get" : "list",
+        {
+          name: readName,
+          params:
+            readName === "NOTES_GET"
+              ? { noteId: note.id }
+              : { content: note.title },
+        },
+      );
       expect(read.success).toBe(true);
       expect(read.data?.notes).toMatchObject([note]);
       expect(read.data?.notesRevision).toBe(service.snapshot().revision);
@@ -2205,10 +2597,17 @@ describe("structured Notes field patches", () => {
               target: { kind: "id", value: note.id },
               changes: [{ field: "body", value: "Stale replacement" }],
             };
-      const result = await execute(runtime, {
-        name: writeName,
-        params: { ...replacement, expectedRevision: read.data?.notesRevision },
-      });
+      const result = await execute(
+        runtime,
+        writeName === "NOTES_PATCH" ? "patch" : "update",
+        {
+          name: writeName,
+          params: {
+            ...replacement,
+            expectedRevision: read.data?.notesRevision,
+          },
+        },
+      );
       expect(result.success).toBe(false);
       expect(JSON.stringify(result)).toContain("NOTES_EDIT_CONFLICT");
       expect(result.effectReceipts).toBeUndefined();
@@ -2225,12 +2624,12 @@ describe("structured Notes field patches", () => {
       body: "Old body",
       color: "rose",
     });
-    const originalRead = await execute(runtime, {
+    const originalRead = await execute(runtime, "get", {
       name: "NOTES_GET",
       params: { noteId: original.id },
     });
     expect(originalRead.data?.notes).toMatchObject([original]);
-    const result = await execute(runtime, {
+    const result = await execute(runtime, "patch", {
       name: "NOTES_PATCH",
       params: {
         target: { kind: "id", value: original.id },
@@ -2259,7 +2658,7 @@ describe("structured Notes field patches", () => {
       color: "yellow",
     });
     const originalSnapshot = service.snapshot();
-    const result = await execute(runtime, {
+    const result = await execute(runtime, "patch", {
       name: "NOTES_PATCH",
       params: {
         target: { kind: "text", value: note.title },
@@ -2296,7 +2695,7 @@ describe("structured Notes field patches", () => {
       body: "Old",
       color: "yellow",
     });
-    const result = await execute(runtime, {
+    const result = await execute(runtime, "patch", {
       name: "NOTES_PATCH",
       params: { target: { kind: "id", value: note.id }, changes },
     });
@@ -2320,7 +2719,7 @@ describe("structured Notes field patches", () => {
     const before = originalSnapshot.notes;
     expect(
       (
-        await execute(runtime, {
+        await execute(runtime, "patch", {
           name: "NOTES_PATCH",
           params: {
             expectedRevision: originalSnapshot.revision,
@@ -2334,6 +2733,7 @@ describe("structured Notes field patches", () => {
       (
         await execute(
           runtime,
+          "patch",
           {
             name: "NOTES_PATCH",
             params: {
@@ -2358,7 +2758,7 @@ describe("structured Notes field patches", () => {
       body: "Bring it tomorrow",
     });
     const before = service.snapshot();
-    const result = await execute(runtime, {
+    const result = await execute(runtime, "patch", {
       name: "NOTES_PATCH",
       params: {
         expectedRevision: before.revision,
@@ -2402,6 +2802,7 @@ describe("structured Notes field patches", () => {
           : { noteId: first.id, replacementContent: "QA duplicate\nAmber" };
       const result = await execute(
         runtime,
+        "update",
         { name, params: { ...params, expectedRevision: before.revision } },
         ["OWNER"],
         'In QA duplicate, change the body to "Amber".',
@@ -2433,6 +2834,7 @@ describe("structured Notes field patches", () => {
           : "The one that says Silver. Set its body to Amber.";
       const result = await execute(
         runtime,
+        "patch",
         {
           name: "NOTES_PATCH",
           params: {
@@ -2467,7 +2869,8 @@ describe("field patch literal alternative", () => {
       textEdit: { field: "body", oldText: "violet", newText: "orange" },
     };
     expect(
-      (await execute(runtime, { name: "NOTES_PATCH", params })).success,
+      (await execute(runtime, "patch", { name: "NOTES_PATCH", params }))
+        .success,
     ).toBe(true);
     expect(service.getNote(note.id)).toMatchObject({
       title: note.title,
@@ -2477,7 +2880,7 @@ describe("field patch literal alternative", () => {
     const before = service.getNote(note.id);
     expect(
       (
-        await execute(runtime, {
+        await execute(runtime, "patch", {
           name: "NOTES_PATCH",
           params: {
             ...params,
@@ -2488,7 +2891,8 @@ describe("field patch literal alternative", () => {
       ).success,
     ).toBe(false);
     expect(
-      (await execute(runtime, { name: "NOTES_PATCH", params })).success,
+      (await execute(runtime, "patch", { name: "NOTES_PATCH", params }))
+        .success,
     ).toBe(false);
     expect(service.getNote(note.id)).toEqual(before);
   });
@@ -2531,8 +2935,9 @@ describe("selected timestamp display", () => {
         body: "Keep  UTC and tomorrow exactly.",
       });
       const before = service.snapshot();
-      const result = await notesAction.handler(
+      const result = await directNotesHandler(
         runtime,
+        "list",
         { content: { metadata: { uiTimeZone: "UTC" } } } as unknown as Memory,
         undefined,
         {
@@ -2568,8 +2973,9 @@ describe("selected timestamp display", () => {
       const runtime = await executorHarness();
       const service = getNotesService(runtime);
       await service.createNote({ title: "Keep", body: "body" });
-      const result = await notesAction.handler(
+      const result = await directNotesHandler(
         runtime,
+        "list",
         { content: { metadata: { uiTimeZone } } } as unknown as Memory,
         undefined,
         { parameters: { action: "list", latestBy: "updatedAt" } },
@@ -2588,13 +2994,19 @@ describe("selected timestamp display", () => {
     const message = {
       content: { metadata: { uiTimeZone: "America/Los_Angeles" } },
     } as unknown as Memory;
-    const selected = await notesAction.handler(runtime, message, undefined, {
-      parameters: { action: "list", latestBy: "updatedAt" },
-    });
+    const selected = await directNotesHandler(
+      runtime,
+      "list",
+      message,
+      undefined,
+      {
+        parameters: { action: "list", latestBy: "updatedAt" },
+      },
+    );
     expect(selected.data?.selection).toMatchObject({
       display: { source: "ui", timeZone: "America/Los_Angeles" },
     });
-    const all = await notesAction.handler(runtime, message, undefined, {
+    const all = await directNotesHandler(runtime, "list", message, undefined, {
       parameters: { action: "list" },
     });
     expect(all.data).not.toHaveProperty("selection");
@@ -2606,8 +3018,9 @@ describe("selected timestamp display", () => {
     { action: "list", latestBy: "updatedAt", displayTimeZone: null },
   ])("rejects invalid explicit display contract %j", async (parameters) => {
     const runtime = await executorHarness();
-    const result = await notesAction.handler(
+    const result = await directNotesHandler(
       runtime,
+      "list",
       { content: {} } as unknown as Memory,
       undefined,
       { parameters: JSON.parse(JSON.stringify(parameters)) },
@@ -2640,8 +3053,9 @@ describe("exact GET timestamp display", () => {
       service.snapshot().revision,
     );
     const before = service.snapshot();
-    const result = await notesAction.handler(
+    const result = await directNotesHandler(
       runtime,
+      "get",
       {
         content: { metadata: { uiTimeZone: "Asia/Tokyo" } },
       } as unknown as Memory,
@@ -2680,8 +3094,9 @@ describe("exact GET timestamp display", () => {
       const runtime = await executorHarness();
       const service = getNotesService(runtime);
       const note = await service.createNote({ title: "Keep", body: "body" });
-      const result = await notesAction.handler(
+      const result = await directNotesHandler(
         runtime,
+        "get",
         { content: { metadata: { uiTimeZone } } } as unknown as Memory,
         undefined,
         { parameters: { action: "get", noteId: note.id } },
@@ -2697,9 +3112,15 @@ describe("exact GET timestamp display", () => {
     const message = {
       content: { metadata: { uiTimeZone: "UTC" } },
     } as unknown as Memory;
-    const missing = await notesAction.handler(runtime, message, undefined, {
-      parameters: { action: "get", noteId: "missing" },
-    });
+    const missing = await directNotesHandler(
+      runtime,
+      "get",
+      message,
+      undefined,
+      {
+        parameters: { action: "get", noteId: "missing" },
+      },
+    );
     expect(missing.data).not.toHaveProperty("noteTimestampDisplay");
     const original = service.snapshot();
     const spy = vi.spyOn(service, "snapshot").mockReturnValue({
@@ -2707,9 +3128,15 @@ describe("exact GET timestamp display", () => {
       notes: original.notes.map((n) => ({ ...n, updatedAt: "invalid" })),
     });
     try {
-      const result = await notesAction.handler(runtime, message, undefined, {
-        parameters: { action: "get", noteId: note.id },
-      });
+      const result = await directNotesHandler(
+        runtime,
+        "get",
+        message,
+        undefined,
+        {
+          parameters: { action: "get", noteId: note.id },
+        },
+      );
       expect(result.success).toBe(true);
       expect(result.data).not.toHaveProperty("noteTimestampDisplay");
       expect(result.data?.notes).toMatchObject([
@@ -2732,7 +3159,7 @@ describe("Notes model-bound content representation", () => {
     "preserves complete content and raw parts through create and model projection: %j",
     async (content) => {
       const runtime = await executorHarness();
-      const result = await execute(runtime, {
+      const result = await execute(runtime, "create", {
         name: "NOTES_CREATE",
         params: { content },
       });
@@ -2763,10 +3190,14 @@ describe("Notes model-bound content representation", () => {
       expect(service.getNote(note.id)).toEqual(note);
       const snapshot = service.snapshot();
       for (const name of ["NOTES_GET", "NOTES_LIST"]) {
-        const read = await execute(runtime, {
-          name,
-          params: name === "NOTES_GET" ? { noteId: note.id } : {},
-        });
+        const read = await execute(
+          runtime,
+          name === "NOTES_GET" ? "get" : "list",
+          {
+            name,
+            params: name === "NOTES_GET" ? { noteId: note.id } : {},
+          },
+        );
         const wire = projectToolResultForModel(
           actionResultToPlannerToolResult(read),
         );
@@ -2791,12 +3222,12 @@ describe("Notes model-bound content representation", () => {
   it("labels a structured body replacement without discarding an additional user newline", async () => {
     const runtime = await executorHarness();
     const service = getNotesService(runtime);
-    const created = await execute(runtime, {
+    const created = await execute(runtime, "create", {
       name: "NOTES_CREATE",
       params: { content: "Title\nOriginal" },
     });
     const note = created.data?.note as StickyNote;
-    const result = await execute(runtime, {
+    const result = await execute(runtime, "patch", {
       name: "NOTES_PATCH",
       params: {
         expectedRevision: created.data?.notesRevision,

@@ -16,7 +16,6 @@
  * already lands paths in the per-app sandboxed data directory.
  */
 
-import { cp, mkdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { readEnv } from "./environment.ts";
@@ -79,36 +78,4 @@ export function resolveOAuthDir(
 	return explicit
 		? resolveUserPath(explicit)
 		: join(stateDirPath, "credentials");
-}
-
-/**
- * Recursively copy `fromPath` into `toPath`. Idempotent — re-runs are safe.
- * No-op when the source does not exist. Used by the user-initiated
- * "import from direct build" flow to migrate state into a sandboxed
- * store-build state directory.
- */
-export async function migrateStateDir(
-	fromPath: string,
-	toPath: string,
-): Promise<{ migrated: boolean }> {
-	if (fromPath === toPath) return { migrated: false };
-	try {
-		const srcStat = await stat(fromPath);
-		if (!srcStat.isDirectory()) return { migrated: false };
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-			// error-policy:J4 an absent source directory is an explicit no-migration
-			// state; other filesystem failures must remain visible.
-			return { migrated: false };
-		}
-		throw error;
-	}
-	await mkdir(toPath, { recursive: true });
-	await cp(fromPath, toPath, {
-		recursive: true,
-		force: false,
-		errorOnExist: false,
-		dereference: false,
-	});
-	return { migrated: true };
 }

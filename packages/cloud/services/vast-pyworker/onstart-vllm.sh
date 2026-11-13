@@ -381,72 +381,37 @@ if ! pgrep -f "vllm.*--port[ =]$PORT" > /dev/null && \
   echo "[onstart-vllm] vllm pid: $!"
 fi
 
-# === stats logger (sister-agent contract) ===
-# Writes a minimal {ts, tokens_per_sec, kv_bytes_per_token, gpu_mem_used}
-# snapshot every $VLLM_STATS_INTERVAL_S seconds to $VLLM_STATS_PATH. The
-# heartbeat block below produces the rich observability stream; this thin
-# logger exists because a sister agent's pipeline grep's vllm-stats.jsonl.
-echo "[onstart-vllm] starting vllm-stats logger (out=$VLLM_STATS_PATH interval=${VLLM_STATS_INTERVAL_S}s)"
-nohup bash -c '
-  : > "'"$VLLM_STATS_PATH"'"
-  while true; do
-    python3 - <<PY >> "'"$VLLM_STATS_PATH"'" 2>/dev/null || true
-import json, time, urllib.request, re
-out = {"ts": time.time(), "tokens_per_sec": None, "kv_bytes_per_token": None, "gpu_mem_used_bytes": None}
-try:
-    req = urllib.request.Request("http://127.0.0.1:'"$PORT"'/metrics", headers={"Accept": "text/plain"})
-    body = urllib.request.urlopen(req, timeout=2).read().decode("utf-8", "replace")
-    # vLLM Prometheus exposition format. Last line of each metric wins.
-    for line in body.splitlines():
-        if line.startswith("vllm:avg_generation_throughput_toks_per_s"):
-            try: out["tokens_per_sec"] = float(line.rsplit(" ", 1)[-1])
-            except Exception: pass
-        elif line.startswith("vllm:gpu_cache_usage_perc"):
-            try: out["gpu_cache_usage_perc"] = float(line.rsplit(" ", 1)[-1])
-            except Exception: pass
-        elif line.startswith("vllm:num_requests_running"):
-            try: out["requests_running"] = float(line.rsplit(" ", 1)[-1])
-            except Exception: pass
-except Exception as e:
-    out["error"] = str(e)
-# kv_bytes_per_token = (block_size * num_layers * 2 (k,v) * head_dim * num_kv_heads * dtype_bytes) / block_size
-# We do not have model dims here; the heartbeat agent computes the precise
-# value. Surface null so the schema is stable for the consumer.
-out["kv_bytes_per_token"] = None
-print(json.dumps(out))
-PY
-    sleep '"$VLLM_STATS_INTERVAL_S"'
-  done
-' > /dev/null 2>&1 &
-echo "[onstart-vllm] vllm-stats logger pid: $!"
-
-# === heartbeat block (InferenceObservabilityAgent) ===
-# Spawn the heartbeat scraper so cloud deployments emit the same JSONL
-# observability stream as ad-hoc local serves. The contract is owned by
-# training/scripts/inference/heartbeat.py; the consumer is the Eliza Cloud
-# UI which reads /workspace/inference-stats.jsonl off the instance volume.
-# Best-effort: if the heartbeat module isn't importable on this image
-# (older container without the training/ tree mounted), we log and move on
-# rather than blocking the PyWorker handoff.
+# One lock-owning supervisor manages both observers. Repeated bootstraps reuse
+# the current owner; metrics and heartbeat history stay append-only.
 HEARTBEAT_OUT="${HEARTBEAT_OUT:-/workspace/inference-stats.jsonl}"
 HEARTBEAT_LABEL="${HEARTBEAT_LABEL:-vast-${ELIZA_VAST_INSTANCE_ID:-unknown}}"
 HEARTBEAT_INTERVAL="${HEARTBEAT_INTERVAL_SECONDS:-60}"
 VLLM_METRICS_PORT="${VLLM_METRICS_PORT:-$PORT}"
 HEARTBEAT_LOG="${HEARTBEAT_LOG:-/var/log/heartbeat.log}"
-mkdir -p "$(dirname "$HEARTBEAT_LOG")"
-if python3 -c "import scripts.inference.heartbeat" >/dev/null 2>&1; then
-  echo "[onstart-vllm] starting heartbeat (out=$HEARTBEAT_OUT label=$HEARTBEAT_LABEL interval=${HEARTBEAT_INTERVAL}s)"
-  nohup python3 -m scripts.inference.heartbeat \
-    --vllm-metrics-url "http://127.0.0.1:${VLLM_METRICS_PORT}/metrics" \
-    --out "$HEARTBEAT_OUT" \
-    --interval-seconds "$HEARTBEAT_INTERVAL" \
-    --label "$HEARTBEAT_LABEL" \
-    > "$HEARTBEAT_LOG" 2>&1 &
-  echo "[onstart-vllm] heartbeat pid: $!"
+VLLM_OBSERVABILITY_LOG="${VLLM_OBSERVABILITY_LOG:-/var/log/vllm-observability.log}"
+OBSERVER_ARGS=(
+  --metrics-url "http://127.0.0.1:${VLLM_METRICS_PORT}/metrics"
+  --stats-path "$VLLM_STATS_PATH"
+  --interval "$VLLM_STATS_INTERVAL_S"
+)
+# The supervisor and heartbeat share an API. Prefer the refreshed checkout to
+# an older training installation inherited from the image or mounted volume.
+OBSERVER_PYTHONPATH="$PYWORKER_DIR/packages/training${PYTHONPATH:+:$PYTHONPATH}"
+if PYTHONPATH="$OBSERVER_PYTHONPATH" python3 -c "import scripts.inference.heartbeat" >/dev/null 2>&1; then
+  OBSERVER_ARGS+=(
+    --heartbeat
+    --heartbeat-out "$HEARTBEAT_OUT"
+    --heartbeat-label "$HEARTBEAT_LABEL"
+    --heartbeat-interval "$HEARTBEAT_INTERVAL"
+    --heartbeat-log "$HEARTBEAT_LOG"
+  )
 else
   echo "[onstart-vllm] heartbeat module not importable on this image; skipping observability scraper"
 fi
-# === end heartbeat block ===
+mkdir -p "$(dirname "$VLLM_OBSERVABILITY_LOG")"
+PYTHONPATH="$OBSERVER_PYTHONPATH" nohup python3 observability.py "${OBSERVER_ARGS[@]}" >> "$VLLM_OBSERVABILITY_LOG" 2>&1 &
+echo "[onstart-vllm] observability supervisor pid: $!"
+
 
 # 5. Hand control to PyWorker (same contract as the llama-server flavor —
 # tails $VLLM_LOG for "application startup complete" and registers with

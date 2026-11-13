@@ -13,6 +13,7 @@
  */
 import type http from "node:http";
 import { checkRateLimit, type RateLimitConfig } from "@elizaos/agent";
+import { getDeferredBootStatus } from "@elizaos/agent/runtime/deferred-boot-status";
 import {
   type AcknowledgeLifeOpsReminderRequest,
   type CaptureLifeOpsActivitySignalRequest,
@@ -72,6 +73,7 @@ import {
 import {
   type AgentRuntime,
   createIntegrationTelemetrySpan,
+  EventType,
   isElizaError,
   logger,
   type Memory,
@@ -772,6 +774,48 @@ async function runRoute(
   }
 }
 /**
+ * Upper bound a calendar read waits for the deferred calendar service. Stays
+ * under the client's 10s default GET timeout so an absent service still
+ * answers its 503 before the caller aborts.
+ */
+const DEFERRED_CALENDAR_SERVICE_WAIT_MS = 8_000;
+/**
+ * These routes mount when the runtime reports ready, but
+ * `@elizaos/plugin-calendar` registers in the deferred plugin wave after it,
+ * and `getServiceLoadPromise` rejects a service type that is not registered
+ * yet. While deferred boot is pending and the calendar type is still unknown,
+ * waits for the calendar service to start or for the bound to elapse; the
+ * caller then resolves the service as usual, so an absent or failed service
+ * keeps its 503.
+ */
+async function waitForDeferredCalendarService(
+  runtime: AgentRuntime,
+): Promise<void> {
+  if (
+    getDeferredBootStatus().settled ||
+    runtime.getServiceRegistrationStatus(CalendarService.serviceType) !==
+      "unknown"
+  ) {
+    return;
+  }
+  let onServiceStarted: (() => Promise<void>) | undefined;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await new Promise<void>((resolve) => {
+      onServiceStarted = async () => {
+        if (runtime.getService(CalendarService.serviceType)) resolve();
+      };
+      runtime.registerEvent(EventType.SERVICE_STARTED, onServiceStarted);
+      timeout = setTimeout(resolve, DEFERRED_CALENDAR_SERVICE_WAIT_MS);
+    });
+  } finally {
+    clearTimeout(timeout);
+    if (onServiceStarted) {
+      runtime.unregisterEvent(EventType.SERVICE_STARTED, onServiceStarted);
+    }
+  }
+}
+/**
  * Runs an owner-gated calendar route against the singleton calendar service.
  * Calendar owns its domain service; constructing a LifeOpsService here would
  * expose only the compatibility subset and silently omit source administration.
@@ -796,6 +840,11 @@ async function runCalendarRoute(
   }
   try {
     let loaded = runtime.getService(CalendarService.serviceType);
+    // Reads only: a mutation is never held across deferred plugin registration.
+    if (!loaded && ctx.method === "GET") {
+      await waitForDeferredCalendarService(runtime);
+      loaded = runtime.getService(CalendarService.serviceType);
+    }
     if (!loaded) {
       try {
         loaded = await runtime.getServiceLoadPromise(

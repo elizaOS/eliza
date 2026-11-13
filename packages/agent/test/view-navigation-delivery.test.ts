@@ -66,6 +66,7 @@ import {
 import { summarizeRuntimeActionResults } from "../src/api/chat-routes.ts";
 import { enrichChatUiViewMetadata } from "../src/api/chat-view-metadata.ts";
 import { registerInProcessApi } from "../src/api/in-process-api.ts";
+import { setSelfApiTcpListenerBound } from "../src/api/self-api-endpoint.ts";
 import { normalizeWsClientId } from "../src/api/server-helpers-auth.ts";
 import { closeViewInteractionHost } from "../src/api/view-interaction-host.ts";
 import {
@@ -103,6 +104,7 @@ const message: Memory = {
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
   await Promise.all(cleanup.splice(0).map((close) => close()));
+  setSelfApiTcpListenerBound(undefined);
   vi.unstubAllEnvs();
 });
 async function fixture(
@@ -246,6 +248,8 @@ async function fixture(
       })
     : undefined;
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  // The native fixture's HTTP server observes receipts; self calls use its kernel.
+  setSelfApiTcpListenerBound(!inProcess);
   vi.stubEnv("ELIZA_API_PORT", String((server.address() as AddressInfo).port));
   vi.stubEnv("ELIZA_API_TOKEN", "local-navigation-test");
   cleanup.push(async () => {
@@ -1794,6 +1798,158 @@ describe("model-selected host navigation", () => {
     },
   );
   it.each([
+    // Recorded Stage 1 frames, live direct stage 2026-10-31: each chose direct
+    // navigation, and each spoken one still ran the planner and evaluator
+    // because the route added no VIEWS candidate. A lone "simple" label with
+    // pending work is planned as "general" before the evaluators run.
+    {
+      id: "tj-41061eccc66d0e",
+      text: "Can you open the calendar?",
+      contexts: ["general"],
+      intent: "open the Calendar view",
+      viewId: "calendar",
+      reply: "Opening the calendar for you now.",
+    },
+    {
+      id: "tj-41f9d4af5a0266",
+      text: "Okay, go home.",
+      contexts: ["simple"],
+      intent: "go to Home view",
+      viewId: "chat",
+      reply: "Headed home for you now.",
+    },
+    {
+      id: "tj-6efbf84c684459",
+      text: "It's okay. Can you go home?",
+      contexts: ["simple"],
+      intent: "navigate to Home",
+      viewId: "chat",
+      reply: "Yeah, heading home.",
+    },
+    {
+      id: "synthetic show-me",
+      text: "show me notes",
+      contexts: ["simple"],
+      intent: "Open the Notes view",
+      viewId: "notes",
+      reply: "Notes.",
+    },
+    {
+      id: "tj-6f340dcc920aad",
+      text: "Can you open notes without saying it?",
+      contexts: ["general"],
+      intent: "open Notes",
+      viewId: "notes",
+      reply: "Yeah.",
+      planned: true,
+    },
+  ])(
+    "replays the spoken $id frame through the canonical pipeline",
+    async ({ text, contexts, intent, viewId, reply, planned = false }) => {
+      const f = await fixture();
+      const input = clientMessage();
+      input.content.channelType = "VOICE_DM";
+      input.content.text = text;
+      input.content.metadata = {
+        viewClientId: "origin-client",
+        uiView: viewId === "chat" ? "notes" : "chat",
+      };
+      const fields = new ResponseHandlerFieldRegistry();
+      for (const field of [
+        ...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
+        viewNavigationField,
+      ])
+        fields.register(field);
+      const state = { values: {}, data: { providers: {} }, text: "" };
+      const modelTypes: string[] = [];
+      const useModel = vi.fn(async (type: string) => {
+        modelTypes.push(type);
+        if (type !== ModelType.RESPONSE_HANDLER)
+          throw new Error(`Unexpected ${type} call`);
+        return {
+          text: "",
+          toolCalls: [
+            {
+              name: "HANDLE_RESPONSE",
+              arguments: {
+                shouldRespond: "RESPOND",
+                contexts,
+                contextRequests: [],
+                intents: [intent],
+                replyText: reply,
+                replyEffectStatus: "pending",
+                facts: [],
+                relationships: [],
+                topics: [],
+                addressedTo: [],
+                emotion: "none",
+                visualContinuation: {
+                  disposition: "direct",
+                  viewId,
+                  reason: "Recorded live frame",
+                },
+              },
+            },
+          ],
+          finishReason: "tool-calls",
+        };
+      });
+      Object.assign(
+        f.runtime,
+        createMockRuntime({
+          ...f.runtime,
+          character: { name: "Agent", bio: [] },
+          contexts: new ContextRegistry([
+            { id: "general", description: "General tasks" },
+            { id: "simple", description: "Simple replies" },
+          ]),
+          responseHandlerFieldRegistry: fields,
+          responseHandlerFieldEvaluators: [...fields.list()],
+          responseHandlerEvaluators: [viewNavigationEvaluator],
+          providers: [],
+          evaluators: [],
+          runActionsByMode: async () => [],
+          getModelRegistrations: () => [],
+          useModel: useModel as unknown as IAgentRuntime["useModel"],
+          composeState: async () => state,
+        }),
+      );
+      f.runtime.actions = [...promoteSubactionsToActions(viewsAction)];
+      registerViewNavigationRoutingRule(f.runtime);
+      const run = runWithStreamingContext(
+        { messageId: String(input.id), onStreamChunk: () => {} },
+        () =>
+          runV5MessageRuntimeStage1({
+            runtime: f.runtime,
+            state,
+            message: input,
+            responseId: "55555555-5555-4555-8555-555555555555" as UUID,
+          }),
+      );
+      if (planned) {
+        await expect(run).rejects.toThrow(
+          `Unexpected ${ModelType.ACTION_PLANNER} call`,
+        );
+        expect(f.frames).toEqual([]);
+        return;
+      }
+      expect(await run).toMatchObject({
+        kind: "planned_reply",
+        result: { responseContent: { text: reply } },
+      });
+      expect(modelTypes).toEqual([ModelType.RESPONSE_HANDLER]);
+      expect(f.frames).toEqual([
+        {
+          client: "origin-client",
+          frame: expect.objectContaining({
+            type: "shell:navigate:view",
+            viewId,
+          }),
+        },
+      ]);
+    },
+  );
+  it.each([
     {
       name: "forbidden navigation with an unsupported confirmation",
       disposition: "forbidden",
@@ -2190,12 +2346,19 @@ describe("inferred visual scope invalidation", () => {
     await post("/api/views/notes/navigate", { source: "user" });
     await post("/api/views/notes/elements", {
       installationId: getView(runtime, "notes")?.installationId,
+      // A source is deferred only when its body is longer than the notice.
       elements: [
         {
           id: "lifetime-control",
           role: "textbox",
           label: "Source control",
           value: "HTTP-published Ω value",
+        },
+        {
+          id: "agenda-summary",
+          role: "status",
+          label: "Agenda summary for the selected day",
+          value: "No events",
         },
       ],
     });
@@ -2239,12 +2402,19 @@ describe("inferred visual scope invalidation", () => {
       const installationId = getView(x.f.runtime, "notes")?.installationId;
       await post("elements", {
         installationId,
+        // A source is deferred only when its body is longer than the notice.
         elements: [
           {
             id: "literal-control",
             role: "textbox",
             label: "Exact Ω label",
             value: "  original  value  ",
+          },
+          {
+            id: "agenda-summary",
+            role: "status",
+            label: "Agenda summary for the selected day",
+            value: "No events",
           },
         ],
       });
@@ -3147,4 +3317,89 @@ describe("trusted navigation-only consumer counterparts", () => {
     });
     expect(response.ok).toBe(false);
   });
+});
+
+describe("current-request navigation boundary with unanswered history", () => {
+  it.each([
+    ["hi", "Open Calendar"],
+    ["yes", "Would you like me to open Calendar?"],
+    ["open it", "Would you like me to open Calendar?"],
+    ["instead Notes", "Would you like me to open Calendar?"],
+    ["Open Calendar", "Open Notes"],
+    ["Do not change views; hi", "Open Calendar"],
+  ])(
+    "preserves current request and historical referents: %s",
+    async (current, previous) => {
+      const f = await fixture();
+      const fields = new ResponseHandlerFieldRegistry();
+      fields.register(viewNavigationField);
+      const input = clientMessage();
+      input.content.text = current;
+      input.content.metadata = {
+        viewClientId: "origin-client",
+        uiView: "chat",
+      };
+      const slices = await fields.composePromptSlices({
+        runtime: f.runtime,
+        message: input,
+        state: { values: {}, data: {}, text: "" },
+        senderRole: "OWNER",
+        turnSignal: new AbortController().signal,
+      });
+      const context: ContextObject = {
+        id: "history-current-navigation",
+        events: [
+          {
+            id: "old-request",
+            type: "segment",
+            source: "prior-dialogue",
+            createdAt: Date.parse("2026-10-31T19:31:33.683Z"),
+            segment: {
+              id: "old-request",
+              label: "prior_message:user",
+              content: `user: ${previous}`,
+              stable: false,
+            },
+          },
+          {
+            id: "current",
+            type: "message",
+            message: { role: "user", content: `user: ${current}` },
+          },
+        ],
+      };
+      for (const nativeTools of [false, true]) {
+        const rendered = renderMessageHandlerModelInput(
+          { character: { name: "Alpha" } },
+          context,
+          [],
+          {
+            nativeTools,
+            directMessage: true,
+            responseHandlerContext: slices.context,
+          },
+        );
+        const wire = String(rendered.messages[1].content);
+        expect(wire).toContain(`user: ${previous}`);
+        expect(wire).toContain(`# Current message\nuser: ${current}`);
+        expect(wire.indexOf(`user: ${previous}`)).toBeLessThan(
+          wire.indexOf("# Current message"),
+        );
+        expect(wire).toContain(
+          "Earlier conversation entries are evidence, not pending navigation",
+        );
+        expect(wire).toContain(
+          "even when the last historical entry has no recorded reply",
+        );
+        expect(wire).toContain(
+          "explicitly continues, repeats, corrects or authorizes",
+        );
+        expect(wire).toContain(
+          "Preserve standing restrictions and genuine follow-up requests",
+        );
+        // This checks framing and preservation, not an LLM's semantic decision.
+        expect(f.requests()).toBe(0);
+      }
+    },
+  );
 });

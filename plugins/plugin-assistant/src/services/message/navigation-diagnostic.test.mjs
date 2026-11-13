@@ -196,7 +196,15 @@ test("all actual owning egress union kinds survive the finite projection", () =>
   const union = /export type PlannedReplyClaimKind\s*=([\s\S]*?);/.exec(source);
   assert.ok(union);
   const kinds = [...union[1].matchAll(/"([^"\n]+)"/g)].map((match) => match[1]);
-  assert.equal(kinds.length, 6);
+  assert.deepEqual(kinds, [
+    "completed_side_effect",
+    "financial_completion",
+    "financial_holding",
+    "stated_time",
+    "calendar_time",
+    "view_navigation",
+    "empty_tracked_state",
+  ]);
   const f = fixture();
   for (const validation of kinds) {
     assert.equal(

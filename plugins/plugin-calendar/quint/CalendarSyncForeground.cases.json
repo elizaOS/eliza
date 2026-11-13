@@ -1,0 +1,60 @@
+{
+  "sources": [
+    "plugins/plugin-calendar/src/linked-sync/sync-host.ts",
+    "plugins/plugin-calendar/src/linked-sync/sync-controller.ts",
+    "plugins/plugin-calendar/src/linked-sync/linked-store.ts",
+    "plugins/plugin-calendar/src/linked-sync/google-sync-port.ts",
+    "packages/contracts/src/calendar-linked-sync.ts",
+    "plugins/plugin-calendar/test/linked-sync/sync-host.test.ts",
+    "plugins/plugin-calendar/vitest.config.ts",
+    "plugins/plugin-calendar/quint/check-sync-foreground.mjs",
+    "packages/scripts/lib/test-output.ts",
+    "packages/scripts/lib/vitest-conformance.ts",
+    "packages/scripts/run-with-deadline.ts"
+  ],
+  "bounds": {
+    "domain": "One host, one pending saved opt-in read per generation, and one invalidation by Stop or hide. An opted-in resume may run after restart or return to the foreground. Reads return enabled, disabled, or failed. An admitted pass settles independently of cancellation.",
+    "conformance": "Real Calendar sync host and controller, storage-slot compare-and-exchange, and linked-event reconciliation with local controlled storage, device and provider ports. Holds the first saved read, then checks no stale pass or stale failure publication and a successful fresh pass. The foreground suite also checks existing debounce, owner change and device cancellation behavior.",
+    "limitations": "One identity is retained in the race cases. Owner changes, pause, settings changes in another view, provider effects, concurrent writes, multiple reads within one generation, and preflight cancellation after admission have separate behavior. No physical device, provider receipt durability, or wall-clock completion is proved."
+  },
+  "conformance": "plugins/plugin-calendar/quint/check-sync-foreground.mjs",
+  "cases": [
+    {
+      "name": "retire-pending-foreground-admission",
+      "main": "CalendarSyncForeground",
+      "init": "init",
+      "step": "step",
+      "invariants": ["ReadHasOneOutcome", "RetiredRunningPassIsCancelled"],
+      "temporal": [
+        "OldReadCannotPublish",
+        "FairOwnedWorkSettles",
+        "OwnedWorkSettles"
+      ],
+      "temporalChecks": [
+        {
+          "property": "OldReadCannotPublish",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness is needed to prevent admission and status publication from the retired read."
+          ]
+        },
+        {
+          "property": "FairOwnedWorkSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of each admitted settings read and the pass settlement. A settings read may fail or return a disabled preference. A settled pass need not succeed."
+          ]
+        },
+        {
+          "property": "OwnedWorkSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. A read or an already admitted controller pass can remain pending."
+          ]
+        }
+      ],
+      "maxSteps": 16,
+      "samples": 500
+    }
+  ]
+}

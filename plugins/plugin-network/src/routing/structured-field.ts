@@ -191,7 +191,14 @@ export function createNetworkActionFieldEvaluator(
         zonedNow(now(), options.authority.timeZone).toISOString().slice(0, 10),
       );
     },
-    priority: 30,
+    // Written before replyText (20), so the model decides the action before
+    // the reply it shapes, and a NONE turn can stream its direct answer.
+    priority: 19,
+    // NONE: handle returns without rerouting the turn or changing replyText.
+    directReplyValue: (value) =>
+      typeof value === "object" &&
+      value !== null &&
+      (value as { action?: unknown }).action === "NONE",
     schema: SCHEMA,
     parse: (value) => parseNetworkActionProposal(value),
     async handle(

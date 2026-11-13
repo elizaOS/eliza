@@ -39,6 +39,7 @@ import {
   collectBlueColors,
   collectHoverViolations,
 } from "./helpers/brand-color-scans";
+import { installCameraRecoveryFixture } from "./helpers/camera-recovery-fixture";
 import {
   analyzeScreenshot,
   type ScreenshotQuality,
@@ -2137,26 +2138,28 @@ test.describe("all-views aesthetic audit (#8796)", () => {
 
     await page.setContent(`
       <section data-view-lifecycle-slot="camera" data-view-hidden="false">
-        <div>View unavailable This app is unavailable here Install or enable it App: camera Retry Back to views</div>
+        <div>Camera access is off Enable camera access for Eliza, then return here to start the preview. Open Settings Try again</div>
       </section>
       <div data-test-overlay>Ask Eliza</div>
     `);
     const cameraPolicy = resolveViewOcrPolicy("builtin-camera");
-    if (cameraPolicy.kind !== "semantic-exemption") {
-      throw new Error("builtin-camera must declare a semantic exemption");
+    if (cameraPolicy.kind !== "expectation") {
+      throw new Error(
+        "builtin-camera must declare its permission recovery state",
+      );
     }
-    // The complete browser fallback is painted; this does not certify the
-    // native Camera surface, which still needs separate native acceptance.
+    // The complete denied state is painted; this does not certify a physical
+    // camera, which still needs separate device acceptance.
     await expect(
       readViewPaint(
         semanticRootForView(page, "builtin-camera"),
         page.locator("[data-test-overlay]"),
-        cameraPolicy.fallbackExpectation,
+        cameraPolicy.expectation,
       ),
     ).resolves.toMatchObject({ semanticReady: true });
 
     for (const incompleteOrUnrelatedFallback of [
-      "View unavailable Retry",
+      "Camera access is off Try again",
       "Settings Wallet Projects",
     ]) {
       const cameraRoot = semanticRootForView(page, "builtin-camera");
@@ -2167,7 +2170,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         readViewPaint(
           cameraRoot,
           page.locator("[data-test-overlay]"),
-          cameraPolicy.fallbackExpectation,
+          cameraPolicy.expectation,
         ),
       ).resolves.toMatchObject({ semanticReady: false });
     }
@@ -2219,6 +2222,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         );
         await seedStewardSession(page, { jwt: true });
         await installDefaultAppRoutes(page);
+        if (view.id === "camera") await installCameraRecoveryFixture(page);
         if (view.fixtureState === "family-interview") {
           // Capture the real renderer's private answer form against explicit read-only empty inventories.
           await page.route(

@@ -1,3 +1,8 @@
+import {
+  isExposed,
+  NATIVE_DIALOG_SELECTOR,
+} from "../../accessibility/screen-focus";
+
 /**
  * Publish how much of the bottom of a screen its floating docks cover (a chat
  * composer with whatever is stacked on it, or a pill), measured in the
@@ -35,6 +40,66 @@ export interface DockClearanceOptions {
   restProperty?: string;
   /** Element whose style receives the properties (default `document.documentElement`). */
   target?: HTMLElement;
+  /** Re-expose existing keyboard focus when a dock grows or moves over it. */
+  revealFocus?: DockFocusOptions;
+}
+
+export interface DockFocusOptions {
+  /** Host scroll regions; other vertical scroll ancestors remain a fallback. */
+  scrollContainers: string;
+  /** Space above the dock, in viewport CSS pixels. Defaults to 12. */
+  padding?: number;
+}
+
+/** Scroll the current control above covering docks without changing focus. */
+export function revealFocusAboveDocks(
+  target: EventTarget | null,
+  screen: HTMLElement,
+  docks: readonly HTMLElement[],
+  options: DockFocusOptions,
+  keyboardOnly = true,
+): void {
+  const doc = screen.ownerDocument;
+  const view = doc.defaultView;
+  if (
+    !view ||
+    !(target instanceof view.HTMLElement) ||
+    target !== doc.activeElement ||
+    !screen.contains(target) ||
+    !isExposed(target) ||
+    target.closest('[role="dialog"],dialog') ||
+    doc.querySelector(NATIVE_DIALOG_SELECTOR) ||
+    (keyboardOnly && !target.matches(":focus-visible")) ||
+    docks.some((dock) => dock.contains(target))
+  )
+    return;
+  let scroll = target.closest<HTMLElement>(options.scrollContainers);
+  if (!scroll) {
+    for (let node = target.parentElement; node; node = node.parentElement) {
+      if (
+        ["auto", "scroll"].includes(view.getComputedStyle(node).overflowY) &&
+        node.scrollHeight > node.clientHeight
+      ) {
+        scroll = node;
+        break;
+      }
+    }
+  }
+  if (!scroll || scroll === target) return;
+  const scale = screen.getBoundingClientRect().height / screen.clientHeight;
+  if (!Number.isFinite(scale) || scale <= 0) return;
+  const box = target.getBoundingClientRect();
+  let covered = 0;
+  for (const dock of docks) {
+    if (!isExposed(dock)) continue;
+    const over = dock.getBoundingClientRect();
+    if (over.right <= box.left || over.left >= box.right) continue;
+    covered = Math.max(
+      covered,
+      box.bottom - over.top + (options.padding ?? 12),
+    );
+  }
+  if (covered > 0) scroll.scrollTop += covered / scale;
 }
 
 export interface DockClearance {
@@ -138,6 +203,13 @@ export function installDockClearance(
     );
     if (options.restProperty)
       target.style.setProperty(options.restProperty, `${measured.rest}px`);
+    if (options.revealFocus)
+      revealFocusAboveDocks(
+        screen.ownerDocument.activeElement,
+        screen,
+        docks,
+        options.revealFocus,
+      );
   };
   const readNow = () => {
     if (frame) cancelAnimationFrame(frame);

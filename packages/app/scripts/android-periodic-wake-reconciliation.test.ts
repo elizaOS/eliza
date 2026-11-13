@@ -149,7 +149,7 @@ describe("Android periodic wake reconciliation (#17874)", () => {
       /ElizaAgentService\.localAgentToken\(context\),\s*ownershipPrefs\(context\)\.getBoolean\(RUNTIME_STOPPED_KEY, false\)/,
     );
     expect(service).toMatch(
-      /if \(restartFirst && !stopAgentProcessOrPreserve\(false\)\) \{[\s\S]*?currentStatus = "stop-failed";\s*updateNotification\(\);\s*return;\s*\}\s*startAgentProcess\(!restartFirst\)/,
+      /if \(restartFirst && !stopAgentProcessOrPreserve\(false\)\) \{[\s\S]*?currentStatus = "stop-failed";\s*updateNotification\(\);\s*return;\s*\}\s*long ownerRequestEpoch = beginRuntimeStart\(\);\s*if \(startAgentProcess\(!restartFirst\)\) runtimeStarted\(ownerRequestEpoch\)/,
     );
     expect(service).toMatch(
       /ElizaWorkScheduler\.runtimeStopped\(getApplicationContext\(\)\);[\s\S]*?deleteLocalAgentTokenFile\(\)/,
@@ -216,7 +216,7 @@ describe("Android periodic wake reconciliation (#17874)", () => {
   it("returns repeated service starts before the cold-boot process lock", () => {
     const service = source("ElizaAgentService.java");
     const requestStartBody = service.match(
-      /private void requestAgentStart\(boolean restartFirst\) \{([\s\S]*?)\n {4}\}\n\n {4}private void startAgentProcess/,
+      /private void requestAgentStart\(boolean restartFirst\) \{([\s\S]*?)\n {4}\}\n\n {4}private boolean startAgentProcess/,
     )?.[1];
 
     expect(service).toContain("private volatile Thread startWorker");
@@ -229,7 +229,7 @@ describe("Android periodic wake reconciliation (#17874)", () => {
   it("revalidates detached liveness off the main thread on an ordinary start", () => {
     const service = source("ElizaAgentService.java");
     const requestStartBody = service.match(
-      /private void requestAgentStart\(boolean restartFirst\) \{([\s\S]*?)\n {4}\}\n\n {4}private void startAgentProcess/,
+      /private void requestAgentStart\(boolean restartFirst\) \{([\s\S]*?)\n {4}\}\n\n {4}private boolean startAgentProcess/,
     )?.[1];
     expect(requestStartBody).toBeDefined();
     expect(requestStartBody).not.toContain("&& detachedAgentMode");

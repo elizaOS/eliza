@@ -3,6 +3,8 @@ import { BridgeError } from "./protocol.mjs";
 
 /** Longest life of a consented-commit grant, from the host's yes to its use. */
 export const COMMIT_GRANT_MAX_MS = 60000;
+/** Longest host commit pattern a binding may carry. */
+export const COMMIT_PATTERN_MAX_LENGTH = 4096;
 
 /** Hosts supply storage, page lookup and cleanup; model/page data cannot bind tasks. */
 export function createTaskBindings({
@@ -85,6 +87,20 @@ export function createTaskBindings({
       return false;
     }
   };
+  const validCommitPattern = (pattern) => {
+    if (
+      typeof pattern !== "string" ||
+      !pattern ||
+      pattern.length > COMMIT_PATTERN_MAX_LENGTH
+    )
+      return false;
+    try {
+      new RegExp(pattern, "iu");
+      return true;
+    } catch {
+      return false;
+    }
+  };
   const sha256 = async (text) =>
     [
       ...new Uint8Array(
@@ -124,6 +140,7 @@ export function createTaskBindings({
             "targets",
             "revoked",
             "assistantName",
+            "commitPattern",
           ].includes(key),
       ) ||
       // Display name for the overlay cursor and marks; host configuration.
@@ -131,6 +148,10 @@ export function createTaskBindings({
         (typeof binding.assistantName !== "string" ||
           !/^[^\p{Cc}\p{Cf}]{1,32}$/u.test(binding.assistantName) ||
           !binding.assistantName.trim())) ||
+      // The host's commit words for the languages it serves, as one regular
+      // expression (flags iu). It only adds to the page's own commit guard.
+      (binding.commitPattern !== undefined &&
+        !validCommitPattern(binding.commitPattern)) ||
       !validTabId(binding.tabId) ||
       contextKeys
         .filter((key) => key !== "epoch")
@@ -190,6 +211,7 @@ export function createTaskBindings({
       binding.origin === previous.origin &&
       JSON.stringify(binding.origins) === JSON.stringify(previous.origins) &&
       binding.assistantName === previous.assistantName &&
+      binding.commitPattern === previous.commitPattern &&
       JSON.stringify(binding.targets) === JSON.stringify(previous.targets);
     if (
       !current() ||
@@ -341,6 +363,9 @@ export function createTaskBindings({
       guidanceScope: String(binding.bindingRevision),
       protectedValueKind: command.protectedValueKind,
       assistantName: binding.assistantName,
+      ...(binding.commitPattern === undefined
+        ? {}
+        : { commitPattern: binding.commitPattern }),
       ...(commitGrant === undefined ? {} : { commitGrant }),
     };
     return { command: copy, current };

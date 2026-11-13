@@ -691,7 +691,7 @@ export interface AppDto {
   description: string | null;
   slug: string;
   organization_id: string;
-  created_by_user_id: string;
+  created_by_user_id: string | null;
   app_url: string;
   allowed_origins: string[];
   api_key_id: string | null;
@@ -937,12 +937,16 @@ export interface AppCleanupSummary {
 }
 
 /** `DELETE /api/v1/apps/:id` response. */
-export interface DeleteAppResponse {
-  success: boolean;
+export type DeleteAppResponse = {
+  appId: string;
+  jobId: string;
+  status: string;
   message: string;
-  cleaned?: AppCleanupSummary;
-  errors?: string[];
-}
+  phase: "teardown" | "operator_reconciliation_required";
+} & (
+  | { success: true; state: "completed" }
+  | { success: false; state: "pending" }
+);
 
 /**
  * `POST /api/v1/apps/:id/regenerate-api-key` response.

@@ -4,8 +4,12 @@ package ai.eliza.plugins.wifi
 import android.Manifest
 import android.app.Activity
 import android.content.ActivityNotFoundException
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.PackageManager
+import android.location.LocationManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -27,6 +31,7 @@ import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
+import com.getcapacitor.annotation.Permission
 
 /**
  * Wi-Fi bridge for ElizaOS.
@@ -42,18 +47,89 @@ import com.getcapacitor.annotation.CapacitorPlugin
  * `addNetworkWithApproval` (API 30+) is for ordinary apps: it opens the
  * system "Save this network?" dialog and reports whether the requested
  * network, identified by its own name, then validates or hits a captive portal.
+ *
+ * A host may register a subclass to limit the bridge: [enabled] is checked by
+ * every method, including the permission methods. Capacitor does not inherit
+ * the annotation, so the subclass declares its own `@CapacitorPlugin` with a
+ * name and the [LOCATION] permission alias.
  */
-@CapacitorPlugin(name = "ElizaWiFi")
-class WiFiPlugin : Plugin() {
+@CapacitorPlugin(
+    name = "ElizaWiFi",
+    permissions = [
+        // Asked together, as Android 12+ requires; only precise location lets a scan return results.
+        Permission(
+            alias = WiFiPlugin.LOCATION,
+            strings = [Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION],
+        ),
+    ],
+)
+open class WiFiPlugin : Plugin() {
     private val wifiManager: WifiManager?
         get() = context.applicationContext
             .getSystemService(Context.WIFI_SERVICE) as? WifiManager
 
     /** Cache of the last scan completion timestamp for the `maxAge` shortcut. */
+    @Volatile
     private var lastScanCompletedAtMs: Long = 0L
+
+    private val main by lazy { Handler(Looper.getMainLooper()) }
+
+    /**
+     * Whether this build exposes the Wi-Fi bridge. A host overrides it to
+     * refuse every method, for example in a build that must never scan or join.
+     */
+    protected open fun enabled(): Boolean = true
+
+    /** Rejects [call] with `DISABLED` when the host turned the bridge off. */
+    private fun admitted(call: PluginCall): Boolean {
+        if (enabled()) return true
+        call.reject("Wi-Fi controls are turned off in this app", "DISABLED")
+        return false
+    }
+
+    @PluginMethod
+    override fun checkPermissions(call: PluginCall) {
+        if (admitted(call)) super.checkPermissions(call)
+    }
+
+    @PluginMethod
+    override fun requestPermissions(call: PluginCall) {
+        if (admitted(call)) super.requestPermissions(call)
+    }
+
+    @PluginMethod
+    fun getCapabilities(call: PluginCall) {
+        if (!admitted(call)) return
+        val result = JSObject()
+        result.put("sdk", Build.VERSION.SDK_INT)
+        result.put("approvedJoin", Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && wifiManager != null)
+        result.put("internetPanel", Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+        call.resolve(result)
+    }
+
+    /** Opens Android's internet panel (API 29+) over the app, where the user can pick any network. */
+    @PluginMethod
+    fun openInternetPanel(call: PluginCall) {
+        if (!admitted(call)) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            call.reject("The internet panel requires Android 10 or later", "UNSUPPORTED")
+            return
+        }
+        // The bridge context is the activity, so the panel opens over the app.
+        val intent = Intent(Settings.Panel.ACTION_INTERNET_CONNECTIVITY)
+        if (context !is Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            context.startActivity(intent)
+            call.resolve()
+        } catch (error: ActivityNotFoundException) {
+            // error-policy:J1 Some Android builds (for example Wear OS or TV) ship no internet panel.
+            call.reject("This device has no internet panel", "UNSUPPORTED", error)
+        }
+    }
 
     @PluginMethod
     fun getWifiState(call: PluginCall) {
+        if (!admitted(call)) return
         // Device read is delegated to WiFiStateReader so it can be exercised by
         // an instrumented androidTest without a Capacitor Bridge (issue #9967);
         // the JS wire shape below is unchanged.
@@ -76,6 +152,7 @@ class WiFiPlugin : Plugin() {
 
     @PluginMethod
     fun getConnectedNetwork(call: PluginCall) {
+        if (!admitted(call)) return
         if (!hasPermission(Manifest.permission.ACCESS_WIFI_STATE)) {
             call.reject("ACCESS_WIFI_STATE permission is required")
             return
@@ -104,7 +181,8 @@ class WiFiPlugin : Plugin() {
                 WifiInfo.SECURITY_TYPE_OPEN, WifiInfo.SECURITY_TYPE_OWE -> false
                 else -> true
             }
-        } else if (hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)) {
+        } else if (context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            // An explicit platform check, so a consuming app's lint sees the guard.
             manager.scanResults.firstOrNull { it.BSSID == info.bssid }?.let {
                 WiFiStateReader.isSecured(it.capabilities)
             }
@@ -120,17 +198,18 @@ class WiFiPlugin : Plugin() {
 
     @PluginMethod
     fun listAvailableNetworks(call: PluginCall) {
+        if (!admitted(call)) return
         if (!hasPermission(Manifest.permission.ACCESS_WIFI_STATE)) {
             call.reject("ACCESS_WIFI_STATE permission is required")
             return
         }
         // scanResults is gated behind ACCESS_FINE_LOCATION on API 26+. Reject
         // with a clear message rather than letting the platform return an
-        // empty list — callers can prompt for location and retry.
+        // empty list — callers can request the `location` alias and retry.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             !hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)
         ) {
-            call.reject("ACCESS_FINE_LOCATION required for Wi-Fi scans on API 26+")
+            call.reject("ACCESS_FINE_LOCATION required for Wi-Fi scans on API 26+", "LOCATION_PERMISSION_REQUIRED")
             return
         }
         val manager = wifiManager
@@ -138,25 +217,74 @@ class WiFiPlugin : Plugin() {
             call.reject("Wi-Fi service is unavailable on this device")
             return
         }
+        // With Location off Android returns no scan results; that is not "no networks".
+        if (!locationEnabled()) {
+            call.reject("Location is turned off, so Android returns no Wi-Fi scan results", "LOCATION_DISABLED")
+            return
+        }
         val maxAge = call.getInt("maxAge") ?: 30_000
         val limit = call.getInt("limit") ?: 0
+        val joinable = call.getBoolean("joinable") ?: false
+        val timeout = (call.getInt("timeout") ?: DEFAULT_SCAN_TIMEOUT_MS.toInt()).coerceIn(0, MAX_SCAN_TIMEOUT_MS.toInt())
         val now = System.currentTimeMillis()
-        if (lastScanCompletedAtMs == 0L || now - lastScanCompletedAtMs > maxAge) {
-            // startScan is best-effort and rate-limited on modern Android; the
-            // returned boolean is informational only.
+        if (lastScanCompletedAtMs != 0L && now - lastScanCompletedAtMs <= maxAge) {
+            resolveNetworks(call, manager, limit, joinable)
+            return
+        }
+        // startScan is rate-limited on modern Android. When it starts, wait for
+        // its results (or the timeout); when throttled, the cached results are
+        // the best answer now.
+        var settled = false
+        lateinit var receiver: BroadcastReceiver
+        lateinit var deadline: Runnable
+        fun finish() {
+            if (settled) return
+            settled = true
+            main.removeCallbacks(deadline)
+            try {
+                context.unregisterReceiver(receiver)
+            } catch (error: IllegalArgumentException) {
+                // error-policy:J4 Already unregistered; nothing is left to release.
+            }
+            lastScanCompletedAtMs = System.currentTimeMillis()
+            resolveNetworks(call, manager, limit, joinable)
+        }
+        receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                main.post { finish() }
+            }
+        }
+        deadline = Runnable { finish() }
+        registerSystemReceiver(receiver, IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION))
+        @Suppress("DEPRECATION")
+        val started = try {
             manager.startScan()
-            lastScanCompletedAtMs = now
+        } catch (error: SecurityException) {
+            // error-policy:J4 A refused scan falls back to the cached results, as a throttled one does.
+            false
+        }
+        if (started) main.postDelayed(deadline, timeout.toLong()) else main.post { finish() }
+    }
+
+    private fun resolveNetworks(call: PluginCall, manager: WifiManager, limit: Int, joinable: Boolean) {
+        val scanResults: List<ScanResult> = try {
+            manager.scanResults ?: emptyList()
+        } catch (error: SecurityException) {
+            // error-policy:J1 Location access was withdrawn while the scan ran.
+            call.reject("Android denied the Wi-Fi scan results", "LOCATION_PERMISSION_REQUIRED", error)
+            return
         }
         val seenSsids = HashSet<String>()
         val networks = JSArray()
-        val scanResults: List<ScanResult> = manager.scanResults ?: emptyList()
         // Sort by signal strength (closest / strongest first) for stable UI ordering.
         val sorted = scanResults.sortedByDescending { it.level }
         for (result in sorted) {
-            val ssid = result.SSID ?: ""
-            if (ssid.isEmpty()) continue
-            if (!seenSsids.add(ssid)) continue
+            // Hidden networks report an empty or all-NUL name.
+            val ssid = WiFiStateReader.disclosedSsid(result.SSID) ?: continue
             val capabilities = result.capabilities ?: ""
+            val security = WiFiStateReader.securityType(capabilities)
+            if (joinable && !WiFiStateReader.joinable(security)) continue
+            if (!seenSsids.add(ssid)) continue
             val entry = JSObject()
             entry.put("ssid", ssid)
             entry.put("bssid", result.BSSID ?: "")
@@ -164,6 +292,7 @@ class WiFiPlugin : Plugin() {
             entry.put("frequency", result.frequency)
             entry.put("capabilities", capabilities)
             entry.put("secured", WiFiStateReader.isSecured(capabilities))
+            entry.put("security", security)
             networks.put(entry)
             if (limit > 0 && networks.length() >= limit) break
         }
@@ -174,6 +303,7 @@ class WiFiPlugin : Plugin() {
 
     @PluginMethod
     fun connectToNetwork(call: PluginCall) {
+        if (!admitted(call)) return
         if (!hasPermission(Manifest.permission.CHANGE_WIFI_STATE)) {
             call.reject("CHANGE_WIFI_STATE permission is required")
             return
@@ -185,6 +315,7 @@ class WiFiPlugin : Plugin() {
         }
         val password = call.getString("password")
         val hidden = call.getBoolean("hidden") ?: false
+        val security = call.getString("security")
         val manager = wifiManager
         if (manager == null) {
             call.reject("Wi-Fi service is unavailable on this device")
@@ -192,10 +323,10 @@ class WiFiPlugin : Plugin() {
         }
         val ok = try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                WiFiConnectionRequests.suggest(manager, ssid, password, hidden)
+                WiFiConnectionRequests.suggest(manager, ssid, password, hidden, security)
             } else {
                 @Suppress("DEPRECATION")
-                connectViaLegacyConfig(manager, ssid, password, hidden)
+                connectViaLegacyConfig(manager, ssid, password, hidden, security)
             }
         } catch (error: IllegalArgumentException) {
             // error-policy:J3 Invalid SSIDs and passphrases reject before a connection is requested.
@@ -220,6 +351,7 @@ class WiFiPlugin : Plugin() {
 
     @PluginMethod
     fun disconnectFromNetwork(call: PluginCall) {
+        if (!admitted(call)) return
         if (!hasPermission(Manifest.permission.CHANGE_WIFI_STATE)) {
             call.reject("CHANGE_WIFI_STATE permission is required")
             return
@@ -241,6 +373,7 @@ class WiFiPlugin : Plugin() {
 
     @PluginMethod
     fun getConnectivity(call: PluginCall) {
+        if (!admitted(call)) return
         val state = try {
             WiFiStateReader(context).readConnectivity()
         } catch (error: IllegalStateException) {
@@ -257,10 +390,11 @@ class WiFiPlugin : Plugin() {
 
     @PluginMethod
     fun addNetworkWithApproval(call: PluginCall) {
-        val ssid = call.getString("ssid")?.trim()
         val password = call.getString("password")
         // The call stays saved while the system dialog is open; keep the passphrase out of it.
         call.data.remove("password")
+        if (!admitted(call)) return
+        val ssid = call.getString("ssid")?.trim()
         if (ssid.isNullOrEmpty()) {
             call.reject("ssid is required")
             return
@@ -270,9 +404,13 @@ class WiFiPlugin : Plugin() {
             return
         }
         val suggestion = try {
-            WiFiConnectionRequests.build(ssid, password, call.getBoolean("hidden") ?: false)
+            WiFiConnectionRequests.build(ssid, password, call.getBoolean("hidden") ?: false, call.getString("security"))
         } catch (error: IllegalArgumentException) {
-            // error-policy:J3 Invalid SSIDs and passphrases reject before the system dialog opens.
+            // error-policy:J3 Invalid SSIDs, passphrases and security types reject before the system dialog opens.
+            call.reject("Invalid Wi-Fi connection options: ${error.message}", "INVALID_ARGUMENT", error)
+            return
+        } catch (error: IllegalStateException) {
+            // error-policy:J3 Android's builder refused the combination (for example WPA3 on a device without it).
             call.reject("Invalid Wi-Fi connection options: ${error.message}", "INVALID_ARGUMENT", error)
             return
         }
@@ -281,6 +419,8 @@ class WiFiPlugin : Plugin() {
             call.reject("Connectivity service is unavailable on this device")
             return
         }
+        // Only whether a password was given stays with the saved call, for the wrong-password report.
+        call.data.put("secured", !password.isNullOrEmpty())
         val intent = Intent(Settings.ACTION_WIFI_ADD_NETWORKS)
             .putParcelableArrayListExtra(Settings.EXTRA_WIFI_NETWORK_LIST, arrayListOf(suggestion))
         try {
@@ -313,7 +453,7 @@ class WiFiPlugin : Plugin() {
             bridge.releaseCall(call)
             return
         }
-        awaitWifiInternet(call, ssid)
+        awaitWifiInternet(call, ssid, call.getBoolean("secured") ?: false)
     }
 
     /**
@@ -323,27 +463,34 @@ class WiFiPlugin : Plugin() {
      * another Wi-Fi network, such as the one the device was already on, never
      * counts. Without a match within [APPROVED_JOIN_TIMEOUT_MS] it resolves
      * `unverified` when Android reported a working Wi-Fi network whose name it
-     * withheld, and `notConnected` otherwise (see [ApprovedJoinTracker]).
+     * withheld, and `notConnected` otherwise (see [ApprovedJoinTracker]). A
+     * supplicant authentication error for a [secured] join resolves
+     * `wrongPassword`; that report is best-effort and not sent on every build.
      */
-    private fun awaitWifiInternet(call: PluginCall, ssid: String) {
+    private fun awaitWifiInternet(call: PluginCall, ssid: String, secured: Boolean) {
         val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
         if (manager == null) {
             call.reject("Connectivity service is unavailable on this device")
             bridge.releaseCall(call)
             return
         }
-        val main = Handler(Looper.getMainLooper())
         val reader = WiFiStateReader(context)
         // Touched only on the main thread.
-        val tracker = ApprovedJoinTracker(ssid)
+        val tracker = ApprovedJoinTracker(ssid, secured)
         var settled = false
         lateinit var callback: ConnectivityManager.NetworkCallback
         lateinit var timeout: Runnable
+        lateinit var supplicant: BroadcastReceiver
         fun settle(status: String) {
             if (settled) return
             settled = true
             main.removeCallbacks(timeout)
             manager.unregisterNetworkCallback(callback)
+            try {
+                context.unregisterReceiver(supplicant)
+            } catch (error: IllegalArgumentException) {
+                // error-policy:J4 Never registered (the network watch failed first).
+            }
             finishApprovedJoin(call, status)
         }
         val onCapabilities = { network: Network, caps: NetworkCapabilities ->
@@ -372,6 +519,13 @@ class WiFiPlugin : Plugin() {
             }
         }
         timeout = Runnable { settle(tracker.timeoutStatus()) }
+        supplicant = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                @Suppress("DEPRECATION")
+                val failed = intent.getIntExtra(WifiManager.EXTRA_SUPPLICANT_ERROR, 0) == WifiManager.ERROR_AUTHENTICATING
+                if (failed) main.post { if (!settled) tracker.authenticationFailed()?.let { settle(it) } }
+            }
+        }
         val request = NetworkRequest.Builder()
             .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
             .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
@@ -384,6 +538,8 @@ class WiFiPlugin : Plugin() {
             bridge.releaseCall(call)
             return
         }
+        @Suppress("DEPRECATION")
+        registerSystemReceiver(supplicant, IntentFilter(WifiManager.SUPPLICANT_STATE_CHANGED_ACTION))
         main.postDelayed(timeout, APPROVED_JOIN_TIMEOUT_MS)
     }
 
@@ -398,6 +554,25 @@ class WiFiPlugin : Plugin() {
     // Helpers
     // -----------------------------------------------------------------------
 
+    /** Registers [receiver] for an Android system broadcast; other apps cannot send to it. */
+    private fun registerSystemReceiver(receiver: BroadcastReceiver, filter: IntentFilter) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            context.registerReceiver(receiver, filter)
+        }
+    }
+
+    private fun locationEnabled(): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val location = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+            return location?.isLocationEnabled == true
+        }
+        @Suppress("DEPRECATION")
+        return Settings.Secure.getInt(context.contentResolver, Settings.Secure.LOCATION_MODE, Settings.Secure.LOCATION_MODE_OFF) !=
+            Settings.Secure.LOCATION_MODE_OFF
+    }
+
     /**
      * Legacy connect path for API 23–28. Uses the deprecated
      * `WifiConfiguration` API which still works for system / privileged
@@ -409,7 +584,13 @@ class WiFiPlugin : Plugin() {
         ssid: String,
         password: String?,
         hidden: Boolean,
+        security: String?,
     ): Boolean {
+        // Before Android 10 only WPA2 and open networks can be configured this way.
+        val resolved = WiFiConnectionRequests.security(password, security)
+        require(resolved == WiFiStateReader.SECURITY_WPA2 || resolved == WiFiStateReader.SECURITY_OPEN) {
+            "Wi-Fi security '$resolved' requires Android 10 or later"
+        }
         val config = WifiConfiguration()
         config.SSID = "\"$ssid\""
         config.hiddenSSID = hidden
@@ -427,8 +608,15 @@ class WiFiPlugin : Plugin() {
         return enabled
     }
 
-    private companion object {
+    companion object {
+        /** The permission alias for scans: precise and approximate location, asked together. */
+        const val LOCATION = "location"
+
         /** Validation usually follows a join within seconds; a captive portal is reported at once. */
-        const val APPROVED_JOIN_TIMEOUT_MS = 30_000L
+        private const val APPROVED_JOIN_TIMEOUT_MS = 30_000L
+
+        /** How long a started scan waits for its results before the cached ones are read. */
+        private const val DEFAULT_SCAN_TIMEOUT_MS = 10_000L
+        private const val MAX_SCAN_TIMEOUT_MS = 30_000L
     }
 }

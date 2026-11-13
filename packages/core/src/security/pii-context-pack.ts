@@ -443,7 +443,6 @@ export async function assembleContextPack(
  */
 export function entityResolverFromStore(
 	store: PiiEntityResolverStore,
-	_options: { maxCandidates?: number } = {},
 ): (candidate: PiiScrubCandidate) => Promise<readonly PiiResolvedEntity[]> {
 	return async (candidate) => {
 		const query: {

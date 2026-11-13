@@ -1,0 +1,25 @@
+{
+  "sources": [
+    "packages/agent/src/hooks/registry.ts",
+    "packages/agent/src/hooks/loader.ts",
+    "packages/agent/src/hooks/discovery.ts",
+    "packages/agent/src/hooks/eligibility.ts",
+    "packages/agent/src/runtime/memory-watchdog.ts"
+  ],
+  "bounds": {
+    "domain": "Two hooks and two high-memory observations.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "runtime_hooks_watchdog",
+      "main": "runtime_hooks_watchdog",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

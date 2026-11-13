@@ -1,4 +1,4 @@
-package ai.elizaresearch.pixelconfig;
+package ai.eliza.hardware.pixelconfig;
 
 import android.app.Instrumentation;
 import android.content.ContentValues;

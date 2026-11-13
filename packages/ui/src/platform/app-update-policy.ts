@@ -277,10 +277,7 @@ export function mapAgentUpdateStatusToSnapshot(
 export async function readNativeAppInfo(): Promise<NativeAppInfo | null> {
   if (!Capacitor.isNativePlatform()) return null;
   try {
-    const capacitorAppPackage = "@capacitor/app";
-    const mod = (await import(
-      /* @vite-ignore */ capacitorAppPackage
-    )) as CapacitorAppModule;
+    const mod = (await import("@capacitor/app")) as CapacitorAppModule;
     return await mod.App.getInfo();
   } catch {
     // error-policy:J4 optional native module — builds without @capacitor/app

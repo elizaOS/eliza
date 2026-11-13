@@ -173,24 +173,12 @@ export function isAospShellEnabled(
  *    on every non-fork build.
  *  - `launcher-curation` appends {@link LAUNCHER_AOSP_ONLY_VIEW_IDS} to the
  *    launcher only on the fork.
- *  - `App.tsx` route gates (`renderPhoneSurface`) mount their pages only on the
- *    fork.
+ *  - `App.tsx` keeps native telephony routes behind their existing adapters.
  */
-export const NATIVE_OS_VIEW_IDS = [
-  "phone",
-  "messages",
-  "contacts",
-  "camera",
-] as const;
-/**
- * Native-OS launcher tiles: the routable native-OS surfaces plus Files — a
- * cross-platform view (`/apps/files`) that stays routable everywhere but is only
- * surfaced as a launcher tile on the fork.
- */
-export const LAUNCHER_AOSP_ONLY_VIEW_IDS = [
-  ...NATIVE_OS_VIEW_IDS,
-  "files",
-] as const;
+export const NATIVE_OS_VIEW_IDS = ["phone", "messages", "contacts"] as const;
+/** Native telephony requires an image adapter. Camera and Files have ordinary
+ * browser/stock-Android implementations and retain their provider checks. */
+export const LAUNCHER_AOSP_ONLY_VIEW_IDS = NATIVE_OS_VIEW_IDS;
 interface WindowNavigationLocation {
   protocol: string;
   hostname?: string;

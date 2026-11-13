@@ -30,7 +30,7 @@ import { NotificationsHomeCenter } from "./NotificationsHomeCenter";
 // A gentle staggered rise as the home settles in. Foregrounds stay fully opaque
 // throughout so slow paints and screenshot tooling never expose unreadable
 // intermediate content. Reduced-motion users see the settled layout directly.
-const HOME_SCREEN_CSS = `
+export const HOME_SCREEN_CSS = `
 @keyframes home-enter {
   from { transform: translateY(10px); }
   to   { transform: none; }
@@ -257,7 +257,9 @@ export interface HomeScreenProps {
  * content inert until the shade collapses. The separate launcher page is owned
  * by HomeLauncherSurface, not this dashboard.
  */
-export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
+export function useHomeDashboard<
+  AppRegion extends HTMLElement = HTMLElement,
+>() {
   // The live activity stream feeds the home ranker's attention signals.
   const { events, clearEvents } = useActivityEvents();
   // The entrance rise plays once, on first mount only - never re-triggered by a
@@ -267,7 +269,7 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
   useHomeLayoutShiftObserver();
   const homeScreenRef = useRef<HTMLDivElement>(null);
   const homeContentColumnRef = useRef<HTMLDivElement>(null);
-  const appsRegionRef = useRef<HTMLElement>(null);
+  const appsRegionRef = useRef<AppRegion>(null);
   const displacedAppFocusRef = useRef<HTMLElement | null>(null);
   const appsDisplacedRef = useRef(false);
   const wasAppsDisplacedRef = useRef(false);
@@ -397,6 +399,39 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
     wasAppsDisplacedRef.current = appsDisplaced;
   }, [appsDisplaced]);
 
+  return {
+    events,
+    clearEvents,
+    enterClass,
+    homeScreenRef,
+    homeContentColumnRef,
+    appsRegionRef,
+    notifications,
+    appsDisplaced,
+    handleAppsFocusCapture,
+    handleAppsBlurCapture,
+    handleShadeExpandedChange,
+    notificationCenterOpenRequestId,
+    handleNotificationCenterOpenRequestHandled,
+  };
+}
+
+export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
+  const {
+    events,
+    clearEvents,
+    enterClass,
+    homeScreenRef,
+    homeContentColumnRef,
+    appsRegionRef,
+    notifications,
+    appsDisplaced,
+    handleAppsFocusCapture,
+    handleAppsBlurCapture,
+    handleShadeExpandedChange,
+    notificationCenterOpenRequestId,
+    handleNotificationCenterOpenRequestHandled,
+  } = useHomeDashboard();
   return (
     <div
       ref={homeScreenRef}

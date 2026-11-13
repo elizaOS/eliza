@@ -15,6 +15,7 @@ import {
   writeProvisioningOverlay,
 } from "./launcher-provisioning.mjs";
 import {
+  assertPixel10aSourceLayout,
   composePixel10aProduct,
   enforceLauncherLockScreenPolicy,
   validatePixel10aProduct,
@@ -85,6 +86,10 @@ export async function stagePixel10aProduct(options) {
       ...(options.appliedSensePatch ? [senseSystemuiPatch()] : []),
     ],
   });
+  sourceEvidence.hardwareLayout = assertPixel10aSourceLayout(
+    options.aospRoot,
+    product,
+  );
   // The product keeps the stock stallion vendor partition: its lunch release
   // and the generated vendor VINTF manifest must both carry the locked API.
   const vendorApi = assertStockVendorApi(options.aospRoot, {
@@ -109,7 +114,9 @@ export async function stagePixel10aProduct(options) {
       { encoding: "utf8", env: options.env },
     );
     enforceLauncherLockScreenPolicy(product, xml);
-    const components = provisioningComponents(xml, launcher.packageName);
+    const components = provisioningComponents(xml, launcher.packageName, {
+      assistant: product.launcher.assistantRole !== false,
+    });
     writeProvisioningOverlay(output, launcher.packageName, components);
     const nativeStagingEvidence = stageAndroidNative({
       apk: path.join(output, "Launcher.apk"),
@@ -162,7 +169,7 @@ export async function stagePixel10aProduct(options) {
 export async function main(argv = process.argv.slice(2)) {
   if (argv.length === 1 && argv[0] === "--help") {
     console.log(
-      "Usage: node stage-pixel10a-product.ts --product PRODUCT_JSON --launcher-descriptor LAUNCHER_JSON --apk APK --aosp-root AOSP --vendor-archive FACTORY --output NEW_DIR --source-commit COMMIT --applied-app-native-patch [--runtime-source ELIZA_ROOT] [--bun-target linux-musl|android] [--listener-apk APK --listener-descriptor JSON --voice-host JSON] [--applied-sense-patch] [--boot-animation ZIP] [--development] [--aapt TOOL] [--apksigner TOOL]",
+      "Usage: bun stage-pixel10a-product.ts --product PRODUCT_JSON --launcher-descriptor LAUNCHER_JSON --apk APK --aosp-root AOSP --vendor-archive FACTORY --output NEW_DIR --source-commit COMMIT --applied-app-native-patch [--runtime-source ELIZA_ROOT] [--bun-target linux-musl|android] [--listener-apk APK --listener-descriptor JSON --voice-host JSON] [--applied-sense-patch] [--boot-animation ZIP] [--development] [--aapt TOOL] [--apksigner TOOL]",
     );
     return;
   }

@@ -97,7 +97,8 @@ app.delete("/", async (c) => {
       return c.json(
         {
           success: false,
-          error: "Cannot delete the active deployment; activate another first",
+          error:
+            "Deployment is active or its upload is not confirmed stopped; retry after completion",
         },
         409,
       );

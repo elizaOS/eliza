@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   apkReleaseBlockers,
   apkUpdateAdmission,
+  cloudVoiceAdmission,
   compareDomains,
   DOMAIN_SCRIPT,
   inPlaceUpdateFailures,
@@ -30,6 +31,168 @@ const row = (overrides = {}) => ({
 
 test("a complete distributable release row has no blockers", () => {
   assert.deepEqual(apkReleaseBlockers(row()), []);
+});
+
+const cloudChecks = {
+  consent: true,
+  session: true,
+  acousticInput: true,
+  blueBar: true,
+  transcript: true,
+  audibleSpeakerReply: true,
+  mute: true,
+  unmute: true,
+  stopReleased: true,
+};
+const cloudReceipt = (change = {}) => ({
+  format: "cloud-voice-qualification-v1",
+  results: [
+    {
+      apkSha256: "a".repeat(64),
+      provider: "cartesia",
+      outcome: "passed",
+      checks: cloudChecks,
+      ...change,
+    },
+  ],
+});
+const cloudRow = (receipt = cloudReceipt()) =>
+  row({
+    sha256: "a".repeat(64),
+    runtimeProfile: "cloud",
+    voiceHost: { packaged: false, differences: [] },
+    cloudVoice: cloudVoiceAdmission("a".repeat(64), receipt, "b".repeat(64)),
+  });
+const cloudPolicy = { cloudVoiceProvider: "cartesia" as const };
+
+test("explicit Cloud release uses exact-artifact Cartesia evidence without claiming native voice", () => {
+  assert.deepEqual(apkReleaseBlockers(cloudRow(), cloudPolicy), []);
+  for (const [qualificationFormat, admissionFormat] of [
+    ["cloud-voice-qualification-v1", "cloud-voice-admission-v1"],
+    ["alpha-cloud-voice-qualification-v1", "alpha-cloud-voice-admission-v1"],
+  ]) {
+    const receipt = { ...cloudReceipt(), format: qualificationFormat };
+    const candidate = cloudRow(receipt);
+    assert.deepEqual(candidate.cloudVoice, {
+      format: admissionFormat,
+      apkSha256: "a".repeat(64),
+      evidenceSha256: "b".repeat(64),
+      provider: "cartesia",
+      outcome: "passed",
+      checks: cloudChecks,
+    });
+    assert.deepEqual(apkReleaseBlockers(candidate, cloudPolicy), []);
+    receipt.results[0].outcome = "failed";
+    assert.match(
+      apkReleaseBlockers(cloudRow(receipt), cloudPolicy).join("\n"),
+      /did not pass/,
+    );
+  }
+  assert.match(
+    apkReleaseBlockers(cloudRow()).join("\n"),
+    /Cloud speech release policy/,
+  );
+  assert.match(
+    apkReleaseBlockers(
+      cloudRow({ format: "unknown", results: [] }),
+      cloudPolicy,
+    ).join("\n"),
+    /did not pass/,
+  );
+});
+
+test("Cloud release refuses missing, failed, duplicated or wrong-artifact evidence", () => {
+  for (const receipt of [
+    undefined,
+    { results: [] },
+    cloudReceipt({ outcome: "failed" }),
+    cloudReceipt({ apkSha256: "c".repeat(64) }),
+    cloudReceipt({ provider: "other" }),
+    {
+      ...cloudReceipt(),
+      results: [...cloudReceipt().results, ...cloudReceipt().results],
+    },
+  ]) {
+    const candidate = cloudRow(receipt ?? { results: [] });
+    assert.ok(apkReleaseBlockers(candidate, cloudPolicy).length > 0);
+  }
+  for (const name of Object.keys(cloudChecks)) {
+    const checks = { ...cloudChecks, [name]: false };
+    assert.match(
+      apkReleaseBlockers(cloudRow(cloudReceipt({ checks })), cloudPolicy).join(
+        "\n",
+      ),
+      new RegExp(name),
+    );
+    delete checks[name];
+    assert.match(
+      apkReleaseBlockers(cloudRow(cloudReceipt({ checks })), cloudPolicy).join(
+        "\n",
+      ),
+      new RegExp(name),
+    );
+  }
+  assert.match(
+    apkReleaseBlockers(
+      { ...cloudRow(), sha256: "d".repeat(64) },
+      cloudPolicy,
+    ).join("\n"),
+    /does not match this APK/,
+  );
+  assert.match(
+    apkReleaseBlockers(
+      { ...cloudRow(), cloudVoice: undefined },
+      cloudPolicy,
+    ).join("\n"),
+    /evidence is missing/,
+  );
+  assert.match(
+    apkReleaseBlockers(
+      {
+        ...cloudRow(),
+        cloudVoice: { ...cloudRow().cloudVoice, evidenceSha256: null },
+      },
+      cloudPolicy,
+    ).join("\n"),
+    /evidence is missing/,
+  );
+});
+
+test("Cloud evidence cannot override signer, runtime, bundle or native-profile requirements", () => {
+  for (const change of [
+    { signed: false },
+    { runtime: "UNPACKAGED" },
+    { runtimeNotices: false },
+    { bundleAudit: "failed" },
+    { testMocks: true },
+    { voiceHost: { packaged: true, qualified: true } },
+    { voiceHost: { packaged: false } },
+    {
+      voiceHost: {
+        packaged: false,
+        differences: ["unexpected voice bundle bytes"],
+      },
+    },
+    { releaseAdmission: { signerMatches: false, failures: [], blockers: [] } },
+  ]) {
+    assert.ok(
+      apkReleaseBlockers({ ...cloudRow(), ...change }, cloudPolicy).length > 0,
+    );
+  }
+  assert.match(
+    apkReleaseBlockers(
+      { ...cloudRow(), runtimeProfile: "native" },
+      cloudPolicy,
+    ).join("\n"),
+    /no on-device voice/,
+  );
+  assert.match(
+    apkReleaseBlockers(
+      { ...cloudRow(), runtimeProfile: "other" },
+      cloudPolicy,
+    ).join("\n"),
+    /runtime profile is unknown/,
+  );
 });
 
 test("every recorded or missing fact is named", () => {

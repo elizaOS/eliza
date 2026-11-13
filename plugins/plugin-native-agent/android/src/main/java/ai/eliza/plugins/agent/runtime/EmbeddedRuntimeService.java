@@ -47,6 +47,7 @@ public abstract class EmbeddedRuntimeService extends Service {
     NativeProcessSupervisor.Snapshot state=service==null?null:service.supervisor.snapshot().lifecycle;
     JSONObject result=new JSONObject().put("available",available).put("onDevice",true)
       .put("state",available?(state==null?"stopped":state.state.name().toLowerCase(Locale.ROOT)):"unavailable");
+    if(available)result.put("requestBodyLimit",RuntimeRequestDispatcher.MAX_BODY_TEXT_UNITS);
     if(state!=null && state.failure!=null)result.put("error",state.failure instanceof IOException?state.failure.getMessage():startupFailure);
     if(service!=null)result.put("epoch",state.epoch);
     return result;
@@ -55,7 +56,7 @@ public abstract class EmbeddedRuntimeService extends Service {
     EmbeddedRuntimeService service=current.get(type);
     NativeRuntimeSession.Snapshot binding=service==null?null:service.supervisor.snapshot();
     EmbeddedRuntimeGroup.Endpoint endpoint=service==null||service.group==null?null:service.group.gateway();
-    if(endpoint==null)throw new IOException(unavailable);
+    if(endpoint==null)throw new NativeRuntimeSession.NotReadyException(unavailable);
     return service.supervisor.request(binding,()->current.get(type)==service,()->request.execute(endpoint.port,endpoint.token),unavailable,cancelled);
   }
   protected static void prepareRestartFor(Class<? extends EmbeddedRuntimeService> type) {

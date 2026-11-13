@@ -36,6 +36,8 @@ export interface CalendarModelCallArgs {
   purpose?: string;
   temperature?: number;
   responseSchema?: GenerateTextParams["responseSchema"];
+  /** Forwarded as `providerOptions.eliza.thinking` for latency-sensitive extractors. */
+  thinking?: "off";
 }
 
 export interface CalendarJsonModelResult<
@@ -232,7 +234,7 @@ export interface CalendarActionDeps {
       timeZone: string;
       maximumEvents: number;
     };
-  }): Promise<ActionResult>;
+  }): Promise<ActionResult | undefined>;
   /** Run a text-model call; returns the raw string or `null` on failure. */
   runTextModel(args: CalendarModelCallArgs): Promise<string | null>;
   /** Run a model call and parse the response as a JSON record. */

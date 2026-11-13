@@ -16,6 +16,11 @@ public final class CalendarOptionCreationStore {
  public CalendarOptionCreationStore(CalendarConfiguration configuration){
   journal=new CalendarCreationStore(configuration.journalName+"-options",configuration.creationUriPrefix+"options/",FIELDS);
  }
+ /** The shared bridge admits both creation families under the same existing journal locks. */
+ public JSObject create(Context context,String id,ContentValues values,boolean separate,CalendarCreationStore timed)throws Exception{return journal.createUnlessOtherOwns(context,id,values,separate,timed);}
+ public JSObject createTimed(Context context,String id,ContentValues values,boolean separate,CalendarCreationStore timed)throws Exception{return timed.createUnlessOtherOwns(context,id,values,separate,journal);}
+ public void acknowledgeEither(Context context,String id,CalendarCreationStore timed)throws Exception{CalendarCreationStore.acknowledgeEither(context,id,timed,journal);}
+ public String dismissEither(Context context,String id,CalendarCreationStore timed)throws Exception{return CalendarCreationStore.dismissEither(context,id,timed,journal);}
  public boolean hasPending(Context context)throws Exception{return journal.hasPending(context);}
  public JSObject create(Context context,String id,ContentValues values,boolean separate)throws Exception{return journal.create(context,id,values,separate);}
  public JSArray pendingCreations(Context context)throws Exception{return journal.pendingCreationRows(context);}

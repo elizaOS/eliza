@@ -19,8 +19,8 @@
  * `check:comment-only` npm script; run per batch PR alongside `bun run verify`.
  *
  * Usage:
- *   node packages/scripts/assert-comment-only-diff.ts [base-ref]   # default origin/develop
- *   node packages/scripts/assert-comment-only-diff.ts --self-test  # planted-diff self-check
+ *   bun packages/scripts/assert-comment-only-diff.ts [base-ref]   # default origin/develop
+ *   bun packages/scripts/assert-comment-only-diff.ts --self-test  # planted-diff self-check
  */
 
 import { execFileSync } from "node:child_process";

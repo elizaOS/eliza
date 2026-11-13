@@ -4,7 +4,7 @@
  * that transcription recovers the input phrase. This calls the provider HTTP
  * API directly; it does not exercise runtime dispatch or media-store writes.
  *
- * Run: node packages/scripts/provider-smokes/real-service-audio-roundtrip.ts
+ * Run: bun packages/scripts/provider-smokes/real-service-audio-roundtrip.ts
  * Reads ELEVENLABS_API_KEY, then ELEVENLABS_XI_API_KEY. Missing credentials skip;
  * configured provider failures or invalid results exit with a failure.
  */

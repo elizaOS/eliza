@@ -1,6 +1,8 @@
 /** Vitest config for the calendar plugin test suite. */
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { defaultExternalConditions, defaultServerConditions } from "vite";
 import { defineConfig } from "vitest/config";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -20,6 +22,26 @@ const pluginSchedulingSrc = path.join(
 );
 const uiSrc = path.join(elizaRoot, "packages", "ui", "src");
 const coreSrc = path.join(elizaRoot, "packages", "core", "src");
+const coreExports = JSON.parse(
+  readFileSync(
+    path.join(elizaRoot, "packages", "core", "package.json"),
+    "utf8",
+  ),
+).exports as Record<string, string | { "eliza-source"?: string }>;
+const coreSourceSubpathAliases = Object.entries(coreExports).flatMap(
+  ([subpath, target]) => {
+    const source =
+      typeof target === "object" ? target["eliza-source"] : undefined;
+    if (subpath === "." || !source) return [];
+    const name = subpath.slice(2).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return [
+      {
+        find: new RegExp(`^@elizaos/core/${name}$`),
+        replacement: path.join(elizaRoot, "packages", "core", source),
+      },
+    ];
+  },
+);
 
 /**
  * Unit-test config. UI / service suites that need inlined core/agent/ui or
@@ -63,8 +85,45 @@ export default defineConfig({
       },
     },
   },
+  // Vitest on Vite 6+ uses SSR conditions for transformed imports and worker flags.
+  // Bare/external module resolution has its own condition list; preserve both defaults.
+  ssr: {
+    resolve: {
+      conditions: [
+        "eliza-source",
+        ...defaultServerConditions.filter(
+          (condition) => condition !== "module",
+        ),
+      ],
+      externalConditions: ["eliza-source", ...defaultExternalConditions],
+    },
+  },
   resolve: {
+    // Unaliased workspace packages expose their real source under this condition.
+    conditions: ["eliza-source"],
     alias: [
+      {
+        find: /^@elizaos\/testing$/,
+        replacement: path.join(elizaRoot, "packages/testing/src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/testing\/runtime$/,
+        replacement: path.join(elizaRoot, "packages/testing/src/runtime.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-assistant$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins/plugin-assistant/src/index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/contracts\/client-turn-observation$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages/contracts/src/client-turn-observation.ts",
+        ),
+      },
       {
         find: /^@elizaos\/contracts$/,
         replacement: path.join(
@@ -133,10 +192,9 @@ export default defineConfig({
         find: /^@elizaos\/core\/atomic-json$/,
         replacement: path.join(coreSrc, "utils", "atomic-json.ts"),
       },
-      {
-        find: /^@elizaos\/core\/(.+)$/,
-        replacement: path.join(coreSrc, "$1"),
-      },
+      // Core subpaths resolve to the source each export declares, not to a
+      // same-named file: several live in subdirectories (task-events, ...).
+      ...coreSourceSubpathAliases,
     ],
   },
 });

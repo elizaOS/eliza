@@ -32,6 +32,8 @@ export interface PersistCharacterParams {
   character?: PersistableCharacter;
   previousCharacter?: PersistableCharacter;
   previousName?: string;
+  /** True for a submitted name edit, including explicitly keeping the same label. */
+  nameWasExplicitlyEdited?: boolean;
   source?: CharacterPersistenceSource;
 }
 

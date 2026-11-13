@@ -224,7 +224,7 @@ function parseArgs(argv) {
 }
 
 function printHelp() {
-  process.stdout.write(`Usage: node packages/app/scripts/ios-xcframework/run-physical-device-smoke.ts [options]
+  process.stdout.write(`Usage: bun packages/app/scripts/ios-xcframework/run-physical-device-smoke.ts [options]
 
 Runs a physical-device XCTest smoke against the Eliza-1 LlamaCpp.xcframework.
 This command refuses to run against simulators.
@@ -267,7 +267,7 @@ Options:
 
 Typical device run:
   ELIZA_IOS_DEVELOPMENT_TEAM=ABCDE12345 \\
-    node packages/app/scripts/ios-xcframework/run-physical-device-smoke.ts \\
+    bun packages/app/scripts/ios-xcframework/run-physical-device-smoke.ts \\
       --build-if-missing \\
       --report packages/inference/reports/porting/2026-05-11/ios_device_smoke.json
 `);
@@ -1722,7 +1722,7 @@ function writeReport(reportPath, report) {
 
 function removeDirectoryRecursive(targetPath) {
   try {
-    execFileSync("node", [RECURSIVE_CLEANUP_SCRIPT, path.resolve(targetPath)], {
+    execFileSync("bun", [RECURSIVE_CLEANUP_SCRIPT, path.resolve(targetPath)], {
       encoding: "utf8",
       stdio: "pipe",
     });

@@ -576,6 +576,37 @@ export function retrieveContextualPlannerActions(args: {
     }
     if (domains.size === 0) return selectMatches([]);
   }
+  const operationQuery = [args.query, ...(args.intents ?? [])]
+    .map(positiveIntentText)
+    .filter(Boolean)
+    .join("\n");
+  // A zero lexical score is not evidence that a registered owner lacks a
+  // requested operation. Retain matching operations for already selected,
+  // strongly owned domains before the lexical >0 filter can erase them.
+  // Inputs here have already passed admission; this adds no authorization.
+  const retainedNames = new Set(matches.map((action) => action.name));
+  if (args.query.trim()) {
+    for (const domain of domains) {
+      const strongest = Math.max(
+        0,
+        ...args.actions.map((action) => plannerDomainOwnership(action, domain)),
+      );
+      if (strongest === 0) continue;
+      const owned = args.actions.filter(
+        (action) => plannerDomainOwnership(action, domain) === strongest,
+      );
+      const operations = preferredOperationNames(
+        operationQuery,
+        owned.map((action) => action.name),
+      );
+      for (const action of owned) {
+        if (operations.has(action.name) && !retainedNames.has(action.name)) {
+          matches.push(action);
+          retainedNames.add(action.name);
+        }
+      }
+    }
+  }
   const domainMatches = matches.filter((action) =>
     actionDiscoveryContexts(action).some((context) =>
       domains.has(normalizeContextId(context)),
@@ -594,10 +625,7 @@ export function retrieveContextualPlannerActions(args: {
   const selected = new Set<Action>();
   // Model interpretation enriches the original request; it cannot erase an
   // explicit operation when a prerequisite read was selected as a hint.
-  const operationQuery = [args.query, ...(args.intents ?? [])]
-    .map(positiveIntentText)
-    .filter(Boolean)
-    .join("\n");
+
   for (const domain of searchDomains) {
     const candidates =
       domain === undefined
@@ -760,6 +788,7 @@ export function retrieveContextualPlannerActions(args: {
         const wordsFor = (action: Action) =>
           operationWords(action.name, parentWords);
         const retained = new Set<string>();
+        const considered = new Set<string>();
         for (const clause of clauses) {
           const unquoted = clause.replace(
             /"[^"]*"|(?<![\p{L}\p{N}])'[^']*'(?![\p{L}\p{N}])|“[^”]*”|‘[^’]*’|`[^`]*`/gu,
@@ -778,6 +807,7 @@ export function retrieveContextualPlannerActions(args: {
           const candidates = children.filter((action) =>
             preferred.has(action.name),
           );
+          for (const action of candidates) considered.add(action.name);
           // Unstructured compound wording is ambiguous. Keep its alternatives;
           // model-selected intents provide independent outcome boundaries.
           if (/\band\b|[;,]/iu.test(unquoted)) {
@@ -821,9 +851,13 @@ export function retrieveContextualPlannerActions(args: {
             if (!superseded) retained.add(action.name);
           }
         }
+        // Only a clause's own operations compete here. An operation selected
+        // by the whole request alone (the update beside a delete-and-set
+        // edit) has no clause to lose to.
         if (retained.size > 0)
           for (const child of children)
-            if (!retained.has(child.name)) wanted.delete(child.name);
+            if (considered.has(child.name) && !retained.has(child.name))
+              wanted.delete(child.name);
       }
       for (const action of owners)
         if (wanted.has(action.name)) selected.add(action);

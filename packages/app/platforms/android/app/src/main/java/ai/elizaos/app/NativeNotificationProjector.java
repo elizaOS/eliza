@@ -48,7 +48,15 @@ final class NativeNotificationProjector {
         if (NativeNotificationChannels.isReminderChannelBlocked(manager, manager.getNotificationChannel(selected.getId()))) return false;
         String id = item.getString("id"), key = owner + ":" + id, token = UUID.randomUUID().toString();
         SharedPreferences receipts = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        if (!receipts.edit().putString(key, token).commit()) throw new IOException("Notification tap authority could not be persisted");
+        // A token whose notification is no longer shown can never be tapped; drop it with this write.
+        java.util.Set<String> shown = new java.util.HashSet<>();
+        for (StatusBarNotification active : manager.getActiveNotifications()) {
+            String shownTag = active.getTag();
+            if (active.getId() == 0 && shownTag != null && shownTag.startsWith(TAG)) shown.add(shownTag.substring(TAG.length()));
+        }
+        SharedPreferences.Editor authority = receipts.edit().putString(key, token);
+        for (String stale : receipts.getAll().keySet()) if (!stale.equals(key) && !shown.contains(stale)) authority.remove(stale);
+        if (!authority.commit()) throw new IOException("Notification tap authority could not be persisted");
         Intent tap = new Intent(context, MainActivity.class)
                 .setAction(context.getPackageName() + ".NATIVE_NOTIFICATION." + key)
                 .setData(new Uri.Builder().scheme("eliza-native-notification").authority(owner).appendPath(id).build())
@@ -78,7 +86,7 @@ final class NativeNotificationProjector {
         for (StatusBarNotification active : manager.getActiveNotifications()) {
             if (active.getId() == 0 && tag.equals(active.getTag()) && owner.equals(active.getNotification().extras.getString(OWNER))) accepted = true;
         }
-        if (!accepted) return false;
+        if (!accepted) { receipts.edit().remove(key).apply(); return false; }
         if (!group.isEmpty()) {
             SharedPreferences.Editor retired = receipts.edit();
             for (StatusBarNotification active : manager.getActiveNotifications()) {

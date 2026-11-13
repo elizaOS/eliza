@@ -18,6 +18,7 @@ export {
   type LinkedCalendarProviderSnapshot,
   type LinkedCalendarReconcileOutcome,
   LinkedCalendarReconciler,
+  type LinkedCalendarRecoveryOutcome,
   type LinkedCalendarSemanticEvent,
   type LinkedCalendarState,
 } from "@elizaos/contracts";
@@ -422,10 +423,24 @@ export class LinkedCalendarRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT * FROM app_calendar.linked_calendar_events
-       WHERE agent_id = ${sqlQuote(agentId)} AND state IN ('dirty', 'clean')
+       WHERE agent_id = ${sqlQuote(agentId)} AND state IN ('dirty', 'clean', 'conflicted')
        ORDER BY updated_at, id`,
     );
     return rows.map(parseRecord);
+  }
+
+  async countConflicted(
+    agentId: string,
+    destination: { connectorAccountId: string; providerCalendarId: string },
+  ): Promise<number> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT COUNT(*) AS conflicts FROM app_calendar.linked_calendar_events
+       WHERE agent_id = ${sqlQuote(agentId)} AND state = 'conflicted'
+         AND connector_account_id = ${sqlQuote(destination.connectorAccountId)}
+         AND provider_calendar_id = ${sqlQuote(destination.providerCalendarId)}`,
+    );
+    return Number(rows[0]?.conflicts ?? 0);
   }
 
   async listForAgent(agentId: string): Promise<LinkedCalendarEventRecord[]> {

@@ -11,6 +11,7 @@ import {
   buildPlannerToolsFromActions,
   CORE_PLANNER_TERMINALS,
   ModelType,
+  promoteSubactionsToActions,
 } from "@elizaos/core";
 import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { describe, expect, it } from "vitest";
@@ -268,4 +269,208 @@ describe("discovery denial through planner settlement", () => {
       }
     },
   );
+});
+
+describe("over-budget catalog read through planner settlement", () => {
+  it("reads the complete index, describes one exact name and completes without the full catalog", async () => {
+    const runtime = createSQLiteTestRuntime({
+      character: { name: "Discovery index", bio: "Test" },
+
+      logLevel: "fatal",
+    });
+    await runtime.initialize();
+    try {
+      // Live 2026-10-30 (tj-7138d70800aff4): NOTES_LIST was exposed, the
+      // planner read describe,names=[] and the full catalog filled the next
+      // planner and evaluator requests.
+      const message: Memory = {
+        id: randomUUID(),
+        agentId: runtime.agentId,
+        entityId: randomUUID(),
+        roomId: randomUUID(),
+        content: { text: "what notes do I have?", source: "client_chat" },
+      };
+      await runtime.ensureConnection({
+        entityId: message.entityId,
+        roomId: message.roomId,
+        worldId: randomUUID(),
+        source: "client_chat",
+        type: "DM",
+      });
+      const context: ContextObject = {
+        id: "discovery-index",
+        events: [
+          {
+            id: message.id,
+            type: "message",
+            source: "user",
+            createdAt: 1,
+            message: { role: "user", content: message.content.text },
+          },
+        ],
+      };
+      const lists: unknown[] = [];
+      const notes = promoteSubactionsToActions(
+        {
+          name: "NOTES",
+          description: "Create and list saved notes.",
+          descriptionCompressed: "notes: list, create",
+          parameters: [
+            {
+              name: "action",
+              description: "Operation",
+              required: true,
+              schema: { type: "string", enum: ["list", "create"] },
+            },
+          ],
+          validate: async () => true,
+          handler: async (_runtime, _message, _state, options) => {
+            lists.push(options?.parameters?.action);
+            return {
+              success: true,
+              transcriptVisibility: "internal",
+              modelReplyRequired: true,
+              data: { readOnlyOperation: true, notes: ["Groceries"] },
+            };
+          },
+        },
+        { overrides: { list: { descriptionCompressed: "list saved notes" } } },
+      );
+      const calendarGuidance = "Exact calendar guidance Ω. ".repeat(3000);
+      const calendar = promoteSubactionsToActions({
+        name: "CALENDAR",
+        description: `Calendar operations. ${calendarGuidance}`,
+        parameters: [
+          {
+            name: "action",
+            description: "Operation",
+            required: true,
+            schema: { type: "string", enum: ["create_event", "search"] },
+          },
+          {
+            name: "details",
+            description: calendarGuidance,
+            schema: { type: "string" },
+          },
+        ],
+        validate: async () => true,
+        handler: async () => ({ success: true }),
+      });
+      const notesList = notes.find((action) => action.name === "NOTES_LIST");
+      if (!notesList) throw new Error("Missing NOTES_LIST");
+      const discovery = createPlannerToolDiscoveryAction(
+        [...notes, ...calendar],
+        () => {},
+      );
+      const fullDefinitionChars = JSON.stringify(
+        (
+          await discovery.handler?.(runtime, message, undefined, {
+            parameters: { names: ["CALENDAR", "NOTES"], mode: "describe" },
+          })
+        )?.data,
+      ).length;
+      const tools = [
+        ...CORE_PLANNER_TERMINALS,
+        ...buildPlannerToolsFromActions([discovery, notesList]),
+      ];
+      const plans = [
+        {
+          id: "catalog",
+          name: "DISCOVER_ACTIONS",
+          arguments: { mode: "describe", names: [] },
+        },
+        {
+          id: "describe",
+          name: "DISCOVER_ACTIONS",
+          arguments: { mode: "describe", names: ["NOTES_LIST"] },
+        },
+        { id: "list", name: "NOTES_LIST", arguments: { action: "list" } },
+        {
+          id: "reply",
+          name: "REPLY",
+          arguments: { text: "You have one note: Groceries." },
+        },
+      ].map((toolCall, index, all) => ({
+        text: "",
+        toolCalls: [
+          {
+            ...toolCall,
+            arguments: {
+              ...toolCall.arguments,
+              eliza_turn_scope:
+                index === all.length - 1 ? "final" : "more_work_pending",
+            },
+          },
+        ],
+      }));
+      const calls: Array<{
+        type: string;
+        input: Parameters<PlannerRuntime["useModel"]>[1];
+      }> = [];
+      let planIndex = 0;
+      const plannerRuntime: PlannerRuntime = {
+        useModel: async (type, input) => {
+          calls.push({ type, input });
+          if (type === ModelType.ACTION_PLANNER) {
+            const next = plans[planIndex++];
+            if (!next) throw new Error("Unexpected extra planner call");
+            return next;
+          }
+          throw new Error(`Unexpected model call ${type}`);
+        },
+      };
+      const result = await runPlannerLoop({
+        runtime: plannerRuntime,
+        context,
+        config: { maxIterations: 6 },
+        tools,
+        executeToolCall: (toolCall) =>
+          executeV5PlannedToolCall({
+            runtime,
+            plannerRuntime,
+            plannerContext: context,
+            toolCall,
+            executorCtx: {
+              message,
+              state: { values: {}, data: {}, text: "" },
+              userRoles: ["USER"],
+              activeContexts: ["general"],
+            },
+            executorOptions: {
+              actions: [discovery, ...notes, ...calendar],
+            },
+          }),
+      });
+      const [catalogStep, describeStep] = result.trajectory.steps;
+      expect(catalogStep.result).toMatchObject({
+        success: true,
+        data: { catalogDetail: "index", completeDefinitions: false },
+      });
+      expect(catalogStep.result?.data?.catalog).toEqual([
+        {
+          name: "CALENDAR",
+          children: ["CALENDAR_CREATE_EVENT", "CALENDAR_SEARCH"],
+        },
+        {
+          name: "NOTES",
+          summary: "notes: list, create",
+          children: ["NOTES_CREATE", "NOTES_LIST"],
+          childSummaries: { NOTES_LIST: "list saved notes" },
+        },
+      ]);
+      expect(describeStep.result?.data?.catalog).toMatchObject([
+        { name: "NOTES_LIST", description: notesList.description },
+      ]);
+      expect(lists).toEqual(["list"]);
+      expect(result.finalMessage).toBe("You have one note: Groceries.");
+      // Every model request after the catalog read stays smaller than the
+      // full definitions alone.
+      expect(calls).toHaveLength(plans.length);
+      for (const { input } of calls.slice(1))
+        expect(JSON.stringify(input).length).toBeLessThan(fullDefinitionChars);
+    } finally {
+      await runtime.stop();
+      await runtime.close();
+    }
+  });
 });

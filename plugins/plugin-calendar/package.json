@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-calendar",
-  "version": "2.0.12-beta.0",
+  "version": "2.0.6",
   "type": "module",
   "description": "First-class calendar plugin for elizaOS agents: Google, Microsoft, Apple, and ICS feeds; scheduling; event management; and owner-facing calendar views.",
   "sideEffects": false,
@@ -39,7 +39,7 @@
     },
     "./format": {
       "eliza-source": "./src/internal/format.ts",
-      "types": "./src/internal/format.ts",
+      "types": "./dist/internal/format.d.ts",
       "import": "./dist/internal/format.js",
       "default": "./dist/internal/format.js"
     },
@@ -78,6 +78,12 @@
       "types": "./dist/mutations/managed.d.ts",
       "import": "./dist/mutations/managed.js",
       "default": "./dist/mutations/managed.js"
+    },
+    "./client/day-observation": {
+      "eliza-source": "./src/client/day-observation.ts",
+      "types": "./dist/client/day-observation.d.ts",
+      "import": "./dist/client/day-observation.js",
+      "default": "./dist/client/day-observation.js"
     }
   },
   "scripts": {
@@ -85,7 +91,7 @@
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit",
     "build": "bun run build:js && bun run build:views && bun run build:types",
-    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo",
+    "clean": "bun ../../packages/scripts/rm-path-recursive.ts dist .turbo",
     "build:js": "bun run clean && tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "vite build --config vite.config.views.ts",
     "build:types": "tsc6 --noCheck -p tsconfig.build.json",
@@ -115,7 +121,7 @@
     "googleapis": "^169.0.0",
     "tsup": "^9.0.0",
     "react-dom": "*",
-    "vitest": "^5.0.5",
+    "vitest": "^5.1.0",
     "vite": "^8.3.3"
   },
   "peerDependencies": {

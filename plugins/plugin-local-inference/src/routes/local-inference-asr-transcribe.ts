@@ -76,17 +76,15 @@ async function transcribeViaModelChain(
 	let lastError: unknown;
 	for (const provider of LOCAL_TRANSCRIPTION_PROVIDER_IDS) {
 		try {
-			const transcript = normalizeTranscriptText(
+			// Silence is an empty transcript, as on the engine path; only an
+			// invalid shape is an error.
+			return normalizeTranscriptText(
 				await runtime.useModel(
 					ModelType.TRANSCRIPTION,
 					{ audio, ...(signal ? { signal } : {}) } as never,
 					provider,
 				),
 			);
-			if (!transcript) {
-				throw new Error("TRANSCRIPTION returned an empty transcript");
-			}
-			return transcript;
 		} catch (err) {
 			lastError = err;
 			if (!isMissingTranscriptionProviderError(err)) throw err;

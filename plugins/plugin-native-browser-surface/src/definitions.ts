@@ -64,6 +64,38 @@ export type NativePageGuidance =
       restore?: boolean;
     };
 
+/**
+ * Where the native page sits relative to the host WebView.
+ *
+ * - `above-host` (default): the page is drawn over the host. Host chrome over the
+ *   page shows through holes cut with `setOcclusionRects`.
+ * - `below-host` (Android only; iOS rejects it with `UNSUPPORTED`): the page is drawn
+ *   under the host, so the host draws its own chrome, corners and shadows over it with
+ *   no holes. This is a drawing-quality change, not a memory or CPU saving: both
+ *   WebViews stay live, and the transparent host is blended over the page every frame
+ *   the page draws. Measure frame time before adopting it on a device.
+ *
+ *   The host must be transparent where the page shows: its WebView background
+ *   (`WebView.setBackgroundColor(Color.TRANSPARENT)`), every view between the
+ *   WebView and its nearest `FrameLayout` ancestor, and its page CSS over the page
+ *   rect. The page is clipped only to the outer clip's rectangle, so the host paints
+ *   the rounded corners.
+ *
+ *   `setOcclusionRects` names the host-owned rects. A touch, hover, mouse or drag
+ *   event that starts on the page outside them goes to the website for the whole
+ *   gesture; any other stays with the host. The page takes no input until the first
+ *   `setOcclusionRects` call after `createSurface` (an empty list is fine), and the
+ *   host must await `setOcclusionRects` before it shows new interactive chrome over
+ *   the page, or a tap there can reach the website. A gesture on a page that is hidden
+ *   mid-gesture is cancelled. A drag carried to the page has no local state.
+ *
+ *   Captures draw the page alone, so host pixels over it never appear; host-owned
+ *   rects and everything outside the outer clip are masked as in the default layer.
+ *   Put host nodes over the page in `aria-hidden` so TalkBack reaches the website's
+ *   own nodes there.
+ */
+export type SurfaceLayer = "above-host" | "below-host";
+
 export interface CreateSurfaceOptions extends SurfaceOwnerOptions {
   /** Stable per-surface id (the Browser tab's surface id). */
   id: string;
@@ -98,6 +130,8 @@ export interface CreateSurfaceOptions extends SurfaceOwnerOptions {
    * that is cleared when it closes and deleted once Android releases it.
    */
   profileKey?: string;
+  /** Default `above-host`. Fixed for the life of the surface. */
+  layer?: SurfaceLayer;
 }
 
 /** A cross-origin main-frame navigation an intercepting surface held for the host. */
@@ -145,7 +179,8 @@ export interface DownloadRequestedEvent extends SurfaceIdOptions {
 }
 
 /**
- * A tapped link that belongs to another app (`tel:`, `mailto:`, `market:`, `intent:`).
+ * A tapped link that belongs to another app (`tel:`, `mailto:`, `sms:`, `smsto:`,
+ * `geo:`, `market:`, `intent:`).
  * The page stays where it is. `openExternalLink` opens it after the host asks; `dial`
  * only opens the dialer. `refuse` links cannot open; `fallbackUrl` is an https page an
  * `intent:` link offered instead, which the host may check and `navigate` to.
@@ -173,6 +208,20 @@ export interface SurfaceCrashedEvent extends SurfaceIdOptions {
   didCrash: boolean;
   url: string | null;
 }
+
+/**
+ * A native page change. On Android the event also carries the `getSurfaceState` fields
+ * (`currentUrl`, `title`, `canGoBack`, `canGoForward`, `progress` and the rest) as they
+ * were when it was sent. Every listener receives every surface's events, so use the
+ * fields only when `exists` is true and `owner`, `session` and `epoch` match your own
+ * identity (`getSurfaceState` checks that for you). They are a snapshot: one taken before
+ * a command the host has not seen settle can be older than that command, and a title
+ * or progress that changes later sends no event. iOS sends only the surface id and
+ * owner; read `getSurfaceState` when the fields are absent.
+ */
+export interface NavigationChangedEvent
+  extends SurfaceIdOptions,
+    Partial<Omit<SurfaceState, keyof SurfaceOwnerOptions>> {}
 
 /** A surface closed by the plugin, for example when its keyed profile was purged. */
 export interface SurfaceClosedEvent extends SurfaceIdOptions {
@@ -279,6 +328,8 @@ export interface ReconcileOwnerOptions extends SurfaceOwnerOptions {
 export interface SurfaceState {
   exists: boolean;
   foregrounded: boolean;
+  /** Android: `pauseSurface` paused the page and `resumeSurface` has not run since. */
+  paused?: boolean;
   currentUrl: string | null;
   process: SurfaceProcessSharing | null;
   storage: SurfaceStorageSharing | null;
@@ -373,12 +424,20 @@ export interface ElizaSurfaceManagerPlugin {
   /**
    * Punch rounded regions out of the native layer so host-rendered overlays can
    * paint and receive input without hiding or resizing the underlying page.
+   * For a `below-host` surface nothing is cut out: the rects are where the host
+   * receives input and where captures are masked, and the page takes no input until
+   * the first call.
    */
   setOcclusionRects(options: SetOcclusionRectsOptions): Promise<void>;
   /** Load a URL in an existing surface. */
   navigate(options: NavigateOptions): Promise<void>;
   /** Reload an existing surface's current page. */
   reloadSurface(options: SurfaceIdOptions): Promise<void>;
+  /**
+   * Android: stops the current page load where it is; a no-op when nothing is loading.
+   * `navigationChanged` follows so the host re-reads `progress`.
+   */
+  stopLoading(options: SurfaceIdOptions): Promise<void>;
   /** Move back in this surface's own history; never replays after a lost reply. */
   goBack(options: SurfaceIdOptions): Promise<void>;
   /** Android: move forward in this surface's own history. */
@@ -421,15 +480,19 @@ export interface ElizaSurfaceManagerPlugin {
    * Android: delete keyed profiles. `profileKey` purges that key now and closes its
    * surfaces (`surfaceClosed`); use it on account sign-out. `idleMs` (at least one
    * hour) purges every keyed profile unused for that long that no surface has open.
+   * `all: true` purges every keyed and ephemeral profile of any owner and closes their
+   * surfaces; it resolves after the cookies are removed, with `clean` true when no
+   * purged profile still holds a cookie. Use it to sign the device out of every website.
    * Data is cleared at once; the profile directory goes once Android releases it.
    */
   purgeProfiles(
     options: SurfaceOwnerOptions &
       (
-        | { profileKey: string; idleMs?: never }
-        | { idleMs: number; profileKey?: never }
+        | { profileKey: string; idleMs?: never; all?: never }
+        | { idleMs: number; profileKey?: never; all?: never }
+        | { all: true; profileKey?: never; idleMs?: never }
       ),
-  ): Promise<{ purged: number }>;
+  ): Promise<{ purged: number; clean?: boolean }>;
   /**
    * Android 8+: masked screenshot of the visible foreground page for a vision
    * fallback. Rejects (`CAPTURE_MASK_FAILED`, `CAPTURE_STALE`, `CAPTURE_UNAVAILABLE`,
@@ -488,6 +551,18 @@ export interface ElizaSurfaceManagerPlugin {
           actionId?: string;
           expectedSelector?: string;
           assistantName?: string;
+          /** The host's commit words (a regular expression source, flags `iu`). */
+          commitPattern?: string;
+          /** The one commit the person said yes to, spent by the task bindings. */
+          commitGrant?: {
+            grantId: string;
+            selector?: string;
+            requestTarget?:
+              | { url: string; method: string }
+              | { path: string; method: string };
+            formHash?: string;
+            expiresAt: number;
+          };
           targets: Array<{
             selector: string;
             action: "click" | "fill" | "select" | "scroll" | "follow";
@@ -519,10 +594,10 @@ export interface ElizaSurfaceManagerPlugin {
       reason: "website-opened" | "permission-revoked";
     }) => void,
   ): Promise<PluginListenerHandle>;
-  /** Signals a native page change; consumers read current state before applying it. */
+  /** Signals a native page change; see `NavigationChangedEvent` for the state it carries. */
   addListener(
     eventName: "navigationChanged",
-    listener: (event: SurfaceIdOptions) => void,
+    listener: (event: NavigationChangedEvent) => void,
   ): Promise<PluginListenerHandle>;
   /** An intercepting surface held a cross-origin navigation; `navigate()` to allow it. */
   addListener(
@@ -559,6 +634,25 @@ export interface ElizaSurfaceManagerPlugin {
   ): Promise<PluginListenerHandle>;
   /** Atomically hide all siblings, then present the requested surface or host. */
   presentSurface(options: PresentSurfaceOptions): Promise<void>;
+  /**
+   * Android: call `WebView.onPause()` on one surface. Chromium then treats the page as
+   * hidden: it stops drawing, `requestAnimationFrame` and CSS animations, and runs
+   * timers about once a second. JavaScript still runs, and history and page state stay.
+   * A surface that `presentSurface` hid is already treated as hidden, so this matters
+   * for a page that stays shown but is covered, for example a `below-host` page under
+   * an opaque host screen. It frees no memory. The surface keeps its visibility, and
+   * `presentSurface` does not resume it; call `resumeSurface` before the person sees it
+   * again. While it is paused, `captureSurface`, `controlPage`, `observeHistory` and
+   * `navigateHistory` reject; `goBack`, `goForward`, `navigate` and `reloadSurface` still
+   * run, and `readPage` still reads. Pausing also cancels held page dialogs, refuses new
+   * ones, takes focus and the keyboard from the page, and stops sending it touches.
+   * Repeating the call does nothing. iOS rejects with `UNSUPPORTED`, so a cross-platform
+   * caller must catch it; web rejects as unavailable. The process-wide
+   * `WebView.pauseTimers()` is never called, as it would also stop the host WebView.
+   */
+  pauseSurface(options: SurfaceIdOptions): Promise<void>;
+  /** Android: call `WebView.onResume()` on a paused surface. iOS rejects with `UNSUPPORTED`. */
+  resumeSurface(options: SurfaceIdOptions): Promise<void>;
   /** Tear a surface down and release its native renderer and storage resources. */
   destroySurface(options: SurfaceIdOptions): Promise<void>;
   /** Introspect a surface's live state — for debugging and instrumented tests. */

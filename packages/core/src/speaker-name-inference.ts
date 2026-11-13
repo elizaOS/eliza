@@ -233,33 +233,21 @@ function groupCandidates(
 		});
 		candidates.set(normalizedName, candidate);
 	}
-	return [...candidates.values()]
-		.map((candidate) => ({
-			...candidate,
-			sources: [...candidate.sources].sort(),
-			provenance: [...candidate.provenance].sort(
-				(a, b) => SOURCE_PRIORITY[b.source] - SOURCE_PRIORITY[a.source],
-			),
-		}))
-		.sort((a, b) => {
-			const bScore =
-				typeof b.score === "number" && Number.isFinite(b.score) ? b.score : 0;
-			const aScore =
-				typeof a.score === "number" && Number.isFinite(a.score) ? a.score : 0;
-			const bConf =
-				typeof b.confidence === "number" && Number.isFinite(b.confidence)
-					? b.confidence
-					: 0;
-			const aConf =
-				typeof a.confidence === "number" && Number.isFinite(a.confidence)
-					? a.confidence
-					: 0;
-			return (
-				bScore - aScore ||
-				bConf - aConf ||
-				a.normalizedName.localeCompare(b.normalizedName)
-			);
-		});
+	// Candidates are local to this call, so their arrays sort in place.
+	// Scores and confidences are finite: every confidence passed assertRatio.
+	const grouped = [...candidates.values()];
+	for (const candidate of grouped) {
+		candidate.sources.sort();
+		candidate.provenance.sort(
+			(a, b) => SOURCE_PRIORITY[b.source] - SOURCE_PRIORITY[a.source],
+		);
+	}
+	return grouped.sort(
+		(a, b) =>
+			b.score - a.score ||
+			b.confidence - a.confidence ||
+			a.normalizedName.localeCompare(b.normalizedName),
+	);
 }
 
 function hasSource(
@@ -391,12 +379,9 @@ function buildBindingPlan(
 export function inferSpeakerName(
 	input: InferSpeakerNameInput,
 ): SpeakerNameInference {
-	assertRatio(
-		"minConfirmedConfidence",
-		input.minConfirmedConfidence ?? DEFAULT_MIN_CONFIRMED_CONFIDENCE,
-	);
 	const minConfirmedConfidence =
 		input.minConfirmedConfidence ?? DEFAULT_MIN_CONFIRMED_CONFIDENCE;
+	assertRatio("minConfirmedConfidence", minConfirmedConfidence);
 	const candidates = groupCandidates(input.evidence);
 	const reasonCodes: SpeakerNameReasonCode[] = [];
 
@@ -476,10 +461,11 @@ export function inferSpeakerName(
 					? "withheld"
 					: "needs_confirmation";
 	const confirmed = resolution === "confirmed";
-	const bindingPlan = confirmed
-		? buildBindingPlan(chosen, input, uniqueReasonCodes(reasonCodes))
-		: { action: "none" as const, mergeEntityIds: [], reasonCodes: [] };
 	const uniqueReasons = uniqueReasonCodes(reasonCodes);
+	// The plan gets its own copy so callers can edit either list independently.
+	const bindingPlan = confirmed
+		? buildBindingPlan(chosen, input, [...uniqueReasons])
+		: { action: "none" as const, mergeEntityIds: [], reasonCodes: [] };
 	const voiceTurnBindingPlan =
 		confirmed &&
 		chosen &&

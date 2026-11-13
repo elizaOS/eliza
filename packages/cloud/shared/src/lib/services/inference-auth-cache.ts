@@ -7,9 +7,10 @@
  * creating an import cycle with the resolver in `inference-auth-context.ts`.
  *
  * Inference auth-context entries collapse auth + org + moderation into a
- * single cache read for API-key or Steward-session inference. The feature is
- * default-off until a strongly consistent revocation boundary exists. Its
- * data-shape rules are:
+ * single cache read for API-key or Steward-session inference. The Worker hot
+ * path decides from this entry alone and never reads Postgres; entries are
+ * stale-while-revalidate and re-authorized off-response (see
+ * `inference-auth-context.ts`). Its data-shape rules are:
  *   1. A positive entry is ONLY ever written for a FULLY-authorized credential
  *      (active user + active org + not suspended + org present). Explicit
  *      negative entries contain only a bounded 401/403 decision, never identity
@@ -19,7 +20,6 @@
  */
 
 import { createHash } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
 import {
   type CacheBackendKind,
   type CacheReadOutcome,
@@ -29,10 +29,7 @@ import {
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";
 import { isInferenceBudgetPolicy } from "./inference-funded-budget-admission";
-import {
-  isOrganizationPolicyStamp,
-  sameOrganizationPolicyStamp,
-} from "./organization-policy-stamp";
+import { isOrganizationPolicyStamp } from "./organization-policy-stamp";
 import type { OrganizationPolicyStamp } from "./organization-quota-policy";
 
 /** Current IAC schema version. Bump the key suffix in CacheKeys on a breaking change. */
@@ -42,6 +39,8 @@ export const INFERENCE_AUTH_CONTEXT_VERSION = 4 as const;
 export interface InferenceAdmissionSnapshot {
   /** Primary-issued delegation; the DO fences every use against its current epoch. */
   fundedBudget?: import("./inference-funded-budget-admission").InferenceBudgetPolicy;
+  /** Same organization epoch, scoped to rate admission without funding delegation. */
+  ratePolicy?: import("./inference-funded-budget-admission").InferenceBudgetPolicy;
   authority: OrganizationPolicyStamp;
   /** Paid-plan funding authority captured with the combined admission decision. */
   subscriptionFunded: boolean;
@@ -157,6 +156,10 @@ export function isInferenceAdmissionSnapshot(value: unknown): value is Inference
   return (
     isOrganizationPolicyStamp(candidate.authority) &&
     (candidate.fundedBudget === undefined || isInferenceBudgetPolicy(candidate.fundedBudget)) &&
+    (candidate.ratePolicy === undefined ||
+      (isInferenceBudgetPolicy(candidate.ratePolicy) &&
+        candidate.ratePolicy.rateEnabled === true &&
+        candidate.ratePolicy.policyGeneration === candidate.authority?.generation)) &&
     typeof candidate.subscriptionFunded === "boolean" &&
     Boolean(balance) &&
     typeof balance?.balanceUsd === "number" &&
@@ -194,6 +197,8 @@ export type InferenceAuthCacheReadOutcome =
       decision: "rejected" | "suspended";
       status: 401 | 403;
       reason?: InferenceAuthRejectionReason;
+      /** When the denial was decided; aged denials are re-authorized off-response. */
+      cachedAt: number;
       backend: CacheBackendKind;
     }
   | {
@@ -224,6 +229,15 @@ function deferMalformedEntryCleanup(
   } else {
     void cleanup;
   }
+}
+
+/**
+ * Start background work on a later macrotask so it never shares the
+ * response's turn: a request that schedules hydration or usage bookkeeping
+ * returns before any of that work issues its first database statement.
+ */
+export function startOffResponse<T>(task: () => Promise<T>): Promise<T> {
+  return new Promise<void>((resolve) => setTimeout(resolve, 0)).then(task);
 }
 
 /** Org credit-balance snapshot used ONLY as the optimistic-billing fast-path gate hint. */
@@ -269,6 +283,10 @@ export function isInferenceAuthContext(value: unknown): value is InferenceAuthCo
       !isInferenceAdmissionSnapshot(v.admission) ||
       v.admission.fundedBudget === undefined ||
       v.admission.fundedBudget.organizationId === v.orgId) &&
+    (v.admission === undefined ||
+      !isInferenceAdmissionSnapshot(v.admission) ||
+      v.admission.ratePolicy === undefined ||
+      v.admission.ratePolicy.organizationId === v.orgId) &&
     typeof v.apiKeyId === "string" &&
     v.apiKeyId.length > 0 &&
     (v.apiKeyRateLimit === undefined ||
@@ -368,49 +386,6 @@ export function isOrgBalanceHint(value: unknown): value is OrgBalanceHint {
   );
 }
 
-async function cachedPolicyIsCurrent(
-  orgId: string,
-  snapshot: InferenceAdmissionSnapshot | undefined,
-): Promise<boolean> {
-  if (!isInferenceAdmissionSnapshot(snapshot)) return false;
-  if (snapshot.fundedBudget?.enabled) {
-    const { isFundedBudgetAdmissionEnabled } = await import("./inference-funded-budget-admission");
-    if (isFundedBudgetAdmissionEnabled()) return true;
-  }
-  const { isSnapshotAdmissionEnabled } = await import("./inference-billing-deferred");
-  if (isSnapshotAdmissionEnabled()) {
-    // Snapshot admission keeps the primary off the warm path. The organization
-    // Durable Object fences the embedded policy generation at lease and
-    // dispatch; here a newer published organization projection only retires
-    // this entry early so it re-authorizes instead of failing at the gate.
-    const { peekInferenceAdmissionSnapshot } = await import("./inference-admission-snapshot");
-    const published = await peekInferenceAdmissionSnapshot(orgId);
-    return (
-      published === null ||
-      BigInt(published.authority.generation) <= BigInt(snapshot.authority.generation)
-    );
-  }
-  try {
-    const { readOrganizationQuotaPolicy, requireOrganizationRateTier } = await import(
-      "./organization-quota-policy"
-    );
-    const policy = await readOrganizationQuotaPolicy(orgId);
-    const tier = requireOrganizationRateTier(policy);
-    return (
-      sameOrganizationPolicyStamp(snapshot.authority, policy.authority) &&
-      tier.completionsRpm === snapshot.rateLimits.completionsRpm &&
-      tier.embeddingsRpm === snapshot.rateLimits.embeddingsRpm &&
-      tier.standardRpm === snapshot.rateLimits.standardRpm &&
-      tier.strictRpm === snapshot.rateLimits.strictRpm
-    );
-  } catch (error) {
-    // error-policy:J4 unresolved authority invalidates only this cached positive decision; the owning auth hydrator reports availability.
-    if (error instanceof ElizaError && error.code === "ORGANIZATION_POLICY_UNAVAILABLE")
-      return false;
-    throw error;
-  }
-}
-
 /**
  * Read only a positive cached IAC for a presented key hash. Returns null for a
  * negative decision, miss, malformed entry, or unavailable cache.
@@ -443,6 +418,7 @@ export async function readInferenceAuthContextWithOutcome(
       decision: outcome.value.decision,
       status: outcome.value.status,
       reason: outcome.value.reason,
+      cachedAt: outcome.value.cachedAt,
       backend: outcome.backend,
     };
   }
@@ -451,9 +427,29 @@ export async function readInferenceAuthContextWithOutcome(
     deferMalformedEntryCleanup(key, executionCtx);
     return { kind: "invalid", backend: outcome.backend };
   }
-  if (!(await cachedPolicyIsCurrent(outcome.value.orgId, outcome.value.admission)))
-    return { kind: "invalid", backend: outcome.backend };
+  // No staleness probe here: the hot path never reads Postgres (or a second
+  // cache key) to second-guess a well-formed entry. Policy, standing and
+  // balance changes reach it through writer invalidation and the aged
+  // background refresh; the organization Durable Object still fences policy
+  // generations at admission.
   return { kind: "hit", ctx: outcome.value, backend: outcome.backend };
+}
+
+/**
+ * A rate-policy epoch proves the cached key cap only when both came from one
+ * primary snapshot. The cache write re-reads the snapshot; if a policy
+ * mutation committed between the two reads, the new epoch would vouch for the
+ * old cap. Such an entry keeps no rate proof, so its requests use the primary
+ * rate path until the key is resolved again.
+ */
+export function withCoherentRatePolicy(
+  resolved: InferenceAdmissionSnapshot | undefined,
+  fresh: InferenceAdmissionSnapshot,
+): InferenceAdmissionSnapshot {
+  const { ratePolicy, ...withoutRatePolicy } = fresh;
+  return ratePolicy !== undefined && resolved?.ratePolicy?.epoch === ratePolicy.epoch
+    ? fresh
+    : withoutRatePolicy;
 }
 
 /** Write a fully-authorized IAC entry. Callers MUST only pass authorized identities. */
@@ -466,7 +462,8 @@ export async function writeInferenceAuthContext(
   const { inferenceAdmissionSnapshotInTransaction, publishInferenceAdmissionSnapshotToGate } =
     await import("./inference-admission-snapshot");
   return withOrganizationPolicyAdmission(ctx.orgId, ctx.admission.authority, async (policy, tx) => {
-    const admission = await inferenceAdmissionSnapshotInTransaction(tx, ctx.orgId, policy);
+    const fresh = await inferenceAdmissionSnapshotInTransaction(tx, ctx.orgId, policy);
+    const admission = withCoherentRatePolicy(ctx.admission, fresh);
     await publishInferenceAdmissionSnapshotToGate(ctx.orgId, admission);
     return await cache.setWithOutcome(
       CacheKeys.inference.authContext(ctx.keyHash),
@@ -494,7 +491,7 @@ export async function writeInferenceApiKeyAuthRejection(
       status,
       ...(reason ? { reason } : {}),
     } satisfies InferenceApiKeyAuthRejection,
-    CacheTTL.inference.authContext,
+    CacheTTL.inference.authContextRejection,
     { keyClass: "inference_auth" },
   );
 }
@@ -524,8 +521,6 @@ export async function readInferenceSessionAuthDecision(
     deferMalformedEntryCleanup(key, executionCtx);
     return null;
   }
-  if ("orgId" in cached && !(await cachedPolicyIsCurrent(cached.orgId, cached.admission)))
-    return null;
   return cached;
 }
 
@@ -564,7 +559,7 @@ export async function writeInferenceSessionAuthDecision(
   return await cache.setWithOutcome(
     CacheKeys.inference.sessionAuthContext(hashStewardUserId(decision.stewardUserId)),
     decision,
-    CacheTTL.inference.authContext,
+    CacheTTL.inference.authContextRejection,
     { keyClass: "inference_auth" },
   );
 }
@@ -680,7 +675,7 @@ export async function writeOrgBalanceHint(
     balanceRevision,
   };
   // Physical lifetime is orgBalanceStale (5m): the hint must survive past the
-  // orgBalance freshness window so getGateBalanceUsd can serve it stale-while-
+  // orgBalance freshness window so getGateBalanceHint can serve it stale-while-
   // revalidate. `balanceAt` is the freshness clock the reader checks; the debit
   // settler (lowerOrgBalanceHint) and top-ups (invalidateOrgBalanceHint) still
   // keep the served value correct on writes.
@@ -731,9 +726,8 @@ export async function lowerOrgBalanceHint(
  * debit's invalidation deletes the old hint, preventing the next Worker turn
  * from failing closed on an avoidable cache miss. The projection is not the
  * monetary authority: Worker provider dispatch is serialized by the
- * revision-aware InferenceAdmissionGate Durable Object. Non-Worker paths use
- * the atomic DB-ledger admission or reserve credits synchronously; the legacy
- * KV lane cannot dispatch from this projection. A delayed projection write can
+ * revision-aware InferenceAdmissionGate Durable Object, and non-Worker paths
+ * reserve credits synchronously. A delayed projection write can
  * therefore be stale, but it cannot authorize spend by itself; the next Durable
  * Object admission applies only a newer revision and accounts for active holds.
  */

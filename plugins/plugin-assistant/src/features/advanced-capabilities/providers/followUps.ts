@@ -44,9 +44,10 @@ export const followUpsProvider: Provider = {
         7,
         true,
       );
+      // Nothing scheduled is nothing to report; the count stays in values.
       if (upcomingFollowUps.length === 0) {
         return {
-          text: "No upcoming follow-ups scheduled.",
+          text: "",
           values: { followUpCount: 0 },
           data: {},
         };

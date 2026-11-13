@@ -589,12 +589,12 @@ const installed: InstalledApp[] = [
     label: "Settings",
   },
 ];
-function shellLauncher(saved: string[] | null = null) {
+function shellLauncher(saved: string[] | null = null, apps = installed) {
   const registry = registryFor();
   const launches: unknown[] = [];
   const opened: string[] = [];
   const bridge: LauncherBridge = {
-    list: vi.fn(async () => ({ apps: installed })),
+    list: vi.fn(async () => ({ apps })),
     launch: async (target) => void launches.push(target),
   };
   let favorites = saved;
@@ -864,6 +864,42 @@ describe("Home, All apps and view host", () => {
       target: { value: "set" },
     });
     expect(onQuery).toHaveBeenCalledWith("set");
+  });
+
+  it("lets a host label and filter Apps while retaining hidden favorites on Home", async () => {
+    const settings = "com.android.settings/com.android.settings.Settings";
+    const chrome = { packageName: "com.android.chrome", label: "Chrome" };
+    const saved = [settings, "example:notes", chrome.packageName];
+    const { registry, shell } = shellLauncher(saved, [...installed, chrome]);
+    await shell.launcher.load();
+    const openApps = vi.fn();
+    render(
+      <>
+        <MobileHomeScreen tiles={[]} allAppsLabel="Apps" onOpenAllApps={openApps} />
+        <MobileAllAppsDrawer
+          shellLauncher={shell}
+          registry={registry}
+          query=""
+          title="Apps"
+          installedOnly
+          onQuery={() => {}}
+          onClose={() => {}}
+        />
+      </>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^Apps$/ }));
+    expect(openApps).toHaveBeenCalledOnce();
+    expect(screen.getByRole("dialog", { name: "Apps" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Apps" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Open Notes" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Open Settings" })).toBeTruthy();
+    expect(shell.homeEntries().map((entry) => entry.key)).toEqual(saved);
+    fireEvent.click(screen.getByRole("button", { name: "Move Chrome earlier" }));
+    expect(shell.homeEntries().map((entry) => entry.key)).toEqual([
+      chrome.packageName,
+      "example:notes",
+      settings,
+    ]);
   });
 
   it("loads a registered view lazily and keeps a failed load visible with a retry", async () => {
@@ -1168,12 +1204,14 @@ describe("entries", () => {
       )) {
         const specifier = from ?? bare;
         const typeOnly = /^(?:import|export)\s+type\b/.test(statement);
+        if (typeOnly) continue;
         if (!specifier.startsWith(".")) {
           if (!typeOnly) runtime.add(specifier);
           continue;
         }
         const base = path.resolve(path.dirname(file), specifier);
-        const resolved = [`${base}.ts`, `${base}.tsx`, base].find(
+        const extensionless = base.replace(/\.js$/, "");
+        const resolved = [`${extensionless}.ts`, `${extensionless}.tsx`, base].find(
           (candidate) =>
             fs.existsSync(candidate) && fs.statSync(candidate).isFile(),
         );
@@ -1197,6 +1235,7 @@ describe("entries", () => {
     "mobile-shell/product-registration.ts",
     "mobile-shell/view-id-migration.ts",
     "mobile-shell/view-ids.ts",
+    "mobile-shell/view-policy.ts",
     "mobile-shell/view-registry.ts",
   ];
 
@@ -1204,12 +1243,16 @@ describe("entries", () => {
     expect(closure("mobile-shell/index.ts")).toEqual({
       files: [
         "components/pages/InstalledAppsLauncher.tsx",
+        "app-shell-pages.ts",
+        "registry-host.ts",
         ...core,
         "mobile-shell/MobileAllAppsDrawer.tsx",
+        "mobile-shell/MobileApplication.tsx",
         "mobile-shell/MobileHomeScreen.tsx",
         "mobile-shell/MobileViewHost.tsx",
         "mobile-shell/index.ts",
         "mobile-shell/mobile-launcher.ts",
+        "mobile-shell/application-catalog.ts",
       ].sort(),
       packages: [
         "@elizaos/capacitor-system/launcher",

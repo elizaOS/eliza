@@ -1,0 +1,57 @@
+[
+  {
+    "id": "auth.BrokerLeasePublication",
+    "model": "packages/auth/quint/AccountPoolBroker.qnt",
+    "sources": [
+      "packages/auth/src/accounts/account-pool-broker.ts",
+      "packages/auth/src/accounts/account-pool.ts",
+      "packages/auth/src/accounts/account-pool-broker.test.ts",
+      "packages/auth/src/auth/account-storage.ts",
+      "packages/auth/src/auth/credentials.ts",
+      "packages/auth/src/auth/refresh-mutex.ts"
+    ],
+    "invariants": [
+      "TypeOK",
+      "PublishedReceiptOwnsGeneration",
+      "TokenAndOrganizationShareReceipt",
+      "ExpiryStartsAtPublication",
+      "RefusedHasNoLease"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Publication has one default Codex resolver, one selected account, one replacement or deletion, two organizations and a bounded lease clock. Legacy injected resolvers and exact public wire shape are checked by implementation conformance.",
+      "The report case has two leases on one account and session, issued before either report. The lease clock is abstracted to active, elapsed and closed. A report admitted before release or expiry can finish. Reports rejected at admission produce no effects.",
+      "One credential replacement or deletion and one independent same-generation health write may interleave with accounting, observability and health commit. A before-publication storage error prevents that write. An after-publication error can retain the effect while rejecting the report.",
+      "The generation model tracks last-used metadata, health and account status. Usage ledger events intentionally count reported work for an existing account even when the underlying lease generation is stale. Provider/account selection, health classifiers and storage recovery have separate models.",
+      "Arbitrary concurrent lease creation, repeated reports on the same lease, session repinning, multiple broker instances, failover history retention, access token expiry enforcement by providers, adopted CLI tokens, and HTTP listener lifecycle stay outside these finite instances."
+    ]
+  },
+  {
+    "id": "auth.BrokerLeaseReports",
+    "model": "packages/auth/quint/AccountPoolBroker.qnt",
+    "sources": [
+      "packages/auth/src/accounts/account-pool-broker.ts",
+      "packages/auth/src/accounts/account-pool.ts",
+      "packages/auth/src/accounts/account-pool-broker.test.ts",
+      "packages/auth/src/auth/account-storage.ts",
+      "packages/auth/src/auth/credentials.ts",
+      "packages/auth/src/auth/refresh-mutex.ts"
+    ],
+    "invariants": [
+      "TypeOK",
+      "OnlyHeadHoldsReportLock",
+      "RejectedLeaseHasNoEffects",
+      "CredentialOwnsReportEffects",
+      "NewHealthBaselineSurvives",
+      "NewFailureStatusSurvives"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Publication has one default Codex resolver, one selected account, one replacement or deletion, two organizations and a bounded lease clock. Legacy injected resolvers and exact public wire shape are checked by implementation conformance.",
+      "The report case has two leases on one account and session, issued before either report. The lease clock is abstracted to active, elapsed and closed. A report admitted before release or expiry can finish. Reports rejected at admission produce no effects.",
+      "One credential replacement or deletion and one independent same-generation health write may interleave with accounting, observability and health commit. A before-publication storage error prevents that write. An after-publication error can retain the effect while rejecting the report.",
+      "The generation model tracks last-used metadata, health and account status. Usage ledger events intentionally count reported work for an existing account even when the underlying lease generation is stale. Provider/account selection, health classifiers and storage recovery have separate models.",
+      "Arbitrary concurrent lease creation, repeated reports on the same lease, session repinning, multiple broker instances, failover history retention, access token expiry enforcement by providers, adopted CLI tokens, and HTTP listener lifecycle stay outside these finite instances."
+    ]
+  }
+]

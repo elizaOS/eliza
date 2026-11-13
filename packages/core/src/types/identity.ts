@@ -150,15 +150,12 @@ export interface ResolveIdentityDeliveryClaimRequest {
 export function orderIdentityDeliveryClaims(
 	claims: readonly IdentityClaim[],
 ): IdentityClaim[] {
-	const key = (claim: IdentityClaim): string =>
-		[
-			claim.connectorId,
-			claim.connectorAccountId,
-			claim.handle ?? "",
-			claim.externalSubjectId,
-			claim.id,
-		].join("\u0000");
-	return [...claims].sort((left, right) => key(left).localeCompare(key(right)));
+	const keyed = claims.map((claim) => ({
+		claim,
+		key: `${claim.connectorId}\u0000${claim.connectorAccountId}\u0000${claim.handle ?? ""}\u0000${claim.externalSubjectId}\u0000${claim.id}`,
+	}));
+	keyed.sort((left, right) => left.key.localeCompare(right.key));
+	return keyed.map((entry) => entry.claim);
 }
 
 /** Delivery never guesses between verified claims. Ambiguous claims may be offered as choices; no_claim stops before provider I/O. */

@@ -241,7 +241,11 @@ function buildBlockedError(review: ContentSafetyReview): ApiError {
 }
 
 export class ContentSafetyService {
-  async reviewPublicContent(input: ContentSafetyInput): Promise<ContentSafetyReview> {
+  async reviewPublicContent(
+    input: ContentSafetyInput,
+    signal?: AbortSignal,
+  ): Promise<ContentSafetyReview> {
+    signal?.throwIfAborted();
     const env = getCloudAwareEnv();
     const mode = configuredMode(env);
 
@@ -255,6 +259,7 @@ export class ContentSafetyService {
 
     const texts = normalizeTextInputs(input.text);
     const { urls: imageUrls, issues } = await normalizeImageUrls(input);
+    signal?.throwIfAborted();
     if (issues.includes("unsafe_image_url") || issues.includes("data_image_not_allowed")) {
       return toBlockedReview(input, mode, issues);
     }
@@ -295,9 +300,13 @@ export class ContentSafetyService {
           model,
           input: moderationInput,
         }),
-        signal: AbortSignal.timeout(15_000),
+        signal: signal
+          ? AbortSignal.any([signal, AbortSignal.timeout(15_000)])
+          : AbortSignal.timeout(15_000),
       });
     } catch (error) {
+      // Caller cancellation is never a fail-open moderation verdict.
+      signal?.throwIfAborted();
       const issue = "moderation_unavailable_transport";
       const message = error instanceof Error ? error.message : String(error);
       if (env.CONTENT_SAFETY_FAIL_OPEN === "true") {
@@ -316,6 +325,7 @@ export class ContentSafetyService {
       });
     }
 
+    signal?.throwIfAborted();
     if (!response.ok) {
       const issue = `moderation_unavailable_${response.status}`;
       // OpenAI's error body says WHY (invalid key vs quota vs org block) —
@@ -323,6 +333,7 @@ export class ContentSafetyService {
       // this fail-closed path blocked staging image-gen with zero log trace
       // of the upstream rejection.
       const upstreamDetail = await readModerationErrorDetail(response);
+      signal?.throwIfAborted();
       if (env.CONTENT_SAFETY_FAIL_OPEN === "true") {
         logger.error(
           `[ContentSafety] Moderation unavailable (${response.status} ${response.statusText}) on surface ${input.surface}; allowing because fail-open is set: ${upstreamDetail}`,
@@ -341,6 +352,7 @@ export class ContentSafetyService {
     }
 
     const data = (await response.json()) as OpenAIModerationResponse;
+    signal?.throwIfAborted();
     const result = data.results?.[0];
     if (!result) {
       throw new ApiError(503, "internal_error", "Content safety moderation returned no result");
@@ -390,8 +402,11 @@ export class ContentSafetyService {
     };
   }
 
-  async assertSafeForPublicUse(input: ContentSafetyInput): Promise<ContentSafetyReview> {
-    const review = await this.reviewPublicContent(input);
+  async assertSafeForPublicUse(
+    input: ContentSafetyInput,
+    signal?: AbortSignal,
+  ): Promise<ContentSafetyReview> {
+    const review = await this.reviewPublicContent(input, signal);
     if (!review.allowed) {
       throw buildBlockedError(review);
     }

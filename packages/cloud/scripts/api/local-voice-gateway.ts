@@ -4,6 +4,7 @@
  * the already-running local elizaOS API rather than a second model runtime.
  */
 
+import { CARTESIA_SONIC_MODEL_ID } from "@elizaos/host/voice/cartesia-sonic-tts";
 import { waitForLocalVoiceRuntimeIdentity } from "./local-voice-runtime-identity";
 
 const DEFAULT_RUNTIME_ORIGIN = "http://127.0.0.1:31337";
@@ -108,7 +109,7 @@ async function main(): Promise<void> {
     providers: {
       stt: "cartesia/ink-2",
       llm: "local-runtime/cerebras",
-      tts: "cartesia/sonic-3.5",
+      tts: `cartesia/${CARTESIA_SONIC_MODEL_ID}`,
     },
   });
 

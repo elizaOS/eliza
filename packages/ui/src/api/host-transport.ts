@@ -35,6 +35,8 @@ export interface NativeAgentLifecycle {
   getStatus?: () => Promise<unknown>;
 }
 export interface HostAgentCapabilities {
+  /** Read the host's existing authenticated snapshot; never establishes owner authority. */
+  requestOwnerIdForUrl?: (url: string) => string | undefined;
   isInProcessAgentBase: (base: string | null | undefined) => boolean;
   isTerminalBootError: (message: string | null | undefined) => boolean;
   lifecycleForUrl: (
@@ -56,6 +58,9 @@ export function configureHostAgentCapabilities(
     if (agentCapabilities === capabilities) agentCapabilities = previous;
   };
 }
+export const hostRequestOwnerId = (url: string): string | undefined =>
+  agentCapabilities.requestOwnerIdForUrl?.(url);
+
 export const isHostInProcessAgentBase = (
   base: string | null | undefined,
 ): boolean => agentCapabilities.isInProcessAgentBase(base);

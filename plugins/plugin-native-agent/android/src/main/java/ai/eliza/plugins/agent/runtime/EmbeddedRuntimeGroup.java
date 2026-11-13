@@ -3,8 +3,16 @@ package ai.eliza.plugins.agent.runtime;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
-/** Ordered agent/gateway startup within one existing supervisor scope.
+/** Agent/gateway startup within one existing supervisor scope.
  * Hosts supply commands, private publication, readiness and credential custody.
+ * The private files are published before either child starts; the agent and the gateway then
+ * boot together, and the launch returns (the session reports RUNNING) only after the agent and
+ * then the gateway answer their readiness probes. The gateway's boot must not need a live agent:
+ * it reads the published files, and its proxied routes answer "unavailable" until the agent does.
+ * The gateway's startup must also not mutate the agent's state while the agent boots: a host
+ * that must change agent state at launch (for example wiping a revoked account's data) does so
+ * before calling {@link #launch}. A gateway that exits during the agent's wait fails the launch
+ * at once rather than after the agent's readiness budget.
  * Use one group per serialized session, never across separate supervisors.
  * No request is replayed and no independent restart policy is introduced.
  */
@@ -49,24 +57,27 @@ public final class EmbeddedRuntimeGroup {
     Objects.requireNonNull(binding); Objects.requireNonNull(secrets);
     scope.check();
     Endpoint selectedAgent = new Endpoint(EmbeddedRuntimeLaunch.loopbackPort(),token);
-    agent = selectedAgent; gateway = null;
-    List<String> redactions = new ArrayList<>(secrets); redactions.add(token);
-    scope.startReady("agent",agentCommand.create(selectedAgent),log,redactions,
-      () -> readiness.ready(selectedAgent,false),agentBudget,poll);
-    scope.check(); publisher.write("agent-token",token.getBytes(StandardCharsets.UTF_8));
-    scope.check();
     Endpoint selectedGateway = new Endpoint(EmbeddedRuntimeLaunch.loopbackPort(),EmbeddedRuntimeLaunch.token());
-    gateway = selectedGateway;
-    publisher.write("gateway-token",selectedGateway.token.getBytes(StandardCharsets.UTF_8));
+    String brokerToken = EmbeddedRuntimeLaunch.token();
+    agent = selectedAgent; gateway = null;
+    // Every launch secret is redacted from both children's output.
+    List<String> redactions = new ArrayList<>(secrets);
+    redactions.add(token); redactions.add(selectedGateway.token); redactions.add(brokerToken);
+    // Published to the host's private store before any child exists. The agent receives the same
+    // token in its own launch command, so the file reveals nothing the agent does not already hold.
+    scope.check(); publisher.write("agent-token",token.getBytes(StandardCharsets.UTF_8));
+    scope.check(); publisher.write("gateway-token",selectedGateway.token.getBytes(StandardCharsets.UTF_8));
     scope.check(); publisher.write("credential-binding.json",binding.clone());
     scope.check();
-    String brokerToken = EmbeddedRuntimeLaunch.token();
+    Process agentProcess = scope.start("agent",agentCommand.create(selectedAgent),log,redactions);
+    scope.check();
     Broker broker = Objects.requireNonNull(brokerFactory.open(brokerToken));
     scope.onClose(broker::close);
     scope.check();
-    redactions.add(selectedGateway.token); redactions.add(brokerToken);
+    gateway = selectedGateway;
     ProcessBuilder command = gatewayCommand.create(selectedAgent,selectedGateway,broker.port(),brokerToken);
-    scope.startReady("gateway",command,log,redactions,
-      () -> readiness.ready(selectedGateway,true),gatewayBudget,poll);
+    Process gatewayProcess = scope.start("gateway",command,log,redactions);
+    scope.awaitReady(agentProcess,() -> readiness.ready(selectedAgent,false),agentBudget,poll);
+    scope.awaitReady(gatewayProcess,() -> readiness.ready(selectedGateway,true),gatewayBudget,poll);
   }
 }

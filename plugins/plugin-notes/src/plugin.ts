@@ -1,3 +1,5 @@
+import { notesRequestEffectField } from "./request-effect.js";
+import { assertNotesAgentViewOperation } from "./request-effect-gate.js";
 /**
  * Runtime declaration for the managed Cloud Notes view: one agent-drivable
  * view backed by a durable per-agent service, delegating navigation and
@@ -108,13 +110,23 @@ export const notesPlugin: Plugin = {
           ),
         },
         get: { similes: ["NOTES_GET_NOTE"] },
+        // Strict tool grammars cannot require UPDATE's target, edit form or
+        // revision because each form needs different fields. Sent here to
+        // append, the live planner wrote {} and then an empty literal edit
+        // (tj-9fbee52dd6eab4). PATCH requires its target and revision, so
+        // appends route there.
+        update: {
+          description:
+            "Change one existing note identified by noteId or content, never both, with exactly one edit form: textEdit {field,oldText,newText} for an exact substitution of one unique current match (no revision needed); authoredEdit to add a NEW checklist item or edit an authored checklist/transcript entry; or replacementContent with the complete note from a complete read. Supply expectedRevision for authoredEdit and replacementContent. To add or append text to a plain note use NOTES_PATCH with textEdit append instead.",
+        },
         patch: {
           description:
-            "Update one note. Required target identifies it by id or text. Use the user's identifying text when they name a note; if multiple records match, ask which one. An ID in the index is not evidence the user selected that record. Repairing edit arguments must not replace an ambiguous title with a guessed ID. For field replacement supply changes entries (field, value) and notesRevision from the complete commit/read snapshot as expectedRevision. CREATE includes its exact transaction revision. Never guess the revision. Any intervening Notes mutation, including deleting another note, requires a fresh complete read and reconciliation. Body value excludes bodySeparator but preserves every authored leading newline and space. The store adds one framing newline; do not include the separator in the replacement. Omitted fields remain unchanged; replacing a body does not require rewriting its title. For a literal word/substring substitution use NOTES_UPDATE with textEdit instead; its unique-match atomic operation needs no preliminary read or revision.",
+            "Update one note, including adding text to it. Required target identifies it by id or text. Use the user's identifying text when they name a note; if multiple records match, ask which one. An ID in the index is not evidence the user selected that record. Repairing edit arguments must not replace an ambiguous title with a guessed ID. To add one list item, use changes [] with textEdit {action:append,field:item,text:the item} and the current expectedRevision; the service adds it in the note's own checklist, comma or line list form. For other added text use field body with the exact new suffix including its leading newline or separator; it is appended verbatim and keeps every existing character. For field replacement supply changes entries (field, value) and notesRevision from the complete commit/read snapshot as expectedRevision. CREATE includes its exact transaction revision. Never guess the revision. Any intervening Notes mutation, including deleting another note, requires a fresh complete read and reconciliation. Body value excludes bodySeparator but preserves every authored leading newline and space. The store adds one framing newline; do not include the separator in the replacement. Omitted fields remain unchanged; replacing a body does not require rewriting its title. For a literal word/substring substitution use NOTES_UPDATE with textEdit instead; its unique-match atomic operation needs no preliminary read or revision.",
         },
       },
     }),
   ],
+  responseHandlerFieldEvaluators: [notesRequestEffectField],
   providers: [notesProvider, namedNotesProvider, namedNotesRoutingProvider],
   services: [NotesService],
   routes: notesRoutes,
@@ -143,6 +155,7 @@ export const notesPlugin: Plugin = {
       surface: NOTES_SURFACE,
       capabilities: NOTES_CAPABILITIES,
       relatedActions: ["NOTES"],
+      beforeAgentInteract: assertNotesAgentViewOperation,
       serverInteract,
       visibleInManager: true,
       desktopTabEnabled: true,

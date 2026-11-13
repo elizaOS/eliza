@@ -3,15 +3,15 @@
  *
  * Every request still verifies the signed JWT locally (with the existing
  * Redis/in-memory verification cache). Cloud user, organization, and
- * moderation state are consumed only from a combined cache decision. A cold
- * Worker request returns a retryable warming result while authoritative
- * hydration runs under `waitUntil`, so Postgres never joins model dispatch.
+ * moderation state are consumed from a combined cache decision. A cold subject
+ * is decided by the primary once, inline, and its projection is written under
+ * `waitUntil`; warm requests never touch Postgres. Cached decisions (positive
+ * or denial) are stale-while-revalidate: an aged entry still decides the
+ * request and one refresh rewrites it off-response.
  *
- * Cache READS and WRITES are both gated on `useAuthCache`
- * (`INFERENCE_AUTH_CACHE_ENABLED`): while the flag is off, the origin path
- * neither consults nor populates the session decision cache, mirroring the
- * API-key path in `inference-auth-context.ts`. A disabled authorization cache
- * must leave no positive identities behind in KV.
+ * Cache READS and WRITES are both gated on `useAuthCache`, which is on wherever
+ * the organization gate can revoke a cached decision (every Worker). Other
+ * hosts neither consult nor populate the session decision cache.
  */
 
 import { usersRepository } from "../../db/repositories/users";
@@ -30,13 +30,14 @@ import {
   type InferenceSessionAuthContext,
   type InferenceSessionAuthDecision,
   readInferenceSessionAuthDecision,
+  startOffResponse,
   writeInferenceSessionAuthDecision,
 } from "./inference-auth-cache";
 import {
   assertInferenceCredentialActive,
+  hasInferenceRevocationBoundary,
   type InferenceCredentialCheck,
   InferenceCredentialRevokedError,
-  isInferenceStrongRevocationEnabled,
 } from "./inference-credential-revocation";
 
 interface SessionHydration {
@@ -48,11 +49,12 @@ const sessionHydrations = new Map<string, SessionHydration>();
 const AUTH_CONTEXT_REFRESH_AFTER_MS = 30_000;
 
 export interface ResolveInferenceSessionAuthOptions {
-  cacheOnly?: boolean;
   useAuthCache?: boolean;
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
-  /** The caller will fuse this strong check into its admission lease. */
+  /** The caller wants the verified credential back; the session is still checked here. */
   deferStrongCredentialCheck?: boolean;
+  /** Return verified JWT identity metadata after the normal authorization boundary. */
+  includeVerifiedCredential?: boolean;
 }
 
 export type InferenceSessionContinuationResolution =
@@ -61,18 +63,19 @@ export type InferenceSessionContinuationResolution =
       ctx: InferenceSessionAuthContext;
       source: "cache" | "origin";
       credential?: InferenceCredentialCheck;
+      /**
+       * Rewrites this subject's cached decision from the primary, off the
+       * response. Paid admission calls it when the decision's funding
+       * standing is no longer true.
+       */
+      refreshEntry?: () => void;
     }
   | { kind: "suspended"; userId?: string; reason?: InferenceAuthRejectionReason }
   | { kind: "rejected"; status: 401 | 403; reason?: InferenceAuthRejectionReason };
 
 export type InferenceSessionAuthResolution =
   | { kind: "not_session" }
-  | InferenceSessionContinuationResolution
-  | {
-      kind: "warming";
-      hydration?: Promise<InferenceSessionAuthDecision | undefined>;
-      continuation?: Promise<InferenceSessionContinuationResolution | undefined>;
-    };
+  | InferenceSessionContinuationResolution;
 
 function looksLikeJwt(token: string): boolean {
   const parts = token.split(".");
@@ -170,6 +173,7 @@ async function enforceStrongSessionBoundary(
   issuedAt: number,
   source: "cache" | "origin",
   deferStrongCredentialCheck = false,
+  includeVerifiedCredential = false,
 ): Promise<InferenceSessionContinuationResolution> {
   const resolved = toResolution(decision, source);
   if (resolved.kind !== "authorized") return resolved;
@@ -179,10 +183,15 @@ async function enforceStrongSessionBoundary(
     stewardUserId,
     issuedAt,
   };
-  if (deferStrongCredentialCheck) return { ...resolved, credential };
+  // Organization admission no longer carries the credential into a lease, so
+  // nothing after this point would check a deferred session: a revoked or
+  // superseded session is refused here. `deferStrongCredentialCheck` only
+  // asks for the verified credential to be returned.
   try {
     await assertInferenceCredentialActive(resolved.ctx.orgId, credential);
-    return resolved;
+    return deferStrongCredentialCheck || includeVerifiedCredential
+      ? { ...resolved, credential }
+      : resolved;
   } catch (error) {
     if (error instanceof InferenceCredentialRevokedError) {
       return error.reason === "session_revoked" || error.reason === "session_binding_revoked"
@@ -230,7 +239,7 @@ function getOrCreateHydration(
     return existing;
   }
 
-  const decision = hydrateDecision(params, persistDecision);
+  const decision = startOffResponse(() => hydrateDecision(params, persistDecision));
   const projection = decision
     .then(async (resolvedDecision) => {
       if (!persistDecision) return;
@@ -277,8 +286,8 @@ export function __clearInferenceSessionAuthHydrations(): void {
 
 /**
  * Resolve a Steward session without allowing authoritative work onto a Worker
- * request promise. `cacheOnly` callers either receive a verified cache decision
- * or a warming result; there is no database fallback.
+ * request promise. A cache miss is decided by the primary once and projected
+ * into the cache off-response.
  */
 export async function resolveInferenceSessionAuthContext(
   req: Request,
@@ -291,7 +300,7 @@ export async function resolveInferenceSessionAuthContext(
   const deferStrongCredentialCheck =
     options.useAuthCache === true &&
     options.deferStrongCredentialCheck === true &&
-    isInferenceStrongRevocationEnabled(env);
+    hasInferenceRevocationBoundary();
   const claims = await verifyStewardTokenCached(
     {
       NODE_ENV: env.NODE_ENV,
@@ -345,8 +354,36 @@ export async function resolveInferenceSessionAuthContext(
       claims.issuedAt,
       "origin",
       deferStrongCredentialCheck,
+      options.includeVerifiedCredential === true,
     );
   }
+
+  const hydrationParams = {
+    stewardUserId: claims.userId,
+    email: claims.email,
+    walletAddress: claims.walletAddress,
+    walletChain: claims.walletChain,
+  };
+  // Post-response accounting rewrites the cached decision when it finds the
+  // organization can no longer fund a request (or can again). A hydration
+  // already in flight may predate that accounting, so the rewrite starts
+  // after it.
+  const executionCtx = options.executionCtx;
+  const refreshEntry =
+    options.useAuthCache === true && executionCtx
+      ? () => {
+          const inFlight = sessionHydrations.get(claims.userId)?.projection ?? Promise.resolve();
+          executionCtx.waitUntil(
+            inFlight.then(
+              () => getOrCreateHydration(hydrationParams, true, claims.issuedAt).projection,
+            ),
+          );
+        }
+      : undefined;
+  const withRefresh = (
+    resolved: InferenceSessionContinuationResolution,
+  ): InferenceSessionContinuationResolution =>
+    resolved.kind === "authorized" && refreshEntry ? { ...resolved, refreshEntry } : resolved;
 
   if (options.useAuthCache && cache.isAvailable()) {
     const cached = await readInferenceSessionAuthDecision(
@@ -362,80 +399,26 @@ export async function resolveInferenceSessionAuthContext(
     });
     if (cached) {
       if (options.executionCtx && Date.now() - cached.cachedAt >= AUTH_CONTEXT_REFRESH_AFTER_MS) {
-        getOrCreateHydration(
-          {
-            stewardUserId: claims.userId,
-            email: claims.email,
-            walletAddress: claims.walletAddress,
-            walletChain: claims.walletChain,
-          },
-          true,
-          claims.issuedAt,
-          options.executionCtx,
-        );
+        getOrCreateHydration(hydrationParams, true, claims.issuedAt, options.executionCtx);
       }
-      return await enforceStrongSessionBoundary(
-        cached,
-        claims.userId,
-        claims.issuedAt,
-        "cache",
-        deferStrongCredentialCheck,
+      return withRefresh(
+        await enforceStrongSessionBoundary(
+          cached,
+          claims.userId,
+          claims.issuedAt,
+          "cache",
+          deferStrongCredentialCheck,
+          options.includeVerifiedCredential === true,
+        ),
       );
     }
-  }
-
-  if (options.useAuthCache && options.cacheOnly) {
-    if (cache.isAvailable() && options.executionCtx) {
-      const hydration = getOrCreateHydration(
-        {
-          stewardUserId: claims.userId,
-          email: claims.email,
-          walletAddress: claims.walletAddress,
-          walletChain: claims.walletChain,
-        },
-        true,
-        claims.issuedAt,
-        options.executionCtx,
-      );
-      return {
-        kind: "warming",
-        hydration: hydration.projection.then(
-          () => undefined,
-          () => undefined,
-        ),
-        continuation: hydration.decision.then(
-          (decision) =>
-            enforceStrongSessionBoundary(
-              decision,
-              claims.userId,
-              claims.issuedAt,
-              "origin",
-              deferStrongCredentialCheck,
-            ),
-          (error) => {
-            // error-policy:J7 the retained hydration above owns failure logging;
-            // a request continuation keeps the original warming outcome.
-            logger.warn("[InferenceSessionAuth] Continuation hydration failed", {
-              errorName: error instanceof Error ? error.name : "UnknownError",
-            });
-            return undefined;
-          },
-        ),
-      };
-    }
-    return { kind: "warming" };
   }
 
   // Origin path: persist the decision only when the auth cache is enabled —
   // a disabled cache must not be pre-populated with positive identities
   // (mirrors the API-key path's flag-gated positive write).
   const hydration = getOrCreateHydration(
-    {
-      stewardUserId: claims.userId,
-      email: claims.email,
-      walletAddress: claims.walletAddress,
-      walletChain: claims.walletChain,
-    },
+    hydrationParams,
     options.useAuthCache === true,
     claims.issuedAt,
     options.executionCtx,
@@ -448,10 +431,11 @@ export async function resolveInferenceSessionAuthContext(
     claims.issuedAt,
     "origin",
     deferStrongCredentialCheck,
+    options.includeVerifiedCredential === true,
   );
   if (resolved.kind === "rejected") {
     if (resolved.status === 401) throw AuthenticationError();
     throw ForbiddenError();
   }
-  return resolved;
+  return withRefresh(resolved);
 }

@@ -6,6 +6,8 @@ public class Plugin {
  public PermissionState getPermissionState(String alias){throw new UnsupportedOperationException();}
  protected void requestPermissionForAlias(String alias,PluginCall call,String callbackName){throw new UnsupportedOperationException();}
  @PluginMethod public void requestPermissions(PluginCall call){throw new UnsupportedOperationException();}
+ protected void handleOnStart(){}
+ protected void handleOnStop(){}
  protected void handleOnResume(){}
  protected void handleOnPause(){}
  protected void handleOnDestroy(){}

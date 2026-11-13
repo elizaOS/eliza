@@ -5,6 +5,7 @@
 
 import {
 	fetchWithSsrfGuard,
+	type GuardedFetchResult,
 	type PinnedLookupFetchLike,
 } from "../network/fetch-guard.js";
 import type { LookupFn, SsrfPolicy } from "../network/ssrf.js";
@@ -189,11 +190,9 @@ function enforceResponsePolicy(
 	}
 }
 
-async function fetchGuardedMedia(options: FetchMediaOptions): Promise<{
-	response: Response;
-	finalUrl: string;
-	release: () => Promise<void>;
-}> {
+async function fetchGuardedMedia(
+	options: FetchMediaOptions,
+): Promise<GuardedFetchResult> {
 	const timeoutMs = options.timeoutMs ?? DEFAULT_MEDIA_FETCH_TIMEOUT_MS;
 	const timeoutSignal = AbortSignal.timeout(timeoutMs);
 	const compositeSignal = options.signal
@@ -208,7 +207,6 @@ async function fetchGuardedMedia(options: FetchMediaOptions): Promise<{
 					: { headers: { "User-Agent": options.userAgent } },
 			fetchImpl: options.fetchImpl,
 			maxRedirects: options.maxRedirects,
-			timeoutMs: undefined,
 			signal: compositeSignal,
 			policy: options.ssrfPolicy,
 			lookupFn: options.lookupFn,
@@ -424,7 +422,6 @@ async function readBoundedBody(
 					} catch {
 						// error-policy:J6 Cancellation is best-effort after the
 						// byte limit has already been reached.
-						// ignore cancel errors
 					}
 					if (onOverflow === "throw") {
 						throw exceedsMaxBytes(res, maxBytes);
@@ -443,15 +440,11 @@ async function readBoundedBody(
 			reader.releaseLock();
 		} catch {
 			// error-policy:J6 Stream lock release is best-effort teardown.
-			// ignore release errors
 		}
 	}
 
 	return {
-		buffer: Buffer.concat(
-			chunks.map((chunk) => Buffer.from(chunk)),
-			total,
-		),
+		buffer: Buffer.concat(chunks, total),
 		truncated,
 	};
 }

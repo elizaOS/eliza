@@ -13,14 +13,14 @@ export ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL='Eliza Cloud Gateway (+14159611510)
 export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
 export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
 export ANDROID_SDK_ROOT=/opt/homebrew/share/android-commandlinetools
-node packages/app/scripts/run-mobile-build.ts android-sms-gateway
+bun packages/app/scripts/run-mobile-build.ts android-sms-gateway
 ```
 
 Install and diagnose the current APK once an Android phone is visible in
 `adb devices -l`:
 
 ```sh
-node packages/app/scripts/install-android-sms-gateway.ts \
+bun packages/app/scripts/install-android-sms-gateway.ts \
   --grant-role \
   --clear-logcat \
   --logcat-lines 200
@@ -35,13 +35,13 @@ installer.
 Check the path that will be installed without requiring a connected device:
 
 ```sh
-node packages/app/scripts/install-android-sms-gateway.ts --print-apk
+bun packages/app/scripts/install-android-sms-gateway.ts --print-apk
 ```
 
 Check local readiness without requiring a connected phone:
 
 ```sh
-node packages/app/scripts/install-android-sms-gateway.ts --doctor
+bun packages/app/scripts/install-android-sms-gateway.ts --doctor
 ```
 
 `--doctor` also sends a gateway-shaped smoke payload to the production cloud
@@ -55,7 +55,7 @@ open Android Developer Options > Wireless debugging > Pair device with pairing
 code. Leave that pairing screen open, then run:
 
 ```sh
-node packages/app/scripts/install-android-sms-gateway.ts \
+bun packages/app/scripts/install-android-sms-gateway.ts \
   --pair auto \
   --wait-pair 300 \
   --connect auto \
@@ -77,7 +77,7 @@ service advertised by Wireless debugging after pairing.
 Wait for a phone to appear, then install, request the SMS role, and watch logs:
 
 ```sh
-node packages/app/scripts/install-android-sms-gateway.ts \
+bun packages/app/scripts/install-android-sms-gateway.ts \
   --wait-device 300 \
   --grant-role \
   --clear-logcat \
@@ -87,13 +87,13 @@ node packages/app/scripts/install-android-sms-gateway.ts \
 Capture the current readiness state across Android and BlueBubbles:
 
 ```sh
-node packages/app/scripts/check-sms-gateway-readiness.ts
+bun packages/app/scripts/check-sms-gateway-readiness.ts
 ```
 
 Capture a concise objective-level completion audit without sending SMS:
 
 ```sh
-node packages/app/scripts/check-sms-gateway-completion-audit.ts
+bun packages/app/scripts/check-sms-gateway-completion-audit.ts
 ```
 
 The audit separates proven software/cloud requirements from external gates such
@@ -103,7 +103,7 @@ Wait until either an Android device appears or BlueBubbles outbound becomes
 ready:
 
 ```sh
-node packages/app/scripts/watch-sms-gateway-readiness.ts
+bun packages/app/scripts/watch-sms-gateway-readiness.ts
 ```
 
 Set `ADB=/absolute/path/to/adb` to select the Android executable for both the
@@ -117,18 +117,20 @@ pending-count decrease are both checked.
 To automatically run the Android install/watch flow when one adb device appears:
 
 ```sh
-node packages/app/scripts/watch-sms-gateway-readiness.ts --run-install
+bun packages/app/scripts/watch-sms-gateway-readiness.ts --run-install
 ```
 
 Strict physical verification for the Android path:
 
 ```sh
-node packages/app/scripts/verify-android-sms-gateway-e2e.ts
+bun packages/app/scripts/verify-android-sms-gateway-e2e.ts
 ```
 
 This command only passes after logcat shows an actual inbound SMS delivery,
-gateway work being queued, the cloud webhook accepting the message, and an
-outbound reply being sent and persisted.
+gateway work being queued, the cloud webhook accepting the message, the reply
+being proposed for review, and the owner's reviewed send finishing as sent.
+Open the "Review reply" notice on the phone and press Send to reach the last
+milestone; nothing is sent until then.
 
 Strict queued-reply verification for the BlueBubbles path:
 
@@ -145,7 +147,7 @@ If Android does not grant the default SMS role from `cmd role`, set Eliza as the
 default SMS app in Android Settings, then rerun:
 
 ```sh
-node packages/app/scripts/install-android-sms-gateway.ts \
+bun packages/app/scripts/install-android-sms-gateway.ts \
   --skip-install \
   --clear-logcat \
   --logcat-lines 200
@@ -155,7 +157,7 @@ For a physical end-to-end proof, send a real SMS to `+14159611510` from another
 phone and watch the gateway logs:
 
 ```sh
-node packages/app/scripts/install-android-sms-gateway.ts \
+bun packages/app/scripts/install-android-sms-gateway.ts \
   --skip-install \
   --watch-logs 60
 ```
@@ -165,13 +167,35 @@ Successful logs should show:
 - `ElizaSmsReceiver` receives and persists the inbound message.
 - `ElizaSmsGateway` queues gateway work.
 - `ElizaSmsGateway` receives HTTP success from the cloud gateway.
-- `ElizaSmsGateway` sends and persists the reply SMS.
+- `ElizaSmsGateway` proposes the reply for review. Nothing is sent yet.
+- After you press Send in the review screen, `ElizaSmsGateway` logs the
+  reviewed send's status (`sent` once every part's receipt arrived).
+
+## Reviewed replies
+
+The gateway never sends a reply by itself. Each reply Cloud drafts becomes a
+pending `sms.send.v1` proposal (`ElizaSmsReplyProposals`, stored encrypted)
+with a "Review reply" notice. The review screen (`ElizaSmsReplyReviewActivity`)
+shows the exact recipient, SIM and text. Send sends it through the shared
+reviewed send in `plugin-native-messages` (`ReviewedSmsSend`). Edit moves the
+draft to the Messages composer, and Discard drops it. The send is journaled
+before the radio call. "Sent" comes only from sent receipts, a missing receipt
+reads unknown and is never retried, and the operation ID derived from the
+incoming message keeps a retried gateway worker or a second Send press from
+sending twice. Neither the gateway nor the quick-reply service writes sent-box
+rows; the reviewed send owns them.
+
+The incoming-call quick reply (`RESPOND_VIA_MESSAGE`, `ElizaRespondViaMessageService`)
+goes through the same journaled send without a second review dialog. Only the
+system call screen can start it (`SEND_RESPOND_VIA_MESSAGE`), and the owner
+picked or typed the text and the caller there, so that choice is the review.
+A failed or unknown outcome is shown as a notice, never as a resend prompt.
 
 Emulators can exercise the receiver path, but they do not prove the production
 phone number or carrier send path:
 
 ```sh
-node packages/app/scripts/install-android-sms-gateway.ts \
+bun packages/app/scripts/install-android-sms-gateway.ts \
   --grant-role \
   --clear-logcat \
   --simulate +14155550123 \

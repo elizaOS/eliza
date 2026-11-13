@@ -1,13 +1,11 @@
-import { createHash } from "node:crypto";
-import fs from "node:fs";
-import path from "node:path";
-import { pathToFileURL } from "node:url";
 import { ElizaError } from "@elizaos/core";
 import { isAndroidMobile, resolveApiToken } from "@elizaos/host/protocol";
+import { loadNativeRuntimeModule } from "./native-runtime-module.js";
 import {
   applyNativeCloudRuntimeProfile,
+  applyNativeDirectRuntimeProfile,
   type NativeRuntimeProfileStores,
-  parseNativeCloudRuntimeDeclaration,
+  parseNativeCloudRoutingDeclaration,
 } from "./native-runtime-profile.js";
 
 const brokerKeys = [
@@ -35,6 +33,15 @@ export async function startNativeManagedGoogleHost(
   env: NodeJS.ProcessEnv = process.env,
   profileStores?: NativeRuntimeProfileStores,
 ): Promise<{ close(): Promise<void> } | undefined> {
+  if (isAndroidMobile(env) && env.ELIZA_PROVIDER === "cerebras") {
+    try {
+      await applyNativeDirectRuntimeProfile(env, profileStores);
+    } catch {
+      throw new ElizaError("Native direct routing could not be prepared", {
+        code: "NATIVE_DIRECT_ROUTING_UNAVAILABLE",
+      });
+    }
+  }
   const prepareCloud =
     isAndroidMobile(env) && enabled(env.ELIZAOS_CLOUD_USE_INFERENCE);
   const entry = env.ELIZA_NATIVE_GOOGLE_HOST_MODULE;
@@ -52,82 +59,49 @@ export async function startNativeManagedGoogleHost(
     prepareCloud
       ? new ElizaError(message, { code: "NATIVE_CLOUD_ROUTING_UNAVAILABLE" })
       : unavailable(message);
-  const token = env.ELIZAOS_CLOUD_API_KEY;
+  const inferenceToken = env.ELIZAOS_CLOUD_API_KEY;
+  // Native provider admission supplies a separate Google key. Runtime routing
+  // can replace the inference key while the admitted Google binding stays valid.
+  const credentialKey =
+    env.ELIZA_PROVIDER === "cerebras" ||
+    env.ELIZA_NATIVE_GOOGLE_API_KEY !== undefined
+      ? "ELIZA_NATIVE_GOOGLE_API_KEY"
+      : "ELIZAOS_CLOUD_API_KEY";
+  const token = env[credentialKey];
   const apiToken = resolveApiToken(env);
   if (
     !isAndroidMobile(env) ||
     !root ||
     (raw !== undefined && raw.length > 8192) ||
-    !token ||
+    (prepareCloud ? !inferenceToken : !token) ||
     !apiToken ||
     // The managed Gmail and Calendar transports accept only this format; a
     // published endpoint they cannot use would break Gmail reads at plugin init.
     !/^[A-Za-z0-9_-]{64}$/.test(apiToken)
   )
     throw admissionFailure("Native Google host admission is incomplete");
-  const filename = path.resolve(entry);
-  try {
-    const canonicalRoot = fs.realpathSync(root);
-    const relative = path.relative(canonicalRoot, filename);
-    if (
-      !relative ||
-      relative.startsWith("..") ||
-      path.isAbsolute(relative) ||
-      !relative.endsWith(".mjs")
-    )
-      throw admissionFailure(
-        "Native Google host module escaped its admitted resources",
-      );
-    for (let current = filename; ; current = path.dirname(current)) {
-      if (fs.lstatSync(current).isSymbolicLink())
-        throw admissionFailure(
-          "Native Google host resources contain a symlink",
-        );
-      if (current === canonicalRoot) break;
-    }
-    const manifestFile = path.join(canonicalRoot, "manifest.json");
-    const manifestStat = fs.lstatSync(manifestFile);
-    if (
-      !manifestStat.isFile() ||
-      manifestStat.isSymbolicLink() ||
-      manifestStat.size > 1024 * 1024
-    )
-      throw admissionFailure("Native Google host manifest is invalid");
-    const manifest = JSON.parse(fs.readFileSync(manifestFile, "utf8"));
-    const stat = fs.lstatSync(filename);
-    const expected = manifest.files?.[relative.split(path.sep).join("/")];
-    if (
-      manifest.version !== 1 ||
-      !stat.isFile() ||
-      stat.size > 8 * 1024 * 1024 ||
-      !/^[a-f0-9]{64}$/.test(expected ?? "") ||
-      createHash("sha256").update(fs.readFileSync(filename)).digest("hex") !==
-        expected
-    )
-      throw admissionFailure(
-        "Native Google host module differs from its admitted manifest",
-      );
-  } catch {
-    throw admissionFailure("Native runtime module admission failed");
-  }
   let module: Record<string, unknown>;
   try {
-    module = await import(pathToFileURL(filename).href);
+    const admitted = await loadNativeRuntimeModule(env);
+    if (!admitted)
+      throw admissionFailure("Native runtime module is unavailable");
+    module = admitted;
     if (prepareCloud) {
       // The admitted product module declares only its Cloud deployment; the
       // shared runtime profile owns every routing decision.
       await applyNativeCloudRuntimeProfile(
         env,
-        parseNativeCloudRuntimeDeclaration(module.nativeCloudRuntime),
+        parseNativeCloudRoutingDeclaration(module.nativeCloudRuntime),
         profileStores,
       );
-      if (env.ELIZAOS_CLOUD_API_KEY !== token)
+      if (env.ELIZAOS_CLOUD_API_KEY !== inferenceToken)
         throw new Error("Native Cloud credential changed during preparation");
     }
   } catch {
     throw admissionFailure("Native runtime preparation failed");
   }
   if (!raw) return;
+  if (!token) throw unavailable("Native Google credential is unavailable");
   let binding: unknown;
   try {
     binding = JSON.parse(raw);
@@ -145,7 +119,7 @@ export async function startNativeManagedGoogleHost(
     assertCurrent() {
       if (
         env.ELIZA_NATIVE_GOOGLE_BINDING_JSON !== raw ||
-        env.ELIZAOS_CLOUD_API_KEY !== token
+        env[credentialKey] !== token
       )
         throw unavailable("Native Google owner changed");
     },
@@ -195,7 +169,8 @@ export async function startNativeManagedGoogleHostForBoot(
   } catch (error) {
     if (
       error instanceof ElizaError &&
-      error.code === "NATIVE_CLOUD_ROUTING_UNAVAILABLE"
+      (error.code === "NATIVE_CLOUD_ROUTING_UNAVAILABLE" ||
+        error.code === "NATIVE_DIRECT_ROUTING_UNAVAILABLE")
     )
       throw error;
     const code =

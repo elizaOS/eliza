@@ -37,6 +37,7 @@ type Session = {
 
 export class BackgroundNavigation {
   private session?: Session;
+  private generation = 0;
   private readonly bridge: NavigationBridge;
   private readonly native: () => boolean;
   constructor(bridge: NavigationBridge, native: () => boolean) {
@@ -53,8 +54,9 @@ export class BackgroundNavigation {
     text: string,
     onStopped: (reason: string) => void,
   ): Promise<boolean> {
+    const ticket = this.generation + 1;
     await this.stop();
-    if (!this.native()) return false;
+    if (this.generation !== ticket || !this.native()) return false;
     const session: Session = {
       id: crypto.randomUUID().replaceAll("-", ""),
       title,
@@ -84,7 +86,12 @@ export class BackgroundNavigation {
       if (this.session !== session) return false;
       const shown = { title: session.title, text: session.text };
       await this.bridge.startNavigation({ sessionId: session.id, ...shown });
-      if (this.session !== session || session.stopped) return false;
+      if (this.session !== session || session.stopped) {
+        // Stop can reach native before a pending Start. Release that retired
+        // id after its acknowledgement without stopping the replacement.
+        await this.bridge.stopNavigation({ sessionId: session.id });
+        return false;
+      }
       session.started = true;
       // An instruction that changed while the native session was starting is sent now: before
       // the start resolved, native had no session to update, and that answer is not a loss.
@@ -129,6 +136,7 @@ export class BackgroundNavigation {
   }
   /** End the native session from the app. A session already stopped by its notification is not stopped twice. */
   async stop(): Promise<void> {
+    ++this.generation;
     const session = this.session;
     this.session = undefined;
     if (!session) return;

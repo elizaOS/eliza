@@ -15,7 +15,7 @@
  *              show-archived toggle; the coordinator landing.
  *   - detail — drill-down for one thread: acceptance criteria, sessions,
  *              artifacts, decisions, events, and recent messages, with
- *              Delete/Reopen affordances.
+ *              Archive/Reopen affordances.
  */
 import {
   SpatialButton as Button,
@@ -366,12 +366,12 @@ function TaskDetail({
           </Button>
         ) : (
           <Button
-            agent={humanAuthority("delete-thread", "Delete task")}
+            agent={humanAuthority("delete-thread", "Archive task")}
             variant="ghost"
             tone="danger"
             onPress={dispatch("delete-thread")}
           >
-            Delete
+            Archive
           </Button>
         )}
       </HStack>

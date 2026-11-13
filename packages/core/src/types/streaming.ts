@@ -125,8 +125,9 @@ export interface IStreamExtractor {
  * field value.
  *
  * Consumers:
- * - User-visible reply fields may be held until routing and effect validation
- * complete; field events still let non-visible consumers track boundaries.
+ * - Chunk consumers receive only a call's declared user-visible stream fields
+ * (`GenerateTextParams.streamFields`), behind its gate; field events still let
+ * non-visible consumers track boundaries.
  * - W8 (forced-skeleton emitter): uses field boundaries to drive the next
  * forced span on a real engine.
  */

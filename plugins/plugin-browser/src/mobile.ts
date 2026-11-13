@@ -12,7 +12,6 @@ import {
   readViewInteractionClientId,
 } from "@elizaos/core/protocol";
 import type { HttpPlugin } from "@elizaos/host/protocol";
-import { resolveAppAliasedEnvValue as resolveAliasedEnvValue } from "@elizaos/host/protocol";
 import {
   browserDomainPolicyRequestForCommand,
   evaluateBrowserDomainPolicies,
@@ -22,6 +21,10 @@ import {
   isBrowserDispatchFailure,
   isIdempotentBrowserSubaction,
 } from "./dispatch-types.js";
+import {
+  type NativeHistorySelection,
+  observedNativeHistorySelection,
+} from "./native-client-command.js";
 import {
   type NativeBrowserClientTransport,
   readNativeBrowserPage,
@@ -69,7 +72,7 @@ export class BrowserService extends Service {
     const service = new BrowserService(runtime);
     if (
       [
-        resolveAliasedEnvValue("ELIZA_PLATFORM"),
+        process.env.ELIZA_PLATFORM?.trim(),
         process.env.ELIZA_MOBILE_PLATFORM,
       ].includes("android")
     ) {
@@ -116,6 +119,7 @@ export class BrowserService extends Service {
     command: BrowserWorkspaceCommand,
     targetId?: string,
     clientId?: string,
+    selection?: NativeHistorySelection,
   ): Promise<BrowserWorkspaceCommandResult> {
     if (
       (!targetId || targetId === "chromium-device") &&
@@ -194,7 +198,7 @@ export class BrowserService extends Service {
           "UNAVAILABLE",
           "Native control transport is unavailable.",
         );
-      return await this.transport.executeCommand(clientId, command);
+      return await this.transport.executeCommand(clientId, command, selection);
     } catch (error) {
       // error-policy:J2 uncertain native effects must never be replayed in another browser.
       if (
@@ -294,7 +298,12 @@ export const browserAction: Action = {
       command.direction = direction;
     }
     try {
-      const result = await service.execute(command, undefined, clientId);
+      const result = await service.execute(
+        command,
+        undefined,
+        clientId,
+        observedNativeHistorySelection(message, action),
+      );
       return {
         success: true,
         text: JSON.stringify(result),
@@ -370,4 +379,7 @@ export function isBrowserWorkspaceBridgeConfigured(): boolean {
   return false;
 }
 
-export { parseNativeHistoryCommand } from "./native-client-command.ts";
+export {
+  type NativeHistorySelection,
+  parseNativeHistoryCommand,
+} from "./native-client-command.ts";

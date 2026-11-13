@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-maps",
-  "version": "2.0.12-beta.0",
+  "version": "2.0.6",
   "type": "module",
   "description": "Provider-neutral place search, routing, saved places, sharing, and navigation handoffs for Eliza agents.",
   "main": "./dist/index.js",
@@ -52,7 +52,7 @@
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "vite build --config vite.config.views.ts",
     "build:types": "tsc6 --noCheck -p tsconfig.build.json",
-    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo",
+    "clean": "bun ../../packages/scripts/rm-path-recursive.ts dist .turbo",
     "test": "bun run test:client && vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
@@ -81,15 +81,15 @@
     "tsup": "^9.0.0",
     "typescript": "^6.0.3",
     "vite": "^8.3.3",
-    "vitest": "^5.0.5",
+    "vitest": "^5.1.0",
     "@elizaos/testing": "workspace:*",
     "@capacitor/core": "^8.5.2",
-    "maplibre-gl": "^6.16.0"
+    "maplibre-gl": "^6.17.0"
   },
   "peerDependencies": {
     "react-dom": "^19.0.0",
     "@capacitor/core": "^8.5.2",
-    "maplibre-gl": "^6.16.0"
+    "maplibre-gl": "^6.17.0"
   },
   "publishConfig": {
     "access": "public"

@@ -98,3 +98,22 @@ describe("device-action turn observation", () => {
     ).toEqual({ view: "", revision: 3, sensitive: false });
   });
 });
+
+it("admits only the canonical Calendar day and keeps malformed date turns private", () => {
+  const context = {
+    ...valid,
+    calendarDay: { date: "2026-10-29", timeZone: valid.timeZone },
+  };
+  expect(turnObservation({ clientDevice: { context } })).toEqual(context);
+  for (const patch of [
+    { sensitive: true },
+    { view: "notes" },
+    { revision: -1 },
+    { calendarDay: { date: "2026-02-30", timeZone: valid.timeZone } },
+    { calendarDay: { date: "2026-10-29", timeZone: "UTC" } },
+  ]) {
+    const metadata = { clientDevice: { context: { ...context, ...patch } } };
+    expect(turnObservation(metadata)).toBe(UNREADABLE_TURN_OBSERVATION);
+    expect(requireTurnObservation(metadata)).toBe(UNREADABLE_TURN_OBSERVATION);
+  }
+});

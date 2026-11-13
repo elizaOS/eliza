@@ -9,7 +9,8 @@
  * it under a one-time symmetric key, and the child long-polls the GET
  * endpoint with the bearer token it received at scope declaration.
  *
- * Endpoints (loopback-only):
+ * Endpoints (loopback-only, per-session `X-Eliza-Session-Token` required; the
+ * server's central auth gate treats them as public, see setup-routes.ts):
  *
  *   POST /api/coding-agents/:sessionId/credentials/request
  *     body: { credentialKeys: string[] }
@@ -27,16 +28,18 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { logger } from "@elizaos/core";
 import { SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE } from "@elizaos/plugin-assistant";
 import {
-  CREDENTIAL_BRIDGE_TOKEN_HASH_METADATA,
-  matchesCredentialBridgeToken,
+  isLoopbackRemoteAddress,
+  verifySessionBridgeToken,
 } from "../services/credential-bridge-auth.js";
 import type { SessionInfo } from "../services/types.js";
 import { TERMINAL_SESSION_STATUSES } from "../services/types.js";
 import {
   emitCredentialPrompt,
   emitCredentialResolved,
+  resolveCredentialOrigin,
 } from "./credential-prompt.js";
 import type { RouteContext } from "./route-utils.js";
 import { parseBody, sendJson } from "./route-utils.js";
@@ -98,51 +101,6 @@ export interface BridgeCredentialAdapter {
   >;
 }
 
-function originFromSessionMetadata(
-  metadata: Record<string, unknown> | undefined,
-):
-  | {
-      roomId?: string;
-      channelId?: string;
-      source?: string;
-      ownerEntityId?: string;
-    }
-  | undefined {
-  if (!metadata) return undefined;
-  const roomId =
-    typeof metadata.roomId === "string" && metadata.roomId.trim()
-      ? metadata.roomId.trim()
-      : undefined;
-  const channelId =
-    typeof metadata.channelId === "string" && metadata.channelId.trim()
-      ? metadata.channelId.trim()
-      : roomId;
-  const source =
-    typeof metadata.source === "string" && metadata.source.trim()
-      ? metadata.source.trim()
-      : undefined;
-  const ownerEntityId =
-    typeof metadata.userId === "string" && metadata.userId.trim()
-      ? metadata.userId.trim()
-      : typeof metadata.ownerEntityId === "string" &&
-          metadata.ownerEntityId.trim()
-        ? metadata.ownerEntityId.trim()
-        : undefined;
-  if (!roomId && !channelId && !source && !ownerEntityId) return undefined;
-  return { roomId, channelId, source, ownerEntityId };
-}
-
-function isLoopback(remoteAddress: string | null | undefined): boolean {
-  if (!remoteAddress) return false;
-  const normalized = remoteAddress.trim().toLowerCase();
-  return (
-    normalized === "127.0.0.1" ||
-    normalized === "::1" ||
-    normalized === "::ffff:127.0.0.1" ||
-    normalized === "::ffff:0:127.0.0.1"
-  );
-}
-
 function decodeSegment(raw: string): string | null {
   let decoded: string;
   try {
@@ -158,18 +116,6 @@ function decodeSegment(raw: string): string | null {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function requestCredentialBridgeToken(req: IncomingMessage): string | null {
-  const header = req.headers["x-eliza-session-token"];
-  const raw = Array.isArray(header) ? header[0] : header;
-  if (typeof raw === "string" && raw.trim()) return raw.trim();
-  const authorization = req.headers.authorization;
-  if (typeof authorization === "string") {
-    const match = authorization.match(/^Bearer\s+(.+)$/i);
-    if (match?.[1]?.trim()) return match[1].trim();
-  }
-  return null;
 }
 
 /**
@@ -206,20 +152,6 @@ async function resolveActiveSession(
   return session;
 }
 
-function isSessionCallerAuthorized(
-  req: IncomingMessage,
-  session: SessionInfo,
-): boolean {
-  const token = requestCredentialBridgeToken(req);
-  return (
-    token !== null &&
-    matchesCredentialBridgeToken(
-      token,
-      session.metadata?.[CREDENTIAL_BRIDGE_TOKEN_HASH_METADATA],
-    )
-  );
-}
-
 async function handlePost(
   req: IncomingMessage,
   res: ServerResponse,
@@ -251,7 +183,7 @@ async function handlePost(
     );
     return;
   }
-  if (!isSessionCallerAuthorized(req, session)) {
+  if (!verifySessionBridgeToken(req, session.metadata)) {
     sendJson(
       res,
       {
@@ -297,7 +229,7 @@ async function handlePost(
   const result = await adapter.requestCredentials({
     childSessionId: sessionId,
     credentialKeys: rawKeys as readonly string[],
-    origin: originFromSessionMetadata(session.metadata),
+    origin: await resolveCredentialOrigin(ctx.runtime, session.metadata),
   });
   // #8907/#10317: surface the pending request in the origin task thread so
   // `SensitiveRequestBlock` renders an inline tunnel-routed secure form (AC1).
@@ -319,6 +251,18 @@ async function handlePost(
     expiresAt: result.expiresAt,
     sensitiveRequestIds: [...result.sensitiveRequestIds],
   });
+}
+
+/**
+ * The tunnel adapter has no peek/commit split, so a ready value is already
+ * redeemed when it reaches this route. Log a delivery that never reached the
+ * child: the owner must provide the value again under a new scope.
+ * Follow-up: a peek/commit API on the credential tunnel service.
+ */
+function warnCredentialSpent(sessionId: string, key: string, why: string) {
+  logger.warn(
+    `[credential-bridge] ${key} for ${sessionId} was redeemed but not delivered (${why}); the one-shot value is spent`,
+  );
 }
 
 async function handleGet(
@@ -354,7 +298,7 @@ async function handleGet(
     );
     return;
   }
-  if (!isSessionCallerAuthorized(req, session)) {
+  if (!verifySessionBridgeToken(req, session.metadata)) {
     sendJson(
       res,
       {
@@ -376,16 +320,26 @@ async function handleGet(
     return;
   }
   const deadline = Date.now() + DEFAULT_LONG_POLL_MS;
+  // A client abort leaves `writableEnded` false, so track the socket closing:
+  // redemption is one-shot, and redeeming for a child that already hung up
+  // burns the secret.
+  let closed = false;
+  res.on("close", () => {
+    closed = true;
+  });
+  const clientGone = () => closed || res.destroyed || res.writableEnded;
   // Long-poll loop. Bail early on expired / rejected — these are terminal.
-  // Keep client-disconnected detection cheap: we short-circuit the loop if
-  // the response has already been destroyed.
-  while (!res.writableEnded && Date.now() < deadline) {
+  while (!clientGone() && Date.now() < deadline) {
     const outcome = await adapter.tryRetrieveCredential({
       childSessionId: sessionId,
       key,
       scopedToken,
     });
     if (outcome.status === "ready") {
+      if (clientGone()) {
+        warnCredentialSpent(sessionId, key, "the child disconnected");
+        return;
+      }
       // The long-poll may have waited minutes after the initial ownership
       // check. Re-authorize at the disclosure boundary: a child that stopped,
       // was removed, or otherwise became terminal while the adapter was
@@ -426,11 +380,18 @@ async function handleGet(
         );
         return;
       }
-      sendJson(res, {
-        key,
-        value: outcome.value,
-        retrievedAt: Date.now(),
-      });
+      if (clientGone()) {
+        warnCredentialSpent(sessionId, key, "the child disconnected");
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.write(
+        JSON.stringify({ key, value: outcome.value, retrievedAt: Date.now() }),
+        (error) => {
+          if (error) warnCredentialSpent(sessionId, key, error.message);
+        },
+      );
+      res.end();
       return;
     }
     if (outcome.status === "expired") {
@@ -448,7 +409,7 @@ async function handleGet(
     }
     await delay(POLL_INTERVAL_MS);
   }
-  if (!res.writableEnded) {
+  if (!clientGone()) {
     sendJson(
       res,
       { error: "credential not delivered before deadline", code: "timeout" },
@@ -474,7 +435,7 @@ export async function handleBridgeRoutes(
   const getMatch = postMatch ? null : pathname.match(GET_PATH);
   if (!postMatch && !getMatch) return false;
 
-  if (!isLoopback(req.socket.remoteAddress)) {
+  if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) {
     sendJson(
       res,
       {

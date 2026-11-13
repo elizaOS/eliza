@@ -58,7 +58,7 @@ function parseLatestWorkerVersion(output) {
   );
 }
 
-function parseWorkerVersionSecretNames(output) {
+function parseWorkerVersionBindingNames(output, bindingType) {
   const parsed = JSON.parse(output);
   const bindings = parsed?.resources?.bindings;
   if (!Array.isArray(bindings)) {
@@ -66,7 +66,7 @@ function parseWorkerVersionSecretNames(output) {
   }
   return parseWorkerSecretNames(
     JSON.stringify(
-      bindings.filter((binding) => binding?.type === "secret_text"),
+      bindings.filter((binding) => binding?.type === bindingType),
     ),
   );
 }
@@ -101,6 +101,8 @@ export async function ensureWorkerSecretAbsent({
   name,
   wranglerArgs = [],
   versioned = false,
+  // keep_vars preserves a deployed plain variable after it leaves the config.
+  bindingType = "secret_text",
   attempts = 3,
   retryDelayMs = 10_000,
   run = runWrangler,
@@ -112,6 +114,12 @@ export async function ensureWorkerSecretAbsent({
   const validatedArgs = validateWranglerEnvironmentArgs(wranglerArgs);
   if (typeof versioned !== "boolean") {
     throw new Error("Versioned secret mode must be boolean");
+  }
+  if (
+    bindingType !== "secret_text" &&
+    !(bindingType === "plain_text" && versioned)
+  ) {
+    throw new Error("Plain text removal requires versioned mode");
   }
   if (!Number.isInteger(attempts) || attempts < 1) {
     throw new Error("Attempts must be a positive integer");
@@ -127,8 +135,9 @@ export async function ensureWorkerSecretAbsent({
     const latest = parseLatestWorkerVersion(
       await run(["versions", "list", ...validatedArgs, "--json"]),
     );
-    return parseWorkerVersionSecretNames(
+    return parseWorkerVersionBindingNames(
       await run(["versions", "view", latest.id, ...validatedArgs, "--json"]),
+      bindingType,
     );
   };
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -163,12 +172,15 @@ async function main() {
   const args = process.argv.slice(2);
   const versioned = args[0] === "--versions";
   if (versioned) args.shift();
+  const plainText = args[0] === "--plain-text";
+  if (plainText) args.shift();
   const [name, ...wranglerArgs] = args;
   if (!name) throw new Error("Worker secret name is required");
   const result = await ensureWorkerSecretAbsent({
     name,
     wranglerArgs,
     versioned,
+    bindingType: plainText ? "plain_text" : "secret_text",
   });
   process.stdout.write(`${result}\n`);
 }

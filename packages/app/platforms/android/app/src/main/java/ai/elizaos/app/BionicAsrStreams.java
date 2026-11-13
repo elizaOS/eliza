@@ -32,16 +32,22 @@ import java.util.concurrent.ConcurrentHashMap;
  * stream. cancel names the stream by id, so it can be sent on a second
  * connection while partial/finish decodes on the first; the decode then
  * answers {@code code:"CANCELLED"}. When the owning connection closes, its
- * stream is cancelled and freed.
+ * stream is freed.
+ *
+ * <p>The native cancel stops whatever ASR decode runs on the shared context,
+ * so this class records which stream (or the batch {@code op="asr"}) owns the
+ * decode, and a cancel signals the context only while the named stream does.
+ * Cancelling stream A never stops stream B's finish or a batch transcription.
  *
  * <p>Bounds: one feed carries at most {@link #MAX_FEED_SECONDS} of audio, a
  * stream at most {@link #MAX_STREAM_SECONDS}, and the host holds at most
  * {@link #MAX_STREAMS} streams. The native transcript buffer is 64 KiB.
  *
  * <p>Locking: the caller holds the server's resident lock for every method
- * except {@link #cancel}, and destroys the native context only after
- * {@link #closeAll}. {@link #cancel} only takes the session monitor, which
- * close also takes, so it never signals a freed stream.
+ * except {@link #cancel}, {@link #cancelBatch} and {@link #cancelCurrent},
+ * and destroys the native context only after {@link #closeAll}. The cancels
+ * only take the owner lock; a stream owns the decode only while the resident
+ * lock is held for it, so a cancel never signals a freed stream.
  *
  * <p>Logs carry sample counts and transcript lengths only, never text.
  */
@@ -102,6 +108,11 @@ final class BionicAsrStreams {
     private final Logger log;
     private final ConcurrentHashMap<String, Session> sessions = new ConcurrentHashMap<>();
     private final SecureRandom random = new SecureRandom();
+    /** Marks the batch {@code op="asr"} as the decode owner. */
+    private static final Object BATCH = new Object();
+    private final Object ownerLock = new Object();
+    /** The {@link Session} or {@link #BATCH} decoding now, or null. Guarded by ownerLock. */
+    private Object decodeOwner;
 
     BionicAsrStreams(Native nativeApi, Logger log) {
         this.nativeApi = nativeApi;
@@ -226,7 +237,12 @@ final class BionicAsrStreams {
         final long started = System.nanoTime();
         final String text;
         try {
-            text = finish ? nativeApi.finish(s.handle) : nativeApi.partial(s.handle);
+            setOwner(s);
+            try {
+                text = finish ? nativeApi.finish(s.handle) : nativeApi.partial(s.handle);
+            } finally {
+                setOwner(null);
+            }
         } catch (CancellationException cancelled) {
             log.info("ASR stream " + (finish ? "finish" : "partial") + " cancelled after "
                 + s.fedSamples + " samples");
@@ -247,15 +263,53 @@ final class BionicAsrStreams {
         return ok().put("text", safe).put("ms", ms).toString();
     }
 
-    /** Signal a running partial/finish on stream {@code id}. No resident lock needed. */
+    /**
+     * Signal a running partial/finish on stream {@code id}. No resident lock
+     * needed. Answers {@code signalled:false} when that stream is not decoding.
+     */
     String cancel(String id) throws JSONException {
         final Session s = id == null ? null : sessions.get(id);
         if (s == null) return ok().put("signalled", false).toString();
-        synchronized (s) {
-            if (s.closed) return ok().put("signalled", false).toString();
+        synchronized (ownerLock) {
+            if (decodeOwner != s) return ok().put("signalled", false).toString();
             nativeApi.cancel(s.handle);
         }
         return ok().put("signalled", true).toString();
+    }
+
+    /** Mark the batch transcription as the decode owner. Caller holds the resident lock. */
+    void beginBatch() {
+        setOwner(BATCH);
+    }
+
+    void endBatch() {
+        setOwner(null);
+    }
+
+    /** Run {@code signal} (the context-wide ASR cancel) only while a batch transcription decodes. */
+    boolean cancelBatch(Runnable signal) {
+        synchronized (ownerLock) {
+            if (decodeOwner != BATCH) return false;
+            signal.run();
+            return true;
+        }
+    }
+
+    /** Stop whichever ASR decode runs now (host shutdown). {@code batchSignal} cancels a batch one. */
+    void cancelCurrent(Runnable batchSignal) {
+        synchronized (ownerLock) {
+            if (decodeOwner == BATCH) {
+                batchSignal.run();
+            } else if (decodeOwner instanceof Session) {
+                nativeApi.cancel(((Session) decodeOwner).handle);
+            }
+        }
+    }
+
+    private void setOwner(Object owner) {
+        synchronized (ownerLock) {
+            decodeOwner = owner;
+        }
     }
 
     /** Cancel and free the client's stream (disconnect or explicit close). Caller holds the resident lock. */
@@ -280,11 +334,8 @@ final class BionicAsrStreams {
         synchronized (s) {
             if (s.closed) return;
             s.closed = true;
-            try {
-                nativeApi.cancel(s.handle);
-            } catch (RuntimeException ignored) {
-                // Nothing is decoding on a stream being closed; cancel only clears state.
-            }
+            // Close runs under the resident lock, so this stream is not
+            // decoding; a cancel here would only hit the shared context.
             nativeApi.close(s.handle);
         }
     }

@@ -432,7 +432,7 @@ test("builder kit carries no downstream product identity", () => {
   for (const file of files)
     assert.doesNotMatch(
       fs.readFileSync(file, "utf8"),
-      /senior|elizaresearch|vendor\/eliza\//i,
+      /senior|alphacompute|vendor\/eliza\//i,
       file,
     );
 });

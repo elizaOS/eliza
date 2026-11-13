@@ -301,10 +301,3 @@ export function getInferencePriorityGate(): InferencePriorityGate {
 	}
 	return globalGate;
 }
-
-/** Test hook — replace or clear (null) the process-wide gate. */
-export function setInferencePriorityGate(
-	gate: InferencePriorityGate | null,
-): void {
-	globalGate = gate;
-}

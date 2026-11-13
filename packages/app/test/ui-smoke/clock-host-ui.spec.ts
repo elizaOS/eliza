@@ -19,6 +19,8 @@ import type {
   ClockAlarmStatus,
   ClockHost,
   ClockProposal,
+  ClockSavedAlarmReview,
+  ClockSavedAlarms,
 } from "../../../ui/src/bridge/clock-host";
 import {
   installDefaultAppRoutes,
@@ -1364,4 +1366,209 @@ test("owned alarms permissions, failed inventory and old owner reads are explici
   await expect(
     page.getByRole("listitem", { name: "Morning routine", exact: true }),
   ).toHaveCount(0);
+});
+
+interface SavedAlarmsBoundary {
+  reviews(): number;
+  failRead(): void;
+}
+/** Eliza's handoff-only host: no owned store, only saved alarms moving to Clock natively. */
+async function openHandoffClock(page: Page) {
+  await seedAppStorage(page);
+  await installDefaultAppRoutes(page);
+  await openAppPath(page, "/clock");
+  await expect(
+    page.getByRole("heading", { name: "Alarms", exact: true }),
+  ).toBeVisible();
+  await page.evaluate(
+    async ({ url }) => {
+      const module = await import(url);
+      const listeners = new Set<() => void>();
+      const saved: ClockSavedAlarms = {
+        pending: 2,
+        awaitingConfirmation: 0,
+        moved: 0,
+        removed: 0,
+      };
+      let reviews = 0;
+      let failRead = false;
+      // The controlled native review: the first opens Clock (not a receipt), the
+      // second is the owner's confirmation, the third removes the last alarm.
+      const steps: ClockSavedAlarmReview[] = [
+        {
+          outcome: "opened",
+          message:
+            "Clock opened. Save the alarm there, then return to Eliza to confirm. Eliza keeps ringing it until then.",
+          savedAlarms: {
+            pending: 1,
+            awaitingConfirmation: 1,
+            moved: 0,
+            removed: 0,
+          },
+        },
+        {
+          outcome: "saved",
+          message: "Alarm moved to Clock. Eliza no longer rings it.",
+          savedAlarms: {
+            pending: 1,
+            awaitingConfirmation: 0,
+            moved: 1,
+            removed: 0,
+          },
+        },
+        {
+          outcome: "removed",
+          message: "Alarm removed from Eliza.",
+          savedAlarms: {
+            pending: 0,
+            awaitingConfirmation: 0,
+            moved: 1,
+            removed: 1,
+          },
+        },
+      ];
+      const host: ClockHost = {
+        async savedAlarms() {
+          if (failRead) throw new Error("Saved Eliza alarms could not be read");
+          return structuredClone(saved);
+        },
+        async reviewSavedAlarm() {
+          const step = steps[reviews++];
+          if (!step) throw new Error("No controlled saved alarm review left");
+          Object.assign(saved, step.savedAlarms);
+          return structuredClone(step);
+        },
+        async status() {
+          return {
+            supported: true,
+            agentBase: "http://127.0.0.1:31467",
+            reason: null,
+            capabilities: ["clock.handoff.v1", "clock.handoff.v2"],
+            scope: "a".repeat(64),
+            installationId: "controlled-installation",
+            context: {
+              sensitive: false,
+              revision: 1,
+              timeZone: "America/Los_Angeles",
+            },
+          };
+        },
+        async proposals() {
+          return { scope: "a".repeat(64), proposals: [] };
+        },
+        async review() {
+          throw new Error("No Clock proposal is under review");
+        },
+        subscribe(listener) {
+          listeners.add(listener);
+          return () => {
+            listeners.delete(listener);
+          };
+        },
+        async retire() {},
+      };
+      module.configureClockHost(host);
+      (
+        window as typeof window & { __savedAlarmsBoundary: SavedAlarmsBoundary }
+      ).__savedAlarmsBoundary = {
+        reviews: () => reviews,
+        failRead() {
+          failRead = true;
+          for (const listener of listeners) listener();
+        },
+      };
+    },
+    { url: bridgeUrl },
+  );
+}
+async function savedReviews(page: Page) {
+  return page.evaluate(() =>
+    (
+      window as typeof window & { __savedAlarmsBoundary: SavedAlarmsBoundary }
+    ).__savedAlarmsBoundary.reviews(),
+  );
+}
+
+test("handoff-only Clock moves saved Eliza alarms only after the owner confirms", async ({
+  page,
+}) => {
+  const effects: string[] = [];
+  page.on("request", (request) => {
+    if (
+      request.method() !== "GET" &&
+      /\/api\/(?:client-devices|lifeops\/reminders|chat)/.test(request.url())
+    )
+      effects.push(request.url());
+  });
+  await openHandoffClock(page);
+  await expect(
+    page.getByText("Open Clock on your Android phone to manage alarms.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  // No owned alarm store: no create form, no alarm rows from Eliza.
+  await expect(page.getByRole("button", { name: "Add alarm" })).toHaveCount(0);
+  await expect(page.locator("#clock-alarm-time")).toHaveCount(0);
+  const section = page.getByRole("region", {
+    name: "Saved Eliza alarms",
+    exact: true,
+  });
+  await expect(section).toContainText(
+    "2 alarms saved in Eliza still ring from Eliza.",
+  );
+  await section
+    .getByRole("button", { name: "Move to Clock", exact: true })
+    .click();
+  // Opening Clock is not a receipt: the alarm still rings and needs confirmation.
+  await expect(section.getByRole("status")).toHaveText(
+    "Clock opened. Save the alarm there, then return to Eliza to confirm. Eliza keeps ringing it until then.",
+  );
+  await expect(section).toContainText(
+    "2 alarms saved in Eliza still ring from Eliza.",
+  );
+  await section
+    .getByRole("button", { name: "Confirm alarm saved in Clock", exact: true })
+    .click();
+  await expect(section.getByRole("status")).toHaveText(
+    "Alarm moved to Clock. Eliza no longer rings it.",
+  );
+  await expect(section).toContainText(
+    "1 alarm saved in Eliza still rings from Eliza.",
+  );
+  await section
+    .getByRole("button", { name: "Move to Clock", exact: true })
+    .click();
+  await expect(section.getByRole("status")).toHaveText(
+    "Alarm removed from Eliza.",
+  );
+  await expect(section).toContainText(
+    "No saved Eliza alarms are left to move.",
+  );
+  await expect(section.getByRole("button")).toHaveCount(0);
+  expect(await savedReviews(page)).toBe(3);
+  expect(effects).toEqual([]);
+});
+
+test("an unreadable saved-alarm journal is an error, never an empty list", async ({
+  page,
+}) => {
+  await openHandoffClock(page);
+  const section = page.getByRole("region", {
+    name: "Saved Eliza alarms",
+    exact: true,
+  });
+  await expect(section).toContainText("2 alarms saved in Eliza");
+  await page.evaluate(() =>
+    (
+      window as typeof window & { __savedAlarmsBoundary: SavedAlarmsBoundary }
+    ).__savedAlarmsBoundary.failRead(),
+  );
+  await expect(section.getByRole("alert")).toHaveText(
+    "Saved Eliza alarms could not be read",
+  );
+  await expect(section).not.toContainText("No saved Eliza alarms");
+  await expect(
+    section.getByRole("button", { name: "Move to Clock", exact: true }),
+  ).toHaveCount(0);
+  expect(await savedReviews(page)).toBe(0);
 });

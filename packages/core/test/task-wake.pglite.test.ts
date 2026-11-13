@@ -1,7 +1,8 @@
 /** Real SQL task metadata and virtual existing core clock; no model calls. */
 import { createTestRuntime } from "@elizaos/testing/runtime";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { TaskService } from "../src/services/task";
+import { ServiceType } from "../src/types/service";
 
 const T = 1_800_000_000_000;
 const latch = () => {
@@ -75,10 +76,10 @@ for (const requestTime of [T + 1000, T + 500])
 			await f.runtime.patchTaskMetadata(id, { wake: { requestAt: T + 1000 } });
 			const service = new TaskService(f.runtime, {
 				now: () => now,
-				setInterval: () => {
+				setTimeout: () => {
 					throw Error("No new clock");
 				},
-				clearInterval: () => {},
+				clearTimeout: () => {},
 			});
 			now = T + 1000;
 			const run = service.runTick(
@@ -135,10 +136,10 @@ it("virtual core ticks honor absolute deadline, restart, passed-during-work dead
 		await f.runtime.patchTaskMetadata(id, { wake: { requestAt: T + 1000 } });
 		const clock = {
 			now: () => now,
-			setInterval: () => {
+			setTimeout: () => {
 				throw Error("No new clock");
 			},
-			clearInterval: () => {},
+			clearTimeout: () => {},
 		};
 		let service = new TaskService(f.runtime, clock);
 		const tick = () => service.runDueTasks();
@@ -186,10 +187,10 @@ it("failure backoff and operator pause remain stronger than an overdue wake", as
 		await f.runtime.patchTaskMetadata(id, { wake: { requestAt: T + 1000 } });
 		const service = new TaskService(f.runtime, {
 			now: () => now,
-			setInterval: () => {
+			setTimeout: () => {
 				throw Error("No new clock");
 			},
-			clearInterval: () => {},
+			clearTimeout: () => {},
 		});
 		now = T + 1000;
 		await expect(service.runDueTasks()).rejects.toThrow();
@@ -271,10 +272,10 @@ it("worker mutation cannot acknowledge a concurrent revision it did not start wi
 		await f.runtime.patchTaskMetadata(id, { wake: { requestAt: T + 1000 } });
 		const service = new TaskService(f.runtime, {
 			now: () => now,
-			setInterval: () => {
+			setTimeout: () => {
 				throw Error("No new clock");
 			},
-			clearInterval: () => {},
+			clearTimeout: () => {},
 		});
 		now = T + 1000;
 		await service.runDueTasks();
@@ -287,29 +288,54 @@ it("worker mutation cannot acknowledge a concurrent revision it did not start wi
 	}
 });
 
-it("existing local poll refreshes committed wake metadata without a second timer", async () => {
-	const f = await createTestRuntime({ characterName: "WakePoll" });
-	let now = T,
-		runs = 0;
-	let poll: () => Promise<void> = async () => {
-		throw Error("Timer callback not registered");
-	};
-	let timers = 0;
-	const service = new TaskService(f.runtime, {
-		now: () => now,
-		setInterval: (callback, interval) => {
-			timers++;
-			expect(interval).toBe(1000);
-			poll = callback;
-			return "clock";
+/** One-timer virtual clock; `fire()` jumps to the armed time and runs it. */
+const virtualTimer = (start: number) => {
+	let pending: { at: number; callback: () => Promise<void> } | null = null;
+	let id = 0;
+	const state = {
+		now: start,
+		armedAt: (): number | null => pending?.at ?? null,
+		fire: async () => {
+			const timer = pending;
+			if (!timer) throw Error("No timer armed");
+			pending = null;
+			state.now = Math.max(state.now, timer.at);
+			await timer.callback();
 		},
-		clearInterval: () => {},
+		clock: {
+			now: () => state.now,
+			setTimeout: (callback: () => Promise<void>, delayMs: number) => {
+				pending = { at: state.now + delayMs, callback };
+				return ++id;
+			},
+			clearTimeout: (handle: unknown) => {
+				if (handle === id) pending = null;
+			},
+		},
+	};
+	return state;
+};
+
+/** Route the runtime's task writes (markDirty) to `service`. */
+const useTaskService = async (
+	f: Awaited<ReturnType<typeof createTestRuntime>>,
+	service: TaskService,
+) => {
+	await f.runtime.getService<TaskService>(ServiceType.TASK)?.stop();
+	f.runtime.services.set(ServiceType.TASK, [service]);
+	Object.defineProperty(f.runtime, "serverless", {
+		value: false,
+		configurable: true,
 	});
+};
+
+it("local timer sleeps until the earliest due task and task writes wake it", async () => {
+	const f = await createTestRuntime({ characterName: "WakePoll" });
+	const timer = virtualTimer(T);
+	const service = new TaskService(f.runtime, timer.clock);
+	let runs = 0;
 	try {
-		Object.defineProperty(f.runtime, "serverless", {
-			value: false,
-			configurable: true,
-		});
+		await useTaskService(f, service);
 		f.runtime.registerTaskWorker({
 			name: "POLL_WAKE",
 			execute: async () => {
@@ -322,17 +348,267 @@ it("existing local poll refreshes committed wake metadata without a second timer
 			tags: ["queue", "repeat"],
 			metadata: { updatedAt: T, updateInterval: 60000 },
 		});
+		const getTasks = vi.spyOn(f.runtime, "getTasks");
 		service.startTimer();
-		await poll();
+		expect(timer.armedAt()).toBe(T + 1000);
+		await timer.fire();
 		expect(runs).toBe(0);
-		await f.runtime.patchTaskMetadata(id, { wake: { requestAt: T + 1000 } });
-		now = T + 999;
-		await poll();
-		expect(runs).toBe(0);
-		now++;
-		await poll();
+		// Next tick is the task's due time, not one second later.
+		expect(timer.armedAt()).toBe(T + 60000);
+
+		// A committed wake is a task write: the timer wakes within one second.
+		await f.runtime.patchTaskMetadata(id, { wake: { requestAt: T + 5000 } });
+		expect(timer.armedAt()).toBe(T + 2000);
+		await timer.fire();
+		expect(timer.armedAt()).toBe(T + 5000);
+		await timer.fire();
 		expect(runs).toBe(1);
-		expect(timers).toBe(1);
+		// The run wrote updatedAt; one check later the timer sleeps a full interval.
+		expect(timer.armedAt()).toBe(T + 6000);
+		await timer.fire();
+		expect(timer.armedAt()).toBe(T + 65000);
+		// Four queries in 65 simulated seconds; the fixed 1 s poll made 65.
+		expect(getTasks).toHaveBeenCalledTimes(4);
+	} finally {
+		await service.stop();
+		await f.cleanup();
+	}
+});
+
+it("creating a task wakes an idle timer and due tasks that cannot run retry each second", async () => {
+	const f = await createTestRuntime({ characterName: "WakeCreate" });
+	const timer = virtualTimer(T);
+	const service = new TaskService(f.runtime, timer.clock);
+	let runs = 0,
+		ready = false;
+	try {
+		await useTaskService(f, service);
+		f.runtime.registerTaskWorker({
+			name: "ONE_SHOT",
+			shouldRun: async () => ready,
+			execute: async () => {
+				runs++;
+				return undefined;
+			},
+		});
+		service.startTimer();
+		await timer.fire();
+		// Empty queue: no timer until a task write.
+		expect(timer.armedAt()).toBeNull();
+
+		const later = await f.runtime.createTask({
+			name: "ONE_SHOT",
+			tags: ["queue"],
+			dueAt: T + 30000,
+			metadata: {},
+		});
+		expect(timer.armedAt()).toBe(timer.now + 1000);
+		await timer.fire();
+		expect(timer.armedAt()).toBe(T + 30000);
+
+		await f.runtime.createTask({
+			name: "ONE_SHOT",
+			tags: ["queue"],
+			metadata: {},
+		});
+		expect(timer.armedAt()).toBe(timer.now + 1000);
+		await timer.fire();
+		// Due but held by shouldRun: the old one-second cadence.
+		expect(runs).toBe(0);
+		expect(timer.armedAt()).toBe(timer.now + 1000);
+		ready = true;
+		await timer.fire();
+		expect(runs).toBe(1);
+		await timer.fire();
+		expect(timer.armedAt()).toBe(T + 30000);
+		await timer.fire();
+		expect(runs).toBe(2);
+		expect(await f.runtime.getTask(later)).toBeNull();
+	} finally {
+		await service.stop();
+		await f.cleanup();
+	}
+});
+
+it("TASK_TICK_MAX_MS caps the sleep and an invalid value fails at start", async () => {
+	const f = await createTestRuntime({ characterName: "WakeCap" });
+	const timer = virtualTimer(T);
+	const service = new TaskService(f.runtime, timer.clock);
+	try {
+		await useTaskService(f, service);
+		f.runtime.registerTaskWorker({
+			name: "HOURLY",
+			execute: async () => undefined,
+		});
+		await f.runtime.createTask({
+			name: "HOURLY",
+			tags: ["queue", "repeat"],
+			metadata: { updatedAt: T, updateInterval: 3_600_000 },
+		});
+		service.startTimer();
+		await timer.fire();
+		expect(timer.armedAt()).toBe(timer.now + 60000);
+
+		f.runtime.setSetting("TASK_TICK_MAX_MS", "30000");
+		service.startTimer();
+		await timer.fire();
+		expect(timer.armedAt()).toBe(timer.now + 30000);
+
+		f.runtime.setSetting("TASK_TICK_MAX_MS", "10");
+		expect(() => service.startTimer()).toThrow(
+			expect.objectContaining({ code: "TASK_TICK_MAX_INVALID" }),
+		);
+	} finally {
+		await service.stop();
+		await f.cleanup();
+	}
+});
+
+it("registering a missing worker wakes the timer and resumes an orphan-paused task", async () => {
+	const f = await createTestRuntime({ characterName: "WakeWorker" });
+	const timer = virtualTimer(T);
+	const service = new TaskService(f.runtime, timer.clock);
+	let runs = 0;
+	try {
+		await useTaskService(f, service);
+		const id = await f.runtime.createTask({
+			name: "LATE_WORKER",
+			tags: ["queue", "repeat"],
+			metadata: {
+				updatedAt: T - 5000,
+				updateInterval: 1000,
+				paused: true,
+				orphanedNoWorker: true,
+			},
+		});
+		service.startTimer();
+		await timer.fire();
+		// Only a paused task: the timer sleeps to the cap.
+		expect(timer.armedAt()).toBe(timer.now + 60000);
+
+		f.runtime.registerTaskWorker({
+			name: "LATE_WORKER",
+			execute: async () => {
+				runs++;
+				return undefined;
+			},
+		});
+		expect(timer.armedAt()).toBe(timer.now + 1000);
+		await timer.fire();
+		expect((await f.runtime.getTask(id))?.metadata?.paused).toBe(false);
+		await timer.fire();
+		expect(runs).toBe(1);
+	} finally {
+		await service.stop();
+		await f.cleanup();
+	}
+});
+
+it("a timer that fires during a running tick re-arms after it", async () => {
+	const f = await createTestRuntime({ characterName: "WakeBusy" });
+	const timer = virtualTimer(T);
+	const service = new TaskService(f.runtime, timer.clock);
+	try {
+		await useTaskService(f, service);
+		const gate = latch();
+		const entered = latch();
+		vi.spyOn(f.runtime, "getTasks").mockImplementationOnce(async () => {
+			entered.resolve();
+			await gate.promise;
+			return [];
+		});
+		service.startTimer();
+		const run = service.runDueTasks();
+		await entered.promise;
+		await timer.fire();
+		expect(timer.armedAt()).toBeNull();
+		gate.resolve();
+		await run;
+		await Promise.resolve();
+		expect(timer.armedAt()).toBe(timer.now + 1000);
+	} finally {
+		await service.stop();
+		await f.cleanup();
+	}
+});
+
+it("a failed queue query retries in one second", async () => {
+	const f = await createTestRuntime({ characterName: "WakeFail" });
+	const timer = virtualTimer(T);
+	const service = new TaskService(f.runtime, timer.clock);
+	try {
+		await useTaskService(f, service);
+		const reportError = vi
+			.spyOn(f.runtime, "reportError")
+			.mockImplementation(() => undefined);
+		vi.spyOn(f.runtime, "getTasks").mockRejectedValueOnce(Error("db busy"));
+		service.startTimer();
+		await timer.fire();
+		expect(reportError).toHaveBeenCalledWith(
+			"TaskService.timer",
+			expect.objectContaining({ code: "TASK_QUERY_FAILED" }),
+			expect.anything(),
+		);
+		expect(timer.armedAt()).toBe(timer.now + 1000);
+	} finally {
+		await service.stop();
+		await f.cleanup();
+	}
+});
+
+it("stop clears the timer and later task writes do not re-arm it", async () => {
+	const f = await createTestRuntime({ characterName: "WakeStop" });
+	const timer = virtualTimer(T);
+	const service = new TaskService(f.runtime, timer.clock);
+	try {
+		await useTaskService(f, service);
+		service.startTimer();
+		expect(timer.armedAt()).toBe(T + 1000);
+		await service.stop();
+		expect(timer.armedAt()).toBeNull();
+		await f.runtime.createTask({
+			name: "AFTER_STOP",
+			tags: ["queue"],
+			metadata: {},
+		});
+		expect(timer.armedAt()).toBeNull();
+	} finally {
+		await f.cleanup();
+	}
+});
+
+it("the old setInterval clock shape still drives the timer one shot at a time", async () => {
+	const f = await createTestRuntime({ characterName: "WakeLegacy" });
+	const timer = virtualTimer(T);
+	const cleared: unknown[] = [];
+	const service = new TaskService(f.runtime, {
+		now: timer.clock.now,
+		setInterval: timer.clock.setTimeout,
+		clearInterval: (handle) => {
+			cleared.push(handle);
+			timer.clock.clearTimeout(handle);
+		},
+	});
+	let runs = 0;
+	try {
+		await useTaskService(f, service);
+		f.runtime.registerTaskWorker({
+			name: "LEGACY",
+			execute: async () => {
+				runs++;
+				return undefined;
+			},
+		});
+		service.startTimer();
+		await f.runtime.createTask({
+			name: "LEGACY",
+			tags: ["queue"],
+			metadata: {},
+		});
+		await timer.fire();
+		expect(runs).toBe(1);
+		// The interval is cleared when it first fires.
+		expect(cleared.length).toBeGreaterThan(0);
 	} finally {
 		await service.stop();
 		await f.cleanup();

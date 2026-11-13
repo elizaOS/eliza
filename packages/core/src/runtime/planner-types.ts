@@ -1,16 +1,10 @@
-import type {
-	TypedReadEgressReceipt,
-	TypedReadReplyBinding,
-	TypedReadReplyPart,
-	TypedReadReplyResolver,
-} from "./typed-read-contract";
 /**
  * Shared type contracts for the planner subsystem: the planner/evaluator runtime
  * shapes, a single tool call and its result, a trajectory step, and the loop's
  * parameter and result envelopes. Consumed by planner-loop, the evaluator, and
  * the message handler that drives them.
  */
-
+import type { RequestOperationIssuer } from "../actions/task-extraction-context";
 import type {
 	ActionFailureKind,
 	ActionFailureProvenance,
@@ -38,8 +32,12 @@ import type { State } from "../types/state";
 import type { ContextObject } from "./context-object";
 import type { ChainingLoopConfig } from "./limits";
 import type { TrajectoryRecorder } from "./trajectory-recorder";
-
-export type { ContextObject } from "./context-object";
+import type {
+	TypedReadEgressReceipt,
+	TypedReadReplyBinding,
+	TypedReadReplyPart,
+	TypedReadReplyResolver,
+} from "./typed-read-contract";
 
 export interface PlannerToolCall {
 	id?: string;
@@ -381,11 +379,19 @@ export interface PlannerLoopResult {
 }
 
 export interface PlannerLoopParams {
+	/** Actual host request capability; the model port and serialized IDs cannot supply it. */
+	requestOperationIssuer?: RequestOperationIssuer;
 	resolveTypedReadReply?: TypedReadReplyResolver;
 	onTypedReadEgress?: (receipt: TypedReadEgressReceipt) => void;
 	admitTypedReadCorrection?: () => boolean;
 	/** Host owns receipt-bound recovery of missing replies after evaluated internal effects. */
 	deferInternalReplyRecoveryToCaller?: boolean;
+	/**
+	 * Stage 1 judged the requested app-view navigation part of a larger request
+	 * (visualContinuation disposition "planning"): opening the view alone does
+	 * not satisfy it. A hint for replanning only; it grants no authority.
+	 */
+	navigationWithFollowUp?: boolean;
 	runtime: PlannerRuntime;
 	context: ContextObject;
 	/**

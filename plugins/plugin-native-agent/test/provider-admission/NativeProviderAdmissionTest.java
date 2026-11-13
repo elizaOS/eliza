@@ -98,6 +98,17 @@ public final class NativeProviderAdmissionTest {
   check(!NativeProviderAdmission.providerIdentity("{broken").getBoolean("configured")&&!NativeProviderAdmission.providerIdentity(null).getBoolean("configured"),"malformed or absent is unconfigured");
   for(String output:new String[]{identity.toString(),directIdentity.toString(),NativeProviderAdmission.providerStatus(cloudSelection,cloud(ID,null),NOW).toString(),NativeProviderAdmission.providerStatus(directSelection,null,NOW).toString()})
    check(!output.contains(TOKEN)&&!output.contains(KEY)&&!output.contains("token")&&!output.contains("key"),"no credential in "+output);
+  NativeProviderAdmission.requireCloudVoiceSelection(cloudSelection,ID);
+  refused(()->NativeProviderAdmission.requireCloudVoiceSelection(directSelection,ID),"Own mode refuses new paid Cloud speech");
+  refused(()->NativeProviderAdmission.requireCloudVoiceSelection(cloudSelection,OTHER),"Cloud speech is exact-account bound");
+  JSONObject retainedOwn=new JSONObject(directSelection).put("cartesiaKey","synthetic-voice-key");
+  String unboundOwn=NativeProviderAdmission.unbindProvider(retainedOwn.toString());
+  check(new JSONObject(unboundOwn).getString("provider").equals("cerebras")&&new JSONObject(unboundOwn).getString("cartesiaKey").equals("synthetic-voice-key"),"unbind retains selected mode and Voice");
+  check(!NativeProviderAdmission.providerIdentity(unboundOwn).optBoolean("configured"),"unbound saved keys are not active");
+  refused(()->NativeProviderAdmission.applyProviderEnvironment(new JSONObject(unboundOwn),null,inherited(),NOW),"unbound saved keys never route");
+  retainedOwn.remove("key");Map<String,String> voiceOnly=inherited();
+  NativeProviderAdmission.applyProviderEnvironment(retainedOwn,null,voiceOnly,NOW);
+  check(!voiceOnly.containsKey("CEREBRAS_API_KEY")&&!voiceOnly.containsKey("ELIZAOS_CLOUD_API_KEY")&&"synthetic-voice-key".equals(voiceOnly.get("CARTESIA_API_KEY")),"removed Text leaves independent Voice without fallback");
   // Binding: success stores the admission; a failure after admission rolls back to the previous selection.
   Store store=new Store();store.provider=directSelection;store.cloud=cloud(ID,NOW+60_000);
   String bound=NativeProviderAdmission.bindCloudProvider(store,ID,"cerebras/qwen-3.8-27b",()->NOW);
@@ -170,6 +181,19 @@ public final class NativeProviderAdmissionTest {
    else check(diagnosticStore.provider.equals(directSelection),"diagnostics never weaken refusal or rollback");
   }
   for(int status:new int[]{401,403,404,429,500,503})check(new NativeProviderAdmission.CloudReadFailure(status) instanceof SecurityException,"all HTTP failures preserve the existing Calendar SecurityException classification");
+  // Cloud services remain independently admitted when text inference uses the owner's key.
+  JSONObject ownWithServices=new JSONObject(directSelection).put("cloudServices",new JSONObject(googleSelected));
+  String ownAdmitted=NativeProviderAdmission.admit(null,ownWithServices.toString(),null,null);
+  Map<String,String> ownEnv=new HashMap<>();
+  NativeProviderAdmission.applyProviderEnvironment(new JSONObject(ownAdmitted),googleCloud,ownEnv,NOW);
+  JSONObject ownGoogle=NativeProviderAdmission.applyManagedGoogleEnvironment(ownAdmitted,googleCloud,ownEnv,NOW);
+  check(ownGoogle!=null&&TOKEN.equals(ownEnv.get("ELIZA_NATIVE_GOOGLE_API_KEY")),"Google keeps its admitted service credential");
+  check(!ownEnv.containsKey("ELIZAOS_CLOUD_API_KEY"),"service credentials are never inference credentials");
+  for(String retiredCloud:new String[]{null,cloud(OTHER,NOW+60_000),cloud(ID,NOW-1)}) {
+   check(NativeProviderAdmission.applyManagedGoogleEnvironment(ownAdmitted,retiredCloud,ownEnv,NOW)==null,"retired Cloud account disconnects optional Google services");
+   check(!ownEnv.containsKey("ELIZA_NATIVE_GOOGLE_API_KEY"),"retired service credential is removed");
+   check(KEY.equals(ownEnv.get("CEREBRAS_API_KEY")),"retired Cloud account preserves direct inference");
+  }
   System.out.println("PASS local agent provider admission");
  }
 }

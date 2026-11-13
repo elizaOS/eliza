@@ -1,0 +1,36 @@
+{
+  "sources": [
+    "plugins/plugin-elizacloud/src/routes/cloud-warm-route.ts",
+    "plugins/plugin-elizacloud/src/routes/cloud-warm-route.test.ts",
+    "packages/cloud/api/v1/inference/warm/route.ts",
+    "packages/cloud/api/src/inference-app.test.ts"
+  ],
+  "bounds": "Three URL/credential hashes, capacity two, four calls and two expiry epochs. Capacity models the same FIFO replacement used at 256 entries. Network completion is abstract; no elapsed-time or provider-success guarantee.",
+  "limitations": [
+    "Identity hashes are assumed distinct. No raw credentials are modeled or returned.",
+    "The server reuses canonical generative authentication and admission snapshot publication. This cache model does not replace their authorization or billing models.",
+    "The actual client tests exercise debounce, credential changes, skipped requests and failures. The server-shell tests cover anonymous and body-bearing refusals. Live latency and billing non-mutation remain separate rollout checks."
+  ],
+  "conformance": "plugins/plugin-elizacloud/quint/check-cloud-warmup.mjs",
+  "cases": [
+    {
+      "name": "advisory-cache",
+      "main": "CloudWarmup",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["Settles"],
+      "temporalChecks": [
+        {
+          "property": "Settles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of each pending fetch completion. Completion includes failure, timeout and cancellation; no successful warmup is assumed."
+          ]
+        }
+      ],
+      "maxSteps": 24,
+      "samples": 1000
+    }
+  ]
+}

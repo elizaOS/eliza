@@ -155,6 +155,84 @@ describe("native email code sign-in (Example Reader)", () => {
     expect(message?.text).toMatch(/\b\d{6}\b/);
   });
 
+  test("the email link callback refuses an email OTP store-key preimage and leaves the code redeemable", async () => {
+    const email = "otp-preimage@example.test";
+    const ip = "198.51.100.13";
+    await nativePost(
+      "/auth/email/otp/send",
+      { email, tenantId: TENANT_ID },
+      ip,
+    );
+    // /email/otp/send stores the code under sha256 of this preimage, which
+    // a caller can build for any guess without the per-address attempt limit.
+    const code = sixDigitCode(inbox.last(email)?.text ?? "");
+    const preimage = `email-otp:${TENANT_ID}:${email}:${code}`;
+
+    const callback = await app.request(
+      `${ROUTER_ORIGIN}/auth/callback/email?${new URLSearchParams({
+        token: preimage,
+        email,
+        tenantId: TENANT_ID,
+      })}`,
+      { headers: { "X-Forwarded-For": "198.51.100.14" } },
+    );
+    expect(callback.status).toBe(302);
+    const location = callback.headers.get("location") ?? "";
+    expect(location).toContain("invalid_link");
+    expect(location).not.toContain("code=");
+
+    const { getEmailAuthForTenant } = await import(
+      "../api/services/auth-lifecycle"
+    );
+    const emailAuth = await getEmailAuthForTenant(TENANT_ID);
+    for (const token of [
+      preimage,
+      "a".repeat(63),
+      `${"a".repeat(63)}g`,
+      "A".repeat(64),
+    ]) {
+      expect(
+        (await emailAuth.verifyMagicLink(token, email, TENANT_ID)).valid,
+      ).toBe(false);
+    }
+
+    const verify = await nativePost(
+      "/auth/email/otp/verify",
+      { email, code, tenantId: TENANT_ID },
+      ip,
+    );
+    expect(verify.status).toBe(200);
+    const replay = await nativePost(
+      "/auth/email/otp/verify",
+      { email, code, tenantId: TENANT_ID },
+      "198.51.100.15",
+    );
+    expect(replay.status).toBe(401);
+  });
+
+  test("a real magic link still signs in through the callback", async () => {
+    const email = "real-link@example.test";
+    await nativePost(
+      "/auth/email/send",
+      { email, tenantId: TENANT_ID },
+      "198.51.100.16",
+    );
+    const token = inbox.last(email)?.token ?? "";
+    expect(token).toMatch(/^[0-9a-f]{64}$/);
+    const callback = await app.request(
+      `${ROUTER_ORIGIN}/auth/callback/email?${new URLSearchParams({
+        token,
+        email,
+        tenantId: TENANT_ID,
+      })}`,
+      { headers: { "X-Forwarded-For": "198.51.100.17" } },
+    );
+    expect(callback.status).toBe(302);
+    const location = callback.headers.get("location") ?? "";
+    expect(location).not.toContain("email_auth_failed");
+    expect(location).toContain("code=");
+  });
+
   test("an unknown delivery value is refused before any email is sent", async () => {
     const email = "bad-delivery@example.test";
     for (const delivery of ["link", "sms", 1, null]) {

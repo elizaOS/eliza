@@ -14,18 +14,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { ElizaError } from "@elizaos/core";
-import {
-  DEFAULT_CEREBRAS_TEXT_MODEL,
-  resolveAliasedEnvValue,
-} from "@elizaos/host/protocol";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/host/protocol";
 
 const ELIZA_CLOUD_OPENAI_BASE_URL = "https://api.eliza.app/api/v1";
 const CEREBRAS_OPENAI_BASE_URL = "https://api.cerebras.ai/v1";
 function loadConfiguredCloudApiKey(): string {
-  const namespace =
-    resolveAliasedEnvValue("ELIZA_NAMESPACE")?.trim() || "eliza";
+  const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
   const configuredPath =
-    resolveAliasedEnvValue("ELIZA_CONFIG_PATH")?.trim() ||
+    process.env.ELIZA_CONFIG_PATH?.trim() ||
     path.join(os.homedir(), `.${namespace}`, `${namespace}.json`);
   try {
     const raw = fs.readFileSync(configuredPath, "utf8");

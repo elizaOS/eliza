@@ -52,7 +52,7 @@ function fixture() {
   );
   write(
     "packages/leaf/package.json",
-    JSON.stringify({ name: "leaf", scripts: { build: "node build.mjs" } }),
+    JSON.stringify({ name: "leaf", scripts: { build: "bun build.mjs" } }),
   );
   write("packages/leaf/src.ts", "export const value = 1;\n");
   write("scripts/shared.mjs", "export const shared = true;\n");
@@ -196,7 +196,7 @@ test("owned script helpers and manifest changes retain the shared bootstrap", ()
     "packages/leaf/package.json",
     JSON.stringify({
       name: "leaf",
-      scripts: { build: "node scripts/build-helper.mjs" },
+      scripts: { build: "bun scripts/build-helper.mjs" },
     }),
   );
   f.commit();

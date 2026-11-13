@@ -58,15 +58,3 @@ export function buildSetupError(
 ): SetupErrorResponse {
 	return { error: { code, message }, message };
 }
-
-/**
- * Compose the canonical path for a connector setup endpoint.
- *
- * `setupPath("telegram", "start")` → `/api/setup/telegram/start`.
- */
-export function setupPath(
-	connector: string,
-	action: "status" | "start" | "cancel",
-): string {
-	return `/api/setup/${connector}/${action}`;
-}

@@ -82,7 +82,15 @@ fences pending lookups; a dispatched effect can still have an uncertain outcome.
 The host supplies reviewed CSS target/action permissions. Main-frame execution
 rechecks those permissions, excludes password/payment/OTP fields from ordinary
 fills, and rejects submit controls and explicit sign-in/verification/payment
-labels even if accidentally allowed. This is an additional guard, not semantic
+labels even if accidentally allowed. A binding's optional `commitPattern` (the
+`task-commit-pattern` capability) adds the host's commit words for its other
+languages. Words cannot cover every language, so on a page with a card or bank
+field or a currency amount, a click with no commit grant reaches only a control
+whose effect the browser defines: a link to another document, a checkbox or
+radio, an option, a disclosure or a tab. The money check reads the main
+document only: a card field or amount inside an open shadow root or a child
+frame does not count, so such a page relies on the word rules alone. Snapshots
+report the page's declared `lang`, or null. This is an additional guard, not semantic
 proof about arbitrary JavaScript: a reviewed ordinary button or field can run
 site code. Qualify each supported page and its consequences. Protected OTP fills,
 complete sensitive-page policy, and installed Android task binding remain separate
@@ -90,6 +98,16 @@ work. Binding metadata and target rules must never come from model or page text.
 An expired, unrevoked binding can renew at the same task epoch only with a higher
 binding revision and identical owner, origin, targets and display name. Revoked
 bindings and scope changes require a new epoch.
+
+A trusted host with no isolated world (for example a development preview that
+injects its own script into the page) can call `pageCommand(command, snapshotId,
+validateOnly, { scope, ownedHosts })`. The page command then keeps its state on
+`scope`, an object the host keeps in its own closure, and not on `globalThis`,
+so page script cannot read or replace it. `ownedHosts` is a WeakSet of the
+elements the host draws on the page; blockers ignore them. This protects only
+the command's own state: page script in the same world can still replace the
+browser's own objects. The extension and the native surface do not pass a host
+and run in an isolated world.
 
 `src/task-bindings.mjs` shares this binding and command-scope enforcement with
 trusted embedded-browser transports. The host supplies storage, exact-page URL
@@ -101,10 +119,10 @@ by itself; the page executor still checks document, snapshot and target policy.
 Run `bun run --cwd packages/os test:browser` for protocol tests. CI runs this
 lane in the OS verification job (`.github/workflows/os.yml`: `verify:portable`
 runs `test`, which ends with `test:browser`) whenever a change touches
-`packages/os`. That job runs for develop pushes (`develop-full.yml` calls
+`packages/os`. That job runs for staging and main pushes (`develop-full.yml` calls
 `ci.yml`), not in pull request validation. The Chromium scripts
-(`test:browser:page`, `test:browser:guidance`, `test:browser:task-guidance` and
-`scripts/test-protected-fill.mjs`) need a browser and are run by hand.
+(`test:browser:page`, `test:browser:guidance`, `test:browser:task-guidance`, `scripts/test-protected-fill.mjs` and
+`scripts/test-page-guard.mjs`) need a browser and are run by hand.
 Installed-browser and signed Android native-host verification are separate required
 integration checks; a built extension alone does not prove those paths work.
 
@@ -124,7 +142,6 @@ bun run --cwd packages/os test:browser:page
 
 These tests do not exercise the installed native-message path.
 
-
 Owned Chromium component builds can preserve the extension ID without the old
 CRX private key. `scripts/chromium-component.mjs` supports only the revision and
 source hashes in `scripts/chromium/upstream.json`. It emits a deterministic overlay,
@@ -134,7 +151,7 @@ has compiled or passed release-device tests.
 After building the extension, generate the overlay outside the checkout:
 
 ```sh
-node packages/os/browser/scripts/chromium-component.mjs \
+bun packages/os/browser/scripts/chromium-component.mjs \
   --source /absolute/chromium/src \
   --extension /absolute/eliza/packages/os/browser/dist/android \
   --out /absolute/new-overlay-directory --platform android \
@@ -161,17 +178,15 @@ fixtures retain their upstream license in `scripts/chromium/LICENSE.chromium`.
 
 This is an internal OS component, not a standalone workspace or installable
 product. The OS package builds it against the locked
-`@elizaos/plugin-browser/native-wire` dependency. Linux assembly and signed AOSP
-provisioning live in `../scripts/linux/assemble-browser-payload.py` and
-`../scripts/android/prepare-chromium-browser.ts`. Preserve those existing
+`@elizaos/plugin-browser/native-wire` dependency. Signed AOSP provisioning lives
+in `../scripts/android/prepare-chromium-browser.ts`. Preserve its existing
 signed-artifact and certificate checks when changing the component.
 
-For installed Linux acceptance, set `ELIZA_BROWSER_EXECUTABLE` to the OS-built
-Chromium executable and run `node --conditions=eliza-source
+No image installs the Linux relay. To qualify a Linux Chromium build that has it
+installed by hand, set `ELIZA_BROWSER_EXECUTABLE` to that executable and run `node --conditions=eliza-source
 packages/os/browser/scripts/test-native-browser.mjs`. The test uses the embedded
 component and installed `/usr/libexec/elizaos-browser-native-host` relay without
 unpacked-extension or allowlist-bypass flags.
-
 
 The `pageGuidance` isolated-world renderer uses existing snapshot target identity
 for a single ring and dismissible label without changing provider element styles.
@@ -271,7 +286,7 @@ is installed during an authorized snapshot, so activity before that snapshot or
 lost before storage acknowledgment is not covered. Product consumers must treat
 attempts as uncertain and reconcile observed provider status. They must not infer
 payment success or human intent solely from a form event. Run
-`node packages/os/browser/scripts/test-manual-activity.mjs` for Chromium event
+`bun packages/os/browser/scripts/test-manual-activity.mjs` for Chromium event
 semantics using a simulated message transport; installed transport/device
 qualification and product consumption remain separate gates.
 
@@ -290,7 +305,7 @@ stopped but are reported (`request`, `navigation`); third-party requests and
 requests that start within 1.5 seconds of her own key press or pointer press are
 not. A site request that starts later than that (a long debounce after she stops
 typing) is reported, which pauses the task rather than missing a commit. The
-watch lasts 30 seconds or until the next task fill or click. Same-site
+watch lasts until the binding expires or the next task fill or click. Same-site
 `fetch`, `XMLHttpRequest` and beacon requests each have a fixture. It also checks date fills (`YYYY-MM-DD`, real days only), the
 `expectedSelector` target check and the value-free `hasInput` field flag.
 
@@ -331,7 +346,6 @@ reload, until the host restores it. Snapshot references in `keepClear` name
 controls the label must not cover. Manual-activity events from a form with a
 password, code or user-name field carry `credential: true`.
 
-
 Android component generation accepts `--embed-host` only as an explicit build
 option. It adds `knownActivityEmbeddingCerts` to the intent dispatcher target, standard Custom Tab and main
 tabbed activities, plus the dispatcher alias (Android 15 does not inherit its
@@ -348,6 +362,11 @@ The Android overlay includes full-origin Autofill transport (including ports and
 per-field origins). The original patch provenance is in `scripts/chromium/autofill`.
 The Java regression requires JDK 21. Consumers must not apply a second Autofill patch.
 
+The Android overlay also sets the profile's font scale factor when Android's font size
+changes while the browser is open (`scripts/chromium/font-scale-on-change.mjs`). Chromium
+otherwise sets it only when a foreground session starts, so a Custom Tab beside another app
+could keep the old text size until the browser was closed.
+
 Products may add the complete reviewed protection resource set exposed by
 `protectionAssetNames`. This opts the component into `declarativeNetRequest` and
 exposes only `warning.html`; partial inventories, extra permissions and other
@@ -358,7 +377,7 @@ Eliza OS owns Android Chromium compilation as well as source preparation. On a
 provisioned Linux Chromium/depot_tools host, run:
 
 ```sh
-node packages/os/scripts/android/build-chromium-browser.ts \
+bun packages/os/scripts/android/build-chromium-browser.ts \
   --source /absolute/chromium/src --extension /absolute/product/extension \
   --out /absolute/new-overlay --build /absolute/chromium/src/out/Owned \
   --args-file /absolute/reviewed-args.gn --jobs 8 \
@@ -395,8 +414,12 @@ bundle the extension engine into their admitted worker resource and include the
 Node module in the verified native gateway dependency closure. Run the protection
 regressions with `node --test browser/src/protection-*.test.mjs` from `packages/os`.
 
-`buildBrowserProtection(output, {warningDirectory, warning, feeds, refreshAlarm, exceptionAlarm})`
-builds the optional unpacked worker using the shared engine. HTML/CSS overrides
+`buildBrowserProtection(output, {warningDirectory, warning, feeds, neverBlock, refreshAlarm, exceptionAlarm})`
+builds the optional unpacked worker using the shared engine. `neverBlock` (also an
+`installBrowserProtection` option) lists reviewed hosts, confirmed feed false positives,
+that no threat rule blocks or redirects; Chromium's `excludedRequestDomains` covers each
+host and its subdomains by whole labels, never a lookalike or a parent domain. A changed
+list is applied to the saved rules at once, without a download. HTML/CSS overrides
 preserve shared messaging and enforcement. The default warning style supports dark,
 high-contrast and forced-colors modes. `warning: {assistantName, copy}` fills the
 page's `{{title}}`, `{{heading}}`, `{{stopped}}`, `{{mistake}}`, `{{feeds}}` and
@@ -427,7 +450,7 @@ Run its contracts with `node --test protection/domain-lookalike.test.mjs` from
 this directory; the package browser suite includes them.
 
 The task-effect watch covers the interval from a helper action to the person's
-next trusted control activation, for at most 30 seconds. A click on a button or
+next trusted control activation, until the binding expires. A click on a button or
 link, or a submission/activation keypress, creates that handoff. Stray taps,
 scrolling and ordinary typing retain only the short 1.5-second attribution
 window. A person's submission may finish later; its delayed receipt is not treated
@@ -436,9 +459,59 @@ reportable when they finish afterward. Synthetic page events do not end the
 interval, and a new helper action starts a new interval. This observation rule
 does not grant permission to execute payment or sign-in controls.
 
-The protection builder accepts optional `advisory: {referenceDomains, copy}`.
-It renders a nonblocking yellow in-page bar for unavailable lists and local
-lookalike signals. The default is disabled. The engine exposes
+The page sees only its own document's completed requests, so the extension
+also watches the network (`src/effect-watch.mjs`, `webRequest` with `ws` and
+`wss` host access). From each task fill, click, select or scroll, every request
+the tab starts, in any frame and at its start, is a violation (`request`) when
+it is not a GET or HEAD or is a WebSocket; after a click, also a fetch, XHR or
+frame GET to another site. A window the page opens is `window`. A top-level GET
+navigation is left to the page's own watch and the navigation gate, so a click
+that follows a link, also through a redirect to another site, is not one; a
+top-level POST is. Real sites talk to other sites on their own, so a beacon or
+CSP report to another site, and a cross-site image, font, stylesheet, script or
+media load, are never violations, and any other request to another site counts
+only within 30 seconds of the effect (`CROSS_SITE_WINDOW_MS`). A service
+worker's request counts against tabs on its site, unless another tab the watch
+does not follow is on that site. Requests within the handoff rule above are
+hers. A commit grant lets its one commit through at request start, matched by
+the grant's `requestTarget` or by the address the page reports in the click
+result (the granted form's action, or the consented commit), and its redirect
+hops with it; without a grant, nothing the page reports excuses a request. What
+one effect set off is judged when the next effect's result arrives, with the
+presses the page's earlier watch saw up to then, or at the next snapshot. The
+watch ends when the binding
+expires, at the next task effect, at the host's own navigation, or when the main
+frame commits another document. Task snapshots then report `effectWatch:
+{ frames: "all", unseen }`; `unseen` names what it cannot see (WebRTC). Her
+presses inside a child frame are not seen, so her requests there count as the
+helper's: the task pauses rather than missing a commit. A page that writes to
+its own site on a timer after a helper action (a session keep-alive POST, its
+own analytics endpoint or an own-site `sendBeacon`), or sends a cross-site
+fetch or POST within 30 seconds of it (an analytics library that posts with
+`fetch` or XMLHttpRequest, such as a Segment or Sentry upload, included; only a
+`ping` beacon and a CSP report are exempt), pauses the task the same way; a
+cross-site write after those 30 seconds is not seen. The in-page watch, which
+cannot see a request's method, records the page's own fetch, XMLHttpRequest or
+beacon only within 30 seconds of the effect, so a site's own GET poll after
+that is not a violation; the network watch judges writes for the rest of the
+binding. Her presses and her first activated control reach the network watch
+stamped with `Date.now()`, the wall clock request times use, since
+`performance.now()` stops while the device sleeps. The money-page click rule
+allows a disclosure (a `button type=button` with `aria-expanded`) or a tab
+(`role=tab`) only when its `aria-controls` names an element in the document;
+that is still the page's own claim, so the rule is a heuristic. Run `node --conditions=eliza-source
+packages/os/browser/scripts/test-network-watch.mjs` for the real Chromium
+check of each request kind (add `--skip-late` to skip the 31-second case).
+
+The protection builder accepts optional
+`advisory: {referenceDomains, copy, unscanned, unscannedWhileLoading}`. It renders a
+nonblocking yellow in-page bar for unavailable lists and local lookalike signals. The
+default is disabled. `unscanned: false` keeps the lookalike bar and draws nothing when the
+lists are unavailable, for a consumer that warns only on a blacklist hit or a
+lookalike; it defaults to `true`. `unscannedWhileLoading: false` draws no unscanned bar
+until the first list refresh has finished (no protection record is saved yet), so a
+first start whose lists are still downloading shows nothing; a refresh that ended
+without lists shows the bar. It defaults to `true`. The engine exposes
 `advisory.setOwner(opaqueOwnerOrNull)` only to trusted worker composition. An
 owner is required before an acknowledgement can be saved. Hosts must set or
 retire that context on every account transition and transport loss. This is
@@ -448,12 +521,15 @@ and the shared browser-control worker. It advertises `protection-owner`; older
 or disabled peers reject this capability. Trusted hosts call
 `NativeSocketBrowserTarget.setProtectionOwner(opaqueOwnerOrNull)` after profile
 registration and each account transition. Disconnect and worker recovery retire
-the context. The receipt counts updated and unavailable tabs; it is not a task
+the context. Setting the owner it already has changes no page and counts no tabs.
+The receipt counts updated and unavailable tabs; it is not a task
 permission. Consumer account-lifecycle and Android qualification remain required.
 
 Acknowledgements stay in worker memory, scoped to exact origin and evidence;
 owner changes, worker restart and a later blacklist warning clear them.
-Undo is available. Messages bind the extension, main frame, document and display
+Undo is available. A refresh keeps the drawn bar and rewrites only text that
+changed, so a screen reader announces the advice again only when it changes and
+focus stays on the bar. Messages bind the extension, main frame, document and display
 nonce, and only trusted clicks submit. No exception rule or task binding is
 changed. The closed shadow tree keeps warning text out of ordinary page reads;
 it is an in-page advisory, not tamper-proof browser chrome. The existing DNR
@@ -462,7 +538,7 @@ licenses for the bundled domain parser and Unicode decoder.
 
 Run `test:browser:protection:advisory` for the real Chromium extension flow,
 keyboard-accessible controls, account reset, offline visits and narrow layout.
-`node browser/protection/test-advisory.mjs --baseline` captures the disabled
+`bun browser/protection/test-advisory.mjs --baseline` captures the disabled
 baseline. Run `bun --conditions=eliza-source browser/protection/test-advisory.mjs --native`
 from `packages/os` to exercise the same flow through the actual Linux native host
 and socket target, including disconnect reset. These controlled pages do not

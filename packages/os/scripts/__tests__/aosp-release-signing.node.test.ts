@@ -143,7 +143,7 @@ function releaseCertificates({ releasekey, apex }) {
 }
 
 /** A copy of this package whose Eliza release descriptor and channel are complete for the given keys. */
-function completeRoot(t, { platform, releasekey, apex, avb }) {
+function completeRoot(t, { keys, platform, releasekey, apex, avb }) {
   const dir = temporary(t, "release-root-");
   const write = (rel, value) => {
     fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
@@ -170,6 +170,9 @@ function completeRoot(t, { platform, releasekey, apex, avb }) {
       applicationCertificateSha256: "d".repeat(64),
       platformCertificateSha256: platform,
       releaseCertificates: releaseCertificates({ releasekey, apex }),
+      apexPayloadAvbPublicKeySha256: sha256(
+        fs.readFileSync(path.join(keys, "apex_payload.avbpubkey")),
+      ),
     },
     avb: { ...product.avb, publicKeySha256: avb },
   });
@@ -1238,6 +1241,12 @@ function managedSetup(t, tf = {}) {
   const product = fixture.repo.readBack(ELIZA);
   fixture.repo.write(ELIZA, {
     ...product,
+    signer: {
+      ...product.signer,
+      apexPayloadAvbPublicKeySha256: sha256(
+        fs.readFileSync(path.join(keys, "apex_payload.avbpubkey")),
+      ),
+    },
     avb: { ...product.avb, publicKeySha256: avb },
   });
   fixture.repo.write(CHANNEL, {
@@ -1325,6 +1334,31 @@ test("managed signing keeps private keys in the token and passes the helper, key
       .some((arg) =>
         /signing_helper|payload_signer|extra_signapk_args|java_args/.test(arg),
       ),
+  );
+});
+
+test("an APEX signing input must match the enrolled payload key", async (t) => {
+  const fixture = managedSetup(t);
+  const replacement = managedSetup(t);
+  for (const name of ["apex_payload.pem", "apex_payload.avbpubkey"]) {
+    fs.copyFileSync(
+      path.join(replacement.key.keys, name),
+      path.join(fixture.key.keys, name),
+    );
+  }
+  await refusedBeforeSigning(
+    fixture,
+    fixture.options,
+    /apex_payload[.]avbpubkey is not the product's signer[.]apexPayloadAvbPublicKeySha256/,
+  );
+
+  const product = fixture.repo.readBack(ELIZA);
+  delete product.signer.apexPayloadAvbPublicKeySha256;
+  fixture.repo.write(ELIZA, product);
+  await refusedBeforeSigning(
+    fixture,
+    fixture.options,
+    /signer[.]apexPayloadAvbPublicKeySha256 must be the reviewed public key SHA-256/,
   );
 });
 

@@ -7,6 +7,7 @@ process.env.NODE_ENV = "test";
 
 import { pushSchema } from "drizzle-kit/api";
 import { eq, sql } from "drizzle-orm";
+import { pgTable, uuid } from "drizzle-orm/pg-core";
 import {
   acquireProviderAdmission,
   releaseProviderAdmission,
@@ -17,11 +18,37 @@ import { accountDeletionExports } from "../schemas/account-deletion-exports";
 import { accountDeletionPhaseReceipts } from "../schemas/account-deletion-phase-receipts";
 import { accountDeletionRequests } from "../schemas/account-deletion-requests";
 import { apiKeys } from "../schemas/api-keys";
+import {
+  appDeploymentStatusEnum,
+  appReviewStatusEnum,
+  apps,
+  userDatabaseStatusEnum,
+} from "../schemas/apps";
+import { mobileAppAuthGrants } from "../schemas/mobile-app-auth-grants";
+import { nativeAppPublishers } from "../schemas/native-app-publishers";
 import { organizationBalanceRevisionSequence, organizations } from "../schemas/organizations";
 import { providerAdmissions } from "../schemas/provider-admissions";
 import { userSessions } from "../schemas/user-sessions";
 import { users } from "../schemas/users";
 import { accountDeletionRequestsRepository } from "./account-deletion-requests";
+
+const {
+  activateExpiredRecoveryRequests,
+  requeueExportParkedAccountDeletions,
+  toAccountDeletionRequestDto,
+} = await import("../../lib/services/account-deletion");
+const { reconcileAccountDeletionExportRevocations } = await import(
+  "../../lib/services/account-deletion-export"
+);
+
+// Keep the original bounded jobs fixture in the schema push so apps' job FK
+// has its dependency before Drizzle installs constraints.
+const reservationJobsFixture = pgTable("jobs", {
+  id: uuid("id").primaryKey(),
+  organization_id: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+});
 
 const organizationId = "10000000-0000-4000-8000-000000000001";
 const userId = "20000000-0000-4000-8000-000000000001";
@@ -99,21 +126,27 @@ beforeAll(async () => {
       accountDeletionPhaseReceipts,
       accountDeletionRequests,
       apiKeys,
+      apps,
+      appDeploymentStatusEnum,
+      appReviewStatusEnum,
+      userDatabaseStatusEnum,
+      mobileAppAuthGrants,
       organizationBalanceRevisionSequence,
       organizations,
       providerAdmissions,
+      reservationJobsFixture,
       userSessions,
       users,
     } as never,
     dbWrite as never,
   );
   await apply();
-  await dbWrite.execute(`
-    CREATE TABLE jobs (
-      id uuid PRIMARY KEY,
-      organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE
-    )
-  `);
+  const publisherMigration = await Bun.file(
+    new URL("../migrations/0551_native_app_publishers.sql", import.meta.url),
+  ).text();
+  for (const statement of publisherMigration.split("--> statement-breakpoint")) {
+    if (statement.trim()) await dbWrite.execute(statement);
+  }
   for (const statement of billingCancelMigrations
     .join("\n--> statement-breakpoint\n")
     .split("--> statement-breakpoint")) {
@@ -326,6 +359,87 @@ async function seedNonCaptureAdmissionWork(
     )`);
 }
 
+async function readRequestStatus(requestId: string): Promise<string | undefined> {
+  const [request] = await dbWrite
+    .select({ status: accountDeletionRequests.status })
+    .from(accountDeletionRequests)
+    .where(eq(accountDeletionRequests.id, requestId));
+  return request?.status;
+}
+
+async function readPhases(requestId: string) {
+  const phases = await dbWrite
+    .select()
+    .from(accountDeletionPhaseReceipts)
+    .where(eq(accountDeletionPhaseReceipts.request_id, requestId));
+  return new Map(phases.map((phase) => [phase.phase, phase]));
+}
+
+/** Reserves, fences and completes Steward deactivation, leaving the export untouched. */
+async function reserveWithStewardDeactivated(requestId: string, tokenSuffix: string) {
+  const reserved = await accountDeletionRequestsRepository.reservePersonalAccountDeletion(
+    reservationInput(requestId, tokenSuffix),
+  );
+  if (reserved.outcome !== "reserved") throw new Error("reservation failed");
+  await expect(activateReservation(tokenSuffix)).resolves.toMatchObject({ outcome: "activated" });
+  const stewardLease = await accountDeletionRequestsRepository.leasePhase({
+    requestId,
+    phase: "steward_deactivation",
+    leaseOwnerDigest: "steward-worker",
+    now,
+    leaseMilliseconds: 60_000,
+  });
+  if (!stewardLease) throw new Error("Steward lease failed");
+  expect(
+    await accountDeletionRequestsRepository.completeStewardDeactivationPhase({
+      requestId,
+      phaseReceiptId: stewardLease.receipt.id,
+      generation: stewardLease.generation,
+      providerReceiptDigest: "steward-receipt",
+      now,
+    }),
+  ).toBe(true);
+  return requestId;
+}
+
+/** Builds and publishes the export the way a user-initiated download does. */
+async function publishExport(requestId: string): Promise<void> {
+  const lease = await accountDeletionRequestsRepository.leasePhase({
+    requestId,
+    phase: "export",
+    leaseOwnerDigest: "export-worker",
+    now,
+    leaseMilliseconds: 60_000,
+  });
+  if (!lease) throw new Error("export lease failed");
+  expect(
+    await accountDeletionRequestsRepository.markExportBuilding({
+      requestId,
+      phaseReceiptId: lease.receipt.id,
+      generation: lease.generation,
+      now,
+    }),
+  ).toBe(true);
+  expect(
+    await accountDeletionRequestsRepository.markPhaseProviderCallStarted(
+      lease.receipt.id,
+      lease.generation,
+      now,
+    ),
+  ).toBe(true);
+  expect(
+    await accountDeletionRequestsRepository.completeExportPhase({
+      requestId,
+      phaseReceiptId: lease.receipt.id,
+      generation: lease.generation,
+      contentDigest: "content-digest",
+      objectReceiptDigest: "object-receipt-digest",
+      byteCount: 123,
+      now,
+    }),
+  ).toBe(true);
+}
+
 async function activateReservation(tokenSuffix: string, activatedAt = now) {
   return accountDeletionRequestsRepository.activateReservedPersonalAccountDeletion({
     recoveryTokenHash: `recovery-${tokenSuffix}`,
@@ -357,11 +471,85 @@ beforeEach(async () => {
   await dbWrite.execute("ALTER TABLE agent_backup_admission_work ENABLE TRIGGER USER");
   await dbWrite.delete(providerAdmissions);
   await dbWrite.delete(accountDeletionRequests);
+  await dbWrite.delete(nativeAppPublishers);
   await dbWrite.delete(organizations);
   await seedPersonalAccount();
 });
 
 describe("personal account deletion reservation", () => {
+  test("native publishers reject membership and personal lifecycle changes", async () => {
+    const publisherId = "10000000-0000-4000-8000-000000000090";
+    await dbWrite
+      .insert(organizations)
+      .values({ id: publisherId, name: "Publisher", slug: "publisher" });
+    await dbWrite.insert(nativeAppPublishers).values({ organization_id: publisherId });
+    await expect(
+      Promise.resolve(
+        dbWrite.insert(users).values({
+          id: "20000000-0000-4000-8000-000000000090",
+          organization_id: publisherId,
+          steward_user_id: "publisher-member-refused",
+        }),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      Promise.resolve(
+        dbWrite.update(users).set({ organization_id: publisherId }).where(eq(users.id, userId)),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      Promise.resolve(
+        dbWrite.insert(nativeAppPublishers).values({ organization_id: organizationId }),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      Promise.resolve(
+        dbWrite
+          .update(organizations)
+          .set({ is_active: false })
+          .where(eq(organizations.id, publisherId)),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      Promise.resolve(
+        dbWrite
+          .update(organizations)
+          .set({ account_lifecycle_state: "deletion_recovery" })
+          .where(eq(organizations.id, publisherId)),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      Promise.resolve(dbWrite.delete(organizations).where(eq(organizations.id, publisherId))),
+    ).rejects.toThrow();
+    const { organizationsService } = await import("../../lib/services/organizations");
+    await expect(organizationsService.delete(publisherId)).rejects.toMatchObject({
+      code: "NATIVE_APP_PUBLISHER_RETIREMENT_REQUIRED",
+    });
+    await expect(
+      organizationsService.update(publisherId, { is_active: false }),
+    ).rejects.toMatchObject({
+      code: "NATIVE_APP_PUBLISHER_RETIREMENT_REQUIRED",
+    });
+    expect(
+      (await dbWrite.select().from(organizations).where(eq(organizations.id, publisherId)))[0],
+    ).toMatchObject({
+      is_active: true,
+      account_lifecycle_state: "active",
+      paid_work_fenced_at: null,
+    });
+    expect(
+      await dbWrite.select().from(users).where(eq(users.organization_id, publisherId)),
+    ).toHaveLength(0);
+    const ordinaryId = "10000000-0000-4000-8000-000000000093";
+    await dbWrite
+      .insert(organizations)
+      .values({ id: ordinaryId, name: "Ordinary", slug: "ordinary" });
+    await organizationsService.delete(ordinaryId);
+    expect(
+      await dbWrite.select().from(organizations).where(eq(organizations.id, ordinaryId)),
+    ).toHaveLength(0);
+  });
+
   test("waits for provider admission release before committing the deletion fence", async () => {
     await accountDeletionRequestsRepository.reservePersonalAccountDeletion(
       reservationInput("50000000-0000-4000-8000-000000000090", "provider-race"),
@@ -1380,7 +1568,7 @@ describe("personal account deletion reservation", () => {
     expect(phases.filter((phase) => phase.phase === "export_revoke")).toHaveLength(1);
   });
 
-  test("fails closed at expiry until export and Steward receipts are complete", async () => {
+  test("fails closed at expiry until the Steward receipt is complete, without touching the export", async () => {
     const reserved = await accountDeletionRequestsRepository.reservePersonalAccountDeletion(
       reservationInput("50000000-0000-4000-8000-000000000008", "incomplete"),
     );
@@ -1396,7 +1584,7 @@ describe("personal account deletion reservation", () => {
         exportRevocationNotBefore: new Date(recoveryExpiresAt.getTime() + 60_000),
         now: new Date(recoveryExpiresAt.getTime() + 1),
       });
-    expect(activation).toEqual({ outcome: "export_required" });
+    expect(activation).toEqual({ outcome: "identity_deactivation_required" });
 
     const [request] = await dbWrite
       .select()
@@ -1406,14 +1594,267 @@ describe("personal account deletion reservation", () => {
       .select()
       .from(organizations)
       .where(eq(organizations.id, organizationId));
+    const [exportPhase] = await dbWrite
+      .select()
+      .from(accountDeletionPhaseReceipts)
+      .where(eq(accountDeletionPhaseReceipts.request_id, reserved.request.id))
+      .then((phases) => phases.filter((phase) => phase.phase === "export"));
     expect(request).toMatchObject({ status: "reserved", lifecycle_revision: 1 });
     expect(organization).toMatchObject({
       account_lifecycle_state: "deletion_recovery",
       account_lifecycle_revision: 1,
     });
+    expect(exportPhase).toMatchObject({ status: "pending", last_error_code: null });
   });
 
-  test("atomically erases the personal database graph and retains only an anonymous receipt", async () => {
+  test("refuses a reservation when the organization keeps an inactive member row", async () => {
+    await dbWrite.insert(users).values({
+      id: "20000000-0000-4000-8000-000000000099",
+      organization_id: organizationId,
+      steward_user_id: "steward-deactivated",
+      role: "member",
+      is_active: false,
+    });
+    await expect(
+      accountDeletionRequestsRepository.reservePersonalAccountDeletion(
+        reservationInput("50000000-0000-4000-8000-000000000020", "inactive-member"),
+      ),
+    ).resolves.toEqual({ outcome: "transfer_required", activeOwnerCount: 1 });
+    expect(await dbWrite.select().from(accountDeletionRequests)).toEqual([]);
+  });
+
+  test("erases at expiry without an export the user never requested", async () => {
+    const requestId = await reserveWithStewardDeactivated(
+      "50000000-0000-4000-8000-000000000021",
+      "no-export",
+    );
+    const expiry = new Date(recoveryExpiresAt.getTime() + 1);
+
+    // The cron revokes expired exports first, then activates; the revocation
+    // pass must leave the export decision to activation.
+    await reconcileAccountDeletionExportRevocations(10, {
+      bucket: { head: async () => null } as never,
+      now: () => expiry,
+    });
+    await expect(activateExpiredRecoveryRequests({ now: expiry, limit: 10 })).resolves.toEqual({
+      activated: 1,
+      actionRequired: 0,
+    });
+
+    const phases = await readPhases(requestId);
+    const [exportReceipt] = await dbWrite
+      .select()
+      .from(accountDeletionExports)
+      .where(eq(accountDeletionExports.request_id, requestId));
+    expect(await readRequestStatus(requestId)).toBe("scheduled");
+    expect(phases.get("export")).toMatchObject({
+      status: "canceled",
+      last_error_code: "export_not_requested",
+    });
+    expect(phases.get("export_revoke")).toMatchObject({ status: "pending" });
+    expect(exportReceipt?.status).toBe("expired");
+
+    const statusFor = async () => {
+      const record = await accountDeletionRequestsRepository.findByStatusTokenHash(
+        "status-no-export",
+        expiry,
+      );
+      if (!record) throw new Error("status record missing");
+      return toAccountDeletionRequestDto(
+        record.request,
+        record.exportReceipt,
+        record.phaseActionRequired,
+      ).nextAction;
+    };
+    expect(await statusFor()).toBe("wait_for_reconciliation");
+    await dbWrite
+      .update(accountDeletionPhaseReceipts)
+      .set({ status: "action_required" })
+      .where(eq(accountDeletionPhaseReceipts.id, phases.get("export_revoke")!.id));
+    expect(await statusFor()).toBe("contact_support");
+  });
+
+  test("erases at expiry in the same cron pass after a downloaded export", async () => {
+    const requestId = await reserveWithStewardDeactivated(
+      "50000000-0000-4000-8000-000000000022",
+      "downloaded",
+    );
+    await publishExport(requestId);
+    const expiry = new Date(recoveryExpiresAt.getTime() + 1);
+
+    await reconcileAccountDeletionExportRevocations(10, {
+      bucket: { head: async () => null } as never,
+      now: () => expiry,
+    });
+    await expect(activateExpiredRecoveryRequests({ now: expiry, limit: 10 })).resolves.toEqual({
+      activated: 1,
+      actionRequired: 0,
+    });
+
+    const phases = await readPhases(requestId);
+    expect(await readRequestStatus(requestId)).toBe("scheduled");
+    expect(phases.get("export")?.status).toBe("completed");
+    expect(phases.get("export_revoke")).toMatchObject({ status: "pending" });
+  });
+
+  test("waits for a started export at expiry, then erases once the wait bound ends", async () => {
+    const requestId = await reserveWithStewardDeactivated(
+      "50000000-0000-4000-8000-000000000023",
+      "in-flight",
+    );
+    const expiry = new Date(recoveryExpiresAt.getTime() + 1);
+    const lease = await accountDeletionRequestsRepository.leasePhase({
+      requestId,
+      phase: "export",
+      leaseOwnerDigest: "export-worker",
+      now: expiry,
+      leaseMilliseconds: 60_000,
+    });
+    if (!lease) throw new Error("export lease failed");
+
+    // A live lease keeps the request waiting, without parking it.
+    await expect(activateExpiredRecoveryRequests({ now: expiry, limit: 10 })).resolves.toEqual({
+      activated: 0,
+      actionRequired: 0,
+    });
+    expect(await readRequestStatus(requestId)).toBe("reserved");
+
+    // A provider call without a receipt may have left an object behind.
+    expect(
+      await accountDeletionRequestsRepository.markPhaseProviderCallStarted(
+        lease.receipt.id,
+        lease.generation,
+        expiry,
+      ),
+    ).toBe(true);
+    const afterLease = new Date(expiry.getTime() + 120_000);
+    await expect(activateExpiredRecoveryRequests({ now: afterLease, limit: 10 })).resolves.toEqual({
+      activated: 0,
+      actionRequired: 0,
+    });
+    expect(await readRequestStatus(requestId)).toBe("reserved");
+
+    const afterBound = new Date(recoveryExpiresAt.getTime() + 7 * 24 * 60 * 60 * 1_000);
+    await expect(activateExpiredRecoveryRequests({ now: afterBound, limit: 10 })).resolves.toEqual({
+      activated: 1,
+      actionRequired: 0,
+    });
+    const phases = await readPhases(requestId);
+    expect(await readRequestStatus(requestId)).toBe("scheduled");
+    expect(phases.get("export")).toMatchObject({
+      status: "canceled",
+      last_error_code: "export_abandoned_after_expiry",
+    });
+    expect(phases.get("export_revoke")).toMatchObject({ status: "pending" });
+  });
+
+  test("requeues an export-parked request only when applied", async () => {
+    const requestId = await reserveWithStewardDeactivated(
+      "50000000-0000-4000-8000-000000000024",
+      "parked",
+    );
+    const expiry = new Date(recoveryExpiresAt.getTime() + 1);
+    expect(
+      await accountDeletionRequestsRepository.markRecoveryActionRequired({
+        requestId,
+        errorCode: "EXPORT_REQUIRED_BEFORE_ERASURE",
+        now: expiry,
+      }),
+    ).toBe(true);
+
+    const dryRun = await requeueExportParkedAccountDeletions({
+      apply: false,
+      limit: 10,
+      now: expiry,
+    });
+    expect(dryRun).toEqual({
+      apply: false,
+      requests: [
+        {
+          requestId,
+          executeAfter: recoveryExpiresAt.toISOString(),
+          parkedAt: expiry.toISOString(),
+        },
+      ],
+      requeued: [],
+    });
+    expect(await readRequestStatus(requestId)).toBe("action_required");
+
+    await expect(
+      requeueExportParkedAccountDeletions({ apply: true, limit: 10, now: expiry }),
+    ).resolves.toMatchObject({ requeued: [requestId] });
+    expect(await readRequestStatus(requestId)).toBe("reserved");
+    await expect(activateExpiredRecoveryRequests({ now: expiry, limit: 10 })).resolves.toEqual({
+      activated: 1,
+      actionRequired: 0,
+    });
+    expect(await readRequestStatus(requestId)).toBe("scheduled");
+  });
+
+  test("atomically erases the personal graph while retaining its memberless publisher and customer grants", async () => {
+    const publisherId = "10000000-0000-4000-8000-000000000090";
+    const publishedAppId = "30000000-0000-4000-8000-000000000090";
+    const customers = [91, 92].map((suffix) => ({
+      organizationId: `10000000-0000-4000-8000-0000000000${suffix}`,
+      userId: `20000000-0000-4000-8000-0000000000${suffix}`,
+      credentialId: `40000000-0000-4000-8000-0000000000${suffix}`,
+    }));
+    await dbWrite.insert(organizations).values([
+      { id: publisherId, name: "Publisher", slug: "publisher" },
+      ...customers.map((customer, index) => ({
+        id: customer.organizationId,
+        name: "Customer",
+        slug: `customer-${index}`,
+      })),
+    ]);
+    await dbWrite.insert(nativeAppPublishers).values({ organization_id: publisherId });
+    await dbWrite.insert(users).values(
+      customers.map((customer, index) => ({
+        id: customer.userId,
+        organization_id: customer.organizationId,
+        steward_user_id: `customer-${index}`,
+        role: "owner",
+      })),
+    );
+    await dbWrite.insert(apps).values({
+      id: publishedAppId,
+      name: "Native product",
+      slug: "native-product",
+      organization_id: publisherId,
+      created_by_user_id: userId,
+      app_url: "https://native.example",
+    });
+    const grantPrincipals = [
+      { organizationId, userId, credentialId: "40000000-0000-4000-8000-000000000090" },
+      ...customers,
+    ];
+    for (const [index, principal] of grantPrincipals.entries()) {
+      await dbWrite.insert(apiKeys).values({
+        id: principal.credentialId,
+        name: `mobile-${index}`,
+        key_hash: `mobile-hash-${index}`,
+        key_prefix: "elk_mob_",
+        user_id: principal.userId,
+        organization_id: principal.organizationId,
+        source_app_id: publishedAppId,
+      });
+      await dbWrite.insert(mobileAppAuthGrants).values({
+        app_id: publishedAppId,
+        client_id: "native.product",
+        user_id: principal.userId,
+        organization_id: principal.organizationId,
+        code_hash: `native-code-${index}`,
+        environment: "staging",
+        redirect_uri: "https://native.example/callback",
+        state_hash: `state-${index}`,
+        code_challenge: `challenge-${index}`,
+        code_challenge_method: "S256",
+        scopes: ["inference"],
+        status: "acknowledged",
+        credential_id: principal.credentialId,
+        expires_at: recoveryExpiresAt,
+      });
+    }
     const input = reservationInput("50000000-0000-4000-8000-000000000009", "erase");
     input.phases.push({
       phase: "database_erasure",
@@ -1646,10 +2087,37 @@ describe("personal account deletion reservation", () => {
       now: irreversibleAt,
     });
     expect(finalized).toMatchObject({ outcome: "completed" });
-    expect((await dbWrite.select().from(organizations)).map(({ id }) => id)).toEqual([
-      otherOrganizationId,
-    ]);
-    expect((await dbWrite.select().from(users)).map(({ id }) => id)).toEqual([otherUserId]);
+    expect((await dbWrite.select().from(organizations)).map(({ id }) => id).sort()).toEqual(
+      [
+        otherOrganizationId,
+        publisherId,
+        ...customers.map((customer) => customer.organizationId),
+      ].sort(),
+    );
+    expect((await dbWrite.select().from(users)).map(({ id }) => id).sort()).toEqual(
+      [otherUserId, ...customers.map((customer) => customer.userId)].sort(),
+    );
+    expect((await dbWrite.select().from(apps).where(eq(apps.id, publishedAppId)))[0]).toMatchObject(
+      {
+        organization_id: publisherId,
+        created_by_user_id: null,
+      },
+    );
+    expect(
+      (await dbWrite.select().from(organizations).where(eq(organizations.id, publisherId)))[0],
+    ).toMatchObject({
+      is_active: true,
+      account_lifecycle_state: "active",
+      paid_work_fenced_at: null,
+    });
+    expect(
+      (await dbWrite.select().from(mobileAppAuthGrants)).map((grant) => grant.user_id).sort(),
+    ).toEqual(customers.map((customer) => customer.userId).sort());
+    expect(
+      (await dbWrite.select().from(apiKeys).where(eq(apiKeys.source_app_id, publishedAppId)))
+        .map((key) => key.id)
+        .sort(),
+    ).toEqual(customers.map((customer) => customer.credentialId).sort());
     expect((await dbWrite.execute("SELECT id FROM jobs")).rows).toEqual([
       { id: crossOrganizationJobId },
     ]);

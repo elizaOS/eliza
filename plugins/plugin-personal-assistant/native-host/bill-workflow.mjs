@@ -41,6 +41,7 @@ export class BillWorkflow extends GuidedWebsiteWorkflow {
     assistantName = "Eliza",
     stillAuthorized = async () => true,
     signal = new AbortController().signal,
+    grantCommit = null,
   }) {
     if (typeof deriveBillDecision !== "function")
       throw new BillHostError("Reviewed bill observation policy is required");
@@ -60,6 +61,8 @@ export class BillWorkflow extends GuidedWebsiteWorkflow {
       assistantName.length > 64
     )
       throw new BillHostError("Invalid assistant name");
+    if (grantCommit !== null && typeof grantCommit !== "function")
+      throw new BillHostError("Invalid commit grant port");
     super({ runtime, actuator, taskId, stillAuthorized, signal });
     Object.assign(this, {
       selectionGuidance: structuredClone(selectionGuidance),
@@ -69,6 +72,7 @@ export class BillWorkflow extends GuidedWebsiteWorkflow {
       codeCoordinator,
       receipts,
       assistantName,
+      grantCommit,
       controls: validateBillControls(controls),
     });
   }
@@ -549,6 +553,8 @@ export class BillWorkflow extends GuidedWebsiteWorkflow {
       observationVersion: observation.version,
       inputRevision: observation.inputRevision,
       targetRef: target.selector,
+      // The reviewed control: the browser checks the node is this one.
+      expectedSelector: this.controls.existingMethod.selector,
       capability: "browser.click",
       authorizationId: task.authorization.decisionId,
       expiresAt: Date.now() + 10000,
@@ -569,7 +575,26 @@ export class BillWorkflow extends GuidedWebsiteWorkflow {
         "selection-save-failed",
       );
     }
-    const result = await this.runtime.execute(task.id, task.revision, proposal);
+    // She chose this saved method for this review, so this one click is
+    // granted: on a page that shows money the browser presses no other
+    // opaque control without a grant. One use, this control, this page.
+    this.grantCommit?.(proposal.id, {
+      grantId: randomUUID(),
+      taskId: task.id,
+      epoch: task.epoch,
+      origin: observation.origin,
+      targetRef: target.selector,
+      selector: proposal.expectedSelector,
+      subaction: "click",
+      expiresAt: proposal.expiresAt,
+    });
+    let result;
+    try {
+      result = await this.runtime.execute(task.id, task.revision, proposal);
+    } finally {
+      // A grant the browser never received is withdrawn.
+      this.grantCommit?.(proposal.id, null);
+    }
     const operation = result.operations.find(
       (operation) => operation.proposal.id === operationId,
     );
