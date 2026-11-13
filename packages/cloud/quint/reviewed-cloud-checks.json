@@ -531,5 +531,16 @@
         "the account snapshot reports the grant's free-through date and current allowance"
       ]
     }
+  ],
+  "NativeRegistryMigration.qnt": [
+    {
+      "file": "packages/scripts/cloud/admin/migrate-native-app-auth.pglite.test.ts",
+      "required": [
+        "imports exact protected registrations, alias assets, browser returns and disabled apps atomically",
+        "refuses ambiguous callback ownership before publishing any imported data",
+        "rejects partial source associations and refuses to overwrite changed registrations",
+        "reads complete callback binding from the deployed staging branch across all deployment pages"
+      ]
+    }
   ]
 }
