@@ -77,7 +77,6 @@ describe("password change session revocation", { concurrent: false }, () => {
     vi.stubEnv("ELIZA_CONFIG_PATH", path.join(stateDir, "eliza.json"));
     vi.stubEnv("ELIZA_PERSIST_CONFIG_PATH", path.join(stateDir, "eliza.json"));
     vi.stubEnv("ELIZA_API_BIND", "127.0.0.1");
-    vi.stubEnv("ELIZA_API_BIND_HOST", "127.0.0.1");
     vi.stubEnv("ELIZA_REQUIRE_LOCAL_AUTH", "1");
     vi.stubEnv("ELIZA_API_TOKEN", "password-change-test-static-token");
     vi.stubEnv("ELIZA_API_AUTH_TOKEN", "");

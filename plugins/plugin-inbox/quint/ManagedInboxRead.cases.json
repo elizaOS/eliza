@@ -1,0 +1,48 @@
+{
+  "sources": [
+    "plugins/plugin-inbox/src/inbox/aggregate.ts",
+    "plugins/plugin-inbox/src/inbox/managed-gmail-read.ts",
+    "plugins/plugin-inbox/src/inbox/managed-gmail-transport.ts",
+    "plugins/plugin-inbox/src/index.ts",
+    "plugins/plugin-inbox/test/inbox-aggregate.real-runtime.test.ts",
+    "plugins/plugin-personal-assistant/src/lifeops/service.ts",
+    "plugins/plugin-personal-assistant/src/lifeops/checkin/checkin-availability.pglite.test.ts",
+    "plugins/plugin-inbox/quint/check-managed-inbox-read.mjs"
+  ],
+  "conformance": "plugins/plugin-inbox/quint/check-managed-inbox-read.mjs",
+  "bounds": "Two owner identities, one active managed aggregate read, grant revocation, source failure and sequential rereads. The existing authenticated host transport must validate the current owner before returning; that host boundary is assumed here. The aggregate bypasses legacy Gmail cache, rejects unsupported source selections, and preserves other requested channels. The concrete conformance cases use the real runtime, an injected managed reader, and a real loopback HTTP/PGlite check-in path. These are concrete source cases, not generated trace equivalence. A completed result is a read-time snapshot; subsequent owner changes, full mailbox pagination and exact-message restoration are separate protocols.",
+  "cases": [
+    {
+      "name": "owner-read",
+      "main": "ManagedInboxRead",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "CurrentOwnerOnly",
+        "FailureHasNoMail",
+        "UnsupportedReadNeverDispatches",
+        "LegacyCacheNeverRead"
+      ],
+      "temporal": ["ReadFinishes", "ReadFinishesWithoutFairness"],
+      "temporalChecks": [
+        {
+          "property": "ReadFinishes",
+          "expect": "holds",
+          "assumptions": [
+            "Each pending host read eventually returns or fails (weak fairness of settlement). No provider success or wall-clock deadline is assumed."
+          ]
+        },
+        {
+          "property": "ReadFinishesWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "Without fairness, a host read may remain pending forever."
+          ]
+        }
+      ],
+      "maxSteps": 15,
+      "samples": 200
+    }
+  ]
+}

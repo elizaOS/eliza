@@ -1,0 +1,71 @@
+{
+  "sources": [
+    "packages/benchmarks/orchestrator/db.py",
+    "packages/benchmarks/orchestrator/cohort.py",
+    "packages/benchmarks/orchestrator/runner.py",
+    "packages/benchmarks/orchestrator/cli.py",
+    "packages/benchmarks/orchestrator/tests/test_db.py",
+    "packages/benchmarks/orchestrator/tests/test_cohort.py",
+    "packages/benchmarks/quint/check-process-owner.mjs",
+    "packages/benchmarks/requirements-ci-constraints.txt",
+    "packages/scripts/lib/test-output.ts",
+    "packages/scripts/run-with-deadline.ts"
+  ],
+  "bounds": {
+    "domain": "Three durable run groups, six attempt rows, one fresh row that may age, either stale-sweep scope, and one namespaced resume before worker dispatch. Resume admission and previous-attempt retirement commit separately.",
+    "conformance": "Four unmocked SQLite cases exercise completed-group isolation, recoverable subscription pauses, the namespaceless scope and retirement of an entire killed attempt. Two cohort cases use real SQLite to exercise startup scope and fresh-row preservation, and to observe retirement at the offline worker boundary.",
+    "limits": "One serialized recovery or resume caller. The age threshold and equality of the stored namespace, execution contract and checkpoint path are inputs. Failed pre-commit operations leave no modeled durable write. Concurrent database connections, SQLite lock, crash and rollback internals, malformed legacy data, explicit quota timing, checkpoint replay, worker execution and publication are outside this projection."
+  },
+  "conformance": "packages/benchmarks/quint/check-process-owner.mjs",
+  "cases": [
+    {
+      "name": "sqlite-sweep-and-attempt-retirement",
+      "main": "BenchmarkRunGroupRecovery",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "FinishedGroupUnchanged",
+        "PlainFailureWaitsForRows",
+        "ResumeDispatchNeedsRetirement"
+      ],
+      "temporal": [
+        "SweepTouchesOnlyEligibleRows",
+        "RetirementKeepsExistingEndTimes",
+        "FairSettlement",
+        "Settles"
+      ],
+      "temporalChecks": [
+        {
+          "property": "SweepTouchesOnlyEligibleRows",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. The cutoff and namespace scope select rows in the serialized operation."
+          ]
+        },
+        {
+          "property": "RetirementKeepsExistingEndTimes",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. Retirement commits only its target group and preserves any existing ended_at."
+          ]
+        },
+        {
+          "property": "FairSettlement",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of settle means pending SQLite operations eventually commit or fail and a successfully retired attempt eventually reaches the dispatch boundary. A caller may choose whether to retry a returned error."
+          ]
+        },
+        {
+          "property": "Settles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. An operation may remain pending indefinitely."
+          ]
+        }
+      ],
+      "maxSteps": 24,
+      "samples": 500
+    }
+  ]
+}

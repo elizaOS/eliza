@@ -457,7 +457,9 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
       } else {
         const value =
           at.kind === "category"
-            ? await storage.storageCategory({ category: at.category })
+            ? at.category === "downloads"
+              ? await storage.storageList({ path: DOWNLOAD_FOLDER })
+              : await storage.storageCategory({ category: at.category })
             : await storage.storageList({
                 path: at.path,
                 ...onVolume(at.volume),
@@ -467,7 +469,11 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
           up();
           return;
         }
-        const ok = value.status === "ready";
+        const emptyDownloads =
+          value.status === "missing" &&
+          at.kind === "category" &&
+          at.category === "downloads";
+        const ok = value.status === "ready" || emptyDownloads;
         if (!ok) failed(value);
         truncated = ok && value.truncated === true;
         listedCount =
@@ -475,7 +481,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
             ? value.count
             : undefined;
         if (ok) {
-          entries = value.entries || [];
+          entries = emptyDownloads ? [] : value.entries || [];
           categoryFolders =
             "folders" in value && Array.isArray(value.folders)
               ? value.folders
@@ -874,8 +880,28 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
   async function nameDialog() {
     const d = dialog;
     if (!d || d.kind !== "name" || busy) return;
+    const epoch = selectionEpoch;
     begin();
     try {
+      if (
+        d.op === "create" &&
+        d.path === DOWNLOAD_FOLDER &&
+        place.kind === "category" &&
+        place.category === "downloads"
+      ) {
+        const current = () =>
+          active && dialog === d && selectionEpoch === epoch;
+        const parent = await storage.storageList({ path: DOWNLOAD_FOLDER });
+        if (!current()) return;
+        if (parent.status === "missing") {
+          const created = await storage.storageCreateFolder({
+            parent: "",
+            name: DOWNLOAD_FOLDER,
+          });
+          if (!current()) return;
+          if (created.status !== "exists" && failed(created)) return;
+        } else if (failed(parent)) return;
+      }
       const value =
         d.op === "create"
           ? await storage.storageCreateFolder({
@@ -1344,8 +1370,15 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     };
     const newFolder = () => {
       if (!granted || busy || !primary) return;
-      const target = place.kind === "folder" ? place : rootFolder;
-      if (place.kind !== "folder") go(target);
+      const downloads =
+        place.kind === "category" && place.category === "downloads";
+      const target =
+        place.kind === "folder"
+          ? place
+          : downloads
+            ? { ...rootFolder, path: DOWNLOAD_FOLDER }
+            : rootFolder;
+      if (place.kind !== "folder" && !downloads) go(target);
       dialogTrigger = null;
       dialog = {
         kind: "name",
@@ -1361,7 +1394,10 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     out.toolbar = {
       ready: granted && !!primary && place.kind !== "trash",
       disabled: busy,
-      canCreate: place.kind === "browse" || place.kind === "folder",
+      canCreate:
+        place.kind === "browse" ||
+        place.kind === "folder" ||
+        (place.kind === "category" && place.category === "downloads"),
       canSort: listing,
       newFolder,
       sort: () => {

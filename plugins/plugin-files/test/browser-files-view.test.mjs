@@ -717,3 +717,114 @@ test("unreadable secondary Trash keeps the visible list incomplete until it is r
   assert.equal(view.render().fd.empty, true);
   assert.equal(view.render().nativeTreeStatus, "");
 });
+
+test("Downloads lists folders beside files from the actual Download directory", async (t) => {
+  const view = files(t, {
+    storageCategory: async () => ({ status: "ready", count: 1, entries: [] }),
+    storageList: async () => ({
+      status: "ready",
+      entries: [
+        {
+          path: "Download/Receipts",
+          name: "Receipts",
+          directory: true,
+          modified: 0,
+        },
+        file("Download/receipt.pdf", "application/pdf"),
+      ],
+    }),
+  });
+  view.render();
+  await tick();
+  view
+    .render()
+    .browse.cats.find((category) => category.id === "downloads")
+    .go();
+  await tick();
+  assert.deepEqual(
+    view
+      .render()
+      .fd.items.map((item) => item.name)
+      .sort(),
+    ["Receipts", "receipt.pdf"],
+  );
+  assert.deepEqual(view.named("storageList").at(-1), [
+    "storageList",
+    { path: "Download" },
+  ]);
+});
+
+test("an empty Downloads directory is readable and creates a folder in Downloads", async (t) => {
+  let exists = false;
+  const created = [];
+  const view = files(t, {
+    storageList: async ({ path }) =>
+      path === "Download" && !exists
+        ? { status: "missing" }
+        : {
+            status: "ready",
+            entries: created
+              .filter((entry) => entry.parent === path)
+              .map((entry) => ({
+                path: `${path}/${entry.name}`,
+                name: entry.name,
+                directory: true,
+                modified: 0,
+              })),
+          },
+    storageCreateFolder: async (entry) => {
+      if (entry.parent === "") exists = true;
+      created.push(entry);
+      return { status: "ready" };
+    },
+  });
+  view.render();
+  await tick();
+  view
+    .render()
+    .browse.cats.find((category) => category.id === "downloads")
+    .go();
+  await tick();
+  assert.equal(view.render().fd.empty, true);
+  assert.deepEqual(view.toasts, []);
+  assert.equal(view.render().toolbar.canCreate, true);
+  view.render().toolbar.newFolder();
+  view.render().dlg.onValue({ target: { value: "Receipts" } });
+  view.render().dlg.confirm();
+  await tick();
+  assert.deepEqual(created, [
+    { parent: "", name: "Download" },
+    { parent: "Download", name: "Receipts" },
+  ]);
+  assert.deepEqual(
+    view.render().fd.items.map((item) => item.name),
+    ["Receipts"],
+  );
+});
+
+test("leaving Downloads during the parent read retires folder creation", async (t) => {
+  const pending = Promise.withResolvers();
+  let reads = 0;
+  const view = files(t, {
+    storageList: async ({ path }) => {
+      if (path !== "Download") return { status: "ready", entries: [] };
+      return ++reads === 1 ? { status: "missing" } : pending.promise;
+    },
+    storageCreateFolder: async () => ({ status: "ready" }),
+  });
+  view.render();
+  await tick();
+  view
+    .render()
+    .browse.cats.find((category) => category.id === "downloads")
+    .go();
+  await tick();
+  view.render().toolbar.newFolder();
+  view.render().dlg.onValue({ target: { value: "Receipts" } });
+  view.render().dlg.confirm();
+  await tick();
+  view.leave();
+  pending.resolve({ status: "missing" });
+  await tick();
+  assert.deepEqual(view.named("storageCreateFolder"), []);
+});

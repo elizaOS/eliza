@@ -54,7 +54,6 @@ it("persists a routine fired with no conversation into the owner's conversation 
     ELIZA_STATE_DIR: directory,
     ELIZA_CONFIG_PATH: path.join(directory, "config.json"),
     ELIZA_PERSIST_CONFIG_PATH: path.join(directory, "config.json"),
-    ELIZA_API_BIND_HOST: "127.0.0.1",
     ELIZA_API_TOKEN: "",
     ELIZA_REQUIRE_LOCAL_AUTH: "0",
   }))
