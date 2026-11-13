@@ -85,6 +85,10 @@ describe("requireConfirmation", () => {
 		"确认，现在删除",
 		"はい、お願いします",
 		"확인, 지금 삭제해 주세요",
+		"확인, 그만큼 진행해 주세요",
+		"확인, 그만큼만 진행해 주세요",
+		"확인, 취소선을 넣어 주세요",
+		"확인, 취소선으로 표시해 주세요",
 	])("confirms the yes %j", async (text) => {
 		expect(await replyTo(text)).toBe("confirmed");
 	});
@@ -110,6 +114,8 @@ describe("requireConfirmation", () => {
 		"확인, 그만",
 		"확인, 삭제하지 마세요",
 		"확인, 하지 않을게요",
+		"확인, 취소를 원해요",
+		"확인, 그만둬요",
 		"no, gracias",
 		"cancel",
 		"n",

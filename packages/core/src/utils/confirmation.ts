@@ -127,13 +127,18 @@ const UNSPACED_NEGATIVE_WORDS = [...NEGATIVE_WORDS].filter((word) =>
  * "할게요"), so a Korean word that starts with one of these stems is a no.
  */
 const KOREAN_NEGATIVE_STEMS = ["아니", "않", "취소", "그만"];
+// These ordinary compound words are not refusals. Keep their noun particles
+// with the compound, without exempting other words that start with a no stem.
+const KOREAN_NONNEGATIVE_COMPOUND =
+	/^(?:그만큼(?:만|은|의)?|취소선(?:[은는이가을를도만]|으로|로)?)$/u;
 
 function isNegativeWord(word: string): boolean {
 	return (
 		NEGATIVE_WORDS.has(word) ||
 		(UNSPACED_SCRIPT.test(word) &&
 			UNSPACED_NEGATIVE_WORDS.some((negative) => word.includes(negative))) ||
-		KOREAN_NEGATIVE_STEMS.some((stem) => word.startsWith(stem))
+		(KOREAN_NEGATIVE_STEMS.some((stem) => word.startsWith(stem)) &&
+			!KOREAN_NONNEGATIVE_COMPOUND.test(word))
 	);
 }
 
