@@ -435,9 +435,6 @@ const TEST_FILE_SKIP_DIRS = new Set([
   "node_modules",
   "target",
 ]);
-const ADDITIONAL_PACKAGE_DIRS = [
-  path.join(repoRoot, "packages", "app", "platforms", "electrobun"),
-];
 const NO_CLOUD_PACKAGE_DIRS = new Set([path.join("packages", "cloud", "e2e")]);
 const ROOT_PR_E2E_EXCLUDED_PACKAGE_DIRS = new Set([
   path.join("packages", "homepage"),
@@ -502,13 +499,6 @@ function collectPackageJsonPaths() {
   for (const relDir of listWorkspaceDirs({ repoRoot })) {
     if (inExcludedSubtree(relDir)) continue;
     packageJsonPaths.add(path.join(repoRoot, relDir, "package.json"));
-  }
-
-  for (const packageDir of ADDITIONAL_PACKAGE_DIRS) {
-    const packageJsonPath = path.join(packageDir, "package.json");
-    if (fs.existsSync(packageJsonPath)) {
-      packageJsonPaths.add(packageJsonPath);
-    }
   }
 
   return [...packageJsonPaths].sort((left, right) => left.localeCompare(right));

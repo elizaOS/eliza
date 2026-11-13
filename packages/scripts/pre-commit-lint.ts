@@ -9,7 +9,6 @@ console.log("Running pre-commit hook...");
 const generatedAppPlatformPrefixes = [
   "packages/app/android/",
   "packages/app/ios/",
-  "packages/app/electrobun/",
 ];
 
 function readStagedFiles(): string[] {
