@@ -33,6 +33,10 @@ import {
 
 const execFileAsync = promisify(execFile);
 
+/**
+ * `ELIZA_MOCK_GOOGLE_BASE` is the one test override kept in shipped code (see
+ * plugin-google-workspace's client factory); it may only name loopback.
+ */
 function rewriteGoogleUrlForMock(url: string): string {
   const mockBase = process.env.ELIZA_MOCK_GOOGLE_BASE;
   if (!mockBase) return url;

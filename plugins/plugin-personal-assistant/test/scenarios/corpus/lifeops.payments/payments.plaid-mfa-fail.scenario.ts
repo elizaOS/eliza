@@ -20,9 +20,6 @@
  * scenario seeds the failure state directly into the lifeops payment_sources
  * table to exercise the agent's read+report path. When the Plaid mockoon
  * lands, the seed should be replaced with an actual mock-server roundtrip.
- *
- * Gated on `LIFEOPS_USE_MOCKOON=1` for the mockoon round-trip path; the
- * direct DB-seed path always runs.
  */
 
 import type { AgentRuntime } from "@elizaos/core";

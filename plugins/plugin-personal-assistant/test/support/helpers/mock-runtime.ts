@@ -101,6 +101,25 @@ const FAKE_CREDS: Readonly<Record<string, string>> = {
   TWITTER_USER_ID: "1234567890",
 };
 
+const TWILIO_API_ORIGIN = "https://api.twilio.com";
+
+/** Sends Twilio REST calls to the Twilio mock; the Twilio client has no base-URL setting. */
+function redirectTwilioFetch(mockBase: string): () => void {
+  const realFetch = globalThis.fetch;
+  const base = mockBase.replace(/\/+$/, "");
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = input instanceof Request ? input.url : String(input);
+    if (!url.startsWith(`${TWILIO_API_ORIGIN}/`)) return realFetch(input, init);
+    const target = `${base}${url.slice(TWILIO_API_ORIGIN.length)}`;
+    return input instanceof Request
+      ? realFetch(new Request(target, input), init)
+      : realFetch(target, init);
+  }) as typeof fetch;
+  return () => {
+    globalThis.fetch = realFetch;
+  };
+}
+
 function mockRuntimePlugins(
   plugins: readonly Plugin[] | undefined,
   modelProvider: Plugin | undefined,
@@ -285,6 +304,9 @@ export async function prepareMockedTestEnvironment(
     ...FAKE_CREDS,
   };
   const previous = snapshotAndApply(envVars);
+  const restoreFetch = envs.includes("twilio")
+    ? redirectTwilioFetch(mocks.baseUrls.twilio)
+    : () => {};
 
   return {
     mocks,
@@ -318,6 +340,7 @@ export async function prepareMockedTestEnvironment(
           await mocks.stop();
         }
       } finally {
+        restoreFetch();
         restore(previous);
         await mockRuntimeState.cleanup();
       }

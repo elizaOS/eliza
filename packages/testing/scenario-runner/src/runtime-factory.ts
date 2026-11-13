@@ -914,22 +914,25 @@ export function resolveScenarioProviderConfig(
 
 /**
  * Live lane: `prepareMockedTestEnvironment` boots the wire-level LLM mocks and
- * exports their base-URL overrides (`ELIZA_MOCK_OPENAI_BASE` /
- * `ELIZA_MOCK_ANTHROPIC_BASE`), which plugin-openai / plugin-anthropic treat as
- * authoritative over `OPENAI_BASE_URL` / `ANTHROPIC_BASE_URL`. Left set, every
+ * points `OPENAI_BASE_URL` / `ANTHROPIC_BASE_URL` at them. Left set, every
  * "live" model call is silently answered by the mock server — Stage 1 returns
  * empty completions and scenarios fall back to REPLY — so live-lane trajectory
- * evidence would actually be mock traffic. Live means live: drop the LLM mock
- * overrides when a live provider is selected; connector mocks (gmail, etc.)
- * stay. The deterministic provider lane keeps everything as-is.
+ * evidence would actually be mock traffic. Live means live: when a live
+ * provider is selected, drop each LLM base URL that still names the mock (the
+ * provider's own env, applied before this call, wins); connector mocks
+ * (gmail, etc.) stay. The deterministic provider lane keeps everything as-is.
  */
 export function clearLlmWireMockEnvForLiveProvider(
   providerName: RuntimeFactoryResult["providerConfig"]["name"],
+  mockEnv: Readonly<Record<string, string>>,
   env: NodeJS.ProcessEnv = process.env,
 ): void {
   if (providerName === DETERMINISTIC_MODEL_PROVIDER_NAME) return;
-  delete env.ELIZA_MOCK_OPENAI_BASE;
-  delete env.ELIZA_MOCK_ANTHROPIC_BASE;
+  for (const key of ["OPENAI_BASE_URL", "ANTHROPIC_BASE_URL"]) {
+    if (mockEnv[key] !== undefined && env[key] === mockEnv[key]) {
+      delete env[key];
+    }
+  }
 }
 
 export function shouldPreserveScenarioTrajectoryDb(
@@ -1007,7 +1010,11 @@ export async function createScenarioRuntime(
     for (const [key, value] of Object.entries(providerConfig.env)) {
       process.env[key] = value;
     }
-    clearLlmWireMockEnvForLiveProvider(providerConfig.name);
+    if (mockedEnvironment)
+      clearLlmWireMockEnvForLiveProvider(
+        providerConfig.name,
+        mockedEnvironment.envVars,
+      );
     if (executionProfile === "provider-qualified") {
       assertProviderQualifiedEnvironment();
     }
