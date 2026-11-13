@@ -1,0 +1,37 @@
+{
+  "sources": [
+    "packages/cloud/api/src/speech-relay-coordinator.ts",
+    "packages/cloud/api/src/speech-retirement-state.ts",
+    "packages/cloud/api/src/speech-retirement-state.test.ts",
+    "packages/cloud/api/src/speech-retirement-route.test.ts",
+    "packages/cloud/api/v1/voice/speech/route.ts",
+    "packages/host/src/voice/speech-relay-session.ts",
+    "packages/host/src/voice/speech-relay-session.test.ts",
+    "packages/host/src/voice/speech-retirement-session.test.ts"
+  ],
+  "bounds": {
+    "assumptions": [
+      "Three billing windows, one owner and one transport. Provider success and eventual settlement are not assumed."
+    ],
+    "progress": "Safety only. Live providers, deadlines and delivery are verified separately."
+  },
+  "limitations": [
+    "Three-window safety abstraction. Controlled provider boundaries verify backend settlement and retirement. Browser, native client and live provider qualification are separate."
+  ],
+  "cases": [
+    {
+      "name": "paid-continuity",
+      "main": "speech_continuity",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "safety"
+      ],
+      "temporal": [],
+      "maxSteps": 30,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ],
+  "conformance": "packages/cloud/quint/check-speech-continuity.mjs"
+}
