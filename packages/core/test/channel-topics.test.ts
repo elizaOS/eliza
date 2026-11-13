@@ -567,4 +567,41 @@ describe("ChannelTopicsService", () => {
 		await service.stop();
 		expect(service.getTopicsForAllRooms()).toEqual({});
 	});
+
+	it("retires the unloaded topic owner while its replacement persists new topics", async () => {
+		const plugin = {
+			name: "channel-topics-retirement-fixture",
+			description: "Owns a real channel topics service",
+			services: [ChannelTopicsService],
+		};
+		await runtime.registerPlugin(plugin);
+		await runtime.getServiceLoadPromise(ChannelTopicsService.serviceType);
+		const old = runtime.getService<ChannelTopicsService>(
+			ChannelTopicsService.serviceType,
+		);
+		if (!old) throw new Error("Missing original channel topics service");
+		await old.recordTopics(ROOM_A, ["original"]);
+		await runtime.unloadPlugin(plugin.name);
+		expect(runtime.getService(ChannelTopicsService.serviceType)).toBeNull();
+
+		await runtime.registerPlugin(plugin);
+		await runtime.getServiceLoadPromise(ChannelTopicsService.serviceType);
+		const current = runtime.getService<ChannelTopicsService>(
+			ChannelTopicsService.serviceType,
+		);
+		if (!current) throw new Error("Missing replacement channel topics service");
+		expect(current).not.toBe(old);
+		expect(await current.ensureHydrated(ROOM_A)).toEqual(["original"]);
+		await current.recordTopics(ROOM_A, ["current"]);
+		await expect(old.recordTopics(ROOM_A, ["retired"])).rejects.toMatchObject({
+			code: "CHANNEL_TOPICS_STOPPING",
+		});
+		await expect(old.ensureHydrated(ROOM_A)).rejects.toMatchObject({
+			code: "CHANNEL_TOPICS_STOPPING",
+		});
+		expect(old.getTopicsForAllRooms()).toEqual({});
+		expect(
+			(await runtime.getRoom(ROOM_A))?.metadata?.[CHANNEL_TOPICS_METADATA_KEY],
+		).toEqual(["original", "current"]);
+	});
 });

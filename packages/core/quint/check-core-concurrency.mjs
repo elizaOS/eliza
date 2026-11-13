@@ -31,6 +31,34 @@ const suites = new Map([
 		},
 	],
 	[
+		"ChannelTopicRetirement.qnt",
+		{
+			file: "test/channel-topics.test.ts",
+			tests: [
+				"ChannelTopicsService records topics most-recent-last and returns a defensive copy",
+				"ChannelTopicsService dedupes on insert and refreshes recency (move-to-most-recent)",
+				"ChannelTopicsService caps the LRU and FIFO-evicts the oldest entries",
+				"ChannelTopicsService FIFO-evicts across multiple recordTopics calls",
+				"ChannelTopicsService persists the LRU to room.metadata.currentTopics",
+				"ChannelTopicsService serializes concurrent persistence and preserves the newest topic list",
+				"ChannelTopicsService never allows an older same-room snapshot to complete last",
+				"ChannelTopicsService serializes cold hydration with writes without rolling back the cache",
+				"ChannelTopicsService waits for pending room operations before clearing on stop",
+				"ChannelTopicsService allows different-room writes to proceed independently",
+				"ChannelTopicsService recovers the room queue after a failed write",
+				"ChannelTopicsService hydrates from room metadata on first access (survives restart)",
+				"ChannelTopicsService treats each room independently",
+				"ChannelTopicsService is a no-op for empty/invalid topic input and does not persist",
+				"ChannelTopicsService never throws when the room is missing (defensive persistence)",
+				"ChannelTopicsService reports hydration failure and retries the unhydrated room",
+				"ChannelTopicsService reports and propagates a failed room update",
+				"ChannelTopicsService ignores non-string garbage in persisted metadata on hydrate",
+				"ChannelTopicsService clears state on stop",
+				"ChannelTopicsService retires the unloaded topic owner while its replacement persists new topics",
+			],
+		},
+	],
+	[
 		"Semaphore.qnt",
 		{
 			file: "test/semaphore.test.ts",
@@ -112,6 +140,13 @@ const suites = new Map([
 		},
 	],
 	[
+		"ActivePromptTraces.qnt",
+		{
+			file: "test/active-prompt-traces.integration.test.ts",
+			tests: ["isolates and retires active prompt traces through the runtime"],
+		},
+	],
+	[
 		"ServiceLifecycle.qnt",
 		{
 			file: "test/service-lifecycle-model.test.ts",
@@ -140,6 +175,18 @@ const suites = new Map([
 				"a duplicate register during a failing init does not report success",
 				"a register whose rollback also fails rejects with the init error",
 			],
+		},
+	],
+	[
+		"PipelineHookSnapshot.qnt",
+		{
+			file: "test/core-hooks.test.ts",
+			tests: [
+				"registers both message-path security hooks through plugin init",
+				"registers through the real boot path into plugin bookkeeping",
+				"does not replay the incoming-message warning when the stored turn is rendered as history",
+				"keeps admitted handlers when the next pipeline dispatch sees replacements and removals",
+			].map((title) => `core security hooks plugin (#12091 item 23) ${title}`),
 		},
 	],
 	[
