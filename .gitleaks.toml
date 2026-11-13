@@ -447,3 +447,19 @@ condition = "AND"
 paths = ['''^packages/cloud/shared/src/lib/services/evm-sweep-authority\.pglite\.test\.ts$''']
 regexTarget = "secret"
 regexes = ['''(?i)^(?:0x)?833589fcd6edb6e08f4c7c32d4f71b54bda02913$''']
+
+# Exact reviewed fixture content and file.
+[[allowlists]]
+description = "Historical security model scope description"
+condition = "AND"
+paths = ['''^packages/agent/quint/SecurityEscapeRetirement\.cases\.json$''']
+regexTarget = "line"
+regexes = ['''^\s*"domain": "Three finite synchronous policy projections: production/development, missing/historical/explicit salt, two process identities and one retained ciphertext; valid/invalid HTTP configuration, stdio/non-stdio, configured/absent terminal token, matching/other/absent header and body credentials; API-token present/absent and pre-auth HTML\. Each retired flag is independently true/false and can toggle without changing authority\.",\s*$''']
+
+# Exact reviewed fixture content and file.
+[[allowlists]]
+description = "Historical synthetic outgoing message fixture"
+condition = "AND"
+paths = ['''^plugins/plugin-native-phone/test/reply-draft-route\.test\.ts$''']
+regexTarget = "line"
+regexes = ['''^\s*const SECRET_OUT = "walrus-onyx-0042 maybe, let me check";\s*$''']
