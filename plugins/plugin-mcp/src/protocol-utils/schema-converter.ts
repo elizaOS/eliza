@@ -1,25 +1,36 @@
 /** Converts MCP JSON Schemas into runtime action parameters without dropping constraints. */
+import { ElizaError } from "@elizaos/core/protocol";
 export interface McpInputSchema {
   properties?: Record<string, unknown>;
   required?: string[];
   [key: string]: unknown;
 }
 
-type RuntimeParameterType = "string" | "number" | "boolean" | "object" | "array";
+type RuntimeParameterType =
+  | "string"
+  | "number"
+  | "integer"
+  | "boolean"
+  | "object"
+  | "array"
+  | "null";
+type Primitive = string | number | boolean | null;
+interface ParameterSchema {
+  type?: RuntimeParameterType;
+  anyOf?: ParameterSchema[];
+  oneOf?: ParameterSchema[];
+  description?: string;
+  default?: unknown;
+  enum?: Primitive[];
+  enumValues?: Primitive[];
+}
 
 /** MCP → runtime action parameter row (replaces removed @elizaos/core ActionParameter export). */
 export interface ActionParameter {
   name: string;
   description: string;
   required?: boolean;
-  schema: {
-    /** Absent for a union of several runtime types, which `anyOf` states. */
-    type?: RuntimeParameterType;
-    anyOf?: ReadonlyArray<{ type: RuntimeParameterType }>;
-    default?: unknown;
-    enum?: Array<string | number | boolean | null>;
-    enumValues?: Array<string | number | boolean | null>;
-  };
+  schema: ParameterSchema;
 }
 
 interface JsonSchemaProperty {
@@ -70,156 +81,194 @@ function mapJsonSchemaType(jsonType: string): RuntimeParameterType {
   }
 }
 
-function valueRuntimeType(value: unknown): RuntimeParameterType {
-  if (Array.isArray(value)) return "array";
-  switch (typeof value) {
-    case "string":
-      return "string";
-    case "number":
-      return "number";
-    case "boolean":
-      return "boolean";
-    default:
-      return "object";
-  }
-}
+const COMBINATORS = ["anyOf", "oneOf", "allOf"] as const;
+const PIN_KEYS = new Set([
+  "type",
+  "const",
+  "enum",
+  ...COMBINATORS,
+  "title",
+  "description",
+  "default",
+  "examples",
+  "$comment",
+]);
 
-/**
- * Every value a property pins with `const`/`enum`, on the property itself or
- * on its `anyOf`/`oneOf` branches that name no `type`. Used to read the
- * runtime kind of a property that names no `type`: pydantic emits
- * `{"const": "fast"}` for a single-value Literal and FastMCP unions carry
- * branch `const`/`enum` sets. A branch that names a type already contributes
- * that type, so its pins are not read here.
- */
-function declaredPinnedValues(prop: JsonSchemaProperty): unknown[] {
-  const values: unknown[] = [];
-  const branches = prop.anyOf ?? prop.oneOf ?? [];
-  // A sibling const/enum narrows a union; it cannot add another branch type.
-  if (branches.length === 0) {
-    if (prop.const !== undefined) values.push(prop.const);
-    if (prop.enum?.length) values.push(...prop.enum);
-  }
-  for (const branch of branches) {
-    if (branch.type !== undefined) continue;
-    if (branch.const !== undefined) values.push(branch.const);
-    if (branch.enum?.length) values.push(...branch.enum);
-  }
-  return values;
-}
-
-function matchesPinnedType(value: unknown, prop: JsonSchemaProperty): boolean {
-  if (prop.type === undefined) return true;
-  const types = [prop.type].flat();
-  return types.some((type) =>
-    type === "null"
-      ? value === null
-      : type === "integer"
-        ? typeof value === "number" && Number.isInteger(value)
-        : value !== null && mapJsonSchemaType(type) === valueRuntimeType(value)
+function hasPinnedConstraints(prop: JsonSchemaProperty): boolean {
+  if (!prop || typeof prop !== "object") return false;
+  return (
+    prop.const !== undefined ||
+    prop.enum !== undefined ||
+    COMBINATORS.some((key) => Array.isArray(prop[key]) && prop[key].some(hasPinnedConstraints)) ||
+    Object.values(prop.properties ?? {}).some(hasPinnedConstraints) ||
+    (Array.isArray(prop.items)
+      ? prop.items.some(hasPinnedConstraints)
+      : prop.items !== undefined && hasPinnedConstraints(prop.items)) ||
+    (typeof prop.additionalProperties === "object" &&
+      hasPinnedConstraints(prop.additionalProperties)) ||
+    (prop.contains !== undefined && hasPinnedConstraints(prop.contains))
   );
 }
 
-/**
- * The value set a call must match: a top-level `const`, or a union whose every
- * branch pins its own values with `const`/`enum` (a `null` branch pins null).
- * Returns undefined when any branch stays open, because then the union accepts
- * more than the pinned values. For a `oneOf` the per-branch sets ride along:
- * the value must be pinned by exactly one branch, not by the union as a whole
- * (the same exactly-one reading `isNullable` applies to `oneOf` branches).
- */
-function enforcedPinnedValues(
-  prop: JsonSchemaProperty
-): { values: unknown[]; branchSets?: unknown[][] } | undefined {
-  const fallback = prop.const === undefined ? undefined : { values: [prop.const] };
-  const branches = prop.anyOf ?? prop.oneOf;
-  if (!branches?.length) return fallback;
-  const branchSets: unknown[][] = [];
-  for (const branch of branches) {
-    // Exact branch counting is safe only for these finite pin constraints.
-    // More complex branches stay with type checks and server validation.
-    if (
-      Object.keys(branch).some(
-        (key) =>
-          !["type", "const", "enum", "title", "description", "default", "examples"].includes(key)
-      )
-    ) {
-      return fallback;
+function rejectPinnedSchema(path: string, unsupported: boolean): never {
+  throw new ElizaError(
+    `MCP parameter '${path}' has ${unsupported ? "unsupported pinned constraints" : "no legal pinned values"}`,
+    {
+      code: unsupported ? "MCP_PINNED_SCHEMA_UNSUPPORTED" : "MCP_PINNED_SCHEMA_UNSATISFIABLE",
+      context: { path },
     }
-    let values: unknown[];
-    if (branch.const !== undefined) {
-      values = [branch.const];
-    } else if (branch.enum?.length) {
-      values = [...branch.enum];
-    } else if (branch.type === "null") {
-      values = [null];
-    } else {
-      return fallback;
+  );
+}
+
+function assertSupportedPins(prop: JsonSchemaProperty, path: string): void {
+  if (
+    !prop ||
+    typeof prop !== "object" ||
+    Array.isArray(prop) ||
+    Object.keys(prop).some((key) => !PIN_KEYS.has(key))
+  )
+    rejectPinnedSchema(path, true);
+  if (
+    prop.type !== undefined &&
+    ([prop.type].flat().length === 0 ||
+      new Set([prop.type].flat()).size !== [prop.type].flat().length ||
+      [prop.type]
+        .flat()
+        .some(
+          (type) =>
+            !["string", "number", "integer", "boolean", "null", "object", "array"].includes(type)
+        ))
+  )
+    rejectPinnedSchema(path, true);
+  if (prop.enum !== undefined && !Array.isArray(prop.enum)) rejectPinnedSchema(path, true);
+  const values = [...(prop.const === undefined ? [] : [prop.const]), ...(prop.enum ?? [])];
+  if (
+    values.some(
+      (value) =>
+        (value !== null && !["string", "number", "boolean"].includes(typeof value)) ||
+        (typeof value === "number" && !Number.isFinite(value))
+    )
+  )
+    rejectPinnedSchema(path, true);
+  for (const key of COMBINATORS) {
+    if (prop[key] !== undefined && (!Array.isArray(prop[key]) || prop[key].length === 0))
+      rejectPinnedSchema(path, true);
+    prop[key]?.forEach((branch, index) => {
+      assertSupportedPins(branch, `${path}.${key}[${index}]`);
+    });
+  }
+}
+
+function createPinnedMatcher() {
+  const enumSets = new WeakMap<JsonSchemaProperty, Set<unknown>>();
+  function matches(prop: JsonSchemaProperty, value: unknown): boolean {
+    let members = enumSets.get(prop);
+    if (prop.enum !== undefined && members === undefined) {
+      members = new Set(prop.enum);
+      enumSets.set(prop, members);
     }
-    branchSets.push(
-      values.filter(
-        (value) =>
-          matchesPinnedType(value, branch) &&
-          (!branch.enum || branch.enum.some((member) => deepEqual(member, value))) &&
-          (prop.const === undefined || deepEqual(prop.const, value))
-      )
+    const type = value === null ? "null" : Array.isArray(value) ? "array" : typeof value;
+    return (
+      (prop.type === undefined ||
+        [prop.type]
+          .flat()
+          .some(
+            (name) =>
+              name === type ||
+              (name === "integer" && typeof value === "number" && Number.isInteger(value))
+          )) &&
+      (prop.const === undefined || prop.const === value) &&
+      (members === undefined || members.has(value)) &&
+      (prop.anyOf === undefined || prop.anyOf.some((branch) => matches(branch, value))) &&
+      (prop.oneOf === undefined ||
+        prop.oneOf.filter((branch) => matches(branch, value)).length === 1) &&
+      (prop.allOf === undefined || prop.allOf.every((branch) => matches(branch, value)))
     );
   }
-  const values: unknown[] = [];
-  for (const set of branchSets) {
-    for (const value of set) {
-      if (!values.some((candidate) => deepEqual(candidate, value))) values.push(value);
-    }
+  return matches;
+}
+
+/** A finite superset; the complete simultaneous constraints filter it below. */
+function pinnedCandidates(prop: JsonSchemaProperty): Primitive[] | undefined {
+  if (prop.const !== undefined) return [prop.const as Primitive];
+  if (prop.enum !== undefined) return prop.enum as Primitive[];
+  const types = prop.type === undefined ? [] : [prop.type].flat();
+  if (types.length > 0 && types.every((type) => type === "null" || type === "boolean")) {
+    return types.flatMap<Primitive>((type) => (type === "null" ? [null] : [false, true]));
   }
-  return prop.anyOf === undefined ? { values, branchSets } : { values };
+  const intersection = prop.allOf?.map(pinnedCandidates).find((values) => values !== undefined);
+  if (intersection !== undefined) return intersection;
+  for (const key of ["anyOf", "oneOf"] as const) {
+    const branches = prop[key]?.map(pinnedCandidates);
+    if (branches?.every((values) => values !== undefined)) return branches.flat();
+  }
+  return undefined;
 }
 
-function deepEqual(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
-  if (Array.isArray(a) !== Array.isArray(b)) return false;
-  const aRecord = a as Record<string, unknown>;
-  const bRecord = b as Record<string, unknown>;
-  const aKeys = Object.keys(aRecord);
-  if (aKeys.length !== Object.keys(bRecord).length) return false;
-  return aKeys.every((key) => deepEqual(aRecord[key], bRecord[key]));
+function projectPinnedSchema(prop: JsonSchemaProperty, path: string): ParameterSchema {
+  assertSupportedPins(prop, path);
+  const matches = createPinnedMatcher();
+  function project(part: JsonSchemaProperty): ParameterSchema | null {
+    const candidates = pinnedCandidates(part);
+    if (candidates !== undefined) {
+      const groups = new Map<RuntimeParameterType, Primitive[]>();
+      for (const value of new Set(candidates)) {
+        if (!matches(part, value)) continue;
+        const type = (value === null ? "null" : typeof value) as RuntimeParameterType;
+        const group = groups.get(type);
+        if (group) group.push(value);
+        else groups.set(type, [value]);
+      }
+      const branches = [...groups].map(([type, values]) => ({
+        type,
+        enum: values,
+        enumValues: values,
+      }));
+      return branches.length === 0
+        ? null
+        : branches.length === 1
+          ? { ...branches[0], default: part.default }
+          : { anyOf: branches };
+    }
+    // Open primitive branches retain their exact union structure. Core cannot
+    // faithfully represent arbitrary open objects/arrays or untyped leaves.
+    if (part.allOf) rejectPinnedSchema(path, true);
+    const unions: ParameterSchema = {};
+    for (const key of ["anyOf", "oneOf"] as const) {
+      if (part[key]) {
+        const branches = part[key]
+          .map(project)
+          .filter((branch): branch is ParameterSchema => branch !== null);
+        if (branches.length === 0) return null;
+        unions[key] = branches;
+      }
+    }
+    if (part.type !== undefined) {
+      const types = [part.type].flat();
+      if (types.some((type) => type === "object" || type === "array"))
+        rejectPinnedSchema(path, true);
+      const branches = types.map((type) => ({
+        ...unions,
+        type: type as RuntimeParameterType,
+        default: part.default,
+      }));
+      return branches.length === 1 ? branches[0] : { anyOf: branches };
+    }
+    if (unions.anyOf || unions.oneOf) return unions;
+    return rejectPinnedSchema(path, true);
+  }
+  return project(prop) ?? rejectPinnedSchema(path, false);
 }
 
-/**
- * Runtime types a property accepts. A property with no `type` takes the types
- * of its `anyOf`/`oneOf` branches: FastMCP emits
- * `{"anyOf":[{"type":"string"},{"type":"null"}]}` for `Optional[str]`. A
- * property or branch that names no type can still pin its values with
- * `const`/`enum` (pydantic emits `{"const": "fast"}` for a single-value
- * Literal), so the pinned values contribute their kind as well. A branch with
- * no type and no pinned values, or no constraint at all, keeps the `object`
- * fallback.
- */
 function propertyRuntimeTypes(prop: JsonSchemaProperty): RuntimeParameterType[] {
   const branches = prop.anyOf ?? prop.oneOf;
   const names =
     prop.type !== undefined
       ? [prop.type].flat()
-      : branches?.length
-        ? branches
-            .flatMap((branch) => [branch.type as string | string[]].flat())
-            .filter((name) => name !== undefined)
+      : branches?.length && branches.every((branch) => branch.type !== undefined)
+        ? branches.flatMap((branch) => [branch.type as string | string[]].flat())
         : [];
   const types = new Set(names.filter((name) => name !== "null").map(mapJsonSchemaType));
-  if (prop.type === undefined) {
-    // The pinned kinds join the branch types, so a union of a typed branch
-    // and a pinned branch declares both kinds.
-    for (const value of declaredPinnedValues(prop)) {
-      if (value !== null) types.add(valueRuntimeType(value));
-    }
-    if (
-      branches?.some(
-        (branch) => branch.type === undefined && branch.const === undefined && !branch.enum?.length
-      )
-    ) {
-      types.add("object");
-    }
-  }
   return types.size > 0 ? [...types] : ["object"];
 }
 
@@ -399,26 +448,6 @@ function buildDescription(_name: string, prop: JsonSchemaProperty): string {
   return details.length > 0 ? details : `(${propertyRuntimeTypes(prop).join(" | ")})`;
 }
 
-/**
- * One enum member as the action parameter carries it. Primitive members keep
- * their value: the parameter also declares the member kind as its type, so a
- * stringified number or boolean would leave a schema no value can satisfy
- * (`{type: "number", enum: ["1", "2", "3"]}`). Core's schema builder accepts
- * string, number, boolean, and null members. Other members keep the string
- * form they had before.
- */
-function projectEnumValue(value: unknown): string | number | boolean | null {
-  if (
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean" ||
-    value === null
-  ) {
-    return value;
-  }
-  return String(value);
-}
-
 export function convertJsonSchemaToActionParams(
   schema?: McpInputSchema
 ): ActionParameter[] | undefined {
@@ -429,21 +458,21 @@ export function convertJsonSchemaToActionParams(
   const params: ActionParameter[] = [];
 
   for (const [name, prop] of Object.entries(properties)) {
-    const types = propertyRuntimeTypes(prop);
+    const pinnedSchema = hasPinnedConstraints(prop) ? projectPinnedSchema(prop, name) : undefined;
+    const types = pinnedSchema ? [] : propertyRuntimeTypes(prop);
     params.push({
       name,
       description: buildDescription(name, prop),
       required: required.has(name),
-      // Core rejects constraints beside an untyped `anyOf`; the description keeps them.
+      // Pinned constraints must survive core's model-facing projection exactly.
       schema:
-        types.length === 1
+        pinnedSchema ??
+        (types.length === 1
           ? {
               type: types[0],
               default: prop.default,
-              enum: prop.enum?.map(projectEnumValue),
-              enumValues: prop.enum?.map(projectEnumValue),
             }
-          : { anyOf: types.map((type) => ({ type })) },
+          : { anyOf: types.map((type) => ({ type })) }),
     });
   }
 
@@ -459,11 +488,22 @@ export function validateParamsAgainstSchema(
   const errors: string[] = [];
   const properties = schema.properties as Record<string, JsonSchemaProperty> | undefined;
   const required = new Set<string>((schema.required as string[]) || []);
+  const pinnedMatchers = new Map<string, ReturnType<typeof createPinnedMatcher>>();
+  for (const [name, prop] of Object.entries(properties ?? {})) {
+    if (hasPinnedConstraints(prop)) {
+      projectPinnedSchema(prop, name);
+      pinnedMatchers.set(name, createPinnedMatcher());
+    }
+  }
 
   for (const field of required) {
     const val = params[field];
     const prop = properties?.[field];
-    if (val === undefined || (val === null && !isNullable(prop))) {
+    const matches = pinnedMatchers.get(field);
+    if (
+      val === undefined ||
+      (val === null && !(matches && prop ? matches(prop, null) : isNullable(prop)))
+    ) {
       errors.push(`Missing required parameter: ${field}`);
     }
   }
@@ -473,6 +513,27 @@ export function validateParamsAgainstSchema(
       const prop = properties[name];
       if (!prop) continue;
 
+      const matches = pinnedMatchers.get(name);
+      if (matches) {
+        if (value !== undefined && !matches(prop, value)) {
+          if (value === null) {
+            if (!required.has(name)) errors.push(`Parameter '${name}' does not accept null`);
+          } else {
+            const values = pinnedCandidates(prop)?.filter((candidate) => matches(prop, candidate));
+            errors.push(
+              prop.oneOf && prop.oneOf.filter((branch) => matches(branch, value)).length > 1
+                ? `Parameter '${name}' matches more than one branch of the oneOf`
+                : values?.length === 1
+                  ? `Parameter '${name}' must be ${JSON.stringify(values[0])}`
+                  : values
+                    ? `Parameter '${name}' must be one of: ${values.map((candidate) => JSON.stringify(candidate)).join(", ")}`
+                    : `Parameter '${name}' does not satisfy its const/enum constraints`
+            );
+          }
+        }
+        continue;
+      }
+
       if (value === null) {
         if (!required.has(name) && !isNullable(prop)) {
           errors.push(`Parameter '${name}' does not accept null`);
@@ -481,53 +542,17 @@ export function validateParamsAgainstSchema(
       }
       if (value === undefined) continue;
 
-      const pinned = enforcedPinnedValues(prop);
-      let pinnedFailed =
-        pinned !== undefined && !pinned.values.some((candidate) => deepEqual(candidate, value));
-      if (!pinnedFailed && pinned?.branchSets) {
-        // A `oneOf` value must be pinned by exactly one branch; a value that
-        // two branches pin matches both and is not valid for the union.
-        const matchingBranches = pinned.branchSets.filter((set) =>
-          set.some((candidate) => deepEqual(candidate, value))
-        ).length;
-        pinnedFailed = matchingBranches !== 1;
-      }
-
       const allowedTypes = propertyRuntimeTypes(prop);
       const actual = getValueType(value);
-      if (!pinnedFailed && !allowedTypes.includes(actual as RuntimeParameterType)) {
+      if (!allowedTypes.includes(actual as RuntimeParameterType)) {
         errors.push(`Parameter '${name}' expected ${allowedTypes.join(" | ")}, got ${actual}`);
       }
 
       const requiresInteger = Array.isArray(prop.type)
         ? prop.type.includes("integer") && !prop.type.includes("number")
         : prop.type === "integer";
-      if (
-        !pinnedFailed &&
-        requiresInteger &&
-        typeof value === "number" &&
-        !Number.isInteger(value)
-      ) {
+      if (requiresInteger && typeof value === "number" && !Number.isInteger(value)) {
         errors.push(`Parameter '${name}' expected integer, got ${value}`);
-      }
-
-      if (pinnedFailed && pinned) {
-        const pinnedBySeveralBranches =
-          pinned.branchSets !== undefined &&
-          pinned.values.some((candidate) => deepEqual(candidate, value));
-        errors.push(
-          pinnedBySeveralBranches
-            ? `Parameter '${name}' matches more than one branch of the oneOf`
-            : pinned.values.length === 1
-              ? `Parameter '${name}' must be ${JSON.stringify(pinned.values[0])}`
-              : `Parameter '${name}' must be one of: ${pinned.values.map((v) => JSON.stringify(v)).join(", ")}`
-        );
-      }
-
-      if (prop.enum && !prop.enum.includes(value)) {
-        errors.push(
-          `Parameter '${name}' must be one of: ${prop.enum.map((v) => JSON.stringify(v)).join(", ")}`
-        );
       }
     }
   }

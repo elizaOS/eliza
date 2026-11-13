@@ -1,260 +1,235 @@
-import { actionToJsonSchema } from "@elizaos/core";
+import { actionToJsonSchema, ElizaError } from "@elizaos/core/protocol";
+import Ajv2020 from "ajv/dist/2020.js";
 import { describe, expect, it } from "vitest";
 import {
   convertJsonSchemaToActionParams,
   validateParamsAgainstSchema,
 } from "../src/protocol-utils/schema-converter";
 
-// pydantic emits `{"const": "fast"}` for a single-value Literal and may emit an
-// `enum` with no `type`. Neither names a type, so both used to fall back to an
-// object parameter that rejected the only legal values.
-describe("const and enum tool arguments without a type", () => {
-  it("declares the kind of the pinned values instead of object", () => {
-    expect(
-      convertJsonSchemaToActionParams({
-        properties: { mode: { const: "fast" } },
-      })?.map((param) => param.schema.type)
-    ).toEqual(["string"]);
-    expect(
-      convertJsonSchemaToActionParams({
-        properties: { version: { const: 1 } },
-      })?.map((param) => param.schema.type)
-    ).toEqual(["number"]);
-    expect(
-      convertJsonSchemaToActionParams({
-        properties: { level: { enum: [1, 2, 3] } },
-      })?.map((param) => param.schema.type)
-    ).toEqual(["number"]);
-  });
+function roundtrip(property: Record<string, unknown>) {
+  const input = { properties: { value: property }, required: ["value"] };
+  const schema = actionToJsonSchema({
+    name: "MCP_TEST",
+    description: "test",
+    parameters: convertJsonSchemaToActionParams(input),
+  } as never);
+  const validate = new Ajv2020({ strict: false }).compile(schema);
+  return {
+    schema: schema.properties.value,
+    input,
+    accepts: (value: unknown) => validate({ value }),
+  };
+}
 
-  it("keeps primitive enum members beside the inferred kind", () => {
-    const numeric = convertJsonSchemaToActionParams({
-      properties: { level: { enum: [1, 2, 3] } },
+function refuses(property: Record<string, unknown>, code: string) {
+  expect(() => roundtrip(property)).toThrowError(expect.objectContaining({ code }));
+  try {
+    roundtrip(property);
+  } catch (error) {
+    expect(error).toBeInstanceOf(ElizaError);
+  }
+}
+
+const UNSATISFIABLE = "MCP_PINNED_SCHEMA_UNSATISFIABLE";
+const UNSUPPORTED = "MCP_PINNED_SCHEMA_UNSUPPORTED";
+
+describe("exact pinned MCP argument schemas", () => {
+  for (const value of ["fast", 1, false, null]) {
+    it(`projects const ${JSON.stringify(value)} as a singleton enum`, () => {
+      const result = roundtrip({ const: value });
+      expect(result.schema.enum).toEqual([value]);
+      expect(result.schema.type).toBe(value === null ? "null" : typeof value);
+      expect(result.accepts(value)).toBe(true);
+      expect(result.accepts("different")).toBe(false);
+      expect(validateParamsAgainstSchema({ value }, result.input)).toEqual([]);
     });
-    expect(numeric?.[0]?.schema.type).toBe("number");
-    expect(numeric?.[0]?.schema.enum).toEqual([1, 2, 3]);
-    expect(numeric?.[0]?.schema.enumValues).toEqual([1, 2, 3]);
+  }
 
-    const boolean = convertJsonSchemaToActionParams({
-      properties: { flag: { enum: [true, false] } },
-    });
-    expect(boolean?.[0]?.schema.type).toBe("boolean");
-    expect(boolean?.[0]?.schema.enum).toEqual([true, false]);
-    expect(boolean?.[0]?.schema.enumValues).toEqual([true, false]);
-
-    const string = convertJsonSchemaToActionParams({
-      properties: { mode: { enum: ["fast", "slow"] } },
-    });
-    expect(string?.[0]?.schema.type).toBe("string");
-    expect(string?.[0]?.schema.enum).toEqual(["fast", "slow"]);
-    expect(string?.[0]?.schema.enumValues).toEqual(["fast", "slow"]);
-  });
-
-  it("builds a satisfiable core schema for numeric and boolean enums", () => {
-    // The generated tool contract pairs the inferred kind with the members.
-    // Stringified members (`{type: "number", enum: ["1", "2", "3"]}`) would
-    // admit no value at all.
-    const numeric = actionToJsonSchema({
-      name: "MCP_TEST",
-      description: "test",
-      parameters: convertJsonSchemaToActionParams({
-        properties: { level: { enum: [1, 2, 3] } },
-      }),
-    } as never);
-    expect(numeric.properties.level).toMatchObject({
-      type: "number",
-      enum: [1, 2, 3],
-    });
-
-    const boolean = actionToJsonSchema({
-      name: "MCP_TEST",
-      description: "test",
-      parameters: convertJsonSchemaToActionParams({
-        properties: { flag: { enum: [true, false] } },
-      }),
-    } as never);
-    expect(boolean.properties.flag).toMatchObject({
-      type: "boolean",
-      enum: [true, false],
-    });
-  });
-
-  it("declares a mixed-kind enum as a pure anyOf union", () => {
-    const params = convertJsonSchemaToActionParams({
-      properties: { limit: { enum: ["all", 3] } },
-    });
-    expect(params?.[0]?.schema.type).toBeUndefined();
-    expect(params?.[0]?.schema.anyOf).toEqual([{ type: "string" }, { type: "number" }]);
-    expect(params?.[0]?.schema.enum).toBeUndefined();
-  });
-
-  it("accepts the const value and rejects every other value", () => {
-    const schema = {
-      properties: { mode: { const: "fast" } },
-      required: ["mode"],
-    };
-    expect(validateParamsAgainstSchema({ mode: "fast" }, schema)).toEqual([]);
-    expect(validateParamsAgainstSchema({ mode: "slow" }, schema)).toEqual([
-      "Parameter 'mode' must be \"fast\"",
+  it("retains every mixed primitive enum member through core", () => {
+    const values = [null, 1, "x", false];
+    const result = roundtrip({ enum: values });
+    expect(result.schema.anyOf).toEqual([
+      { type: "null", enum: [null] },
+      { type: "number", enum: [1] },
+      { type: "string", enum: ["x"] },
+      { type: "boolean", enum: [false] },
     ]);
-    expect(validateParamsAgainstSchema({ mode: {} }, schema)).toEqual([
-      "Parameter 'mode' must be \"fast\"",
-    ]);
-  });
-
-  it("accepts an enum member and rejects a non-member", () => {
-    const schema = { properties: { level: { enum: [1, 2, 3] } } };
-    expect(validateParamsAgainstSchema({ level: 2 }, schema)).toEqual([]);
-    expect(validateParamsAgainstSchema({ level: 5 }, schema)).toEqual([
-      "Parameter 'level' must be one of: 1, 2, 3",
-    ]);
-  });
-
-  it("reads the kind and the pinned set from anyOf branches", () => {
-    const constUnion = {
-      properties: { mode: { anyOf: [{ const: "x" }, { type: "null" }] } },
-    };
-    expect(convertJsonSchemaToActionParams(constUnion)?.[0]?.schema.type).toBe("string");
-    expect(validateParamsAgainstSchema({ mode: "x" }, constUnion)).toEqual([]);
-    expect(validateParamsAgainstSchema({ mode: "y" }, constUnion)).toEqual([
-      "Parameter 'mode' must be one of: \"x\", null",
-    ]);
-
-    // Optional[Literal["a", "b"]] as pydantic emits it: an enum branch + null.
-    const optionalLiteral = {
-      properties: {
-        mode: {
-          anyOf: [{ enum: ["a", "b"], type: "string" }, { type: "null" }],
-        },
-      },
-    };
-    expect(validateParamsAgainstSchema({ mode: "a" }, optionalLiteral)).toEqual([]);
-    expect(validateParamsAgainstSchema({ mode: null }, optionalLiteral)).toEqual([]);
-    expect(validateParamsAgainstSchema({ mode: "c" }, optionalLiteral)).toEqual([
-      'Parameter \'mode\' must be one of: "a", "b", null',
-    ]);
-  });
-
-  it("keeps a union with an open branch open", () => {
-    const openUnion = {
-      properties: { mode: { anyOf: [{ const: "x" }, { type: "string" }] } },
-    };
-    expect(validateParamsAgainstSchema({ mode: "anything" }, openUnion)).toEqual([]);
-  });
-
-  it("enforces a top-level const that also names a type", () => {
-    // `const` is a simultaneous constraint, not an alternative to `type`:
-    // {"type": "string", "const": "fast"} admits "fast" alone.
-    const schema = { properties: { mode: { type: "string", const: "fast" } } };
-    expect(validateParamsAgainstSchema({ mode: "fast" }, schema)).toEqual([]);
-    expect(validateParamsAgainstSchema({ mode: "slow" }, schema)).toEqual([
-      "Parameter 'mode' must be \"fast\"",
-    ]);
-  });
-
-  it("requires a oneOf value to be pinned by exactly one branch", () => {
-    const overlap = {
-      properties: { mode: { oneOf: [{ const: "a" }, { enum: ["a", "b"] }] } },
-    };
-    expect(validateParamsAgainstSchema({ mode: "b" }, overlap)).toEqual([]);
-    expect(validateParamsAgainstSchema({ mode: "a" }, overlap)).toEqual([
-      "Parameter 'mode' matches more than one branch of the oneOf",
-    ]);
-    expect(validateParamsAgainstSchema({ mode: "c" }, overlap)).toEqual([
-      'Parameter \'mode\' must be one of: "a", "b"',
-    ]);
-  });
-
-  it("declares both kinds of a union that mixes a typed and a pinned branch", () => {
-    // The pinned branch names no type, so its kind comes from its value; the
-    // union declares both kinds and validation accepts both branches' values.
-    const mixed = {
-      properties: { v: { anyOf: [{ type: "integer" }, { const: "x" }] } },
-    };
-    const schema = convertJsonSchemaToActionParams(mixed)?.[0]?.schema;
-    expect(schema?.type).toBeUndefined();
-    expect(schema?.anyOf).toEqual([{ type: "number" }, { type: "string" }]);
-    expect(validateParamsAgainstSchema({ v: 5 }, mixed)).toEqual([]);
-    expect(validateParamsAgainstSchema({ v: "x" }, mixed)).toEqual([]);
-    expect(validateParamsAgainstSchema({ v: true }, mixed)).toEqual([
-      "Parameter 'v' expected number | string, got boolean",
-    ]);
-  });
-
-  it("counts only pinned branches whose type accepts the value", () => {
-    const typed = {
-      properties: {
-        value: {
-          oneOf: [
-            { type: "string", enum: ["a"] },
-            { type: "number", enum: ["a"] },
-          ],
-        },
-      },
-    };
-    expect(validateParamsAgainstSchema({ value: "a" }, typed)).toEqual([]);
-
-    const integer = {
-      properties: {
-        value: { oneOf: [{ type: "integer", enum: [1, 1.5] }, { const: 1.5 }] },
-      },
-    };
-    expect(validateParamsAgainstSchema({ value: 1.5 }, integer)).toEqual([]);
-  });
-
-  it("does not broaden a union with a sibling enum", () => {
-    const schema = {
-      properties: { value: { enum: ["a", 1], anyOf: [{ type: "string" }] } },
-    };
-    expect(convertJsonSchemaToActionParams(schema)?.[0]?.schema.type).toBe("string");
-    expect(validateParamsAgainstSchema({ value: "a" }, schema)).toEqual([]);
-    expect(validateParamsAgainstSchema({ value: 1 }, schema)).toEqual([
-      "Parameter 'value' expected string, got number",
-    ]);
-  });
-
-  it("intersects a sibling const with pinned union branches", () => {
-    const schema = {
-      properties: { value: { const: "a", anyOf: [{ const: "b" }] } },
-    };
-    expect(validateParamsAgainstSchema({ value: "a" }, schema).length).toBeGreaterThan(0);
-    expect(validateParamsAgainstSchema({ value: "b" }, schema).length).toBeGreaterThan(0);
-  });
-
-  it("intersects const with sibling enum and typed unions", () => {
-    expect(
-      validateParamsAgainstSchema(
-        { value: "a" },
-        {
-          properties: { value: { const: "a", enum: ["b"] } },
-        }
-      ).length
-    ).toBeGreaterThan(0);
-    for (const union of ["anyOf", "oneOf"] as const) {
-      const schema = {
-        properties: { value: { const: "a", [union]: [{ type: "number" }] } },
-      };
-      expect(convertJsonSchemaToActionParams(schema)?.[0]?.schema.type).toBe("number");
-      expect(validateParamsAgainstSchema({ value: "a" }, schema).length).toBeGreaterThan(0);
+    for (const value of values) {
+      expect(result.accepts(value)).toBe(true);
+      expect(validateParamsAgainstSchema({ value }, result.input)).toEqual([]);
+    }
+    for (const value of [2, "other", true, {}, []]) {
+      expect(result.accepts(value)).toBe(false);
+      expect(validateParamsAgainstSchema({ value }, result.input).length).toBeGreaterThan(0);
     }
   });
 
-  it("does not claim exact branch matches for non-pin constraints", () => {
-    const schema = {
-      properties: {
-        value: { oneOf: [{ enum: [1, 2], maximum: 1 }, { const: 2 }] },
-      },
-    };
-    expect(validateParamsAgainstSchema({ value: 2 }, schema)).toEqual([]);
+  it("keeps numeric and boolean enum members uncoerced", () => {
+    for (const values of [
+      [1, 2, 3],
+      [true, false],
+    ]) {
+      const result = roundtrip({ enum: values });
+      expect(result.schema.enum).toEqual(values);
+      for (const value of values) expect(result.accepts(value)).toBe(true);
+      expect(result.accepts(String(values[0]))).toBe(false);
+    }
   });
 
-  it("retains the object fallback for an open untyped union branch", () => {
-    const schema = { properties: { value: { anyOf: [{ const: "a" }, {}] } } };
-    expect(convertJsonSchemaToActionParams(schema)?.[0]?.schema.anyOf).toEqual([
-      { type: "string" },
-      { type: "object" },
-    ]);
-    expect(validateParamsAgainstSchema({ value: {} }, schema)).toEqual([]);
-    expect(validateParamsAgainstSchema({ value: "a" }, schema)).toEqual([]);
+  it("roundtrips a 4,096-member primitive enum", () => {
+    const values = Array.from({ length: 4096 }, (_, index) => index);
+    const result = roundtrip({ enum: values });
+    expect(result.schema.enum).toEqual(values);
+    expect(result.accepts(0)).toBe(true);
+    expect(result.accepts(4095)).toBe(true);
+    expect(result.accepts(4096)).toBe(false);
+    expect(validateParamsAgainstSchema({ value: 4095 }, result.input)).toEqual([]);
   });
+
+  it("preserves a null-only enum", () => {
+    const result = roundtrip({ enum: [null] });
+    expect(result.schema).toMatchObject({ type: "null", enum: [null] });
+    expect(result.accepts(null)).toBe(true);
+    expect(result.accepts({})).toBe(false);
+  });
+
+  it("intersects const, enum, and declared union types", () => {
+    const result = roundtrip({ const: "b", enum: [1, "a", "b"], anyOf: [{ type: "string" }] });
+    expect(result.schema).toMatchObject({ type: "string", enum: ["b"] });
+    expect(result.accepts("b")).toBe(true);
+    for (const value of [1, "a"]) expect(result.accepts(value)).toBe(false);
+  });
+
+  it("retains only values that satisfy both anyOf and oneOf", () => {
+    const result = roundtrip({
+      enum: ["a", "b", "c"],
+      anyOf: [{ enum: ["a", "b"] }],
+      oneOf: [{ enum: ["a", "b"] }, { const: "b" }],
+    });
+    expect(result.schema.enum).toEqual(["a"]);
+    expect(result.accepts("a")).toBe(true);
+    expect(result.accepts("b")).toBe(false);
+    expect(result.accepts("c")).toBe(false);
+  });
+
+  it("intersects finite allOf candidates", () => {
+    const result = roundtrip({ allOf: [{ enum: [1, 2, 3] }, { enum: [2, 3] }, { const: 2 }] });
+    expect(result.schema.enum).toEqual([2]);
+    expect(result.accepts(2)).toBe(true);
+    expect(result.accepts(1)).toBe(false);
+  });
+
+  it("removes overlapping finite oneOf candidates", () => {
+    const result = roundtrip({ oneOf: [{ const: "a" }, { enum: ["a", "b"] }] });
+    expect(result.schema.enum).toEqual(["b"]);
+    expect(result.accepts("b")).toBe(true);
+    expect(result.accepts("a")).toBe(false);
+    expect(validateParamsAgainstSchema({ value: "a" }, result.input)).toEqual([
+      "Parameter 'value' matches more than one branch of the oneOf",
+    ]);
+  });
+
+  it("preserves per-kind enum sets from finite union branches", () => {
+    const result = roundtrip({
+      anyOf: [{ enum: ["x", "y"] }, { enum: [1, 2] }],
+    });
+    expect(result.schema.anyOf).toEqual([
+      { type: "string", enum: ["x", "y"] },
+      { type: "number", enum: [1, 2] },
+    ]);
+    for (const value of ["x", "y", 1, 2]) expect(result.accepts(value)).toBe(true);
+    for (const value of ["z", 3]) expect(result.accepts(value)).toBe(false);
+  });
+
+  it("preserves nested mixed finite and open unions", () => {
+    const result = roundtrip({
+      anyOf: [{ type: "string" }, { oneOf: [{ const: 1 }, { type: "integer" }] }],
+    });
+    expect(result.accepts("x")).toBe(true);
+    expect(result.accepts(2)).toBe(true);
+    expect(result.accepts(1)).toBe(false);
+    expect(result.accepts(1.5)).toBe(false);
+  });
+
+  it("counts only branches whose type and integer constraint match", () => {
+    const typed = roundtrip({
+      oneOf: [
+        { type: "string", enum: ["a"] },
+        { type: "number", enum: ["a"] },
+      ],
+    });
+    expect(typed.schema.enum).toEqual(["a"]);
+    const integer = roundtrip({ oneOf: [{ type: "integer", enum: [1, 1.5] }, { const: 1.5 }] });
+    expect(integer.schema.enum).toEqual([1, 1.5]);
+    expect(integer.accepts(1.5)).toBe(true);
+  });
+
+  it("does not widen a finite branch beside an open primitive branch", () => {
+    const result = roundtrip({ anyOf: [{ const: 1 }, { type: "string" }] });
+    expect(result.schema.anyOf).toEqual([{ type: "number", enum: [1] }, { type: "string" }]);
+    expect(result.accepts(1)).toBe(true);
+    expect(result.accepts("anything")).toBe(true);
+    expect(result.accepts(2)).toBe(false);
+    expect(validateParamsAgainstSchema({ value: 2 }, result.input).length).toBeGreaterThan(0);
+  });
+
+  it("preserves exclusion by an overlapping open oneOf branch", () => {
+    const result = roundtrip({ oneOf: [{ const: "x" }, { type: "string" }] });
+    expect(result.accepts("other")).toBe(true);
+    expect(result.accepts("x")).toBe(false);
+    expect(validateParamsAgainstSchema({ value: "x" }, result.input)).toEqual([
+      "Parameter 'value' matches more than one branch of the oneOf",
+    ]);
+  });
+
+  it("retains a sibling type on an open union", () => {
+    const result = roundtrip({ type: "string", anyOf: [{ const: 1 }, { type: "string" }] });
+    expect(result.accepts("anything")).toBe(true);
+    expect(result.accepts(1)).toBe(false);
+  });
+
+  for (const property of [
+    { const: "a", enum: ["b"] },
+    { const: 1, type: "string" },
+    { const: "a", anyOf: [{ const: "b" }] },
+    { type: "string", anyOf: [{ const: 1 }] },
+    { enum: [] },
+    { oneOf: [{ const: null }, { type: "null" }] },
+  ]) {
+    it(`refuses impossible finite schema ${JSON.stringify(property)}`, () => {
+      refuses(property, UNSATISFIABLE);
+      expect(() =>
+        validateParamsAgainstSchema({ value: null }, { properties: { value: property } })
+      ).toThrowError(expect.objectContaining({ code: UNSATISFIABLE }));
+    });
+  }
+
+  for (const property of [
+    { const: { key: "value" } },
+    { enum: [[1, 2]] },
+    { anyOf: [{ const: "a" }, {}] },
+    { enum: [1, 2], maximum: 1 },
+    { type: "object", properties: { nested: { const: "a" } } },
+    { anyOf: [{ const: "a" }, { type: "object" }] },
+    { const: 1, allOf: [] },
+    { const: 1, anyOf: [] },
+    { const: 1, oneOf: [] },
+    { const: 1, type: [] },
+    { const: 1, type: ["number", "number"] },
+    { const: 1, enum: "invalid" },
+    { const: 1, anyOf: "invalid" },
+  ]) {
+    it(`refuses unsupported pinned schema ${JSON.stringify(property)}`, () => {
+      refuses(property, UNSUPPORTED);
+      expect(() =>
+        validateParamsAgainstSchema(
+          { value: null },
+          {
+            properties: { value: property },
+            required: ["value"],
+          }
+        )
+      ).toThrowError(expect.objectContaining({ code: UNSUPPORTED }));
+    });
+  }
 });
