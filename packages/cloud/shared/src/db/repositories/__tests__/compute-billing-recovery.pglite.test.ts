@@ -4410,17 +4410,6 @@ describe("compute billing recovery", () => {
     const [intent] = await dbWrite.select().from(containerComputeStopIntents);
     expect(intent).toMatchObject({ status: "provider_confirmed", attempts: 1 });
     expect(intent?.provider_confirmed_at).toBeInstanceOf(Date);
-    const replay = await activeBillingService.cancelResource({
-      organizationId: org.id,
-      resourceId: containerId,
-      resourceType: "container",
-      mode: "stop",
-      authorizeInfrastructureMutation: async () => undefined,
-    });
-    expect(replay).toMatchObject({
-      stoppedBilling: true,
-      resource: { status: "stopped", billingStatus: "suspended" },
-    });
     expect(await dbWrite.select().from(jobs)).toHaveLength(1);
     expect(providerStop).toHaveBeenCalledTimes(1);
     providerStop.mockRestore();

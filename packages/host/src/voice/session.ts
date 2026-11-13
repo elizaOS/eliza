@@ -259,6 +259,11 @@ export interface VoiceSessionSpeechPorts {
   openStt(
     onEvent: (event: CartesiaInkRealtimeEvent) => void,
   ): Pick<CartesiaInkRealtimeSession, "sendAudioChunk" | "close" | "cancel">;
+  /**
+   * True only when `openStt` can be called again after a failed recognizer.
+   * Otherwise a lost STT transport ends the call instead of reconnecting.
+   */
+  sttReopenable?: boolean;
   tts: {
     createStream(
       options: { traceId: string; maxBufferDelayMs: number },
@@ -695,7 +700,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       this.config.allowContinuousHandoff === true &&
       capabilities.mode === "continuous_handoff" &&
       capabilities.echoCancellation &&
-      capabilities.referenceAwarePlayback;
+      capabilities.referenceAwarePlayback &&
+      // Fish never reports a flush, so phrase-boundary handoff cannot fire.
+      !this.fishAudioAdapter;
     logger.info(
       {
         sessionId: this.sessionId,
@@ -1238,7 +1245,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         },
         "[voice-session] Ink connection timed out",
       );
-      this.send({ t: "error", code: "stt_reconnecting", retryable: true });
+      if (this.sttReopenable()) {
+        this.send({ t: "error", code: "stt_reconnecting", retryable: true });
+      }
       this.recoverSttTransport("connect_timeout", generation);
     }, timeoutMs);
     this.sttConnectTimer = timer;
@@ -1413,7 +1422,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           },
           "[voice-session] Ink transport closed",
         );
-        this.send({ t: "error", code: "stt_reconnecting", retryable: true });
+        if (this.sttReopenable()) {
+          this.send({ t: "error", code: "stt_reconnecting", retryable: true });
+        }
         this.recoverSttTransport(`close:${event.code}`, generation);
         break;
       }
@@ -1445,7 +1456,28 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         // generation fence already prevents it from reaching session state.
       }
     }
+    if (!this.sttReopenable()) {
+      logger.warn(
+        { sessionId: this.sessionId, reason },
+        "[voice-session] injected STT lost and cannot reopen",
+      );
+      this.send({
+        t: "error",
+        code: "speech_relay_unavailable",
+        retryable: false,
+      });
+      this.teardown("error");
+      return;
+    }
     this.scheduleSttReconnect(reason);
+  }
+
+  /** An injected relay's recognizer opens once unless the host opts in. */
+  private sttReopenable(): boolean {
+    return (
+      this.config.speechProvider !== "injected" ||
+      this.config.speechPorts.sttReopenable === true
+    );
   }
 
   private clearSttConnectTimeout(): void {
@@ -1489,7 +1521,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         this.openSttSession();
       } catch (error) {
         // error-policy:J4 a replacement transport that cannot be constructed
-        // stays visibly retrying, then fails the call closed at the bound.
+        // stays visibly retrying at capped backoff for the session lifetime.
         logger.warn(
           {
             sessionId: this.sessionId,
@@ -1597,6 +1629,20 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   /** Authoritative user turn: mint the turn trace, run the LLM+TTS legs. */
   private commitTurn(transcript: string): void {
     if (
+      (this.currentVoiceTurnId || this.pendingOverlapTurn) &&
+      !SPOKEN_TRANSCRIPT_RE.test(transcript)
+    ) {
+      // A noise or empty final while a reply is active is not a new turn: it
+      // must not replace the active turn id or queue an overlap reply. Its
+      // metered STT stays on the active turn's usage frame.
+      this.state = this.currentVoiceTurnId
+        ? this.assistantPlaybackActive
+          ? "speaking"
+          : "thinking"
+        : "listening";
+      return;
+    }
+    if (
       this.continuousHandoffEnabled &&
       (this.currentVoiceTurnId || this.pendingOverlapTurn) &&
       transcript.trim() !== ""
@@ -1605,6 +1651,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       return;
     }
     const traceId = this.mintTraceId("turn");
+    this.assertNoActiveVoiceTurn(traceId);
     this.currentTraceId = traceId;
     this.currentVoiceTurnId = traceId;
     // turnSttMs already holds the STT duration metered while this utterance's
@@ -1638,6 +1685,19 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       // error-policy:J5 runResponseTurn reports failures through voice error
       // frames; the sequencing barrier must still release the next request.
       () => undefined,
+    );
+  }
+
+  /** Spoken finals interrupt the active turn first; anything else is a bug. */
+  private assertNoActiveVoiceTurn(nextTraceId: string): void {
+    if (this.currentVoiceTurnId === null) return;
+    logger.error(
+      {
+        sessionId: this.sessionId,
+        activeTraceId: this.currentVoiceTurnId,
+        nextTraceId,
+      },
+      "[voice-session] committing a turn over an active turn",
     );
   }
 
@@ -1696,6 +1756,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           traceId: pending.traceId,
           signal: pending.abort.signal,
           fetchImpl: this.config.fetchImpl,
+          // Nothing is spoken until the reply completes, so take the rewrite.
+          onAuthoritativeReplace: (text) => {
+            if (this.pendingOverlapTurn === pending) replyText = text;
+          },
         },
         (delta) => {
           if (
@@ -2088,6 +2152,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     this.phrase = phrase;
     let initialReplyBuffer = "";
     let streamingReplyStarted = false;
+    // Set once any reply (not progress) text has been submitted to TTS.
+    let replySpeechSubmitted = false;
+    // The authoritative reply rewrote text already spoken: stop feeding TTS.
+    let replyDiverged = false;
     // The bridge stops progress once reply text is authorized, so every cue
     // spoken this turn precedes the first reply delta.
     const spokenProgressCues: string[] = [];
@@ -2222,7 +2290,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     const sendTtsPhrase = (
       stream: RealtimeTtsStream,
       input: RealtimeTtsPhraseInput,
+      reply = true,
     ): void => {
+      if (reply && input.text) replySpeechSubmitted = true;
       // Count every submitted phrase once, including progress spoken before
       // the final reply. Buffered phrases are not submitted until this point.
       firstTtsPhraseSubmittedAt ??= this.now();
@@ -2383,7 +2453,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
             });
             pendingPhrase = null;
           }
-          sendTtsPhrase(stream, { text, continueContext: true });
+          sendTtsPhrase(stream, { text, continueContext: true }, false);
           spokenProgressCues.push(text);
           logger.info(
             {
@@ -2400,9 +2470,24 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           this.send({ t: "activity", label, traceId });
         },
         onReplyReady: finalizeTtsReply,
+        onAuthoritativeReplace: (text: string) => {
+          if (this.currentVoiceTurnId !== traceId) return;
+          if (replySpeechSubmitted || ttsReplyFinalized) {
+            // Re-speaking a rewritten reply would repeat audio. The held
+            // phrase still closes the context; the canonical text persists.
+            replyDiverged = true;
+            return;
+          }
+          phrase.reset();
+          pendingPhrase = null;
+          initialReplyBuffer = "";
+          streamingReplyStarted = false;
+          this.assistantReferenceText = "";
+          onDelta(text);
+        },
       };
       const onDelta = (delta: string) => {
-        if (this.currentVoiceTurnId !== traceId) return;
+        if (this.currentVoiceTurnId !== traceId || replyDiverged) return;
         this.noteLlmDelta(traceId);
         modelOutputChars += delta.length;
         this.assistantReferenceText += delta;

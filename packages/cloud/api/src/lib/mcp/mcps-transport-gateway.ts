@@ -18,7 +18,7 @@ import {
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import { isKillSwitched } from "@/api-app/lib/mcp/integration-catalog";
+import { isKillSwitched } from "./integration-catalog";
 
 const BUILTIN = new Set<string>(["time", "weather", "crypto"]);
 const COINGECKO = "https://api.coingecko.com/api/v3";

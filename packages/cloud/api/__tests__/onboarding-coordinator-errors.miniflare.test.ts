@@ -206,29 +206,30 @@ describe("onboarding coordinator error integration", () => {
     await miniflare?.dispose();
   });
 
-  async function greetingQueue(name: string) {
-    const namespace = await miniflare.getDurableObjectNamespace(
-      "ONBOARDING_SESSIONS",
-    );
-    const stub = namespace.getByName(`proactive-greetings:${name}`);
+  function coordinatorRequest(owner: string, path: string, body: unknown) {
+    return miniflare.dispatchFetch("https://cloud.test/fixture/coordinator", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ owner, path, body }),
+    });
+  }
+
+  function greetingQueue(name: string) {
     return async <Name extends keyof GreetingReplies>(
       path: Name,
       body: unknown,
     ): Promise<GreetingReplies[Name]> => {
-      const response = await stub.fetch(`https://onboarding.internal/${path}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      const response = await coordinatorRequest(
+        `proactive-greetings:${name}`,
+        path,
+        body,
+      );
       expect(response.status).toBe(200);
       return (await response.json()) as GreetingReplies[Name];
     };
   }
 
   async function continuation(name: string) {
-    const namespace = await miniflare.getDurableObjectNamespace(
-      "ONBOARDING_SESSIONS",
-    );
     const id = `platform:continuation-${name}`;
     const session = {
       id,
@@ -245,13 +246,7 @@ describe("onboarding coordinator error integration", () => {
     };
     const account = { userId: "fixture-user", organizationId: "fixture-org" };
     const send = async (owner: string, path: string, body: unknown) => {
-      const response = await namespace
-        .getByName(owner)
-        .fetch(`https://onboarding.internal/${path}`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(body),
-        });
+      const response = await coordinatorRequest(owner, path, body);
       return { status: response.status, body: await response.json() };
     };
     const token = `continuation-fixture-${name}`;
@@ -296,7 +291,7 @@ describe("onboarding coordinator error integration", () => {
   }, 120_000);
 
   test("concurrent greeting drains lease the original enqueue to one poller", async () => {
-    const queue = await greetingQueue("concurrent");
+    const queue = greetingQueue("concurrent");
     const original = {
       sessionId: "platform:queue-original",
       platformUserId: "test-recipient",
@@ -338,7 +333,7 @@ describe("onboarding coordinator error integration", () => {
   });
 
   test("an expired lease can be replaced and its delayed acknowledgement has no effect", async () => {
-    const queue = await greetingQueue("recovery");
+    const queue = greetingQueue("recovery");
     const now = Date.now();
     const original = {
       sessionId: "platform:queue-recovery",
@@ -433,5 +428,19 @@ describe("onboarding coordinator error integration", () => {
     expect(await request("complete-claim", owned)).toMatchObject({
       status: 409,
     });
+  });
+
+  test("replay created behind the cleanup cursor keeps an expiry alarm", async () => {
+    const reply = await miniflare.dispatchFetch(
+      "https://cloud.test/fixture/replay-case",
+    );
+    expect(reply.status).toBe(200);
+    const state = (await reply.json()) as {
+      count: number;
+      expiry: number;
+      alarm: number | null;
+    };
+    expect(state.count).toBe(1);
+    expect(state.alarm).toBe(state.expiry);
   });
 });

@@ -96,7 +96,10 @@ test("the Photos plugins are host-registered bindings with no product names", ()
     /requestPermissionForAliases\(aliases, call, "libraryPermissionResult"\);\n {4}\} catch \(IllegalStateException closed\)/,
   );
   // Every permitted read is published only under the ticket it started with.
-  assert.match(read, /permitted\.publish\(call, value, ticket\)/);
+  assert.match(
+    read,
+    /permitted\.publish\(call, value, ticket(?:, onPublished)?\)/,
+  );
   assert.equal((library.match(/catalog\.publish\(call,/g) || []).length, 3);
   // Foreground cancellation: pausing cancels video copies and stops observation.
   assert.match(

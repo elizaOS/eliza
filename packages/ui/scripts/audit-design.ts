@@ -635,7 +635,7 @@ export function renderMarkdown(report) {
 if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
   if (args.some((arg) => arg !== "--json")) {
-    throw new Error("Usage: node scripts/audit-design.ts [--json]");
+    throw new Error("Usage: bun scripts/audit-design.ts [--json]");
   }
   const report = buildInventory();
   process.stdout.write(

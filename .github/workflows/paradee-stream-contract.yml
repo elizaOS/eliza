@@ -40,11 +40,11 @@ jobs:
             echo 'run=false' >> "$GITHUB_OUTPUT"
           fi
       - if: steps.changes.outputs.run == 'true'
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: '24.15.0'
       - if: steps.changes.outputs.run == 'true'
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78
         with:
           distribution: temurin
           java-version: '21'
@@ -69,6 +69,24 @@ jobs:
           curl -fsSL --retry 3 -o "$jar" https://repo1.maven.org/maven2/org/json/json/20250517/json-20250517.jar
           echo "3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796  $jar" | sha256sum -c -
           echo "ELIZA_JSON_JAR=$jar" >> "$GITHUB_ENV"
+      - name: Fetch pinned native speech compile dependencies
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          dependencies="$RUNNER_TEMP/speech-compile-deps"
+          mkdir -p "$dependencies"
+          fetch() {
+            local artifact="$1" checksum="$2" file="$3"
+            curl -fsSL --retry 3 -o "$dependencies/$file" "https://repo1.maven.org/maven2/$artifact"
+            echo "$checksum  $dependencies/$file" | sha256sum -c -
+          }
+          fetch com/squareup/okhttp3/okhttp-android/5.3.2/okhttp-android-5.3.2.aar \
+            f1a78812ebeef4d45eee0dbeb4f27347210f564d2b8ee411f012ce8573b0a658 okhttp-release.aar
+          fetch com/squareup/okio/okio-jvm/3.16.4/okio-jvm-3.16.4.jar \
+            2196b993cd34dbbd919e7e01f57a4781b58bee80f86106163e287c20343a96a7 okio-jvm-3.16.4.jar
+          fetch org/jetbrains/kotlin/kotlin-stdlib/2.2.21/kotlin-stdlib-2.2.21.jar \
+            6558a3d233da56a20934b32159f9db5f86ed5816ef098f78a2c223dc6abb79dd kotlin-stdlib-2.2.21.jar
+          echo "ELIZA_SPEECH_COMPILE_DEPS_DIR=$dependencies" >> "$GITHUB_ENV"
       - name: Check the shared speech pipeline (recognizer probe, VAD, playback) on the JVM
         if: steps.changes.outputs.run == 'true'
         run: node --test packages/app/scripts/paradee-voice/speech-pipeline-contract.test.mjs
@@ -92,7 +110,7 @@ jobs:
 
       - name: Install native build tools
         if: steps.changes.outputs.run == 'true'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake ninja-build
+        run: bash "$GITHUB_WORKSPACE/packages/scripts/github/install-apt-packages.sh" --no-install-recommends cmake ninja-build
       - name: Build ABI 19 engines and link both JNI surfaces
         if: steps.changes.outputs.run == 'true'
         env:

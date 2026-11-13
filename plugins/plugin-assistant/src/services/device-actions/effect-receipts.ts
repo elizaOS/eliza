@@ -26,6 +26,11 @@ import {
   smsBindingText,
   validateSmsResult,
 } from "./sms-contract.ts";
+import {
+  isTelephonyAction,
+  telephonyActionReceiptOutcome,
+  validateTelephonyActionResult,
+} from "./telephony-actions-contract.ts";
 
 /** Only call after authenticated proposal lookup and operation-result validation.
  * Proof refers to persisted queue/native operation identities, never payload text. */
@@ -141,6 +146,18 @@ export function deviceActionEffectReceipts(
         }),
       ];
     }
+    // A stored telephony result that names no observed effect or returned item
+    // never becomes an applied receipt, whatever outcome the stored receipt
+    // carries. A call receipt proves a started call, never a connected one.
+    if (
+      isTelephonyAction(operation) &&
+      telephonyActionReceiptOutcome(
+        validateTelephonyActionResult(operation, provider.result),
+      ) !== "applied"
+    )
+      throw new Error(
+        "Telephony receipt outcome conflicts with native evidence",
+      );
     const read = deviceOperationIsRead(operation);
     const noMatch =
       isNamedTargetOperation(operation) &&
@@ -270,6 +287,8 @@ function deviceOperationIsRead(operation: DeviceOperation): boolean {
     case "read_selected_notes":
     case "read_calendar_range":
     case "read_selected_reminders":
+    case "messages_read_selected":
+    case "voicemail_read_selected":
       return true;
     case "calendar_named":
       return operation.action === "read";
@@ -301,6 +320,13 @@ function deviceOperationIsRead(operation: DeviceOperation): boolean {
     case "calendar_delete":
     case "sms_send":
     case "phone_dial":
+    case "phone_call":
+    case "contact_create":
+    case "contact_update":
+    case "contact_delete":
+    case "sms_compose":
+    case "sms_reply_selected":
+    case "voicemail_delete_selected":
     case "clock_handoff":
     case "clock_alarm":
     case "camera_capture_photo":
@@ -310,6 +336,7 @@ function deviceOperationIsRead(operation: DeviceOperation): boolean {
     case "open_view":
     case "browser_navigate":
     case "notes_filter":
+    case "notes_list_filter":
     case "notes_move":
     case "notes_folder_create":
     case "notes_restore":

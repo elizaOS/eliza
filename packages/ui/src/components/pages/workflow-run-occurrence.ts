@@ -2,9 +2,10 @@
  * Presentation of a scheduled occurrence that the agent settled without running
  * anything. A missed occurrence came due while the agent was not running
  * (powered-on scheduling records it once and never replays it); an overlapping
- * one was skipped because an earlier run was still active. Both are terminal
- * `finished` executions on the agent, so the run list must not show them as
- * completed work. A missed occurrence offers an explicit, separately confirmed
+ * one was skipped because an earlier run was still active; an unavailable one is
+ * a hosted digest occurrence whose reviewed source had lapsed or whose schedule
+ * is paused. All are terminal `finished` executions on the agent, so the run
+ * list must not show them as completed work. A missed occurrence offers an explicit, separately confirmed
  * Run now: it starts a new manual run and never replays the missed one.
  */
 import {
@@ -14,7 +15,7 @@ import {
 import type { WorkflowExecution } from "../../api/client-types-chat";
 
 export interface WorkflowRunNotRun {
-  status: "missed" | "overlap";
+  status: "missed" | "overlap" | "unavailable";
   /** Short label for the run list and the status indicator. */
   label: string;
   /** Owner-facing statement of what happened and what did not. */
@@ -42,7 +43,10 @@ export function workflowRunNotRun(
   // or hosted admission records itself in the run input, and a generic
   // schedule's missed occurrence carries the engine-written missedOccurrenceAt.
   // A workflow whose own result merely has the same shape is a run that ran.
-  const settled = workflowOccurrenceNotRun(execution.output);
+  const settled = workflowOccurrenceNotRun(
+    execution.output,
+    hostedDigestAdmission(execution.input),
+  );
   if (!settled) return null;
   if (
     !scheduledAdmission(execution.input) &&
@@ -60,6 +64,13 @@ export function workflowRunNotRun(
       offerRunNow: runNowAvailable,
     };
   const when = formatTime(settled.scheduledAt);
+  if (settled.status === "unavailable")
+    return {
+      status: "unavailable",
+      label: "Not run — source unavailable",
+      notice: `Scheduled for ${when}. ${settled.text}`,
+      offerRunNow: false,
+    };
   return settled.status === "missed"
     ? {
         status: "missed",
@@ -75,12 +86,22 @@ export function workflowRunNotRun(
       };
 }
 
-function scheduledAdmission(input: unknown): boolean {
+function admissionRecord(input: unknown, key: string): boolean {
   if (!input || typeof input !== "object" || Array.isArray(input)) return false;
-  const record = input as Record<string, unknown>;
-  return [record.typedSchedule, record.hostedDigest].some(
-    (value) => !!value && typeof value === "object" && !Array.isArray(value),
+  const value = (input as Record<string, unknown>)[key];
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function scheduledAdmission(input: unknown): boolean {
+  return (
+    admissionRecord(input, "typedSchedule") ||
+    admissionRecord(input, "hostedDigest")
   );
+}
+
+/** Only the hosted digest admission writes an `unavailable` settlement. */
+function hostedDigestAdmission(input: unknown): boolean {
+  return admissionRecord(input, "hostedDigest");
 }
 
 export interface TriggerRunMissed {

@@ -32,6 +32,7 @@ import {
   MAPS_PROVIDER_SETTINGS,
   mapsProviderFromEnv,
 } from "@elizaos/cloud-shared/lib/services/maps/provider-registry";
+import { simplifyRouteGeometry } from "@elizaos/cloud-shared/lib/services/maps/route-geometry";
 import {
   consumePlanRequest,
   readPlanRequestLimitConfig,
@@ -53,8 +54,6 @@ import {
 } from "./maps-request-admission";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
-/** Tiles are per-caller (authenticated) and change rarely. */
-const TILE_CACHE = "private, max-age=86400";
 
 export interface MapsRouteDependencies {
   authenticate(c: AppContext): Promise<MapsCaller>;
@@ -250,10 +249,13 @@ async function dispatch(
       return {
         providerId,
         attribution,
-        routes: await provider.routes(
-          parsed(mapsRoutesRequestSchema, body),
-          signal,
-        ),
+        // Every provider's geometry is bounded here, before the response.
+        routes: (
+          await provider.routes(parsed(mapsRoutesRequestSchema, body), signal)
+        ).map((route) => ({
+          ...route,
+          geometry: simplifyRouteGeometry(route.geometry, route.steps),
+        })),
       };
     case "viewport": {
       const viewport = provider.viewport;
@@ -354,18 +356,28 @@ export function createMapsRoute(
       try {
         completion = await dependencies.admitRequest(c, user, operation);
       } catch (error) {
-        if (error instanceof ApiError || error instanceof MapsAdmissionError)
+        if (error instanceof ApiError || error instanceof MapsAdmissionError) {
+          const retryAfterSeconds = error.details?.retryAfterSeconds;
+          const retry =
+            typeof retryAfterSeconds === "number" &&
+            Number.isFinite(retryAfterSeconds) &&
+            retryAfterSeconds > 0
+              ? Math.ceil(retryAfterSeconds)
+              : undefined;
+          // Like failure(): the header for HTTP clients, the body for native ones.
           return c.json(
             {
               error: error.message,
               code: error.code,
-              ...(error.details?.retryAfterSeconds
-                ? { retryAfterSeconds: error.details.retryAfterSeconds }
-                : {}),
+              ...(retry !== undefined ? { retryAfterSeconds: retry } : {}),
             },
             error.status as 400 | 403 | 408 | 409 | 429 | 503,
-            NO_STORE,
+            {
+              ...NO_STORE,
+              ...(retry !== undefined ? { "Retry-After": String(retry) } : {}),
+            },
           );
+        }
         throw error;
       }
     } else {
@@ -482,7 +494,7 @@ export function createMapsRoute(
           status: 200,
           headers: {
             "Content-Type": image.contentType,
-            "Cache-Control": TILE_CACHE,
+            ...NO_STORE,
             Vary: "Accept",
           },
         });

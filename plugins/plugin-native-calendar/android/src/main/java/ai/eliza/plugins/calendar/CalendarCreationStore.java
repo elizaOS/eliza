@@ -16,8 +16,18 @@ import java.util.Collections;
 import java.util.Iterator;
 import org.json.JSONObject;
 
-/** Metadata-only journal; provider owns event text. Unknown operations are never replayed. */
+/**
+ * Metadata-only journal; provider owns event text. Unknown operations are never replayed.
+ * Statuses: unknown (dispatch may have happened), saved, failed (the provider created no row) and
+ * dismissed (the owner retired an unknown row after the provider showed no matching event).
+ */
 public final class CalendarCreationStore {
+ /** Unacknowledged rows at which new creations are refused until receipts are reviewed. */
+ static final int MAX_OPEN=1000;
+ /** Acknowledged rows kept so a late identical retry still returns its receipt. */
+ static final int RETAINED_SETTLED=256;
+ /** A definite refusal: nothing was written and no provider effect was attempted. */
+ public static final class Full extends IllegalStateException { Full(){super("Too many calendar saves are waiting for review. Check creation receipts, then try again.");} }
  private final String journalName, creationUriPrefix;
  private final String[] bindingFields;
  private static final class State { final String identity; boolean quarantined; String prefix; State(String identity,String prefix){this.identity=identity;this.prefix=prefix;} }
@@ -40,7 +50,7 @@ public final class CalendarCreationStore {
  }
  private JSONObject read(Context context)throws Exception {
   JSONObject value=new JSONObject(preferences(context).getString("operations","{}"));
-  if(value.length()>1000)throw new IllegalStateException("Calendar operation journal full");
+  if(open(value)>MAX_OPEN)throw new IllegalStateException("Calendar operation journal full");
   return value;
  }
  private void write(Context context,JSONObject value) {
@@ -62,17 +72,39 @@ public final class CalendarCreationStore {
   if("saved".equals(record.optString("status"))){result.put("id",record.getString("eventId"));result.put("calendarId",record.getString("calendarId"));}
   return result;
  }
+ private static int open(JSONObject all)throws Exception {
+  int count=0;for(Iterator<String> it=all.keys();it.hasNext();)if(!all.getJSONObject(it.next()).optBoolean("acknowledged"))count++;
+  return count;
+ }
+ /**
+  * Removes the oldest acknowledged rows (saved, failed or dismissed) beyond
+  * {@link #RETAINED_SETTLED}. Unknown or unacknowledged rows are never removed. Rows order by
+  * {@code seq}; legacy rows without one are oldest, in stored order. Returns the next {@code seq}.
+  */
+ static long retire(JSONObject all)throws Exception {
+  ArrayList<String> settled=new ArrayList<>();long next=0;
+  for(Iterator<String> it=all.keys();it.hasNext();){
+   String id=it.next();JSONObject record=all.getJSONObject(id);next=Math.max(next,record.optLong("seq",-1)+1);
+   if(record.optBoolean("acknowledged")&&!"unknown".equals(record.optString("status","unknown")))settled.add(id);
+  }
+  settled.sort((a,b)->Long.compare(all.optJSONObject(a).optLong("seq",-1),all.optJSONObject(b).optLong("seq",-1)));
+  for(int i=0;i<settled.size()-RETAINED_SETTLED;i++)all.remove(settled.get(i));
+  return next;
+ }
  private static boolean pending(JSONObject all)throws Exception {
   for(Iterator<String> it=all.keys();it.hasNext();)if(!all.getJSONObject(it.next()).optBoolean("acknowledged"))return true;
   return false;
  }
- private boolean reconcile(Context context,String id,JSONObject record)throws Exception {
+ private boolean reconcile(Context context,String id,JSONObject record)throws Exception {return reconcile(context,id,record,false);}
+ /** With {@code strict}, a provider without a cursor throws instead of reading as no match. */
+ private boolean reconcile(Context context,String id,JSONObject record,boolean strict)throws Exception {
   if("saved".equals(record.optString("status")))return false;
   String[] defaults={CalendarContract.Events.CALENDAR_ID,CalendarContract.Events.TITLE,CalendarContract.Events.DESCRIPTION,CalendarContract.Events.EVENT_LOCATION,CalendarContract.Events.DTSTART,CalendarContract.Events.DTEND,CalendarContract.Events.EVENT_TIMEZONE};
   String[] bindings=bindingFields==null?defaults:bindingFields;
   String[] fields=new String[bindings.length+1];fields[0]=CalendarContract.Events._ID;System.arraycopy(bindings,0,fields,1,bindings.length);
   String where=CalendarContract.Events.CUSTOM_APP_PACKAGE+"=? AND "+CalendarContract.Events.CUSTOM_APP_URI+"=? AND "+CalendarContract.Events.DELETED+"=0";
   try(Cursor rows=context.getContentResolver().query(CalendarContract.Events.CONTENT_URI,fields,where,new String[]{context.getPackageName(),identity(id)},null)) {
+   if(rows==null&&strict)throw new IllegalStateException("Calendar provider returned no cursor");
    if(rows==null||rows.getCount()!=1||!rows.moveToFirst())return false;
    ContentValues actual=new ContentValues();for(int i=1;i<fields.length;i++){if(rows.isNull(i))actual.putNull(fields[i]);else actual.put(fields[i],rows.getString(i));}
    if(!record.getString("argumentHash").equals(digest(actual)))return false;
@@ -92,7 +124,14 @@ public final class CalendarCreationStore {
  }
  /** Refuse ambiguous installed receipts without rewriting either journal. */
  public static void acknowledgeEither(Context context,String id,CalendarCreationStore first,CalendarCreationStore second)throws Exception{
-  first.identity(id);first.paired(context,second,()->{boolean a=first.read(context).has(id),b=second.read(context).has(id);if(a&&b)throw new IllegalStateException("Creation identity exists in both journals");if(b)second.acknowledgeLocked(context,id);else first.acknowledgeLocked(context,id);return null;});
+  first.identity(id);first.paired(context,second,()->{CalendarCreationStore owner=ownerLocked(context,id,first,second);owner.acknowledgeLocked(context,id);return null;});
+ }
+ /** {@link #dismiss} for whichever of two journals holds the identity. Returns the final status. */
+ public static String dismissEither(Context context,String id,CalendarCreationStore first,CalendarCreationStore second)throws Exception{
+  first.identity(id);return first.paired(context,second,()->ownerLocked(context,id,first,second).dismissLocked(context,id));
+ }
+ private static CalendarCreationStore ownerLocked(Context context,String id,CalendarCreationStore first,CalendarCreationStore second)throws Exception{
+  boolean a=first.read(context).has(id),b=second.read(context).has(id);if(a&&b)throw new IllegalStateException("Creation identity exists in both journals");return b?second:first;
  }
  public JSObject create(Context context,String id,ContentValues values,boolean separate)throws Exception {synchronized(state(context)){return createLocked(context,id,values,separate);}}
  private JSObject createLocked(Context context,String id,ContentValues values,boolean separate)throws Exception {
@@ -102,14 +141,16 @@ public final class CalendarCreationStore {
    if(reconcile(context,id,record))write(context,all);return response(id,record);
   }
   if(pending(all)&&!separate){JSObject result=new JSObject();result.put("status","pending-creation");return result;}
-  if(all.length()>=1000)throw new IllegalStateException("Calendar operation journal full");
-  JSONObject record=new JSONObject().put("argumentHash",binding).put("calendarId",values.getAsString(CalendarContract.Events.CALENDAR_ID)).put("status","unknown").put("acknowledged",false);
+  if(open(all)>=MAX_OPEN)throw new Full();
+  long seq=retire(all); // Retired rows leave in the same commit that adds the new one.
+  JSONObject record=new JSONObject().put("argumentHash",binding).put("calendarId",values.getAsString(CalendarContract.Events.CALENDAR_ID)).put("status","unknown").put("acknowledged",false).put("seq",seq);
   all.put(id,record);write(context,all); // Durable unknown must precede the provider effect.
   ContentValues insert=new ContentValues(values);insert.put(CalendarContract.Events.CUSTOM_APP_PACKAGE,context.getPackageName());insert.put(CalendarContract.Events.CUSTOM_APP_URI,identity(id));
   try {
    Uri uri=context.getContentResolver().insert(CalendarContract.Events.CONTENT_URI,insert);
-   if(uri==null||ContentUris.parseId(uri)<=0)throw new IllegalStateException("Missing inserted calendar identity");
-   if(reconcile(context,id,record))write(context,all);
+   // A missing row id is the provider's definite answer that it made no row; it is never retried.
+   if(uri==null||ContentUris.parseId(uri)<=0){record.put("status","failed").put("acknowledged",true);write(context,all);}
+   else if(reconcile(context,id,record))write(context,all);
   }catch(Exception uncertain){/* Persisted unknown survives provider/readback/receipt response loss. */}
   preferences(context); // A failed journal commit must never expose its in-memory receipt.
   return response(id,record);
@@ -132,5 +173,17 @@ public final class CalendarCreationStore {
   identity(id);JSONObject all=read(context);JSONObject record=all.getJSONObject(id);
   if(!"saved".equals(record.optString("status")))throw new IllegalStateException("Unconfirmed calendar creation cannot be cleared");
   record.put("acknowledged",true);write(context,all);
+ }
+ /**
+  * Owner-driven exit for an unknown creation. Reads the provider now: a matching event settles
+  * the row as saved; any other answer settles it as dismissed. A failed query refuses. Nothing is
+  * inserted or retried. Returns the final status.
+  */
+ public String dismiss(Context context,String id)throws Exception {synchronized(state(context)){return dismissLocked(context,id);}}
+ private String dismissLocked(Context context,String id)throws Exception {
+  identity(id);JSONObject all=read(context);JSONObject record=all.getJSONObject(id);
+  if(record.optBoolean("acknowledged")||!"unknown".equals(record.optString("status","unknown")))throw new IllegalStateException("Only an unconfirmed calendar creation can be dismissed");
+  if(!reconcile(context,id,record,true))record.put("status","dismissed");
+  record.put("acknowledged",true);write(context,all);return record.getString("status");
  }
 }

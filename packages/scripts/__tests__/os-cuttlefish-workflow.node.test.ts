@@ -54,10 +54,10 @@ test("guest binding refuses physical devices before invoking boot validation", (
     '#!/bin/bash\ncase "$*" in *get-serialno*) echo localhost:6520 ;; *ro.product.device*) echo "$TEST_DEVICE" ;; *ro.build.type*) echo userdebug ;; *) exit 99 ;; esac\n',
   );
   writeFileSync(
-    join(dir, "node"),
-    '#!/bin/bash\nprintf "%s" "$ANDROID_SERIAL" > "$NODE_MARKER"\n',
+    join(dir, "bun"),
+    '#!/bin/bash\nprintf "%s" "$ANDROID_SERIAL" > "$BUN_MARKER"\n',
   );
-  for (const name of ["adb", "node"]) chmodSync(join(dir, name), 0o755);
+  for (const name of ["adb", "bun"]) chmodSync(join(dir, name), 0o755);
   const step = job.steps.find(
     (s) => s.name === "Bind validation to the disposable Cuttlefish guest",
   );
@@ -71,7 +71,7 @@ test("guest binding refuses physical devices before invoking boot validation", (
         TEST_DEVICE: device,
         BRAND_CONFIG: "brand.json",
         GITHUB_ENV: join(dir, "env"),
-        NODE_MARKER: join(dir, "called"),
+        BUN_MARKER: join(dir, "called"),
       },
       stdio: "pipe",
     });
@@ -85,7 +85,7 @@ test("guest binding refuses physical devices before invoking boot validation", (
   for (const name of [
     "Verify application-native kernels on Cuttlefish",
     "Prove full WAV to ASR to agent to TTS round trip",
-    "Exercise privileged Android instrumentation on Cuttlefish",
+    "Exercise image-contract instrumentation on Cuttlefish",
     "Verify assistant role, IME, and assist-key routing",
   ]) {
     assert.equal(

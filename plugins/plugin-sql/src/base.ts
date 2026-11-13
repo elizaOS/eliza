@@ -725,7 +725,7 @@ function mapAgentRow(row: AgentRow): Agent {
 
 import {
   assertEmbeddingWrite,
-  captureEmbeddingWrite,
+  captureEmbeddingTarget,
   EMBEDDING_WRITE_FENCE_STATEMENTS,
   type EmbeddingWriteContext,
   embeddingSpaceCondition,
@@ -796,9 +796,18 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return this._connectorAccountStore;
   }
 
+  private activeEmbeddingSpace(): string | null {
+    if (this.embeddingSpace === null && this.requestedEmbeddingSpace !== null) {
+      throw new ElizaError("Embedding representation is still being activated", {
+        code: "EMBEDDING_SPACE_NOT_INITIALIZED",
+      });
+    }
+    return this.embeddingSpace;
+  }
+
   private embeddingWriteContext(embedding: unknown): EmbeddingWriteContext | undefined {
     return Array.isArray(embedding)
-      ? captureEmbeddingWrite(embedding, this.embeddingDimension, this.embeddingSpace)
+      ? captureEmbeddingTarget(embedding, this.embeddingDimension, this.activeEmbeddingSpace())
       : undefined;
   }
 
@@ -1030,16 +1039,16 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    * @returns {Promise<void>} - Resolves once the embedding dimension is ensured.
    */
   async ensureEmbeddingDimension(dimension: number) {
-    if (
-      (this.embeddingSpace !== null || this.embeddingSpaceActivation !== null) &&
-      dimension !== Number(this.embeddingDimension.replace("dim", ""))
-    ) {
-      throw new ElizaError(
-        "Restart the runtime before changing a named embedding representation's dimension",
-        { code: "EMBEDDING_SPACE_CHANGED" }
-      );
-    }
     return this.withDatabase(async () => {
+      if (
+        (this.embeddingSpace !== null || this.requestedEmbeddingSpace !== null) &&
+        dimension !== Number(this.embeddingDimension.slice(3))
+      ) {
+        throw new ElizaError(
+          "Restart the runtime before changing a named embedding representation's dimension",
+          { code: "EMBEDDING_SPACE_CHANGED" }
+        );
+      }
       const resolvedDimension = DIMENSION_MAP[dimension as keyof typeof DIMENSION_MAP];
       if (!resolvedDimension) {
         logger.warn(
@@ -3087,10 +3096,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         });
       }
 
-      const activeColumn = embeddingTable[this.embeddingDimension];
+      const { column, spaceId } = captureEmbeddingTarget(
+        params.embedding,
+        this.embeddingDimension,
+        this.activeEmbeddingSpace()
+      );
+      const activeColumn = embeddingTable[column];
       const distance = cosineDistance(activeColumn, params.embedding);
       const similarity = sql<number>`1 - (${distance})`;
-      conditions.push(isNotNull(activeColumn), embeddingSpaceCondition(this.embeddingSpace));
+      conditions.push(isNotNull(activeColumn), embeddingSpaceCondition(spaceId));
       if (params.matchThreshold !== undefined) {
         conditions.push(gte(similarity, params.matchThreshold));
       }
@@ -4666,8 +4680,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     }
   ): Promise<Memory[]> {
     return this.withDatabase(async () => {
+      const { column, spaceId } = captureEmbeddingTarget(
+        embedding,
+        this.embeddingDimension,
+        this.activeEmbeddingSpace()
+      );
       const cleanVector = embedding.map((n) => (Number.isFinite(n) ? Number(n.toFixed(6)) : 0));
-      const activeColumn = embeddingTable[this.embeddingDimension];
+      const activeColumn = embeddingTable[column];
       // An absent count means the caller asked for the COMPLETE eligible
       // result, not a default page; a silent top-10 cap would drop eligible
       // matches with no signal to the caller.
@@ -4700,7 +4719,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const similarity = sql<number>`1 - (${distance})`;
       const conditions = [
         isNotNull(activeColumn),
-        embeddingSpaceCondition(this.embeddingSpace),
+        embeddingSpaceCondition(spaceId),
         eq(memoryTable.type, params.tableName),
         eq(memoryTable.agentId, this.agentId),
         ...memoryAccessContextConditions(params.accessContext, this.agentId, params.tableName),
@@ -4912,7 +4931,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
         embeddingValues[embeddingWrite.column] = cleanVector;
 
-        assertEmbeddingWrite(embeddingWrite, this.embeddingDimension, this.embeddingSpace);
+        assertEmbeddingWrite(embeddingWrite, this.embeddingDimension, this.activeEmbeddingSpace());
         await tx.insert(embeddingTable).values([embeddingValues]);
       }
     }
@@ -4921,10 +4940,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async updateMemoryEmbedding(
     update: import("@elizaos/core").MemoryEmbeddingUpdate
   ): Promise<boolean> {
-    const embeddingWrite = captureEmbeddingWrite(
+    const embeddingWrite = captureEmbeddingTarget(
       update.embedding,
       this.embeddingDimension,
-      this.embeddingSpace
+      this.activeEmbeddingSpace()
     );
     const column = embeddingWrite.column;
     const dimension = Number(column.replace(/^dim/, ""));
@@ -4953,7 +4972,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           .from(embeddingTable)
           .where(eq(embeddingTable.memoryId, update.id))
           .limit(1);
-        assertEmbeddingWrite(embeddingWrite, this.embeddingDimension, this.embeddingSpace);
+        assertEmbeddingWrite(embeddingWrite, this.embeddingDimension, this.activeEmbeddingSpace());
         if (existing) {
           await tx
             .update(embeddingTable)
@@ -5058,7 +5077,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
                 .where(eq(embeddingTable.memoryId, memory.id))
                 .limit(1);
 
-              assertEmbeddingWrite(embeddingWrite, this.embeddingDimension, this.embeddingSpace);
+              assertEmbeddingWrite(
+                embeddingWrite,
+                this.embeddingDimension,
+                this.activeEmbeddingSpace()
+              );
               if (existingEmbedding.length > 0) {
                 // Update existing embedding
                 const updateValues: Record<string, unknown> = {

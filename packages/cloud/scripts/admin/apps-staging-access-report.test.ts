@@ -34,6 +34,32 @@ test("real provider client traverses GET pages; report excludes private inventor
       labels: { role: "apps-control", environment: "production" },
     },
   ];
+  for (const [index, sample] of [
+    { role: "apps-worker", status: "running", private_net: [] },
+    {
+      role: "apps-control",
+      status: "off",
+      private_net: [{ ip: "10.0.0.34" }],
+    },
+    {
+      role: "app-node",
+      status: "running",
+      private_net: [{ ip: "10.0.0.35" }],
+    },
+    { role: "tenant-db", status: "running", private_net: [] },
+  ].entries())
+    servers.push({
+      id: index + 33,
+      name: `PRIVATE_ROLE_CANARY_${index}`,
+      status: sample.status,
+      public_net: {
+        ipv4: { ip: `192.0.2.${index + 33}`, blocked: false },
+        ipv6: null,
+      },
+      private_net: sample.private_net,
+      labels: { role: sample.role, environment: "staging" },
+    });
+  let providerServers = servers;
   const endpoint = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
@@ -42,7 +68,9 @@ test("real provider client traverses GET pages; report excludes private inventor
       requests.push(`${request.method} ${url.pathname}${url.search}`);
       const second = url.searchParams.get("page") === "2";
       return Response.json({
-        servers: [servers[second ? 1 : 0]],
+        servers: second
+          ? providerServers.slice(1)
+          : providerServers.slice(0, 1),
         meta: { pagination: { next_page: second ? null : 2 } },
       });
     },
@@ -54,6 +82,14 @@ test("real provider client traverses GET pages; report excludes private inventor
     const inventory = await client.listServers();
     expect(requests).toEqual(["GET /v1/servers", "GET /v1/servers?page=2"]);
     const report = classifyAppsStagingHost(inventory, ["192.0.2.31"]);
+    expect(report.stagingControlRoleCandidates).toEqual({
+      appsControlCount: 2,
+      appsWorkerCount: 1,
+      runningCount: 2,
+      // The stopped control host has an attachment too. This does not prove
+      // either attachment belongs to the staging apps network.
+      privateNetworkAttachmentObservedCount: 2,
+    });
     expect(report.configuredHostMatchCount).toBe(1);
     expect(report.matchingServer).toEqual({
       running: true,
@@ -72,6 +108,13 @@ test("real provider client traverses GET pages; report excludes private inventor
       "CLOSED_TEST_TOKEN",
     ])
       expect(output).not.toContain(value);
+    for (const server of servers) {
+      expect(output).not.toContain(String(server.id));
+      expect(output).not.toContain(server.name);
+      expect(output).not.toContain(server.public_net.ipv4.ip);
+      for (const network of server.private_net)
+        expect(output).not.toContain(network.ip);
+    }
     const ambiguous = classifyAppsStagingHost(inventory, ["10.0.0.31"]);
     expect(ambiguous.configuredHostMatchCount).toBe(2);
     expect(ambiguous.matchingServer).toBeNull();
@@ -83,6 +126,25 @@ test("real provider client traverses GET pages; report excludes private inventor
       classifyAppsStagingHost(inventory, ["192.0.2.32"]).matchingServer
         ?.environment,
     ).toBe("unverified");
+    // A provider inventory with only another environment's control host and
+    // staging app/database nodes has no staging control-role candidate.
+    providerServers = servers.filter((server) =>
+      [32, 35, 36].includes(server.id),
+    );
+    requests.length = 0;
+    const withoutControl = classifyAppsStagingHost(await client.listServers(), [
+      "192.0.2.99",
+    ]);
+    expect(requests).toEqual(["GET /v1/servers", "GET /v1/servers?page=2"]);
+    expect(withoutControl.stagingControlRoleCandidates).toEqual({
+      appsControlCount: 0,
+      appsWorkerCount: 0,
+      runningCount: 0,
+      privateNetworkAttachmentObservedCount: 0,
+    });
+    expect(withoutControl.configuredHostMatchCount).toBe(0);
+    expect(withoutControl.matchingServer).toBeNull();
+    expect(withoutControl.guestAuthorizationVerified).toBe(false);
   } finally {
     endpoint.stop(true);
   }

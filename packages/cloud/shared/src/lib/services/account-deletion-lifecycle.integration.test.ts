@@ -1,6 +1,6 @@
 /** Runs deletion reservation and shared-owner rejection on isolated PostgreSQL. */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 
 process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
@@ -9,6 +9,7 @@ import { pushSchema } from "drizzle-kit/api";
 import { eq, sql } from "drizzle-orm";
 import { resolveAccountDeletionTestDatabase } from "../../db/account-deletion-test-database";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../db/client";
+import * as dbHelpers from "../../db/helpers";
 import { accountDeletionExports } from "../../db/schemas/account-deletion-exports";
 import { accountDeletionPhaseReceipts } from "../../db/schemas/account-deletion-phase-receipts";
 import { accountDeletionRequests } from "../../db/schemas/account-deletion-requests";
@@ -33,13 +34,19 @@ const SHARED_OWNER_ID = "66666666-6666-4666-8666-666666666666";
 const REPLAY_ORGANIZATION_ID = "77777777-7777-4777-8777-777777777777";
 const REPLAY_USER_ID = "88888888-8888-4888-8888-888888888888";
 const TEST_DATABASE = resolveAccountDeletionTestDatabase();
+const originalWriteTransaction = dbHelpers.writeTransaction;
 let databaseReady = true;
 
-/** A gate that records each mutation path and refuses while `available` is false. */
+/**
+ * A gate that records each mutation path and `active` value, and refuses while
+ * `available` is false or `refuse` matches the mutation.
+ */
 function recordingGate() {
   const gate = {
     available: true,
+    refuse: (_path: string, _active: unknown) => false,
     paths: [] as string[],
+    mutations: [] as string[],
     run: <T>(fn: () => Promise<T>) =>
       runWithCloudBindingsAsync(
         {
@@ -47,11 +54,12 @@ function recordingGate() {
           INFERENCE_ADMISSION_GATES: {
             getByName: () => ({
               async fetch(request: Request) {
-                gate.paths.push(new URL(request.url).pathname);
-                return Response.json(
-                  { committed: gate.available },
-                  { status: gate.available ? 200 : 503 },
-                );
+                const path = new URL(request.url).pathname;
+                const body = (await request.json()) as { active?: unknown };
+                gate.paths.push(path);
+                gate.mutations.push(`${path}=${String(body.active)}`);
+                const committed = gate.available && !gate.refuse(path, body.active);
+                return Response.json({ committed }, { status: committed ? 200 : 503 });
               },
             }),
           },
@@ -61,6 +69,9 @@ function recordingGate() {
   };
   return gate;
 }
+
+const GATE_FENCED = ["/organization/set-active=false", "/subject/set-active=false"];
+const GATE_REOPENED = ["/subject/set-active=true", "/organization/set-active=true"];
 
 beforeAll(async () => {
   if (!TEST_DATABASE) {
@@ -269,6 +280,86 @@ describe("account deletion reservation lifecycle", () => {
       accessState: "fenced",
     });
     expect(gate.paths).toEqual(["/organization/set-active", "/subject/set-active"]);
+  });
+
+  test("reopens the gate when activation rolls back after fencing it", async () => {
+    const organizationId = "99999999-9999-4999-8999-999999999991";
+    const userId = "99999999-9999-4999-8999-999999999992";
+    await dbWrite.insert(organizations).values({
+      id: organizationId,
+      name: "Compensated activation",
+      slug: "compensated-account-deletion",
+    });
+    await dbWrite.insert(users).values({
+      id: userId,
+      organization_id: organizationId,
+      steward_user_id: "steward-compensated",
+      role: "owner",
+    });
+    const accepted = await requestAccountDeletion({
+      userId,
+      organizationId,
+      stewardUserId: "steward-compensated",
+      admissionCredential: "c".repeat(43),
+      now: new Date("2026-08-22T12:00:00Z"),
+    });
+    const activate = () =>
+      activateAccountDeletion(accepted.recoveryCredential, new Date("2026-08-22T12:00:00Z"));
+    const readStatus = async () => {
+      const [request] = await dbWrite
+        .select({ status: accountDeletionRequests.status })
+        .from(accountDeletionRequests)
+        .where(eq(accountDeletionRequests.organization_id, organizationId));
+      return request?.status;
+    };
+    const gate = recordingGate();
+
+    // The organization fence commits, then the subject fence fails.
+    gate.refuse = (path, active) => path === "/subject/set-active" && active === false;
+    await expect(gate.run(activate)).rejects.toMatchObject({
+      code: "INFERENCE_CREDENTIAL_REVOCATION_UNAVAILABLE",
+    });
+    expect(gate.mutations).toEqual([...GATE_FENCED, ...GATE_REOPENED]);
+    expect(await readStatus()).toBe("requested");
+
+    // Both fences commit, then COMMIT itself fails.
+    gate.refuse = () => false;
+    gate.mutations = [];
+    await dbWrite.execute(sql`
+      CREATE FUNCTION refuse_deletion_request_commit() RETURNS trigger AS $$
+      BEGIN RAISE EXCEPTION 'deletion request commit refused'; END;
+      $$ LANGUAGE plpgsql
+    `);
+    await dbWrite.execute(sql`
+      CREATE CONSTRAINT TRIGGER refuse_deletion_request_commit_trigger
+      AFTER UPDATE ON account_deletion_requests
+      DEFERRABLE INITIALLY DEFERRED
+      FOR EACH ROW EXECUTE FUNCTION refuse_deletion_request_commit()
+    `);
+    try {
+      await expect(gate.run(activate)).rejects.toThrow();
+    } finally {
+      await dbWrite.execute(
+        sql`DROP TRIGGER refuse_deletion_request_commit_trigger ON account_deletion_requests`,
+      );
+      await dbWrite.execute(sql`DROP FUNCTION refuse_deletion_request_commit()`);
+    }
+    expect(gate.mutations).toEqual([...GATE_FENCED, ...GATE_REOPENED]);
+    expect(await readStatus()).toBe("requested");
+
+    // COMMIT succeeds but its acknowledgement is lost: the fence stays.
+    gate.mutations = [];
+    const commitThenFail = spyOn(dbHelpers, "writeTransaction").mockImplementation(async (fn) => {
+      await originalWriteTransaction(fn);
+      throw new Error("commit acknowledgement lost");
+    });
+    try {
+      await expect(gate.run(activate)).rejects.toThrow("commit acknowledgement lost");
+    } finally {
+      commitThenFail.mockRestore();
+    }
+    expect(gate.mutations).toEqual(GATE_FENCED);
+    expect(await readStatus()).toBe("reserved");
   });
 
   test("requires explicit successor transfer for a shared member without fencing the tenant", async () => {

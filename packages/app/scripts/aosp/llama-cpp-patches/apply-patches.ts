@@ -10,8 +10,8 @@
 // applied (HEAD matches the recorded final SHA), it's a no-op.
 //
 // Usage:
-//   node apply-patches.ts --repo <path-to-llama.cpp-checkout>
-//   node apply-patches.ts --repo <path> --series qjl,polarquant
+//   bun apply-patches.ts --repo <path-to-llama.cpp-checkout>
+//   bun apply-patches.ts --repo <path> --series qjl,polarquant
 
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";

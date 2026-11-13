@@ -263,6 +263,7 @@ export function buildCheckinSummaryPrompt(
     report.kind === "morning"
       ? "Tone: concise start-of-day briefing, with what matters now and first next steps."
       : "Tone: concise evening recap sent before the owner's predicted bedtime, with what happened, loose ends, and tomorrow carry-forward.",
+    "Lead with useful priorities. Omit empty categories, raw source counts, disconnected optional services, and timezone identifiers. Never quote authentication codes. Keep the brief to the few items that need attention.",
     "Write a short, natural message for the owner. Use plain words and only a few paragraphs or bullets. Do not mention internal names such as LifeOps, report JSON, collectors, operational status, or escalation levels. No markdown table or emojis.",
     "Do not put a date or time in the heading. If the body mentions the report time, copy the supplied local report time exactly; do not calculate or invent another date.",
   ];
@@ -308,6 +309,95 @@ export function buildCheckinSummaryPrompt(
   );
   return lines.join("\n");
 }
+/** Check explicit report-date declarations against the supplied owner-local clock. */
+function assertSummaryReportDate(
+  summary: string,
+  report: Omit<CheckinReport, "summaryText">,
+): void {
+  const months =
+    "(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)";
+  const weekdays =
+    "(?:Mon(?:day)?|Tue(?:sday)?|Wed(?:nesday)?|Thu(?:rsday)?|Fri(?:day)?|Sat(?:urday)?|Sun(?:day)?)";
+  const day = "\\d{1,2}(?:st|nd|rd|th)?";
+  const named = `(?:${weekdays},?\\s+)?(?:${months}\\s+${day}|${day}\\s+${months})(?:,?\\s+\\d{4})?`;
+  const date = `(?:${named}|\\d{4}-\\d{2}-\\d{2}|\\d{1,2}/\\d{1,2}/\\d{4}|${weekdays})`;
+  const declarations = new RegExp(
+    `\\b(?:as\\s+of|today(?:\\s+is)?[,:]?|(?:brief(?:ing)?|summary|check-in)\\s*(?:for|dated|[:–—]))\\s+(${date})\\b`,
+    "gi",
+  );
+  const claims = [...summary.matchAll(declarations)];
+  if (claims.length === 0) return;
+  const normalize = (value: string) =>
+    value
+      .toLowerCase()
+      .replace(/(\d)(?:st|nd|rd|th)\b/g, "$1")
+      .replace(/[,.]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  const allowed = new Set<string>();
+  if (report.timezone) {
+    const reference = new Date(report.generatedAt);
+    for (const locale of ["en-US", "en-GB"]) {
+      for (const month of ["long", "short"] as const) {
+        for (const year of ["numeric", undefined] as const) {
+          for (const weekday of ["long", "short", undefined] as const) {
+            allowed.add(
+              normalize(
+                new Intl.DateTimeFormat(locale, {
+                  timeZone: report.timezone,
+                  month,
+                  year,
+                  weekday,
+                  day: "numeric",
+                }).format(reference),
+              ),
+            );
+          }
+        }
+      }
+    }
+    const local = getZonedDateParts(reference, report.timezone);
+    allowed.add(
+      `${local.year}-${String(local.month).padStart(2, "0")}-${String(local.day).padStart(2, "0")}`,
+    );
+    for (const month of [
+      String(local.month),
+      String(local.month).padStart(2, "0"),
+    ]) {
+      for (const day of [
+        String(local.day),
+        String(local.day).padStart(2, "0"),
+      ]) {
+        allowed.add(`${month}/${day}/${local.year}`);
+      }
+    }
+    allowed.add(
+      normalize(
+        new Intl.DateTimeFormat("en-US", {
+          timeZone: report.timezone,
+          weekday: "long",
+        }).format(reference),
+      ),
+    );
+    allowed.add(
+      normalize(
+        new Intl.DateTimeFormat("en-US", {
+          timeZone: report.timezone,
+          weekday: "short",
+        }).format(reference),
+      ),
+    );
+  }
+  if (claims.some((claim) => !allowed.has(normalize(claim[1])))) {
+    throw new ElizaError(
+      "Check-in summary does not match the supplied local report date",
+      {
+        code: "CHECKIN_SUMMARY_DATE_MISMATCH",
+      },
+    );
+  }
+}
+
 function newReportId(): string {
   const maybeCrypto = (
     globalThis as {
@@ -379,7 +469,7 @@ export function renderMorningCheckinReport(
   for (const list of lists) {
     if (report.collectorErrors[list.key]) {
       unavailable.push(list.title);
-      continue;
+      if (list.rows.length === 0) continue;
     }
     if (list.rows.length === 0) {
       if (list.key !== "yesterdaysWins" && !clearDay)
@@ -895,10 +985,35 @@ async function collectTodaysMeetings(
   runtime: IAgentRuntime,
   now: Date,
   timezone: string,
+  source?: CheckinSourceService,
 ): Promise<CollectorResult<MeetingEntry>> {
   const agentId = String(runtime.agentId);
   const day = localDayWindow(now, timezone);
   try {
+    if (source?.getCalendarFeed) {
+      const feed = await source.getCalendarFeed(
+        INTERNAL_URL,
+        {
+          side: "owner",
+          timeMin: day.start.toISOString(),
+          timeMax: day.end.toISOString(),
+          timeZone: timezone,
+        },
+        now,
+      );
+      return {
+        rows: feed.events.map((event) => ({
+          id: event.id,
+          title: event.title,
+          startAt: event.startAt,
+          endAt: event.endAt,
+          status: event.status,
+          isAllDay: event.isAllDay,
+        })),
+        error:
+          feed.state === "complete" ? null : `Calendar view is ${feed.state}`,
+      };
+    }
     const rows = await executeRawSql(
       runtime,
       `SELECT id, title, start_at, end_at, status, is_all_day
@@ -923,7 +1038,7 @@ async function collectTodaysMeetings(
     const message = error instanceof Error ? error.message : String(error);
     logMissingOnce(
       "todays-meetings",
-      `meetings collector unavailable (app_calendar.life_calendar_events not ready): ${message}`,
+      `Calendar meeting collector unavailable: ${message}`,
     );
     return { rows: [], error: message };
   }
@@ -1121,6 +1236,7 @@ async function collectXFeedSection(
 }
 async function collectInboxSection(
   source: CheckinSourceService | undefined,
+  includeGmail: boolean,
 ): Promise<CheckinBriefingSection> {
   if (!source?.getInbox) {
     return unavailableSection(
@@ -1130,12 +1246,13 @@ async function collectInboxSection(
     );
   }
   try {
-    // Gmail/X have dedicated status-gated collectors. Keep other cached
-    // channels without re-reading those accounts through the aggregate inbox.
+    // Use the dedicated triage result when available. Ordinary connected
+    // Gmail remains readable through the canonical Inbox without that scope.
     const inbox = await source.getInbox({
       limit: 50,
       channels: LIFEOPS_INBOX_CHANNELS.filter(
-        (channel) => channel !== "gmail" && channel !== "x_dm",
+        (channel) =>
+          (includeGmail || channel !== "gmail") && channel !== "x_dm",
       ),
     });
     const counts = Object.entries(inbox.channelCounts)
@@ -1613,6 +1730,7 @@ async function collectBriefingSections(args: {
   if (xStatus?.reason === "needs_reauth")
     xError = "The configured X connection needs reauthorization.";
   const readableX = xStatus?.connected;
+  const gmail = collectGmailSection(args.source, args.now);
   const sections = await Promise.all([
     ...(xError ? [Promise.resolve(unavailableSection("x", "X", xError))] : []),
     ...(readableX && xStatus?.dmRead ? [collectXDmSection(args.source)] : []),
@@ -1632,8 +1750,10 @@ async function collectBriefingSections(args: {
           ),
         ]
       : []),
-    collectInboxSection(args.source),
-    collectGmailSection(args.source, args.now),
+    gmail.then((section) =>
+      collectInboxSection(args.source, section === undefined),
+    ),
+    gmail,
     collectGitHubSection(args.runtime, args.now, args.timezone),
     collectCalendarChangeSection(args.runtime, args.now, args.timezone),
     collectContactSection(args.runtime, args.now, args.timezone),
@@ -1728,7 +1848,12 @@ export class CheckinService {
           now,
           habitCollector.pausedDefinitionIds,
         ),
-        collectTodaysMeetings(this.runtime, now, timezone),
+        collectTodaysMeetings(
+          this.runtime,
+          now,
+          timezone,
+          this.options.sources,
+        ),
         collectCompletedWins(this.runtime, kind, now, timezone),
         collectBriefingSections({
           runtime: this.runtime,
@@ -1784,7 +1909,6 @@ export class CheckinService {
   private async renderSummary(
     report: Omit<CheckinReport, "summaryText">,
   ): Promise<string> {
-    if (report.kind === "morning") return renderMorningCheckinReport(report);
     if (typeof this.runtime.useModel !== "function") {
       throw new ElizaError(
         "Check-in summary requires a configured text model",
@@ -1805,7 +1929,9 @@ export class CheckinService {
         code: "CHECKIN_SUMMARY_EMPTY",
       });
     }
-    return response.trim();
+    const summary = response.trim();
+    assertSummaryReportDate(summary, report);
+    return summary;
   }
   private async persistReport(report: CheckinReport, now: Date): Promise<void> {
     const agentId = String(this.runtime.agentId);

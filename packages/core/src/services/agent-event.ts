@@ -44,6 +44,19 @@ export function resolveHeartbeatIndicator(
 	}
 }
 
+function subscribeListener<Listener>(
+	listeners: Map<Listener, () => void>,
+	listener: Listener,
+): () => void {
+	const existing = listeners.get(listener);
+	if (existing) return existing;
+	const unsubscribe = () => {
+		if (listeners.get(listener) === unsubscribe) listeners.delete(listener);
+	};
+	listeners.set(listener, unsubscribe);
+	return unsubscribe;
+}
+
 /**
  * AgentEventService provides a interface for agent event streaming.
  * It manages event emission, subscription, and run context tracking.
@@ -57,10 +70,10 @@ export class AgentEventService extends Service {
 	private seqByRun = new Map<string, number>();
 
 	/** Event listeners */
-	private eventListeners = new Set<AgentEventListener>();
+	private eventListeners = new Map<AgentEventListener, () => void>();
 
 	/** Heartbeat event listeners */
-	private heartbeatListeners = new Set<HeartbeatEventListener>();
+	private heartbeatListeners = new Map<HeartbeatEventListener, () => void>();
 
 	/** Run context by run ID */
 	private runContextById = new Map<string, AgentRunContext>();
@@ -162,28 +175,32 @@ export class AgentEventService extends Service {
 			ts: Date.now(),
 		};
 
-		const errors: Array<{ listener: AgentEventListener; error: unknown }> = [];
-		for (const listener of this.eventListeners) {
+		const errors: unknown[] = [];
+		for (const listener of this.eventListeners.keys()) {
 			try {
 				listener(enriched);
 			} catch (error) {
 				// error-policy:J7 Event observers are diagnostics/stream consumers;
 				// report their failure without starving independent listeners.
-				errors.push({ listener, error });
-				this.runtime.reportError("AgentEventService.listener", error, {
+				errors.push(error);
+			}
+		}
+		// Reporting can emit a new event on this run. Finish fan-out first
+		// so observers see the original sequence before its diagnostics.
+		for (const error of errors) {
+			this.runtime.reportError("AgentEventService.listener", error, {
+				stream: enriched.stream,
+				runId: enriched.runId,
+			});
+			logger.error(
+				{
+					src: "service:agent_event",
+					error,
 					stream: enriched.stream,
 					runId: enriched.runId,
-				});
-				logger.error(
-					{
-						src: "service:agent_event",
-						error,
-						stream: enriched.stream,
-						runId: enriched.runId,
-					},
-					"Error in event listener - listener threw exception",
-				);
-			}
+				},
+				"Error in event listener - listener threw exception",
+			);
 		}
 
 		// If any listeners failed, emit an error event (but only if this isn't already an error event)
@@ -207,8 +224,7 @@ export class AgentEventService extends Service {
 	 * @returns Unsubscribe function
 	 */
 	subscribe(listener: AgentEventListener): () => void {
-		this.eventListeners.add(listener);
-		return () => this.eventListeners.delete(listener);
+		return subscribeListener(this.eventListeners, listener);
 	}
 
 	/**
@@ -225,7 +241,7 @@ export class AgentEventService extends Service {
 		this.lastHeartbeat = enriched;
 
 		let heartbeatErrors = 0;
-		for (const listener of this.heartbeatListeners) {
+		for (const listener of this.heartbeatListeners.keys()) {
 			try {
 				listener(enriched);
 			} catch (error) {
@@ -255,8 +271,7 @@ export class AgentEventService extends Service {
 	 * @returns Unsubscribe function
 	 */
 	subscribeHeartbeat(listener: HeartbeatEventListener): () => void {
-		this.heartbeatListeners.add(listener);
-		return () => this.heartbeatListeners.delete(listener);
+		return subscribeListener(this.heartbeatListeners, listener);
 	}
 
 	/**

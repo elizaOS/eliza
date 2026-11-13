@@ -261,7 +261,7 @@ export class BatchQueue<T> {
 		}
 		this.runtime = runtime;
 		const skip = this.options.skipRegisterWorker ?? false;
-		this.taskDrain = new TaskDrain(
+		const drain = new TaskDrain(
 			{
 				taskName: this.options.name,
 				description: this.options.taskDescription,
@@ -275,7 +275,16 @@ export class BatchQueue<T> {
 			},
 			this.options.drainIntervalMs,
 		);
-		await this.taskDrain.start(runtime);
+		this.taskDrain = drain;
+		try {
+			await drain.start(runtime);
+		} catch (error) {
+			// error-policy:J2 release failed registration before a caller retries;
+			// queued items remain owned by this queue.
+			await drain.dispose(runtime);
+			if (this.taskDrain === drain) this.taskDrain = null;
+			throw error;
+		}
 	}
 
 	async updateDrainInterval(runtime: IAgentRuntime, ms: number): Promise<void> {

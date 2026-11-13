@@ -28,9 +28,9 @@
  * makes that a build-enforced invariant so it cannot silently regress.
  *
  * Usage:
- *   node packages/scripts/audit-focused-skipped-tests.ts             # CI gate
- *   node packages/scripts/audit-focused-skipped-tests.ts --dry-run   # report only, exit 0
- *   node packages/scripts/audit-focused-skipped-tests.ts --self-test # prove the gate works
+ *   bun packages/scripts/audit-focused-skipped-tests.ts             # CI gate
+ *   bun packages/scripts/audit-focused-skipped-tests.ts --dry-run   # report only, exit 0
+ *   bun packages/scripts/audit-focused-skipped-tests.ts --self-test # prove the gate works
  *
  * Exit codes: 0 clean, 1 violations found, 2 usage/internal error.
  */
@@ -2170,7 +2170,7 @@ export function parseFocusedAuditArgs(args) {
 
 function printUsage() {
   process.stdout.write(
-    "Usage: node packages/scripts/audit-focused-skipped-tests.ts [--dry-run] [--json] | --self-test\n",
+    "Usage: bun packages/scripts/audit-focused-skipped-tests.ts [--dry-run] [--json] | --self-test\n",
   );
 }
 

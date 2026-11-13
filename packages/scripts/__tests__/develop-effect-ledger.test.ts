@@ -41,9 +41,9 @@ function registry() {
       },
     ],
     promotion: {
-      id: "staging-promotion",
-      sourceBranch: "develop",
-      targetBranch: "staging",
+      id: "main-promotion",
+      sourceBranch: "staging",
+      targetBranch: "main",
     },
   };
 }
@@ -129,17 +129,16 @@ function deployment(
 }
 
 describe("develop effect registry and exact plans", () => {
-  test("rejects promotion paths that bypass staging or reverse direction", () => {
-    for (const [sourceBranch, targetBranch] of [
-      ["develop", "main"],
-      ["main", "staging"],
-      ["staging", "develop"],
+  test("rejects promotion paths other than staging to main", () => {
+    for (const [sourceBranch, targetBranch, message] of [
+      ["develop", "staging", "invalid registry source branch"],
+      ["develop", "main", "invalid registry source branch"],
+      ["main", "staging", "main is terminal"],
+      ["staging", "develop", "staging -> main"],
     ]) {
       const config = registry();
       config.promotion = { ...config.promotion, sourceBranch, targetBranch };
-      expect(() => validateRegistry(config)).toThrow(
-        "develop -> staging -> main",
-      );
+      expect(() => validateRegistry(config)).toThrow(message);
     }
   });
 
@@ -182,15 +181,9 @@ describe("develop effect registry and exact plans", () => {
   });
 
   test("binds staging effects and source evidence to staging rather than develop", async () => {
-    const config = registry();
-    config.promotion = {
-      id: "main-promotion",
-      sourceBranch: "staging",
-      targetBranch: "main",
-    };
     const staged = buildEffectPlans({
       ...manifests(),
-      registry: config,
+      registry: registry(),
       repoRoot: fixtureRoot(),
     });
     let dispatched: Record<string, unknown> | undefined;
@@ -296,7 +289,7 @@ describe("source and durable ledger contracts", () => {
   const greenRun = {
     id: 42,
     event: "push",
-    head_branch: "develop",
+    head_branch: "staging",
     head_sha: SOURCE_SHA,
     path: ".github/workflows/develop-full.yml",
     status: "completed",
@@ -304,7 +297,17 @@ describe("source and durable ledger contracts", () => {
   };
 
   test("accepts only the exact green Develop Full push", () => {
-    expect(validateSourceRun(greenRun, SOURCE_SHA, "42")).toBe(greenRun);
+    expect(validateSourceRun(greenRun, SOURCE_SHA, "42", "staging")).toBe(
+      greenRun,
+    );
+    expect(() =>
+      validateSourceRun(
+        { ...greenRun, head_branch: "develop" },
+        SOURCE_SHA,
+        "42",
+        "develop",
+      ),
+    ).toThrow("source branch must be staging or main");
     for (const mutation of [
       { event: "pull_request" },
       { head_branch: "main" },
@@ -313,7 +316,12 @@ describe("source and durable ledger contracts", () => {
       { conclusion: "failure" },
     ]) {
       expect(() =>
-        validateSourceRun({ ...greenRun, ...mutation }, SOURCE_SHA, "42"),
+        validateSourceRun(
+          { ...greenRun, ...mutation },
+          SOURCE_SHA,
+          "42",
+          "staging",
+        ),
       ).toThrow();
     }
   });
@@ -501,7 +509,7 @@ describe("source and durable ledger contracts", () => {
       },
     };
     expect(await dispatchEffect(api, plan, SOURCE_SHA)).toBe(123);
-    expect(body).toMatchObject({ ref: "develop", return_run_details: true });
+    expect(body).toMatchObject({ ref: "staging", return_run_details: true });
   });
 });
 
@@ -605,7 +613,7 @@ describe("checked-in workflow authority", () => {
         createEvidence(expected, id, NOW, 24),
       ),
     };
-    for (const branch of ["develop", "staging", "main"]) {
+    for (const branch of ["staging", "main"]) {
       const config = JSON.parse(
         readFileSync(
           path.join(repoRoot, `.github/${branch}-effects.json`),
@@ -643,18 +651,23 @@ describe("checked-in workflow authority", () => {
   });
 
   test("every registered mutation accepts a reconciler digest and exact SHA", () => {
-    const checkedIn = JSON.parse(
-      readFileSync(path.join(repoRoot, ".github/develop-effects.json"), "utf8"),
-    ) as ReturnType<typeof registry>;
-    for (const effect of checkedIn.effects) {
-      const workflow = readWorkflow(effect.workflow);
-      expect(workflow).toContain("effect_digest:");
-      expect(workflow).toContain(`${effect.shaInput}:`);
-      expect(workflow).toContain("Invalid reconciled effect digest");
+    for (const branch of ["staging", "main"]) {
+      const checkedIn = JSON.parse(
+        readFileSync(
+          path.join(repoRoot, `.github/${branch}-effects.json`),
+          "utf8",
+        ),
+      ) as ReturnType<typeof registry>;
+      for (const effect of checkedIn.effects) {
+        const workflow = readWorkflow(effect.workflow);
+        expect(workflow).toContain("effect_digest:");
+        expect(workflow).toContain(`${effect.shaInput}:`);
+        expect(workflow).toContain("Invalid reconciled effect digest");
+      }
     }
   });
 
-  test("the release gate observes completed worker deployments for its own source", async () => {
+  test("the release gate observes the active worker deployment for its own source", async () => {
     const checkedIn = JSON.parse(
       readFileSync(path.join(repoRoot, ".github/staging-effects.json"), "utf8"),
     ) as ReturnType<typeof registry>;
@@ -714,7 +727,6 @@ describe("checked-in workflow authority", () => {
             let accepted = true;
             if (workflow === "cloud-cf-deploy.yml") {
               accepted =
-                ready.get("deploy-apps-worker.yml") === source &&
                 ready.get("deploy-eliza-provisioning-worker.yml") === source;
               releaseAccepted = accepted;
             }

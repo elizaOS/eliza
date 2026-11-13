@@ -90,7 +90,62 @@ final class AgentSecureStore implements AutoCloseable {
         }
     }
 
-    private SecretKey key() throws Exception {
+    private static final String VAULT_PASSPHRASE_FILE = "vault-passphrase";
+    private static final byte[] VAULT_PASSPHRASE_AAD = "eliza-vault-passphrase".getBytes(StandardCharsets.UTF_8);
+
+    /** The agent vault's stored random passphrase, or null when none was created. */
+    static synchronized String readVaultPassphrase(Context context) throws Exception {
+        AtomicFile file = vaultPassphraseFile(context);
+        if (!file.getBaseFile().exists()) return null;
+        byte[] envelope = file.readFully();
+        if (envelope.length < 29 || envelope.length > 4096) throw new IOException("Invalid encrypted record");
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+        cipher.init(Cipher.DECRYPT_MODE, key(), new GCMParameterSpec(128, Arrays.copyOfRange(envelope, 0, 12)));
+        cipher.updateAAD(VAULT_PASSPHRASE_AAD);
+        return new String(cipher.doFinal(envelope, 12, envelope.length - 12), StandardCharsets.UTF_8);
+    }
+
+    /** Generate 32 random bytes once, store them Keystore-wrapped, and return them hex-encoded. */
+    static synchronized String createVaultPassphrase(Context context) throws Exception {
+        String existing = readVaultPassphrase(context);
+        if (existing != null) return existing;
+        byte[] secret = new byte[32];
+        new java.security.SecureRandom().nextBytes(secret);
+        StringBuilder hex = new StringBuilder(secret.length * 2);
+        for (byte value : secret) hex.append(String.format("%02x", value & 255));
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+        cipher.init(Cipher.ENCRYPT_MODE, key());
+        cipher.updateAAD(VAULT_PASSPHRASE_AAD);
+        byte[] ciphertext = cipher.doFinal(hex.toString().getBytes(StandardCharsets.UTF_8));
+        AtomicFile file = vaultPassphraseFile(context);
+        FileOutputStream output = file.startWrite();
+        try {
+            output.write(cipher.getIV());
+            output.write(ciphertext);
+            file.finishWrite(output);
+        } catch (IOException error) {
+            file.failWrite(output);
+            throw error;
+        }
+        return hex.toString();
+    }
+
+    /** True when a random passphrase was stored, even if it cannot be read right now. */
+    static boolean hasVaultPassphrase(Context context) {
+        File directory = new File(context.getNoBackupFilesDir(), DIRECTORY_NAME);
+        return new AtomicFile(new File(directory, VAULT_PASSPHRASE_FILE)).getBaseFile().exists();
+    }
+
+    private static AtomicFile vaultPassphraseFile(Context context) throws IOException {
+        File directory = new File(context.getNoBackupFilesDir(), DIRECTORY_NAME);
+        if (!directory.isDirectory() && !directory.mkdirs()) throw new IOException("Cannot create secure storage");
+        return new AtomicFile(new File(directory, VAULT_PASSPHRASE_FILE));
+    }
+
+    // Class-locked: the instance store and the static vault passphrase share this
+    // alias, and two first-use generators racing would replace the key the
+    // other one already encrypted with.
+    private static synchronized SecretKey key() throws Exception {
         KeyStore store = KeyStore.getInstance("AndroidKeyStore");
         store.load(null);
         if (!store.containsAlias(KEY_ALIAS)) {

@@ -19,7 +19,7 @@
  * Windows.Media.Ocr, Android uses the native Tesseract4Android bridge — each
  * provider is platform-resolved in plugin-vision/src/index.ts.
  *
- * Usage: node packages/scripts/plugins/plugin-vision/vendor-tesseract-linux.ts [--out <dir>] [--langs eng,...]
+ * Usage: bun packages/scripts/plugins/plugin-vision/vendor-tesseract-linux.ts [--out <dir>] [--langs eng,...]
  * Build-time prereq: `apt-get download` works (no sudo needed — it only fetches
  * .debs); `dpkg-deb` extracts them. Run on the Linux build host.
  */

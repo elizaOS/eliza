@@ -33,15 +33,21 @@ function toRequestHeaders(headers: Headers): Record<string, string> {
 	return normalized;
 }
 
+/**
+ * Serializes a request body the way fetch would, including the content-type
+ * fetch derives for it (FormData boundary, URLSearchParams, Blob type).
+ */
 async function requestBodyToBuffer(
 	body: NonNullable<RequestInit["body"]>,
-): Promise<Buffer> {
-	if (typeof body === "string") return Buffer.from(body);
-	if (body instanceof ArrayBuffer) return Buffer.from(body);
-	if (ArrayBuffer.isView(body)) {
-		return Buffer.from(body.buffer, body.byteOffset, body.byteLength);
-	}
-	return Buffer.from(await new Response(body).arrayBuffer());
+): Promise<{ bytes: Buffer; contentType: string | null }> {
+	const serialized = new Response(body);
+	// Read the header before the body: Bun drops the derived content-type once
+	// the body is consumed.
+	const contentType = serialized.headers.get("content-type");
+	return {
+		bytes: Buffer.from(await serialized.arrayBuffer()),
+		contentType,
+	};
 }
 
 function incomingMessageToWebBody(
@@ -93,7 +99,11 @@ export const nodePinnedFetch: PinnedLookupFetchLike = async ({
 	const headers = new Headers(init.headers);
 	let body: Buffer | undefined;
 	if (init.body !== undefined && init.body !== null) {
-		body = await requestBodyToBuffer(init.body);
+		const serialized = await requestBodyToBuffer(init.body);
+		body = serialized.bytes;
+		if (serialized.contentType && !headers.has("content-type")) {
+			headers.set("content-type", serialized.contentType);
+		}
 		if (!headers.has("content-length")) {
 			headers.set("content-length", String(body.length));
 		}
@@ -132,8 +142,27 @@ export const nodePinnedFetch: PinnedLookupFetchLike = async ({
 
 		const request = requestFn(requestOptions, (response) => {
 			if (settled) return;
+			// The web Response constructor throws outside 200-599; a hostile
+			// upstream must surface as a transport error, not a crash.
+			const status = response.statusCode;
+			if (status === undefined || status < 200 || status > 599) {
+				response.destroy();
+				request.destroy();
+				rejectOnce(new Error(`invalid upstream HTTP status ${status}`));
+				return;
+			}
+			let built: Response;
+			try {
+				built = responseFromIncomingMessage(response, cleanupSignal);
+			} catch (error) {
+				// error-policy:J2 Tear down the socket and reject with the cause.
+				response.destroy();
+				request.destroy();
+				rejectOnce(error instanceof Error ? error : new Error(String(error)));
+				return;
+			}
 			settled = true;
-			resolve(responseFromIncomingMessage(response, cleanupSignal));
+			resolve(built);
 		});
 
 		request.on("error", rejectOnce);

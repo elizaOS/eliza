@@ -6,13 +6,38 @@
     "packages/scripts/check-quint-shards.ts",
     "packages/scripts/check-quint-shards.node.test.ts",
     "packages/scripts/lib/quint-shards.ts",
-    "packages/scripts/run-with-deadline.ts"
+    "packages/scripts/run-with-deadline.ts",
+    ".github/workflows/ci.yml",
+    ".github/workflows/develop-full.yml",
+    ".github/workflows/cloud-tests.yml",
+    ".github/workflows/cloud-cf-deploy.yml",
+    ".github/workflows/cloud-cf-release.yml",
+    ".github/workflows/build-agent-image.yml",
+    ".github/workflows/deploy-eliza-provisioning-worker.yml",
+    ".github/develop-surface-graph.json",
+    ".github/main-effects.json",
+    "packages/scripts/workflow-trigger-policy.ts",
+    "packages/scripts/ci-affected.ts",
+    "packages/scripts/ci-affected.integration.test.ts",
+    "packages/scripts/develop-impact-evidence.ts",
+    "packages/scripts/develop-effect-ledger.ts",
+    "packages/scripts/__tests__/develop-effect-ledger.test.ts",
+    "packages/scripts/lib/workspaces.ts",
+    "packages/scripts/lib/repository-file-integrity.ts",
+    "packages/cloud/scripts/production-effect-certification.ts",
+    "packages/cloud/scripts/staging-release-certification.ts",
+    "packages/cloud/scripts/staging-release-certification.test.ts",
+    "packages/scripts/lib/spawn-sync-captured.ts",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/scripts/lib/test-output.ts",
+    ".dockerignore",
+    "packages/app/deploy/.dockerignore.ci"
   ],
   "conformance": "packages/scripts/quint/check-ci-admission.mjs",
   "bounds": {
-    "domain": "Seven mandatory PR lanes. Each settles once to success, failure, cancellation or skipped. One aggregate evaluation follows all terminal results. The named Quint lane additionally joins four shards and one complete source-bound evidence partition; changed and unchanged source are separate cases.",
-    "assumptions": "GitHub dependency scheduling prevents the aggregate from running before all needs settle. The hook reads the actual YAML dependency/result lists and executes the actual shell gate for all 29 one-fault outcomes. The shard validator binds each declared case, required command and exact input hash to current source; its adversarial and actual-runner tests execute in conformance.",
-    "limitations": "The model does not prove GitHub service availability, job contents, branch-rule deployment, administrator bypass policy, or arbitrary changes to the set of mandatory lanes. Workflow cancellation that stops the aggregate itself remains a non-success outcome."
+    "domain": "Seven PR admission lanes, four mandatory Quint partitions on main PR/merge-queue contexts, and one production main Full admission with two logical validation epochs (including a rerun of an older run ID) and three independent predicates (exact GitHub identity, complete current-source rows, staging certification). Other PR branches require Quint skipped. Actual canonical CI also requires the four-shard aggregate on main push/manual/reusable contexts regardless of changed paths.",
+    "assumptions": "GitHub supplies trustworthy run/artifact metadata for the requested repository and protects workflow source at its exact SHA. The hook executes real YAML result shell gates, all event/branch classifiers, source-bound shard validation, actual Git manifest/ZIP consumers and existing ledger/staging tests with controlled API fixtures. Production gates run at migration/image/Worker/Pages mutation boundaries. Admission linearizes at final metadata recheck; a future rerun after admission does not retroactively revoke an already-started effect. Completed reruns are bound to their per-attempt metadata; any active exact-source run or ambiguous start ordering blocks admission. Staging is verified before the final main snapshot, and returned expiry is the earlier proof expiry, checked again immediately before mutation. Full producer and production CLI require full canonical branch refs; a tag named main is not a main branch context. Image publication restores only its owned Docker ignore preparation after local image verification; actual Git-manifest conformance still rejects other dirty source. GitHub enforces the called workflow input schema while retaining the caller github context. The hook checks that manual Cloud startup profiling cannot be selected by a canonical Full reusable call, including manual Full callers.",
+    "limitations": "Finite boolean identity/row/staging projection and at most one concurrent rerun; file bytes/hashes, arbitrary API histories, network failure timing and provider effects are outside the model. Job deadline expiry is projected to lane cancellation; the Source job's 90-minute wall-clock budget and runner throughput are not proved. Cancellation still fails admission. Tests retain one full-monorepo manifest and happy admission. Adversarial API orderings use real Git/ZIP/current manifest code on a controlled committed workspace with copied current workflows, actions and validation graph; production recomputation is not cached. These fixtures do not measure full-monorepo hashing throughput. No actual GitHub dispatch/deployment, branch protection deployment, physical device or service availability claim. Production expected manifests are recomputed from the trusted exact-source checkout. Fair completion assumes reads/decisions return; unavailable GitHub remains fail closed."
   },
   "cases": [
     {
@@ -63,8 +88,8 @@
       "deadlock": false
     },
     {
-      "name": "quint-shards-unchanged",
-      "main": "QuintShardAdmission_unchanged",
+      "name": "main-production-current-proof",
+      "main": "MainProductionAdmission",
       "init": "init",
       "step": "step",
       "invariants": ["safety"],
@@ -74,11 +99,11 @@
           "property": "ConditionalCompletion",
           "expect": "holds",
           "assumptions": [
-            "Every running shard settles and the enabled evidence check and aggregate evaluation are weakly fair. Valid evidence is not assumed."
+            "Read and decision scheduling are weakly fair and finite API work returns; successful evidence is not assumed."
           ]
         }
       ],
-      "maxSteps": 15,
+      "maxSteps": 8,
       "samples": 1000,
       "deadlock": false
     }

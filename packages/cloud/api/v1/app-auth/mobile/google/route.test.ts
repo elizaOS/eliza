@@ -4,7 +4,7 @@ import { MobileAppAuthProtocolError } from "@elizaos/cloud-shared/lib/services/m
 
 const REGISTRATION = {
   appId: "0f8fad5b-d9cb-469f-a165-70867728950e",
-  clientId: "ai.elizaresearch.alphaphone",
+  clientId: "ai.alphacompute.alphaphone",
   environment: "production" as const,
   redirectUri: "https://eliza.app/alphaphone/auth/callback",
   scopes: ["cloud:user"] as const,

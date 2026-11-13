@@ -65,6 +65,10 @@ export interface ProcessAccountDeletionSagaResult {
   progressed: number;
   reconciling: number;
   actionRequired: number;
+  /** Requests whose head phase another lane owns. */
+  deferredToOtherLane: number;
+  /** How long the oldest of those has waited at its head phase; null when none. */
+  oldestDeferredAgeMs: number | null;
 }
 
 function digest(value: string): string {
@@ -442,6 +446,8 @@ export async function processIrreversibleAccountDeletionSaga(input: {
     progressed: 0,
     reconciling: 0,
     actionRequired: 0,
+    deferredToOtherLane: 0,
+    oldestDeferredAgeMs: null,
   };
   // A request this lane cannot act on (another lane owns its head phase, or
   // the request needs an operator) gets no write, so it keeps its place at the
@@ -527,7 +533,21 @@ async function runIrreversiblePhase(input: {
     // incomplete receipt remains the ordered head and blocks provider purge.
     return 0;
   }
-  if (input.allowedPhases && !input.allowedPhases.has(next.phase)) return 0;
+  if (input.allowedPhases && !input.allowedPhases.has(next.phase)) {
+    // The other lane may be disabled or down; report how long the head has
+    // waited so a stall is visible without parking the request.
+    const completedBefore = phases.flatMap((phase) =>
+      phase.phase_order < next.phase_order && phase.completed_at ? [phase.completed_at] : [],
+    );
+    const waitingSince =
+      completedBefore.length > 0
+        ? new Date(Math.max(...completedBefore.map((at) => at.getTime())))
+        : (request.irreversible_at ?? next.created_at);
+    const ageMs = Math.max(0, now.getTime() - waitingSince.getTime());
+    result.deferredToOtherLane++;
+    result.oldestDeferredAgeMs = Math.max(result.oldestDeferredAgeMs ?? 0, ageMs);
+    return 0;
+  }
   const outcome = await processProviderPhase({
     request,
     phase: next.phase,

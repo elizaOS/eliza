@@ -26,8 +26,12 @@ public final class PhotoLibraryAccess {
   public static final int PAGE = 24;
   /** Validation reads at most this many named items in one call. */
   public static final int VALIDATE = 200;
-  /** Reviewed changes, shares and permanent removals name at most this many items. */
+  /** Reviewed changes and permanent removals name at most this many items. */
   public static final int REVIEWED = 20;
+  /** One reviewed Android favorite, trash or restore request over permitted media. */
+  public static final int REVIEWED_BATCH = 500;
+  /** One share names at most this many items; it changes nothing, so its bound is wider. */
+  public static final int SHARE = 100;
 
   private PhotoLibraryAccess() {}
 
@@ -134,17 +138,17 @@ public final class PhotoLibraryAccess {
 
   /**
    * Which permitted listing the Photos grid's {@code album} parameter reads, as
-   * {@code {kind, filter}}: the whole library, favorites, videos, or Recently deleted. A custom
-   * album ({@code custom:<id>}) is the host album store's, not a catalog listing; any other name is
-   * refused.
+   * {@code {kind, filter}}: the whole library, favorites, videos, the Camera or Screenshots folder,
+   * or Recently deleted. A custom album ({@code custom:<id>}) is the host album store's, not a
+   * catalog listing; any other name is refused.
    */
   public static String[] permittedListing(String album, boolean trashed) {
     String name = album == null ? "" : album;
-    if (!name.isEmpty() && !name.equals("favorites") && !name.equals("videos"))
+    if (!name.isEmpty() && !name.matches("favorites|videos|camera|screenshots"))
       throw new IllegalArgumentException("Unknown album");
     return new String[] {
       name.equals("videos") ? "video" : "all",
-      trashed ? "trash" : name.equals("favorites") ? "favorites" : "all"
+      trashed ? "trash" : name.matches("favorites|camera|screenshots") ? name : "all"
     };
   }
 
@@ -207,14 +211,16 @@ public final class PhotoLibraryAccess {
   }
 
   /**
-   * A Photos batch operation ({@code favorite}, {@code trash}, {@code restore}) as
-   * {@code {favorite, desired}} for a permitted review: favorite sets the favorite flag, trash moves
-   * to Recently deleted and restore takes it back out.
+   * A Photos batch operation ({@code favorite}, {@code unfavorite}, {@code trash}, {@code restore})
+   * as {@code {favorite, desired}} for a permitted review: favorite sets the favorite flag,
+   * unfavorite clears it, trash moves to Recently deleted and restore takes it back out.
    */
   public static boolean[] batchChange(String operation) {
     switch (operation == null ? "" : operation) {
       case "favorite":
         return new boolean[] {true, true};
+      case "unfavorite":
+        return new boolean[] {true, false};
       case "trash":
         return new boolean[] {false, true};
       case "restore":

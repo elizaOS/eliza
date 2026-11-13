@@ -262,6 +262,7 @@ describe("context inspector HTTP integration", () => {
           usedTokens: 312,
           limitTokens: 900,
           reservedTokens: 100,
+          estimationMode: "reported",
           state: "within-budget",
         },
       ],
@@ -304,6 +305,42 @@ describe("context inspector HTTP integration", () => {
         usedTokens: 312,
         limitTokens: 900,
         reservedTokens: 100,
+        estimationMode: "reported",
+        state: "within-budget",
+      },
+    ]);
+  });
+
+  it("reads reserveTokens and labels a byte-based estimate", async () => {
+    const detail = trajectory(ROOM);
+    const call = detail.steps?.[0]?.llmCalls?.[0];
+    if (!call) throw new Error("fixture must include an LLM call");
+    call.promptTokens = undefined;
+    call.providerOptions = {
+      eliza: {
+        modelInputBudget: {
+          estimatedInputTokens: 1200,
+          contextWindowTokens: 128000,
+          reserveTokens: 10000,
+          dispatchThresholdTokens: 118000,
+          estimationMode: "utf8-upper-bound",
+        },
+      },
+    };
+    const app = await harness({
+      authorization: { ok: true, role: "OWNER" },
+      detail,
+    });
+    const result = await app.request(
+      `/api/context-inspector?conversationId=${ROOM}`,
+    );
+    expect(result.response.status).toBe(200);
+    expect(JSON.parse(result.body).tokenBudgets).toEqual([
+      {
+        usedTokens: 1200,
+        limitTokens: 118000,
+        reservedTokens: 10000,
+        estimationMode: "utf8-upper-bound",
         state: "within-budget",
       },
     ]);

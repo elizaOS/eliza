@@ -42,7 +42,6 @@ export const SPEECH_WORKER_REQUIRED_SECRETS = [
 export const COORDINATOR_SOURCES = [
   "api/src/speech-relay-coordinator.ts",
   "api/src/speech-relay-admission.ts",
-  "api/src/speech-relay-ink.ts",
   "api/src/speech-retirement-state.ts",
   "api/src/speech-revocation-subscription.ts",
   "api/v1/voice/session/lib/provider-socket-factory.ts",
@@ -218,13 +217,16 @@ export function checkSpeechWorkerContract(
   );
   check(
     same(stageSpeech, [
-      {
-        name: "SPEECH_RELAY_SESSIONS",
-        class_name: "SpeechRelayCoordinator",
-        script_name: target.name,
-      },
-    ]),
-    "Staging API speech binding must reference the lean speech host",
+      { name: "SPEECH_RELAY_SESSIONS", class_name: "SpeechRelayCoordinator" },
+    ]) ||
+      same(stageSpeech, [
+        {
+          name: "SPEECH_RELAY_SESSIONS",
+          class_name: "SpeechRelayCoordinator",
+          script_name: target.name,
+        },
+      ]),
+    "Staging API speech binding must use the API or lean speech host",
   );
   // Production keeps its current hosting until staging proves the move.
   const productionSpeech = production?.durable_objects?.bindings?.filter(
@@ -329,15 +331,26 @@ if (import.meta.main) {
   if (process.argv.includes("--required-secret-names")) {
     console.log(SPEECH_WORKER_REQUIRED_SECRETS.join(" "));
   } else {
-    const errors = checkSpeechWorkerContract(
-      await loadSpeechWorkerContractInput(),
-    );
+    const input = await loadSpeechWorkerContractInput();
+    const errors = checkSpeechWorkerContract(input);
     if (errors.length) {
       for (const error of errors) console.error(`::error::${error}`);
       process.exit(1);
     }
-    console.log(
-      "Speech host staging source contract passed; live secrets, namespace and latency require separate receipts.",
-    );
+    if (process.argv.includes("--selected-host")) {
+      const binding =
+        input.source.env?.staging?.durable_objects?.bindings?.find(
+          (item) => item.name === "SPEECH_RELAY_SESSIONS",
+        );
+      if (!binding)
+        throw new Error("Validated staging speech binding is missing");
+      console.log(
+        binding.script_name === SPEECH_WORKER_NAME ? "speech" : "api",
+      );
+    } else {
+      console.log(
+        "Speech host staging source contract passed; live secrets, namespace and latency require separate receipts.",
+      );
+    }
   }
 }

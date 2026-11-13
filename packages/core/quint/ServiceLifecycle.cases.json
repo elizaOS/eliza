@@ -1,107 +1,111 @@
 {
-  "sources": [
-    "packages/core/src/runtime/service-lifecycle.ts",
-    "packages/core/src/runtime.ts",
-    "packages/core/src/plugin-lifecycle.ts"
-  ],
-  "stateRepresentation": "The source variables form one typed record. Every action updates that record atomically and retains all other fields.",
-  "cases": [
-    {
-      "name": "siblings",
-      "main": "ServiceLifecycle",
-      "init": "init",
-      "step": "step",
-      "invariants": [
-        "TypeOK",
-        "OneLivePerClass",
-        "StopAtMostOnce",
-        "NoLatePublish",
-        "NoOrphan",
-        "StatusConsistent",
-        "NoStatusWithoutClasses",
-        "StoppedNotReachable"
-      ],
-      "temporal": ["DeadlockFree"],
-      "maxSteps": 100,
-      "samples": 1000,
-      "constants": {
-        "Classes": ["A", "B"],
-        "LateClasses": ["B"],
-        "Owned": ["A"],
-        "Callers": ["e1", "e2"],
-        "MaxInst": 4,
-        "MaxRetries": 1,
-        "None": "None"
-      },
-      "deadlock": true,
-      "temporalChecks": [
-        {
-          "property": "DeadlockFree",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in ServiceLifecycle: DeadlockFree = always(enabled(nextStep))",
-            "No scheduler fairness is assumed by this property."
-          ]
-        }
-      ]
-    },
-    {
-      "name": "liveness",
-      "main": "ServiceLifecycleLiveness",
-      "init": "init",
-      "step": "step",
-      "invariants": [
-        "TypeOK",
-        "OneLivePerClass",
-        "StopAtMostOnce",
-        "NoLatePublish",
-        "NoOrphan",
-        "StatusConsistent",
-        "NoStatusWithoutClasses",
-        "StoppedNotReachable"
-      ],
-      "temporal": ["DeadlockFree", "StopReachesAll", "CallersReturn"],
-      "maxSteps": 100,
-      "samples": 1000,
-      "constants": {
-        "Classes": ["A", "B"],
-        "LateClasses": ["B"],
-        "Owned": ["A"],
-        "Callers": ["e1", "e2"],
-        "MaxInst": 3,
-        "MaxRetries": 0,
-        "None": "None"
-      },
-      "deadlock": true,
-      "temporalChecks": [
-        {
-          "property": "DeadlockFree",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in ServiceLifecycleLiveness: DeadlockFree = always(enabled(nextStep))",
-            "No scheduler fairness is assumed by this property."
-          ]
-        },
-        {
-          "property": "StopReachesAll",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in ServiceLifecycleLiveness: StopReachesAll = Fairness.implies(s.stopReq.leadsTo(Classes.forall(c => s.sc.get(c) == \"idle\") and Created.forall(i => s.stopCalls.get(i) >= 1)))",
-            "Model fairness predicate Fairness = and { Callers.forall(e => EEnsure(e).weakFair(s) and ESettle(e).weakFair(s) and EDelay(e).weakFair(s)), Classes.forall(c => StartSettles(c).weakFair(s) and StartEvent(c).weakFair(s) and StartLateStopped(c).weakFair(s)), Inst.forall(i => StopOpDone(i).weakFair(s)), RServices.weakFair(s), RStopNext.weakFair(s), RStopWait.weakFair(s), RClear.weakFair(s), UAwaited.weakFair(s), UDrain.weakFair(s), UStopped.weakFair(s) }",
-            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
-          ]
-        },
-        {
-          "property": "CallersReturn",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in ServiceLifecycleLiveness: CallersReturn = Fairness.implies(Callers.forall(e => (s.epc.get(e) == \"ensure\").leadsTo(s.epc.get(e) == \"done\")))",
-            "Model fairness predicate Fairness = and { Callers.forall(e => EEnsure(e).weakFair(s) and ESettle(e).weakFair(s) and EDelay(e).weakFair(s)), Classes.forall(c => StartSettles(c).weakFair(s) and StartEvent(c).weakFair(s) and StartLateStopped(c).weakFair(s)), Inst.forall(i => StopOpDone(i).weakFair(s)), RServices.weakFair(s), RStopNext.weakFair(s), RStopWait.weakFair(s), RClear.weakFair(s), UAwaited.weakFair(s), UDrain.weakFair(s), UStopped.weakFair(s) }",
-            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
-          ]
-        }
-      ]
-    }
-  ],
-  "sentinels": "The missing instance is encoded by integer 0. The missing class or caller remains the string none."
+	"sources": [
+		"packages/core/src/runtime/service-lifecycle.ts",
+		"packages/core/src/runtime.ts",
+		"packages/core/src/plugin-lifecycle.ts",
+		"packages/core/test/service-lifecycle-model.test.ts"
+	],
+	"bounds": {
+		"domain": "Two classes of one service type, one of them registered late, two callers, three or four service instances, and zero or one retry. Starts, publication, unload and stop keep separate promise boundaries.",
+		"limitations": "The real runtime suite checks sibling status, concurrent stop and unload, and orphaned publication during pending starts and start events. The tests do not enumerate every retry and unload interleaving."
+	},
+	"conformance": "packages/core/quint/check-core-concurrency.mjs",
+	"stateRepresentation": "The source variables form one typed record. Every action updates that record atomically and retains all other fields.",
+	"cases": [
+		{
+			"name": "siblings",
+			"main": "ServiceLifecycle",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"OneLivePerClass",
+				"StopAtMostOnce",
+				"NoLatePublish",
+				"NoOrphan",
+				"StatusConsistent",
+				"NoStatusWithoutClasses",
+				"StoppedNotReachable"
+			],
+			"temporal": ["DeadlockFree"],
+			"maxSteps": 100,
+			"samples": 1000,
+			"constants": {
+				"Classes": ["A", "B"],
+				"LateClasses": ["B"],
+				"Owned": ["A"],
+				"Callers": ["e1", "e2"],
+				"MaxInst": 4,
+				"MaxRetries": 1
+			},
+			"deadlock": true,
+			"temporalChecks": [
+				{
+					"property": "DeadlockFree",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in ServiceLifecycle: DeadlockFree = always(enabled(nextStep))",
+						"No scheduler fairness is assumed by this property."
+					]
+				}
+			]
+		},
+		{
+			"name": "liveness",
+			"main": "ServiceLifecycleLiveness",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"OneLivePerClass",
+				"StopAtMostOnce",
+				"NoLatePublish",
+				"NoOrphan",
+				"StatusConsistent",
+				"NoStatusWithoutClasses",
+				"StoppedNotReachable"
+			],
+			"temporal": ["DeadlockFree", "StopReachesAll", "CallersReturn"],
+			"maxSteps": 100,
+			"samples": 1000,
+			"constants": {
+				"Classes": ["A", "B"],
+				"LateClasses": ["B"],
+				"Owned": ["A"],
+				"Callers": ["e1", "e2"],
+				"MaxInst": 3,
+				"MaxRetries": 0
+			},
+			"deadlock": true,
+			"temporalChecks": [
+				{
+					"property": "DeadlockFree",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in ServiceLifecycleLiveness: DeadlockFree = always(enabled(nextStep))",
+						"No scheduler fairness is assumed by this property."
+					]
+				},
+				{
+					"property": "StopReachesAll",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in ServiceLifecycleLiveness: StopReachesAll = Fairness.implies(s.stopReq.leadsTo(Classes.forall(c => s.sc.get(c) == \"idle\") and Created.forall(i => s.stopCalls.get(i) >= 1)))",
+						"Model fairness predicate Fairness = and { Callers.forall(e => EEnsure(e).weakFair(s) and ESettle(e).weakFair(s) and EDelay(e).weakFair(s)), Classes.forall(c => StartSettles(c).weakFair(s) and StartEvent(c).weakFair(s) and StartLateStopped(c).weakFair(s)), Inst.forall(i => StopOpDone(i).weakFair(s)), RServices.weakFair(s), RStopNext.weakFair(s), RStopWait.weakFair(s), RClear.weakFair(s), UAwaited.weakFair(s), UDrain.weakFair(s), UStopped.weakFair(s) }",
+						"The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+					]
+				},
+				{
+					"property": "CallersReturn",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in ServiceLifecycleLiveness: CallersReturn = Fairness.implies(Callers.forall(e => (s.epc.get(e) == \"ensure\").leadsTo(s.epc.get(e) == \"done\")))",
+						"Model fairness predicate Fairness = and { Callers.forall(e => EEnsure(e).weakFair(s) and ESettle(e).weakFair(s) and EDelay(e).weakFair(s)), Classes.forall(c => StartSettles(c).weakFair(s) and StartEvent(c).weakFair(s) and StartLateStopped(c).weakFair(s)), Inst.forall(i => StopOpDone(i).weakFair(s)), RServices.weakFair(s), RStopNext.weakFair(s), RStopWait.weakFair(s), RClear.weakFair(s), UAwaited.weakFair(s), UDrain.weakFair(s), UStopped.weakFair(s) }",
+						"The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+					]
+				}
+			]
+		}
+	],
+	"sentinels": "The missing instance is encoded by integer 0. The missing class or caller remains the string none."
 }

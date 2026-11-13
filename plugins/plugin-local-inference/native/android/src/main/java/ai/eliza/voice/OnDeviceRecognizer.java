@@ -282,7 +282,9 @@ public final class OnDeviceRecognizer {
 
     /** Stops the session; a running or later {@link #finish} throws {@link CancellationException}. */
     public void cancel() {
-        stopped = true;
+        synchronized (this) {
+            stopped = true;
+        }
         main.post(() -> {
             SpeechRecognizer open = recognizer;
             if (open != null) open.cancel();
@@ -403,8 +405,14 @@ public final class OnDeviceRecognizer {
      * host still records.
      */
     private void answer(String heard, String error) {
+        answer(heard, error, false);
+    }
+
+    private void answer(String heard, String error, boolean demoteLanguage) {
         synchronized (this) {
-            if (done.getCount() == 0) return;
+            if (done.getCount() == 0 || (demoteLanguage && stopped)) return;
+            // Only the current session's first accepted language failure can retire the cache.
+            if (demoteLanguage) demote(language);
             text = heard;
             failure = error;
             done.countDown();
@@ -431,11 +439,9 @@ public final class OnDeviceRecognizer {
                 answer("", null);
                 return;
             }
-            if (error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE
-                    || error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED) {
-                demote(language);
-            }
-            answer(null, "error " + error);
+            boolean missingLanguage = error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE
+                    || error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED;
+            answer(null, "error " + error, missingLanguage);
         }
 
         @Override

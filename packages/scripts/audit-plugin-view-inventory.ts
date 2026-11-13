@@ -92,7 +92,7 @@ function artifactPath(value, extension, label) {
 
 function printUsage() {
   process.stdout.write(
-    "Usage: node packages/scripts/audit-plugin-view-inventory.ts [--json|--markdown] [--output <path.json>] [--markdown-output <path.md>]\n",
+    "Usage: bun packages/scripts/audit-plugin-view-inventory.ts [--json|--markdown] [--output <path.json>] [--markdown-output <path.md>]\n",
   );
 }
 

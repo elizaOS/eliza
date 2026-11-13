@@ -35,6 +35,12 @@ const result = spawnSync(
 );
 const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
 writeFileSync(report, output);
+// The nested schedules inspect /proc and intentionally run only on Linux.
+// Keep their exact skip reason visible elsewhere, and require both on CI.
+const nestedSuffix =
+  process.platform === "linux" ? "$" : " # SKIP Linux process-group schedule$";
+const expectedPasses = process.platform === "linux" ? 28 : 26;
+const expectedSkips = process.platform === "linux" ? 0 : 2;
 if (
   result.error ||
   result.signal ||
@@ -45,24 +51,31 @@ if (
   !/^ok \d+ - child cancellation stops later cases and remains visible in evidence$/m.test(
     output,
   ) ||
-  !/^ok \d+ - nested CLI cancellation reaps signal-ignoring checker descendants$/m.test(
-    output,
-  ) ||
-  !/^ok \d+ - nested CLI cancellation reaps descendants spawned after cancellation$/m.test(
-    output,
-  ) ||
+  !new RegExp(
+    `^ok \\d+ - nested CLI cancellation reaps signal-ignoring checker descendants${nestedSuffix}`,
+    "m",
+  ).test(output) ||
+  !new RegExp(
+    `^ok \\d+ - nested CLI cancellation reaps descendants spawned after cancellation${nestedSuffix}`,
+    "m",
+  ).test(output) ||
   !/^ok \d+ - TLC state and action properties retain their checked outcomes$/m.test(
     output,
   ) ||
   !/^ok \d+ - an implementation conformance failure fails the shared run$/m.test(
     output,
   ) ||
-  !/^# tests 25$/m.test(output) ||
-  !/^# pass 25$/m.test(output) ||
+  !/^ok \d+ - the shared runner rejects a failing scenario without the Test suffix$/m.test(
+    output,
+  ) ||
+  !/^# tests 28$/m.test(output) ||
+  !new RegExp(`^# pass ${expectedPasses}$`, "m").test(output) ||
   !/^# fail 0$/m.test(output) ||
-  !/^# skipped 0$/m.test(output) ||
+  !new RegExp(`^# skipped ${expectedSkips}$`, "m").test(output) ||
   !/^# cancelled 0$/m.test(output)
 ) {
   throw new Error(`Runner cancellation conformance failed. Report ${report}`);
 }
-console.log(`Runner cancellation conformance passed. Report ${report}`);
+console.log(
+  `Runner cancellation conformance passed ${expectedPasses} tests; ${expectedSkips} Linux-only schedules skipped. Report ${report}`,
+);

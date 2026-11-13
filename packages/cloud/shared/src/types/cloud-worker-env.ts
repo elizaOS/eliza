@@ -29,8 +29,6 @@ export interface Bindings {
   /** Bounded speech-only sockets; agents and conversation storage remain on the client. */
   VOICE_SPEECH_RELAY_ENABLED?: string;
   VOICE_SPEECH_RETIREMENT_PROOF_ENABLED?: string;
-  /** Speech-only Ink final timeout, clamped to 640..5000 ms; default 1280 ms. */
-  VOICE_SPEECH_END_TIMEOUT_MS?: string;
   /** Renewable 60 s speech windows per session for extending clients, 1..120; default 10. */
   VOICE_SPEECH_RELAY_MAX_WINDOWS?: string;
   SPEECH_RELAY_SESSIONS?: RuntimeDurableObjectNamespace;
@@ -106,6 +104,18 @@ export interface Bindings {
   AUTO_TOP_UP_DURABLE_ENABLED?: string;
   /** Registered active and approved `apps.id` for the native Cloud client. */
   ELIZA_MOBILE_APP_AUTH_APP_ID?: string;
+  /**
+   * Cloud deployment identity (see lib/deployment/cloud-deployment.ts). Unset
+   * or "eliza" is the eliza.app deployment. Any other id is a product Cloud
+   * whose origins, tenant, hosts, sender and billing page must all be set.
+   */
+  CLOUD_DEPLOYMENT_ID?: string;
+  /** Public site origin of a product Cloud. */
+  CLOUD_WEB_ORIGIN?: string;
+  /** Optional comma-separated extra first-party web origins of a product Cloud. */
+  CLOUD_FIRST_PARTY_ORIGINS?: string;
+  /** Billing page of a product Cloud, returned when credits run out. */
+  CLOUD_BILLING_URL?: string;
   /** Public deployment name and plain-text Terms/Privacy documents; never a secret. */
   CLOUD_PUBLIC_SERVICE_JSON?: string;
   /** Split deployment-owned public text; each binding fits the Worker limit. */
@@ -724,6 +734,13 @@ export interface Variables {
    * server-side only, so retries of one sign-in get the same answer.
    */
   stewardAccountCreated?: true;
+  /**
+   * Why a verified Steward session could not be resolved to a Cloud account
+   * during first-sign-in provisioning. `requireUser` reports `unavailable` as
+   * a retryable `account_not_ready` 503 and `conflict` as an
+   * `identity_conflict` 409; an unclassified failure sets nothing and stays 401.
+   */
+  stewardAccountSyncFailure?: "conflict" | "unavailable";
 }
 
 export type AppEnv = {

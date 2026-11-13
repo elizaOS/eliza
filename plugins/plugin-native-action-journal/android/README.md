@@ -39,8 +39,18 @@ bridge methods with `work(call, needsId, task)`, which runs on the plugin's seri
 
 The index slot commits before the entry slot. A crash between them leaves a listed id
 without an entry, which `list` skips and an identical `reserve` completes; it never leaves
-an effect that the journal does not list. The journal is bounded: a full index refuses new
-proposals while existing replays keep working.
+an effect that the journal does not list.
+
+## Retention
+
+The journal is bounded. When a new proposal meets a full index, the same `reserve` drops the
+oldest settled entries (terminal, not `unknown`, no native dispatch claim) from the index and
+overwrites each entry slot with a small tombstone holding only its operation id, hash and
+status. A tombstoned proposal reads as absent to `get`, `list` and every transition, and
+`reserve` refuses it, so no proposal is dispatched twice. Reserved, applying, `unknown` and
+claimed entries are never evicted; when only those remain, `reserve` refuses with
+"Action journal is full" while existing replays keep working. Tombstones are a few hundred
+bytes and stay for every proposal ever reserved.
 
 ## Verification
 

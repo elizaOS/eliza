@@ -178,7 +178,13 @@ Passkeys are not implemented.
   also tests document-picker export/import, fresh unlock, exact restored values, overlapping
   calls and cancellation on backgrounding or Activity destruction. The offer tests also use
   real framework objects with synthetic targets. Run with
-  `node packages/app/scripts/android-native-plugins.ts --serial <emulator> --plugin plugin-native-passwords`.
+  `bun packages/app/scripts/android-native-plugins.ts --serial <emulator> --plugin plugin-native-passwords`.
   The runner creates and removes a disposable user. These tests do not establish trusted-browser,
   biometric, physical-device or user acceptance. Layout artifacts render only the fixture
   views with synthetic data; Android screen-capture protection remains enabled.
+
+Other native credential owners can reuse `SecretSurfaces.revealOwned` for the timed FLAG_SECURE
+dialog and secret-surface signal. Supply a current foreground/unlocked owner predicate and close
+the returned handle on retirement. A retired handle cannot dismiss a newer surface. Values stay
+native; resolve renderer calls with acknowledgement metadata only. This does not grant vault or
+credential access and does not change the credential store's authentication policy.

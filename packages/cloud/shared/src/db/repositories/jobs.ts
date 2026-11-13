@@ -15,6 +15,7 @@ import {
   isAdminCanaryImageJobData,
   isPendingAdminCanaryCutoverAudit,
 } from "../../lib/services/admin-canary-image";
+import { APP_DEPLOYMENT_GENERATION_KEY } from "../../lib/services/app-deployment-generation";
 import { configureElizaLifecycleTransaction } from "../../lib/services/eliza-provision-lock";
 import {
   EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES,
@@ -33,6 +34,8 @@ import type { DbTransaction } from "../client";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
 import { agentSandboxes } from "../schemas/agent-sandboxes";
+import { apps } from "../schemas/apps";
+import { containers } from "../schemas/containers";
 import { jobExecutionLeases } from "../schemas/job-execution-leases";
 import type { Job, NewJob } from "../schemas/jobs";
 import { jobs } from "../schemas/jobs";
@@ -113,6 +116,19 @@ function hasRecoveryProtectedExecutionLease(): SQL {
 
 function lacksRecoveryProtectedExecutionLease(): SQL {
   return sql`NOT (${hasRecoveryProtectedExecutionLease()})`;
+}
+
+// App admission commits before external revocation delivery. Only its durable
+// inline acknowledgement makes the original root ready for a worker claim.
+function hasPendingClaimAuthority(): SQL {
+  return sql`(
+    ${jobs.type} <> ${JOB_TYPES.APP_DELETE}
+    OR (
+      ${jobs.result_storage} = 'inline'
+      AND ${jobs.result_key} IS NULL
+      AND ${jobs.result}->'revocationsConfirmed' = 'true'::jsonb
+    )
+  )`;
 }
 
 function hasPayloadUpdates(updates: Partial<Job> | Partial<NewJob>): boolean {
@@ -603,6 +619,47 @@ export class JobsRepository {
     return job ? await hydrateJob(job) : undefined;
   }
 
+  /** Positive handoff evidence. Missing or conflicting records cannot prove absence. */
+  async findAppDeployProvisionHandoff(
+    appId: string,
+    organizationId: string,
+    generation: string,
+  ): Promise<{ jobId: string; containerId: string } | undefined> {
+    const receipts = await dbWrite
+      .select({ jobId: jobs.id, containerId: containers.id })
+      .from(containers)
+      .innerJoin(
+        apps,
+        and(
+          eq(apps.id, appId),
+          eq(apps.organization_id, containers.organization_id),
+          eq(apps.created_by_user_id, containers.user_id),
+        ),
+      )
+      .innerJoin(
+        jobs,
+        and(
+          eq(jobs.type, JOB_TYPES.CONTAINER_PROVISION),
+          eq(jobs.organization_id, containers.organization_id),
+          eq(jobs.user_id, containers.user_id),
+          sql`${jobs.data}->>'containerId' = ${containers.id}::text`,
+          sql`${jobs.data}->>'organizationId' = ${containers.organization_id}::text`,
+          sql`${jobs.data}->>'userId' = ${containers.user_id}::text`,
+          sql`${jobs.data}->>${APP_DEPLOYMENT_GENERATION_KEY} = ${generation}`,
+        ),
+      )
+      .where(
+        and(
+          eq(containers.organization_id, organizationId),
+          eq(containers.project_name, appId),
+          sql`${containers.metadata}->>'appId' = ${appId}`,
+          sql`${containers.metadata}->>${APP_DEPLOYMENT_GENERATION_KEY} = ${generation}`,
+        ),
+      )
+      .limit(2);
+    return receipts.length === 1 ? receipts[0] : undefined;
+  }
+
   /** Complete primary inventory before an app deletion snapshots owned resources. */
   async findUnsettledAppDeletionCandidates(organizationId: string): Promise<Job[]> {
     const rows = await dbWrite
@@ -876,6 +933,7 @@ export class JobsRepository {
           SELECT id FROM ${jobs}
           WHERE type = ${filters.type}
             AND status = 'pending'
+            AND ${hasPendingClaimAuthority()}
             ${orgFilter}
             AND scheduled_for <= (clock_timestamp() AT TIME ZONE 'UTC')
           ORDER BY ${jobs.scheduled_for} ASC, ${jobs.created_at} ASC
@@ -947,6 +1005,7 @@ export class JobsRepository {
             SELECT id FROM ${jobs}
             WHERE type = ${filters.type}
               AND status = 'pending'
+              AND ${hasPendingClaimAuthority()}
               ${orgFilter}
               AND scheduled_for <= (clock_timestamp() AT TIME ZONE 'UTC')
             ORDER BY ${jobs.scheduled_for} ASC, ${jobs.created_at} ASC
@@ -1085,10 +1144,9 @@ export class JobsRepository {
   }
 
   /**
-   * Terminally rejects an invalid claimed execution before it can acquire a
-   * resource fence. The exact generation and live owner lease are the only
-   * authority; no dependent-row callback or sandbox mutation participates in
-   * this pre-dispatch transition.
+   * Terminally rejects a claimed execution under its exact generation and live
+   * owner lease. Unconfirmed effects retain their non-quiescent marker for
+   * resource reconciliation. No dependent-row or sandbox mutation participates.
    *
    * A same-generation terminal row is classified before its lease is read so
    * a retry after an ambiguous commit acknowledgement reconstructs success
@@ -1098,6 +1156,7 @@ export class JobsRepository {
     claimedJob: Job,
     error: string,
     ownerId: string,
+    options?: { retainUnconfirmedEffects: true },
   ): Promise<ClaimedExecutionRejection> {
     const generation = requireExecutionGeneration(claimedJob);
     if (!ownerId) {
@@ -1146,7 +1205,7 @@ export class JobsRepository {
           ...payload,
           attempts: sql`${jobs.attempts} + 1`,
           completed_at: settledAt,
-          execution_quiesced_at: settledAt,
+          execution_quiesced_at: options?.retainUnconfirmedEffects ? null : settledAt,
           updated_at: settledAt,
         })
         .where(

@@ -357,7 +357,7 @@ async function typeInto(
   if (!input) {
     throw new Error(`Input ${selector} was not found.`);
   }
-  await input.click({ clickCount: 3 });
+  await input.click({ count: 3 });
   await page.keyboard.press("Backspace");
   await input.type(value);
 }

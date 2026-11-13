@@ -8,7 +8,10 @@ import {
   describeMapsDisclosure,
   insideCloudCoverage,
 } from "../src/client/cloud-provider.ts";
-import { MapsFailure } from "../src/client/contracts.ts";
+import {
+  MapsFailure,
+  mapsUnavailableMessage,
+} from "../src/client/contracts.ts";
 import { SavedPlaces } from "../src/client/saved-places.ts";
 import { MapsController } from "../src/client/state.ts";
 
@@ -117,6 +120,44 @@ const memory = () => {
     error: "unauthorized",
     message: "Sign in to Eliza Cloud to use Maps.",
   });
+  assert.equal(
+    mapsUnavailableMessage(maps.cloudMapsDiagnostics()),
+    "Sign in to Eliza Cloud to use Maps.",
+    "the Cloud failure, not a provider prompt, explains why Maps is off",
+  );
+}
+
+// A capabilities refusal keeps its own message; only a host with no provider is told to connect one.
+{
+  const maps = createCloudMaps(
+    () => async () => {
+      throw cloudError(403, "subscription_required");
+    },
+    () => {},
+  );
+  await maps.initializeCloudMaps();
+  assert.deepEqual(maps.cloudMapsDiagnostics(), {
+    configured: true,
+    error: "unauthorized",
+    message: "Maps needs an active Cloud subscription.",
+  });
+  assert.equal(
+    mapsUnavailableMessage(maps.cloudMapsDiagnostics()),
+    "Maps needs an active Cloud subscription.",
+  );
+  assert.match(
+    mapsUnavailableMessage({ configured: false, error: "" }),
+    /Connect a Maps provider/,
+  );
+  assert.equal(
+    mapsUnavailableMessage({ configured: false, error: "" }, "Sign in."),
+    "Sign in.",
+  );
+  maps.retireCloudMaps();
+  assert.equal(
+    mapsUnavailableMessage(maps.cloudMapsDiagnostics()),
+    "Sign in to Cloud to use Maps.",
+  );
 }
 
 // Signed in: coverage configures the provider and the shared controller plans a validated route.
@@ -185,7 +226,19 @@ const memory = () => {
     calls.map(([path]) => path),
     ["capabilities", "places/search", "places/details", "routes"],
   );
-  assert.deepEqual(calls[1][1], { query: "Port" });
+  assert.deepEqual(
+    calls[1][1],
+    { query: "Port" },
+    "no area unless one is given",
+  );
+  await provider.search("Coffee", new AbortController().signal, {
+    near: CASINO,
+  });
+  assert.deepEqual(calls.at(-1), [
+    "places/search",
+    { query: "Coffee", near: CASINO },
+  ]);
+  calls.pop();
   assert.deepEqual(
     calls[3][1],
     { from: CASINO, to: PORT, mode: "walk", alternatives: true },
@@ -388,6 +441,41 @@ assert.equal(
     .code,
   "cancelled",
 );
+
+// The connection transports reject offline requests with "Connection request failed".
+assert.equal(
+  cloudMapsFailure(new Error("Connection request failed")).code,
+  "offline",
+);
+assert.equal(
+  cloudMapsFailure(new Error("Request cancelled")).code,
+  "unavailable",
+);
+assert.equal(
+  cloudMapsFailure(
+    new Error("socket closed"),
+    undefined,
+    undefined,
+    (error) => error.message === "socket closed",
+  ).code,
+  "offline",
+  "a host classifier decides what is offline",
+);
+{
+  const maps = createCloudMaps(
+    () => async () => {
+      throw new Error("socket closed");
+    },
+    () => {},
+    { isOffline: (error) => error.message === "socket closed" },
+  );
+  await maps.initializeCloudMaps();
+  assert.deepEqual(maps.cloudMapsDiagnostics(), {
+    configured: true,
+    error: "offline",
+    message: "Cloud Maps is unreachable. Check the connection.",
+  });
+}
 
 // Invalid coverage leaves Maps unconfigured.
 {
@@ -715,7 +803,7 @@ assert.equal(
   }
   assert.equal(
     describeMapsDisclosure(disclosure),
-    "Searches and route points are sent to Eliza Cloud Maps and Nominatim for search, operated by Acme and GraphHopper for routing, operated by Acme. Cloud keeps only the request type and result, not your searches or locations.",
+    "Searches, search areas and route points are sent to Eliza Cloud Maps and Nominatim for search, operated by Acme and GraphHopper for routing, operated by Acme. Cloud keeps only the request type and result, not your searches or locations.",
   );
   assert.equal(describeMapsDisclosure(undefined), "");
   console.log(

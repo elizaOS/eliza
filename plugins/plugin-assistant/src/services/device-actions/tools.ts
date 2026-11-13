@@ -58,7 +58,9 @@ function capabilityAvailable(
   if (isNotesOrganizeType(type))
     return deviceOperationSupportedByCapabilities(type, caps);
   if (isPhotosViewType(type))
-    return deviceOperationSupportedByCapabilities(type, caps);
+    return (
+      turn.isCurrent() && deviceOperationSupportedByCapabilities(type, caps)
+    );
   if (
     type === "reminder_create_after" &&
     runtime.actions.some((action) => action.name === "OWNER_REMINDERS") &&
@@ -89,6 +91,7 @@ const capabilityBoundTypes = new Set([
   "maps_read_selected",
   "reminder_create_after",
   "notes_filter",
+  "notes_list_filter",
   "notes_move",
   "notes_folder_create",
   "notes_restore",
@@ -157,6 +160,11 @@ const declarations = [
     "Filter the Notes list on this phone by text, folder name and/or kind (text, list, voice, link). Read-only: the phone shows the matching notes with a clearable filter and returns no note content to the agent.",
   ],
   [
+    "DEVICE_CANONICAL_NOTES_FILTER",
+    "notes_list_filter",
+    "Filter the open Notes list by text or kind (text, list, voice, link). The phone shows the filtered list with a clearable filter and returns no note content. Requires the canonical Notes list to be open.",
+  ],
+  [
     "DEVICE_NOTE_MOVE",
     "notes_move",
     "Move one note to a folder by folder name, or to no folder with folder null. Use the exact selected note source and record identity/revision; never guess them. The owner reviews the move; it is refused if the note changed since review or the folder does not exist.",
@@ -175,6 +183,8 @@ const declarations = [
     "DEVICE_NOTES_RECORD",
     "notes_record",
     "Start or stop a voice note recording in the Notes app on this phone. Only works while Notes is open. Runs directly when the owner's current message asked for it, otherwise the owner reviews it. A proposal does not prove recording started or stopped.",
+  ],
+  [
     "DEVICE_PHOTOS_FILTER",
     "photos_filter",
     "Filter the Photos grid on this phone by date range (epoch ms), kind (image or video), favorite, album and/or text matched on the phone. Read-only: Photos shows the matching items behind a clearable filter chip and returns only how many it shows, never the items.",
@@ -259,7 +269,11 @@ const declarations = [
     "maps_read_selected",
     "Share only the current explicitly selected map place or route after device review. This does not request location or search for places.",
   ],
-] as const;
+] as const satisfies readonly (readonly [
+  name: string,
+  type: string,
+  description: string,
+])[];
 function operationSchema(type: string): ActionParameterSchema {
   if (type === "calendar_update" || type === "notes_update")
     return {

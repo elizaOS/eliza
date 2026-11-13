@@ -12,15 +12,6 @@
       }
     },
     {
-      "id": "apps-worker-staging",
-      "workflow": "deploy-apps-worker.yml",
-      "surfaces": ["canonical", "cloud"],
-      "shaInput": "source_sha",
-      "inputs": {
-        "environment": "staging"
-      }
-    },
-    {
       "id": "provisioning-worker-staging",
       "workflow": "deploy-eliza-provisioning-worker.yml",
       "surfaces": ["canonical", "cloud"],

@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   actionScope,
   type CurrentDeviceActionRequest,
   type DeviceActionClientProfile,
   DeviceActionCoordinator,
   type DeviceActionJournal,
+  DeviceActionNotStarted,
   type DeviceContextEnvelope,
   type DeviceExecutionResult,
   type DeviceExecutor,
@@ -90,6 +91,8 @@ function fixtureServer(
     providerReceipt: undefined as unknown,
     claims: 0,
     receiptOutage: false,
+    decisionOutage: false,
+    claimOutage: false,
   };
   const proposal = () => ({
     id,
@@ -110,6 +113,9 @@ function fixtureServer(
     execution: server.attemptId
       ? {
           attemptId: server.attemptId,
+          ...(operation.type === "sms_send" || operation.type === "sms_compose"
+            ? { providerIdempotencyKey: id }
+            : {}),
           ...(server.providerReceipt === undefined
             ? {}
             : { providerReceipt: server.providerReceipt }),
@@ -121,9 +127,23 @@ function fixtureServer(
     if (body === undefined) return { proposals: [proposal()] };
     const data = body as Record<string, unknown>;
     expect(data.digest).toBe(digest);
-    if (path.endsWith("/decision"))
-      server.state = data.decision === "approve" ? "approved" : "rejected";
+    if (path.endsWith("/decision")) {
+      if (server.decisionOutage) throw Error("Synthetic outage");
+      const target = data.decision === "approve" ? "approved" : "rejected";
+      const unclaimedApproval =
+        target === "rejected" &&
+        server.state === "approved" &&
+        !server.attemptId;
+      if (
+        server.state !== target &&
+        server.state !== "pending" &&
+        !unclaimedApproval
+      )
+        throw Error("Proposal is no longer pending");
+      server.state = target;
+    }
     if (path.endsWith("/claim")) {
+      if (server.claimOutage) throw Error("Synthetic outage");
       server.claims++;
       expect(server.state).toBe("approved");
       server.state = "executing";
@@ -146,11 +166,15 @@ function fixtureServer(
       }
       if (server.state !== "executing")
         throw Error(`Invalid transition ${server.state} -> receipt`);
-      const receipt = data.receipt as { outcome: string };
+      const receipt = data.receipt as { outcome: string; code?: string };
       server.receipts.push(data);
       server.providerReceipt = data.receipt;
+      // A receipt the phone marks as never dispatched settles without review.
       server.state =
-        receipt.outcome === "applied" ? "done" : "reconciliation_required";
+        receipt.outcome === "applied" ||
+        receipt.code === "DEVICE_NOT_DISPATCHED"
+          ? "done"
+          : "reconciliation_required";
     }
     if (path.endsWith("/reconciliation")) {
       if (data.attemptId !== server.attemptId)
@@ -158,6 +182,15 @@ function fixtureServer(
       if (server.state !== "reconciliation_required")
         throw Error(`Invalid transition ${server.state} -> reconciliation`);
       const resolution = data.resolution as { outcome: string };
+      if (resolution.outcome === "unresolved") {
+        // Closed by the owner; the stored receipt keeps its uncertain outcome.
+        expect(Object.keys(resolution).sort()).toEqual([
+          "confirmed",
+          "outcome",
+        ]);
+        server.state = "done";
+        return { proposal: proposal(), digest };
+      }
       server.providerReceipt = resolution;
       server.state = resolution.outcome === "applied" ? "done" : "retryable";
     }
@@ -300,6 +333,81 @@ describe("DeviceActionCoordinator", () => {
     expect(effects).toBe(1);
   });
 
+  it("closes an executor refusal before any effect as failed with its reason", async () => {
+    // Display copy never upgrades an ordinary failed result into a no-effect receipt.
+    for (const [summary, omitMarker] of [
+      ["Not started. Nothing was sent. Ordinary executor display text.", false],
+      ["Not started. Nothing was sent.", false],
+      ["Not started. Nothing was sent. Unmarked display text.", true],
+    ] as const) {
+      const { server, request } = fixtureServer(note);
+      const { entries, journal } = memoryJournal();
+      const attempts: unknown[] = [];
+      const transport = async (path: string, body: unknown, s: AbortSignal) => {
+        if (path.endsWith("/receipt"))
+          attempts.push(
+            structuredClone((body as { receipt: unknown }).receipt),
+          );
+        return request(path, body, s);
+      };
+      let executions = 0;
+      const actions = coordinator(transport, journal, async () => {
+        executions++;
+        return { status: "failed", summary, dispatch: "not_started" };
+      });
+      await actions.pending(notesContext, signal());
+      server.receiptOutage = true;
+      expect(
+        (await actions.approve("proposal", notesContext, signal())).status,
+      ).toBe("failed");
+      expect(attempts).toHaveLength(1);
+      expect(attempts[0]).toEqual({
+        outcome: "failed",
+        operationId: entries.get("proposal")?.operationId,
+      });
+      expect(entries.get("proposal")?.result?.dispatch).toBe("attempted");
+      if (omitMarker) delete entries.get("proposal")?.result?.dispatch;
+      server.receiptOutage = false;
+      await actions.syncReceipts(signal());
+      expect(attempts).toHaveLength(2);
+      expect(attempts[1]).toEqual(attempts[0]);
+      await actions.syncReceipts(signal());
+      expect(executions).toBe(1);
+      expect(server.claims).toBe(1);
+    }
+    const { server, request } = fixtureServer(note);
+    const { entries, journal } = memoryJournal();
+    const actions = coordinator(request, journal, async () => {
+      throw new DeviceActionNotStarted("The screen changed.");
+    });
+    await actions.pending(notesContext, signal());
+    server.receiptOutage = true;
+    const receipt = await actions.approve("proposal", notesContext, signal());
+    expect(receipt).toMatchObject({
+      status: "failed",
+      summary:
+        "Not started. Nothing was sent. The screen changed. Not synced yet; open action history to retry.",
+    });
+    expect(entries.get("proposal")).toMatchObject({
+      phase: "terminal",
+      status: "failed",
+      summary: "Not started. Nothing was sent. The screen changed.",
+      result: {
+        operationId: entries.get("proposal")?.operationId,
+        dispatch: "not_started",
+      },
+    });
+    // The journaled refusal still settles the server claim after the outage.
+    server.receiptOutage = false;
+    await actions.syncReceipts(signal());
+    expect(server.receipts.at(-1)?.receipt).toEqual({
+      outcome: "failed",
+      operationId: entries.get("proposal")?.operationId,
+      code: "DEVICE_NOT_DISPATCHED",
+    });
+    expect(server.state).toBe("done");
+  });
+
   it("recovers a journaled result after a receipt outage without re-executing", async () => {
     const { server, request } = fixtureServer(note);
     const { entries, journal } = memoryJournal();
@@ -312,7 +420,9 @@ describe("DeviceActionCoordinator", () => {
     await first.pending(notesContext, signal());
     server.receiptOutage = true;
     const receipt = await first.approve("proposal", notesContext, signal());
-    expect(receipt.summary).toMatch(/Server receipt is pending/);
+    expect(receipt.summary).toBe(
+      "Saved fixture note Not synced yet; open action history to retry.",
+    );
     expect(server.state).toBe("executing");
     // A fresh coordinator (app restart) replays only the exact journal entry.
     server.receiptOutage = false;
@@ -456,7 +566,289 @@ describe("DeviceActionCoordinator", () => {
     );
     expect(review).toHaveLength(1);
     expect(review[0].proposal).toBeNull();
-    expect(review[0].notice).toMatch(/Camera capture was not negotiated/);
+    expect(review[0].notice).toBe("This action isn't available on this phone.");
+    // The reason stays in the diagnostics a caller can read.
+    await expect(
+      actions.pending(
+        { view: "camera", revision: 1, sensitive: false },
+        signal(),
+      ),
+    ).rejects.toThrow(/Camera capture was not negotiated/);
+  });
+
+  it("closes an attempt that never dispatched as failed with nothing sent", async () => {
+    for (const legacy of [false, true]) {
+      const { server, request } = fixtureServer(note);
+      const { entries, journal } = memoryJournal();
+      const controller = new AbortController();
+      let effects = 0;
+      // Cancelled after the claim and before dispatch.
+      const actions = coordinator(
+        request,
+        {
+          ...journal,
+          async markApplying(input) {
+            await journal.markApplying(input);
+            controller.abort();
+          },
+        },
+        async () => {
+          effects++;
+          return { status: "succeeded", summary: "Saved" };
+        },
+      );
+      await actions.pending(notesContext, signal());
+      const receipt = await actions.approve(
+        "proposal",
+        notesContext,
+        controller.signal,
+      );
+      expect(receipt).toMatchObject({
+        status: "failed",
+        summary:
+          "Not started. Nothing was sent. Not synced yet; open action history to retry.",
+      });
+      expect(effects).toBe(0);
+      expect(entries.get("proposal")).toMatchObject({
+        phase: "terminal",
+        status: "failed",
+        summary: "Not started. Nothing was sent.",
+        result: {
+          operationId: entries.get("proposal")?.operationId,
+          dispatch: "not_started",
+        },
+      });
+      expect(server.state).toBe("executing");
+      // Prior coordinator versions stored this exact no-call receipt without a marker.
+      if (legacy) delete entries.get("proposal")?.result?.dispatch;
+      await actions.syncReceipts(signal());
+      expect(server.receipts.at(-1)?.receipt).toEqual({
+        outcome: "failed",
+        operationId: entries.get("proposal")?.operationId,
+        code: "DEVICE_NOT_DISPATCHED",
+      });
+      expect(server.state).toBe("done");
+      expect(effects).toBe(0);
+    }
+    // Resuming after an asynchronous binding hash must recheck the stored expiry.
+    {
+      const now = Date.now();
+      const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+      const entered = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      const digest = crypto.subtle.digest.bind(crypto.subtle);
+      const hash = vi
+        .spyOn(crypto.subtle, "digest")
+        .mockImplementation(async (algorithm, data) => {
+          if (new TextDecoder().decode(data).startsWith(`["${scope}",`)) {
+            entered.resolve();
+            await release.promise;
+          }
+          return digest(algorithm, data);
+        });
+      try {
+        const { server, request } = fixtureServer(note);
+        const { entries, journal } = memoryJournal();
+        let effects = 0;
+        const actions = coordinator(request, journal, async () => {
+          effects++;
+          return { status: "succeeded", summary: "Saved" };
+        });
+        await actions.pending(notesContext, signal());
+        const approval = actions.approve("proposal", notesContext, signal());
+        await entered.promise;
+        clock.mockReturnValue(now + 600_001);
+        release.resolve();
+        const receipt = await approval;
+        expect(effects).toBe(0);
+        expect(receipt.status).toBe("failed");
+        expect(entries.get("proposal")?.result?.dispatch).toBe("not_started");
+        expect(server.receipts.at(-1)?.receipt.code).toBe(
+          "DEVICE_NOT_DISPATCHED",
+        );
+      } finally {
+        release.resolve();
+        hash.mockRestore();
+        clock.mockRestore();
+      }
+    }
+    // An accepted effect still owns its result when the clock later passes expiry.
+    {
+      const now = Date.now();
+      const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+      const entered = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<DeviceExecutionResult>();
+      try {
+        const { server, request } = fixtureServer(note);
+        const { entries, journal } = memoryJournal();
+        let effects = 0;
+        const actions = coordinator(request, journal, async () => {
+          effects++;
+          entered.resolve();
+          return release.promise;
+        });
+        await actions.pending(notesContext, signal());
+        const approval = actions.approve("proposal", notesContext, signal());
+        await entered.promise;
+        clock.mockReturnValue(now + 600_001);
+        release.resolve({ status: "succeeded", summary: "Saved" });
+        expect((await approval).status).toBe("succeeded");
+        expect(effects).toBe(1);
+        expect(entries.get("proposal")?.status).toBe("succeeded");
+        expect(server.receipts.at(-1)?.receipt.outcome).toBe("applied");
+      } finally {
+        release.resolve({ status: "unknown", summary: "Test cleanup" });
+        clock.mockRestore();
+      }
+    }
+  });
+
+  it("closes a claimed reservation left by a restart as not dispatched", async () => {
+    const { server, request } = fixtureServer(note);
+    const { entries, journal } = memoryJournal();
+    let effects = 0;
+    const execute: DeviceExecutor = async () => {
+      effects++;
+      return { status: "succeeded", summary: "Saved" };
+    };
+    // The process stopped between the claim and markApplying.
+    const first = coordinator(
+      request,
+      {
+        ...journal,
+        async markApplying() {
+          throw Error("Process stopped");
+        },
+      },
+      execute,
+    );
+    await first.pending(notesContext, signal());
+    expect(
+      (await first.approve("proposal", notesContext, signal())).status,
+    ).toBe("unknown");
+    expect(entries.get("proposal")?.phase).toBe("reserved");
+    expect(server.state).toBe("executing");
+    await coordinator(request, journal, execute).syncReceipts(signal());
+    expect(entries.get("proposal")).toMatchObject({
+      phase: "terminal",
+      status: "failed",
+      attemptId: "attempt",
+      result: { dispatch: "not_started" },
+    });
+    expect(server.receipts.at(-1)?.receipt).toMatchObject({
+      outcome: "failed",
+      code: "DEVICE_NOT_DISPATCHED",
+    });
+    expect(server.state).toBe("done");
+    expect(effects).toBe(0);
+  });
+
+  it("closes an entry left applying by a restart as unknown", async () => {
+    const { server, request } = fixtureServer(note);
+    const { entries, journal } = memoryJournal();
+    let effects = 0;
+    const execute: DeviceExecutor = async () => {
+      effects++;
+      return { status: "succeeded", summary: "Saved" };
+    };
+    // The effect ran but the process stopped before it was journaled.
+    const first = coordinator(
+      request,
+      {
+        ...journal,
+        async finish() {
+          throw Error("Process stopped");
+        },
+      },
+      execute,
+    );
+    await first.pending(notesContext, signal());
+    await first.approve("proposal", notesContext, signal());
+    expect(entries.get("proposal")?.phase).toBe("applying");
+    await coordinator(request, journal, execute).syncReceipts(signal());
+    expect(entries.get("proposal")).toMatchObject({
+      phase: "terminal",
+      status: "unknown",
+    });
+    expect(server.receipts.at(-1)?.receipt).toEqual({
+      outcome: "unknown",
+      operationId: entries.get("proposal")?.operationId,
+    });
+    expect(server.state).toBe("reconciliation_required");
+    expect(effects).toBe(1);
+  });
+
+  it("never settles the attempt this instance is executing", async () => {
+    const { server, request } = fixtureServer(note);
+    const { entries, journal } = memoryJournal();
+    let release = () => {};
+    let started = () => {};
+    const running = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const actions = coordinator(request, journal, async () => {
+      started();
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return { status: "succeeded", summary: "Saved" };
+    });
+    await actions.pending(notesContext, signal());
+    const approval = actions.approve("proposal", notesContext, signal());
+    await running;
+    await actions.syncReceipts(signal());
+    expect(entries.get("proposal")?.phase).toBe("applying");
+    expect(server.receipts).toHaveLength(0);
+    release();
+    expect((await approval).status).toBe("succeeded");
+    expect(server.state).toBe("done");
+  });
+
+  it("reuses the reservation after a failed decision and re-cards a claimless approval", async () => {
+    for (const outage of ["decisionOutage", "claimOutage"] as const) {
+      const { server, request } = fixtureServer(note);
+      const { entries, journal } = memoryJournal();
+      let effects = 0;
+      const actions = coordinator(request, journal, async () => {
+        effects++;
+        return { status: "succeeded", summary: "Saved" };
+      });
+      await actions.pending(notesContext, signal());
+      server[outage] = true;
+      expect(
+        (await actions.approve("proposal", notesContext, signal())).status,
+      ).toBe("unknown");
+      const reserved = entries.get("proposal") as DeviceJournalEntry;
+      expect(reserved.phase).toBe("reserved");
+      expect(server.state).toBe(
+        outage === "decisionOutage" ? "pending" : "approved",
+      );
+      server[outage] = false;
+      const [card] = await actions.pending(notesContext, signal());
+      expect(card?.id).toBe("proposal");
+      expect(
+        (await actions.approve("proposal", notesContext, signal())).status,
+      ).toBe("succeeded");
+      expect(entries.get("proposal")?.operationId).toBe(reserved.operationId);
+      expect(server.state).toBe("done");
+      expect(effects).toBe(1);
+    }
+  });
+
+  it("rejects a re-shown approval whose claim never arrived", async () => {
+    const { server, request } = fixtureServer(note);
+    const actions = coordinator(request, memoryJournal().journal, async () => ({
+      status: "succeeded",
+      summary: "Saved",
+    }));
+    await actions.pending(notesContext, signal());
+    server.claimOutage = true;
+    await actions.approve("proposal", notesContext, signal());
+    expect(server.state).toBe("approved");
+    const [card] = await actions.pending(notesContext, signal());
+    expect(card?.id).toBe("proposal");
+    await actions.reject("proposal", signal());
+    expect(server.state).toBe("rejected");
   });
 
   it("applies the product view admission policy", () => {
@@ -1211,6 +1603,92 @@ describe("shared phone and reminder-read parity", () => {
     ).toMatch(/Unlock/);
     expect(effects).toBe(0);
   });
+  const messages = {
+    view: "messages",
+    revision: 4,
+    sensitive: false,
+    selectedObject: { kind: "sms-subscription", id: "3" },
+  };
+  it("uses short review copy for dial and SMS", async () => {
+    const sms = {
+      type: "sms_send",
+      recipients: ["+15555550123"],
+      body: "Running late",
+      subscriptionId: 3,
+    };
+    const { request } = fixtureServer(dial);
+    const [card] = await make(request, memoryJournal().journal, async () => ({
+      status: "unknown",
+      summary: "",
+    })).pending(home, signal());
+    expect(card.description).toBe(
+      "Number: +15551234567\n\nOpens your phone app with this number. You place the call there.",
+    );
+    for (const simLabel of [undefined, () => "Work"]) {
+      const actions = new DeviceActionCoordinator({
+        session,
+        credential: { ...credential, capabilities: ["sms.send.v1"] },
+        scope,
+        request: fixtureServer(sms).request,
+        journal: memoryJournal().journal,
+        execute: async () => ({ status: "unknown", summary: "" }),
+        profile: { ...profile, simLabel },
+      });
+      const [review] = await actions.pending(messages, signal());
+      expect(review.description).toBe(
+        simLabel
+          ? "To: +15555550123\nFrom: Work\n\nRunning late\n\nConfirm again in Android."
+          : "To: +15555550123\n\nRunning late\n\nConfirm again in Android.",
+      );
+    }
+  });
+  it("leaves an SMS with unknown evidence unresolved without calling it sent or not", async () => {
+    const sms = {
+      type: "sms_send",
+      recipients: ["+15555550123"],
+      body: "Running late",
+      subscriptionId: 3,
+    };
+    const { server, request } = fixtureServer(sms);
+    const { journal } = memoryJournal();
+    let effects = 0;
+    const actions = make(
+      request,
+      journal,
+      async () => {
+        effects++;
+        throw Error("lost result");
+      },
+      ["sms.send.v1"],
+    );
+    await actions.pending(messages, signal());
+    expect((await actions.approve("proposal", messages, signal())).status).toBe(
+      "unknown",
+    );
+    expect(server.state).toBe("reconciliation_required");
+    const [row] = await actions.history(signal());
+    expect(row.resolutions).toEqual(["unresolved"]);
+    for (const outcome of ["applied", "not_applied"] as const)
+      await expect(
+        actions.reconcile("proposal", outcome, signal()),
+      ).rejects.toThrow(/exact saved evidence/);
+    await actions.reconcile("proposal", "unresolved", signal());
+    expect(server.state).toBe("done");
+    expect(server.providerReceipt).toMatchObject({ outcome: "unknown" });
+    expect(effects).toBe(1);
+  });
+  it("does not leave a note write unresolved", async () => {
+    const { server, request } = fixtureServer(note);
+    const actions = coordinator(request, memoryJournal().journal, async () => {
+      throw Error("lost result");
+    });
+    await actions.pending(notesContext, signal());
+    await actions.approve("proposal", notesContext, signal());
+    await expect(
+      actions.reconcile("proposal", "unresolved", signal()),
+    ).rejects.toThrow(/Only an SMS, dial or Clock/);
+    expect(server.state).toBe("reconciliation_required");
+  });
   it("does not reconcile an unknown dial handoff from the owner's guess", async () => {
     const { request } = fixtureServer(dial);
     const { journal } = memoryJournal();
@@ -1229,6 +1707,493 @@ describe("shared phone and reminder-read parity", () => {
     await expect(
       actions.reconcile("proposal", "not_applied", signal()),
     ).rejects.toThrow(/exact saved handoff/);
+    expect(effects).toBe(1);
+  });
+  const call = {
+    type: "phone_call",
+    target: { kind: "contact", query: "Ada" },
+  } as const;
+  const telephonyCases = [
+    [
+      call,
+      "phone.call.v1",
+      { kind: "phone-call", status: "placed", contact: true },
+      "Place call",
+    ],
+    [
+      {
+        type: "contact_create",
+        contact: {
+          displayName: "Ada Lovelace",
+          phoneNumbers: ["+15555550123"],
+          emailAddresses: [],
+        },
+      },
+      "contacts.write.v1",
+      { kind: "contact-write", status: "saved" },
+      "Add contact",
+    ],
+    [
+      {
+        type: "contact_update",
+        query: "Ada",
+        set: { phoneNumbers: ["+15555550199"] },
+      },
+      "contacts.write.v1",
+      { kind: "contact-write", status: "saved" },
+      "Change contact",
+    ],
+    [
+      { type: "contact_delete", query: "Ada" },
+      "contacts.write.v1",
+      { kind: "contact-write", status: "deleted" },
+      "Delete contact",
+    ],
+    [
+      { type: "sms_compose", query: "Ada", body: "Running late" },
+      "sms.compose.v1",
+      { kind: "sms-compose", status: "submitted" },
+      "Review SMS",
+    ],
+    [
+      { type: "sms_reply_selected", body: "On my way" },
+      "sms.compose.v1",
+      { kind: "sms-reply", status: "drafted" },
+      "Draft reply",
+    ],
+    [
+      { type: "messages_read_selected" },
+      "messages.read.v1",
+      {
+        kind: "messages-read",
+        status: "read",
+        participant: "Ada Lovelace",
+        messages: [{ direction: "in", date: 1000, body: "Lunch?" }],
+        truncated: false,
+      },
+      "Share open messages",
+    ],
+    [
+      { type: "voicemail_read_selected" },
+      "voicemail.read.v1",
+      {
+        kind: "voicemail-read",
+        status: "read",
+        caller: null,
+        date: 1000,
+        durationSeconds: 9,
+        transcriptState: "pending",
+        engine: null,
+        transcript: null,
+      },
+      "Share open voicemail",
+    ],
+    [
+      { type: "voicemail_delete_selected" },
+      "voicemail.delete.v1",
+      { kind: "voicemail-delete", status: "deleted" },
+      "Delete voicemail",
+    ],
+  ] as const;
+  it.each(telephonyCases)(
+    "negotiates %o and journals/replays its exact result without acting twice",
+    async (operation, capability, telephonyResult, title) => {
+      const { server, request } = fixtureServer(operation);
+      const { journal, entries } = memoryJournal();
+      let effects = 0;
+      const execute: DeviceExecutor = async () => {
+        effects++;
+        expect(entries.get("proposal")?.phase).toBe("applying");
+        return { status: "succeeded", summary: "Done", telephonyResult };
+      };
+      // Another telephony capability never admits this operation.
+      await expect(
+        make(
+          request,
+          journal,
+          execute,
+          telephonyCases
+            .map(([, other]) => other)
+            .filter((other) => other !== capability),
+        ).pending(home, signal()),
+      ).rejects.toThrow(/negotiated/);
+      for (const hidden of [
+        proposalContextNotice(operation, { ...home, sensitive: true }, profile),
+        proposalContextNotice(operation, home, {
+          ...profile,
+          foregroundHidden: () => true,
+        }),
+      ])
+        expect(hidden).toMatch(/Unlock the phone and keep it open/);
+      expect(proposalContextNotice(operation, home, profile)).toBeUndefined();
+      const actions = make(request, journal, execute, [capability]);
+      const [card] = await actions.pending(home, signal());
+      expect(card.title).toBe(title);
+      server.receiptOutage = true;
+      expect((await actions.approve("proposal", home, signal())).status).toBe(
+        "succeeded",
+      );
+      expect(entries.get("proposal")?.result?.telephonyResult).toEqual(
+        telephonyResult,
+      );
+      if (operation.type === "sms_compose")
+        expect(entries.get("proposal")?.operationId).toBe("proposal");
+      server.receiptOutage = false;
+      await make(request, journal, execute, [capability]).syncReceipts(
+        signal(),
+      );
+      expect(server.receipts[0].receipt).toMatchObject({
+        outcome: "applied",
+        result: telephonyResult,
+      });
+      expect(server.state).toBe("done");
+      expect(effects).toBe(1);
+    },
+  );
+  it("refuses a telephony result that contradicts the reviewed operation or its status", async () => {
+    for (const [operation, capability, result] of [
+      // A call can never report more than a started call.
+      [call, "phone.call.v1", { status: "succeeded", summary: "Connected" }],
+      [
+        call,
+        "phone.call.v1",
+        {
+          status: "succeeded",
+          summary: "Connected",
+          telephonyResult: {
+            kind: "phone-call",
+            status: "connected",
+            contact: true,
+          },
+        },
+      ],
+      [
+        call,
+        "phone.call.v1",
+        {
+          status: "succeeded",
+          summary: "Busy",
+          telephonyResult: {
+            kind: "phone-call",
+            status: "busy",
+            contact: false,
+          },
+        },
+      ],
+      [
+        call,
+        "phone.call.v1",
+        {
+          status: "succeeded",
+          summary: "Wrong kind",
+          dialResult: {
+            kind: "phone-dial",
+            status: "handed-off",
+            handler: null,
+            contact: false,
+          },
+        },
+      ],
+      [
+        { type: "contact_create", contact: telephonyCases[1][0].contact },
+        "contacts.write.v1",
+        {
+          status: "succeeded",
+          summary: "Deleted",
+          telephonyResult: { kind: "contact-write", status: "deleted" },
+        },
+      ],
+      [
+        { type: "sms_compose", query: "Ada", body: "Running late" },
+        "sms.compose.v1",
+        {
+          status: "failed",
+          summary: "Unknown is not a failure",
+          telephonyResult: { kind: "sms-compose", status: "unknown" },
+        },
+      ],
+      [
+        { type: "voicemail_read_selected" },
+        "voicemail.read.v1",
+        {
+          status: "succeeded",
+          summary: "Nothing open",
+          telephonyResult: { kind: "voicemail-read", status: "none-selected" },
+        },
+      ],
+      // A reply draft is never a send, and an untouched field is not a draft.
+      [
+        { type: "sms_reply_selected", body: "On my way" },
+        "sms.compose.v1",
+        {
+          status: "succeeded",
+          summary: "Sent",
+          telephonyResult: { kind: "sms-compose", status: "sent" },
+        },
+      ],
+      [
+        { type: "sms_reply_selected", body: "On my way" },
+        "sms.compose.v1",
+        {
+          status: "succeeded",
+          summary: "Owner was typing",
+          telephonyResult: { kind: "sms-reply", status: "occupied" },
+        },
+      ],
+      [
+        { type: "sms_compose", query: "Ada", body: "Running late" },
+        "sms.compose.v1",
+        {
+          status: "failed",
+          summary: "A placed draft is not a failure",
+          telephonyResult: { kind: "sms-compose", status: "drafted" },
+        },
+      ],
+    ] as const) {
+      const { server, request } = fixtureServer(operation);
+      const { journal, entries } = memoryJournal();
+      const actions = make(
+        request,
+        journal,
+        async () => result as DeviceExecutionResult,
+        [capability],
+      );
+      await actions.pending(home, signal());
+      expect((await actions.approve("proposal", home, signal())).status).toBe(
+        "unknown",
+      );
+      expect(entries.get("proposal")?.result?.telephonyResult).toBeUndefined();
+      // The contradicted result is never uploaded as an applied effect.
+      expect(server.state).not.toBe("done");
+      expect(
+        server.receipts.some(
+          (item) => (item.receipt as { outcome: string }).outcome === "applied",
+        ),
+      ).toBe(false);
+    }
+  });
+  it("uploads a settled telephony refusal with its typed result", async () => {
+    const { server, request } = fixtureServer({
+      type: "voicemail_read_selected",
+    });
+    const telephonyResult = {
+      kind: "voicemail-read",
+      status: "none-selected",
+    } as const;
+    const actions = make(
+      request,
+      memoryJournal().journal,
+      async () => ({
+        status: "failed",
+        summary: "Nothing open",
+        telephonyResult,
+      }),
+      ["voicemail.read.v1"],
+    );
+    await actions.pending(home, signal());
+    expect((await actions.approve("proposal", home, signal())).status).toBe(
+      "failed",
+    );
+    expect(server.receipts[0].receipt).toMatchObject({
+      outcome: "failed",
+      result: telephonyResult,
+    });
+  });
+  it("places a reply draft without a review only for the requesting message", async () => {
+    const bound = (operation: Record<string, unknown>) => {
+      const fixture = fixtureServer(operation);
+      const request = async (path: string, body: unknown, s: AbortSignal) => {
+        const response = await fixture.request(path, body, s);
+        for (const item of response.proposals ?? [response.proposal])
+          if (item)
+            Object.assign(item.payload, { requestMessageId: "message" });
+        return response;
+      };
+      return { server: fixture.server, request };
+    };
+    const reply = { type: "sms_reply_selected", body: "On my way" };
+    for (const [telephonyResult, status, outcome] of [
+      [{ kind: "sms-reply", status: "drafted" }, "succeeded", "applied"],
+      [{ kind: "sms-reply", status: "occupied" }, "failed", "failed"],
+      [{ kind: "sms-reply", status: "none-selected" }, "failed", "failed"],
+    ] as const) {
+      const { server, request } = bound(reply);
+      let effects = 0;
+      const actions = make(
+        request,
+        memoryJournal().journal,
+        async () => {
+          effects++;
+          return { status, summary: "Done", telephonyResult };
+        },
+        ["sms.compose.v1"],
+      );
+      await actions.pending(home, signal());
+      expect(
+        await actions.performRequested(
+          "other-message",
+          home,
+          signal(),
+          async () => true,
+        ),
+      ).toEqual([]);
+      expect(effects).toBe(0);
+      expect(
+        await actions.performRequested(
+          "message",
+          home,
+          signal(),
+          async () => true,
+        ),
+      ).toMatchObject([{ status }]);
+      expect(effects).toBe(1);
+      expect(server.receipts[0].receipt).toMatchObject({
+        outcome,
+        result: telephonyResult,
+      });
+    }
+    // A contact SMS and a call keep their review even when bound to the message.
+    for (const [operation, capability] of [
+      [telephonyCases[4][0], "sms.compose.v1"],
+      [call, "phone.call.v1"],
+    ] as const) {
+      const { server, request } = bound(operation);
+      let effects = 0;
+      const actions = make(
+        request,
+        memoryJournal().journal,
+        async () => {
+          effects++;
+          return { status: "succeeded", summary: "Done" };
+        },
+        [capability],
+      );
+      await actions.pending(home, signal());
+      expect(
+        await actions.performRequested(
+          "message",
+          home,
+          signal(),
+          async () => true,
+        ),
+      ).toEqual([]);
+      expect(effects).toBe(0);
+      expect(server.state).toBe("pending");
+    }
+  });
+  it("leaves a contact SMS with an unknown outcome unresolved and never sends it again", async () => {
+    const { server, request } = fixtureServer({
+      type: "sms_compose",
+      query: "Ada",
+      body: "Running late",
+    });
+    const { journal } = memoryJournal();
+    let effects = 0;
+    const telephonyResult = { kind: "sms-compose", status: "unknown" } as const;
+    const execute: DeviceExecutor = async () => {
+      effects++;
+      return { status: "unknown", summary: "Unconfirmed", telephonyResult };
+    };
+    const actions = make(request, journal, execute, ["sms.compose.v1"]);
+    await actions.pending(home, signal());
+    expect((await actions.approve("proposal", home, signal())).status).toBe(
+      "unknown",
+    );
+    expect(server.state).toBe("reconciliation_required");
+    expect(server.providerReceipt).toMatchObject({
+      outcome: "unknown",
+      result: telephonyResult,
+    });
+    const restarted = make(request, journal, execute, ["sms.compose.v1"]);
+    await restarted.syncReceipts(signal());
+    expect((await restarted.pending(home, signal())).length).toBe(0);
+    const [row] = await restarted.history(signal());
+    expect(row.resolutions).toEqual(["unresolved"]);
+    for (const outcome of ["applied", "not_applied"] as const)
+      await expect(
+        restarted.reconcile("proposal", outcome, signal()),
+      ).rejects.toThrow(/exact saved evidence/);
+    await restarted.reconcile("proposal", "unresolved", signal());
+    expect(server.state).toBe("done");
+    expect(server.providerReceipt).toMatchObject({ outcome: "unknown" });
+    expect(effects).toBe(1);
+  });
+  it("retains uncertain contact writes across receipt recovery without repeating or guessing", async () => {
+    for (const operation of [
+      telephonyCases[1][0],
+      telephonyCases[2][0],
+      telephonyCases[3][0],
+    ]) {
+      const { server, request } = fixtureServer(operation);
+      const { journal, entries } = memoryJournal();
+      let effects = 0;
+      const telephonyResult = {
+        kind: "contact-write",
+        status: "unknown",
+      } as const;
+      const execute: DeviceExecutor = async () => {
+        effects++;
+        return { status: "unknown", summary: "Unconfirmed", telephonyResult };
+      };
+      const actions = make(request, journal, execute, ["contacts.write.v1"]);
+      await actions.pending(home, signal());
+      server.receiptOutage = true;
+      expect((await actions.approve("proposal", home, signal())).status).toBe(
+        "unknown",
+      );
+      expect(entries.get("proposal")).toMatchObject({
+        phase: "terminal",
+        status: "unknown",
+        result: { telephonyResult },
+      });
+      expect(server.state).toBe("executing");
+      server.receiptOutage = false;
+      const restarted = make(request, journal, execute, ["contacts.write.v1"]);
+      await restarted.syncReceipts(signal());
+      expect(server.providerReceipt).toMatchObject({
+        outcome: "unknown",
+        result: telephonyResult,
+      });
+      expect(server.state).toBe("reconciliation_required");
+      expect(await restarted.pending(home, signal())).toEqual([]);
+      expect((await restarted.history(signal()))[0].resolutions).toEqual([
+        "unresolved",
+      ]);
+      for (const outcome of ["applied", "not_applied"] as const)
+        await expect(
+          restarted.reconcile("proposal", outcome, signal()),
+        ).rejects.toThrow(/exact saved evidence/);
+      await restarted.reconcile("proposal", "unresolved", signal());
+      expect(server.providerReceipt).toMatchObject({ outcome: "unknown" });
+      await restarted.syncReceipts(signal());
+      expect(effects).toBe(1);
+      expect(server.claims).toBe(1);
+    }
+  });
+  it("does not reconcile a lost call result from the owner's guess", async () => {
+    const { server, request } = fixtureServer(call);
+    let effects = 0;
+    const actions = make(
+      request,
+      memoryJournal().journal,
+      async () => {
+        effects++;
+        throw Error("lost result");
+      },
+      ["phone.call.v1"],
+    );
+    await actions.pending(home, signal());
+    expect((await actions.approve("proposal", home, signal())).status).toBe(
+      "unknown",
+    );
+    for (const outcome of ["applied", "not_applied"] as const)
+      await expect(
+        actions.reconcile("proposal", outcome, signal()),
+      ).rejects.toThrow(/exact saved evidence/);
+    expect((await actions.history(signal()))[0].resolutions).toEqual([
+      "unresolved",
+    ]);
+    expect(server.state).toBe("reconciliation_required");
     expect(effects).toBe(1);
   });
   it("requires a workflow and validates/replays selected reminder reads without rereading", async () => {
@@ -1372,7 +2337,7 @@ describe("notes organize operations", () => {
     ]);
     const review = await f.actions.pendingReview(notesContext, signal());
     expect(review[0].proposal).toBeNull();
-    expect(review[0].notice).toMatch(/Notes folders were not negotiated/);
+    expect(review[0].notice).toBe("This action isn't available on this phone.");
   });
 
   it("reviews a move and reports a committed Notes change", async () => {
@@ -1420,6 +2385,49 @@ describe("notes organize operations", () => {
       ).toMatchObject([{ status: "succeeded", committedChanges: [] }]);
       expect(f.effects()).toBe(1);
     }
+    const canonical = {
+      ...notesContext,
+      selectedObject: {
+        kind: "canonical-note-source",
+        id: "notes",
+        revision: "1",
+      },
+    };
+    const op = { type: "notes_list_filter", kind: "list" };
+    const f = organizeFixture(op, ["notes.list-filter.v1"]);
+    expect(
+      (await f.actions.pendingReview(notesContext, signal()))[0].proposal,
+    ).toBeNull();
+    expect((await f.actions.pending(canonical, signal()))[0].title).toBe(
+      "Show notes",
+    );
+    expect(
+      await f.actions.performRequested(
+        "other-message",
+        canonical,
+        signal(),
+        async () => true,
+      ),
+    ).toEqual([]);
+    expect(
+      await f.actions.performRequested(
+        "message",
+        canonical,
+        signal(),
+        async () => true,
+      ),
+    ).toMatchObject([{ status: "succeeded", committedChanges: [] }]);
+    expect(f.effects()).toBe(1);
+    const stale = organizeFixture(op, ["notes.list-filter.v1"]);
+    await stale.actions.pending(canonical, signal());
+    await expect(
+      stale.actions.approve(
+        "proposal",
+        { ...canonical, revision: canonical.revision + 1 },
+        signal(),
+      ),
+    ).rejects.toThrow();
+    expect(stale.effects()).toBe(0);
   });
 
   it("records only while Notes is open and reviews elsewhere only from Home or Notes", () => {
@@ -1500,7 +2508,9 @@ describe("photos view operations", () => {
       );
       const review = await f.actions.pendingReview(photosContext, signal());
       expect(review[0].proposal).toBeNull();
-      expect(review[0].notice).toMatch(/Photos actions were not negotiated/);
+      expect(review[0].notice).toBe(
+        "This action isn't available on this phone.",
+      );
     }
   });
 
@@ -1602,4 +2612,87 @@ describe("photos view operations", () => {
       proposalContextNotice(op, { ...photosContext, sensitive: true }, profile),
     ).toBe("Unlock the phone to review this action.");
   });
+});
+
+describe("opt-in current telephony request policy", () => {
+  for (const [type, capability, view] of [
+    ["messages_read_selected", "messages.read.v1", "messages"],
+    ["sms_reply_selected", "sms.compose.v1", "messages"],
+    ["voicemail_read_selected", "voicemail.read.v1", "phone"],
+    ["voicemail_delete_selected", "voicemail.delete.v1", "phone"],
+  ] as const) {
+    it(`keeps ${type} bound to the first reviewed selection and screen revision`, async () => {
+      const f = fixtureServer({
+        type,
+        ...(type === "sms_reply_selected" ? { body: "On my way" } : {}),
+      });
+      const request = async (path: string, body: unknown, s: AbortSignal) => {
+        const response = await f.request(path, body, s);
+        for (const item of response.proposals ?? [response.proposal])
+          if (item)
+            Object.assign(item.payload, { requestMessageId: "message" });
+        return response;
+      };
+      let effects = 0;
+      const { entries, journal } = memoryJournal();
+      const actions = new DeviceActionCoordinator(
+        {
+          session,
+          credential: { ...credential, capabilities: [capability] },
+          scope,
+          request,
+          journal,
+          execute: async () => {
+            effects++;
+            return { status: "unknown", summary: "Unconfirmed" };
+          },
+          profile,
+        },
+        { currentRequestTelephonyPolicy: true },
+      );
+      const selected: DeviceContextEnvelope = {
+        view,
+        revision: 4,
+        sensitive: false,
+        selectedObject: { kind: "telephony-item", id: "selected-a" },
+      };
+      const proof: CurrentDeviceActionRequest = {
+        messageId: "message",
+        text: "Use this open item",
+        current() {},
+      };
+      // Queue restoration alone cannot bind a fresh owner-selected item.
+      expect(await actions.pendingReview(selected, signal())).toMatchObject([
+        { proposal: null, notice: expect.stringContaining("Ask again") },
+      ]);
+      expect(
+        await actions.pendingReview(selected, signal(), proof),
+      ).toMatchObject([{ proposal: { id: "proposal" } }]);
+      await expect(
+        actions.approve(
+          "proposal",
+          { ...selected, revision: selected.revision + 1 },
+          signal(),
+        ),
+      ).rejects.toThrow("Review this action again from the current screen");
+      const replacement = {
+        ...selected,
+        selectedObject: { kind: "telephony-item", id: "selected-b" },
+      };
+      // Re-polling the same request cannot attach it to a replacement item.
+      expect(
+        await actions.pendingReview(replacement, signal(), proof),
+      ).toMatchObject([
+        { proposal: null, notice: expect.stringContaining("Ask again") },
+      ]);
+      await expect(
+        actions.approve("proposal", replacement, signal()),
+      ).rejects.toThrow("Review this action again from the current screen");
+      expect(effects).toBe(0);
+      expect(f.server.claims).toBe(0);
+      expect(f.server.receipts).toEqual([]);
+      expect(f.server.state).toBe("pending");
+      expect(entries.size).toBe(0);
+    });
+  }
 });

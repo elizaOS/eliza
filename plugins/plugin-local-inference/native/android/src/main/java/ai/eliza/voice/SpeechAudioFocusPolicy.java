@@ -23,6 +23,8 @@ public final class SpeechAudioFocusPolicy {
  public static final String CALL_ACTIVE="call-active",FOCUS_DENIED="audio-focus-denied";
  private enum State { IDLE, HELD, DUCKED }
  private State state=State.IDLE;
+ // A granted request stays on the platform focus stack after a transient loss until it is abandoned.
+ private boolean requested;
 
  /** Ringing, a telephony call, VoIP/communication or call screening/redirection holds the audio path. */
  public static boolean callActive(Mode mode){return mode!=Mode.NORMAL&&mode!=Mode.OTHER;}
@@ -33,10 +35,13 @@ public final class SpeechAudioFocusPolicy {
  public static String admission(Mode mode){return callActive(mode)?CALL_ACTIVE:null;}
 
  /** The platform answered the focus request. */
- public synchronized boolean granted(boolean granted){state=granted?State.HELD:State.IDLE;return granted;}
+ public synchronized boolean granted(boolean granted){state=granted?State.HELD:State.IDLE;requested|=granted;return granted;}
  public synchronized boolean held(){return state!=State.IDLE;}
- /** Speech ended or was stopped: focus is abandoned. */
- public synchronized void released(){state=State.IDLE;}
+ /**
+  * Speech ended or was stopped: true when a granted request must now be abandoned, including after
+  * a loss (a transiently displaced request would otherwise get focus back with nothing playing).
+  */
+ public synchronized boolean released(){boolean abandon=requested;state=State.IDLE;requested=false;return abandon;}
  /** A focus change while speech holds focus. */
  public synchronized Action changed(Event event){
   if(state==State.IDLE)return Action.NONE;

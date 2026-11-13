@@ -4,14 +4,23 @@
     "model": "packages/agent/quint/api-approvals.qnt",
     "sources": [
       "packages/agent/src/api/device-action-routes.ts",
-      "packages/agent/src/api/approval-routes.ts"
+      "packages/agent/src/api/approval-routes.ts",
+      "plugins/plugin-assistant/src/services/approval/store.ts",
+      "plugins/plugin-assistant/src/services/device-actions/service.ts",
+      "plugins/plugin-assistant/test/device-actions.e2e.test.ts",
+      "plugins/plugin-assistant/test/files-negotiation.e2e.test.ts",
+      "plugins/plugin-assistant/test/photos-filter.e2e.test.ts"
     ],
-    "invariants": ["safety"],
+    "invariants": [
+      "AtMostOneClaim",
+      "DispatchPrecedesReceipt",
+      "PermitRequiresCommittedDispatch"
+    ],
     "status": "partial",
     "limitations": [
-      "One operation and two claims.",
-      "Approval/device services remain external authorities; multiple principals and provider effects are excluded.",
-      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+      "One device proposal and one claim. Receipt identity and approval expiry are symbolic.",
+      "Real HTTP and SQL checks bind the atomic dispatch and reconciliation boundary. Device effects, enrollment revocation, multiple proposals and arbitrary receipt payloads remain outside this scope.",
+      "The generic list hides device records. Non-device approvals have separate execution authorities."
     ]
   },
   {
@@ -51,14 +60,15 @@
     "model": "packages/agent/quint/api-connections.qnt",
     "sources": [
       "packages/agent/src/api/conversation-connection-readiness.ts",
-      "packages/agent/src/api/conversation-routes.ts"
+      "packages/agent/src/api/conversation-routes.ts",
+      "packages/agent/src/api/character-routes.ts"
     ],
     "invariants": ["safety"],
     "status": "partial",
     "limitations": [
-      "One room/runtime, two queued writes and generations 0..2.",
-      "Independent rooms, unbounded generations, database failures and process restart are excluded.",
-      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+      "One room lifecycle and runtime, two proof identities with a shared observer, two raw queue slots and generations 0 through 2. A separate projection checks one create response.",
+      "Independent caller and room lifecycles, deletion retries while raw I/O is stalled, room-generation eviction, request fences, and process restart are outside the projections.",
+      "Database failures and observer deadlines are abstracted. Drain assumes weakly fair raw I/O settlement. Real HTTP and SQLite check matching observers, a production deadline, queued cancellation, quarantine and fresh retry across two room IDs. These scenarios do not establish implementation refinement."
     ]
   },
   {
@@ -84,14 +94,17 @@
       "packages/agent/src/api/agent-admin-routes.ts",
       "packages/agent/src/api/runtime-replacement-ownership.ts",
       "packages/agent/src/api/server.ts",
+      "packages/core/src/runtime/room-handler-queue.ts",
+      "plugins/plugin-wallet/src/api/wallet-routes.ts",
+      "packages/agent/src/config/feature-flags.ts",
       "packages/agent/test/agent-lifecycle-stop-start.test.ts"
     ],
     "invariants": ["safety"],
     "status": "partial",
     "limitations": [
-      "One initial boot or running-runtime restart owner and two admitted turns.",
-      "Pausing/error-state restart rollback, host adapter disposal, authentication and multi-process restart coordination remain external. The real HTTP conformance check covers start/stop while a restart retains its outgoing runtime.",
-      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+      "One initial boot/restart owner, two admitted turns and one persisted wallet-primary update while Start is held. The replacement projection includes distinct runtimes, running/paused rollback, up to three build attempts and one room's two FIFO callbacks sharing an abort signal.",
+      "Five maintained cases include authenticated HTTP/PGlite wallet reload admission with ENABLE_CLOUD_WALLET on, actual configuration persistence and pending-restart status, paused build rollback, queued cancellation, closed admissions and active commit before replacement. The saved-config and API replacement-publication abstraction does not assert final activation, wallet readiness or that a returned runtime applied the configuration.",
+      "Initial boot and replacement drain progress assume fair factory or callback success/failure settlement and continuation; expected unfair witnesses preserve pending work. Idle runtime-less automatic boots, arbitrary config/body-read races, post-publication activation, authentication and multi-process coordination remain partial. Restore pre-disposal and adapter retirement are separate runtime-lifecycle projections. No wall-clock or unbounded refinement proof is claimed."
     ]
   },
   {
@@ -136,6 +149,23 @@
     ]
   },
   {
+    "id": "AgentNativeAccountMigration",
+    "model": "packages/agent/quint/NativeAccountMigration.qnt",
+    "sources": ["packages/agent/native-host/account-state.mjs"],
+    "invariants": [
+      "TypeOK",
+      "CompletedPrefixIsClean",
+      "OnlyDirtyFilesAreStaged",
+      "SuccessHasNoSelectedCredential"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One serialized host, three selected configuration files, one credential and two calls. Real disk cases cover namespace/profile selection, nested scrub, malformed-file repair/retry, unsafe-file rejection and idempotency; the existing real child-process case covers prepared account storage.",
+      "Per-file atomic rename is assumed and settles with its acknowledgement. Multiple writers/processes, applied-but-unacknowledged effects, crash/fsync durability, temporary-file cleanup, hostile parent paths and arbitrary JSON roots/nesting remain open.",
+      "Progress assumes admitted filesystem calls settle and continuation is fair; neither success nor retry is guaranteed. The model excludes namespace creation/chmod failures. The documented downstream source API has no in-tree migration caller, so this does not prove downstream invocation, credential verification or broader account authorization."
+    ]
+  },
+  {
     "id": "AgentApiNativeSupervisor",
     "model": "packages/agent/quint/api-native-supervisor.qnt",
     "sources": [
@@ -143,9 +173,7 @@
       "packages/agent/native-host/private-runtime-launch.mjs",
       "packages/agent/native-host/gateway.e2e.test.mjs"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two owner identities and one child. Repeated arbitrary rotations, stop failures and hung host callbacks require separate state refinements.",
@@ -344,14 +372,48 @@
     "sources": [
       "packages/agent/src/runtime/boot-pipeline.ts",
       "packages/agent/src/runtime/deferred-boot-owner.ts",
-      "packages/agent/src/runtime/process-lifecycle.ts"
+      "packages/agent/src/runtime/process-lifecycle.ts",
+      "packages/agent/src/runtime/eliza.ts",
+      "packages/agent/src/runtime/eliza-plugin.ts",
+      "packages/agent/src/runtime/memory-retention-service.ts",
+      "packages/agent/src/runtime/retention-task.ts",
+      "packages/core/src/runtime.ts",
+      "packages/core/src/runtime/retirement.ts",
+      "packages/core/src/runtime/service-lifecycle.ts",
+      "packages/core/src/services/task.ts",
+      "packages/agent/test/hot-reload-shared-database.test.ts",
+      "packages/core/src/services/task-scheduler.ts",
+      "packages/agent/src/runtime/restore-generation.boot.test.ts",
+      "packages/agent/src/api/agent-lifecycle-routes.ts",
+      "packages/agent/src/api/agent-admin-routes.ts",
+      "packages/agent/src/services/agent-backup-restore-v3-runtime-generation.ts",
+      "packages/core/src/runtime/room-handler-queue.ts",
+      "packages/agent/src/api/server.ts",
+      "packages/agent/src/api/runtime-replacement-ownership.ts"
     ],
     "invariants": ["safety"],
     "status": "partial",
     "limitations": [
-      "Eight boot phases and two deferred task identities.",
-      "Individual boot resources, real shutdown failures and async self-awaiting callbacks are excluded.",
-      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+      "Eight boot phases and two deferred task identities. Adapter retirement has one outgoing/replacement pair, shared or distinct adapters, one active write or none, and two stop callbacks. Restore replacement has three runtime identities, four build calls, one initially admitted owner and authority closure only between requests. Shared-query handoff has four initialization modes, three handles for one physical connection, one unrelated handle, two queries, at most two handoffs, and one final close. Shared callback retirement has one outgoing admitted write, one or two published replacements, and strict or fast final stop.",
+      "Twelve hot-reload cases cover shared/distinct PGlite, actual HTTP/SQLite retention callbacks, and detached queries outside the outgoing runtime dirty snapshot. Four of these test live, identical, chained and unrelated scheduler handles. Three use authenticated HTTP with held PGlite retention writes, including failed completion and durable readback. Four additional restored-host cases cover actual startEliza evaluator retention past the fast cap, stop/start, closed and invalid authority, and durable persona/database readback.",
+      "Progress assumes fair owner, callback, storage, factory and host settlement, without requiring successful effects. Published handoff assumes outgoing rooms are drained before activation. Factory-internal cleanup, other activation errors, mid-request authority revocation, arbitrary callback internals, late starts, reopen and physical close failures, hard signal exit, cyclic adoption and self-awaiting hooks remain partial."
+    ]
+  },
+  {
+    "id": "AgentProcessSignalDrain",
+    "model": "packages/agent/quint/process-signal-drain.qnt",
+    "sources": [
+      "packages/agent/src/runtime/process-lifecycle.ts",
+      "packages/agent/src/runtime/eliza.ts",
+      "packages/agent/test/fixtures/process-lifecycle-child.ts",
+      "packages/agent/test/process-lifecycle-exit.test.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One installed process adapter, two graceful signal deliveries, four ordered cleanup callbacks and one error report. Real Bun and Node child processes record callback entry to disk and expose exit status to their parent.",
+      "Fair cleanup and exit continuation settle with success or failure unless the external owner sends SIGKILL. A separate forced outcome permits an incomplete cleanup receipt.",
+      "Process startup, signal-handler removal, natural exit on an empty event loop, competing signal owners, native signal scheduling, callback internals and external supervisor timing remain outside the model."
     ]
   },
   {
@@ -800,6 +862,68 @@
       "Real file-backed SQLite tests check queue/drain/failure/fallback, committed-row restart and caller/observer mutation. The tests are scenario conformance, not an all-schedule implementation refinement.",
       "Backend atomicity and trusted sink configuration are assumptions. More records/sinks, retries/idempotency, power loss, storage corruption, arbitrary sink internals and bounded feed and runtime-log retention are outside this instance.",
       "Progress assumes available durable sink attachment when required plus weak fairness of append and delivery settlement. Without a possible durable sink, queued entries can remain waiting."
+    ]
+  },
+  {
+    "id": "ApiLogRetention",
+    "model": "packages/agent/quint/ApiLogRetention.qnt",
+    "sources": [
+      "packages/agent/src/api/server-state.ts",
+      "packages/agent/src/api/chat-routes.ts"
+    ],
+    "invariants": [
+      "TypeOK",
+      "Bounded",
+      "NewestRetained",
+      "RecentCreditRetained",
+      "FallbackPreserved"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Five ordered entries, two newest retained entries, a three-entry batch threshold, two symbolic log classes, three monotone clock epochs and one fallback response.",
+      "The clock abstracts a warning within or outside the existing 60-second lookback. Entry classification, appending and eviction are synchronous. The real HTTP/logging hook checks the production warning classifier and actual chat fallback.",
+      "ReplySettles assumes weak fairness of reply once a request exists. ReplyWithoutFairness intentionally has a stuttering counterexample. This does not prove HTTP scheduling, elapsed-time accuracy, disk-log retention or implementation refinement."
+    ],
+    "implementationTests": [
+      "packages/agent/test/api-log-buffer-retention-http.test.ts"
+    ]
+  },
+  {
+    "id": "PromptDeliveryConversation",
+    "model": "packages/agent/quint/prompt-delivery.qnt",
+    "sources": [
+      "packages/agent/src/api/conversation-routes.ts",
+      "packages/agent/src/api/server.ts",
+      "plugins/plugin-workflow/src/trigger-routes.ts",
+      "packages/agent/src/triggers/runtime.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Two owner conversations, one selection/persistence attempt and one host replacement. Explicit missing or non-owner selection never falls back; a host change after the room read rejects persistence.",
+      "Four terminal prompt outcomes with or without prior reply delivery. HTTP/SQL tests cover cancelled, denied and failed turns, retained delivered replies and completed turns without chat text.",
+      "Room reads are atomic snapshots. Concurrent deletion after the read, in-flight database commits, real model/provider output, native packaging and unbounded concurrency remain outside this scope. No liveness claim."
+    ]
+  },
+  {
+    "id": "TriggerRecovery",
+    "model": "packages/agent/quint/TriggerRecovery.qnt",
+    "sources": [
+      "packages/agent/src/triggers/activity.ts",
+      "packages/agent/src/triggers/runtime.ts",
+      "packages/agent/src/api/server.ts",
+      "plugins/plugin-workflow/src/trigger-routes.ts",
+      "plugins/plugin-workflow/src/lib/automations-builder.ts",
+      "plugins/plugin-workflow/src/lib/automations-types.ts",
+      "packages/agent/test/automations-owner-principal-http.test.ts"
+    ],
+    "invariants": [
+      "Safety"
+    ],
+    "status": "partial",
+    "limitations": [
+      "No cross-process writer fence is proved. Task runtime ownership remains a host responsibility. Legacy direct database mutation and permanent DELETE are outside this recovery API model.",
+      "HTTP scenario conformance checks ownership, stale snapshots, real stored task preservation and refusing removal during execution. Recovery returns an inactive task."
     ]
   }
 ]

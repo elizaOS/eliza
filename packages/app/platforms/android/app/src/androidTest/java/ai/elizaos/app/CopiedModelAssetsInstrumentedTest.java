@@ -57,11 +57,11 @@ public final class CopiedModelAssetsInstrumentedTest {
         File files = new File(privateRoot, "files"), state = new File(files, ".eliza");
         assertTrue(state.mkdirs());
         Method extract = ElizaAgentService.class.getDeclaredMethod("extractAuxRuntimeAssets",
-            AssetManager.class, File.class, File.class, boolean.class);
+            AssetManager.class, File.class, File.class, long.class);
         extract.setAccessible(true);
         ElizaAgentService service = new ElizaAgentService();
         long bgeCpu = Debug.threadCpuTimeNanos(), bgeStart = SystemClock.elapsedRealtimeNanos();
-        extract.invoke(service, context.getAssets(), files, state, false);
+        extract.invoke(service, context.getAssets(), files, state, 0L);
         long bgeWall = SystemClock.elapsedRealtimeNanos() - bgeStart;
         bgeCpu = Debug.threadCpuTimeNanos() - bgeCpu;
         File bge = new File(state, "local-inference/models/" + BgeEmbeddingSession.MODEL);
@@ -74,7 +74,7 @@ public final class CopiedModelAssetsInstrumentedTest {
             VoiceBundleAssets.install(context);
             voiceWarm.put(SystemClock.elapsedRealtimeNanos() - start);
             start = SystemClock.elapsedRealtimeNanos();
-            extract.invoke(service, context.getAssets(), files, state, false);
+            extract.invoke(service, context.getAssets(), files, state, 0L);
             bgeWarm.put(SystemClock.elapsedRealtimeNanos() - start);
         }
         for (int i = 0; i < entries.length(); i++)
@@ -100,7 +100,7 @@ public final class CopiedModelAssetsInstrumentedTest {
             () -> BgeEmbeddingSession.verifyBundle(bundle.getPath()));
         assertEquals("EMBEDDING_ARTIFACT_INVALID", corruptBge.code);
         Files.delete(loaderBge.toPath());
-        extract.invoke(service, context.getAssets(), files, state, false);
+        extract.invoke(service, context.getAssets(), files, state, 0L);
         Files.move(bge.toPath(), loaderBge.toPath());
         assertEquals(bundle.getCanonicalPath(), BgeEmbeddingSession.verifyBundle(bundle.getPath()));
         JSONObject result = new JSONObject()

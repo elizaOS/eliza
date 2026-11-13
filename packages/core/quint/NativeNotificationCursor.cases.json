@@ -1,44 +1,77 @@
 {
-  "sources": [
-    "packages/core/src/services/notification.ts",
-    "packages/core/src/types/notification.ts",
-    "packages/core/test/notification.test.ts"
-  ],
-  "conformance": "packages/core/scripts/quint-notification-conformance.mjs",
-  "bounds": "Three monotonically allocated sequence values, retained-row deletion, one captured fence, a one-row page capacity, one replacement epoch and one blocked projection identity.",
-  "fairness": "PagesFinish assumes weakly fair page requests, a stable matching epoch and eventually projectable retained rows. Corrupt or oversized head rows can continue failing until repaired or explicitly removed.",
-  "limitations": [
-    "The finite capacity one represents the item/byte page boundary. Real tests check the actual encoded envelope and native byte limits without truncating records.",
-    "A sequence cursor can skip deleted/expired/superseded rows when no retained row exists at that sequence. The fence remains fixed across later appends.",
-    "Malformed arbitrary cursor numbers, unknown record fields and Unicode byte encoding are checked by existing implementation tests, outside the finite value domain.",
-    "Changing the inbox epoch invalidates old cursors. After that error the client must explicitly begin a new snapshot, which is outside this one-cursor model."
-  ],
-  "cases": [
-    {
-      "name": "bounded-pages",
-      "main": "NativeNotificationCursor",
-      "init": "init",
-      "step": "step",
-      "invariants": [
-        "SequenceBounds",
-        "ReturnedRowsWithinFence",
-        "IncompleteAlwaysAdvances",
-        "CompleteConsumesFence",
-        "FailedPageDoesNotAdvance"
-      ],
-      "temporal": ["PagesFinish"],
-      "maxSteps": 80,
-      "samples": 1000,
-      "temporalChecks": [
-        {
-          "property": "PagesFinish",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in NativeNotificationCursor: PagesFinish = (page.weakFair(s) and eventually(always(s.blocked == 0)) and always(s.queryEpoch == s.epoch)).implies( s.started.leadsTo(s.status == \"ok\" and s.complete))",
-            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
-          ]
-        }
-      ]
-    }
-  ]
+	"sources": [
+		"packages/core/src/services/notification.ts",
+		"packages/core/src/types/notification.ts",
+		"packages/core/test/notification.test.ts"
+	],
+	"conformance": "packages/core/scripts/quint-notification-conformance.mjs",
+	"bounds": "One client scan, one retained old cursor, one inbox replacement, and sequence values 0..3 per epoch. The first page captures its fence atomically. Each page holds one row. One retained row can fail projection.",
+	"fairness": "Current pages and explicit restarts proceed under weak fairness of requests and eventual projectability. The caller finishes or abandons a scan before starting a new one.",
+	"limitations": [
+		"Capacity one represents the item or byte boundary. Actual envelope and Unicode byte limits are implementation tests.",
+		"Deletion or supersession can remove a retained row between pages. A projection error is attached to the current retained row and cannot cross epochs.",
+		"One explicit replacement and restart are checked. Native client scheduling, multiple clients, persistence faults and arbitrary invalid query numbers are outside this finite projection."
+	],
+	"cases": [
+		{
+			"name": "bounded-pages",
+			"main": "NativeNotificationCursor",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"SequenceBounds",
+				"BlockBelongsToRetainedRow",
+				"ReturnedRowsWithinFence",
+				"IncompleteAlwaysAdvances",
+				"CompleteConsumesFence",
+				"RejectedPagesReturnNothing"
+			],
+			"temporal": [
+				"FailedPagesKeepCursor",
+				"RejectsStaleEpoch",
+				"PagesFinish",
+				"FairEpochRecovery",
+				"EpochRecovery"
+			],
+			"maxSteps": 80,
+			"samples": 1000,
+			"temporalChecks": [
+				{
+					"property": "FailedPagesKeepCursor",
+					"expect": "holds",
+					"assumptions": [
+						"No scheduling fairness. Rejected reads cannot replace a previously accepted cursor."
+					]
+				},
+				{
+					"property": "RejectsStaleEpoch",
+					"expect": "holds",
+					"assumptions": [
+						"No scheduling fairness. An epoch mismatch takes precedence over sequence validation."
+					]
+				},
+				{
+					"property": "PagesFinish",
+					"expect": "holds",
+					"assumptions": [
+						"Weak fairness of continuation requests and eventual projectability. Replacing the inbox ends the old scan."
+					]
+				},
+				{
+					"property": "FairEpochRecovery",
+					"expect": "holds",
+					"assumptions": [
+						"Weak fairness of explicit restart and continuation requests with eventual projectability."
+					]
+				},
+				{
+					"property": "EpochRecovery",
+					"expect": "counterexample",
+					"assumptions": [
+						"No scheduling fairness. A caller can stop after the inbox is replaced."
+					]
+				}
+			]
+		}
+	]
 }

@@ -3760,6 +3760,41 @@
       "when": 1796083200186,
       "tag": "0568_app_cleanup_manifest",
       "breakpoints": true
+    },
+    {
+      "idx": 537,
+      "version": "7",
+      "when": 1796083200187,
+      "tag": "0569_cli_auth_session_verifier",
+      "breakpoints": true
+    },
+    {
+      "idx": 538,
+      "version": "7",
+      "when": 1796083200188,
+      "tag": "0570_subscription_grant_explicit_family",
+      "breakpoints": true
+    },
+    {
+      "idx": 539,
+      "version": "7",
+      "when": 1796083200189,
+      "tag": "0571_managed_gmail_star_operations",
+      "breakpoints": true
+    },
+    {
+      "idx": 540,
+      "version": "7",
+      "when": 1796083200190,
+      "tag": "0572_mobile_app_auth_session_start",
+      "breakpoints": true
+    },
+    {
+      "idx": 541,
+      "version": "7",
+      "when": 1796083200191,
+      "tag": "0573_mobile_app_auth_renewal_lineage",
+      "breakpoints": true
     }
   ]
 }

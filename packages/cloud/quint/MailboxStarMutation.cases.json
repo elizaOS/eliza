@@ -1,0 +1,29 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/lib/services/agent-google-connector/inbox-provider.ts",
+    "packages/cloud/shared/src/lib/services/agent-google-connector/inbox-receipts.ts",
+    "packages/cloud/shared/src/lib/services/agent-google-connector/inbox-provider.http.integration.test.ts",
+    "packages/cloud/shared/src/db/migrations/0571_managed_gmail_star_operations.sql",
+    "plugins/plugin-inbox/src/mailbox/types.ts",
+    "plugins/plugin-inbox/src/mailbox/managed-gmail-client.ts",
+    "packages/cloud/shared/src/lib/services/oauth/provider-registry.ts",
+    "packages/cloud/shared/src/lib/services/oauth/provider-registry.google-scopes.test.ts",
+    "packages/cloud/api/v1/eliza/google/connect/initiate/route.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-mailbox-star.mjs",
+  "bounds": "One star/unstar intent, two owner/scope states and three message revisions. Existing InboxOperation supplies durable dispatch and recovery. The model does not claim an atomic Google read-modify transaction. Closed HTTP tests verify exact label requests and retained receipt kinds; live Google acceptance remains separate.",
+  "cases": [
+    {
+      "name": "reviewed-star",
+      "main": "MailboxStarMutation",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "safety"
+      ],
+      "temporal": [],
+      "maxSteps": 16,
+      "samples": 250
+    }
+  ]
+}

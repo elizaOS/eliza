@@ -132,6 +132,8 @@ import {
   type ListPressCoverageResponse,
   type ListPressReleasesResponse,
   type ListX402PaymentRequestsResponse,
+  type MobileCredentialRenewalRequest,
+  type MobileCredentialRenewalResponse,
   type ModelListResponse,
   type OpenApiSpec,
   type OrganizationSubscriptionCancellationRequest,
@@ -557,7 +559,11 @@ export class ElizaCloudClient {
     );
   }
 
-  /** Requires a current organization owner/admin session; starts or resumes one Plus/Pro checkout. */
+  /**
+   * Starts or resumes one Plus/Pro checkout. Requires a current organization
+   * owner/admin session, or that owner's or admin's acknowledged first-party
+   * mobile key with `presentation: "mobile"`.
+   */
   startSubscriptionCheckout(
     input: SubscriptionCheckoutRequest,
   ): Promise<SubscriptionCheckoutResponse> {
@@ -566,12 +572,31 @@ export class ElizaCloudClient {
     });
   }
 
-  /** Confirms a Checkout return from provider payment evidence; the session id is never payment authority. */
+  /**
+   * Confirms a Checkout return from provider payment evidence; the session id
+   * is never payment authority. Accepts the same callers as
+   * `startSubscriptionCheckout` and returns the organization's entitlement
+   * beside the settled subscription.
+   */
   confirmSubscriptionCheckout(
     sessionId: string,
   ): Promise<SubscriptionCheckoutConfirmationResponse> {
     return this.v1.requestData("POST", "/subscriptions/checkout/confirm", {
       json: { sessionId },
+    });
+  }
+
+  /**
+   * Asks for a successor of the first-party mobile key this client is
+   * configured with, without a browser. The key must be acknowledged and
+   * unexpired. Refusals are `CloudApiError`s whose `errorBody.code` is a
+   * `MobileCredentialRenewalRefusalCode`.
+   */
+  renewMobileCredential(
+    binding: MobileCredentialRenewalRequest,
+  ): Promise<MobileCredentialRenewalResponse> {
+    return this.v1.requestData("POST", "/app-auth/mobile/renew", {
+      json: binding,
     });
   }
 

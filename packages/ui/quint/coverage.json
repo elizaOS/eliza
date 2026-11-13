@@ -46,9 +46,98 @@
     "status": "modeled",
     "limitations": [
       "Models the exact pure row replacement contract, including clear-as-new-revision, send mark changes, stale receipts and binding mismatch. Two slots, two writers, two revisions and three symbolic text values.",
-      "Storage adapter atomicity remains outside the row helper. DraftSendRecovery, DraftMarkRace and DraftQueuedHandoff separately cover bounded controller protocols.",
+      "Storage adapter atomicity remains outside the row helper. BrowserDraftStorage covers the IndexedDB adapter. DraftSendRecovery, DraftMarkRace and DraftQueuedHandoff separately cover bounded controller protocols.",
       "Two separate finite instances. Contention has two writers and one binding. Isolation has one writer and two bindings. Each permits two revisions and three text values. The combined two-writer/two-binding graph remains unchecked.",
       "Both finite instances have real implementation trace replay."
+    ]
+  },
+  {
+    "id": "BrowserDraftStorage",
+    "model": "packages/ui/quint/BrowserDraftStorage.qnt",
+    "sources": [
+      "packages/ui/src/state/durable-draft.ts",
+      "packages/ui/src/platform/browser-document-store.ts",
+      "packages/ui/src/platform/__e2e__/run-browser-document-store.mjs"
+    ],
+    "invariants": [
+      "ExactReceiptAtCommit",
+      "StagedTransactionIsExclusive",
+      "SavedReceiptRequiresCommit",
+      "OnlyCommittedBytesVisible",
+      "ReopenReadsCommittedBytes"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One key, two writers, one external reset and one reopened reader. Browser readwrite transaction ordering and fresh document receipts are assumptions. The draft caller can receive AbortError after the raw write commits.",
+      "The mandatory Chromium hook runs 12 real draft and IndexedDB adapter groups across tabs. It checks exact receipt replacement, staged abort, retry, late cancellation and reload. The same hook runs five mixed controller groups and two Chromium restart groups. Firefox and WebKit remain available through the direct browser command.",
+      "Disk crash and eviction, upgrades, Web Locks editing, raw byte restoration outside the draft protocol and generated trace replay are separate. Native and transactional JSON draft adapters need independent persistence coverage."
+    ]
+  },
+  {
+    "id": "BrowserDraftHoldConsume",
+    "model": "packages/ui/quint/BrowserDraftStorage.qnt",
+    "sources": [
+      "packages/ui/src/state/durable-draft-controller.ts",
+      "packages/ui/src/state/durable-draft.ts",
+      "packages/ui/src/platform/browser-document-store.ts",
+      "packages/ui/src/platform/__e2e__/run-browser-document-store.mjs"
+    ],
+    "invariants": [
+      "HeldSendOwnsReceipt",
+      "SameKeyConsumeIsRefused",
+      "FreshControllerOffersMarkForReview",
+      "PendingRestoreBlocksRelease",
+      "ReleasePreservesDrafts"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One held send and one consume over at most two keys. Includes a consume after the send mark, a consume queued behind the hold claim, a fresh second-tab read and a non-dispatch release waiting for a separate form restore.",
+      "The mandatory Chromium hook drives the exported controller and real IndexedDB adapter. The tests check exact marked bytes and receipt identity, fresh-controller review and the distinct durable outcomes of release and consume.",
+      "The model assumes successful writes and a host that honors the restore predicate. Longer mixed histories, same-key peer autosave, crashes during restore, external writes and host binding authorization remain outside this case."
+    ]
+  },
+  {
+    "id": "BrowserDraftCrossTabClaims",
+    "model": "packages/ui/quint/BrowserDraftStorage.qnt",
+    "sources": [
+      "packages/ui/src/state/durable-draft-controller.ts",
+      "packages/ui/src/state/durable-draft.ts",
+      "packages/ui/src/platform/browser-document-store.ts",
+      "packages/ui/src/platform/__e2e__/run-browser-document-store.mjs"
+    ],
+    "invariants": [
+      "InitialReceiptHasOneWinner",
+      "StaleConsumePreservesMarkedReceipt",
+      "StaleHoldPreservesClearReceipt",
+      "RecoveryRequiresConfirmation"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two real Chromium tabs open one draft before either writes. The bounded case checks both initial receipt winners. A stale consume preserves a held send mark. A stale hold preserves a clear awaiting host acknowledgement.",
+      "After non-dispatch release, a read-only retry retains the losing consume for review. Explicit keep-current confirmation and flush preserve the exact draft bytes under a new IndexedDB document receipt.",
+      "The case assumes fresh storage writes succeed. It excludes more than two controllers, competing review choices, third-party writes, concurrent retries, process crashes and the host's binding authorization."
+    ]
+  },
+  {
+    "id": "BrowserDraftReleaseReload",
+    "model": "packages/ui/quint/BrowserDraftStorage.qnt",
+    "sources": [
+      "packages/ui/src/state/durable-draft-controller.ts",
+      "packages/ui/src/state/durable-draft.ts",
+      "packages/ui/src/platform/browser-document-store.ts",
+      "packages/ui/src/platform/__e2e__/run-browser-document-store.mjs"
+    ],
+    "invariants": [
+      "UnconfirmedReleaseRetainsMark",
+      "MarkedReloadOffersReview",
+      "ConfirmedReleaseSurvivesReload",
+      "ReviewedCopyHasNewReceipt"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One held send and one non-dispatch release. The cut is after host apply before acknowledgement or after a confirmed release. The reopened controller reads the prior exact receipt. A marked row requires explicit review; a confirmed release restores the merged draft directly.",
+      "Chromium closes the original tab and browser, then opens a new process with the same isolated profile and origin. The test checks exact IndexedDB receipt and bytes, an explicit restore and a subsequent page reload.",
+      "Unconfirmed typing is volatile. Power loss, shutdown during a queued write, consume rollback, competing writers and host binding authorization remain outside this case."
     ]
   },
   {
@@ -212,8 +301,8 @@
     "invariants": [],
     "status": "unmodeled",
     "limitations": [
-      "Reviewed residual obligations include arbitrary mixed hold/commit/release/consume histories, more than two failed owners or concurrent send rounds, conflicting terminal settlements, and crashes during pending host restoration or consume rollback. Ten finite controller cases cover the reviewed protocols, including one pending keep-current attempt and retired consume recovery.",
-      "Storage-adapter atomicity, crash durability and the host-owned authenticated owner/agent/conversation binding contract require their own implementation evidence. The controller accepts an opaque binding string and is not the authentication authority."
+      "The finite controller cases include one pending keep-current attempt, retired consume recovery, bounded hold/consume interactions and Chromium profile restart during an unacknowledged or confirmed release. Residual obligations include longer mixed hold/commit/release/consume histories, more than two failed owners or concurrent send rounds, conflicting terminal settlements, and loss during other pending host restoration or consume rollback paths.",
+      "Other storage adapters, storage failure during abrupt process or system loss, and the host-owned authenticated owner/agent/conversation binding contract require independent implementation evidence. The controller accepts an opaque binding string."
     ]
   },
   {
@@ -328,6 +417,27 @@
       "One original code attempt, one replacement dispatch, one native attempt slot and one foreign scope. The model distinguishes admission, lost replies, positive code receipts and partial cancellation receipts.",
       "The ordered case relies on same-scope start admission preceding cancellation acknowledgement. The reordered case shows an expected looping late-admission counterexample without that condition.",
       "Six named checks exercise the real controller with controlled native ports. Native device scheduling, transport restart, credential storage, asynchronous MFA and more than two uncertain dispatches remain open."
+    ]
+  },
+  {
+    "id": "CloudSessionProjection",
+    "model": "packages/ui/quint/CloudSessionProjection.qnt",
+    "sources": [
+      "packages/ui/src/state/useCloudState.ts",
+      "packages/ui/src/app/native-cloud-session.ts",
+      "packages/ui/src/components/settings/CloudOverviewSection.tsx",
+      "packages/ui/src/state/__e2e__/native-cloud-session.test.tsx"
+    ],
+    "invariants": [
+      "NoStaleReadPublication",
+      "NoStaleSignOutPublication",
+      "SuppressedAccountIsCleared"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two port identities, two replacements, two reads, two serial sign-out attempts and one teardown. The proof covers current read success or failure, late replies, sign-out refusal and acknowledgement, and the gap between host acknowledgement and renderer publication.",
+      "The mounted implementation suite controls the native port and runs the actual account hook. A delayed read error and an owner replacement queued between the sign-out ownership check and publication reproduce the before-fix regressions.",
+      "Web and remote verification, explicit activation and event delivery, native credential persistence, poll interval scheduling and unbounded histories remain separate."
     ]
   }
 ]

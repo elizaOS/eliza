@@ -12,6 +12,8 @@ import android.media.AudioTrack;
 public final class AudioTrackSpeechOutput implements StreamingSpeechPlayback.Output {
  /** Platform buffer target: about 200 ms, never below the device minimum. */
  public static final int BUFFER_MS=200;
+ /** Frames written before a stopped track starts playing (API 31+): about 40 ms instead of the whole buffer. */
+ public static final int START_MS=40;
  private final AudioTrack track;
  private final AudioTimestamp stamp=new AudioTimestamp();
  private final int rate;
@@ -28,8 +30,11 @@ public final class AudioTrackSpeechOutput implements StreamingSpeechPlayback.Out
    .setAudioFormat(new AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_FLOAT).setSampleRate(rate).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
    .setTransferMode(AudioTrack.MODE_STREAM)
    .setBufferSizeInBytes(bytes)
+   // A request: the platform grants its fast path only where the device mixer accepts this format.
+   .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
    .build();
   if(track.getState()!=AudioTrack.STATE_INITIALIZED){track.release();throw new IllegalStateException("Speech output unavailable");}
+  if(android.os.Build.VERSION.SDK_INT>=31)try{track.setStartThresholdInFrames(Math.max(1,rate*START_MS/1000));}catch(RuntimeException ignored){/* The default threshold (the whole buffer) still plays. */}
   return new AudioTrackSpeechOutput(track,rate);
  }
  public void play(){track.play();}
@@ -45,6 +50,11 @@ public final class AudioTrackSpeechOutput implements StreamingSpeechPlayback.Out
    if(!track.getTimestamp(stamp)||stamp.nanoTime<=0||stamp.framePosition<=0)return VoiceLatencyTrials.UNSET;
    return VoiceLatencyTrials.frameTimeNs(stamp.nanoTime,stamp.framePosition,frame,rate);
   }catch(RuntimeException unavailable){return VoiceLatencyTrials.UNSET;}
+ }
+ /** The start threshold (API 31+), else the whole buffer, which a stream must fill before it plays. */
+ @Override public int startThresholdFrames(){
+  try{return android.os.Build.VERSION.SDK_INT>=31?track.getStartThresholdInFrames():track.getBufferSizeInFrames();}
+  catch(RuntimeException unavailable){return 0;}
  }
  public void setVolume(float volume){try{track.setVolume(volume);}catch(RuntimeException ignored){/* Released. */}}
  public void abort(){try{track.pause();track.flush();}catch(RuntimeException ignored){/* Already stopped or released. */}}

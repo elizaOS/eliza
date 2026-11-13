@@ -119,7 +119,9 @@ def _complete_contract(benchmark_id: str) -> dict:
     }
 
 
-def _build_workspace(tmp_path: Path, *, gates_pass: bool = True) -> tuple[Path, Path]:
+def _build_workspace(
+    tmp_path: Path, *, gates_pass: bool = True, public_paths: bool = False
+) -> tuple[Path, Path]:
     """Real workspace: monorepo git repo, nested results repo, real SQLite DB."""
     repo_root = tmp_path / "monorepo"
     _init_repo(repo_root)
@@ -130,6 +132,14 @@ def _build_workspace(tmp_path: Path, *, gates_pass: bool = True) -> tuple[Path, 
     workspace_root = repo_root / "packages" / "benchmarks"
     workspace_root.mkdir(parents=True)
     output_root = result_store_root(workspace_root)
+
+    def recorded_path(path: Path) -> str:
+        if not public_paths:
+            return str(path)
+        if path.is_relative_to(output_root):
+            return "./" + path.relative_to(output_root).as_posix()
+        return "<eliza-repo>/" + path.relative_to(repo_root).as_posix()
+
     _init_repo(output_root)
     (output_root / ".gitignore").write_text(
         "orchestrator.sqlite\n*.sqlite-wal\n*.sqlite-shm\n.locks/\n*.lock\ntmp/\n",
@@ -169,9 +179,9 @@ def _build_workspace(tmp_path: Path, *, gates_pass: bool = True) -> tuple[Path, 
         extra_config={},
         started_at="2026-07-01T00:01:00+00:00",
         command=["python", "run.py"],
-        cwd=str(workspace_root / "suites" / "bfcl"),
-        stdout_path=str(run_dir / "stdout.log"),
-        stderr_path=str(run_dir / "stderr.log"),
+        cwd=recorded_path(workspace_root / "suites" / "bfcl"),
+        stdout_path=recorded_path(run_dir / "stdout.log"),
+        stderr_path=recorded_path(run_dir / "stderr.log"),
         benchmark_version="1.0.0",
         benchmarks_commit="1" * 40,
         eliza_commit="0" * 40,
@@ -187,8 +197,8 @@ def _build_workspace(tmp_path: Path, *, gates_pass: bool = True) -> tuple[Path, 
         unit="accuracy",
         higher_is_better=True,
         metrics={"n": 5, "accuracy": 1.0},
-        result_json_path=str(result_json),
-        artifacts=[str(result_json)],
+        result_json_path=recorded_path(result_json),
+        artifacts=[recorded_path(result_json)],
         error=None,
         high_score_label=None,
         high_score_value=None,
@@ -204,14 +214,14 @@ def _build_workspace(tmp_path: Path, *, gates_pass: bool = True) -> tuple[Path, 
         run_id=RUN_ID,
         trajectories=[
             {
-                "trajectory_file": str(run_dir / "output" / "traj.jsonl"),
+                "trajectory_file": recorded_path(run_dir / "output" / "traj.jsonl"),
                 "turn_index": 0,
                 "prompt_tokens": 60,
                 "completion_tokens": 30,
                 "latency_ms": 800.0,
             },
             {
-                "trajectory_file": str(run_dir / "output" / "traj.jsonl"),
+                "trajectory_file": recorded_path(run_dir / "output" / "traj.jsonl"),
                 "turn_index": 1,
                 "prompt_tokens": 40,
                 "completion_tokens": 20,
@@ -352,7 +362,7 @@ def test_real_publish_commits_and_uploads_with_mocked_hub(tmp_path, monkeypatch)
 
 def test_public_flag_creates_public_repo(tmp_path, monkeypatch):
     monkeypatch.setenv("HF_TOKEN", FAKE_TOKEN)
-    workspace_root, _ = _build_workspace(tmp_path)
+    workspace_root, _ = _build_workspace(tmp_path, public_paths=True)
 
     fake_api = MagicMock()
     with patch("huggingface_hub.HfApi", return_value=fake_api):

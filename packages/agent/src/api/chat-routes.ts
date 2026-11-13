@@ -39,7 +39,6 @@ import {
   InferenceTurnTimer,
   inheritIncomingMessagePersistence,
   isInsufficientCreditsError,
-  isInsufficientCreditsMessage,
   isRateLimitError,
   isTextGenerationModelType,
   type AgentLogEntry as LogEntry,
@@ -81,7 +80,6 @@ import {
   isLinkedAccountProviderId,
   type ReadJsonBodyOptions,
   type RouteRequestContext,
-  readAliasedEnv,
 } from "@elizaos/host/protocol";
 import {
   bindDeviceRequestedActionPolicy,
@@ -154,6 +152,7 @@ import {
   isServerTokenAuthorized,
 } from "./server-helpers-auth.ts";
 import { readUiLanguageHeader } from "./server-helpers-config.ts";
+import { findRecentInsufficientCreditsLog } from "./server-state.ts";
 import { listViews } from "./views-registry.ts";
 import { updateWorldMetadataWithRetry } from "./world-metadata-retry.ts";
 
@@ -1398,20 +1397,6 @@ function resolveFinalTranscriptVisibility(
 function pickInsufficientCreditsChatReply(): string {
   return INSUFFICIENT_CREDITS_CHAT_REPLY;
 }
-function findRecentInsufficientCreditsLog(
-  logBuffer: LogEntry[],
-  lookbackMs = 60000,
-): LogEntry | null {
-  const now = Date.now();
-  for (let i = logBuffer.length - 1; i >= 0; i--) {
-    const entry = logBuffer[i];
-    if (now - entry.timestamp > lookbackMs) break;
-    if (isInsufficientCreditsMessage(entry.message)) {
-      return entry;
-    }
-  }
-  return null;
-}
 export function resolveNoResponseFallback(
   logBuffer: LogEntry[],
   _runtime?: AgentRuntime | null,
@@ -1432,7 +1417,8 @@ export function isChatGenerationTimeoutError(err: unknown): boolean {
 }
 function isRemoteOllamaEndpointConfigured(): boolean {
   const raw =
-    readAliasedEnv("OLLAMA_BASE_URL") ?? readAliasedEnv("OLLAMA_API_ENDPOINT");
+    process.env.OLLAMA_BASE_URL?.trim() ||
+    process.env.OLLAMA_API_ENDPOINT?.trim();
   if (!raw?.trim()) return false;
   try {
     const normalized = raw.trim().replace(/\/api\/?$/i, "");
@@ -1450,7 +1436,7 @@ function resolveChatGenerationTimeoutMs(explicit?: number): number {
   ) {
     return Math.max(1, Math.floor(explicit));
   }
-  const fromEnv = readAliasedEnv("ELIZA_CHAT_GENERATION_TIMEOUT_MS");
+  const fromEnv = process.env.ELIZA_CHAT_GENERATION_TIMEOUT_MS?.trim();
   if (fromEnv) {
     // Number.parseInt stops at the first non-digit, so "60000junk" parsed to
     // a finite 60000 and was accepted as a deliberate setting instead of

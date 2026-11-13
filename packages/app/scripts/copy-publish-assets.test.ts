@@ -98,11 +98,7 @@ it("ships consumer build tools without private repository test dependencies", as
     }
     const dist = path.join(fixture, "dist");
     // Every quoted C include must ship in the assembled consumer payload.
-    for (const name of [
-      "sigsys-handler.c",
-      "sigsys-handler-arm64.c",
-      "sigsys-handler-riscv64.c",
-    ]) {
+    for (const name of ["sigsys-handler.c", "sigsys-handler-arm64.c"]) {
       const file = path.join(dist, "scripts/aosp/seccomp-shim", name);
       for (const match of readFileSync(file, "utf8").matchAll(
         /^#include "([^"]+)"/gm,

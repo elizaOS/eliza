@@ -18,6 +18,7 @@ describe("files.browser.v1 operations", () => {
       { type: "files_filter", text: "lease", kind: "pdf", folder: "Download" },
       { type: "files_filter", from: "2026-10-01", to: "2026-10-31" },
       { type: "files_open", path: "Download/lease.pdf" },
+      { type: "files_open", shown: 2 },
       { type: "files_share", paths: ["Download/a.pdf", "DCIM/Camera/b.jpg"] },
       { type: "files_move", paths: ["Download/a.pdf"], dest: "" },
       { type: "files_trash", paths: ["Download/a.pdf"] },
@@ -29,10 +30,7 @@ describe("files.browser.v1 operations", () => {
     }
   });
   it("carries the reviewed identity of each moved or trashed file", () => {
-    const reviewed = [
-      { size: 3, modified: 1_800_000_000_000 },
-      { size: 0, modified: 1 },
-    ];
+    const reviewed = ["a".repeat(43), "b".repeat(43)];
     for (const op of [
       {
         type: "files_move",
@@ -99,6 +97,10 @@ describe("files.browser.v1 operations", () => {
       { type: "files_filter" },
       { type: "files_filter", from: "2026-11-02", to: "2026-11-01" },
       { type: "files_open", path: "a", extra: 1 },
+      { type: "files_open" },
+      { type: "files_open", shown: 0 },
+      { type: "files_open", shown: 1.5 },
+      { type: "files_open", shown: 1, path: "a" },
       { type: "files_delete", paths: ["a"] },
     ])
       expect(() => validateFilesOperation(bad)).toThrow();

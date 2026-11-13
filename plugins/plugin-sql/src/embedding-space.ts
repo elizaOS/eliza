@@ -35,15 +35,29 @@ export interface EmbeddingWriteContext {
   readonly spaceId: string | null;
 }
 
-/** Legacy caller arrays use the representation selected when the write was admitted. */
-export function captureEmbeddingWrite(
+/** Bind a vector to the selected column and require provenance for named representations. */
+export function captureEmbeddingTarget(
   embedding: number[],
   column: EmbeddingWriteContext["column"],
   activeSpace: string | null
 ): EmbeddingWriteContext {
   const identity = getEmbeddingVectorSpaceIdentity(embedding);
-  const context = { column, spaceId: identity === undefined ? activeSpace : identity };
+  const context = { column, spaceId: identity ?? null };
   assertEmbeddingWrite(context, column, activeSpace);
+  if (activeSpace !== null) {
+    if (embedding.length !== Number(column.slice(3))) {
+      throw new ElizaError("Embedding vector does not match the active dimension", {
+        code: "EMBEDDING_DIMENSION_MISMATCH",
+      });
+    }
+    for (const value of embedding) {
+      if (!Number.isFinite(value)) {
+        throw new ElizaError("Embedding vector contains a non-finite value", {
+          code: "EMBEDDING_VECTOR_INVALID",
+        });
+      }
+    }
+  }
   return context;
 }
 

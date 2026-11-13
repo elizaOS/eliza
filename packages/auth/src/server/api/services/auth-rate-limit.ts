@@ -236,6 +236,11 @@ function authRateLimitSubject(c: Context): {
   };
 }
 
+/** The per-client subject auth rate limits use, for keys that add a target. */
+export function authRateLimitClientSubject(c: Context): string {
+  return authRateLimitSubject(c).subject;
+}
+
 function allowAuthRateLimitSoftFail(): boolean {
   return (
     process.env.NODE_ENV !== "production" ||

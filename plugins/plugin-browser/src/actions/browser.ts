@@ -12,7 +12,7 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { readViewInteractionClientId } from "@elizaos/core/protocol";
-import LinkifyIt from "linkify-it";
+import { LinkifyIt } from "linkify-it";
 import {
   BROWSER_SERVICE_TYPE,
   type BrowserService,
@@ -22,6 +22,7 @@ import {
   isBrowserDispatchFailure,
 } from "../dispatch-types.js";
 import { isNativeBrowserRequest } from "../native-browser-request.js";
+import { observedNativeHistorySelection } from "../native-client-command.js";
 import {
   type BrowserWorkspaceCommand,
   type BrowserWorkspaceCommandResult,
@@ -179,6 +180,9 @@ const browserMessageLinks = new LinkifyIt({
   fuzzyLink: false,
   fuzzyEmail: false,
   fuzzyIP: false,
+  urlAuth: true,
+  // Linkify v6 adds a 10,000-character default. Keep complete destinations.
+  maxLength: Number.MAX_SAFE_INTEGER,
 });
 
 function extractFirstUrl(value: string): string | null {
@@ -964,7 +968,14 @@ export const browserAction: Action = {
         `[BROWSER] ${command.subaction} via target=${params?.target ?? "auto"} (workspace mode=${getBrowserWorkspaceMode(process.env)})`,
       );
       const result = browserService
-        ? await browserService.execute(command, params?.target, nativeClientId)
+        ? await browserService.execute(
+            command,
+            params?.target,
+            nativeClientId,
+            nativeClientId
+              ? observedNativeHistorySelection(message, command.subaction)
+              : undefined,
+          )
         : await executeBrowserWorkspaceCommand(command);
       const ownsTerminalReply = browserCommandOwnsTerminalReply(command);
       // Page observations feed dependent planning; they do not themselves

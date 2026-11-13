@@ -66,6 +66,7 @@ import {
 import { summarizeRuntimeActionResults } from "../src/api/chat-routes.ts";
 import { enrichChatUiViewMetadata } from "../src/api/chat-view-metadata.ts";
 import { registerInProcessApi } from "../src/api/in-process-api.ts";
+import { setSelfApiTcpListenerBound } from "../src/api/self-api-endpoint.ts";
 import { normalizeWsClientId } from "../src/api/server-helpers-auth.ts";
 import { closeViewInteractionHost } from "../src/api/view-interaction-host.ts";
 import {
@@ -103,6 +104,7 @@ const message: Memory = {
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
   await Promise.all(cleanup.splice(0).map((close) => close()));
+  setSelfApiTcpListenerBound(undefined);
   vi.unstubAllEnvs();
 });
 async function fixture(
@@ -246,6 +248,8 @@ async function fixture(
       })
     : undefined;
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  // The native fixture's HTTP server observes receipts; self calls use its kernel.
+  setSelfApiTcpListenerBound(!inProcess);
   vi.stubEnv("ELIZA_API_PORT", String((server.address() as AddressInfo).port));
   vi.stubEnv("ELIZA_API_TOKEN", "local-navigation-test");
   cleanup.push(async () => {

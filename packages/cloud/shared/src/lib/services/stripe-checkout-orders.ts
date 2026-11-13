@@ -391,7 +391,7 @@ export class StripeCheckoutOrdersService {
     if (!row) {
       const existing = await this.get(orderId);
       if (
-        existing?.status === "delivered" &&
+        (existing?.status === "delivered" || existing?.status === "settled") &&
         existing.stripe_checkout_session_id === checkoutSessionId
       ) {
         return;

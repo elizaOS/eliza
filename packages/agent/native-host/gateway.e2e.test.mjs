@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { execFileSync, spawn } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { EventEmitter, once } from "node:events";
 import {
   chmod,
@@ -17,7 +17,11 @@ import http from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { prepareRuntimeAccountState } from "./account-state.mjs";
+import {
+  prepareRuntimeAccountState,
+  runtimeAccountState,
+  scrubRuntimeCredentialConfigs,
+} from "./account-state.mjs";
 import { createLocalAgentGateway } from "./gateway.mjs";
 import {
   preparePrivateRuntimeFiles,
@@ -576,6 +580,144 @@ test("runtime supervisor fences account rotation and close during real child sta
   }
 });
 
+test("account migration preserves private namespaces and unrelated disk state", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "native-account-migration-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const credential = "synthetic-selected-credential";
+  const local = await prepareRuntimeAccountState(root, null);
+  const cloud = await prepareRuntimeAccountState(root, credential);
+  const profile = await prepareRuntimeAccountState(root, credential, "work");
+  const other = await prepareRuntimeAccountState(root, "other-credential");
+  assert.equal(
+    cloud.fingerprint,
+    createHash("sha256").update(credential).digest("hex"),
+  );
+  assert.equal(runtimeAccountState(root, credential).state, cloud.state);
+  assert.equal(profile.state, join(cloud.state, "profiles", "work"));
+  assert.notEqual(cloud.state, other.state);
+  assert.notEqual(cloud.state, local.state);
+  assert.equal(cloud.state.includes(credential), false);
+  for (const selected of [local, cloud, profile, other])
+    assert.equal((await stat(selected.state)).mode & 0o777, 0o700);
+  assert.throws(() => runtimeAccountState(root, credential, "../foreign"));
+
+  const original = {
+    key: credential,
+    nested: { selected: credential, retained: "other-credential" },
+    values: [credential, { selected: credential, retained: true }, "other"],
+    literal: `prefix:${credential}`,
+    enabled: false,
+  };
+  const clean = {
+    nested: { retained: "other-credential" },
+    values: [null, { retained: true }, "other"],
+    literal: `prefix:${credential}`,
+    enabled: false,
+  };
+  const files = [
+    join(local.state, "config.json"),
+    join(cloud.state, "launch-config.json"),
+    join(profile.state, "eliza.config-overlay.json"),
+    join(other.state, "config.json"),
+  ];
+  for (const file of files)
+    await writeFile(file, JSON.stringify(original), { mode: 0o644 });
+  const ignored = join(root, "agent", "accounts", "not-an-account");
+  await mkdir(ignored);
+  const ignoredFile = join(ignored, "config.json");
+  await writeFile(ignoredFile, JSON.stringify(original));
+  const memory = join(cloud.state, "memories.json");
+  await writeFile(memory, JSON.stringify(original));
+
+  await scrubRuntimeCredentialConfigs(root, credential);
+  for (const file of files) {
+    assert.deepEqual(JSON.parse(await readFile(file, "utf8")), clean);
+    assert.equal((await stat(file)).mode & 0o777, 0o600);
+  }
+  for (const file of [ignoredFile, memory])
+    assert.deepEqual(JSON.parse(await readFile(file, "utf8")), original);
+  assert.equal(
+    (await prepareRuntimeAccountState(root, credential)).state,
+    cloud.state,
+  );
+});
+
+test("account migration resumes after a disk rejection without rewriting clean files", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "native-account-retry-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const credential = "synthetic-retry-credential";
+  const { state } = await prepareRuntimeAccountState(root, credential);
+  const files = [
+    "config.json",
+    "launch-config.json",
+    "eliza.config-overlay.json",
+  ].map((name) => join(state, name));
+  const dirty = JSON.stringify({ key: credential, retained: "user-value" });
+  await writeFile(files[0], dirty);
+  await writeFile(files[1], "{");
+  await writeFile(files[2], dirty);
+  await assert.rejects(
+    scrubRuntimeCredentialConfigs(root, credential),
+    SyntaxError,
+  );
+  const first = await readFile(files[0], "utf8");
+  const firstInode = (await stat(files[0])).ino;
+  assert.deepEqual(JSON.parse(first), { retained: "user-value" });
+  assert.equal(await readFile(files[1], "utf8"), "{");
+  assert.equal(await readFile(files[2], "utf8"), dirty);
+
+  await writeFile(files[1], dirty);
+  await scrubRuntimeCredentialConfigs(root, credential);
+  assert.equal((await stat(files[0])).ino, firstInode);
+  assert.equal(await readFile(files[0], "utf8"), first);
+  const snapshots = await Promise.all(
+    files.map(async (file) => ({
+      file,
+      bytes: await readFile(file, "utf8"),
+      inode: (await stat(file)).ino,
+    })),
+  );
+  for (const { bytes } of snapshots)
+    assert.deepEqual(JSON.parse(bytes), { retained: "user-value" });
+  await scrubRuntimeCredentialConfigs(root, credential);
+  for (const { file, bytes, inode } of snapshots) {
+    assert.equal(await readFile(file, "utf8"), bytes);
+    assert.equal((await stat(file)).ino, inode);
+  }
+});
+
+test("account migration rejects unsafe entries and preserves their real disk targets", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "native-account-rejection-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const credential = "synthetic-rejected-credential";
+  const { state } = await prepareRuntimeAccountState(root, credential);
+  const file = join(state, "config.json");
+  const target = join(root, "outside.json");
+  const original = JSON.stringify({ key: credential, retained: true });
+  await writeFile(target, original);
+  await symlink(target, file);
+  await assert.rejects(
+    scrubRuntimeCredentialConfigs(root, credential),
+    /Cannot safely migrate account configuration/,
+  );
+  assert.equal(await readFile(target, "utf8"), original);
+  await rm(file);
+  const oversized = " ".repeat(1024 * 1024 + 1);
+  await writeFile(file, oversized);
+  await assert.rejects(
+    scrubRuntimeCredentialConfigs(root, credential),
+    /Cannot safely migrate account configuration/,
+  );
+  assert.equal((await stat(file)).size, oversized.length);
+  await rm(file);
+  await mkdir(file);
+  await assert.rejects(
+    scrubRuntimeCredentialConfigs(root, credential),
+    /Cannot safely migrate account configuration/,
+  );
+  assert.equal((await stat(file)).isDirectory(), true);
+});
+
 test("runtime supervisor starts real processes in isolated account storage and stops only its child", async () => {
   const root = await mkdtemp(join(tmpdir(), "native-runtime-e2e-"));
   let owner = "first";
@@ -799,7 +941,7 @@ test("a gateway without a credential gate passes no account check to the host", 
   }
 });
 
-test("a reset during the inference check drops the account check it shared", async () => {
+test("a reset during the inference check refuses the retired message", async () => {
   let owner = "first",
     holdNext = false;
   const owners = [];
@@ -860,11 +1002,19 @@ test("a reset during the inference check drops the account check it shared", asy
     assert.equal((await post("/conversations")).status, 200);
     owners.length = 0;
     release.resolve();
-    // The owner is read again after the reset, so the message is admitted for
-    // the account that now holds the conversation, never for the old one.
-    assert.equal((await pending).status, 200);
-    assert.ok(owners.length >= 1);
-    assert.ok(owners.every((value) => value === "second"));
+    // This message began before reset. Never dispatch its old input under
+    // the new account, even when that account holds the same conversation id.
+    const refused = await pending;
+    assert.equal(refused.status, 409);
+    assert.equal((await refused.json()).code, "CONVERSATION_NOT_OWNED");
+    assert.deepEqual(owners, []);
+    assert.equal(messageRequests, 0);
+    assert.equal(
+      (await post(`/conversations/${id}/messages`, { text: "new message" }))
+        .status,
+      200,
+    );
+    assert.deepEqual([...new Set(owners)], ["second"]);
     assert.equal(messageRequests, 1);
   } finally {
     release.resolve();
@@ -1923,6 +2073,35 @@ test("sign-out stops a streamed turn like a buffered one, and never an answered 
     ]);
   } finally {
     never.resolve();
+    await harness.close();
+  }
+});
+
+test("a paid route that Cloud refuses tells the Cloud routes to drop their cached answer", async () => {
+  const refused = [];
+  const harness = await streamHarness({
+    hostPolicy: {
+      ...policy,
+      isPaidAction: (_method, path) => path.endsWith("/messages"),
+    },
+    cloudHandler: Object.assign(async () => false, {
+      requirePaidAccess: async () => {},
+      paidAccessRefused: () => refused.push(true),
+    }),
+  });
+  const { state } = harness;
+  try {
+    assert.equal((await harness.post("/conversations")).status, 200);
+    assert.equal((await harness.buffered()).status, 200);
+    assert.equal(refused.length, 0);
+    for (const status of [402, 401]) {
+      state.status = status;
+      assert.equal((await harness.buffered()).status, status);
+    }
+    state.status = 404;
+    assert.equal((await harness.buffered()).status, 404);
+    assert.equal(refused.length, 2);
+  } finally {
     await harness.close();
   }
 });

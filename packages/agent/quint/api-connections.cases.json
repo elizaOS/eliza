@@ -1,11 +1,15 @@
 {
   "sources": [
     "packages/agent/src/api/conversation-connection-readiness.ts",
-    "packages/agent/src/api/conversation-routes.ts"
+    "packages/agent/src/api/conversation-routes.ts",
+    "packages/agent/src/api/character-routes.ts",
+    "packages/agent/test/conversation-rename-sqlite.test.ts",
+    "packages/scripts/lib/vitest-conformance.ts"
   ],
+  "conformance": "packages/agent/quint/check-connections.ts",
   "bounds": {
-    "domain": "One room/runtime, two queued writes and generations 0..2.",
-    "scope": "Finite protocol safety; no temporal/fairness claim."
+    "domain": "One runtime and room lifecycle, two proof identities and a shared observer, two queued raw mutations, and room and topology generations 0 through 2. One create response can overlap deletion, topology change, or runtime replacement.",
+    "scope": "Finite queue safety, conditional drain of a quarantined queue, and create-response safety. Real HTTP and file-backed SQLite scenarios check rename, deletion, production observer deadlines, shared in-flight work, reconciliation after prior success, queued cancellation, quarantine and recovery. Two HTTP creations exercise separate room IDs under the shared runtime queue. Their independent room lifecycles are outside the projection."
   },
   "cases": [
     {
@@ -14,8 +18,35 @@
       "init": "init",
       "step": "step",
       "invariants": ["safety"],
-      "temporal": [],
+      "temporal": ["rawDrain", "rawDrainWithoutFairness"],
+      "temporalChecks": [
+        {
+          "property": "rawDrain",
+          "expect": "holds",
+          "assumptions": [
+            "The raw mutation queue advances with weak fairness. A queued mutation reaches the head, and active database I/O can eventually return success or failure.",
+            "A quarantined queue rejects new entries. Progress does not imply a wall-clock bound or successful I/O."
+          ]
+        },
+        {
+          "property": "rawDrainWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. A timed-out observer can leave raw I/O in flight indefinitely."
+          ]
+        }
+      ],
       "maxSteps": 50,
+      "samples": 1000
+    },
+    {
+      "name": "api_connection_creation",
+      "main": "api_connection_creation",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 30,
       "samples": 1000
     }
   ]

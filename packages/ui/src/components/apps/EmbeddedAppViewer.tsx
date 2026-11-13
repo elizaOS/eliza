@@ -6,9 +6,11 @@
 import type { AppViewerAuthMessage } from "@elizaos/core/protocol";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  isViewerAuthBlockedBySandbox,
   resolveEmbeddedViewerUrl,
   resolvePostMessageTargetOrigin,
   resolveViewerReadyEventType,
+  VIEWER_AUTH_BLOCKED_MESSAGE,
 } from "./viewer-auth";
 
 const DEFAULT_SANDBOX = "allow-scripts allow-same-origin allow-popups";
@@ -54,7 +56,6 @@ export function EmbeddedAppViewer({
   onStatusChange,
 }: EmbeddedAppViewerProps) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
-  const authSentRef = useRef(false);
   const [status, setStatus] = useState<EmbeddedAppViewerStatus>("loading");
 
   const resolvedUrl = useMemo(
@@ -69,7 +70,6 @@ export function EmbeddedAppViewer({
   // Re-arm the handshake whenever the run's viewer URL or auth payload changes.
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-arm on identity change of the auth payload.
   useEffect(() => {
-    authSentRef.current = false;
     setStatus("loading");
     onStatusChange?.("loading");
   }, [resolvedUrl, authMessage, onStatusChange]);
@@ -82,14 +82,14 @@ export function EmbeddedAppViewer({
     // sender nor safely target the token-bearing auth payload, so never send it.
     if (!targetOrigin) return;
 
+    // Answer every READY from the current frame: a remounted iframe has a new
+    // window and a self-reloaded one keeps its window but needs auth again.
     const onMessage = (event: MessageEvent<{ type?: string }>) => {
-      if (authSentRef.current) return;
       const iframeWindow = iframeRef.current?.contentWindow;
       if (!iframeWindow || event.source !== iframeWindow) return;
       if (event.origin !== targetOrigin) return;
       if (event.data?.type !== expectedReadyType) return;
       iframeWindow.postMessage(authMessage, targetOrigin);
-      authSentRef.current = true;
       setStatus("authenticated");
       onStatusChange?.("authenticated");
     };
@@ -98,11 +98,24 @@ export function EmbeddedAppViewer({
     return () => window.removeEventListener("message", onMessage);
   }, [authMessage, targetOrigin, onStatusChange]);
 
+  const effectiveSandbox = sandbox ?? DEFAULT_SANDBOX;
+  if (isViewerAuthBlockedBySandbox(Boolean(authMessage), effectiveSandbox)) {
+    return (
+      <div
+        role="alert"
+        data-testid="embedded-app-viewer-unsupported"
+        className="flex h-full w-full items-center justify-center px-6 text-center text-sm text-muted"
+      >
+        {VIEWER_AUTH_BLOCKED_MESSAGE}
+      </div>
+    );
+  }
+
   return (
     <iframe
       ref={iframeRef}
       src={resolvedUrl}
-      sandbox={sandbox ?? DEFAULT_SANDBOX}
+      sandbox={effectiveSandbox}
       allow="fullscreen *"
       allowFullScreen
       data-testid="embedded-app-viewer-iframe"

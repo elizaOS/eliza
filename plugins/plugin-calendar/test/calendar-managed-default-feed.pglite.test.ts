@@ -34,6 +34,11 @@ import {
   CalendarService,
   calendarSchema,
 } from "../src/service/index.js";
+import { LinkedCalendarControlRepository } from "../src/service/linked-calendar-control.js";
+import {
+  LinkedCalendarRepository,
+  linkedCalendarSemanticHash,
+} from "../src/service/linked-calendar-sync.js";
 
 const nativeFetch = globalThis.fetch;
 const AGENT_ID = "calendar-managed-default-agent";
@@ -58,6 +63,7 @@ let pg: PGlite;
 let runtime: IAgentRuntime;
 let shown = new Set<string>();
 const feedReads: string[] = [];
+const standardGoogleAccounts = vi.fn(async () => []);
 
 function event(calendarId: string, externalId: string, title: string) {
   const hour = externalId === "standup" ? 9 : 14;
@@ -179,7 +185,7 @@ function service(
 function calendarService(): CalendarService {
   const calendar = new CalendarService(runtime);
   calendar.setGate({
-    getGoogleConnectorAccounts: async () => [],
+    getGoogleConnectorAccounts: standardGoogleAccounts,
     createReminderPlan: async () => {},
     updateReminderPlan: async () => {},
     deleteReminderPlan: async () => {},
@@ -218,7 +224,10 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   feedReads.length = 0;
+  standardGoogleAccounts.mockClear();
   shown = new Set(["owner@example.test", "team@group.calendar.google.com"]);
+  await pg.query("DELETE FROM app_calendar.linked_calendar_events");
+  await pg.query("DELETE FROM app_calendar.linked_calendar_control");
   await pg.query("DELETE FROM app_calendar.life_calendar_events");
   await pg.query("DELETE FROM app_calendar.life_calendar_feed_preferences");
 });
@@ -236,6 +245,217 @@ afterAll(async () => {
 describe("managed owner calendars in the aggregate feed", {
   timeout: 30_000,
 }, () => {
+  it("pulls a mapped managed edit and deletion into the local row before returning one feed", async () => {
+    const localService = calendarService();
+    const created = await localService.createCalendarEventMutation(
+      INTERNAL_URL,
+      {
+        title: "Mapped before edit",
+        startAt: "2026-10-30T14:00:00.000Z",
+        endAt: "2026-10-30T15:00:00.000Z",
+        timeZone: "UTC",
+        idempotencyKey: "managed-pull-test",
+      },
+    );
+    if (!created.event) throw Error("Expected local event");
+    const local = created.event;
+    const semantic = {
+      title: local.title,
+      description: local.description,
+      location: local.location,
+      startAt: local.startAt,
+      endAt: local.endAt,
+      timeZone: local.timezone,
+      isAllDay: local.isAllDay,
+      attendees: [],
+      deleted: false,
+    };
+    const links = new LinkedCalendarRepository(runtime);
+    const link = await links.create({
+      agentId: AGENT_ID,
+      localEventId: local.id,
+      connectorAccountId: GRANT,
+      providerCalendarId: "owner@example.test",
+      localRevision: Number(local.metadata.version),
+    });
+    await links.save(link, {
+      state: "clean",
+      pendingOperation: null,
+      providerEventId: "mapped",
+      providerEtag: '"v1"',
+      lastCommonSemanticHash: linkedCalendarSemanticHash(semantic),
+    });
+    const control = new LinkedCalendarControlRepository(runtime);
+    const selected = await control.selectDestination(
+      (await control.read()).revision,
+      { connectorAccountId: GRANT, providerCalendarId: "owner@example.test" },
+    );
+    let removed = false;
+    let providerReads = 0;
+    let allowWrites = true;
+    const changed = {
+      ...event("owner@example.test", "mapped", "Mapped after Google edit"),
+      metadata: { etag: '"v2"' },
+    };
+    shown = new Set(["owner@example.test"]);
+    const calendar = service((input) => {
+      if (input.operation === "write-capabilities" && !allowWrites)
+        return Response.json(
+          { error: "Calendar changes are off" },
+          { status: 403 },
+        );
+      if (input.operation === "write-capabilities")
+        return {
+          version: 1,
+          calendarId: input.calendarId,
+          grantId: GRANT,
+          accountId: "owner-account",
+          read: true,
+          write: true,
+          idempotentCreate: true,
+          conditionalWrites: true,
+          providerExactlyOnce: false,
+        };
+      if (input.operation === "linked-sync") {
+        const command = (input as unknown as { command: { kind: string } })
+          .command;
+        expect(command.kind).toBe("get");
+        providerReads++;
+        return {
+          version: 1,
+          calendarId: input.calendarId,
+          providerExactlyOnce: false,
+          event: removed
+            ? null
+            : {
+                eventId: "mapped",
+                etag: '"v2"',
+                event: { ...semantic, title: changed.title },
+              },
+        };
+      }
+      const value = broker(input);
+      if (
+        input.operation === "feed" &&
+        input.calendarId === "owner@example.test"
+      )
+        return {
+          ...value,
+          feed: { ...value.feed, events: removed ? [] : [changed] },
+        };
+      return value;
+    });
+    await calendar.getLinkedCalendarControl();
+    await control.resume(selected.revision);
+    const first = await calendar.getCalendarFeed(INTERNAL_URL, WINDOW);
+    expect((await calendar.getCalendarEventById(local.id))?.title).toBe(
+      changed.title,
+    );
+    expect(
+      first.events.filter((row) => row.title.startsWith("Mapped")),
+    ).toHaveLength(1);
+    expect(providerReads).toBe(1);
+    await calendar.getCalendarFeed(INTERNAL_URL, WINDOW);
+    expect(providerReads).toBe(1); // Equal revisions do not cause a second provider read.
+    allowWrites = false;
+    changed.title = "Changed while writes are off";
+    changed.metadata.etag = '"v3"';
+    const readOnly = await calendar.getCalendarFeed(INTERNAL_URL, WINDOW);
+    expect(readOnly.events.some((row) => row.title === changed.title)).toBe(
+      true,
+    );
+    expect((await calendar.getCalendarEventById(local.id))?.title).toBe(
+      "Mapped after Google edit",
+    );
+    allowWrites = true;
+    await calendar.getCalendarFeed(INTERNAL_URL, WINDOW);
+    expect((await calendar.getCalendarEventById(local.id))?.title).toBe(
+      changed.title,
+    );
+    removed = true;
+    const second = await calendar.getCalendarFeed(INTERNAL_URL, WINDOW);
+    expect(await calendar.getCalendarEventById(local.id)).toBeNull();
+    expect(
+      second.events.filter((row) => row.title.startsWith("Mapped")),
+    ).toHaveLength(0);
+  });
+
+  it("starts managed discovery while standard Google discovery is pending", async () => {
+    let releaseStandard!: () => void;
+    const standard = new Promise<void>((resolve) => {
+      releaseStandard = resolve;
+    });
+    standardGoogleAccounts.mockImplementationOnce(async () => {
+      await standard;
+      return [];
+    });
+    const managedStarted = vi.fn();
+    const calendar = service((input) => {
+      if (input.operation === "sources") managedStarted();
+      return broker(input);
+    });
+    const pending = calendar.getCalendarFeed(INTERNAL_URL, WINDOW);
+    try {
+      await vi.waitFor(() => expect(managedStarted).toHaveBeenCalledTimes(1));
+      expect(feedReads).toEqual([]);
+    } finally {
+      releaseStandard();
+      await pending;
+    }
+    expect(standardGoogleAccounts).toHaveBeenCalledTimes(1);
+    expect(feedReads.sort()).toEqual([
+      "owner@example.test",
+      "team@group.calendar.google.com",
+    ]);
+  });
+
+  it("cancels a pending managed catalog if standard Google discovery fails", async () => {
+    let rejectStandard!: (error: Error) => void;
+    const standard = new Promise<never[]>((_resolve, reject) => {
+      rejectStandard = reject;
+    });
+    standardGoogleAccounts.mockImplementationOnce(() => standard);
+    const error = new Error("Synthetic standard discovery failure");
+    let managedSignal: AbortSignal | undefined;
+    const calendar = service((input, signal) => {
+      if (input.operation !== "sources") return broker(input);
+      managedSignal = signal;
+      return new Promise((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason), {
+          once: true,
+        });
+      });
+    });
+    const pending = calendar.getCalendarFeed(INTERNAL_URL, WINDOW);
+    try {
+      await vi.waitFor(() => expect(managedSignal).toBeDefined());
+    } finally {
+      rejectStandard(error);
+      await expect(pending).rejects.toBe(error);
+    }
+    expect(managedSignal?.aborted).toBe(true);
+    expect(feedReads).toEqual([]);
+  });
+
+  it("reads an exact managed grant without looking up standard Google accounts", async () => {
+    const calendar = service();
+    const feed = await calendar.getCalendarFeed(INTERNAL_URL, {
+      ...WINDOW,
+      grantId: GRANT,
+      calendarId: "owner@example.test",
+    });
+
+    expect(feed.events.map((entry) => entry.title).sort()).toEqual([
+      "Launch review",
+      "Standup",
+    ]);
+    expect(feedReads).toEqual(["owner@example.test"]);
+    expect(standardGoogleAccounts).not.toHaveBeenCalled();
+
+    await calendar.getCalendarFeed(INTERNAL_URL, WINDOW);
+    expect(standardGoogleAccounts).toHaveBeenCalledTimes(1);
+  });
+
   it("merges the built-in calendar with every calendar the host shows, once each", async () => {
     const calendar = service();
     await calendar.createCalendarEvent(INTERNAL_URL, {

@@ -1,70 +1,102 @@
 {
-  "sources": [
-    "packages/core/src/runtime/single-flight-memo.ts",
-    "packages/core/src/runtime/data-mutations.ts",
-    "packages/core/src/runtime.ts"
-  ],
-  "stateRepresentation": "The source variables form one typed record. Every action updates that record atomically and retains all other fields.",
-  "cases": [
-    {
-      "name": "safety",
-      "main": "SingleFlightMemo",
-      "init": "init",
-      "step": "step",
-      "invariants": ["TypeOK", "NoStaleAfterInvalidate", "RejectedNotCached"],
-      "temporal": ["DeadlockFree"],
-      "maxSteps": 100,
-      "samples": 1000,
-      "constants": {
-        "Readers": ["r1", "r2", "r3"],
-        "Writers": ["w1", "w2"]
-      },
-      "deadlock": true,
-      "temporalChecks": [
-        {
-          "property": "DeadlockFree",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in SingleFlightMemo: DeadlockFree = always(enabled(nextStep))",
-            "No scheduler fairness is assumed by this property."
-          ]
-        }
-      ]
-    },
-    {
-      "name": "liveness",
-      "main": "SingleFlightMemoLiveness",
-      "init": "init",
-      "step": "step",
-      "invariants": ["TypeOK", "NoStaleAfterInvalidate", "RejectedNotCached"],
-      "temporal": ["DeadlockFree", "ReaderFinishes"],
-      "maxSteps": 100,
-      "samples": 1000,
-      "constants": {
-        "Readers": ["r1", "r2"],
-        "Writers": ["w1", "w2"]
-      },
-      "deadlock": true,
-      "temporalChecks": [
-        {
-          "property": "DeadlockFree",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in SingleFlightMemoLiveness: DeadlockFree = always(enabled(nextStep))",
-            "No scheduler fairness is assumed by this property."
-          ]
-        },
-        {
-          "property": "ReaderFinishes",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in SingleFlightMemoLiveness: ReaderFinishes = Fairness.implies(Readers.forall(r => (s.rpc.get(r) == \"waiting\").leadsTo(Set(\"served\", \"failed\").contains(s.rpc.get(r)))))",
-            "Model fairness predicate Fairness = and { Fetches.forall(f => FetchRead(f).weakFair(s) and FetchResolve(f).weakFair(s)), Readers.forall(r => Serve(r).weakFair(s)), Writers.forall(w => Invalidate(w).weakFair(s)) }",
-            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
-          ]
-        }
-      ]
-    }
-  ],
-  "symmetry": "The safety case retains all reader/writer identities. Omitting the former permutation reduction explores a superset of the reduced search graph."
+	"sources": [
+		"packages/core/src/runtime/single-flight-memo.ts",
+		"packages/core/src/runtime/data-mutations.ts",
+		"packages/core/src/runtime.ts",
+		"packages/core/test/read-memo-runtime.test.ts"
+	],
+	"bounds": {
+		"domain": "One cache key, up to three one-shot readers and two writers in the original safety and liveness cases. The expiry case uses sequential successful reads, one external write, one local write and a two-tick TTL.",
+		"limitations": "The expiry model abstracts monotonic elapsed time to ticks and wall adjustments to stutters. The real runtime test uses the 1,000 ms room memo boundary. Cache capacity, message window metadata and mixed concurrent expiry are outside these cases."
+	},
+	"conformance": "packages/core/quint/check-core-concurrency.mjs",
+	"stateRepresentation": "The source variables form one typed record. Every action updates that record atomically and retains all other fields.",
+	"cases": [
+		{
+			"name": "safety",
+			"main": "SingleFlightMemo",
+			"init": "init",
+			"step": "step",
+			"invariants": ["TypeOK", "NoStaleAfterInvalidate", "RejectedNotCached"],
+			"temporal": ["DeadlockFree"],
+			"maxSteps": 100,
+			"samples": 1000,
+			"constants": {
+				"Readers": ["r1", "r2", "r3"],
+				"Writers": ["w1", "w2"]
+			},
+			"deadlock": true,
+			"temporalChecks": [
+				{
+					"property": "DeadlockFree",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in SingleFlightMemo: DeadlockFree = always(enabled(nextStep))",
+						"No scheduler fairness is assumed by this property."
+					]
+				}
+			]
+		},
+		{
+			"name": "liveness",
+			"main": "SingleFlightMemoLiveness",
+			"init": "init",
+			"step": "step",
+			"invariants": ["TypeOK", "NoStaleAfterInvalidate", "RejectedNotCached"],
+			"temporal": ["DeadlockFree", "ReaderFinishes"],
+			"maxSteps": 100,
+			"samples": 1000,
+			"constants": {
+				"Readers": ["r1", "r2"],
+				"Writers": ["w1", "w2"]
+			},
+			"deadlock": true,
+			"temporalChecks": [
+				{
+					"property": "DeadlockFree",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in SingleFlightMemoLiveness: DeadlockFree = always(enabled(nextStep))",
+						"No scheduler fairness is assumed by this property."
+					]
+				},
+				{
+					"property": "ReaderFinishes",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in SingleFlightMemoLiveness: ReaderFinishes = Fairness.implies(Readers.forall(r => (s.rpc.get(r) == \"waiting\").leadsTo(Set(\"served\", \"failed\").contains(s.rpc.get(r)))))",
+						"Model fairness predicate Fairness = and { Fetches.forall(f => FetchRead(f).weakFair(s) and FetchResolve(f).weakFair(s)), Readers.forall(r => Serve(r).weakFair(s)), Writers.forall(w => Invalidate(w).weakFair(s)) }",
+						"The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+					]
+				}
+			]
+		},
+		{
+			"name": "elapsed-expiry",
+			"main": "SingleFlightMemoExpiry",
+			"init": "init",
+			"step": "step",
+			"invariants": ["ExpiredReadRefreshes", "FreshReadDoesNotRefresh"],
+			"temporal": ["FreshnessEndsUnderFairClock", "FreshnessEnds"],
+			"maxSteps": 40,
+			"samples": 300,
+			"temporalChecks": [
+				{
+					"property": "FreshnessEndsUnderFairClock",
+					"expect": "holds",
+					"assumptions": [
+						"An enabled elapsed-clock tick is weakly fair while a resident entry is fresh. A local write may invalidate it sooner."
+					]
+				},
+				{
+					"property": "FreshnessEnds",
+					"expect": "counterexample",
+					"assumptions": [
+						"No clock fairness. A fresh entry can stutter forever when elapsed time does not advance."
+					]
+				}
+			]
+		}
+	],
+	"symmetry": "The safety case retains all reader/writer identities. Omitting the former permutation reduction explores a superset of the reduced search graph."
 }

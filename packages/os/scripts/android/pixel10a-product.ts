@@ -15,13 +15,56 @@ import {
   writeBrandAssets,
 } from "./pixel10a-brand-assets.mjs";
 import { assertNoLockScreenSurface } from "./secure-camera.mjs";
-import { renderOverlay, validateDescriptor } from "./stage-launcher-overlay.ts";
+import {
+  launcherInstallDirectory,
+  renderOverlay,
+  validateDescriptor,
+} from "./stage-launcher-overlay.ts";
+import {
+  admitSystemUpdater,
+  writeSystemUpdater,
+} from "./system-updater-staging.mjs";
 
 const hardwareRoot = fileURLToPath(
   new URL("../../android/devices/pixel10a/", import.meta.url),
 );
 const token = /^[a-z][a-z0-9_]*$/;
 const packageName = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/;
+const moduleName = /^[A-Z][A-Za-z0-9]*$/;
+const defaultPixelConfig = Object.freeze({
+  moduleName: "PixelConfig",
+  packageName: "ai.eliza.hardware.pixelconfig",
+  mimeType: "vnd.android.cursor.dir/vnd.eliza.pixel-flags",
+});
+
+function pixelConfigIdentity(product) {
+  const identity =
+    product.pixelConfig === undefined
+      ? defaultPixelConfig
+      : product.pixelConfig;
+  if (
+    !identity ||
+    typeof identity !== "object" ||
+    Array.isArray(identity) ||
+    Object.keys(identity).some(
+      (key) => !["moduleName", "packageName", "mimeType"].includes(key),
+    ) ||
+    typeof identity.moduleName !== "string" ||
+    !moduleName.test(identity.moduleName) ||
+    typeof identity.packageName !== "string" ||
+    !packageName.test(identity.packageName) ||
+    typeof identity.mimeType !== "string" ||
+    !/^vnd\.android\.cursor\.dir\/vnd\.[a-z0-9][a-z0-9_.-]*$/.test(
+      identity.mimeType,
+    ) ||
+    identity.moduleName === product.launcher?.moduleName ||
+    identity.moduleName === product.sense?.moduleName ||
+    identity.packageName === product.launcher?.packageName ||
+    identity.packageName === `${product.launcher?.packageName}.sense`
+  )
+    throw new Error("Invalid Pixel 10a pixelConfig identity");
+  return identity;
+}
 export const sensePrivileges = [
   "android.permission.CAPTURE_AUDIO_HOTWORD",
   "android.permission.START_ACTIVITIES_FROM_BACKGROUND",
@@ -32,16 +75,17 @@ export function validatePixel10aProduct(value) {
     value?.schemaVersion !== 1 ||
     value.target !== "pixel10a" ||
     value.sourceProfile !== "pixel10a" ||
-    value.vendorDirectory !== "alphaphone" ||
+    typeof value.vendorDirectory !== "string" ||
+    !token.test(value.vendorDirectory) ||
     value.releaseQualified !== false
   )
     throw new Error(
-      "Expected unqualified Pixel 10a product on the shared source and compatibility vendor path",
+      "Expected unqualified Pixel 10a product with an explicit safe vendorDirectory",
     );
   if (
     !token.test(value.productName) ||
     !/^[a-z0-9_]+$/.test(value.releaseConfig) ||
-    !/^[A-Z][A-Za-z0-9]*$/.test(value.launcher?.moduleName) ||
+    !moduleName.test(value.launcher?.moduleName) ||
     !packageName.test(value.launcher?.packageName)
   )
     throw new Error("Invalid Pixel 10a product or launcher identity");
@@ -50,6 +94,11 @@ export function validatePixel10aProduct(value) {
     typeof value.launcher.refuseLockScreenSurfaces !== "boolean"
   )
     throw new Error("launcher.refuseLockScreenSurfaces must be a boolean");
+  if (
+    value.launcher.assistantRole !== undefined &&
+    typeof value.launcher.assistantRole !== "boolean"
+  )
+    throw new Error("launcher.assistantRole must be a boolean");
   if (value.launcher.imageProvisioning !== undefined) {
     const provisioning = value.launcher.imageProvisioning;
     if (
@@ -71,8 +120,83 @@ export function validatePixel10aProduct(value) {
     )
       throw new Error(`Invalid Pixel 10a ${name}`);
   }
+  if (
+    value.systemUpdater !== undefined &&
+    typeof value.systemUpdater !== "boolean"
+  )
+    throw new Error(
+      "systemUpdater must be a boolean; enrollment is a separate gate",
+    );
   validateBrandAssets(value.brandAssets);
+  pixelConfigIdentity(value);
   return value;
+}
+
+/** Check the selected layout only after the complete source inventory is admitted. */
+export function assertPixel10aSourceLayout(aospRoot, product) {
+  validatePixel10aProduct(product);
+  const file = "vendor/google_devices/stallion/stallion.mk";
+  const bytes = fs.readFileSync(path.join(aospRoot, file));
+  const includes = [
+    ...bytes
+      .toString("utf8")
+      .matchAll(
+        /^\$\(call inherit-product, (vendor\/[a-z][a-z0-9_]*\/stallion\/device\.mk)\)\s*$/gm,
+      ),
+  ];
+  const expected = `vendor/${product.vendorDirectory}/stallion/device.mk`;
+  if (includes.length !== 1 || includes[0][1] !== expected)
+    throw new Error(
+      `Pixel 10a source layout differs: admitted source must inherit ${expected}; use a matching reviewed source inventory`,
+    );
+  return {
+    vendorDirectory: product.vendorDirectory,
+    path: file,
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+  };
+}
+
+/** Render hardware-owned templates without changing the locked AOSP source. */
+function renderHardware(product) {
+  const pixelConfig = pixelConfigIdentity(product);
+  const replacements = {
+    "@VENDOR_DIRECTORY@": product.vendorDirectory,
+    "@PIXEL_CONFIG_MODULE@": pixelConfig.moduleName,
+  };
+  const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
+  const files = [];
+  for (const name of fs.readdirSync(hardwareRoot, { recursive: true }).sort()) {
+    const file = path.join(hardwareRoot, name);
+    const stat = fs.lstatSync(file);
+    if (stat.isDirectory()) continue;
+    if (!stat.isFile())
+      throw new Error(`Invalid Pixel hardware input: ${name}`);
+    const before = fs.readFileSync(file);
+    const original = before.toString("utf8");
+    let text = original;
+    for (const [token, value] of Object.entries(replacements))
+      text = text.replaceAll(token, value);
+    // Existing installed identities are explicit product compatibility data.
+    if (name.startsWith("vendor-config/"))
+      text = text
+        .replaceAll(defaultPixelConfig.moduleName, pixelConfig.moduleName)
+        .replaceAll(defaultPixelConfig.packageName, pixelConfig.packageName)
+        .replaceAll(defaultPixelConfig.mimeType, pixelConfig.mimeType);
+    const relative = name.replace(
+      "src/ai/eliza/hardware/pixelconfig/",
+      `src/${pixelConfig.packageName.replaceAll(".", "/")}/`,
+    );
+    const bytes = text === original ? before : Buffer.from(text);
+    files.push({
+      sourcePath: name,
+      path: `stallion/${relative}`,
+      sourceSha256: digest(before),
+      sha256: digest(bytes),
+      mode: stat.mode & 0o777,
+      bytes,
+    });
+  }
+  return { files, pixelConfig };
 }
 
 /**
@@ -163,7 +287,7 @@ function verifyNativeStaging(output, launcher, evidence) {
       names.has(name) ||
       library.apkEntry !== `lib/arm64-v8a/${name}` ||
       library.installPath !==
-        `/product/app/${launcher.moduleName}/lib/arm64/${name}` ||
+        `${launcherInstallDirectory(launcher)}/lib/arm64/${name}` ||
       library.mode !== mode
     )
       throw new Error("Invalid native staging entry");
@@ -189,7 +313,10 @@ function verifyNativeStaging(output, launcher, evidence) {
   return true;
 }
 
-/** Compose a previously admitted, nonprivileged launcher overlay. No source or device writes. */
+/**
+ * Compose a previously admitted launcher overlay. The launcher is nonprivileged unless its
+ * reviewed descriptor names privileged permissions. No source or device writes.
+ */
 export function composePixel10aProduct({
   output,
   product,
@@ -214,12 +341,23 @@ export function composePixel10aProduct({
   const makefile = fs.existsSync(path.join(output, "Android.mk"))
     ? fs.readFileSync(path.join(output, "Android.mk"), "utf8")
     : "";
-  if (
+  const overlay = renderOverlay(launcher);
+  const privileged =
     /\bprivileged\s*:\s*true\b/.test(blueprint) ||
-    /LOCAL_PRIVILEGED_MODULE\s*:?=\s*true/.test(makefile)
+    /LOCAL_PRIVILEGED_MODULE\s*:?=\s*true/.test(makefile);
+  const allowlist = path.join(output, "privapp-permissions.xml");
+  if (!launcher.privilegedPermissions) {
+    if (privileged || fs.existsSync(allowlist))
+      throw new Error("Pixel 10a main launcher must remain nonprivileged");
+  } else if (
+    !privileged ||
+    !fs.existsSync(allowlist) ||
+    fs.readFileSync(allowlist, "utf8") !== overlay.privilegedPermissions
   )
-    throw new Error("Pixel 10a main launcher must remain nonprivileged");
-  if (!makefile && blueprint !== renderOverlay(launcher).blueprint)
+    throw new Error(
+      "Pixel 10a launcher privilege differs from its reviewed privileged permissions",
+    );
+  if (!makefile && blueprint !== overlay.blueprint)
     throw new Error("Pixel 10a requires an admitted launcher overlay");
   const nativeLibrariesStaged = verifyNativeStaging(
     output,
@@ -229,23 +367,27 @@ export function composePixel10aProduct({
   checkListenerPolicy(output, launcher.packageName);
   // Pinned brand assets are verified before anything is written.
   const brandAssets = admitBrandAssets(product, { bootAnimation });
+  const hardware = renderHardware(product);
+  const updater = admitSystemUpdater(product);
   for (const name of [
     "AndroidProducts.mk",
     `${product.productName}.mk`,
     "stallion",
     "brand",
     "physical-product.json",
+    ...(updater ? ["system-updater"] : []),
   ])
     if (fs.existsSync(path.join(output, name)))
       throw new Error(`Pixel 10a composition already exists: ${name}`);
-  fs.cpSync(hardwareRoot, path.join(output, "stallion"), {
-    recursive: true,
-    errorOnExist: true,
-    force: false,
-  });
+  for (const file of hardware.files) {
+    const target = path.join(output, file.path);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, file.bytes, { flag: "wx" });
+    fs.chmodSync(target, file.mode);
+  }
   fs.writeFileSync(
     path.join(output, `${product.productName}.mk`),
-    `# Shared Pixel 10a/stallion hardware; retain the verified compatibility vendor path.\nUSE_STOCK_KERNEL := true\n$(call inherit-product, vendor/google_devices/stallion/stallion.mk)\n$(call inherit-product, vendor/alphaphone/product.mk)\n\nPRODUCT_NAME := ${product.productName}\nPRODUCT_DEVICE := stallion\nPRODUCT_MODEL := ${product.model}\nPRODUCT_BRAND := ${product.brand}\nPRODUCT_MANUFACTURER := ${product.manufacturer}\n${brandAssets.makefile ?? ""}`,
+    `# Shared Pixel 10a/stallion hardware with the selected product layout.\nUSE_STOCK_KERNEL := true\n$(call inherit-product, vendor/google_devices/stallion/stallion.mk)\n$(call inherit-product, vendor/${product.vendorDirectory}/product.mk)\n\nPRODUCT_NAME := ${product.productName}\nPRODUCT_DEVICE := stallion\nPRODUCT_MODEL := ${product.model}\nPRODUCT_BRAND := ${product.brand}\nPRODUCT_MANUFACTURER := ${product.manufacturer}\n${brandAssets.makefile ?? ""}`,
     { flag: "wx" },
   );
   writeBrandAssets(output, brandAssets);
@@ -257,7 +399,7 @@ export function composePixel10aProduct({
   if (makefile)
     fs.appendFileSync(
       path.join(output, "product.mk"),
-      "\n# Exact executable modes for admitted bundled JNI.\nTARGET_FS_CONFIG_GEN += vendor/alphaphone/config.fs\n",
+      `\n# Exact executable modes for admitted bundled JNI.\nTARGET_FS_CONFIG_GEN += vendor/${product.vendorDirectory}/config.fs\n`,
     );
   // Alarms and timers stay with the system Clock in every brand's image.
   const productMakefile = path.join(output, "product.mk");
@@ -287,6 +429,7 @@ export function composePixel10aProduct({
       )[1],
     };
   }
+  const systemUpdater = writeSystemUpdater(output, product, updater);
   const evidence = {
     schema: 1,
     target: "pixel10a",
@@ -295,7 +438,13 @@ export function composePixel10aProduct({
     production,
     developmentOnly: !production,
     nativeLibrariesStaged,
+    hardwareComposition: {
+      vendorDirectory: product.vendorDirectory,
+      pixelConfig: hardware.pixelConfig,
+      files: hardware.files.map(({ bytes, ...record }) => record),
+    },
     brandAssets: brandAssets.evidence,
+    systemUpdater,
     sourceEvidence,
     vendorApi,
     imageFeature,

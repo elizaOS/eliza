@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   mkdirSync,
   mkdtempSync,
@@ -8,6 +9,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { afterEach, test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -217,6 +219,94 @@ const checkedFiles = {
     cases: [{ ...modelCase, constants: { stateCount: 2 } }],
   }),
 };
+
+test("the shared runner rejects a failing scenario without the Test suffix", async () => {
+  const directory = fixture({
+    ...checkedFiles,
+    [`${example}.qnt`]: `module ScenarioLibrary {
+      const Seed: int
+      var state: int
+      action init = state' = Seed
+      action step = state' = Seed
+      val Safe = state == Seed
+      run failsWithoutSuffix = init.expect(state == Seed + 1)
+    }
+    module Example {
+      import ScenarioLibrary(Seed = 0).*
+    }`,
+  });
+  const packageFile = createRequire(import.meta.url).resolve(
+    "@informalsystems/quint/package.json",
+  );
+  const installed = JSON.parse(readFileSync(packageFile, "utf8"));
+  const cli = path.resolve(path.dirname(packageFile), installed.bin.quint);
+  const original = spawnSync(
+    process.execPath,
+    [
+      cli,
+      "test",
+      path.join(directory, `${example}.qnt`),
+      "--main",
+      "Example",
+      "--backend",
+      "typescript",
+    ],
+    { cwd: directory, encoding: "utf8" },
+  );
+  assert.ifError(original.error);
+  assert.equal(original.signal, null);
+  assert.equal(original.status, 0, original.stderr);
+  assert.doesNotMatch(original.stdout, /failsWithoutSuffix/);
+
+  const output = path.join(directory, "test-results/quint");
+  await assert.rejects(
+    main(["--simulate"], directory, output),
+    /Quint checks failed/,
+  );
+  const report = JSON.parse(
+    readFileSync(path.join(output, "simulation.json"), "utf8"),
+  );
+  assert.equal(report.completed, false);
+  const scenario = report.results.at(-1);
+  assert.equal(scenario.command[0], "test");
+  assert.equal(scenario.exitCode, 1);
+  assert.equal(scenario.matchedExpectation, false);
+  const failed = readFileSync(path.join(output, scenario.log), "utf8");
+  assert.match(failed, /failsWithoutSuffix/);
+  assert.match(failed, /1 failed/);
+  assert.doesNotMatch(failed, /Safe failed/);
+
+  writeFileSync(
+    path.join(directory, `${example}.qnt`),
+    `module ScenarioLibrary {
+    const Seed: int
+    var state: int
+    action init = state' = Seed
+    action step = state' = Seed
+    val Safe = state == Seed
+    // run ignoredComment = init.expect(false)
+    run importedWithoutSuffix = init.expect(state == Seed)
+  }
+  module Example {
+    import ScenarioLibrary(Seed = 0).*
+  }`,
+  );
+  await main(["--simulate"], directory, output);
+  const passing = JSON.parse(
+    readFileSync(path.join(output, "simulation.json"), "utf8"),
+  );
+  assert.equal(passing.completed, true);
+  const scenarios = passing.results.find(
+    (result: { command: string[] }) => result.command[0] === "test",
+  );
+  const passed = readFileSync(path.join(output, scenarios.log), "utf8");
+  assert.match(
+    passed,
+    /ok Example::ScenarioLibrary::importedWithoutSuffix passed/,
+  );
+  assert.match(passed, /1 passing/);
+  assert.doesNotMatch(passed, /ok init|ok step|ignoredComment|Safe/);
+});
 
 test("the shared runner records positive liveness and expected unfair schedules separately", async () => {
   const directory = fixture({
@@ -472,6 +562,103 @@ test("inventory includes native, ESM, shell and database state owners", () => {
   for (const file of Object.keys(nativeSources))
     assert(discovered.includes(file));
   assert(!discovered.includes("plugins/native/test/Journal.java"));
+});
+
+test("the completeness gate separates ownerless reviews from unchecked state and declared gaps", async () => {
+  const source = "packages/example/src/contracts.ts";
+  const contents = 'export type ExampleState = "ready" | "closed";\n';
+  const review = {
+    source,
+    sha256: createHash("sha256").update(contents).digest("hex"),
+    reason: "Declares the status sent by the example service.",
+  };
+  const reviewFile = "packages/example/quint/ownerless-sources.json";
+  const directory = fixture({ ...checkedFiles, [source]: contents });
+  const output = path.join(directory, "test-results/quint");
+  const args = ["--inventory", "--require-complete"];
+
+  await assert.rejects(
+    main(args, directory, output),
+    /1 unreviewed source candidates/,
+  );
+  writeFileSync(path.join(directory, reviewFile), JSON.stringify([review]));
+  await main(args, directory, output);
+  const inventory = JSON.parse(
+    readFileSync(path.join(output, "inventory.json"), "utf8"),
+  );
+  assert.equal(inventory.unreferencedCandidates, 1);
+  assert.equal(inventory.unreviewedCandidates, 0);
+  assert.deepEqual(inventory.ownerlessSources, [review]);
+
+  const uncheckedSource = path.join(directory, "packages/example/src/queue.ts");
+  writeFileSync(uncheckedSource, 'let status = "waiting";\n');
+  await assert.rejects(
+    main(args, directory, output),
+    /1 unreviewed source candidates/,
+  );
+  rmSync(uncheckedSource);
+  const coveragePath = path.join(
+    directory,
+    "packages/example/quint/coverage.json",
+  );
+  writeFileSync(
+    coveragePath,
+    JSON.stringify([{ ...coveredEntry, status: "partial" }]),
+  );
+  await assert.rejects(
+    main(args, directory, output),
+    /0 unreviewed source candidates and 1 declared gaps/,
+  );
+  writeFileSync(
+    coveragePath,
+    JSON.stringify([
+      {
+        ...coveredEntry,
+        model: null,
+        invariants: [],
+        status: "unmodeled",
+        sources: [`./${source}`],
+      },
+    ]),
+  );
+  await assert.rejects(
+    main(args, directory, output),
+    /conflicts with a model or coverage entry/,
+  );
+});
+
+test("an ownerless review must match one current candidate with no checked model", () => {
+  const source = "packages/example/src/contracts.ts";
+  const contents = 'export type ExampleState = "ready";\n';
+  const review = {
+    source,
+    sha256: createHash("sha256").update(contents).digest("hex"),
+    reason: "Declares the status sent by the example service.",
+  };
+  const reviewFile = "packages/example/quint/ownerless-sources.json";
+  const directory = fixture({
+    ...checkedFiles,
+    [source]: contents,
+    [reviewFile]: JSON.stringify([review, review]),
+  });
+  const check = () =>
+    createQuintInventory(directory, loadQuintModels(directory));
+  assert.throws(check, /Duplicate Quint ownerless source review/);
+  writeFileSync(path.join(directory, reviewFile), JSON.stringify([review]));
+  writeFileSync(
+    path.join(directory, source),
+    contents.replace("ready", "closed"),
+  );
+  assert.throws(check, /Stale Quint ownerless source review/);
+  rmSync(path.join(directory, source));
+  assert.throws(check, /Quint ownerless source is not an inventory candidate/);
+
+  writeFileSync(path.join(directory, source), contents);
+  writeFileSync(
+    path.join(directory, `${example}.cases.json`),
+    JSON.stringify({ sources: [stateSource, source], cases: [modelCase] }),
+  );
+  assert.throws(check, /conflicts with a model or coverage entry/);
 });
 
 test("the repository fingerprint binds tracked and untracked helper contents", () => {

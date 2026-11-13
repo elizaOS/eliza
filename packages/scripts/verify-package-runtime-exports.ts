@@ -8,7 +8,7 @@ import { findWorkspaceRoot } from "./lib/repo-root.ts";
 const packageDirArg = process.argv[2];
 if (!packageDirArg) {
   console.error(
-    "Usage: node packages/scripts/verify-package-runtime-exports.ts <package-dir>",
+    "Usage: bun packages/scripts/verify-package-runtime-exports.ts <package-dir>",
   );
   process.exit(1);
 }

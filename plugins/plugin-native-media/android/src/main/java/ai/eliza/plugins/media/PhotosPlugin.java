@@ -100,37 +100,87 @@ public abstract class PhotosPlugin extends PermittedPhotosPlugin {
 
   @PluginMethod
   public void beginEdit(PluginCall call) {
-    submit(call, () -> {
+    submitRead(call, () -> {
       try {
-        call.resolve(edits.begin(call.getString("id"), call.getString("revision")));
+        return edits.begin(call.getString("id"), call.getString("revision"));
       } catch (Exception e) {
         call.reject(e.getMessage() == null ? "Photo editor unavailable" : e.getMessage());
+        return null;
       }
     });
   }
 
   @PluginMethod
   public void previewEdit(PluginCall call) {
-    submit(call, () -> {
+    submitRead(call, () -> {
       try {
-        call.resolve(edits.preview(call.getString("sessionId"), call.getInt("rotation", 0),
-            call.getBoolean("crop", false), call.getString("filter", "none")));
+        return edits.preview(call.getString("sessionId"), call.getInt("rotation", 0),
+            crop(call), call.getString("filter", "none"));
       } catch (Exception e) {
         call.reject(e.getMessage() == null ? "Preview unavailable" : e.getMessage());
+        return null;
       }
     });
   }
 
+  /**
+   * Saves the edit as a new copy, or with {@code replace: true} (offered when {@code beginEdit}
+   * answered {@code canReplace}) over the reviewed original. Replacing another app's photo first
+   * asks Android's write consent; the write then rechecks the reviewed revision.
+   */
   @PluginMethod
   public void saveEdit(PluginCall call) {
+    boolean replace = Boolean.TRUE.equals(call.getBoolean("replace", false));
     submit(call, () -> {
       try {
-        call.resolve(edits.save(call.getString("sessionId"), call.getInt("rotation", 0),
-            call.getBoolean("crop", false), call.getString("filter", "none")));
+        String token = call.getString("sessionId");
+        int rotation = call.getInt("rotation", 0);
+        PhotoCrop crop = crop(call);
+        String filter = call.getString("filter", "none");
+        if (!replace) {
+          call.resolve(edits.save(token, rotation, crop, filter));
+          return;
+        }
+        String[] consent = edits.replaceConsent(token);
+        if (consent == null) {
+          call.resolve(replaceEdit(token, rotation, crop, filter));
+          return;
+        }
+        mediaReview.requestWrite(call, consent[0], consent[1], () -> {
+          try {
+            call.resolve(replaceEdit(token, rotation, crop, filter));
+          } catch (Exception e) {
+            call.reject(e.getMessage() == null
+                ? "Replace outcome unknown; inspect Photos before retrying" : e.getMessage());
+          }
+        });
       } catch (Exception e) {
         call.reject(e.getMessage() == null ? "Save outcome unknown; inspect Photos before retrying" : e.getMessage());
       }
     });
+  }
+
+  /**
+   * The crop an edit request names: {@code cropRect: {x, y, width, height}} (fractions of the
+   * rotated photo) keeps that rectangle; otherwise {@code crop: true} keeps the fixed centered crop.
+   */
+  private static PhotoCrop crop(PluginCall call) {
+    JSObject rect = call.getObject("cropRect", null);
+    if (rect == null && !call.getData().has("cropRect"))
+      return PhotoCrop.of(Boolean.TRUE.equals(call.getBoolean("crop", false)));
+    if (rect == null || !(rect.opt("x") instanceof Number) || !(rect.opt("y") instanceof Number)
+        || !(rect.opt("width") instanceof Number) || !(rect.opt("height") instanceof Number))
+      throw new IllegalArgumentException("Choose a crop area inside the photo");
+    return PhotoCrop.rect(rect.optDouble("x", Double.NaN), rect.optDouble("y", Double.NaN),
+        rect.optDouble("width", Double.NaN), rect.optDouble("height", Double.NaN));
+  }
+
+  private JSObject replaceEdit(String token, int rotation, PhotoCrop crop, String filter)
+      throws Exception {
+    JSObject receipt = edits.replace(token, rotation, crop, filter);
+    // A replaced original has new bytes: open pages and read tickets of the old ones end here.
+    if ("saved".equals(receipt.getString("status"))) permitted.invalidate();
+    return receipt;
   }
 
   @PluginMethod
@@ -247,30 +297,63 @@ public abstract class PhotosPlugin extends PermittedPhotosPlugin {
 
   @PluginMethod
   public void list(PluginCall call) {
-    submit(call, () -> {
+    submitRead(call, () -> {
       try {
         boolean trashed = call.getBoolean("trashed", false);
         if (trashed && Build.VERSION.SDK_INT < PhotoLibraryAccess.TRASH_SDK) {
           call.reject("Android trash requires Android 11 or later");
-          return;
+          return null;
         }
         String album = call.getString("album", "");
-        if (PhotoLibraryAccess.customAlbum(album)) {
-          call.resolve(albums.list(album.substring(7), call.getString("before", "")));
-          return;
-        }
+        if (PhotoLibraryAccess.customAlbum(album))
+          return albums.list(album.substring(7), call.getString("before", ""));
+        // A caller that needs fewer rows (Camera's last-capture tile reads one) asks for a smaller page.
+        int limit = Math.max(1, Math.min(OwnedMediaLibrary.PAGE, call.getInt("limit", OwnedMediaLibrary.PAGE)));
+        boolean thumbnails = call.getBoolean("thumbnails", true);
         String[] listing = PhotoLibraryAccess.permittedListing(album, trashed);
-        if (PhotoLibraryAccess.readable(permitted.access())) {
-          call.resolve(permitted.list(call.getString("before", ""), "", listing[0], true, listing[1]));
-          return;
-        }
+        if (PhotoLibraryAccess.readable(permitted.access()))
+          return permitted.list(call.getString("before", ""), "", listing[0], thumbnails, listing[1],
+              0, Long.MAX_VALUE, limit);
         if (album.equals("favorites") && Build.VERSION.SDK_INT < PhotoLibraryAccess.TRASH_SDK) {
           call.reject("Favorites require Android 11 or later");
-          return;
+          return null;
         }
-        call.resolve(owned.list(call.getString("before", ""), trashed, album));
+        return owned.list(call.getString("before", ""), trashed, album, limit, thumbnails);
       } catch (Exception failure) {
         call.reject("Saved media could not be loaded");
+        return null;
+      }
+    });
+  }
+
+  /** Reload bounded grid thumbnails through the same profile and publication guards as reads. */
+  @PluginMethod
+  public void thumbnails(PluginCall call) {
+    submitRead(call, () -> {
+      try {
+        JSArray ids = call.getArray("ids");
+        if (ids == null || ids.length() < 1 || ids.length() > OwnedMediaLibrary.PAGE)
+          throw new IllegalArgumentException();
+        JSArray items = new JSArray();
+        for (int i = 0; i < ids.length(); i++) {
+          String id = ids.getString(i);
+          JSObject item = new JSObject();
+          item.put("id", id);
+          try {
+            item.put("image", PhotoLibraryAccess.permitted(id)
+                ? permitted.read(id, null, true, false, 240).getString("image")
+                : owned.preview(id, 240));
+          } catch (Exception unavailable) {
+            item.put("image", "");
+          }
+          items.put(item);
+        }
+        JSObject result = new JSObject();
+        result.put("items", items);
+        return result;
+      } catch (Exception invalid) {
+        call.reject("Select 1-" + OwnedMediaLibrary.PAGE + " listed items.");
+        return null;
       }
     });
   }
@@ -278,7 +361,7 @@ public abstract class PhotosPlugin extends PermittedPhotosPlugin {
   @PluginMethod
   public void read(PluginCall call) {
     diagnostic(Diagnostic.READ_INVOKED);
-    submit(call, () -> {
+    submitRead(call, () -> {
       try {
         boolean trashed = Boolean.TRUE.equals(call.getBoolean("includeTrashed", false));
         String key = call.getString("id", "");
@@ -294,19 +377,17 @@ public abstract class PhotosPlugin extends PermittedPhotosPlugin {
                 throw new SecurityException("Selected video changed or is unavailable");
               }
             }));
-          call.resolve(result);
-          diagnostic(Diagnostic.READ_SUCCEEDED);
-          return;
+          return result;
         }
         JSObject result = owned.read(key, trashed);
         if (OwnedMediaLibrary.video(key)) result.put("path", playback.authorize(OwnedMediaLibrary.uri(key)));
-        call.resolve(result);
-        diagnostic(Diagnostic.READ_SUCCEEDED);
+        return result;
       } catch (Exception failure) {
         diagnostic(Diagnostic.readFailure(failure));
         call.reject("This saved media is no longer available");
+        return null;
       }
-    });
+    }, () -> diagnostic(Diagnostic.READ_SUCCEEDED));
   }
 
   /**
@@ -352,7 +433,7 @@ public abstract class PhotosPlugin extends PermittedPhotosPlugin {
     submit(call, () -> {
       try {
         JSArray items = call.getArray("items");
-        if (items == null || items.length() < 1 || items.length() > OwnedMediaLibrary.BATCH)
+        if (items == null || items.length() < 1 || items.length() > PhotoLibraryAccess.SHARE)
           throw new IllegalArgumentException();
         ArrayList<Uri> uris = new ArrayList<>();
         Set<String> unique = new HashSet<>();
@@ -442,7 +523,8 @@ public abstract class PhotosPlugin extends PermittedPhotosPlugin {
         String operation = call.getString("operation", "");
         boolean[] change = PhotoLibraryAccess.batchChange(operation);
         JSArray items = call.getArray("items");
-        List<PhotoLibraryAccess.Reviewed> reviewed = PhotoLibraryAccess.reviewed(items, PhotoLibraryAccess.REVIEWED);
+        // The owned library retains its own 20-item bound; permitted changes share one review.
+        List<PhotoLibraryAccess.Reviewed> reviewed = PhotoLibraryAccess.reviewed(items, PhotoLibraryAccess.REVIEWED_BATCH);
         if (PhotoLibraryAccess.anyPermitted(reviewed)) {
           mediaReview.request(call, PhotoLibraryAccess.ids(reviewed), PhotoLibraryAccess.revisions(reviewed),
               change[0], change[1], true);
@@ -457,15 +539,12 @@ public abstract class PhotosPlugin extends PermittedPhotosPlugin {
 
   @PluginMethod
   public void summary(PluginCall call) {
-    submit(call, () -> {
+    submitRead(call, () -> {
       try {
-        if (PhotoLibraryAccess.readable(permitted.access())) {
-          call.resolve(permitted.summary());
-          return;
-        }
-        call.resolve(owned.summary());
+        return PhotoLibraryAccess.readable(permitted.access()) ? permitted.summary() : owned.summary();
       } catch (Exception failure) {
         call.reject("Album counts could not be loaded");
+        return null;
       }
     });
   }
@@ -521,15 +600,16 @@ public abstract class PhotosPlugin extends PermittedPhotosPlugin {
 
   @PluginMethod
   public void albums(PluginCall call) {
-    submit(call, () -> {
+    submitRead(call, () -> {
       if (Build.VERSION.SDK_INT < PhotoLibraryAccess.TRASH_SDK) {
         call.reject("Owned albums require Android 11 or later");
-        return;
+        return null;
       }
       try {
-        call.resolve(albums.albums());
+        return albums.albums();
       } catch (Exception failure) {
         call.reject("Owned albums could not be loaded");
+        return null;
       }
     });
   }

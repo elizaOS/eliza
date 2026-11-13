@@ -22,6 +22,9 @@ export async function dispatchIosNativeGeneration(args: {
     request: IosNativeTextRequest,
     timeoutMs: number,
   ) => Promise<unknown>;
+  /** Asks the native host to stop decoding this context. */
+  cancel?: () => Promise<unknown>;
+  signal?: AbortSignal;
 }): Promise<string> {
   if (
     args.requestedMaxTokens !== undefined &&
@@ -45,9 +48,10 @@ export async function dispatchIosNativeGeneration(args: {
     projectRequest: () => ({ ...request, stop: [...request.stop] }),
   });
   guard.assertBeforeAttempt();
-  const result = await args.invoke(
-    request,
-    Math.max(120_000, maxTokens * 2_000),
+  const result = await invokeCancellable(
+    args.invoke(request, Math.max(120_000, maxTokens * 2_000)),
+    args.cancel,
+    args.signal,
   );
   if (
     !result ||
@@ -85,6 +89,49 @@ export async function dispatchIosNativeGeneration(args: {
     );
   }
   return result.text;
+}
+
+function abortReason(signal: AbortSignal): Error {
+  return signal.reason instanceof Error
+    ? signal.reason
+    : new DOMException("Aborted", "AbortError");
+}
+
+/**
+ * Settles with the native call, or rejects at once on abort. Whenever the call
+ * ends without a result (abort, host timeout, transport error), the native
+ * decode is told to stop so it does not keep the session busy.
+ */
+async function invokeCancellable(
+  pending: Promise<unknown>,
+  cancel: (() => Promise<unknown>) | undefined,
+  signal: AbortSignal | undefined,
+): Promise<unknown> {
+  const sendCancel = () => {
+    // error-policy:J5 best-effort stop; the caller already has its own error.
+    cancel?.().catch(() => {});
+  };
+  if (signal?.aborted) {
+    pending.catch(() => {});
+    sendCancel();
+    throw abortReason(signal);
+  }
+  let onAbort: (() => void) | undefined;
+  const aborted = new Promise<never>((_, reject) => {
+    onAbort = () => {
+      if (signal) reject(abortReason(signal));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+  try {
+    return await Promise.race([pending, aborted]);
+  } catch (error) {
+    pending.catch(() => {});
+    sendCancel();
+    throw error;
+  } finally {
+    if (onAbort) signal?.removeEventListener("abort", onAbort);
+  }
 }
 
 export function stripReasoningBlocks(raw: string): string {

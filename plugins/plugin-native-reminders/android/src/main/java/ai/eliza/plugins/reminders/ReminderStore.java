@@ -94,12 +94,20 @@ final class ReminderStore {
   return new JSONObject().put("dueAt",dueAt).put("alertMinutes",minutes==JSONObject.NULL?JSONObject.NULL:lead);
  }
  private void arm(Context context, String id, long at) {
-  // Inexact alarms deliberately avoid the privileged/user-granted exact-alarm capability.
+  // This library never requests the privileged/user-granted exact-alarm capability. A host that
+  // already holds it gets on-time delivery; every other host keeps the inexact alarm.
   String occurrence=null;
   try { JSONObject record=read(context,id);if(noAlert(record)||deletionSuspended(record))return;if(record!=null)occurrence=record.optString("occurrenceId",null); }
   catch(JSONException error){throw new IllegalStateException("Reminder could not be read",error);}
   final String selectedOccurrence=occurrence;
-  effect(()->context.getSystemService(AlarmManager.class).setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, Math.max(at, System.currentTimeMillis() + 1000), pending(context,id,selectedOccurrence)));
+  effect(()->{
+   AlarmManager alarms=context.getSystemService(AlarmManager.class);long when=Math.max(at, System.currentTimeMillis() + 1000);PendingIntent due=pending(context,id,selectedOccurrence);
+   if(Build.VERSION.SDK_INT>=31&&alarms.canScheduleExactAlarms()){
+    try{alarms.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,when,due);return;}
+    catch(SecurityException revoked){/* The capability was withdrawn after the check; the inexact alarm below replaces it. */}
+   }
+   alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,when,due);
+  });
  }
  synchronized JSONObject schedule(Context context, String id, String title, String body, long at) throws JSONException {
   return schedule(context,id,title,body,at,null);
@@ -211,7 +219,7 @@ final class ReminderStore {
   JSONObject intent=new JSONObject().put("version",1).put("id",token).put("owner",owner).put("target",new JSONObject(target.toString())).put("phase","queued")
    .put("continuity",continuity).put("createdElapsed",elapsed).put("expiresElapsed",elapsed+10000).put("expiresAt",wall+10000).put("original",new JSONObject(row.toString()));
   if(binding!=null)intent.put("operationBinding",new JSONObject(binding.toString()));
-  envelope.begin();try{JSONObject deletionRecords=deletionRows(envelope);for(int i=0;i<terminal.size()-127;i++){String retired=terminal.get(i);JSONObject removed=deletionRecords.getJSONObject(retired);deletionRecords.remove(retired);if(removed.has("operationBinding"))envelope.active().getJSONObject("operations").remove(retired);}if(binding!=null&&envelope.active().getJSONObject("operations").length()>=500)throw new IllegalStateException("Operation history full");deletionRecords.put(token,intent);envelope.active().put("deletions",deletionRecords);row.put("pendingDeletion",token);envelope.active().getJSONObject("records").put(id,row.toString());envelope.commit();}catch(RuntimeException|JSONException failure){envelope.abort();throw failure;}
+  envelope.begin();try{JSONObject deletionRecords=deletionRows(envelope);for(int i=0;i<terminal.size()-127;i++){String retired=terminal.get(i);JSONObject removed=deletionRecords.getJSONObject(retired);deletionRecords.remove(retired);if(removed.has("operationBinding"))envelope.active().getJSONObject("operations").remove(retired);}if(binding!=null){JSONObject operations=envelope.active().getJSONObject("operations");for(String retired:retiringReceipts(operations,deletionRecords))operations.remove(retired);}deletionRecords.put(token,intent);envelope.active().put("deletions",deletionRecords);row.put("pendingDeletion",token);envelope.active().getJSONObject("records").put(id,row.toString());envelope.commit();}catch(RuntimeException|JSONException failure){envelope.abort();throw failure;}
   // Even a failed Android cancellation cannot make a later receiver ignore persisted suspension.
   cancelAlarm(context,id,row.optString("occurrenceId",null));cancelAlarm(context,id,null);cancelNotification(context,id);
   return new JSONObject(intent.toString());
@@ -335,9 +343,9 @@ final class ReminderStore {
     .setData(Uri.parse(configuration.tapUriPrefix + token)).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
    PendingIntent tap = PendingIntent.getActivity(context, 0, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
    channel(context);
-   Notification publicVersion = new Notification.Builder(context, DUE_CHANNEL).setSmallIcon(android.R.drawable.ic_popup_reminder)
+   Notification publicVersion = new Notification.Builder(context, DUE_CHANNEL).setSmallIcon(configuration.smallIcon)
     .setContentTitle(configuration.publicTitle).build();
-   Notification.Builder builder = new Notification.Builder(context, DUE_CHANNEL).setSmallIcon(android.R.drawable.ic_popup_reminder)
+   Notification.Builder builder = new Notification.Builder(context, DUE_CHANNEL).setSmallIcon(configuration.smallIcon)
     .setContentTitle(value.getString("title")).setContentText(value.getString("body"))
     .setStyle(new Notification.BigTextStyle().bigText(value.getString("body")))
     .setVisibility(Notification.VISIBILITY_PRIVATE).setPublicVersion(publicVersion)
@@ -495,6 +503,27 @@ final class ReminderStore {
   if(!digest(bindingHash+":"+canonical(operation)).equals(saved.getString("argumentHash")))throw new IllegalArgumentException("Reminder receipt binding changed");
   return new JSONObject(saved.getJSONObject("response").toString());
  }
+ static final int MAX_OPERATIONS=500;
+ /** A definite refusal: the operation was not started and nothing changed. */
+ static final class OperationsFull extends IllegalStateException { OperationsFull(){super("Reminder operation storage full");} }
+ /**
+  * The oldest terminal receipts to retire so one more fits under {@link #MAX_OPERATIONS}.
+  * Effects-pending and effects-uncertain receipts, and receipts bound to a deletion row (retired
+  * with that row), are never retired. Receipts order by {@code seq}; legacy ones without it are
+  * oldest, in stored order. Throws {@link OperationsFull} when too few can be retired.
+  */
+ private static ArrayList<String> retiringReceipts(JSONObject receipts,JSONObject deletions)throws JSONException{
+  ArrayList<String> terminal=new ArrayList<>();int excess=receipts.length()-MAX_OPERATIONS+1;
+  if(excess<=0)return terminal;
+  for(java.util.Iterator<String> it=receipts.keys();it.hasNext();){String key=it.next();if("terminal".equals(receipts.getJSONObject(key).optString("phase"))&&!deletions.has(key))terminal.add(key);}
+  if(terminal.size()<excess)throw new OperationsFull();
+  terminal.sort((a,b)->Long.compare(receipts.optJSONObject(a).optLong("seq",-1),receipts.optJSONObject(b).optLong("seq",-1)));
+  return new ArrayList<>(terminal.subList(0,excess));
+ }
+ private static long nextReceiptSeq(JSONObject receipts)throws JSONException{
+  long next=0;for(java.util.Iterator<String> it=receipts.keys();it.hasNext();)next=Math.max(next,receipts.getJSONObject(it.next()).optLong("seq",-1)+1);
+  return next;
+ }
  /** No automatic replay of an uncertain Android effect. Same operation returns its original receipt. */
  synchronized JSONObject operate(Context context,String operationId,String bindingHash,JSONObject operation)throws JSONException{
   if(operationId==null||!operationId.matches("[A-Za-z0-9_-]{1,128}")||bindingHash==null||!bindingHash.matches("[a-f0-9]{64}"))throw new IllegalArgumentException("Invalid reminder operation binding");
@@ -504,14 +533,18 @@ final class ReminderStore {
   JSONObject target=creating?null:operation.getJSONObject("target");if(!creating){if(target.has("timingVersion")){exactKeys(target,"sourceId","sourceRevision","reminderId","occurrenceId","revision","timingVersion");if(!(target.get("timingVersion") instanceof Number)||target.getDouble("timingVersion")!=2)throw new IllegalArgumentException("Invalid reminder timing version");}else exactKeys(target,"sourceId","sourceRevision","reminderId","occurrenceId","revision");}
   ReminderEnvelope store=new ReminderEnvelope(context,this);String argumentHash=digest(bindingHash+":"+canonical(operation));JSONObject receipts=store.value.getJSONObject("operations");
   if(receipts.has(operationId)){JSONObject saved=receipts.getJSONObject(operationId);if(!argumentHash.equals(saved.getString("argumentHash")))throw new IllegalArgumentException("Reminder operation binding changed");return new JSONObject(saved.getJSONObject("response").toString());}
-  if(receipts.length()>=500)throw new IllegalStateException("Reminder operation storage full");
   String id=creating?operationId:target.getString("reminderId");
   if(creating){if(store.value.getJSONObject("records").has(id))throw new IllegalArgumentException("Reminder creation ID already exists");}
   else if(!canonical(target).equals(canonical(selected(context,id))))throw new IllegalArgumentException("Selected reminder changed");
   if(!creating&&deletionSuspended(read(context,id))&&!type.equals("reminder_read_selected"))throw new IllegalStateException("Reminder is pending deletion");
   if(!creating&&read(context,id).optBoolean("undated"))throw new IllegalArgumentException("Change undated to-dos from the to-do list");
+  // A read changes nothing, so it keeps no receipt and never fills the history.
+  if(type.equals("reminder_read_selected"))return new JSONObject().put("status","succeeded").put("result",operationResult(context,type,id));
+  ArrayList<String> retiring=retiringReceipts(receipts,deletionRows(store));long seq=nextReceiptSeq(receipts);
   activeEnvelope=store;store.begin();deferredEffects=new ArrayList<>();ArrayList<Runnable> effects;
   try{
+   // Retired receipts leave in the same commit that adds the new one.
+   for(String retired:retiring)store.active().getJSONObject("operations").remove(retired);
    JSONObject row=read(context,id);
    if(creating){
     JSONObject fields=operation.getJSONObject("fields");exactKeys(fields,"title","body","schedule");
@@ -534,7 +567,7 @@ final class ReminderStore {
    JSONObject result=operationResult(context,type,id);
    if(creating)result.put("fields",new JSONObject(operation.getJSONObject("fields").toString()));
    JSONObject response=new JSONObject().put("status",deferredEffects.isEmpty()?"succeeded":"unknown").put("result",result);
-   JSONObject receipt=new JSONObject().put("argumentHash",argumentHash).put("phase",deferredEffects.isEmpty()?"terminal":"effects-pending").put("response",response);
+   JSONObject receipt=new JSONObject().put("argumentHash",argumentHash).put("phase",deferredEffects.isEmpty()?"terminal":"effects-pending").put("response",response).put("seq",seq);
    store.active().getJSONObject("operations").put(operationId,receipt);
    // All record changes and original absolute deadlines become durable together.
    store.commit();effects=deferredEffects;

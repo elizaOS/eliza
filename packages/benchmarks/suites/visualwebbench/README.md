@@ -13,3 +13,5 @@ Test from the repository root:
 ```bash
 PYTHONPATH=packages python -m pytest packages/benchmarks/suites/visualwebbench/tests
 ```
+
+JSONL image paths are relative to the JSONL file. Absolute paths remain supported for external datasets.

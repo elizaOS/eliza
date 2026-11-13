@@ -85,10 +85,10 @@ bun run --cwd packages/app test   # tests
 For a system APK targeting Pixel/Cuttlefish ARM64 and x86_64, set
 `ELIZA_ANDROID_TARGET_ABIS=x86_64,arm64-v8a` when running
 `bun run --cwd packages/app build:android:system`. Omitting the variable retains
-all runtime targets, including the separately pinned RISC-V artifact requirement.
+both supported runtime targets.
 
 After building the mobile agent bundle, run
-`node packages/app/scripts/qualify-android-runtime-restaging.ts` from the root
+`bun packages/app/scripts/qualify-android-runtime-restaging.ts` from the root
 with the Android SDK and Java configured to check repeated ABI selection with
 real pinned runtimes and Gradle asset merging. Evidence goes to
 `test-results/android-runtime-restaging/`; this does not build or run an APK.
@@ -105,10 +105,16 @@ Web subscription settings select a registered product with `VITE_ELIZA_APPLICATI
 agent-backed settings use `ELIZAOS_CLOUD_APPLICATION_SLOT` from the runtime.
 These select a product, not a merchant credential or paid entitlement.
 
+Managed Google hosts return complete Gmail bodies by default. A consumer may set
+`gmailReadBodyMaxCharacters` on `ManagedGoogleAgentHostOptions`, including the
+native host, to a positive safe integer in UTF-16 code units. Limited reads mark
+`truncated: true` and keep surrogate pairs intact. The existing 256 KiB complete
+response bound still refuses oversized results; a body limit does not waive it.
+
 Independent Android consumer profiles may use `main`, `androidTest`, `debug`,
 `release`, and their declared flavor names in `sourceSets`. Keep test trust and
 other debug-only resources in `debug`; they must not enter release artifacts.
-Run `node packages/app/scripts/mobile/android/qualify-consumer-host.mjs` from the
+Run `bun packages/app/scripts/mobile/android/qualify-consumer-host.mjs` from the
 repository root with the Android SDK and JDK configured to check real APK isolation.
 
 ## Disposable hosted Android fixtures
@@ -144,8 +150,8 @@ not replace provider-byte admission or runtime feature qualification.
 With the Android SDK, Java 21, workspace dependencies, and a running emulator:
 
 ```bash
-node packages/app/scripts/android-native-plugins.ts --list
-node packages/app/scripts/android-native-plugins.ts --serial emulator-5554
+bun packages/app/scripts/android-native-plugins.ts --list
+bun packages/app/scripts/android-native-plugins.ts --serial emulator-5554
 ```
 
 The runner builds every Android native module and executes its instrumentation
@@ -172,14 +178,14 @@ enforcement and embedded agent startup have separate device scenarios.
 
 For live network-policy transitions, use a stock emulator with one active Wi-Fi
 network and no installed Eliza user app:
-`node packages/app/scripts/android-native-plugins.ts --serial emulator-5580 --plugin plugin-native-network-policy --network-transitions`.
+`bun packages/app/scripts/android-native-plugins.ts --serial emulator-5580 --plugin plugin-native-network-policy --network-transitions`.
 This opt-in lane changes metering and disables Wi-Fi/mobile data to verify the
 unmetered, metered, offline, and restored bridge results. It restores the original
 settings and exports each observed result. Device E2E runs this lane before the
 full plugin suite.
 
 The gateway service lifecycle lane requires Android 15+:
-`node packages/app/scripts/android-gateway-lifecycle.ts --serial emulator-5580`.
+`bun packages/app/scripts/android-gateway-lifecycle.ts --serial emulator-5580`.
 It compiles the production service into a disposable minimal Activity host and
 uses Android's real foreground-service timeout to verify shutdown, exhausted-budget
 rejection, and foreground recovery in local, cloud, and cloud-hybrid modes. It
@@ -188,7 +194,7 @@ service lifecycle, not full MainActivity behavior or WebSocket delivery.
 
 The embedded-agent lifecycle lane needs a fresh x86_64 emulator with at least 4 GB
 RAM and no installed `ai.elizaos.app`. Run
-`node packages/app/scripts/android-native-agent.ts --serial emulator-5580` with
+`bun packages/app/scripts/android-native-agent.ts --serial emulator-5580` with
 `JAVA_HOME` and `ANDROID_HOME` set. It builds the real mobile Bun bundle and host
 service, selects the first-party Agent plugin in a minimal test WebView, verifies
 startup, authenticated requests and shutdown, then removes its APKs. Reports and
@@ -360,7 +366,7 @@ Android directory, beside its standard `app/src` layout: an existing unmarked
 directory is admitted, but no authored file is ever replaced. The profile can also
 declare, as data:
 
-- `signing`: the four environment variable *names* for the release key store,
+- `signing`: the four environment variable _names_ for the release key store,
   password, alias and key password. Gradle signs releases only when all four are
   set, fails on a partial set by name, and never prints a value. `versionOverride`
   names the release version code/name variables, validated like the identity.
@@ -408,8 +414,10 @@ optional. Run
 Android classes (`RESIDENT_HOST_CLASSES`) into a host's own application package so
 `R`, `BuildConfig` and installed component names keep that host's identity. The
 host supplies data: abstract socket names for the agent, inference and secure-store
-routes, the notification small icon, an optional `0xAARRGGBB` accent and string
-resources for the runtime notifications, an optional static environment hook, and
+routes, the notification small icon, the ongoing notification's action
+(`notification.primaryAction`: `stop`, `restart` or `none`; required), an optional
+`0xAARRGGBB` accent and string resources for every runtime notification text, an
+optional static environment hook, and
 the shared helpers it compiles beside them: main Java sources of native plugins
 (`plugins/plugin-native-*/android/src/main/java/...`), which keep their packages. A
 helper reviewed in `RESIDENT_HOST_HELPERS` as reading the host's `BuildConfig` gains
@@ -437,7 +445,7 @@ The reviewed consumer toolchain remains Gradle 8.13 / AGP 8.13 / Kotlin 2.2.20 /
 JDK 21, independently of the full app's newer default wrapper. The distribution
 and shared wrapper JAR are hash pinned. Run the filesystem contract with
 `node --test packages/app/scripts/mobile/android/consumer-host.test.mjs`; with SDK 36 and
-build-tools 36.0.0, `node packages/app/scripts/mobile/android/qualify-consumer-host.mjs` builds
+build-tools 36.0.0, `bun packages/app/scripts/mobile/android/qualify-consumer-host.mjs` builds
 two independent identities and checks eight host variant APKs plus four separate
 companion APKs. Linked-library compilation and companion asset isolation are checked.
 Reports go to root `test-results/android-consumer-host`. This is build/manifest

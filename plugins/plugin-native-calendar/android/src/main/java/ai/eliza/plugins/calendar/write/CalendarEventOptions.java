@@ -97,8 +97,11 @@ public final class CalendarEventOptions {
   if (!rule.isEmpty() && (end - begin) % 1000 != 0) throw new IllegalArgumentException("Recurring duration must use whole seconds");
   if (!rule.isEmpty() && rule.contains("UNTIL=")) {
    String until = rule.replaceAll(".*UNTIL=([0-9TZ]+).*", "$1");
-   long last = allDay ? java.time.LocalDate.parse(until, java.time.format.DateTimeFormatter.BASIC_ISO_DATE).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
-    : Instant.from(java.time.format.DateTimeFormatter.ofPattern("uuuuMMdd'T'HHmmssX").withResolverStyle(java.time.format.ResolverStyle.STRICT).parse(until)).toEpochMilli();
+   long last;
+   try {
+    last = allDay ? java.time.LocalDate.parse(until, java.time.format.DateTimeFormatter.BASIC_ISO_DATE).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+     : Instant.from(java.time.format.DateTimeFormatter.ofPattern("uuuuMMdd'T'HHmmssX").withResolverStyle(java.time.format.ResolverStyle.STRICT).parse(until)).toEpochMilli();
+   } catch (java.time.DateTimeException invalid) { throw new IllegalArgumentException("Unsupported repeat rule"); }
    if (last < begin) throw new IllegalArgumentException("Repeat ends before the first event");
   }
   return new CalendarEventOptions(title, body, location, begin, end, allDay, zone, rule);

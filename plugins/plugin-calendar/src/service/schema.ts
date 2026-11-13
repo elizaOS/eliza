@@ -290,6 +290,7 @@ export const linkedCalendarControl = calendarPgSchema.table(
     providerCalendarId: text("provider_calendar_id"),
     dispatchToken: text("dispatch_token"),
     dispatchLinkId: text("dispatch_link_id"),
+    dispatchAcquiredAt: text("dispatch_acquired_at"),
   },
   (t) => [
     check("linked_calendar_control_revision_valid", sql`${t.revision} >= 0`),

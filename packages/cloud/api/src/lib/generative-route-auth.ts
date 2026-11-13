@@ -20,6 +20,7 @@ import type {
 import {
   assertInferenceCredentialActive,
   type InferenceCredentialCheck,
+  InferenceCredentialRevocationUnavailableError,
   InferenceCredentialRevokedError,
   inferenceCredentialRevocationReason,
 } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
@@ -39,6 +40,8 @@ export interface GenerativeRouteCaller {
   admissionSnapshot?: InferenceAdmissionSnapshot;
   /** Verified identity metadata; deferred callers must consume it at the paid admission boundary. */
   credential?: InferenceCredentialCheck;
+  /** Repair this caller's cached funding standing after settlement. */
+  refreshAuthEntry?: () => void;
   appScopeId: string | null;
 }
 
@@ -224,6 +227,7 @@ export function getGenerativeOperationContext(
     requestId: c.get("requestId") ?? c.get("traceId") ?? crypto.randomUUID(),
     admissionSnapshot: caller.admissionSnapshot,
     credential: caller.credential,
+    refreshAuthEntry: caller.refreshAuthEntry,
     ...options,
     executionCtx: getGenerativeExecutionContext(c),
   };
@@ -341,6 +345,9 @@ export async function admitFlatGenerativeOperation(params: {
   idempotencyKey?: string;
   admissionSnapshot?: InferenceAdmissionSnapshot;
   credential?: InferenceCredentialCheck;
+  refreshAuthEntry?: () => void;
+  /** Join the lease and dispatch for an operation that outlives the request. */
+  commitLeaseAtDispatch?: boolean;
   /** Use only when the caller must invoke the returned dispatch marker. */
   atomicProviderBoundary?: boolean;
 }): Promise<OrganizationInferenceAdmission> {
@@ -396,7 +403,9 @@ export async function admitFlatGenerativeOperation(params: {
       flatCost: params.cost,
       admissionSnapshot: params.admissionSnapshot,
       ...(params.credential ? { credential: params.credential } : {}),
+      refreshAuthEntry: params.refreshAuthEntry,
       atomicProviderBoundary: params.atomicProviderBoundary === true,
+      commitLeaseAtDispatch: params.commitLeaseAtDispatch === true,
     });
   } catch (error) {
     if (
@@ -503,6 +512,8 @@ export async function requireGenerativeRouteCaller(
     deferStrongCredentialCheck?: boolean;
     /** Bounded speech bootstrap may retain verified identity metadata, not a raw credential. */
     includeVerifiedCredential?: boolean;
+    /** Consent may recheck a timed-out credential before any rate or provider admission. */
+    retryCredentialCheckTimeout?: boolean;
   } = {},
 ): Promise<GenerativeRouteCaller> {
   const request = options.request ?? c.req.raw;
@@ -542,11 +553,24 @@ export async function requireGenerativeRouteCaller(
         ? { deferStrongCredentialCheck: true }
         : {}),
     });
-  const resolution = await timeSpeechPhase(
-    c,
-    "auth_resolution",
-    resolveCallerAuth,
-  );
+  const resolution = await timeSpeechPhase(c, "auth_resolution", async () => {
+    try {
+      return await resolveCallerAuth();
+    } catch (error) {
+      if (
+        options.retryCredentialCheckTimeout !== true ||
+        !(error instanceof InferenceCredentialRevocationUnavailableError) ||
+        !error.credentialCheckTimedOut
+      )
+        throw error;
+      // error-policy:J2 Only the read failed. A fresh strong check must
+      // succeed before the route can count or prepare this consent.
+      request.signal.throwIfAborted();
+      const result = await resolveCallerAuth();
+      request.signal.throwIfAborted();
+      return result;
+    }
+  });
 
   if (resolution.kind === "authorized") {
     const user = {
@@ -651,6 +675,7 @@ export async function requireGenerativeRouteCaller(
       authSource: "combined_cache",
       admissionSnapshot: resolution.ctx.admission,
       credential: resolution.credential,
+      refreshAuthEntry: resolution.refreshEntry,
       appScopeId:
         "appScopeId" in resolution.ctx ? resolution.ctx.appScopeId : null,
     };

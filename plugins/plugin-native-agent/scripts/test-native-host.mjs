@@ -8,6 +8,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const output = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-native-host-"));
 const bin = (name) =>
   process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", name) : name;
+let primaryFailure;
+let failed = false;
 try {
   execFileSync(
     process.execPath,
@@ -103,6 +105,24 @@ try {
       { stdio: "inherit", timeout: 60000 },
     );
   }
-} finally {
-  fs.rmSync(output, { recursive: true, force: true });
+} catch (error) {
+  failed = true;
+  primaryFailure = error;
 }
+try {
+  fs.rmSync(output, {
+    recursive: true,
+    force: true,
+    maxRetries: 3,
+    retryDelay: 100,
+  });
+} catch (cleanupError) {
+  if (failed) {
+    // Report cleanup without replacing the compiler/test failure it followed.
+    console.error("Native harness cleanup also failed:", cleanupError);
+  } else {
+    failed = true;
+    primaryFailure = cleanupError;
+  }
+}
+if (failed) throw primaryFailure;

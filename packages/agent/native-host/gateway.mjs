@@ -286,9 +286,10 @@ export function createLocalAgentGateway({
         code: "INFERENCE_UNAVAILABLE",
         error: message("error15"),
       });
-    const requestEpoch = epoch;
-    // A reset during the inference check: read the owner again.
-    if (requestEpoch !== checkEpoch) ownerCheck = undefined;
+    // Admission belongs to the account generation that began this message.
+    // Reset retires its input; it cannot be adopted by a later account.
+    const requestEpoch = checkEpoch;
+    if (requestEpoch !== epoch) throw ownershipError();
     const owner = await checkOwner();
     if (requestEpoch !== epoch) throw ownershipError();
     const record = rooms.get(conversationId);
@@ -774,8 +775,16 @@ export function createLocalAgentGateway({
           ? `/conversations/${streamRoute[1]}/messages`
           : url.pathname,
       );
-      if (paidAction && cloudHandler?.requirePaidAccess)
+      if (paidAction && cloudHandler?.requirePaidAccess) {
         await cloudHandler.requirePaidAccess();
+        // The check may have been answered from the Cloud routes' cache. A
+        // paid route that Cloud then refuses (401 or 402) drops that answer.
+        if (typeof cloudHandler.paidAccessRefused === "function")
+          res.once("finish", () => {
+            if (res.statusCode === 401 || res.statusCode === 402)
+              cloudHandler.paidAccessRefused();
+          });
+      }
       if (url.pathname === "/tasks" || url.pathname.startsWith("/tasks/")) {
         if (!taskGateway)
           return json(res, 503, { code: "TASK_HELPER_UNAVAILABLE" });

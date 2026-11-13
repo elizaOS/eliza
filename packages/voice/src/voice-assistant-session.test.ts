@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { shouldRespondToVoiceTurn } from "./respond-gate";
 import {
   ASSISTANT_TIMING_DEFAULTS,
   type AssistantCapture,
@@ -75,7 +76,7 @@ function fakeClock() {
   return clock;
 }
 
-type Send = { turnId: string; text: string };
+type Send = { turnId: string; text: string; supersedes?: string };
 type Reply = {
   input: Parameters<AssistantPorts["send"]>[0];
   reply: Deferred<AssistantReply>;
@@ -93,8 +94,15 @@ function harness(
     holdOpen?: Deferred<void>;
     /** The close of the nth capture (1-based); resolves at once when omitted. */
     close?: (capture: number) => Promise<void>;
+    /** The cancel of the nth capture (1-based); settles at once when omitted. */
+    cancel?: (capture: number) => void | Promise<void>;
     /** Playback settles only when the test settles it, also after an abort (slow cleanup). */
     manualSpeech?: boolean;
+    openMic?: boolean;
+    pipelineSpeech?: boolean;
+    /** A cancelled request settles only when the test settles it (a transport slow to reject). */
+    manualSend?: boolean;
+    timing?: Partial<typeof ASSISTANT_TIMING_DEFAULTS>;
   } = {},
 ) {
   const clock = fakeClock();
@@ -133,20 +141,26 @@ function harness(
         },
         cancel: () => {
           log.cancelled++;
+          return options.cancel?.(capture);
         },
       };
     },
     ...(options.shouldRespond ? { shouldRespond: options.shouldRespond } : {}),
     ...(options.endpoint ? { endpoint: options.endpoint } : {}),
     send: (input) => {
-      log.sends.push({ turnId: input.turnId, text: input.text });
+      log.sends.push({
+        turnId: input.turnId,
+        text: input.text,
+        ...(input.supersedes ? { supersedes: input.supersedes } : {}),
+      });
       const reply = deferred<AssistantReply>();
       replies.push({ input, reply });
-      input.signal.addEventListener(
-        "abort",
-        () => reply.reject(new DOMException("cancelled", "AbortError")),
-        { once: true },
-      );
+      if (!options.manualSend)
+        input.signal.addEventListener(
+          "abort",
+          () => reply.reject(new DOMException("cancelled", "AbortError")),
+          { once: true },
+        );
       return reply.promise;
     },
     speak: (input) => {
@@ -168,7 +182,12 @@ function harness(
       if (detail) log.endpoints.push(detail.endpoint);
     },
   };
-  const session = new VoiceAssistantSession(ports, { clock });
+  const session = new VoiceAssistantSession(ports, {
+    clock,
+    ...(options.openMic ? { openMic: true } : {}),
+    ...(options.pipelineSpeech ? { pipelineSpeech: true } : {}),
+    ...(options.timing ? { timing: options.timing } : {}),
+  });
   const answer = (
     index: number,
     text: string,
@@ -655,6 +674,39 @@ describe("VoiceAssistantSession interruption and heard content", () => {
     expect(h.log.heard.at(-1)?.interrupted).toBe(false);
   });
 
+  it("answers a short reply that repeats the question's words once the user started after playback ended", async () => {
+    const seen: Parameters<NonNullable<AssistantPorts["shouldRespond"]>>[1][] =
+      [];
+    const h = harness({
+      fullDuplex: false,
+      shouldRespond: (text, context) => {
+        seen.push(context);
+        return shouldRespondToVoiceTurn(text, context);
+      },
+    });
+    await h.session.start();
+    await h.say("call my friend");
+    await h.clock.advance(longGapMs);
+    h.answer(0, "Should I call Alex or Sam?");
+    await flush();
+    h.speeches[0]?.input.onStarted();
+    await flush();
+    h.speeches[0]?.done.resolve();
+    await flush();
+    await h.clock.advance(2000);
+    await h.say("Call Alex");
+    await h.clock.advance(longGapMs * 2);
+    expect(seen.at(-1)).toMatchObject({
+      agentSpeaking: false,
+      turnStartedAfterReplyEndMs: 2000,
+      echoCancelled: false,
+    });
+    expect(h.log.sends.map((send) => send.text)).toEqual([
+      "call my friend",
+      "Call Alex",
+    ]);
+  });
+
   it("speech during playback never interrupts, with or without an echo canceller; Stop speaking still does", async () => {
     for (const fullDuplex of [false, true]) {
       const h = harness({ fullDuplex });
@@ -1139,6 +1191,54 @@ describe("VoiceAssistantSession busy hold", () => {
     }
   });
 
+  it("Stop waits for the cancel receipt of a capture returned after its reopen was retired", async () => {
+    const reopening = deferred();
+    const cancellation = deferred();
+    const h = harness({
+      cancel: (capture) => (capture === 2 ? cancellation.promise : undefined),
+    });
+    await h.session.start();
+    await h.say("what is next");
+    await h.clock.advance(longGapMs);
+    h.answer(0, "Done.");
+    await flush();
+    h.setHoldOpen(reopening);
+    at(h.speeches, 0).done.resolve();
+    await flush();
+    expect(h.log.reopens).toEqual([undefined, true]);
+    const lateCapture = h.mic();
+
+    let stopped = false;
+    const stopping = h.session.stop().then(() => {
+      stopped = true;
+    });
+    try {
+      expect(lateCapture.signal.aborted).toBe(true);
+      expect(h.phase()).toBe("idle");
+      await flush();
+      expect(stopped).toBe(false);
+
+      reopening.resolve();
+      await flush();
+      expect(h.log.cancelled).toBe(1);
+      expect(stopped).toBe(false);
+      lateCapture.onSpeechStart(h.clock.now());
+      lateCapture.onSpeechEnd(h.clock.now());
+      lateCapture.onSegment("this capture has retired");
+      lateCapture.onEnd(Error("stale capture ended"));
+      await h.clock.advance(longGapMs * 2);
+      expect(h.log.sends).toHaveLength(1);
+      expect(h.phase()).toBe("idle");
+    } finally {
+      reopening.resolve();
+      cancellation.resolve();
+      await stopping;
+    }
+    expect(stopped).toBe(true);
+    expect(h.log).toMatchObject({ captures: 2, cancelled: 1, closed: 1 });
+    expect(h.session.getSnapshot()).toEqual({ phase: "idle" });
+  });
+
   it("never sends or reopens when the binding changed while the turn waited for its close; the binding fence stops it", async () => {
     const closing = deferred();
     const binding = harness({ close: () => closing.promise });
@@ -1200,27 +1300,35 @@ describe("VoiceAssistantSession busy hold", () => {
     expect(refused.log.captures).toBe(2);
   });
 
-  it("an AbortError that is not the session's own leaves the turn held with no reopen; only Stop clears it", async () => {
+  it("an AbortError the port raised while the session owns the turn ends it with a failure; Stop reports none", async () => {
     const owned = harness();
     await owned.session.start();
     await owned.say("what is next");
     await owned.clock.advance(longGapMs);
     owned.answer(0, "Done.");
     await flush();
-    at(owned.speeches, 0).done.reject(
-      new DOMException("speech retired", "AbortError"),
-    );
+    const retired = new DOMException("speech retired", "AbortError");
+    at(owned.speeches, 0).done.reject(retired);
     await flush();
+    expect(owned.session.getSnapshot()).toEqual({
+      phase: "error",
+      error: retired,
+    });
     await owned.clock.advance(longGapMs * 2);
     expect(owned.log.captures).toBe(1);
-    expect(owned.session.getSnapshot()).toMatchObject({
-      phase: "thinking",
-      inputHeld: true,
-    });
-    await owned.session.stop();
+
+    const stopped = harness();
+    await stopped.session.start();
+    await stopped.say("what is next");
+    await stopped.clock.advance(longGapMs);
+    stopped.answer(0, "Done.");
     await flush();
-    expect(owned.session.getSnapshot()).toEqual({ phase: "idle" });
-    expect(owned.log.captures).toBe(1);
+    await stopped.session.stop();
+    await flush();
+    expect(stopped.session.getSnapshot()).toEqual({ phase: "idle" });
+    expect(stopped.log.states.some((state) => state.phase === "error")).toBe(
+      false,
+    );
   });
 
   it("closes a capture that finishes opening after submission and holds only after that close", async () => {
@@ -1454,55 +1562,58 @@ describe("VoiceAssistantSession lifecycle and authority", () => {
     expect(h.log).toMatchObject({ captures: 1, closed: 1, cancelled: 0 });
   });
 
-  it("keeps the microphone closed (never cancelled) through an owner-input pause and the resumed reply, then reopens once", async () => {
-    const h = harness();
-    await h.session.start();
-    await h.say("summarize my packing note");
-    await h.clock.advance(longGapMs);
-    h.answer(0, "Share the note?", {
-      complete: false,
-      awaitingUserInput: { proposalId: "p-1", digest: "d-1" },
-    });
-    await flush();
-    const state = h.session.getSnapshot();
-    expect(state).toMatchObject({
-      phase: "awaiting-user-input",
-      inputHeld: true,
-    });
-    expect(h.log).toMatchObject({ captures: 1, closed: 1, cancelled: 0 });
-    // Speech during the review is never sent.
-    await h.say("yes share it");
-    await h.clock.advance(longGapMs);
-    expect(h.log.sends).toHaveLength(1);
-    const pause = state.awaitingUserInput;
-    if (!pause) throw new Error("expected a pause");
-    const reply = {
-      requestId: pause.requestId,
-      conversationId: "room-1",
-      userMessageId: pause.userMessageId,
-      assistantMessageId: "a-2",
-      complete: true,
-    };
-    expect(
-      h.session.resume({
-        pause: { ...pause, digest: "other" },
-        reply: { ...reply, text: "x" },
-      }),
-    ).toBe(false);
-    expect(
-      h.session.resume({
-        pause,
-        reply: { ...reply, text: "Passport, charger and boots." },
-      }),
-    ).toBe(true);
-    await flush();
-    expect(h.log.captures).toBe(1);
-    expect(h.speeches[0]?.input.text).toBe("Passport, charger and boots.");
-    h.speeches[0]?.done.resolve();
-    await flush();
-    expect(h.log).toMatchObject({ captures: 2, closed: 1, cancelled: 0 });
-    expect(h.log.reopens).toEqual([undefined, true]);
-  });
+  it.each([false, true])(
+    "keeps the microphone closed through owner review and the resumed reply, then reopens once (openMic=%s)",
+    async (openMic) => {
+      const h = harness({ openMic });
+      await h.session.start();
+      await h.say("summarize my packing note");
+      await h.clock.advance(longGapMs);
+      h.answer(0, "Share the note?", {
+        complete: false,
+        awaitingUserInput: { proposalId: "p-1", digest: "d-1" },
+      });
+      await flush();
+      const state = h.session.getSnapshot();
+      expect(state).toMatchObject({
+        phase: "awaiting-user-input",
+        inputHeld: true,
+      });
+      expect(h.log).toMatchObject({ captures: 1, closed: 1, cancelled: 0 });
+      // Speech during the review is never sent.
+      await h.say("yes share it");
+      await h.clock.advance(longGapMs);
+      expect(h.log.sends).toHaveLength(1);
+      const pause = state.awaitingUserInput;
+      if (!pause) throw new Error("expected a pause");
+      const reply = {
+        requestId: pause.requestId,
+        conversationId: "room-1",
+        userMessageId: pause.userMessageId,
+        assistantMessageId: "a-2",
+        complete: true,
+      };
+      expect(
+        h.session.resume({
+          pause: { ...pause, digest: "other" },
+          reply: { ...reply, text: "x" },
+        }),
+      ).toBe(false);
+      expect(
+        h.session.resume({
+          pause,
+          reply: { ...reply, text: "Passport, charger and boots." },
+        }),
+      ).toBe(true);
+      await flush();
+      expect(h.log.captures).toBe(1);
+      expect(h.speeches[0]?.input.text).toBe("Passport, charger and boots.");
+      h.speeches[0]?.done.resolve();
+      await flush();
+      expect(h.log).toMatchObject({ captures: 2, closed: 1, cancelled: 0 });
+      expect(h.log.reopens).toEqual([undefined, true]);
+    },
+  );
 });
 
 describe("splitSpokenSentences and timing", () => {
@@ -1824,7 +1935,12 @@ describe("VoiceAssistantSession streamed replies", () => {
     expect(h.phase()).toBe("error");
     // The streamed sentence already started, so what was heard is reported.
     expect(h.log.heard).toHaveLength(1);
-    expect(h.log.heard[0]).toMatchObject({ turnId: input.turnId, replyId: "" });
+    expect(h.log.heard[0]).toMatchObject({
+      turnId: input.turnId,
+      replyId: "",
+      replyFailed: true,
+    });
+    expect(h.log.heard[0]?.playbackFailed).toBeUndefined();
   });
 
   it("Stop speaking during a streamed sentence cancels the reply and reports exactly what was heard", async () => {
@@ -1880,5 +1996,372 @@ describe("VoiceAssistantSession streamed replies", () => {
         interrupted: true,
       },
     ]);
+  });
+});
+
+describe("VoiceAssistantSession open microphone", () => {
+  const timing = {
+    shortGapMs: 0,
+    longGapMs: 0,
+    bargeInConfirmMs: 400,
+    playbackBargeInMs: 400,
+  };
+  const open = (extra: Parameters<typeof harness>[0] = {}) =>
+    harness({ openMic: true, timing, ...extra });
+
+  it("sends at the first pause and keeps the capture open", async () => {
+    const h = open();
+    await h.session.start();
+    await h.say("what is the weather");
+    await h.clock.advance(0);
+    expect(h.log.sends.map((send) => send.text)).toEqual([
+      "what is the weather",
+    ]);
+    expect(h.phase()).toBe("thinking");
+    expect(h.log.closed).toBe(0);
+    expect(h.session.getSnapshot().inputHeld).toBeUndefined();
+  });
+
+  it("speech resumed before any audio aborts the turn and sends the joined text once", async () => {
+    const h = open();
+    await h.session.start();
+    await h.say("what is the weather");
+    await h.clock.advance(0);
+    const first = at(h.replies, 0);
+    h.mic().onSpeechStart(h.clock.now());
+    await h.clock.advance(399);
+    expect(first.input.signal.aborted).toBe(false);
+    await h.clock.advance(1);
+    expect(first.input.signal.aborted).toBe(true);
+    expect(h.phase()).toBe("listening");
+    expect(h.session.getSnapshot().pendingText).toBe("what is the weather");
+    expect(h.log.heard).toEqual([]);
+    await h.clock.advance(300);
+    h.mic().onSpeechEnd(h.clock.now());
+    h.mic().onSegment("in Lisbon tomorrow");
+    await flush();
+    await h.clock.advance(0);
+    expect(h.log.sends).toHaveLength(2);
+    expect(at(h.log.sends, 1)).toEqual({
+      turnId: at(h.log.sends, 1).turnId,
+      text: "what is the weather in Lisbon tomorrow",
+      supersedes: first.input.turnId,
+    });
+    expect(h.log.turns.map(([event]) => event)).toEqual([
+      "submitted",
+      "interrupted",
+      "resumed",
+      "submitted",
+    ]);
+    h.answer(1, "Sunny and warm.");
+    await flush();
+    expect(h.speeches.map((speech) => speech.input.text)).toEqual([
+      "Sunny and warm.",
+    ]);
+  });
+
+  it("a short resumed segment joins by its transcript; noise leaves the turn running", async () => {
+    const h = open({
+      shouldRespond: (text) => text !== "uh",
+    });
+    await h.session.start();
+    await h.say("call");
+    await h.clock.advance(0);
+    await h.say("uh", 100);
+    expect(at(h.replies, 0).input.signal.aborted).toBe(false);
+    await h.say("Sam", 100);
+    expect(at(h.replies, 0).input.signal.aborted).toBe(true);
+    await h.clock.advance(0);
+    expect(at(h.log.sends, 1).text).toBe("call Sam");
+  });
+
+  it("speech held during playback interrupts the reply and becomes the next turn", async () => {
+    const h = open();
+    await h.session.start();
+    await h.say("tell me a story");
+    await h.clock.advance(0);
+    h.answer(0, "Once upon a time there was a fox. It lived in a wood.");
+    await flush();
+    at(h.speeches, 0).input.onStarted();
+    expect(h.phase()).toBe("speaking");
+    h.mic().onSpeechStart(h.clock.now());
+    await h.clock.advance(399);
+    expect(h.phase()).toBe("speaking");
+    await h.clock.advance(1);
+    expect(at(h.speeches, 0).input.signal.aborted).toBe(true);
+    expect(h.phase()).toBe("listening");
+    expect(h.log.heard).toEqual([
+      {
+        turnId: at(h.log.sends, 0).turnId,
+        replyId: "a-0",
+        heard: "",
+        unheard: "Once upon a time there was a fox. It lived in a wood.",
+        interrupted: true,
+      },
+    ]);
+    await h.clock.advance(200);
+    h.mic().onSpeechEnd(h.clock.now());
+    h.mic().onSegment("stop, what time is it");
+    await flush();
+    await h.clock.advance(0);
+    expect(at(h.log.sends, 1)).toEqual({
+      turnId: at(h.log.sends, 1).turnId,
+      text: "stop, what time is it",
+    });
+    expect(h.log.closed).toBe(0);
+  });
+
+  it("ends the conversation when closing the microphone for owner review fails", async () => {
+    const h = open({
+      close: async () => {
+        throw new Error("capture close failed");
+      },
+    });
+    await h.session.start();
+    await h.say("share my note with Sam");
+    await h.clock.advance(0);
+    h.answer(0, "Share the note?", {
+      complete: false,
+      awaitingUserInput: { proposalId: "p-1", digest: "d-1" },
+    });
+    await flush();
+    expect(h.phase()).toBe("error");
+    expect(h.log).toMatchObject({ captures: 1, closed: 1 });
+    expect(h.speeches).toHaveLength(0);
+    expect(h.session.getSnapshot().awaitingUserInput).toBeUndefined();
+  });
+
+  it("without echo cancellation the busy hold stays", async () => {
+    const h = open({ fullDuplex: false });
+    await h.session.start();
+    await h.say("hello there");
+    await h.clock.advance(0);
+    expect(h.log.closed).toBe(1);
+    expect(h.session.getSnapshot().inputHeld).toBe(true);
+  });
+});
+
+describe("VoiceAssistantSession pipelined speech", () => {
+  it("hands the next sentence over once the current one is audible and counts heard in order", async () => {
+    const h = harness({ pipelineSpeech: true, manualSpeech: true });
+    await h.session.start();
+    await h.say("tell me a story");
+    await h.clock.advance(longGapMs);
+    h.answer(
+      0,
+      "Once upon a time there was a fox. It lived in a quiet wood. It was a happy fox.",
+    );
+    await flush();
+    expect(h.speeches).toHaveLength(1);
+    at(h.speeches, 0).input.onStarted();
+    await flush();
+    expect(h.speeches.map((speech) => speech.input.text)).toEqual([
+      "Once upon a time there was a fox.",
+      "It lived in a quiet wood.",
+    ]);
+    at(h.speeches, 0).done.resolve();
+    await flush();
+    expect(h.speeches).toHaveLength(2);
+    at(h.speeches, 1).input.onStarted();
+    await flush();
+    expect(h.speeches).toHaveLength(3);
+    expect(h.session.interruptSpeech()).toBe(true);
+    await flush();
+    expect(at(h.log.heard, 0)).toMatchObject({
+      heard: "Once upon a time there was a fox.",
+      unheard: "It lived in a quiet wood. It was a happy fox.",
+      interrupted: true,
+    });
+    expect(h.speeches.map(({ input }) => input.signal.aborted)).toEqual([
+      true,
+      true,
+      true,
+    ]);
+    at(h.speeches, 1).done.resolve();
+    await flush();
+    expect(h.log.captures).toBe(1);
+    at(h.speeches, 2).input.onStarted();
+    at(h.speeches, 2).done.resolve();
+    await flush();
+    expect(h.log.heard).toHaveLength(1);
+    expect(h.log.captures).toBe(2);
+    expect(h.log.turns.map(([event]) => event)).toEqual([
+      "submitted",
+      "first-audio",
+      "interrupted",
+    ]);
+  });
+
+  it("a pipelined playback failure aborts a queued successor before it starts", async () => {
+    const h = harness({ pipelineSpeech: true });
+    await h.session.start();
+    await h.say("tell me a story");
+    await h.clock.advance(longGapMs);
+    h.answer(0, "Once upon a time there was a fox. It lived in a quiet wood.");
+    await flush();
+    const first = at(h.speeches, 0);
+    first.input.onStarted();
+    await flush();
+    const second = at(h.speeches, 1);
+
+    first.done.reject(new Error("Speaker failed"));
+    await flush();
+    expect(second.input.signal.aborted).toBe(true);
+    expect(h.log.heard).toMatchObject([
+      {
+        replyId: "a-0",
+        heard: "",
+        unheard: "Once upon a time there was a fox. It lived in a quiet wood.",
+        interrupted: true,
+        playbackFailed: true,
+      },
+    ]);
+    expect(h.phase()).toBe("error");
+  });
+
+  it("a queued completion after an earlier playback failure never credits the failed sentence", async () => {
+    const h = harness({ pipelineSpeech: true });
+    await h.session.start();
+    await h.say("tell me a story");
+    await h.clock.advance(longGapMs);
+    h.answer(0, "Once upon a time there was a fox. It lived in a quiet wood.");
+    await flush();
+    const first = at(h.speeches, 0);
+    first.input.onStarted();
+    await flush();
+    const second = at(h.speeches, 1);
+
+    // The speaker has already queued the second call. The failure and its
+    // successor's callbacks can arrive before the controller resumes.
+    first.done.reject(new Error("Speaker failed"));
+    second.input.onStarted();
+    second.done.resolve();
+    await flush();
+    expect(h.log.heard).toMatchObject([
+      {
+        replyId: "a-0",
+        heard: "",
+        unheard: "Once upon a time there was a fox. It lived in a quiet wood.",
+        interrupted: true,
+        playbackFailed: true,
+      },
+    ]);
+    expect(h.phase()).toBe("error");
+  });
+});
+
+describe("VoiceAssistantSession pipelined stream and held speech", () => {
+  it("speaks sentences planned while the first one plays, from the stream and from the confirmed reply", async () => {
+    const h = harness({ pipelineSpeech: true });
+    await h.session.start();
+    await h.say("tell me a story");
+    await h.clock.advance(longGapMs);
+    const { input } = at(h.replies, 0);
+    input.onText?.("Once upon a time there was a fox. It lived", {
+      origin: "model",
+      direct: true,
+    });
+    await flush();
+    at(h.speeches, 0).input.onStarted();
+    await flush();
+    expect(h.speeches).toHaveLength(1);
+    input.onText?.(
+      "Once upon a time there was a fox. It lived in a quiet wood. It was",
+      { origin: "model", direct: true },
+    );
+    await flush();
+    expect(h.speeches.map((speech) => speech.input.text)).toEqual([
+      "Once upon a time there was a fox.",
+      "It lived in a quiet wood.",
+    ]);
+    h.answer(
+      0,
+      "Once upon a time there was a fox. It lived in a quiet wood. It was a happy fox.",
+    );
+    await flush();
+    // The third sentence waits until the second is audible: two in flight at most.
+    expect(h.speeches).toHaveLength(2);
+    at(h.speeches, 0).done.resolve();
+    await flush();
+    at(h.speeches, 1).input.onStarted();
+    await flush();
+    expect(h.speeches.map((speech) => speech.input.text)).toEqual([
+      "Once upon a time there was a fox.",
+      "It lived in a quiet wood.",
+      "It was a happy fox.",
+    ]);
+    expect(h.phase()).toBe("speaking");
+    at(h.speeches, 1).done.resolve();
+    await flush();
+    expect(h.phase()).toBe("speaking");
+    at(h.speeches, 2).done.resolve();
+    await flush();
+    expect(h.phase()).toBe("listening");
+    expect(at(h.log.heard, 0)).toMatchObject({
+      heard:
+        "Once upon a time there was a fox. It lived in a quiet wood. It was a happy fox.",
+      unheard: "",
+      interrupted: false,
+    });
+  });
+
+  it("speech that began before the first audio and is still held interrupts the playing reply", async () => {
+    const h = harness({
+      openMic: true,
+      timing: {
+        shortGapMs: 0,
+        longGapMs: 0,
+        bargeInConfirmMs: 400,
+        playbackBargeInMs: 400,
+      },
+    });
+    await h.session.start();
+    await h.say("tell me a story");
+    await h.clock.advance(0);
+    h.answer(0, "Once upon a time there was a fox.");
+    await flush();
+    h.mic().onSpeechStart(h.clock.now());
+    await h.clock.advance(100);
+    at(h.speeches, 0).input.onStarted();
+    await h.clock.advance(300);
+    expect(h.phase()).toBe("speaking");
+    await h.clock.advance(399);
+    expect(at(h.speeches, 0).input.signal.aborted).toBe(false);
+    await h.clock.advance(1);
+    expect(at(h.speeches, 0).input.signal.aborted).toBe(true);
+    expect(h.phase()).toBe("listening");
+    // It interrupted a reply that was playing: a new turn, not a joined one.
+    expect(h.session.getSnapshot().pendingText).toBeUndefined();
+  });
+
+  it("a turn taken back before it was sent passes on the turn it replaced", async () => {
+    const h = harness({
+      openMic: true,
+      manualSend: true,
+      timing: {
+        shortGapMs: 0,
+        longGapMs: 0,
+        bargeInConfirmMs: 400,
+        playbackBargeInMs: 400,
+      },
+    });
+    await h.session.start();
+    await h.say("call");
+    await h.clock.advance(0);
+    const first = at(h.replies, 0);
+    await h.say("Sam", 500);
+    expect(first.input.signal.aborted).toBe(true);
+    await h.clock.advance(0);
+    // The first request has not settled: the second turn is still waiting, unsent.
+    expect(h.log.sends).toHaveLength(1);
+    await h.say("tomorrow", 500);
+    first.reply.reject(new DOMException("cancelled", "AbortError"));
+    await flush();
+    await h.clock.advance(0);
+    expect(h.log.sends).toHaveLength(2);
+    expect(at(h.log.sends, 1)).toMatchObject({
+      text: "call Sam tomorrow",
+      supersedes: first.input.turnId,
+    });
   });
 });

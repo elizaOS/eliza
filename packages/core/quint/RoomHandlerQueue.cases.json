@@ -1,162 +1,168 @@
 {
-  "sources": ["packages/core/src/runtime/room-handler-queue.ts"],
-  "stateRepresentation": "The source variables form one typed record. Every action updates that record atomically and retains all other fields.",
-  "cases": [
-    {
-      "name": "bounded",
-      "main": "RoomHandlerQueue",
-      "init": "init",
-      "step": "step",
-      "invariants": [
-        "TypeOK",
-        "MutualExclusion",
-        "WaitersQueued",
-        "OrderedAcquisition",
-        "Bounded",
-        "NoLeakedOwnership",
-        "WritesUnderLease"
-      ],
-      "temporal": [
-        "DeadlockFree",
-        "NoAdmissionAfterClose",
-        "FreedByOwner",
-        "WaiterServed",
-        "TurnFinishes"
-      ],
-      "maxSteps": 100,
-      "samples": 1000,
-      "constants": {
-        "Turns": ["t1", "t2", "t3"],
-        "NumRooms": 2,
-        "MaxPerRoom": 2,
-        "MaxTotal": 3,
-        "MaxRooms": 2,
-        "MaxWrites": 1,
-        "None": "None"
-      },
-      "deadlock": true,
-      "temporalChecks": [
-        {
-          "property": "DeadlockFree",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in RoomHandlerQueue: DeadlockFree = always(enabled(nextStep))",
-            "No scheduler fairness is assumed by this property."
-          ]
-        },
-        {
-          "property": "NoAdmissionAfterClose",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in RoomHandlerQueue: NoAdmissionAfterClose = always(s.closed.implies(Rooms.forall(r => next(s.queue).get(r).length() <= s.queue.get(r).length())).orKeep(s))",
-            "No scheduler fairness is assumed by this property."
-          ]
-        },
-        {
-          "property": "FreedByOwner",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in RoomHandlerQueue: FreedByOwner = always(Rooms.forall(r => (s.active.get(r) != None and next(s.active).get(r) != s.active.get(r)).implies(and { Set(\"releasing\", \"unwinding\").contains(s.pc.get(s.active.get(r))), not(s.accepting.get(s.active.get(r)).contains(r)), s.writes.get(s.active.get(r)).get(r) == 0 })).orKeep(s))",
-            "No scheduler fairness is assumed by this property."
-          ]
-        },
-        {
-          "property": "WaiterServed",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in RoomHandlerQueue: WaiterServed = Fairness.implies(Turns.forall(t => (s.pc.get(t) == \"waiting\").leadsTo(s.pc.get(t) != \"waiting\")))",
-            "Model fairness predicate Fairness = and { Rooms.forall(r => Grant(r).weakFair(s)), Turns.forall(t => Admit(t).weakFair(s) and StartRelease(t).weakFair(s) and StopWrites(t).weakFair(s) and Release(t).weakFair(s)), Turns.forall(t => Rooms.forall(r => EndWrite(t, r).weakFair(s))) }",
-            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
-          ]
-        },
-        {
-          "property": "TurnFinishes",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in RoomHandlerQueue: TurnFinishes = Fairness.implies(Turns.forall(t => (s.pc.get(t) == \"acquiring\").leadsTo(Set(\"done\", \"refused\", \"cancelled\").contains(s.pc.get(t)))))",
-            "Model fairness predicate Fairness = and { Rooms.forall(r => Grant(r).weakFair(s)), Turns.forall(t => Admit(t).weakFair(s) and StartRelease(t).weakFair(s) and StopWrites(t).weakFair(s) and Release(t).weakFair(s)), Turns.forall(t => Rooms.forall(r => EndWrite(t, r).weakFair(s))) }",
-            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
-          ]
-        }
-      ]
-    },
-    {
-      "name": "cycle",
-      "main": "RoomHandlerQueueCycle",
-      "init": "init",
-      "step": "step",
-      "invariants": [
-        "TypeOK",
-        "MutualExclusion",
-        "WaitersQueued",
-        "OrderedAcquisition",
-        "Bounded",
-        "NoLeakedOwnership",
-        "WritesUnderLease"
-      ],
-      "temporal": [
-        "DeadlockFree",
-        "NoAdmissionAfterClose",
-        "FreedByOwner",
-        "WaiterServed",
-        "TurnFinishes"
-      ],
-      "maxSteps": 100,
-      "samples": 1000,
-      "constants": {
-        "Turns": ["t1", "t2", "t3"],
-        "NumRooms": 2,
-        "MaxPerRoom": 2,
-        "MaxTotal": 4,
-        "MaxRooms": 2,
-        "MaxWrites": 1,
-        "None": "None"
-      },
-      "deadlock": true,
-      "temporalChecks": [
-        {
-          "property": "DeadlockFree",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in RoomHandlerQueueCycle: DeadlockFree = always(enabled(nextStep))",
-            "No scheduler fairness is assumed by this property."
-          ]
-        },
-        {
-          "property": "NoAdmissionAfterClose",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in RoomHandlerQueueCycle: NoAdmissionAfterClose = always(s.closed.implies(Rooms.forall(r => next(s.queue).get(r).length() <= s.queue.get(r).length())).orKeep(s))",
-            "No scheduler fairness is assumed by this property."
-          ]
-        },
-        {
-          "property": "FreedByOwner",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in RoomHandlerQueueCycle: FreedByOwner = always(Rooms.forall(r => (s.active.get(r) != None and next(s.active).get(r) != s.active.get(r)).implies(and { Set(\"releasing\", \"unwinding\").contains(s.pc.get(s.active.get(r))), not(s.accepting.get(s.active.get(r)).contains(r)), s.writes.get(s.active.get(r)).get(r) == 0 })).orKeep(s))",
-            "No scheduler fairness is assumed by this property."
-          ]
-        },
-        {
-          "property": "WaiterServed",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in RoomHandlerQueueCycle: WaiterServed = Fairness.implies(Turns.forall(t => (s.pc.get(t) == \"waiting\").leadsTo(s.pc.get(t) != \"waiting\")))",
-            "Model fairness predicate Fairness = and { Rooms.forall(r => Grant(r).weakFair(s)), Turns.forall(t => Admit(t).weakFair(s) and StartRelease(t).weakFair(s) and StopWrites(t).weakFair(s) and Release(t).weakFair(s)), Turns.forall(t => Rooms.forall(r => EndWrite(t, r).weakFair(s))) }",
-            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
-          ]
-        },
-        {
-          "property": "TurnFinishes",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in RoomHandlerQueueCycle: TurnFinishes = Fairness.implies(Turns.forall(t => (s.pc.get(t) == \"acquiring\").leadsTo(Set(\"done\", \"refused\", \"cancelled\").contains(s.pc.get(t)))))",
-            "Model fairness predicate Fairness = and { Rooms.forall(r => Grant(r).weakFair(s)), Turns.forall(t => Admit(t).weakFair(s) and StartRelease(t).weakFair(s) and StopWrites(t).weakFair(s) and Release(t).weakFair(s)), Turns.forall(t => Rooms.forall(r => EndWrite(t, r).weakFair(s))) }",
-            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
-          ]
-        }
-      ]
-    }
-  ]
+	"sources": [
+		"packages/core/src/runtime/room-handler-queue.ts",
+		"packages/core/test/room-handler-queue-model.test.ts"
+	],
+	"bounds": {
+		"domain": "Three turns, two rooms, at most two leases or waiters per room, a total limit of three or four, and one outstanding write per room per turn. Same-room nested reuse leaves ownership unchanged. Widening refuses the nested call and can unwind the outer lease.",
+		"limitations": "The real queue suite exercises ambient ownership, nested reuse, widening refusal and released-lease continuation. It does not replay the generated schedules for saturation, close, cancellation or writes. The PostDeliveryTasks suite separately exercises write-tail ownership."
+	},
+	"conformance": "packages/core/quint/check-core-concurrency.mjs",
+	"stateRepresentation": "The source variables form one typed record. Every action updates that record atomically and retains all other fields.",
+	"cases": [
+		{
+			"name": "bounded",
+			"main": "RoomHandlerQueue",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"MutualExclusion",
+				"WaitersQueued",
+				"OrderedAcquisition",
+				"Bounded",
+				"NoLeakedOwnership",
+				"WritesUnderLease"
+			],
+			"temporal": [
+				"DeadlockFree",
+				"NoAdmissionAfterClose",
+				"FreedByOwner",
+				"WaiterServed",
+				"TurnFinishes"
+			],
+			"maxSteps": 100,
+			"samples": 1000,
+			"constants": {
+				"Turns": ["t1", "t2", "t3"],
+				"NumRooms": 2,
+				"MaxPerRoom": 2,
+				"MaxTotal": 3,
+				"MaxRooms": 2,
+				"MaxWrites": 1
+			},
+			"deadlock": true,
+			"temporalChecks": [
+				{
+					"property": "DeadlockFree",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in RoomHandlerQueue: DeadlockFree = always(enabled(nextStep))",
+						"No scheduler fairness is assumed by this property."
+					]
+				},
+				{
+					"property": "NoAdmissionAfterClose",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in RoomHandlerQueue: NoAdmissionAfterClose = always(s.closed.implies(Rooms.forall(r => next(s.queue).get(r).length() <= s.queue.get(r).length())).orKeep(s))",
+						"No scheduler fairness is assumed by this property."
+					]
+				},
+				{
+					"property": "FreedByOwner",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in RoomHandlerQueue: FreedByOwner = always(Rooms.forall(r => (s.active.get(r) != None and next(s.active).get(r) != s.active.get(r)).implies(and { Set(\"releasing\", \"unwinding\").contains(s.pc.get(s.active.get(r))), not(s.accepting.get(s.active.get(r)).contains(r)), s.writes.get(s.active.get(r)).get(r) == 0 })).orKeep(s))",
+						"No scheduler fairness is assumed by this property."
+					]
+				},
+				{
+					"property": "WaiterServed",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in RoomHandlerQueue: WaiterServed = Fairness.implies(Turns.forall(t => (s.pc.get(t) == \"waiting\").leadsTo(s.pc.get(t) != \"waiting\")))",
+						"Model fairness predicate Fairness = and { Rooms.forall(r => Grant(r).weakFair(s)), Turns.forall(t => Admit(t).weakFair(s) and StartRelease(t).weakFair(s) and StopWrites(t).weakFair(s) and Release(t).weakFair(s)), Turns.forall(t => Rooms.forall(r => EndWrite(t, r).weakFair(s))) }",
+						"The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+					]
+				},
+				{
+					"property": "TurnFinishes",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in RoomHandlerQueue: TurnFinishes = Fairness.implies(Turns.forall(t => (s.pc.get(t) == \"acquiring\").leadsTo(Set(\"done\", \"refused\", \"cancelled\").contains(s.pc.get(t)))))",
+						"Model fairness predicate Fairness = and { Rooms.forall(r => Grant(r).weakFair(s)), Turns.forall(t => Admit(t).weakFair(s) and StartRelease(t).weakFair(s) and StopWrites(t).weakFair(s) and Release(t).weakFair(s)), Turns.forall(t => Rooms.forall(r => EndWrite(t, r).weakFair(s))) }",
+						"The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+					]
+				}
+			]
+		},
+		{
+			"name": "cycle",
+			"main": "RoomHandlerQueueCycle",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"MutualExclusion",
+				"WaitersQueued",
+				"OrderedAcquisition",
+				"Bounded",
+				"NoLeakedOwnership",
+				"WritesUnderLease"
+			],
+			"temporal": [
+				"DeadlockFree",
+				"NoAdmissionAfterClose",
+				"FreedByOwner",
+				"WaiterServed",
+				"TurnFinishes"
+			],
+			"maxSteps": 100,
+			"samples": 1000,
+			"constants": {
+				"Turns": ["t1", "t2", "t3"],
+				"NumRooms": 2,
+				"MaxPerRoom": 2,
+				"MaxTotal": 4,
+				"MaxRooms": 2,
+				"MaxWrites": 1
+			},
+			"deadlock": true,
+			"temporalChecks": [
+				{
+					"property": "DeadlockFree",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in RoomHandlerQueueCycle: DeadlockFree = always(enabled(nextStep))",
+						"No scheduler fairness is assumed by this property."
+					]
+				},
+				{
+					"property": "NoAdmissionAfterClose",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in RoomHandlerQueueCycle: NoAdmissionAfterClose = always(s.closed.implies(Rooms.forall(r => next(s.queue).get(r).length() <= s.queue.get(r).length())).orKeep(s))",
+						"No scheduler fairness is assumed by this property."
+					]
+				},
+				{
+					"property": "FreedByOwner",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in RoomHandlerQueueCycle: FreedByOwner = always(Rooms.forall(r => (s.active.get(r) != None and next(s.active).get(r) != s.active.get(r)).implies(and { Set(\"releasing\", \"unwinding\").contains(s.pc.get(s.active.get(r))), not(s.accepting.get(s.active.get(r)).contains(r)), s.writes.get(s.active.get(r)).get(r) == 0 })).orKeep(s))",
+						"No scheduler fairness is assumed by this property."
+					]
+				},
+				{
+					"property": "WaiterServed",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in RoomHandlerQueueCycle: WaiterServed = Fairness.implies(Turns.forall(t => (s.pc.get(t) == \"waiting\").leadsTo(s.pc.get(t) != \"waiting\")))",
+						"Model fairness predicate Fairness = and { Rooms.forall(r => Grant(r).weakFair(s)), Turns.forall(t => Admit(t).weakFair(s) and StartRelease(t).weakFair(s) and StopWrites(t).weakFair(s) and Release(t).weakFair(s)), Turns.forall(t => Rooms.forall(r => EndWrite(t, r).weakFair(s))) }",
+						"The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+					]
+				},
+				{
+					"property": "TurnFinishes",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in RoomHandlerQueueCycle: TurnFinishes = Fairness.implies(Turns.forall(t => (s.pc.get(t) == \"acquiring\").leadsTo(Set(\"done\", \"refused\", \"cancelled\").contains(s.pc.get(t)))))",
+						"Model fairness predicate Fairness = and { Rooms.forall(r => Grant(r).weakFair(s)), Turns.forall(t => Admit(t).weakFair(s) and StartRelease(t).weakFair(s) and StopWrites(t).weakFair(s) and Release(t).weakFair(s)), Turns.forall(t => Rooms.forall(r => EndWrite(t, r).weakFair(s))) }",
+						"The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+					]
+				}
+			]
+		}
+	]
 }

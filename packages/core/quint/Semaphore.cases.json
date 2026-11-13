@@ -1,88 +1,96 @@
 {
-  "sources": ["packages/core/src/utils/task-scheduling.ts"],
-  "stateRepresentation": "The source variables form one typed record. Every action updates that record atomically and retains all other fields.",
-  "cases": [
-    {
-      "name": "one",
-      "main": "Semaphore",
-      "init": "init",
-      "step": "step",
-      "invariants": [
-        "TypeOK",
-        "PermitConservation",
-        "NoIdlePermitWithWaiters",
-        "WaitersQueued",
-        "FIFOGrants",
-        "CancelledNeverHolds"
-      ],
-      "temporal": ["DeadlockFree", "WaiterServed"],
-      "maxSteps": 100,
-      "samples": 1000,
-      "constants": {
-        "Callers": ["c1", "c2", "c3", "c4"],
-        "N": 1
-      },
-      "deadlock": true,
-      "temporalChecks": [
-        {
-          "property": "DeadlockFree",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in Semaphore: DeadlockFree = always(enabled(nextStep))",
-            "No scheduler fairness is assumed by this property."
-          ]
-        },
-        {
-          "property": "WaiterServed",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in Semaphore: WaiterServed = Fairness.implies(Callers.forall(c => (s.pc.get(c) == \"waiting\").leadsTo(s.pc.get(c) != \"waiting\")))",
-            "Model fairness predicate Fairness = Callers.forall(c => Release(c).weakFair(s) and CancelListener(c).weakFair(s))",
-            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
-          ]
-        }
-      ]
-    },
-    {
-      "name": "two",
-      "main": "SemaphoreTwo",
-      "init": "init",
-      "step": "step",
-      "invariants": [
-        "TypeOK",
-        "PermitConservation",
-        "NoIdlePermitWithWaiters",
-        "WaitersQueued",
-        "FIFOGrants",
-        "CancelledNeverHolds"
-      ],
-      "temporal": ["DeadlockFree", "WaiterServed"],
-      "maxSteps": 100,
-      "samples": 1000,
-      "constants": {
-        "Callers": ["c1", "c2", "c3", "c4"],
-        "N": 2
-      },
-      "deadlock": true,
-      "temporalChecks": [
-        {
-          "property": "DeadlockFree",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in SemaphoreTwo: DeadlockFree = always(enabled(nextStep))",
-            "No scheduler fairness is assumed by this property."
-          ]
-        },
-        {
-          "property": "WaiterServed",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in SemaphoreTwo: WaiterServed = Fairness.implies(Callers.forall(c => (s.pc.get(c) == \"waiting\").leadsTo(s.pc.get(c) != \"waiting\")))",
-            "Model fairness predicate Fairness = Callers.forall(c => Release(c).weakFair(s) and CancelListener(c).weakFair(s))",
-            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
-          ]
-        }
-      ]
-    }
-  ]
+	"sources": [
+		"packages/core/src/utils/task-scheduling.ts",
+		"packages/core/test/semaphore.test.ts"
+	],
+	"bounds": {
+		"domain": "Four one-shot callers and one or two permits. Callers release once after admission. Abort can arrive before acquisition, in the queue, or after grant. Signal abort and delivery of the semaphore listener are separate steps.",
+		"limitations": "The existing FIFO, cancellation and permit-ownership cases run against the real semaphore. The earlier-listener race runs at both modeled capacities. Tests exercise concrete schedules and do not replay all generated traces."
+	},
+	"conformance": "packages/core/quint/check-core-concurrency.mjs",
+	"stateRepresentation": "The source variables form one typed record. Every action updates that record atomically and retains all other fields.",
+	"cases": [
+		{
+			"name": "one",
+			"main": "Semaphore",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"PermitConservation",
+				"NoIdlePermitWithWaiters",
+				"WaitersQueued",
+				"FIFOGrants",
+				"CancelledNeverHolds"
+			],
+			"temporal": ["DeadlockFree", "WaiterServed"],
+			"maxSteps": 100,
+			"samples": 1000,
+			"constants": {
+				"Callers": ["c1", "c2", "c3", "c4"],
+				"N": 1
+			},
+			"deadlock": true,
+			"temporalChecks": [
+				{
+					"property": "DeadlockFree",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in Semaphore: DeadlockFree = always(enabled(nextStep))",
+						"No scheduler fairness is assumed by this property."
+					]
+				},
+				{
+					"property": "WaiterServed",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in Semaphore: WaiterServed = Fairness.implies(Callers.forall(c => (s.pc.get(c) == \"waiting\").leadsTo(s.pc.get(c) != \"waiting\")))",
+						"Model fairness predicate Fairness = Callers.forall(c => Release(c).weakFair(s) and CancelListener(c).weakFair(s))",
+						"The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+					]
+				}
+			]
+		},
+		{
+			"name": "two",
+			"main": "SemaphoreTwo",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"PermitConservation",
+				"NoIdlePermitWithWaiters",
+				"WaitersQueued",
+				"FIFOGrants",
+				"CancelledNeverHolds"
+			],
+			"temporal": ["DeadlockFree", "WaiterServed"],
+			"maxSteps": 100,
+			"samples": 1000,
+			"constants": {
+				"Callers": ["c1", "c2", "c3", "c4"],
+				"N": 2
+			},
+			"deadlock": true,
+			"temporalChecks": [
+				{
+					"property": "DeadlockFree",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in SemaphoreTwo: DeadlockFree = always(enabled(nextStep))",
+						"No scheduler fairness is assumed by this property."
+					]
+				},
+				{
+					"property": "WaiterServed",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in SemaphoreTwo: WaiterServed = Fairness.implies(Callers.forall(c => (s.pc.get(c) == \"waiting\").leadsTo(s.pc.get(c) != \"waiting\")))",
+						"Model fairness predicate Fairness = Callers.forall(c => Release(c).weakFair(s) and CancelListener(c).weakFair(s))",
+						"The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+					]
+				}
+			]
+		}
+	]
 }

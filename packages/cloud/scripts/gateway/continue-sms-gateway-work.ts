@@ -13,7 +13,7 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 
 function usage() {
   return [
-    "Usage: node packages/cloud/scripts/gateway/continue-sms-gateway-work.ts [options]",
+    "Usage: bun packages/cloud/scripts/gateway/continue-sms-gateway-work.ts [options]",
     "",
     "Options:",
     "  --apply-dns           Apply Porkbun DNS records before checking public readiness.",

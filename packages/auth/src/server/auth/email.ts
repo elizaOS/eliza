@@ -92,6 +92,7 @@ export interface TenantInvitationEmailContext {
 // ---------------------------------------------------------------------------
 
 const TOKEN_BYTES = 32;
+const MAGIC_LINK_TOKEN_PATTERN = new RegExp(`^[0-9a-f]{${TOKEN_BYTES * 2}}$`);
 const DEFAULT_TTL_MS = 10 * 60 * 1000; // 10 min
 const DEFAULT_CALLBACK = "/auth/callback/email";
 const OTP_DIGITS = 6;
@@ -358,16 +359,6 @@ function parseStatusRecord(
     return null;
   }
   return null;
-}
-
-function decodeMagicLinkPayload(value: string): MagicLinkPayload {
-  try {
-    const parsed = JSON.parse(value) as MagicLinkPayload;
-    if (typeof parsed.email === "string") return parsed;
-  } catch {
-    // Backward-compatible legacy tokens stored the email as the raw value.
-  }
-  return { email: value };
 }
 
 function decodeLegacyOtpPayload(value: string): MagicLinkPayload | null {
@@ -1256,22 +1247,17 @@ export class EmailAuth {
     email?: string,
     tenantId?: string,
   ): Promise<EmailLoginVerifyResult> {
+    // Only generateToken output is a link token. Any other string could be the
+    // preimage of another record's store key (an email OTP key is the hash of
+    // `email-otp:<tenant>:<email>:<code>`), so it is refused before lookup.
+    if (!MAGIC_LINK_TOKEN_PATTERN.test(token)) {
+      return { email: "", valid: false };
+    }
     const tokenHash = hashToken(token);
     const challengeId = await this.tokenStore.verify(
       emailLoginLinkAliasKey(tokenHash),
     );
-
-    if (!challengeId) {
-      const legacy = await this.tokenStore.consume(tokenHash);
-      if (!legacy) return { email: "", valid: false };
-      const payload = decodeMagicLinkPayload(legacy);
-      return {
-        email: payload.email,
-        tenantId: payload.tenantId,
-        valid: true,
-        challengeId: "",
-      };
-    }
+    if (!challengeId) return { email: "", valid: false };
     const payload = parseEmailLoginChallenge(
       await this.tokenStore.verify(emailLoginChallengeKey(challengeId)),
     );

@@ -210,7 +210,7 @@ const config = {
         "playwright.*.config.ts",
         "scripts/**/*.{test,spec}.{ts,tsx,mjs}",
         // Device/workflow CLIs and subprocess entrypoints outside package scripts.
-        "scripts/alpha-dstack.ts",
+        "scripts/dstack.ts",
         "scripts/android-chromium-smoke.mjs",
         "scripts/android-gateway-lifecycle.ts",
         "scripts/android-native-agent.ts",
@@ -343,16 +343,13 @@ const config = {
       ],
       ignore: ["dist/**", "dist-mobile*/**"],
       ignoreDependencies: [
-        "@elizaos/plugin-cloud-apps",
         "@elizaos/plugin-imessage",
         "@elizaos/plugin-mcp",
         "@elizaos/plugin-notes",
-        "@elizaos/plugin-whatsapp",
         "@elizaos/plugin-workflow",
         "node:sqlite",
         "ws",
         "@types/ws",
-        "x402-fetch",
       ],
     },
     "packages/core": {
@@ -380,10 +377,6 @@ const config = {
         "src/**/*.d.ts",
         "src/**/*.d.ts.map",
       ],
-    },
-    "plugins/plugin-tailscale": {
-      entry: ["src/index.ts"],
-      project: ["src/**/*.ts"],
     },
     "packages/ui": {
       entry: ["src/**/*.{css,ts,tsx}", "vitest.config.ts"],

@@ -775,15 +775,21 @@ export class AppsRepository {
     return updated;
   }
 
-  /** Reads one app only when the caller still owns its persisted generation. */
-  async findByDeploymentGeneration(id: string, generation: string): Promise<App | undefined> {
+  /** Reads a persisted generation on the primary, including deletion for daemon reconciliation. */
+  async findByDeploymentGeneration(
+    id: string,
+    generation: string,
+    recoveryOrganizationId?: string,
+  ): Promise<App | undefined> {
     const [app] = await dbWrite
       .select()
       .from(apps)
       .where(
         and(
           eq(apps.id, id),
-          isNull(apps.deletion_job_id),
+          recoveryOrganizationId
+            ? eq(apps.organization_id, recoveryOrganizationId)
+            : isNull(apps.deletion_job_id),
           sql`${apps.metadata}->>${APP_DEPLOYMENT_GENERATION_KEY} = ${generation}`,
         ),
       )
@@ -791,7 +797,7 @@ export class AppsRepository {
     return app;
   }
 
-  /** Applies a generation-owned transition without touching a newer deployment. */
+  /** Applies a generation-owned transition, merging metadata into the locked row. */
   async updateDeploymentGeneration(
     id: string,
     generation: string | null,
@@ -807,7 +813,12 @@ export class AppsRepository {
       : undefined;
     const nextData =
       generation && data.metadata
-        ? { ...data, metadata: metadataForDeploymentGeneration(data.metadata, generation) }
+        ? {
+            ...data,
+            metadata: sql`${apps.metadata} || ${JSON.stringify(
+              metadataForDeploymentGeneration(data.metadata, generation),
+            )}::jsonb`,
+          }
         : data;
     const write = async (database: typeof dbWrite | DbTransaction) => {
       const [updated] = await database

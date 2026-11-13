@@ -10,7 +10,7 @@ import { ElizaError, type Memory, type MemoryMetadata, type UUID } from "@elizao
 import { and, cosineDistance, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import {
   assertEmbeddingWrite,
-  captureEmbeddingWrite,
+  captureEmbeddingTarget,
   type EmbeddingWriteContext,
   embeddingSpaceCondition,
   readEmbeddingVector,
@@ -269,16 +269,18 @@ export class MemoryStore implements Store {
     }
   ): Promise<Memory[]> {
     return this.ctx.withRetry(async () => {
+      const { column, spaceId } = captureEmbeddingTarget(
+        embedding,
+        this.ctx.getEmbeddingDimension(),
+        this.ctx.getEmbeddingSpace()
+      );
       const tableName = params.tableName;
       const cleanVector = embedding.map((n) => (Number.isFinite(n) ? Number(n.toFixed(6)) : 0));
 
-      const similarity = sql<number>`1 - (${cosineDistance(
-        embeddingTable[this.ctx.getEmbeddingDimension()],
-        cleanVector
-      )})`;
+      const similarity = sql<number>`1 - (${cosineDistance(embeddingTable[column], cleanVector)})`;
 
       const conditions = [
-        embeddingSpaceCondition(this.ctx.getEmbeddingSpace()),
+        embeddingSpaceCondition(spaceId),
         eq(memoryTable.type, tableName),
         eq(memoryTable.agentId, this.ctx.agentId),
       ];
@@ -293,7 +295,7 @@ export class MemoryStore implements Store {
         .select({
           memory: memoryTable,
           similarity,
-          embedding: embeddingTable[this.ctx.getEmbeddingDimension()],
+          embedding: embeddingTable[column],
           embeddingSpace: embeddingTable.spaceId,
         })
         .from(embeddingTable)
@@ -327,7 +329,7 @@ export class MemoryStore implements Store {
   async create(memory: Memory & { metadata?: MemoryMetadata }, tableName: string): Promise<UUID> {
     const memoryId = memory.id ?? (randomUUID() as UUID);
     const embeddingWrite = Array.isArray(memory.embedding)
-      ? captureEmbeddingWrite(
+      ? captureEmbeddingTarget(
           memory.embedding,
           this.ctx.getEmbeddingDimension(),
           this.ctx.getEmbeddingSpace()
@@ -385,7 +387,7 @@ export class MemoryStore implements Store {
     memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }
   ): Promise<boolean> {
     const embeddingWrite = Array.isArray(memory.embedding)
-      ? captureEmbeddingWrite(
+      ? captureEmbeddingTarget(
           memory.embedding,
           this.ctx.getEmbeddingDimension(),
           this.ctx.getEmbeddingSpace()

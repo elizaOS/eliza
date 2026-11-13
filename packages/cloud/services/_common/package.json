@@ -1,11 +1,18 @@
 {
   "name": "@elizaos/cloud-services-common",
-  "version": "1.0.0",
+  "version": "2.0.6",
   "description": "Shared utilities for cloud-services packages (structured logger, k8s service-account helpers).",
   "type": "module",
-  "private": true,
   "main": "src/index.ts",
   "types": "src/index.ts",
+  "files": [
+    "README.md",
+    "src",
+    "!src/**/*.test.ts"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "exports": {
     ".": "./src/index.ts",
     "./network-consent": "./src/network-consent.ts",

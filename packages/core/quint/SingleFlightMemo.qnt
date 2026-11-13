@@ -91,3 +91,59 @@ module SingleFlightMemo {
 module SingleFlightMemoLiveness {
   import SingleFlightMemoModel(Readers = Set("r1", "r2"), Writers = Set("w1", "w2")).* from "./SingleFlightMemo"
 }
+
+// An external write does not invalidate a process-local memo. This projection
+// keeps the elapsed clock boundary explicit. The other modules check pending
+// and rejected fetches.
+module SingleFlightMemoExpiry {
+  pure val Ttl = 2
+  type Entry = Empty | Resident({ version: int, age: int })
+  type Receipt = NoRead | ReadReceipt({ hit: bool, age: int, version: int, durable: int })
+  type State = { durable: int, external: bool, local: bool, entry: Entry, receipt: Receipt }
+  var s: State
+
+  pure def age(entry: Entry): int = match entry { Empty => Ttl | Resident(value) => value.age }
+  pure def version(entry: Entry): int = match entry { Empty => 0 | Resident(value) => value.version }
+
+  action init = s' = { durable: 0, external: false, local: false, entry: Empty, receipt: NoRead }
+  action Read = {
+    val previousAge = age(s.entry)
+    val hit = previousAge < Ttl
+    val observed = if (hit) version(s.entry) else s.durable
+    s' = { ...s,
+      entry: if (hit) s.entry else Resident({ version: observed, age: 0 }),
+      receipt: ReadReceipt({ hit: hit, age: previousAge, version: observed, durable: s.durable })
+    }
+  }
+  action ExternalWrite = all {
+    not(s.external), s' = { ...s, durable: s.durable + 1, external: true }
+  }
+  action LocalWrite = all {
+    not(s.local), s' = { ...s, durable: s.durable + 1, local: true, entry: Empty }
+  }
+  action Tick = all {
+    age(s.entry) < Ttl,
+    s' = { ...s, entry: Resident({ version: version(s.entry), age: age(s.entry) + 1 }) }
+  }
+  action WallClockChange = s' = s
+  action step = any { Read, ExternalWrite, LocalWrite, Tick, WallClockChange }
+
+  val ExpiredReadRefreshes = match s.receipt {
+    NoRead => true
+    | ReadReceipt(read) => (read.age == Ttl).implies(not(read.hit) and read.version == read.durable)
+  }
+  val FreshReadDoesNotRefresh = match s.receipt {
+    NoRead => true
+    | ReadReceipt(read) => (read.age < Ttl).implies(read.hit)
+  }
+  temporal FreshnessEnds = (age(s.entry) < Ttl).leadsTo(age(s.entry) == Ttl)
+  temporal FreshnessEndsUnderFairClock = Tick.weakFair(s).implies(FreshnessEnds)
+
+  run rollbackDoesNotExtendExpiryTest = init.then(Read).then(ExternalWrite)
+    .then(WallClockChange).then(Tick).then(Read)
+    .expect(s.receipt == ReadReceipt({ hit: true, age: 1, version: 0, durable: 1 }))
+    .then(Tick).then(Read)
+    .expect(s.receipt == ReadReceipt({ hit: false, age: Ttl, version: 1, durable: 1 }))
+  run localWriteInvalidatesImmediatelyTest = init.then(Read).then(LocalWrite).then(Read)
+    .expect(s.receipt == ReadReceipt({ hit: false, age: Ttl, version: 1, durable: 1 }))
+}

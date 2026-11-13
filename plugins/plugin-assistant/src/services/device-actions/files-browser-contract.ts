@@ -7,13 +7,15 @@
  *
  * - `files_filter` narrows what Files shows (a dismissible chip). It reads
  *   names, kinds, folders and dates only and changes nothing.
- * - `files_open` shows one file in Files. It changes nothing.
+ * - `files_open` shows one file in Files. It changes nothing. The file is a path,
+ *   or `shown`: the position (1 is the first) of an item in the filter results on
+ *   screen. The phone resolves the position, so no file name leaves the phone.
  * - `files_share`, `files_move`, `files_trash` and `files_folder_create` are
  *   proposals the owner reviews with Files on screen before anything changes or
  *   leaves the phone. A move keeps both files when the name is taken; trash is
  *   undoable from Files > Trash. A file that is no longer where the owner
  *   reviewed it is left alone.
- * - A move or trash carries `reviewed`: the identity (size, modified time) of
+ * - A move or trash carries `reviewed`: the opaque storage identity of
  *   each path as the phone read it when the proposal card was built. The agent
  *   never supplies it (the coordinator replaces whatever arrives), and the phone
  *   leaves any file whose identity has changed since then untouched.
@@ -21,7 +23,7 @@
  * Operations keep one flat shape, so a validated operation validates again
  * unchanged (journal recovery re-reads it).
  */
-import type { ActionParameterSchema } from "@elizaos/core";
+import type { ActionParameterSchema } from "@elizaos/core/schema-types";
 
 export const FILES_CAPABILITY = "files.browser.v1";
 export const FILES_OPERATION_TYPES = [
@@ -53,12 +55,12 @@ export type FilesFilterOperation = {
   from?: string;
   to?: string;
 };
-/** What the owner reviewed for one path: its size in bytes (0 for a folder)
- * and its modified time in milliseconds since the epoch. */
-export type FilesIdentity = { size: number; modified: number };
+/** Opaque identity of the storage object and revision shown in the review. */
+export type FilesIdentity = string;
 export type FilesAgentOperation =
   | FilesFilterOperation
   | { type: "files_open"; path: string }
+  | { type: "files_open"; shown: number }
   | { type: "files_share"; paths: string[] }
   | {
       type: "files_move";
@@ -117,18 +119,10 @@ function paths(value: unknown): string[] {
 function identities(value: unknown, count: number): FilesIdentity[] {
   if (!Array.isArray(value) || value.length !== count)
     throw Error("Invalid reviewed files");
-  return value.map((item) => {
-    const identity = row(item);
-    exact(identity, ["size", "modified"]);
-    const { size, modified } = identity;
-    if (
-      !Number.isSafeInteger(size) ||
-      (size as number) < 0 ||
-      !Number.isSafeInteger(modified) ||
-      (modified as number) < 0
-    )
+  return Array.from(value, (token: unknown) => {
+    if (typeof token !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(token))
       throw Error("Invalid reviewed files");
-    return { size: size as number, modified: modified as number };
+    return token;
   });
 }
 /** Files operations that change files the owner reviewed by identity. */
@@ -194,8 +188,16 @@ export function validateFilesOperation(value: unknown): FilesAgentOperation {
       return out;
     }
     case "files_open":
-      exact(op, ["type", "path"]);
-      return { type: "files_open", path: validFilesPath(op.path) };
+      exact(op, ["type", "path", "shown"]);
+      if (op.shown === undefined)
+        return { type: "files_open", path: validFilesPath(op.path) };
+      if (
+        op.path !== undefined ||
+        !Number.isSafeInteger(op.shown) ||
+        (op.shown as number) < 1
+      )
+        throw Error("Invalid shown item");
+      return { type: "files_open", shown: op.shown as number };
     case "files_share":
       exact(op, ["type", "paths"]);
       return { type: "files_share", paths: paths(op.paths) };
@@ -278,7 +280,10 @@ export function describeFilesOperation(op: FilesAgentOperation): {
     case "files_filter":
       return { title: "Show files", description: filesFilterLabel(op) };
     case "files_open":
-      return { title: "Open file", description: place(op.path) };
+      return {
+        title: "Open file",
+        description: "shown" in op ? `Shown item ${op.shown}` : place(op.path),
+      };
     case "files_share":
       return {
         title: `Share ${count(op.paths.length)}`,
@@ -342,10 +347,16 @@ export const FILES_OPERATION_SCHEMAS: ActionParameterSchema[] = [
   {
     type: "object",
     additionalProperties: false,
-    required: ["type", "path"],
+    required: ["type"],
     properties: {
       type: { type: "string", enum: ["files_open"] },
       path: filesPath,
+      shown: {
+        type: "integer",
+        minimum: 1,
+        description:
+          "Instead of path: position of an item in the files_filter results on screen; 1 is the first",
+      },
     },
   },
   ...(["files_share", "files_trash"] as const).map((type) => ({
@@ -382,4 +393,4 @@ export const FILES_OPERATION_SCHEMAS: ActionParameterSchema[] = [
   },
 ];
 export const FILES_GUIDANCE =
-  "Phone Files (requires files.browser.v1): to find files, use files_filter with name words, a kind, a folder or a modified date range; it only narrows what Files shows and returns a count, never file contents. files_open shows one file. files_share, files_move, files_trash and files_folder_create are reviewed with Files on screen; a move never replaces a file with the same name, and Trash is restorable for 30 days. Use only paths the owner named or Files showed; never invent paths.";
+  "Phone Files (requires files.browser.v1): to find files, use files_filter with name words, a kind, a folder or a modified date range; it only narrows what Files shows and returns a count, never file names or contents. files_open shows one file: give its path, or shown (1 is the first) for an item in the filter results on screen, for example shown 1 when the filter found one file. files_share, files_move, files_trash and files_folder_create are reviewed with Files on screen; a move never replaces a file with the same name, and Trash is restorable for 30 days. Use only paths the owner named or Files showed; never invent paths.";

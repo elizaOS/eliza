@@ -1,0 +1,33 @@
+[
+	{
+		"id": "core-ConnectorDispatch",
+		"model": "packages/core/quint/ConnectorDispatch.qnt",
+		"sources": [
+			"packages/core/src/runtime/connector-registry.ts",
+			"packages/core/src/runtime/connector-registration.ts",
+			"packages/core/src/runtime.ts",
+			"packages/core/src/security/voice-gate.ts",
+			"packages/core/test/connector-registry.integration.test.ts"
+		],
+		"invariants": [
+			"RegistryShape",
+			"UsesAdmittedHandler",
+			"WaitsForVoice",
+			"MissingNeverInvokes",
+			"ResultRequiresSettlement",
+			"WaitsForSnapshot",
+			"UnsupportedNeverInvokes",
+			"DescriptorOwnsHook"
+		],
+		"status": "partial",
+		"limitations": [
+			"One normalized source, source-only and one named route, two callback identities and one admitted call or retained post snapshot. Separate instances project send transport, one message hook and one post hook. The real suite exercises all six Core message hook wrappers and all three published post hooks; the model does not cross-product their payloads.",
+			"Send transport registration retains an existing handler when metadata alone replaces a descriptor. Message and post hooks belong to their descriptor, so metadata replacement removes the hook. Message hook dispatch selects the exact descriptor before testing its hook, and only falls back when that descriptor is absent. Hook resolution and invocation are one synchronous segment.",
+			"Core publishes cloned post descriptors and does not select a post destination. The post case captures one exact enumerated route and later invokes its copied hook locally. Replacement and unregister affect later enumeration; captured callbacks are not disposed or cancelled. Exact and source-wide removal share the same registry actions. Plugin teardown ownership remains in PluginLifecycle.",
+			"Fair progress assumes the voice or retained-snapshot continuation runs and the selected callback settles, possibly with rejection. Valid send content follows the existing voice, sanitation and envelope pipeline. Payload copying, invalid registration/content validation, arbitrary callback noncooperation, runtime stop, transport disposal, provider delivery/persistence and host or action authorization remain outside this projection."
+		],
+		"implementationTests": [
+			"packages/core/test/connector-registry.integration.test.ts"
+		]
+	}
+]

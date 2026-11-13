@@ -3062,3 +3062,385 @@ test("the owner mail writer refuses a send review it cannot show the owner", asy
     });
   }
 });
+
+// A Cloud stand-in for the paid-access cache. `plans` maps each key to the
+// state its billing snapshot projects; an unknown key is refused at /user.
+// `hold` (when set) keeps every account call waiting until it resolves.
+async function paidAccessHarness(t) {
+  const plans = new Map([["key-a", "active"]]);
+  const calls = [];
+  const control = { hold: null, ttsStatus: 200, saved: "key-a" };
+  const routes = createCloudRoutes({
+    hostPolicy: {
+      ...policy,
+      projectAccountAccess: (user, snapshot) => ({
+        state: snapshot.plan,
+        user: user.id,
+      }),
+      fundingError: (access) =>
+        Object.assign(new Error(`Funding ${access.state}`), {
+          status: 402,
+          access,
+        }),
+    },
+    credentialStore: {
+      read: async () => {
+        const value = control.saved;
+        await control.afterRead?.();
+        return value;
+      },
+      write: async (value) => {
+        control.saved = value;
+      },
+      clear: async () => {
+        control.saved = null;
+      },
+    },
+    speechVoice: { voiceId: "voice", modelId: "model" },
+    fetchImpl: async (url, init) => {
+      const path = new URL(url).pathname,
+        key = init.headers.Authorization?.slice("Bearer ".length);
+      calls.push({ path, key });
+      if (path === "/api/v1/user" || path === "/api/v1/billing/limits") {
+        await control.hold;
+        if (!plans.has(key)) return Response.json({}, { status: 401 });
+        return Response.json(
+          path === "/api/v1/user" ? { id: key } : { plan: plans.get(key) },
+        );
+      }
+      if (path === "/api/v1/voice/tts")
+        return control.ttsStatus === 200
+          ? new Response(new Uint8Array([1, 2, 3]), {
+              headers: { "content-type": "audio/mpeg" },
+            })
+          : Response.json({}, { status: control.ttsStatus });
+      if (path === "/api/auth/cli-session")
+        return Response.json({
+          sessionId: "abcdefghijklmnop1234",
+          expiresAt: new Date(Date.now() + 60000).toISOString(),
+        });
+      throw Error(`Unexpected provider request ${path}`);
+    },
+  });
+  const server = http.createServer((req, res) =>
+    routes(req, res, new URL(req.url, "http://localhost")),
+  );
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const post = (route, value = {}) =>
+    fetch(base + route, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(value),
+    });
+  const accountCalls = () =>
+    calls.filter(
+      ({ path }) =>
+        path === "/api/v1/user" || path === "/api/v1/billing/limits",
+    );
+  return { routes, plans, calls, accountCalls, control, base, post };
+}
+
+test("a warm paid check asks Cloud nothing and refreshes the cache afterwards", async (t) => {
+  const { routes, plans, accountCalls } = await paidAccessHarness(t);
+  // Cold: nothing cached for this key, so Cloud is asked first (both calls).
+  await routes.requirePaidAccess();
+  assert.deepEqual(
+    accountCalls()
+      .map(({ path }) => path)
+      .sort(),
+    ["/api/v1/billing/limits", "/api/v1/user"],
+  );
+  await routes.paidAccessSettled();
+  const cold = accountCalls().length;
+  // Warm: the request is admitted with no Cloud call on its path.
+  const served = routes.requirePaidAccess();
+  const during = accountCalls().length;
+  await served;
+  assert.equal(accountCalls().length, cold, "no Cloud call before admission");
+  assert.equal(during, cold);
+  // After it, one background check refreshes the cache.
+  await routes.paidAccessSettled();
+  assert.equal(accountCalls().length, cold + 2);
+  // The plan lapses: the background check learns it, so the next request
+  // asks Cloud again before refusing, and refuses.
+  plans.set("key-a", "plan_required");
+  await routes.requirePaidAccess();
+  await routes.paidAccessSettled();
+  const lapsed = accountCalls().length;
+  await assert.rejects(routes.requirePaidAccess(), /Funding plan_required/);
+  assert.equal(
+    accountCalls().length,
+    lapsed + 2,
+    "a refusal is re-checked live",
+  );
+});
+
+test("a cached refusal is checked live, so an upgrade admits the next request at once", async (t) => {
+  const { routes, plans, accountCalls } = await paidAccessHarness(t);
+  plans.set("key-a", "plan_required");
+  await assert.rejects(routes.requirePaidAccess(), /Funding plan_required/);
+  // She upgrades on another device. The cached answer still refuses, so the
+  // next request asks Cloud before refusing, and Cloud now says active.
+  plans.set("key-a", "active");
+  const before = accountCalls().length;
+  await routes.requirePaidAccess();
+  assert.equal(accountCalls().length, before + 2);
+  // And that answer is now cached.
+  await routes.paidAccessSettled();
+  const warm = accountCalls().length;
+  await routes.requirePaidAccess();
+  assert.equal(accountCalls().length, warm);
+  await routes.paidAccessSettled();
+});
+
+test("the paid-access cache never answers for another account", async (t) => {
+  const { routes, plans, control, accountCalls } = await paidAccessHarness(t);
+  await routes.requirePaidAccess();
+  await routes.paidAccessSettled();
+  // Another account's key is saved by the host, outside these routes.
+  plans.set("key-b", "plan_required");
+  control.saved = "key-b";
+  const before = accountCalls().length;
+  await assert.rejects(routes.requirePaidAccess(), /Funding plan_required/);
+  assert.ok(
+    accountCalls()
+      .slice(before)
+      .every(({ key }) => key === "key-b"),
+  );
+  assert.equal(accountCalls().length, before + 2);
+  // Back to the first key: the cache now holds key-b's refusal, so key-a is
+  // checked live again before it is admitted.
+  control.saved = "key-a";
+  const back = accountCalls().length;
+  await routes.requirePaidAccess();
+  assert.equal(accountCalls().length, back + 2);
+  await routes.paidAccessSettled();
+
+  // A host may replace the credential while its asynchronous read settles.
+  // The admitted request must not silently retarget to the replacement.
+  const fresh = await paidAccessHarness(t);
+  fresh.plans.set("key-a", "plan_required");
+  fresh.plans.set("key-b", "active");
+  let reads = 0;
+  fresh.control.afterRead = () => {
+    if (++reads === 1) fresh.control.saved = "key-b";
+  };
+  await assert.rejects(fresh.routes.requirePaidAccess(), { status: 409 });
+  assert.ok(fresh.accountCalls().every(({ key }) => key === "key-a"));
+});
+
+test("a late identity refusal keeps a replacement private-file credential", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "eliza-paid-owner-"));
+  const store = createFileCredentialStore(join(directory, "credential"));
+  await store.write("key-a");
+  const seen = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  const revocationSeen = Promise.withResolvers();
+  const releaseRevocation = Promise.withResolvers();
+  let holdRevocation = false;
+  const cloud = http.createServer(async (req, res) => {
+    const key = req.headers.authorization?.slice("Bearer ".length);
+    if (req.url === "/api/v1/user" && key === "key-a") {
+      seen.resolve();
+      await release.promise;
+      res.writeHead(401, { "content-type": "application/json" });
+      res.end("{}");
+    } else {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify(
+          req.url === "/api/v1/user" ? { id: key } : { plan: "active" },
+        ),
+      );
+    }
+  });
+  t.after(async () => {
+    release.resolve();
+    releaseRevocation.resolve();
+    cloud.closeAllConnections();
+    await new Promise((resolve) => cloud.close(resolve));
+    await rm(directory, { recursive: true, force: true });
+  });
+  cloud.listen(0, "127.0.0.1");
+  await once(cloud, "listening");
+  const routes = createCloudRoutes({
+    credentialStore: store,
+    credentialRevocation: {
+      onRevoked: async () => {
+        if (holdRevocation) {
+          revocationSeen.resolve();
+          await releaseRevocation.promise;
+        }
+      },
+      status: () => ({ revoked: false }),
+    },
+    hostPolicy: policy,
+    // Real loopback HTTP stands in for the trusted Cloud origin; production
+    // HTTPS origin and response validation remain unchanged.
+    fetchImpl: (url, init) =>
+      fetch(
+        `http://127.0.0.1:${cloud.address().port}${new URL(url).pathname}`,
+        init,
+      ),
+    speechVoice: { voiceId: "voice", modelId: "model" },
+  });
+  const pending = routes.accountAccess().then(
+    (value) => ({ value }),
+    (error) => ({ error }),
+  );
+  await seen.promise;
+  await store.write("key-b");
+  release.resolve();
+  const outcome = await pending;
+  assert.equal(outcome.error?.status, 409);
+  assert.equal(await store.read(), "key-b");
+  await routes.requirePaidAccess();
+  await routes.paidAccessSettled();
+
+  // The host's asynchronous revocation receipt must not clear a key saved
+  // while that receipt was being recorded.
+  holdRevocation = true;
+  await store.write("key-a");
+  const duringRevocation = routes.accountAccess().then(
+    (value) => ({ value }),
+    (error) => ({ error }),
+  );
+  await revocationSeen.promise;
+  await store.write("key-b");
+  releaseRevocation.resolve();
+  const lateOutcome = await duringRevocation;
+  assert.equal(lateOutcome.error?.status, 409);
+  assert.equal(await store.read(), "key-b");
+  assert.equal(await store.clear("key-a"), false);
+  assert.equal(await store.read(), "key-b");
+});
+
+test("one live check serves concurrent cold requests, and background checks coalesce", async (t) => {
+  const { routes, control, accountCalls } = await paidAccessHarness(t);
+  let release;
+  control.hold = new Promise((resolve) => {
+    release = resolve;
+  });
+  const waiting = [1, 2, 3, 4].map(() => routes.requirePaidAccess());
+  // Both calls of the one check are in flight together (parallel, not in turn).
+  while (accountCalls().length < 2) await new Promise((r) => setImmediate(r));
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(accountCalls().length, 2);
+  release();
+  control.hold = null;
+  await Promise.all(waiting);
+  assert.equal(accountCalls().length, 2);
+  // Many served requests at once schedule a single background check.
+  await Promise.all([1, 2, 3, 4, 5].map(() => routes.requirePaidAccess()));
+  await routes.paidAccessSettled();
+  assert.equal(accountCalls().length, 4);
+});
+
+test("sign-out, sign-in, revocation and a refused paid call drop the cached answer", async (t) => {
+  const { routes, plans, control, accountCalls, post } =
+    await paidAccessHarness(t);
+  const warm = async () => {
+    await routes.requirePaidAccess();
+    await routes.paidAccessSettled();
+    const before = accountCalls().length;
+    await routes.requirePaidAccess();
+    assert.equal(accountCalls().length, before, "warm");
+    await routes.paidAccessSettled();
+  };
+  const coldNext = async (name) => {
+    const before = accountCalls().length;
+    await routes.requirePaidAccess();
+    assert.equal(accountCalls().length, before + 2, name);
+    await routes.paidAccessSettled();
+  };
+  await warm();
+  // Logout clears the key; a signed-out request is refused without Cloud.
+  assert.equal((await post("/cloud/logout")).status, 200);
+  const signedOut = accountCalls().length;
+  await assert.rejects(routes.requirePaidAccess(), /Funding signed_out/);
+  assert.equal(accountCalls().length, signedOut);
+  control.saved = "key-a";
+  await coldNext("after logout");
+
+  await warm();
+  assert.equal((await post("/cloud/login")).status, 200);
+  control.saved = "key-a";
+  await coldNext("after login");
+
+  // A paid Cloud call refused with 402 drops the answer and re-checks.
+  await warm();
+  control.ttsStatus = 402;
+  assert.equal((await post("/voice/tts", { text: "hello" })).status, 402);
+  control.ttsStatus = 200;
+  await routes.paidAccessSettled();
+  // The background re-check filled the cache again: the next one is warm.
+  const refilled = accountCalls().length;
+  await routes.requirePaidAccess();
+  assert.equal(accountCalls().length, refilled);
+  await routes.paidAccessSettled();
+
+  // The host reports a refusal it saw (the agent's own Cloud call).
+  routes.paidAccessRefused();
+  await routes.paidAccessSettled();
+  plans.delete("key-a");
+  // Revoked elsewhere: the next background check is refused at /user, the key
+  // is cleared, and the next request is refused without serving the cache.
+  await routes.requirePaidAccess();
+  await routes.paidAccessSettled();
+  assert.equal(control.saved, null);
+  await assert.rejects(routes.requirePaidAccess(), /Funding signed_out/);
+});
+
+test("a refusal during a background check schedules another, and settling waits for it", async (t) => {
+  const { routes, control, accountCalls } = await paidAccessHarness(t);
+  await routes.requirePaidAccess();
+  await routes.paidAccessSettled();
+  // A warm request schedules a background check; hold it in flight.
+  let release;
+  control.hold = new Promise((resolve) => {
+    release = resolve;
+  });
+  const before = accountCalls().length;
+  await routes.requirePaidAccess();
+  assert.equal(accountCalls().length, before, "warm");
+  while (accountCalls().length < before + 2)
+    await new Promise((r) => setImmediate(r));
+  // The agent's own Cloud call is refused while that check is in flight. Its
+  // answer belongs to the dropped epoch and cannot fill the cache, so another
+  // check must be scheduled for the current one.
+  routes.paidAccessRefused();
+  control.hold = null;
+  let settled = false;
+  const settling = routes.paidAccessSettled().then(() => {
+    settled = true;
+  });
+  release();
+  await settling;
+  assert.ok(settled);
+  assert.equal(
+    accountCalls().length,
+    before + 4,
+    "a second background check ran for the current epoch before settling",
+  );
+  // That check filled the cache: the next request asks Cloud nothing.
+  const refilled = accountCalls().length;
+  await routes.requirePaidAccess();
+  assert.equal(accountCalls().length, refilled, "warm after the refusal");
+  await routes.paidAccessSettled();
+});
+
+test("the access route shares the live check and keeps the paid cache warm", async (t) => {
+  const { routes, accountCalls, base } = await paidAccessHarness(t);
+  const answer = await (await fetch(`${base}/cloud/account/access`)).json();
+  assert.deepEqual(answer, { state: "active", user: "key-a" });
+  const before = accountCalls().length;
+  await routes.requirePaidAccess();
+  assert.equal(accountCalls().length, before);
+  await routes.paidAccessSettled();
+});

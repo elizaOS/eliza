@@ -192,6 +192,29 @@ public final class VoiceBundleAssetsTest {
         manifest(assets, "new model bytes");
         VoiceBundleAssets.install(context);
         check(Files.readString(eliza.model.toPath()).equals("new model bytes"), "new manifest installs new bytes");
+        // A copy that throws mid-write leaves no partial file behind.
+        JSONObject oversized = manifest(assets, "oversized model bytes");
+        oversized.getJSONArray("files").getJSONObject(0).put("bytes", 1);
+        Files.writeString(assets.resolve(VoiceBundleAssets.ASSET_ROOT).resolve("manifest.json"), oversized.toString());
+        rejected(context);
+        check(!Files.exists(eliza.root.toPath().resolve("tts/paradee/model.gguf.partial")), "a failed copy removes its partial file");
+        // An update that drops a file: a failed install deletes nothing, a verified one removes it.
+        Path vad = eliza.root.toPath().resolve("vad/model.gguf"), stale = eliza.root.toPath().resolve("asr/old.gguf.partial");
+        Files.writeString(stale, "stale");
+        JSONObject dropped = manifest(assets, "new model bytes");
+        dropped.getJSONArray("files").remove(3);
+        dropped.getJSONArray("files").getJSONObject(1).put("sha256", "0".repeat(64));
+        Files.writeString(assets.resolve(VoiceBundleAssets.ASSET_ROOT).resolve("manifest.json"), dropped.toString());
+        rejected(context);
+        check(Files.exists(vad) && Files.exists(stale), "an update that never verified deletes nothing");
+        dropped = manifest(assets, "new model bytes");
+        dropped.getJSONArray("files").remove(3);
+        Files.writeString(assets.resolve(VoiceBundleAssets.ASSET_ROOT).resolve("manifest.json"), dropped.toString());
+        VoiceBundleAssets.install(context);
+        check(!Files.exists(vad) && !Files.exists(stale), "a dropped file and a stale partial are removed");
+        check(Files.readString(eliza.model.toPath()).equals("new model bytes") && Files.exists(eliza.root.toPath().resolve("asr/model.gguf"))
+            && Files.exists(eliza.root.toPath().resolve("installed-manifest.json")), "listed files and the stamp are kept");
+        check(Files.exists(first.model.toPath()), "another host directory is untouched");
         check(VoiceBundleAssets.install(context).voices.isEmpty(), "a v1 bundle has no extra voices");
         // v2 without the opt-in voices (the default build): English only.
         JSONObject english = manifest(assets, "v2 english bytes").put("format", "eliza-paradee-voice-v2");

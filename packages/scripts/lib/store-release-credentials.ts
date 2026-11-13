@@ -38,10 +38,9 @@ export const NON_CREDENTIAL_VARIABLES = Object.freeze([
  *
  * `authorizedReviewers` is the allowlist of GitHub principals (user logins or
  * `org/team` slugs) permitted to approve a production-release deployment. It
- * is deliberately empty until a repository owner verifies and commits the
- * list; while it is empty the live audit reports the resolved reviewer
- * principals as an owner-verification blocker instead of READY, so an
- * arbitrary reviewer can never satisfy the gate by existing.
+ * is verified by a repository owner. An empty list reports the resolved
+ * reviewer principals as an owner-verification blocker instead of READY,
+ * so an arbitrary reviewer can never satisfy the gate by existing.
  */
 export const RELEASE_ENVIRONMENT_POLICY = Object.freeze({
   deploymentRefs: Object.freeze([
@@ -49,7 +48,7 @@ export const RELEASE_ENVIRONMENT_POLICY = Object.freeze({
     Object.freeze({ type: "tag", name: "v*" }),
   ]),
   preventSelfReview: true,
-  authorizedReviewers: Object.freeze([]),
+  authorizedReviewers: Object.freeze(["lalalune"]),
 });
 
 /**
@@ -67,20 +66,6 @@ export const RELEASE_ENVIRONMENT_POLICY = Object.freeze({
 
 /** @type {readonly StoreLane[]} */
 export const STORE_LANES = Object.freeze([
-  Object.freeze({
-    id: "snap",
-    provider: "Snap Store",
-    workflow: ".github/workflows/snap-publish.yml",
-    secrets: Object.freeze(["SNAPCRAFT_STORE_CREDENTIALS"]),
-    variables: Object.freeze([]),
-    prerequisite:
-      "Registered `eliza` snap name owned by the company Snapcraft account.",
-    owner: "Release engineering",
-    rotation:
-      "Re-export every 90 days with `snapcraft export-login --snaps eliza --channels edge,beta,candidate,stable --acls package_access,package_push,package_release -`.",
-    revocation:
-      "Revoke the exported macaroon in the Snapcraft account authentication settings, then re-export.",
-  }),
   Object.freeze({
     id: "google-play",
     provider: "Google Play Console",
@@ -395,7 +380,7 @@ export function evaluateEnvironmentReadiness(
   const blockers = [];
   if (!live.environmentExists) {
     blockers.push(
-      `Environment ${RELEASE_ENVIRONMENT} does not exist; every store job would be blocked at deployment.`,
+      `Environment ${RELEASE_ENVIRONMENT} does not exist; configure release protections and credentials before publishing to stores.`,
     );
   } else {
     blockers.push(...evaluatePolicy(live, policy));

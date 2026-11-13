@@ -183,6 +183,12 @@ export interface ElizaSseBridgeRequest {
    * before its durable persistence receipt and view-handoff metadata are ready.
    */
   onReplyReady?: () => void;
+  /**
+   * Receives the full authoritative reply when it rewrites text already
+   * streamed (for example a normalized or unwrapped final). Without it, such
+   * a divergence is a protocol error.
+   */
+  onAuthoritativeReplace?: (text: string) => void;
   /** Retained for call-site compatibility; manufactured periodic cues are disabled. */
   progressIntervalMs?: number;
   /** Injectable fetch for tests; defaults to global fetch. */
@@ -487,6 +493,8 @@ export async function streamElizaConversation(
   let buffered = "";
   let eventType = "";
   let emittedText = "";
+  // Last authoritative wire text; deltas extend this, not what was emitted.
+  let authorizedText = "";
   let pendingProvisionalText: string | null = null;
   let progressInFlight = false;
   let planningAcknowledgmentSeen = false;
@@ -518,27 +526,42 @@ export async function streamElizaConversation(
   const authorizeText = (authoritativeText: string): void => {
     replyAuthorized = true;
     pendingProvisionalText = null;
-    if (!authoritativeText.startsWith(emittedText)) {
+    authorizedText = authoritativeText;
+    // A shorter snapshot of text already emitted adds nothing new.
+    if (emittedText.startsWith(authoritativeText)) return;
+    const emittedStem = emittedText.trimEnd();
+    if (authoritativeText.startsWith(emittedStem)) {
+      // Only trailing whitespace differs: emit the new suffix, without a
+      // second separator when the emitted text already ended in one.
+      let suffix = authoritativeText.slice(emittedStem.length);
+      if (emittedStem.length < emittedText.length) suffix = suffix.trimStart();
+      emitDelta(suffix);
+      return;
+    }
+    if (!request.onAuthoritativeReplace) {
       throw new ElizaSseBridgeError(
         "Eliza agent authoritative reply diverged from text already sent to speech",
         "protocol_error",
       );
     }
-    emitDelta(authoritativeText.slice(emittedText.length));
+    emittedText = authoritativeText;
+    request.onAuthoritativeReplace(authoritativeText);
   };
   const applyTextUpdate = (update: VoiceTextUpdate): void => {
     if (update.provisional) {
       pendingProvisionalText =
         update.kind === "snapshot"
           ? update.text
-          : `${pendingProvisionalText ?? emittedText}${update.text}`;
+          : `${pendingProvisionalText ?? authorizedText}${update.text}`;
       return;
     }
 
     if (update.kind === "delta") {
       // A delta extends the current wire buffer, so its non-provisional frame
       // authorizes the held prefix as well. A snapshot below replaces it.
-      authorizeText(`${pendingProvisionalText ?? emittedText}${update.text}`);
+      authorizeText(
+        `${pendingProvisionalText ?? authorizedText}${update.text}`,
+      );
       return;
     }
     authorizeText(update.text);

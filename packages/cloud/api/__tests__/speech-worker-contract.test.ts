@@ -42,16 +42,21 @@ describe("staging speech host source contract", () => {
     expect(checkSpeechWorkerContract(committed)).toEqual([]);
   });
 
-  test("staging binds the lean host and production stays on the API", () => {
+  test("staging keeps the API host until a reviewed binding change; production stays local", () => {
     expect(speechBinding(committed.source.env?.staging)).toEqual({
       name: "SPEECH_RELAY_SESSIONS",
       class_name: "SpeechRelayCoordinator",
-      script_name: "eliza-cloud-speech-staging",
     });
     expect(speechBinding(committed.source.env?.production)).toEqual({
       name: "SPEECH_RELAY_SESSIONS",
       class_name: "SpeechRelayCoordinator",
     });
+    expect(
+      mutate((input) => {
+        speechBinding(input.source.env!.staging)!.script_name =
+          "eliza-cloud-speech-staging";
+      }),
+    ).toEqual([]);
   });
 
   test("the scan reaches the coordinator's provider, flag and usage reads", () => {
@@ -59,7 +64,6 @@ describe("staging speech host source contract", () => {
       "CARTESIA_API_KEY",
       "CARTESIA_STT_USD_PER_CREDIT",
       "VOICE_SPEECH_RELAY_ENABLED",
-      "VOICE_SPEECH_END_TIMEOUT_MS",
       "VOICE_REALTIME_CARTESIA_VOICE_ID",
       "VOICE_REALTIME_ORG_DAILY_MINUTES",
       "VOICE_REALTIME_USER_DAILY_MINUTES",
@@ -94,11 +98,12 @@ describe("staging speech host source contract", () => {
       "Production speech binding must stay on the production API Worker",
     ],
     [
-      "staging API still hosting new sessions",
+      "staging selects an unknown speech host",
       (input) => {
-        delete speechBinding(input.source.env!.staging)!.script_name;
+        speechBinding(input.source.env!.staging)!.script_name =
+          "eliza-cloud-unreviewed-staging";
       },
-      "Staging API speech binding must reference the lean speech host",
+      "Staging API speech binding must use the API or lean speech host",
     ],
     [
       "API namespace transferred away",
@@ -180,9 +185,9 @@ describe("staging speech host source contract", () => {
     [
       "a coordinator variable missing on the host",
       (input) => {
-        delete input.target.vars!.VOICE_SPEECH_END_TIMEOUT_MS;
+        delete input.target.vars!.VOICE_REALTIME_CARTESIA_VOICE_ID;
       },
-      "Coordinator variable must match staging: VOICE_SPEECH_END_TIMEOUT_MS",
+      "Coordinator variable must match staging: VOICE_REALTIME_CARTESIA_VOICE_ID",
     ],
     [
       "an API-only voice usage limit",

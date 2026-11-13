@@ -1711,7 +1711,7 @@ async function typeInto(page: Page, selector: string, value: string) {
   if (!input) {
     throw new Error(`Input not found for selector: ${selector}`);
   }
-  await input.click({ clickCount: 3 });
+  await input.click({ count: 3 });
   await page.keyboard.press("Backspace");
   await input.type(value, { delay: 5 });
 }

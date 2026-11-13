@@ -37,6 +37,7 @@ import {
   tenantSwitchLoginRefusal,
 } from "../services/auth-lifecycle";
 import {
+  authRateLimitClientSubject,
   checkAuthRateLimit,
   trustedClientIp,
 } from "../services/auth-rate-limit";
@@ -302,24 +303,6 @@ async function getTenantAuthAbuseConfig(tenantId: string) {
   return (await authTenantConfigSubject(tenantId))?.auth_abuse_config ?? {};
 }
 
-function validateUserAuthAbusePolicy(
-  userId: string,
-  config: TenantAuthAbuseConfig & {
-    user?: { allowedUserIds?: string[]; blockedUserIds?: string[] };
-  },
-): string | null {
-  const userConfig = config.user;
-  if (!userConfig) return null;
-  if (userConfig.blockedUserIds?.includes(userId)) return "user id is blocked";
-  if (
-    userConfig.allowedUserIds?.length &&
-    !userConfig.allowedUserIds.includes(userId)
-  ) {
-    return "user id is not allowed";
-  }
-  return null;
-}
-
 async function getTenantAppClientLoginMethods(
   tenantId: string,
   clientId: string | undefined,
@@ -552,6 +535,15 @@ function hashToken(raw: string): string {
   return hashSha256Hex(raw);
 }
 
+/** Keeps a stored auth_time; a session without one is stamped now. */
+function withAuthTime(
+  claims: Record<string, unknown>,
+): Record<string, unknown> {
+  return typeof claims.auth_time === "number"
+    ? claims
+    : { ...claims, auth_time: Math.floor(Date.now() / 1000) };
+}
+
 /**
  * Generate a random refresh token, persist its hash in DB, return the raw value.
  * The raw token is sent to the client; only the hash is stored server-side.
@@ -572,13 +564,13 @@ async function createRefreshToken(
     await db
       .insert(refreshTokens)
       .values({ id, userId, tenantId, tokenHash, expiresAt });
-    if (sessionClaims && Object.keys(sessionClaims).length > 0) {
-      await writeMfaJson(
-        `refresh:claims:${tokenHash}`,
-        sessionClaims,
-        REFRESH_TOKEN_EXPIRY_DAYS * 86400 * 1000,
-      );
-    }
+    // Every refresh token is issued at a sign-in. Store its auth_time so
+    // /auth/refresh carries it into each rotated access token unchanged.
+    await writeMfaJson(
+      `refresh:claims:${tokenHash}`,
+      withAuthTime(sessionClaims ?? {}),
+      REFRESH_TOKEN_EXPIRY_DAYS * 86400 * 1000,
+    );
     return raw;
   });
 }
@@ -642,6 +634,56 @@ async function resolveRefreshTokenSubject(tokenHash: string) {
   const userId = subject?.user_id ?? used?.userId;
   if (!tenantId || !userId) return null;
   return { tenantId, userId };
+}
+
+/**
+ * Delete a refresh token and, when a concurrent refresh already rotated it,
+ * the successor that rotation issued. Takes the same user and per-token locks
+ * as rotation, so a sign-out racing a refresh never leaves a live token.
+ */
+async function revokeRefreshTokenChain(
+  tokenHash: string,
+): Promise<Array<typeof refreshTokens.$inferSelect>> {
+  const subject = await resolveRefreshTokenSubject(tokenHash);
+  if (!subject) return [];
+  const revoked = await withVerifiedAuthTenant(
+    subject.tenantId,
+    subject.userId,
+    () =>
+      getDb().transaction(async (tx) => {
+        const [candidate] = await tx
+          .select()
+          .from(refreshTokens)
+          .where(eq(refreshTokens.tokenHash, tokenHash));
+        const usedBeforeLock = candidate
+          ? null
+          : await readMfaJson<UsedRefreshTokenRecord>(
+              `refresh:used:${tokenHash}`,
+            );
+        const userId = candidate?.userId ?? usedBeforeLock?.userId;
+        if (userId) await lockUserSession(tx, userId);
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtextextended(${`refresh_token_${tokenHash}`}, 0))`,
+        );
+        // Re-read after both locks: rotation may have replaced the candidate while
+        // this revoke waited for the user-wide session lock.
+        const used = await readMfaJson<UsedRefreshTokenRecord>(
+          `refresh:used:${tokenHash}`,
+        );
+        const hashes = [tokenHash];
+        if (used?.successorTokenHash) hashes.push(used.successorTokenHash);
+        return tx
+          .delete(refreshTokens)
+          .where(inArray(refreshTokens.tokenHash, hashes))
+          .returning();
+      }),
+  );
+  await Promise.all(
+    revoked.map((row) =>
+      getMfaBackend().delete(`refresh:claims:${row.tokenHash}`),
+    ),
+  );
+  return revoked;
 }
 
 async function rotateRefreshTokenInsideTenant(
@@ -820,12 +862,13 @@ async function rotateRefreshTokenInsideTenant(
         };
       }
     }
-    await getMfaBackend().delete(`refresh:claims:${record.tokenHash}`);
     // MFA freshness is scoped to the tenant where it was performed, as on
     // /user/me/tenants/switch: the switched tenant needs its own step-up.
-    const sessionClaims = switchesTenant
-      ? withoutTenantMfaClaims(storedClaims)
-      : storedClaims;
+    // auth_time is copied unchanged: rotation is not a sign-in. A refresh
+    // token stored before auth_time existed is pinned at its first rotation.
+    const sessionClaims = withAuthTime(
+      switchesTenant ? withoutTenantMfaClaims(storedClaims) : storedClaims,
+    );
 
     const newAccessToken = await createSessionToken(
       walletAddress,
@@ -875,6 +918,9 @@ async function rotateRefreshTokenInsideTenant(
         REFRESH_TOKEN_EXPIRY_DAYS * 86400 * 1000,
       );
     }
+    // Spend the old claims only once the successor exists and carries them,
+    // so a failed rotation leaves the presented token fully usable.
+    await getMfaBackend().delete(`refresh:claims:${record.tokenHash}`);
 
     return {
       status: "valid",
@@ -2334,14 +2380,17 @@ async function currentSessionMfaStepUpResponse(
     {
       userId: session.payload.userId,
       email: session.payload.email,
-      authMethod: session.payload.authMethod,
+      ...sessionLoginMethodClaims(session.payload),
       ...mfaClaims,
     },
   );
   const refreshToken = await createRefreshToken(
     session.payload.userId,
     session.payload.tenantId,
-    mfaClaims,
+    {
+      ...sessionLoginMethodClaims(session.payload),
+      ...mfaClaims,
+    },
   );
 
   return c.json(
@@ -2352,6 +2401,23 @@ async function currentSessionMfaStepUpResponse(
       walletChain: user?.walletChain ?? undefined,
     }),
   );
+}
+
+/** How a session signed in, as refresh claims record it for tenant switches. */
+function sessionLoginMethodClaims(payload: {
+  authMethod?: string;
+  oauthProviderId?: string;
+  oidcProviderId?: string;
+}): Record<string, string> {
+  return {
+    ...(payload.authMethod ? { authMethod: payload.authMethod } : {}),
+    ...(payload.oauthProviderId
+      ? { oauthProviderId: payload.oauthProviderId }
+      : {}),
+    ...(payload.oidcProviderId
+      ? { oidcProviderId: payload.oidcProviderId }
+      : {}),
+  };
 }
 
 async function createMfaAuthChallenge(
@@ -2494,8 +2560,6 @@ type DeviceAuthorizationRecord = {
   issuedAt: number;
   expiresAt: number;
   intervalSeconds: number;
-  lastPollAt?: number;
-  slowDownCount: number;
   approvedUserId?: string;
   approvedAt?: number;
   deniedAt?: number;
@@ -2520,6 +2584,18 @@ function generateDeviceUserCode(): string {
 
 function deviceCodeKey(deviceCode: string): string {
   return `device-auth:device:${hashSha256Hex(deviceCode)}`;
+}
+
+// Poll pacing lives apart from the decision record so /device/token never
+// rewrites the record /device/verify approves or denies.
+type DevicePollState = {
+  lastPollAt: number;
+  intervalSeconds: number;
+  slowDownCount: number;
+};
+
+function devicePollKey(deviceCode: string): string {
+  return `device-auth:poll:${hashSha256Hex(deviceCode)}`;
 }
 
 function deviceUserCodeKey(userCode: string): string {
@@ -2710,6 +2786,7 @@ async function consumeDeviceAuthorizationRecord(
   try {
     const record = decryptMfaJson<DeviceAuthorizationRecord>(raw);
     await getMfaBackend().delete(deviceUserCodeKey(record.userCode));
+    await getMfaBackend().delete(devicePollKey(deviceCode));
     if (record.expiresAt <= Date.now()) return null;
     return record;
   } catch {
@@ -3283,10 +3360,6 @@ async function completeEmailAuth(
   const emailPolicyError = validateEmailAbusePolicy(email, authAbuseConfig);
   if (emailPolicyError) {
     return { ok: false, status: 403, error: emailPolicyError };
-  }
-  const userPolicyError = validateUserAuthAbusePolicy(user.id, authAbuseConfig);
-  if (userPolicyError) {
-    return { ok: false, status: 403, error: userPolicyError };
   }
   const ssoRequiredResponse = await requireNonSsoEmailLoginAllowed(
     c,
@@ -3995,7 +4068,7 @@ auth.post("/saml/:tenantId/acs", async (c) => {
       redirectUrl.searchParams.set("error", result.error);
       return c.redirect(redirectUrl.toString(), 302);
     }
-    if (result.response.ok === false || result.response.mfaRequired) {
+    if (result.response.ok === false) {
       redirectUrl.searchParams.set("error", "auth_failed");
       return c.redirect(redirectUrl.toString(), 302);
     }
@@ -4003,12 +4076,23 @@ auth.post("/saml/:tenantId/acs", async (c) => {
     const exchangeCode = randomBase64Url(32);
     const issuedAt = Date.now();
     const expiresAt = issuedAt + OAUTH_CODE_TTL_MS;
+    // A user who owes a second factor gets the same one-time code; it redeems
+    // to the MFA challenge instead of tokens.
     await getOAuthCodeStore().set(
       `oauth-code:${exchangeCode}`,
       JSON.stringify({
         providerName: "saml",
-        token: result.response.token,
-        refreshToken: result.response.refreshToken,
+        ...(request.appClientId ? { clientId: request.appClientId } : {}),
+        ...(result.response.mfaRequired
+          ? {
+              mfaRequired: true,
+              mfa: result.response.mfa,
+              user: result.response.user,
+            }
+          : {
+              token: result.response.token,
+              refreshToken: result.response.refreshToken,
+            }),
         redirectUri: request.redirectUri,
         tenantId,
         codeChallenge: request.codeChallenge,
@@ -5400,25 +5484,26 @@ auth.get("/oidc/:provider/callback", async (c) => {
         appState: stateData.appState,
       });
     }
-    if (result.response.mfaRequired) {
-      return oauthCallbackFailure(c, {
-        code: "mfa_required",
-        message: "Additional verification is required to complete sign-in.",
-        status: 403,
-        redirectUrl,
-        appState: stateData.appState,
-      });
-    }
-
     const exchangeCode = randomBase64Url(32);
     const issuedAt = Date.now();
     const expiresAt = issuedAt + OAUTH_CODE_TTL_MS;
+    // A user who owes a second factor gets the same one-time code; it redeems
+    // to the MFA challenge instead of tokens.
     await getOAuthCodeStore().set(
       `oauth-code:${exchangeCode}`,
       JSON.stringify({
         providerName: `oidc:${provider.id}`,
-        token: result.response.token,
-        refreshToken: result.response.refreshToken,
+        ...(stateData.clientId ? { clientId: stateData.clientId } : {}),
+        ...(result.response.mfaRequired
+          ? {
+              mfaRequired: true,
+              mfa: result.response.mfa,
+              user: result.response.user,
+            }
+          : {
+              token: result.response.token,
+              refreshToken: result.response.refreshToken,
+            }),
         redirectUri: stateData.redirectUri,
         tenantId: stateData.tenantId,
         codeChallenge: stateData.codeChallenge,
@@ -5510,18 +5595,7 @@ auth.get("/test/sms-inbox/:phone", (c) => {
  * membership for arbitrary users.
  */
 auth.post("/test/token", async (c) => {
-  // ⚠️ SECURITY WARNING — STEWARD_ENABLE_PROD_TEST_ACCOUNT_TOKEN ⚠️
-  // This endpoint mints a real, fully-privileged session token for a tenant's
-  // test-account credentials. It is hard-disabled in production by default.
-  // Setting STEWARD_ENABLE_PROD_TEST_ACCOUNT_TOKEN=true in a production
-  // environment is DANGEROUS: anyone who learns the (often static) test-account
-  // email/phone/OTP can obtain a valid session. Only enable it for short,
-  // supervised app-review / automation windows and disable it immediately
-  // afterward. Never leave it enabled on an internet-reachable prod deploy.
-  if (
-    process.env.NODE_ENV === "production" &&
-    process.env.STEWARD_ENABLE_PROD_TEST_ACCOUNT_TOKEN !== "true"
-  ) {
+  if (process.env.NODE_ENV === "production") {
     return c.json<ApiResponse>(
       { ok: false, error: "Test account token exchange is disabled" },
       404,
@@ -6792,7 +6866,6 @@ auth.post("/device/code", async (c) => {
     issuedAt,
     expiresAt: issuedAt + DEVICE_AUTH_TTL_MS,
     intervalSeconds: DEVICE_AUTH_DEFAULT_INTERVAL_SECONDS,
-    slowDownCount: 0,
   };
   await saveDeviceAuthorizationRecord(deviceCode, record);
 
@@ -6996,18 +7069,21 @@ auth.post("/device/token", async (c) => {
   }
 
   const now = Date.now();
+  const pollTtlMs = Math.max(1_000, record.expiresAt - now);
+  const poll = await readMfaJson<DevicePollState>(devicePollKey(deviceCode));
+  const intervalSeconds = poll?.intervalSeconds ?? record.intervalSeconds;
+  const slowDownCount = poll?.slowDownCount ?? 0;
   if (
-    record.lastPollAt &&
-    now - record.lastPollAt < record.intervalSeconds * 1000 &&
-    record.slowDownCount < DEVICE_AUTH_MAX_SLOW_DOWNS
+    poll &&
+    now - poll.lastPollAt < intervalSeconds * 1000 &&
+    slowDownCount < DEVICE_AUTH_MAX_SLOW_DOWNS
   ) {
-    const next = {
-      ...record,
-      intervalSeconds: record.intervalSeconds + 5,
+    const next: DevicePollState = {
+      intervalSeconds: intervalSeconds + 5,
       lastPollAt: now,
-      slowDownCount: record.slowDownCount + 1,
+      slowDownCount: slowDownCount + 1,
     };
-    await saveDeviceAuthorizationRecord(deviceCode, next);
+    await writeMfaJson(devicePollKey(deviceCode), next, pollTtlMs);
     return c.json(
       { ok: false, error: "slow_down", interval: next.intervalSeconds },
       400,
@@ -7015,15 +7091,16 @@ auth.post("/device/token", async (c) => {
   }
 
   if (record.status === "pending") {
-    await saveDeviceAuthorizationRecord(deviceCode, {
-      ...record,
-      lastPollAt: now,
-    });
+    await writeMfaJson(
+      devicePollKey(deviceCode),
+      { intervalSeconds, slowDownCount, lastPollAt: now },
+      pollTtlMs,
+    );
     return c.json(
       {
         ok: false,
         error: "authorization_pending",
-        interval: record.intervalSeconds,
+        interval: intervalSeconds,
       },
       400,
     );
@@ -7465,10 +7542,12 @@ auth.post("/mfa/totp/complete", async (c) => {
       ...mfaClaims,
     },
   );
+  // The refresh token keeps how the user signed in (authMethod, provider) as
+  // the access token does, so a later tenant switch checks the real method.
   const refreshToken = await createRefreshToken(
     challenge.userId,
     challenge.tenantId,
-    mfaClaims,
+    { ...(challenge.claims ?? {}), ...mfaClaims },
   );
   dispatchUserAuthenticated(
     challenge.tenantId,
@@ -8023,10 +8102,12 @@ auth.post("/mfa/sms/complete", async (c) => {
       ...mfaClaims,
     },
   );
+  // The refresh token keeps how the user signed in (authMethod, provider) as
+  // the access token does, so a later tenant switch checks the real method.
   const refreshToken = await createRefreshToken(
     challenge.userId,
     challenge.tenantId,
-    mfaClaims,
+    { ...(challenge.claims ?? {}), ...mfaClaims },
   );
   dispatchUserAuthenticated(
     challenge.tenantId,
@@ -8360,14 +8441,17 @@ const completePasskeyMfaHandler = async (c: Context) => {
     {
       userId: session.payload.userId,
       email: session.payload.email,
-      authMethod: session.payload.authMethod,
+      ...sessionLoginMethodClaims(session.payload),
       ...mfaClaims,
     },
   );
   const refreshToken = await createRefreshToken(
     session.payload.userId,
     session.payload.tenantId,
-    mfaClaims,
+    {
+      ...sessionLoginMethodClaims(session.payload),
+      ...mfaClaims,
+    },
   );
 
   return c.json(
@@ -8623,16 +8707,9 @@ auth.post("/logout", async (c) => {
     }
   }
   if (body?.refreshToken) {
-    const tokenHash = hashToken(body.refreshToken);
-    const subject = await resolveRefreshTokenSubject(tokenHash);
-    const [revokedRefresh] = subject
-      ? await withVerifiedAuthTenant(subject.tenantId, subject.userId, () =>
-          getDb()
-            .delete(refreshTokens)
-            .where(eq(refreshTokens.tokenHash, tokenHash))
-            .returning(),
-        )
-      : [];
+    const [revokedRefresh] = await revokeRefreshTokenChain(
+      hashToken(body.refreshToken),
+    );
     if (!auditCtx.tenantId && revokedRefresh) {
       auditCtx = {
         tenantId: revokedRefresh.tenantId,
@@ -8798,41 +8875,7 @@ auth.post("/revoke", async (c) => {
     );
   }
 
-  const tokenHash = hashToken(body.refreshToken);
-  const subject = await resolveRefreshTokenSubject(tokenHash);
-  if (!subject) return c.json<ApiResponse>({ ok: true });
-  const revoked = await withVerifiedAuthTenant(
-    subject.tenantId,
-    subject.userId,
-    () =>
-      getDb().transaction(async (tx) => {
-        const [candidate] = await tx
-          .select()
-          .from(refreshTokens)
-          .where(eq(refreshTokens.tokenHash, tokenHash));
-        const usedBeforeLock = candidate
-          ? null
-          : await readMfaJson<UsedRefreshTokenRecord>(
-              `refresh:used:${tokenHash}`,
-            );
-        const userId = candidate?.userId ?? usedBeforeLock?.userId;
-        if (userId) await lockUserSession(tx, userId);
-        await tx.execute(
-          sql`select pg_advisory_xact_lock(hashtextextended(${`refresh_token_${tokenHash}`}, 0))`,
-        );
-        // Re-read after both locks: rotation may have replaced the candidate while
-        // this revoke waited for the user-wide session lock.
-        const used = await readMfaJson<UsedRefreshTokenRecord>(
-          `refresh:used:${tokenHash}`,
-        );
-        const hashes = [tokenHash];
-        if (used?.successorTokenHash) hashes.push(used.successorTokenHash);
-        return tx
-          .delete(refreshTokens)
-          .where(inArray(refreshTokens.tokenHash, hashes))
-          .returning();
-      }),
-  );
+  const revoked = await revokeRefreshTokenChain(hashToken(body.refreshToken));
   const existing = revoked[0];
   if (existing) {
     await writeAuditEvent({
@@ -9993,10 +10036,6 @@ auth.get("/callback/email", async (c) => {
     return redirectEmailAuthFailure(c, reason);
   }
 
-  if (authResult.response.mfaRequired) {
-    return redirectEmailAuthFailure(c, "mfa_required");
-  }
-
   const emailRedirectUrl = buildEmailAuthRedirectUrl();
   const nonceBytes = new Uint8Array(32);
   crypto.getRandomValues(nonceBytes);
@@ -10005,9 +10044,19 @@ auth.get("/callback/email", async (c) => {
   const expiresAt = issuedAt + OAUTH_CODE_TTL_MS;
   await getOAuthCodeStore().set(
     `oauth-code:${exchangeCode}`,
+    // A user who owes a second factor gets the same one-time code; it redeems
+    // to the MFA challenge instead of tokens.
     JSON.stringify({
-      token: authResult.response.token,
-      refreshToken: authResult.response.refreshToken,
+      ...(authResult.response.mfaRequired
+        ? {
+            mfaRequired: true,
+            mfa: authResult.response.mfa,
+            user: authResult.response.user,
+          }
+        : {
+            token: authResult.response.token,
+            refreshToken: authResult.response.refreshToken,
+          }),
       redirectUri: emailRedirectUrl,
       tenantId: tenantId ?? null,
       expiresAt,
@@ -10157,13 +10206,27 @@ auth.post("/email/code/verify", async (c) => {
     "Email",
   );
   if (ssoRequiredResponse) return ssoRequiredResponse;
-  const attemptRl = await checkAuthRateLimit(
+  // Guesses are bounded per client for an address, so one client cannot lock
+  // the address for everyone; the address-wide cap stays high enough that
+  // only a distributed guesser reaches it. Each issued code also locks after
+  // its own few wrong tries (reason "locked" below).
+  const targetKey = `${resolvedTenantId}:${hashSha256Hex(email)}`;
+  const clientAttemptRl = await checkAuthRateLimit(
     c,
-    "email-code-verify-target",
+    "email-code-verify-client-target",
     10 * 60_000,
     5,
-    `${resolvedTenantId}:${hashSha256Hex(email)}`,
+    `${authRateLimitClientSubject(c)}:${targetKey}`,
   );
+  const attemptRl = clientAttemptRl.allowed
+    ? await checkAuthRateLimit(
+        c,
+        "email-code-verify-target",
+        10 * 60_000,
+        30,
+        targetKey,
+      )
+    : clientAttemptRl;
   if (!attemptRl.allowed) {
     return c.json<ApiResponse>(
       { ok: false, error: "Too many verification attempts. Try again later." },
@@ -10515,9 +10578,11 @@ auth.post("/guest", async (c) => {
     );
   }
 
-  const body = await safeJsonParse<{ tenantId?: unknown; expiresIn?: unknown }>(
-    c,
-  );
+  const body = await safeJsonParse<{
+    tenantId?: unknown;
+    expiresIn?: unknown;
+    captchaToken?: string;
+  }>(c);
   // A malformed JSON body is tolerated (guest create takes no required fields),
   // but if a body was sent it must be an object so we don't silently ignore a
   // mistyped tenantId/expiresIn.
@@ -10544,6 +10609,25 @@ auth.post("/guest", async (c) => {
     );
   }
   const tenantId = tenantResult.tenantId;
+  // Guests are on unless the tenant sets loginMethods.guest to false.
+  const methodResponse = await requireTenantLoginMethodAllowed(
+    c,
+    tenantId,
+    "guest",
+  );
+  if (methodResponse) return methodResponse;
+  const captcha = await verifyCaptchaToken(
+    await getTenantAuthAbuseConfig(tenantId),
+    "guest",
+    typeof body?.captchaToken === "string" ? body.captchaToken : undefined,
+    trustedClientIp(c),
+  );
+  if (!captcha.ok) {
+    return c.json<ApiResponse>(
+      { ok: false, error: captcha.error },
+      captcha.status as 400 | 502 | 503,
+    );
+  }
 
   const guestExpiresAt = new Date(Date.now() + lifetimeMs);
   const db = getDb();
@@ -11461,6 +11545,7 @@ auth.get("/oauth/:provider/callback", async (c) => {
         `oauth-code:${mfaExchangeCode}`,
         JSON.stringify({
           providerName,
+          ...(stateData.clientId ? { clientId: stateData.clientId } : {}),
           mfaRequired: true,
           mfa: result.response.mfa,
           user: result.response.user,
@@ -11499,6 +11584,7 @@ auth.get("/oauth/:provider/callback", async (c) => {
   const expiresAt = issuedAt + OAUTH_CODE_TTL_MS;
   const codePayload = JSON.stringify({
     providerName,
+    ...(stateData.clientId ? { clientId: stateData.clientId } : {}),
     token: result.response.token,
     refreshToken: result.response.refreshToken,
     user: result.response.user,
@@ -11516,6 +11602,159 @@ auth.get("/oauth/:provider/callback", async (c) => {
   });
   return c.redirect(redirectUrl.toString(), 302);
 });
+
+type OAuthCodePayload = {
+  /**
+   * The OAuth provider, `oidc:<provider id>`, or `saml`; absent on email
+   * magic-link codes.
+   */
+  providerName?: string;
+  /** The app client the sign-in started with, whose login methods apply. */
+  clientId?: string;
+  token?: string;
+  refreshToken?: string;
+  user?: unknown;
+  redirectUri: string;
+  tenantId: string | null;
+  codeChallenge?: string;
+  codeChallengeMethod?: string;
+  expiresAt: number;
+  expiresIn?: number;
+  /** Set only for codes that carry an MFA challenge instead of tokens. */
+  mfaRequired?: true;
+  mfa?: unknown;
+};
+
+/** The login method a code's sign-in used, as tenant login methods name it. */
+function oauthCodeLoginMethod(
+  providerName: string | undefined,
+): { method: LoginMethodName; providerId?: string } | null {
+  if (providerName === undefined) return { method: "email" };
+  // SAML has no login-method switch; the ACS route checked the tenant's SAML
+  // config moments before it issued the code.
+  if (providerName === "saml") return null;
+  if (providerName.startsWith("oidc:")) {
+    return { method: "oidc", providerId: providerName.slice(5) };
+  }
+  return { method: "oauth", providerId: providerName };
+}
+
+/**
+ * Redeem a one-time sign-in code issued by an OAuth, OIDC, SAML or email
+ * callback. The code is bound to its redirect URI, tenant and PKCE challenge;
+ * invalid attempts do not burn it. Returns the tokens, or the MFA challenge
+ * for codes issued to a user who still owes a second factor.
+ */
+async function redeemOAuthCode(
+  c: Context,
+  code: string,
+  input: {
+    redirectUri: string;
+    tenantId: string | null;
+    codeVerifier: string;
+    /** Set by /oauth/:provider/token: the code must come from that provider. */
+    providerName?: string;
+  },
+): Promise<Response> {
+  const fail = (error: string, errorCode: string, status: 401 | 409 = 401) =>
+    c.json<ApiResponse & { code: string }>(
+      { ok: false, error, code: errorCode },
+      status,
+    );
+  const codeKey = `oauth-code:${code}`;
+  const raw = await getOAuthCodeStore().get(codeKey);
+  if (!raw) return fail("Invalid or already-used code", "code_invalid");
+
+  let payload: OAuthCodePayload;
+  try {
+    payload = JSON.parse(raw);
+  } catch {
+    return fail("Malformed code payload", "code_invalid");
+  }
+
+  if (Date.now() > payload.expiresAt) {
+    return fail("Code expired", "code_expired");
+  }
+
+  if (payload.codeChallenge) {
+    if (!input.codeVerifier || !isValidPkceCodeVerifier(input.codeVerifier)) {
+      return fail("Invalid code verifier", "code_verifier_invalid");
+    }
+    const computedChallenge = await pkceChallengeForVerifier(
+      input.codeVerifier,
+      payload.codeChallengeMethod ?? "S256",
+    );
+    if (!computedChallenge || computedChallenge !== payload.codeChallenge) {
+      return fail("Code verifier mismatch", "code_verifier_mismatch");
+    }
+  }
+
+  if (payload.redirectUri !== input.redirectUri) {
+    return fail(
+      "redirect_uri does not match the one issued with the code",
+      "code_redirect_mismatch",
+    );
+  }
+
+  if ((payload.tenantId ?? null) !== input.tenantId) {
+    return fail(
+      "tenant_id does not match the one issued with the code",
+      "code_tenant_mismatch",
+    );
+  }
+
+  if (
+    input.providerName &&
+    payload.providerName &&
+    payload.providerName !== input.providerName
+  ) {
+    return fail("OAuth code provider mismatch", "code_provider_mismatch");
+  }
+
+  const loginMethod = oauthCodeLoginMethod(payload.providerName);
+  if (loginMethod) {
+    const methodResponse = await requireTenantLoginMethodAllowed(
+      c,
+      payload.tenantId ?? undefined,
+      loginMethod.method,
+      loginMethod.providerId,
+      payload.clientId,
+    );
+    if (methodResponse) return methodResponse;
+  }
+
+  if (!(await lockOAuthCodeRedemption(code))) {
+    return fail("OAuth code is already being redeemed", "code_in_use", 409);
+  }
+
+  try {
+    const consumed = await getOAuthCodeStore().consume(codeKey);
+    if (!consumed) return fail("Invalid or already-used code", "code_invalid");
+    if (consumed !== raw) {
+      return fail("OAuth code changed during redemption", "code_invalid");
+    }
+  } finally {
+    await releaseOAuthCodeRedemptionLock(code);
+  }
+
+  if (payload.mfaRequired === true) {
+    return c.json({
+      ok: true,
+      mfaRequired: true,
+      mfa: payload.mfa,
+      ...(payload.user ? { user: payload.user } : {}),
+    });
+  }
+
+  return c.json({
+    ok: true,
+    token: payload.token,
+    refreshToken: payload.refreshToken,
+    ...(payload.user ? { user: payload.user } : {}),
+    expiresIn: payload.expiresIn,
+    expiresAt: payload.expiresAt,
+  });
+}
 
 /**
  * POST /auth/oauth/exchange
@@ -11590,159 +11829,10 @@ auth.post("/oauth/exchange", async (c) => {
     );
   }
 
-  const codeKey = `oauth-code:${code}`;
-  const raw = await getOAuthCodeStore().get(codeKey);
-  if (!raw) {
-    return c.json<ApiResponse & { code: string }>(
-      {
-        ok: false,
-        error: "Invalid or already-used code",
-        code: "code_invalid",
-      },
-      401,
-    );
-  }
-
-  let payload: {
-    providerName?: string;
-    token: string;
-    refreshToken: string;
-    user?: unknown;
-    redirectUri: string;
-    tenantId: string | null;
-    codeChallenge?: string;
-    codeChallengeMethod?: string;
-    expiresAt: number;
-    expiresIn: number;
-    /** Set only for `mfa=exchange` codes, which carry no tokens. */
-    mfaRequired?: true;
-    mfa?: unknown;
-  };
-  try {
-    payload = JSON.parse(raw);
-  } catch {
-    return c.json<ApiResponse & { code: string }>(
-      { ok: false, error: "Malformed code payload", code: "code_invalid" },
-      401,
-    );
-  }
-
-  if (Date.now() > payload.expiresAt) {
-    return c.json<ApiResponse & { code: string }>(
-      { ok: false, error: "Code expired", code: "code_expired" },
-      401,
-    );
-  }
-
-  if (payload.codeChallenge) {
-    if (!codeVerifier || !isValidPkceCodeVerifier(codeVerifier)) {
-      return c.json<ApiResponse & { code: string }>(
-        {
-          ok: false,
-          error: "Invalid code verifier",
-          code: "code_verifier_invalid",
-        },
-        401,
-      );
-    }
-    const computedChallenge = await pkceChallengeForVerifier(
-      codeVerifier,
-      payload.codeChallengeMethod ?? "S256",
-    );
-    if (!computedChallenge || computedChallenge !== payload.codeChallenge) {
-      return c.json<ApiResponse & { code: string }>(
-        {
-          ok: false,
-          error: "Code verifier mismatch",
-          code: "code_verifier_mismatch",
-        },
-        401,
-      );
-    }
-  }
-
-  if (payload.redirectUri !== redirectUri) {
-    return c.json<ApiResponse & { code: string }>(
-      {
-        ok: false,
-        error: "redirect_uri does not match the one issued with the code",
-        code: "code_redirect_mismatch",
-      },
-      401,
-    );
-  }
-
-  if ((payload.tenantId ?? null) !== tenantId) {
-    return c.json<ApiResponse & { code: string }>(
-      {
-        ok: false,
-        error: "tenant_id does not match the one issued with the code",
-        code: "code_tenant_mismatch",
-      },
-      401,
-    );
-  }
-  const methodResponse = await requireTenantLoginMethodAllowed(
-    c,
-    payload.tenantId ?? undefined,
-    "oauth",
-    payload.providerName,
-  );
-  if (methodResponse) return methodResponse;
-
-  if (!(await lockOAuthCodeRedemption(code))) {
-    return c.json<ApiResponse & { code: string }>(
-      {
-        ok: false,
-        error: "OAuth code is already being redeemed",
-        code: "code_in_use",
-      },
-      409,
-    );
-  }
-
-  try {
-    const consumed = await getOAuthCodeStore().consume(codeKey);
-    if (!consumed) {
-      return c.json<ApiResponse & { code: string }>(
-        {
-          ok: false,
-          error: "Invalid or already-used code",
-          code: "code_invalid",
-        },
-        401,
-      );
-    }
-    if (consumed !== raw) {
-      return c.json<ApiResponse & { code: string }>(
-        {
-          ok: false,
-          error: "OAuth code changed during redemption",
-          code: "code_invalid",
-        },
-        401,
-      );
-    }
-  } finally {
-    await releaseOAuthCodeRedemptionLock(code);
-  }
-
-  if (payload.mfaRequired === true) {
-    return c.json({
-      ok: true,
-      mfaRequired: true,
-      mfa: payload.mfa,
-      ...(payload.user ? { user: payload.user } : {}),
-    });
-  }
-
-  return c.json({
-    ok: true,
-    token: payload.token,
-    refreshToken: payload.refreshToken,
-    ...(payload.user ? { user: payload.user } : {}),
-    expiresIn: payload.expiresIn,
-    expiresAt: payload.expiresAt,
+  return redeemOAuthCode(c, code, {
+    redirectUri,
+    tenantId,
+    codeVerifier,
   });
 });
 
@@ -11798,6 +11888,17 @@ auth.post("/oauth/:provider/token", async (c) => {
     );
   }
   const requestedTenantId = bodyTenantId || headerTenantId;
+  // A code this server issued was bound to its redirect URI, tenant and app
+  // client at authorize time; redemption checks those against the code.
+  if (await getOAuthCodeStore().get(`oauth-code:${body.code}`)) {
+    return redeemOAuthCode(c, body.code, {
+      redirectUri: body.redirectUri,
+      tenantId: requestedTenantId ?? null,
+      codeVerifier: body.codeVerifier?.trim() ?? "",
+      providerName,
+    });
+  }
+
   const methodResponse = await requireTenantLoginMethodAllowed(
     c,
     requestedTenantId,
@@ -11815,106 +11916,6 @@ auth.post("/oauth/:provider/token", async (c) => {
       },
       400,
     );
-  }
-
-  const boundCodeKey = `oauth-code:${body.code}`;
-  const boundCode = await getOAuthCodeStore().get(boundCodeKey);
-  if (boundCode) {
-    let payload: {
-      providerName?: string;
-      token: string;
-      refreshToken: string;
-      user?: unknown;
-      redirectUri: string;
-      tenantId: string | null;
-      codeChallenge?: string;
-      codeChallengeMethod?: string;
-      expiresAt: number;
-      expiresIn: number;
-    };
-    try {
-      payload = JSON.parse(boundCode);
-    } catch {
-      return c.json<ApiResponse>(
-        { ok: false, error: "Malformed OAuth code payload" },
-        401,
-      );
-    }
-    if (Date.now() > payload.expiresAt) {
-      return c.json<ApiResponse>(
-        { ok: false, error: "OAuth code expired" },
-        401,
-      );
-    }
-    if (payload.redirectUri !== body.redirectUri) {
-      return c.json<ApiResponse>(
-        { ok: false, error: "OAuth code redirectUri mismatch" },
-        401,
-      );
-    }
-    if ((payload.tenantId ?? null) !== (requestedTenantId ?? null)) {
-      return c.json<ApiResponse>(
-        { ok: false, error: "OAuth code tenant mismatch" },
-        401,
-      );
-    }
-    if (payload.providerName && payload.providerName !== providerName) {
-      return c.json<ApiResponse>(
-        { ok: false, error: "OAuth code provider mismatch" },
-        401,
-      );
-    }
-    const payloadMethodResponse = await requireTenantLoginMethodAllowed(
-      c,
-      payload.tenantId ?? undefined,
-      "oauth",
-      payload.providerName ?? providerName,
-    );
-    if (payloadMethodResponse) return payloadMethodResponse;
-    if (payload.codeChallenge) {
-      const verifier = body.codeVerifier?.trim() ?? "";
-      if (!verifier || !isValidPkceCodeVerifier(verifier)) {
-        return c.json<ApiResponse>(
-          { ok: false, error: "Invalid code verifier" },
-          401,
-        );
-      }
-      const computedChallenge = await pkceChallengeForVerifier(
-        verifier,
-        payload.codeChallengeMethod ?? "S256",
-      );
-      if (!computedChallenge || computedChallenge !== payload.codeChallenge) {
-        return c.json<ApiResponse>(
-          { ok: false, error: "Code verifier mismatch" },
-          401,
-        );
-      }
-    }
-    if (!(await lockOAuthCodeRedemption(body.code))) {
-      return c.json<ApiResponse>(
-        { ok: false, error: "OAuth code is already being redeemed" },
-        409,
-      );
-    }
-    try {
-      const consumed = await getOAuthCodeStore().consume(boundCodeKey);
-      if (!consumed || consumed !== boundCode) {
-        return c.json<ApiResponse>(
-          { ok: false, error: "Invalid or already-used code" },
-          401,
-        );
-      }
-    } finally {
-      await releaseOAuthCodeRedemptionLock(body.code);
-    }
-    return c.json({
-      ok: true,
-      token: payload.token,
-      refreshToken: payload.refreshToken,
-      ...(payload.user ? { user: payload.user } : {}),
-      expiresIn: payload.expiresIn,
-      expiresAt: payload.expiresAt,
-    });
   }
 
   if (!isUnsafeUnboundOAuthProviderCodeExchangeAllowed()) {

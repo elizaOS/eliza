@@ -27,7 +27,7 @@ public final class DeferredDeletionJournal {
 
  /** Terminal receipts kept after a new stage retires older ones. */
  public static final int RETAINED_TERMINAL = 127;
- /** Rows at which staging refuses until uncertain history is reviewed. */
+ /** Rows at which staging refuses once no terminal receipt is left to retire. */
  public static final int MAX_ROWS = 500;
  /** Bytes kept free within a 4 MiB native slot for dispatch and outcome metadata. */
  public static final int MAX_STAGED_BYTES = 3 * 1024 * 1024;
@@ -69,17 +69,30 @@ public final class DeferredDeletionJournal {
  /** open, expired or clock-changed for a persisted row. */
  public static String window(JSONObject row, String continuity, long elapsed) throws Exception {
   JSONObject d = row.getJSONObject("deadline");
-  long start = d.getLong("createdElapsed"), expiry = d.getLong("expiresElapsed");
-  if (!d.getString("continuity").equals(continuity) || elapsed < start) return "clock-changed";
-  return elapsed < expiry ? "open" : "expired";
+  return DeletionDeadline.window(d.getString("continuity"), d.getLong("createdElapsed"), d.getLong("expiresElapsed"), continuity, elapsed);
+ }
+
+ /** Acknowledgements and listed rows from one read of the journal slot. */
+ public static final class Snapshot {
+  public final Set<String> acknowledgements;
+  public final JSONArray rows;
+  Snapshot(Set<String> acknowledgements, JSONArray rows) { this.acknowledgements = acknowledgements; this.rows = rows; }
  }
 
  // Acknowledgement hides the notice only; its unknown receipt and no-replay state remain intact.
- public synchronized Set<String> acknowledgements() throws Exception {
-  JSONObject marks = read().optJSONObject("acknowledgements");
+ public synchronized Set<String> acknowledgements() throws Exception { return acknowledgements(read()); }
+
+ private static Set<String> acknowledgements(JSONObject data) {
+  JSONObject marks = data.optJSONObject("acknowledgements");
   Set<String> keys = new HashSet<>();
   if (marks != null) for (Iterator<String> i = marks.keys(); i.hasNext();) { String key = i.next(); if (marks.optBoolean(key, false)) keys.add(key); }
   return keys;
+ }
+
+ /** {@link #acknowledgements} and {@link #list} from a single slot read (the notice poll). */
+ public synchronized Snapshot snapshot(String continuity, long elapsed) throws Exception {
+  JSONObject data = read();
+  return new Snapshot(acknowledgements(data), list(data, continuity, elapsed));
  }
 
  public synchronized boolean acknowledged(String kind, String id) throws Exception {
@@ -110,15 +123,20 @@ public final class DeferredDeletionJournal {
    String key = i.next(), phase = records.getJSONObject(key).getString("phase");
    if ("deleted".equals(phase) || "undone".equals(phase) || "conflict".equals(phase)) terminal.add(key);
   }
-  terminal.sort((a, b) -> Long.compare(records.optJSONObject(a).optJSONObject("deadline").optLong("createdElapsed"), records.optJSONObject(b).optJSONObject("deadline").optLong("createdElapsed")));
-  for (int i = 0; i < terminal.size() - RETAINED_TERMINAL; i++) records.remove(terminal.get(i));
-  if (records.length() >= MAX_ROWS) throw new IllegalStateException("Pending deletion history requires review");
+  // Oldest first by wall-clock expiry, which survives a reboot; elapsed time only breaks ties.
+  terminal.sort((a, b) -> {
+   JSONObject x = records.optJSONObject(a).optJSONObject("deadline"), y = records.optJSONObject(b).optJSONObject("deadline");
+   int order = Long.compare(x.optLong("expiresAt"), y.optLong("expiresAt"));
+   return order != 0 ? order : Long.compare(x.optLong("createdElapsed"), y.optLong("createdElapsed"));
+  });
+  int retired = 0;
+  while (retired < terminal.size() && (retired < terminal.size() - RETAINED_TERMINAL || records.length() >= MAX_ROWS)) records.remove(terminal.get(retired++));
+  if (records.length() >= MAX_ROWS) throw new IllegalStateException("Too many unresolved deletions. Resolve pending deletions before deleting more.");
   JSONObject row = new JSONObject().put("version", 1).put("id", id).put("owner", copy(owner)).put("target", copy(target)).put("phase", "queued")
    .put("deadline", new JSONObject().put("continuity", deadline.continuity).put("createdElapsed", deadline.createdElapsed).put("expiresElapsed", deadline.expiresElapsed).put("expiresAt", deadline.expiresAt));
   records.put(id, row);
   // Count alone is insufficient when a retained event has a large description.
   String encoded = data.toString();
-  int retired = 0;
   while (encoded.getBytes(StandardCharsets.UTF_8).length > MAX_STAGED_BYTES && retired < terminal.size()) { records.remove(terminal.get(retired++)); encoded = data.toString(); }
   if (encoded.getBytes(StandardCharsets.UTF_8).length > MAX_STAGED_BYTES) throw new IllegalStateException("Active deletion history requires review");
   store.save(encoded);
@@ -126,8 +144,10 @@ public final class DeferredDeletionJournal {
  }
 
  /** Every row; queued rows carry their window and a dispatching row reads as unknown. */
- public synchronized JSONArray list(String continuity, long elapsed) throws Exception {
-  JSONObject records = read().getJSONObject("records");
+ public synchronized JSONArray list(String continuity, long elapsed) throws Exception { return list(read(), continuity, elapsed); }
+
+ private static JSONArray list(JSONObject data, String continuity, long elapsed) throws Exception {
+  JSONObject records = data.getJSONObject("records");
   JSONArray rows = new JSONArray();
   for (Iterator<String> i = records.keys(); i.hasNext();) {
    JSONObject row = copy(records.getJSONObject(i.next()));

@@ -1,15 +1,11 @@
 /**
- * Bounded, SSRF-guarded JSON-over-HTTP transport shared by managed-provider
- * adapters. Every request is pinned to the resolved connection's origin, uses
+ * Bounded, SSRF-guarded JSON-over-HTTP transport behind the Cloud Maps
+ * adapter. Every request is pinned to the resolved connection's origin, uses
  * core's DNS-pinned guarded fetch with redirects rejected, enforces a wall
  * deadline and response byte limit, and decodes bodies through a caller
  * supplied schema so provider bytes never escape unvalidated. Failures are
- * classified into the `ManagedProviderError` taxonomy; adapters wrap them into
- * domain errors at their own boundary.
- *
- * Extracted from the plugin-maps JSON adapter, which is the reference
- * migration; behavior changes here must keep that plugin's contract tests
- * green.
+ * classified into the `ManagedProviderError` taxonomy; the adapter wraps them
+ * into `MapsError` at its own boundary.
  */
 
 import {
@@ -23,7 +19,7 @@ import {
 import type { ResolvedProviderConnection } from "./connection";
 import { ManagedProviderError } from "./errors";
 
-/** Structural zod-compatible schema seam so core does not depend on zod here. */
+/** Structural zod-compatible schema seam, so this client does not depend on zod. */
 export interface ProviderResponseSchema<T> {
   safeParse(
     value: unknown,
@@ -95,9 +91,24 @@ function cancelBody(response: Response, reason: string): void {
   if (response.body) observeTeardown(response.body.cancel(reason), reason);
 }
 
-function retryAfterMs(response: Response): number | undefined {
+/** Largest retry delay accepted from a body, in seconds (one day). */
+const MAX_BODY_RETRY_AFTER_SECONDS = 86_400;
+
+function retryAfterMs(response: Response, body: unknown): number | undefined {
   const raw = response.headers.get("retry-after");
-  if (!raw) return undefined;
+  if (!raw) {
+    // Cloud also puts the delay in the body; read it when no header arrived.
+    const seconds =
+      body && typeof body === "object" && "retryAfterSeconds" in body
+        ? (body as { retryAfterSeconds?: unknown }).retryAfterSeconds
+        : undefined;
+    return typeof seconds === "number" &&
+      Number.isFinite(seconds) &&
+      seconds >= 0 &&
+      seconds <= MAX_BODY_RETRY_AFTER_SECONDS
+      ? Math.round(seconds * 1_000)
+      : undefined;
+  }
   const seconds = Number(raw);
   if (Number.isFinite(seconds) && seconds >= 0)
     return Math.round(seconds * 1_000);
@@ -109,10 +120,15 @@ function classifyProviderError(
   response: Response,
   body: unknown,
 ): ManagedProviderError {
-  const providerCode =
+  const code =
     body && typeof body === "object" && "code" in body
-      ? String((body as { code?: unknown }).code)
-      : "";
+      ? (body as { code?: unknown }).code
+      : undefined;
+  const providerCode = typeof code === "string" ? code : "";
+  // A short machine code lets domain adapters tell refusals apart.
+  const codeContext = /^[a-z][a-z_]{0,63}$/.test(providerCode)
+    ? { providerCode }
+    : {};
   if (
     (response.status === 401 || response.status === 403) &&
     providerCode === "credential_revoked"
@@ -125,24 +141,20 @@ function classifyProviderError(
   if (response.status === 401) {
     return new ManagedProviderError("The provider connection has expired.", {
       code: "AUTH_EXPIRED",
-      context: { status: response.status },
+      context: { status: response.status, ...codeContext },
     });
   }
-  // A short machine code lets domain adapters tell refusals apart.
-  const codeContext = /^[a-z][a-z_]{0,63}$/.test(providerCode)
-    ? { providerCode }
-    : {};
   if (response.status === 429) {
     return new ManagedProviderError("The provider is rate limited.", {
       code: "RATE_LIMITED",
-      retryAfterMs: retryAfterMs(response),
+      retryAfterMs: retryAfterMs(response, body),
       context: { status: response.status, ...codeContext },
     });
   }
   if (response.status >= 500) {
     return new ManagedProviderError("The provider failed.", {
       code: "PROVIDER_FAILURE",
-      retryAfterMs: retryAfterMs(response),
+      retryAfterMs: retryAfterMs(response, body),
       context: { status: response.status, ...codeContext },
     });
   }
@@ -162,12 +174,6 @@ export class ManagedProviderHttpClient {
 
   constructor(options: ManagedProviderHttpClientOptions) {
     const connection = options.connection;
-    if (connection.mode === "managed" && connection.credential !== undefined) {
-      throw new ManagedProviderError(
-        "Managed connections cannot carry provider credentials.",
-        { code: "INVALID_INPUT" },
-      );
-    }
     const allowPrivateTest = options.allowPrivateNetworkForTests === true;
     if (allowPrivateTest && !options.testTransport?.fetchImpl) {
       throw new ManagedProviderError(
@@ -316,26 +322,43 @@ export class ManagedProviderHttpClient {
       );
     }
     const headers = new Headers(init.headers);
-    // Authentication is SDK-owned. Managed mode must never forward an adapter-
-    // supplied credential; local mode replaces any caller value with the
+    // Authentication is client-owned: any caller value is replaced with the
     // credential resolved for this exact connection.
     headers.delete(AUTHORIZATION_HEADER);
     if (this.connection.credential)
       headers.set(AUTHORIZATION_HEADER, `Bearer ${this.connection.credential}`);
     headers.set(this.connectionIdHeader, this.connection.connectionId);
+    const guarded = fetchWithSsrfGuard({
+      url: url.href,
+      init: { ...init, headers, redirect: "manual", signal: deadline.signal },
+      maxRedirects: 0,
+      timeoutMs: this.timeoutMs,
+      signal: deadline.signal,
+      policy: this.allowPrivateNetworkForTests
+        ? { allowPrivateNetwork: true }
+        : undefined,
+      ...this.testTransport,
+    });
+    // DNS lookup inside the guarded fetch does not observe the signal, so the
+    // deadline is raced here; a late result is released, never used.
+    let onAbort: (() => void) | undefined;
+    const elapsed = new Promise<never>((_, reject) => {
+      onAbort = () =>
+        reject(
+          deadline.signal.reason ??
+            new DOMException("Provider deadline elapsed", "TimeoutError"),
+        );
+      if (deadline.signal.aborted) onAbort();
+      else deadline.signal.addEventListener("abort", onAbort, { once: true });
+    });
     try {
-      return await fetchWithSsrfGuard({
-        url: url.href,
-        init: { ...init, headers, redirect: "manual", signal: deadline.signal },
-        maxRedirects: 0,
-        timeoutMs: this.timeoutMs,
-        signal: deadline.signal,
-        policy: this.allowPrivateNetworkForTests
-          ? { allowPrivateNetwork: true }
-          : undefined,
-        ...this.testTransport,
-      });
+      return await Promise.race([guarded, elapsed]);
     } catch (error) {
+      if (deadline.signal.aborted)
+        observeTeardown(
+          guarded.then((late) => late.release()),
+          "abandoned-request",
+        );
       // error-policy:J2 Add a typed provider/network classification while
       // preserving the original transport failure as the cause.
       if (
@@ -358,6 +381,8 @@ export class ManagedProviderHttpClient {
         code: "PROVIDER_NETWORK",
         cause: error,
       });
+    } finally {
+      if (onAbort) deadline.signal.removeEventListener("abort", onAbort);
     }
   }
 
@@ -447,6 +472,10 @@ export class ManagedProviderHttpClient {
       }
       // error-policy:J2 Provider bytes are untrusted; preserve bounded read
       // and UTF-8 failures without retaining or exposing response content.
+      observeTeardown(
+        reader.cancel("provider response body could not be read"),
+        "response-unreadable",
+      );
       throw new ManagedProviderError(
         "The provider response body could not be read.",
         {

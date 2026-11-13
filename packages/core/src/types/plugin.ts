@@ -507,6 +507,12 @@ export interface ViewDeclaration {
 	fallbackFor?: string;
 	/** Display label shown in the view manager and agent responses. */
 	label: string;
+	/**
+	 * Extra lowercase names a navigation request may use for this view (e.g.
+	 * "reminders" for a calendar). Non-authoritative: they only help match a
+	 * request and grant no access.
+	 */
+	navigationAliases?: readonly string[];
 	/** Caller-role requirement enforced at every server/view interaction boundary. */
 	roleGate?: RoleGate;
 	/**

@@ -65,8 +65,7 @@ public final class SpeechAudioFocus {
  }
  /** The utterance ended or was stopped. Main thread. */
  public void release(){
-  boolean held=policy.held();policy.released();
-  if(held&&audio!=null)try{audio.abandonAudioFocusRequest(request);}catch(RuntimeException ignored){/* Nothing held. */}
+  if(policy.released()&&audio!=null)try{audio.abandonAudioFocusRequest(request);}catch(RuntimeException ignored){/* Nothing held. */}
  }
  /**
   * Android 12+: calls a hook when the audio mode moves into a call, so assistant capture and speech
