@@ -4,6 +4,38 @@ import {
   createCloudSpeechRelayPorts,
 } from "./cloud-speech-relay-client";
 
+test("a reset during paid session creation is never replayed", async () => {
+  const paths: string[] = [];
+  const fakeFetch = async (input: RequestInfo | URL) => {
+    const path = new URL(String(input)).pathname;
+    paths.push(path);
+    if (path.endsWith("/session"))
+      throw Object.assign(new Error("Connection reset"), {
+        code: "ECONNRESET",
+      });
+    return Response.json({
+      consentNonce: crypto.randomUUID(),
+      retirementProofVersion: 1,
+      expiresAt: new Date(Date.now() + 300000).toISOString(),
+    });
+  };
+  const startup = createCloudSpeechRelayPorts({
+    enabled: true,
+    origin: "https://api-staging.eliza.app",
+    credential: async () => "fixture-only",
+    assertCurrent() {},
+    fetch: fakeFetch as typeof fetch,
+    websocket() {
+      throw Error("must not open socket");
+    },
+  });
+  await expect(startup).rejects.toBeInstanceOf(Error);
+  expect(paths).toEqual([
+    "/api/v1/voice/speech/consent",
+    "/api/v1/voice/speech/session",
+  ]);
+});
+
 test("HTTP availability is transport, not authorization, and never retries consent or mint", async () => {
   for (const failedPath of ["/consent", "/session"])
     for (const [status, code] of [

@@ -435,6 +435,11 @@ const SPEECH_PHASES = [
   "auth_resolution",
   "limiter_module_load",
   "org_limiter",
+  "speech_identity_rate",
+  "speech_consent_write",
+  "speech_consent_consume",
+  "speech_recovery_prepare",
+  "speech_directory_write",
 ] as const;
 
 /** Optional diagnostics cannot change request results or disclose caller data. */

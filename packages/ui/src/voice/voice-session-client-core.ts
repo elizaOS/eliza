@@ -294,6 +294,8 @@ export function createVoiceSessionClient(
   const mintPath = options.mintPath ?? "/api/v1/voice/session";
   const requireTurnTerminal = options.requireTurnTerminal === true;
   const turnTerminalOffers = new WeakMap<VoiceWebSocketLike, string>();
+  const renewalOffers = new WeakMap<VoiceWebSocketLike, string>();
+  const renewedLeases = new WeakMap<VoiceWebSocketLike, number>();
   let turnTerminalBinding: {
     socket: VoiceWebSocketLike;
     generation: number;
@@ -648,6 +650,19 @@ export function createVoiceSessionClient(
       mark("not_reached(unparseable_control)", state.traceId);
       return;
     }
+    if (event.t === "lease_extended") {
+      const previous = renewedLeases.get(socket);
+      if (
+        renewalOffers.get(socket) !== event.sessionId ||
+        previous === undefined ||
+        event.expiresAt <= previous ||
+        event.expiresAt > previous + 60_000
+      )
+        return;
+      renewedLeases.set(socket, event.expiresAt);
+      scheduleRotation({ expiresAt: event.expiresAt }, generation);
+      return;
+    }
     if (event.t === "turn_terminal") {
       const binding = turnTerminalBinding;
       if (
@@ -717,6 +732,14 @@ export function createVoiceSessionClient(
     )
       return;
     if (event.t === "ready") {
+      if (
+        renewalOffers.get(socket) === event.sessionId &&
+        typeof event.leaseExpiresAt === "number" &&
+        event.leaseExpiresAt > epochNow()
+      ) {
+        renewedLeases.set(socket, event.leaseExpiresAt);
+        scheduleRotation({ expiresAt: event.leaseExpiresAt }, generation);
+      }
       turnTerminalBinding =
         turnTerminalOffers.has(socket) &&
         turnTerminalOffers.get(socket) === event.sessionId &&
@@ -1006,6 +1029,8 @@ export function createVoiceSessionClient(
       connPhase = "open";
       if (minted.turnTerminal === true)
         turnTerminalOffers.set(socket, minted.sessionId);
+      if (minted.leaseRenewal === true)
+        renewalOffers.set(socket, minted.sessionId);
       // FIRST frame MUST be the hello with the token — never a header.
       try {
         socket.send(
@@ -1015,6 +1040,9 @@ export function createVoiceSessionClient(
             protocol: VOICE_SESSION_PROTOCOL_VERSION,
             ...(minted.turnTerminal === true
               ? { turnTerminal: true as const }
+              : {}),
+            ...(minted.leaseRenewal === true
+              ? { leaseRenewal: true as const }
               : {}),
             uplinkCodec: uplink,
             downlinkCodec: downlink,
@@ -1058,7 +1086,7 @@ export function createVoiceSessionClient(
    * idle boundary — keeps that sever from ever cutting audible speech.
    */
   function scheduleRotation(
-    minted: VoiceSessionMintResponse,
+    minted: Pick<VoiceSessionMintResponse, "expiresAt">,
     generation: number,
   ): void {
     clearRotationTimer();
@@ -1067,6 +1095,9 @@ export function createVoiceSessionClient(
     const expiresAtMs = parseExpiresAtMs(minted.expiresAt);
     if (expiresAtMs === null) return;
     rotationDeadlineMs = expiresAtMs;
+    // An acknowledged renewable host owns the paid deadline and closes on
+    // refusal or expiry. A second client renewal loop would race that owner.
+    if (ws && renewedLeases.has(ws)) return;
     const delayMs = Math.max(0, expiresAtMs - epochNow() - rotationLeadMs);
     rotationTimer = setTimeout(() => {
       rotationTimer = null;

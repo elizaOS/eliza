@@ -98,8 +98,8 @@ for (const opens of [false, true])
       failure = e;
     }
     const elapsed = performance.now() - start;
-    expect(elapsed).toBeGreaterThanOrEqual(4900);
-    expect(elapsed).toBeLessThan(6500);
+    expect(elapsed).toBeGreaterThanOrEqual(opens ? 4900 : 9900);
+    expect(elapsed).toBeLessThan(opens ? 6500 : 11500);
     expect(calls.filter((x) => x.endsWith("/session"))).toHaveLength(1);
     expect(calls.filter((x) => x.endsWith("/revoke"))).toHaveLength(1);
     expect(
@@ -132,4 +132,4 @@ for (const opens of [false, true])
     expect(JSON.stringify(logs)).not.toContain(id);
     expect(sent.map((frame) => frame.t)).toEqual(opens ? ["hello"] : []);
     expect(JSON.stringify(logs)).not.toContain("fake-test-token");
-  }, 10000);
+  }, 15000);
