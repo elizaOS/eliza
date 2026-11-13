@@ -1,8 +1,7 @@
 {
   "name": "@elizaos/cloud-shared",
-  "version": "0.1.0",
+  "version": "2.0.6",
   "description": "Shared backend code for Eliza Cloud: billing, db schemas/repositories, services lib, types, and route resolution.",
-  "private": true,
   "type": "module",
   "files": [
     "README.md",
@@ -13,7 +12,16 @@
     "!src/**/__tests__/**",
     "!src/**/__fixtures__/**",
     "!src/**/fixtures/**",
-    "!src/**/test-support/**"
+    "!src/**/test-support/**",
+    "!src/**/*-test-fixture.ts",
+    "!src/**/*.fixture.ts",
+    "!src/**/*.fixture.mts",
+    "!src/db/account-deletion-test-database.ts",
+    "!src/db/agent-node-occurrence-test-support.ts",
+    "!src/db/push-schema-for-tests.ts",
+    "!src/db/repositories/app-billing-test-migrations.ts",
+    "!src/lib/services/generic-billing-import.stripe-fixture.ts",
+    "!src/testing/runtime-live-qa.ts"
   ],
   "publishConfig": {
     "access": "public"
@@ -822,7 +830,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.6",
-    "@cloudflare/workers-types": "^4.20260429.1",
+    "@cloudflare/workers-types": "^5.20261110.1",
     "@types/node": "^25.6.0",
     "@types/pg": "^8.23.1",
     "@types/ssh2": "^1.15.6",

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-computeruse",
-  "version": "2.0.5",
+  "version": "2.0.6",
   "description": "Desktop automation plugin \u2014 screenshots, mouse/keyboard control, browser CDP, and window management for elizaOS agents. Ported from open-computer-use (Apache 2.0).",
   "type": "module",
   "main": "dist/index.js",
@@ -81,7 +81,7 @@
     "@elizaos/host": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@nut-tree-fork/nut-js": "^4.2.6",
-    "puppeteer-core": "^24.9.0",
+    "puppeteer-core": "^25.16.0",
     "@elizaos/contracts": "workspace:*"
   },
   "optionalDependencies": {
