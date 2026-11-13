@@ -756,7 +756,6 @@ static void ensure_default_env(const char *app_support_dir, const char *bundle_p
     }
   }
   setenv("ELIZA_PLATFORM", "ios", 0);
-  setenv("ELIZA_MOBILE_PLATFORM", "ios", 0);
   setenv("ELIZA_IOS_LOCAL_BACKEND", "1", 0);
   setenv("ELIZA_VAULT_BACKEND", "file", 0);
   setenv("ELIZA_DISABLE_VAULT_PROFILE_RESOLVER", "1", 0);
