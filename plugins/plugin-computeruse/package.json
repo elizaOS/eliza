@@ -81,7 +81,7 @@
     "@elizaos/host": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@nut-tree-fork/nut-js": "^4.2.6",
-    "puppeteer-core": "^24.9.0",
+    "puppeteer-core": "^25.16.0",
     "@elizaos/contracts": "workspace:*"
   },
   "optionalDependencies": {
