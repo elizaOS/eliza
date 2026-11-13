@@ -17,6 +17,10 @@ const world = parseSyntheticWorldConfiguration(
 const live = { name: "anthropic", env: { ANTHROPIC_API_KEY: "k" } } as const;
 
 describe("live provider isolation from LLM mocks", () => {
+  it("joins /v1 to a world origin without a double slash", () => {
+    expect(world.settings.OPENAI_BASE_URL).toBe("http://127.0.0.1:41001/v1");
+    expect(world.settings.ANTHROPIC_BASE_URL).toBe("http://127.0.0.1:41002/v1");
+  });
   it.each([
     ["OPENAI_BASE_URL", "http://127.0.0.1:41001/v1/"],
     ["ANTHROPIC_BASE_URL", "http://127.0.0.1:41002/v1"],
