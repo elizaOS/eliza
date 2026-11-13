@@ -539,7 +539,8 @@
         "imports exact protected registrations, alias assets, browser returns and disabled apps atomically",
         "refuses ambiguous callback ownership before publishing any imported data",
         "rejects partial source associations and refuses to overwrite changed registrations",
-        "reads complete callback binding from the deployed staging branch across all deployment pages"
+        "reads complete callback binding from the deployed staging branch across all deployment pages",
+        "Pages failures report only request stage and numeric provider codes"
       ]
     }
   ],
