@@ -387,16 +387,20 @@ describe("packaging of the source-shipped Cloud packages", () => {
     }
   });
 
-  test("publication stays a maintainer's decision", () => {
-    for (const { manifest } of manifests) expect(manifest.private).toBe(true);
-    const cohort = JSON.parse(
-      readFileSync(
-        join(UPSTREAM_ROOT, "packages/scripts/release-cohort.json"),
-        "utf8",
-      ),
-    ) as { packages: string[] };
+  test("each is public, in the release cohort and at the cohort version", () => {
+    const read = (path: string) =>
+      JSON.parse(readFileSync(join(UPSTREAM_ROOT, path), "utf8"));
+    const cohort = read("packages/scripts/release-cohort.json") as {
+      packages: string[];
+    };
+    const { version } = read("lerna.json") as { version: string };
     for (const { manifest } of manifests) {
-      expect(cohort.packages).not.toContain(manifest.name as string);
+      expect(manifest.private).toBeUndefined();
+      expect(cohort.packages).toContain(manifest.name as string);
+      expect({ name: manifest.name, version: manifest.version }).toEqual({
+        name: manifest.name,
+        version,
+      });
     }
   });
 
