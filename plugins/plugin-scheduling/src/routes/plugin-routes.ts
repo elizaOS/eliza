@@ -24,10 +24,16 @@ import {
   type SchedulingRouteContext,
 } from "./scheduled-tasks.js";
 
+// Proxies append a hop to X-Forwarded-Proto ("https, http") and Node joins
+// repeated header lines the same way; like the host route layer, use the
+// first value so the request URL still parses.
+function firstForwardedProto(value: string | string[] | undefined): string {
+  const first = Array.isArray(value) ? value[0] : value;
+  return first?.split(",", 1)[0]?.trim() || "http";
+}
 function requestBaseUrl(req: IncomingMessage): string {
   const host = req.headers.host ?? "localhost";
-  const proto =
-    (req.headers["x-forwarded-proto"] as string | undefined) ?? "http";
+  const proto = firstForwardedProto(req.headers["x-forwarded-proto"]);
   return `${proto}://${host}`;
 }
 function isRecord(value: unknown): value is Record<PropertyKey, unknown> {
