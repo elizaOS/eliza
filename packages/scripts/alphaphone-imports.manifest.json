@@ -1,5 +1,6 @@
 {
   "modules": {
+    "LICENSE": [],
     "bun.lock": [],
     "package.json": [],
     "packages/agent/native-host/private-runtime-launch.mjs": [
@@ -32,13 +33,37 @@
     "packages/agent/test/mobile-workspace-exports.test.ts": [],
     "packages/app/app.config.ts": [],
     "packages/app/package.json": [],
+    "packages/app/platforms/android": [],
+    "packages/app/platforms/android/app/build.gradle": [],
+    "packages/app/platforms/android/app/proguard-rules.pro": [],
+    "packages/app/platforms/android/app/src/main/AndroidManifest.xml": [],
+    "packages/app/platforms/android/app/src/main/elizavoice-jni": [],
     "packages/app/platforms/android/app/src/main/elizavoice-jni/CMakeLists.txt": [],
     "packages/app/platforms/android/app/src/main/elizavoice-jni/elizavoice-jni.cpp": [],
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app": [],
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/AndroidBunTarget.java": [],
     "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaAgentService.java": [],
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaCloudCredentialSlots.java": [],
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaCloudSignInPlugin.java": [],
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaCloudSignInRegistration.java": [],
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaResidentCredentials.java": [],
     "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaVoiceNative.java": [],
     "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/IpcStartupRecovery.java": [],
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/MainActivity.java": [],
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/SecureStoreFrameInput.java": [],
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/WorkflowSurvivorInventory.java": [],
+    "packages/app/platforms/android/build.gradle": [],
+    "packages/app/platforms/android/gradle/wrapper/gradle-wrapper.jar": [],
+    "packages/app/platforms/android/gradlew": [],
+    "packages/app/platforms/android/gradlew.bat": [],
+    "packages/app/platforms/android/sense": [],
     "packages/app/platforms/android/sense/consumer.gradle": [],
+    "packages/app/platforms/android/sense/src/main": [],
     "packages/app/platforms/android/sense/src/main/java/ai/eliza/sense": [],
+    "packages/app/platforms/android/sense/src/main/java/ai/eliza/sense/IndicatorLeaseProvider.java": [],
+    "packages/app/platforms/android/settings.gradle": [],
+    "packages/app/platforms/android/variables.gradle": [],
+    "packages/app/scripts": [],
     "packages/app/scripts/aosp/compile-libllama-paths.ts": [],
     "packages/app/scripts/aosp/compile-libllama.ts": [],
     "packages/app/scripts/aosp/compile-shim.ts": [],
@@ -86,10 +111,13 @@
     "packages/app/scripts/mobile/android/build-consumer.mjs": [
       "buildAndroidConsumer"
     ],
+    "packages/app/scripts/mobile/android/consumer-host": [],
     "packages/app/scripts/mobile/android/consumer-host.mjs": [
       "generateAndroidConsumerHost"
     ],
     "packages/app/scripts/mobile/android/consumer-host/app.gradle": [],
+    "packages/app/scripts/mobile/android/consumer-host/build.gradle": [],
+    "packages/app/scripts/mobile/android/consumer-host/settings.gradle": [],
     "packages/app/scripts/mobile/android/consumer-host/toolchain.json": [],
     "packages/app/scripts/mobile/android/hosted-fixture/ci-emulator-diagnostics.mjs": [
       "captureFixtureDisplayEvidence"
@@ -112,6 +140,7 @@
       "stageResidentHostSources"
     ],
     "packages/app/scripts/mobile/android/templates": [],
+    "packages/app/scripts/mobile/android/templates/main-activity.ts": [],
     "packages/app/scripts/mobile/artifact-inspection/apk-distribution.mjs": [
       "apkArchiveFacts",
       "apkDistributionProblems",
@@ -127,8 +156,17 @@
       "resolveAndroidSdkRoot",
       "resolveJavaHome"
     ],
+    "packages/app/scripts/paradee-voice": [],
     "packages/app/scripts/paradee-voice/build-native.ts": [],
+    "packages/app/scripts/paradee-voice/speech-pipeline/BufferedStreamExchangeTest.java": [],
+    "packages/app/scripts/paradee-voice/speech-pipeline/LiveCaptureAdmissionTest.java": [],
+    "packages/app/scripts/paradee-voice/speech-pipeline/LiveCaptureResourceTest.java": [],
+    "packages/app/scripts/paradee-voice/speech-pipeline/LiveCaptureSourceTest.java": [],
+    "packages/app/scripts/paradee-voice/speech-pipeline/LiveSegmentPipeTest.java": [],
+    "packages/app/scripts/paradee-voice/speech-pipeline/LiveVadGateTest.java": [],
     "packages/app/scripts/paradee-voice/speech-pipeline/LocalSpeechEngineTest.java": [],
+    "packages/app/scripts/paradee-voice/speech-pipeline/StreamingSpeechTest.java": [],
+    "packages/app/scripts/paradee-voice/speech-pipeline/VoiceLatencyTrialsTest.java": [],
     "packages/app/scripts/stage-desktop-fused-lib.ts": [],
     "packages/app/scripts/stage-elizavoice-lib.ts": [],
     "packages/app/src/api/auth-pairing-routes.ts": [],
@@ -137,6 +175,7 @@
     "packages/app/src/api/standalone-speech-routes.ts": [],
     "packages/app/src/api/standalone-speech-service.ts": [],
     "packages/app/src/runtime/dev-server.ts": [],
+    "packages/app/src/runtime/managed-google-agent": [],
     "packages/app/src/runtime/managed-google-agent/calendar-read-timing.ts": [
       "createCalendarReadTiming"
     ],
@@ -163,6 +202,7 @@
       "parseManagedGoogleCalendarFeed",
       "parseManagedGoogleCalendars"
     ],
+    "packages/app/src/runtime/managed-google-agent/managed-google-client.ts": [],
     "packages/app/src/runtime/managed-google-agent/managed-google-failure-stage.ts": [
       "managedGoogleFailureStage",
       "managedGoogleTransportCodes"
@@ -176,11 +216,33 @@
     "packages/app/test/android/sense-fixtures/write-listener-apk.py": [],
     "packages/app/test/android/sense.test.mjs": [],
     "packages/app/test/helpers/real-runtime.ts": [],
+    "packages/auth/android": [],
     "packages/auth/android/build.gradle": [],
+    "packages/auth/android/src/main/AndroidManifest.xml": [],
+    "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudCredentialSlots.java": [],
+    "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudEmailCode.java": [],
+    "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudKeyRenewal.java": [],
     "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudKeyRevocation.java": [],
+    "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInConfig.java": [],
     "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInEnvironment.java": [],
+    "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInFlow.java": [],
     "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java": [],
+    "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInReadiness.java": [],
+    "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInRoutes.java": [],
+    "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSmsCode.java": [],
+    "packages/auth/android/src/main/java/ai/eliza/auth/cloud/NativeGoogleCredential.java": [],
+    "packages/auth/android/test/ai/eliza/auth/cloud/CloudKeyRenewalResidentTest.java.txt": [],
+    "packages/auth/android/test/ai/eliza/auth/cloud/CloudKeyRevocationResetTest.java": [],
+    "packages/auth/android/test/ai/eliza/auth/cloud/CloudSignInChainTest.java.txt": [],
     "packages/auth/android/test/ai/eliza/auth/cloud/CloudSignInContractTest.java": [],
+    "packages/auth/android/test/ai/eliza/auth/cloud/CloudSignInFlowTest.java": [],
+    "packages/auth/android/test/ai/eliza/auth/cloud/CloudSignInReadinessTest.java.txt": [],
+    "packages/auth/android/test/ai/eliza/auth/cloud/CredentialGenerationTest.java": [],
+    "packages/auth/android/test/ai/eliza/auth/cloud/NativeGoogleClassificationTest.java": [],
+    "packages/auth/android/test/ai/eliza/auth/cloud/ResidentCredentialMutationTest.java.txt": [],
+    "packages/auth/android/test/ai/eliza/auth/cloud/TestRegistration.java": [],
+    "packages/auth/android/test/fixtures/app-auth-callback-contract.json": [],
+    "packages/auth/android/test/native-sign-in.test.mjs": [],
     "packages/auth/android/test/org/json/JSONObject.java": [],
     "packages/auth/src/auth/cloud-resident-binding.ts": [
       "CloudResidentBindingController",
@@ -211,6 +273,7 @@
       "validNativeSignInPhone"
     ],
     "packages/auth/src/server/embedded.ts": [],
+    "packages/cloud/api": [],
     "packages/cloud/api/package.json": [],
     "packages/cloud/deploy/src/cli.ts": [],
     "packages/cloud/scripts/admin/dev/cloud-api-dev.ts": [],
@@ -257,6 +320,7 @@
       "serviceLimitNextChange",
       "subscriptionSummary"
     ],
+    "packages/cloud/shared": [],
     "packages/cloud/shared/src/lib/auth/android-asset-links.ts": [],
     "packages/contracts/src/browser-address-input.ts": [],
     "packages/contracts/src/browser-request-grounding.ts": [
@@ -295,6 +359,10 @@
     "packages/contracts/src/contracts/remote-agent-pairing.ts": [
       "normalizeRemoteAgentPairingInstanceId"
     ],
+    "packages/contracts/src/contracts/scheduled-task-execution.ts": [
+      "DEFAULT_TASK_EXECUTION_PROFILE",
+      "TASK_EXECUTION_PROFILES"
+    ],
     "packages/contracts/src/contracts/theme.ts": [],
     "packages/contracts/src/deletion-window.ts": [
       "DeferredDeletionEntry",
@@ -326,6 +394,12 @@
     ],
     "packages/contracts/src/iana-tlds.ts": [],
     "packages/contracts/src/lifeops-connector-degradation.ts": [],
+    "packages/contracts/src/lifeops-normalize/time-zone.ts": [
+      "isValidTimeZone",
+      "normalizeTimeZone",
+      "resolveDefaultTimeZone",
+      "resolveKnownTimeZone"
+    ],
     "packages/contracts/src/lifeops/connectors.ts": [],
     "packages/contracts/src/lifeops/events.ts": [],
     "packages/contracts/src/lifeops/gmail.ts": [],
@@ -531,7 +605,7 @@
       "workflowScopeCategories"
     ],
     "packages/core/src/access-control/role-primitives.ts": [],
-    "packages/core/src/errors.ts": [],
+    "packages/core/src/errors.ts": ["ElizaError"],
     "packages/core/src/events.ts": [
       "NAVIGATE_VIEW_EVENT",
       "NavigateViewDetail"
@@ -551,8 +625,13 @@
     "packages/core/src/runtime/turn-controller.ts": [],
     "packages/core/src/schema-types.ts": [],
     "packages/core/src/security/log-redaction.ts": [],
+    "packages/core/src/security/loopback-trust.ts": ["isLoopbackRemoteAddress"],
     "packages/core/src/services/task.ts": ["TaskService"],
-    "packages/core/src/services/trigger-scheduling.ts": [],
+    "packages/core/src/services/trigger-scheduling.ts": [
+      "computeNextCronRunAtMs",
+      "isMissedScheduledOccurrence",
+      "parseCronExpression"
+    ],
     "packages/core/src/speech.ts": [],
     "packages/core/src/spoken-text.ts": [],
     "packages/core/src/types/components.ts": [],
@@ -563,14 +642,17 @@
     "packages/core/src/types/plugin.ts": [],
     "packages/core/src/types/primitives.ts": [],
     "packages/core/src/types/schema.ts": [],
+    "packages/core/src/types/service.ts": ["Service"],
     "packages/core/src/types/surface-manifest.ts": [],
     "packages/core/src/types/system-notice.ts": ["systemNoticeText"],
     "packages/core/src/types/view-capability.ts": [],
     "packages/core/src/types/view-kind.ts": [],
+    "packages/core/src/utils/deterministic.ts": ["stableStringify"],
     "packages/core/src/utils/errors.ts": [],
     "packages/core/src/utils/reasoning-tags.ts": [],
     "packages/core/src/utils/stage-directions.ts": [],
     "packages/core/src/utils/string-boundaries.ts": [],
+    "packages/core/src/utils/string-to-uuid.ts": ["stringToUuid"],
     "packages/core/src/utils/type-guards.ts": [],
     "packages/core/src/utils/uuid.ts": ["validateUuid"],
     "packages/core/src/view-interaction.ts": ["ViewActionHandoff"],
@@ -592,14 +674,23 @@
     "packages/os/android/aosp.lock.json": [],
     "packages/os/android/devices/pixel10a": [],
     "packages/os/android/patches/soong-app-native": [],
+    "packages/os/android/patches/soong-app-native/manifest.json": [],
+    "packages/os/android/patches/soong-app-native/soong-app-native.patch": [],
     "packages/os/android/sense/config.xml": [],
+    "packages/os/android/sense/systemui": [],
+    "packages/os/android/sense/systemui/assist/assist-identity.patch": [],
     "packages/os/android/sense/systemui/assist/manifest.json": [],
     "packages/os/android/sense/systemui/chip/source": [],
+    "packages/os/android/sense/systemui/manifest.json": [],
+    "packages/os/android/sense/systemui/microphone-ops.patch": [],
     "packages/os/android/signing/key-manifest.json": [],
     "packages/os/android/sources/pixel10a-stallion.json": [],
     "packages/os/browser/README.md": [],
     "packages/os/browser/scripts/chromium-component.mjs": [],
     "packages/os/scripts/__tests__/fixtures/aosp-releasetools": [],
+    "packages/os/scripts/__tests__/fixtures/aosp-releasetools/apksigner": [],
+    "packages/os/scripts/__tests__/fixtures/aosp-releasetools/ota_from_target_files": [],
+    "packages/os/scripts/__tests__/fixtures/aosp-releasetools/sign_target_files_apks": [],
     "packages/os/scripts/__tests__/stage-launcher-overlay.node.test.ts": [],
     "packages/os/scripts/android/aosp-clock-handlers.mjs": [
       "clockActions",
@@ -751,6 +842,7 @@
     "packages/ui/src/agent-surface/types.ts": [],
     "packages/ui/src/agent-surface/useAgentElement.ts": [],
     "packages/ui/src/android-cloud": [],
+    "packages/ui/src/android-cloud/native-cloud-sign-in.ts": [],
     "packages/ui/src/api/api-error.ts": [],
     "packages/ui/src/api/auth/csrf-cookie.ts": [],
     "packages/ui/src/api/client-base.ts": [],
@@ -833,6 +925,7 @@
     "packages/ui/src/gestures/useRafCoalescer.ts": [],
     "packages/ui/src/i18n/locales/en.json": [],
     "packages/ui/src/logger.ts": [],
+    "packages/ui/src/mobile-shell": [],
     "packages/ui/src/mobile-shell/InstalledAppsGridDrawer.tsx": [
       "HOLD_MS",
       "InstalledAppsGridDrawer",
@@ -1007,6 +1100,7 @@
     ],
     "packages/ui/src/voice/voice-session-status.ts": [],
     "packages/ui/src/voice/worklets": [],
+    "packages/voice/src/browser-capture": [],
     "packages/voice/src/browser-capture/recording-pcm.ts": [
       "decodeRecordingPcm",
       "encodePcm16Wav",
@@ -1128,7 +1222,10 @@
       "VoiceTimingRecord",
       "createVoiceTurnTiming"
     ],
+    "plugins/plugin-assistant": [],
     "plugins/plugin-assistant/src/features/advanced-capabilities/experience/service.ts": [],
+    "plugins/plugin-assistant/src/services/device-actions": [],
+    "plugins/plugin-assistant/src/services/device-actions/action.ts": [],
     "plugins/plugin-assistant/src/services/device-actions/calendar-contract.ts": [
       "CalendarFields",
       "CalendarOperation",
@@ -1316,6 +1413,7 @@
       "reopenReminderSchedule",
       "undatedTodos"
     ],
+    "plugins/plugin-assistant/src/services/device-actions/service.ts": [],
     "plugins/plugin-assistant/src/services/device-actions/sms-contract.ts": [],
     "plugins/plugin-assistant/src/services/device-actions/telephony-actions-contract.ts": [
       "ContactWriteOperation",
@@ -1332,6 +1430,7 @@
     ],
     "plugins/plugin-assistant/src/services/device-actions/workflow-contract.ts": [],
     "plugins/plugin-assistant/src/utils/html-entities.ts": [],
+    "plugins/plugin-assistant/vitest.device-actions.config.ts": [],
     "plugins/plugin-browser/src/dispatch-types.ts": [
       "BROWSER_DISPATCH_FAILURE_KINDS"
     ],
@@ -1378,6 +1477,7 @@
       "buildUtcDateFromLocalParts",
       "getZonedDateParts"
     ],
+    "plugins/plugin-calendar/src/linked-sync": [],
     "plugins/plugin-calendar/src/linked-sync/google-reader.ts": [
       "GoogleCalendarEvent",
       "GoogleCalendarFeed",
@@ -1418,6 +1518,7 @@
       "calendarAgentWrite"
     ],
     "plugins/plugin-calendar/src/service/managed-calendar-read.ts": [],
+    "plugins/plugin-files": [],
     "plugins/plugin-files/src/browser/attachment.ts": [
       "MailAttachment",
       "reviewMailAttachment"
@@ -1498,10 +1599,12 @@
       "webSourceOf"
     ],
     "plugins/plugin-inbox/src/actions/choice-markers.ts": [],
+    "plugins/plugin-inbox/src/components/mailbox": [],
     "plugins/plugin-inbox/src/components/mailbox/MailFolderPicker.tsx": [
       "MailFolderPicker",
       "dismissMailFolderMenu"
     ],
+    "plugins/plugin-inbox/src/mailbox": [],
     "plugins/plugin-inbox/src/mailbox/attachments.ts": [
       "OpaqueMailAttachment",
       "OutgoingMailAttachment",
@@ -1644,15 +1747,41 @@
       "fitEmailTarget"
     ],
     "plugins/plugin-knowledge/tsconfig.build.json": [],
+    "plugins/plugin-local-inference/native/android": [],
     "plugins/plugin-local-inference/native/android/consumer.gradle": [],
     "plugins/plugin-local-inference/native/android/inputs.json": [],
     "plugins/plugin-local-inference/native/android/speech-bridge/src/main/java/ai/eliza/voice/CartesiaSpeech.java": [],
+    "plugins/plugin-local-inference/native/android/speech-bridge/src/main/java/ai/eliza/voice/CloudSpeechTimings.java": [],
+    "plugins/plugin-local-inference/native/android/speech-bridge/src/main/java/ai/eliza/voice/CloudSpeechWire.java": [],
     "plugins/plugin-local-inference/native/android/speech-bridge/src/main/java/ai/eliza/voice/LocalSpeechBridgePlugin.java": [],
+    "plugins/plugin-local-inference/native/android/speech-bridge/src/main/java/ai/eliza/voice/SpeechStreamBridgePlugin.java": [],
+    "plugins/plugin-local-inference/native/android/src/main/AndroidManifest.xml": [],
+    "plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/BufferedStreamExchange.java": [],
+    "plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/FirstWriteSpeechOutput.java": [],
+    "plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/LiveCaptureAdmission.java": [],
+    "plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/LiveCaptureController.java": [],
+    "plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/LiveCaptureResource.java": [],
+    "plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/LiveCaptureSource.java": [],
+    "plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/LiveSegmentPipe.java": [],
+    "plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/LiveVadGate.java": [],
     "plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/LiveVoiceCapture.java": [],
     "plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/LocalSpeechEngine.java": [],
+    "plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/LocalVoiceRecording.java": [],
+    "plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/RecordingPcm.java": [],
+    "plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/SpeechAudioFocusPolicy.java": [],
+    "plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/SpeechLeadTrim.java": [],
+    "plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/SpeechOutputWarmup.java": [],
+    "plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/SpeechPcmQueue.java": [],
+    "plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/SpeechStreamValidation.java": [],
+    "plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/StreamingSpeechPlayback.java": [],
+    "plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/VoiceLatencyTrials.java": [],
     "plugins/plugin-local-inference/native/llama.cpp": [],
+    "plugins/plugin-local-inference/src/host-asr-assets.ts": [],
+    "plugins/plugin-local-inference/src/host-asr-worker.ts": [],
+    "plugins/plugin-local-inference/src/host-tts-worker.ts": [],
     "plugins/plugin-local-inference/src/services/router-handler.ts": [],
     "plugins/plugin-maps/src/card.ts": [],
+    "plugins/plugin-maps/src/client": [],
     "plugins/plugin-maps/src/client/agent-context.ts": [
       "clearMapsSelection",
       "getMapsSelectedObject",
@@ -1758,9 +1887,12 @@
     "plugins/plugin-maps/src/navigation.ts": [],
     "plugins/plugin-maps/src/service.ts": [],
     "plugins/plugin-maps/test/navigation-client.test.mjs": [],
+    "plugins/plugin-native-action-journal/android": [],
     "plugins/plugin-native-action-journal/android/src/main/java/ai/eliza/plugins/actionjournal/deletion/DeferredDeletionCoordinator.java": [],
+    "plugins/plugin-native-action-journal/android/src/main/java/ai/eliza/plugins/actionjournal/deletion/DeferredDeletionJournal.java": [],
     "plugins/plugin-native-action-journal/android/src/main/java/ai/eliza/plugins/actionjournal/deletion/DeletionDeadline.java": [],
     "plugins/plugin-native-action-journal/test/native-host/DeferredDeletionTest.java": [],
+    "plugins/plugin-native-agent/android": [],
     "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/connection/CloudConnectionPolicy.java": [],
     "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/connection/ConnectionTransport.java": [],
     "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/connection/DelegationCallback.java": [],
@@ -1775,13 +1907,36 @@
     "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/NativeProviderSlot.java": [],
     "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/NativeRuntimeEmbeddings.java": [],
     "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/ResidentAttachment.java": [],
+    "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/ResidentCredentialStore.java": [],
     "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/updater/RuntimeUpdatePause.java": [],
+    "plugins/plugin-native-agent/test/provider-admission/NativeProviderAdmissionTest.java": [],
+    "plugins/plugin-native-browser-surface/android": [],
+    "plugins/plugin-native-browser-surface/android/build.gradle": [],
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BelowHostLayer.kt": [],
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserAutofillExtras.java": [],
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserBlobCapture.java": [],
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserDownloadPolicy.java": [],
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserDownloads.java": [],
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserFieldOrigin.java": [],
     "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserHttpAuthAutofill.java": [],
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserHttpAuthOrigin.java": [],
     "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserLoginFields.java": [],
     "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserPageReading.java": [],
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserProfilePolicy.java": [],
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserReadingWorld.java": [],
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserReviewedReading.java": [],
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserSessionPolicy.java": [],
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserSessionStore.java": [],
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserSitePrompt.java": [],
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserSurfacePlugin.kt": [],
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserTabHostConfig.java": [],
     "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserTabHostPlugin.java": [],
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserWebOrigin.java": [],
     "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/ChromiumBrowserIdentity.java": [],
     "plugins/plugin-native-browser-surface/resources": [],
+    "plugins/plugin-native-browser-surface/resources/capture-mask.js": [],
+    "plugins/plugin-native-browser-surface/resources/control-channel.js": [],
+    "plugins/plugin-native-browser-surface/resources/read-page.js": [],
     "plugins/plugin-native-browser-surface/scripts/control-channel.mjs": [],
     "plugins/plugin-native-browser-surface/src/address-input.ts": [
       "parseBrowserAddressInput"
@@ -1813,10 +1968,19 @@
       "BrowserTabState",
       "newBrowserTabId"
     ],
+    "plugins/plugin-native-browser-surface/test/native-host/BrowserSitePermissionRecordTest.java": [],
     "plugins/plugin-native-browser-surface/test/native-host/policies.node.mjs": [],
+    "plugins/plugin-native-calendar/android": [],
     "plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/CalendarConfiguration.java": [],
+    "plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/CalendarEventGuard.java": [],
+    "plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/read/CalendarReadAccess.java": [],
+    "plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/read/CalendarSourceIdentity.java": [],
+    "plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/read/SelectedCalendarReader.java": [],
     "plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/write/CalendarEventOptions.java": [],
+    "plugins/plugin-native-calendar/test/jvm/android/content/ContentUris.java": [],
     "plugins/plugin-native-calendar/test/jvm/android/content/ContentValues.java": [],
+    "plugins/plugin-native-calendar/test/jvm/android/database/Cursor.java": [],
+    "plugins/plugin-native-calendar/test/jvm/android/net/Uri.java": [],
     "plugins/plugin-native-calendar/test/native-host/bridge-check.mjs": [],
     "plugins/plugin-native-calendar/test/native-host/bridge-runtime/CalendarBridgeContract.java": [],
     "plugins/plugin-native-calendar/test/native-host/bridge-runtime/android/content/ContentResolver.java": [],
@@ -1834,6 +1998,7 @@
     "plugins/plugin-native-calendar/test/native-host/bridge-runtime/com/getcapacitor/Plugin.java": [],
     "plugins/plugin-native-calendar/test/native-host/bridge-runtime/com/getcapacitor/PluginCall.java": [],
     "plugins/plugin-native-calendar/test/native-host/read-window/android/provider/CalendarContract.java": [],
+    "plugins/plugin-native-camera/android": [],
     "plugins/plugin-native-camera/android/src/main/AndroidManifest.xml": [],
     "plugins/plugin-native-camera/android/src/main/java/ai/eliza/plugins/camera/CameraPlugin.kt": [],
     "plugins/plugin-native-camera/src/definitions.ts": [],
@@ -1852,19 +2017,52 @@
       "createScanDocument"
     ],
     "plugins/plugin-native-camera/src/session.ts": ["createCameraSession"],
+    "plugins/plugin-native-contacts/android": [],
     "plugins/plugin-native-contacts/android/src/main/java/ai/eliza/plugins/contacts/AddressBookPlugin.java": [],
+    "plugins/plugin-native-filesystem/android": [],
+    "plugins/plugin-native-filesystem/android/src/main/java": [],
+    "plugins/plugin-native-filesystem/android/src/main/java/ai/eliza/plugins/filesystem/browser/StorageBrowser.java": [],
     "plugins/plugin-native-filesystem/android/src/main/java/ai/eliza/plugins/filesystem/browser/StorageCatalog.java": [],
     "plugins/plugin-native-inference/src/android/event-subscription.ts": [],
     "plugins/plugin-native-location/android": [],
+    "plugins/plugin-native-media/android": [],
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/DeviceLibraryPlugin.java": [],
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/DocumentFolderTree.java": [],
     "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/OwnedAlbums.java": [],
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/OwnedCaptures.java": [],
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/OwnedMediaConfig.java": [],
     "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/OwnedMediaLibrary.java": [],
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/OwnedPhotoEdits.java": [],
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/PermittedMediaCatalog.java": [],
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/PermittedMediaReview.java": [],
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/PermittedPhotosPlugin.java": [],
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/PhotoCrop.java": [],
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/PhotoLibraryAccess.java": [],
     "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/PhotosPlugin.java": [],
     "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/RecordingWindow.java": [],
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/VideoCopyEdits.java": [],
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/VideoEditSpec.java": [],
+    "plugins/plugin-native-messages/android": [],
     "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/ImageCapability.java": [],
+    "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/MmsStore.java": [],
+    "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/SmsPageCursor.java": [],
+    "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/SmsRecords.java": [],
+    "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/SmsSendJournal.java": [],
+    "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/SmsTelephony.java": [],
+    "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/SmsTelephonyConfiguration.java": [],
     "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/TelephonyPlugin.java": [],
     "plugins/plugin-native-network-policy/android": [],
+    "plugins/plugin-native-notifications/android": [],
     "plugins/plugin-native-notifications/android/src/capacitor/java/ai/eliza/plugins/notifications/NotificationsHostPlugin.java": [],
-    "plugins/plugin-native-notifications/android/src/main/java/ai/eliza/plugins/notifications": [],
+    "plugins/plugin-native-notifications/android/src/main/java/ai/eliza/plugins/notifications/MailBackgroundDelivery.java": [],
+    "plugins/plugin-native-notifications/android/src/main/java/ai/eliza/plugins/notifications/MailHistoryReconciliation.java": [],
+    "plugins/plugin-native-notifications/android/src/main/java/ai/eliza/plugins/notifications/MailNoticePoster.java": [],
+    "plugins/plugin-native-notifications/android/src/main/java/ai/eliza/plugins/notifications/NoticeCoordinator.java": [],
+    "plugins/plugin-native-notifications/android/src/main/java/ai/eliza/plugins/notifications/NoticeDelivery.java": [],
+    "plugins/plugin-native-notifications/android/src/main/java/ai/eliza/plugins/notifications/NoticeOwner.java": [],
+    "plugins/plugin-native-notifications/android/src/main/java/ai/eliza/plugins/notifications/NoticeRecovery.java": [],
+    "plugins/plugin-native-notifications/android/src/main/java/ai/eliza/plugins/notifications/NoticeRoutes.java": [],
+    "plugins/plugin-native-passwords/android": [],
     "plugins/plugin-native-passwords/android/src/main/java/ai/eliza/plugins/passwords/PasswordFormPolicy.java": [],
     "plugins/plugin-native-passwords/src/bindings.ts": [
       "filterEntries",
@@ -1887,7 +2085,9 @@
       "PasswordTransferClient",
       "createTransferClient"
     ],
-    "plugins/plugin-native-phone/android/src/main/java/ai/eliza/plugins/phone": [],
+    "plugins/plugin-native-phone/android": [],
+    "plugins/plugin-native-phone/android/src/main/java/ai/eliza/plugins/phone/TelecomDial.java": [],
+    "plugins/plugin-native-phone/android/src/main/java/ai/eliza/plugins/phone/TelecomDialPadActivity.java": [],
     "plugins/plugin-native-reminders/android": [],
     "plugins/plugin-native-reminders/src/android-definitions.ts": [],
     "plugins/plugin-native-reminders/src/occurrence.ts": [
@@ -1896,20 +2096,30 @@
       "snoozeReminderOccurrence"
     ],
     "plugins/plugin-native-secure-store/android": [],
+    "plugins/plugin-native-secure-store/android-nativeonly": [],
     "plugins/plugin-native-secure-store/android-nativeonly/build.gradle": [],
     "plugins/plugin-native-secure-store/android-nativeonly/src/main/java/ai/eliza/plugins/securestore/nativeonly/CredentialIntentFence.java": [],
+    "plugins/plugin-native-secure-store/android-nativeonly/src/main/java/ai/eliza/plugins/securestore/nativeonly/CredentialMutationConductor.java": [],
+    "plugins/plugin-native-secure-store/android-nativeonly/src/main/java/ai/eliza/plugins/securestore/nativeonly/CredentialSlotMutation.java": [],
     "plugins/plugin-native-secure-store/android-nativeonly/src/main/java/ai/eliza/plugins/securestore/nativeonly/JsonCredentialSlots.java": [],
+    "plugins/plugin-native-system": [],
+    "plugins/plugin-native-system/android": [],
     "plugins/plugin-native-system/android/build.gradle": [],
     "plugins/plugin-native-system/android/src/main/java/ai/eliza/plugins/system/AssistantEntryTile.java": [],
     "plugins/plugin-native-system/android/src/main/java/ai/eliza/plugins/system/SenseInvocation.java": [],
     "plugins/plugin-native-system/android/src/main/java/ai/eliza/plugins/system/SenseListenerClient.java": [],
+    "plugins/plugin-native-system/android/src/main/java/ai/eliza/plugins/system/SensePlugin.java": [],
     "plugins/plugin-native-system/android/src/main/java/ai/eliza/plugins/system/SystemFacts.java": [],
     "plugins/plugin-native-system/android/src/main/java/ai/eliza/plugins/system/SystemPlugin.kt": [],
     "plugins/plugin-native-system/android/src/main/java/ai/eliza/plugins/system/SystemSettingsPages.java": [],
     "plugins/plugin-native-system/android/src/main/java/ai/eliza/plugins/system/SystemShade.java": [],
-    "plugins/plugin-native-system/android/src/main/java/ai/eliza/plugins/system/clock": [],
+    "plugins/plugin-native-system/android/src/main/java/ai/eliza/plugins/system/clock/ClockDays.java": [],
+    "plugins/plugin-native-system/android/src/main/java/ai/eliza/plugins/system/clock/ClockHandoff.java": [],
     "plugins/plugin-native-system/android/src/main/java/ai/eliza/plugins/system/reset/DataReset.java": [],
+    "plugins/plugin-native-system/android/src/main/java/ai/eliza/plugins/system/reset/DataResetCopy.java": [],
     "plugins/plugin-native-system/android/src/main/java/ai/eliza/plugins/system/reset/DataResetPlugin.java": [],
+    "plugins/plugin-native-system/android/src/main/java/ai/eliza/plugins/system/reset/DataResetRecoveryActivity.java": [],
+    "plugins/plugin-native-system/android/src/main/java/ai/eliza/plugins/system/reset/ResetAuthorization.java": [],
     "plugins/plugin-native-system/src/client/launcher.ts": [
       "FavoritesStore",
       "InstalledApp",
@@ -1979,6 +2189,7 @@
       "tileStateText"
     ],
     "plugins/plugin-notes/src/capabilities.ts": [],
+    "plugins/plugin-notes/src/client": [],
     "plugins/plugin-notes/src/client/note-dates.ts": ["stampNoteChanges"],
     "plugins/plugin-notes/src/client/note-deleted-origins.ts": [
       "NoteDeletionReceiptsPort",
@@ -2134,12 +2345,61 @@
     ],
     "plugins/plugin-notes/src/validation.ts": [],
     "plugins/plugin-notes/src/workspace.ts": [],
-    "plugins/plugin-notes/test": [],
-    "plugins/plugin-personal-assistant/src/lifeops": [],
+    "plugins/plugin-personal-assistant/src/lifeops/defaults.ts": [
+      "resolveDefaultTimeZone"
+    ],
+    "plugins/plugin-personal-assistant/src/lifeops/scheduled-task/dossier-activity-migration.ts": [
+      "reconcileOwnerDossierActivity"
+    ],
+    "plugins/plugin-personal-assistant/src/lifeops/scheduled-task/dossier-activity-policy.ts": [
+      "DOSSIER_ACTIVITY_ANCHOR_KEY",
+      "isManagedDossierTask",
+      "readDossierActivityState"
+    ],
+    "plugins/plugin-personal-assistant/src/lifeops/scheduled-task/dossier-activity-runtime.ts": [
+      "admitDossierAutomaticExecution",
+      "admitOwnerDossierActivity",
+      "createDossierActivityMutationPolicy",
+      "prepareDossierAutomaticFire",
+      "resolveOwnerDossierActivityAnchor"
+    ],
+    "plugins/plugin-personal-assistant/src/lifeops/scheduled-task/runtime-wiring.ts": [
+      "registerDossierActivityAnchor"
+    ],
     "plugins/plugin-scheduling/package.json": [],
-    "plugins/plugin-scheduling/src": [],
+    "plugins/plugin-scheduling/src/routes/scheduled-tasks.ts": [
+      "makeScheduledTasksRouteHandler"
+    ],
+    "plugins/plugin-scheduling/src/scheduled-task/completion-check-registry.ts": [
+      "createCompletionCheckRegistry"
+    ],
+    "plugins/plugin-scheduling/src/scheduled-task/consolidation-policy.ts": [
+      "createAnchorRegistry",
+      "createConsolidationRegistry"
+    ],
+    "plugins/plugin-scheduling/src/scheduled-task/escalation.ts": [
+      "createEscalationLadderRegistry"
+    ],
+    "plugins/plugin-scheduling/src/scheduled-task/gate-registry.ts": [
+      "createTaskGateRegistry"
+    ],
+    "plugins/plugin-scheduling/src/scheduled-task/migration.ts": [
+      "ensureSchedulingTables"
+    ],
+    "plugins/plugin-scheduling/src/scheduled-task/runner.ts": [
+      "createInMemoryScheduledTaskStore",
+      "createScheduledTaskRunner"
+    ],
+    "plugins/plugin-scheduling/src/scheduled-task/state-log.ts": [
+      "createInMemoryScheduledTaskLogStore"
+    ],
+    "plugins/plugin-scheduling/src/scheduled-task/store.ts": [
+      "createSchedulingSqlScheduledTaskLogStore",
+      "createSchedulingSqlScheduledTaskStore"
+    ],
     "plugins/plugin-sql/src/base.ts": [],
-    "plugins/plugin-sql/src/database-utils": [],
+    "plugins/plugin-sql/src/database-utils/carve-out-migration.ts": [],
+    "plugins/plugin-sql/src/database-utils/raw-sql.ts": [],
     "plugins/plugin-workflow/__tests__/integration/process-host-compiler.test.ts": [],
     "plugins/plugin-workflow/__tests__/integration/process-host-controls.test.ts": [],
     "plugins/plugin-workflow/__tests__/integration/workflow-process-host.test.ts": [],
