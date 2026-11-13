@@ -130,7 +130,6 @@ export function resolveAgentProbeTarget(env = process.env, args = {}) {
 
   const apiBase = readFirstString(env, [
     "VITE_ELIZA_IOS_API_BASE",
-    "VITE_ELIZA_MOBILE_API_BASE",
     "VITE_ELIZA_ANDROID_API_BASE",
     "ELIZA_IOS_API_BASE",
     "ELIZA_API_BASE",

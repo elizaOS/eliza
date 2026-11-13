@@ -8,7 +8,7 @@
  * cost the headless agent carries once boot churn subsides).
  *
  * Default: spawn a fresh child and measure cold boot.
- *   ELIZA_REPO=<eliza checkout> bun suites/loadperf/boot-kpi.mjs
+ *   ELIZA_REPO_DIR=<eliza checkout> bun suites/loadperf/boot-kpi.mjs
  *
  * --attach: skip spawning and measure an already-running instance at
  * LOADPERF_BASE_URL (default http://127.0.0.1:<ELIZA_API_PORT>). Useful for a

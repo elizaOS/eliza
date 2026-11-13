@@ -376,9 +376,6 @@ function heavyPayloadBucket(): string | null {
     env.STORAGE_HEAVY_PAYLOADS_BUCKET ??
     env.STORAGE_BLOB_DEFAULT_BUCKET ??
     env.STORAGE_TRAJECTORIES_BUCKET ??
-    env.R2_HEAVY_PAYLOADS_BUCKET ??
-    env.R2_BLOB_DEFAULT_BUCKET ??
-    env.R2_TRAJECTORIES_BUCKET ??
     null
   );
 }

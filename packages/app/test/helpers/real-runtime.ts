@@ -49,9 +49,7 @@ export interface RealTestRuntimeResult {
   deliveries: Array<{ target: unknown; content: unknown }>;
 }
 function createCerebrasProviderConfigFromEnv(): LiveProviderConfig | null {
-  const apiKey =
-    process.env.CEREBRAS_API_KEY?.trim() ||
-    process.env.ELIZA_E2E_CEREBRAS_API_KEY?.trim();
+  const apiKey = process.env.CEREBRAS_API_KEY?.trim();
   if (!apiKey) return null;
   // CEREBRAS_API_KEY alone is NOT enough to opt the agent runtime into
   // Cerebras. Lifeops uses Cerebras for *evaluation/training* by default

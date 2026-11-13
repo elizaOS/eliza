@@ -94,7 +94,7 @@ export function formatApiDevSettingsBannerText(
       source: originsWin
         ? `env set — ${originsWin.key}`
         : "default (unset — empty list)",
-      change: "export ELIZA_ALLOWED_ORIGINS=a,b (or CORS_ORIGINS)",
+      change: "export ELIZA_ALLOWED_ORIGINS=a,b",
     },
     {
       setting: "ELIZA_ALLOWED_HOSTS",

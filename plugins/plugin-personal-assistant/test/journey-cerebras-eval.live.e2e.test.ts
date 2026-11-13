@@ -63,9 +63,7 @@ dotenv.config({ path: path.resolve(packageRoot, ".env") });
 dotenv.config({ path: path.resolve(repoRoot, ".env") });
 
 const CEREBRAS_KEY_PRESENT =
-  !!process.env.CEREBRAS_API_KEY ||
-  !!process.env.EVAL_CEREBRAS_API_KEY ||
-  !!process.env.ELIZA_E2E_CEREBRAS_API_KEY;
+  !!process.env.CEREBRAS_API_KEY || !!process.env.EVAL_CEREBRAS_API_KEY;
 
 const CEREBRAS_MODEL =
   process.env.EVAL_MODEL ?? process.env.CEREBRAS_MODEL ?? "gpt-oss-120b";

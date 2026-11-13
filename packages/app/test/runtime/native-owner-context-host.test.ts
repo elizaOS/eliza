@@ -5,12 +5,12 @@ import { delimiter, join, resolve } from "node:path";
 import { expect, test } from "vitest";
 
 test("actual native callback and secure-store dispatch deny foreign or invented context", {
-  skip: !(process.env.ELIZA_JSON_JAR || process.env.ELIZA_ORG_JSON_JAR),
+  skip: !process.env.ELIZA_JSON_JAR,
 }, () => {
   const root = resolve(import.meta.dirname, "../../../.."),
     temporary = mkdtempSync(join(tmpdir(), "native-owner-host-"));
   const java = process.env.JAVA_HOME,
-    jar = process.env.ELIZA_JSON_JAR || process.env.ELIZA_ORG_JSON_JAR;
+    jar = process.env.ELIZA_JSON_JAR;
   if (!jar)
     throw Error("Set pinned ELIZA_JSON_JAR for actual native callback test");
   const native = join(

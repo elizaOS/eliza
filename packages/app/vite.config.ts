@@ -1630,10 +1630,7 @@ function buildViteDevSettingsRows(
   const uiPref = resolveDesktopUiPortPreference(UI_PORT_ENV);
   const apiPort = resolveDesktopApiPort(process.env);
   const uiPort = resolveDesktopUiPort(UI_PORT_ENV);
-  const assetBase =
-    process.env.VITE_ASSET_BASE_URL?.trim() ||
-    process.env.ELIZA_ASSET_BASE_URL?.trim() ||
-    "—";
+  const assetBase = process.env.VITE_ASSET_BASE_URL?.trim() || "—";
   return [
     {
       setting: "ELIZA_APP_SOURCEMAP",
@@ -1671,14 +1668,12 @@ function buildViteDevSettingsRows(
       change: `export ELIZA_SETTINGS_DEBUG=1 or VITE_ELIZA_SETTINGS_DEBUG=1`,
     },
     {
-      setting: `VITE_ASSET_BASE_URL / ELIZA_ASSET_BASE_URL`,
+      setting: "VITE_ASSET_BASE_URL",
       effective: assetBase,
       source: process.env.VITE_ASSET_BASE_URL?.trim()
         ? "env set — VITE_ASSET_BASE_URL"
-        : process.env.ELIZA_ASSET_BASE_URL?.trim()
-          ? `env set — ELIZA_ASSET_BASE_URL`
-          : "default (unset — empty)",
-      change: `export VITE_ASSET_BASE_URL=… or ELIZA_ASSET_BASE_URL=…`,
+        : "default (unset — empty)",
+      change: "export VITE_ASSET_BASE_URL=…",
     },
     {
       setting: "ELIZA_DEV_POLLING",
@@ -2020,7 +2015,7 @@ export default defineConfig(({ command, mode }) => ({
         : "false",
     ),
     "import.meta.env.VITE_ASSET_BASE_URL": JSON.stringify(
-      process.env.VITE_ASSET_BASE_URL ?? process.env.ELIZA_ASSET_BASE_URL ?? "",
+      process.env.VITE_ASSET_BASE_URL ?? "",
     ),
   },
   plugins: [

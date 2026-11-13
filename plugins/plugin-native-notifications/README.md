@@ -154,7 +154,7 @@ identifiers, channels, icon and launch actions:
   calls `discard`.
 
 `test/native-host/notices.node.mjs` runs the synthetic JVM checks for routes, the owner fence,
-approval coordination, recovery and the tap inbox (org.json from `ELIZA_ORG_JSON_JAR` or the Gradle cache).
+approval coordination, recovery and the tap inbox (org.json from `ELIZA_JSON_JAR` or the Gradle cache).
 
 `NoticeDeliveryTest` in the Android consumer exercises actual NotificationManager
 posting, dismissal, receipt reopening, digest mismatch, approval withdrawal and

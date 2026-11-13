@@ -22,10 +22,7 @@ const rawArgs = process.argv.slice(2);
 const withControlPlane = rawArgs.includes("--with-control-plane");
 const args = rawArgs.filter((a) => a !== "--with-control-plane");
 const host = process.env.PGLITE_HOST || "127.0.0.1";
-const port = Number.parseInt(
-  process.env.DEV_CLOUD_PGLITE_PORT || process.env.PGLITE_PORT || "55432",
-  10,
-);
+const port = Number.parseInt(process.env.PGLITE_PORT || "55432", 10);
 const apiPort = process.env.API_DEV_PORT || "8787";
 const apiDevVarsPath = process.env.ELIZA_API_DEV_VARS_PATH?.trim();
 const wranglerPersistTo = process.env.DEV_CLOUD_WRANGLER_PERSIST_TO?.trim();
@@ -180,7 +177,6 @@ async function main() {
     const configuredUrl = env.DATABASE_URL || env.TEST_DATABASE_URL || "";
     const dataDir =
       parsePGliteDataDir(configuredUrl) ||
-      env.DEV_CLOUD_PGLITE_DATA_DIR ||
       env.PGLITE_DATA_DIR ||
       ".eliza/.pgdata";
     env.DATABASE_URL = `postgresql://postgres@${host}:${port}/postgres`;

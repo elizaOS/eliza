@@ -54,7 +54,7 @@ interface ProbeResult {
 }
 
 function runProbe(env: Record<string, string | undefined>): ProbeResult {
-	const nodeBin = process.env.NODE_BIN ?? process.env.NODE ?? "node";
+	const nodeBin = process.env.NODE_BIN ?? "node";
 	const mergedEnv = { ...process.env, ...env };
 	const result =
 		typeof Bun !== "undefined"

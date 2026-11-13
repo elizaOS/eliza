@@ -271,7 +271,7 @@ paths = [
 ]
 regexTarget = "line"
 regexes = [
-  '''CEREBRAS_API_KEY= EVAL_CEREBRAS_API_KEY= ELIZA_E2E_CEREBRAS_API_KEY=''',
+  '''CEREBRAS_API_KEY= EVAL_CEREBRAS_API_KEY=''',
 ]
 
 # The native-host sensitive-text tests use an invented password canary to prove

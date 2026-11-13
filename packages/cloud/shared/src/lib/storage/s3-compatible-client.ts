@@ -114,34 +114,27 @@ function resolveRegion(provider: ObjectStorageProvider): string {
 }
 
 /**
- * The credential pair the given provider would use, or `undefined` entries when
- * it is incomplete. Shared so readiness and construction cannot disagree.
+ * The storage credential pair, or `undefined` entries when it is incomplete. Shared so readiness and construction cannot disagree.
  */
-function credentialsFromEnv(provider: ObjectStorageProvider): {
+function credentialsFromEnv(): {
   accessKeyId: string | undefined;
   secretAccessKey: string | undefined;
 } {
   return {
-    accessKeyId:
-      nonEmptyEnv("STORAGE_ACCESS_KEY_ID") ??
-      (provider === "r2" ? nonEmptyEnv("R2_ACCESS_KEY_ID") : undefined),
-    secretAccessKey:
-      nonEmptyEnv("STORAGE_SECRET_ACCESS_KEY") ??
-      (provider === "r2" ? nonEmptyEnv("R2_SECRET_ACCESS_KEY") : undefined),
+    accessKeyId: nonEmptyEnv("STORAGE_ACCESS_KEY_ID"),
+    secretAccessKey: nonEmptyEnv("STORAGE_SECRET_ACCESS_KEY"),
   };
 }
 
-function resolveCredentials(provider: ObjectStorageProvider): {
+function resolveCredentials(): {
   accessKeyId: string;
   secretAccessKey: string;
 } {
-  const { accessKeyId, secretAccessKey } = credentialsFromEnv(provider);
+  const { accessKeyId, secretAccessKey } = credentialsFromEnv();
   if (!accessKeyId || !secretAccessKey) {
-    const hint =
-      provider === "r2"
-        ? "Set STORAGE_ACCESS_KEY_ID/STORAGE_SECRET_ACCESS_KEY (or R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY)."
-        : "Set STORAGE_ACCESS_KEY_ID and STORAGE_SECRET_ACCESS_KEY.";
-    throw new Error(`Object storage credentials are not configured. ${hint}`);
+    throw new Error(
+      "Object storage credentials are not configured. Set STORAGE_ACCESS_KEY_ID and STORAGE_SECRET_ACCESS_KEY.",
+    );
   }
   return { accessKeyId, secretAccessKey };
 }
@@ -163,7 +156,7 @@ export function getObjectStorageClient(): S3Client | null {
     cached = null;
     return null;
   }
-  const credentials = resolveCredentials(provider);
+  const credentials = resolveCredentials();
   cached = new S3Client({
     region: resolveRegion(provider),
     endpoint: resolveEndpoint(provider),
@@ -187,7 +180,7 @@ export function getSingleAttemptObjectStorageClient(): S3Client | null {
     singleAttemptCached = null;
     return null;
   }
-  const credentials = resolveCredentials(provider);
+  const credentials = resolveCredentials();
   singleAttemptCached = new S3Client({
     region: resolveRegion(provider),
     endpoint: resolveEndpoint(provider),
@@ -210,7 +203,7 @@ export function getSingleAttemptObjectStorageClient(): S3Client | null {
 export function objectStorageConfigured(): boolean {
   const provider = resolveProvider();
   if (!provider) return false;
-  const { accessKeyId, secretAccessKey } = credentialsFromEnv(provider);
+  const { accessKeyId, secretAccessKey } = credentialsFromEnv();
   if (!accessKeyId || !secretAccessKey) return false;
   if (provider === "r2") {
     return Boolean(nonEmptyEnv("STORAGE_ENDPOINT") || nonEmptyEnv("R2_ACCOUNT_ID"));

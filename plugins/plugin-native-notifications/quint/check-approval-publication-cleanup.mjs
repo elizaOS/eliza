@@ -3,9 +3,6 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const env = { ...process.env };
-// PR conformance already downloads and hash-checks this shared JSON library.
-if (!env.ELIZA_ORG_JSON_JAR && env.ELIZA_JSON_JAR)
-  env.ELIZA_ORG_JSON_JAR = env.ELIZA_JSON_JAR;
 const result = spawnSync(
   process.execPath,
   [

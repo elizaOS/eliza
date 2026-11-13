@@ -53,7 +53,6 @@ function resolveCerebrasApiKey(role: "eval" | "training"): string {
   const apiKey = readEnv(
     role === "eval" ? "EVAL_CEREBRAS_API_KEY" : "TRAIN_CEREBRAS_API_KEY",
     "CEREBRAS_API_KEY",
-    "ELIZA_E2E_CEREBRAS_API_KEY",
   );
   if (!apiKey) {
     throw new Error(

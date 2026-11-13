@@ -7,7 +7,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 // Compiles the host notice receipts, routes, owner fence, approval coordination and journal recovery
-// against org.json and runs the synthetic JVM checks. ELIZA_ORG_JSON_JAR names the jar; otherwise the
+// against org.json and runs the synthetic JVM checks. ELIZA_JSON_JAR names the jar; otherwise the
 // Gradle cache copy is used when present.
 const plugin = fileURLToPath(new URL("../..", import.meta.url));
 const sources = path.join(
@@ -27,10 +27,10 @@ const cached = () => {
     }
   return undefined;
 };
-const jar = process.env.ELIZA_ORG_JSON_JAR || cached();
+const jar = process.env.ELIZA_JSON_JAR || cached();
 
 test("host notice routes, owner fence, approval coordination, journal recovery, tap inbox and foreground gate", {
-  skip: jar ? false : "org.json jar unavailable (set ELIZA_ORG_JSON_JAR)",
+  skip: jar ? false : "org.json jar unavailable (set ELIZA_JSON_JAR)",
 }, (t) => {
   if (!jar) return;
   const classes = fs.mkdtempSync(path.join(os.tmpdir(), "notice-host-"));

@@ -55,8 +55,6 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
         "ELIZA_IOS_REMOTE_API_BASE",
         "ELIZA_MOBILE_API_BASE",
         "VITE_ELIZA_IOS_API_BASE",
-        "VITE_ELIZA_MOBILE_API_BASE",
-        "VITE_ELIZA_IOS_API_BASE",
     ]
 
     @objc func start(_ call: CAPPluginCall) {

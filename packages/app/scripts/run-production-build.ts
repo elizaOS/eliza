@@ -40,9 +40,7 @@ function run(executable, args, cwd) {
     ...(appAssetBaseUrl
       ? {
           VITE_ASSET_BASE_URL:
-            process.env.VITE_ASSET_BASE_URL ??
-            process.env.ELIZA_ASSET_BASE_URL ??
-            appAssetBaseUrl,
+            process.env.VITE_ASSET_BASE_URL ?? appAssetBaseUrl,
         }
       : {}),
   };

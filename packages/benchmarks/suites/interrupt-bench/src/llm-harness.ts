@@ -36,7 +36,7 @@ function harnessName(): string {
 }
 
 function pythonExecutable(): string {
-  return process.env.PYTHON || process.env.PYTHON_BIN || "python3";
+  return process.env.PYTHON || "python3";
 }
 
 function extractJsonObject(raw: string): Record<string, unknown> {

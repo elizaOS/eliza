@@ -3,7 +3,7 @@
  *
  * New payloads go ONLY to a dedicated private store: the `TRAJECTORY_BLOB`
  * Worker R2 binding, or (outside Workers) an S3-compatible bucket named by
- * `STORAGE_TRAJECTORIES_BUCKET` / `R2_TRAJECTORIES_BUCKET`. The general `BLOB`
+ * `STORAGE_TRAJECTORIES_BUCKET`. The general `BLOB`
  * bucket has a public host and is never written. Without a private store,
  * callers keep the (encrypted) bodies inline in Postgres.
  *
@@ -65,7 +65,7 @@ function privateStore(): TrajectoryStore | null {
   const binding = getCloudBinding<RuntimeR2Bucket>(TRAJECTORY_PRIVATE_R2_BINDING);
   if (binding) return { kind: "r2", bucket: binding };
   const env = getCloudAwareEnv();
-  return s3Store(env.STORAGE_TRAJECTORIES_BUCKET ?? env.R2_TRAJECTORIES_BUCKET);
+  return s3Store(env.STORAGE_TRAJECTORIES_BUCKET);
 }
 
 /** Store used by rows written before the private split (read/delete only). */
@@ -73,12 +73,7 @@ function legacyStore(): TrajectoryStore | null {
   const runtimeBucket = getRuntimeR2Bucket();
   if (runtimeBucket) return { kind: "r2", bucket: runtimeBucket };
   const env = getCloudAwareEnv();
-  return s3Store(
-    env.STORAGE_TRAJECTORIES_BUCKET ??
-      env.STORAGE_BLOB_DEFAULT_BUCKET ??
-      env.R2_TRAJECTORIES_BUCKET ??
-      env.R2_BLOB_DEFAULT_BUCKET,
-  );
+  return s3Store(env.STORAGE_TRAJECTORIES_BUCKET ?? env.STORAGE_BLOB_DEFAULT_BUCKET);
 }
 
 function storeFor(storage: Exclude<TrajectoryPayloadStorage, "inline">): TrajectoryStore {

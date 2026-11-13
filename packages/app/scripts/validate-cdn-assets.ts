@@ -240,7 +240,7 @@ export async function main({ cwd = repoRoot, env = process.env } = {}) {
   const repository = resolveElizaAssetRepository({ env });
   if (!releaseTag && !gitSha) {
     throw new Error(
-      "Could not resolve release tag or git SHA for CDN validation. Set ELIZA_RELEASE_TAG / RELEASE_TAG or run inside a git checkout.",
+      "Could not resolve release tag or git SHA for CDN validation. Set ELIZA_RELEASE_TAG or run inside a git checkout.",
     );
   }
 

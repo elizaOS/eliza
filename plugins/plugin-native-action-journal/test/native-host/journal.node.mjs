@@ -7,7 +7,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 // Compiles the journal engine against org.json and runs the synthetic JVM checks.
-// ELIZA_ORG_JSON_JAR names the jar; otherwise the Gradle cache copy is used when present.
+// ELIZA_JSON_JAR names the jar; otherwise the Gradle cache copy is used when present.
 const plugin = fileURLToPath(new URL("../..", import.meta.url));
 const sources = path.join(
   plugin,
@@ -26,10 +26,10 @@ const cached = () => {
     }
   return undefined;
 };
-const jar = process.env.ELIZA_ORG_JSON_JAR || cached();
+const jar = process.env.ELIZA_JSON_JAR || cached();
 
 test("journal transitions, replay, bounds, crash ordering and host policy", {
-  skip: jar ? false : "org.json jar unavailable (set ELIZA_ORG_JSON_JAR)",
+  skip: jar ? false : "org.json jar unavailable (set ELIZA_JSON_JAR)",
 }, (t) => {
   const classes = fs.mkdtempSync(path.join(os.tmpdir(), "action-journal-"));
   t.after(() => fs.rmSync(classes, { recursive: true, force: true }));
@@ -59,7 +59,7 @@ test("journal transitions, replay, bounds, crash ordering and host policy", {
 });
 
 test("deletion Undo window: deadline, journal, dispatch claim, receipt recovery and coordinator ports", {
-  skip: jar ? false : "org.json jar unavailable (set ELIZA_ORG_JSON_JAR)",
+  skip: jar ? false : "org.json jar unavailable (set ELIZA_JSON_JAR)",
 }, (t) => {
   const classes = fs.mkdtempSync(path.join(os.tmpdir(), "deferred-deletion-"));
   t.after(() => fs.rmSync(classes, { recursive: true, force: true }));

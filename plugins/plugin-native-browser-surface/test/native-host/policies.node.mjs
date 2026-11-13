@@ -182,7 +182,7 @@ test("native and renderer page reading agree", async (t) => {
   );
 });
 
-// The sealed site-permission record needs org.json, which Android provides. ELIZA_ORG_JSON_JAR
+// The sealed site-permission record needs org.json, which Android provides. ELIZA_JSON_JAR
 // names the jar; otherwise the Gradle cache copy is used when present.
 const jsonCache = path.join(
   os.homedir(),
@@ -197,10 +197,10 @@ function cachedJsonJar() {
     }
   return undefined;
 }
-const jsonJar = process.env.ELIZA_ORG_JSON_JAR || cachedJsonJar();
+const jsonJar = process.env.ELIZA_JSON_JAR || cachedJsonJar();
 
 test("sealed site-permission records keep order, the bound and the stored format", {
-  skip: jsonJar ? false : "org.json jar unavailable (set ELIZA_ORG_JSON_JAR)",
+  skip: jsonJar ? false : "org.json jar unavailable (set ELIZA_JSON_JAR)",
 }, () => {
   const output = fs.mkdtempSync(path.join(os.tmpdir(), "browser-record-"));
   try {

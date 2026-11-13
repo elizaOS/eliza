@@ -13,9 +13,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "b
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
-for (const name of ["STORAGE_TRAJECTORIES_BUCKET", "R2_TRAJECTORIES_BUCKET"]) {
-  delete process.env[name];
-}
+delete process.env.STORAGE_TRAJECTORIES_BUCKET;
 
 mock.module("./account-deletion-storage", () => ({
   reconcileAccountDeletionStorage: async (

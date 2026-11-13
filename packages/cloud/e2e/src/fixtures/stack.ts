@@ -478,8 +478,6 @@ async function startCloudStackOwned(
       DATABASE_URL: `pglite://${pgDataDir}`,
       TEST_DATABASE_URL: "",
       PGLITE_DATA_DIR: pgDataDir,
-      DEV_CLOUD_PGLITE_DATA_DIR: pgDataDir,
-      DEV_CLOUD_PGLITE_PORT: String(pglitePort),
       API_DEV_PORT: String(apiPort),
       PORT: String(frontendPort),
       STEWARD_API_URL: steward.url,

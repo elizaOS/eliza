@@ -7,7 +7,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 // Compiles the Photos bridge rules against org.json and runs the synthetic JVM checks, then checks
-// the shape of the Capacitor bindings that apply them. ELIZA_ORG_JSON_JAR names the jar; otherwise
+// the shape of the Capacitor bindings that apply them. ELIZA_JSON_JAR names the jar; otherwise
 // the Gradle cache copy is used when present. Not Android or MediaStore evidence.
 const plugin = fileURLToPath(new URL("../..", import.meta.url));
 const media = path.join(plugin, "android/src/main/java/ai/eliza/plugins/media");
@@ -24,7 +24,7 @@ const cached = () => {
     }
   return undefined;
 };
-const jar = process.env.ELIZA_ORG_JSON_JAR || cached();
+const jar = process.env.ELIZA_JSON_JAR || cached();
 /** @param {string} name */
 const bin = (name) =>
   process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", name) : name;
@@ -33,7 +33,7 @@ const source = (name) =>
   fs.readFileSync(path.join(media, `${name}.java`), "utf8");
 
 test("Photos bridge rules: scope, aliases, listings, bounds and changes", {
-  skip: jar ? false : "org.json jar unavailable (set ELIZA_ORG_JSON_JAR)",
+  skip: jar ? false : "org.json jar unavailable (set ELIZA_JSON_JAR)",
 }, (t) => {
   const classes = fs.mkdtempSync(path.join(os.tmpdir(), "photo-access-"));
   t.after(() => fs.rmSync(classes, { recursive: true, force: true }));

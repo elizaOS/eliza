@@ -7,7 +7,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 // Compiles the trash removal request against org.json and runs the synthetic JVM checks.
-// ELIZA_ORG_JSON_JAR names the jar; otherwise the Gradle cache copy is used when present.
+// ELIZA_JSON_JAR names the jar; otherwise the Gradle cache copy is used when present.
 // Not Android or MediaStore evidence.
 const plugin = fileURLToPath(new URL("../..", import.meta.url));
 const media = path.join(plugin, "android/src/main/java/ai/eliza/plugins/media");
@@ -24,13 +24,13 @@ const cached = () => {
     }
   return undefined;
 };
-const jar = process.env.ELIZA_ORG_JSON_JAR || cached();
+const jar = process.env.ELIZA_JSON_JAR || cached();
 /** @param {string} name */
 const bin = (name) =>
   process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", name) : name;
 
 test("a trash removal targets everything only on an explicit intent", {
-  skip: jar ? false : "org.json jar unavailable (set ELIZA_ORG_JSON_JAR)",
+  skip: jar ? false : "org.json jar unavailable (set ELIZA_JSON_JAR)",
 }, (t) => {
   const classes = fs.mkdtempSync(path.join(os.tmpdir(), "trash-request-"));
   t.after(() => fs.rmSync(classes, { recursive: true, force: true }));

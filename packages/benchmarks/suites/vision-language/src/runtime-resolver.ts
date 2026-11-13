@@ -201,7 +201,7 @@ function createHarnessRuntime(args: {
     llm_call_count: 0,
   };
   let sawUsage = false;
-  const python = process.env.PYTHON ?? process.env.PYTHON_BIN ?? "python";
+  const python = process.env.PYTHON ?? "python";
   const script = path.join(
     PACKAGE_ROOT,
     "../../scripts/vision-language/vision_harness_runtime.py",

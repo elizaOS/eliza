@@ -19,7 +19,6 @@ test("JSON slots preserve authenticated 32 MiB values and CAS within a 192 MiB h
   );
   const jar =
     process.env.ELIZA_JSON_JAR ||
-    process.env.ELIZA_ORG_JSON_JAR ||
     (fs.existsSync(cache)
       ? fs.readdirSync(cache).flatMap((dir) =>
           fs

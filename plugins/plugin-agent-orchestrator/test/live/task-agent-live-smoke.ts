@@ -241,7 +241,6 @@ async function main(): Promise<void> {
       // "1" survives runtime setting normalization; the router stays disabled.
       settings: {
         ...provider.env,
-        SERVER_PORT: "31337",
         ACPX_SUB_AGENT_ROUTER_DISABLED: "1",
       },
       plugins: [providerPlugin, agentOrchestratorPlugin],

@@ -27,10 +27,10 @@ export const HERE = dirname(fileURLToPath(import.meta.url));
 
 /**
  * These KPIs measure the selected elizaOS app checkout.
- * Set ELIZA_REPO_DIR; ELIZA_REPO remains supported for existing invocations.
+ * Set ELIZA_REPO_DIR.
  */
 export function repoRoot() {
-  const root = process.env.ELIZA_REPO_DIR || process.env.ELIZA_REPO;
+  const root = process.env.ELIZA_REPO_DIR;
   if (!root) {
     throw new Error(
       "Set ELIZA_REPO_DIR to the elizaOS checkout being measured",
@@ -39,7 +39,7 @@ export function repoRoot() {
   return resolve(root);
 }
 
-/** `packages/app/dist` inside the ELIZA_REPO checkout. */
+/** `packages/app/dist` inside the ELIZA_REPO_DIR checkout. */
 export function appDist() {
   return join(repoRoot(), "packages", "app", "dist");
 }
@@ -181,7 +181,7 @@ export function sleep(msv) {
 
 export const { RESULTS_ROOT, gitInfo, recordResult, readLatest, loadBudgets } =
   createKpiReporter("loadperf", HERE, {
-    repoRoot: process.env.ELIZA_REPO_DIR || process.env.ELIZA_REPO || null,
+    repoRoot: process.env.ELIZA_REPO_DIR || null,
     recordKey: "kpi",
     returnLatest: false,
   });

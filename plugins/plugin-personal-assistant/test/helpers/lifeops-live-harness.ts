@@ -42,7 +42,7 @@ const LIVE_PROVIDER_CANDIDATES = [
   {
     name: "cerebras",
     plugin: "@elizaos/plugin-openai",
-    keys: ["CEREBRAS_API_KEY", "ELIZA_E2E_CEREBRAS_API_KEY"],
+    keys: ["CEREBRAS_API_KEY"],
   },
   {
     name: "openai",
@@ -69,7 +69,6 @@ const LIVE_PROVIDER_CANDIDATES = [
 export const LIVE_PROVIDER_ENV_KEYS = [
   "ELIZA_PROVIDER",
   "CEREBRAS_API_KEY",
-  "ELIZA_E2E_CEREBRAS_API_KEY",
   "CEREBRAS_SMALL_MODEL",
   "CEREBRAS_LARGE_MODEL",
   "OPENAI_API_KEY",
@@ -261,10 +260,7 @@ export async function selectLifeOpsLiveProvider(): Promise<SelectedLiveProvider 
     typeof (baseConfig.cloud as { apiKey?: unknown }).apiKey === "string"
       ? ((baseConfig.cloud as { apiKey?: string }).apiKey ?? "").trim()
       : "";
-  const cerebrasApiKey =
-    process.env.CEREBRAS_API_KEY?.trim() ||
-    process.env.ELIZA_E2E_CEREBRAS_API_KEY?.trim() ||
-    "";
+  const cerebrasApiKey = process.env.CEREBRAS_API_KEY?.trim() || "";
   if (
     cerebrasApiKey &&
     (!LIVE_PROVIDER_OVERRIDE || LIVE_PROVIDER_OVERRIDE === "cerebras") &&
@@ -339,7 +335,7 @@ export async function selectLifeOpsLiveProvider(): Promise<SelectedLiveProvider 
       resolveLiveProviderModelEnv(candidate.name as LiveProviderName),
     );
     if (candidate.name === "cerebras") {
-      const apiKey = env.CEREBRAS_API_KEY ?? env.ELIZA_E2E_CEREBRAS_API_KEY;
+      const apiKey = env.CEREBRAS_API_KEY;
       env.CEREBRAS_API_KEY = apiKey;
       env.OPENAI_API_KEY = apiKey;
       env.OPENAI_BASE_URL = "https://api.cerebras.ai/v1";

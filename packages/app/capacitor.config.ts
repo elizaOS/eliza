@@ -111,7 +111,7 @@ const iosRuntimeMode =
   process.env.VITE_ELIZA_MOBILE_RUNTIME_MODE ??
   "";
 const iosApiBase = storeSafeAgentApiBase(
-  process.env.VITE_ELIZA_IOS_API_BASE ?? process.env.VITE_ELIZA_MOBILE_API_BASE,
+  process.env.VITE_ELIZA_IOS_API_BASE,
   iosRuntimeMode,
 );
 

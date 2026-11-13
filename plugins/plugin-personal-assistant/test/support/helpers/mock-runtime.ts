@@ -241,7 +241,6 @@ function createMockRuntimeStateEnvironment(): MockRuntimeStateEnvironment {
       ELIZA_STATE_DIR: stateDir,
       ELIZA_CONFIG_PATH: configPath,
       ELIZA_PERSIST_CONFIG_PATH: configPath,
-      API_PORT: "0",
     },
     cleanup: async () => {
       fs.rmSync(stateDir, { recursive: true, force: true });

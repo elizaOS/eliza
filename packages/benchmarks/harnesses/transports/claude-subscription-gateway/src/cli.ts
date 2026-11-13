@@ -448,12 +448,12 @@ async function loadHmacKey(target: string): Promise<Buffer> {
 }
 
 async function loadCanonicalAccountPoolBroker(): Promise<CredentialLeaseBroker> {
-  // ELIZA_REPO may select a different monorepo checkout.
+  // ELIZA_REPO_DIR may select a different monorepo checkout.
   const monorepoRoot = resolve(
     dirname(fileURLToPath(import.meta.url)),
     "../../../../../..",
   );
-  const elizaRepo = process.env.ELIZA_REPO ?? monorepoRoot;
+  const elizaRepo = process.env.ELIZA_REPO_DIR ?? monorepoRoot;
   const loaded: unknown = await importMeasuredPackage(
     elizaRepo,
     "@elizaos/auth/accounts",

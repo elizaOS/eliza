@@ -3,8 +3,6 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const env = { ...process.env };
-if (!env.ELIZA_ORG_JSON_JAR && env.ELIZA_JSON_JAR)
-  env.ELIZA_ORG_JSON_JAR = env.ELIZA_JSON_JAR;
 const result = spawnSync(
   process.execPath,
   [

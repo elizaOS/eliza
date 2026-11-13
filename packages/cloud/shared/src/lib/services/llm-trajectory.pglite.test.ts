@@ -15,9 +15,7 @@ process.env.DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
 for (const name of [
   "STORAGE_TRAJECTORIES_BUCKET",
-  "R2_TRAJECTORIES_BUCKET",
   "STORAGE_BLOB_DEFAULT_BUCKET",
-  "R2_BLOB_DEFAULT_BUCKET",
   "LLM_TRAJECTORY_RETENTION_DAYS",
 ]) {
   delete process.env[name];

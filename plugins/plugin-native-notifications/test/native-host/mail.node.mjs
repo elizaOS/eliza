@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 // Compiles the background new-mail reconciliation engine and delivery coordinator against org.json and
 // runs the synthetic JVM checks: durable pagination, at-most-once notices, owner and grant fences, tap
-// capture and unsupported deployments. ELIZA_ORG_JSON_JAR names the jar; otherwise the Gradle cache copy
+// capture and unsupported deployments. ELIZA_JSON_JAR names the jar; otherwise the Gradle cache copy
 // is used when present.
 const plugin = fileURLToPath(new URL("../..", import.meta.url));
 const sources = path.join(
@@ -28,10 +28,10 @@ const cached = () => {
     }
   return undefined;
 };
-const jar = process.env.ELIZA_ORG_JSON_JAR || cached();
+const jar = process.env.ELIZA_JSON_JAR || cached();
 
 test("mail history reconciliation and background delivery fences", {
-  skip: jar ? false : "org.json jar unavailable (set ELIZA_ORG_JSON_JAR)",
+  skip: jar ? false : "org.json jar unavailable (set ELIZA_JSON_JAR)",
 }, (t) => {
   if (!jar) return;
   const classes = fs.mkdtempSync(path.join(os.tmpdir(), "mail-background-"));

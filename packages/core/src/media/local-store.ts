@@ -72,12 +72,8 @@ export function trustedLocalMediaUrl(rawUrl: string): URL | null {
 
 /** Resolve the local agent listener used by the content-addressed media store. */
 export function getLocalServerUrl(path: string): string {
-	// ELIZA_API_PORT and ELIZA_PORT identify the app listener; SERVER_PORT is the standalone
-	// fallback.
-	const port =
-		getEnv("ELIZA_API_PORT") ??
-		getEnv("ELIZA_PORT") ??
-		getEnv("SERVER_PORT", "3000");
+	// ELIZA_API_PORT (split desktop API) or ELIZA_PORT (single-process server).
+	const port = getEnv("ELIZA_API_PORT") ?? getEnv("ELIZA_PORT", "3000");
 	const normalizedPath = path && !path.startsWith("/") ? `/${path}` : path;
 	return `http://localhost:${port}${normalizedPath}`;
 }

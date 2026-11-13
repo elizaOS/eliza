@@ -204,7 +204,7 @@ export function resolveCommandPlatform(): CommandPlatform {
 
 // --- POSIX (Linux) — each cleanup candidate is capped independently so a busy
 // /tmp or package cache cannot consume the whole SHELL turn budget.
-const POSIX_HEALTH_COMMAND = `PORT="\${ELIZA_API_PORT:-\${ELIZA_PORT:-\${API_PORT:-\${SERVER_PORT:-2138}}}}"; curl -sS "http://127.0.0.1:\${PORT}/api/health"`;
+const POSIX_HEALTH_COMMAND = `PORT="\${ELIZA_API_PORT:-\${ELIZA_PORT:-2138}}"; curl -sS "http://127.0.0.1:\${PORT}/api/health"`;
 const LINUX_MEMORY_COMMAND = "free -m";
 const LINUX_DISK_INSPECTION_COMMAND =
   'df -h / /home; printf \'\\n--- cleanup candidates ---\\n\'; for p in /tmp /var/tmp "$HOME/.cache" "$HOME/.bun" "$HOME/.npm" "$HOME/.local/share/Trash"; do [ -e "$p" ] && timeout 3s du -sh "$p" 2>/dev/null || true; done | sort -hr | head -n 10';
@@ -263,7 +263,7 @@ const WINDOWS_DISK_INSPECTION_COMMAND = [
   "}",
 ].join("\n");
 const WINDOWS_HEALTH_COMMAND = [
-  "$port = if ($env:ELIZA_API_PORT) { $env:ELIZA_API_PORT } elseif ($env:ELIZA_PORT) { $env:ELIZA_PORT } elseif ($env:API_PORT) { $env:API_PORT } elseif ($env:SERVER_PORT) { $env:SERVER_PORT } else { 2138 }",
+  "$port = if ($env:ELIZA_API_PORT) { $env:ELIZA_API_PORT } elseif ($env:ELIZA_PORT) { $env:ELIZA_PORT } else { 2138 }",
   "try { (Invoke-WebRequest -UseBasicParsing -TimeoutSec 10 -Uri ('http://127.0.0.1:{0}/api/health' -f $port)).Content }",
   "catch { $r = $_.Exception.Response; if ($r) { (New-Object System.IO.StreamReader($r.GetResponseStream())).ReadToEnd() } else { throw } }",
 ].join("\n");

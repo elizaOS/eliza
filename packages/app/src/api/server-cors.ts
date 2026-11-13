@@ -55,8 +55,8 @@ export function buildCorsAllowedPorts(): Set<string> {
  * way to allow non-loopback hosts.
  */
 export function getAllowedRemoteOrigins(): Set<string> {
-  // `resolveAllowedOrigins` reads `ELIZA_ALLOWED_ORIGINS` (and the `CORS_ORIGINS`
-  // fallback), already split/trimmed/filtered.
+  // `resolveAllowedOrigins` reads `ELIZA_ALLOWED_ORIGINS`, already
+  // split/trimmed/filtered.
   return new Set(
     resolveAllowedOrigins(process.env).map((origin) => {
       try {

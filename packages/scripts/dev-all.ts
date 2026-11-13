@@ -204,8 +204,6 @@ const cloudSharedEnv = {
 };
 const agentEnv = {
   ...commonEnv,
-  API_PORT: ports.agentApi,
-  SERVER_PORT: ports.agentApi,
   ELIZA_PORT: ports.agentApi,
   ELIZA_API_PORT: ports.agentApi,
   ELIZA_UI_ENABLE: "true",

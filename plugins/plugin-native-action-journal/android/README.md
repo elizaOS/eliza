@@ -55,7 +55,7 @@ bytes and stay for every proposal ever reserved.
 ## Verification
 
 `node --test test/native-host/journal.node.mjs` compiles the engine with `javac` against
-an org.json jar (`ELIZA_ORG_JSON_JAR`, or the Gradle cache copy) and runs synthetic JVM
+an org.json jar (`ELIZA_JSON_JAR`, or the Gradle cache copy) and runs synthetic JVM
 checks. A Java or APK build is not device acceptance; a host's own instrumentation must
 cover its storage, lifecycle and recovery paths.
 

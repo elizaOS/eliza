@@ -19,9 +19,7 @@ function normalizeReleaseTag(value) {
 }
 
 export function resolveElizaReleaseTag({ env = process.env } = {}) {
-  return normalizeReleaseTag(
-    env.ELIZA_RELEASE_TAG || env.RELEASE_TAG || env.GITHUB_REF_NAME,
-  );
+  return normalizeReleaseTag(env.ELIZA_RELEASE_TAG || env.GITHUB_REF_NAME);
 }
 
 export function resolveElizaAssetRepository({ env = process.env } = {}) {
@@ -79,8 +77,7 @@ export function resolveElizaAssetBaseUrls({
   releaseTag = resolveElizaReleaseTag({ env }),
   repository = resolveElizaAssetRepository({ env }),
 } = {}) {
-  const explicitAppBase =
-    env.VITE_ASSET_BASE_URL?.trim() || env.ELIZA_ASSET_BASE_URL?.trim() || "";
+  const explicitAppBase = env.VITE_ASSET_BASE_URL?.trim() || "";
 
   return {
     releaseTag,

@@ -27,11 +27,7 @@ export const DEFAULT_DESKTOP_UI_PORT = 2138;
 
 const API_BIND_KEYS = ["ELIZA_API_BIND"] as const;
 const API_TOKEN_KEYS = ["ELIZA_API_TOKEN"] as const;
-const LEGACY_SELF_API_TOKEN_KEYS = ["ELIZA_API_AUTH_TOKEN"] as const;
-const API_ALLOWED_ORIGINS_KEYS = [
-  "ELIZA_ALLOWED_ORIGINS",
-  "CORS_ORIGINS",
-] as const;
+const API_ALLOWED_ORIGINS_KEYS = ["ELIZA_ALLOWED_ORIGINS"] as const;
 const API_ALLOWED_HOSTS_KEYS = ["ELIZA_ALLOWED_HOSTS"] as const;
 const API_ALLOW_NULL_ORIGIN_KEYS = ["ELIZA_ALLOW_NULL_ORIGIN"] as const;
 const DISABLE_AUTO_API_TOKEN_KEYS = ["ELIZA_DISABLE_AUTO_API_TOKEN"] as const;
@@ -296,10 +292,7 @@ export function resolveApiToken(
 export function resolveSelfApiCredential(
   env: RuntimeEnvRecord = globalThis.process?.env ?? {},
 ): string | null {
-  const token =
-    firstWinningEnvString(env, API_TOKEN_KEYS)?.value ??
-    firstWinningEnvString(env, LEGACY_SELF_API_TOKEN_KEYS)?.value;
-  return stripBearerPrefix(token);
+  return stripBearerPrefix(firstWinningEnvString(env, API_TOKEN_KEYS)?.value);
 }
 
 /** Build authorization headers for requests back to the local elizaOS API. */

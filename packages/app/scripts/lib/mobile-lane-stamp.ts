@@ -199,11 +199,7 @@ export function isLocalAgentRuntimeMode(mode) {
 }
 
 function explicitIosApiBase(env) {
-  return (
-    env.VITE_ELIZA_IOS_API_BASE ??
-    env.VITE_ELIZA_MOBILE_API_BASE ??
-    ""
-  ).trim();
+  return (env.VITE_ELIZA_IOS_API_BASE ?? "").trim();
 }
 
 /**
@@ -220,7 +216,7 @@ function explicitIosApiBase(env) {
  * override; the lane defaults to `local`) or the mode an EXISTING dist
  * manifest carries when that dist is about to be staged. Either way a
  * non-local mode is allowed ONLY when an agent endpoint is explicitly
- * configured (`VITE_ELIZA_IOS_API_BASE` / `VITE_ELIZA_MOBILE_API_BASE`) —
+ * configured (`VITE_ELIZA_IOS_API_BASE`) —
  * an intentional cloud sideload.
  *
  * @param {{ platform: string,
