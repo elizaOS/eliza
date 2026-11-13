@@ -8,7 +8,10 @@
     "packages/host/src/voice/speech-relay-session.ts",
     "packages/host/src/voice/speech-relay-session.test.ts",
     "packages/host/src/voice/speech-retirement-session.test.ts",
-    "packages/cloud/quint/check-speech-continuity.mjs"
+    "packages/cloud/quint/check-speech-continuity.mjs",
+    "packages/host/src/voice/speech-window-share.ts",
+    "packages/host/src/voice/speech-window-share.dfy",
+    "packages/host/src/voice/speech-window-share.dfy.gen"
   ],
   "bounds": {
     "assumptions": [
@@ -20,7 +23,9 @@
   },
   "limitations": [
     "Three-window safety abstraction. Controlled real-relay tests replay Stop during quota, admission and extension waits, zero-settlement failure/retry, and one-shot quota uncertainty. The model aggregates per-kind credit receipts by window and does not establish physical provider closure, timing, browser, native client or live-provider qualification.",
-    "Conditional progress applies to the modeled idempotent per-kind receipt path. A failed generic immutable settlement remains unconfirmed; no successful retry is promised for that legacy contract."
+    "Conditional progress applies to the modeled idempotent per-kind receipt path. A failed generic immutable settlement remains unconfirmed; no successful retry is promised for that legacy contract.",
+    "The separate LemmaScript proof covers usage-share bounds and conservation for finite safe integer counters with safe index multiplication. It does not prove asynchronous lifecycle behavior or caller compliance with those arithmetic assumptions.",
+    "The production Cloud caller limits sessions to 1\u2013120 windows and applies server-owned stream budgets. Generic host consumers must satisfy the helper\u2019s safe-integer and multiplication preconditions for this arithmetic proof; no new runtime cap is imposed."
   ],
   "cases": [
     {

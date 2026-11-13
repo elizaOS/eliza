@@ -12,6 +12,7 @@ import type {
   SpeechRetirementEvidence,
   SpeechSettlementOutcome,
 } from "./speech-relay-wire";
+import { speechWindowShare } from "./speech-window-share";
 import { UplinkReframer } from "./uplink-reframer";
 import {
   checkVoiceByteRate,
@@ -315,9 +316,7 @@ export async function createSpeechRelaySession(
       (SPEECH_RELAY_BUDGET.pcmBytesPerSecond * SPEECH_RELAY_BUDGET.durationMs) /
       1000;
     const share = (total: number, size: number) =>
-      index === windows - 1
-        ? Math.max(0, total - index * size)
-        : Math.min(size, Math.max(0, total - index * size));
+      speechWindowShare(total, size, index, windows);
     return {
       ...details,
       pcmBytes: share(details.pcmBytes, pcmWindow),
@@ -524,9 +523,7 @@ export async function createSpeechRelaySession(
         const granted = windows;
         for (const [index, reservation] of reservations.entries()) {
           const share = (total: number, size: number) =>
-            index === granted - 1
-              ? Math.max(0, total - index * size)
-              : Math.min(size, Math.max(0, total - index * size));
+            speechWindowShare(total, size, index, granted);
           try {
             let settlement = legacySettlements.get(reservation);
             if (!settlement) {
