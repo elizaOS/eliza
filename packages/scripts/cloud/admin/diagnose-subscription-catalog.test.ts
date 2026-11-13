@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
+import { checkoutFailureDiagnostic } from "../../../cloud/api/v1/subscriptions/checkout/_boundary";
 import {
   appendTailOutput,
   catalogCodes,
@@ -110,6 +111,69 @@ describe("checkout diagnostic redaction", () => {
       null,
       4,
     );
+
+  test("TypeError diagnostics retain only the first internal bundle position", () => {
+    for (const frame of [
+      "    at privateFunction (/worker.js:42:700)",
+      "    at /index.js:42:700",
+      "    at privateFunction (index.js:42:700)",
+      "    at null.<anonymous> (async file:///tmp/private-checkout/.wrangler/tmp/dev-private/index.js:42:700)",
+    ]) {
+      const error = new TypeError("private customer message");
+      error.stack = `TypeError: private message /worker.js:9:9\n    at privateFunction (https://private.example/index.js:2:3)\n${frame}\n    at /worker.js:60:900`;
+      const diagnostic = checkoutFailureDiagnostic(error);
+      expect(diagnostic).toEqual({
+        name: "TypeError",
+        location: { line: 42, column: 700 },
+      });
+      const summary = checkoutTailSummary(
+        record([
+          "[SubscriptionCheckoutConfirm] Failed",
+          { phase: "reconciliation", ...diagnostic },
+        ]),
+        checkoutUrl,
+      );
+      expect(summary.failures).toEqual([
+        { kind: "checkout", phase: "reconciliation", ...diagnostic },
+      ]);
+      expect(JSON.stringify(summary)).not.toContain("private");
+    }
+  });
+
+  test("unknown stacks and invalid positions cannot enter the tail", () => {
+    for (const frame of [
+      "    at /other.js:42:700",
+      `    at /${"segment/".repeat(128)}other.js:42:700`,
+      "    at /worker.js?private:42:700",
+      "    at /worker.js:0:1",
+      "    at /worker.js:9007199254740992:1",
+      "    at /worker.js:42:1 trailing-private",
+    ]) {
+      const error = new TypeError("private");
+      error.stack = `TypeError: private\n${frame}`;
+      expect(checkoutFailureDiagnostic(error)).toEqual({ name: "TypeError" });
+    }
+    const otherError = new Error("private");
+    otherError.stack = "Error: private\n    at /worker.js:42:700";
+    expect(checkoutFailureDiagnostic(otherError)).toEqual({ name: "Error" });
+    for (const location of [
+      { line: -1, column: 1 },
+      { line: 1, column: 0 },
+      { line: 1.5, column: 1 },
+      { line: "1", column: 1 },
+    ]) {
+      const summary = checkoutTailSummary(
+        record([
+          "[SubscriptionCheckoutConfirm] Failed",
+          { phase: "reconciliation", name: "TypeError", location },
+        ]),
+        checkoutUrl,
+      );
+      expect(summary.failures).toEqual([
+        { kind: "checkout", phase: "reconciliation", name: "TypeError" },
+      ]);
+    }
+  });
 
   test("keeps only fixed failure identifiers from the exact checkout request", () => {
     const details = {
