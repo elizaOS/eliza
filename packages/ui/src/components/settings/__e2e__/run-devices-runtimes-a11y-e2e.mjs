@@ -174,14 +174,12 @@ const expectedInitialOrder = [
   "button:Refresh",
   "button:Use runtime",
   "input:Mac's 6-digit code",
-  "button:Retry",
   "button:Revoke",
   "button:Remove",
   "button:Stop relay",
   "button:Revoke host",
   "button:Confirm controller on this Linux computer",
   "button:Deny",
-  "summary:Advanced SSH",
 ];
 await page.locator("body").click({ position: { x: 2, y: 2 } });
 const actualInitialOrder = [];
@@ -208,29 +206,6 @@ for (let index = 0; index < expectedInitialOrder.length; index += 1) {
 assert(
   JSON.stringify(actualInitialOrder) === JSON.stringify(expectedInitialOrder),
   `keyboard order and names match: ${actualInitialOrder.join(" -> ")}`,
-);
-
-await page.keyboard.press("Enter");
-assert(
-  await page.locator("details").evaluate((details) => details.open),
-  "Advanced SSH expands from the keyboard",
-);
-const expectedSshOrder = [
-  "input:Name",
-  "input:SSH target",
-  "input:SSH port",
-  "input:Remote Eliza port",
-  "input:Private key path (optional)",
-  "input:Runtime access token (optional)",
-];
-const actualSshOrder = [];
-for (const _expected of expectedSshOrder) {
-  await page.keyboard.press("Tab");
-  actualSshOrder.push(await activeDescriptor());
-}
-assert(
-  JSON.stringify(actualSshOrder) === JSON.stringify(expectedSshOrder),
-  `expanded SSH fields stay in label order: ${actualSshOrder.join(" -> ")}`,
 );
 
 await page.setViewportSize({ width: 390, height: 844 });

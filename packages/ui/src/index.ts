@@ -1069,20 +1069,6 @@ export {
   type LocalRuntimeManagementRequest,
 } from "./platform/runtime-management.js";
 export {
-  inspectSshHost,
-  requestSshRuntime,
-  startSshRuntime,
-  stopSshRuntime,
-} from "./platform/ssh-runtime.js";
-export {
-  removeSshRuntime,
-  resumePendingSshRuntimeCleanups,
-  retrySshRuntimeCleanup,
-  type SshRuntimeCleanupResult,
-  type SshRuntimeLifecycleDependencies,
-  setupSshRuntime,
-} from "./platform/ssh-runtime-lifecycle.js";
-export {
   clearStandaloneBottomReclaim,
   installStandaloneBottomReclaim,
   shouldInstallStandaloneBottomReclaim,
