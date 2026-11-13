@@ -59,40 +59,18 @@ export async function requirePrivateOwnerCredential(args: {
     !row.mobileApp.approved
   )
     throw refuse();
-  if (row.mobileClient?.clientId) {
-    if (!row.mobileClient.enabled) {
-      throw refuse();
-    }
-    const deploymentEnvironment = args.env?.ENVIRONMENT === "staging" ? "staging" : "production";
-    if (
-      row.mobileClient.appId !== grant.appId ||
-      row.mobileClient.redirectUri !== grant.redirectUri ||
-      grant.environment !== deploymentEnvironment ||
-      !Array.isArray(grant.scopes) ||
-      grant.scopes.length !== 1 ||
-      grant.scopes[0] !== "cloud:user"
-    ) {
-      throw refuse();
-    }
-    return;
-  }
-  const { resolveMobileAppAuthRegistration, MobileAppAuthProtocolError } = await import(
-    "../services/mobile-app-auth"
-  );
-  let registration: ReturnType<typeof resolveMobileAppAuthRegistration>;
-  try {
-    registration = resolveMobileAppAuthRegistration(args.env, grant.clientId);
-  } catch (error) {
-    if (error instanceof MobileAppAuthProtocolError) throw refuse();
-    throw error;
-  }
-  if (
-    registration.appId !== grant.appId ||
-    registration.environment !== grant.environment ||
-    registration.redirectUri !== grant.redirectUri ||
-    !Array.isArray(grant.scopes) ||
-    grant.scopes.length !== registration.scopes.length ||
-    !registration.scopes.every((scope) => grant.scopes.includes(scope))
-  )
+  if (!row.mobileClient || !row.mobileClient.clientId || !row.mobileClient.enabled) {
     throw refuse();
+  }
+  const deploymentEnvironment = args.env?.ENVIRONMENT === "staging" ? "staging" : "production";
+  if (
+    row.mobileClient.appId !== grant.appId ||
+    row.mobileClient.redirectUri !== grant.redirectUri ||
+    grant.environment !== deploymentEnvironment ||
+    !Array.isArray(grant.scopes) ||
+    grant.scopes.length !== 1 ||
+    grant.scopes[0] !== "cloud:user"
+  ) {
+    throw refuse();
+  }
 }

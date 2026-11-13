@@ -3,7 +3,7 @@
  */
 import { and, eq, isNotNull } from "drizzle-orm";
 import type { AndroidAssetLinkStatement } from "../../lib/auth/android-asset-links";
-import { dbRead } from "../client";
+import { dbRead, dbWrite } from "../client";
 import { apps } from "../schemas/apps";
 import { type MobileAppAuthClient, mobileAppAuthClients } from "../schemas/mobile-app-auth-clients";
 
@@ -27,11 +27,12 @@ export interface RegisteredMobileClientWithApp {
 export const mobileAppAuthClientsRepository = {
   /**
    * Find an active, enabled mobile client registration and its approved app.
+   * Uses dbWrite (primary) to guarantee strong consistency for authorization contracts.
    */
   async findRegisteredMobileClient(
     clientId: string,
   ): Promise<RegisteredMobileClientWithApp | null> {
-    const rows = await dbRead
+    const rows = await dbWrite
       .select({
         client: mobileAppAuthClients,
         app: {

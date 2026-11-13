@@ -11,6 +11,7 @@
  */
 
 import { runWithDbCacheAsync } from "@elizaos/cloud-shared/db/client";
+import { mobileAppAuthClientsRepository } from "@elizaos/cloud-shared/db/repositories/mobile-app-auth-clients";
 import {
   ApiError,
   failureResponse,
@@ -19,6 +20,11 @@ import {
   getPresentedMobileApiKeySecret,
   mobileApiKeyIngressRateLimitKey,
 } from "@elizaos/cloud-shared/lib/auth/mobile-api-key";
+import {
+  type NativeAuthCallback,
+  nativeBillingReturnFallback,
+  nativeSignInCallbackFallback,
+} from "@elizaos/cloud-shared/lib/auth/native-callback-fallback";
 import { buildRedisClient } from "@elizaos/cloud-shared/lib/cache/redis-factory";
 import { corsMiddleware } from "@elizaos/cloud-shared/lib/cors/cloud-api-hono-cors";
 import {
@@ -470,6 +476,54 @@ export async function createApp(
   // Android App Link verification fetches this from the link host's root and
   // never follows a redirect; the Pages middleware proxies it from eliza.app.
   app.route("/.well-known/assetlinks.json", assetLinksRoute);
+
+  // Hosted native sign-in callback and billing return fallback pages (#39257).
+  // Looked up dynamically from mobile_app_auth_clients by redirect URI.
+  app.get("*", async (c, next) => {
+    const url = new URL(c.req.url);
+    const isAuthCallback = url.pathname.endsWith("/auth/callback");
+    const isBillingReturn = url.pathname.endsWith("/billing/return");
+    if (!isAuthCallback && !isBillingReturn) {
+      await next();
+      return;
+    }
+    const redirectUri = isAuthCallback
+      ? `${url.origin}${url.pathname}`
+      : `${url.origin}${url.pathname.slice(0, -"/billing/return".length)}/auth/callback`;
+
+    try {
+      const record =
+        await mobileAppAuthClientsRepository.findByRedirectUri(redirectUri);
+      if (
+        !record?.client.enabled ||
+        !record.app.is_active ||
+        !record.app.is_approved
+      ) {
+        return c.text("Not Found", 404);
+      }
+      if (!record.client.android_package_name) {
+        return c.text("Not Found", 404);
+      }
+      const callback: NativeAuthCallback = {
+        redirectUri: record.client.redirect_uri,
+        androidPackage: record.client.android_package_name,
+        appName: record.app.name,
+      };
+      if (isAuthCallback) {
+        return nativeSignInCallbackFallback(url, callback);
+      }
+      return nativeBillingReturnFallback(url, callback);
+    } catch (error) {
+      logger.error(
+        "[bootstrap-app] Failed to resolve native callback from database:",
+        error,
+      );
+      return new Response("Native auth callback is unavailable", {
+        status: 503,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+  });
 
   // Rate-limit config guard (#9853 P1.1) — never let production silently serve
   // with rate limiting OFF. The limiters fall open whenever REDIS_RATE_LIMITING

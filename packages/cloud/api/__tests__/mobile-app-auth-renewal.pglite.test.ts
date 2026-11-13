@@ -192,7 +192,7 @@ interface Held {
 
 /** Exchange a code for an inactive credential, as `mobile/token` does. */
 async function exchange(code: string, attempt: ReturnType<typeof pkce>) {
-  const registration = resolveMobileAppAuthRegistration(env(), CLIENT.clientId);
+  const registration = await resolveMobileAppAuthRegistration(env(), CLIENT.clientId);
   const state = await mobileAppAuthGrantsRepository.findStateByCodeHash(
     sha256Hex(code),
   );
@@ -243,7 +243,7 @@ async function acknowledge(
   held: Held,
 ) {
   return await acknowledgeMobileAppAuthCredential({
-    registration: resolveMobileAppAuthRegistration(env(), CLIENT.clientId),
+    registration: await resolveMobileAppAuthRegistration(env(), CLIENT.clientId),
     binding: {
       clientId: CLIENT.clientId,
       environment: "production",
@@ -337,7 +337,7 @@ async function renewInto(from: Held): Promise<Held> {
 async function signIn(): Promise<Held> {
   const attempt = pkce();
   const issued = await issueMobileAppAuthCode({
-    registration: resolveMobileAppAuthRegistration(env(), CLIENT.clientId),
+    registration: await resolveMobileAppAuthRegistration(env(), CLIENT.clientId),
     userId: OWNER,
     organizationId: ORG,
     binding: attempt.binding,

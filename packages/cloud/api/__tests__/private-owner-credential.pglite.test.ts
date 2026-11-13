@@ -23,6 +23,7 @@ import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import { drizzle } from "drizzle-orm/pglite";
 import { Hono } from "hono";
+import { mobileAppAuthClients } from "../../shared/src/db/schemas/mobile-app-auth-clients";
 import { mobileAppAuthGrants } from "../../shared/src/db/schemas/mobile-app-auth-grants";
 
 const OWNER = "22222222-2222-4222-8222-222222222222";
@@ -135,6 +136,7 @@ beforeAll(async () => {
     apiKeys,
     apps,
     managedDomains,
+    mobileAppAuthClients,
     mobileAppAuthGrants,
     personalSharedGroupBindings,
     personalSharedGroupJoinChallenges,
@@ -184,7 +186,7 @@ beforeEach(async () => {
   authKeyId = KEY;
   authSecret = SECRET;
   await pg.exec(
-    "TRUNCATE native_app_publishers, mobile_app_auth_grants, apps, api_keys, users, organizations",
+    "TRUNCATE native_app_publishers, mobile_app_auth_grants, mobile_app_auth_clients, apps, api_keys, users, organizations",
   );
   await pg.query(
     "INSERT INTO organizations(id,is_active,account_lifecycle_state) VALUES($1,true,'active')",
@@ -252,6 +254,10 @@ async function mobile() {
   );
   await pg.query(
     "INSERT INTO apps(id,is_active,is_approved) VALUES($1,true,true)",
+    [APP],
+  );
+  await pg.query(
+    "INSERT INTO mobile_app_auth_clients(client_id,app_id,redirect_uri,enabled) VALUES('ai.elizaos.app',$1,'https://eliza.app/auth/callback',true)",
     [APP],
   );
   // The code is expired, while the acknowledged user credential remains current.
@@ -369,6 +375,10 @@ test("memberless publisher survives creator personal-account deletion without tr
       JSON.stringify(["https://eliza.app/auth/callback"]),
     ],
   );
+  await pg.query(
+    "INSERT INTO mobile_app_auth_clients(client_id,app_id,redirect_uri,enabled) VALUES('ai.elizaos.app',$1,'https://eliza.app/auth/callback',true)",
+    [APP],
+  );
   const runtime = {
     ...env(),
     NODE_ENV: "test",
@@ -395,7 +405,7 @@ test("memberless publisher survives creator personal-account deletion without tr
     app: { name: "Reader", description: null, logoUrl: null, websiteUrl: null },
   });
 
-  const registration = resolveMobileAppAuthRegistration(runtime);
+  const registration = await resolveMobileAppAuthRegistration(runtime);
   const now = new Date();
   const credentials = [];
   for (const [userId, organizationId] of [

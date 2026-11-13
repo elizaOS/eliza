@@ -418,6 +418,14 @@ export const onRequest = async (
   }
   if (callback) return nativeSignInCallbackFallback(url, callback);
   if (billingReturn) return nativeBillingReturnFallback(url, billingReturn);
+  if (
+    context.env.API_WORKER &&
+    (url.pathname.endsWith("/auth/callback") ||
+      url.pathname.endsWith("/billing/return"))
+  ) {
+    const apiResponse = await proxyToApiWorker(context);
+    if (apiResponse.status !== 404) return apiResponse;
+  }
   // A single lookup decides both that this is a crawl asset and what type it
   // must be served as, so the two can never drift apart.
   const crawlAssetContentType = CRAWL_ASSET_CONTENT_TYPES.get(url.pathname);
