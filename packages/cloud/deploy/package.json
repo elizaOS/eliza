@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cloud-deploy",
-  "version": "2.0.5",
+  "version": "2.0.6",
   "type": "module",
   "description": "Renders a product's Cloud configuration (API, login, speech and admission Workers, Pages) from a deployment file.",
   "bin": {

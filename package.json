@@ -1,6 +1,6 @@
 {
   "name": "eliza",
-  "version": "2.0.5",
+  "version": "2.0.6",
   "private": true,
   "type": "module",
   "elizaos": {
@@ -111,7 +111,8 @@
     "content-context:live-trajectories": "bun packages/scripts/produce-content-context-live-trajectories.ts",
     "content-context:postgres": "bun packages/scripts/produce-content-context-postgres.ts",
     "content-context:soak": "bun packages/scripts/run-content-context-soak.ts",
-    "test:scripts:node": "node --conditions=eliza-source --import tsx node_modules/vitest/vitest.mjs run --config packages/scripts/vitest.node.config.ts"
+    "test:scripts:node": "node --conditions=eliza-source --import tsx node_modules/vitest/vitest.mjs run --config packages/scripts/vitest.node.config.ts",
+    "test:lemma": "lsc check --backend=dafny"
   },
   "packageManager": "bun@1.4.2",
   "workspaces": [
@@ -185,7 +186,8 @@
     "vitest": "^5.1.0",
     "verdaccio": "7.0.2",
     "yaml": "2.9.1",
-    "stripe": "^22.0.0"
+    "stripe": "^22.0.0",
+    "lemmascript": "0.6.8"
   },
   "resolutions": {
     "@elizaos/core": "workspace:*",
@@ -291,6 +293,7 @@
     "fast-uri": "^3.1.9"
   },
   "patchedDependencies": {
+    "@cloudflare/workers-types@5.20261110.1": "patches/@cloudflare%2Fworkers-types@5.20261110.1.patch",
     "@electric-sql/pglite-socket@0.1.6": "patches/@electric-sql%2Fpglite-socket@0.1.6.patch",
     "sql.js@1.14.2": "patches/sql.js@1.14.2.patch",
     "telegraf@4.16.3": "patches/telegraf@4.16.3.patch",

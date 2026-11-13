@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cloud-services-common",
-  "version": "2.0.5",
+  "version": "2.0.6",
   "description": "Shared utilities for cloud-services packages (structured logger, k8s service-account helpers).",
   "type": "module",
   "main": "src/index.ts",

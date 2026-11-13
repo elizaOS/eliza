@@ -1,5 +1,6 @@
 import { parseBrowserAddressInput } from "./browser-address-input.ts";
 import { IANA_TLDS } from "./iana-tlds.ts";
+import { stripTrailingPunctuation } from "./strip-trailing-punctuation.ts";
 
 // The model decides whether the user wants a site opened now. This module
 // decides which typed address an open may use, so a model can never open an
@@ -147,7 +148,7 @@ export function authoredBrowserDestination(text: string): string | undefined {
   } else {
     // Closing punctuation after a bare host is prose. It is never removed
     // from a path, query or fragment.
-    const bare = target.replace(/[.,!?]+$/, "");
+    const bare = stripTrailingPunctuation(target, ".,!?");
     if (!/[/?#]/.test(bare.replace(/^https:\/\//i, ""))) target = bare;
   }
   return webAddress(target)?.href;
@@ -315,7 +316,7 @@ function typedAddresses(
     const lead = word[0].replace(/^[("'“‘«<[]+/u, "");
     const tokens = new Set([
       lead,
-      lead.replace(/[)\]>"'”’».,!?;:]+$/u, "").replace(/['’]s$/u, ""),
+      stripTrailingPunctuation(lead, ")]>\"'”’».,!?;:").replace(/['’]s$/u, ""),
     ]);
     for (const token of tokens) {
       const url = webAddress(token);

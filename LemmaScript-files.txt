@@ -1,0 +1,1 @@
+packages/contracts/src/strip-trailing-punctuation.ts 60 --isolate-assertions --default-function-opacity=opaque --allow-warnings
