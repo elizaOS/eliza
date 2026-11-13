@@ -1,9 +1,10 @@
 /**
  * The Google Maps Platform provider: Places API (New), Geocoding API, Routes
  * API and Map Tiles API answer the provider-neutral Maps contract with a
- * server-held key. Every Google upstream is a mocked fetch.
+ * server-held key. Upstreams use controlled responses and a loopback HTTP lane.
  */
 import { beforeEach, describe, expect, test } from "bun:test";
+import { writeFile } from "node:fs/promises";
 import {
   type MapsProviderAdapter,
   MapsServiceError,
@@ -458,6 +459,154 @@ describe("Google Places and Geocoding", () => {
     expect(prices).toEqual([0.032, 0.032, 0.005]);
   });
 
+  test("finite nearby lookup outcomes match the real HTTP provider", async () => {
+    let nearby = "place";
+    let fallback = "address";
+    const wire: string[] = [];
+    const serverErrors: Error[] = [];
+    const results: object[] = [];
+    const server = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      error(error) {
+        serverErrors.push(error);
+        return new Response("fixture assertion failed", { status: 500 });
+      },
+      async fetch(request) {
+        const url = new URL(request.url);
+        wire.push(url.pathname);
+        if (url.pathname.endsWith("places:searchNearby")) {
+          expect(request.headers.get("x-goog-api-key")).toBe(KEY);
+          expect(await request.json()).toMatchObject({
+            rankPreference: "DISTANCE",
+            maxResultCount: 1,
+            locationRestriction: { circle: { center: CASINO, radius: 40 } },
+          });
+          if (nearby === "outage") return new Response("busy", { status: 503 });
+          if (nearby === "invalid") return Response.json({ places: [null] });
+          return Response.json({
+            places:
+              nearby === "empty"
+                ? []
+                : [
+                    {
+                      id: PLACE_ID,
+                      displayName: { text: "Starbucks" },
+                      formattedAddress: "Place du Casino, Monaco",
+                      location: CASINO,
+                    },
+                  ],
+          });
+        }
+        expect(url.pathname).toBe("/maps/api/geocode/json");
+        expect(url.searchParams.get("key")).toBe(KEY);
+        if (fallback === "outage") return new Response("busy", { status: 503 });
+        if (fallback === "invalid")
+          return Response.json({ status: "OK", results: [null] });
+        if (fallback === "empty")
+          return Response.json({ status: "ZERO_RESULTS", results: [] });
+        return Response.json({
+          status: "OK",
+          results: [
+            {
+              place_id: PLACE_ID,
+              formatted_address: "Place du Casino, Monaco",
+              geometry: {
+                location: { lat: CASINO.latitude, lng: CASINO.longitude },
+              },
+            },
+          ],
+        });
+      },
+    });
+    try {
+      for (const prefer of [false, true])
+        for (const cancelled of [false, true]) {
+          for (nearby of ["place", "empty", "invalid", "outage"]) {
+            for (fallback of ["address", "empty", "invalid", "outage"]) {
+              wire.length = 0;
+              const { provider } = google((url, call) =>
+                fetch(
+                  new URL(`${url.pathname}${url.search}`, server.url),
+                  call.init,
+                ),
+              );
+              const controller = new AbortController();
+              const cancellation = new Error("lookup cancelled");
+              if (cancelled) controller.abort(cancellation);
+              let observed: string;
+              try {
+                const place = await provider.reverse(
+                  {
+                    coordinate: CASINO,
+                    preferPlace: prefer,
+                    radiusMeters: 40,
+                  },
+                  controller.signal,
+                );
+                observed =
+                  place === null
+                    ? "empty"
+                    : place.name === "Starbucks"
+                      ? "place"
+                      : "address";
+              } catch (error) {
+                if (cancelled) {
+                  expect(error).toBe(cancellation);
+                  observed = "cancelled";
+                } else {
+                  expect(error).toBeInstanceOf(MapsServiceError);
+                  expect([
+                    "provider_unavailable",
+                    "provider_invalid_response",
+                  ]).toContain((error as MapsServiceError).code);
+                  observed =
+                    (error as MapsServiceError).code === "provider_unavailable"
+                      ? "outage"
+                      : "invalid";
+                }
+              }
+              const expected = cancelled
+                ? "cancelled"
+                : prefer && nearby !== "empty"
+                  ? nearby
+                  : fallback;
+              expect(observed).toBe(expected);
+              expect(serverErrors).toEqual([]);
+              const nearbyCalls = wire.filter((url) =>
+                url.endsWith("places:searchNearby"),
+              ).length;
+              const geocodeCalls = wire.filter((url) =>
+                url.endsWith("geocode/json"),
+              ).length;
+              expect(nearbyCalls).toBe(Number(!cancelled && prefer));
+              expect(geocodeCalls).toBe(
+                Number(!cancelled && (!prefer || nearby === "empty")),
+              );
+              results.push({
+                prefer,
+                cancelled,
+                nearby,
+                fallback,
+                observed,
+                nearbyCalls,
+                geocodeCalls,
+              });
+            }
+          }
+        }
+      expect(results).toHaveLength(64);
+      if (process.env.MAPS_PLACE_LOOKUP_EVIDENCE) {
+        await writeFile(
+          process.env.MAPS_PLACE_LOOKUP_EVIDENCE,
+          JSON.stringify(results),
+        );
+      }
+    } finally {
+      await server.stop(true);
+    }
+  }, 120_000);
+
   test("outages and malformed bodies are typed failures that never echo the key", async () => {
     const { provider } = google(() => new Response("busy", { status: 503 }));
     expect(await refusal(provider.search({ query: "casino" }))).toBe(
@@ -724,7 +873,13 @@ describe("Google Map Tiles", () => {
         });
       const status = tileStatus();
       return status === 200
-        ? new Response(PNG, { headers: { "content-type": "image/png" } })
+        ? new Response(PNG, {
+            headers: {
+              "content-type": "image/png",
+              "cache-control": "private, max-age=30, must-revalidate",
+              etag: '"google-tile-fixture"',
+            },
+          })
         : new Response("denied", { status });
     });
   }
@@ -749,6 +904,7 @@ describe("Google Map Tiles", () => {
     );
     expect(tileCall?.url.searchParams.get("session")).toBe("session-1");
     expect(tileCall?.url.searchParams.get("key")).toBe(KEY);
+    expect(tileCall?.init.cache).toBe("no-store");
   });
 
   test("a refused session is renewed once", async () => {
@@ -867,7 +1023,7 @@ describe("Google Map Tiles", () => {
     );
     expect(ok.status).toBe(200);
     expect(ok.headers.get("content-type")).toBe("image/png");
-    expect(ok.headers.get("cache-control")).toBe("private, max-age=86400");
+    expect(ok.headers.get("cache-control")).toBe("no-store");
     expect(new Uint8Array(await ok.arrayBuffer())).toEqual(PNG);
     const jsonTile = await mounted().request(
       "/api/v1/maps/tiles/2/1/3",
@@ -940,6 +1096,32 @@ describe("Google Map Tiles", () => {
     expect(((await unconfigured.json()) as { code: string }).code).toBe(
       "maps_not_configured",
     );
+  });
+
+  test("missing or malformed viewport copyright is refused", async () => {
+    for (const copyright of [undefined, "", " ", 12, "x".repeat(501)]) {
+      const { provider } = google((url) =>
+        url.pathname === "/v1/createSession"
+          ? Response.json({
+              session: "copyright-fixture",
+              expiry: String(Math.floor(Date.now() / 1000) + 36000),
+              tileWidth: 256,
+              imageFormat: "png",
+            })
+          : Response.json({ copyright }),
+      );
+      expect(
+        await refusal(
+          provider.viewport!({
+            zoom: 15,
+            north: 44,
+            south: 43,
+            east: 8,
+            west: 7,
+          }),
+        ),
+      ).toBe("provider_invalid_response");
+    }
   });
 
   test("the viewport copyright reuses the tile session and needs no allowance key", async () => {

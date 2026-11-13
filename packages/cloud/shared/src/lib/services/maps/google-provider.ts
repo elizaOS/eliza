@@ -703,8 +703,7 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
       maxZoomRects?: unknown;
     } | null;
     const copyright = boundedText(json?.copyright, 500);
-    if (copyright === undefined && json?.copyright !== undefined && json.copyright !== "")
-      throw invalidResponse();
+    if (!copyright) throw invalidResponse();
     const maxZoom = Array.isArray(json?.maxZoomRects)
       ? json.maxZoomRects.reduce<number | undefined>((best, rect) => {
           const zoom = finiteNumber((rect as { maxZoom?: unknown } | null)?.maxZoom);
@@ -713,7 +712,7 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
       : undefined;
     return {
       providerId: this.providerId,
-      copyright: copyright ?? TILE_ATTRIBUTION,
+      copyright,
       ...(maxZoom !== undefined ? { maxZoom } : {}),
     };
   }
@@ -727,9 +726,10 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
     const url = new URL(`2dtiles/${request.z}/${request.x}/${request.y}`, TILES_URL);
     url.searchParams.set("session", session.token);
     url.searchParams.set("key", this.apiKey);
+    // Fetch the current tile without retaining provider content in an HTTP cache.
     return this.billableFetch(
       url,
-      { method: "GET" },
+      { method: "GET", cache: "no-store" },
       signal,
       reportPrice,
       this.creditPrice("tiles", request),
