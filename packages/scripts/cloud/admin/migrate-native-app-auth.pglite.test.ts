@@ -5,7 +5,7 @@ import {
   migrateNativeRegistry,
   nativeRegistrySnapshot,
   verifyNativeRegistryMigration,
-} from "./migrate-native-app-auth";
+} from "./migrate-native-app-auth.ts";
 
 const primary = "11111111-1111-4111-8111-111111111111";
 const alpha = "22222222-2222-4222-8222-222222222222";
@@ -178,7 +178,7 @@ test("rejects partial source associations and refuses to overwrite changed regis
 
 test("reads complete callback binding from the deployed staging branch across all deployment pages", async () => {
   const { readDeployedNativeCallbacks } = await import(
-    "./migrate-native-app-auth"
+    "./migrate-native-app-auth.ts"
   );
   const requests: string[] = [];
   const deployment = {

@@ -5,14 +5,14 @@ import { Client } from "pg";
 import {
   readDatabaseIdentityConfig,
   runDatabaseIdentityPreflight,
-} from "../../../cloud/scripts/admin/preflight-database-identity";
-import { enforceTlsForRemote } from "../../../cloud/shared/src/db/client";
-import { parseAndroidAssetLinksConfig } from "../../../cloud/shared/src/lib/auth/android-asset-links";
-import { selectNativeAuthCallback } from "../../../cloud/shared/src/lib/auth/native-auth-callback-config";
+} from "../../../cloud/scripts/admin/preflight-database-identity.ts";
+import { enforceTlsForRemote } from "../../../cloud/shared/src/db/client.ts";
+import { parseAndroidAssetLinksConfig } from "../../../cloud/shared/src/lib/auth/android-asset-links.ts";
+import { selectNativeAuthCallback } from "../../../cloud/shared/src/lib/auth/native-auth-callback-config.ts";
 import {
   parseRegisteredMobileClients,
   type RegisteredMobileClient,
-} from "../../../cloud/shared/src/lib/services/mobile-client-registry";
+} from "../../../cloud/shared/src/lib/services/mobile-client-registry.ts";
 
 type Row = Record<string, unknown>;
 export interface MigrationDatabase {
