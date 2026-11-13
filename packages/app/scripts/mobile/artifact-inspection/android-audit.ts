@@ -38,37 +38,6 @@ import {
 } from "./archive.ts";
 import { findAndroidSystemApk } from "./provenance.ts";
 
-/**
- * Audit the sideload (`android`) debug APK. The sideload target ships both the
- * web renderer and the on-device agent payload, so assert both are packaged —
- * a web-less sideload APK is the exact regression of elizaOS/eliza#8387
- * (ERR_CONNECTION_REFUSED on device).
- */
-export function auditAndroidSideloadArtifact({ javaHome } = {}) {
-  const artifact = findAndroidCloudDebugApk();
-  if (!artifact) {
-    throw new Error(
-      "[mobile-build] android sideload debug APK was not found under app/build/outputs/.",
-    );
-  }
-  const entries = listAndroidArtifactEntries(artifact, javaHome);
-  assertAndroidArtifactRetainsBackgroundRunnerJniBridge(
-    artifact,
-    entries,
-    javaHome,
-    { label: "android sideload" },
-  );
-  assertAndroidArtifactShipsWebPayload(artifact, entries, {
-    requireAgent: true,
-    label: "android",
-  });
-  auditAndroidBionicInferenceLibraries(artifact, entries, javaHome);
-  console.log(
-    `[mobile-build] android sideload artifact audit passed: ${artifact}`,
-  );
-  return artifact;
-}
-
 /** Check every selected architecture, including emulator-only APKs. */
 export function auditAndroidBionicInferenceLibraries(
   artifact,
@@ -92,7 +61,7 @@ export function auditAndroidBionicInferenceLibraries(
     const offenders = findAndroidBionicInferenceOffenders(fusedBytes);
     if (offenders.length > 0) {
       throw mobileBuildError(
-        `[mobile-build] android sideload artifact contains a Linux/musl fused inference library at ${fusedEntry} that Android's bionic loader cannot load: ${offenders.join(", ")}. Rebuild and stage that architecture with \`bun packages/app/scripts/stage-elizavoice-lib.ts --abi <abi> --variant cpu\` (or the Vulkan variant with its required host tooling).`,
+        `[mobile-build] android-system artifact contains a Linux/musl fused inference library at ${fusedEntry} that Android's bionic loader cannot load: ${offenders.join(", ")}. Rebuild and stage that architecture with \`bun packages/app/scripts/stage-elizavoice-lib.ts --abi <abi> --variant cpu\` (or the Vulkan variant with its required host tooling).`,
         {
           code: "ANDROID_BIONIC_INFERENCE_INCOMPATIBLE",
           context: { artifact, fusedEntry, offenders },
@@ -115,49 +84,12 @@ export function findAndroidBionicInferenceOffenders(bytes) {
   );
 }
 
-/** Audit the hosted-emulator debug APK without requiring a local agent payload. */
-export function auditAndroidHostE2eArtifact({ javaHome } = {}) {
-  const artifact = findAndroidCloudDebugApk();
-  if (!artifact) {
-    throw new Error(
-      "[mobile-build] android host-e2e debug APK was not found under app/build/outputs/.",
-    );
-  }
-  const entries = listAndroidArtifactEntries(artifact, javaHome);
-  assertAndroidArtifactRetainsBackgroundRunnerJniBridge(
-    artifact,
-    entries,
-    javaHome,
-    { label: "android host-e2e" },
-  );
-  assertAndroidArtifactShipsWebPayload(artifact, entries, {
-    requireAgent: false,
-    label: "android-host-e2e",
-  });
-  const packagedAgent = entries.find((entry) =>
-    /(^|\/)assets\/agent\//i.test(entry.replaceAll("\\", "/")),
-  );
-  if (packagedAgent) {
-    throw mobileBuildError(
-      `[mobile-build] android-host-e2e artifact unexpectedly contains the embedded agent payload: ${packagedAgent}`,
-      {
-        code: "ANDROID_HOST_E2E_AGENT_PAYLOAD_PRESENT",
-        context: { artifact, packagedAgent },
-      },
-    );
-  }
-  console.log(
-    `[mobile-build] android host-e2e artifact audit passed: ${artifact}`,
-  );
-  return artifact;
-}
-
 export function auditAndroidSystemArtifact({ javaHome } = {}) {
-  // The AOSP/system target gets the web-payload mirror like the other three
-  // sync targets, but the privileged release APK still needs the same positive
-  // artifact audit or it could ship web-less (ERR_CONNECTION_REFUSED) silently —
-  // the exact regression class #8387 closes. `-PelizaAospBuild=true` preserves
-  // assets/agent, so requireAgent stays true here like the sideload path.
+  // The privileged release APK needs a positive artifact audit or it could
+  // ship web-less (ERR_CONNECTION_REFUSED) silently — the exact regression
+  // class #8387 closes. `-PelizaAospBuild=true` preserves assets/agent, so
+  // requireAgent stays true, and the on-device agent's fused inference library
+  // must load under bionic.
   const artifact = findAndroidSystemApk();
   if (!artifact) {
     throw new Error(
@@ -175,6 +107,7 @@ export function auditAndroidSystemArtifact({ javaHome } = {}) {
     requireAgent: true,
     label: "android-system",
   });
+  auditAndroidBionicInferenceLibraries(artifact, entries, javaHome);
   console.log(
     `[mobile-build] android-system artifact audit passed: ${artifact}`,
   );
@@ -346,8 +279,8 @@ export function auditAndroidCloudArtifact(
   try {
     // The Play client deliberately strips Background Runner and every
     // background execution surface. Its artifact must therefore stay native
-    // library free; JNI bridge retention is enforced only by the sideload,
-    // host-E2E, and system artifact audits that compile the plugin.
+    // library free; JNI bridge retention is enforced only by the system
+    // artifact audit, whose build compiles the plugin.
     if (artifactKind === "apk") {
       // APK inspection deliberately retains the existing AAPT badging/xmltree
       // behavior. bundletool is only valid for the release App Bundle path.
@@ -407,7 +340,7 @@ export function auditAndroidCloudArtifact(
       });
     }
     // Cloud is a thin client (no on-device agent), but it must still ship the
-    // renderer — a web-less cloud APK is just as broken as a web-less sideload.
+    // renderer — a web-less cloud APK is just as broken as a web-less system APK.
     assertAndroidArtifactShipsWebPayload(artifact, entries, {
       requireAgent: false,
       label: "android-cloud",

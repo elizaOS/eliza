@@ -30,9 +30,9 @@ import {
   resolveAdb,
   resolveApk,
   resolveSerial,
+  SYSTEM_APK_CANDIDATES,
   verifyInstalledApkMatches,
 } from "./lib/android-device.ts";
-import { resolveAndroidE2eBuildScript } from "./lib/android-e2e-build.ts";
 import {
   createAndroidEvidenceBoundary,
   projectAndroidDeviceEvidenceBundle,
@@ -264,10 +264,13 @@ function currentHeadCommit() {
   }
 }
 
-function buildAndroidApk(bundle, backend) {
-  const buildScript = resolveAndroidE2eBuildScript(backend);
-  log(`building WebView-debuggable APK via ${buildScript}…`);
-  run(bundle, "build Android APK", "bun", ["run", buildScript], {
+// Both backends run the android-system APK, the one target that carries the
+// on-device agent and allows the loopback and host-agent cleartext routes the
+// probes use. Its release build installs only when signed: set
+// ELIZAOS_KEYSTORE_PATH and the related ELIZAOS_KEY* variables.
+function buildAndroidApk(bundle) {
+  log("building WebView-debuggable APK via build:android:system…");
+  run(bundle, "build Android APK", "bun", ["run", "build:android:system"], {
     ELIZA_MOBILE_REPO_ROOT: elizaRoot,
     ELIZA_MOBILE_REQUIRED_RENDERER_COMMIT: currentHeadCommit(),
     ELIZA_WEBVIEW_DEBUG: "1",
@@ -294,7 +297,7 @@ function readApkRendererStamp(apk) {
   }
 }
 
-function ensureFreshApkInstalled(bundle, adb, serial, backend) {
+function ensureFreshApkInstalled(bundle, adb, serial) {
   const forceBuild = has("--force-build") || has("--build");
   const skipBuild = has("--skip-build");
   const headCommit = currentHeadCommit();
@@ -306,7 +309,7 @@ function ensureFreshApkInstalled(bundle, adb, serial, backend) {
   const buildDecision = androidDistNeedsBuild({ freshStamp, headCommit });
 
   if (forceBuild) {
-    buildAndroidApk(bundle, backend);
+    buildAndroidApk(bundle);
   } else if (buildDecision.build) {
     if (skipBuild) {
       throw new Error(
@@ -314,7 +317,7 @@ function ensureFreshApkInstalled(bundle, adb, serial, backend) {
       );
     }
     log(`${buildDecision.reason} — rebuilding before install check.`);
-    buildAndroidApk(bundle, backend);
+    buildAndroidApk(bundle);
   } else {
     log(`fresh dist renderer stamp: ${stampLabel(freshStamp)}`);
   }
@@ -333,7 +336,9 @@ function ensureFreshApkInstalled(bundle, adb, serial, backend) {
     );
   }
 
-  let apk = resolveApk(process.env.ELIZA_ANDROID_APK);
+  let apk = resolveApk(process.env.ELIZA_ANDROID_APK, {
+    candidates: SYSTEM_APK_CANDIDATES,
+  });
   let apkStamp = readApkRendererStamp(apk);
   let apkDecision = androidApkNeedsBuild({ freshStamp, apkStamp });
   if (apkDecision.build) {
@@ -344,7 +349,7 @@ function ensureFreshApkInstalled(bundle, adb, serial, backend) {
     }
     if (!forceBuild) {
       log(`${apkDecision.reason} — rebuilding APK before install.`);
-      buildAndroidApk(bundle, backend);
+      buildAndroidApk(bundle);
       freshStamp = readFreshAndroidRendererStamp();
       if (!freshStamp) {
         throw new Error(
@@ -357,7 +362,9 @@ function ensureFreshApkInstalled(bundle, adb, serial, backend) {
           `Android rebuild did not produce the current renderer: ${retryDecision.reason}`,
         );
       }
-      apk = resolveApk(process.env.ELIZA_ANDROID_APK);
+      apk = resolveApk(process.env.ELIZA_ANDROID_APK, {
+        candidates: SYSTEM_APK_CANDIDATES,
+      });
       apkStamp = readApkRendererStamp(apk);
       apkDecision = androidApkNeedsBuild({ freshStamp, apkStamp });
     }
@@ -564,7 +571,7 @@ async function main() {
       }
     }
 
-    ensureFreshApkInstalled(bundle, adb, serial, backend);
+    ensureFreshApkInstalled(bundle, adb, serial);
 
     if (has("--start-host-agent")) {
       const step = startBundleStep(bundle, "start deterministic host agent");

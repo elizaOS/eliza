@@ -26,37 +26,10 @@ const runMobileBuildSource = fs.readFileSync(
 describe("Android mobile build target table", () => {
   it("keeps one descriptor per public Android target", () => {
     expect(Object.keys(ANDROID_BUILD_TARGETS).sort()).toEqual([
-      "android",
       "android-cloud",
-      "android-host-e2e",
       "android-system",
     ]);
 
-    expect(ANDROID_BUILD_TARGETS.android).toMatchObject({
-      target: "android",
-      webTarget: "android",
-      buildMobileAgentBundle: true,
-      cleartextPolicy: { allowCleartext: true, label: "sideload" },
-      agentRuntime: { bunChannel: "stable" },
-    });
-    expect(ANDROID_BUILD_TARGETS["android-host-e2e"]).toMatchObject({
-      target: "android-host-e2e",
-      webTarget: "android",
-      env: { ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB: "1" },
-      cleartextPolicy: { allowCleartext: true, label: "host-e2e" },
-      gradle: {
-        flags: ["-PelizaStripAgentAssets=true"],
-        metadataVariant: "debug",
-        finalTask: ":app:assembleDebug",
-      },
-      artifactAuditKey: "hostE2e",
-    });
-    expect(ANDROID_BUILD_TARGETS["android-host-e2e"]).not.toHaveProperty(
-      "buildMobileAgentBundle",
-    );
-    expect(ANDROID_BUILD_TARGETS["android-host-e2e"].agentRuntime).toBe(
-      undefined,
-    );
     expect(ANDROID_BUILD_TARGETS["android-cloud"]).toMatchObject({
       target: "android-cloud",
       webTarget: "android-cloud",
@@ -95,36 +68,13 @@ describe("Android mobile build target table", () => {
     );
   });
 
-  it.each([
-    { ELIZA_BUILD_VARIANT: "store", ELIZA_PLAY_STORE_BUILD: "" },
-    { ELIZA_BUILD_VARIANT: "", ELIZA_PLAY_STORE_BUILD: "1" },
-  ])(
-    "runs the exact mobile CLI through a pre-mutation Android guard (%o)",
-    (intent) => {
-      // Keep this CLI fixture on Node: under `bun test`, `process.execPath`
-      // points at Bun, whose cold compilation of this large orchestrator can
-      // reach the per-test timeout before the guard runs.
-      const result = spawnSync("node", [mobileBuildScript, "android"], {
-        encoding: "utf8",
-        env: {
-          ...process.env,
-          ...intent,
-        },
-      });
-
-      expect(result.status).toBe(2);
-      expect(`${result.stdout}\n${result.stderr}`).toContain(
-        "Refusing target `android` under ELIZA_BUILD_VARIANT=store",
-      );
-    },
-  );
-  it("resolves Android lane policies without changing android default or cloud-only modes", () => {
-    expect(resolveMobileBuildPolicy("android")).toMatchObject({
+  it("resolves the Android lane policies", () => {
+    expect(resolveMobileBuildPolicy("android-system")).toMatchObject({
       capacitorTarget: "android",
       buildVariant: "direct",
       androidRuntimeMode: "local",
       runtimeExecutionMode: "local-yolo",
-      releaseAuthority: "github-release-android-package-installer",
+      releaseAuthority: "aosp-ota",
     });
     expect(resolveMobileBuildPolicy("android-cloud")).toMatchObject({
       capacitorTarget: "android",
@@ -181,7 +131,7 @@ describe("Android mobile build target table", () => {
     try {
       const result = spawnSync(
         process.execPath,
-        [path.join(scriptsDir, "run-mobile-build.ts"), "android"],
+        [path.join(scriptsDir, "run-mobile-build.ts"), "android-system"],
         {
           cwd: scriptsDir,
           encoding: "utf8",
@@ -197,23 +147,11 @@ describe("Android mobile build target table", () => {
 
       expect(result.status).toBe(1);
       expect(`${result.stdout}\n${result.stderr}`).toContain(
-        "Refusing leaked Android runtime-mode env for target 'android'",
+        "Refusing leaked Android runtime-mode env for target 'android-system'",
       );
     } finally {
       fs.rmSync(fixtureRoot, { recursive: true, force: true });
     }
-  });
-
-  it("exposes and dispatches the host-emulator build target", () => {
-    const packageJson = JSON.parse(fs.readFileSync(appPackageJsonPath, "utf8"));
-
-    expect(packageJson.scripts["build:android:host-e2e"]).toBe(
-      "bun ../../packages/app/scripts/run-mobile-build.ts android-host-e2e",
-    );
-    expect(runMobileBuildSource).toContain('target !== "android-host-e2e"');
-    expect(runMobileBuildSource).toContain(
-      'await runAndroidBuild("android-host-e2e")',
-    );
   });
 
   it("fails loudly for unknown public Android targets", () => {
@@ -224,32 +162,8 @@ describe("Android mobile build target table", () => {
 });
 
 describe("Android Gradle command table", () => {
-  it("generates sideload commands with optional websiteblocker and AOSP flags", () => {
-    expect(
-      resolveAndroidGradleCommands("android", {
-        env: {},
-        settingsGradle: websiteBlockerSettings,
-      }),
-    ).toEqual({
-      metadataArgs: [
-        ":capacitor-cordova-android-plugins:writeDebugAarMetadata",
-      ],
-      buildArgs: [
-        ":elizaos-capacitor-websiteblocker:testDebugUnitTest",
-        ":app:assembleDebug",
-      ],
-    });
-
-    expect(
-      resolveAndroidGradleCommands("android", {
-        env: { ELIZA_GRADLE_AOSP_BUILD: "1" },
-        settingsGradle: "",
-      }).buildArgs,
-    ).toEqual(["-PelizaAospBuild=true", ":app:assembleDebug"]);
-  });
-
   it("generates Play cloud release and debug commands from the same descriptor family", () => {
-    expect(resolveAndroidGradleCommands("android-cloud", { env: {} })).toEqual({
+    expect(resolveAndroidGradleCommands("android-cloud")).toEqual({
       metadataArgs: [
         "-PelizaCloudBuild=true",
         "-PelizaStripAgentAssets=true",
@@ -265,7 +179,6 @@ describe("Android Gradle command table", () => {
     expect(
       resolveAndroidGradleCommands("android-cloud", {
         debug: true,
-        env: {},
         settingsGradle: websiteBlockerSettings,
       }),
     ).toEqual({
@@ -284,32 +197,29 @@ describe("Android Gradle command table", () => {
   });
 
   it("keeps the AOSP/system Gradle contract", () => {
-    expect(resolveAndroidGradleCommands("android-system", { env: {} })).toEqual(
-      {
-        metadataArgs: [
-          ":capacitor-cordova-android-plugins:writeReleaseAarMetadata",
-        ],
-        buildArgs: ["-PelizaAospBuild=true", ":app:assembleRelease"],
-      },
-    );
+    expect(resolveAndroidGradleCommands("android-system")).toEqual({
+      metadataArgs: [
+        ":capacitor-cordova-android-plugins:writeReleaseAarMetadata",
+      ],
+      buildArgs: ["-PelizaAospBuild=true", ":app:assembleRelease"],
+    });
   });
 
   it("fails loudly for unknown AAR metadata variants", () => {
     const target = {
-      ...ANDROID_BUILD_TARGETS.android,
+      ...ANDROID_BUILD_TARGETS["android-system"],
       gradle: {
-        ...ANDROID_BUILD_TARGETS.android.gradle,
+        ...ANDROID_BUILD_TARGETS["android-system"].gradle,
         metadataVariant: "profile",
       },
     };
 
     expect(() =>
       resolveAndroidGradleCommandsForTarget(target, {
-        env: {},
         settingsGradle: "",
       }),
     ).toThrow(
-      "[mobile-build] Unknown Android AAR metadata variant for android: profile",
+      "[mobile-build] Unknown Android AAR metadata variant for android-system: profile",
     );
   });
 });

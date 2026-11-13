@@ -14,8 +14,6 @@ import { buildMobileAgentBundle } from "../agent-bundle.ts";
 import { resolveAndroidGradleCommandsForTarget } from "../android-gradle.ts";
 import {
   auditAndroidCloudArtifact,
-  auditAndroidHostE2eArtifact,
-  auditAndroidSideloadArtifact,
   auditAndroidSystemArtifact,
 } from "../artifact-inspection/android-audit.ts";
 import { stageAndroidSystemApk } from "../artifact-inspection/provenance.ts";
@@ -48,40 +46,6 @@ import {
 import { stripAndroidForCloud } from "./strip.ts";
 import { resolveAndroidBuildTarget } from "./targets.ts";
 
-export function enforceAndroidSideloadBuildPolicy({ env = process.env } = {}) {
-  // Hard refusal: the default `android` target is sideload-only and will be
-  // rejected by Play. If CI or a contributor signals Play-Store intent via
-  // env vars, fail loudly and point them at the right target.
-  if (
-    env.ELIZA_BUILD_VARIANT?.toLowerCase() === "store" ||
-    env.ELIZA_PLAY_STORE_BUILD === "1"
-  ) {
-    console.error(
-      "[mobile-build] Refusing target `android` under " +
-        "ELIZA_BUILD_VARIANT=store or ELIZA_PLAY_STORE_BUILD=1. " +
-        "The default `android` APK embeds the " +
-        "on-device agent runtime and requests Play-rejected permissions " +
-        "(MANAGE_APP_OPS_MODES, PACKAGE_USAGE_STATS). Use " +
-        "`build:android:cloud` (Play-Store-compliant thin client) or " +
-        "`build:android:system` (AOSP image launcher APK).",
-    );
-    process.exit(2);
-  }
-
-  console.warn(
-    "[mobile-build] WARNING: target `android` produces an APK that embeds " +
-      "the on-device agent runtime (libeliza_bun.so disguise) and requests " +
-      "system-only permissions (MANAGE_APP_OPS_MODES, PACKAGE_USAGE_STATS). " +
-      "It is SIDELOAD-ONLY and will be rejected by the Play Store. Use " +
-      "`build:android:cloud` for a Play-Store-compliant thin client, or " +
-      "`build:android:system` for the AOSP image launcher APK.",
-  );
-}
-
-export const ANDROID_PREFLIGHTS = Object.freeze({
-  sideload: enforceAndroidSideloadBuildPolicy,
-});
-
 export const ANDROID_SOURCE_STRIPS = Object.freeze({
   cloud: stripAndroidForCloud,
 });
@@ -92,8 +56,6 @@ export const ANDROID_SOURCE_AUDITS = Object.freeze({
 });
 
 export const ANDROID_ARTIFACT_AUDITS = Object.freeze({
-  sideload: ({ javaHome }) => auditAndroidSideloadArtifact({ javaHome }),
-  hostE2e: ({ javaHome }) => auditAndroidHostE2eArtifact({ javaHome }),
   cloud: ({ env, javaHome }) => auditAndroidCloudArtifact({ env, javaHome }),
   cloudDebug: ({ env, javaHome }) =>
     auditAndroidCloudArtifact({ debug: true, env, javaHome }),
@@ -120,13 +82,10 @@ export function runAndroidTargetPhase(target, registry, keyField, ...args) {
 
 export function resolveAndroidGradleCommands(
   targetName,
-  { debug = false, env = process.env, settingsGradle = "" } = {},
+  { debug = false, settingsGradle = "" } = {},
 ) {
   const target = resolveAndroidBuildTarget(targetName, { debug });
-  return resolveAndroidGradleCommandsForTarget(target, {
-    env,
-    settingsGradle,
-  });
+  return resolveAndroidGradleCommandsForTarget(target, { settingsGradle });
 }
 
 export function createAndroidBuildEnv(
@@ -171,9 +130,6 @@ export async function runAndroidBuild(
   enforceAndroidVpsSidecarBuildPolicy({
     targetName: target.target,
     debug,
-    env: resolvedEnv,
-  });
-  runAndroidTargetPhase(target, ANDROID_PREFLIGHTS, "preflightKey", {
     env: resolvedEnv,
   });
 
@@ -236,10 +192,7 @@ export async function runAndroidBuild(
   });
   const { buildArgs, metadataArgs } = resolveAndroidGradleCommandsForTarget(
     target,
-    {
-      env: resolvedEnv,
-      settingsGradle: readAndroidSettingsGradle(),
-    },
+    { settingsGradle: readAndroidSettingsGradle() },
   );
   await run("./gradlew", metadataArgs, {
     cwd: androidDir,
@@ -276,10 +229,6 @@ export async function runAndroidBuild(
     androidSdkRoot: sdk,
     javaHome: jdk,
   });
-}
-
-export async function buildAndroid() {
-  await runAndroidBuild("android");
 }
 
 export async function buildAndroidCloud({ debug = false } = {}) {

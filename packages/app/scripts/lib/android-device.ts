@@ -44,12 +44,25 @@ export const MAIN_ACTIVITY = `${APP_ID}/.MainActivity`;
 /** Port the on-device agent serves its Hono API on (loopback). */
 export const AGENT_API_PORT = 31337;
 
+// The android-cloud debug APK (`build:android:cloud:debug`).
 const APK_CANDIDATES = [
   path.join(
     elizaRoot,
     "packages/app/platforms/android/app/build/outputs/apk/debug/app-debug.apk",
   ),
   path.join(appDir, "android/app/build/outputs/apk/debug/app-debug.apk"),
+];
+/**
+ * The signed android-system release APK (`build:android:system` with the
+ * ELIZAOS_KEYSTORE_* signing inputs set): the one target with the on-device
+ * agent, for lanes that need it.
+ */
+export const SYSTEM_APK_CANDIDATES = [
+  path.join(
+    elizaRoot,
+    "packages/app/platforms/android/app/build/outputs/apk/release/app-release.apk",
+  ),
+  path.join(appDir, "android/app/build/outputs/apk/release/app-release.apk"),
 ];
 const DEFAULT_RENDERER_DIST = path.join(appDir, "web-dist");
 
@@ -414,7 +427,7 @@ export function resolveApk(
   const found = candidates.find((candidate) => existsSync(candidate));
   if (!found) {
     throw new Error(
-      `No debug APK found. Build one first:\n  ELIZA_MOBILE_REPO_ROOT=${elizaRoot} ELIZA_WEBVIEW_DEBUG=1 bun run --cwd packages/app build:android\nLooked in:\n  ${APK_CANDIDATES.join("\n  ")}`,
+      `No APK found. Build one first: ELIZA_WEBVIEW_DEBUG=1 bun run --cwd packages/app build:android:cloud:debug, or build:android:system with ELIZAOS_KEYSTORE_PATH, ELIZAOS_KEYSTORE_PASSWORD, ELIZAOS_KEY_ALIAS and ELIZAOS_KEY_PASSWORD set for the on-device agent.\nLooked in:\n  ${candidates.join("\n  ")}`,
     );
   }
   return found;

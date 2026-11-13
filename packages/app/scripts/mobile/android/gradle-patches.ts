@@ -313,7 +313,7 @@ export function injectCopyForkLlamaLibTask(content) {
     `            if (!libDir) {\n` +
     `                // No fresh source configured. If the fused lib set is already\n` +
     `                // staged in jniLibs (a prior build, the common dev case), use it\n` +
-    `                // as-is so a plain build:android "just works" without any flag.\n` +
+    `                // as-is so a plain build:android:system "just works" without any flag.\n` +
     `                def alreadyStaged = new File(file("src/main/jniLibs/\${abi}"), 'libelizainference.so')\n` +
     `                if (alreadyStaged.isFile()) {\n` +
     `                    logger.lifecycle("[copyForkLlamaLib] no source dir for \${abi}; libelizainference.so already staged in jniLibs — using the pre-staged fused lib set")\n` +

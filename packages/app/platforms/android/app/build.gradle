@@ -74,9 +74,8 @@ android {
         // loading the library. Empty means one per big core, measured on the device.
         def asrThreads = (System.getenv('ELIZA_ASR_THREADS') ?: '').trim()
         buildConfigField "String", "ELIZA_ASR_THREADS", "\"${asrThreads ==~ /[0-9]{1,2}/ ? asrThreads : ''}\""
-        // AOSP-only build gate. The ElizaOS AOSP product build sets
-        // -PelizaAospBuild=true via scripts/elizaos/build-aosp.ts; the
-        // Capacitor APK build path (`bun run build:android`) leaves it
+        // AOSP-only build gate. The android-system target sets
+        // -PelizaAospBuild=true; the android-cloud target leaves it
         // unset and the field stays false. ElizaAgentService reads this
         // to decide whether to export ELIZA_LOCAL_LLAMA=1 to the bun
         // process so the AOSP-only fused libelizainference.so loader takes
@@ -346,7 +345,7 @@ task copyForkLlamaLib {
             if (!libDir) {
                 // No fresh source configured. If the fused lib set is already
                 // staged in jniLibs (a prior build, the common dev case), use it
-                // as-is — a plain `build:android` "just works" without any flag.
+                // as-is — a plain `build:android:system` "just works" without any flag.
                 def alreadyStaged = new File(file("src/main/jniLibs/${abi}"), 'libelizainference.so')
                 if (alreadyStaged.isFile()) {
                     assertBionicInferenceLibrary(alreadyStaged, abi)

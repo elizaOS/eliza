@@ -77,10 +77,8 @@ export {
 export { patchLlamaCppCapacitorPodspecForXcframework } from "./mobile/ios/engine.ts";
 
 import {
-  buildAndroid,
   buildAndroidCloud,
   buildAndroidSystem,
-  runAndroidBuild,
 } from "./mobile/android/build.ts";
 
 export {
@@ -201,8 +199,6 @@ export {
 export async function main(argv = process.argv.slice(2)) {
   const [target, ...options] = argv;
   if (
-    target !== "android" &&
-    target !== "android-host-e2e" &&
     target !== "android-cloud" &&
     target !== "android-system" &&
     target !== "ios" &&
@@ -210,15 +206,11 @@ export async function main(argv = process.argv.slice(2)) {
     target !== "ios-overlay"
   ) {
     console.error(
-      "Usage: bun scripts/run-mobile-build.ts <android|android-host-e2e|android-cloud [--debug | --audit [aab-path]]|android-system|ios|ios-local|ios-overlay>",
+      "Usage: bun scripts/run-mobile-build.ts <android-cloud [--debug | --audit [aab-path]]|android-system|ios|ios-local|ios-overlay>",
     );
     process.exit(1);
   }
-  if (target === "android") {
-    await buildAndroid();
-  } else if (target === "android-host-e2e") {
-    await runAndroidBuild("android-host-e2e");
-  } else if (target === "android-cloud" && options[0] === "--audit") {
+  if (target === "android-cloud" && options[0] === "--audit") {
     // The Gradle bundleRelease finalizer audits the final AAB through this
     // step, so a direct Gradle or fastlane build gets the same release audit.
     const jdk = resolveJavaHome(process.env);

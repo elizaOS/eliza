@@ -955,7 +955,7 @@ function probeCell(cell) {
       if (!fs.existsSync(androidDir)) {
         return {
           available: false,
-          reason: `${path.relative(REPO_ROOT, androidDir)} is not generated; run packages/app cap:sync:android or build:android first`,
+          reason: `${path.relative(REPO_ROOT, androidDir)} is not generated; run packages/app cap:sync:android or build:android:system first`,
         };
       }
       const gradlew = path.join(
