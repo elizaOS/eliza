@@ -229,9 +229,6 @@ const config = {
         "scripts/android-native-plugins-gradle/bridge-tests/assets/contracts.ts",
         "test/**/*.{ts,tsx,mjs}",
         "e2e/**/*.{ts,tsx,mjs}",
-        "platforms/electrobun/electrobun.config.ts",
-        "platforms/electrobun/src/index.ts",
-        "platforms/electrobun/src/bridge/electrobun-preload.ts",
       ],
       project: [
         "src/**/*.{ts,tsx}",
@@ -263,7 +260,6 @@ const config = {
         "@elizaos/plugin-openai",
         "@elizaos/plugin-wallet",
         "@elizaos/plugin-wechat",
-        "electrobun",
       ],
       ignoreUnresolved: ["tsx"],
       ignoreBinaries: [
@@ -301,22 +297,6 @@ const config = {
         "@elizaos/plugin-elizacloud",
         "@elizaos/plugin-workflow",
       ],
-    },
-    "packages/app/platforms/electrobun": {
-      entry: [
-        "src/**/*.{ts,tsx,js}",
-        "electrobun.config.ts",
-        "vitest.electrobun.config.ts",
-        "scripts/**/*.ts",
-      ],
-      project: [
-        "src/**/*.{ts,tsx,js}",
-        "scripts/**/*.ts",
-        "electrobun.config.ts",
-        "vitest.electrobun.config.ts",
-      ],
-      ignore: ["build/**", "artifacts/**"],
-      ignoreDependencies: ["bonjour-service", "rcedit"],
     },
     "plugins/plugin-native-gateway": {
       ignoreBinaries: ["pod"],

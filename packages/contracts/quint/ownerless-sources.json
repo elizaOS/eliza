@@ -6,8 +6,8 @@
   },
   {
     "source": "packages/contracts/src/contracts/host-types.ts",
-    "sha256": "4c0fb3c886b0f216dfbac00083a3f5fb426c2987e222e0076bd49f70984b0b40",
-    "reason": "Declares installation, channel, account and renderer snapshots. Host discovery and channel services own initialization, availability and updates."
+    "sha256": "a3b15307533022c9f9df23e52d1bdd6f705008c8d92dd894f5b083a22cedf057",
+    "reason": "Declares channel, account and renderer snapshots. Host discovery and channel services own initialization, availability and updates."
   },
   {
     "source": "packages/contracts/src/contracts/local-inference-providers.ts",

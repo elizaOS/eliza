@@ -4,7 +4,6 @@
  *
  * Usage:
  *   bun packages/scripts/clean-repo.ts           # standard clean (dist, Vite, plugins, turbo, forge test artifacts, …)
- *   bun packages/scripts/clean-repo.ts --deep    # also Electrobun local build outputs + generated preload
  *
  * Does not remove node_modules or global Bun/npm caches (set ELIZA_CLEAN_GLOBAL_TOOL_CACHE=1 to also run
  * `bun pm cache rm` — destructive to all Bun projects on the machine).
@@ -21,7 +20,6 @@ const RECURSIVE_CLEANUP_SCRIPT = path.resolve(
   "./rm-path-recursive.ts",
 );
 const root = resolveRepoRoot(import.meta.url, 2);
-const deep = process.argv.includes("--deep");
 const globalToolCache = process.env.ELIZA_CLEAN_GLOBAL_TOOL_CACHE === "1";
 
 function removeDirectoryRecursive(targetPath) {
@@ -69,7 +67,6 @@ function rmNodeModulesCaches() {
     path.join(root, "packages", "app"),
     path.join(root, "apps", "homepage"),
     path.join(root, "packages", "ui"),
-    path.join(root, "packages", "app", "platforms", "electrobun"),
   ];
   for (const base of bases) {
     const c = path.join(base, "node_modules", ".cache");
@@ -117,7 +114,7 @@ export function removeBuildOutputs(repoRoot: string): void {
 }
 
 function main() {
-  console.log(`[clean] repo root: ${root}${deep ? " (deep)" : ""}\n`);
+  console.log(`[clean] repo root: ${root}\n`);
 
   removeBuildOutputs(root);
 
@@ -133,36 +130,6 @@ function main() {
     "packages/app/playwright-report",
     path.join(root, "packages", "app", "playwright-report"),
   );
-
-  if (deep) {
-    rmPath(
-      "packages/app/platforms/electrobun/build",
-      path.join(root, "packages", "app", "platforms", "electrobun", "build"),
-    );
-    rmPath(
-      "packages/app/platforms/electrobun/artifacts",
-      path.join(
-        root,
-        "packages",
-        "app",
-        "platforms",
-        "electrobun",
-        "artifacts",
-      ),
-    );
-    rmFile(
-      "packages/app/platforms/electrobun/src/preload.js (regenerate: bun run build:preload)",
-      path.join(
-        root,
-        "packages",
-        "app",
-        "platforms",
-        "electrobun",
-        "src",
-        "preload.js",
-      ),
-    );
-  }
 
   // Root-level tsbuildinfo if present (some toolchains emit here)
   const rootInfo = path.join(root, "tsconfig.tsbuildinfo");
@@ -183,7 +150,7 @@ function main() {
 
   console.log("\n[clean] done. Next: bun run build  or  bun run dev");
   console.log(
-    "  Tip: ELIZA_DEV_PLUGIN_BUILD=1 bun run dev  and/or  ELIZA_VITE_FORCE=1 bun run dev  after a deep clean.\n",
+    "  Tip: ELIZA_DEV_PLUGIN_BUILD=1 bun run dev  and/or  ELIZA_VITE_FORCE=1 bun run dev  after a clean.\n",
   );
 }
 

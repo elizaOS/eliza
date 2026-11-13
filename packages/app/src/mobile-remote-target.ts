@@ -13,12 +13,12 @@ import {
 } from "@elizaos/core";
 import type { HttpPlugin, Route } from "@elizaos/host/protocol";
 import { dispatchBufferedRequest } from "@elizaos/plugin-native-inference/android/dispatch";
-import { LoopbackRemoteTargetExecutor } from "../platforms/electrobun/src/remote-target-executor";
-import { RemoteTargetDesktopService } from "../platforms/electrobun/src/remote-target-rpc";
-import type { RemoteTargetCommandExecutor } from "../platforms/electrobun/src/remote-target-runner";
-import { JsonFileRemoteTargetStateStore } from "../platforms/electrobun/src/remote-target-store";
-import type { RemoteTargetFetch } from "../platforms/electrobun/src/remote-target-transport";
-import { RemoteTargetVault } from "../platforms/electrobun/src/remote-target-vault";
+import { LoopbackRemoteTargetExecutor } from "./remote-target/executor";
+import { RemoteTargetService } from "./remote-target/rpc";
+import type { RemoteTargetCommandExecutor } from "./remote-target/runner";
+import { JsonFileRemoteTargetStateStore } from "./remote-target/store";
+import type { RemoteTargetFetch } from "./remote-target/transport";
+import { RemoteTargetVault } from "./remote-target/vault";
 import { createAndroidPlatformSecureStore } from "./security/secure-store-android";
 
 export function createMobileBrowserExecutor(
@@ -159,7 +159,7 @@ export class MobileRemoteTargetService extends Service {
   static override serviceType = "mobile-remote-target";
   override capabilityDescription =
     "Receives explicitly paired, signed browser commands in the Android background runtime.";
-  readonly target: RemoteTargetDesktopService;
+  readonly target: RemoteTargetService;
 
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
@@ -168,7 +168,7 @@ export class MobileRemoteTargetService extends Service {
         "Android remote receiver requires an agent runtime.",
         { code: "REMOTE_RUNTIME_REQUIRED" },
       );
-    this.target = new RemoteTargetDesktopService(
+    this.target = new RemoteTargetService(
       new RemoteTargetVault(
         createAndroidPlatformSecureStore(),
         `remote-target:${runtime.agentId}`,

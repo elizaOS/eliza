@@ -570,10 +570,6 @@ describe("local development entrypoint contract", () => {
     path.join(repoRoot, "packages/app/scripts/dev-shared.ts"),
     "utf8",
   );
-  const desktopDevSource = readFileSync(
-    path.join(repoRoot, "packages/app/scripts/dev-platform.ts"),
-    "utf8",
-  );
 
   it("routes ordinary root development through the Cloud-configured orchestrator", () => {
     expect(rootPackage.scripts.dev).toContain("dev-ui.ts");
@@ -604,14 +600,5 @@ describe("local development entrypoint contract", () => {
         "assertRendererOnlyDevCloudTargetSupported(devCloud",
       ),
     ).toBeLessThan(sharedDevSource.indexOf("reservePortsForWorktree("));
-  });
-
-  it("routes native desktop development through the same target helper", () => {
-    expect(rootPackage.scripts["dev:desktop"]).toContain("dev-platform.ts");
-    expect(rootPackage.scripts["dev:desktop:watch"]).toContain(
-      "dev-platform.ts",
-    );
-    expect(desktopDevSource).toContain("configureDevCloudEnvironment");
-    expect(desktopDevSource).toContain("devCloud.passthroughArgs");
   });
 });

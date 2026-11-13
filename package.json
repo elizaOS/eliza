@@ -28,7 +28,7 @@
     "node": "24.15.0"
   },
   "scripts": {
-    "postinstall": "bun packages/scripts/patch-punycode-deprecation.ts && bun packages/scripts/patch-llama-cpp-capacitor.ts && bun packages/scripts/patch-electrobun-linux-cef-profile.ts && bun packages/scripts/ensure-workspace-symlinks.ts && bun packages/scripts/build-private-workspace-packages.ts && bun packages/scripts/build-views.ts && bun packages/app/scripts/ensure-fused-inference-install.ts",
+    "postinstall": "bun packages/scripts/patch-punycode-deprecation.ts && bun packages/scripts/patch-llama-cpp-capacitor.ts && bun packages/scripts/ensure-workspace-symlinks.ts && bun packages/scripts/build-private-workspace-packages.ts && bun packages/scripts/build-views.ts && bun packages/app/scripts/ensure-fused-inference-install.ts",
     "cloud:mock": "bun packages/scripts/cloud/mock-stack-up.ts",
     "start": "bun run --cwd packages/agent start",
     "start:eliza": "bun --conditions=eliza-source packages/app/src/entry.ts start",
@@ -36,13 +36,11 @@
     "dev": "bun --no-install --conditions=eliza-source packages/app/scripts/dev-ui.ts",
     "dev:local": "bun --no-install --conditions=eliza-source packages/app/scripts/dev-ui.ts --cloud-target=offline",
     "dev:ui": "bun --no-install --conditions=eliza-source packages/app/scripts/dev-ui.ts --ui-only",
-    "dev:desktop": "ELIZA_DEV_SOURCE=1 ELIZA_NAMESPACE=eliza bun --conditions=eliza-source packages/app/scripts/dev-platform.ts",
-    "dev:desktop:watch": "ELIZA_DEV_SOURCE=1 ELIZA_NAMESPACE=eliza ELIZA_DESKTOP_VITE_WATCH=1 bun --conditions=eliza-source packages/app/scripts/dev-platform.ts",
     "dev:all": "bun packages/scripts/dev-all.ts",
     "publish:eliza1": "uv run --project packages/training python -m eliza_training.publish.publish_eliza1_all",
     "dev:agent": "bun run --cwd packages/agent dev",
     "build": "bun packages/scripts/run-turbo.ts run build --concurrency=8 --cache=local:rw,remote:r --output-logs=errors-only && bun packages/scripts/view-bundle-import-guard.ts",
-    "build:npm": "bun packages/scripts/run-turbo.ts run build --filter=!@elizaos/electrobun --concurrency=3 --cache=local:rw,remote:r --output-logs=errors-only && bun packages/scripts/view-bundle-import-guard.ts",
+    "build:npm": "bun packages/scripts/run-turbo.ts run build --concurrency=3 --cache=local:rw,remote:r --output-logs=errors-only && bun packages/scripts/view-bundle-import-guard.ts",
     "build:client": "bun packages/scripts/run-turbo.ts run build --filter=@elizaos/app",
     "build:views": "bun packages/scripts/build-views.ts",
     "format": "bun packages/scripts/check-biome-version-consistency.ts && bun packages/scripts/run-turbo.ts run format",
@@ -336,7 +334,6 @@
     "@solana/rpc-types@5.5.1": "patches/@solana%2Frpc-types@5.5.1.patch",
     "@solana/subscribable@5.5.1": "patches/@solana%2Fsubscribable@5.5.1.patch",
     "@solana/sysvars@5.5.1": "patches/@solana%2Fsysvars@5.5.1.patch",
-    "electrobun@1.18.1": "patches/electrobun@1.18.1.patch",
     "bigint-buffer@1.1.5": "patches/bigint-buffer@1.1.5.patch",
     "@pixiv/three-vrm@3.5.5": "patches/@pixiv%2Fthree-vrm@3.5.5.patch"
   },

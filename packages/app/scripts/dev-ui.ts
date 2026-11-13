@@ -332,8 +332,7 @@ function prepareMacNativeEffectsForDev() {
       console.log(
         `  ${green(logPrefix)} ${dim("Building macOS Calendar/EventKit bridge...")}`,
       );
-      execSync("bun run build:native-effects", {
-        cwd: plan.packageDir,
+      execSync(`bash ${JSON.stringify(plan.buildScript)}`, {
         env: process.env,
         stdio: "inherit",
       });

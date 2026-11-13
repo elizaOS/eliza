@@ -135,15 +135,15 @@ jobs:
             -config-file .github/actionlint.yaml \
             "${workflows[@]}"
 
-      - name: Reclaim unused hosted SDK space for desktop packaging
+      - name: Reclaim unused hosted SDK space
         if: >-
           steps.affected.outputs.source == 'true' &&
           runner.os == 'Linux' && runner.environment == 'github-hosted'
         shell: bash
         run: |
           set -euo pipefail
-          # The source closure packages Electrobun, but does not use .NET or
-          # Haskell. Keep Android and all native build toolchains available.
+          # The source closure does not use .NET or Haskell. Keep Android and
+          # all native build toolchains available.
           df -h "$GITHUB_WORKSPACE"
           sudo rm -rf -- /usr/share/dotnet /opt/ghc /usr/local/.ghcup
           df -h "$GITHUB_WORKSPACE"
@@ -167,7 +167,6 @@ jobs:
         run: |
           bun packages/scripts/patch-punycode-deprecation.ts
           bun packages/scripts/patch-llama-cpp-capacitor.ts
-          bun packages/scripts/patch-electrobun-linux-cef-profile.ts
 
       - name: Validate CI Bun version pin contract
         if: steps.affected.outputs.source == 'true'
@@ -921,7 +920,6 @@ jobs:
         run: |
           bun packages/scripts/patch-punycode-deprecation.ts
           bun packages/scripts/patch-llama-cpp-capacitor.ts
-          bun packages/scripts/patch-electrobun-linux-cef-profile.ts
       - name: Setup Java
         if: steps.changes.outputs.run == 'true'
         uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78
@@ -1119,7 +1117,6 @@ jobs:
         run: |
           bun packages/scripts/patch-punycode-deprecation.ts
           bun packages/scripts/patch-llama-cpp-capacitor.ts
-          bun packages/scripts/patch-electrobun-linux-cef-profile.ts
       - name: Build core contract
         if: steps.owning-diff.outputs.run == 'true'
         run: bun run build:core
@@ -1241,7 +1238,7 @@ jobs:
       # These are the workspace entry points actually executed by the keyless
       # stack. Detection below walks their runtime workspace dependencies, so a
       # shared/core/plugin change cannot silently skip the replay proof.
-      # packages/app carries a large native/desktop-only dependency graph, so
+      # packages/app carries a large native-only dependency graph, so
       # its browser source and app aliases stay explicit path inputs below.
       BILLING_REPLAY_WORKSPACE_SEEDS: >-
         packages/cloud/api
