@@ -1,9 +1,12 @@
 /**
  * The strict planner grammar compiles a `pattern` character class to a GBNF
- * class. llama.cpp's grammar parser reads only `\x \u \U \t \r \n \\ \" \[ \]`
- * after a backslash (parse_char in llama-grammar.cpp) and refuses the whole
- * grammar on any other escape, so a literal `-` or `^` in a class must not be
- * written as `\-` or `\^`.
+ * class. The llama.cpp grammar parser in llama-cpp-capacitor 0.1.5 reads only
+ * `\x \u \U \t \r \n \\ \" \[ \]` after a backslash (parse_char in
+ * llama-grammar.cpp) and refuses the whole grammar on any other escape. The
+ * elizaOS/llama.cpp fork at the plugin-local-inference submodule pin also
+ * reads `\-`, but not `\^`. So a literal `-` or `^` in a class must not be
+ * written as `\-` or `\^`. planner-grammar-class-loader.real.test.ts loads
+ * the grammar in both parsers.
  */
 
 import { describe, expect, it } from "vitest";
