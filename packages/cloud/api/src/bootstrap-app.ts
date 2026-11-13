@@ -477,54 +477,6 @@ export async function createApp(
   // never follows a redirect; the Pages middleware proxies it from eliza.app.
   app.route("/.well-known/assetlinks.json", assetLinksRoute);
 
-  // Hosted native sign-in callback and billing return fallback pages (#39257).
-  // Looked up dynamically from mobile_app_auth_clients by redirect URI.
-  app.get("*", async (c, next) => {
-    const url = new URL(c.req.url);
-    const isAuthCallback = url.pathname.endsWith("/auth/callback");
-    const isBillingReturn = url.pathname.endsWith("/billing/return");
-    if (!isAuthCallback && !isBillingReturn) {
-      await next();
-      return;
-    }
-    const redirectUri = isAuthCallback
-      ? `${url.origin}${url.pathname}`
-      : `${url.origin}${url.pathname.slice(0, -"/billing/return".length)}/auth/callback`;
-
-    try {
-      const record =
-        await mobileAppAuthClientsRepository.findByRedirectUri(redirectUri);
-      if (
-        !record?.client.enabled ||
-        !record.app.is_active ||
-        !record.app.is_approved
-      ) {
-        return c.text("Not Found", 404);
-      }
-      if (!record.client.android_package_name) {
-        return c.text("Not Found", 404);
-      }
-      const callback: NativeAuthCallback = {
-        redirectUri: record.client.redirect_uri,
-        androidPackage: record.client.android_package_name,
-        appName: record.app.name,
-      };
-      if (isAuthCallback) {
-        return nativeSignInCallbackFallback(url, callback);
-      }
-      return nativeBillingReturnFallback(url, callback);
-    } catch (error) {
-      logger.error(
-        "[bootstrap-app] Failed to resolve native callback from database:",
-        error,
-      );
-      return new Response("Native auth callback is unavailable", {
-        status: 503,
-        headers: { "Cache-Control": "no-store" },
-      });
-    }
-  });
-
   // Rate-limit config guard (#9853 P1.1) — never let production silently serve
   // with rate limiting OFF. The limiters fall open whenever REDIS_RATE_LIMITING
   // is not "true" or no Redis client is reachable, which would leave the
@@ -596,6 +548,55 @@ export async function createApp(
       { bindingName: "GLOBAL_RATE_LIMITER" },
     ),
   );
+
+  // Hosted native sign-in callback and billing return fallback pages (#39257).
+  // Registered after GLOBAL_RATE_LIMITER to bound unauthenticated lookup load,
+  // before authMiddleware so unauthenticated browser returns complete.
+  app.get("*", async (c, next) => {
+    const url = new URL(c.req.url);
+    const isAuthCallback = url.pathname.endsWith("/auth/callback");
+    const isBillingReturn = url.pathname.endsWith("/billing/return");
+    if (!isAuthCallback && !isBillingReturn) {
+      await next();
+      return;
+    }
+    const redirectUri = isAuthCallback
+      ? `${url.origin}${url.pathname}`
+      : `${url.origin}${url.pathname.slice(0, -"/billing/return".length)}/auth/callback`;
+
+    try {
+      const record =
+        await mobileAppAuthClientsRepository.findByRedirectUri(redirectUri);
+      if (
+        !record?.client.enabled ||
+        !record.app.is_active ||
+        !record.app.is_approved
+      ) {
+        return c.text("Not Found", 404);
+      }
+      if (!record.client.android_package_name) {
+        return c.text("Not Found", 404);
+      }
+      const callback: NativeAuthCallback = {
+        redirectUri: record.client.redirect_uri,
+        androidPackage: record.client.android_package_name,
+        appName: record.app.name,
+      };
+      if (isAuthCallback) {
+        return nativeSignInCallbackFallback(url, callback);
+      }
+      return nativeBillingReturnFallback(url, callback);
+    } catch (error) {
+      logger.error(
+        "[bootstrap-app] Failed to resolve native callback from database:",
+        error,
+      );
+      return new Response("Native auth callback is unavailable", {
+        status: 503,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+  });
 
   // A mobile secret bypasses positive auth caches so revocation is immediate.
   // Bound each credential before auth to keep primary-consistency validation
