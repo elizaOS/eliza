@@ -8,7 +8,10 @@ import { parseJunitSummary } from "../../scripts/lib/junit-summary.ts";
 import { testOutputPath } from "../../scripts/lib/test-output.ts";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
-const lookup = path.basename(process.argv[2] ?? "") === "MapsPlaceLookup.qnt";
+const model = path.basename(process.argv[2] ?? "");
+assert(["MapsPlaceLookup.qnt", "MapsTileCache.qnt"].includes(model));
+const lookup = model === "MapsPlaceLookup.qnt";
+const label = lookup ? "place lookup" : "tile cache";
 const output = testOutputPath(
   lookup ? "quint-maps-place-lookup" : "quint-maps-tile-cache",
 );
@@ -44,7 +47,7 @@ if (result.error) throw result.error;
 assert.equal(
   result.status,
   0,
-  `Maps tile cache conformance failed: ${result.signal}`,
+  `Maps ${label} conformance failed: ${result.signal}`,
 );
 const summary = parseJunitSummary(await readFile(report, "utf8"));
 assert.equal(summary.tests - summary.skipped, lookup ? 1 : 5);
@@ -52,13 +55,19 @@ assert.equal(summary.failures + summary.errors, 0);
 if (lookup) {
   const rows = JSON.parse(await readFile(outcomes, "utf8"));
   assert.equal(rows.length, 64);
-  assert.equal(
-    new Set(
-      rows.map(({ prefer, cancelled, nearby, fallback }) =>
+  const expected = [];
+  for (const prefer of [false, true])
+    for (const cancelled of [false, true])
+      for (const nearby of ["place", "empty", "invalid", "outage"])
+        for (const fallback of ["address", "empty", "invalid", "outage"])
+          expected.push(JSON.stringify([prefer, cancelled, nearby, fallback]));
+  assert.deepEqual(
+    rows
+      .map(({ prefer, cancelled, nearby, fallback }) =>
         JSON.stringify([prefer, cancelled, nearby, fallback]),
-      ),
-    ).size,
-    64,
+      )
+      .sort(),
+    expected.sort(),
   );
   for (const row of rows) {
     assert.equal(
@@ -78,6 +87,6 @@ if (lookup) {
 }
 await writeFile(
   path.join(directory, "results.json"),
-  `${JSON.stringify({ status: "passed", summary, report }, null, 2)}\n`,
+  `${JSON.stringify({ model, status: "passed", summary, report }, null, 2)}\n`,
 );
-console.log(`Maps tile cache conformance passed. Results ${directory}`);
+console.log(`Maps ${label} conformance passed. Results ${directory}`);
