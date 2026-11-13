@@ -54,7 +54,23 @@ module ScheduledTaskCompletionSettle {
     readAt' = readAt, commitAt' = commitAt, clock' = clock,
     children' = children, completedLogs' = completedLogs
   }
-  action step = any { read(1), read(2), commit(1), commit(2), settled }
+  // A paused scan may stutter while its owner or store has not settled.
+  action stutter = all {
+    status' = status, revision' = revision, phase' = phase, seen' = seen,
+    readAt' = readAt, commitAt' = commitAt, clock' = clock,
+    children' = children, completedLogs' = completedLogs
+  }
+  action step = any { read(1), read(2), commit(1), commit(2), settled, stutter }
+  val ModelState = {
+    status: status, revision: revision, phase: phase, seen: seen,
+    readAt: readAt, commitAt: commitAt, clock: clock,
+    children: children, completedLogs: completedLogs
+  }
+  temporal ScansFinishWithoutFairness = Scans.forall(s =>
+    (not(Done.contains(phase.get(s)))).leadsTo(Done.contains(phase.get(s))))
+  temporal ScansFinish = Scans.forall(s =>
+    read(s).weakFair(ModelState) and commit(s).weakFair(ModelState))
+      .implies(ScansFinishWithoutFairness)
   val SettleAtMostOnce = children <= 1 and completedLogs <= 1
   val OneWinner = Scans.filter(s => phase.get(s) == "completed").size() <= 1
   val ChildrenFollowWinner =
