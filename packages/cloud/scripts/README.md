@@ -5,6 +5,13 @@ workspace imports locally so they do not invalidate unrelated build caches.
 Invoke operations through their documented root commands; run the script test
 lane with `bun run test:scripts` from the repository root.
 
+Staging Stripe catalog updates require the test secret key and all four approved
+Plus/Pro product and monthly price IDs together. An entirely blank source
+preserves the deployed catalog; a partial source refuses the release. The
+read-only catalog preflight checks the complete test catalog before atomic
+publication. Optional webhook and publishable keys are also staging-only;
+production Stripe bindings are not changed by this path.
+
 The protected Pages configuration preflight reads the environment variable
 `ELIZA_NATIVE_AUTH_CALLBACKS_JSON` (with a same-name secret fallback). Its value
 is a JSON array of `{ "redirectUri", "androidPackage", "appName" }` objects.
@@ -259,7 +266,6 @@ Remaining gates: populated restore coverage beyond the synthetic financial
 fixtures, uncertain-outcome read-only reconciliation, protected backup/restore
 rehearsal, maintenance fencing and reviewed business impact. Production readiness
 must remain failed until recovery and normal release verification pass.
-
 
 The optional `pitr_provisioning_plan=true` input requires a fixed restore target.
 It privately reads the existing environment config without decrypted variables,

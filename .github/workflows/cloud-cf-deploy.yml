@@ -1075,7 +1075,15 @@ jobs:
 
   release:
     name: Mutate and verify Cloud CF release
-    needs: [bind-telegram-release-attempt, resolve-telegram-environment-authority, validate-deploy-source, admit-staging, validate-staging-certification, authorize-production]
+    needs:
+      [
+        bind-telegram-release-attempt,
+        resolve-telegram-environment-authority,
+        validate-deploy-source,
+        admit-staging,
+        validate-staging-certification,
+        authorize-production,
+      ]
     if: ${{ inputs.provision_speech_secrets != true && (always() && github.event_name != 'pull_request' && inputs.telegram_authority_canary != true && needs.bind-telegram-release-attempt.result == 'success' && (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && needs.resolve-telegram-environment-authority.result == 'skipped' && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && needs.validate-staging-certification.result == 'success' && needs.authorize-production.result == 'success' || !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && needs.resolve-telegram-environment-authority.result == 'success' && needs.admit-staging.outputs.should_deploy == 'true')) }}
     # One critical section for migrate + API + Pages + routing proof.
     # `queue: max` is GitHub's production-deploy contract: up to 100 approved
@@ -1096,6 +1104,13 @@ jobs:
       CARTESIA_API_KEY: ${{ secrets.CARTESIA_API_KEY }}
       CARTESIA_STT_USD_PER_CREDIT: ${{ secrets.CARTESIA_STT_USD_PER_CREDIT }}
       CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+      STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+      STRIPE_PLUS_PRODUCT_ID: ${{ secrets.STRIPE_PLUS_PRODUCT_ID }}
+      STRIPE_PLUS_MONTHLY_PRICE_ID: ${{ secrets.STRIPE_PLUS_MONTHLY_PRICE_ID }}
+      STRIPE_PRO_PRODUCT_ID: ${{ secrets.STRIPE_PRO_PRODUCT_ID }}
+      STRIPE_PRO_MONTHLY_PRICE_ID: ${{ secrets.STRIPE_PRO_MONTHLY_PRICE_ID }}
+      STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+      STRIPE_PUBLISHABLE_KEY: ${{ secrets.STRIPE_PUBLISHABLE_KEY }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CONTAINERS_SSH_KEY: ${{ secrets.CONTAINERS_SSH_KEY }}
