@@ -17,6 +17,7 @@ let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTest
 let service: typeof import("../stripe-checkout-orders").stripeCheckoutOrdersService;
 let creditsService: typeof import("../credits").creditsService;
 
+// Cold PGlite initialization can exceed Bun's default five-second hook limit.
 beforeAll(async () => {
   process.env.DATABASE_URL = "pglite://memory";
   process.env.DISABLE_LOCAL_PGLITE_FALLBACK = "1";
@@ -29,7 +30,7 @@ beforeAll(async () => {
   const pglite = client.getPgliteClientForTests();
   if (!pglite) throw new Error("PGlite test client was not initialized");
   await installStripeCheckoutTestSchema((query) => pglite.exec(query));
-});
+}, 30_000);
 
 afterAll(async () => closeDb());
 
