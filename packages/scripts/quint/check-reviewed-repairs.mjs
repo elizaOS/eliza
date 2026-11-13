@@ -11,11 +11,17 @@ const suites = {
   "TurnCancellation.qnt": {
     cwd: "packages/core",
     file: "test/use-model-cancellation.test.ts",
-    match: "cancels a nested scope with|does not give a nested scope",
+    match:
+      "cancels a nested scope with|does not give a nested scope|a same-turn nested signal|another turn.s own signal|a provider.s wrapped abort",
     names: [
       "cancels a nested scope with no context when the turn aborts",
       "cancels a nested scope with a same-turn context without a signal when the turn aborts",
       "does not give a nested scope for another turn this turn's signal",
+      "a same-turn nested signal preserves turn cancellation in the real transport",
+      "a same-turn nested signal preserves nested cancellation in the real transport",
+      "another turn's own signal stays independent and cancels its real transport",
+      "a provider's wrapped abort prevents fallback through a cause graph",
+      "a provider's wrapped abort prevents fallback through a deep retry cycle graph",
     ].map((name) => `AgentRuntime.useModel cancellation ${name}`),
   },
   "BackupPublication.qnt": {

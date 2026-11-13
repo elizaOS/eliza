@@ -9,6 +9,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { describe, expect, it, vi } from "vitest";
+import { isModelProviderFallbackError } from "../src/security/model-failure.ts";
 import { runWithStreamingContext } from "../src/streaming-context";
 import type { Character } from "../src/types/agent.js";
 import { ModelType } from "../src/types/model.js";
@@ -372,6 +373,147 @@ describe("AgentRuntime.useModel cancellation", () => {
 			const rejection = expect(pending).rejects.toBe(reason);
 			turn.abort(reason);
 			await rejection;
+		},
+	);
+
+	it.each(["turn", "nested"] as const)(
+		"a same-turn nested signal preserves %s cancellation in the real transport",
+		async (origin) => {
+			const endpoint = await startHangingEndpoint();
+			const runtime = makeRuntime();
+			try {
+				const turn = new AbortController();
+				const nested = new AbortController();
+				let observed: AbortSignal | undefined;
+				const primary = vi.fn(
+					async (_runtime: unknown, params: Record<string, unknown>) => {
+						observed = params.signal as AbortSignal | undefined;
+						return (await fetch(endpoint.url, { signal: observed })).text();
+					},
+				);
+				const backup = vi.fn(async () => "must not run");
+				runtime.registerModel(ModelType.TEXT_LARGE, primary, "primary", 100);
+				runtime.registerModel(ModelType.TEXT_LARGE, backup, "backup", 10);
+				const pending = runWithStreamingContext(
+					{ messageId: "nested-with-signal", abortSignal: turn.signal },
+					() =>
+						runWithStreamingContext(
+							{ messageId: "nested-with-signal", abortSignal: nested.signal },
+							() => runtime.useModel(ModelType.TEXT_LARGE, { prompt: "hello" }),
+						),
+				);
+				const rejected = expect(pending).rejects.toMatchObject({
+					name: "AbortError",
+				});
+				await endpoint.requestReceived;
+				expect(observed).not.toBe(turn.signal);
+				expect(observed).not.toBe(nested.signal);
+				(origin === "turn" ? turn : nested).abort();
+				expect(observed?.aborted).toBe(true);
+				await rejected;
+				expect((origin === "turn" ? nested : turn).signal.aborted).toBe(false);
+				expect(primary).toHaveBeenCalledTimes(1);
+				expect(backup).not.toHaveBeenCalled();
+			} finally {
+				await endpoint.close();
+				await runtime.close();
+			}
+		},
+	);
+
+	it("another turn's own signal stays independent and cancels its real transport", async () => {
+		const endpoint = await startHangingEndpoint();
+		const runtime = makeRuntime();
+		try {
+			const turn = new AbortController();
+			const nested = new AbortController();
+			let observed: AbortSignal | undefined;
+			const primary = vi.fn(
+				async (_runtime: unknown, params: Record<string, unknown>) => {
+					observed = params.signal as AbortSignal | undefined;
+					return (await fetch(endpoint.url, { signal: observed })).text();
+				},
+			);
+			runtime.registerModel(ModelType.TEXT_LARGE, primary, "primary", 100);
+			const pending = runWithStreamingContext(
+				{ messageId: "outer-turn", abortSignal: turn.signal },
+				() =>
+					runWithStreamingContext(
+						{ messageId: "other-turn", abortSignal: nested.signal },
+						() => runtime.useModel(ModelType.TEXT_LARGE, { prompt: "hello" }),
+					),
+			);
+			const rejected = expect(pending).rejects.toMatchObject({
+				name: "AbortError",
+			});
+			await endpoint.requestReceived;
+			turn.abort();
+			expect(observed).toBe(nested.signal);
+			expect(observed?.aborted).toBe(false);
+			nested.abort();
+			await rejected;
+		} finally {
+			await endpoint.close();
+			await runtime.close();
+		}
+	});
+
+	it.each(["cause", "deep retry cycle"] as const)(
+		"a provider's wrapped abort prevents fallback through a %s graph",
+		async (shape) => {
+			const endpoint = await startHangingEndpoint();
+			const runtime = makeRuntime();
+			try {
+				const transport = new AbortController();
+				let wrapped: Error | undefined;
+				const primary = vi.fn(async () => {
+					try {
+						return (
+							await fetch(endpoint.url, { signal: transport.signal })
+						).text();
+					} catch (error) {
+						const network = Object.assign(new Error("socket closed"), {
+							code: "ECONNRESET",
+						});
+						if (shape === "cause") {
+							Object.assign(error as object, { cause: network });
+							wrapped = new Error("Cannot connect to API", { cause: error });
+						} else {
+							let cause = error;
+							for (let depth = 0; depth < 20; depth++) {
+								cause = new Error("provider wrapper", { cause });
+							}
+							wrapped = Object.assign(
+								new Error("Cannot connect to API", { cause }),
+								{
+									lastError: network,
+								},
+							);
+							Object.assign(error as object, { cause: wrapped });
+						}
+						throw wrapped;
+					}
+				});
+				const backup = vi.fn(async () => "must not run");
+				runtime.registerModel(ModelType.TEXT_LARGE, primary, "primary", 100);
+				runtime.registerModel(ModelType.TEXT_LARGE, backup, "backup", 10);
+				const pending = runtime.useModel(ModelType.TEXT_LARGE, {
+					prompt: "hello",
+				});
+				const rejected = expect(pending).rejects.toThrow();
+				await endpoint.requestReceived;
+				transport.abort();
+				await rejected;
+				expect(wrapped).toBeDefined();
+				expect(
+					isModelProviderFallbackError(wrapped, ModelType.TEXT_LARGE),
+				).toBe(false);
+				expect(primary).toHaveBeenCalledTimes(1);
+				expect(backup).not.toHaveBeenCalled();
+			} finally {
+				await endpoint.close();
+				await runtime.close();
+			}
 		},
 	);
 

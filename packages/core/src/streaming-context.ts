@@ -378,11 +378,14 @@ export function runWithStreamingContext<T>(
 		context?.actionConstraints === parent.actionConstraints
 	) {
 		context = { ...context, actionConstraints: new Map() };
-	} else if (sameTurn && parent?.abortSignal && !context?.abortSignal) {
+	} else if (sameTurn && parent?.abortSignal) {
 		// Policy is registered lazily, so a turn without it still owns
-		// cancellation; a same-turn scope with no signal of its own keeps it.
+		// cancellation. A nested signal may add cancellation, not detach it.
 		const base = context ?? { messageId: parent.messageId };
-		context = { ...base, abortSignal: parent.abortSignal };
+		context = {
+			...base,
+			abortSignal: inheritedAbortSignal(base, parent.abortSignal),
+		};
 	}
 	return manager.run(context, fn);
 }

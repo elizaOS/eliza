@@ -14,6 +14,7 @@ import { readActionFailureProvenance } from "../types/action-failure.ts";
 import { ModelType } from "../types/model.ts";
 import {
 	hasModelErrorCode,
+	isModelCancellationError,
 	isModelFundingAuthorityError,
 	isProviderContextOverflowFailure,
 	modelProviderErrorStatus,
@@ -293,15 +294,7 @@ export function isModelProviderFallbackError(
 	const unwrapped = unwrapRetryError(error);
 	// Cancellation is authoritative even if an SDK wrapper carries a stale
 	// retryable HTTP status or a message containing "timeout".
-	if (
-		[error, unwrapped].some((value) => {
-			const candidate = asErrorObject(value);
-			return (
-				candidate?.name === "AbortError" || candidate?.code === "ABORT_ERR"
-			);
-		})
-	)
-		return false;
+	if (isModelCancellationError(error)) return false;
 	if (isModelProviderRetryBudgetExhaustedError(unwrapped)) {
 		return true;
 	}

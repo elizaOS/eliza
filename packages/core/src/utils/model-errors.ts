@@ -267,6 +267,15 @@ export function hasModelErrorCode(
 	return false;
 }
 
+/** Cancellation is authoritative through every cause/retry wrapper, including cycles. */
+export function isModelCancellationError(error: unknown): boolean {
+	for (const node of modelErrorChain(error, Number.POSITIVE_INFINITY)) {
+		const { name, code } = node as { name?: unknown; code?: unknown };
+		if (name === "AbortError" || code === "ABORT_ERR") return true;
+	}
+	return false;
+}
+
 /**
  * Structured diagnostic detail for a model/provider failure: the HTTP status,
  * the provider's own error message parsed out of the response body, and a
