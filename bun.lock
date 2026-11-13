@@ -443,7 +443,7 @@
         "viem": "^2.56.9",
       },
       "devDependencies": {
-        "@cloudflare/workers-types": "^5.20261108.1",
+        "@cloudflare/workers-types": "^5.20261110.1",
         "@playwright/test": "^1.65.0",
         "@types/bun": "1.4.2",
         "@types/node": "^25.0.0",
@@ -765,7 +765,7 @@
       "version": "2.0.5",
       "dependencies": {
         "@ai-sdk/openai": "^3.0.54",
-        "@cloudflare/workers-types": "^5.20261108.1",
+        "@cloudflare/workers-types": "^5.20261110.1",
         "@elevenlabs/elevenlabs-js": "^2.45.0",
         "@elizaos/cloud-sdk": "workspace:*",
         "@elizaos/cloud-services-common": "workspace:*",
@@ -940,7 +940,7 @@
       },
       "devDependencies": {
         "@biomejs/biome": "2.6.6",
-        "@cloudflare/workers-types": "^5.20261108.1",
+        "@cloudflare/workers-types": "^5.20261110.1",
         "@types/node": "22.19.17",
         "@typescript/native": "npm:typescript@^7.0.2",
         "bun-types": "1.4.2",
@@ -980,7 +980,7 @@
       },
       "devDependencies": {
         "@biomejs/biome": "2.6.6",
-        "@cloudflare/workers-types": "^5.20261108.1",
+        "@cloudflare/workers-types": "^5.20261110.1",
         "@types/node": "22.19.17",
         "@typescript/native": "npm:typescript@^7.0.2",
         "bun-types": "1.4.2",
@@ -1080,7 +1080,7 @@
         "@cloudflare/containers": "^0.3.7",
       },
       "devDependencies": {
-        "@cloudflare/workers-types": "^5.20261108.1",
+        "@cloudflare/workers-types": "^5.20261110.1",
         "@types/node": "22.19.17",
         "@typescript/native": "npm:typescript@^7.0.2",
         "bun-types": "1.4.2",
@@ -1095,7 +1095,7 @@
       },
       "devDependencies": {
         "@biomejs/biome": "2.6.6",
-        "@cloudflare/workers-types": "^5.20261108.1",
+        "@cloudflare/workers-types": "^5.20261110.1",
         "@types/node": "22.19.17",
         "@typescript/native": "npm:typescript@^7.0.2",
         "bun-types": "1.4.2",
@@ -1173,7 +1173,7 @@
       },
       "devDependencies": {
         "@biomejs/biome": "2.6.6",
-        "@cloudflare/workers-types": "^5.20261108.1",
+        "@cloudflare/workers-types": "^5.20261110.1",
         "@types/json-schema": "^7.0.15",
         "@types/node": "^25.6.0",
         "@types/pg": "^8.23.1",
@@ -3395,12 +3395,11 @@
     "@solana/codecs-data-structures@5.5.1": "patches/@solana%2Fcodecs-data-structures@5.5.1.patch",
     "@solana/codecs-core@5.5.1": "patches/@solana%2Fcodecs-core@5.5.1.patch",
     "@electric-sql/pglite-socket@0.1.6": "patches/@electric-sql%2Fpglite-socket@0.1.6.patch",
-    "@cloudflare/workers-types@5.20261108.1": "patches/@cloudflare%2Fworkers-types@5.20261108.1.patch",
     "@solana/functional@5.5.1": "patches/@solana%2Ffunctional@5.5.1.patch",
     "@solana/rpc-spec-types@5.5.1": "patches/@solana%2Frpc-spec-types@5.5.1.patch",
     "@solana/sysvars@5.5.1": "patches/@solana%2Fsysvars@5.5.1.patch",
-    "@solana/offchain-messages@5.5.1": "patches/@solana%2Foffchain-messages@5.5.1.patch",
     "bigint-buffer@1.1.5": "patches/bigint-buffer@1.1.5.patch",
+    "@solana/offchain-messages@5.5.1": "patches/@solana%2Foffchain-messages@5.5.1.patch",
     "@solana/codecs-numbers@5.5.1": "patches/@solana%2Fcodecs-numbers@5.5.1.patch",
     "@solana/rpc-parsed-types@5.5.1": "patches/@solana%2Frpc-parsed-types@5.5.1.patch",
     "@solana/rpc-subscriptions@5.5.1": "patches/@solana%2Frpc-subscriptions@5.5.1.patch",
@@ -3736,7 +3735,7 @@
 
     "@cloudflare/workerd-windows-64": ["@cloudflare/workerd-windows-64@1.20260730.1", "", { "os": "win32", "cpu": "x64" }, "sha512-27fAN+vUECW1oYVc1KOcHYpkL8COM2Uxtxql7TL595kxbjoqS5yckw7NLz7bTf2pALFCZWjqXDjZGJ/xbG4ZKQ=="],
 
-    "@cloudflare/workers-types": ["@cloudflare/workers-types@5.20261108.1", "", {}, "sha512-lCGPhVOCy4sepGLuuy6KGxlxt8pVD8kbAt+mkdPcdr29fi5YLtihOLGKeNtInnmgdkSGiKhPCkRv/iq5tXC1/w=="],
+    "@cloudflare/workers-types": ["@cloudflare/workers-types@5.20261113.1", "", {}, "sha512-FhF8hRtsQCr/BWZyUN7wm2x+jqAOkRIpLOW+2fJu5OQyIDOv+c3PxY8duEAkOYXuprLImxjW+PHTbvz9+Px5cw=="],
 
     "@codemirror/autocomplete": ["@codemirror/autocomplete@6.20.3", "", { "dependencies": { "@codemirror/language": "^6.0.0", "@codemirror/state": "^6.0.0", "@codemirror/view": "^6.17.0", "@lezer/common": "^1.0.0" } }, "sha512-tlosUqb+3BbxCxZdu4tKeRghPFC+QM7q4X5YhKV2eCmPG+1r2F3f4AaSz5sCrFqUtX4Jh20VFTKecl16MgiV9g=="],
 
