@@ -1,0 +1,29 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/db/schemas/mobile-app-auth-clients.ts",
+    "packages/cloud/shared/src/db/repositories/mobile-app-auth-clients.ts",
+    "packages/cloud/shared/src/db/repositories/mobile-app-auth-clients.test.ts",
+    "packages/cloud/shared/src/lib/services/mobile-app-auth.ts",
+    "packages/cloud/api/v1/app-auth/mobile/_registration.ts"
+  ],
+  "bounds": "Database-backed mobile App Auth client registration; boolean presence in DB, enabled status, app active/approved authority, redirect URI matching, and legacy fallback behavior.",
+  "cases": [
+    {
+      "name": "client-registration-authority",
+      "main": "MobileAppClientRegistration",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "safety"
+      ],
+      "maxSteps": 40,
+      "samples": 1000,
+      "temporal": []
+    }
+  ],
+  "limitations": [
+    "Covers database client registration resolution and authority checks. Low-level PKCE verifier hashing and cryptography are proven separately in repository tests.",
+    "Database presence is the primary authority; fallback configuration only engages when no client row exists in the database.",
+    "Disabled clients or unapproved apps in the database fail closed without fallback."
+  ]
+}

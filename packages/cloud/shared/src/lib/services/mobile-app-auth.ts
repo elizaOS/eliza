@@ -23,6 +23,7 @@ import crypto from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import { decryptApiKey, encryptApiKey } from "../../db/crypto/api-keys";
 import { buildMobileAppAuthCredentialProvenance } from "../../db/mobile-app-auth-credential-policy";
+import { mobileAppAuthClientsRepository } from "../../db/repositories/mobile-app-auth-clients";
 import {
   type MobileAppAuthCleanupCursor,
   type MobileAppAuthGrantBinding,
@@ -259,7 +260,30 @@ export async function resolveMobileCredentialRegistration(
   ) {
     return invalid("invalid_client", "Mobile credential has no acknowledged authorization");
   }
-  const registration = resolveMobileAppAuthRegistration(env, grant.client_id);
+  let registration: MobileAppAuthRegistration;
+  let dbClient = null;
+  try {
+    dbClient = await mobileAppAuthClientsRepository.findRegisteredMobileClient(grant.client_id);
+  } catch {
+    dbClient = null;
+  }
+  if (dbClient) {
+    if (!dbClient.client.enabled || !dbClient.app.is_active || !dbClient.app.is_approved) {
+      return invalid("invalid_client", "Mobile client is disabled or unapproved");
+    }
+    const environment = requireEnvironment(env.ENVIRONMENT);
+    registration = {
+      appId: dbClient.app.id,
+      clientId: dbClient.client.client_id,
+      environment,
+      redirectUri: dbClient.client.redirect_uri,
+      scopes: MOBILE_APP_AUTH_SCOPES,
+      credentialTtlSeconds:
+        dbClient.client.credential_ttl_seconds ?? MOBILE_APP_AUTH_CREDENTIAL_TTL_SECONDS,
+    };
+  } else {
+    registration = resolveMobileAppAuthRegistration(env, grant.client_id);
+  }
   if (
     registration.appId !== grant.app_id ||
     registration.environment !== grant.environment ||
@@ -456,21 +480,46 @@ function refuseRenewal(refusal: MobileAppAuthRenewalRefusal, message: string): n
   throw new MobileAppAuthRenewalError(refusal, message);
 }
 
-function renewalRegistration(
+async function renewalRegistration(
   env: MobileAppAuthRuntimeEnv,
   authority: MobileAppAuthRenewalAuthority,
-): MobileAppAuthRegistration {
+): Promise<MobileAppAuthRegistration> {
   const { grant, app } = authority;
   let registration: MobileAppAuthRegistration;
+  let dbClient = null;
   try {
-    registration = resolveMobileAppAuthRegistration(env, grant.client_id);
-  } catch (error) {
-    // error-policy:J1 an unknown or disabled client is a refusal of this
-    // credential; any other configuration failure stays a server outage.
-    if (error instanceof MobileAppAuthProtocolError && error.protocolCode === "invalid_client") {
-      return refuseRenewal("client_unavailable", "Mobile client is no longer registered");
+    dbClient = await mobileAppAuthClientsRepository.findRegisteredMobileClient(grant.client_id);
+  } catch {
+    dbClient = null;
+  }
+  if (dbClient) {
+    if (!dbClient.client.enabled || !dbClient.app.is_active || !dbClient.app.is_approved) {
+      return refuseRenewal(
+        "client_unavailable",
+        "Mobile client is no longer registered or enabled",
+      );
     }
-    throw error;
+    const environment = requireEnvironment(env.ENVIRONMENT);
+    registration = {
+      appId: dbClient.app.id,
+      clientId: dbClient.client.client_id,
+      environment,
+      redirectUri: dbClient.client.redirect_uri,
+      scopes: MOBILE_APP_AUTH_SCOPES,
+      credentialTtlSeconds:
+        dbClient.client.credential_ttl_seconds ?? MOBILE_APP_AUTH_CREDENTIAL_TTL_SECONDS,
+    };
+  } else {
+    try {
+      registration = resolveMobileAppAuthRegistration(env, grant.client_id);
+    } catch (error) {
+      // error-policy:J1 an unknown or disabled client is a refusal of this
+      // credential; any other configuration failure stays a server outage.
+      if (error instanceof MobileAppAuthProtocolError && error.protocolCode === "invalid_client") {
+        return refuseRenewal("client_unavailable", "Mobile client is no longer registered");
+      }
+      throw error;
+    }
   }
   if (
     registration.appId !== grant.app_id ||
@@ -520,7 +569,7 @@ export async function authorizeMobileAppAuthRenewal(input: {
   ) {
     return refuseRenewal("credential_invalid", "Invalid or expired mobile credential");
   }
-  const registration = renewalRegistration(input.env, authority);
+  const registration = await renewalRegistration(input.env, authority);
   if (
     !owner.isActive ||
     owner.organizationId !== credential.organization_id ||
