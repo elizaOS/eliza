@@ -1,6 +1,5 @@
 /**
- * Mock API helper used by packaged Electrobun specs that isolate renderer
- * startup behavior.
+ * Mock API server for the design-review capture workflow.
  */
 import { randomUUID } from "node:crypto";
 import http from "node:http";

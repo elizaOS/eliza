@@ -7,8 +7,8 @@
  * packages/app/test/app) self-skip through `describeIf` unless
  * ELIZA_LIVE_TEST=1, a real Chrome binary, and a live provider API key are all
  * present — and a fully skipped vitest run still exits 0. On the release
- * runner that combination turned the gate into a permanent no-op green
- * (release-electrobun.yml "Run heavy E2E regression suite"). This launcher
+ * runner that combination turned the gate into a permanent no-op green.
+ * This launcher
  * refuses to hand CI a vacuous pass from either direction: it rejects the run
  * before vitest starts when a prerequisite is missing, and after a green
  * vitest exit it requires every named suite file to have executed at least one
