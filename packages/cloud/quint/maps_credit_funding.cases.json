@@ -25,10 +25,24 @@
       "main": "maps_credit_funding",
       "init": "init",
       "step": "step",
-      "invariants": ["safety"],
-      "temporal": ["SettlesWhenObserved"],
+      "invariants": [
+        "safety"
+      ],
+      "temporal": [
+        "SettlesWhenObserved"
+      ],
       "maxSteps": 40,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "SettlesWhenObserved",
+          "expect": "holds",
+          "assumptions": [
+            "For every admitted or dispatched request, a valid terminal observation is weakly fair through finish(key).",
+            "The existing billing owner completes settlement. Provider success and eventual arrival of a terminal observation are not assumed."
+          ]
+        }
+      ]
     }
   ]
 }
