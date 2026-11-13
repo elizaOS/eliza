@@ -165,7 +165,7 @@ export function isMaintainedSource(file) {
     !/(^|\/)(node_modules|dist|build|coverage|generated|dist-mobile(?:-[^/]+)?)(\/|$)/.test(
       rel,
     ) &&
-    !/(^|\/)packages\/app\/(android|ios|electrobun)(\/|$)/.test(rel) &&
+    !/(^|\/)packages\/app\/(android|ios)(\/|$)/.test(rel) &&
     !/^packages\/app\/platforms\/android\/app\/src\/main\/assets(\/|$)/.test(
       rel,
     ) &&
@@ -212,7 +212,7 @@ function* walk(directory) {
     const full = path.join(directory, entry.name);
     if (entry.isDirectory()) {
       const rel = relative(full);
-      if (/^packages\/app\/(android|ios|electrobun)(\/|$)/.test(rel)) {
+      if (/^packages\/app\/(android|ios)(\/|$)/.test(rel)) {
         continue;
       }
       // Mobile builds stage compiled JavaScript here; it is not maintained

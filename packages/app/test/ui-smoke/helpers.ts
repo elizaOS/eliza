@@ -241,8 +241,6 @@ const SETTINGS_SECTION_IDS_BY_LABEL = new Map<string, string>([
   ["Backups", "advanced"],
   ["Backup & Reset", "advanced"],
   ["My Runtimes", "my-runtimes"],
-  ["Desktop app", "desktop-integration"],
-  ["Shortcuts", "shortcuts"],
 ]);
 const DEFAULT_APP_STORAGE: Record<string, string> = {
   "eliza:first-run-complete": "1",

@@ -7,6 +7,7 @@
  */
 import path from "node:path";
 import { resolveHostExecutable } from "@elizaos/host";
+import { readRuntimeExecutionModeEnv } from "@elizaos/host/protocol";
 
 export const CODING_TOOL_NAMES = [
   "sh",
@@ -66,17 +67,6 @@ function isTruthyEnv(value: string | undefined): boolean {
 function isStoreBuild(): boolean {
   const variant = process.env.ELIZA_BUILD_VARIANT ?? "";
   return variant.trim().toLowerCase() === "store";
-}
-
-function runtimeMode(): string {
-  return (
-    process.env.ELIZA_RUNTIME_MODE ??
-    process.env.RUNTIME_MODE ??
-    process.env.LOCAL_RUNTIME_MODE ??
-    ""
-  )
-    .trim()
-    .toLowerCase();
 }
 
 export function isAospTerminalRuntime(): boolean {
@@ -208,7 +198,7 @@ export function detectTerminalSupport(): TerminalSupport {
   }
 
   if (isAndroidRuntime()) {
-    if (runtimeMode() !== "local-yolo") {
+    if (readRuntimeExecutionModeEnv() !== "local-yolo") {
       return {
         supported: false,
         reason: "not_local_yolo",

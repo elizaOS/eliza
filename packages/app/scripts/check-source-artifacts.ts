@@ -10,7 +10,6 @@ const packageDir = path.resolve(fileURLToPath(import.meta.url), "../..");
 const repoRoot = path.resolve(packageDir, "../..");
 const allowed = new Set([
   "packages/app/vite-env.d.ts",
-  "packages/app/platforms/electrobun/src/types/web-speech.d.ts",
   "packages/app/test/utils/get-free-port.d.ts",
 ]);
 const files = execFileSync(

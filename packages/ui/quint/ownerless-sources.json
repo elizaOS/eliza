@@ -46,7 +46,7 @@
   },
   {
     "source": "packages/ui/src/components/settings/settings-section-meta.ts",
-    "sha256": "2862a7c1c60186b501acf52be9c92f7b8dcccde5f734f177ff4cd2998d808b39",
+    "sha256": "e02df117878d02df9da139539a8dd76abbc7c7c038edf3b8376c386dcd50fdcd",
     "reason": "Supplies fixed section IDs, aliases, labels and group order. settings-sections uses these literals to build its display registry. SettingsView owns the active section and route."
   },
   {

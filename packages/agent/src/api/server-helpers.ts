@@ -28,6 +28,7 @@ import {
 import { sendJsonError } from "@elizaos/host";
 import {
   type ElizaConfig,
+  isMobilePlatform,
   normalizeFirstRunProviderId,
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
@@ -276,7 +277,7 @@ export function resolveMirroredAvatarPresetId(
 export function findOwnPackageRoot(startDir: string): string {
   // Mobile bundles are single-file — there is no workspace tree to walk.
   // Return startDir immediately to avoid crossing the fs-shim sandbox boundary.
-  if (process.env.ELIZA_MOBILE_PLATFORM) {
+  if (isMobilePlatform()) {
     return startDir;
   }
   const KNOWN_NAMES = new Set(["eliza", "eliza", "elizaos"]);

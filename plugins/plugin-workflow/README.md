@@ -51,9 +51,9 @@ A host may supply `compilerDependencyRoot` for a separate immutable compiler/dec
 
 ### Android immutable source publication
 
-Android runtimes selected by `ELIZA_PLATFORM=android` or `ELIZA_MOBILE_PLATFORM=android` publish complete versioned source through a private directory reservation and same-directory rename, without requiring hard links in app data. Existing identical source is reused; conflicting bytes, nonprivate files and untrusted paths are rejected. A crashed reservation is preserved and causes a bounded refusal rather than being stolen. This coordinates cooperating publishers in one trusted app UID; it is not isolation from arbitrary hostile code with that UID.
+Android runtimes selected by `ELIZA_PLATFORM=android` publish complete versioned source through a private directory reservation and same-directory rename, without requiring hard links in app data. Existing identical source is reused; conflicting bytes, nonprivate files and untrusted paths are rejected. A crashed reservation is preserved and causes a bounded refusal rather than being stolen. This coordinates cooperating publishers in one trusted app UID; it is not isolation from arbitrary hostile code with that UID.
 
-The filesystem integration tests exercise multiple real writer processes, concurrent readers, conflicting versions, symlink/permission rejection and abandoned reservations. Runtime dispatch tests exercise both environment aliases. Passing these tests on a POSIX development host does not qualify Android filesystem durability or power-loss recovery. The Windows backend and desktop hard-link publisher remain separate.
+The filesystem integration tests exercise multiple real writer processes, concurrent readers, conflicting versions, symlink/permission rejection and abandoned reservations. Runtime dispatch tests exercise the Android platform setting. Passing these tests on a POSIX development host does not qualify Android filesystem durability or power-loss recovery. The Windows backend and desktop hard-link publisher remain separate.
 
 ### Typed phone draft generation
 

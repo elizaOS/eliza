@@ -61,62 +61,6 @@ export function injectBuildConfigAospField(content) {
   return next;
 }
 
-function groovySingleQuoted(value) {
-  return `'${value.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
-}
-
-/**
- * String BuildConfig field whose value Gradle reads from the environment when
- * the build runs. The value never lands in build.gradle, which is git-tracked
- * for the in-tree `platforms/android` build — writing the resolved env value
- * here would leak secrets such as ELIZA_ANDROID_SMS_GATEWAY_SECRET into the
- * working tree. The Groovy expression escapes `\\`, `"` and every control
- * character (as a Java octal escape) so the emitted Java string literal stays
- * valid for any env value, including one with a newline.
- */
-function envStringBuildConfigFieldLine(name, fallback) {
-  const value = `(System.getenv('${name}') ?: ${groovySingleQuoted(fallback)})`;
-  const escapeForJava = String.raw`.collect { ch -> ch == '\\' ? '\\\\' : ch == '"' ? '\\"' : (ch.codePointAt(0) < 32 || ch.codePointAt(0) == 127) ? String.format('\\%03o', ch.codePointAt(0)) : ch }.join('')`;
-  return `        buildConfigField "String", "${name}", "\\"\${${value}${escapeForJava}}\\""`;
-}
-
-export function androidSmsGatewayBuildConfigFieldLines() {
-  return [
-    `        buildConfigField "boolean", "ELIZA_ANDROID_SMS_GATEWAY_ENABLED", "\${['1', 'true', 'yes'].contains((System.getenv('ELIZA_ANDROID_SMS_GATEWAY_ENABLED') ?: 'false').toLowerCase())}"`,
-    envStringBuildConfigFieldLine("ELIZA_ANDROID_SMS_GATEWAY_SECRET", ""),
-    envStringBuildConfigFieldLine(
-      "ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL",
-      "https://api.eliza.app/api/webhooks/blooio/local?bridge=bluebubbles",
-    ),
-    envStringBuildConfigFieldLine(
-      "ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER",
-      "+14159611510",
-    ),
-    envStringBuildConfigFieldLine(
-      "ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL",
-      "Eliza Cloud Gateway (+14159611510)",
-    ),
-  ];
-}
-
-export function injectAndroidSmsGatewayBuildConfigFields(content) {
-  let next = injectBuildConfigAospField(content);
-  const fields = androidSmsGatewayBuildConfigFieldLines();
-  for (const field of fields) {
-    const name = field.match(/,\s*"([^"]+)"/)?.[1];
-    if (!name) continue;
-    const existingRe = new RegExp(
-      `\\n\\s*buildConfigField\\s+["'][^"']+["'],\\s*["']${escapeRegExp(name)}["'][^\\n]*`,
-      "g",
-    );
-    next = next.replace(existingRe, "");
-  }
-  return next.replace(
-    /defaultConfig\s*\{/,
-    `defaultConfig {\n${fields.join("\n")}`,
-  );
-}
-
 /**
  * Inject the `androidResources { noCompress += [...] }` block that keeps
  * `.tar.gz`, `.tar`, and `.so` files unchanged in the
@@ -369,7 +313,7 @@ export function injectCopyForkLlamaLibTask(content) {
     `            if (!libDir) {\n` +
     `                // No fresh source configured. If the fused lib set is already\n` +
     `                // staged in jniLibs (a prior build, the common dev case), use it\n` +
-    `                // as-is so a plain build:android "just works" without any flag.\n` +
+    `                // as-is so a plain build:android:system "just works" without any flag.\n` +
     `                def alreadyStaged = new File(file("src/main/jniLibs/\${abi}"), 'libelizainference.so')\n` +
     `                if (alreadyStaged.isFile()) {\n` +
     `                    logger.lifecycle("[copyForkLlamaLib] no source dir for \${abi}; libelizainference.so already staged in jniLibs — using the pre-staged fused lib set")\n` +

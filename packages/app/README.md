@@ -1,6 +1,6 @@
 # @elizaos/app
 
-Eliza application host, renderer, and native platform tooling for web, desktop, iOS, and
+Eliza application host, renderer, and native platform tooling for web, iOS, and
 Android.
 
 `@elizaos/app` is the Node host API. Use `@elizaos/app/browser`
