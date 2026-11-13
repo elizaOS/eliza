@@ -3382,12 +3382,17 @@ export function createScheduledTaskRunner(
   ): Promise<ScheduledTask> {
     const task = await deps.store.get(taskId);
     if (!task) throw new Error(`evaluateCompletion: task ${taskId} not found`);
-    if (!task.completionCheck) return task;
+    // A settled row is left alone: the personal-assistant plugin runs two
+    // owner-reply scans per message, and the later one must not settle again.
+    if (!task.completionCheck || isTerminal(task.state.status)) return task;
     const contrib = deps.completionChecks.get(task.completionCheck.kind);
     if (!contrib) return task;
+    // Conditional: when both scans read the row before either commits, only
+    // the first commit runs `pipeline.onComplete`; the other one is raced.
     mutationSnapshots.set(task, {
       previous: structuredClone(task),
       verb: "complete",
+      conditional: true,
     });
     const ownerFacts = await deps.ownerFacts();
     const ctx: CompletionCheckContext = {

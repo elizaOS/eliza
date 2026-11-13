@@ -65,5 +65,31 @@
     "implementationTests": [
       "plugins/plugin-scheduling/src/scheduled-task/record-startup.test.ts"
     ]
+  },
+  {
+    "id": "plugin-scheduling.ScheduledTaskCompletionSettle",
+    "model": "plugins/plugin-scheduling/quint/ScheduledTaskCompletionSettle.qnt",
+    "sources": [
+      "plugins/plugin-scheduling/src/scheduled-task/runner.ts",
+      "plugins/plugin-personal-assistant/src/lifeops/scheduled-task/scheduler.ts",
+      "plugins/plugin-personal-assistant/src/lifeops/scheduled-task/inbound-reply-completion.ts"
+    ],
+    "invariants": [
+      "SettleAtMostOnce",
+      "OneWinner",
+      "ChildrenFollowWinner",
+      "CompletedRowSettledOnce",
+      "TerminalReadSawSettledRow",
+      "TypeOK"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two owner-reply scans, one fired task with a passing completion check and one pipeline.onComplete child.",
+      "A commit writes the row, the completed log row and the child in one step; partial failures inside settleTerminal keep their existing coverage.",
+      "Other verbs between a scan's read and its commit, and the SQL store's conditional write, are covered by runner-host-admission.integration.test.ts and the store tests, not by this model."
+    ],
+    "implementationTests": [
+      "plugins/plugin-scheduling/src/scheduled-task/runner-completion-settle.test.ts"
+    ]
   }
 ]

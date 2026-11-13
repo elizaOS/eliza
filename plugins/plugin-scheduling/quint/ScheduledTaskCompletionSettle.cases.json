@@ -1,0 +1,34 @@
+{
+  "sources": [
+    "plugins/plugin-scheduling/src/scheduled-task/runner.ts",
+    "plugins/plugin-scheduling/src/scheduled-task/runner-completion-settle.test.ts",
+    "plugins/plugin-personal-assistant/src/plugin.ts",
+    "plugins/plugin-personal-assistant/src/lifeops/scheduled-task/scheduler.ts",
+    "plugins/plugin-personal-assistant/src/lifeops/scheduled-task/inbound-reply-completion.ts"
+  ],
+  "implementationTests": [
+    "plugins/plugin-scheduling/src/scheduled-task/runner-completion-settle.test.ts",
+    "plugins/plugin-scheduling/src/scheduled-task/runner-host-admission.integration.test.ts"
+  ],
+  "conformance": "plugins/plugin-scheduling/quint/check-completion-settle.mjs",
+  "bounds": "Two owner-reply scans evaluate one fired task whose completion check passes and whose pipeline.onComplete holds one child. Each scan reads the row and then commits; a commit records the completed log row and creates the child in one step. The six generated read/commit interleavings are replayed through the production runner with the real user_replied_within check, in-memory stores and pipeline scheduling. A failing completion check, edits by other verbs between read and commit, and the SQL store's conditional write keep their existing coverage.",
+  "cases": [
+    {
+      "name": "two-reply-scans",
+      "main": "ScheduledTaskCompletionSettle",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "SettleAtMostOnce",
+        "OneWinner",
+        "ChildrenFollowWinner",
+        "CompletedRowSettledOnce",
+        "TerminalReadSawSettledRow",
+        "TypeOK"
+      ],
+      "temporal": [],
+      "maxSteps": 5,
+      "samples": 500
+    }
+  ]
+}
