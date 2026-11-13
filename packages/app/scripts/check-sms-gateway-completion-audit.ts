@@ -38,7 +38,7 @@ const supplementalEvidenceByCheck = {
 
 function usage() {
   return [
-    "Usage: node packages/app/scripts/check-sms-gateway-completion-audit.ts [options]",
+    "Usage: bun packages/app/scripts/check-sms-gateway-completion-audit.ts [options]",
     "",
     "Options:",
     "  --evidence <path>  Write structured proof JSON. Defaults to .eliza-local/sms-gateway-completion-audit-latest.json.",

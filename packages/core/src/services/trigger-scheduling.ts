@@ -26,6 +26,9 @@ const CRON_FALLBACK_LOOKBACKS_MS = [
 	2 * CRON_HOUR_MS,
 	3 * CRON_HOUR_MS,
 ] as const;
+// A zone's local date can be the previous or next UTC date.
+const ZONED_DAY_OFFSETS = [-1, 0, 1] as const;
+const UTC_DAY_OFFSETS = [0] as const;
 /** Max timestamp a JS Date can represent (±8.64e15 ms); beyond this a Date is Invalid. */
 const MAX_REPRESENTABLE_MS = 8_640_000_000_000_000;
 
@@ -238,20 +241,35 @@ function offsetMsFromFormatter(
 	formatter: Intl.DateTimeFormat,
 	atMs: number,
 ): number {
-	const parts = formatter.formatToParts(new Date(atMs));
-	const get = (type: string): number => {
-		const part = parts.find((p) => p.type === type);
-		return part ? Number(part.value) : 0;
-	};
-	const tzDate = utcDateMs(
-		get("year"),
-		get("month") - 1,
-		get("day"),
-		get("hour"),
-		get("minute"),
-		get("second"),
-	);
-	return tzDate - atMs;
+	let year = 0;
+	let month = 0;
+	let day = 0;
+	let hour = 0;
+	let minute = 0;
+	let second = 0;
+	for (const part of formatter.formatToParts(new Date(atMs))) {
+		switch (part.type) {
+			case "year":
+				year = Number(part.value);
+				break;
+			case "month":
+				month = Number(part.value);
+				break;
+			case "day":
+				day = Number(part.value);
+				break;
+			case "hour":
+				hour = Number(part.value);
+				break;
+			case "minute":
+				minute = Number(part.value);
+				break;
+			case "second":
+				second = Number(part.value);
+				break;
+		}
+	}
+	return utcDateMs(year, month - 1, day, hour, minute, second) - atMs;
 }
 
 function cronMatches(
@@ -335,8 +353,9 @@ export function computeNextCronRunAtMs(
 			checkedDay = day;
 			// A zone's local date can be the previous or next UTC date. Only
 			// skip a whole UTC day when none of those dates can match.
-			dayCanMatch = (formatter ? [-1, 0, 1] : [0]).some((offset) =>
-				cronDateMatchesUTC(schedule, new Date(day + offset * CRON_DAY_MS)),
+			dayCanMatch = (formatter ? ZONED_DAY_OFFSETS : UTC_DAY_OFFSETS).some(
+				(offset) =>
+					cronDateMatchesUTC(schedule, new Date(day + offset * CRON_DAY_MS)),
 			);
 		}
 		if (!dayCanMatch) {

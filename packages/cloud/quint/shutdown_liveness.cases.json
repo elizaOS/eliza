@@ -1,0 +1,93 @@
+{
+  "sources": [
+    "packages/cloud/services/agent-server/src/agent-shutdown.ts",
+    "packages/cloud/services/agent-server/src/agent-lifecycle.ts",
+    "packages/cloud/services/agent-server/src/index.ts"
+  ],
+  "bounds": {
+    "assumptions": [
+      "Imports the unchanged finite shutdown_sequence transition system: three phases and a logical deadline of two ticks.",
+      "Fairness assumptions are explicit in each property. No eventual provider acknowledgement or success is assumed.",
+      "A responsive event loop and returning synchronous callbacks justify timer fairness only conditionally; these environmental facts are not proved.",
+      "Eventual abstract completion does not prove a 55-second wall-clock deadline, physical teardown, or implementation refinement."
+    ],
+    "progress": "Conditional finite liveness under explicit weak fairness of timer progression and dispatch; no provider-success or real-time deadline proof."
+  },
+  "cases": [
+    {
+      "name": "conditional-termination",
+      "main": "shutdown_liveness",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [
+        "terminationWithoutAssumptions",
+        "terminationWithClockOnly",
+        "terminationWithTimeoutOnly",
+        "terminationWithFairTimers",
+        "deadlineEventuallyDisconnects",
+        "terminalMeansClosedOrDisconnected",
+        "noFairFailedExecutionExists"
+      ],
+      "temporalChecks": [
+        {
+          "property": "terminationWithoutAssumptions",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed; infinite stuttering is permitted."
+          ]
+        },
+        {
+          "property": "terminationWithClockOnly",
+          "expect": "counterexample",
+          "assumptions": [
+            "Only tick is weakly fair; runnable timeout callbacks may remain unserved forever."
+          ]
+        },
+        {
+          "property": "terminationWithTimeoutOnly",
+          "expect": "counterexample",
+          "assumptions": [
+            "Only timeout dispatch is weakly fair; logical time may stop before the deadline."
+          ]
+        },
+        {
+          "property": "terminationWithFairTimers",
+          "expect": "holds",
+          "assumptions": [
+            "tick is weakly fair relative to clock.",
+            "timeout is weakly fair relative to phase.",
+            "These assumptions are explicit antecedents in the checked formula."
+          ]
+        },
+        {
+          "property": "deadlineEventuallyDisconnects",
+          "expect": "holds",
+          "assumptions": [
+            "tick and timeout dispatch are weakly fair as explicit formula antecedents.",
+            "The disconnected flag is abstract; physical teardown is not proved."
+          ]
+        },
+        {
+          "property": "terminalMeansClosedOrDisconnected",
+          "expect": "holds",
+          "assumptions": [
+            "tick and timeout dispatch are weakly fair as explicit formula antecedents.",
+            "Synchronous callbacks return; the event loop remains responsive."
+          ]
+        },
+        {
+          "property": "noFairFailedExecutionExists",
+          "expect": "counterexample",
+          "assumptions": [
+            "A fair timeout/failure execution exists without provider acknowledgement.",
+            "This negative check detects inconsistent fairness antecedents."
+          ]
+        }
+      ],
+      "maxSteps": 25,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ]
+}

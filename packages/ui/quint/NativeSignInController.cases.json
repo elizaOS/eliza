@@ -1,0 +1,72 @@
+{
+  "sources": [
+    "packages/ui/src/android-cloud/native-cloud-sign-in-controller.ts",
+    "packages/ui/src/android-cloud/AndroidNativeCloudSignInView.tsx",
+    "packages/ui/src/android-cloud/__e2e__/native-cloud-sign-in-controller.test.ts",
+    "packages/auth/src/auth/native-cloud-sign-in.ts",
+    "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java"
+  ],
+  "bounds": {
+    "retirement": "Two controller mounts, two unique renderer dispatch IDs and one Android attempt slot. Host admission can block or refuse before native dispatch. One shared in-flight cancellation per controller, with a scoped reply for each request. This case starts new work from the chooser after explicit cleanup or from a fresh mount.",
+    "outcomes": "One renderer dispatch and one saved credential. Two native attempts represent a matching and a foreign reply. Check missing, matching and foreign echoed identities and one account activation retry. The code-start path abstracts email and phone. The shared port validates an MFA hint before publication and the case treats that resume as an atomic result.",
+    "limitations": "The two cases do not compose cancellation with credential installation, startup recovery, in-place resend and native provider admission, unbounded methods or retries, concurrent MFA resume and direct verification, readiness probes or listener installation. Source tests run the actual controller and its canonical broker handoff with controlled native ports. They do not execute the Android plugin or replay generated model traces."
+  },
+  "conformance": "packages/ui/quint/check-native-sign-in-controller.mjs",
+  "cases": [
+    {
+      "name": "scoped-retirement",
+      "main": "NativeSignInController",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "DispatchOwnsRequest",
+        "CancellationKeepsItsFence",
+        "ScopedReceiptPreservesForeignAttempt"
+      ],
+      "temporal": ["FairCancellationReplies", "EveryCancellationReturns"],
+      "temporalChecks": [
+        {
+          "property": "FairCancellationReplies",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of each scoped cancellation reply, including rejection. The receipt acknowledges only the captured request ID. Rejection preserves the controller fence until an explicit retry receives acknowledgement.",
+            "No fairness assumes a user retries, the bridge acknowledges success, an old picker ends, or the host admits a new method."
+          ]
+        },
+        {
+          "property": "EveryCancellationReturns",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. A pending cancellation can remain unresolved indefinitely. Forced disposal can retire renderer work but cannot produce a native acknowledgement."
+          ]
+        }
+      ],
+      "maxSteps": 25,
+      "samples": 1000
+    },
+    {
+      "name": "correlated-outcomes",
+      "main": "NativeSignInControllerOutcome",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "AuthenticationUsesDispatchedRequest",
+        "VerificationUsesDisplayedAttempt",
+        "ActivationOwnsStoredOutcome"
+      ],
+      "temporal": ["FairActivationReply"],
+      "temporalChecks": [
+        {
+          "property": "FairActivationReply",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of account activation replies, including failure. This ends a pending renderer activation or retirement, without proving the native call succeeds.",
+            "No fairness assumes a native sign-in reply, a successful account readback, or a user retries."
+          ]
+        }
+      ],
+      "maxSteps": 25,
+      "samples": 1000
+    }
+  ]
+}

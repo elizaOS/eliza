@@ -12,6 +12,10 @@ import {
   type UserWithOrganization,
   usersRepository,
 } from "../../db/repositories";
+import {
+  assertNotNativeAppPublisher,
+  isNativeAppPublisher,
+} from "../../db/repositories/native-app-publishers";
 import { retryOnTransientDbError } from "../../db/retry-transient";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
@@ -591,6 +595,18 @@ export class UsersService {
     });
   }
 
+  /**
+   * Removes an address the user set without proof, so a sign-in that does
+   * prove it can take it. Returns false when the row no longer holds it
+   * unverified.
+   */
+  async clearUnverifiedEmail(user: User | UserWithOrganization, email: string): Promise<boolean> {
+    const cleared = await usersRepository.clearUnverifiedEmail(user.id, email);
+    if (!cleared) return false;
+    await this.invalidateCache(user);
+    return true;
+  }
+
   async linkStewardId(userId: string, stewardUserId: string): Promise<void> {
     const existing = await usersRepository.findByIdForWrite(userId);
     if (existing?.organization_id && existing.steward_user_id !== stewardUserId) {
@@ -724,7 +740,7 @@ export class UsersService {
         const remainingUsers = await usersRepository.listByOrganization(organizationId);
 
         // If no users remain, delete the organization
-        if (remainingUsers.length === 0) {
+        if (remainingUsers.length === 0 && !(await isNativeAppPublisher(organizationId))) {
           await organizationsRepository.delete(organizationId);
         }
       }
@@ -739,6 +755,7 @@ export class UsersService {
       throw new Error("Account deletion organization does not match the user");
     }
 
+    await assertNotNativeAppPublisher(organizationId);
     await setInferenceSubjectActive(organizationId, id, false, "account");
     await this.invalidateCache(user);
     await this.invalidateInferenceAuthForUser(id);

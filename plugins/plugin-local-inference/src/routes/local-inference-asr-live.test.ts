@@ -231,6 +231,134 @@ describe("POST /api/asr/local-inference/live", () => {
 		expect(liveAsrSessionCount()).toBe(0);
 	});
 
+	it("close after a failed last segment answers 502 with closed and no replay", async () => {
+		const { state } = makeState(true);
+		let fail = false;
+		const loader = (
+			state.current as unknown as {
+				getService: (n: string) => {
+					createStreamingTranscriber: (o: {
+						vad?: VadEventSource;
+					}) => BionicStreamingTranscriber;
+				};
+			}
+		).getService("localInferenceLoader");
+		const host: BionicAsrHost = {
+			async openAsrStream() {
+				const stream = new HostStream();
+				return {
+					...stream,
+					feed: (pcm: Float32Array) => stream.feed(pcm),
+					partial: () => stream.partial(),
+					finish: async () => {
+						if (fail) throw new Error("decode failed");
+						return stream.finish();
+					},
+					cancel: () => stream.cancel(),
+					close: () => stream.close(),
+				};
+			},
+			async transcribe() {
+				return "";
+			},
+		};
+		loader.createStreamingTranscriber = (o) =>
+			new BionicStreamingTranscriber({ host, ...o });
+		await post(state, {
+			sessionId: "f",
+			vad: [{ type: "speech-start" }],
+			frames: frames(30),
+		});
+		const first = await post(state, {
+			sessionId: "f",
+			vad: [{ type: "speech-end" }],
+		});
+		expect(first.json().final).toMatchObject({ text: "what time is it" });
+		fail = true;
+		await post(state, {
+			sessionId: "f",
+			vad: [{ type: "speech-start" }],
+			frames: frames(30, 30),
+		});
+		const failed = await post(state, {
+			sessionId: "f",
+			vad: [{ type: "speech-end" }],
+		});
+		expect(failed.statusCode).toBe(502);
+		expect(failed.json().closed).toBeUndefined();
+		// The failure already went out; a plain close must not replay it.
+		const closed = await post(state, { sessionId: "f", close: true });
+		expect(closed.statusCode).toBe(200);
+		expect(closed.json()).toMatchObject({ closed: true });
+		expect(closed.json().final).toBeUndefined();
+
+		await post(state, {
+			sessionId: "g",
+			vad: [{ type: "speech-start" }],
+			frames: frames(30),
+		});
+		const closing = await post(state, {
+			sessionId: "g",
+			vad: [{ type: "speech-end" }],
+			close: true,
+		});
+		expect(closing.statusCode).toBe(502);
+		expect(closing.json()).toMatchObject({ code: "ASR_FAILED", closed: true });
+		expect(liveAsrSessionCount()).toBe(0);
+	});
+
+	it("a close that carries speech-end returns that segment's final", async () => {
+		const { state } = makeState(true);
+		await post(state, {
+			sessionId: "e",
+			vad: [{ type: "speech-start" }],
+			frames: frames(30),
+		});
+		const res = await post(state, {
+			sessionId: "e",
+			vad: [{ type: "speech-end" }],
+			close: true,
+		});
+		expect(res.json()).toMatchObject({
+			closed: true,
+			final: { text: "what time is it" },
+		});
+	});
+
+	it("reopens a session on the current runtime after a runtime swap", async () => {
+		const old = makeState(true);
+		const next = makeState(true);
+		const state: CompatRuntimeState = { current: old.state.current };
+		await post(state, {
+			sessionId: "s",
+			vad: [{ type: "speech-start" }],
+			frames: frames(30),
+		});
+		await new Promise((r) => setImmediate(r));
+		expect(old.events.length).toBeGreaterThan(0);
+		const oldCount = old.events.length;
+
+		state.current = next.state.current;
+		await post(state, {
+			sessionId: "s",
+			vad: [{ type: "speech-start" }],
+			frames: frames(50),
+		});
+		await new Promise((r) => setImmediate(r));
+		const res = await post(state, {
+			sessionId: "s",
+			vad: [{ type: "speech-end" }],
+		});
+		expect(res.json().final).toMatchObject({ text: "what time is it" });
+		expect(liveAsrSessionCount()).toBe(1);
+		// Everything after the swap goes to the new runtime's bus only.
+		expect(old.events.length).toBe(oldCount);
+		const phases = next.events.map((e) => e.data.phase);
+		expect(phases[0]).toBe("speech-start");
+		expect(phases).toContain("partial");
+		expect(phases.at(-1)).toBe("final");
+	});
+
 	it("validates the body and caps concurrent sessions", async () => {
 		const { state } = makeState(true);
 		expect((await post(state, { frames: [] })).statusCode).toBe(400);
@@ -272,5 +400,42 @@ describe("POST /api/asr/local-inference/live", () => {
 			streaming: true,
 			sessions: 0,
 		});
+	});
+
+	it("reports not ready when the ASR probe throws", async () => {
+		const { state } = makeState(true);
+		const loader = (
+			state.current as unknown as {
+				getService: (n: string) => {
+					asrStreamSupported: () => Promise<boolean>;
+				};
+			}
+		).getService("localInferenceLoader");
+		loader.asrStreamSupported = async () => {
+			throw new Error("no asr/ model installed");
+		};
+		const res = new FakeRes();
+		await handleLocalInferenceAsrRoute(
+			makeReq("GET", "/api/asr/local-inference/live/status"),
+			res as unknown as http.ServerResponse,
+			state,
+		);
+		expect(res.json()).toMatchObject({
+			ready: false,
+			reason: "no asr/ model installed",
+			streaming: null,
+		});
+	});
+
+	it("stays ready in batch mode when the host cannot stream", async () => {
+		const { state } = makeState(false);
+		const res = new FakeRes();
+		await handleLocalInferenceAsrRoute(
+			makeReq("GET", "/api/asr/local-inference/live/status"),
+			res as unknown as http.ServerResponse,
+			state,
+		);
+		expect(res.json()).toMatchObject({ ready: true, streaming: false });
+		expect(res.json().reason).toBeUndefined();
 	});
 });

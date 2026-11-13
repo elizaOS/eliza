@@ -13,6 +13,7 @@ import * as z from "zod";
 import type { MapsProviderAdapter } from "./adapter.js";
 import { MapsError, type MapsErrorCode } from "./errors.js";
 import {
+  MANAGED_PROVIDER_MAX_RESPONSE_BYTES,
   ManagedProviderError,
   type ManagedProviderErrorCode,
   ManagedProviderHttpClient,
@@ -37,6 +38,12 @@ export const ELIZA_CLOUD_MAPS_CONNECTION_ID = "conn_eliza_cloud_maps_api";
 export const ELIZA_CLOUD_MAPS_ATTRIBUTION =
   "© OpenStreetMap contributors (ODbL). Search: Nominatim. Routing: GraphHopper.";
 export const ELIZA_CLOUD_DEFAULT_API_ORIGIN = "https://api.eliza.app";
+/**
+ * Default request deadline: Cloud's own 10 s upstream timeout plus
+ * authentication and admission, so Cloud's typed failure reaches the agent
+ * before the agent gives up.
+ */
+export const ELIZA_CLOUD_MAPS_TIMEOUT_MS = 20_000;
 
 const coordinate = z
   .object({
@@ -176,6 +183,9 @@ export interface ElizaCloudMapsAdapterOptions {
 }
 
 const CODE_BY_CLOUD_CODE: Record<string, MapsErrorCode> = {
+  authentication_required: "MAPS_AUTH_EXPIRED",
+  access_denied: "MAPS_AUTH_REVOKED",
+  maps_access_denied: "MAPS_AUTH_REVOKED",
   invalid_request: "MAPS_INVALID_INPUT",
   maps_request_id_required: "MAPS_INVALID_INPUT",
   maps_allowance_unconfigured: "MAPS_ALLOWANCE_UNCONFIGURED",
@@ -214,11 +224,11 @@ const MESSAGE_BY_CODE: Partial<Record<MapsErrorCode, string>> = {
   MAPS_PROVIDER_FAILURE:
     "Eliza Cloud Maps is temporarily unavailable. Try again later.",
   MAPS_RATE_LIMITED: "Maps request limit reached. Try again later.",
+  MAPS_PROVIDER_TIMEOUT: "Eliza Cloud Maps did not answer in time. Try again.",
 };
 
 const SDK_CODE: Record<ManagedProviderErrorCode, MapsErrorCode> = {
   INVALID_INPUT: "MAPS_INVALID_INPUT",
-  CONNECTION_UNAVAILABLE: "MAPS_PROVIDER_UNAVAILABLE",
   AUTH_EXPIRED: "MAPS_AUTH_EXPIRED",
   AUTH_REVOKED: "MAPS_AUTH_REVOKED",
   RATE_LIMITED: "MAPS_RATE_LIMITED",
@@ -229,7 +239,6 @@ const SDK_CODE: Record<ManagedProviderErrorCode, MapsErrorCode> = {
   ENDPOINT_BLOCKED: "MAPS_ENDPOINT_BLOCKED",
   RESPONSE_TOO_LARGE: "MAPS_RESPONSE_TOO_LARGE",
   MALFORMED_RESPONSE: "MAPS_MALFORMED_RESPONSE",
-  PAGINATION_OVERFLOW: "MAPS_MALFORMED_RESPONSE",
 };
 
 function toMapsError(error: unknown): MapsError {
@@ -288,14 +297,15 @@ export class ElizaCloudMapsAdapter implements MapsProviderAdapter {
     try {
       this.client = new ManagedProviderHttpClient({
         connection: resolveProviderConnection({
-          mode: "local",
           providerId: this.id,
           connectionId: this.connectionId,
           baseUrl: apiOrigin(options.baseUrl),
           credential: options.apiKey.trim(),
         }),
         connectionIdHeader: "x-maps-connection-id",
-        timeoutMs: options.timeoutMs,
+        timeoutMs: options.timeoutMs ?? ELIZA_CLOUD_MAPS_TIMEOUT_MS,
+        // Alternatives multiply the route body; the agent drops geometry.
+        responseByteLimit: MANAGED_PROVIDER_MAX_RESPONSE_BYTES,
         testTransport: options.testTransport,
         allowPrivateNetworkForTests: options.allowPrivateNetworkForTests,
       });
@@ -418,18 +428,16 @@ export class ElizaCloudMapsAdapter implements MapsProviderAdapter {
       );
     }
     const { query, near, limit } = parsed.data;
-    if (query.length > 300 || (limit !== undefined && limit > 20)) {
-      throw new MapsError(
-        "Cloud Maps supports queries up to 300 characters and limits up to 20.",
-        {
-          code: "MAPS_INVALID_INPUT",
-        },
-      );
+    if (query.length > 300) {
+      throw new MapsError("Cloud Maps supports queries up to 300 characters.", {
+        code: "MAPS_INVALID_INPUT",
+      });
     }
     const body = await this.post("/api/v1/maps/places/search", placesResponse, {
       query,
       ...(near ? { near } : {}),
-      limit: limit ?? 10,
+      // Cloud returns at most 20 places; a larger limit asks for that many.
+      limit: Math.min(limit ?? 10, 20),
     });
     return {
       places: body.places.map((place) => this.placeRef(place)),

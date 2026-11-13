@@ -1,0 +1,19 @@
+{
+  "sources": ["packages/agent/src/api/server-resources.ts"],
+  "bounds": {
+    "domain": "One resource with one synchronous reentrant close.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "api_resources",
+      "main": "api_resources",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

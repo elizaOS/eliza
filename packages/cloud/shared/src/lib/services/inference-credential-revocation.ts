@@ -12,15 +12,20 @@ import type {
   RuntimeDurableObjectNamespace,
   RuntimeDurableObjectStub,
 } from "../../types/cloud-worker-env";
-import { getCloudAwareEnv, getCloudBinding } from "../runtime/cloud-bindings";
+import { getCloudBinding } from "../runtime/cloud-bindings";
 import type { InferenceAuthRejectionReason } from "./inference-auth-cache";
 
 const GATE_BINDING = "INFERENCE_ADMISSION_GATES";
 const GATE_ORIGIN = "https://inference-admission.internal";
-const CREDENTIAL_CHECK_TIMEOUT_MS = 1_500;
+// Include routing and cold activation of the organization gate, not only its
+// storage read. Keep the check bounded and require an affirmative gate reply.
+const CREDENTIAL_CHECK_TIMEOUT_MS = 5_000;
 // Lifecycle writes need time to reach the object and confirm durable
 // state; request-time credential checks retain their shorter failure budget.
 const LIFECYCLE_MUTATION_TIMEOUT_MS = 10_000;
+// A gate outage costs each key the full mutation timeout, so post-commit sweeps
+// overlap their keys to stay inside one invocation.
+const POST_COMMIT_REVOCATION_BATCH_SIZE = 10;
 
 export type InferenceCredentialCheck =
   | {
@@ -30,7 +35,12 @@ export type InferenceCredentialCheck =
       rateLimit?: number;
       expiresAt?: number | null;
     }
-  | { kind: "steward_session"; userId: string; stewardUserId: string; issuedAt: number };
+  | {
+      kind: "steward_session";
+      userId: string;
+      stewardUserId: string;
+      issuedAt: number;
+    };
 
 export type InferenceSubjectDisableReason = "account" | "moderation" | "membership";
 
@@ -43,13 +53,15 @@ interface RevocationResponse {
 export class InferenceCredentialRevocationUnavailableError extends ElizaError {
   override readonly name = "InferenceCredentialRevocationUnavailableError";
   readonly statusCode = 503;
+  readonly credentialCheckTimedOut: boolean;
 
-  constructor(message: string, options?: { cause?: unknown }) {
+  constructor(message: string, options?: { cause?: unknown; credentialCheckTimedOut?: boolean }) {
     super(message, {
       code: "INFERENCE_CREDENTIAL_REVOCATION_UNAVAILABLE",
       cause: options?.cause,
       severity: "ephemeral",
     });
+    this.credentialCheckTimedOut = options?.credentialCheckTimedOut === true;
   }
 }
 
@@ -84,11 +96,13 @@ export function inferenceCredentialRevocationReason(reason: string): InferenceAu
   }
 }
 
-/** The revocation boundary is independently default-off for staged rollout. */
-export function isInferenceStrongRevocationEnabled(
-  env: Record<string, unknown> = getCloudAwareEnv(),
-): boolean {
-  return env.INFERENCE_STRONG_REVOCATION_ENABLED === "true";
+/**
+ * The revocation boundary is the organization gate Durable Object. Every
+ * Worker environment binds it; Node hosts and local harnesses have no gate and
+ * no positive authorization cache, so they authorize from the primary.
+ */
+export function hasInferenceRevocationBoundary(bindings?: Record<string, unknown>): boolean {
+  return Boolean(bindings ? bindings[GATE_BINDING] : getCloudBinding(GATE_BINDING));
 }
 
 /** Only fixed type labels and native boolean flags may enter the indexed log message. */
@@ -161,7 +175,10 @@ async function gateRequest(
     // error-policy:J2 transport failure must stay fail-closed with its cause.
     throw new InferenceCredentialRevocationUnavailableError(
       `Inference revocation boundary is unavailable deadlineExceeded=${controller.signal.aborted} ${describeBoundaryCause(error)}`,
-      { cause: error },
+      {
+        cause: error,
+        credentialCheckTimedOut: operation === "check" && controller.signal.aborted,
+      },
     );
   } finally {
     clearTimeout(timeout);
@@ -201,7 +218,7 @@ export async function assertInferenceCredentialActive(
   organizationId: string,
   credential: InferenceCredentialCheck,
 ): Promise<void> {
-  if (!isInferenceStrongRevocationEnabled()) return;
+  if (!hasInferenceRevocationBoundary()) return;
   const result = await gateRequest(organizationId, "/credential/check", credential, "check");
   if (result.allowed !== true) {
     throw new InferenceCredentialRevokedError(result.reason ?? "revoked");
@@ -213,13 +230,7 @@ async function commitMutation(
   path: string,
   body: Record<string, unknown>,
 ): Promise<void> {
-  // Speech subscriptions share these authoritative lifecycle fences even when
-  // general inference keeps its current admission settings.
-  if (
-    !isInferenceStrongRevocationEnabled() &&
-    getCloudAwareEnv().VOICE_SPEECH_RELAY_ENABLED !== "true"
-  )
-    return;
+  if (!hasInferenceRevocationBoundary()) return;
   const result = await gateRequest(organizationId, path, body, "mutation");
   if (result.committed !== true) {
     throw new InferenceCredentialRevocationUnavailableError(
@@ -239,6 +250,29 @@ export async function revokeInferenceApiKey(
   });
 }
 
+/**
+ * Runs every post-commit revocation step for every item and reports the items
+ * with a rejected step. Once the database has committed, nothing selects these
+ * rows again, so a failure on one item must not cost the others their attempt.
+ */
+export async function settlePostCommitRevocations<T>(
+  items: readonly T[],
+  steps: (item: T) => Promise<unknown>[],
+): Promise<{ item: T; reasons: unknown[] }[]> {
+  const failures: { item: T; reasons: unknown[] }[] = [];
+  for (let start = 0; start < items.length; start += POST_COMMIT_REVOCATION_BATCH_SIZE) {
+    const batch = items.slice(start, start + POST_COMMIT_REVOCATION_BATCH_SIZE);
+    const settled = await Promise.all(batch.map((item) => Promise.allSettled(steps(item))));
+    settled.forEach((outcomes, index) => {
+      const reasons = outcomes.flatMap((outcome) =>
+        outcome.status === "rejected" ? [outcome.reason] : [],
+      );
+      if (reasons.length > 0) failures.push({ item: batch[index] as T, reasons });
+    });
+  }
+  return failures;
+}
+
 /** Disable or re-enable every credential belonging to a Cloud user in one org. */
 export async function setInferenceSubjectActive(
   organizationId: string,
@@ -246,7 +280,11 @@ export async function setInferenceSubjectActive(
   active: boolean,
   reason: InferenceSubjectDisableReason,
 ): Promise<void> {
-  await commitMutation(organizationId, "/subject/set-active", { userId, active, reason });
+  await commitMutation(organizationId, "/subject/set-active", {
+    userId,
+    active,
+    reason,
+  });
 }
 
 /** Revoke Steward sessions issued at or before the supplied immutable iat. */
@@ -255,7 +293,10 @@ export async function revokeInferenceSessionsThrough(
   userId: string,
   issuedAt: number,
 ): Promise<void> {
-  await commitMutation(organizationId, "/session/revoke-through", { userId, issuedAt });
+  await commitMutation(organizationId, "/session/revoke-through", {
+    userId,
+    issuedAt,
+  });
 }
 
 /** Disable or re-enable one Steward-subject to Cloud-user identity binding. */

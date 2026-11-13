@@ -4,7 +4,7 @@
  * Lease heartbeats are isolated from the jobs row so they do not perturb the
  * payload snapshot used by retry and settlement compare-and-swap operations.
  */
-import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
+import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
 import { index, pgTable, timestamp, uuid } from "drizzle-orm/pg-core";
 import { jobs } from "./jobs";
 
@@ -17,8 +17,12 @@ export const jobExecutionLeases = pgTable(
     execution_generation: uuid("execution_generation").notNull(),
     owner_id: uuid("owner_id").notNull(),
     expires_at: timestamp("expires_at").notNull(),
-    heartbeat_at: timestamp("heartbeat_at").notNull().defaultNow(),
-    created_at: timestamp("created_at").notNull().defaultNow(),
+    heartbeat_at: timestamp("heartbeat_at")
+      .notNull()
+      .default(sql`(clock_timestamp() AT TIME ZONE 'UTC')`),
+    created_at: timestamp("created_at")
+      .notNull()
+      .default(sql`(clock_timestamp() AT TIME ZONE 'UTC')`),
   },
   (table) => ({
     expires_idx: index("job_execution_leases_expires_idx").on(table.expires_at),

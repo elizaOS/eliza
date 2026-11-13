@@ -127,7 +127,7 @@ function isProcessAlive(pid) {
 }
 
 function removePathRecursive(targetPath, label = "path cleanup") {
-  const result = spawnSync("node", [CLEANUP_HELPER_SCRIPT, targetPath], {
+  const result = spawnSync("bun", [CLEANUP_HELPER_SCRIPT, targetPath], {
     cwd: ROOT,
     encoding: "utf8",
     stdio: "pipe",
@@ -1849,7 +1849,7 @@ function runDesktopBuild() {
 }
 
 function printUsage() {
-  console.log(`Usage: node eliza/packages/app/scripts/desktop-build.ts <command> [options]
+  console.log(`Usage: bun eliza/packages/app/scripts/desktop-build.ts <command> [options]
 
 Commands:
   preflight Run desktop preflight checks (Bun + electrobun/view resolution)

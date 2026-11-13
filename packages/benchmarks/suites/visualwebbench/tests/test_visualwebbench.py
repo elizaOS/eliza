@@ -206,6 +206,31 @@ def test_jsonl_fixture_loads_all_seven_subtasks():
     assert loaded_types == set(VISUALWEBBENCH_TASK_TYPES)
 
 
+def test_jsonl_images_resolve_from_the_manifest_directory(tmp_path: Path, monkeypatch) -> None:
+    fixtures = tmp_path / "fixtures"
+    fixtures.mkdir()
+    image = fixtures / "sample.png"
+    image.write_bytes(b"recorded image bytes")
+    manifest = fixtures / "tasks.jsonl"
+    manifest.write_text(
+        json.dumps({
+            "id": "portable-image", "task_type": "webqa", "question": "What is shown?",
+            "answer": ["sample"], "image_path": image.name,
+        }) + "\n",
+        encoding="utf-8",
+    )
+    elsewhere = tmp_path / "another-working-directory"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+
+    ds = VisualWebBenchDataset(fixture_path=manifest)
+    asyncio.run(ds.load(use_huggingface=False, use_sample_tasks=True))
+
+    assert len(ds.tasks) == 1
+    assert Path(ds.tasks[0].image_path).read_bytes() == image.read_bytes()
+    assert Path(ds.tasks[0].image_path) == image
+
+
 def test_jsonl_fixture_edge_expansion_adds_ten_variants_per_task():
     ds = VisualWebBenchDataset()
     asyncio.run(

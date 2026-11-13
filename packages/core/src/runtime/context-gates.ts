@@ -72,7 +72,7 @@ export function filterByContextGate<T extends ContextGateCandidate>(
 	userRoles?: readonly RoleGateRole[],
 ): T[] {
 	return items.filter((item) => {
-		//: an explicit contextGate must NOT shadow the item's
+		// An explicit contextGate must NOT shadow the item's
 		// top-level roleGate. A contextGate adds context requirements; it does not
 		// waive the declared role requirement. Fall back to item.roleGate whenever the
 		// contextGate does not specify its own.
@@ -100,17 +100,16 @@ export interface ProviderContextGateCandidate extends ContextGateCandidate {
  * dropped anyOf/allOf/noneOf, so a world-style `contextGate: { anyOf: [...] }`
  * provider lost its gate on the v5 planner selection path. Providers declaring
  * no gate terms resolve declared `contexts` → catalog (PROVIDER_CONTEXT_MAP);
- * a provider with neither declares no routing at all, and stays UNGATED
- *: the pre- selection filter included that class on
- * every turn, and an injected `["general"]` here would silently drop
- * undeclared plugin providers (TWITTER_IDENTITY-shaped) from the narrow turns
+ * a provider with neither declares no routing at all, and stays UNGATED:
+ * the earlier selection filter included that class on every turn, and an
+ * injected `["general"]` here would silently drop undeclared plugin providers (TWITTER_IDENTITY-shaped) from the narrow turns
  * they rode before. Only an explicit declaration or catalog entry may gate a
  * provider out; the wrapped registration path still materializes the
  * `["general"]` lean onto `contexts` (plugin-lifecycle), which this resolver
  * honors as declared.
  *
- * preserved: a contextGate adds context requirements; it does
- * not waive the provider's top-level roleGate unless it declares its own.
+ * A contextGate adds context requirements; it does not waive the provider's
+ * top-level roleGate unless it declares its own.
  */
 export function resolveProviderContextGate(
 	provider: ProviderContextGateCandidate,

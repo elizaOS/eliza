@@ -1,0 +1,20 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/lib/services/inference-passthrough.ts",
+    "packages/cloud/shared/src/lib/services/__tests__/inference-passthrough-fragments.test.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-sse-segmentation.mjs",
+  "bounds": "Two six-symbol line grammars, transport chunks of one to three symbols, CR/LF and content/usage/DONE/error atoms. EOF and cancellation may occur at every prefix. Real byte and Unicode fragmentation are checked separately by the owning implementation tests.",
+  "cases": [
+    {
+      "name": "fragmentation",
+      "main": "sse_segmentation",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 20,
+      "samples": 1000
+    }
+  ]
+}

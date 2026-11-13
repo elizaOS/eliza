@@ -37,18 +37,39 @@ unclear or you cannot find the approved plan, ask maintainers before you start.
 
 ## Pull request requirements
 
+- **Model application state in Quint.** Every feature must include or update a
+  source-linked model of its state and transitions. Cover authorization,
+  concurrency, cancellation, retries, failure and recovery. State the safety
+  invariants, progress obligations, fairness assumptions and finite bounds.
+  Run `bun run test:quint` and checks that compare the model with the real
+  implementation locally before you merge a PR. Hosted CI also runs all four
+  partitions for pull requests and merge-queue candidates into `main`, and for
+  pushes or manual validation on `main`. Other branches skip hosted Quint.
+  Production effects require the successful exact-source main Full manifest
+  and the existing staging tree certificate. Keep the model current when
+  behavior changes. List uncovered
+  behavior explicitly. See [the state-correctness requirement](PRD.md#state-correctness)
+  and [the model workflow](packages/scripts/quint/README.md).
 - **Prove a useful improvement.** Show a failure before the fix and a successful
   result after it, a gain in accuracy or another relevant score, or a demonstrated
   improvement to an approved capability. State the test conditions and results.
 - **Make the code simpler.** Remove unnecessary code. Combine duplicate types and
-  functions. Use existing work. Add a type or code only when the approved task
-  needs it. Explain why existing code cannot meet that need.
+  functions and clean up as you go. Use existing work. Add a script only when it
+  does something no existing script does. Add a type or code only when the
+  approved task needs it. Explain why existing code cannot meet that need.
+- **Change the existing code.** Do not patch over legacy behavior or add a new
+  version beside the old one. Do not add a flag to introduce a change: change
+  the underlying code to be the new thing. Add a conditional path only for a
+  strong reason, and state that reason in the change. Environment variables and
+  flags are only for values that are really configurable: secrets, machine
+  paths, and settings a person changes between runs.
 - **Explain the choice.** Show what you researched, the alternatives you examined,
   and why the selected implementation is the best fit. Keep the explanation
   proportional to the change.
 - **Test the real behavior.** Run the relevant end-to-end flow and provide the
   commands, setup, results, and evidence for the reviewed commit. Use existing
-  tests first. Avoid new unit tests, tests that only check mocks, and tests that
+  tests first. Add a test only when it tests a new feature or new functionality.
+  Avoid new unit tests, tests that only check mocks, and tests that
   repeat the implementation. A test count or a passing mock is not proof that
   the product works. Run the required package checks and repository checks.
   For documentation-only changes, check the text and links; do not add artificial
@@ -139,8 +160,9 @@ guide also apply.
    ```
 
    You can also use the GitHub website, a browser agent, or computer use.
-2. **Stay in approved scope.** The PRD and MVP plan are binding. This
-   repository does not contain a PRD or MVP plan file. Before you start, a
+2. **Stay in approved scope.** The PRD and MVP plan are binding. [PRD.md](PRD.md)
+   records the application state-correctness requirement. It does not define
+   the full product scope or MVP plan. Before you start, a
    maintainer must confirm in the linked issue that the work is in approved
    scope. Do not invent scope.
 3. **Accepted work:** bugs that you reproduce first, end-to-end or live tests

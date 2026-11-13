@@ -5,11 +5,13 @@
  * single source of truth for reminder intensity + escalation rules.
  */
 
-import type {
-  LifeOpsDefinitionRecord,
-  LifeOpsDomain,
-  LifeOpsReminderStep,
-  SetLifeOpsReminderPreferenceRequest,
+import {
+  LIFEOPS_REMINDER_CHANNELS,
+  type LifeOpsDefinitionRecord,
+  type LifeOpsDomain,
+  type LifeOpsReminderChannel,
+  type LifeOpsReminderStep,
+  type SetLifeOpsReminderPreferenceRequest,
 } from "@elizaos/contracts";
 import type { ActionResult, IAgentRuntime, Memory } from "@elizaos/core";
 import { toWellFormedUnicode } from "@elizaos/core";
@@ -22,17 +24,17 @@ import { LifeOpsService } from "../../lifeops/service.js";
 import { extractReminderIntensityWithLlm } from "./extract-task-plan.js";
 
 /**
- * Caller-supplied resolver. Accepted as a parameter so this module stays
+ * Caller-supplied write resolver. Accepted as a parameter so this module stays
  * free of inbound imports from `actions/life.ts` (which owns the one
  * canonical impl) and avoids a circular dep between `actions/life.ts` and
- * `actions/lib/`.
+ * `actions/lib/`. `match` is set only for an id, exact-title or whole-title
+ * match; looser matches come back as `candidates` to ask about.
  */
 export type DefinitionResolver = (
   service: LifeOpsService,
   target: string | undefined,
-  intent: string,
   domain?: LifeOpsDomain,
-) => Promise<LifeOpsDefinitionRecord | null>;
+) => Promise<{ match: LifeOpsDefinitionRecord | null; candidates: string[] }>;
 
 export type OwnerPolicyDetails = Record<string, unknown> | undefined;
 
@@ -128,12 +130,11 @@ export async function applyOwnerPolicySetReminder(
 
   const service = new LifeOpsService(args.runtime);
   const domain = detailString(details, "domain") as LifeOpsDomain | undefined;
-  const target = await args.resolveDefinition(
-    service,
-    args.target,
-    intent,
-    domain,
-  );
+  const resolved = await args.resolveDefinition(service, args.target, domain);
+  if (args.target?.trim() && !resolved.match) {
+    return unresolvedTargetReply(args.target, resolved.candidates);
+  }
+  const target = resolved.match;
   const request: SetLifeOpsReminderPreferenceRequest = {
     intensity,
     definitionId: target?.definition.id ?? null,
@@ -165,90 +166,141 @@ export async function applyOwnerPolicySetReminder(
   };
 }
 
+function unresolvedTargetReply(
+  target: string,
+  candidates: string[],
+): ActionResult {
+  const text =
+    candidates.length > 0
+      ? `Which item do you mean by "${target.trim()}"?\n${candidates.map((label) => `  - ${label}`).join("\n")}`
+      : `I couldn't find an item called "${target.trim()}".`;
+  return {
+    success: false,
+    text,
+    data: { target, candidates },
+  };
+}
+
+function isReminderChannel(value: unknown): value is LifeOpsReminderChannel {
+  return (
+    typeof value === "string" &&
+    (LIFEOPS_REMINDER_CHANNELS as readonly string[]).includes(value)
+  );
+}
+
+function nonNegativeMinutes(value: number | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+}
+
+/**
+ * Steps the owner asked for: explicit `details.steps`, or an in-app nudge at
+ * +0 then a call at +callAfterMinutes (timeoutMinutes when only that is
+ * given). `null` means nothing usable was supplied.
+ */
+function requestedEscalationSteps(
+  details: Record<string, unknown> | undefined,
+  timeoutMinutes: number | null,
+  callAfterMinutes: number | null,
+): { steps: LifeOpsReminderStep[] } | { invalidChannels: string[] } | null {
+  const rawSteps =
+    detailArray(details, "steps") ?? detailArray(details, "escalationSteps");
+  if (rawSteps && rawSteps.length > 0) {
+    const steps: LifeOpsReminderStep[] = [];
+    const invalidChannels: string[] = [];
+    for (const raw of rawSteps) {
+      const step = detailRecord(raw);
+      if (!step) continue;
+      if (!isReminderChannel(step.channel)) {
+        invalidChannels.push(String(step.channel ?? "missing"));
+        continue;
+      }
+      steps.push({
+        channel: step.channel,
+        offsetMinutes:
+          typeof step.offsetMinutes === "number" &&
+          Number.isFinite(step.offsetMinutes) &&
+          step.offsetMinutes >= 0
+            ? step.offsetMinutes
+            : 0,
+        label: typeof step.label === "string" ? step.label : step.channel,
+      });
+    }
+    if (invalidChannels.length > 0) return { invalidChannels };
+    return steps.length > 0 ? { steps } : null;
+  }
+  const voiceAfter = callAfterMinutes ?? timeoutMinutes;
+  if (voiceAfter === null) return null;
+  return {
+    steps: [
+      { channel: "in_app", offsetMinutes: 0, label: "In-app reminder" },
+      { channel: "voice", offsetMinutes: voiceAfter, label: "Phone call" },
+    ],
+  };
+}
+
+/** Requested steps replace existing steps on the same channel; the rest of
+ * the existing plan (an sms step, say) stays. */
+function mergeReminderSteps(
+  existing: LifeOpsReminderStep[],
+  requested: LifeOpsReminderStep[],
+): LifeOpsReminderStep[] {
+  const requestedChannels = new Set(requested.map((step) => step.channel));
+  return [
+    ...existing.filter((step) => !requestedChannels.has(step.channel)),
+    ...requested,
+  ].sort((a, b) => a.offsetMinutes - b.offsetMinutes);
+}
+
 export async function applyOwnerPolicyConfigureEscalation(
   args: OwnerPolicyConfigureEscalationInput,
 ): Promise<ActionResult> {
   const details = detailRecord(args.details);
-  const service = new LifeOpsService(args.runtime);
   const domain = detailString(details, "domain") as LifeOpsDomain | undefined;
-  const intent =
-    typeof args.message.content.text === "string"
-      ? args.message.content.text
-      : "";
 
-  if (!args.target) {
-    const timeoutMinutes =
-      typeof args.timeoutMinutes === "number" ? args.timeoutMinutes : null;
-    const callAfterMinutes =
-      typeof args.callAfterMinutes === "number" ? args.callAfterMinutes : null;
-    if (timeoutMinutes === null && callAfterMinutes === null) {
-      return {
-        success: true,
-        text: "No target supplied and no escalation timing provided; global escalation defaults are unchanged.",
-        data: {
-          timeoutMinutes: null,
-          callAfterMinutes: null,
-        },
-      };
-    }
-    const factStore = resolveOwnerFactStore(args.runtime);
-    const facts = await factStore.upsertEscalationRule(
-      {
-        rule: {
-          definitionId: null,
-          timeoutMinutes,
-          callAfterMinutes,
-        },
-        note: intent,
-      },
-      policyProvenance(intent),
-    );
-    return {
-      success: true,
-      text: `Global escalation policy updated (timeout=${timeoutMinutes ?? "unset"}m, voice-after=${callAfterMinutes ?? "unset"}m).`,
-      data: {
-        facts,
-        timeoutMinutes,
-        callAfterMinutes,
-      },
-    };
-  }
-  const target = await args.resolveDefinition(
-    service,
-    args.target,
-    args.target,
-    domain,
-  );
-  if (!target) {
+  // No reminder path reads OwnerFacts.escalationRules yet, so a global rule
+  // would be stored and reported as applied while nothing escalates on it.
+  if (!args.target?.trim()) {
     return {
       success: false,
-      text: "I could not find that item to configure its escalation.",
+      text: "Global escalation rules are not supported yet. Name a reminder and I'll set its escalation.",
+      data: { reason: "global_escalation_unsupported" },
     };
   }
+  const service = new LifeOpsService(args.runtime);
+  const resolved = await args.resolveDefinition(service, args.target, domain);
+  const target = resolved.match;
+  if (!target) {
+    return unresolvedTargetReply(args.target, resolved.candidates);
+  }
+  const requested = requestedEscalationSteps(
+    details,
+    nonNegativeMinutes(args.timeoutMinutes),
+    nonNegativeMinutes(args.callAfterMinutes),
+  );
+  if (requested === null) {
+    return {
+      success: false,
+      text: `How should "${target.definition.title}" escalate? For example: call me if I don't respond in 30 minutes.`,
+      data: { reason: "escalation_timing_missing" },
+    };
+  }
+  if ("invalidChannels" in requested) {
+    return {
+      success: false,
+      text: `I can't send reminders by ${requested.invalidChannels.join(", ")}. Use one of: ${LIFEOPS_REMINDER_CHANNELS.join(", ")}.`,
+      data: { invalidChannels: requested.invalidChannels },
+    };
+  }
+  const steps =
+    details?.replace === true
+      ? requested.steps
+      : mergeReminderSteps(target.reminderPlan?.steps ?? [], requested.steps);
   const ownership =
     target.definition.domain === "agent_ops"
       ? { domain: "agent_ops" as const, subjectType: "agent" as const }
       : { domain: "user_lifeops" as const, subjectType: "owner" as const };
-  const rawSteps =
-    detailArray(details, "steps") ?? detailArray(details, "escalationSteps");
-  const steps: LifeOpsReminderStep[] = rawSteps
-    ? rawSteps
-        .filter(
-          (s): s is Record<string, unknown> =>
-            typeof s === "object" && s !== null,
-        )
-        .map((s) => ({
-          channel: String(
-            s.channel ?? "in_app",
-          ) as LifeOpsReminderStep["channel"],
-          offsetMinutes:
-            typeof s.offsetMinutes === "number" ? s.offsetMinutes : 0,
-          label:
-            typeof s.label === "string"
-              ? s.label
-              : String(s.channel ?? "reminder"),
-        }))
-    : [{ channel: "in_app", offsetMinutes: 0, label: "In-app reminder" }];
   const updated = await service.updateDefinition(target.definition.id, {
     ownership,
     reminderPlan: { steps },

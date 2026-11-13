@@ -15,6 +15,7 @@ import {
   materializeDevCloudConfigAuthorityView,
 } from "../config/dev-cloud-env-authority.ts";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
+import { getActiveSandboxManager } from "../services/sandbox-manager.ts";
 import { handleApprovalRoute } from "./approval-routes.ts";
 import { handleChatRoutes } from "./chat-routes.ts";
 import { handleConversationRoutes } from "./conversation-routes.ts";
@@ -272,7 +273,7 @@ export async function handleSandboxRouteGroup({
     res,
     pathname,
     method,
-    { sandboxManager: state.sandboxManager },
+    { sandboxManager: state.sandboxManager ?? getActiveSandboxManager() },
   );
 }
 

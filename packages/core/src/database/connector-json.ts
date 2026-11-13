@@ -174,7 +174,7 @@ function walkPrimitive(
 	inArray: boolean,
 	state: WalkState,
 	options: WalkOptions,
-): { handled: false } | { handled: true; value: unknown; skip?: boolean } {
+): { handled: false } | { handled: true; value: unknown } {
 	if (value === null) {
 		return { handled: true, value: charge(state, 1, options) ?? null };
 	}
@@ -232,7 +232,7 @@ function walk(
 	options: WalkOptions,
 ): unknown | BoundedResult {
 	const primitive = walkPrimitive(value, inArray, state, options);
-	if (primitive.handled) return primitive.skip ? undefined : primitive.value;
+	if (primitive.handled) return primitive.value;
 
 	const objectValue = value as object;
 	const dateIso = genuineDateIso(objectValue);

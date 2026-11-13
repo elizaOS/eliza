@@ -89,7 +89,6 @@ must use the journal-driven migration runner; loading SQL directly in a test fix
 alone does not establish deployment discovery. The scheduling ledger regression
 exercises the same canonical migration loader used by that runner.
 
-
 Renewal and missed-event recovery retain the original checkout account binding after a
 paid organization upgrade. The current price/product come from the applied upgrade's
 immutable quote and complete subsequent source revision history, not rotated environment
@@ -386,3 +385,55 @@ configuration explicitly retains the existing audience for installed clients.
 Other deployments must configure their clients to verify their chosen audience
 and issuer. Change these together during a client migration. This token presents
 plan state; it does not grant API access or replace per-request authorization.
+
+Direct EVM sweeps retain one signed transaction per chain and sender until its
+successful receipt is observed. Other sweeps from that wallet wait; pending nonce
+ambiguity or legacy identity conflicts require reconciliation without replacing
+signed bytes. Different senders proceed independently.
+Legacy EVM delivery rows require a matching receipt before releasing their nonce;
+recovery of those rows and terminal attempts performs provider reads without
+issuing another transfer, including after a worker loses its lease. Account
+deletion retains unconfirmed signed sweeps until their original receipt is
+recorded. Legacy identity recovery pages through the complete candidate history.
+Matching original EVM receipts remain recoverable after receive-wallet rotation.
+Resubmission still requires the configured wallet to match the original signer.
+
+App teardown uses one immutable `app_delete` job and a permanent app fence.
+Database and container child jobs retain original resource identities and must
+record confirmed, quiescent outcomes before final cascade. Unknown legacy targets
+remain pending. The job stores no database URI; placement stays in `app_databases`.
+Migration 0566 normalizes future naive job-clock defaults to UTC without rewriting
+historical timestamps whose original timezone is unknown.
+Version-2 roots retain every frontend manifest in immutable job data during the
+metadata cascade. Small progress receipts acknowledge exact object deletes; only
+confirmed cleanup completes the root or permits its organization to disappear.
+Upload rows retain the full planned key set before the first PUT. A matching
+writer must acknowledge every issued PUT and stop before cleanup; unknown PUT
+outcomes and legacy ambiguous uploads require explicit recovery. Time passing
+is not writer quiescence. The generation belongs to one original writer; recovery
+must not share it with a writer that can still issue PUTs. Recovery requires the original storage binding and
+immutable keys. Legacy
+version-1 roots retain their prior best-effort semantics and possible orphan debt.
+Apply the migration before updating all upload/deletion writers; mixed old writers
+do not provide the new cleanup protocol.
+
+Vertex job refresh requires migration 0562. It orders complete provider observations
+by exact nanosecond update time and publishes successful model ownership atomically.
+Payload generations are immutable; incomplete stored payloads fail explicitly.
+The local terminal marker and optional provider end time remain separate. Existing
+provider creation and assignment authorization remain separate protocols.
+Coordinate all deployed Vertex writers before relying on the new observation
+authority; the migration does not fence an old deployed writer.
+The exact provider-assigned job name binds refreshes. The configured project stays
+request provenance; project ID/number spelling is not an alias proof. Associated
+resources come from that job's authenticated response and terminal names stay exact.
+
+Stripe legacy queue adoption requires migration 0564 and cleanup index 0565. Durable cursors only select
+bounded work; matching SQL payload or terminal receipts authorize Redis removal.
+A retained handoff flag and DB delete guard protect those exact rows from both
+current and old webhook cleanup SQL;
+missing historical receipts require reconciliation and are never replayed blindly.
+Unknown receipts and malformed entries remain intact. KV adoption retains every
+raw entry: this owner has no durable old-writer fence to authorize deletion. KV
+cleanup remains a separate existing-owner obligation. Each list has its own work
+budget, while reading the complete legacy KV array can still exceed that budget.

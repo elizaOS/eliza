@@ -1,0 +1,20 @@
+{
+  "sources": [
+    "packages/ui/src/state/durable-draft-controller.ts",
+    "packages/ui/src/state/durable-draft.ts"
+  ],
+  "conformance": "packages/ui/quint/check-draft-controller.mjs",
+  "bounds": "One send, at most one binding reopen, one newer edit, and one restart. All mark/clear fault outcomes and explicit review choices are enumerated. Public method calls settle before the next action; DraftMarkRace checks the pending-mark boundary.",
+  "cases": [
+    {
+      "name": "send-and-recovery",
+      "main": "DraftSendRecovery",
+      "init": "init",
+      "step": "step",
+      "invariants": ["invariant"],
+      "temporal": [],
+      "maxSteps": 8,
+      "samples": 1000
+    }
+  ]
+}

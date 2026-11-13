@@ -4,6 +4,11 @@
  */
 
 import { logger } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/protocol";
+import {
+  createRefreshHttpError,
+  OAUTH_REFRESH_HTTP_ERROR,
+} from "../../refresh-http-error.ts";
 import { generatePKCE } from "../../../contracts/index.ts";
 
 function isNodeLikeRuntime(): boolean {
@@ -299,20 +304,24 @@ async function refreshAccessToken(
         refresh_token: refreshToken,
         client_id: CLIENT_ID,
       }),
+      signal: AbortSignal.timeout(5_000),
     });
     if (!response.ok) {
-      await releaseRejectedResponse(response);
+      const error = await createRefreshHttpError("openai-codex", response);
       logger.error(
         { mode: "refresh", status: response.status },
         "[openai-codex] Token request returned a non-success status",
       );
-      return failedTokenResponse("provider returned a non-success status");
+      throw error;
     }
     return readTokenResponse(response, {
       mode: "refresh",
       currentRefreshToken: refreshToken,
     });
   } catch (error) {
+    if (error instanceof ElizaError && error.code === OAUTH_REFRESH_HTTP_ERROR) {
+      throw error;
+    }
     // error-policy:J1 provider boundary translation — refresh transport and
     // parse failures become the explicit failed token outcome.
     logger.error(`[openai-codex] Token refresh error: ${String(error)}`);

@@ -1,4 +1,5 @@
 import { clearPersonalGoogleContextConsent } from "../../../db/repositories/personal-google-context-consent";
+import { getCloudDeployment } from "../../deployment/cloud-deployment";
 import { usersService } from "../users";
 /**
  * OAuth Service
@@ -214,7 +215,7 @@ class OAuthService {
     const role = normalizeOAuthConnectionRole(connectionRole);
     const twitterRole = role === "AGENT" ? "agent" : "owner";
 
-    const baseUrl = getCloudAwareEnv().NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
+    const baseUrl = getCloudAwareEnv().NEXT_PUBLIC_APP_URL || getCloudDeployment().appOrigin;
     const result = await twitterAutomationService.generateAuthLink(
       `${baseUrl}/api/v1/twitter/callback`,
       twitterRole,

@@ -1,0 +1,210 @@
+[
+	{
+		"id": "core.Serialise",
+		"model": "packages/core/quint/Serialise.qnt",
+		"sources": ["packages/core/src/utils/task-scheduling.ts"],
+		"invariants": ["TypeOK", "MutualExclusion", "CallOrder"],
+		"status": "modeled",
+		"limitations": [
+			"Finite parameter domains are preserved in the case manifest.",
+			"All declared cases pass exhaustive safety, deadlock and listed temporal checks. Implementation regression tests remain distinct from a generated-trace conformance adapter.",
+			"A generated-trace implementation conformance adapter is not present."
+		],
+		"implementationTests": []
+	},
+	{
+		"id": "core.Semaphore",
+		"model": "packages/core/quint/Semaphore.qnt",
+		"sources": ["packages/core/src/utils/task-scheduling.ts"],
+		"invariants": [
+			"TypeOK",
+			"PermitConservation",
+			"NoIdlePermitWithWaiters",
+			"WaitersQueued",
+			"FIFOGrants",
+			"CancelledNeverHolds"
+		],
+		"status": "modeled",
+		"limitations": [
+			"Finite parameter domains are preserved in the case manifest.",
+			"The conformance hook runs nine named real Semaphore tests. The earlier abort-listener race is checked with one and two permits. It does not replay every generated schedule."
+		],
+		"implementationTests": ["packages/core/test/semaphore.test.ts"]
+	},
+	{
+		"id": "core.SingleFlightMemo",
+		"model": "packages/core/quint/SingleFlightMemo.qnt",
+		"sources": [
+			"packages/core/src/runtime/single-flight-memo.ts",
+			"packages/core/src/runtime/data-mutations.ts",
+			"packages/core/src/runtime.ts"
+		],
+		"invariants": [
+			"TypeOK",
+			"NoStaleAfterInvalidate",
+			"RejectedNotCached",
+			"ExpiredReadRefreshes",
+			"FreshReadDoesNotRefresh"
+		],
+		"status": "modeled",
+		"limitations": [
+			"Finite parameter domains are preserved in the case manifest.",
+			"The conformance hook checks coalescing, exact elapsed expiry after a wall rollback and local write invalidation through real room reads. Rejection schedules and message-window metadata are not replayed by this test."
+		],
+		"implementationTests": ["packages/core/test/read-memo-runtime.test.ts"]
+	},
+	{
+		"id": "core.ProviderExecution",
+		"model": "packages/core/quint/ProviderExecution.qnt",
+		"sources": [
+			"packages/core/src/runtime/provider-execution.ts",
+			"packages/core/src/runtime/state-composition.ts"
+		],
+		"invariants": [
+			"TypeOK",
+			"WaiterCount",
+			"AbortOnlyWhenUnwanted",
+			"UnwantedWorkAborted",
+			"NoJoinAborting",
+			"StopReachesAll",
+			"MapActive",
+			"ExecutionPhaseConsistent"
+		],
+		"status": "modeled",
+		"limitations": [
+			"Finite parameter domains are preserved in the case manifest.",
+			"The conformance hook runs 27 named state-composition tests, including shared and one-off shutdown. The model covers one provider key and bounded callers. It does not replay every generated schedule."
+		],
+		"implementationTests": [
+			"packages/core/test/compose-state-provider-execution.test.ts"
+		]
+	},
+	{
+		"id": "core.RoomHandlerQueue",
+		"model": "packages/core/quint/RoomHandlerQueue.qnt",
+		"sources": ["packages/core/src/runtime/room-handler-queue.ts"],
+		"invariants": [
+			"TypeOK",
+			"MutualExclusion",
+			"WaitersQueued",
+			"OrderedAcquisition",
+			"Bounded",
+			"NoLeakedOwnership",
+			"WritesUnderLease"
+		],
+		"status": "modeled",
+		"limitations": [
+			"Finite parameter domains are preserved in the case manifest.",
+			"The conformance hook runs five named real queue ownership tests. Saturation, close, cancellation and write-tail schedules remain formal here. PostDeliveryTasks separately checks real write-tail ownership."
+		],
+		"implementationTests": [
+			"packages/core/test/room-handler-queue-model.test.ts"
+		]
+	},
+	{
+		"id": "core.RuntimeLifecycle",
+		"model": "packages/core/quint/RuntimeLifecycle.qnt",
+		"sources": [
+			"packages/core/src/runtime.ts",
+			"packages/core/src/runtime/service-lifecycle.ts",
+			"packages/core/src/runtime/room-handler-queue.ts",
+			"packages/core/src/runtime/turn-controller.ts"
+		],
+		"invariants": [
+			"TypeOK",
+			"PrepareStopOnce",
+			"SingleAttempt",
+			"TurnsAbortedAfterStop",
+			"NoStartOnFailedInit",
+			"NoLiveAfterStopped",
+			"StoppedIsQuiet",
+			"StrictMeansQuiescent"
+		],
+		"status": "modeled",
+		"limitations": [
+			"Finite parameter domains are preserved in the case manifest.",
+			"The conformance hook runs three real runtime tests covering initialization failure, cancellation of queued work and post-stop visibility. It does not replay the formal stop schedules."
+		],
+		"implementationTests": [
+			"packages/core/test/runtime-lifecycle-model.test.ts"
+		]
+	},
+	{
+		"id": "core.ServiceLifecycle",
+		"model": "packages/core/quint/ServiceLifecycle.qnt",
+		"sources": [
+			"packages/core/src/runtime/service-lifecycle.ts",
+			"packages/core/src/runtime.ts",
+			"packages/core/src/plugin-lifecycle.ts"
+		],
+		"invariants": [
+			"TypeOK",
+			"OneLivePerClass",
+			"StopAtMostOnce",
+			"NoLatePublish",
+			"NoOrphan",
+			"StatusConsistent",
+			"NoStatusWithoutClasses",
+			"StoppedNotReachable"
+		],
+		"status": "modeled",
+		"limitations": [
+			"Finite parameter domains are preserved in the case manifest.",
+			"The conformance hook runs seven real service lifecycle tests, including sibling publication and late starts under concurrent stop or unload. It does not replay every formal schedule."
+		],
+		"implementationTests": [
+			"packages/core/test/service-lifecycle-model.test.ts"
+		]
+	},
+	{
+		"id": "core.PluginLifecycle",
+		"model": "packages/core/quint/PluginLifecycle.qnt",
+		"sources": [
+			"packages/core/src/plugin-lifecycle.ts",
+			"packages/core/src/runtime/service-lifecycle.ts",
+			"packages/core/src/runtime.ts"
+		],
+		"invariants": [
+			"TypeOK",
+			"TeardownExclusive",
+			"StopAtMostOnce",
+			"NoOrphanInstance",
+			"StopStopsAll",
+			"ConnectorOwnedByLast",
+			"NoOrphanConnector",
+			"RegisterHonest"
+		],
+		"status": "modeled",
+		"limitations": [
+			"Finite parameter domains are preserved in the case manifest.",
+			"The conformance hook runs eight real plugin lifecycle tests covering unload, connector ownership, stop, and registration failure. The formal model retains separate configuration bounds."
+		],
+		"implementationTests": ["packages/core/test/plugin-lifecycle-model.test.ts"]
+	},
+	{
+		"id": "LazyPiiDrain",
+		"model": "packages/core/quint/LazyPiiDrain.qnt",
+		"sources": [
+			"packages/core/src/services/pii-scrub.ts",
+			"packages/core/src/utils/batch-queue.ts",
+			"packages/core/src/utils/task-scheduling.ts"
+		],
+		"invariants": [
+			"TypeOK",
+			"WorkConserved",
+			"StartupOwned",
+			"StoppedReleased",
+			"StopReturnOwned"
+		],
+		"status": "partial",
+		"limitations": [
+			"Three request handlers, two stop callers, at most three accepted normal-priority items, one drain owner, one repeat task and at most one storage startup failure. Marker checks, startup settlement and queue retirement are separate actions.",
+			"A failed startup clears both cached owners. Only a later accepted request triggers another start; no autonomous retry is assumed or claimed. RetryRestoresDrain applies only after that later request actually starts the retry.",
+			"Fairness assumes enabled marker checks and storage-start attempts settle, a second storage attempt succeeds after the one allowed failure, the existing scheduler serves ready drain work, and disposal completes. Without that fairness, RetryWithoutFairness must produce a loop counterexample.",
+			"Stop retires admission before awaiting startup and repeated stop joins the existing cleanup. Successful disposal is assumed for StopSettles; failed cleanup, partial high-priority flush and failed durable task-row deletion are outside this projection. Already-accepted normal-priority work may be explicitly discarded during fast shutdown. Processing represents a terminal queue outcome, not proof of correct PII redaction, model completion, high-priority flush behavior or unbounded queue progress. The real PGlite hook checks task startup failure/retry and stop ownership; it does not enumerate every model schedule."
+		],
+		"implementationTests": [
+			"packages/core/test/pii-scrub.lazy-drain.pglite.test.ts"
+		]
+	}
+]

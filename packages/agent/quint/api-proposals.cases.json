@@ -1,0 +1,19 @@
+{
+  "sources": ["packages/agent/src/api/runtime-management-proposal-store.ts"],
+  "bounds": {
+    "domain": "One proposal and two consumers.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "api_proposals",
+      "main": "api_proposals",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

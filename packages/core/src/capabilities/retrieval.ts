@@ -5,8 +5,7 @@
  * relevance-ranked subset plus prompt-flooding metrics so callers can prove
  * the model context carries only the relevant slice of the catalog. An empty
  * or non-matching intent yields a designed-empty result, never the full
- * catalog. Consumed by the planner-side capability router and by the
- * evaluation harness in `./evaluation`.
+ * catalog.
  */
 
 import { ElizaError } from "../errors";
@@ -129,7 +128,7 @@ function validateCatalog(catalog: readonly CapabilityCatalogEntry[]): void {
 
 function scoreEntry(
 	entry: CapabilityCatalogEntry,
-	queryTokens: readonly string[],
+	queryTokens: ReadonlySet<string>,
 ): { score: number; matchedTokens: string[] } {
 	const keywordSet = new Set(
 		entry.keywords.map((keyword) => keyword.toLowerCase()),
@@ -147,7 +146,7 @@ function scoreEntry(
 
 	let score = 0;
 	const matchedTokens: string[] = [];
-	for (const token of new Set(queryTokens)) {
+	for (const token of queryTokens) {
 		let tokenScore = 0;
 		if (keywordSet.has(token)) tokenScore += KEYWORD_WEIGHT;
 		if (identityTokens.has(token)) tokenScore += IDENTITY_WEIGHT;
@@ -200,9 +199,10 @@ export function retrieveCapabilities(
 		);
 	}
 	const queryTokens = tokenizeCapabilityIntent(input.intentText);
+	const uniqueQueryTokens = new Set(queryTokens);
 
 	const scored = input.catalog
-		.map((entry) => ({ entry, ...scoreEntry(entry, queryTokens) }))
+		.map((entry) => ({ entry, ...scoreEntry(entry, uniqueQueryTokens) }))
 		.filter((candidate) => candidate.score > 0)
 		.sort((a, b) => {
 			if (b.score !== a.score) return b.score - a.score;

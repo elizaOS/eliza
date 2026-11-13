@@ -1,0 +1,24 @@
+{
+  "sources": [
+    "packages/agent/src/api/hono-mount.ts",
+    "packages/agent/src/api/hono-adapter.ts",
+    "packages/agent/src/api/hono-adapter.test.ts"
+  ],
+  "conformance": "packages/agent/quint/check-http-body.ts",
+  "bounds": {
+    "domain": "One request, three abstract accumulated-body increments, retained cap of two, responses 200/413 and a peer-abort flag.",
+    "scope": "Finite safety projection; no progress/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "api_http_body",
+      "main": "api_http_body",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

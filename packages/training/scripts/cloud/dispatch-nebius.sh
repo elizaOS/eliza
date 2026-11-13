@@ -195,7 +195,7 @@ case "$TASK" in
     log "running build on $SSH_TARGET..."
     ssh -o StrictHostKeyChecking=no "$SSH_TARGET" "cd /opt/training && \
       ELIZA_MTP_SKIP_SERVER_STRUCTURED_OUTPUT=1 \
-      node packages/app/scripts/build-llama-cpp-mtp.ts --target linux-x64-cuda && \
+      bun packages/app/scripts/build-llama-cpp-mtp.ts --target linux-x64-cuda && \
       printf '{\"schemaVersion\":1,\"runner\":\"dispatch-nebius build\",\"status\":\"pass\",\"gpu\":\"$GPU\"}\n' > /opt/training/cuda-report.json"
     ;;
   kernel-verify)
@@ -212,7 +212,7 @@ JSON"
     log "running bench on $SSH_TARGET..."
     ssh -o StrictHostKeyChecking=no "$SSH_TARGET" "cd /opt/training && \
       ELIZA1_BENCH_TIER=$TIER ELIZA1_BENCH_REGISTRY_KEY=$REG_KEY \
-      node packages/inference/verify/eliza1_gates_collect.mjs --backend cuda --bench --out /opt/training/bench.json || \
+      bun packages/inference/verify/eliza1_gates_collect.mjs --backend cuda --bench --out /opt/training/bench.json || \
       printf '{\"schemaVersion\":1,\"backend\":\"cuda\",\"gpu\":\"$GPU\",\"tier\":\"$TIER\",\"status\":\"toolchain-only\"}\n' > /opt/training/bench.json"
     ;;
 esac

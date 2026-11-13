@@ -664,6 +664,22 @@ export class BrowserFiles extends WebPlugin {
     expectedRevision: string;
     destinationId: string;
   }) {
+    await this.moveRow(input);
+    return { status: "moved", message: "Moved." };
+  }
+  /** Storage volume placement commits the destination and name under the original revision. */
+  async place(input: {
+    id: string;
+    expectedRevision: string;
+    destinationId: string;
+    name: string;
+  }) {
+    await this.moveRow(input, validName(input.name));
+  }
+  private async moveRow(
+    input: { id: string; expectedRevision: string; destinationId: string },
+    name?: string,
+  ) {
     await this.mutate(input, (row, all) => {
       const target =
         input.destinationId === "root"
@@ -677,9 +693,8 @@ export class BrowserFiles extends WebPlugin {
         const parentId: string = ancestor.parentId;
         ancestor = all.find((e) => e.id === parentId);
       }
-      return { ...row, parentId: target.id };
+      return { ...row, parentId: target.id, name: name ?? row.name };
     });
-    return { status: "moved", message: "Moved." };
   }
   private batchRows(
     all: Entry[],

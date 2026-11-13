@@ -1,0 +1,58 @@
+{
+  "sources": [
+    "packages/voice/src/voice-assistant-session.ts",
+    "packages/voice/src/voice-assistant-session.test.ts",
+    "packages/voice/vitest.config.ts",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/scripts/lib/test-output.ts"
+  ],
+  "conformance": "packages/voice/quint/check-voice-assistant-speech-pump.mjs",
+  "bounds": {
+    "domain": "One half-duplex voice turn, up to three ordered sentence positions, two matching direct stream prefixes, and one confirmed reply. One playback can fail after confirmation. An already handed successor can settle before the failure continuation or drain after cancellation.",
+    "assumptions": "The host plays in order and settles each call at its playback end. A call may complete without a separate start notification. The capture close has already succeeded. A requested reopen succeeds under the same owner, without Mute, Stop or replacement. The model measures the contiguous successfully played prefix, and treats late settlement after abort as cleanup.",
+    "limitations": "The maintained tests drive the actual controller with a controlled clock, capture, reply transport and speaker. This case excludes arbitrary streams, rewrites of already handed sentences, playback failure before confirmation, owner-input pause, endpointing and binding replacement. It does not qualify a provider, microphone, playback device or latency."
+  },
+  "cases": [
+    {
+      "name": "pipelined-plan-receipt-and-drain",
+      "main": "VoiceAssistantSpeechPump",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "InOrderAndAtMostTwoCalls",
+        "HeardIsCompletedPrefix",
+        "TruthfulTerminalReceipt"
+      ],
+      "temporal": [
+        "TerminalCannotAdoptLateCallbacks",
+        "UnderFairPumpAndHostReceipts",
+        "ConfirmedWorkSettles"
+      ],
+      "temporalChecks": [
+        {
+          "property": "TerminalCannotAdoptLateCallbacks",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. A terminal result cannot hand over another sentence or change its heard receipt."
+          ]
+        },
+        {
+          "property": "UnderFairPumpAndHostReceipts",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of eligible pump handoff, ordered playback completion, canceled playback settlement, terminal publication and capture reopen. An observed failure can publish without the queued successor starting. Cleanup still waits for the host's settlement."
+          ]
+        },
+        {
+          "property": "ConfirmedWorkSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. A playback, pump continuation or canceled cleanup can stall."
+          ]
+        }
+      ],
+      "maxSteps": 24,
+      "samples": 1000
+    }
+  ]
+}

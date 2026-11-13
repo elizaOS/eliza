@@ -791,7 +791,7 @@ test("a hold for a question stops re-checks and sends a waiting command only aft
   const shown = client.restoreGuidance();
   await tick();
   assert.equal(calls.length, 1, "the command waits for release");
-  client.release();
+  assert.equal(client.release(), true, "a command was waiting");
   await tick();
   assert.equal(calls.length, 2);
   assert.deepEqual(calls[1].body, { action: "show-guidance" });
@@ -813,6 +813,19 @@ test("a hold for a question stops re-checks and sends a waiting command only aft
   assert.equal(calls.length, 4);
   calls[3].resolve(guided);
   assert.equal(await queued, true);
+  // A hold that ends without its answer sends nothing that waited.
+  client.hold();
+  const unanswered = client.restoreGuidance();
+  await tick();
+  assert.equal(client.release({ send: false }), true);
+  assert.equal(await unanswered, false);
+  await tick();
+  assert.equal(calls.length, 4, "a discarded command is never sent");
+  assert.equal(pending.length, 0, "no re-check starts after a discarded hold");
+  assert.equal(client.snapshot().pending, false);
+  assert.equal(client.snapshot().error, null);
+  client.hold();
+  assert.equal(client.release(), false, "nothing waited");
   // A command waiting in a hold is dropped when the task stops.
   client.hold();
   const dropped = client.refresh();

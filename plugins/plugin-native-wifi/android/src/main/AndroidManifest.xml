@@ -8,7 +8,10 @@
       ACCESS_FINE_LOCATION is required for `WifiManager.scanResults` on
       API 26+ — without a granted runtime location permission the platform
       returns an empty list. Declared as normal `uses-permission`; runtime
-      grant is the responsibility of the host app at first scan.
+      grant is the responsibility of the host app at first scan. Android 12+
+      asks for precise location only together with approximate location, so
+      both are declared (the plugin's `location` alias asks for both).
     -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 </manifest>

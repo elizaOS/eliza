@@ -22,7 +22,7 @@ import {
   asGenerativeCacheApiError,
   getGenerativeOperationContext,
   requireGenerativeRouteCaller,
-} from "@/api-app/lib/generative-route-auth";
+} from "../../../src/lib/generative-route-auth";
 
 const createSessionSchema = z.object({
   activityTtl: z.number().int().min(10).max(3600).optional(),

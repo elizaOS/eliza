@@ -267,14 +267,14 @@ test("lost provider response and duplicate webhook settle exactly once", async (
   const drain = await drainStripeQueue();
   expect(drain).toMatchObject({
     success: true,
-    queue: "stripe-events",
-    before: 1,
-    after: 0,
+    queue: "webhook_events",
+    claimed: 1,
     attempted: 1,
     acked: 1,
     retried: 0,
     dlqed: 0,
-    failed: 0,
+    released: 0,
+    leaseLost: 0,
   });
 
   const settledOrder = await stripeCheckoutOrdersService.get(checkoutOrderId);
@@ -345,7 +345,7 @@ test("lost provider response and duplicate webhook settle exactly once", async (
   });
 
   // Stripe retries the exact already-settled event: durable event-id dedupe
-  // acknowledges it without enqueueing any second consumer delivery.
+  // acknowledges it without recording any second consumer delivery.
   const postSettlementExactReplay = await deliverWebhook(originalSignedEvent);
   expect(postSettlementExactReplay.status).toBe(200);
   expect(await postSettlementExactReplay.json()).toEqual({
@@ -354,18 +354,18 @@ test("lost provider response and duplicate webhook settle exactly once", async (
   });
   expect(await drainStripeQueue()).toMatchObject({
     success: true,
-    queue: "stripe-events",
-    before: 0,
-    after: 0,
+    queue: "webhook_events",
+    claimed: 0,
     attempted: 0,
     acked: 0,
     retried: 0,
     dlqed: 0,
-    failed: 0,
+    released: 0,
+    leaseLost: 0,
   });
 
   // A distinct Stripe event id can legitimately carry the same Session and
-  // PaymentIntent. It must enter the queue, then hit settlement-level dedupe.
+  // PaymentIntent. It must enter the outbox, then hit settlement-level dedupe.
   const replayEventId = "evt_cloud_e2e_checkout_completed_0002";
   const newSignedEvent = signWebhook(replayEventId);
   expect(newSignedEvent.signature).not.toBe(originalSignedEvent.signature);
@@ -381,14 +381,14 @@ test("lost provider response and duplicate webhook settle exactly once", async (
   });
   expect(await drainStripeQueue()).toMatchObject({
     success: true,
-    queue: "stripe-events",
-    before: 1,
-    after: 0,
+    queue: "webhook_events",
+    claimed: 1,
     attempted: 1,
     acked: 1,
     retried: 0,
     dlqed: 0,
-    failed: 0,
+    released: 0,
+    leaseLost: 0,
   });
 
   const replayedOrder = await stripeCheckoutOrdersService.get(checkoutOrderId);

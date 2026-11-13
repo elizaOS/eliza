@@ -39,7 +39,7 @@ jobs:
     name: Quality
     if: needs.preflight.outputs.source == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 120
     env:
       NODE_OPTIONS: --max-old-space-size=4096
       TURBO_SCM_BASE: ${{ needs.preflight.outputs.base }}
@@ -70,9 +70,9 @@ jobs:
       - name: Formatting
         run: bun run format:check
       - name: Prompt secret scan
-        run: node packages/scripts/check-prompt-secrets.ts
+        run: bun packages/scripts/check-prompt-secrets.ts
       - name: Validate CI Bun version pin contract
-        run: node packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
+        run: bun packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
       - name: Upload Bun runtime resolution inventory
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
@@ -80,6 +80,150 @@ jobs:
           path: ${{ runner.temp }}/bun-runtime-inventory.json
           retention-days: 7
     needs: preflight
+  quint:
+    name: Quint (${{ matrix.shard }}/4)
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        shard: [1, 2, 3, 4]
+    services:
+      quint-postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: qa_quint
+          POSTGRES_DB: quint_protocol
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U qa_quint -d quint_protocol"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
+      RUN_TURBO_AFFECTED: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          submodules: false
+      - uses: ./.github/actions/setup-bun-workspace
+        with:
+          publish-bun-install-cache: "true"
+          bun-version: ${{ env.BUN_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+      - name: Build core contract
+        run: bun run build:core
+      - name: Setup Java for Quint verification
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Setup Go for native Quint conformance
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: packages/os/native/ota-trust/go.mod
+          cache-dependency-path: packages/os/native/ota-trust/go.sum
+      - name: Setup Android platform for native capture conformance
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: platforms;android-36
+      - name: Fetch pinned JSON library for native capture conformance
+        run: |
+          set -euo pipefail
+          jar="$RUNNER_TEMP/json-20250517.jar"
+          curl -fsSL --retry 3 -o "$jar" https://repo.maven.apache.org/maven2/org/json/json/20250517/json-20250517.jar
+          echo "3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796  $jar" | sha256sum -c -
+          echo "ELIZA_JSON_JAR=$jar" >> "$GITHUB_ENV"
+      - name: Install local Redis for protocol conformance
+        run: |
+          if ! command -v redis-server >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends redis-server
+          fi
+          redis-server --version
+      - name: Install Chromium for browser conformance
+        env:
+          PLAYWRIGHT_INSTALL_CWD: packages/ui
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
+      - name: Quint application state models
+        env:
+          INFERENCE_POLICY_TEST_POSTGRES_URL: postgresql://qa_quint@127.0.0.1:5432/quint_protocol
+        run: bun run test:quint --shard=${{ matrix.shard }}/4
+      - name: Upload Quint verification evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: quint-canonical-evidence-${{ matrix.shard }}
+          path: |
+            test-results/quint/
+            test-results/quint-*/
+          if-no-files-found: ignore
+          overwrite: true
+          retention-days: 7
+      - name: Upload required Quint shard manifest
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: quint-canonical-manifest-${{ matrix.shard }}
+          path: test-results/quint/shard-${{ matrix.shard }}-of-4/verification.json
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7
+  quint-result:
+    name: Complete Quint coverage
+    if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' }}
+    needs: [quint]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Require successful Quint shards
+        env:
+          RESULT: ${{ needs.quint.result }}
+        run: test "$RESULT" = success
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: false
+      - uses: ./.github/actions/setup-bun-workspace
+        with:
+          publish-bun-install-cache: "true"
+          bun-version: ${{ env.BUN_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          run-postinstall: "false"
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+      - name: Download every shard manifest
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          pattern: quint-canonical-manifest-*
+          path: test-results/quint-canonical-manifests
+      - name: Verify complete disjoint model coverage
+        run: bun packages/scripts/check-quint-shards.ts test-results/quint-canonical-manifests 4
+      - name: Upload complete Quint evidence summary
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: quint-canonical-complete
+          path: test-results/quint/shards-summary.json
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7
   tests_auth_integration:
     if: needs.preflight.outputs.auth == 'true'
     name: Login browser and PostgreSQL integration
@@ -142,6 +286,7 @@ jobs:
       - os
       - quality
       - tests_auth_integration
+      - quint-result
       - preflight
       - remote-capabilities
       - agent-integration
@@ -159,6 +304,7 @@ jobs:
             os=${{ needs.os.result }}:${{ needs.preflight.outputs.os }}
             quality=${{ needs.quality.result }}:${{ needs.preflight.outputs.source }}
             tests_auth_integration=${{ needs.tests_auth_integration.result }}:${{ needs.preflight.outputs.auth }}
+            quint-result=${{ needs.quint-result.result }}:${{ github.ref == 'refs/heads/main' }}
             preflight=${{ needs.preflight.result }}:true
             remote-capabilities=${{ needs.remote-capabilities.result }}:${{ needs.preflight.outputs.runtime }}
             agent-integration=${{ needs.agent-integration.result }}:${{ needs.preflight.outputs.runtime }}
@@ -375,7 +521,7 @@ jobs:
           retention-days: 3
       - name: Prune deterministic E2E scratch output
         if: always()
-        run: node packages/scripts/rm-path-recursive.ts test-results/scenario-runner/pr-deterministic test-results/scenario-runner/pr-deterministic-corpus test-results/scenario-runner/pr-deterministic-orchestrator test-results/scenario-runner/pr-deterministic-lifeops test-results/scenario-runner/catalog-inventory packages/app/playwright-report test-results/app
+        run: bun packages/scripts/rm-path-recursive.ts test-results/scenario-runner/pr-deterministic test-results/scenario-runner/pr-deterministic-corpus test-results/scenario-runner/pr-deterministic-orchestrator test-results/scenario-runner/pr-deterministic-lifeops test-results/scenario-runner/catalog-inventory packages/app/playwright-report test-results/app
       - name: E2E coverage matrix report
         if: always()
         run: bun --conditions=eliza-source packages/scripts/e2e-coverage/write-coverage-matrix-report.ts --report-dir reports/coverage

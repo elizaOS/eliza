@@ -5,6 +5,8 @@
  * alongside a paid subscription.
  */
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { readFile } from "node:fs/promises";
+import { isOrganizationPolicyStamp } from "../../lib/services/organization-policy-stamp";
 import { createBillingSnapshotFixture } from "./account-billing-snapshot-test-fixture";
 
 process.env.DATABASE_URL = "pglite://memory";
@@ -126,6 +128,28 @@ afterAll(async () => {
 });
 
 describe("subscription grant redemption", () => {
+  test("explicit-family migration preserves existing codes and rejects omitted campaigns", async () => {
+    await newCode("AAAA-BBBB-CCCC-0901", { family: "alpha_phone" });
+    await exec(
+      await readFile(
+        new URL("../migrations/0570_subscription_grant_explicit_family.sql", import.meta.url),
+        "utf8",
+      ),
+    );
+    const [existing] = await rows<{ family: string }>(
+      "SELECT family FROM subscription_grant_codes ORDER BY created_at LIMIT 1",
+    );
+    expect(existing?.family).toBe("alpha_phone");
+    await expect(
+      exec(
+        `INSERT INTO subscription_grant_codes(code_hash, max_redemptions) VALUES ('${"f".repeat(64)}', 1)`,
+      ),
+    ).rejects.toThrow(/family/);
+    await newCode("AAAA-BBBB-CCCC-0902", { family: "independent_campaign" });
+    const { grant } = await redeem(await newOrg(), "AAAA-BBBB-CCCC-0902");
+    expect(grant.family).toBe("independent_campaign");
+  });
+
   test("a redeemed code serves the organization as an active Plus subscriber", async () => {
     const org = await newOrg();
     await newCode("AAAA-BBBB-CCCC-0001");
@@ -189,7 +213,10 @@ describe("subscription grant redemption", () => {
     const org = await newOrg();
     await newCode("AAAA-BBBB-CCCC-0002");
     const { grant } = await redeem(org, "AAAA-BBBB-CCCC-0002");
+    const during = await policyAt(org);
+    expect(isOrganizationPolicyStamp(during.authority)).toBe(true);
     const after = new Date(grant.ends_at!.getTime() + 1_000);
+    expect(isOrganizationPolicyStamp(during.authority, after.getTime())).toBe(false);
     const policy = await policyAt(org, after);
     expect(policy.authority.source).toBe("legacy");
     expect(policy.subscriptionFunded).toBe(false);
@@ -586,6 +613,12 @@ test("a lifetime grant publishes no expiry and retains revocation", async () => 
   const policy = await policyAt(org, farFuture);
   expect(policy.authority.source).toBe("promo_grant");
   expect(policy.authority.effectiveUntil).toBeNull();
+  expect(isOrganizationPolicyStamp(policy.authority, farFuture.getTime())).toBe(true);
+  const { inferenceAdmissionSnapshotFromPolicy } = await import(
+    "../../lib/services/inference-admission-snapshot"
+  );
+  const { isInferenceAdmissionSnapshot } = await import("../../lib/services/inference-auth-cache");
+  expect(isInferenceAdmissionSnapshot(inferenceAdmissionSnapshotFromPolicy(policy))).toBe(true);
   expect(policy.subscriptionFunded).toBe(true);
   const buckets = await rows<{ count: number }>(
     `SELECT count(*)::integer count FROM subscription_allowance_periods WHERE promo_grant_id = '${grant.id}'`,
@@ -597,6 +630,18 @@ test("a lifetime grant publishes no expiry and retains revocation", async () => 
     reason: "test revocation",
   });
   expect((await policyAt(org)).authority.source).toBe("legacy");
+  // A structurally valid lifetime cache stamp is not fresh admission authority.
+  expect(isOrganizationPolicyStamp(policy.authority)).toBe(true);
+  const { withOrganizationPolicyAdmission } = await import(
+    "../../lib/services/organization-policy-admission"
+  );
+  let admitted = false;
+  await expect(
+    withOrganizationPolicyAdmission(org, policy.authority, async () => {
+      admitted = true;
+    }),
+  ).rejects.toMatchObject({ code: "ORGANIZATION_POLICY_STALE" });
+  expect(admitted).toBe(false);
   expect(await grants.subscriptionGrantsRepository.replenishLifetimeAllowances()).toBe(0);
 });
 

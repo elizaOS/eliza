@@ -1,4 +1,18 @@
-/** Verifies operation substitution, source provenance and future-window proof through real evaluation. */
+import { requiredFixtureValue } from "../../test/required-fixture-value.ts";
+
+type RecordedCalendarFaultData = {
+  state: string;
+  sources: Array<{ status: string; key: { side: string } }>;
+  replyContext: { context: { asOf: string } };
+  timeMax: string;
+  requestWindow?: {
+    sourceMessageId: string;
+    actorId: string;
+    roomId: string;
+    requestedAt: number;
+    timeZone: string;
+  };
+};
 
 import {
   type CalendarReadBinding,
@@ -121,6 +135,96 @@ function fixture() {
   };
   return { context, trajectory, output };
 }
+
+describe("selected Calendar record coverage", () => {
+  function selectedFixture() {
+    const f = fixture();
+    const target = {
+      id: "selected-event",
+      revision: '"v1"',
+      accountId: "selected-grant",
+      sourceRevision: "a".repeat(64),
+    };
+    const binding = requiredFixtureValue(
+      requiredFixtureValue(f.context.metadata).calendarReadBindings,
+    )[0] as CalendarReadBinding;
+    binding.operation = "read_selected";
+    binding.selectedTarget = target;
+    const step = requiredFixtureValue(f.trajectory.steps[0]);
+    step.toolCall = {
+      id: "selected-read",
+      name: "CALENDAR_READ_SELECTED",
+      params: {},
+    };
+    step.result = {
+      success: true,
+      effectReceipts: [
+        {
+          receiptId: "selected-receipt",
+          operation: "calendar.event.selected.read",
+          resource: {
+            kind: "calendar.event",
+            id: target.id,
+            version: target.revision,
+          },
+          artifacts: [],
+          idempotency: { key: null, replayed: false },
+          observedAt: "2026-10-04T01:19:36Z",
+          outcome: "noop",
+          reason: "Read only",
+        },
+      ],
+      data: {
+        event: {
+          id: target.id,
+          grantId: target.accountId,
+          metadata: { etag: target.revision },
+        },
+        replyContext: { domain: "calendar", scenario: "selected_event" },
+        selectionProof: {
+          ...target,
+          sourceMessageId: binding.sourceMessageId,
+          roomId: binding.roomId,
+          actorId: binding.actorId,
+          requestedAt: binding.requestedAt,
+        },
+      },
+    };
+    return { ...f, binding, step };
+  }
+  it("requires the exact current selection and request-bound read receipt", () => {
+    const f = selectedFixture();
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(true);
+  });
+  it.each([
+    "id",
+    "revision",
+    "accountId",
+    "sourceRevision",
+    "sourceMessageId",
+    "roomId",
+    "actorId",
+    "requestedAt",
+    "receipt",
+    "search-substitution",
+  ])("rejects changed %s", (key) => {
+    const f = selectedFixture();
+    if (key === "receipt")
+      requiredFixtureValue(f.step.result).effectReceipts = [];
+    else if (key === "search-substitution")
+      requiredFixtureValue(f.step.toolCall).name = "CALENDAR_SEARCH_EVENTS";
+    else
+      (
+        requiredFixtureValue(requiredFixtureValue(f.step.result).data)
+          .selectionProof as Record<string, unknown>
+      )[key] = "changed";
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(false);
+  });
+});
 
 describe("request-bound Calendar read coverage", () => {
   it("uses the real empty NEXT producer's human channel without exposing its model instructions", async () => {
@@ -1122,6 +1226,15 @@ function citeRead(f: LiveFeed, id = "step:1") {
   f.output.outcomeCoverage = [{ ...f.coverage, evidenceStepIds: [id] }];
 }
 
+/** The opaque function name Qwen gave its verdict in live turn tj-929faaf3d187f1. */
+const liveVerdictFunction =
+  "functions.3e67d62a436f5c14f9e3f38318359c7b4dc3c5732d91f3180327db725faa3708$0b85e3755da244b3b09893e16d757de1";
+
+/** Qwen's native tool-call dialect around a reply (live turn tj-929faaf3d187f1). */
+function nativeToolCall(body: string, name = liveVerdictFunction) {
+  return `<tool_call>\n<function=${name}>\n${body}\n</function>\n</tool_call>`;
+}
+
 describe("required Calendar read cited by a real step ID", () => {
   it.each(Object.keys(LIVE_FEED_TURNS) as LiveFeedTurn[])(
     "keeps the cited request-bound read of live turn %s",
@@ -1140,6 +1253,59 @@ describe("required Calendar read cited by a real step ID", () => {
       expect(result.messageToUser).toBe(LIVE_FEED_TURNS[id].reply);
     },
   );
+  // Live cold voice turn tj-929faaf3d187f1: Qwen wrapped a complete verdict in
+  // its native tool-call dialect; rejecting it cost a REPLY replan and a
+  // second evaluator call. Only the whole-response envelope under that opaque
+  // name opens; an action in any case or namespace keeps its identity.
+  it.each([
+    [liveVerdictFunction, "", true],
+    ["CALENDAR", "", false],
+    ["functions.CALENDAR", "", false],
+    ["tools.CALENDAR", "", false],
+    ["calendar", "", false],
+    ["functions.calendar", "", false],
+    [liveVerdictFunction, "\nDone.", false],
+  ])(
+    "reads a native <function=%s> verdict envelope only when it is the whole non-action response",
+    async (name, trailing, accepted) => {
+      const f = liveFeedFixture();
+      citeRead(f);
+      const useModel = vi.fn(
+        async () =>
+          `${nativeToolCall(JSON.stringify(f.output), name)}${trailing}`,
+      );
+      const result = await runEvaluator({
+        runtime: { useModel },
+        context: f.context,
+        trajectory: f.trajectory,
+      });
+      expect(useModel).toHaveBeenCalledTimes(1);
+      expect(result.success).toBe(accepted);
+      expect(result.decision).toBe(accepted ? "FINISH" : "CONTINUE");
+      expect(result.messageToUser).toBe(
+        accepted ? LIVE_FEED_TURNS["tj-8dfdee5735fb18"].reply : undefined,
+      );
+    },
+  );
+  // The lazy `\s*([\s\S]*?)\s*` body backtracked on a padded envelope that
+  // does not match: quadratically on padding before the close (14 s at 120k)
+  // and cubically on padding after the open tag (5 s at 3k), blocking the
+  // event loop. The sizes make that form fail in seconds, not hang the suite.
+  it.each([
+    [
+      "padding before its close and text after it",
+      `${nativeToolCall(`${JSON.stringify(fixture().output)}${" ".repeat(120_000)}`)}\nDone.`,
+    ],
+    [
+      "padding after its open tag and no close",
+      `<tool_call>\n<function=functions.x>${"\n".repeat(3_000)}</tool_call>`,
+    ],
+  ])("rejects a native envelope with %s in linear time", (_, text) => {
+    const started = performance.now();
+    const result = parseEvaluatorOutput(text);
+    expect(performance.now() - started).toBeLessThan(50);
+    expect(result).toMatchObject({ success: false, decision: "CONTINUE" });
+  });
   it.each<[string, LiveFeedTurn, (f: LiveFeed) => void]>([
     [
       "a read of this request that compaction archived",
@@ -1366,6 +1532,15 @@ describe("required Calendar read cited by a real step ID", () => {
       expect(result.success).toBe(false);
       expect(result.requestFullyCovered).toBe(false);
       expect(result.messageToUser).not.toContain(LIVE_FEED_TURNS[id].reply);
+      // The native envelope opens to the same coverage rejection.
+      const wrapped = await runEvaluator({
+        runtime: {
+          useModel: async () => nativeToolCall(JSON.stringify(f.output)),
+        },
+        context: f.context,
+        trajectory: f.trajectory,
+      });
+      expect(wrapped).toEqual(result);
     },
   );
 });
@@ -1999,6 +2174,19 @@ function liveMoveFixture() {
   const bindings = f.context.metadata
     ?.calendarReadBindings as CalendarReadBinding[];
   bindings[0].operation = "search_events";
+  // The recorded owner request names coffee with Sam; retain the current
+  // quoted filter proof required by the canonical search admission contract.
+  bindings[0].filterEvidence = [
+    {
+      query: "coffee with Sam",
+      quote: "coffee with Sam",
+      origin: "current",
+      sourceMessageId: bindings[0].sourceMessageId,
+      sourceActorId: bindings[0].actorId,
+      sourceRoomId: bindings[0].roomId,
+      sourceCreatedAt: bindings[0].requestedAt,
+    },
+  ];
   const id = "agent:eliza:owner:grant:eliza-calendar:calendar:primary:event-1";
   const before = {
     id,
@@ -2024,12 +2212,23 @@ function liveMoveFixture() {
   f.trajectory.steps = [
     {
       iteration: 1,
-      toolCall: { id: "search", name: "CALENDAR_SEARCH_EVENTS", params: {} },
+      toolCall: {
+        id: "search",
+        name: "CALENDAR_SEARCH_EVENTS",
+        params: { query: "coffee with Sam" },
+      },
       result: {
         success: true,
         data: {
           events: [before],
-          replyContext: { domain: "calendar", scenario: "search_results" },
+          replyContext: {
+            domain: "calendar",
+            scenario: "search_results",
+            context: {
+              selection: "filtered_search",
+              contentFilterApplied: true,
+            },
+          },
         },
       },
     },
@@ -2986,5 +3185,327 @@ describe("existing-event duration through actual scheduling and coverage", () =>
         expect(read).not.toHaveBeenCalled();
       },
     );
+  });
+});
+
+it("canonicalizes identical coverage rows before the unchanged Calendar proof guard", () => {
+  const f = fixture();
+  requiredFixtureValue(f.output.outcomeCoverage).push(
+    structuredClone(requiredFixtureValue(f.output.outcomeCoverage)[0]),
+  );
+  const parsed = parseEvaluatorOutput(JSON.stringify(f.output));
+  expect(parsed.outcomeCoverage).toHaveLength(1);
+  expect(calendarReadCoverage(parsed, f.context, f.trajectory).verified).toBe(
+    true,
+  );
+});
+it.each(["blocked", "pending"])(
+  "does not combine conflicting %s judgment with completion",
+  (status) => {
+    const f = fixture();
+    requiredFixtureValue(f.output.outcomeCoverage).push({
+      ...requiredFixtureValue(f.output.outcomeCoverage)[0],
+      status: status as "blocked" | "pending",
+    });
+    const parsed = parseEvaluatorOutput(JSON.stringify(f.output));
+    expect(parsed.success).toBe(false);
+    expect(parsed.outcomeCoverage).toHaveLength(2);
+  },
+);
+it("keeps conflicting evidence rows for the coverage guard to reject", () => {
+  const f = fixture();
+  requiredFixtureValue(f.output.outcomeCoverage).push({
+    ...requiredFixtureValue(f.output.outcomeCoverage)[0],
+    evidenceStepIds: ["step:99"],
+  });
+  const parsed = parseEvaluatorOutput(JSON.stringify(f.output));
+  expect(parsed.outcomeCoverage).toHaveLength(2);
+  expect(calendarReadCoverage(parsed, f.context, f.trajectory).verified).toBe(
+    false,
+  );
+});
+it("never turns duplicate stale evidence into verified coverage", () => {
+  const f = fixture();
+  (
+    requiredFixtureValue(f.trajectory.steps[0].result).data as {
+      timeReference: { asOf: string };
+    }
+  ).timeReference.asOf = "2020-01-01T00:00:00Z";
+  requiredFixtureValue(f.output.outcomeCoverage).push(
+    structuredClone(requiredFixtureValue(f.output.outcomeCoverage)[0]),
+  );
+  const parsed = parseEvaluatorOutput(JSON.stringify(f.output));
+  expect(calendarReadCoverage(parsed, f.context, f.trajectory).verified).toBe(
+    false,
+  );
+});
+
+function recordedFeedFixture() {
+  const f = fixture();
+  const binding = requiredFixtureValue(
+    requiredFixtureValue(f.context.metadata).calendarReadBindings,
+  )[0] as CalendarReadBinding;
+  binding.operation = "feed";
+  binding.requestedAt = Date.parse("2026-11-02T06:10:05Z");
+  f.trajectory.outcomeIntents = ["Check today's calendar for events"];
+  const step = f.trajectory.steps[0];
+  requiredFixtureValue(step.toolCall).name = "CALENDAR_FEED";
+  requiredFixtureValue(step.toolCall).params = {
+    subaction: "feed",
+    intent: "Check today's calendar",
+    details: { timeZone: "America/Los_Angeles", date: "2026-11-01" },
+  };
+  step.result = {
+    success: true,
+    effectReceipts: [
+      {
+        receiptId: "recorded-read",
+        operation: "calendar.feed.read",
+        resource: { kind: "calendar.feed", id: "owner-feed" },
+        artifacts: [],
+        idempotency: { key: "recorded-read", replayed: false },
+        observedAt: "2026-11-02T06:10:12.450Z",
+        outcome: "noop",
+        reason: "Read only",
+      },
+    ],
+    data: {
+      state: "complete",
+      events: [],
+      timeMin: "2026-11-01T07:00:00.000Z",
+      timeMax: "2026-11-02T08:00:00.000Z",
+      sources: [
+        {
+          key: {
+            provider: "eliza",
+            side: "owner",
+            grantId: "local",
+            calendarId: "primary",
+          },
+          status: "fresh",
+          syncedAt: "2026-11-02T06:10:12.450Z",
+        },
+      ],
+      replyContext: {
+        domain: "calendar",
+        scenario: "feed_results",
+        context: {
+          sourceScope: { grantId: null, calendarId: null },
+          asOf: "2026-11-02T06:10:12.450Z",
+          timeZone: "America/Los_Angeles",
+          selection: "bounded_agenda",
+        },
+      },
+    },
+  } as typeof step.result;
+  requiredFixtureValue(f.output.outcomeCoverage).push(
+    structuredClone(requiredFixtureValue(f.output.outcomeCoverage)[0]),
+  );
+  return f;
+}
+it("repairs the recorded zero-event Cloud feed with duplicate coverage across the 25-hour DST day", () => {
+  const f = recordedFeedFixture();
+  const parsed = parseEvaluatorOutput(JSON.stringify(f.output));
+  expect(parsed.outcomeCoverage).toHaveLength(1);
+  expect(calendarReadCoverage(parsed, f.context, f.trajectory)).toEqual({
+    verified: true,
+    unverifiedIntentIds: [],
+  });
+});
+it.each(["partial", "owner", "stale", "window"])(
+  "still rejects recorded feed with invalid %s proof",
+  (fault) => {
+    const f = recordedFeedFixture();
+    const data = requiredFixtureValue(f.trajectory.steps[0].result)
+      .data as RecordedCalendarFaultData;
+    if (fault === "partial") {
+      data.state = "partial";
+      data.sources[0].status = "stale";
+    }
+    if (fault === "owner") data.sources[0].key.side = "other";
+    if (fault === "stale")
+      data.replyContext.context.asOf = "2026-11-02T06:00:00Z";
+    if (fault === "window") data.timeMax = "2026-11-02T07:00:00.000Z";
+    const parsed = parseEvaluatorOutput(JSON.stringify(f.output));
+    expect(calendarReadCoverage(parsed, f.context, f.trajectory).verified).toBe(
+      false,
+    );
+  },
+);
+
+/** Live step-1793620054396-442pij: typed feed, no details, one complete owner day. */
+describe("owner-bound producer-resolved Calendar window", () => {
+  async function actualImplicitFeed() {
+    const f = fixture();
+    const time = Date.parse("2026-11-02T11:47:40.000Z");
+    const asOf = "2026-11-02T11:47:44.157Z";
+    const message = {
+      id: "00000000-0000-0000-0000-000000000701",
+      entityId: "00000000-0000-0000-0000-000000000702",
+      roomId: "00000000-0000-0000-0000-000000000703",
+      createdAt: time,
+      content: {
+        text: "What is on my calendar today, Monday November 2, 2026?",
+      },
+    } as Memory;
+    const binding = requiredFixtureValue(
+      requiredFixtureValue(f.context.metadata).calendarReadBindings,
+    )[0] as CalendarReadBinding;
+    Object.assign(binding, {
+      operation: "feed",
+      sourceMessageId: message.id,
+      actorId: message.entityId,
+      roomId: message.roomId,
+      requestedAt: time,
+    });
+    Object.assign(requiredFixtureValue(f.context.metadata), {
+      messageId: message.id,
+      actorId: message.entityId,
+      roomId: message.roomId,
+    });
+    f.trajectory.outcomeIntents = [requiredFixtureValue(message.content.text)];
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(asOf));
+    try {
+      const runtime = new AgentRuntime({
+        character: { name: "Implicit day regression", bio: [] },
+        logLevel: "fatal",
+      });
+      message.agentId = runtime.agentId;
+      registerCalendarTimeZoneResolver(
+        runtime,
+        async () => "America/Los_Angeles",
+      );
+      const service = new CalendarService(runtime);
+      const feed = {
+        calendarId: "all",
+        events: [],
+        source: "synced",
+        state: "complete",
+        timeMin: "2026-11-02T08:00:00.000Z",
+        timeMax: "2026-11-03T08:00:00.000Z",
+        syncedAt: asOf,
+        sources: [
+          { ...ELIZA_CALENDAR_SOURCE, syncedAt: asOf },
+          {
+            ...ELIZA_CALENDAR_SOURCE,
+            key: {
+              ...ELIZA_CALENDAR_SOURCE.key,
+              provider: "google",
+              grantId: "qa-google",
+            },
+            syncedAt: asOf,
+          },
+        ],
+      };
+      const read = vi
+        .spyOn(service, "getCalendarFeed")
+        .mockResolvedValue(feed as unknown as LifeOpsCalendarFeed);
+      runtime.services.set(CalendarService.serviceType, [service]);
+      const noModel = async () => {
+        throw new Error("No model call allowed in producer regression");
+      };
+      const result = await createCalendarActionRunner({
+        runTextModel: noModel,
+        runJsonModel: noModel,
+        recentConversationTexts: async () => [],
+      }).handler(runtime, message, undefined, {
+        parameters: { subaction: "feed" },
+      });
+      expect(read).toHaveBeenCalledOnce();
+      expect(read.mock.calls[0][1]).toMatchObject({
+        timeMin: feed.timeMin,
+        timeMax: feed.timeMax,
+      });
+      if (!result || typeof result !== "object")
+        throw new Error("Expected real Calendar result");
+      expect(result.success).toBe(true);
+      f.trajectory.steps = [
+        {
+          iteration: 1,
+          toolCall: {
+            id: "implicit-owner-day",
+            name: "CALENDAR_FEED",
+            params: { subaction: "feed" },
+          },
+          result: structuredClone(result),
+        },
+      ];
+      Object.assign(f.output, {
+        messageToUser:
+          "Your calendar is clear for today, Monday, November 2, 2026.",
+        replyEffectStatus: "none",
+        requestFullyCovered: true,
+      });
+      return f;
+    } finally {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+    }
+  }
+  it("accepts the real producer's current owner-bound day without model-supplied details", async () => {
+    const f = await actualImplicitFeed();
+    const coverage = calendarReadCoverage(f.output, f.context, f.trajectory);
+    expect(coverage.verified).toBe(true);
+    expect(coverage).toEqual({ verified: true, unverifiedIntentIds: [] });
+    expect(f.trajectory.steps[0].result?.data?.requestWindow).toMatchObject({
+      kind: "calendar.request-window.v1",
+      timeMin: "2026-11-02T08:00:00.000Z",
+      timeMax: "2026-11-03T08:00:00.000Z",
+    });
+  });
+  it.each([
+    "missing",
+    "other-request",
+    "other-owner",
+    "other-room",
+    "other-time",
+    "source-owner",
+    "zone",
+    "stale",
+    "replayed",
+    "partial",
+    "short-window",
+    "explicit-window",
+    "multiple-bindings",
+  ])("does not bypass %s evidence", async (fault) => {
+    const f = await actualImplicitFeed();
+    const step = f.trajectory.steps[0];
+    const data = requiredFixtureValue(step.result)
+      .data as RecordedCalendarFaultData;
+    const requestWindow = requiredFixtureValue(data.requestWindow);
+    if (fault === "missing") delete data.requestWindow;
+    if (fault === "other-request") requestWindow.sourceMessageId = "other";
+    if (fault === "other-owner") requestWindow.actorId = "other";
+    if (fault === "other-room") requestWindow.roomId = "other";
+    if (fault === "other-time") requestWindow.requestedAt -= 1;
+    if (fault === "source-owner") data.sources[0].key.side = "agent";
+    if (fault === "zone") requestWindow.timeZone = "UTC";
+    if (fault === "stale")
+      data.replyContext.context.asOf = "2026-11-02T10:00:00Z";
+    if (fault === "replayed")
+      requiredFixtureValue(
+        requiredFixtureValue(step.result).effectReceipts,
+      )[0].idempotency.replayed = true;
+    if (fault === "partial") data.state = "partial";
+    if (fault === "short-window") data.timeMax = "2026-11-03T07:00:00Z";
+    if (fault === "explicit-window")
+      requiredFixtureValue(step.toolCall).params.details = {
+        date: "2026-11-04",
+        timeZone: "America/Los_Angeles",
+      };
+    if (fault === "multiple-bindings") {
+      const bindings = requiredFixtureValue(f.context.metadata)
+        .calendarReadBindings as CalendarReadBinding[];
+      bindings.push({ ...bindings[0], intentId: "intent:2" });
+      f.trajectory.outcomeIntents.push("Read another day");
+      requiredFixtureValue(f.output.outcomeCoverage).push({
+        ...requiredFixtureValue(f.output.outcomeCoverage)[0],
+        intentId: "intent:2",
+      });
+    }
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(false);
   });
 });

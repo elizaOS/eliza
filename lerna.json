@@ -1,10 +1,14 @@
 {
-  "version": "2.0.12-beta.0",
+  "version": "2.0.6",
   "packages": [
     "packages/*",
     "packages/app/platforms/*",
     "plugins/*",
-    "packages/cloud/sdk"
+    "packages/cloud/sdk",
+    "packages/cloud/api",
+    "packages/cloud/shared",
+    "packages/cloud/services/*",
+    "packages/cloud/deploy"
   ],
   "npmClient": "bun",
   "command": {

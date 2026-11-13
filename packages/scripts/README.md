@@ -14,8 +14,8 @@ Run commands from the repository root:
 
 ```bash
 bun run test:scripts
-node packages/scripts/run-script-tests.ts --inventory
-node packages/scripts/audit-scripts.ts
+bun packages/scripts/run-script-tests.ts --inventory
+bun packages/scripts/audit-scripts.ts
 bun run verify
 ```
 
@@ -41,6 +41,13 @@ a CI admission lane; root `test` runs end-to-end checks.
 Relative module imports resolve from their source file; operational outputs and
 repository configuration resolve from the checkout root. Keep those paths
 correct when moving tools between subdirectories.
+
+Main promotion runs complete Quint partitions in the main PR, merge queue and
+canonical main Full validation. Other branches skip hosted models; local model
+and owning conformance checks remain required before merge. Production effect
+consumers also verify the exact-source successful main Full manifest, its current
+run attempt and all source-bound rows, while retaining staging tree certification.
+The existing manifest and certificate formats are unchanged.
 
 ## Generated test output
 
@@ -68,7 +75,11 @@ exit status still gates the package result. No counts are inferred from stdout.
 
 ## Release preparation
 
+`bun run build:npm` builds package outputs. Native desktop installers are built by `release-electrobun.yml`; the npm cohort still includes the desktop source package.
+
 Use `bun run release:candidate --help` for candidate, verification, and publication commands, or the protected `release.yaml` workflow. Direct `release`, `release:next`, and `release:beta` publication shortcuts are retired. Prepare one exact cohort version and public access before pinning the source SHA. Source manifests keep `workspace:*` ranges; only each packed tarball pins them to the exact cohort version, and the source bytes are restored before the next check. The cohort in `release-cohort.json` contains the surviving publishable packages. Npm channels `latest`, `next`, and `beta` remain distinct from desktop channels.
+
+The npm workflow skips app stores by default. Set `publish_stores` to `true` to also run configured store lanes after npm and GitHub finalization. A store lane skips its build and upload when required credentials or app identity settings are absent. Invalid credentials and failed builds or uploads still fail that lane. Desktop releases use the separate Electrobun workflow.
 
 The protected **Mobile App Auth Registration Admin** workflow has a read-only
 `inventory` operation for Alpha Phone recovery. It reports only presence of the
@@ -81,30 +92,44 @@ and `repair` behavior is unchanged. A present Worker registry is not permission 
 replace it: preserve every existing client and Android certificate when repairing
 configuration. This inventory neither reveals nor changes those values.
 
-For a new platform-owned native client, `plan-provision` accepts a fixed new
-`intended_app_id`, a public `display_name`, and an exact
-`https://cloud.eliza.app/auth/<product>/callback`. It validates the protected
-primary app and database identity, then seals an additional-client candidate and
-the original registry to the reviewed GitHub environment key. The prospective
-plan has `requiresCreation: true`; it does not prove that the new app exists.
-The primary app's validated organization and creator own the new registration.
-Optional protected owner values must match that primary app.
+For a new platform-owned native client, use `plan-provision-publisher` with a
+fixed new `intended_app_id`, a fixed new `publisher_organization_id`, a public
+`display_name`, and the exact environment callback. The protected primary app's
+active operator authorizes creation; their personal organization and credentials
+are not copied. The new publisher organization has no login users, billing
+identity, balance, or user API key. Migration 0551 must be applied first. Its
+database guards prevent user membership, personal-deletion fencing, and implicit
+organization deletion. The old primary-owner provisioning operations are retired.
 
 Review the candidate, non-target, app-binding, and creation hashes. Run
-`provision-registry` with those hashes and the same UUID, name, and callback while
-the original source registry is still installed. This operation creates only
-the admitted registration under the repair transaction's shared lock. An exact
-valid retry leaves rows and keys unchanged. It never publishes a Worker binding.
-Only after it verifies the new row may the operator install the sealed candidate
-in the normal GitHub environment secret and run `publish-registry`. Keep source
-secret changes exclusive during this sequence; GitHub secret updates have no
-compare-and-swap check. Never install a prospective candidate before provisioning:
-a concurrent release can publish the normal source registry.
+`provision-publisher` with those hashes and the same inputs while the original
+source registry is still installed. Only after the app and publisher verify may
+the operator install the sealed candidate in the normal GitHub environment secret
+and run `publish-registry`. Keep source secret changes exclusive during this
+sequence; GitHub secret updates have no compare-and-swap check. Never install a
+prospective candidate before provisioning: a concurrent release can publish it.
 
-These operations currently require the reviewed production key and `main`.
-Staging remains unavailable until its protected registry, primary app, database
-identity pins, and encryption key are configured and reviewed. Empty or malformed
-source registries fail closed; these operations do not initialize them.
+For an existing native client in a personal organization, use
+`plan-isolate-publisher` and `isolate-publisher` with a fresh publisher organization
+UUID and the four reviewed hashes. The app UUID comes from the protected registry;
+an optional `intended_app_id` must match it. Only a registration with no hosted,
+monetized, or other app-owned resources can move. The operation preserves the app
+UUID and customer grants, detaches a revoked legacy app key without moving it,
+and leaves personal data and billing in their original organization. It does not
+change the registry. Run `verify-publisher` afterward with the same client and
+publisher inputs. Explicit product retirement is separate from personal account
+deletion.
+
+Legacy configured-organization `plan-provision` / `provision-registry` and
+registration repair remain available for their existing scope. Release validation
+retains legacy client compatibility and validates publisher constraints whenever
+the publisher marker is present.
+
+These operations use separate pinned GitHub environment encryption keys for
+production and staging. Production requires `main`; staging requires `staging`.
+Each environment still needs its protected registry, primary app, and database
+identity pins. Empty or malformed source registries fail closed; these operations
+do not initialize them or accept a caller-supplied encryption key.
 
 The protected **Cloud Catalog Diagnostic** workflow checks only the five Stripe
 catalog binding names. It then makes one unauthenticated plans request with a

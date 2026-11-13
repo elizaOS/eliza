@@ -597,7 +597,7 @@ async function runPaired({
 
 /** Retain sanitized API denials even when raw capture cleanup precedes CLI failure. */
 export async function runTraces(
-  { deploySha, outputDir, env, pairedRecords, environment = "staging" },
+  { deploySha, outputDir, env, pairedRecords, worker, environment = "staging" },
   { fetchImpl = fetch } = {},
 ) {
   const secrets = requireTraceSecrets(env);
@@ -608,6 +608,7 @@ export async function runTraces(
       evidence = await collectInferenceTraceEvidence({
         pairedRecords,
         environment,
+        worker,
         deploySha,
         accountId: secrets.cloudflareAccountId,
         apiToken: secrets.cloudflareApiToken,
@@ -859,6 +860,7 @@ export async function runCertification(
       const traceOutcomePromise = runTraces({
         ...options,
         env,
+        worker: placementPolicy.worker,
         pairedRecords: paired.records,
       }).then(
         (value) => ({ value, error: null }),

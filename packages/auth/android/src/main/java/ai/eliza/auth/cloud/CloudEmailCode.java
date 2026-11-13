@@ -32,7 +32,9 @@ public final class CloudEmailCode {
   if (value <= 0) return now + 10 * 60 * 1000L;
   return Math.min(value, now + 15 * 60 * 1000L);
  }
- /** Never shorten a server resend timestamp or Retry-After header. No timer sends automatically. */
+ /** The longest wait a server resend time or Retry-After is honoured for; Cloud enforces its own limit beyond it. */
+ public static final long MAX_RESEND_WAIT_MS = 24 * 60 * 60 * 1000L;
+ /** Never shorten a server resend timestamp or Retry-After header, up to MAX_RESEND_WAIT_MS. No timer sends automatically. */
  public static long resendAt(Object reported, String retryAfter, long now) {
   long result = now + CloudSignInFlow.RESEND_COOLDOWN_MS;
   long timestamp = reported instanceof Number ? ((Number) reported).longValue() : 0;
@@ -44,6 +46,6 @@ public final class CloudEmailCode {
     : java.time.ZonedDateTime.parse(value, java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli();
    result = Math.max(result, deadline);
   } catch (Exception invalid) { /* A malformed header cannot shorten the local or server deadline. */ }
-  return result;
+  return Math.min(result, now + MAX_RESEND_WAIT_MS);
  }
 }

@@ -16,9 +16,9 @@
  *     "classPrefix":         "Eliza",                  // Java class name prefix (ElizaDialActivity, ElizaSmsReceiver, …)
  *     "productName":         "eliza_cf_x86_64_phone",  // Cuttlefish product name (used for lunch target + product makefile filename)
  *     "lunchTarget":         "eliza_cf_x86_64_phone-trunk_staging-userdebug",
- *     "envPrefix":           "ELIZA",                  // env var prefix (ELIZA_AOSP_BUILD, …)
  *     "vendorDir":            "android/vendor/eliza" // source vendor dir relative to repo root
  *     "buildAndroidSystemCmd": ["bun", "run", "--cwd", "packages/app", "build:android:system"]  // command to rebuild the privileged APK
+ *     "assistantRole":       true                      // optional; false when the image does not preassign the assistant role
  *   }
  *
  * Resolution order (first match wins):
@@ -54,7 +54,6 @@ const REQUIRED_FIELDS = [
   "classPrefix",
   "productName",
   "lunchTarget",
-  "envPrefix",
 ];
 
 /**
@@ -121,12 +120,21 @@ export function loadBrandConfig(configPath) {
   // Defaults for optional fields.
   if (
     parsed.architecture !== undefined &&
-    !["x86_64", "arm64", "riscv64"].includes(parsed.architecture)
+    !["x86_64", "arm64"].includes(parsed.architecture)
   ) {
     throw new BrandConfigurationError(
       `Brand config ${resolved} has invalid architecture`,
     );
   }
+  if (
+    parsed.assistantRole !== undefined &&
+    typeof parsed.assistantRole !== "boolean"
+  ) {
+    throw new BrandConfigurationError(
+      `Brand config ${resolved} has a non-boolean assistantRole`,
+    );
+  }
+  parsed.assistantRole = parsed.assistantRole ?? true;
   parsed.initRcName = parsed.initRcName ?? `init.${parsed.brand}.rc`;
   parsed.vendorDir = parsed.vendorDir ?? `android/vendor/${parsed.brand}`;
   if (
@@ -147,17 +155,6 @@ export function loadBrandConfig(configPath) {
   ) {
     throw new BrandConfigurationError(
       `Brand config ${resolved} has invalid aospLockProfile`,
-    );
-  }
-  if (
-    parsed.aospDeviceOverlay !== undefined &&
-    (typeof parsed.aospDeviceOverlay !== "string" ||
-      parsed.aospDeviceOverlay.length === 0 ||
-      path.isAbsolute(parsed.aospDeviceOverlay) ||
-      parsed.aospDeviceOverlay.split(/[\\/]/).includes(".."))
-  ) {
-    throw new BrandConfigurationError(
-      `Brand config ${resolved} has invalid repository-relative aospDeviceOverlay`,
     );
   }
   parsed.buildAndroidSystemCmd = parsed.buildAndroidSystemCmd ?? [

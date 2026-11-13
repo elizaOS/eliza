@@ -391,3 +391,132 @@ describe("contributed dispatch channels — registry semantics + runner routing"
     expect(fired.metadata?.lastDispatchResult).toMatchObject({ ok: true });
   });
 });
+
+describe("default dispatcher — render fallback and egress guards", () => {
+  const agentId = "00000000-0000-0000-0000-00000000cafe";
+  const authored = { body: "Take your medication.", title: "Medication" };
+
+  function reminder(output: Record<string, unknown>) {
+    return {
+      kind: "reminder" as const,
+      promptInstructions: "Remind the owner to take their medication.",
+      trigger: { kind: "manual" as const },
+      priority: "medium" as const,
+      respectsGlobalPause: false,
+      source: "user_chat" as const,
+      createdBy: agentId,
+      ownerVisible: true,
+      output: output as never,
+    };
+  }
+
+  it("delivers the authored copy on the first attempt when the model is unreachable", async () => {
+    const notified: Array<{ title: string; body: string }> = [];
+    const runtime = {
+      agentId,
+      getService: (type: string) =>
+        type === ServiceType.NOTIFICATION
+          ? {
+              notify: async (input: { title: string; body: string }) => {
+                notified.push(input);
+              },
+            }
+          : null,
+      useModel: async () => {
+        throw Object.assign(new Error("connect ENETUNREACH"), {
+          code: "ENETUNREACH",
+        });
+      },
+      reportError: () => undefined,
+    } as unknown as IAgentRuntime;
+    const service = await ScheduledTaskRunnerService.start(runtime);
+    const runner = service.getRunner({ agentId });
+    const task = await runner.schedule(
+      reminder({ destination: "in_app_card", fallback: authored }),
+    );
+
+    const fired = await runner.fire(task.taskId);
+
+    expect(fired.state.status).toBe("fired");
+    expect(fired.metadata?.lastDispatchResult).toMatchObject({ ok: true });
+    expect(notified).toEqual([expect.objectContaining(authored)]);
+    await service.stop();
+  });
+
+  it("does not notify when a dismiss lands between render and notify", async () => {
+    const notified: unknown[] = [];
+    let taskId = "";
+    let calls = 0;
+    const runtime = {
+      agentId,
+      getService: (type: string) =>
+        type === ServiceType.NOTIFICATION
+          ? { notify: async (input: unknown) => notified.push(input) }
+          : null,
+      useModel: async () => {
+        calls += 1;
+        if (calls === 2) {
+          // The title render is the last step before egress.
+          await service.getRunner({ agentId }).apply(taskId, "dismiss");
+          return "Medication";
+        }
+        return "Time for your medication.";
+      },
+      reportError: () => undefined,
+    } as unknown as IAgentRuntime;
+    const service = await ScheduledTaskRunnerService.start(runtime);
+    const runner = service.getRunner({ agentId });
+    taskId = (
+      await runner.schedule(
+        reminder({ destination: "in_app_card", fallback: authored }),
+      )
+    ).taskId;
+
+    await runner.fire(taskId);
+
+    expect(notified).toHaveLength(0);
+    const current = (await runner.list()).find((t) => t.taskId === taskId);
+    expect(current?.state.status).toBe("dismissed");
+    await service.stop();
+  });
+
+  it("commits the connector payload through the guarded fire snapshot before sending", async () => {
+    const sent: Array<{ text?: string; metadata?: Record<string, unknown> }> =
+      [];
+    let storedAtSend: Record<string, unknown> | undefined;
+    const runtime = {
+      agentId,
+      getService: () => null,
+      useModel: async () => "Time for your medication.",
+      reportError: () => undefined,
+      getMessageConnectors: () => [{ source: "discord" }],
+      sendMessageToTarget: async (
+        _target: unknown,
+        content: { text?: string; metadata?: Record<string, unknown> },
+      ) => {
+        const tasks = await service.getRunner({ agentId }).list();
+        storedAtSend = tasks[0]?.metadata;
+        sent.push(content);
+        return { id: "m1", content: { text: content.text } };
+      },
+    } as unknown as IAgentRuntime;
+    const service = await ScheduledTaskRunnerService.start(runtime);
+    const runner = service.getRunner({ agentId });
+    const task = await runner.schedule(
+      reminder({ destination: "channel", target: "discord:user:123" }),
+    );
+
+    const fired = await runner.fire(task.taskId);
+
+    expect(fired.metadata?.lastDispatchResult).toMatchObject({ ok: true });
+    expect(sent).toHaveLength(1);
+    const key = sent[0]?.metadata?.scheduledDispatchKey;
+    expect(key).toEqual(expect.stringMatching(`^${task.taskId}:`));
+    expect(storedAtSend).toMatchObject({
+      dispatchPreparedMessage: "Time for your medication.",
+      dispatchIdempotencyKey: key,
+      dispatchAttempt: { status: "prepared" },
+    });
+    await service.stop();
+  });
+});

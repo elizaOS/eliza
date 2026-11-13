@@ -1,9 +1,10 @@
 /**
  * Default pack: `inbox-triage-starter`.
  *
- * Opt-in starter. If a Gmail-capable connector is registered (capability
- * `google.gmail.read`), schedules a daily 9am triage `ScheduledTask`.
- * Otherwise the pack is offered at customize time but its record is NOT seeded.
+ * Opt-in starter: a daily 9am Gmail triage `ScheduledTask`, gated on the
+ * `google.gmail.triage` capability. Boot registers the catalog without a
+ * connector registry, so this pack is offered at customize time and never
+ * seeded automatically.
  */
 
 import type { ConnectorRegistryContract } from "./contract-types.js";
@@ -48,22 +49,23 @@ const dailyTriageDefinition: RecapTaskDefinition = {
   metadata: {
     packKey: INBOX_TRIAGE_STARTER_PACK_KEY,
     recordKey: "daily-9am",
-    requiredCapability: "google.gmail.read",
+    requiredCapability: "google.gmail.triage",
   },
 };
 
 const dailyTriageRecord = compileTaskDefinition(dailyTriageDefinition);
 
-export const INBOX_TRIAGE_REQUIRED_CAPABILITIES = ["google.gmail.read"];
+export const INBOX_TRIAGE_REQUIRED_CAPABILITIES = ["google.gmail.triage"];
 
 export const inboxTriageStarterPack: DefaultPack = {
   key: INBOX_TRIAGE_STARTER_PACK_KEY,
   label: "Daily inbox triage",
   description:
-    "If Gmail is connected, deliver a 9am morning email triage: unread, grouped by sender, important/needs-reply surfaced. Auto-enabled when capability is present; offered otherwise.",
-  // The pack itself ships defaultEnabled=true, but `requiredCapabilities`
-  // gates auto-seeding via `isEligibleForAutoSeed`. If Gmail isn't connected,
-  // first-run defaults skip it; customize still offers it.
+    "If Gmail is connected, deliver a 9am morning email triage: unread, grouped by sender, important/needs-reply surfaced. Offered at setup; not turned on automatically.",
+  // The pack ships defaultEnabled=true, but `requiredCapabilities` gates
+  // seeding on a connector registry, which boot does not pass: the Google
+  // connector is always registered, so it would say nothing about whether
+  // Gmail is connected. Customize still offers the pack.
   defaultEnabled: true,
   requiredCapabilities: INBOX_TRIAGE_REQUIRED_CAPABILITIES,
   records: [dailyTriageRecord],
@@ -84,6 +86,6 @@ export function isInboxTriageEligible(
   registry: ConnectorRegistryContract | undefined | null,
 ): boolean {
   if (!registry) return false;
-  const candidates = registry.byCapability("google.gmail.read");
+  const candidates = registry.byCapability("google.gmail.triage");
   return candidates.length > 0;
 }

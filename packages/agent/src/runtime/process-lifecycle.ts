@@ -27,34 +27,39 @@ export function createAgentProcessLifecycle(options: {
       };
     },
     async dispose(reason = "host shutdown") {
-      disposePromise ??= (async () => {
-        const errors: unknown[] = [];
-        for (const teardown of [...teardowns].reverse()) {
+      if (!disposePromise) {
+        const pendingTeardowns = [...teardowns].reverse();
+        // Publish the shared promise before invoking any host callbacks. A
+        // synchronous reentrant dispose must join this teardown, not start it again.
+        disposePromise = Promise.resolve().then(async () => {
+          const errors: unknown[] = [];
+          for (const teardown of pendingTeardowns) {
+            try {
+              await teardown();
+            } catch (error) {
+              errors.push(error);
+            }
+          }
+          if (options.disposeSandbox) {
+            try {
+              await options.disposeSandbox();
+            } catch (error) {
+              errors.push(error);
+            }
+          }
           try {
-            await teardown();
+            await options.disposeRuntime(reason);
           } catch (error) {
             errors.push(error);
           }
-        }
-        if (options.disposeSandbox) {
-          try {
-            await options.disposeSandbox();
-          } catch (error) {
-            errors.push(error);
+          if (errors.length > 0) {
+            throw new AggregateError(
+              errors,
+              "Agent process lifecycle disposal failed",
+            );
           }
-        }
-        try {
-          await options.disposeRuntime(reason);
-        } catch (error) {
-          errors.push(error);
-        }
-        if (errors.length > 0) {
-          throw new AggregateError(
-            errors,
-            "Agent process lifecycle disposal failed",
-          );
-        }
-      })();
+        });
+      }
       await disposePromise;
     },
   };
@@ -81,8 +86,9 @@ export function installProcessSignalHandlers(options: {
       },
     );
   };
-  process.once("SIGINT", shutdown);
-  process.once("SIGTERM", shutdown);
+  // Keep both signal handlers installed until the drain selects the exit status.
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
   return () => {
     process.off("SIGINT", shutdown);
     process.off("SIGTERM", shutdown);

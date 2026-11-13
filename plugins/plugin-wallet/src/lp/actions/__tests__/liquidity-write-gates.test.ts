@@ -60,9 +60,12 @@ function createRuntime(settings: Record<string, string> = {}): {
   return { runtime: runtime as unknown as IAgentRuntime, cache };
 }
 
+let messageCount = 0;
+/** Each turn is a new user message, as the confirmation gate requires. */
 function message(text: string, flagged = false): Memory {
+  messageCount++;
   return {
-    id: "00000000-0000-0000-0000-000000000001",
+    id: `00000000-0000-0000-0001-${String(messageCount).padStart(12, "0")}`,
     entityId: "00000000-0000-0000-0000-000000000002",
     agentId: "00000000-0000-0000-0000-000000000003",
     roomId: "00000000-0000-0000-0000-000000000004",

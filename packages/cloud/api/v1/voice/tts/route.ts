@@ -1,9 +1,9 @@
-import { ElevenLabsError } from "@elevenlabs/elevenlabs-js";
 import {
   CLOUDFLARE_TTS_MAX_CHARACTERS,
   CloudflareSpeechError,
   synthesizeCloudflareAudio,
 } from "@elizaos/cloud-shared/lib/providers/cloudflare-speech";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 
 /** Handles authenticated cloud text-to-speech generation, safety checks, and billing. */
 
@@ -14,17 +14,16 @@ import {
   billFlatUsage,
 } from "@elizaos/cloud-shared/lib/services/ai-billing";
 import { calculateTTSCostFromCatalog } from "@elizaos/cloud-shared/lib/services/ai-pricing";
+import { CARTESIA_SONIC_MODEL_ID } from "@elizaos/cloud-shared/lib/services/cartesia-sonic-tts";
 import {
   type CreditReservation,
   InsufficientCreditsError,
 } from "@elizaos/cloud-shared/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { inferenceFundingRefusal } from "@elizaos/cloud-shared/lib/services/inference-funding-refusal";
 import {
-  getElevenLabsService,
-  hasTtsSynthesisOptions,
-  TtsSynthesisOptions,
-} from "@elizaos/cloud-shared/lib/services/elevenlabs";
-import { isKnownUnacceptedProviderStatus } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
+  elevenLabsSdkErrorStatus,
+  isKnownUnacceptedProviderStatus,
+} from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
 import { drainPcm16ToWav } from "@elizaos/cloud-shared/lib/services/pcm16-wav";
 import { settlementDigest } from "@elizaos/cloud-shared/lib/services/settlement-digest";
 import { recordCustomVoiceUsage } from "@elizaos/cloud-shared/lib/services/tts-custom-voice-usage";
@@ -33,7 +32,10 @@ import {
   getCloudFirstLineCacheService,
   shouldBypassCloudFirstLineCache,
 } from "@elizaos/cloud-shared/lib/services/tts-first-line-cache";
-import { assertSafeTtsText } from "@elizaos/cloud-shared/lib/services/tts-safety-cache";
+import {
+  hasTtsSynthesisOptions,
+  TtsSynthesisOptions,
+} from "@elizaos/cloud-shared/lib/services/tts-synthesis-options";
 import { usageService } from "@elizaos/cloud-shared/lib/services/usage";
 import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
@@ -50,7 +52,8 @@ import {
   getGenerativeExecutionContext,
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
-} from "@/api-app/lib/generative-route-auth";
+  timeSpeechPhase,
+} from "../../../src/lib/generative-route-auth";
 import {
   CartesiaRestTtsError,
   synthesizeCartesiaBytes,
@@ -122,8 +125,6 @@ interface TtsTimings {
   authMs?: number;
   admissionMs?: number;
   synthesisMs?: number;
-  moderationMs?: number;
-  moderation?: "reviewed" | "approved-hit";
 }
 function buildTtsObservabilityHeaders(
   provider: TtsProvider,
@@ -137,15 +138,9 @@ function buildTtsObservabilityHeaders(
     timings.synthesisMs !== undefined
       ? `synthesis;dur=${timings.synthesisMs}`
       : null,
-    timings.moderationMs !== undefined
-      ? `moderation;dur=${timings.moderationMs}`
-      : null,
   ].filter((entry): entry is string => entry !== null);
   return {
     "X-Eliza-TTS-Provider": provider,
-    ...(timings.moderation
-      ? { "X-Eliza-TTS-Moderation": timings.moderation }
-      : {}),
     ...(serverTiming.length > 0
       ? { "Server-Timing": serverTiming.join(", ") }
       : {}),
@@ -221,7 +216,9 @@ async function __hono_POST(c: AppContext) {
   const requestStart = Date.now();
   const timings: TtsTimings = {};
   try {
-    const decodedRawBody = await decodeRequestJson(request);
+    const decodedRawBody = await timeSpeechPhase(c, "json_decode", () =>
+      decodeRequestJson(request),
+    );
     let pendingResponse: Response | undefined;
     let body: z.infer<typeof TtsBody> | undefined;
     if (!decodedRawBody.ok) {
@@ -299,11 +296,10 @@ async function __hono_POST(c: AppContext) {
       providerSelection?.ok === true &&
       providerSelection.provider !== "kokoro" &&
       providerSelection.provider !== "cloudflare";
-    const { user, apiKeyId, admissionSnapshot, credential } =
+    const { user, apiKeyId, admissionSnapshot, refreshAuthEntry, credential } =
       await requireGenerativeRouteCaller(c, {
         compatibility: "raw",
         rateLimitEndpoint: "strict",
-        awaitWarmingMs: 1500,
         deferStrongCredentialCheck: willAdmit,
       });
     await using credentialGuard = deferredCredentialAdmissionGuard({
@@ -353,35 +349,6 @@ async function __hono_POST(c: AppContext) {
     // WAV output is opt-in and bypasses the MP3-shaped first-line cache (a
     // different codec); billing/usage are identical to the MP3 path.
     const wantWav = body.format === "wav";
-    const moderationStarted = performance.now();
-    const moderation = await assertSafeTtsText(
-      {
-        surface: "media_generation_prompt",
-        organizationId: user.organization_id,
-        userId: user.id,
-        text: [
-          `TTS text: ${text}`,
-          ...(body.previousText !== undefined
-            ? [`Previous context: ${body.previousText}`]
-            : []),
-          ...(body.nextText !== undefined
-            ? [`Next context: ${body.nextText}`]
-            : []),
-        ].join("\n"),
-        metadata: {
-          type: "tts",
-          model: modelId || "eleven_flash_v2_5",
-          voiceId,
-        },
-      },
-      (task) => {
-        const ctx = getGenerativeExecutionContext(c);
-        if (ctx) ctx.waitUntil(task);
-        else void task;
-      },
-    );
-    timings.moderation = moderation;
-    timings.moderationMs = Math.round(performance.now() - moderationStarted);
     logger.info(
       `[Voice TTS API] Generating speech for user ${user.id}: ${text.length} chars`,
     );
@@ -437,8 +404,10 @@ async function __hono_POST(c: AppContext) {
       if (kokoroCacheKey) {
         try {
           const cacheStart = Date.now();
-          const cached =
-            await getCloudFirstLineCacheService().get(kokoroCacheKey);
+          const cached = await getCloudFirstLineCacheService().get(
+            kokoroCacheKey,
+            getGenerativeExecutionContext(c),
+          );
           if (cached) {
             timings.synthesisMs = Date.now() - cacheStart;
             logger.info(
@@ -573,7 +542,7 @@ async function __hono_POST(c: AppContext) {
       providerSelection.provider === "cartesia" ? "cartesia" : "elevenlabs";
     const mp3VoiceRevision =
       providerSelection.provider === "cartesia"
-        ? `cartesia:${cartesiaVoiceId}:sonic-3.5:mp3_44100_128`
+        ? `cartesia:${cartesiaVoiceId}:${CARTESIA_SONIC_MODEL_ID}:mp3_44100_128`
         : resolveElevenLabsVoiceRevision(resolvedVoiceId, resolvedModelId);
     const voiceSettingsFingerprint = fingerprintCloudVoiceSettings({
       outputFormat: DEFAULT_OUTPUT_FORMAT,
@@ -590,17 +559,20 @@ async function __hono_POST(c: AppContext) {
       try {
         const cacheStart = Date.now();
         const cacheService = getCloudFirstLineCacheService();
-        const cached = await cacheService.get({
-          algoVersion: FIRST_SENTENCE_SNIP_VERSION,
-          provider: mp3CacheProvider,
-          voiceId: resolvedVoiceId,
-          voiceRevision: mp3VoiceRevision,
-          sampleRate: 44100,
-          codec: "mp3",
-          voiceSettingsFingerprint,
-          normalizedText: snipResult.normalized,
-          scope: cacheScope,
-        });
+        const cached = await cacheService.get(
+          {
+            algoVersion: FIRST_SENTENCE_SNIP_VERSION,
+            provider: mp3CacheProvider,
+            voiceId: resolvedVoiceId,
+            voiceRevision: mp3VoiceRevision,
+            sampleRate: 44100,
+            codec: "mp3",
+            voiceSettingsFingerprint,
+            normalizedText: snipResult.normalized,
+            scope: cacheScope,
+          },
+          getGenerativeExecutionContext(c),
+        );
         if (cached) {
           timings.synthesisMs = Date.now() - cacheStart;
           logger.info(
@@ -642,7 +614,7 @@ async function __hono_POST(c: AppContext) {
             algoVersion: FIRST_SENTENCE_SNIP_VERSION,
             provider: "cartesia",
             voiceId: cartesiaVoiceId,
-            voiceRevision: `cartesia:${cartesiaVoiceId}:sonic-3.5:pcm${WAV_PCM_SAMPLE_RATE}`,
+            voiceRevision: `cartesia:${cartesiaVoiceId}:${CARTESIA_SONIC_MODEL_ID}:pcm${WAV_PCM_SAMPLE_RATE}`,
             sampleRate: WAV_PCM_SAMPLE_RATE,
             codec: "wav" as const,
             voiceSettingsFingerprint: fingerprintCloudVoiceSettings({
@@ -655,7 +627,10 @@ async function __hono_POST(c: AppContext) {
     if (wavCacheKey) {
       try {
         const cacheStart = Date.now();
-        const cached = await getCloudFirstLineCacheService().get(wavCacheKey);
+        const cached = await getCloudFirstLineCacheService().get(
+          wavCacheKey,
+          getGenerativeExecutionContext(c),
+        );
         if (cached) {
           timings.synthesisMs = Date.now() - cacheStart;
           logger.info(
@@ -741,6 +716,7 @@ async function __hono_POST(c: AppContext) {
         apiKeyId,
         cost: billingCost,
         admissionSnapshot,
+        refreshAuthEntry,
         credential: credentialGuard.credentialForAdmission(),
         idempotencyKey: ttsIdempotencyKey ?? undefined,
         atomicProviderBoundary: true,
@@ -752,7 +728,11 @@ async function __hono_POST(c: AppContext) {
       if (error instanceof InsufficientCreditsError) {
         return Response.json(
           {
-            error: "Insufficient credits for text-to-speech",
+            // Clients parse `error.code` and `error.resetsAt`.
+            error: inferenceFundingRefusal(error, {
+              insufficientCreditsMessage:
+                "Insufficient credits for text-to-speech",
+            }),
             required: error.required,
           },
           { status: 402 },
@@ -834,6 +814,11 @@ async function __hono_POST(c: AppContext) {
     }
     if (wav === undefined) {
       if (audioStream === undefined) {
+        // Only this lane loads the ElevenLabs SDK, so cold requests on the
+        // other providers do not evaluate its module graph.
+        const { getElevenLabsService } = await import(
+          "@elizaos/cloud-shared/lib/services/elevenlabs"
+        );
         const elevenlabs = getElevenLabsService(env);
         await markPaidTtsProviderDispatch();
         const synthesis = {
@@ -877,7 +862,7 @@ async function __hono_POST(c: AppContext) {
             ...billingContext,
             model:
               synthesisEngine === "cartesia"
-                ? "cartesia/sonic-3.5"
+                ? `cartesia/${CARTESIA_SONIC_MODEL_ID}`
                 : billingContext.model,
             provider: synthesisEngine,
           },
@@ -906,7 +891,7 @@ async function __hono_POST(c: AppContext) {
           // ElevenLabs-served one would.
           model:
             synthesisEngine === "cartesia"
-              ? "sonic-3.5"
+              ? CARTESIA_SONIC_MODEL_ID
               : modelId || "eleven_flash_v2_5",
           provider: synthesisEngine,
           input_tokens: Math.ceil(text.length / 4),
@@ -1049,8 +1034,7 @@ async function __hono_POST(c: AppContext) {
     if (reservation) {
       // A clear rejection before any audio proves nothing was synthesized:
       // the Cartesia REST refusal, or an ElevenLabs SDK error with its status.
-      const sdkStatus =
-        error instanceof ElevenLabsError ? error.statusCode : undefined;
+      const sdkStatus = elevenLabsSdkErrorStatus(error);
       const rejected =
         (error instanceof CartesiaRestTtsError &&
           error.beforeAudio &&
@@ -1081,7 +1065,18 @@ async function __hono_POST(c: AppContext) {
         "toJSON" in apiError && typeof apiError.toJSON === "function"
           ? apiError.toJSON()
           : { error: apiError.message };
-      return Response.json(serialized, { status: apiError.status ?? 500 });
+      // Retryable refusals (cache warming) carry the header clients retry on.
+      return Response.json(serialized, {
+        status: apiError.status ?? 500,
+        ...("retryAfterSeconds" in serialized &&
+        typeof serialized.retryAfterSeconds === "number"
+          ? {
+              headers: {
+                "Retry-After": String(serialized.retryAfterSeconds),
+              },
+            }
+          : {}),
+      });
     }
     if (error instanceof CartesiaRestTtsError) {
       const status =

@@ -7,22 +7,11 @@ import { sqlRows } from "../../db/execute-helpers";
 import type { RuntimeDurableObjectNamespace } from "../../types/cloud-worker-env";
 import { bindCloudBindings, getCloudAwareEnv, getCloudBinding } from "../runtime/cloud-bindings";
 import type { InferenceFundingBudgetConsumption } from "./inference-funding-budget-protocol";
+import { type InferenceBudgetPolicy, isInferenceBudgetPolicy } from "./inference-policy-contract";
 import type { OrganizationQuotaPolicy } from "./organization-quota-policy";
 import { requireOrganizationRateTier } from "./organization-quota-policy";
 
-export interface InferenceBudgetPolicy {
-  organizationId: string;
-  enabled: boolean;
-  epoch: string;
-  policyGeneration: string;
-  validUntil: number;
-  rateLimits: {
-    completionsRpm: number;
-    embeddingsRpm: number;
-    standardRpm: number;
-    strictRpm: number;
-  };
-}
+export { type InferenceBudgetPolicy, isInferenceBudgetPolicy } from "./inference-policy-contract";
 
 export class InferenceFundingBudgetUnavailableError extends ElizaError {
   readonly statusCode = 503;
@@ -31,37 +20,17 @@ export class InferenceFundingBudgetUnavailableError extends ElizaError {
   }
 }
 
-export function isInferenceBudgetPolicy(value: unknown): value is InferenceBudgetPolicy {
-  if (value === null || typeof value !== "object") return false;
-  const p = value as Partial<InferenceBudgetPolicy>;
-  return (
-    typeof p.organizationId === "string" &&
-    p.organizationId.length > 0 &&
-    typeof p.enabled === "boolean" &&
-    typeof p.epoch === "string" &&
-    /^(0|[1-9]\d*)$/.test(p.epoch) &&
-    typeof p.policyGeneration === "string" &&
-    /^(0|[1-9]\d*)$/.test(p.policyGeneration) &&
-    Number.isSafeInteger(p.validUntil) &&
-    (p.validUntil ?? 0) > 0 &&
-    p.rateLimits !== undefined &&
-    p.rateLimits !== null &&
-    typeof p.rateLimits === "object" &&
-    [
-      p.rateLimits.completionsRpm,
-      p.rateLimits.embeddingsRpm,
-      p.rateLimits.standardRpm,
-      p.rateLimits.strictRpm,
-    ].every((rate) => Number.isSafeInteger(rate) && rate > 0)
-  );
+export function isFundedBudgetAdmissionEnabled(): boolean {
+  return getCloudAwareEnv().INFERENCE_FUNDED_BUDGET_ADMISSION === "true";
 }
 
-export function isFundedBudgetAdmissionEnabled(): boolean {
-  const env = getCloudAwareEnv();
-  return (
-    env.INFERENCE_FUNDED_BUDGET_ADMISSION === "true" &&
-    env.INFERENCE_STRONG_REVOCATION_ENABLED === "true"
-  );
+export function isRatePolicyAdmissionEnabled(): boolean {
+  return getCloudAwareEnv().INFERENCE_RATE_POLICY_ADMISSION === "true";
+}
+
+/** Both modes use the same mutation epoch, but only the funded mode can spend. */
+export function isInferencePolicyAdmissionEnabled(): boolean {
+  return isFundedBudgetAdmissionEnabled() || isRatePolicyAdmissionEnabled();
 }
 
 /** Called only by primary hydration or policy publication, never by a warm request. */
@@ -71,11 +40,22 @@ export async function readInferenceBudgetPolicy(
   policy: OrganizationQuotaPolicy,
 ): Promise<InferenceBudgetPolicy | undefined> {
   if (!isFundedBudgetAdmissionEnabled()) return undefined;
-  const [row] = await sqlRows<{ epoch: string }>(
+  return readInferencePolicy(tx, organizationId, policy, true);
+}
+
+export async function readInferencePolicy(
+  tx: DbTransaction,
+  organizationId: string,
+  policy: OrganizationQuotaPolicy,
+  fundedOnly = false,
+): Promise<InferenceBudgetPolicy | undefined> {
+  if (!isInferencePolicyAdmissionEnabled()) return undefined;
+  const [row] = await sqlRows<{ epoch: string; enabled: boolean; rate_enabled: boolean }>(
     tx,
     sql`
-    SELECT epoch::text FROM inference_policy_authorities
-    WHERE organization_id = ${organizationId} AND enabled = true
+    SELECT epoch::text, enabled, rate_enabled FROM inference_policy_authorities
+    WHERE organization_id = ${organizationId} AND (enabled OR rate_enabled)
+      AND (${!fundedOnly} OR enabled)
   `,
   );
   if (!row) return undefined;
@@ -93,7 +73,19 @@ export async function readInferenceBudgetPolicy(
   const hold = await billingHoldService.getState(organizationId, tx);
   return {
     organizationId,
-    enabled: policy.subscriptionFunded && hold.status !== "held" && validUntil > Date.now(),
+    enabled:
+      row.enabled &&
+      isFundedBudgetAdmissionEnabled() &&
+      policy.subscriptionFunded &&
+      hold.status !== "held" &&
+      validUntil > Date.now(),
+    ...(isRatePolicyAdmissionEnabled()
+      ? {
+          // Rate admission never spends, so it needs no funding or hold
+          // standing; the primary rate path does not read them either.
+          rateEnabled: row.rate_enabled && validUntil > Date.now(),
+        }
+      : {}),
     epoch: row.epoch,
     policyGeneration: policy.authority.generation,
     validUntil,
@@ -117,6 +109,7 @@ export async function loadInferenceBudgetPolicy(
     await lockOrganizationPolicyForRead(tx, organizationId);
     const [standing] = await sqlRows<{
       enabled: boolean | null;
+      rate_enabled: boolean | null;
       epoch: string | null;
       generation: string | null;
       is_active: boolean;
@@ -126,7 +119,7 @@ export async function loadInferenceBudgetPolicy(
     }>(
       tx,
       sql`
-      SELECT f.enabled, f.epoch::text, a.policy_generation::text AS generation,
+      SELECT f.enabled, f.rate_enabled, f.epoch::text, a.policy_generation::text AS generation,
         o.is_active, o.account_lifecycle_state, o.account_deletion_request_id, o.paid_work_fenced_at
       FROM organizations o
       LEFT JOIN inference_policy_authorities f ON f.organization_id = o.id
@@ -134,17 +127,21 @@ export async function loadInferenceBudgetPolicy(
       WHERE o.id = ${organizationId}
     `,
     );
-    if (!standing || standing.generation === null || (standing.enabled && standing.epoch === null))
+    if (
+      !standing ||
+      standing.generation === null ||
+      ((standing.enabled || standing.rate_enabled) && standing.epoch === null)
+    )
       throw new InferenceFundingBudgetUnavailableError(
         "Delegated inference authority is unavailable",
       );
     if (
-      !standing.enabled ||
+      !(standing.enabled || standing.rate_enabled) ||
       !standing.is_active ||
       standing.account_lifecycle_state !== "active" ||
       standing.account_deletion_request_id !== null ||
       standing.paid_work_fenced_at !== null ||
-      !isFundedBudgetAdmissionEnabled()
+      !isInferencePolicyAdmissionEnabled()
     ) {
       // Publish an explicit prohibition even when the disabled account can no
       // longer resolve a serving subscription. These rates grant no admission.
@@ -153,6 +150,7 @@ export async function loadInferenceBudgetPolicy(
       return {
         organizationId,
         enabled: false,
+        rateEnabled: false,
         epoch: standing.epoch ?? "0",
         policyGeneration: standing.generation,
         validUntil: Number.MAX_SAFE_INTEGER,
@@ -168,7 +166,7 @@ export async function loadInferenceBudgetPolicy(
       "./organization-quota-policy"
     );
     const policy = await readOrganizationQuotaPolicyInTransaction(tx, organizationId);
-    const result = await readInferenceBudgetPolicy(tx, organizationId, policy);
+    const result = await readInferencePolicy(tx, organizationId, policy);
     if (!result)
       throw new InferenceFundingBudgetUnavailableError("Delegated inference is not enrolled");
     return result;
@@ -250,7 +248,6 @@ export async function admitFundedBudgetInference(
     credential.expiresAt === undefined
   )
     throw new InferenceFundingBudgetUnavailableError("Funded admission proof is incomplete");
-  const { calculateCost, normalizeModelName } = await import("../pricing");
   const { getCachedInferenceAffiliateAttribution } = await import("./inference-affiliate-cache");
   const affiliate = params.affiliateCode?.trim()
     ? await getCachedInferenceAffiliateAttribution({
@@ -260,39 +257,21 @@ export async function admitFundedBudgetInference(
         executionCtx: params.executionCtx,
       })
     : null;
-  const cache = { cacheOnly: true, executionCtx: params.executionCtx };
   const { canonicalFundingAmount } = await import("./allowance-first-credits");
-  const [maximum, estimate] = await Promise.all([
-    params.flatCost ??
-      calculateCost(
-        normalizeModelName(params.context.model),
-        params.context.provider,
-        params.maximumInputTokens!,
-        params.maximumOutputTokens!,
-        params.context.billingSource,
-        cache,
-      ),
-    params.flatCost ??
-      calculateCost(
-        normalizeModelName(params.context.model),
-        params.context.provider,
-        params.estimatedInputTokens,
-        params.estimatedOutputTokens,
-        params.context.billingSource,
-        cache,
-      ),
-  ]);
+  // Only a fixed-price operation reaches this lane (a session that commits at
+  // dispatch): its flat cost is both the provider-enforced bound and the
+  // unknown-outcome estimate.
+  if (!params.flatCost)
+    throw new InferenceFundingBudgetUnavailableError("Funded request upper bound is invalid");
+  const maximum = params.flatCost;
+  const estimate = params.flatCost;
   const markedMicros = (amount: number) =>
     new Decimal(amount)
       .mul(1 + (affiliate?.markupPercent ?? 0))
       .mul(1e6)
       .ceil();
   const maximumMicros = markedMicros(maximum.totalCost);
-  const { COST_BUFFER } = await import("./credits");
-  const unknownMicros = Decimal.min(
-    maximumMicros,
-    markedMicros(estimate.totalCost * (affiliate && !params.flatCost ? COST_BUFFER : 1)),
-  );
+  const unknownMicros = Decimal.min(maximumMicros, markedMicros(estimate.totalCost));
   if (
     !maximumMicros.isFinite() ||
     !maximumMicros.isPositive() ||
@@ -328,8 +307,7 @@ export async function admitFundedBudgetInference(
     policyEpoch: policy.epoch,
     policyGeneration: policy.policyGeneration,
     credential,
-    endpointType: params.fundedBudgetEndpointType ?? "completions",
-    rateReceipt: params.fundedBudgetRateReceipt,
+    endpointType: "completions",
     createdAt,
     expiresAt: createdAt + 20 * 60_000,
     preProviderCancellationToken,
@@ -394,6 +372,7 @@ export async function admitFundedBudgetInference(
     settlementAmount = amount.toFixed(0);
     return (settlement ??= (async () => {
       if (amount.gt(0)) await markProviderDispatched();
+      let terminalReceipt: import("./credits").CreditReconciliationResult["terminalReceipt"];
       if (dispatched) {
         const result = await inferenceBudgetGateRequest<{
           receipt: InferenceFundingBudgetConsumption;
@@ -410,9 +389,22 @@ export async function admitFundedBudgetInference(
           throw new InferenceFundingBudgetUnavailableError(
             "Funded settlement receipt does not match its request",
           );
-        params.executionCtx!.waitUntil(persistInferenceBudgetConsumption(result.receipt));
+        if (params.requireTerminalSettlementReceipt) {
+          await persistInferenceBudgetConsumption(result.receipt);
+          terminalReceipt = {
+            version: 1,
+            status: "funded_persisted",
+            mode: "durable_object_funded_budget",
+            organizationId: result.receipt.organizationId,
+            requestId: result.receipt.requestId,
+            amountUsd: amount.div(1e6).toFixed(6),
+          };
+        } else {
+          params.executionCtx!.waitUntil(persistInferenceBudgetConsumption(result.receipt));
+        }
       }
       return {
+        ...(terminalReceipt ? { terminalReceipt } : {}),
         reservedAmount: maximumMicros.div(1e6).toNumber(),
         actualCost: actualCostUsd,
         collectedAmount: amount.div(1e6).toNumber(),
@@ -449,5 +441,11 @@ export async function persistInferenceBudgetConsumption(
 ): Promise<void> {
   const { recordConsumption } = await import("../../db/repositories/inference-funding-budgets");
   await recordConsumption(receipt);
-  await inferenceBudgetGateRequest(receipt.organizationId, "/budget/acknowledge", { receipt });
+  const acknowledgment = await inferenceBudgetGateRequest<{ acknowledged?: boolean }>(
+    receipt.organizationId,
+    "/budget/acknowledge",
+    { receipt },
+  );
+  if (acknowledgment.acknowledged !== true)
+    throw new InferenceFundingBudgetUnavailableError("Funded settlement acknowledgment is unknown");
 }

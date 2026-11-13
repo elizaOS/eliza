@@ -36,6 +36,9 @@ export class InMemoryLRUCache<V> {
   }
 
   set(key: string, value: V): void {
+    // Replacing an entry needs no extra slot and counts as recent use. Remove
+    // it first so capacity eviction only applies to new entries.
+    this.cache.delete(key);
     if (this.cache.size >= this.maxSize) {
       this.evict();
     }

@@ -15,12 +15,11 @@ import { workerTermination } from './workflow-worker-termination';
 import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
-import { link, mkdir, open, realpath, unlink, writeFile } from 'node:fs/promises';
+import { link, mkdir, open, readFile, realpath, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripVTControlCharacters } from 'node:util';
 import { ElizaError, redactSensitiveText } from '@elizaos/core';
-import { resolveAppAliasedEnvValue as resolveAliasedEnvValue } from '@elizaos/host/protocol';
 import type {
   WorkflowDefinitionResponse,
   WorkflowExecutionMode,
@@ -29,15 +28,20 @@ import type {
 } from '../types/index';
 import { ensureWorkflowDependencyLink } from './workflow-dependency-link';
 import { workflowStateRoot } from './workflow-process-host';
-import { inspectWorkerLease, resolveWorkerSocketRoot } from './workflow-worker-lease';
+import {
+  inspectWorkerLease,
+  type WorkerLeaseInput,
+  type WorkerLeaseState,
+} from './workflow-worker-lease';
 import { workerLeasePrelude } from './workflow-worker-lease-prelude';
+import { resolveWorkerSocketRoot } from './workflow-worker-socket-root';
 
 /** Publish complete immutable source without truncating a concurrent importer. */
 export async function publishWorkflowSource(sourcePath: string, source: string): Promise<void> {
   if (process.platform === 'win32')
     return windowsWorkflowBackend.publishWorkflowSource(sourcePath, source);
   if (
-    resolveAliasedEnvValue('ELIZA_PLATFORM') === 'android' ||
+    process.env.ELIZA_PLATFORM?.trim() === 'android' ||
     process.env.ELIZA_MOBILE_PLATFORM === 'android'
   )
     return publishAndroidWorkflowSource(sourcePath, source);
@@ -86,6 +90,9 @@ const MAX_TIMEOUT_MS = 2_147_483_647;
 const MAX_PROTOCOL_LINE_BYTES = 1_048_576;
 const WORKER_TERMINATION_GRACE_MS = 1_000;
 const WORKER_STDIO_DRAIN_GRACE_MS = 1_000;
+const DEFAULT_CONTROL_TIMEOUT_MS = 30_000;
+/** Diagnostics keep the end of stderr, where the failure is. */
+const MAX_STDERR_TAIL_CHARS = 65_536;
 
 import {
   defaultWorkflowBunExecutable,
@@ -94,7 +101,7 @@ import {
   workflowRuntimeFileCommand,
 } from './workflow-process-host';
 
-type WorkerTerminationCause = 'abort' | 'timeout' | 'overflow';
+type WorkerTerminationCause = 'abort' | 'timeout' | 'overflow' | 'delivery';
 
 export function resolveSmithersBunExecutable(): string {
   return defaultWorkflowBunExecutable();
@@ -138,6 +145,8 @@ interface WorkerResultMessage {
 
 interface WorkerErrorMessage {
   kind: 'error';
+  /** The worker failed before execution-start and released its lease. */
+  unstarted?: boolean;
   error: {
     message: string;
     stack?: string;
@@ -216,7 +225,9 @@ export type SmithersControlRequest =
       payload?: unknown;
       receivedBy?: string;
     }
-  | { kind: 'cancel'; runId: string };
+  | { kind: 'cancel'; runId: string }
+  /** Read-only: the native run status, or null when the store has no row for it. */
+  | { kind: 'status'; runId: string };
 
 function safePathPart(value: string): string {
   return value.replace(/[^a-zA-Z0-9_.-]+/g, '-').replace(/^-+|-+$/g, '') || 'workflow';
@@ -382,6 +393,7 @@ export function createSmithersWorkerScript(): string {
     console.warn = (...values) => process.stderr.write('[workflow:warn] ' + values.map(String).join(' ') + '\n');
     console.error = (...values) => process.stderr.write('[workflow:error] ' + values.map(String).join(' ') + '\n');
 
+    let executionStarted = false;
     try {
       startupPhase('lease-start');
       workerLease=await globalThis.__elizaAcquireWorkerLease(payload.workerLease);
@@ -396,6 +408,7 @@ export function createSmithersWorkerScript(): string {
       if (!workflow || typeof workflow.build !== 'function') {
         throw new Error('Default export is not a Smithers workflow');
       }
+      executionStarted = true;
       startupPhase('execution-start');
       const result = await Effect.runPromise(runWorkflow(workflow, {
         runId: payload.runId,
@@ -428,8 +441,19 @@ export function createSmithersWorkerScript(): string {
       input.close();
       process.exit(0);
     } catch (error) {
-      await workerLease?.abandon();
-      await emitAndFlush({ kind: 'error', error: serializeError(error) });
+      // Before execution-start only top-level module code ran, which the lease
+      // never covered: release it so the run can be retried. After it, a task
+      // may have run, so the reservation stays as durable unknown.
+      let unstarted = false;
+      if (workerLease && !executionStarted) {
+        try {
+          await workerLease.releaseUnstarted();
+          unstarted = true;
+        } catch {
+          await workerLease.abandon();
+        }
+      } else await workerLease?.abandon();
+      await emitAndFlush({ kind: 'error', error: serializeError(error), ...(unstarted ? { unstarted: true } : {}) });
       input.close();
       process.exit(1);
     }
@@ -450,24 +474,40 @@ export function createSmithersControlScript(): string {
     import { openSmithersStore } from 'smthrs/openSmithersStore';
 
     const payload = JSON.parse(readFileSync(process.env.ELIZA_SMTHRS_PAYLOAD_PATH, 'utf8'));
-    const store = await openSmithersStore({ mode: 'write', backend: 'sqlite', dbPath: payload.dbPath });
-    try {
-      let status;
-      if (payload.kind === 'cancel') {
-        await cancelRunSubtree(store.adapter, payload.runId);
-        status = (await Effect.runPromise(store.adapter.getRun(payload.runId)))?.status ?? null;
-      } else if (payload.kind === 'approve') {
-        await Effect.runPromise(approveNode(store.adapter, payload.runId, payload.nodeId, payload.iteration, payload.note, payload.decidedBy, payload.decision));
-      } else if (payload.kind === 'deny') {
-        await Effect.runPromise(denyNode(store.adapter, payload.runId, payload.nodeId, payload.iteration, payload.note, payload.decidedBy, payload.decision));
-      } else if (payload.kind === 'signal') {
-        await Effect.runPromise(signalRun(store.adapter, payload.runId, payload.signal, payload.payload, { receivedBy: payload.receivedBy }));
-      } else {
-        throw new Error('Unknown Smithers control request');
+    const receipt = (value) => process.stdout.write('${PROTOCOL_PREFIX}control:' + JSON.stringify({ ok: true, ...value }) + '\\n');
+    if (payload.kind === 'status') {
+      // Read mode runs no DDL and refuses a missing store instead of creating one.
+      let reader;
+      try {
+        reader = await openSmithersStore({ mode: 'read', backend: 'sqlite', dbPath: payload.dbPath });
+      } catch (error) {
+        if (error?.code !== 'CLI_DB_NOT_FOUND') throw error;
       }
-      process.stdout.write('${PROTOCOL_PREFIX}control:' + JSON.stringify({ ok: true, ...(payload.kind === 'cancel' ? { status } : {}) }) + '\\n');
-    } finally {
-      await store.cleanup();
+      try {
+        receipt({ status: reader ? (await Effect.runPromise(reader.adapter.getRun(payload.runId)))?.status ?? null : null });
+      } finally {
+        await reader?.cleanup();
+      }
+    } else {
+      const store = await openSmithersStore({ mode: 'write', backend: 'sqlite', dbPath: payload.dbPath });
+      try {
+        let status;
+        if (payload.kind === 'cancel') {
+          await cancelRunSubtree(store.adapter, payload.runId);
+          status = (await Effect.runPromise(store.adapter.getRun(payload.runId)))?.status ?? null;
+        } else if (payload.kind === 'approve') {
+          await Effect.runPromise(approveNode(store.adapter, payload.runId, payload.nodeId, payload.iteration, payload.note, payload.decidedBy, payload.decision));
+        } else if (payload.kind === 'deny') {
+          await Effect.runPromise(denyNode(store.adapter, payload.runId, payload.nodeId, payload.iteration, payload.note, payload.decidedBy, payload.decision));
+        } else if (payload.kind === 'signal') {
+          await Effect.runPromise(signalRun(store.adapter, payload.runId, payload.signal, payload.payload, { receivedBy: payload.receivedBy }));
+        } else {
+          throw new Error('Unknown Smithers control request');
+        }
+        receipt(payload.kind === 'cancel' ? { status } : {});
+      } finally {
+        await store.cleanup();
+      }
     }
   `;
 }
@@ -475,7 +515,8 @@ export function createSmithersControlScript(): string {
 export async function controlSmithersRun(
   tenantId: string,
   workflowId: string,
-  request: SmithersControlRequest
+  request: SmithersControlRequest,
+  { timeoutMs = DEFAULT_CONTROL_TIMEOUT_MS }: { timeoutMs?: number } = {}
 ): Promise<{ status?: WorkflowExecutionStatus | null }> {
   const rootDir = resolveSmithersWorkflowDir(tenantId, workflowId);
   // Owner-only: the worker lease refuses a state root other users can write.
@@ -511,18 +552,31 @@ export async function controlSmithersRun(
   let stderr = '';
   child.stderr?.setEncoding('utf8');
   child.stderr?.on('data', (chunk: string) => {
-    stderr += chunk;
+    stderr = (stderr + chunk).slice(-MAX_STDERR_TAIL_CHARS);
   });
+  let timedOut = false;
+  const deadline = setTimeout(() => {
+    timedOut = true;
+    child.kill('SIGKILL');
+  }, timeoutMs);
   const exitCode = await new Promise<number | null>((resolve, reject) => {
     child.once('error', reject);
     child.once('close', resolve);
   }).finally(async () => {
+    clearTimeout(deadline);
     await unlink(payloadPath).catch((error: NodeJS.ErrnoException) => {
       // error-policy:J6 the one-shot child already terminated; cleanup failure
       // is observable through the caller only when it is not already absent.
       if (error.code !== 'ENOENT') throw error;
     });
   });
+  if (timedOut) {
+    // The child may have committed the decision before it was killed.
+    throw new ElizaError(`Smithers control did not finish within ${timeoutMs}ms`, {
+      code: 'SMTHRS_CONTROL_TIMEOUT',
+      context: { timeoutMs, workflowId, runId: request.runId, kind: request.kind },
+    });
+  }
   if (exitCode !== 0) {
     const detail = stripVTControlCharacters(redactSensitiveText(stderr)).trim();
     throw new ElizaError(`Smithers control failed${detail ? `: ${detail}` : ''}`, {
@@ -535,7 +589,7 @@ export async function controlSmithersRun(
       },
     });
   }
-  if (request.kind !== 'cancel') return {};
+  if (request.kind !== 'cancel' && request.kind !== 'status') return {};
   const controlPrefix = `${PROTOCOL_PREFIX}control:`;
   const receiptLine = stdout
     .split('\n')
@@ -557,6 +611,13 @@ export async function controlSmithersRun(
   }
   const status = 'status' in response ? response.status : undefined;
   if (status === null) return { status: null };
+  if (request.kind === 'status') {
+    if (typeof status !== 'string')
+      throw new ElizaError('Smithers control returned an invalid receipt', {
+        code: 'SMTHRS_CONTROL_RECEIPT_INVALID',
+      });
+    return { status: statusFromSmithers(status) };
+  }
   if (
     typeof status !== 'string' ||
     !['cancelled', 'canceled', 'finished', 'failed', 'continued'].includes(status)
@@ -590,6 +651,10 @@ function statusFromSmithers(status: string): WorkflowExecutionStatus {
       : 'failed';
 }
 
+function formatDuration(ms: number): string {
+  return ms >= 60_000 ? `${Math.round(ms / 60_000)} min` : `${Math.ceil(ms / 1_000)} s`;
+}
+
 function errorPayload(error: unknown): { message: string; stack?: string } {
   if (
     error !== null &&
@@ -607,6 +672,95 @@ function errorPayload(error: unknown): { message: string; stack?: string } {
   };
 }
 
+function publishedSourcePath(
+  rootDir: string,
+  versionId: string,
+  sourceSha256: string,
+  language: WorkflowDefinitionResponse['language']
+): string {
+  return join(
+    rootDir,
+    `${safePathPart(versionId)}.${sourceSha256}.${language === 'tsx' ? 'tsx' : 'ts'}`
+  );
+}
+
+async function workerLeaseInput(
+  rootDir: string,
+  runId: string,
+  versionId: string,
+  sourceSha256: string
+): Promise<WorkerLeaseInput> {
+  // Windows uses a protected named pipe; its native backend verifies rootDir SID/DACL.
+  const socketRoot =
+    process.platform === 'win32'
+      ? await realpath(rootDir)
+      : resolveWorkerSocketRoot(process.env.HOME ?? rootDir);
+  return { rootDir: await realpath(rootDir), socketRoot, runId, versionId, sourceSha256 };
+}
+
+/**
+ * Read-only: the run's worker reservation and its native Smithers status
+ * (null when the store has no row for it). Neither probe changes run state.
+ */
+export async function inspectRunWorker(input: {
+  tenantId: string;
+  workflowId: string;
+  versionId: string;
+  runId: string;
+  sourceSha256: string;
+}): Promise<{ lease: WorkerLeaseState['state']; native: WorkflowExecutionStatus | null }> {
+  const rootDir = resolveSmithersWorkflowDir(input.tenantId, input.workflowId);
+  await mkdir(rootDir, { recursive: true, mode: 0o700 });
+  const lease = await inspectWorkerLease(
+    await workerLeaseInput(rootDir, input.runId, input.versionId, input.sourceSha256)
+  );
+  const { status } = await controlSmithersRun(input.tenantId, input.workflowId, {
+    kind: 'status',
+    runId: input.runId,
+  });
+  return { lease: lease.state, native: status ?? null };
+}
+
+/** The run-specific source file a worker imported, or null when it is gone. */
+export async function readPublishedWorkflowSource(
+  tenantId: string,
+  workflowId: string,
+  versionId: string,
+  sourceSha256: string,
+  language: WorkflowDefinitionResponse['language']
+): Promise<string | null> {
+  const path = publishedSourcePath(
+    resolveSmithersWorkflowDir(tenantId, workflowId),
+    versionId,
+    sourceSha256,
+    language
+  );
+  try {
+    return await readFile(path, 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+export async function removePublishedWorkflowSource(
+  tenantId: string,
+  workflowId: string,
+  versionId: string,
+  sourceSha256: string,
+  language: WorkflowDefinitionResponse['language']
+): Promise<void> {
+  const path = publishedSourcePath(
+    resolveSmithersWorkflowDir(tenantId, workflowId),
+    versionId,
+    sourceSha256,
+    language
+  );
+  await unlink(path).catch((error: NodeJS.ErrnoException) => {
+    if (error.code !== 'ENOENT') throw error;
+  });
+}
+
 export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<SmithersRunResult> {
   const eventSequenceOffset = request.eventSequenceOffset ?? 0;
   if (!Number.isSafeInteger(eventSequenceOffset) || eventSequenceOffset < 0) {
@@ -619,23 +773,16 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
   let command = workflowProcessCommand('runtime', workerProgram);
   const rootDir = resolveSmithersWorkflowDir(request.tenantId, request.workflow.id);
   const sourceDigest = createHash('sha256').update(request.workflow.source).digest('hex');
-  const sourcePath = join(
+  const sourcePath = publishedSourcePath(
     rootDir,
-    `${safePathPart(request.workflow.versionId)}.${sourceDigest}.${request.workflow.language === 'tsx' ? 'tsx' : 'ts'}`
+    request.workflow.versionId,
+    sourceDigest,
+    request.workflow.language
   );
   // Owner-only: the worker lease refuses a state root other users can write.
   await mkdir(rootDir, { recursive: true, mode: 0o700 });
-  // Windows uses a protected named pipe; its native backend verifies rootDir SID/DACL.
-  const socketRoot =
-    process.platform === 'win32'
-      ? await realpath(rootDir)
-      : resolveWorkerSocketRoot(process.env.HOME ?? rootDir);
   const workerLease = {
-    rootDir: await realpath(rootDir),
-    socketRoot,
-    runId: request.runId,
-    versionId: request.workflow.versionId,
-    sourceSha256: sourceDigest,
+    ...(await workerLeaseInput(rootDir, request.runId, request.workflow.versionId, sourceDigest)),
     sourcePath,
   };
   const existingWorker = await inspectWorkerLease(workerLease);
@@ -724,6 +871,8 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
   let stdoutBuffer = '';
   let stdoutNoise = '';
   let stdinError: Error | undefined;
+  let deliveryError: unknown;
+  const outstandingRequests = new Set<Promise<void>>();
   const observeLineProcessing = (processing: Promise<void>): Promise<void> => {
     // error-policy:J5 the same rejection is re-observed and propagated after
     // child-process settlement through observedLineProcessing below.
@@ -776,6 +925,50 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
     }
   };
 
+  const answerWorkerRequest = async (message: WorkerAgentRequestMessage): Promise<void> => {
+    const isDevice = message.kind === 'device-request';
+    // The device bridge bounds each phone review itself; do not spend the
+    // run's wall-clock budget while one waits on the user.
+    if (isDevice) pauseTimeout();
+    try {
+      const invocation = isDevice
+        ? request.device
+          ? request.device({
+              payload: message.prompt,
+              signal: protocolController.signal,
+            })
+          : Promise.reject(new Error('Workflow device dispatcher unavailable'))
+        : request.generate({
+            prompt: message.prompt,
+            ...(message.messages !== undefined ? { messages: message.messages } : {}),
+            signal: protocolController.signal,
+          });
+      const generationOutcome = invocation.then(
+        (value) => ({ kind: 'value' as const, value }),
+        (error) => ({ kind: 'error' as const, error })
+      );
+      const generation = await Promise.race([generationOutcome, protocolAbortOutcome]);
+      if (generation.kind === 'aborted') return;
+      if (generation.kind === 'error') throw generation.error;
+      writeWorkerResponse({
+        requestId: message.requestId,
+        ok: true,
+        value: generation.value,
+      });
+    } catch (error) {
+      // error-policy:J1 model failures cross the worker boundary as a typed
+      // rejection for the Smithers AgentLike invocation.
+      if (protocolController.signal.aborted) return;
+      writeWorkerResponse({
+        requestId: message.requestId,
+        ok: false,
+        error: errorPayload(error),
+      });
+    } finally {
+      if (isDevice) resumeTimeout();
+    }
+  };
+
   const consumeLine = async (line: string): Promise<void> => {
     if (!line.startsWith(PROTOCOL_PREFIX)) {
       stdoutNoise += `${line}\n`;
@@ -792,41 +985,11 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
     if (message.kind === 'result') result = message.result;
     if (message.kind === 'error') workerError = message.error;
     if (message.kind === 'agent-request' || message.kind === 'device-request') {
-      try {
-        const invocation =
-          message.kind === 'device-request'
-            ? request.device
-              ? request.device({
-                  payload: message.prompt,
-                  signal: protocolController.signal,
-                })
-              : Promise.reject(new Error('Workflow device dispatcher unavailable'))
-            : request.generate({
-                prompt: message.prompt,
-                ...(message.messages !== undefined ? { messages: message.messages } : {}),
-                signal: protocolController.signal,
-              });
-        const generationOutcome = invocation.then(
-          (value) => ({ kind: 'value' as const, value }),
-          (error) => ({ kind: 'error' as const, error })
-        );
-        const generation = await Promise.race([generationOutcome, protocolAbortOutcome]);
-        if (generation.kind === 'aborted') return;
-        if (generation.kind === 'error') throw generation.error;
-        writeWorkerResponse({
-          requestId: message.requestId,
-          ok: true,
-          value: generation.value,
-        });
-      } catch (error) {
-        // error-policy:J1 model failures cross the worker boundary as a typed
-        // rejection for the Smithers AgentLike invocation.
-        writeWorkerResponse({
-          requestId: message.requestId,
-          ok: false,
-          error: errorPayload(error),
-        });
-      }
+      // Requests are keyed by requestId, so answer each when it settles: a
+      // Parallel workflow's model calls must not queue behind one another.
+      const answer = answerWorkerRequest(message);
+      outstandingRequests.add(answer);
+      void answer.finally(() => outstandingRequests.delete(answer));
     }
     if (message.kind === 'event') {
       sequence += 1;
@@ -843,12 +1006,21 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
         payload: raw,
       };
       events.push(event);
-      const deliveryOutcome = Promise.resolve(request.onEvent?.(event)).then(
+      // The executor also catches a synchronous throw from the observer.
+      const deliveryOutcome = new Promise<void>((resolve) =>
+        resolve(request.onEvent?.(event))
+      ).then(
         () => ({ kind: 'delivered' as const }),
         (error) => ({ kind: 'error' as const, error })
       );
       const delivery = await Promise.race([deliveryOutcome, deliveryAbortOutcome]);
-      if (delivery.kind === 'error') throw delivery.error;
+      if (delivery.kind === 'error') {
+        // An unpersisted event (an approval request, say) must not let the
+        // run go on. Stop the worker now instead of at the run timeout.
+        deliveryError ??= delivery.error;
+        terminate('delivery');
+        return;
+      }
       if (delivery.kind === 'aborted' && !terminationCause) {
         const reason = deliveryController.signal.reason;
         if (reason === 'abort' || reason === 'timeout' || reason === 'overflow') {
@@ -899,7 +1071,7 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
       }
       startupTail = startupScan.slice(-4096);
     }
-    stderr += chunk;
+    stderr = (stderr + chunk).slice(-MAX_STDERR_TAIL_CHARS);
   });
 
   let terminationCause: WorkerTerminationCause | undefined;
@@ -921,10 +1093,31 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
   };
   if (request.signal?.aborted) abort();
   else request.signal?.addEventListener('abort', abort, { once: true });
-  const timeoutTimer = setTimeout(() => {
-    if (processExited) deliveryController.abort('timeout');
-    else terminate('timeout');
-  }, timeoutMs);
+  let timeoutTimer: NodeJS.Timeout | undefined;
+  let timeoutRemainingMs = timeoutMs;
+  let timeoutArmedAt = 0;
+  let timeoutPauses = 0;
+  let timeoutFinished = false;
+  const armTimeout = (): void => {
+    timeoutArmedAt = Date.now();
+    timeoutTimer = setTimeout(() => {
+      timeoutTimer = undefined;
+      timeoutRemainingMs = 0;
+      if (processExited) deliveryController.abort('timeout');
+      else terminate('timeout');
+    }, timeoutRemainingMs);
+  };
+  function pauseTimeout(): void {
+    if (timeoutPauses++ > 0 || !timeoutTimer) return;
+    clearTimeout(timeoutTimer);
+    timeoutTimer = undefined;
+    timeoutRemainingMs = Math.max(0, timeoutRemainingMs - (Date.now() - timeoutArmedAt));
+  }
+  function resumeTimeout(): void {
+    if (--timeoutPauses > 0 || timeoutTimer || timeoutFinished) return;
+    armTimeout();
+  }
+  armTimeout();
 
   const outcome = await new Promise<{
     exitCode: number | null;
@@ -1002,6 +1195,10 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
   // contract: do not let the pipe-drain fallback skip a terminal result queued
   // behind a slow persistence or runtime event callback.
   await observedLineProcessing;
+  // Protocol work is aborted on exit; let each answer settle so none is
+  // written after the pipes are gone and the result is read last.
+  await Promise.allSettled([...outstandingRequests]);
+  timeoutFinished = true;
   clearTimeout(timeoutTimer);
   request.signal?.removeEventListener('abort', abort);
   // A lost worker/transport does not prove that an admitted effect failed or
@@ -1009,18 +1206,34 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
   // arrived; the service projects these typed errors as unfinished state.
   if (!result) {
     const remainingLease = await inspectWorkerLease(workerLease);
-    if (remainingLease.state !== 'absent') {
+    if (remainingLease.state === 'live')
       throw new ElizaError(
-        remainingLease.state === 'live'
-          ? 'The original workflow worker is still running; preserve its execution.'
-          : 'Workflow worker outcome is unknown; preserve it and do not replay effects.',
+        'The original workflow worker is still running; preserve its execution.',
         {
-          code:
-            remainingLease.state === 'live'
-              ? 'WORKFLOW_WORKER_RUNNING'
-              : 'WORKFLOW_WORKER_OUTCOME_UNKNOWN',
+          code: 'WORKFLOW_WORKER_RUNNING',
         }
       );
+    if (remainingLease.state !== 'absent') {
+      // The execution store keeps only the message: say why the run stopped.
+      const stoppedBy =
+        terminationCause === 'timeout'
+          ? `timed out after ${formatDuration(timeoutMs)}`
+          : terminationCause === 'abort'
+            ? 'agent shutdown'
+            : undefined;
+      const details = [
+        ...(deliveryError !== undefined
+          ? [`event persistence failed: ${errorPayload(deliveryError).message}`]
+          : []),
+        ...(workerError ? [workerError.message] : []),
+      ];
+      const summary = stoppedBy
+        ? `The agent stopped this run (${stoppedBy}) before it reported a result. Nothing was replayed`
+        : 'Workflow worker outcome is unknown; preserve it and do not replay effects';
+      throw new ElizaError(`${summary}${details.length ? `; ${details.join('; ')}` : '.'}`, {
+        code: 'WORKFLOW_WORKER_OUTCOME_UNKNOWN',
+        ...(terminationCause ? { context: { terminationCause } } : {}),
+      });
     }
   }
   if (lineProcessingFailed) throw lineProcessingError;
@@ -1043,6 +1256,8 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
     result && ['finished', 'failed', 'continued', 'cancelled', 'canceled'].includes(result.status);
   // Abort may release slow event delivery after the worker already committed
   // and emitted its terminal receipt. Do not discard that receipt's payload.
+  // Persistence failed with no committed terminal receipt to report instead.
+  if (terminationCause === 'delivery' && !receivedTerminalResult) throw deliveryError;
   if (terminationCause === 'abort' && !receivedTerminalResult) {
     return {
       runId: request.runId,

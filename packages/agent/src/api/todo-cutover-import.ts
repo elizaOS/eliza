@@ -17,12 +17,11 @@ import {
   validateUuid,
 } from "@elizaos/core";
 
-import type { TodoInsert, TodoRow } from "@elizaos/plugin-todos";
-import {
-  deserializeTodoMutationRecord,
-  importTodoMutationRecordsInTransaction,
-  type TodoMutationRecord,
-  type TodoMutationResult,
+import type {
+  TodoInsert,
+  TodoMutationRecord,
+  TodoMutationResult,
+  TodoRow,
 } from "@elizaos/plugin-todos";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
@@ -292,7 +291,13 @@ export async function importSharedTodoCutover(input: {
       { code: "TODO_CUTOVER_DATABASE_UNAVAILABLE" },
     );
   }
-  const { todosTable } = await import("@elizaos/plugin-todos");
+  // plugin-todos loads only when an import runs, so a host that leaves the
+  // plugin out of its bundle still starts the API server.
+  const {
+    deserializeTodoMutationRecord,
+    importTodoMutationRecordsInTransaction,
+    todosTable,
+  } = await import("@elizaos/plugin-todos");
   const targetScope = {
     agentId: input.runtime.agentId,
     entityId: input.entityId,

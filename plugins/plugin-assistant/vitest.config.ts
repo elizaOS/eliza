@@ -1,7 +1,20 @@
+import { defaultExternalConditions, defaultServerConditions } from "vite";
 /** Runs assistant source contracts against the real workspace runtime and SQL adapter. */
 import { defineConfig } from "vitest/config";
 import { buildWorkspaceSourceAliases } from "../../packages/scripts/vitest/source-aliases.ts";
 export default defineConfig({
+  // Preserve Vitest server defaults and Vite's separate bare-external defaults.
+  ssr: {
+    resolve: {
+      conditions: [
+        "eliza-source",
+        ...defaultServerConditions.filter(
+          (condition) => condition !== "module",
+        ),
+      ],
+      externalConditions: ["eliza-source", ...defaultExternalConditions],
+    },
+  },
   resolve: {
     conditions: ["eliza-source", "node"],
     alias: buildWorkspaceSourceAliases(),

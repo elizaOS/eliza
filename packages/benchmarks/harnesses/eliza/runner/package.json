@@ -13,9 +13,9 @@
     }
   },
   "scripts": {
-    "benchmark:server": "node --conditions=eliza-source --conditions=development --import tsx src/cli.ts",
-    "trusted-runtime:server": "node --conditions=eliza-source --conditions=development --import tsx src/trusted-runtime-server.ts",
-    "normalize-capture": "node --import tsx ../../../scripts/lifeops-bench/runner/normalize-eliza-capture.ts",
+    "benchmark:server": "bun --conditions=eliza-source --conditions=development src/cli.ts",
+    "trusted-runtime:server": "bun --conditions=eliza-source --conditions=development src/trusted-runtime-server.ts",
+    "normalize-capture": "bun ../../../scripts/lifeops-bench/runner/normalize-eliza-capture.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
@@ -46,7 +46,7 @@
     "tsx": "^4.21.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   },
   "types": "./src/index.ts",
   "exports": {

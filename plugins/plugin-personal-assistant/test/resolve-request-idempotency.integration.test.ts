@@ -47,6 +47,8 @@ import { LifeOpsService } from "../src/lifeops/service.js";
 const dispatchState = vi.hoisted(() => ({
   sends: 0,
   mode: "delivered" as "delivered" | "ambiguous" | "known_failure",
+  /** When set, a dispatch waits on it after counting the send. */
+  gate: null as Promise<void> | null,
 }));
 
 vi.mock("../src/actions/lib/messaging-helpers.js", () => {
@@ -77,6 +79,7 @@ vi.mock("../src/actions/lib/messaging-helpers.js", () => {
       supportsProviderIdempotency: false,
       dispatch: async () => {
         dispatchState.sends += 1;
+        if (dispatchState.gate) await dispatchState.gate;
         if (dispatchState.mode === "ambiguous") {
           throw new Error(
             "provider accepted request, acknowledgement timed out",
@@ -277,6 +280,8 @@ function delegateQueue(
     reconcileExecution: (reconciliation) =>
       base.reconcileExecution(reconciliation),
     markExpired: (id, subjectUserId) => base.markExpired(id, subjectUserId),
+    revertApprovedToPending: (id, subjectUserId) =>
+      base.revertApprovedToPending(id, subjectUserId),
     removePending: (id, subjectUserId) => base.removePending(id, subjectUserId),
     purgeExpired: (now) => base.purgeExpired(now),
     ...overrides,
@@ -329,6 +334,7 @@ beforeEach(async () => {
   activeQueue = realQueue;
   dispatchState.sends = 0;
   dispatchState.mode = "delivered";
+  dispatchState.gate = null;
   vi.clearAllMocks();
 });
 
@@ -1301,9 +1307,279 @@ describe("RESOLVE_REQUEST durable approval execution", () => {
 
     expect(dispatchState.sends).toBe(1);
     expect((await stored(request.id)).state).toBe("done");
-    expect(
-      [first, second].filter((result) => result.data?.alreadyResolved !== true),
-    ).toHaveLength(1);
+    // The loser either replays the finished row or finds the winner's live
+    // attempt; it never recovers that attempt or dispatches again.
+    const loser = [first, second].filter(
+      (result) =>
+        result.data?.alreadyResolved === true ||
+        result.data?.error === "APPROVAL_IN_FLIGHT",
+    );
+    expect(loser).toHaveLength(1);
+    expect([first, second].filter((result) => result.success)).toHaveLength(
+      loser[0]?.data?.alreadyResolved === true ? 2 : 1,
+    );
+  });
+
+  it("does not dispatch the only pending row when the owner names something else", async () => {
+    const request = await realQueue.enqueue(sendMessageInput());
+
+    const result = await resolveRequestAction.handler(
+      runtime,
+      {
+        ...message("approve", request.id),
+        content: { text: "approve the flight booking" },
+      },
+      undefined,
+      {
+        parameters: { action: "approve" },
+      } as unknown as Parameters<typeof resolveRequestAction.handler>[3],
+      undefined,
+    );
+
+    expect(result?.success).toBe(false);
+    expect(result?.data?.error).toBe("REQUEST_ID_NOT_RESOLVED");
+    expect(result?.text).toContain("Confirm before sending");
+    expect((await stored(request.id)).state).toBe("pending");
+    expect(dispatchState.sends).toBe(0);
+  });
+
+  it("dispatches the only pending row on a bare yes", async () => {
+    const request = await realQueue.enqueue(sendMessageInput());
+
+    const result = await resolveRequestAction.handler(
+      runtime,
+      { ...message("approve", request.id), content: { text: "yes, do it" } },
+      undefined,
+      {
+        parameters: { action: "approve" },
+      } as unknown as Parameters<typeof resolveRequestAction.handler>[3],
+      undefined,
+    );
+
+    expect(result?.success).toBe(true);
+    expect((await stored(request.id)).state).toBe("done");
+    expect(runtime.useModel).not.toHaveBeenCalled();
+  });
+
+  it("says there is nothing to retry instead of approving an unrelated pending row", async () => {
+    const request = await realQueue.enqueue(sendMessageInput());
+
+    const result = await resolveRequestAction.handler(
+      runtime,
+      { ...message("approve", request.id), content: { text: "yes, retry it" } },
+      undefined,
+      {
+        parameters: { action: "approve" },
+      } as unknown as Parameters<typeof resolveRequestAction.handler>[3],
+      undefined,
+    );
+
+    expect(result?.success).toBe(false);
+    expect(result?.data?.error).toBe("NO_RETRYABLE_REQUEST");
+    expect((await stored(request.id)).state).toBe("pending");
+    expect(dispatchState.sends).toBe(0);
+  });
+
+  it("answers in-flight to a second approve during a live dispatch", async () => {
+    const request = await realQueue.enqueue(sendMessageInput());
+    let release: (() => void) | undefined;
+    dispatchState.gate = new Promise<void>((resolveGate) => {
+      release = resolveGate;
+    });
+
+    const first = resolve("approve", request.id);
+    await vi.waitFor(() => expect(dispatchState.sends).toBe(1));
+    const second = await resolve("approve", request.id);
+    expect(second.data?.error).toBe("APPROVAL_IN_FLIGHT");
+    expect((await stored(request.id)).state).toBe("executing");
+
+    release?.();
+    expect((await first).success).toBe(true);
+    expect((await stored(request.id)).state).toBe("done");
+    expect(dispatchState.sends).toBe(1);
+  });
+
+  it("records a late receipt on a row a stale recovery flagged for reconciliation", async () => {
+    const request = await realQueue.enqueue(sendMessageInput());
+    await realQueue.approve(request.id, OWNER_A, {
+      resolvedBy: OWNER_A,
+      resolutionReason: "approved",
+    });
+    const claimed = await realQueue.claimExecution({
+      requestId: request.id,
+      subjectUserId: OWNER_A,
+      provider: "telegram",
+      providerIdempotencyKey: `approval:${request.id}:telegram`,
+    });
+    const mutation = {
+      requestId: request.id,
+      subjectUserId: OWNER_A,
+      attemptId: claimed.execution?.attemptId ?? "",
+    };
+    await realQueue.markDispatchStarted(mutation);
+    await realQueue.markReconciliationRequired({
+      ...mutation,
+      error: "recovered as interrupted",
+    });
+
+    const done = await realQueue.markDone({
+      ...mutation,
+      providerReceipt: { provider: "telegram", messageId: "late-1" },
+    });
+
+    expect(done.state).toBe("done");
+    expect((await stored(request.id)).provider_receipt).toEqual({
+      provider: "telegram",
+      messageId: "late-1",
+    });
+  });
+
+  it("does not claim an approved row after its expiry", async () => {
+    const request = await realQueue.enqueue(sendMessageInput());
+    await realQueue.approve(request.id, OWNER_A, {
+      resolvedBy: OWNER_A,
+      resolutionReason: "approved",
+    });
+    await pg.query(
+      "UPDATE approval_requests SET expires_at = now() - interval '1 hour' WHERE id = $1",
+      [request.id],
+    );
+
+    const result = await resolve("approve", request.id);
+
+    expect(result.success).toBe(false);
+    expect((await stored(request.id)).state).toBe("expired");
+    expect(dispatchState.sends).toBe(0);
+  });
+
+  describe("Gmail approvals", () => {
+    function sendEmailInput(
+      overrides: Partial<{
+        body: string;
+        bcc: string[];
+        replyToMessageId: string | null;
+      }> = {},
+    ): ApprovalEnqueueInput {
+      return {
+        requestedBy: "PERSONAL_ASSISTANT",
+        subjectUserId: OWNER_A,
+        action: "send_email",
+        payload: {
+          action: "send_email",
+          to: ["alice@example.com"],
+          cc: [],
+          bcc: overrides.bcc ?? [],
+          subject: "Lunch",
+          body: overrides.body ?? "See you at noon.",
+          threadId: null,
+          replyToMessageId: overrides.replyToMessageId ?? null,
+        },
+        channel: "email",
+        reason: "Email Alice about lunch",
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      };
+    }
+
+    function stubGmail(send: () => Promise<unknown>) {
+      return [
+        vi
+          .spyOn(LifeOpsService.prototype, "requireGoogleGmailSendGrant")
+          .mockResolvedValue({ id: "grant-1" } as never),
+        vi
+          .spyOn(LifeOpsService.prototype, "readGmailMessage")
+          .mockResolvedValue({} as never),
+        vi
+          .spyOn(LifeOpsService.prototype, "sendGmailMessage")
+          .mockImplementation(send as never),
+      ];
+    }
+
+    it("leaves a Gmail 400 retryable with a retryable receipt", async () => {
+      const spies = stubGmail(async () => {
+        throw Object.assign(new Error("Invalid To header"), { status: 400 });
+      });
+      try {
+        const request = await realQueue.enqueue(sendEmailInput());
+        const result = (await resolve("approve", request.id)) as {
+          data?: Record<string, unknown>;
+          effectReceipts?: Array<{ failure?: Record<string, unknown> }>;
+        };
+
+        expect(result.data?.error).toBe("APPROVAL_DELIVERY_FAILED_RETRYABLE");
+        expect((await stored(request.id)).state).toBe("retryable");
+        expect(result.effectReceipts?.[0]?.failure).toMatchObject({
+          retryable: true,
+          acceptance: "rejected",
+        });
+      } finally {
+        for (const spy of spies) spy.mockRestore();
+      }
+    });
+
+    it("marks a Gmail timeout for reconciliation with an unknown acceptance", async () => {
+      const spies = stubGmail(async () => {
+        throw new Error("socket hang up");
+      });
+      try {
+        const request = await realQueue.enqueue(sendEmailInput());
+        const result = (await resolve("approve", request.id)) as {
+          data?: Record<string, unknown>;
+          effectReceipts?: Array<{ failure?: Record<string, unknown> }>;
+        };
+
+        expect(result.data?.error).toBe("APPROVAL_RECONCILIATION_REQUIRED");
+        expect((await stored(request.id)).state).toBe(
+          "reconciliation_required",
+        );
+        expect(result.effectReceipts?.[0]?.failure).toMatchObject({
+          retryable: false,
+          acceptance: "unknown",
+        });
+      } finally {
+        for (const spy of spies) spy.mockRestore();
+      }
+    });
+
+    it("returns a preflight failure to pending and says so", async () => {
+      const spies = stubGmail(async () => ({ messageId: "m", threadId: null }));
+      try {
+        const request = await realQueue.enqueue(sendEmailInput({ body: " " }));
+        const result = await resolve("approve", request.id);
+
+        expect(result.success).toBe(false);
+        expect(result.data?.error).toBe("INVALID_EMAIL_PAYLOAD");
+        expect(result.text).toContain("It is still pending.");
+        expect((await stored(request.id)).state).toBe("pending");
+        expect(
+          LifeOpsService.prototype.sendGmailMessage,
+        ).not.toHaveBeenCalled();
+      } finally {
+        for (const spy of spies) spy.mockRestore();
+      }
+    });
+
+    it("refuses a reply draft that carries Bcc", async () => {
+      const reply = vi
+        .spyOn(LifeOpsService.prototype, "sendGmailReply")
+        .mockResolvedValue({ ok: true });
+      const spies = stubGmail(async () => ({ messageId: "m", threadId: null }));
+      try {
+        const request = await realQueue.enqueue(
+          sendEmailInput({
+            replyToMessageId: "msg-1",
+            bcc: ["hidden@example.com"],
+          }),
+        );
+        const result = await resolve("approve", request.id);
+
+        expect(result.data?.error).toBe("GMAIL_REPLY_BCC_UNSUPPORTED");
+        expect((await stored(request.id)).state).toBe("pending");
+        expect(reply).not.toHaveBeenCalled();
+      } finally {
+        reply.mockRestore();
+        for (const spy of spies) spy.mockRestore();
+      }
+    });
   });
 
   it("rejects a queue with the wrong execution protocol before lookup", async () => {

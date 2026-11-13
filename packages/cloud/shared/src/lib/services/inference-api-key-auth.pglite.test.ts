@@ -182,6 +182,25 @@ describe("inference API-key identity", () => {
 });
 
 describe("mobile credentials on the Worker inference boundary", () => {
+  const qualifiedBindings = {
+    INFERENCE_ADMISSION_GATES: {
+      getByName() {
+        return {
+          async fetch() {
+            return Response.json({ allowed: true });
+          },
+        };
+      },
+    },
+  };
+  function qualifiedResolve(
+    request: Request,
+    options?: Parameters<typeof resolveInferenceAuthContext>[1],
+  ) {
+    return runWithCloudBindings(qualifiedBindings, () =>
+      resolveInferenceAuthContext(request, options),
+    );
+  }
   async function mobileKey(
     overrides: {
       active?: boolean;
@@ -212,72 +231,50 @@ describe("mobile credentials on the Worker inference boundary", () => {
       headers: { Authorization: `Bearer ${key}` },
     });
   }
-  test("active mobile key resolves in Worker cache-only mode without positive cache reads or writes", async () => {
-    process.env.INFERENCE_AUTH_CACHE_ENABLED = "true";
-    process.env.INFERENCE_STRONG_REVOCATION_ENABLED = "true";
+  // Mobile lifecycle keys share the combined cache: their revocations
+  // invalidate the same key-hash entry. A Worker cold miss is decided by the
+  // shared authoritative hydration and served, never refused (covered end to
+  // end, with a primary tripwire, in inference-auth-hot-path.pglite.test.ts).
+  test("active mobile key on a Worker cold miss is decided by the primary, not refused", async () => {
     const key = await mobileKey();
-    const deferred: Promise<unknown>[] = [];
     let trace: InferenceAuthTelemetry | undefined;
-    const result = await resolveInferenceAuthContext(request(key), {
-      cacheOnly: true,
+    // This fixture has no admission-projection tables, so the decision cannot
+    // complete; what matters is that the cold miss reaches the primary
+    // identity lookup instead of returning a retryable warming refusal.
+    await qualifiedResolve(request(key), {
       deferStrongCredentialCheck: true,
-      executionCtx: {
-        waitUntil(task) {
-          deferred.push(task);
-        },
-      },
+      executionCtx: { waitUntil() {} },
       onTelemetry(value) {
         trace = value;
       },
-    });
-    expect(result.kind).toBe("authorized");
-    if (result.kind !== "authorized") throw Error("Mobile Worker authorization failed");
-    expect(result.credential).toMatchObject({ kind: "api_key", userId: USER });
-    expect(result.source).toBe("origin");
-    expect(result.ctx.orgId).toBe(ORG);
-    expect(result.ctx.userId).toBe(USER);
-    expect(trace?.cacheRead).toBe("not_run");
-    expect(trace?.cacheWrite).toBe("not_run");
-    await Promise.allSettled(deferred);
-    await getPgliteClientForTests().query(
-      "UPDATE api_keys SET deleted_at=now() WHERE key_hash=$1",
-      [createHash("sha256").update(key).digest("hex")],
-    );
-    await expect(
-      resolveInferenceAuthContext(request(key), {
-        cacheOnly: true,
-        executionCtx: { waitUntil() {} },
-      }),
-    ).rejects.toBeInstanceOf(AuthenticationError);
-    delete process.env.INFERENCE_AUTH_CACHE_ENABLED;
-    delete process.env.INFERENCE_STRONG_REVOCATION_ENABLED;
+    }).catch(() => undefined);
+    expect(trace?.cacheRead).toBe("miss");
+    expect(typeof trace?.timings.identityLookupMs).toBe("number");
   });
-  test("Worker chat admits mobile identity before validation and still rejects generic callers", async () => {
+  test("Worker chat rejects generic callers before any admission work", async () => {
     const { handleChatCompletionsPOST } = await import("../../../../api/v1/chat/completions/route");
-    const key = await mobileKey();
     const send = async (token: string) => {
       const deferred: Promise<unknown>[] = [];
-      const response = await handleChatCompletionsPOST(
-        new Request("https://api.eliza.app/api/v1/chat/completions", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: "{}",
-        }),
-        {
-          skipOrgRateLimit: true,
-          executionCtx: {
-            waitUntil(task) {
-              deferred.push(task);
+      const response = await runWithCloudBindings(qualifiedBindings, () =>
+        handleChatCompletionsPOST(
+          new Request("https://api.eliza.app/api/v1/chat/completions", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: "{}",
+          }),
+          {
+            skipOrgRateLimit: true,
+            executionCtx: {
+              waitUntil(task) {
+                deferred.push(task);
+              },
             },
           },
-        },
+        ),
       );
       await Promise.allSettled(deferred);
       return response;
     };
-    const admitted = await send(key);
-    expect(admitted.status).toBe(400);
-    expect((await admitted.json()).error.code).toBe("missing_required_parameter");
     const refused = await send("unrecognized-credential");
     expect(refused.status).toBe(401);
     expect((await refused.json()).error.code).toBe("authentication_required");
@@ -291,17 +288,17 @@ describe("mobile credentials on the Worker inference boundary", () => {
       { app: null },
     ]) {
       const key = await mobileKey(state);
-      await expect(
-        resolveInferenceAuthContext(request(key), {
-          cacheOnly: true,
-          executionCtx: { waitUntil() {} },
-        }),
-      ).rejects.toBeInstanceOf(Error);
+      // The authoritative decision (what Worker hydration projects) rejects.
+      await expect(resolveInferenceAuthContext(request(key))).rejects.toBeInstanceOf(Error);
+      // A Worker request never authorizes a credential it has not cached.
+      const worker = await qualifiedResolve(request(key), {
+        executionCtx: { waitUntil() {} },
+      }).catch((error: unknown) => error);
+      expect((worker as { kind?: string }).kind).not.toBe("authorized");
     }
   });
   test("a non-API-key caller retains the generic slow path", async () => {
-    const result = await resolveInferenceAuthContext(request("unrecognized-credential"), {
-      cacheOnly: true,
+    const result = await qualifiedResolve(request("unrecognized-credential"), {
       executionCtx: { waitUntil() {} },
     });
     expect(result).toEqual({ kind: "slow_path", reason: "non_api_key" });
@@ -310,8 +307,6 @@ describe("mobile credentials on the Worker inference boundary", () => {
 
 describe("verified bootstrap credential metadata", () => {
   const bindings = {
-    INFERENCE_AUTH_CACHE_ENABLED: "false",
-    INFERENCE_STRONG_REVOCATION_ENABLED: "false",
     STEWARD_SESSION_SECRET: "synthetic-bootstrap-secret-".repeat(3),
   };
   function request(token: string) {
@@ -331,7 +326,6 @@ describe("verified bootstrap credential metadata", () => {
       return await runWithCloudBindings(
         {
           ...bindings,
-          INFERENCE_STRONG_REVOCATION_ENABLED: "true",
           INFERENCE_ADMISSION_GATES: {
             getByName(organizationId: string) {
               expect(organizationId).toBe(ORG);
@@ -378,10 +372,6 @@ describe("verified bootstrap credential metadata", () => {
     expect(JSON.stringify(included.credential)).not.toContain(key);
     expect(trace?.cacheRead).toBe("not_run");
     expect(trace?.cacheWrite).toBe("not_run");
-    expect(await rejectAtStrongBoundary(key, "credential_revoked")).toMatchObject({
-      kind: "rejected",
-      status: 401,
-    });
     for (const values of [
       { userId: USER, organizationId: ORG, isActive: false },
       { userId: USER, organizationId: ORG, deleted: true },

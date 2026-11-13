@@ -1,5 +1,5 @@
 /** Persists CLI auth sessions through primary-safe reveal and lifecycle operations. */
-import { and, eq, exists, gt, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
+import { and, eq, exists, gt, inArray, isNull, lt, or } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import { type ApiKey, apiKeys } from "../schemas/api-keys";
 import {
@@ -220,19 +220,26 @@ export class CliAuthSessionsRepository {
    */
   async reapExpiredSessions(now: Date = new Date()): Promise<{
     deletedSessions: number;
-    revokedOrphanKeys: { id: string; key_hash: string }[];
+    revokedOrphanKeys: { id: string; key_hash: string; organization_id: string }[];
   }> {
     return await dbWrite.transaction(async (tx) => {
-      const orphanKeyIds = tx
-        .select({ id: cliAuthSessions.api_key_id })
+      // Lock the session before inspecting its key. Completion and consumption
+      // update the same row, so neither can commit between orphan selection
+      // and deletion. A key-first scan could miss a delayed completion or
+      // revoke a credential whose plaintext was concurrently consumed.
+      const expiredSessions = await tx
+        .select({
+          id: cliAuthSessions.id,
+          apiKeyId: cliAuthSessions.api_key_id,
+          consumedAt: cliAuthSessions.consumed_at,
+        })
         .from(cliAuthSessions)
-        .where(
-          and(
-            lt(cliAuthSessions.expires_at, now),
-            isNull(cliAuthSessions.consumed_at),
-            isNotNull(cliAuthSessions.api_key_id),
-          ),
-        );
+        .where(lt(cliAuthSessions.expires_at, now))
+        .orderBy(cliAuthSessions.id)
+        .for("update");
+      const orphanKeyIds = expiredSessions.flatMap((session) =>
+        session.consumedAt === null && session.apiKeyId ? [session.apiKeyId] : [],
+      );
 
       const revokedOrphanKeys = await tx
         .update(apiKeys)
@@ -244,11 +251,20 @@ export class CliAuthSessionsRepository {
             isNull(apiKeys.deleted_at),
           ),
         )
-        .returning({ id: apiKeys.id, key_hash: apiKeys.key_hash });
+        .returning({
+          id: apiKeys.id,
+          key_hash: apiKeys.key_hash,
+          organization_id: apiKeys.organization_id,
+        });
 
       const deleted = await tx
         .delete(cliAuthSessions)
-        .where(lt(cliAuthSessions.expires_at, now))
+        .where(
+          inArray(
+            cliAuthSessions.id,
+            expiredSessions.map((session) => session.id),
+          ),
+        )
         .returning({ id: cliAuthSessions.id });
 
       return { deletedSessions: deleted.length, revokedOrphanKeys };

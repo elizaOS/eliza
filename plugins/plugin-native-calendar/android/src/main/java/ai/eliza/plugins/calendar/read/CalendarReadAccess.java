@@ -54,6 +54,8 @@ public final class CalendarReadAccess {
         String uri = rows.getString(1);
         if (uri == null || !uri.startsWith(creationUriPrefix)) continue;
         String id = uri.substring(creationUriPrefix.length());
+        // Option creations journal under the same prefix plus "options/".
+        if (id.startsWith("options/")) id = id.substring("options/".length());
         if (CREATION_ID.matcher(id).matches()) result.put(rows.getLong(0), id);
       }
     }

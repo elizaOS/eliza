@@ -14,15 +14,9 @@
  * `asr/voice-files.json` record, and the Eliza-1 manifest says nothing about
  * it. A strict Eliza-1 text bundle can therefore transcribe with Phonon-2.
  */
-import {
-	closeSync,
-	existsSync,
-	openSync,
-	readdirSync,
-	readFileSync,
-	readSync,
-} from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { readFileRegionHead, resolveFileRegion } from "./file-region";
 import { claimsStrictRelease } from "./manifest/release-policy";
 
 export const QWEN_PROVENANCE_RE = /\bqwen/i;
@@ -109,18 +103,16 @@ function isMissingPath(error: unknown): boolean {
 /**
  * Read `general.architecture` from a GGUF header, or null when the file is
  * not a GGUF or the key is not among the leading scalar/string entries
- * (converters write it first). Reads at most the first 64 KiB.
+ * (converters write it first). Reads at most the first 64 KiB. A
+ * libelizainference region file is read through to the model it names.
  *
  * Throws when the file exists but cannot be read, so callers never mistake a
  * broken artifact for a missing one.
  */
 export function readGgufArchitecture(file: string): string | null {
-	let fd: number | undefined;
 	try {
-		fd = openSync(file, "r");
-		const head = Buffer.alloc(64 * 1024);
-		const length = readSync(fd, head, 0, head.length, 0);
-		const buf = head.subarray(0, length);
+		// A region file (Android in-place models) reads as the bytes it names.
+		const buf = readFileRegionHead(resolveFileRegion(file), 64 * 1024);
 		if (buf.length < 24 || buf.toString("ascii", 0, 4) !== "GGUF") return null;
 		const kvCount = buf.readBigUInt64LE(16);
 		let offset = 24;
@@ -157,8 +149,6 @@ export function readGgufArchitecture(file: string): string | null {
 		// so callers do not report "no ASR model is staged" for a broken bundle.
 		if (isMissingPath(error)) return null;
 		throw new Error(`failed to read GGUF header at ${file}`, { cause: error });
-	} finally {
-		if (fd !== undefined) closeSync(fd);
 	}
 }
 

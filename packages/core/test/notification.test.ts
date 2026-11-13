@@ -15,17 +15,22 @@ import {
 } from "vitest";
 import { createCharacter } from "../src/character.ts";
 import { ElizaError } from "../src/errors.js";
+import { addLogListener } from "../src/logger.ts";
 import { AgentRuntime } from "../src/runtime.ts";
 import { AgentEventService } from "../src/services/agent-event.ts";
 import { NotificationService } from "../src/services/notification.ts";
 import type { AgentEventPayload } from "../src/types/agent-event.ts";
+import { EventType } from "../src/types/events.ts";
 import {
 	type AgentNotification,
 	NATIVE_NOTIFICATION_PAGE_BYTES,
 	NOTIFICATION_STREAM,
+	type NotificationCategory,
 	type NotificationInboxSnapshot,
+	type NotificationPriority,
 } from "../src/types/notification.ts";
 import type { Plugin } from "../src/types/plugin.ts";
+import type { IAgentRuntime } from "../src/types/runtime.ts";
 import { ServiceType } from "../src/types/service.ts";
 import { stringToUuid as sqliteTestAgentId } from "../src/utils/string-to-uuid.js";
 
@@ -639,22 +644,62 @@ describe("NotificationService", () => {
 	});
 
 	it("reports a changed epoch before checking its older cursor against a lower counter", async () => {
-		const current = await service.listNativePage();
-		const oldCursor = {
-			nativeEpoch: "10000000-0000-0000-0000-000000000001",
-			afterSequence: current.throughSequence + 100,
-			throughSequence: current.throughSequence + 100,
-		};
-		await expect(service.listNativePage(oldCursor)).rejects.toMatchObject({
-			code: "NATIVE_NOTIFICATION_EPOCH_CHANGED",
-			status: 409,
-		});
-		await expect(
-			service.listNativePage({
-				...oldCursor,
-				nativeEpoch: current.nativeEpoch,
-			}),
-		).rejects.toMatchObject({ code: "INVALID_NATIVE_NOTIFICATION_CURSOR" });
+		const isolated = await createRuntime([NotificationService]);
+		let replacement: NotificationService | undefined;
+		try {
+			const original = (await isolated.runtime.getServiceLoadPromise(
+				ServiceType.NOTIFICATION,
+			)) as NotificationService;
+			await original.notify({ title: "Old first row" });
+			await original.notify({ title: "Old second row" });
+			const first = await original.listNativePage({ limit: 1 });
+			expect(first.complete).toBe(false);
+			const oldCursor = {
+				nativeEpoch: first.nativeEpoch,
+				afterSequence: first.nextSequence,
+				throughSequence: first.throughSequence,
+			};
+			await original.stop();
+			expect(
+				await isolated.runtime.deleteCache(
+					`notifications:${isolated.runtime.agentId}`,
+				),
+			).toBe(true);
+
+			replacement = (await NotificationService.start(
+				isolated.runtime,
+			)) as NotificationService;
+			const notice = await replacement.notify({ title: "Replacement row" });
+			expect(notice.nativeSequence).toBe(first.nextSequence);
+			expect(notice.nativeEpoch).not.toBe(first.nativeEpoch);
+			await expect(replacement.listNativePage(oldCursor)).rejects.toMatchObject(
+				{
+					code: "NATIVE_NOTIFICATION_EPOCH_CHANGED",
+					status: 409,
+				},
+			);
+			await expect(
+				replacement.listNativePage({
+					...oldCursor,
+					nativeEpoch: notice.nativeEpoch,
+				}),
+			).rejects.toMatchObject({ code: "INVALID_NATIVE_NOTIFICATION_CURSOR" });
+			const fresh = await replacement.listNativePage({ limit: 1 });
+			expect(fresh).toMatchObject({
+				nativeEpoch: notice.nativeEpoch,
+				throughSequence: notice.nativeSequence,
+				complete: true,
+			});
+			expect(fresh.notifications.map((row) => row.id)).toEqual([notice.id]);
+			await expect(replacement.listNativePage(oldCursor)).rejects.toMatchObject(
+				{
+					code: "NATIVE_NOTIFICATION_EPOCH_CHANGED",
+				},
+			);
+		} finally {
+			await replacement?.stop();
+			await isolated.cleanup();
+		}
 	});
 
 	it("pages a fixed append fence including read, low and expired rows despite deleted gaps", async () => {
@@ -831,6 +876,263 @@ describe("NotificationService", () => {
 		} finally {
 			release?.();
 			runtime.setCache = originalSetCache;
+		}
+	});
+
+	it("rejects malformed persisted coordinates without overwriting the inbox", async () => {
+		const fixture = await createRuntime([AgentEventService]);
+		try {
+			const key = `notifications:${fixture.runtime.agentId}`;
+			const first: AgentNotification = {
+				id: sqliteTestAgentId("hydration-first"),
+				title: "First",
+				category: "general",
+				priority: "normal",
+				source: "fixture",
+				createdAt: 1,
+			};
+			const second: AgentNotification = {
+				...first,
+				id: sqliteTestAgentId("hydration-second"),
+				title: "Second",
+			};
+			const valid: NotificationInboxSnapshot = {
+				version: 2,
+				nativeEpoch: sqliteTestAgentId("hydration-epoch"),
+				nativeSequence: 7,
+				notifications: [first, second],
+				nativeSequences: { [first.id]: 2, [second.id]: 5 },
+			};
+			const invalid: Array<[string, unknown]> = [
+				["unsupported version", { ...valid, version: 1 }],
+				["invalid epoch", { ...valid, nativeEpoch: "not-an-epoch" }],
+				["negative watermark", { ...valid, nativeSequence: -1 }],
+				[
+					"unsafe watermark",
+					{ ...valid, nativeSequence: Number.MAX_SAFE_INTEGER + 1 },
+				],
+				["non-array rows", { ...valid, notifications: {} }],
+				["array coordinate map", { ...valid, nativeSequences: [2, 5] }],
+				[
+					"missing coordinate",
+					{ ...valid, nativeSequences: { [first.id]: 2 } },
+				],
+				[
+					"extra coordinate",
+					{ ...valid, nativeSequences: { ...valid.nativeSequences, extra: 6 } },
+				],
+				[
+					"unassigned key",
+					{ ...valid, nativeSequences: { [first.id]: 2, extra: 5 } },
+				],
+				["duplicate row id", { ...valid, notifications: [first, first] }],
+				[
+					"descending coordinates",
+					{ ...valid, nativeSequences: { [first.id]: 5, [second.id]: 2 } },
+				],
+				[
+					"repeated coordinate",
+					{ ...valid, nativeSequences: { [first.id]: 2, [second.id]: 2 } },
+				],
+				[
+					"zero coordinate",
+					{ ...valid, nativeSequences: { [first.id]: 0, [second.id]: 5 } },
+				],
+				[
+					"fractional coordinate",
+					{ ...valid, nativeSequences: { [first.id]: 2.5, [second.id]: 5 } },
+				],
+				[
+					"coordinate past watermark",
+					{ ...valid, nativeSequences: { [first.id]: 2, [second.id]: 8 } },
+				],
+				["duplicate legacy id", [first, first]],
+			];
+			for (const [shape, snapshot] of invalid) {
+				await fixture.runtime.setCache(key, snapshot);
+				await expect(
+					NotificationService.start(fixture.runtime),
+					shape,
+				).rejects.toMatchObject({
+					code: "NOTIFICATION_INBOX_INVALID",
+					status: 503,
+				});
+				expect(await fixture.runtime.getCache(key), shape).toEqual(snapshot);
+			}
+		} finally {
+			await fixture.cleanup();
+		}
+	});
+
+	it("retains valid coordinate gaps and empty inbox watermarks across startup", async () => {
+		const fixture = await createRuntime([AgentEventService]);
+		try {
+			const key = `notifications:${fixture.runtime.agentId}`;
+			const row: AgentNotification = {
+				id: sqliteTestAgentId("hydration-gap"),
+				title: "Retained row",
+				category: "general",
+				priority: "normal",
+				source: "fixture",
+				createdAt: 1,
+			};
+			for (const notifications of [[row], []]) {
+				const snapshot: NotificationInboxSnapshot = {
+					version: 2,
+					nativeEpoch: sqliteTestAgentId("retained-epoch"),
+					nativeSequence: 7,
+					notifications,
+					nativeSequences: notifications.length ? { [row.id]: 2 } : {},
+				};
+				await fixture.runtime.setCache(key, snapshot);
+				const loaded = (await NotificationService.start(
+					fixture.runtime,
+				)) as NotificationService;
+				const page = await loaded.listNativePage();
+				expect(page.nativeEpoch).toBe(snapshot.nativeEpoch);
+				expect(page.throughSequence).toBe(7);
+				expect(
+					page.notifications.map(({ nativeSequence }) => nativeSequence),
+				).toEqual(notifications.length ? [2] : []);
+				const next = await loaded.notify({ title: "After startup" });
+				expect(next.nativeEpoch).toBe(snapshot.nativeEpoch);
+				expect(next.nativeSequence).toBe(8);
+				await loaded.stop();
+			}
+		} finally {
+			await fixture.cleanup();
+		}
+	});
+
+	it("recovers a repaired coordinate snapshot through the runtime lifecycle", async () => {
+		const fixture = await createRuntime([AgentEventService]);
+		try {
+			const key = `notifications:${fixture.runtime.agentId}`;
+			const invalid = {
+				version: 2,
+				nativeEpoch: "broken",
+				nativeSequence: 0,
+				notifications: [],
+				nativeSequences: {},
+			};
+			await fixture.runtime.setCache(key, invalid);
+			await fixture.runtime.registerPlugin({
+				name: "hydration-repair",
+				description: "Notification hydration recovery",
+				services: [NotificationService],
+			});
+			await expect(
+				fixture.runtime.getServiceLoadPromise(ServiceType.NOTIFICATION),
+			).rejects.toThrow("failed to start");
+			expect(
+				fixture.runtime.getServiceRegistrationStatus(ServiceType.NOTIFICATION),
+			).toBe("failed");
+			expect(await fixture.runtime.getCache(key)).toEqual(invalid);
+			const repaired: NotificationInboxSnapshot = {
+				...invalid,
+				version: 2,
+				nativeEpoch: sqliteTestAgentId("repaired-epoch"),
+			};
+			await fixture.runtime.setCache(key, repaired);
+			expect(NotificationService.requestRecovery(fixture.runtime).state).toBe(
+				"started",
+			);
+			const recovered = (await fixture.runtime.getServiceLoadPromise(
+				ServiceType.NOTIFICATION,
+			)) as NotificationService;
+			expect((await recovered.listNativePage()).nativeEpoch).toBe(
+				repaired.nativeEpoch,
+			);
+			expect(
+				fixture.runtime.getServiceRegistrationStatus(ServiceType.NOTIFICATION),
+			).toBe("registered");
+		} finally {
+			await fixture.cleanup();
+		}
+	});
+
+	it("restores committed migration coordinates after a lost acknowledgement", async () => {
+		const fixture = await createRuntime([AgentEventService]);
+		let recovered: NotificationService | undefined;
+		const write = fixture.runtime.setCache.bind(fixture.runtime);
+		try {
+			const key = `notifications:${fixture.runtime.agentId}`;
+			const legacy = [
+				{
+					id: sqliteTestAgentId("migration-ack"),
+					title: "Migration receipt",
+					category: "general",
+					priority: "normal",
+					source: "fixture",
+					createdAt: 1,
+				},
+			];
+			await write(key, legacy);
+			fixture.runtime.setCache = async (cacheKey, value) => {
+				expect(await write(cacheKey, value)).toBe(true);
+				throw new Error("Migration acknowledgement lost");
+			};
+			await expect(NotificationService.start(fixture.runtime)).rejects.toThrow(
+				"acknowledgement lost",
+			);
+			fixture.runtime.setCache = write;
+			const committed =
+				await fixture.runtime.getCache<NotificationInboxSnapshot>(key);
+			recovered = (await NotificationService.start(
+				fixture.runtime,
+			)) as NotificationService;
+			const page = await recovered.listNativePage();
+			expect(page.nativeEpoch).toBe(committed?.nativeEpoch);
+			expect(page.throughSequence).toBe(1);
+			expect(
+				page.notifications.map(({ id, nativeSequence }) => [
+					id,
+					nativeSequence,
+				]),
+			).toEqual([[legacy[0]?.id, 1]]);
+		} finally {
+			fixture.runtime.setCache = write;
+			await recovered?.stop();
+			await fixture.cleanup();
+		}
+	});
+
+	it("refuses an unencodable legacy coordinate map before replacing history", async () => {
+		const fixture = await createRuntime([AgentEventService]);
+		let recovered: NotificationService | undefined;
+		try {
+			const key = `notifications:${fixture.runtime.agentId}`;
+			const legacy = [
+				{
+					id: "__proto__",
+					title: "Legacy map key",
+					category: "general",
+					priority: "normal",
+					source: "legacy",
+					createdAt: 1,
+				},
+			];
+			await fixture.runtime.setCache(key, legacy);
+			await expect(
+				NotificationService.start(fixture.runtime),
+			).rejects.toMatchObject({
+				code: "SQLITE_RECORD_ENCODING_UNSUPPORTED",
+			});
+			expect(await fixture.runtime.getCache(key)).toEqual(legacy);
+			const repaired = legacy.map((row) => ({
+				...row,
+				id: sqliteTestAgentId("portable-legacy-id"),
+			}));
+			await fixture.runtime.setCache(key, repaired);
+			recovered = (await NotificationService.start(
+				fixture.runtime,
+			)) as NotificationService;
+			expect((await recovered.listNativePage()).notifications).toEqual([
+				expect.objectContaining({ id: repaired[0]?.id, nativeSequence: 1 }),
+			]);
+		} finally {
+			await recovered?.stop();
+			await fixture.cleanup();
 		}
 	});
 
@@ -1015,6 +1317,194 @@ describe("NotificationService", () => {
 		}
 	});
 
+	it("retains replacement cooldown when an older successful recovery receipt arrives late", async () => {
+		const fixture = await createRuntime([AgentEventService]);
+		let releaseOriginal!: () => void,
+			oldReturned!: () => void,
+			releaseReplacement!: () => void,
+			replacementEntered!: () => void;
+		const oldReturn = new Promise<void>((resolve) => {
+			oldReturned = resolve;
+		});
+		const originalGate = new Promise<void>((resolve) => {
+			releaseOriginal = resolve;
+		});
+		const replacementGate = new Promise<void>((resolve) => {
+			releaseReplacement = resolve;
+		});
+		const replacementStarted = new Promise<void>((resolve) => {
+			replacementEntered = resolve;
+		});
+		let oldStarts = 0,
+			replacementStarts = 0;
+		class OriginalNotification extends NotificationService {
+			static override async start(owner: IAgentRuntime) {
+				if (++oldStarts === 1)
+					throw new Error("Original hydration unavailable");
+				return NotificationService.start(owner);
+			}
+		}
+		class ReplacementNotification extends NotificationService {
+			static override async start(_owner: IAgentRuntime) {
+				if (++replacementStarts === 1)
+					throw new Error("Replacement hydration unavailable");
+				replacementEntered();
+				await replacementGate;
+				throw new Error("Replacement recovery still unavailable");
+			}
+		}
+		const getLoad = fixture.runtime.getServiceLoadPromise.bind(fixture.runtime);
+		vi.spyOn(performance, "now").mockReturnValue(10000);
+		try {
+			await fixture.runtime.registerPlugin({
+				name: "original-notifier",
+				description: "Owns original notification class",
+				init: async (_config, owner) => {
+					await owner.registerService(OriginalNotification);
+				},
+			});
+			await expect(getLoad(ServiceType.NOTIFICATION)).rejects.toThrow(
+				"failed to start",
+			);
+			// Hold delivery after the actual runtime and SQLite startup has completed.
+			vi.spyOn(fixture.runtime, "getServiceLoadPromise").mockImplementationOnce(
+				async (type) => {
+					const loaded = await getLoad(type);
+					oldReturned();
+					await originalGate;
+					return loaded;
+				},
+			);
+			expect(NotificationService.requestRecovery(fixture.runtime).state).toBe(
+				"started",
+			);
+			await oldReturn;
+			expect(NotificationService.getAvailability(fixture.runtime)).toBe(
+				"registered",
+			);
+			await fixture.runtime.unloadPlugin("original-notifier");
+			await fixture.runtime.registerPlugin({
+				name: "replacement-notifier",
+				description: "Owns replacement notification class",
+				init: async (_config, owner) => {
+					await owner.registerService(ReplacementNotification);
+				},
+			});
+			await expect(getLoad(ServiceType.NOTIFICATION)).rejects.toThrow(
+				"failed to start",
+			);
+			expect(NotificationService.requestRecovery(fixture.runtime).state).toBe(
+				"started",
+			);
+			await replacementStarted;
+			const replacementLoad = getLoad(ServiceType.NOTIFICATION);
+			const result = replacementLoad.then(
+				() => undefined,
+				(error: unknown) => error,
+			);
+			releaseOriginal();
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			releaseReplacement();
+			expect(await result).toBeInstanceOf(Error);
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			expect(NotificationService.requestRecovery(fixture.runtime)).toEqual({
+				state: "backoff",
+				retryAfterSeconds: 1,
+			});
+			expect(oldStarts).toBe(2);
+			expect(replacementStarts).toBe(2);
+		} finally {
+			releaseOriginal();
+			releaseReplacement();
+			vi.restoreAllMocks();
+			await fixture.cleanup();
+		}
+	});
+
+	it("keeps recovery backoff when real log event and agent-error observers throw", async () => {
+		class UnavailableCacheAdapter extends SQLiteDatabaseAdapter {
+			override async getCaches<T>(keys: string[]): Promise<Map<string, T>> {
+				if (keys.some((key) => key.startsWith("notifications:")))
+					throw new ElizaError("Recovery storage unavailable", {
+						code: "TEST_STORAGE_UNAVAILABLE",
+					});
+				return super.getCaches<T>(keys);
+			}
+		}
+		const fixture = await createRuntime(
+			[AgentEventService],
+			UnavailableCacheAdapter.create(
+				":memory:",
+				sqliteTestAgentId("NotificationIntegrationAgent"),
+			),
+		);
+		let errorReported!: () => void;
+		const reported = new Promise<void>((resolve) => {
+			errorReported = resolve;
+		});
+		let logFailures = 0,
+			busFailures = 0;
+		let removeLog: (() => void) | undefined,
+			removeBus: (() => void) | undefined;
+		const elapsed = vi.spyOn(performance, "now").mockReturnValue(10000);
+		try {
+			await fixture.runtime.registerService(NotificationService);
+			await expect(
+				fixture.runtime.getServiceLoadPromise(ServiceType.NOTIFICATION),
+			).rejects.toThrow("failed to start");
+			removeLog = addLogListener((entry) => {
+				if (!entry.msg.includes("NotificationService")) return;
+				logFailures++;
+				throw new Error("Log observer unavailable");
+			});
+			const bus = fixture.runtime.getService<AgentEventService>(
+				ServiceType.AGENT_EVENT,
+			);
+			if (!bus) throw new Error("Agent event service is missing");
+			removeBus = bus.subscribe((event) => {
+				if (
+					event.stream !== "error" ||
+					event.data.scope !== "NotificationService.recovery"
+				)
+					return;
+				busFailures++;
+				throw new Error("Agent diagnostic observer unavailable");
+			});
+			fixture.runtime.registerEvent(
+				EventType.ERROR_REPORTED,
+				async ({ scope }) => {
+					if (scope !== "NotificationService.recovery") return;
+					errorReported();
+					throw new Error("Runtime diagnostic observer unavailable");
+				},
+			);
+			expect(NotificationService.requestRecovery(fixture.runtime).state).toBe(
+				"started",
+			);
+			await expect(
+				fixture.runtime.getServiceLoadPromise(ServiceType.NOTIFICATION),
+			).rejects.toThrow("failed to start");
+			await reported;
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			expect(NotificationService.requestRecovery(fixture.runtime)).toEqual({
+				state: "backoff",
+				retryAfterSeconds: 1,
+			});
+			expect(logFailures).toBeGreaterThan(0);
+			expect(busFailures).toBe(1);
+			expect(fixture.runtime.getRecentReportedErrors()).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({ scope: "NotificationService.recovery" }),
+				]),
+			);
+		} finally {
+			removeLog?.();
+			removeBus?.();
+			elapsed.mockRestore();
+			await fixture.cleanup();
+		}
+	});
+
 	it("backs off repeated recovery requests after a persistent failure", async () => {
 		class UnavailableCacheAdapter extends SQLiteDatabaseAdapter {
 			readAttempts = 0;
@@ -1032,6 +1522,12 @@ describe("NotificationService", () => {
 			sqliteTestAgentId("NotificationIntegrationAgent"),
 		);
 		const unavailable = await createRuntime([NotificationService], adapter);
+		let elapsed = 10_000;
+		let wallTime = Date.now();
+		const elapsedClock = vi
+			.spyOn(performance, "now")
+			.mockImplementation(() => elapsed);
+		const wallClock = vi.spyOn(Date, "now").mockImplementation(() => wallTime);
 		try {
 			await expect(
 				unavailable.runtime.getServiceLoadPromise(ServiceType.NOTIFICATION),
@@ -1066,7 +1562,41 @@ describe("NotificationService", () => {
 				true,
 			);
 			expect(adapter.readAttempts).toBe(2);
+
+			const originalWallTime = wallTime;
+			wallTime += 60_000;
+			expect(NotificationService.requestRecovery(unavailable.runtime)).toEqual({
+				state: "backoff",
+				retryAfterSeconds: 1,
+			});
+			wallTime = originalWallTime - 60_000;
+			for (const seconds of [1, 2, 4, 8, 16, 30, 30]) {
+				expect(
+					NotificationService.requestRecovery(unavailable.runtime),
+				).toEqual({
+					state: "backoff",
+					retryAfterSeconds: seconds,
+				});
+				elapsed += seconds * 1_000 - 1;
+				expect(
+					NotificationService.requestRecovery(unavailable.runtime),
+				).toEqual({
+					state: "backoff",
+					retryAfterSeconds: 1,
+				});
+				elapsed += 1;
+				expect(
+					NotificationService.requestRecovery(unavailable.runtime).state,
+				).toBe("started");
+				await expect(
+					unavailable.runtime.getServiceLoadPromise(ServiceType.NOTIFICATION),
+				).rejects.toThrow("failed to start");
+				await Promise.resolve();
+			}
+			expect(adapter.readAttempts).toBe(9);
 		} finally {
+			wallClock.mockRestore();
+			elapsedClock.mockRestore();
 			await unavailable.cleanup();
 		}
 	});
@@ -1133,6 +1663,47 @@ describe("NotificationService", () => {
 		expect(list[0].title).toBe("Persisted");
 		// system defaults to low/silent (§C.1): inbox history, no badge weight.
 		expect(restarted.getUnreadCount()).toBe(0);
+	});
+
+	it("isolates notification payloads from producers and observers across restart", async () => {
+		const input = {
+			title: "Retained notification",
+			groupKey: "retained",
+			data: { labels: ["original"] },
+		};
+		const pending = service.notify(input);
+		input.data.labels.push("producer during admission");
+		const receipt = await pending;
+		expect.soft(receipt.data?.labels).toEqual(["original"]);
+		input.data.labels.push("producer after persistence");
+
+		const mutate = (row: AgentNotification, source: string) => {
+			const labels = row.data?.labels;
+			if (!Array.isArray(labels))
+				throw new Error("Missing notification labels");
+			labels.push(source);
+		};
+		mutate(receipt, "receipt");
+		mutate(emitted[0].data.notification as AgentNotification, "live event");
+		mutate(service.list()[0], "list");
+		mutate(service.listIncludingExpired()[0], "unfiltered list");
+		mutate((await service.listDurableIncludingExpired())[0], "durable list");
+		const grouped = await service.ensureGroupedNotification(input, (row) => {
+			mutate(row, "exact-match callback");
+			return row.id === receipt.id;
+		});
+		mutate(grouped, "grouped receipt");
+		expect.soft(service.list()[0].data?.labels).toEqual(["original"]);
+
+		expect(await service.markRead(receipt.id)).toBe(true);
+		const restarted = (await NotificationService.start(
+			runtime,
+		)) as NotificationService;
+		try {
+			expect(restarted.list()[0].data?.labels).toEqual(["original"]);
+		} finally {
+			await restarted.stop();
+		}
 	});
 
 	it("excludes a notification whose explicit expiresAt has passed", async () => {
@@ -1236,14 +1807,70 @@ describe("NotificationService", () => {
 	});
 
 	it("lets a producer override the category default priority", async () => {
-		// A system notification the producer deems urgent (e.g. disk full) keeps its
-		// explicit priority; the category default only applies when none is given.
-		const n = await service.notify({
-			title: "Disk full",
-			category: "system",
-			priority: "urgent",
-		});
-		expect(n.priority).toBe("urgent");
+		const defaults = {
+			reminder: "normal",
+			task: "normal",
+			workflow: "normal",
+			agent: "normal",
+			approval: "high",
+			message: "normal",
+			health: "normal",
+			system: "low",
+			general: "normal",
+		} satisfies Record<NotificationCategory, NotificationPriority>;
+		const priorities = [undefined, "low", "normal", "high", "urgent"] as const;
+		const start = Date.now();
+		const clock = vi.spyOn(Date, "now").mockReturnValue(start);
+		try {
+			for (const [category, fallback] of Object.entries(defaults)) {
+				for (const priority of priorities) {
+					for (const expiresAt of [undefined, null, start + 1000]) {
+						clock.mockReturnValue(start);
+						await service.clear();
+						const n = await service.notify({
+							title: "Complete notification policy",
+							category: category as NotificationCategory,
+							priority,
+							expiresAt,
+						});
+						const expectedPriority = priority ?? fallback;
+						const expectedExpiry =
+							expiresAt === undefined && expectedPriority === "low"
+								? start + 24 * 60 * 60 * 1000
+								: expiresAt;
+						expect(n.priority).toBe(expectedPriority);
+						expect(n.expiresAt).toBe(expectedExpiry);
+						expect(service.getUnreadCount()).toBe(
+							expectedPriority === "low" ? 0 : 1,
+						);
+						const stored = await runtime.getCache<NotificationInboxSnapshot>(
+							`notifications:${runtime.agentId}`,
+						);
+						expect(stored?.notifications[0]).toMatchObject({
+							id: n.id,
+							priority: expectedPriority,
+						});
+						expect(stored?.notifications[0].expiresAt).toBe(expectedExpiry);
+						if (expectedExpiry != null) {
+							clock.mockReturnValue(expectedExpiry);
+							expect(service.list()).toEqual([]);
+							expect(service.getUnreadCount()).toBe(0);
+							expect(await service.listDurableIncludingExpired()).toHaveLength(
+								1,
+							);
+							clock.mockReturnValue(start);
+						}
+						expect(service.list()).toHaveLength(1);
+						expect(await service.markRead(n.id)).toBe(true);
+						expect(service.list({ unreadOnly: true })).toEqual([]);
+						expect(service.listIncludingExpired()).toHaveLength(1);
+						expect(service.getUnreadCount()).toBe(0);
+					}
+				}
+			}
+		} finally {
+			clock.mockRestore();
+		}
 	});
 
 	// ── §C.1 Silent-tier default expiry ─────────────────────────────────────

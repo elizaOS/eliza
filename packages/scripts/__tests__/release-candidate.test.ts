@@ -57,10 +57,24 @@ function makeFixture() {
     types: "dist/index.d.ts",
     files: ["dist"],
     publishConfig: { access: "public" },
+    exports: {
+      ".": {
+        "eliza-source": "./src/index.ts",
+        node: "./dist/node.js",
+        default: "./dist/index.js",
+      },
+      "./nested": [
+        {
+          "eliza-source": "./src/nested.ts",
+          default: "./dist/index.js",
+        },
+      ],
+    },
   };
   writeJson(path.join(repoRoot, "packages/a/package.json"), {
     name: "@release-fixture/a",
     ...common,
+    gitHead: "1".repeat(40),
     dependencies: { "@release-fixture/b": "workspace:*" },
   });
   writeJson(path.join(repoRoot, "packages/b/package.json"), {
@@ -74,6 +88,7 @@ function makeFixture() {
       'for (const name of ["a", "b"]) {',
       '  fs.mkdirSync("packages/" + name + "/dist", { recursive: true });',
       '  fs.writeFileSync("packages/" + name + "/dist/index.js", "export const name = " + JSON.stringify(name) + ";\\n");',
+      '  fs.writeFileSync("packages/" + name + "/dist/node.js", "export const name = \\"node\\";\\n");',
       '  fs.writeFileSync("packages/" + name + "/dist/index.d.ts", "export declare const name: string;\\n");',
       "}",
       'const count = fs.existsSync("build-count") ? Number(fs.readFileSync("build-count", "utf8")) : 0;',
@@ -112,6 +127,13 @@ function createCandidate(
 describe("immutable release candidate", () => {
   test("builds once, packs real tgz files, records entrypoints and deterministic integrity", () => {
     const fixture = makeFixture();
+    const sourceManifests = ["a", "b"].map((name) => {
+      const manifestPath = path.join(
+        fixture.repoRoot,
+        `packages/${name}/package.json`,
+      );
+      return { manifestPath, bytes: fs.readFileSync(manifestPath) };
+    });
     const first = createCandidate(fixture, "candidate-one");
     expect(first.state.phase).toBe("candidate-recorded");
     expect(first.plan.publishOrder).toEqual([
@@ -133,6 +155,22 @@ describe("immutable release candidate", () => {
         path.join(fixture.base, "candidate-one", packageRecord.tarball.path),
       );
       expect([...bytes.subarray(0, 2)]).toEqual([0x1f, 0x8b]);
+      const manifest = JSON.parse(
+        execFileSync(
+          "tar",
+          [
+            "-xzOf",
+            path.join(
+              fixture.base,
+              "candidate-one",
+              packageRecord.tarball.path,
+            ),
+            "package/package.json",
+          ],
+          { encoding: "utf8" },
+        ),
+      );
+      expect(manifest.gitHead).toBe(fixture.sourceSha);
     }
     const packedA = first.plan.packages.find(
       ({ name }) => name === "@release-fixture/a",
@@ -149,6 +187,43 @@ describe("immutable release candidate", () => {
       ),
     );
     expect(packedManifest.dependencies["@release-fixture/b"]).toBe("1.2.3");
+    expect(packedManifest.exports).toEqual({
+      ".": { node: "./dist/node.js", default: "./dist/index.js" },
+      "./nested": [{ default: "./dist/index.js" }],
+    });
+    expect(packedA.entrypoints.exports).toEqual(packedManifest.exports);
+    expect(Object.keys(packedManifest.exports["."])).toEqual([
+      "node",
+      "default",
+    ]);
+    for (const { manifestPath, bytes } of sourceManifests) {
+      expect(fs.readFileSync(manifestPath).equals(bytes)).toBe(true);
+    }
+    const consumer = path.join(fixture.base, "consumer");
+    const installedPackage = path.join(
+      consumer,
+      "node_modules/@release-fixture/a",
+    );
+    fs.mkdirSync(installedPackage, { recursive: true });
+    execFileSync("tar", [
+      "-xzf",
+      path.join(fixture.base, "candidate-one", packedA.tarball.path),
+      "--strip-components=1",
+      "-C",
+      installedPackage,
+    ]);
+    expect(
+      execFileSync(
+        "node",
+        [
+          "--conditions=eliza-source",
+          "--input-type=module",
+          "-e",
+          'import { name } from "@release-fixture/a"; import { name as nested } from "@release-fixture/a/nested"; process.stdout.write(name + ":" + nested);',
+        ],
+        { cwd: consumer, encoding: "utf8" },
+      ),
+    ).toBe("node:a");
     expect(
       fs.readFileSync(path.join(fixture.repoRoot, "build-count"), "utf8"),
     ).toBe("1");

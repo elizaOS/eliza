@@ -34,6 +34,7 @@ import type {
 } from "../api/client-types-chat";
 import type { CodingAgentSession } from "../api/client-types-cloud";
 import {
+  APP_PAUSE_DETACH,
   admitConversationStopReceipt,
   type ConversationTurnContext,
   ConversationTurnController,
@@ -74,6 +75,8 @@ import {
 import {
   type ChatReplyTarget,
   clearChatDraft,
+  readChatDraft,
+  writeChatDraft,
 } from "./ChatComposerContext.hooks";
 import { isConversationRecord } from "./chat-conversation-guards";
 import {
@@ -85,15 +88,16 @@ import {
 } from "./chat-send-failures";
 import { buildChatViewMetadata } from "./chat-view-routing";
 import { searchKnowledgeForCombinedSearch } from "./hash-search";
+import { addLiveChatTurn, deleteLiveChatTurn } from "./live-chat-turns";
 import {
   formatSearchBullet,
   mergeStreamingText,
   shouldApplyFinalStreamText,
 } from "./parsers";
 import {
-  clearPendingChatTurn,
   listPendingChatTurns,
   persistPendingChatTurn,
+  settlePendingChatTurn,
 } from "./pending-chat-turns";
 import {
   markPersonalRouteRetrying,
@@ -133,23 +137,33 @@ export {
   UNDELIVERED_TURN_NOTICE,
 } from "./chat-send-failures";
 
+/**
+ * The completed-action handoff of one turn. Calling it opens the turn's VIEWS
+ * destination; `isCurrent` is the one guard every navigating handoff of the
+ * turn passes: the turn is still current, the agent base URL is unchanged and
+ * no newer navigation happened since the turn started.
+ */
+type CompletedViewHandoff = ((
+  actionResults: ChatActionResultSummary[] | undefined,
+) => boolean) & { isCurrent: () => boolean };
+
 function createCompletedViewHandoff(
   isTurnCurrent: () => boolean,
   showFailure: (message: string) => void,
-): (actionResults: ChatActionResultSummary[] | undefined) => boolean {
+): CompletedViewHandoff {
   const sourceBase = client.getBaseUrl();
   const isNavigationCurrent = captureCompletedActionNavigationFence();
+  const isCurrent = () =>
+    isTurnCurrent() &&
+    client.getBaseUrl() === sourceBase &&
+    isNavigationCurrent();
   let fallbackHandoffId: string | undefined;
-  return (actionResults) => {
+  const handoffView = (
+    actionResults: ChatActionResultSummary[] | undefined,
+  ): boolean => {
     const viewHandoff = findViewActionHandoff(actionResults);
     if (!viewHandoff) return false;
-    if (
-      !isTurnCurrent() ||
-      client.getBaseUrl() !== sourceBase ||
-      !isNavigationCurrent()
-    ) {
-      return true;
-    }
+    if (!isCurrent()) return true;
     try {
       // Preserve server IDs for WS dedupe. Browser receipts without an ID share
       // a request-local one across reply_ready and done. An unhandled early
@@ -182,10 +196,11 @@ function createCompletedViewHandoff(
     }
     return true;
   };
+  return Object.assign(handoffView, { isCurrent });
 }
 async function handoffCompletedAction(
   actionResults: ChatActionResultSummary[] | undefined,
-  handoffView: ReturnType<typeof createCompletedViewHandoff>,
+  handoffView: CompletedViewHandoff,
 ): Promise<void> {
   const successfulActions =
     actionResults?.filter((result) => result.success) ?? [];
@@ -202,6 +217,9 @@ async function handoffCompletedAction(
       "agent",
     );
   }
+  // A stale turn navigates nowhere: the user moved on, or the deep link would
+  // name a workflow or page of a previous agent.
+  if (!handoffView.isCurrent()) return;
   if (handoffView(actionResults)) return;
   if (dispatchDoorDashHumanHandoff(actionResults)) return;
   dispatchWorkflowActionHandoff(actionResults);
@@ -1075,10 +1093,45 @@ export function useChatSend(deps: UseChatSendDeps) {
       activeChatTurnRef.current = null;
       chatAbortRef.current = null;
       chatSendBusyRef.current = false;
-      chatSendQueueRef.current.splice(0);
+      // Queued sends never reached the agent. Keep their text as the saved
+      // draft of their conversation and settle their callers.
+      const queued = chatSendQueueRef.current.splice(0);
+      const draftsByConversation = new Map<string, string[]>();
+      for (const turn of queued) {
+        const text = turn.rawInput.trim();
+        if (!turn.conversationId || !text) continue;
+        const texts = draftsByConversation.get(turn.conversationId) ?? [];
+        texts.push(text);
+        draftsByConversation.set(turn.conversationId, texts);
+      }
+      for (const [conversationId, texts] of draftsByConversation) {
+        writeChatDraft(
+          conversationId,
+          [...texts, readChatDraft(conversationId) ?? ""]
+            .filter(Boolean)
+            .join("\n"),
+        );
+      }
+      for (const turn of queued) turn.resolve();
       notifyChatSendIdle();
     };
   }, [chatAbortRef, chatSendBusyRef, notifyChatSendIdle]);
+  // Restored text and images go before whatever the user typed since.
+  const restoreIntoComposer = useCallback(
+    (text: string, images: readonly ImageAttachment[] = []): void => {
+      if (text) {
+        const draft = [text, chatInputRef.current].filter(Boolean).join("\n");
+        chatInputRef.current = draft;
+        setChatInput(draft);
+      }
+      if (images.length > 0) {
+        const merged = [...images, ...chatPendingImagesRef.current];
+        chatPendingImagesRef.current = merged;
+        setChatPendingImages(merged);
+      }
+    },
+    [chatInputRef, chatPendingImagesRef, setChatInput, setChatPendingImages],
+  );
   const resolveQueuedChatSends = useCallback(
     (conversationId: string | null): RestoredQueuedDraft => {
       const queued: QueuedChatSend[] = [];
@@ -1116,12 +1169,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         .filter((text) => text.length > 0)
         .join("\n");
       const restoredImages = queued.flatMap((turn) => turn.images ?? []);
-      if (restored) {
-        setChatInput(restored);
-      }
-      if (restoredImages.length > 0) {
-        setChatPendingImages(restoredImages);
-      }
+      restoreIntoComposer(restored, restoredImages);
       if (restored || restoredImages.length > 0) {
         setActionNotice(
           restoredImages.length > 0
@@ -1134,9 +1182,8 @@ export function useChatSend(deps: UseChatSendDeps) {
       return { text: restored, images: restoredImages };
     },
     [
+      restoreIntoComposer,
       setActionNotice,
-      setChatInput,
-      setChatPendingImages,
       setConversationMessagesForConversation,
     ],
   );
@@ -1240,11 +1287,14 @@ export function useChatSend(deps: UseChatSendDeps) {
         if (!commandBody) {
           commitLocalCommandTurn(
             rawText,
-            "Usage: #remember <text>, #memory <query>, #documents <query>, or #<query>.",
+            "Usage: #remember <text>, #memory <query>, #documents <query>, or #all <query>.",
           );
           return { handled: true };
         }
         const lower = commandBody.toLowerCase();
+        // Only known subcommands are local. "#1 priority" goes to the agent.
+        if (!/^(remember|remmeber|save|memory|documents|all)(\s|$)/.test(lower))
+          return { handled: false };
         if (
           lower.startsWith("remember ") ||
           lower.startsWith("remmeber ") ||
@@ -1331,14 +1381,8 @@ export function useChatSend(deps: UseChatSendDeps) {
         return { handled: true };
       }
       if (rawText.startsWith("$")) {
-        const queryRaw = rawText.slice(1).trim();
-        if (queryRaw) {
-          commitLocalCommandTurn(
-            rawText,
-            "Use bare `$` only. `$ <text>` is not supported.",
-          );
-          return { handled: true };
-        }
+        // Only bare `$` is local. "$5 for lunch?" goes to the agent.
+        if (rawText.slice(1).trim()) return { handled: false };
         const query =
           "What is most relevant from memory and knowledge right now?";
         const quick = await client.quickContext(query, { limit: 6 });
@@ -1446,12 +1490,21 @@ export function useChatSend(deps: UseChatSendDeps) {
         text: string;
         timestamp: number;
         attachments?: ConversationMessage["attachments"];
+        knownUserMessageIds?: readonly string[];
       },
     ) => {
       const sentText = turn.text.trim();
       if (!sentText) return;
       setConversationMessagesForConversation(conversationId, (prev) => {
-        if (sentUserTurnPresent(prev, sentText, turn.timestamp)) return prev;
+        if (
+          sentUserTurnPresent(
+            prev,
+            sentText,
+            turn.timestamp,
+            turn.knownUserMessageIds,
+          )
+        )
+          return prev;
         return [
           ...prev,
           {
@@ -1887,11 +1940,25 @@ export function useChatSend(deps: UseChatSendDeps) {
           return;
         }
       }
+      // Rows already in the thread are earlier turns, even with the same text.
+      const knownUserMessageIds =
+        optimisticOwnerConversationId === null
+          ? []
+          : activeConversationIdRef.current === convId
+            ? conversationMessagesRef.current
+                .filter(
+                  (message) =>
+                    message.role === "user" && message.id !== userMsgId,
+                )
+                .map((message) => message.id)
+            : undefined;
+      addLiveChatTurn(clientMessageId);
       persistPendingChatTurn({
         conversationId: convId,
         clientMessageId,
         text,
         sentAt: now,
+        ...(knownUserMessageIds ? { knownUserMessageIds } : {}),
       });
       if (activeConversationIdRef.current === convId) {
         client.sendWsMessage({
@@ -1930,6 +1997,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         conversationId: convId,
       };
       let streamedAssistantText = "";
+      let detached = false;
       try {
         const data = await conversationTurns.request(
           {
@@ -2111,6 +2179,7 @@ export function useChatSend(deps: UseChatSendDeps) {
               assistantMsgId,
               text,
               timestamp: now,
+              knownUserMessageIds,
               ...(optimisticAttachments
                 ? { attachments: optimisticAttachments }
                 : {}),
@@ -2151,7 +2220,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         if (elizaCloudEnabled || elizaCloudConnected) {
           void pollCloudCredits();
         }
-        clearPendingChatTurn(convId, clientMessageId);
+        settlePendingChatTurn(convId, clientMessageId);
       } catch (err) {
         // Commit any throttled-but-uncommitted token first so an abort/error
         // never drops a placeholder the user already saw fill with partial text.
@@ -2163,6 +2232,11 @@ export function useChatSend(deps: UseChatSendDeps) {
               viewHandoffOwner.conversationId,
               viewHandoffOwner.generation,
             );
+          } else if (controller?.signal.reason === APP_PAUSE_DETACH) {
+            // The agent keeps working while the app is in the background.
+            // Keep the placeholder and the pending receipt so the resume
+            // reload adopts the reply.
+            detached = true;
           } else {
             dropEmptyAssistantPlaceholder(convId, assistantMsgId);
           }
@@ -2482,10 +2556,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             // same payload unchanged would fail identically.
             const restoredToComposer = isConversationCommitActive(convId);
             if (restoredToComposer) {
-              if (rawText) setChatInput(rawText);
-              if (imagesToSend?.length) {
-                setChatPendingImages([...imagesToSend]);
-              }
+              restoreIntoComposer(rawText, imagesToSend ?? []);
             }
             const restored = restoredToComposer
               ? rawText && imagesToSend?.length
@@ -2522,6 +2593,7 @@ export function useChatSend(deps: UseChatSendDeps) {
                 assistantMsgId,
                 text,
                 timestamp: now,
+                knownUserMessageIds,
                 ...(optimisticAttachments
                   ? { attachments: optimisticAttachments }
                   : {}),
@@ -2546,8 +2618,9 @@ export function useChatSend(deps: UseChatSendDeps) {
         if (activeChatTurnRef.current?.controller === controller) {
           activeChatTurnRef.current = null;
         }
-        if (convId && !unmountingRef.current) {
-          clearPendingChatTurn(convId, clientMessageId);
+        deleteLiveChatTurn(clientMessageId);
+        if (convId && !unmountingRef.current && !detached) {
+          settlePendingChatTurn(convId, clientMessageId);
         }
       }
     },
@@ -2556,6 +2629,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       appendLocalCommandTurn,
       createTurnViewHandoff,
       handlePersonalRouteRefusal,
+      restoreIntoComposer,
       applyStreamingModificationForConversation,
       reconcileTerminalStream,
       loadConversationMessages,
@@ -3557,10 +3631,8 @@ export function useChatSend(deps: UseChatSendDeps) {
         if (messageIndex < 0 || currentMessages[messageIndex] !== targetMessage)
           return false;
       }
-      const restoredQueuedDraft = interruptActiveChatPipelineWithDraft();
-      if (!restoredQueuedDraft.text) {
-        setChatInput("");
-      }
+      // Queued sends go back to the composer; an unrelated draft is kept.
+      interruptActiveChatPipelineWithDraft();
       const removedTail = currentMessages.slice(messageIndex);
       const preservedMessages = currentMessages.slice(0, messageIndex);
       conversationMessagesRef.current = preservedMessages;
@@ -3597,7 +3669,6 @@ export function useChatSend(deps: UseChatSendDeps) {
       activeConversationIdRef.current,
       conversationMessagesRef,
       interruptActiveChatPipelineWithDraft,
-      setChatInput,
       setConversationMessages,
     ],
   );

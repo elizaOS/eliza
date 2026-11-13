@@ -346,7 +346,7 @@ export function sortPipelineHooksByPosition(
 	hooks: ReadonlyArray<ResolvedPipelineHook>,
 ): ResolvedPipelineHook[] {
 	return [...hooks].sort(
-		(a, b) => (a.position || 0) - (b.position || 0) || a.id.localeCompare(b.id),
+		(a, b) => a.position - b.position || a.id.localeCompare(b.id),
 	);
 }
 

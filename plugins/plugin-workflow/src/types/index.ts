@@ -166,6 +166,8 @@ export interface WorkflowExecution {
   status: WorkflowExecutionStatus;
   finished: boolean;
   startedAt: string;
+  /** Server-owned time for Calendar day ranges, independent of caller input. */
+  calendarAnchorAt?: string;
   stoppedAt?: string | null;
   input: Record<string, unknown>;
   output?: unknown;
@@ -187,7 +189,11 @@ export interface WorkflowExecution {
   nextRunId?: string;
   events?: WorkflowRunEvent[];
   approvals?: WorkflowApproval[];
+  /** Progress events trimmed from `events` to keep the stored run bounded. */
+  eventsDropped?: number;
   idempotencyKey?: string;
+  /** The dispatcher's key when admission bound the run to its own occurrence key. */
+  dispatchIdempotencyKey?: string;
   /** Internal ancestry carried across native workflow-trigger executions. */
   triggerChainDepth?: number;
   /**

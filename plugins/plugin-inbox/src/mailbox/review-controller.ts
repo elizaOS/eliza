@@ -12,7 +12,11 @@
  * journal itself.
  */
 import type { MailAttachmentReviewer } from "./attachments.ts";
-import { classifyGmailFailure, type GmailFailureKind } from "./failures.ts";
+import {
+  classifyGmailFailure,
+  type GmailFailureKind,
+  protocolFailure,
+} from "./failures.ts";
 import { gmailInboxAllows } from "./grants.ts";
 import {
   type ComposerEmail,
@@ -23,6 +27,7 @@ import {
   type InboxOperationRecord,
   type InboxOperationStore,
   type ReviewBinding,
+  renderReviewBinding,
   reviewBinding,
   reviewBindingRefusal,
 } from "./operation-journal.ts";
@@ -72,7 +77,19 @@ export interface MailReviewControllerOptions {
   now?(): number;
   /** Schedules the discard of a review whose composer email changed. Defaults to queueMicrotask. */
   defer?(task: () => void): void;
+  /**
+   * Called first for a failed review step, with the session the step started
+   * in. True means the host found that session's Cloud sign-in expired: the
+   * review then asks the user to sign in again instead of classifying the error.
+   */
+  onSessionError?(sessionId: string, error: unknown): boolean;
 }
+
+/** The local draft a send came from, and the Gmail draft it was opened from, if any. */
+export type MailSentSource = {
+  draftId: string;
+  providerDraft?: { draftId: string; providerDigest: string };
+};
 
 export interface MailReviewObservers {
   /** A stale review was discarded without dispatch; reload what the user sees. */
@@ -80,9 +97,9 @@ export interface MailReviewObservers {
   /** A provider-confirmed receipt (reported once per request). */
   receipt?: (receipt: GmailInboxReceipt) => void;
   /** A provider-confirmed send of a local draft: remove that draft's local copies. */
-  sent?: (source: { draftId: string }, proposal: Bag, grant: string) => void;
+  sent?: (source: MailSentSource, proposal: Bag, grant: string) => void;
   /** The note shown for a confirmed send of a local draft. */
-  sentNote?: (source: { draftId: string }) => string;
+  sentNote?: (source: MailSentSource) => string;
 }
 
 const TITLES: Record<string, string> = {
@@ -104,12 +121,16 @@ export function createMailReviewController(
 ) {
   const { publish, toast } = options;
   const disabled = () => options.disabled?.() === true;
+  const allowed = (proposal: Bag) =>
+    gmailInboxAllows(caps, proposal.kind as GmailMailboxAction) &&
+    (!proposal.forwardAttachments || caps?.forwardAttachments === true);
   const now = options.now ?? (() => performance.now());
   const defer = options.defer ?? ((task: () => void) => queueMicrotask(task));
   let editor:
     | ((
         proposal: Bag,
         reference: { draftId: string; providerDigest: string },
+        review?: Bag | null,
       ) => Promise<boolean>)
     | null = null;
   let selected = "",
@@ -117,9 +138,13 @@ export function createMailReviewController(
     epoch = 0,
     operation: InboxOperation | null = null,
     caps: GmailInboxCapabilities | null = null,
+    capabilitiesFailed = false,
     busy = false,
     visible = false,
     status = "";
+  // The provider answered after the dispatch attempt and reports the operation
+  // as only prepared. The owner can then discard it; see abandon() in the journal.
+  let notStarted = false;
   // An explicit refresh can overlap an older read without changing the account epoch.
   let capabilityRead: AbortController | null = null;
   let draftRead: AbortController | null = null,
@@ -144,23 +169,22 @@ export function createMailReviewController(
   let composer: (() => ComposerEmail | null) | null = null,
     discarding = false;
   let onSent:
-      | ((source: { draftId: string }, proposal: Bag, grant: string) => void)
+      | ((source: MailSentSource, proposal: Bag, grant: string) => void)
       | null = null,
-    sentNote: ((source: { draftId: string }) => string) | null = null;
+    sentNote: ((source: MailSentSource) => string) | null = null;
 
   const currentSession = () => options.binding()?.sessionId;
-  const unsent = () => {
-    const record = operation?.snapshot();
-    return record &&
-      (record.phase === "review" || record.phase === "preparing") &&
-      composerKind(record.proposal.kind)
+  const unsent = (record = operation?.snapshot()) =>
+    record &&
+    (record.phase === "review" || record.phase === "preparing") &&
+    composerKind(record.proposal.kind)
       ? record
       : null;
-  };
-  const binding = (): ReviewBinding | "none" => {
-    const record = unsent();
-    return record && composer ? reviewBinding(record, composer()) : "none";
-  };
+  const binding = (
+    record = unsent(),
+    compare = reviewBinding,
+  ): ReviewBinding | "none" =>
+    record && composer ? compare(record, composer()) : "none";
   const replaced = (state = binding()): state is "edited" | "other" =>
     state === "edited" || state === "other";
 
@@ -221,7 +245,8 @@ export function createMailReviewController(
     selected = session = owner = "";
     running = null;
     caps = null;
-    busy = visible = false;
+    capabilitiesFailed = false;
+    busy = visible = notStarted = false;
     status = "";
     failure = null;
     reported = "";
@@ -246,11 +271,13 @@ export function createMailReviewController(
         );
         if (token === epoch && capabilityRead === read) {
           caps = next;
+          capabilitiesFailed = false;
           publish();
         }
       } catch {
         if (token === epoch && capabilityRead === read) {
           caps = null;
+          capabilitiesFailed = true;
           publish();
         }
       }
@@ -293,10 +320,13 @@ export function createMailReviewController(
       );
       if (token !== epoch || capabilityRead !== read) return;
       caps = next;
+      capabilitiesFailed = false;
     } catch {
-      if (token === epoch && capabilityRead === read)
+      if (token === epoch && capabilityRead === read) {
+        capabilitiesFailed = true;
         status =
           "Provider actions unavailable. Your local drafts remain on this device.";
+      }
     }
     if (token === epoch) publish();
   }
@@ -338,7 +368,10 @@ export function createMailReviewController(
       if (token === epoch) {
         status = "";
         settleSent(owned);
-        const receipt = owned.snapshot()?.receipt;
+        const record = owned.snapshot(),
+          receipt = record?.receipt;
+        notStarted =
+          record?.phase === "dispatching" && receipt?.state === "prepared";
         if (receipt?.state === "succeeded" && receipt.requestId !== reported) {
           reported = receipt.requestId;
           onReceipt?.(receipt);
@@ -348,18 +381,29 @@ export function createMailReviewController(
       }
     } catch (error) {
       if (token === epoch) {
+        notStarted = false;
         const aborted =
-            error instanceof DOMException && error.name === "AbortError",
-          classified = aborted
+          error instanceof DOMException && error.name === "AbortError";
+        if (!aborted && options.onSessionError?.(ownerSession, error)) {
+          // A 401 does not say whether a dispatch happened; the receipt does.
+          failure = "revoked";
+          status =
+            "Cloud sign-in expired. Sign in again, then check this review before retrying.";
+        } else {
+          const classified = aborted
             ? null
             : classifyGmailFailure(error, "operation");
-        failure = classified?.kind || null;
-        status =
-          classified && classified.kind !== "unavailable"
-            ? classified.message
-            : error instanceof Error
-              ? error.message
-              : "Mail operation unavailable";
+          failure = classified?.kind || null;
+          // A protocol error's own message names only the transport
+          // ("Cloud http (400)"); a plain client error carries a reviewed sentence.
+          status =
+            classified &&
+            (classified.kind !== "unavailable" || protocolFailure(error))
+              ? classified.message
+              : error instanceof Error
+                ? error.message
+                : "Mail operation unavailable";
+        }
         toast(status);
       }
     } finally {
@@ -391,15 +435,15 @@ export function createMailReviewController(
 
   /**
    * Explicit retry after a classified failure. It never confirms or dispatches:
-   * a stale review is discarded (it was never dispatched) and the message
-   * reloaded; otherwise the idempotent review is reloaded or the saved receipt
-   * is checked.
+   * a stale review, or one for a message Gmail no longer has, is discarded
+   * (it was never dispatched) and the message reloaded; otherwise the
+   * idempotent review is reloaded or the saved receipt is checked.
    */
   async function retry() {
     const record = operation?.snapshot();
     if (!record) return;
     if (
-      failure === "stale" &&
+      (failure === "stale" || failure === "gone") &&
       (record.phase === "preparing" || record.phase === "review")
     ) {
       await run(async (owned, check) => {
@@ -420,12 +464,15 @@ export function createMailReviewController(
     await run((owned) => owned.refresh());
   }
 
-  async function prepare(proposal: Bag, source?: { draftId: string }) {
+  async function prepare(
+    proposal: Bag,
+    source?: Parameters<InboxOperation["prepare"]>[1],
+  ) {
     if (!operation) return;
     const kind = proposal.kind;
-    if (!gmailInboxAllows(caps, kind as GmailMailboxAction)) {
+    if (!allowed(proposal)) {
       toast(
-        "The selected account has not granted this provider action. Authorize Gmail changes, then try again. Nothing was changed.",
+        "This account has not allowed Gmail changes. Allow them in Settings, then try again. Nothing was changed.",
       );
       return;
     }
@@ -532,9 +579,9 @@ export function createMailReviewController(
           throw new Error(
             "Gmail draft changed outside this app. The saved content will not overwrite it. Open Gmail to inspect the conflict.",
           );
-        if (!(await editor?.(record.proposal, draft)))
+        if (!(await editor?.(record.proposal, draft, record.review)))
           throw new Error(
-            "Save or discard changed local edits before opening this provider draft.",
+            "Save or discard changed local edits before opening this Gmail draft.",
           );
         check();
         await owned.clear();
@@ -553,12 +600,19 @@ export function createMailReviewController(
       const record = owned.snapshot(),
         result = record?.receipt?.providerResult;
       if (!record || !result) throw new Error("No confirmed provider result");
+      // After a send, the Gmail draft it was opened from, as it was when opened.
+      const draft =
+        record.proposal.kind === "send"
+          ? sentSource(record)?.providerDraft
+          : result;
+      if (kind === "delete-draft" && !draft)
+        throw new Error("No Gmail draft to delete");
       const proposal =
         kind === "delete-draft"
           ? {
               kind: "draft-delete",
-              draftId: result.draftId,
-              expectedDigest: result.providerDigest,
+              draftId: draft?.draftId,
+              expectedDigest: draft?.providerDigest,
               confirmPermanentDelete: true,
             }
           : {
@@ -576,7 +630,7 @@ export function createMailReviewController(
   function render() {
     const record = operation?.snapshot() ?? null,
       review = record?.review as Bag | null | undefined,
-      bound = binding(),
+      bound = binding(unsent(record), renderReviewBinding),
       stale = replaced(bound),
       absent = bound === "absent",
       sent = sentSource(record);
@@ -590,6 +644,8 @@ export function createMailReviewController(
     const receiptState = record?.receipt?.state;
     return {
       providerReview: visible,
+      /** The last capability read failed, so a missing grant is not known to be missing. */
+      capabilitiesFailed,
       provider: {
         busy,
         status: replaced(bound)
@@ -597,17 +653,21 @@ export function createMailReviewController(
           : absent
             ? reviewBindingRefusal.absent
             : status ||
-              (uncertain
+              (notStarted
                 ? sending
-                  ? "Delivery outcome is unknown. Check the saved receipt; do not send this message again."
-                  : "The outcome of this change is unknown. Check the saved receipt; do not repeat the change."
-                : receiptState === "succeeded"
-                  ? "Provider confirmed this operation."
-                  : receiptState === "rejected"
-                    ? "Provider rejected this operation."
-                    : sending
-                      ? "Review every field before confirming. No mail has been sent."
-                      : "Review this change before confirming. Nothing has been changed."),
+                  ? "Gmail reports that this message was not sent. A late request can still deliver it. If you discard this operation, look in Sent in Gmail before you send the message again."
+                  : "Gmail reports that this change was not made. A late request can still make it. If you discard this operation, look in Gmail before you repeat the change."
+                : uncertain
+                  ? sending
+                    ? "Delivery outcome is unknown. Check the saved receipt; do not send this message again."
+                    : "The outcome of this change is unknown. Check the saved receipt; do not repeat the change."
+                  : receiptState === "succeeded"
+                    ? "Provider confirmed this operation."
+                    : receiptState === "rejected"
+                      ? "Provider rejected this operation."
+                      : sending
+                        ? "Review every field before confirming. No mail has been sent."
+                        : "Review this change before confirming. Nothing has been changed."),
         draftNote:
           (sent && sentNote?.(sent)) ||
           "The local draft stays on this device. If this operation succeeded, sending that draft again creates another message.",
@@ -625,7 +685,9 @@ export function createMailReviewController(
         clearLabel:
           record?.phase === "review" || record?.phase === "preparing"
             ? "Cancel unsent review"
-            : "Close receipt",
+            : notStarted
+              ? "Discard this operation"
+              : "Close receipt",
         kind: review?.kind || record?.proposal.kind || "Mail operation",
         from: review?.from || "",
         to: Array.isArray(review?.to) ? review.to.join(", ") : "",
@@ -662,6 +724,13 @@ export function createMailReviewController(
         editDraft: () => {
           if (!doubleTap()) void editSavedDraft().finally(settle);
         },
+        /** Offered after a draft save, and after a send of an email opened from a Gmail draft. */
+        canDeleteDraft:
+          receiptState === "succeeded" &&
+          (["draft-create", "draft-replace"].includes(
+            record?.receipt?.kind ?? "",
+          ) ||
+            !!sent?.providerDraft),
         deleteDraft: () => {
           if (!doubleTap()) void followup("delete-draft").finally(settle);
         },
@@ -674,7 +743,11 @@ export function createMailReviewController(
         },
         canRetry: !!failure && !!record && !busy,
         retryLabel:
-          failure === "stale" ? "Retry with the current message" : "Retry",
+          failure === "stale"
+            ? "Retry with the current message"
+            : failure === "gone"
+              ? "Refresh"
+              : "Retry",
         retry: () => void retry(),
         confirm: () => {
           if (doubleTap()) return;
@@ -685,6 +758,11 @@ export function createMailReviewController(
           }
           if (state === "absent") {
             toast(reviewBindingRefusal.absent);
+            return;
+          }
+          const record = operation?.snapshot();
+          if (!record || !allowed(record.proposal)) {
+            toast("Reconnect Gmail, then try again.");
             return;
           }
           // The composer is read in the same turn as the comparison inside confirm(), before any await.
@@ -701,17 +779,20 @@ export function createMailReviewController(
           !absent &&
           !!record &&
           record.phase === "review" &&
-          receiptState === "prepared",
+          receiptState === "prepared" &&
+          allowed(record.proposal),
         check: () => void run((owned) => owned.refresh()),
         reload: () => void run((owned) => owned.reloadReview()),
         canReload: record?.phase === "preparing",
         clear: () =>
           void run(async (owned, check) => {
-            await owned.clear();
+            await (notStarted ? owned.abandon() : owned.clear());
             check();
-            visible = false;
+            // An operation that the provider started after all stays on view.
+            visible = !!owned.snapshot();
           }),
         canClear:
+          notStarted ||
           record?.phase === "review" ||
           record?.phase === "preparing" ||
           ["succeeded", "rejected"].includes(receiptState || ""),

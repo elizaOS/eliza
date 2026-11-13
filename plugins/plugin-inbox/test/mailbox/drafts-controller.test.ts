@@ -10,7 +10,10 @@ import {
   type RetainedMailEdits,
   validLocalMailDraft,
 } from "../../src/mailbox/drafts-controller.ts";
-import type { InboxUnsaved } from "../../src/mailbox/retained-draft.ts";
+import {
+  encodeInboxUnsaved,
+  type InboxUnsaved,
+} from "../../src/mailbox/retained-draft.ts";
 
 type Bag = Record<string, unknown>;
 
@@ -26,6 +29,7 @@ function fixture(
   const toasts: string[] = [];
   const prepared: Array<{ proposal: Bag; source?: Bag }> = [];
   let sessionId = "session-1";
+  let onPublish = () => {};
   const store = {
     async read<T>(slot: string) {
       const raw = slots.get(slot);
@@ -53,6 +57,8 @@ function fixture(
     error: false,
     status: "",
     edit(value) {
+      // The host stores only a copy its own validation accepts.
+      encodeInboxUnsaved(value);
       retainedCopies.set(owner, structuredClone(value));
     },
     resume() {
@@ -68,7 +74,7 @@ function fixture(
     retire() {},
   });
   const controller = createMailDraftsController({
-    publish() {},
+    publish: () => onPublish(),
     toast: (text) => toasts.push(text),
     provider: {
       prepare: async (proposal, source) => {
@@ -102,14 +108,43 @@ function fixture(
   return {
     controller,
     slots,
+    store,
     retainedCopies,
     toasts,
     prepared,
+    onPublish(next: () => void) {
+      onPublish = next;
+    },
     switchSession(next: string) {
       sessionId = next;
     },
   };
 }
+
+const settle = () => new Promise((r) => setTimeout(r, 0));
+const MiB = 1024 * 1024;
+const base64 = (bytes: number) => "A".repeat(Math.ceil(bytes / 3) * 4);
+const save = async (controller: ReturnType<typeof fixture>["controller"]) => {
+  (controller.render().c as { save: () => void }).save();
+  await settle();
+};
+const shelfItems = (f: ReturnType<typeof fixture>) => {
+  const key = [...f.slots.keys()].find((k) => k.includes(":shelf:"));
+  return key
+    ? (JSON.parse(f.slots.get(key) as string).items as Array<{
+        draft: Bag;
+      }>)
+    : [];
+};
+const gmailDraft = {
+  mode: "compose",
+  to: ["friend@example.invalid"],
+  cc: [],
+  bcc: [],
+  subject: "From Gmail",
+  bodyText: "Gmail text",
+  attachments: [],
+};
 
 const message = {
   id: "m1",
@@ -126,7 +161,7 @@ const message = {
 };
 const type = (
   controller: ReturnType<typeof fixture>["controller"],
-  key: "onSubj" | "onBody" | "onTo",
+  key: "onSubj" | "onBody" | "onTo" | "onCc" | "onBcc",
   value: string,
 ) => {
   const composer = controller.render().c as Record<string, unknown>;
@@ -257,9 +292,7 @@ describe("createMailDraftsController", () => {
       "grant-a",
     );
     expect(f.controller.hasDraft).toBe(false);
-    expect(f.controller.sentNote(email?.draftId as string)).toMatch(
-      /were removed/,
-    );
+    expect(f.controller.sentNote(email?.draftId as string)).toBe("Sent.");
     // A send confirmed for another grant never touches this account's drafts.
     await f.controller.newEmail();
     type(f.controller, "onSubj", "Other");
@@ -311,7 +344,7 @@ describe("createMailDraftsController", () => {
         fromEmail: "Not an address",
       }),
     ).toBe(false);
-    expect(f.toasts.at(-1)).toMatch(/no valid literal reply address/);
+    expect(f.toasts.at(-1)).toMatch(/no reply address/);
     await f.controller.newEmail();
     const composer = f.controller.render().c as {
       sendDisabled: boolean;
@@ -321,5 +354,303 @@ describe("createMailDraftsController", () => {
     composer.send();
     expect(f.prepared).toEqual([]);
     expect(f.toasts.at(-1)).toMatch(/Sending is unavailable/);
+  });
+  it("keeps a saved local draft when a Gmail draft is opened after relaunch", async () => {
+    const f = fixture();
+    await f.controller.bind("grant-a", "owner@example.invalid");
+    await f.controller.newEmail();
+    type(f.controller, "onSubj", "Local only");
+    type(f.controller, "onBody", "Local text");
+    await save(f.controller);
+    f.controller.reset();
+    await f.controller.bind("grant-a", "owner@example.invalid");
+    expect(f.controller.hasDraft).toBe(false);
+    const reference = { draftId: "g1", providerDigest: "d1" };
+    expect(await f.controller.editProvider(gmailDraft, reference)).toBe(true);
+    expect((f.controller.proposal() as Bag).subject).toBe("From Gmail");
+    expect(shelfItems(f)).toHaveLength(1);
+    expect(shelfItems(f)[0]?.draft).toMatchObject({
+      subject: "Local only",
+      body: "Local text",
+    });
+
+    // Newer local text saved for the same Gmail draft is what reopens.
+    type(f.controller, "onBody", "Newer local text");
+    await save(f.controller);
+    f.controller.reset();
+    await f.controller.bind("grant-a", "owner@example.invalid");
+    expect(await f.controller.editProvider(gmailDraft, reference)).toBe(true);
+    expect((f.controller.proposal() as Bag).bodyText).toBe("Newer local text");
+    expect(shelfItems(f)).toHaveLength(1);
+
+    // Edit from review with that copy open leaves no second shelf copy.
+    expect(
+      await f.controller.editProvider(
+        { ...gmailDraft, bodyText: "Newer local text" },
+        reference,
+      ),
+    ).toBe(true);
+    expect(shelfItems(f)).toHaveLength(1);
+    expect(f.prepared).toHaveLength(0);
+  });
+
+  it("preserves the prior draft when the account changes during provider draft shelving", async () => {
+    const f = fixture();
+    await f.controller.bind("grant-a", "first@example.invalid");
+    await f.controller.newEmail();
+    type(f.controller, "onBody", "Keep this account's text");
+    await save(f.controller);
+    f.controller.reset();
+    await f.controller.bind("grant-a", "first@example.invalid");
+
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const compareExchange = f.store.compareExchange;
+    f.store.compareExchange = async (key, expected, value) => {
+      if (key.includes(":shelf:")) {
+        entered.resolve();
+        await release.promise;
+      }
+      return compareExchange(key, expected, value);
+    };
+
+    const opened = f.controller.editProvider(gmailDraft, {
+      draftId: "g1",
+      providerDigest: "d1",
+    });
+    await entered.promise;
+    f.switchSession("session-2");
+    await f.controller.bind("grant-b", "second@example.invalid");
+    release.resolve();
+    expect(await opened).toBe(false);
+    expect(f.controller.proposal()).toBeNull();
+    expect(
+      [...f.slots.values()].some((value) =>
+        value.includes("Keep this account's text"),
+      ),
+    ).toBe(true);
+    expect(f.prepared).toHaveLength(0);
+  });
+
+  it("keeps a newer composer opened by the shelf publication", async () => {
+    const f = fixture();
+    await f.controller.bind("grant-a", "owner@example.invalid");
+    await f.controller.newEmail();
+    type(f.controller, "onBody", "Preserve the saved draft");
+    await save(f.controller);
+    f.controller.reset();
+    await f.controller.bind("grant-a", "owner@example.invalid");
+
+    f.onPublish(() => {
+      if (!f.controller.ready || !shelfItems(f).length) return;
+      f.onPublish(() => {});
+      expect(
+        f.controller.begin(undefined, undefined, "", {
+          to: [],
+          subject: "New composer",
+          body: "Keep the newer edit",
+        }),
+      ).toBe(true);
+    });
+    expect(
+      await f.controller.editProvider(gmailDraft, {
+        draftId: "g1",
+        providerDigest: "d1",
+      }),
+    ).toBe(false);
+    expect(f.controller.proposal()?.bodyText).toBe("Keep the newer edit");
+    expect(shelfItems(f)[0]?.draft.body).toBe("Preserve the saved draft");
+    expect(f.prepared).toHaveLength(0);
+  });
+
+  it("warns when the saved copy of a Gmail draft is an earlier version of a sent email", async () => {
+    const f = fixture();
+    await f.controller.bind("grant-a", "owner@example.invalid");
+    const reference = { draftId: "g1", providerDigest: "d1" };
+    expect(await f.controller.editProvider(gmailDraft, reference)).toBe(true);
+    type(f.controller, "onBody", "Sent text");
+    const email = f.controller.email();
+    const revision = (
+      JSON.parse(
+        [...f.slots.entries()].find(
+          ([k]) => !k.includes(":shelf:"),
+        )?.[1] as string,
+      ) as { revision: string }
+    ).revision;
+    await f.controller.settleSent(
+      email?.draftId as string,
+      { kind: "send", ...(email?.proposal as Bag) },
+      "grant-a",
+      revision,
+      true,
+    );
+    f.controller.reset();
+    await f.controller.bind("grant-a", "owner@example.invalid");
+    expect(await f.controller.editProvider(gmailDraft, reference)).toBe(true);
+    expect((f.controller.proposal() as Bag).bodyText).toBe("Gmail text");
+    expect((f.controller.render().c as Bag).status).toMatch(
+      /^Earlier version of a sent email/,
+    );
+  });
+
+  it("refuses to open a Gmail draft over an open composer with other text", async () => {
+    const f = fixture();
+    await f.controller.bind("grant-a", "owner@example.invalid");
+    await f.controller.newEmail();
+    type(f.controller, "onBody", "Typing here");
+    expect(
+      await f.controller.editProvider(gmailDraft, {
+        draftId: "g1",
+        providerDigest: "d1",
+      }),
+    ).toBe(false);
+    expect((f.controller.proposal() as Bag).bodyText).toBe("Typing here");
+  });
+
+  it("keeps commas and spaces typed in Cc and Bcc", async () => {
+    const f = fixture();
+    await f.controller.bind("grant-a", "owner@example.invalid");
+    await f.controller.newEmail();
+    for (const [key, field] of [
+      ["onCc", "cc"],
+      ["onBcc", "bcc"],
+    ] as const) {
+      type(f.controller, key, "a@b.c, ");
+      expect((f.controller.render().c as Bag)[field]).toBe("a@b.c, ");
+      type(f.controller, key, "a@b.c, d@e.f");
+      expect((f.controller.proposal() as Bag)[field]).toEqual([
+        "a@b.c",
+        "d@e.f",
+      ]);
+    }
+    expect(f.retainedCopies.values().next().value?.draft.cc).toEqual([
+      "a@b.c",
+      "d@e.f",
+    ]);
+    // A save that an invalid Cc address stops names Cc and Bcc as the cause.
+    type(f.controller, "onCc", "a@b.c, friend");
+    await save(f.controller);
+    expect(f.toasts.at(-1)).toMatch(/^Cc or Bcc contains an invalid address/);
+  });
+
+  it("reopens a shelved earlier version of a sent email with a valid recovery copy", async () => {
+    const f = fixture();
+    await f.controller.bind("grant-a", "owner@example.invalid");
+    await f.controller.newEmail();
+    type(f.controller, "onTo", "friend@example.invalid");
+    type(f.controller, "onSubj", "Earlier");
+    type(f.controller, "onBody", "First text");
+    const email = f.controller.email();
+    f.controller.close();
+    expect(await f.controller.newEmail()).toBe(true);
+    await f.controller.settleSent(
+      email?.draftId as string,
+      { ...(email?.proposal as Bag), bodyText: "Sent text" },
+      "grant-a",
+    );
+    expect(shelfItems(f)[0]?.draft.earlierThanSent).toBe(true);
+    const chip = f.controller
+      .chips((label, action) => ({ label, action }))
+      .find((row) => row.subject === "Earlier");
+    expect(chip).toBeDefined();
+    (chip as { action: () => void }).action();
+    await settle();
+    expect((f.controller.proposal() as Bag).bodyText).toBe("First text");
+    const kept = f.retainedCopies.values().next().value;
+    expect(kept?.draft.id).toBe(email?.draftId);
+    expect(kept?.draft.earlierThanSent).toBeUndefined();
+    expect(shelfItems(f)[0]?.draft.earlierThanSent).toBe(true);
+  });
+
+  it("counts forwarded attachments toward the size cap and name check", async () => {
+    const f = fixture({
+      send: true,
+      providerDrafts: true,
+      from: "owner@example.invalid",
+      forwardAttachments: true,
+      attachmentPolicy: { maximumOutgoing: 10, maximumTotalBytes: 5 * MiB },
+    });
+    await f.controller.bind("grant-a", "owner@example.invalid");
+    expect(
+      await f.controller.newEmail(message, "forward", "", {
+        forward: {
+          messageId: "m1",
+          historyId: "h1",
+          parts: [
+            {
+              partId: "p1",
+              name: "report.pdf",
+              mimeType: "application/pdf",
+              size: 3 * MiB,
+            },
+          ],
+        },
+      }),
+    ).toBe(true);
+    const attach = (name: string, bytes: number) =>
+      f.controller.attachReviewed(
+        { name, mimeType: "application/pdf", dataBase64: base64(bytes) },
+        f.controller.suggestionTarget().token as string,
+      );
+    expect(attach("notes.pdf", 3 * MiB)).toBe(false);
+    expect(f.toasts.at(-1)).toMatch(/exceed 5 MiB in total/);
+    expect(attach("Report.pdf", 1024)).toBe(false);
+    expect(f.toasts.at(-1)).toMatch(/same name/);
+    expect(attach("notes.pdf", 1024)).toBe(true);
+  });
+
+  it("blocks Send when no recipient is left after removing the account's own address", async () => {
+    const f = fixture();
+    await f.controller.bind("grant-a", "owner@example.invalid");
+    expect(
+      await f.controller.newEmail({
+        ...message,
+        replyTo: "owner@example.invalid",
+      }),
+    ).toBe(true);
+    expect((f.controller.proposal() as Bag).to).toEqual([]);
+    (f.controller.render().c as { send: () => void }).send();
+    expect(f.prepared).toEqual([]);
+    expect(f.toasts.at(-1)).toBe("Add a recipient before sending.");
+  });
+
+  it("sends an opened Gmail draft without deleting it and says it is still in Drafts", async () => {
+    const f = fixture();
+    await f.controller.bind("grant-a", "owner@example.invalid");
+    const reference = { draftId: "g1", providerDigest: "d1" };
+    expect(await f.controller.editProvider(gmailDraft, reference)).toBe(true);
+    (f.controller.render().c as { send: () => void }).send();
+    expect(f.prepared).toHaveLength(1);
+    expect(f.prepared[0]?.proposal.kind).toBe("send");
+    expect(f.prepared[0]?.source?.providerDraft).toEqual(reference);
+    const email = f.controller.email();
+    await f.controller.settleSent(
+      email?.draftId as string,
+      { kind: "send", ...(email?.proposal as Bag) },
+      "grant-a",
+      undefined,
+      true,
+    );
+    expect(f.controller.hasDraft).toBe(false);
+    expect(f.controller.sentNote(email?.draftId as string, true)).toBe(
+      "Sent. The Gmail draft you opened is still in Drafts.",
+    );
+    // Only the reviewed send went to Cloud: no draft deletion rides along.
+    expect(f.prepared.map((row) => row.proposal.kind)).toEqual(["send"]);
+  });
+
+  it("keeps a reply's subject as Gmail threads it", async () => {
+    const f = fixture();
+    await f.controller.bind("grant-a", "owner@example.invalid");
+    await f.controller.newEmail(message, "reply");
+    type(f.controller, "onSubj", "Something else");
+    expect((f.controller.proposal() as Bag).subject).toBe("Re: Plans");
+    expect((f.controller.render().c as Bag).subjectReadOnly).toBe(true);
+    await f.controller.newEmail({
+      ...message,
+      id: "m2",
+      subject: "(no subject)",
+    });
+    expect((f.controller.proposal() as Bag).subject).toBe("Re: (no subject)");
   });
 });

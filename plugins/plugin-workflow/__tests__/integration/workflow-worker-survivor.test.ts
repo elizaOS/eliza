@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test';
+import { expect, spyOn, test } from 'bun:test';
 import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { once } from 'node:events';
@@ -14,7 +14,7 @@ import {
   resolveSmithersWorkflowDir,
   runSmithersWorkflow,
 } from '../../src/services/smithers-runtime';
-import { inspectWorkerLease } from '../../src/services/workflow-worker-lease';
+import { acquireWorkerLease, inspectWorkerLease } from '../../src/services/workflow-worker-lease';
 import type { WorkflowDefinitionResponse, WorkflowExecution } from '../../src/types/index';
 
 const stage = import.meta.dir;
@@ -503,3 +503,55 @@ export default smithers(()=><Workflow name="survivor"><Task id="effect" output={
     }
   }, 25000);
 }
+
+test('a failed lease admission leaves no reservation and settling leaves no journal', async () => {
+  const home = fs.realpathSync(fs.mkdtempSync('/tmp/w-lease-'));
+  fs.chmodSync(home, 0o700);
+  try {
+    const rootDir = path.join(home, 'state');
+    const socketRoot = path.join(home, 'ipc');
+    fs.mkdirSync(rootDir, { mode: 0o700 });
+    fs.mkdirSync(socketRoot, { mode: 0o700 });
+    const longSocketRoot = path.join(home, 's'.repeat(120 - Buffer.byteLength(home)));
+    fs.mkdirSync(longSocketRoot, { mode: 0o700 });
+    const input = {
+      rootDir,
+      socketRoot,
+      runId: 'admission',
+      versionId: 'v1',
+      sourceSha256: 'a'.repeat(64),
+    };
+    const owners = path.join(rootDir, '.worker-owners');
+
+    await expect(acquireWorkerLease({ ...input, socketRoot: longSocketRoot })).rejects.toThrow(
+      'Worker socket path too long'
+    );
+    expect(fs.readdirSync(owners)).toEqual([]);
+
+    const openSync = fs.openSync;
+    const injected = spyOn(fs, 'openSync').mockImplementation(((
+      file: fs.PathLike,
+      ...rest: unknown[]
+    ) => {
+      if (String(file).endsWith('owner.json')) throw Error('injected owner write failure');
+      return (openSync as (...args: unknown[]) => number)(file, ...rest);
+    }) as typeof fs.openSync);
+    try {
+      await expect(acquireWorkerLease(input)).rejects.toThrow('injected owner write failure');
+    } finally {
+      injected.mockRestore();
+    }
+    expect(fs.readdirSync(owners)).toEqual([]);
+    expect(fs.readdirSync(socketRoot)).toEqual([]);
+    expect((await inspectWorkerLease(input)).state).toBe('absent');
+
+    const lease = await acquireWorkerLease(input);
+    expect((await inspectWorkerLease(input)).state).toBe('live');
+    await lease.finishCanonicalResult();
+    expect(fs.readdirSync(owners)).toEqual([]);
+    expect(fs.readdirSync(socketRoot)).toEqual([]);
+    expect((await inspectWorkerLease(input)).state).toBe('absent');
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});

@@ -15,9 +15,12 @@ import { useBranding } from "../../../../config/branding-react.hooks";
 import { downloadAttachment } from "../../../../utils/download-share";
 import { AccountDeletionDialog } from "../../../account-security/components/account-deletion-dialog";
 import {
+  abandonAccountDeletion,
   cancelAccountDeletion,
   downloadAccountDeletionExport,
-  readAccountDeletionStatus,
+  finishAccountDeletion,
+  readAccountDeletionStatuses,
+  type StoredAccountDeletion,
 } from "../../../account-security/data/account-deletion-client";
 import { useDocumentTitle } from "../../../lib/use-document-title";
 import { useSessionAuth } from "../../../lib/use-session-auth";
@@ -25,7 +28,7 @@ import { useSessionAuth } from "../../../lib/use-session-auth";
 function statusHeading(request: AccountDeletionStatusDto): string {
   switch (request.status) {
     case "pending_activation":
-      return "Confirming recovery access";
+      return "Deletion not finished";
     case "reserved":
       return "Deletion request reserved";
     case "recovery":
@@ -47,9 +50,9 @@ function statusHeading(request: AccountDeletionStatusDto): string {
 function statusInstruction(request: AccountDeletionStatusDto): string {
   switch (request.status) {
     case "pending_activation":
-      return "No account access has been disabled yet. This browser must retain and acknowledge the recovery package before fencing begins.";
+      return "Your account is still active. Finish deletion to disable access and start the 30-day recovery window, or keep your account.";
     case "reserved":
-      return "Account access is disabled while the portable export is prepared.";
+      return "Account access is disabled. You can download your data or cancel before the recovery window expires.";
     case "recovery":
       return "Account access is disabled. Download the export or cancel before the recovery window expires.";
     case "canceling":
@@ -66,33 +69,219 @@ function statusInstruction(request: AccountDeletionStatusDto): string {
   }
 }
 
+function errorMessage(cause: unknown, fallback: string): string {
+  return cause instanceof Error ? cause.message : fallback;
+}
+
+function DeletionRequestCard({
+  entry,
+  onChanged,
+  onRemoved,
+  onRefresh,
+  onError,
+}: {
+  entry: StoredAccountDeletion;
+  onChanged: (request: AccountDeletionStatusDto) => void;
+  onRemoved: () => void;
+  onRefresh: () => Promise<void>;
+  onError: (message: string | null) => void;
+}) {
+  const { request } = entry;
+  const [cancelConfirmation, setCancelConfirmation] = useState("");
+  const [canceling, setCanceling] = useState(false);
+  const [exportConfirmation, setExportConfirmation] = useState("");
+  const [exporting, setExporting] = useState(false);
+  const [finishing, setFinishing] = useState(false);
+
+  const finish = async () => {
+    setFinishing(true);
+    onError(null);
+    try {
+      onChanged(await finishAccountDeletion(request.requestId));
+    } catch (cause) {
+      // error-policy:J4 activation failure remains visible and retryable.
+      onError(errorMessage(cause, "Deletion could not be finished"));
+    } finally {
+      setFinishing(false);
+    }
+  };
+
+  const keep = () => {
+    onError(null);
+    try {
+      abandonAccountDeletion(request.requestId);
+      onRemoved();
+    } catch (cause) {
+      // error-policy:J4 a request that could not be forgotten stays listed.
+      onError(errorMessage(cause, "The request could not be removed"));
+    }
+  };
+
+  const cancel = async () => {
+    setCanceling(true);
+    onError(null);
+    try {
+      onChanged(await cancelAccountDeletion(request.requestId));
+      setCancelConfirmation("");
+    } catch (cause) {
+      // error-policy:J4 cancellation failure remains visible and retryable.
+      onError(errorMessage(cause, "Deletion could not be canceled"));
+    } finally {
+      setCanceling(false);
+    }
+  };
+
+  const downloadExport = async () => {
+    setExporting(true);
+    onError(null);
+    try {
+      const download = await downloadAccountDeletionExport(request.requestId);
+      const url = URL.createObjectURL(download.blob);
+      try {
+        await downloadAttachment(url, download.filename);
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+      setExportConfirmation("");
+      await onRefresh();
+    } catch (cause) {
+      // error-policy:J4 export failure remains visible and never presents a
+      // download as successful.
+      onError(errorMessage(cause, "Export could not be downloaded"));
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  return (
+    <section
+      className={`space-y-4 rounded-lg border bg-bg-elevated p-6 ${
+        request.status === "action_required"
+          ? "border-danger/40"
+          : request.status === "completed" || request.status === "canceled"
+            ? "border-success/40"
+            : "border-border"
+      }`}
+      data-testid="account-deletion-request"
+    >
+      {request.status === "completed" || request.status === "canceled" ? (
+        <CheckCircle2 className="h-7 w-7 text-success" />
+      ) : request.status === "action_required" ? (
+        <CircleAlert className="h-7 w-7 text-danger" />
+      ) : (
+        <RefreshCw className="h-7 w-7 text-accent" />
+      )}
+      <h2 className="text-xl font-semibold">{statusHeading(request)}</h2>
+      <p className="text-sm text-muted-strong">
+        Account: {entry.accountLabel ?? "saved in this browser"}
+      </p>
+      <p className="text-muted-strong">
+        Request <code>{request.requestId}</code> is in server-authoritative
+        state <strong>{request.status}</strong>.
+      </p>
+      <p className="text-muted-strong">{statusInstruction(request)}</p>
+      {request.status === "pending_activation" ? (
+        <div className="flex flex-wrap gap-3 border-t border-border pt-4">
+          <Button
+            variant="destructive"
+            disabled={finishing}
+            onClick={() => void finish()}
+          >
+            {finishing ? "Finishing…" : "Finish deletion"}
+          </Button>
+          <Button variant="outline" disabled={finishing} onClick={keep}>
+            Keep my account
+          </Button>
+        </div>
+      ) : null}
+      {request.recoveryExpiresAt ? (
+        <p className="text-sm text-muted-strong">
+          Recovery is available through{" "}
+          <time dateTime={request.recoveryExpiresAt}>
+            {request.recoveryExpiresAt}
+          </time>
+          . After that boundary, provider cleanup and erasure are irreversible.
+        </p>
+      ) : null}
+      {request.export ? (
+        <p className="text-sm text-muted-strong">
+          Export status: <strong>{request.export.status}</strong>
+          {request.export.contentDigest
+            ? ` · SHA-256 ${request.export.contentDigest}`
+            : ""}
+        </p>
+      ) : null}
+      {request.canCancel ? (
+        <div className="space-y-3 border-t border-border pt-4">
+          <label
+            className="block space-y-2 text-sm"
+            htmlFor={`export-deletion-confirmation-${request.requestId}`}
+          >
+            <span>Type EXPORT MY DATA to build and download the archive</span>
+            <Input
+              id={`export-deletion-confirmation-${request.requestId}`}
+              value={exportConfirmation}
+              onChange={(event) => setExportConfirmation(event.target.value)}
+              autoComplete="off"
+              disabled={exporting}
+            />
+          </label>
+          <Button
+            variant="outline"
+            disabled={exportConfirmation !== "EXPORT MY DATA" || exporting}
+            onClick={() => void downloadExport()}
+          >
+            {exporting ? "Preparing export…" : "Download my data"}
+          </Button>
+        </div>
+      ) : null}
+      {request.canCancel ? (
+        <div className="space-y-3 border-t border-border pt-4">
+          <label
+            className="block space-y-2 text-sm"
+            htmlFor={`cancel-deletion-confirmation-${request.requestId}`}
+          >
+            <span>Type CANCEL DELETION to begin restoring account access</span>
+            <Input
+              id={`cancel-deletion-confirmation-${request.requestId}`}
+              value={cancelConfirmation}
+              onChange={(event) => setCancelConfirmation(event.target.value)}
+              autoComplete="off"
+              disabled={canceling}
+            />
+          </label>
+          <Button
+            variant="outline"
+            disabled={cancelConfirmation !== "CANCEL DELETION" || canceling}
+            onClick={() => void cancel()}
+          >
+            {canceling ? "Canceling deletion…" : "Cancel account deletion"}
+          </Button>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export default function AccountDeletionPage() {
   const branding = useBranding();
   const cloudName = branding.cloudName || `${branding.appName} Cloud`;
   const supportEmail = branding.supportEmail?.trim();
   useDocumentTitle(`Delete your ${branding.appName} account | ${cloudName}`);
   const session = useSessionAuth();
-  const [request, setRequest] = useState<AccountDeletionStatusDto | null>(null);
+  const [entries, setEntries] = useState<StoredAccountDeletion[]>([]);
   const [statusLoading, setStatusLoading] = useState(true);
   const [statusError, setStatusError] = useState<string | null>(null);
-  const [cancelConfirmation, setCancelConfirmation] = useState("");
-  const [canceling, setCanceling] = useState(false);
-  const [exportConfirmation, setExportConfirmation] = useState("");
-  const [exporting, setExporting] = useState(false);
 
   const refreshStatus = useCallback(async () => {
     setStatusLoading(true);
     setStatusError(null);
     try {
-      setRequest(await readAccountDeletionStatus());
+      setEntries(await readAccountDeletionStatuses());
     } catch (cause) {
       // error-policy:J4 status failure remains visibly distinct from an empty
       // or completed deletion state.
-      setStatusError(
-        cause instanceof Error
-          ? cause.message
-          : "Deletion status is unavailable",
-      );
+      setStatusError(errorMessage(cause, "Deletion status is unavailable"));
     } finally {
       setStatusLoading(false);
     }
@@ -102,49 +291,33 @@ export default function AccountDeletionPage() {
     void refreshStatus();
   }, [refreshStatus]);
 
-  const cancel = async () => {
-    setCanceling(true);
-    setStatusError(null);
-    try {
-      setRequest(await cancelAccountDeletion());
-      setCancelConfirmation("");
-    } catch (cause) {
-      // error-policy:J4 cancellation failure remains visible and retryable.
-      setStatusError(
-        cause instanceof Error
-          ? cause.message
-          : "Deletion could not be canceled",
-      );
-    } finally {
-      setCanceling(false);
-    }
+  const replaceRequest = (request: AccountDeletionStatusDto) => {
+    setEntries((current) =>
+      current.map((entry) =>
+        entry.request.requestId === request.requestId
+          ? { ...entry, request }
+          : entry,
+      ),
+    );
   };
 
-  const downloadExport = async () => {
-    setExporting(true);
-    setStatusError(null);
-    try {
-      const download = await downloadAccountDeletionExport();
-      const url = URL.createObjectURL(download.blob);
-      try {
-        await downloadAttachment(url, download.filename);
-      } finally {
-        URL.revokeObjectURL(url);
-      }
-      setExportConfirmation("");
-      await refreshStatus();
-    } catch (cause) {
-      // error-policy:J4 export failure remains visible and never presents a
-      // download as successful.
-      setStatusError(
-        cause instanceof Error
-          ? cause.message
-          : "Export could not be downloaded",
-      );
-    } finally {
-      setExporting(false);
-    }
+  const removeRequest = (requestId: string) => {
+    setEntries((current) =>
+      current.filter((entry) => entry.request.requestId !== requestId),
+    );
   };
+
+  // Requests saved by other accounts on this browser are listed with their
+  // account so they are never mistaken for the visitor's own, and a signed-in
+  // account without an open request of its own can still start one.
+  const hasOwnOpenRequest = entries.some(
+    (entry) =>
+      session.user !== null &&
+      entry.accountId === session.user.id &&
+      entry.request.status !== "canceled",
+  );
+  const showSubmit =
+    entries.length === 0 || (session.authenticated && !hasOwnOpenRequest);
 
   return (
     <div
@@ -167,120 +340,29 @@ export default function AccountDeletionPage() {
           </p>
         </div>
 
-        {request ? (
-          <section
-            className={`space-y-4 rounded-lg border bg-bg-elevated p-6 ${
-              request.status === "action_required"
-                ? "border-danger/40"
-                : request.status === "completed" ||
-                    request.status === "canceled"
-                  ? "border-success/40"
-                  : "border-border"
-            }`}
+        {entries.map((entry) => (
+          <DeletionRequestCard
+            key={entry.request.requestId}
+            entry={entry}
+            onChanged={replaceRequest}
+            onRemoved={() => removeRequest(entry.request.requestId)}
+            onRefresh={refreshStatus}
+            onError={setStatusError}
+          />
+        ))}
+
+        {entries.length > 0 ? (
+          <Button
+            variant="ghost"
+            onClick={() => void refreshStatus()}
+            disabled={statusLoading}
           >
-            {request.status === "completed" || request.status === "canceled" ? (
-              <CheckCircle2 className="h-7 w-7 text-success" />
-            ) : request.status === "action_required" ? (
-              <CircleAlert className="h-7 w-7 text-danger" />
-            ) : (
-              <RefreshCw className="h-7 w-7 text-accent" />
-            )}
-            <h2 className="text-xl font-semibold">{statusHeading(request)}</h2>
-            <p className="text-muted-strong">
-              Request <code>{request.requestId}</code> is in
-              server-authoritative state <strong>{request.status}</strong>.
-            </p>
-            <p className="text-muted-strong">{statusInstruction(request)}</p>
-            {request.recoveryExpiresAt ? (
-              <p className="text-sm text-muted-strong">
-                Recovery is available through{" "}
-                <time dateTime={request.recoveryExpiresAt}>
-                  {request.recoveryExpiresAt}
-                </time>
-                . After that boundary, provider cleanup and erasure are
-                irreversible.
-              </p>
-            ) : null}
-            {request.export ? (
-              <p className="text-sm text-muted-strong">
-                Export status: <strong>{request.export.status}</strong>
-                {request.export.contentDigest
-                  ? ` · SHA-256 ${request.export.contentDigest}`
-                  : ""}
-              </p>
-            ) : null}
-            {request.canCancel ? (
-              <div className="space-y-3 border-t border-border pt-4">
-                <label
-                  className="block space-y-2 text-sm"
-                  htmlFor="export-deletion-confirmation"
-                >
-                  <span>
-                    Type EXPORT MY DATA to build and download the archive
-                  </span>
-                  <Input
-                    id="export-deletion-confirmation"
-                    value={exportConfirmation}
-                    onChange={(event) =>
-                      setExportConfirmation(event.target.value)
-                    }
-                    autoComplete="off"
-                    disabled={exporting}
-                  />
-                </label>
-                <Button
-                  variant="outline"
-                  disabled={
-                    exportConfirmation !== "EXPORT MY DATA" || exporting
-                  }
-                  onClick={() => void downloadExport()}
-                >
-                  {exporting ? "Preparing export…" : "Download my data"}
-                </Button>
-              </div>
-            ) : null}
-            {request.canCancel ? (
-              <div className="space-y-3 border-t border-border pt-4">
-                <label
-                  className="block space-y-2 text-sm"
-                  htmlFor="cancel-deletion-confirmation"
-                >
-                  <span>
-                    Type CANCEL DELETION to begin restoring account access
-                  </span>
-                  <Input
-                    id="cancel-deletion-confirmation"
-                    value={cancelConfirmation}
-                    onChange={(event) =>
-                      setCancelConfirmation(event.target.value)
-                    }
-                    autoComplete="off"
-                    disabled={canceling}
-                  />
-                </label>
-                <Button
-                  variant="outline"
-                  disabled={
-                    cancelConfirmation !== "CANCEL DELETION" || canceling
-                  }
-                  onClick={() => void cancel()}
-                >
-                  {canceling
-                    ? "Canceling deletion…"
-                    : "Cancel account deletion"}
-                </Button>
-              </div>
-            ) : null}
-            <Button
-              variant="ghost"
-              onClick={() => void refreshStatus()}
-              disabled={statusLoading}
-            >
-              <RefreshCw className="mr-2 h-4 w-4" />
-              {statusLoading ? "Refreshing…" : "Refresh server status"}
-            </Button>
-          </section>
-        ) : (
+            <RefreshCw className="mr-2 h-4 w-4" />
+            {statusLoading ? "Refreshing…" : "Refresh server status"}
+          </Button>
+        ) : null}
+
+        {showSubmit ? (
           <section className="space-y-5 rounded-lg border border-border bg-bg-elevated p-6">
             <ShieldCheck className="h-7 w-7 text-accent" />
             <h2 className="text-xl font-semibold">Submit a verified request</h2>
@@ -294,7 +376,7 @@ export default function AccountDeletionPage() {
             ) : !session.ready ? (
               <p className="text-sm text-muted">Checking your session…</p>
             ) : session.authenticated ? (
-              <AccountDeletionDialog onAccepted={setRequest} />
+              <AccountDeletionDialog onAccepted={() => void refreshStatus()} />
             ) : (
               <Button asChild>
                 <Link to="/login?returnTo=%2Faccount-deletion">
@@ -303,7 +385,7 @@ export default function AccountDeletionPage() {
               </Button>
             )}
           </section>
-        )}
+        ) : null}
 
         {statusError ? (
           <p className="text-sm text-danger" role="alert">

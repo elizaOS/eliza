@@ -7,6 +7,11 @@ The host owns product identity, account name, local calendar name, display label
 
 The existing method/result contract is retained: requestAccess, list, open, inspect, remove, save, pendingCreations, acknowledgeCreation, requestWorkflowReadAccess, workflowCalendars, readWorkflowRange, prepareAgentSource, executeAgent, cancelAgent. Inspect the annotated methods for exact argument validation. Creation IDs are UUIDv4 and identity-bound; uncertain effects are reconciled, never replayed. Selected-agent confirmation is mandatory and foreground-bound. External/recurring events are handed to the system editor rather than directly mutated.
 
+A workflow read may pass its reviewed time zone. The seven-day bound follows
+that zone's civil clock, including daylight saving changes. Timed events use
+the exact requested instants. All-day events use the civil dates represented by
+the provider. Calls without a zone keep the original elapsed-time window.
+
 Journal operations share a process-lifetime lock and persistence quarantine per canonical preference file, across adapter instances. Conflicting URI prefixes for the same journal fail closed. Different journals remain independent. Multi-process use of the same journal is unsupported (Android SharedPreferences is not a multi-process store); register and execute the bridge in one process.
 
 Qualification status: extracted candidate. Building this library alone does not establish provider, permission, process-restart or upgrade acceptance. Require the external-consumer and product migration flows before release.
@@ -62,6 +67,15 @@ field hash used by installed option receipts. `CalendarDestinations` is shared
 by the original bridge and host extensions; it refuses unavailable provider
 lookups instead of treating them as a missing local calendar. Hosts must check
 permissions, chosen destinations and owner authority before invoking these helpers.
+
+`CalendarEventEdits` changes or deletes one existing event for a host with its own
+bridge, after the host has confirmed the change with the user. `snapshot` returns the
+event's calendar, `revision`, `writable` and `repeating`. `update` and `delete` take
+that revision and apply one atomic batch that asserts the event and calendar rows are
+unchanged. They throw `CalendarEventEdits.Refused` with reason `GONE`, `READ_ONLY`,
+`REPEATING` or `CHANGED` and write nothing. They do not check attendees or reminders.
+`CalendarEventOptions.defaultZone()` gives the device zone for a timed event, or UTC
+when Android names the zone in a form `zone()` refuses, such as `GMT`.
 
 Run `node --test test/native-host/read-window.test.mjs` for the complete/default and
 bounded-read contracts. After compiling the real shared bridge and host classes

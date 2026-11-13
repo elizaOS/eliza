@@ -8,6 +8,7 @@
 
 import { ElizaError, isInferenceTraceId, mintInferenceTraceId } from "@elizaos/core/protocol";
 import type { InferenceAuthTelemetry } from "../services/inference-auth-context";
+import { currentGateServerTimings } from "./cloud-backend-observability";
 
 export const ELIZA_TRACE_ID_HEADER = "X-Eliza-Trace-Id";
 export const ELIZA_PREFORWARD_HEADER = "X-Eliza-Preforward-Ms";
@@ -148,6 +149,9 @@ export function setGatewayPreforwardTelemetryHeaders(
     { name: "gateway_reserve", durationMs: snapshot.reserveMs },
     { name: "gateway_setup", durationMs: snapshot.setupMs },
     { name: "gateway_preforward", durationMs: snapshot.totalMs },
+    // Per Durable Object call: total, routing/activation before entry,
+    // handler, and output-gate commit plus return. See DurableObjectCallTiming.
+    ...currentGateServerTimings(),
   ]);
 }
 

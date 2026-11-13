@@ -40,6 +40,7 @@ export interface MobileHomeScreenProps extends MobileShellPartProps {
   cards?: ReactNode;
   /** Opens All apps; omit when the platform has no app inventory. */
   onOpenAllApps?: () => void;
+  allAppsLabel?: string;
   allAppsGlyphUrl?: string;
   allAppsFace?: ReactNode;
   /** Host icon id of the All apps tile (`data-mobile-shell-tile-icon`). */
@@ -124,6 +125,7 @@ export function MobileHomeScreen({
   header,
   cards,
   onOpenAllApps,
+  allAppsLabel = "All apps",
   allAppsGlyphUrl,
   allAppsFace,
   allAppsIconId,
@@ -158,7 +160,7 @@ export function MobileHomeScreen({
           ))}
           {onOpenAllApps ? (
             <Tile
-              label="All apps"
+              label={allAppsLabel}
               face={allAppsFace}
               glyphUrl={allAppsGlyphUrl}
               iconId={allAppsIconId}

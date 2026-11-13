@@ -118,7 +118,6 @@ async function ensureDebugApk(logSink) {
       env: {
         ELIZA_MOBILE_REPO_ROOT: REPO_ROOT,
         ELIZA_WEBVIEW_DEBUG: "1",
-        ELIZA_BUN_RISCV64_OPTIONAL: "1",
       },
       logSink,
       label: "bun run --cwd packages/app build:android",

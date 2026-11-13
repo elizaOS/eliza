@@ -68,7 +68,7 @@ async function createTable(
 async function fixture(
   options: { selected?: boolean; hostRevision?: string | null } = {},
 ) {
-  vi.stubEnv("ELIZA_TRAJECTORY_RECORDING", "0");
+  vi.stubEnv("ELIZA_TRAJECTORY_LOGGING", "0");
   const pg = new PGlite();
   await createTable(pg, approvalRequestTable, true);
   await createTable(pg, approvalDispatchControlTable);
@@ -1066,7 +1066,8 @@ it("expiry after an applied read blocks inference and leaves the shared native s
       (row) => row.id === f.outcome.request.id,
     )?.execution?.providerReceipt;
     vi.spyOn(Date, "now").mockReturnValue(
-      f.outcome.request.expiresAt.getTime() + 1,
+      // Past the read window: thirty minutes after the proposal at most.
+      f.outcome.request.createdAt.getTime() + 30 * 60_000 + 1,
     );
     await expect(
       f.service.prepareReadReply(
@@ -1081,6 +1082,36 @@ it("expiry after an applied read blocks inference and leaves the shared native s
         (row) => row.id === f.outcome.request.id,
       )?.execution?.providerReceipt,
     ).toEqual(before);
+  } finally {
+    await f.pg.close();
+  }
+});
+
+it("a read claimed late in its review keeps ten minutes from the claim to reply", async () => {
+  const f = await fixture();
+  try {
+    const attempt = await f.apply(),
+      hint = (await f.service.readCompletionHint(
+        f.credential,
+        f.outcome.request.id,
+        f.digest,
+        attempt,
+      ))!;
+    // The owner approved five minutes in; the reply finishes after the review itself expired.
+    await f.pg.query(
+      "UPDATE approval_requests SET execution_claimed_at = created_at + interval '5 minutes' WHERE id=$1",
+      [f.outcome.request.id],
+    );
+    vi.spyOn(Date, "now").mockReturnValue(
+      f.outcome.request.createdAt.getTime() + 12 * 60_000,
+    );
+    await expect(
+      f.service.prepareReadReply(
+        f.credential,
+        hint,
+        new AbortController().signal,
+      ),
+    ).resolves.toMatchObject({ text: expect.any(String) });
   } finally {
     await f.pg.close();
   }
@@ -1185,7 +1216,8 @@ it.each(["expiry", "enrollment"] as const)(
       await entered;
       if (kind === "expiry")
         vi.spyOn(Date, "now").mockReturnValue(
-          f.outcome.request.expiresAt.getTime() + 1,
+          // Past the read window: thirty minutes after the proposal at most.
+          f.outcome.request.createdAt.getTime() + 30 * 60_000 + 1,
         );
       else await f.service.revoke(f.credential);
       release();
@@ -1259,7 +1291,8 @@ it.each([
       await entered;
       if (kind === "expiry")
         vi.spyOn(Date, "now").mockReturnValue(
-          f.outcome.request.expiresAt.getTime() + 1,
+          // Past the read window: thirty minutes after the proposal at most.
+          f.outcome.request.createdAt.getTime() + 30 * 60_000 + 1,
         );
       else if (kind === "provider")
         f.runtime.getSetting = (key: string) =>

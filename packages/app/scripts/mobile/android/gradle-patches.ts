@@ -82,7 +82,6 @@ function envStringBuildConfigFieldLine(name, fallback) {
 
 export function androidSmsGatewayBuildConfigFieldLines() {
   return [
-    `        buildConfigField "boolean", "ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED", "\${['1', 'true', 'yes'].contains((System.getenv('ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED') ?: 'false').toLowerCase())}"`,
     `        buildConfigField "boolean", "ELIZA_ANDROID_SMS_GATEWAY_ENABLED", "\${['1', 'true', 'yes'].contains((System.getenv('ELIZA_ANDROID_SMS_GATEWAY_ENABLED') ?: 'false').toLowerCase())}"`,
     envStringBuildConfigFieldLine("ELIZA_ANDROID_SMS_GATEWAY_SECRET", ""),
     envStringBuildConfigFieldLine(
@@ -284,19 +283,18 @@ export function injectCopyForkLlamaLibTask(content) {
     `\n` +
     `// Bundle the NDK (bionic) fused inference stack into the APK's jniLibs.\n` +
     `// The elizavoice JNI CMake target links the real bridge for arm64-v8a and\n` +
-    `// x86_64, so both slices are required before any native build starts;\n` +
-    `// riscv64 ships when its artifact exists. Only explicitly configured lib\n` +
+    `// x86_64, so both slices are required before any native build starts.\n` +
+    `// Only explicitly configured lib\n` +
     `// dirs or slices already staged by stage-elizavoice-lib.ts are used: the\n` +
     `// Bun/AOSP musl assets and the musl compile cache are NOT bionic JNI inputs\n` +
     `// and are never discovered automatically. Cloud builds and explicitly\n` +
     `// opted-out CI smoke builds skip this task.\n` +
-    `ext.elizaForkLlamaAbis = ['arm64-v8a', 'x86_64', 'riscv64']\n` +
+    `ext.elizaForkLlamaAbis = ['arm64-v8a', 'x86_64']\n` +
     `ext.elizaRequiredJniAbis = ['arm64-v8a', 'x86_64']\n` +
     `\n` +
     `ext.forkLlamaLibompAbiTokens = [\n` +
     `    'arm64-v8a': 'aarch64',\n` +
-    `    'x86_64': 'x86_64',\n` +
-    `    'riscv64': 'riscv64'\n` +
+    `    'x86_64': 'x86_64'\n` +
     `]\n` +
     `\n` +
     `def resolveForkLlamaLibDir = { String abi ->\n` +
@@ -380,7 +378,7 @@ export function injectCopyForkLlamaLibTask(content) {
     `                }\n` +
     `                if (requiredAbis.contains(abi)) {\n` +
     `                    // The JNI CMake target links this slice; fail before any native build.\n` +
-    `                    throw new GradleException("[copyForkLlamaLib] no bionic fused inference lib for \${abi} (not configured, not pre-staged in src/main/jniLibs/\${abi}). Run \`node packages/app/scripts/stage-elizavoice-lib.ts --abi \${abi}\` (NDK/bionic build) or set -Peliza.mtp.android.libdir / ELIZA_MTP_ANDROID_LIBDIR to an NDK-built lib dir (use the .\${abi} / _\${abi.replace('-', '_').toUpperCase()} suffixed forms for non-arm64 ABIs).")\n` +
+    `                    throw new GradleException("[copyForkLlamaLib] no bionic fused inference lib for \${abi} (not configured, not pre-staged in src/main/jniLibs/\${abi}). Run \`bun packages/app/scripts/stage-elizavoice-lib.ts --abi \${abi}\` (NDK/bionic build) or set -Peliza.mtp.android.libdir / ELIZA_MTP_ANDROID_LIBDIR to an NDK-built lib dir (use the .\${abi} / _\${abi.replace('-', '_').toUpperCase()} suffixed forms for non-arm64 ABIs).")\n` +
     `                }\n` +
     `                logger.lifecycle("[copyForkLlamaLib] no fork lib dir for ABI \${abi}; skipping")\n` +
     `                return\n` +
@@ -388,7 +386,7 @@ export function injectCopyForkLlamaLibTask(content) {
     `            def srcDir = new File(libDir.toString())\n` +
     `            if (!srcDir.isDirectory()) {\n` +
     `                if (requiredAbis.contains(abi)) {\n` +
-    `                    throw new GradleException("[copyForkLlamaLib] configured Android lib dir does not exist for \${abi}: \${libDir}. Run \`node packages/app/scripts/stage-elizavoice-lib.ts --abi \${abi}\` or fix the configured path.")\n` +
+    `                    throw new GradleException("[copyForkLlamaLib] configured Android lib dir does not exist for \${abi}: \${libDir}. Run \`bun packages/app/scripts/stage-elizavoice-lib.ts --abi \${abi}\` or fix the configured path.")\n` +
     `                }\n` +
     `                logger.lifecycle("[copyForkLlamaLib] fork lib dir \${libDir} does not exist for ABI \${abi}; skipping")\n` +
     `                return\n` +
@@ -429,7 +427,7 @@ export function injectCopyForkLlamaLibTask(content) {
     `        }\n` +
     `        def missingAbis = requiredAbis.findAll { !stagedAbis.contains(it) }\n` +
     `        if (!missingAbis.isEmpty()) {\n` +
-    `            throw new GradleException("[copyForkLlamaLib] required JNI slice(s) \${missingAbis} were not staged; run \`node packages/app/scripts/stage-elizavoice-lib.ts --abi <abi>\` for each before building.")\n` +
+    `            throw new GradleException("[copyForkLlamaLib] required JNI slice(s) \${missingAbis} were not staged; run \`bun packages/app/scripts/stage-elizavoice-lib.ts --abi <abi>\` for each before building.")\n` +
     `        }\n` +
     `    }\n` +
     `}\n` +

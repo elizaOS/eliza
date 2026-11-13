@@ -18,8 +18,16 @@
  * - Stopped-reply matching: each turn carries a `clientMessageId`; a stopped
  *   dispatched turn is retained so hosts can find its user row later
  *   (see `findStoppedUserTurn`).
+ * - Detach: an app pause ends only local publication (`detach()`). The server
+ *   turn keeps running and the host's history reload adopts its reply.
  */
 export type ConversationRoom = Readonly<{ id: string; roomId: string }>;
+
+/**
+ * Abort reason for a request signal when the app goes to the background.
+ * `request()` then detaches the turn instead of stopping it on the server.
+ */
+export const APP_PAUSE_DETACH = new DOMException("app-pause", "AbortError");
 export type ConversationStopResult =
   | { status: "idle" | "stopped" }
   | { status: "failed"; error: unknown };
@@ -305,7 +313,10 @@ export class ConversationTurnController<Input, Reply> {
         );
       const cancelled = () => {
         if (settled) return;
-        if (turn && this.turn === turn) void this.interrupt();
+        if (turn && this.turn === turn) {
+          if (signal?.reason === APP_PAUSE_DETACH) this.detach();
+          else void this.interrupt();
+        }
         fail(requestAborted(turn?.dispatched ?? false, signal?.reason));
       };
       if (signal?.aborted) {
@@ -484,6 +495,17 @@ export class ConversationTurnController<Input, Reply> {
       this.stopping = Promise.resolve(failed(error));
     }
     return this.stopping;
+  }
+
+  /**
+   * Ends local publication of the current turn without a remote stop. The
+   * server turn keeps running, nothing is recorded as stopped, and the next
+   * send is not held behind a stop.
+   */
+  detach(): void {
+    const turn = this.turn;
+    this.turn = null;
+    turn?.abort.abort(APP_PAUSE_DETACH);
   }
 
   /** Ownership changes and teardown invalidate all callbacks and cached identities. */

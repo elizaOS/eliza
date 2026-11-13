@@ -168,6 +168,7 @@ it.each([
             ? "The corrected trigger has a durable receipt."
             : "No trigger was created.",
           messageToUser: expectedMessage,
+          raw: { messageToUser: expectedMessage },
           requestFullyCovered: corrected,
           ...(corrected
             ? {
@@ -854,6 +855,7 @@ it("persists the timezone through pause and re-enable and schedules in that zone
         method: "PUT",
         pathname: `/api/triggers/${triggerId}`,
         runtime: fixture.runtime,
+        assertCurrentRuntime: () => {},
         ownerEntityId: resolveOwnerEntityIdOrDefault(fixture.runtime),
         localOwnerEntityId: resolveOwnerEntityIdOrDefault(fixture.runtime),
         req: {} as http.IncomingMessage,
@@ -937,8 +939,12 @@ async function requestTrigger(
         req,
         res,
         runtime: fixture.runtime,
-        resolvePromptDeliveryRoom: (runtime) =>
-          resolvePromptDeliveryRoom(state, runtime),
+        resolvePromptDeliveryRoom: (runtime, conversationId) =>
+          resolvePromptDeliveryRoom(state, runtime, conversationId),
+        assertCurrentRuntime: (runtime) => {
+          if (runtime !== state.runtime)
+            throw new Error("Agent runtime changed");
+        },
         ownerEntityId: resolveOwnerEntityIdOrDefault(fixture.runtime),
         localOwnerEntityId: resolveOwnerEntityIdOrDefault(fixture.runtime),
         readJsonBody: async () => {
@@ -1331,6 +1337,8 @@ it.each([
   "delivery-failure",
   "missing-at-create",
   "missing-at-dispatch",
+  "two-windows",
+  "missing-selected",
 ])(
   "delivers an API Once reply through the persisted owner room (%s)",
   async (scenario) => {
@@ -1358,6 +1366,16 @@ it.each([
     if (scenario === "missing-at-create" && original) {
       await runtime.deleteRoom(original.roomId);
     }
+    if (scenario === "two-windows" || scenario === "missing-selected") {
+      const otherState = {
+        ...state,
+        conversations: new Map(),
+        activeConversationId: null,
+      } as ServerState;
+      const other = await ensureOwnerConversation(otherState, runtime);
+      state.conversations.set(other.id, other);
+      state.activeConversationId = other.id;
+    }
     registerClientChatSendHandler(runtime, state);
     const instructions = `Offline Once delivery ${randomUUID()}`;
     const response = await requestTrigger(
@@ -1370,9 +1388,23 @@ it.each([
         triggerType: "once",
         scheduledAtIso: new Date(Date.now() + 60_000).toISOString(),
         roomId: randomUUID(),
+        ...(scenario === "two-windows"
+          ? { deliveryConversationId: original!.id }
+          : scenario === "missing-selected"
+            ? { deliveryConversationId: randomUUID() }
+            : {}),
       },
       state,
     );
+    if (scenario === "missing-selected") {
+      expect(response.status).toBe(409);
+      expect(
+        (await listTriggerTasks(runtime)).some(
+          (task) => readTriggerConfig(task)?.instructions === instructions,
+        ),
+      ).toBe(false);
+      return;
+    }
     if (scenario === "missing-at-create") {
       expect(response.status).toBe(503);
       expect(
@@ -1384,8 +1416,13 @@ it.each([
       return;
     }
     expect(response.status).toBe(201);
-    expect(state.conversations.size).toBe(1);
-    const conversation = await ensureOwnerConversation(state, runtime);
+    if (scenario === "two-windows")
+      expect(response.payload.deliveryConversationId).toBe(original!.id);
+    expect(state.conversations.size).toBe(scenario === "two-windows" ? 2 : 1);
+    const conversation =
+      scenario === "two-windows"
+        ? original!
+        : await ensureOwnerConversation(state, runtime);
     if (original) expect(conversation.id).toBe(original.id);
     const task = (await listTriggerTasks(runtime)).find(
       (task) => readTriggerConfig(task)?.instructions === instructions,
@@ -1599,3 +1636,192 @@ it("rejects a prompt delivery binding when the host runtime changes during conve
     await replacement.cleanup();
   }
 });
+
+it.each(["POST", "PUT"])(
+  "refuses %s persistence when the runtime changes during the delivery-room read",
+  async (method) => {
+    const runtime = fixture.runtime;
+    const state = {
+      runtime,
+      config: {},
+      agentName: "TriggerScheduleBoundary",
+      adminEntityId: null,
+      chatUserId: null,
+      logBuffer: [],
+      conversations: new Map(),
+      activeChatTurnCount: 0,
+      conversationRestorePromise: null,
+      deletedConversationIds: new Set(),
+    } as unknown as ServerState;
+    const selected = await ensureOwnerConversation(state, runtime);
+    const body = {
+      kind: "prompt",
+      displayName: `Runtime fence ${randomUUID()}`,
+      instructions: "Synthetic prompt: do not execute",
+      triggerType: "interval",
+      intervalMs: 3_600_000,
+      enabled: false,
+      deliveryConversationId: selected.id,
+    };
+    const created =
+      method === "PUT"
+        ? await requestTrigger("POST", "/api/triggers", body, state)
+        : null;
+    if (created) expect(created.status).toBe(201);
+    const taskId = created?.payload.trigger.taskId as UUID | undefined;
+    const before = await runtime.getTasks({ tags: ["trigger"] });
+    let readStarted!: () => void, releaseRead!: () => void;
+    const started = new Promise<void>((resolve) => {
+      readStarted = resolve;
+    });
+    const held = new Promise<void>((resolve) => {
+      releaseRead = resolve;
+    });
+    const original = runtime.getRoom.bind(runtime);
+    const roomRead = vi
+      .spyOn(runtime, "getRoom")
+      .mockImplementationOnce(async (id) => {
+        expect(id).toBe(selected.roomId);
+        const room = await original(id);
+        readStarted();
+        await held;
+        return room;
+      });
+    try {
+      const pending = requestTrigger(
+        method,
+        created
+          ? `/api/triggers/${created.payload.trigger.id}`
+          : "/api/triggers",
+        { ...body, displayName: `${body.displayName} changed` },
+        state,
+      );
+      await started;
+      state.runtime = null;
+      releaseRead();
+      const response = await pending;
+      expect(response.status).toBe(409);
+      expect(response.payload.error).toBe(
+        "Agent changed before saving automation",
+      );
+      expect(await runtime.getTasks({ tags: ["trigger"] })).toEqual(before);
+    } finally {
+      releaseRead();
+      roomRead.mockRestore();
+      state.runtime = runtime;
+      if (taskId) await runtime.deleteTask(taskId);
+    }
+  },
+);
+
+it.each([
+  { status: "failed", delivered: false },
+  { status: "cancelled", delivered: false },
+  { status: "denied", delivered: false },
+  { status: "failed", delivered: true },
+  { status: "completed", delivered: false },
+] as const)(
+  "records the resolved prompt turn outcome $status with prior delivery $delivered",
+  async ({ status, delivered }) => {
+    const runtime = fixture.runtime;
+    const broadcasts: unknown[] = [];
+    const state = {
+      runtime,
+      config: {},
+      agentName: "TriggerScheduleBoundary",
+      adminEntityId: null,
+      chatUserId: null,
+      logBuffer: [],
+      conversations: new Map(),
+      activeChatTurnCount: 0,
+      conversationRestorePromise: null,
+      deletedConversationIds: new Set(),
+      broadcastWs: (event: unknown) => broadcasts.push(event),
+    } as unknown as ServerState;
+    const conversation = await ensureOwnerConversation(state, runtime);
+    registerClientChatSendHandler(runtime, state);
+    const created = await requestTrigger(
+      "POST",
+      "/api/triggers",
+      {
+        kind: "prompt",
+        displayName: `Turn outcome ${randomUUID()}`,
+        instructions: "Synthetic result: do not call a model",
+        triggerType: "interval",
+        intervalMs: 3_600_000,
+        enabled: false,
+        deliveryConversationId: conversation.id,
+      },
+      state,
+    );
+    expect(created.status).toBe(201);
+    const task = await runtime.getTask(created.payload.trigger.taskId);
+    if (!task?.id) throw new Error("Created prompt task missing");
+    const priorMessageService = runtime.messageService;
+    let turns = 0;
+    const explanation =
+      "Synthetic terminal reason; prior effects must not be repeated";
+    runtime.messageService = {
+      handleMessage: async (_runtime, _message, callback) => {
+        turns++;
+        const responseMessages = delivered
+          ? await callback?.({ text: explanation })
+          : [];
+        return {
+          outcome:
+            status === "failed"
+              ? {
+                  status,
+                  error: {
+                    kind: "model_error",
+                    code: "SYNTHETIC_FAILURE",
+                    transient: false,
+                    message: explanation,
+                  },
+                  effects: [],
+                }
+              : status === "completed"
+                ? { status, effects: [] }
+                : { status, reason: explanation, effects: [] },
+          didRespond: delivered,
+          responseMessages: responseMessages ?? [],
+        };
+      },
+    } satisfies Pick<
+      IMessageService,
+      "handleMessage"
+    > as unknown as IMessageService;
+    try {
+      const result = await executeTriggerTask(runtime, task, {
+        source: "manual",
+        force: true,
+      });
+      const expected = status === "completed" ? "success" : "error";
+      expect(result.status).toBe(expected);
+      expect(result.runRecord?.status).toBe(expected);
+      expect(turns).toBe(1);
+      if (status !== "completed") expect(result.error).toContain(explanation);
+      const retained = await runtime.getTask(task.id);
+      if (!retained) throw new Error("Prompt run record was not retained");
+      expect(readTriggerConfig(retained)?.lastStatus).toBe(expected);
+      expect(readTriggerConfig(retained)?.enabled).toBe(false);
+      expect(readTriggerRuns(retained).at(-1)?.status).toBe(expected);
+      expect(
+        broadcasts.filter(
+          (event) => (event as { type?: string }).type === "proactive-message",
+        ),
+      ).toHaveLength(delivered ? 1 : 0);
+      const messages = await runtime.getMemories({
+        roomId: conversation.roomId,
+        tableName: "messages",
+        count: 20,
+      });
+      expect(
+        messages.filter((memory) => memory.content.text === explanation),
+      ).toHaveLength(delivered ? 1 : 0);
+    } finally {
+      runtime.messageService = priorMessageService;
+      await runtime.deleteTask(task.id);
+    }
+  },
+);

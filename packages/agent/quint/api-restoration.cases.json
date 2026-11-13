@@ -1,0 +1,22 @@
+{
+  "sources": [
+    "packages/agent/src/api/conversation-restore.ts",
+    "packages/agent/src/api/connector-health.ts"
+  ],
+  "bounds": {
+    "domain": "One room with two versions and one probe generation.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "api_restoration",
+      "main": "api_restoration",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

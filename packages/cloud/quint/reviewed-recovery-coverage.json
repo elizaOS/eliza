@@ -1,0 +1,121 @@
+[
+  {
+    "id": "cloud-protocol-container-monitor",
+    "model": "packages/cloud/quint/container_monitor.qnt",
+    "sources": [
+      "packages/cloud/shared/src/db/repositories/containers.ts",
+      "packages/cloud/shared/src/lib/services/containers/hetzner-client/client.ts",
+      "packages/cloud/shared/src/db/migrations/0558_container_placement_revision.sql",
+      "packages/cloud/shared/src/lib/services/__tests__/container-health-observation.pglite.test.ts",
+      "packages/cloud/shared/src/db/migrations/0265_compute_billing_recovery.sql",
+      "packages/cloud/quint/container-conformance.mjs"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One logical container, two row incarnations, one restart, one newer deployment, placement metadata A-to-B-to-A and one bookkeeping update.",
+      "The original created_at database text identifies a row; malicious reuse of both its UUID and exact timestamp is excluded.",
+      "Migration0558 advances the canonical lifecycle revision for all typed Hetzner placement fields; funded restart advances it even when already deploying. Full metadata equality alone does not prove absence of ABA.",
+      "Database CAS is atomic. Provider health truth, physical node replacement outside retained identity, transport reliability and TypeScript refinement remain outside this bounded model.",
+      "A pending observation completes under weak fairness of its response/error continuation. No eventual healthy status is assumed.",
+      "The source conformance hooks require all 37 named health, publication and authority cases across 49 executions, including 12 real PostgreSQL cases. These examples do not prove equivalence for every abstract schedule."
+    ]
+  },
+  {
+    "id": "cloud-protocol-app-container-publication",
+    "model": "packages/cloud/quint/app_container_publication.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/services/app-container-store.ts",
+      "packages/cloud/shared/src/lib/services/app-container-store-queries.ts",
+      "packages/cloud/shared/src/lib/services/container-job-executors.ts",
+      "packages/cloud/shared/src/lib/services/container-retirement.ts",
+      "packages/cloud/shared/src/lib/services/__tests__/app-container-terminal-status.pglite.test.ts",
+      "packages/cloud/shared/src/lib/services/__tests__/provisioning-execution-authority.pglite.test.ts",
+      "packages/cloud/shared/src/db/repositories/containers.ts",
+      "packages/cloud/shared/src/db/repositories/job-execution-authority.ts",
+      "packages/cloud/shared/src/lib/services/job-execution-authority.ts",
+      "packages/cloud/shared/src/db/schemas/jobs.ts",
+      "packages/cloud/shared/src/db/schemas/job-execution-leases.ts",
+      "packages/cloud/shared/src/db/schemas/containers.ts",
+      "packages/cloud/quint/container-conformance.mjs"
+    ],
+    "invariants": ["safety", "ownedSafety"],
+    "status": "partial",
+    "limitations": [
+      "One tenant projection, two app generations/row incarnations, one metadata change and atomic publication CAS.",
+      "Original database timestamp text identifies the row; privileged reuse of both UUID and exact timestamp is excluded. Publication retains original tenant/app generation across provider I/O.",
+      "Retirement and publication serialize at the database write. Stale cleanup can release only the original row/generation slot.",
+      "Provider truth, physical node reincarnation, later ingress publication, unbounded liveness and TypeScript refinement remain unproved.",
+      "The added owned case pairs the original app/container identity with a job generation, owner and post-resource-lock lease check. Failure and cleanup business paths beyond publication retain separate coverage limits.",
+      "Owned publication adds two job generations, two requested owner values, an identity-match input, clock0..6, lease duration2 and grace1, one pending transaction and one external resource lock. Original non-job publication bounds are unchanged.",
+      "Publication and the owned database transaction complete only under explicit weak fairness of their DB continuations. Resource waits must eventually resolve or fail; physical provider completion is not assumed.",
+      "The source conformance hooks require all 37 named health, publication and authority cases across 49 executions, including 12 real PostgreSQL cases. These examples do not prove equivalence for every abstract schedule."
+    ]
+  },
+  {
+    "id": "cloud-protocol-provisioning-execution",
+    "model": "packages/cloud/quint/provisioning_execution.qnt",
+    "sources": [
+      "packages/cloud/shared/src/db/repositories/job-execution-authority.ts",
+      "packages/cloud/shared/src/lib/services/app-container-store.ts",
+      "packages/cloud/shared/src/lib/services/container-job-executors.ts",
+      "packages/cloud/shared/src/node/provisioning-worker.ts",
+      "packages/cloud/shared/src/db/repositories/jobs.ts",
+      "packages/cloud/shared/src/lib/services/__tests__/provisioning-execution-authority.pglite.test.ts",
+      "packages/cloud/shared/src/lib/services/job-execution-authority.ts",
+      "packages/cloud/shared/src/db/schemas/jobs.ts",
+      "packages/cloud/shared/src/db/schemas/job-execution-leases.ts",
+      "packages/cloud/shared/src/db/schemas/containers.ts",
+      "packages/cloud/quint/container-conformance.mjs"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One durable job, two execution generations, two owner values and clock0..6. The replacement can use the same or another owner. Lease and grace remain one tick each. The app generation can survive job recovery.",
+      "Job, lease and dependent-resource locks serialize each write. The database clock is checked after resource lock acquisition; a successfully admitted transaction retains its locks through commit. No TypeScript or SQL isolation refinement is proved.",
+      "Provider dispatch and completion remain external. A lease timeout or cancellation does not prove remote quiescence; an explicit witness retains overlapping old and new provider calls.",
+      "No eventual provider completion, provider-side fencing or cross-job routing ownership is proved.",
+      "Only pending dependent DB mutations have a conditional completion property; uncancellable provider work can overlap after recovery.",
+      "The source conformance hooks require all 37 named health, publication and authority cases across 49 executions, including 12 real PostgreSQL cases. These examples do not prove equivalence for every abstract schedule."
+    ]
+  },
+  {
+    "id": "cloud-protocol-checkout-credit-settlement",
+    "model": "packages/cloud/quint/checkout_credit_settlement.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/services/stripe-checkout-orders.ts",
+      "packages/cloud/shared/src/db/schemas/stripe-checkout-orders.ts",
+      "packages/cloud/api/stripe/create-checkout-session/route.ts",
+      "packages/cloud/shared/src/lib/services/__tests__/stripe-checkout-orders.pglite.test.ts",
+      "packages/cloud/shared/src/lib/services/test-support/stripe-checkout-test-schema.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One organization, immutable two-unit credit quote, one Session and PaymentIntent, two provider create calls and two refund amounts.",
+      "Transactions and receipt publication are atomic. Provider idempotency is assumed within the original retained window; the separate clock model does not establish compositional refinement.",
+      "Cryptography, arbitrary decimals, SQL isolation, unbounded provider/network delay and TypeScript refinement are not proved.",
+      "No temporal or fairness claim. The conformance hook requires every named real PGlite route/service/migration check, with authentication and remote Stripe as controlled boundaries. General trace equivalence and model composition remain unproved."
+    ]
+  },
+  {
+    "id": "cloud-protocol-checkout-retry-clock",
+    "model": "packages/cloud/quint/checkout_retry_clock.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/services/stripe-checkout-orders.ts",
+      "packages/cloud/api/src/checkout-reconciliation.ts",
+      "packages/cloud/shared/src/db/migrations/0559_stripe_checkout_provider_started_at.sql",
+      "packages/cloud/api/__tests__/checkout-provider-horizon.pglite.test.ts",
+      "packages/cloud/shared/src/db/migrations/stripe-checkout-provider-started-at.test.ts",
+      "packages/cloud/api/stripe/create-checkout-session/route.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Independent database and application clocks each range over 0, 22, 44 and 66 hours; up to three create attempts.",
+      "Only primary database time authorizes a new dispatch. The first dispatch time is immutable; audit updates do not restart the retry window.",
+      "This is a bounded time-gate model, not a proof of provider key retention, network arrival time, remote exactly-once behavior or implementation refinement.",
+      "No temporal or fairness claim. The conformance hook requires every named real PGlite route/service/migration check, with authentication and remote Stripe as controlled boundaries. General trace equivalence and model composition remain unproved."
+    ]
+  }
+]

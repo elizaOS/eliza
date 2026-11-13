@@ -55,5 +55,4 @@ packages/benchmarks/suites/action-calling/corpus/** -text whitespace=-blank-at-e
 packages/benchmarks/suites/openclaw-benchmark/openclaw/** -text whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
 
 # Preserve literal benchmark prompt/document content in these source fixtures.
-packages/benchmarks/scripts/osworld/python/run_coact.py -text whitespace=-blank-at-eol
 packages/benchmarks/suites/context-bench/tests/conftest.py -text whitespace=-blank-at-eol

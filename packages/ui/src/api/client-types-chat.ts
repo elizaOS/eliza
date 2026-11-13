@@ -972,6 +972,7 @@ export interface ContextInspectorResponse {
     usedTokens: number;
     limitTokens: number;
     reservedTokens: number;
+    estimationMode?: "reported" | "heuristic" | "utf8-upper-bound" | "unknown";
     state: "within-budget" | "rejected" | "unavailable";
   }>;
   page: {

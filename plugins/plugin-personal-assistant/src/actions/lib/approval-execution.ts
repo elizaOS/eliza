@@ -44,6 +44,28 @@ export type ApprovalDispatchOutcome<T> =
       readonly request: ApprovalRequest;
     };
 
+/**
+ * Attempts this process is dispatching right now. A claim survives in SQL
+ * after a crash, so an `executing` row whose attempt is not here belongs to a
+ * stopped process; one that is here is still live and must not be recovered
+ * by a second approve or reject.
+ */
+const liveAttempts = new Set<string>();
+
+/** A live attempt older than this is treated as hung and may be recovered. */
+export const APPROVAL_EXECUTION_LEASE_MS = 10 * 60 * 1000;
+
+/** True while this process is still dispatching the row's claimed attempt. */
+export function isApprovalExecutionLive(
+  request: ApprovalRequest,
+  now: number = Date.now(),
+): boolean {
+  const execution = request.execution;
+  if (request.state !== "executing" || !execution) return false;
+  if (!liveAttempts.has(execution.attemptId)) return false;
+  return now - execution.claimedAt.getTime() < APPROVAL_EXECUTION_LEASE_MS;
+}
+
 function executionMutation(
   request: ApprovalRequest,
   subjectUserId: string,
@@ -78,6 +100,22 @@ export async function runApprovalDispatch<T>(args: {
     providerIdempotencyKey,
   });
   const mutation = executionMutation(claimed, args.subjectUserId);
+  liveAttempts.add(mutation.attemptId);
+  try {
+    return await dispatchClaimed(args, mutation, providerIdempotencyKey);
+  } finally {
+    liveAttempts.delete(mutation.attemptId);
+  }
+}
+
+async function dispatchClaimed<T>(
+  args: {
+    queue: ApprovalQueue;
+    prepared: PreparedApprovalDispatch<T>;
+  },
+  mutation: ReturnType<typeof executionMutation>,
+  providerIdempotencyKey: string,
+): Promise<ApprovalDispatchOutcome<T>> {
   await args.queue.markDispatchStarted(mutation);
 
   let delivered: {
@@ -120,11 +158,16 @@ export async function runApprovalDispatch<T>(args: {
   };
 }
 
+/**
+ * Recover an `executing` row whose attempt is no longer live. A live attempt
+ * is returned unchanged, still `executing`.
+ */
 export async function recoverInterruptedApproval(
   queue: ApprovalQueue,
   request: ApprovalRequest,
   subjectUserId: string,
 ): Promise<ApprovalRequest> {
+  if (isApprovalExecutionLive(request)) return request;
   const mutation = executionMutation(request, subjectUserId);
   if (!request.execution?.dispatchStartedAt) {
     return queue.recoverUnstartedExecution(mutation);

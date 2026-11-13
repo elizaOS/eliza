@@ -9,9 +9,10 @@ import {
 } from "@elizaos/cloud-shared/lib/services/agent-google-connector/inbox-managed";
 import { createInboxOperationRoutes } from "@elizaos/cloud-shared/lib/services/agent-google-connector/inbox-operation-routes";
 import {
-  DefiniteProviderRejection,
   InboxContractError,
+  inboxErrorResponse,
 } from "@elizaos/cloud-shared/lib/services/agent-google-connector/inbox-receipts";
+import { AgentGoogleConnectorError } from "@elizaos/cloud-shared/lib/services/agent-google-connector/shared";
 import type {
   AppContext,
   AppEnv,
@@ -36,19 +37,24 @@ async function selected(context: AppContext) {
     throw new InboxContractError(400, "Explicit grant UUID required");
   return { ...user, grantId };
 }
-app.onError((error, context) =>
-  error instanceof DefiniteProviderRejection
-    ? context.json(
-        {
-          error:
-            "The selected Google account or message is unavailable. Reconnect Google or refresh the selection.",
-        },
-        error.code === "404" ? 404 : 409,
-      )
-    : error instanceof InboxContractError
-      ? context.json({ error: error.message }, error.status)
-      : failureResponse(context, error),
-);
+/** A Google token refresh failure keeps its reconnect status; its raw reason stays server-side. */
+function unknownFailure(error: Error, context: AppContext) {
+  if (error instanceof AgentGoogleConnectorError && error.status === 409)
+    return context.json(
+      {
+        error: "Reconnect Google to keep using Gmail.",
+        code: "reauth_required",
+      },
+      409,
+    );
+  return failureResponse(context, error);
+}
+app.onError((error, context) => {
+  const known = inboxErrorResponse(error);
+  return known
+    ? context.json(known.body, known.status)
+    : unknownFailure(error, context);
+});
 app.get("/capabilities", async (context) =>
   context.json(
     await managedInboxProvider.capabilities(await selected(context)),
@@ -107,7 +113,7 @@ app.route(
     authenticate: (context) => identity(context as AppContext),
     review: (owner, proposal, requestId) =>
       managedInboxProvider.review(owner, proposal, requestId),
-    onError: (error, context) => failureResponse(context as AppContext, error),
+    onError: (error, context) => unknownFailure(error, context as AppContext),
   }),
 );
 export default app;

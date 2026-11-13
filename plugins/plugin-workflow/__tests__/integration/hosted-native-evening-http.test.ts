@@ -169,16 +169,32 @@ test('morning and evening loops share one native source with distinct reads, pro
     expect(loops.map((row) => row.name).sort()).toEqual(['Evening brief', 'Morning digest']);
     expect(loops.every((row) => row.sourceState === 'current')).toBe(true);
     expect(await service.listHostedDigests('other-owner')).toEqual([]);
-    const runMorning = await service.executeWorkflow(morning.workflowId, {
-      mode: 'trigger',
-      triggerData: { scheduledAtMs: minute, workflowVersionId: morning.versionId },
-      throwOnError: false,
-    });
-    const runEvening = await service.executeWorkflow(evening.workflowId, {
-      mode: 'trigger',
-      triggerData: { scheduledAtMs: minute, workflowVersionId: evening.versionId },
-      throwOnError: false,
-    });
+    // A scheduled digest returns once admitted; its brief finishes in the background.
+    const settled = async (id: string) => {
+      for (;;) {
+        const execution = await service.getExecution(id);
+        if (execution.finished) return execution;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    };
+    const runMorning = await settled(
+      (
+        await service.executeWorkflow(morning.workflowId, {
+          mode: 'trigger',
+          triggerData: { scheduledAtMs: minute, workflowVersionId: morning.versionId },
+          throwOnError: false,
+        })
+      ).id
+    );
+    const runEvening = await settled(
+      (
+        await service.executeWorkflow(evening.workflowId, {
+          mode: 'trigger',
+          triggerData: { scheduledAtMs: minute, workflowVersionId: evening.versionId },
+          throwOnError: false,
+        })
+      ).id
+    );
     expect(runMorning.error).toBeUndefined();
     expect(runEvening.error).toBeUndefined();
     expect(runMorning.status).toBe('finished');
@@ -260,12 +276,43 @@ test('morning and evening loops share one native source with distinct reads, pro
     expect(
       (await service.listHostedDigests(owner)).find((row) => row.id === lapsing.workflowId)
     ).toMatchObject({ sourceState: 'current', spec: { sourceId: renewed.id } });
-    // Revocation has the same no-read pause, including the renewed schedule.
+    // Revocation has the same no-read pause, including the renewed schedule. Here the
+    // source is revoked while the agent is down and its armed occurrence comes due:
+    // the restart records that occurrence as paused once and removes the schedule.
     await service.revokeDigestSource(owner, renewed.id);
+    const [armed] = (
+      await state.runtime.getTasks({ agentIds: [state.runtime.agentId], tags: ['trigger'] })
+    ).filter(
+      (task) =>
+        (task.metadata?.trigger as { workflowId?: string } | undefined)?.workflowId ===
+        rebound.workflowId
+    );
+    await state.runtime.updateTask(armed.id as never, {
+      metadata: {
+        ...armed.metadata,
+        trigger: { ...(armed.metadata?.trigger as object), nextRunAtMs: minute },
+      },
+    });
+    await (
+      service as unknown as { recoverHostedSchedules(): Promise<void> }
+    ).recoverHostedSchedules();
+    await (
+      service as unknown as { recoverHostedSchedules(): Promise<void> }
+    ).recoverHostedSchedules();
+    const pausedResults = (
+      (await service.digestResults(owner, 'revoke-reader')).entries as Array<Record<string, any>>
+    ).filter((entry) => entry.workflowVersionId === rebound.versionId);
+    expect(pausedResults).toHaveLength(1);
+    expect(pausedResults[0]).toMatchObject({
+      status: 'unavailable',
+      output: { sourceState: 'revoked', paused: true },
+    });
+    // The scheduler's own fire of that occurrence finds the recorded run.
     const revoked = await service.startWorkflow(rebound.workflowId, {
       mode: 'trigger',
       triggerData: { scheduledAtMs: minute, workflowVersionId: rebound.versionId },
     });
+    expect(revoked.id).toBe(pausedResults[0].runId);
     expect(revoked.output).toMatchObject({
       status: 'unavailable',
       sourceState: 'revoked',

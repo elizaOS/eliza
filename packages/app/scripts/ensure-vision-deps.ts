@@ -199,7 +199,7 @@ function main() {
             : null;
     if (tool && !which(tool)) {
       console.warn(
-        `${logPrefix} Optional vision tool ${tool} is missing. Install it explicitly with: node packages/app/scripts/ensure-vision-deps.ts --install`,
+        `${logPrefix} Optional vision tool ${tool} is missing. Install it explicitly with: bun packages/app/scripts/ensure-vision-deps.ts --install`,
       );
     }
     return;

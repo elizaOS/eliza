@@ -60,7 +60,7 @@ if (
   const [root, ...biomeArgs] = process.argv.slice(2);
   if (!root || biomeArgs.length === 0) {
     throw new Error(
-      "Usage: node packages/scripts/run-biome-typescript.ts <root> <biome args...>",
+      "Usage: bun packages/scripts/run-biome-typescript.ts <root> <biome args...>",
     );
   }
   runBiomeTypeScript(root, biomeArgs);

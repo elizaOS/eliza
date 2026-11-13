@@ -28,6 +28,7 @@ import {
   containerUpgradeJobDataToRecord,
   type JobLike,
 } from "./container-jobs-data";
+import type { JobExecutionAuthority } from "./job-execution-authority";
 import { JOB_TYPES } from "./provisioning-job-types";
 
 const CONTAINER_JOB_TYPES: ReadonlySet<string> = new Set([
@@ -71,19 +72,21 @@ export async function dispatchContainerJob(
 
 // ── runtime-injected executor backend ────────────────────────────────────────
 
-let depsFactory: (() => ContainerExecutorDeps) | null = null;
+let depsFactory: ((authority?: JobExecutionAuthority) => ContainerExecutorDeps) | null = null;
 
 /** Wire the real executor backend (provider + store). Called in U3c / on boot. */
-export function setContainerExecutorDeps(factory: () => ContainerExecutorDeps): void {
+export function setContainerExecutorDeps(
+  factory: (authority?: JobExecutionAuthority) => ContainerExecutorDeps,
+): void {
   depsFactory = factory;
 }
 
 /** Resolve the executor backend, or throw if it hasn't been wired yet. */
-export function getContainerExecutorDeps(): ContainerExecutorDeps {
+export function getContainerExecutorDeps(authority?: JobExecutionAuthority): ContainerExecutorDeps {
   if (!depsFactory) {
     throw new Error("Container executor backend not configured — call setContainerExecutorDeps()");
   }
-  return depsFactory();
+  return depsFactory(authority);
 }
 
 // ── enqueue ──────────────────────────────────────────────────────────────────

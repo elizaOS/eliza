@@ -53,8 +53,11 @@ export function createBillTaskRoutes({
   }
   return async (
     request,
-    { owner, runtime, authenticate, requestEpoch, currentEpoch },
+    { owner, runtime, authenticate, requestEpoch, currentEpoch, commit },
   ) => {
+    // Save only while the request still answers for its account. A gateway
+    // without `commit` fences the answer after the save instead.
+    const saving = (write) => (commit ? commit(write) : write());
     if (
       request.method === "GET" &&
       new URL(request.url).pathname === "/tasks/latest-outcome"
@@ -262,18 +265,20 @@ export function createBillTaskRoutes({
             return {
               ...decision,
               choice: await stored(() =>
-                presentation.publish(task.id, decision.reviewKey, {
-                  kind: "choice",
-                  id: "existing-method",
-                  scope: "bill-existing-method",
-                  prompt: copy.existingMethodPrompt,
-                  options: [
-                    { value: "existing", label: copy.existingMethodLabel },
-                  ],
-                }),
+                saving(() =>
+                  presentation.publish(task.id, decision.reviewKey, {
+                    kind: "choice",
+                    id: "existing-method",
+                    scope: "bill-existing-method",
+                    prompt: copy.existingMethodPrompt,
+                    options: [
+                      { value: "existing", label: copy.existingMethodLabel },
+                    ],
+                  }),
+                ),
               ),
             };
-          stored(() => presentation.clear(task.id));
+          await stored(() => saving(() => presentation.clear(task.id)));
           return decision;
         };
         let decision;
@@ -378,6 +383,9 @@ export function createBillTaskRoutes({
       } catch (error) {
         if (error?.code === "TASK_NOT_FOUND")
           return Response.json({ code: "TASK_NOT_FOUND" }, { status: 404 });
+        // The account changed before a save: nothing was saved for it.
+        if (error?.code === "TASK_UNAUTHORIZED")
+          return Response.json({ code: "TASK_UNAUTHORIZED" }, { status: 401 });
         const reason =
           error?.reason === "profile-unavailable" ? error.reason : stage;
         try {

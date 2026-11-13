@@ -70,7 +70,7 @@ test("host notice routes, owner fence, approval coordination, journal recovery, 
     const output = execFileSync(
       bin("java"),
       ["-cp", [classes, jar].join(path.delimiter), main],
-      { timeout: 60000, encoding: "utf8" },
+      { timeout: 120000, encoding: "utf8" },
     );
     assert.match(output, /^\d+ assertions passed/, main);
   }

@@ -2,7 +2,7 @@
 /**
  * Signing-environment companion to generate-release-keys.ts.
  *
- *   node packages/os/scripts/android/decrypt-release-keys.ts --input KEYS_DIR \
+ *   bun packages/os/scripts/android/decrypt-release-keys.ts --input KEYS_DIR \
  *     --output /dev/shm/keys --passphrase-file PASS [--only releasekey,platform]
  *
  * Writes the plaintext layout AOSP release tools expect into a NEW directory

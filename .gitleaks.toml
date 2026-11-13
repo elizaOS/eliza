@@ -11,15 +11,73 @@ title = "elizaOS gitleaks config"
 # Pull in upstream default ruleset.
 useDefault = true
 
-# GitHub's environment public key seals registry updates; it cannot authenticate
-# or decrypt them. Keep the exact reviewed public value scoped to its owner file,
+# Reviewed non-secret identifiers; keep each exact value scoped to its owning file.
+[[allowlists]]
+description = "Public deployment routing identifiers"
+condition = "AND"
+paths = ['''^packages/cloud/deploy/deployments/eliza\.json$''']
+regexTarget = "secret"
+regexes = [
+  '''^689a1597\-85e7\-43ca\-b000\-8c6392d79465$''',
+  '''^0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913$''',
+  '''^0x55d398326f99059fF775485246999027B3197955$''',
+  '''^EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v$''',
+]
+
+# Reviewed non-secret identifiers; keep each exact value scoped to its owning file.
+[[allowlists]]
+description = "Mobile checkout historical idempotency fixture UUID"
+condition = "AND"
+paths = ['''^packages/cloud/api/__tests__/subscription\-checkout\-mobile\-routes\.test\.ts$''']
+regexTarget = "secret"
+regexes = [
+  '''^0b9f5c0e\-3a57\-4c55\-9d0e\-1f2f6f1f0a01$''',
+]
+
+# Reviewed non-secret identifiers; keep each exact value scoped to its owning file.
+[[allowlists]]
+description = "Mobile SDK idempotency fixture UUID"
+condition = "AND"
+paths = ['''^packages/cloud/sdk/src/mobile\-credential\.test\.ts$''']
+regexTarget = "secret"
+regexes = [
+  '''^0d0f3c61\-6f1b\-4e59\-9a55\-0c6f6f4b2a10$''',
+]
+
+# These are Java assignment expressions in the renewal fixture, not credentials.
+# Match only the exact scanner captures in that fixture, including its history.
+[[allowlists]]
+description = "Java renewal fixture bookkeeping assignments"
+condition = "AND"
+paths = ['''^packages/auth/android/test/ai/eliza/auth/cloud/CloudSignInChainTest\.java\.txt$''']
+regexTarget = "secret"
+regexes = [
+  '''^persistedRenewalRecords=new$''',
+  '''^renewalRecords=persistedRenewalRecords$''',
+]
+
+# The reply-draft privacy test uses this fixed text to detect a leaked message
+# body. It is a synthetic discriminator, not a credential. Its duplicated
+# historical additions remain in this branch's required commit-range scan.
+[[allowlists]]
+description = "Synthetic reply-body discriminator in the phone privacy test"
+condition = "AND"
+paths = ['''^plugins/plugin-native-phone/test/reply-draft-route\.test\.ts$''']
+regexTarget = "secret"
+regexes = ['''^walrus-onyx-0042$''']
+
+# GitHub's environment public keys seal registry updates; they cannot authenticate
+# or decrypt them. Keep the exact reviewed public values scoped to their owner file,
 # including its historical addition in commit-range scans.
 [[allowlists]]
 description = "GitHub environment public encryption key for mobile registry planning"
 condition = "AND"
 paths = ['''^packages/scripts/cloud/admin/plan-mobile-client-addition\.ts$''']
 regexTarget = "secret"
-regexes = ['''^ZtYTpDp9pOP34tJYPmEX9eIu0i4pOJ8VJLgGL9yEqBs=$''']
+regexes = [
+  '''^ZtYTpDp9pOP34tJYPmEX9eIu0i4pOJ8VJLgGL9yEqBs=$''',
+  '''^kpWdDmFz4bR6DYsNOze7\+eb8eLlBAErj8bDEBEUcEik=$''',
+]
 
 # Android routing audits pin the SHA-256 of the complete public analytics script
 # shipped by @coinbase/wallet-sdk 4.3.6. This is an integrity digest, not an access
@@ -434,3 +492,43 @@ condition = "AND"
 paths = ['''^packages/cloud/shared/src/lib/services/organization-upgrade-preview\.pglite\.test\.ts$''']
 regexTarget = "secret"
 regexes = ['''^sk_test_upgradepreview$''']
+
+# The EVM signing test uses the same public ERC-20 contract address as the
+# payment service. This is a 20-byte contract identifier, not signing material.
+# Keep the exception restricted to this exact value in this one test file.
+[[allowlists]]
+description = "Public ERC-20 contract address in EVM sweep regression"
+condition = "AND"
+paths = ['''^packages/cloud/shared/src/lib/services/evm-sweep-authority\.pglite\.test\.ts$''']
+regexTarget = "secret"
+regexes = ['''(?i)^(?:0x)?833589fcd6edb6e08f4c7c32d4f71b54bda02913$''']
+
+# The native sign-in renewal tests name a renewed key by this invented record
+# id. It is a UUID identifier of a credential row, not key material, and it
+# remains in this branch's commit-range scan. Match only this exact value in
+# its owning test file; other values there remain scanned.
+[[allowlists]]
+description = "Synthetic renewed-credential record id in the native sign-in test"
+condition = "AND"
+paths = ['''^packages/auth/src/auth/native-cloud-sign-in\.test\.ts$''']
+regexTarget = "secret"
+regexes = ['''^0b6f3c1e-5a52-4c0e-9d5e-1f2a3b4c5d6e$''']
+
+[[allowlists]]
+description = "Synthetic checkout idempotency key in the mobile checkout route test"
+condition = "AND"
+paths = ['''^packages/cloud/api/__tests__/subscription-checkout-mobile-routes\.test\.ts$''']
+regexTarget = "secret"
+regexes = ['''^0b9f5c0e-3a57-4c55-9d0e-1f2f6f1f0a01$''']
+
+[[allowlists]]
+description = "Synthetic checkout idempotency key in the SDK mobile credential test"
+condition = "AND"
+paths = ['''^packages/cloud/sdk/src/mobile-credential\.test\.ts$''']
+regexTarget = "secret"
+regexes = ['''^0d0f3c61-6f1b-4e59-9a55-0c6f6f4b2a10$''']
+
+# The native sign-in renewal tests name a renewed key by this invented record
+# id. It is a UUID identifier of a credential row, not key material, and it
+# remains in this branch's commit-range scan. Match only this exact value in
+# its owning test file; other values there remain scanned.

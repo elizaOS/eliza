@@ -1,0 +1,38 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/db/repositories/app-billing-command-runtime.ts",
+    "packages/cloud/shared/src/db/repositories/app-subscription-finalizer.ts",
+    "packages/cloud/shared/src/lib/services/generic-billing-runtime.ts"
+  ],
+  "bounds": {
+    "assumptions": [
+      "One immutable command and scope, two workers, three lease generations, nine clock ticks, two subscription revisions.",
+      "Only committed database actions are modeled; interrupted transactions stutter.",
+      "Provider payload validation, decimal arithmetic, external idempotency and special cancellation/import authority are excluded."
+    ],
+    "progress": "No fairness or unbounded progress claim. All models include stuttering and rollback or retry paths.",
+    "domain": {
+      "commands": 1,
+      "authorizedScopes": 1,
+      "checkedScopes": 2,
+      "workers": 2,
+      "leaseGenerations": "0..3",
+      "clockTicks": "0..8",
+      "subscriptionRevisions": "0..2",
+      "leaseDurationTicks": 2
+    }
+  },
+  "cases": [
+    {
+      "name": "subscription-commands",
+      "main": "subscription_commands",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 40,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ]
+}

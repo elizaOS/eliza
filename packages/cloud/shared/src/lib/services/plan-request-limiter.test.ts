@@ -37,6 +37,62 @@ describe("plan request buckets", () => {
     expect(consumePlanRequest(id, CONFIG, T0 + 1_000).allowed).toBe(true);
   });
 
+  test("a wall-clock rollback cannot refill an already consumed interval", () => {
+    const config: PlanRequestLimitConfig = {
+      selected: true,
+      plans: {
+        default: {
+          burst: { capacity: 1, refillPerSecond: 1 },
+          sustained: { capacity: 1, refillPerSecond: 1 },
+        },
+      },
+    };
+    const id = { organizationId: ORG, userId: "rollback" };
+    expect(consumePlanRequest(id, config, T0).allowed).toBe(true);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      expect(consumePlanRequest(id, config, T0 - 1_000)).toMatchObject({
+        allowed: false,
+        retryAfterMs: 2_000,
+      });
+      expect(consumePlanRequest(id, config, T0).allowed).toBe(false);
+    }
+    expect(consumePlanRequest(id, config, T0 + 1_000).allowed).toBe(true);
+  });
+
+  test.each(["burst", "sustained"] as const)(
+    "%s preserves partial refill across a backward clock jump",
+    (bucket) => {
+      const config: PlanRequestLimitConfig = {
+        selected: true,
+        plans: {
+          default: {
+            burst: { capacity: 10, refillPerSecond: 10 },
+            sustained: { capacity: 10, refillPerSecond: 10 },
+            [bucket]: { capacity: 1, refillPerSecond: 0.25 },
+          },
+        },
+      };
+      const id = { organizationId: ORG, userId: bucket };
+      expect(consumePlanRequest(id, config, T0).allowed).toBe(true);
+      expect(consumePlanRequest(id, config, T0 + 1_000)).toMatchObject({
+        allowed: false,
+        bucket,
+        retryAfterMs: 3_000,
+      });
+      expect(consumePlanRequest(id, config, T0 - 1_000)).toMatchObject({
+        allowed: false,
+        bucket,
+        retryAfterMs: 5_000,
+      });
+      expect(consumePlanRequest(id, config, T0 + 2_000)).toMatchObject({
+        allowed: false,
+        bucket,
+        retryAfterMs: 2_000,
+      });
+      expect(consumePlanRequest(id, config, T0 + 4_000).allowed).toBe(true);
+    },
+  );
+
   test("the sustained bucket refuses after the burst refills", () => {
     const id = { organizationId: ORG, userId: "u1" };
     for (const at of [T0, T0, T0 + 2_000])
@@ -155,6 +211,20 @@ describe("configuration", () => {
 });
 
 describe("refusal body", () => {
+  test("rollback refusal advertises a retry after the retained refill boundary", async () => {
+    const id = { organizationId: ORG, userId: "response-rollback" };
+    consumePlanRequest(id, CONFIG, T0);
+    consumePlanRequest(id, CONFIG, T0);
+    const refused = consumePlanRequest(id, CONFIG, T0 - 1_000);
+    if (refused.allowed) throw new Error("expected a refusal");
+    const response = planRequestLimitedResponse(refused, T0 - 1_000);
+    expect(response.headers.get("Retry-After")).toBe("2");
+    expect(await response.json()).toMatchObject({
+      error: { retryAfterMs: 2_000, retryAt: new Date(T0 + 1_000).toISOString() },
+    });
+    expect(consumePlanRequest(id, CONFIG, T0 + 1_000).allowed).toBe(true);
+  });
+
   test("429 carries the retry time in the body and in Retry-After", async () => {
     const id = { organizationId: ORG, userId: "u1" };
     consumePlanRequest(id, CONFIG, T0);

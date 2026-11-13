@@ -40,7 +40,7 @@ function runFixture(
         type: "module",
         scripts: {
           test: `${preflight ? "bun run test:mobile-workspace-entry && " : ""}node scripts/run-vitest-batches.ts`,
-          "test:mobile-workspace-entry": "node scripts/preflight.mjs",
+          "test:mobile-workspace-entry": "bun scripts/preflight.mjs",
         },
       }),
     );

@@ -6,11 +6,32 @@
  * graph plus the exact artifact actions.
  */
 
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import { parse } from "yaml";
+import {
+  createEvidence,
+  currentValidationManifest,
+  verifyCompleteManifest,
+} from "../../scripts/develop-impact-evidence.ts";
+import {
+  assertProductionCertificationFresh,
+  readValidationArchive,
+  requireMainValidation,
+  requireProductionCertification,
+  verifyMainValidation,
+} from "./production-effect-certification.ts";
 
 import {
   artifactNameForTree,
@@ -35,6 +56,82 @@ const workflowSha256 = "c".repeat(64);
 const artifactName = artifactNameForTree(treeSha);
 const issuedAt = "2026-08-16T12:00:00.000Z";
 const now = "2026-08-17T12:00:00.000Z";
+
+function createSourceAdmissionFixture() {
+  const fixtureRoot = mkdtempSync(resolve(tmpdir(), "source-admission-"));
+  try {
+    // Real workflow/action closure, graph, policies and Git inventory; no Docker or provider effects.
+    cpSync(
+      resolve(repoRoot, ".github/workflows"),
+      resolve(fixtureRoot, ".github/workflows"),
+      { recursive: true },
+    );
+    cpSync(
+      resolve(repoRoot, ".github/actions"),
+      resolve(fixtureRoot, ".github/actions"),
+      { recursive: true },
+    );
+    cpSync(
+      resolve(repoRoot, ".github/develop-surface-graph.json"),
+      resolve(fixtureRoot, ".github/develop-surface-graph.json"),
+    );
+    mkdirSync(resolve(fixtureRoot, "packages/fixture"), { recursive: true });
+    mkdirSync(resolve(fixtureRoot, "packages/app/deploy"), {
+      recursive: true,
+    });
+    writeFileSync(
+      resolve(fixtureRoot, "package.json"),
+      JSON.stringify({
+        name: "admission-fixture",
+        workspaces: ["packages/*"],
+      }),
+    );
+    writeFileSync(
+      resolve(fixtureRoot, "packages/fixture/package.json"),
+      JSON.stringify({ name: "@fixture/source" }),
+    );
+    writeFileSync(
+      resolve(fixtureRoot, "packages/fixture/source.ts"),
+      "export const value = 1;\n",
+    );
+    cpSync(
+      resolve(repoRoot, ".dockerignore"),
+      resolve(fixtureRoot, ".dockerignore"),
+    );
+    cpSync(
+      resolve(repoRoot, "packages/app/deploy/.dockerignore.ci"),
+      resolve(fixtureRoot, "packages/app/deploy/.dockerignore.ci"),
+    );
+    const git = (...args) => {
+      const child = spawnSync("git", args, {
+        cwd: fixtureRoot,
+        encoding: "utf8",
+      });
+      expect(child.status).toBe(0);
+      return child.stdout.trim();
+    };
+    git("init", "-q");
+    git("add", ".");
+    git(
+      "-c",
+      "user.name=Admission fixture",
+      "-c",
+      "user.email=ci@example.invalid",
+      "-c",
+      "commit.gpgsign=false",
+      "-c",
+      "core.hooksPath=/dev/null",
+      "commit",
+      "-qm",
+      "controlled source",
+    );
+    const head = git("rev-parse", "HEAD");
+    return { root: fixtureRoot, head };
+  } catch (error) {
+    rmSync(fixtureRoot, { recursive: true, force: true });
+    throw error;
+  }
+}
 
 function fixture() {
   const certification = createStagingReleaseCertification({
@@ -507,4 +604,618 @@ describe("deployed renderer compute consent", () => {
       'ELIZA_UI_SMOKE_APPROVE_BILLABLE_DEDICATED_CONFIRMATION: "1"',
     );
   });
+});
+
+describe("exact-source main Full admission", () => {
+  const sourceFixture = createSourceAdmissionFixture();
+  afterAll(
+    () => rmSync(sourceFixture.root, { recursive: true, force: true }),
+    30_000,
+  );
+
+  function mainFixture(
+    validationRepoRoot = repoRoot,
+    fixtureSourceSha = sourceSha,
+  ) {
+    const expected = currentValidationManifest(
+      validationRepoRoot,
+      fixtureSourceSha,
+    );
+    const rows = expected.surfaces.map((surface) =>
+      createEvidence(expected, surface.id, now, 168),
+    );
+    return {
+      repository: "elizaOS/eliza",
+      sourceSha: fixtureSourceSha,
+      expected,
+      now,
+      run: {
+        id: 701,
+        run_attempt: 2,
+        run_started_at: "2026-08-17T11:00:00Z",
+        head_branch: "main",
+        status: "completed",
+        conclusion: "success",
+        event: "push",
+        head_sha: fixtureSourceSha,
+        path: ".github/workflows/develop-full.yml",
+        repository: { full_name: "elizaOS/eliza" },
+      },
+      artifact: {
+        id: 801,
+        name: `develop-full-manifest-${fixtureSourceSha}`,
+        expired: false,
+        digest: `sha256:${"d".repeat(64)}`,
+        workflow_run: {
+          id: 701,
+          head_sha: fixtureSourceSha,
+          head_branch: "main",
+        },
+      },
+      archive: {
+        expected,
+        observed: verifyCompleteManifest(expected, rows, now),
+        results: {
+          headSha: fixtureSourceSha,
+          runId: "701",
+          runAttempt: "2",
+          results: Object.fromEntries(
+            expected.surfaces.map((surface) => [surface.id, "success"]),
+          ),
+        },
+      },
+    };
+  }
+
+  // Compute the actual Git/workspace dependency closure once; mutations below are isolated copies.
+  const original = mainFixture();
+  const main = () => structuredClone(original);
+  // Keep the real monorepo happy admission below. Adversarial API orderings
+  // use the same real Git consumer with a small committed source fixture.
+  const controlledOriginal = mainFixture(
+    sourceFixture.root,
+    sourceFixture.head,
+  );
+  const controlledMain = () => structuredClone(controlledOriginal);
+  test("admits the complete current source manifest and an exact main manual run", () => {
+    const input = main();
+    expect(verifyMainValidation(input).runAttempt).toBe(2);
+    input.run.event = "workflow_dispatch";
+    expect(verifyMainValidation(input).sourceSha).toBe(sourceSha);
+  });
+  test.each([
+    ["fork", (x) => (x.run.repository.full_name = "other/repo")],
+    ["workflow", (x) => (x.run.path = ".github/workflows/ci.yml")],
+    ["branch", (x) => (x.run.head_branch = "staging")],
+    ["source", (x) => (x.run.head_sha = "e".repeat(40))],
+    ["PR event", (x) => (x.run.event = "pull_request")],
+    ["cancelled", (x) => (x.run.conclusion = "cancelled")],
+    ["unfinished", (x) => (x.run.status = "in_progress")],
+    ["attempt", (x) => x.run.run_attempt++],
+    ["artifact run", (x) => x.artifact.workflow_run.id++],
+    [
+      "artifact source",
+      (x) => (x.artifact.workflow_run.head_sha = "e".repeat(40)),
+    ],
+    [
+      "artifact branch",
+      (x) => (x.artifact.workflow_run.head_branch = "staging"),
+    ],
+    ["expired artifact", (x) => (x.artifact.expired = true)],
+    ["result source", (x) => (x.archive.results.headSha = "e".repeat(40))],
+    ["result run", (x) => (x.archive.results.runId = "702")],
+    ["missing surface result", (x) => delete x.archive.results.results.cloud],
+    [
+      "skipped surface",
+      (x) => (x.archive.results.results.canonical = "skipped"),
+    ],
+    [
+      "extra surface result",
+      (x) => (x.archive.results.results.extra = "success"),
+    ],
+    ["missing row", (x) => x.archive.observed.surfaces.pop()],
+    [
+      "extra row",
+      (x) => x.archive.observed.surfaces.push(x.archive.observed.surfaces[0]),
+    ],
+    [
+      "row from prior source",
+      (x) => (x.archive.observed.surfaces[0].sourceSha = "e".repeat(40)),
+    ],
+    [
+      "row digest",
+      (x) => (x.archive.observed.surfaces[0].inputDigest = "e".repeat(64)),
+    ],
+    [
+      "expected input",
+      (x) => (x.archive.expected.surfaces[0].inputDigest = "e".repeat(64)),
+    ],
+    ["expired proof", (x) => (x.now = "2026-08-30T12:00:00Z")],
+  ])("refuses %s without an effect", (_name, mutate) => {
+    const input = main();
+    mutate(input);
+    expect(() => verifyMainValidation(input)).toThrow();
+  });
+
+  function archiveBytes(input, extra = false) {
+    const directory = mkdtempSync(resolve(tmpdir(), "main-admission-test-"));
+    try {
+      for (const name of ["expected", "observed", "results"])
+        writeFileSync(
+          resolve(directory, `${name}.json`),
+          JSON.stringify(input.archive[name]),
+        );
+      if (extra) writeFileSync(resolve(directory, "extra.json"), "{}");
+      const zip = resolve(directory, "proof.zip");
+      const child = spawnSync(
+        "zip",
+        [
+          "-q",
+          zip,
+          "expected.json",
+          "observed.json",
+          "results.json",
+          ...(extra ? ["extra.json"] : []),
+        ],
+        { cwd: directory },
+      );
+      expect(child.status).toBe(0);
+      return readFileSync(zip);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }
+  test("reads the actual archive and refuses corrupt bytes or extra members", () => {
+    const input = main();
+    const bytes = archiveBytes(input);
+    const digest = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+    expect(readValidationArchive(bytes, digest)).toEqual(input.archive);
+    expect(() =>
+      readValidationArchive(
+        Buffer.concat([bytes, Buffer.from("changed")]),
+        digest,
+      ),
+    ).toThrow(/digest/);
+    const extra = archiveBytes(input, true);
+    expect(() =>
+      readValidationArchive(
+        extra,
+        `sha256:${createHash("sha256").update(extra).digest("hex")}`,
+      ),
+    ).toThrow(/members/);
+  });
+  test("rechecks the actual run after download and rejects rerun, newer run, or missing manifest", async () => {
+    for (const variant of [
+      "valid",
+      "rerun",
+      "newer",
+      "missing",
+      "failed",
+      "old attempt",
+      "older ID active",
+      "older ID queued",
+      "older ID failure",
+      "older ID cancelled",
+      "older ID success",
+      "fresh recovery",
+      "cross-ID rerun during download",
+      "tied failure",
+      "missing start",
+    ]) {
+      const input = variant === "valid" ? main() : controlledMain();
+      const validationRepoRoot =
+        variant === "valid" ? repoRoot : sourceFixture.root;
+      input.run.run_attempt = 1;
+      input.archive.results.runAttempt = variant === "old attempt" ? "0" : "1";
+      let other = {
+        ...input.run,
+        id: 700,
+        run_attempt: 2,
+        run_started_at: "2026-08-17T11:30:00Z",
+      };
+      const fresh = {
+        ...input.run,
+        id: 702,
+        run_started_at: "2026-08-17T11:45:00Z",
+      };
+      if (variant === "older ID active")
+        other = { ...other, status: "in_progress", conclusion: null };
+      if (variant === "older ID queued")
+        other = {
+          ...other,
+          status: "queued",
+          conclusion: null,
+          run_started_at: undefined,
+        };
+      if (
+        ["older ID failure", "fresh recovery", "tied failure"].includes(variant)
+      )
+        other.conclusion = "failure";
+      if (variant === "older ID cancelled") other.conclusion = "cancelled";
+      if (variant === "tied failure")
+        other.run_started_at = "2026-08-17T11:00:00.000Z";
+      if (variant === "missing start") delete input.run.run_started_at;
+      if (variant === "cross-ID rerun during download")
+        other = {
+          ...other,
+          run_attempt: 1,
+          run_started_at: "2026-08-17T10:00:00Z",
+        };
+      const selected =
+        variant === "older ID success"
+          ? other
+          : variant === "fresh recovery"
+            ? fresh
+            : input.run;
+      input.archive.results.runId = String(selected.id);
+      input.archive.results.runAttempt =
+        variant === "old attempt" ? "0" : String(selected.run_attempt);
+      input.artifact.workflow_run.id = selected.id;
+      const bytes = archiveBytes(input);
+      input.artifact.digest = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+      let downloaded = false;
+      const calls = [];
+      const inventory = () => {
+        if (
+          variant.startsWith("older ID") ||
+          [
+            "fresh recovery",
+            "tied failure",
+            "cross-ID rerun during download",
+          ].includes(variant)
+        )
+          return [
+            input.run,
+            other,
+            ...(variant === "fresh recovery" ? [fresh] : []),
+          ];
+        return variant === "newer" && downloaded
+          ? [input.run, fresh]
+          : [input.run];
+      };
+      const api = {
+        async request(method, endpoint, _body, mode) {
+          calls.push({ method, endpoint, mode });
+          expect(method).toBe("GET");
+          if (endpoint.includes("/workflows/")) {
+            const runs = structuredClone(inventory());
+            if (variant === "failed") runs[0].conclusion = "failure";
+            return { total_count: runs.length, workflow_runs: runs };
+          }
+          if (endpoint.endsWith("/zip")) {
+            downloaded = true;
+            if (variant === "cross-ID rerun during download")
+              other = {
+                ...other,
+                run_attempt: 2,
+                status: "in_progress",
+                conclusion: null,
+                run_started_at: "2026-08-17T11:30:00Z",
+              };
+            return bytes;
+          }
+          if (endpoint.includes("/artifacts?"))
+            return {
+              total_count: variant === "missing" ? 0 : 1,
+              artifacts: variant === "missing" ? [] : [input.artifact],
+            };
+          const attempt = endpoint.match(
+            /^\/actions\/runs\/(\d+)\/attempts\/(\d+)$/,
+          );
+          if (attempt) {
+            const run = inventory().find(
+              (run) => run.id === Number(attempt[1]),
+            );
+            expect(run.run_attempt).toBe(Number(attempt[2]));
+            return structuredClone(run);
+          }
+          const detail = endpoint.match(/^\/actions\/runs\/(\d+)$/);
+          if (detail) {
+            const run = structuredClone(
+              inventory().find((run) => run.id === Number(detail[1])),
+            );
+            if (variant === "rerun")
+              return {
+                ...run,
+                run_attempt: 2,
+                status: "in_progress",
+                conclusion: null,
+              };
+            return run;
+          }
+          throw new Error(`Unexpected read ${endpoint}`);
+        },
+      };
+      const admission = requireMainValidation({
+        api,
+        repository: input.repository,
+        sourceSha: input.sourceSha,
+        repoRoot: validationRepoRoot,
+        now,
+      });
+      if (["valid", "older ID success", "fresh recovery"].includes(variant)) {
+        const proof = await admission;
+        expect(proof.runId).toBe(selected.id);
+        expect(proof.runAttempt).toBe(selected.run_attempt);
+      } else await expect(admission).rejects.toThrow();
+      expect(calls.every((call) => call.method === "GET")).toBe(true);
+      console.log(
+        `[main-proof-fixture] ${variant}: ${["valid", "older ID success", "fresh recovery"].includes(variant) ? "admitted current proof" : "refused"}; read-only calls=${calls.length}`,
+      );
+    }
+
+    // Exercise the combined exported entrypoint with real staging+main ZIPs.
+    // A main rerun starting during the staging read must be seen before return.
+    const stageDirectory = mkdtempSync(
+      resolve(tmpdir(), "combined-main-stage-"),
+    );
+    try {
+      const stageSource = "c".repeat(40);
+      const certification = createStagingReleaseCertification({
+        repository: "elizaOS/eliza",
+        runId: "901",
+        runAttempt: "1",
+        sourceSha: stageSource,
+        treeSha,
+        workflowSha256: createHash("sha256")
+          .update(readFileSync(workflowPath))
+          .digest("hex"),
+        issuedAt: now,
+        expiresAt: new Date(Date.parse(now) + 3_600_000).toISOString(),
+      });
+      writeFileSync(
+        resolve(stageDirectory, CERTIFICATION_FILENAME),
+        JSON.stringify(certification),
+      );
+      const zip = resolve(stageDirectory, "stage.zip");
+      expect(
+        spawnSync("zip", ["-q", zip, CERTIFICATION_FILENAME], {
+          cwd: stageDirectory,
+        }).status,
+      ).toBe(0);
+      const stageBytes = readFileSync(zip);
+      const stageArtifact = {
+        id: 902,
+        name: artifactNameForTree(treeSha),
+        expired: false,
+        digest: `sha256:${createHash("sha256").update(stageBytes).digest("hex")}`,
+        workflow_run: {
+          id: 901,
+          head_sha: stageSource,
+          head_branch: "staging",
+        },
+      };
+      const stageRun = {
+        id: 901,
+        run_attempt: 1,
+        status: "completed",
+        conclusion: "success",
+        event: "push",
+        head_branch: "staging",
+        head_sha: stageSource,
+        path: CERTIFICATION_WORKFLOW,
+        repository: { full_name: "elizaOS/eliza" },
+      };
+      for (const variant of [
+        "both valid",
+        "main starts during staging read",
+        "stage only",
+        "main only",
+      ]) {
+        const input = controlledMain();
+        input.run.run_attempt = 1;
+        input.archive.results.runAttempt = "1";
+        const bytes = archiveBytes(input);
+        input.artifact.digest = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+        let run = structuredClone(input.run);
+        const calls = [];
+        const api = {
+          async request(method, endpoint) {
+            expect(method).toBe("GET");
+            calls.push(endpoint);
+            if (endpoint.startsWith("/actions/artifacts?"))
+              return {
+                artifacts: variant === "main only" ? [] : [stageArtifact],
+              };
+            if (endpoint === "/actions/runs/901") return stageRun;
+            if (endpoint === "/actions/artifacts/902/zip") {
+              if (variant === "main starts during staging read")
+                run = {
+                  ...run,
+                  run_attempt: 2,
+                  status: "in_progress",
+                  conclusion: null,
+                };
+              return stageBytes;
+            }
+            if (endpoint.includes("/workflows/"))
+              return {
+                total_count: variant === "stage only" ? 0 : 1,
+                workflow_runs: variant === "stage only" ? [] : [run],
+              };
+            if (endpoint.includes("/artifacts?"))
+              return { total_count: 1, artifacts: [input.artifact] };
+            if (endpoint === "/actions/artifacts/801/zip") return bytes;
+            if (endpoint === "/actions/runs/701") return run;
+            throw new Error(`Unexpected combined read ${endpoint}`);
+          },
+        };
+        const admission = requireProductionCertification({
+          api,
+          repository: input.repository,
+          sourceSha: input.sourceSha,
+          treeSha,
+          repoRoot: sourceFixture.root,
+          now,
+        });
+        if (variant === "both valid") {
+          const proof = await admission;
+          expect(proof.mainValidation.runAttempt).toBe(1);
+          expect(proof.expiresAt).toBe(
+            new Date(
+              Math.min(
+                Date.parse(certification.expires_at),
+                Date.parse(proof.mainValidation.expiresAt),
+              ),
+            ).toISOString(),
+          );
+          // Returned earliest expiry is checked again at every actual mutation boundary.
+          expect(() =>
+            assertProductionCertificationFresh(
+              proof.expiresAt,
+              Date.parse(proof.expiresAt),
+            ),
+          ).toThrow(/expired/);
+          expect(calls.indexOf("/actions/artifacts/902/zip")).toBeLessThan(
+            calls.findIndex((endpoint) => endpoint.includes("/workflows/")),
+          );
+        } else await expect(admission).rejects.toThrow();
+        console.log(
+          `[combined-proof-fixture] ${variant}: ${variant === "both valid" ? "admitted both current proofs" : "refused"}; mutations=0`,
+        );
+      }
+    } finally {
+      rmSync(stageDirectory, { recursive: true, force: true });
+    }
+  }, 300_000);
+  test("all three production effect consumers require main proof before their first mutation", () => {
+    const image = readFileSync(
+      resolve(repoRoot, ".github/workflows/build-agent-image.yml"),
+      "utf8",
+    );
+    const worker = readFileSync(
+      resolve(
+        repoRoot,
+        ".github/workflows/deploy-eliza-provisioning-worker.yml",
+      ),
+      "utf8",
+    );
+    expect(image.indexOf("production-effect-certification.ts")).toBeLessThan(
+      image.indexOf('\n            docker push "$tag"'),
+    );
+    expect(worker.indexOf("production-effect-certification.ts")).toBeLessThan(
+      worker.indexOf("bun run db:cloud:migrate"),
+    );
+    const imageSteps = Object.values(parse(image).jobs).flatMap(
+      (job) => job.steps ?? [],
+    );
+    const prepare = imageSteps.find(
+      (step) => step.name === "Prepare CI dockerignore",
+    );
+    const restore = imageSteps.find(
+      (step) =>
+        step.name ===
+        "Restore source Docker ignore after local image verification",
+    );
+    const push = imageSteps.find(
+      (step) => step.name === "Push exact verified image",
+    );
+    expect(imageSteps.indexOf(restore)).toBe(imageSteps.indexOf(push) - 1);
+    expect(restore.run).toBe("git restore --source=HEAD -- .dockerignore");
+    const { root: fixtureRoot, head } = createSourceAdmissionFixture();
+    try {
+      const clean = currentValidationManifest(fixtureRoot, head);
+      const rows = clean.surfaces.map((surface) =>
+        createEvidence(clean, surface.id, now, 168),
+      );
+      const run = (step) => {
+        const child = spawnSync("bash", ["-e", "-c", step.run], {
+          cwd: fixtureRoot,
+          encoding: "utf8",
+        });
+        expect(child.status).toBe(0);
+      };
+      run(prepare);
+      const prepared = currentValidationManifest(fixtureRoot, head);
+      expect(
+        prepared.surfaces.every(
+          (surface, i) => surface.inputDigest !== clean.surfaces[i].inputDigest,
+        ),
+      ).toBe(true);
+      expect(() => verifyCompleteManifest(prepared, rows, now)).toThrow(
+        /input digest/,
+      );
+      run(restore);
+      const restored = currentValidationManifest(fixtureRoot, head);
+      expect(verifyCompleteManifest(restored, rows, now)).toEqual(
+        verifyCompleteManifest(clean, rows, now),
+      );
+      writeFileSync(
+        resolve(fixtureRoot, "packages/fixture/source.ts"),
+        "export const value = 2;\n",
+      );
+      expect(() =>
+        verifyCompleteManifest(
+          currentValidationManifest(fixtureRoot, head),
+          rows,
+          now,
+        ),
+      ).toThrow(/input digest/);
+      console.log(
+        "[image-preparation-fixture] actual CI copy refused; exact owned-file restore admitted; unrelated dirty source refused; effects=0",
+      );
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    }
+    const release = parse(releaseWorkflow);
+    for (const [job, labels] of Object.entries({
+      "migrate-db": ["Run migrations"],
+      "deploy-api": ["Deploy to Cloudflare Workers"],
+      "deploy-app": [
+        "Ensure eliza-app Pages project exists",
+        "Deploy to Cloudflare Pages",
+      ],
+    }))
+      for (const label of labels) {
+        const step = release.jobs[job].steps.find(
+          (step) => step.name === label,
+        );
+        expect(step.env.GITHUB_TOKEN).toBe(`\${{ github.token }}`);
+        expect(step.run).toContain(
+          'production-effect-certification.ts main-validation "$GITHUB_SHA"',
+        );
+        expect(step.run).not.toContain("EFFECT_DIGEST");
+        expect(step.run).toContain('cd "$(git rev-parse --show-toplevel)"');
+        const prefix = step.run.slice(
+          0,
+          step.run.indexOf("\nfi") + "\nfi".length,
+        );
+        // Execute the actual YAML admission prefix from its real nested job directory.
+        // The expected branch refusal occurs before any GitHub read or effect.
+        const nested =
+          job === "deploy-api"
+            ? "packages/cloud/api"
+            : job === "deploy-app"
+              ? "packages/app"
+              : ".";
+        for (const context of [
+          { name: "feature", ref: "refs/heads/feature" },
+          { name: "main", ref: "refs/tags/main" },
+        ]) {
+          const probe = spawnSync("bash", ["-c", prefix], {
+            timeout: 15_000,
+            cwd: resolve(repoRoot, nested),
+            encoding: "utf8",
+            env: {
+              ...process.env,
+              MAIN_VALIDATION_ENVIRONMENT: "production",
+              TARGET_ENVIRONMENT: "production",
+              GITHUB_SHA: sourceSha,
+              GITHUB_REF_NAME: context.name,
+              GITHUB_REF: context.ref,
+              GITHUB_TOKEN: "",
+            },
+          });
+          expect(probe.status).toBe(1);
+          expect(probe.stderr).toContain(
+            "Production certification requires a full main source SHA",
+          );
+          expect(probe.stderr).not.toContain("MODULE_NOT_FOUND");
+        }
+
+        expect(
+          step.run.split("production-effect-certification.ts")[0],
+        ).not.toContain('if [ "$FORCE"'); // existing force may be used later by freshness, proof itself is unconditional on it
+      }
+  }, 90_000);
 });

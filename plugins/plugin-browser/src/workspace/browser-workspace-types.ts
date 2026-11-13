@@ -324,8 +324,18 @@ export interface BrowserWorkspaceDomElementSummary {
   value: string | null;
 }
 
+/** A desktop `@eN` ref: an entry in the element table stamped into the page. */
+export interface BrowserWorkspaceDesktopElementRef {
+  tableId: string;
+  index: number;
+}
+
 export interface BrowserWorkspaceCommand {
   subaction: BrowserWorkspaceSubaction;
+  /** Set by ref resolution on the desktop backend; the page resolves it. */
+  elementRef?: BrowserWorkspaceDesktopElementRef;
+  /** Desktop ref for drag's `value` target. */
+  valueElementRef?: BrowserWorkspaceDesktopElementRef;
   operation?: BrowserWorkspaceSubaction | "goto" | "read";
   action?: BrowserWorkspaceFindAction;
   baselinePath?: string;
@@ -511,6 +521,8 @@ export interface BrowserWorkspaceRuntimeState {
   errors: BrowserWorkspaceErrorEntry[];
   frameDoms: Map<string, JSDOM>;
   highlightedSelector: string | null;
+  /** The control the last fill or type wrote to; press falls back to it. */
+  lastInteractedElement?: WeakRef<Element> | null;
   lastScreenshotData: string | null;
   lastSnapshot: BrowserWorkspaceSnapshotRecord | null;
   mouse: BrowserWorkspaceMouseState;

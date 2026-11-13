@@ -10,6 +10,9 @@ import java.util.concurrent.TimeUnit;
  * This does not authorize routes, authenticate requests or retry rejected work. */
 public final class RuntimeRequestDispatcher implements AutoCloseable {
   public enum Admission { ACCEPTED, TOO_LARGE, BUSY }
+  /** Largest admitted body, in serialized JSON text units, for every path but /voice/stt. */
+  public static final int MAX_BODY_TEXT_UNITS = 65536;
+  public static final int MAX_STT_BODY_TEXT_UNITS = 12 * 1024 * 1024;
   private final ThreadPoolExecutor requests;
   private final ThreadPoolExecutor controls;
   public RuntimeRequestDispatcher() { this(4, 16, 8); }
@@ -26,9 +29,10 @@ public final class RuntimeRequestDispatcher implements AutoCloseable {
   public Admission submit(String path, int bodyTextUnits, Runnable work) {
     Objects.requireNonNull(path); Objects.requireNonNull(work);
     if (bodyTextUnits < 0) throw new IllegalArgumentException("Negative body size");
-    if (bodyTextUnits > (path.equals("/voice/stt") ? 12 * 1024 * 1024 : 65536))
+    if (bodyTextUnits > (path.equals("/voice/stt") ? MAX_STT_BODY_TEXT_UNITS : MAX_BODY_TEXT_UNITS))
       return Admission.TOO_LARGE;
-    boolean urgent = path.endsWith("/abort") || path.matches("/tasks/[^/]+/(pause|cancel)");
+    boolean urgent = path.endsWith("/abort") || path.matches("/tasks/[^/]+/(pause|cancel)")
+      || path.matches("/conversations/[^/]+/messages/stream/cancel");
     try { (urgent ? controls : requests).execute(work); return Admission.ACCEPTED; }
     catch (RejectedExecutionException fullOrClosed) { return Admission.BUSY; }
   }

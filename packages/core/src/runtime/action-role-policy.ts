@@ -7,11 +7,7 @@
 import { ElizaError } from "../errors";
 import { logger } from "../logger";
 import type { RoleGateRole } from "../types/contexts";
-import {
-	normalizeGateRole,
-	roleRank,
-	satisfiesRoleGate,
-} from "./context-gates";
+import { normalizeGateRole, roleRank } from "./context-gates";
 
 /**
  * Operator-supplied override map from the `ACTION_ROLE_POLICY` env var.
@@ -22,7 +18,9 @@ import {
  * When an exact action name appears in this policy, its declared `contextGate`
  * is bypassed and access is decided solely by whether the caller satisfies the
  * policy's minimum role. Used to whitelist actions whose upstream `contextGate`
- * is narrower than a particular deployment needs.
+ * is narrower than a particular deployment needs. A minimum role can never
+ * refuse an OWNER caller (or the agent itself); a host that must keep an
+ * action away from every caller uses `ELIZA_ACTION_ALLOWLIST` instead.
  *
  * The policy is evaluated in exactly one place — the shared `actionGateFailure`
  * / `canActionRun` gate in `runtime/action-gate.ts` — which every
@@ -32,7 +30,7 @@ import {
  * startup.
  */
 
-let cachedActionRolePolicy: Record<string, RoleGateRole> | undefined;
+let cachedActionRolePolicy: ReadonlyMap<string, RoleGateRole> | undefined;
 
 const ACTION_ROLE_POLICY_ROLES = new Set<RoleGateRole>([
 	"NONE",
@@ -50,43 +48,44 @@ function parseActionRolePolicyRole(value: unknown): RoleGateRole | undefined {
 	return ACTION_ROLE_POLICY_ROLES.has(normalized) ? normalized : undefined;
 }
 
-export function readActionRolePolicy(): Record<string, RoleGateRole> {
+function readActionRolePolicy(): ReadonlyMap<string, RoleGateRole> {
 	if (cachedActionRolePolicy !== undefined) {
 		return cachedActionRolePolicy;
 	}
 	const raw = process.env.ACTION_ROLE_POLICY;
 	if (!raw) {
-		cachedActionRolePolicy = {};
+		cachedActionRolePolicy = new Map();
 		return cachedActionRolePolicy;
 	}
+	let parsed: unknown;
 	try {
-		const parsed = JSON.parse(raw);
-		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-			throw new ElizaError("ACTION_ROLE_POLICY must be a JSON object", {
-				code: "INVALID_ACTION_ROLE_POLICY",
-			});
-		}
-		const entries = Object.entries(parsed).map(([actionName, value]) => {
-			const role = parseActionRolePolicyRole(value);
-			if (!role) {
-				throw new ElizaError("ACTION_ROLE_POLICY contains an invalid role", {
-					code: "INVALID_ACTION_ROLE_POLICY",
-					context: { actionName },
-				});
-			}
-			return [actionName, role] as const;
-		});
-		cachedActionRolePolicy = Object.fromEntries(entries);
+		parsed = JSON.parse(raw);
 	} catch (error) {
 		// error-policy:J2 Operator authorization policy is a security boundary;
 		// malformed configuration must fail startup rather than disable the policy.
-		if (error instanceof ElizaError) throw error;
 		throw new ElizaError("Failed to parse ACTION_ROLE_POLICY", {
 			code: "INVALID_ACTION_ROLE_POLICY",
 			cause: error,
 		});
 	}
-	return cachedActionRolePolicy;
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+		throw new ElizaError("ACTION_ROLE_POLICY must be a JSON object", {
+			code: "INVALID_ACTION_ROLE_POLICY",
+		});
+	}
+	const policy = new Map<string, RoleGateRole>();
+	for (const [actionName, value] of Object.entries(parsed)) {
+		const role = parseActionRolePolicyRole(value);
+		if (!role) {
+			throw new ElizaError("ACTION_ROLE_POLICY contains an invalid role", {
+				code: "INVALID_ACTION_ROLE_POLICY",
+				context: { actionName },
+			});
+		}
+		policy.set(actionName, role);
+	}
+	cachedActionRolePolicy = policy;
+	return policy;
 }
 
 type PolicyAddressableAction = {
@@ -117,39 +116,22 @@ export type ActionRolePolicyWarning =
 export function resolveActionRolePolicyRole(
 	action: string | PolicyAddressableAction,
 ): RoleGateRole | undefined {
-	const policy = readActionRolePolicy();
-	if (typeof action === "string") return policy[action];
-	return policy[action.name];
+	return readActionRolePolicy().get(
+		typeof action === "string" ? action : action.name,
+	);
 }
 
-/**
- * Returns the policy-mandated minimum role for `actionName` if it is
- * present in `ACTION_ROLE_POLICY` and the caller satisfies that role.
- * Returns `undefined` when the action is not whitelisted by the policy
- * or when the caller does not satisfy the policy role.
- */
-export function isActionAllowedByRolePolicy(
-	action: string | PolicyAddressableAction,
-	userRoles: readonly RoleGateRole[] | undefined,
-): boolean {
-	const policyRole = resolveActionRolePolicyRole(action);
-	if (!policyRole) {
-		return false;
-	}
-	return satisfiesRoleGate(userRoles, { minRole: policyRole });
-}
-
+/** The stricter of the action's declared minimum roles. */
 function declaredMinimumRole(
 	action: PolicyAddressableAction,
 ): RoleGateRole | undefined {
-	const roles = [
-		action.contextGate?.roleGate?.minRole,
-		action.roleGate?.minRole,
-	].filter((role): role is RoleGateRole => Boolean(role));
-	if (roles.length === 0) return undefined;
-	return roles.reduce((strictest, role) =>
-		roleRank(role) > roleRank(strictest) ? role : strictest,
-	);
+	const contextRole = action.contextGate?.roleGate?.minRole;
+	const topLevelRole = action.roleGate?.minRole;
+	if (!contextRole) return topLevelRole;
+	if (!topLevelRole) return contextRole;
+	return roleRank(topLevelRole) > roleRank(contextRole)
+		? topLevelRole
+		: contextRole;
 }
 
 export function getActionRolePolicyWarnings(
@@ -159,7 +141,7 @@ export function getActionRolePolicyWarnings(
 	const byName = new Map(actions.map((action) => [action.name, action]));
 	const warnings: ActionRolePolicyWarning[] = [];
 
-	for (const [actionName, policyRole] of Object.entries(policy)) {
+	for (const [actionName, policyRole] of policy) {
 		const action = byName.get(actionName);
 		if (!action) {
 			warnings.push({ type: "unmatched", actionName, policyRole });

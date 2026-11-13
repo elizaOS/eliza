@@ -28,12 +28,14 @@ import type {
   OverlayAppContext,
 } from "../../apps/overlay-app-api.js";
 import { getAvailableOverlayApps } from "../../apps/overlay-app-registry.js";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 import { Card } from "../ui/card";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { getOverlayAppLazyComponent } from "./AppWindowRenderer.helpers";
 import { resolveDeclaredAppWindowRoute } from "./AppWindowRenderer.route-resolution";
-import { getAppSlug } from "./helpers";
+import { findAppBySlug, getAppSlug } from "./helpers";
+import { useRegistryCatalog } from "./useRegistryCatalog";
 
 const DeclaredAppWindowSurface = lazy(() =>
   import("./AppWindowRenderer.routes").then((module) => ({
@@ -183,11 +185,15 @@ export function AppWindowRenderer({
 function OverlayOrCatalogWindow({
   slug,
 }: AppWindowRendererProps): React.ReactElement {
+  const { t } = useTranslation();
+  const { catalog } = useRegistryCatalog();
   const initialApp = useMemo(() => resolveOverlayAppBySlug(slug), [slug]);
   const [app, setApp] = useState<OverlayApp | undefined>(initialApp);
+  const [resolveWindowElapsed, setResolveWindowElapsed] = useState(false);
   // Reset to the freshest synchronous resolution whenever the slug changes.
   useEffect(() => {
     setApp(resolveOverlayAppBySlug(slug));
+    setResolveWindowElapsed(false);
   }, [slug]);
   // If the app isn't registered yet, poll the registry briefly until it shows
   // up (late async plugin registration) or the retry window elapses.
@@ -199,6 +205,7 @@ function OverlayOrCatalogWindow({
       if (resolved || Date.now() >= deadline) {
         window.clearInterval(interval);
         if (resolved) setApp(resolved);
+        else setResolveWindowElapsed(true);
       }
     }, RESOLVE_RETRY_INTERVAL_MS);
     return () => window.clearInterval(interval);
@@ -224,16 +231,20 @@ function OverlayOrCatalogWindow({
     window.location.href = "/views";
   }, []);
   // Stable identity so embedded apps can use React.memo: only changes when a
-  // render-affecting field (exitToApps / uiTheme) actually changes.
+  // render-affecting field (exitToApps / uiTheme / the memoized shell
+  // translator) actually changes.
   const context = useMemo<OverlayAppContext>(
-    () => ({
-      exitToApps,
-      uiTheme,
-      t: (key) => key,
-    }),
-    [exitToApps, uiTheme],
+    () => ({ exitToApps, uiTheme, t }),
+    [exitToApps, t, uiTheme],
   );
+  // A catalog entry that is not an overlay can launch right away. Anything
+  // else (an overlay entry, or no entry yet) waits for overlay registration so
+  // a late-registering overlay never triggers a catalog launch first.
+  const catalogEntry = catalog ? findAppBySlug(catalog, slug) : undefined;
+  const knownNonOverlay =
+    catalogEntry !== undefined && catalogEntry.launchType !== "overlay";
   if (!app) {
+    if (!knownNonOverlay && !resolveWindowElapsed) return <AppFallback />;
     return <RegistryAppWindowView slug={slug} />;
   }
   return <OverlayAppSurface app={app} {...context} />;

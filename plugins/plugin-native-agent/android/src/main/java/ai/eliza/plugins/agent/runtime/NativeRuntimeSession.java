@@ -13,6 +13,12 @@ import java.util.function.BooleanSupplier;
 public final class NativeRuntimeSession implements AutoCloseable {
     @FunctionalInterface public interface Launcher { void launch(Scope scope) throws Exception; }
     @FunctionalInterface public interface Request<T> { T execute() throws Exception; }
+    /** The request was not dispatched because the runtime is not running. A host bridge
+     * rejects with {@link #CODE} so a renderer can wait for startup and send it once. */
+    public static final class NotReadyException extends NativeProcessSupervisor.LifecycleException {
+        public static final String CODE = "RUNTIME_NOT_READY";
+        public NotReadyException(String message) { super(message); }
+    }
     public static final class Snapshot {
         public final NativeProcessSupervisor.Snapshot lifecycle;
         public final String instance;
@@ -74,7 +80,7 @@ public final class NativeRuntimeSession implements AutoCloseable {
     public <T> T request(BooleanSupplier activeHost, Request<T> request, String unavailable, String cancelled) throws Exception {
         NativeProcessSupervisor.Snapshot before = supervisor.snapshot();
         if (!activeHost.getAsBoolean() || before.state != NativeProcessSupervisor.State.RUNNING)
-            throw new NativeProcessSupervisor.LifecycleException(unavailable);
+            throw new NotReadyException(unavailable);
         T response = request.execute();
         NativeProcessSupervisor.Snapshot after = supervisor.snapshot();
         if (!activeHost.getAsBoolean() || before.epoch != after.epoch || after.state != NativeProcessSupervisor.State.RUNNING)
@@ -96,8 +102,18 @@ public final class NativeRuntimeSession implements AutoCloseable {
         /** Host configures command/env and redaction policy; the supervisor owns every spawned process. */
         public Process startReady(String name, ProcessBuilder builder, NativeProcessLog log,
                 Collection<String> secrets, NativeProcessSupervisor.Probe probe, long timeoutMs, long pollMs) throws Exception {
-            if (name == null || name.isEmpty() || builder == null || log == null || secrets == null || probe == null ||
-                    timeoutMs <= 0 || timeoutMs > 86400000 || pollMs <= 0 || pollMs > timeoutMs)
+            if (probe == null) throw new IllegalArgumentException("Invalid runtime process configuration");
+            validBudget(timeoutMs, pollMs);
+            Process process = start(name, builder, log, secrets);
+            awaitReady(process, probe, timeoutMs, pollMs);
+            return process;
+        }
+        /** Spawns one named child under this scope without waiting for it, so a host can start
+         * independent children together and then await each with {@link #awaitReady}. The child is
+         * owned, logged and redacted exactly as {@link #startReady} does; scope cleanup still ends it. */
+        public Process start(String name, ProcessBuilder builder, NativeProcessLog log,
+                Collection<String> secrets) throws Exception {
+            if (name == null || name.isEmpty() || builder == null || log == null || secrets == null)
                 throw new IllegalArgumentException("Invalid runtime process configuration");
             final Collection<String> redactions = new ArrayList<>(secrets);
             for (String value : redactions) if (value != null && (value.indexOf('\r') >= 0 || value.indexOf('\n') >= 0))
@@ -115,9 +131,21 @@ public final class NativeRuntimeSession implements AutoCloseable {
                 catch (IOException ignored) { /* Child exit can close its private output stream. */ }
             }, "ElizaRuntimeLog");
             logger.setDaemon(true); logger.start();
+            return process;
+        }
+        /** Waits for a child this scope started; its budget counts from this call. The wait fails
+         * as soon as that child or any other child of this scope has exited. */
+        public void awaitReady(Process process, NativeProcessSupervisor.Probe probe, long timeoutMs, long pollMs) throws Exception {
+            if (process == null || probe == null || !owns(process))
+                throw new IllegalArgumentException("Invalid runtime process configuration");
+            validBudget(timeoutMs, pollMs);
             owner.awaitReady(process, probe, timeoutMs, pollMs);
             owner.check();
-            return process;
+        }
+        private synchronized boolean owns(Process process) { return children.containsValue(process); }
+        private static void validBudget(long timeoutMs, long pollMs) {
+            if (timeoutMs <= 0 || timeoutMs > 86400000 || pollMs <= 0 || pollMs > timeoutMs)
+                throw new IllegalArgumentException("Invalid runtime process configuration");
         }
     }
 }

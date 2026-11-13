@@ -21,12 +21,28 @@ import {
 } from "./sense-systemui.mjs";
 
 const root = path.resolve(import.meta.dirname, "../../../..");
-const load = (brand) =>
-  JSON.parse(
+const load = (brand) => {
+  const product = JSON.parse(
     fs.readFileSync(
-      path.join(root, `packages/os/android/products/pixel10a-${brand}.json`),
+      path.join(root, "packages/os/android/products/pixel10a-eliza.json"),
     ),
   );
+  if (brand === "example") {
+    product.launcher = {
+      moduleName: "ExamplePhone",
+      packageName: "org.example.phone",
+    };
+    product.sense = {
+      moduleName: "ExampleSense",
+      appName: "Example",
+      wakeNames: ["example"],
+      componentPackage: "org.example.sense",
+      assistActivity: "org.example.phone.AssistActivity",
+      storageName: "listener-settings",
+    };
+  }
+  return product;
+};
 const hash = (data) => createHash("sha256").update(data).digest("hex");
 const signer = "a".repeat(64);
 const requested = [
@@ -38,7 +54,7 @@ const requested = [
   "POST_NOTIFICATIONS",
   "HIDE_OVERLAY_WINDOWS",
 ].map((name) => `android.permission.${name}`);
-for (const brand of ["alpha", "eliza"])
+for (const brand of ["example", "eliza"])
   test(`${brand} uses shared source with its own stable identities and minimal privileges`, (t) => {
     const product = load(brand),
       config = validateSenseProduct(product);
@@ -174,6 +190,15 @@ test("exact shared SystemUI patch stages only into a new overlay and retains all
   assert.equal(result.systemUiCompiled, false);
   assert.equal(result.imageBuilt, false);
   assert.equal(verifyListenerSystemui(output, "after", "chip").files.length, 9);
+  const receipt = fs.readFileSync(path.join(output, "derived-source.json"));
+  assert.throws(
+    () => prepareListenerSystemui(source, output, "chip"),
+    /Output must not exist/,
+  );
+  assert.deepEqual(
+    fs.readFileSync(path.join(output, "derived-source.json")),
+    receipt,
+  );
   const generated = path.join(
     output,
     "frameworks/base",

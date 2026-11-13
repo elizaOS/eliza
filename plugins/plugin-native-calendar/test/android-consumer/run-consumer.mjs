@@ -64,6 +64,12 @@ const cases = {
     "calendarCreationRecovery",
     true,
   ],
+  edits: [
+    "ConsumerCreationRecoveryTest",
+    "guardedHostEditsRefuseStaleRepeatingAndReadOnlyEvents",
+    "calendarHostEdits",
+    true,
+  ],
   bridge: [
     "ConsumerBridgeFlowTest",
     "permissionAndReviewedProviderLifecycle",

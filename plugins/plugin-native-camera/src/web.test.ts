@@ -58,3 +58,82 @@ describe("CameraWeb startPreview", () => {
     );
   });
 });
+
+describe("CameraWeb recording stop", () => {
+  class FakeRecorder {
+    static isTypeSupported = (type: string) => type === "video/webm";
+    mimeType = "video/webm";
+    ondataavailable: ((event: { data: Blob }) => void) | null = null;
+    onstop: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    start = vi.fn();
+    stop = vi.fn(() => {
+      queueMicrotask(() => this.onstop?.());
+    });
+  }
+
+  function recordingCamera() {
+    let urls = 0;
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("MediaRecorder", FakeRecorder);
+    vi.stubGlobal("URL", {
+      createObjectURL: () => `blob:video-${++urls}`,
+      revokeObjectURL,
+    });
+    vi.stubGlobal("document", {
+      createElement: () => {
+        const video = {
+          videoWidth: 640,
+          videoHeight: 480,
+          onloadedmetadata: null as (() => void) | null,
+          set src(_url: string) {
+            queueMicrotask(() => video.onloadedmetadata?.());
+          },
+        };
+        return video;
+      },
+    });
+    const camera = new CameraWeb();
+    // A preview stream without tracks is enough for a video-only recording.
+    (camera as unknown as { mediaStream: object }).mediaStream = {
+      getTracks: () => [],
+    };
+    return { camera, revokeObjectURL };
+  }
+
+  afterEach(() => vi.useRealTimers());
+
+  it("returns a recording that stopped at its limit to the next stop", async () => {
+    vi.useFakeTimers();
+    const { camera, revokeObjectURL } = recordingCamera();
+    await camera.startRecording({ audio: false, maxDuration: 1 });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect((await camera.getRecordingState()).isRecording).toBe(false);
+    const video = await camera.stopRecording();
+    expect(video).toMatchObject({ path: "blob:video-1", width: 640 });
+    await expect(camera.stopRecording()).rejects.toThrow("Not recording");
+    expect(revokeObjectURL).not.toHaveBeenCalled();
+  });
+
+  it("discards an unclaimed limit recording when the preview stops", async () => {
+    vi.useFakeTimers();
+    const { camera, revokeObjectURL } = recordingCamera();
+    await camera.startRecording({ audio: false, maxDuration: 1 });
+    await vi.advanceTimersByTimeAsync(1000);
+    await camera.stopPreview();
+    expect(revokeObjectURL).toHaveBeenCalledExactlyOnceWith("blob:video-1");
+    await expect(camera.stopRecording()).rejects.toThrow("Not recording");
+  });
+
+  it("gives overlapping stops the same recording", async () => {
+    const { camera } = recordingCamera();
+    await camera.startRecording({ audio: false });
+    const [first, second] = await Promise.all([
+      camera.stopRecording(),
+      camera.stopRecording(),
+    ]);
+    expect(first).toEqual(second);
+    expect(first.path).toBe("blob:video-1");
+    await expect(camera.stopRecording()).rejects.toThrow("Not recording");
+  });
+});

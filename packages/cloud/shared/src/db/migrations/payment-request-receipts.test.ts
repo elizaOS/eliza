@@ -270,6 +270,7 @@ describe("0262-0263 payment request receipts migrations", () => {
     await expect(conflicting.exec(backfillMigration)).rejects.toThrow(/postcondition failed/i);
   });
 
+  // Eight independent WASM/database initializations need a larger fixture budget.
   test("rejects contradictory provider event, provider, amount, and currency proof", async () => {
     const stripeProof = {
       stripe_event_id: "evt_a",
@@ -324,7 +325,7 @@ describe("0262-0263 payment request receipts migrations", () => {
       );
       expect(receipts.rows).toEqual([{ count: 0 }]);
     }
-  });
+  }, 180_000);
 
   test("fails closed instead of accepting a colliding partial table", async () => {
     const db = await database();

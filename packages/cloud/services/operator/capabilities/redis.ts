@@ -2,6 +2,10 @@
 import { createRequire } from "node:module";
 import Redis from "ioredis";
 import { Log } from "pepr";
+import {
+  removeOwnedAgentRoutes,
+  requireRoutingWriteReceipts,
+} from "./routing-state";
 
 const REDIS_URL = process.env.REDIS_URL || "redis://redis.eliza-infra.svc:6379";
 const AGENT_ROUTING_TTL_SECONDS = 30 * 24 * 3600;
@@ -40,11 +44,12 @@ function getClient(): Redis {
 
 export async function setServerState(name: string, phase: string, url: string) {
   const redis = getClient();
-  await redis
+  const receipts = await redis
     .multi()
     .set(`server:${name}:status`, phase, "EX", AGENT_ROUTING_TTL_SECONDS)
     .set(`server:${name}:url`, url, "EX", AGENT_ROUTING_TTL_SECONDS)
     .exec();
+  requireRoutingWriteReceipts(receipts, 2);
 }
 
 export async function setAgentServer(agentId: string, serverName: string) {
@@ -57,9 +62,9 @@ export async function setAgentServer(agentId: string, serverName: string) {
   );
 }
 
-export async function removeAgentServer(agentId: string) {
+export async function removeAgentServer(agentId: string, serverName: string) {
   const redis = getClient();
-  await redis.del(`agent:${agentId}:server`);
+  await removeOwnedAgentRoutes(redis, serverName, [agentId]);
 }
 
 export async function cleanupServer(name: string, agentIds: string[]) {
@@ -68,9 +73,9 @@ export async function cleanupServer(name: string, agentIds: string[]) {
     `server:${name}:status`,
     `server:${name}:url`,
     `keda:${name}:activity`,
-    ...agentIds.map((id) => `agent:${id}:server`),
   ];
   if (keys.length > 0) {
     await redis.del(...keys);
   }
+  await removeOwnedAgentRoutes(redis, name, agentIds);
 }

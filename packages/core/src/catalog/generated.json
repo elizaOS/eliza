@@ -4,7 +4,7 @@
 			"id": "agent-orchestrator",
 			"name": "Agent Orchestrator",
 			"description": "Task-agent orchestration plugin - spawn and manage open-ended CLI task agents via PTY",
-			"npmName": "@elizaos/core",
+			"npmName": "@elizaos/plugin-agent-orchestrator",
 			"version": "2.0.0-beta.0",
 			"source": "bundled",
 			"tags": [
@@ -3159,7 +3159,7 @@
 					"type": "boolean",
 					"required": false,
 					"sensitive": false,
-					"default": "False",
+					"default": false,
 					"label": "Disable Actions",
 					"help": "Set to true to disable subscription management actions",
 					"advanced": false
@@ -3168,12 +3168,12 @@
 					"type": "number",
 					"required": false,
 					"sensitive": false,
-					"default": "15",
+					"default": 15,
 					"label": "Check Interval Minutes",
 					"help": "Interval in minutes between feed checks",
 					"advanced": false,
 					"min": 0,
-					"unit": "ms"
+					"unit": "minutes"
 				}
 			},
 			"render": {

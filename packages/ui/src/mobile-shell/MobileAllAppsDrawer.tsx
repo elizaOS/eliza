@@ -20,6 +20,8 @@ export interface MobileAllAppsDrawerProps<
   shellLauncher: MobileShellLauncher<View>;
   registry: MobileLauncherRegistry<View>;
   query: string;
+  title?: string;
+  installedOnly?: boolean;
   renderViewIcon?: (view: View) => ReactNode;
   onQuery: (query: string) => void;
   onClose: () => void;
@@ -33,6 +35,8 @@ export function MobileAllAppsDrawer<
   shellLauncher,
   registry,
   query,
+  title = "All apps",
+  installedOnly,
   onQuery,
   onClose,
   inventoryStyle,
@@ -46,7 +50,7 @@ export function MobileAllAppsDrawer<
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="All apps"
+      aria-label={title}
       {...attributes}
       data-mobile-shell-drawer=""
       onKeyDown={(event) => {
@@ -71,6 +75,8 @@ export function MobileAllAppsDrawer<
       <InstalledAppsLauncher
         launcher={shellLauncher.launcher}
         query={query}
+        title={title}
+        installedOnly={installedOnly}
         onQuery={onQuery}
         onClose={onClose}
         productName={product.identity.appName}

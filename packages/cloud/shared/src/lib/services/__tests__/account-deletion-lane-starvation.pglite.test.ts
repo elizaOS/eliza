@@ -18,7 +18,7 @@ process.env.DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
 
 import { createHash, randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, ne } from "drizzle-orm";
 import { accountDeletionPhaseReceipts } from "../../../db/schemas/account-deletion-phase-receipts";
 import { accountDeletionRequests } from "../../../db/schemas/account-deletion-requests";
 import type { RuntimeR2Bucket } from "../../storage/r2-runtime-binding";
@@ -55,6 +55,7 @@ const T0 = new Date("2026-10-01T00:00:00.000Z");
 
 const digest = (value: string) => createHash("sha256").update(value).digest("hex");
 
+let accountDeletionRequestsRepository: typeof import("../../../db/repositories/account-deletion-requests").accountDeletionRequestsRepository;
 let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTests;
 let dbWrite: typeof import("../../../db/client").dbWrite;
 let processIrreversibleAccountDeletionSaga: typeof import("../account-deletion-saga").processIrreversibleAccountDeletionSaga;
@@ -64,6 +65,9 @@ beforeAll(async () => {
   const { pushSchemaToTestDb } = await import("../../../db/push-schema-for-tests");
   await pushSchemaToTestDb({ accountDeletionRequests, accountDeletionPhaseReceipts });
   ({ processIrreversibleAccountDeletionSaga } = await import("../account-deletion-saga"));
+  ({ accountDeletionRequestsRepository } = await import(
+    "../../../db/repositories/account-deletion-requests"
+  ));
 });
 
 afterAll(async () => {
@@ -82,6 +86,7 @@ async function seedRequest(executeAfter: Date, completedThrough: number): Promis
     request_digest: digest(`request:${id}`),
     execute_after: executeAfter,
     recovery_expires_at: executeAfter,
+    irreversible_at: executeAfter,
   });
   await dbWrite.insert(accountDeletionPhaseReceipts).values(
     PHASES.map(([phase, order]) => ({
@@ -128,6 +133,15 @@ test("ten requests parked at the backup lane's phase do not starve a request the
 
   expect(inspected).toEqual([{ phase: "steward_deactivation", requestId: starved }]);
   expect(result.progressed).toBe(1);
+  // The ten parked requests are reported, aged from when `domains` completed
+  // for the oldest (T0), and none of them changed status.
+  expect(result.deferredToOtherLane).toBe(10);
+  expect(result.oldestDeferredAgeMs).toBe(24 * 3_600_000);
+  const parked = await dbWrite
+    .select({ status: accountDeletionRequests.status })
+    .from(accountDeletionRequests)
+    .where(ne(accountDeletionRequests.id, starved));
+  expect(parked.map((row) => row.status)).toEqual(Array(10).fill("scheduled"));
   const [receipt] = await dbWrite
     .select({ status: accountDeletionPhaseReceipts.status })
     .from(accountDeletionPhaseReceipts)
@@ -138,4 +152,81 @@ test("ten requests parked at the backup lane's phase do not starve a request the
       ),
     );
   expect(receipt?.status).toBe("completed");
+});
+
+test("an already-complete provider advances a scheduled request through the normal saga", async () => {
+  const now = new Date();
+  const requestId = await seedRequest(new Date(T0.getTime() - 86_400_000), 40);
+  const [before] = await dbWrite
+    .select()
+    .from(accountDeletionRequests)
+    .where(eq(accountDeletionRequests.id, requestId));
+  expect(before.status).toBe("scheduled");
+
+  // A stale identity cannot promote the request or acquire its phase.
+  expect(
+    await accountDeletionRequestsRepository.leasePhase({
+      requestId,
+      phase: "compute_containers",
+      leaseOwnerDigest: digest("stale-worker"),
+      now,
+      leaseMilliseconds: 300_000,
+      irreversibleRequest: {
+        requestDigest: digest("different-request"),
+        lifecycleRevision: before.lifecycle_revision,
+        userId: before.user_id!,
+        organizationId: before.organization_id!,
+      },
+    }),
+  ).toBeUndefined();
+  const [unchanged] = await dbWrite
+    .select({ status: accountDeletionRequests.status })
+    .from(accountDeletionRequests)
+    .where(eq(accountDeletionRequests.id, requestId));
+  expect(unchanged.status).toBe("scheduled");
+
+  const inspectedStatuses: string[] = [];
+  let executions = 0;
+  const adapter: AccountDeletionProviderAdapter = {
+    async inspect(context) {
+      const [request] = await dbWrite
+        .select({ status: accountDeletionRequests.status })
+        .from(accountDeletionRequests)
+        .where(eq(accountDeletionRequests.id, context.requestId));
+      inspectedStatuses.push(request.status);
+      return { state: "complete", receiptDigest: digest(`complete:${context.requestId}`) };
+    },
+    async execute() {
+      executions++;
+    },
+  };
+  const adapters = Object.fromEntries(
+    PROVIDER_PHASES.map((phase) => [phase, adapter]),
+  ) as AccountDeletionProviderAdapters;
+  const result = await processIrreversibleAccountDeletionSaga({
+    limit: 1,
+    blob: {} as RuntimeR2Bucket,
+    adapters,
+    allowedPhases: new Set(["compute_containers"]),
+    now,
+  });
+
+  expect(result.progressed).toBe(1);
+  expect(inspectedStatuses).toEqual(["processing"]);
+  expect(executions).toBe(0);
+  const [after] = await dbWrite
+    .select({ status: accountDeletionRequests.status })
+    .from(accountDeletionRequests)
+    .where(eq(accountDeletionRequests.id, requestId));
+  expect(after.status).toBe("processing");
+  const [phase] = await dbWrite
+    .select({ status: accountDeletionPhaseReceipts.status })
+    .from(accountDeletionPhaseReceipts)
+    .where(
+      eq(
+        accountDeletionPhaseReceipts.idempotency_key_digest,
+        digest(`${requestId}:compute_containers`),
+      ),
+    );
+  expect(phase.status).toBe("completed");
 });

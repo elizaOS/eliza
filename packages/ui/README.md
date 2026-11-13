@@ -165,6 +165,12 @@ storage namespaces, schema validation, legacy migration and recovery presentatio
 This API does not maintain a localStorage mirror. Run
 `bun run --cwd packages/ui test:browser-document-store` for real cross-tab,
 cancellation and recovery checks in Chromium, Firefox and WebKit.
+The browser suite also runs `browserDocumentDraftSlot` over IndexedDB. It checks
+cross-tab draft writes, exact document receipts, rollback and reload. Run
+`bun run --cwd packages/ui test:browser-document-store chromium` for that engine
+alone. The `BrowserDraftStorage` Quint case checks the bounded adapter protocol.
+A cancelled draft caller can receive an abort error after its raw write commits.
+A later read can recover the committed draft.
 
 `startCumulativeMicrophoneCapture` and `observeMicrophonePause` share cumulative sample previews and speech-pause
 observation without owning microphone tracks, transcription or message submission.
@@ -179,6 +185,14 @@ never fall back or replay requests. Account refresh fences earlier responses;
 cancelling their publication does not undo native effects already dispatched.
 Requests wait for account refresh. A failed or timed-out refresh blocks requests
 until the host explicitly retries refresh; late status replies cannot restart polling.
+With `reuseRunningStatus`, the native status probe runs once per account generation while
+the runtime stays running; any bridge rejection or 503 makes the next request probe again.
+A bridge rejection with code `RUNTIME_NOT_READY` means the request was not dispatched, so
+the client waits for startup and sends it once, unless the re-probe reports the runtime
+unavailable (then the rejection stands and nothing is started). Enable the option only when
+the host bridge maps `NativeRuntimeSession.NotReadyException` to that code: without the
+mapping, the first request after a runtime stop the client did not see (a service kill or
+restart) fails instead of starting the runtime. Without the option nothing is resent.
 
 `formatMinorCurrency` formats safe integer minor units through an exact decimal
 string, checking the selected currency exponent. `isIsoCalendarDate` and

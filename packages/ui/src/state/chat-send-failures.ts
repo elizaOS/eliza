@@ -5,6 +5,7 @@
  */
 
 import type { ConversationMessage } from "../api/client-types-chat";
+import { pendingUserTurnPresent } from "./pending-chat-turns";
 
 const VALIDATION_FAILURE_STATUSES: ReadonlySet<number> = new Set([
   400, 413, 415, 422,
@@ -104,18 +105,17 @@ export function resolveAbortRoomId(
   return knownRoomId?.trim() || cachedRoomId?.trim() || conversationId;
 }
 
-const SENT_TURN_MATCH_SLACK_MS = 60_000;
-
+/** Same rule as pending receipts: known ids exclude earlier identical rows. */
 export function sentUserTurnPresent(
   messages: readonly ConversationMessage[],
   sentText: string,
   sentAt: number,
+  knownUserMessageIds?: readonly string[],
 ): boolean {
-  const text = sentText.trim();
-  return messages.some(
-    (message) =>
-      message.role === "user" &&
-      message.timestamp >= sentAt - SENT_TURN_MATCH_SLACK_MS &&
-      message.text.trim() === text,
+  return pendingUserTurnPresent(
+    messages,
+    sentText,
+    sentAt,
+    knownUserMessageIds,
   );
 }
