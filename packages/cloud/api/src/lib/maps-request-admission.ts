@@ -290,7 +290,6 @@ export async function admitMapsRequest(
         credential: caller.credential,
         executionCtx: getGenerativeExecutionContext(c),
         atomicProviderBoundary: true,
-        fundedBudgetEndpointType: "standard",
       });
       if (
         paid.mode === "durable_object_subscription_funding" ||
