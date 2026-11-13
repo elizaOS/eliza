@@ -1,6 +1,8 @@
 /** One-time import of the protected deployment registry before database-only cutover. */
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { Client } from "pg";
 import {
   readDatabaseIdentityConfig,
@@ -301,7 +303,7 @@ export async function readDeployedNativeCallbacks(input: {
       refuse("pages_response");
     return value as Row;
   };
-  const read = async (url: string) => {
+  const read = async (stage: "project" | "list" | "detail", url: string) => {
     let response: Response;
     try {
       response = await fetchImpl(url, {
@@ -310,14 +312,24 @@ export async function readDeployedNativeCallbacks(input: {
         signal: AbortSignal.timeout(15_000),
       });
     } catch {
-      return refuse("pages_transport");
+      return refuse(`pages_${stage}_transport`);
     }
-    if (!response.ok) refuse(`pages_http_${response.status}`);
     const payload = object(await response.json());
-    if (payload.success !== true) refuse("pages_api_refused");
+    const errors = Array.isArray(payload.errors) ? payload.errors : [];
+    const codes = errors
+      .map((error) =>
+        error && typeof error === "object" && "code" in error
+          ? error.code
+          : undefined,
+      )
+      .filter((code) => Number.isSafeInteger(code));
+    if (!response.ok || payload.success !== true)
+      refuse(
+        `pages_${stage}_http_${response.status}${codes.length ? `_codes_${codes.join("_")}` : ""}`,
+      );
     return payload;
   };
-  const project = object((await read(base)).result);
+  const project = object((await read("project", base)).result);
   const branch = input.environment === "production" ? "main" : "staging";
   const environment =
     input.environment === "production" ? "production" : "preview";
@@ -328,7 +340,8 @@ export async function readDeployedNativeCallbacks(input: {
     const matches: Row[] = [];
     for (let page = 1; ; page++) {
       const payload = await read(
-        `${base}/deployments?env=preview&per_page=100&page=${page}`,
+        "list",
+        `${base}/deployments?env=preview&page=${page}`,
       );
       if (!Array.isArray(payload.result)) refuse("pages_deployments");
       for (const value of payload.result) {
@@ -359,7 +372,7 @@ export async function readDeployedNativeCallbacks(input: {
   if (typeof selected.id !== "string" || !/^[a-z0-9-]+$/i.test(selected.id))
     refuse("pages_deployment_identity");
   const deployed = object(
-    (await read(`${base}/deployments/${selected.id}`)).result,
+    (await read("detail", `${base}/deployments/${selected.id}`)).result,
   );
   const metadata = object(object(deployed.deployment_trigger).metadata);
   const stage = object(deployed.latest_stage);
@@ -425,6 +438,24 @@ if (import.meta.main) {
           project: process.env.PAGES_PROJECT ?? "eliza-app",
           environment,
         }));
+    // Reuse the canonical production effect gate immediately before BEGIN.
+    // The gate verifies exact main source and tree-bound staging evidence; a
+    // branch name or database identity alone cannot authorize this mutation.
+    if (environment === "production" && !process.argv.includes("--verify")) {
+      const root = path.resolve(import.meta.dirname, "../../../..");
+      execFileSync(
+        process.execPath,
+        [
+          "--conditions=eliza-source",
+          path.join(
+            root,
+            "packages/cloud/scripts/production-effect-certification.ts",
+          ),
+          process.env.GITHUB_SHA ?? "",
+        ],
+        { cwd: root, env: process.env, stdio: "inherit", timeout: 180_000 },
+      );
+    }
     const result = process.argv.includes("--verify")
       ? await verifyNativeRegistryMigration(database, environment)
       : await migrateNativeRegistry(
