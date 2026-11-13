@@ -133,13 +133,52 @@ jobs:
         run: >
           set -euo pipefail
 
+          umask 077
+
+          export LIVE_CHAT_REPORT="$RUNNER_TEMP/live-chat-report.json"
+
+          export
+          LIVE_CHAT_RAW_OUTPUT="$RUNNER_TEMP/live-chat-private-output.log"
+
+          export PLAYWRIGHT_JSON_OUTPUT_NAME="$LIVE_CHAT_REPORT"
+
+          trap 'rm -f "$LIVE_CHAT_REPORT" "$LIVE_CHAT_RAW_OUTPUT"' EXIT
+
           if bun run --cwd packages/app test:e2e
           test/ui-smoke/live-agent-chat.spec.ts --project=chromium -g "live
-          agent" >/dev/null 2>&1; then
+          agent" --reporter=json >"$LIVE_CHAT_RAW_OUTPUT" 2>&1; then
             echo "Live agent chat passed (category=live-chat-passed; raw-output=suppressed)."
           else
             status=$?
-            echo "::error::Live agent chat failed (category=live-chat-failed; exit=${status}; raw-output=suppressed)."
+            node --input-type=module <<'NODE'
+            import { readFileSync, existsSync } from 'node:fs';
+            const raw = readFileSync(process.env.LIVE_CHAT_RAW_OUTPUT, 'utf8');
+            const present = existsSync(process.env.LIVE_CHAT_REPORT);
+            let report = null;
+            if (present) { try { report = JSON.parse(readFileSync(process.env.LIVE_CHAT_REPORT, 'utf8')); } catch {} }
+            const failures = [];
+            const messages = [raw];
+            const visit = (suite) => {
+              for (const spec of suite.specs ?? []) {
+                for (const test of spec.tests ?? []) {
+                  if ((test.results ?? []).some(result => ['failed','timedOut','interrupted'].includes(result.status))) {
+                    failures.push({ file: spec.file, line: spec.line, column: spec.column, status: test.status });
+                    for (const result of test.results ?? []) for (const error of result.errors ?? []) messages.push(error.stack ?? error.message ?? '');
+                  }
+                }
+              }
+              for (const nested of suite.suites ?? []) visit(nested);
+            };
+            for (const suite of report?.suites ?? []) visit(suite);
+            for (const error of report?.errors ?? []) messages.push(error.stack ?? error.message ?? '');
+            const text = messages.join('\n');
+            const known = ['ERR_MODULE_NOT_FOUND','ERR_REQUIRE_ESM','MODULE_NOT_FOUND','EADDRINUSE','TimeoutError','SyntaxError','ReferenceError','TypeError','No tests found','Timed out waiting','webServer','LIVE_AGENT_RESPONSE_OK'];
+            const categories = known.filter(value => text.includes(value));
+            const sourceLocations = [...new Set(text.match(/packages\/[A-Za-z0-9_./-]+\.(?:ts|tsx|js|mjs):\d+:\d+/g) ?? [])];
+            const workspaceModules = [...new Set(text.match(/@elizaos\/[A-Za-z0-9_/-]+/g) ?? [])];
+            console.log(JSON.stringify({ category: 'live-chat-failed', reportPresent: present, stats: report?.stats ?? null, failures, categories, sourceLocations, workspaceModules }));
+            NODE
+            echo "::error::Live agent chat failed; private raw output was removed after fixed diagnostics."
             exit "$status"
           fi
       - name: Run settings + vault live-stack deep e2e
