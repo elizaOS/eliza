@@ -1,4 +1,8 @@
 /** Retire the single obsolete Pages callback binding after database cutover. */
+import { execFileSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 export const RETIRED_NATIVE_CALLBACK_BINDING =
   "ELIZA_NATIVE_AUTH_CALLBACKS_JSON";
 export type PagesRetirementFetch = (
@@ -189,13 +193,41 @@ export async function retirePagesNativeCallbackBinding(input: {
 }
 
 if (import.meta.main) {
+  const environment = process.env.TARGET_ENVIRONMENT as
+    | "staging"
+    | "production";
+  const verifyOnly = process.argv.includes("--verify");
+  const root = fileURLToPath(new URL("../../../", import.meta.url));
   retirePagesNativeCallbackBinding({
     accountId: process.env.CLOUDFLARE_ACCOUNT_ID ?? "",
     token: process.env.CLOUDFLARE_API_TOKEN ?? "",
     project: process.env.PAGES_PROJECT ?? "",
-    environment: process.env.TARGET_ENVIRONMENT as "staging" | "production",
-    verifyOnly: process.argv.includes("--verify"),
+    environment,
+    verifyOnly,
     expectedCommit: process.env.GITHUB_SHA,
+    fetchImpl: async (url, init) => {
+      if (
+        init?.method === "PATCH" &&
+        environment === "production" &&
+        !verifyOnly
+      ) {
+        // The CLI owns the production effect. Recheck exact main source and
+        // staging/main certification after all reads, immediately before PATCH.
+        execFileSync(
+          process.execPath,
+          [
+            "--conditions=eliza-source",
+            path.join(
+              root,
+              "packages/cloud/scripts/production-effect-certification.ts",
+            ),
+            process.env.GITHUB_SHA ?? "",
+          ],
+          { cwd: root, env: process.env, stdio: "inherit", timeout: 180_000 },
+        );
+      }
+      return fetch(url, init);
+    },
   }).then(
     (result) => process.stdout.write(`${result}\n`),
     (error) => {
