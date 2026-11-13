@@ -7,7 +7,8 @@
  * The same inventory also binds that runner to root test commands and the
  * required consolidated CI workflow; a test list without an executing lane is
  * invalid. Discovery is fail-closed in both directions: a new test file under
- * any covered tree is included automatically, and the only way out is an
+ * any covered tree is included automatically, a file named like a test that
+ * discovery would miss fails the inventory, and the only way out is an
  * exact-path entry in SCRIPT_TEST_EXCLUSIONS with a durable reason, which the
  * validator rejects the moment it goes stale.
  */
@@ -42,6 +43,13 @@ export const SCRIPT_TEST_EXTENSIONS = [
 // One fail-closed inventory owns repository tooling and cloud operation tests.
 const SCRIPT_TEST_PATTERN = new RegExp(
   `^packages/(?:scripts|cloud/scripts)/(?:.+/)?[^/]*[._](?:test|spec)\\.(?:${SCRIPT_TEST_EXTENSIONS.join("|")})$`,
+  "i",
+);
+// Any name that reads as a test (`-test.`, `.self-test.`, `-spec.`, `_test.`)
+// must be a discovered test; a misnamed one fails the inventory instead of
+// silently never running.
+const SCRIPT_TEST_LOOKALIKE_PATTERN = new RegExp(
+  `^packages/(?:scripts|cloud/scripts)/(?:.+/)?[^/]*[-._](?:test|spec)\\.(?:${SCRIPT_TEST_EXTENSIONS.join("|")})$`,
   "i",
 );
 
@@ -177,6 +185,15 @@ export function buildScriptTestInventory(options = {}) {
     .map(normalizeRepositoryPath)
     .sort(compareText);
   const eligibleFiles = candidateFiles.filter(isScriptTestPath);
+  const misnamed = candidateFiles.filter(
+    (file) =>
+      SCRIPT_TEST_LOOKALIKE_PATTERN.test(file) && !isScriptTestPath(file),
+  );
+  if (misnamed.length > 0) {
+    throw new Error(
+      `[script-test-inventory] test-like files the inventory would never run; rename them to *.test.<ext>:\n${misnamed.join("\n")}`,
+    );
+  }
   assertUniqueRepositoryIdentities(
     eligibleFiles,
     "[script-test-inventory] case-colliding or duplicate test paths",
