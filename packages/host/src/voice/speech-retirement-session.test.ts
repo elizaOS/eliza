@@ -885,40 +885,48 @@ test("a lost unused-quota reply stays unknown and is never replayed", async () =
 });
 
 test("a nonzero unused settlement proof cannot confirm retirement", async () => {
-  vi.useFakeTimers();
-  vi.setSystemTime(1_000);
-  const p = ports();
-  const reserve = p.value.reserveCredits;
-  let index = 0;
-  p.value.maxWindows = 2;
-  p.value.extend = async () => 0;
-  p.value.reserveCredits = async (...args) => {
-    const window = index++;
-    const reservation = await reserve(...args);
-    return {
-      ...reservation,
-      settle: async (details, kinds) => {
-        const result = await reservation.settle(details, kinds);
-        for (const kind of ["stt", "tts"] as const)
-          if (result?.[kind] && window) {
-            result[kind].requestId += `:${window}`;
-            result[kind].amountUsd = "1";
-          }
-        return result;
-      },
+  for (const perKind of [true, false]) {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const p = ports();
+    const reserve = p.value.reserveCredits;
+    let index = 0;
+    p.value.maxWindows = 2;
+    p.value.extend = async () => 0;
+    p.value.reserveCredits = async (...args) => {
+      const window = index++;
+      const reservation = await reserve(...args);
+      return {
+        ...reservation,
+        supportsPerKindSettlement:
+          window === 0 || perKind
+            ? reservation.supportsPerKindSettlement
+            : undefined,
+        settle: async (details, kinds) => {
+          const result = await reservation.settle(details, kinds);
+          for (const kind of ["stt", "tts"] as const)
+            if (result?.[kind] && window) {
+              result[kind].requestId += `:${window}`;
+              result[kind].amountUsd = "1";
+            }
+          return result;
+        },
+      };
     };
-  };
-  try {
-    const session = await createSpeechRelaySession(
-      identity,
-      "consent",
-      p.value,
-    );
-    await vi.advanceTimersByTimeAsync(50_000);
-    await expect(session.close()).rejects.toThrow("cleanup was not confirmed");
-    expect(p.handle.evidence()?.moneyTerminal).not.toBe(true);
-  } finally {
-    vi.useRealTimers();
+    try {
+      const session = await createSpeechRelaySession(
+        identity,
+        "consent",
+        p.value,
+      );
+      await vi.advanceTimersByTimeAsync(50_000);
+      await expect(session.close()).rejects.toThrow(
+        "cleanup was not confirmed",
+      );
+      expect(p.handle.evidence()?.moneyTerminal).not.toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   }
 });
 
