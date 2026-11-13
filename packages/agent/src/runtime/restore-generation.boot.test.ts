@@ -224,7 +224,6 @@ it(
       | Awaited<ReturnType<typeof apiServer.startApiServer>>
       | undefined;
     const token = randomUUID();
-    vi.stubEnv("ELIZA_API_BIND_HOST", "127.0.0.1");
     vi.stubEnv("ELIZA_API_TOKEN", token);
     vi.stubEnv("ELIZA_REQUIRE_LOCAL_AUTH", "1");
     vi.stubEnv(

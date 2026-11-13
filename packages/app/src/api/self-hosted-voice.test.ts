@@ -478,7 +478,6 @@ it("the agent host rejects upgrades before invoking protocol extensions", async 
   vi.stubEnv("ELIZA_CONFIG_PATH", join(directory, "eliza.json"));
   vi.stubEnv("ELIZA_PERSIST_CONFIG_PATH", join(directory, "eliza.json"));
   vi.stubEnv("ELIZA_API_BIND", "127.0.0.1");
-  vi.stubEnv("ELIZA_API_BIND_HOST", "127.0.0.1");
   const { startApiServer } = await import("@elizaos/agent");
   const extension = vi.fn(async () => false);
   const api = await startApiServer({
