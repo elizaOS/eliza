@@ -162,6 +162,9 @@ describe("McpService declared capabilities and health", () => {
             consecutivePingFailures: 3,
           });
           expect(states.get("pages")?.reconnectTimeout).toBeDefined();
+          expect(service.getServers().find((server) => server.name === "pages")?.status).toBe(
+            "disconnected"
+          );
         },
         { timeout: 5000 }
       );
