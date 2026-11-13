@@ -1635,6 +1635,19 @@
     ]
   },
   {
+    "id": "cloud-domain-health-batch-rotation",
+    "model": "packages/cloud/quint/DomainHealthRotation.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/services/managed-domains.ts",
+      "packages/cloud/shared/src/lib/services/domain-health.ts"
+    ],
+    "invariants": ["SelectionOrder", "StoredResults", "BoundedRotation"],
+    "status": "partial",
+    "limitations": [
+      "Serialized bounded batches with successful receipt writes and increasing check timestamps. Provider behavior, concurrent changes and clock rollback remain open."
+    ]
+  },
+  {
     "id": "cloud-pending-domains-and-storage",
     "model": null,
     "sources": [

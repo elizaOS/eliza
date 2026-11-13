@@ -295,13 +295,28 @@
     ]
   },
   {
+    "id": "DraftTerminalSettlement",
+    "model": "packages/ui/quint/DraftTerminalSettlement.qnt",
+    "sources": [
+      "packages/ui/src/state/durable-draft-controller.ts",
+      "packages/ui/src/state/durable-draft.ts"
+    ],
+    "invariants": ["invariant"],
+    "status": "partial",
+    "limitations": [
+      "One pending non-dispatch release may share its promise with one duplicate and race a dispatched, unknown or abandon callback. The case distinguishes host application before and after authority expires, and samples the editor for the commit write.",
+      "Real controller and row CAS replay the editor, exact revision, sending marker and both callers' outcomes. A successful dispatch settlement preserves the editor when the host already applied the restore. Abandon leaves the sending marker for a later review.",
+      "One binding, successful writes and a host that checks the restore predicate. Multiple send rounds, new typing, storage errors, external delivery, binding changes and crash durability remain outside this projection."
+    ]
+  },
+  {
     "id": "DurableDraftControllerRemaining",
     "model": null,
     "sources": ["packages/ui/src/state/durable-draft-controller.ts"],
     "invariants": [],
     "status": "unmodeled",
     "limitations": [
-      "The finite controller cases include one pending keep-current attempt, retired consume recovery, bounded hold/consume interactions and Chromium profile restart during an unacknowledged or confirmed release. Residual obligations include longer mixed hold/commit/release/consume histories, more than two failed owners or concurrent send rounds, conflicting terminal settlements, and loss during other pending host restoration or consume rollback paths.",
+      "The finite controller cases include one pending keep-current attempt, retired consume recovery, bounded hold/consume interactions and Chromium profile restart during an unacknowledged or confirmed release. Residual obligations include longer mixed hold/commit/release/consume histories, more than two failed owners or concurrent send rounds, terminal conflicts across multiple holds or a failing commit, and loss during other pending host restoration or consume rollback paths.",
       "Other storage adapters, storage failure during abrupt process or system loss, and the host-owned authenticated owner/agent/conversation binding contract require independent implementation evidence. The controller accepts an opaque binding string."
     ]
   },

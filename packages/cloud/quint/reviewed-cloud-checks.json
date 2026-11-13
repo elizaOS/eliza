@@ -1,4 +1,12 @@
 {
+  "DomainHealthRotation.qnt": [
+    {
+      "file": "packages/cloud/shared/src/lib/services/__tests__/domain-health-batch-rotation.pglite.test.ts",
+      "required": [
+        "checks oldest eligible domains and rotates persisted outcomes"
+      ]
+    }
+  ],
   "DiscordWelcomeQueue.qnt": [
     {
       "file": "packages/cloud/services/gateway-container/cloudflare/discord-welcome-state.test.ts",
