@@ -78,7 +78,7 @@ pure def lawGreetsTheNameGiven(g: Greeter, name: str, by: Via): bool = greet(g, 
 
 ### The greeter can give a second greeting
 
-Two greetings in all, to the same name or to different ones.
+At least two greetings in all, to the same name or to different ones.
 
 ```quint
 pure def sometimesGreetedTwice(g: Greeter): bool = g.count >= 2

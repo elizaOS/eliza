@@ -48,8 +48,8 @@ pure val initial: Order = { status: Draft, units: 0, due: 0, paid: 0 }
 
 ### Items can only be added to a draft
 
-The shopper adds a positive number of units, up to the most an order may hold.
-Each unit adds the unit price to the amount due.
+The shopper adds a positive number of units, so long as the order then holds no
+more than the most it may hold. Each unit adds the unit price to the amount due.
 
 ```quint
 pure def canAddItem(o: Order, qty: int, by: Role): bool =

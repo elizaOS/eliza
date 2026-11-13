@@ -36,7 +36,8 @@ pure val initial: Server = { todos: List(), version: 0, log: List() }
 ### What the simulator tries
 
 Two clients, the first three sequence numbers of each, and an edit of every
-kind: the creation of either of two to-dos, and each other kind on the first.
+kind: the creation of either of two to-dos, the second without a title and so
+always refused, and each other kind on the first.
 
 ```quint
 pure val clientValues = Set("a", "b")

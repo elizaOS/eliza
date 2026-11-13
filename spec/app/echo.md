@@ -73,8 +73,9 @@ pure def alwaysOnlyTheHelloIsInFlight(e: Echo): bool = N::below(e.net, e.sent)
 
 ### A hello sent is answered
 
-The network delivers a copy that keeps arriving, and the page sends its
-hello again while nothing is in flight.
+On every run on which the network, while copies are in flight again and
+again, delivers one, and the page, while nothing stays in flight and nothing
+was heard, sends its hello again.
 
 ```quint
 pure def leadsToHeard(e: Echo, later: Echo): bool = e.sent == 1 implies later.heard != ""
