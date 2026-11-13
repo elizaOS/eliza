@@ -15,6 +15,11 @@ mkdirSync(output, { recursive: true });
 const cases = [
   [
     "host",
+    "src/voice/speech-relay-session.test.ts",
+    "closing while an extension is in flight settles every reservation exactly once",
+  ],
+  [
+    "host",
     "src/voice/speech-retirement-session.test.ts",
     "paid renewal retains one STT connection and settles each window once",
   ],
@@ -24,8 +29,8 @@ const cases = [
     "paid lease renewals preserve one microphone and socket across minute boundaries",
   ],
 ];
-for (const [owner, file, name] of cases) {
-  const report = path.join(output, `${owner}.json`);
+for (const [index, [owner, file, name]] of cases.entries()) {
+  const report = path.join(output, `${owner}-${index}.json`);
   const result = spawnSync(
     process.execPath,
     [
@@ -44,7 +49,7 @@ for (const [owner, file, name] of cases) {
     },
   );
   writeFileSync(
-    path.join(output, `${owner}.log`),
+    path.join(output, `${owner}-${index}.log`),
     `${result.stdout ?? ""}\n${result.stderr ?? ""}`,
   );
   assert.equal(result.status, 0, `${owner} continuity implementation failed`);
