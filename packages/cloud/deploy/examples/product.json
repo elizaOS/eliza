@@ -114,21 +114,7 @@
           "secrets": []
         },
         "web": {
-          "projectName": "example-product-web-staging",
-          "nativeAuthCallbacks": [
-            {
-              "redirectUri": "https://cloud-staging.example.org/example/auth/callback",
-              "androidPackage": "org.example.product",
-              "appName": "Example Product",
-              "browserSignIn": {
-                "startPath": "/example/auth/browser-start",
-                "returnPath": "/auth/return",
-                "storageKey": "example-product:browser-sign-in",
-                "apiOrigin": "https://api-staging.example.org",
-                "tenant": "example-product-staging"
-              }
-            }
-          ]
+          "projectName": "example-product-web-staging"
         }
       }
     },
@@ -249,21 +235,7 @@
           "secrets": []
         },
         "web": {
-          "projectName": "example-product-web",
-          "nativeAuthCallbacks": [
-            {
-              "redirectUri": "https://cloud.example.org/example/auth/callback",
-              "androidPackage": "org.example.product",
-              "appName": "Example Product",
-              "browserSignIn": {
-                "startPath": "/example/auth/browser-start",
-                "returnPath": "/auth/return",
-                "storageKey": "example-product:browser-sign-in",
-                "apiOrigin": "https://api.example.org",
-                "tenant": "example-product"
-              }
-            }
-          ]
+          "projectName": "example-product-web"
         }
       }
     }

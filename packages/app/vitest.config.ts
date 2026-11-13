@@ -135,7 +135,6 @@ export default defineConfig({
       "test/dev-auth/**/*.test.{ts,tsx,mjs}",
       "test/design-review/**/*.test.{ts,tsx,mjs}",
       "test/pages-middleware-serving.test.ts",
-      "test/pages-native-auth-config-parity.test.ts",
       "test/native-callback-contract.test.ts",
       "test/dev-http-proxy.test.ts",
     ],

@@ -83,6 +83,7 @@
     "./db/repositories/docker-nodes": "./src/db/repositories/docker-nodes.ts",
     "./db/repositories/domain-purchase-attempts": "./src/db/repositories/domain-purchase-attempts.ts",
     "./db/repositories/jobs": "./src/db/repositories/jobs.ts",
+    "./db/repositories/mobile-app-auth-clients": "./src/db/repositories/mobile-app-auth-clients.ts",
     "./db/repositories/org-rate-limit-overrides": "./src/db/repositories/org-rate-limit-overrides.ts",
     "./db/repositories/org-storage-quota": "./src/db/repositories/org-storage-quota.ts",
     "./db/repositories/organizations": "./src/db/repositories/organizations.ts",
@@ -134,6 +135,7 @@
     "./db/schemas/invoices": "./src/db/schemas/invoices.ts",
     "./db/schemas/jobs": "./src/db/schemas/jobs.ts",
     "./db/schemas/managed-domains": "./src/db/schemas/managed-domains.ts",
+    "./db/schemas/mobile-app-auth-clients": "./src/db/schemas/mobile-app-auth-clients.ts",
     "./db/schemas/organization-payment-reversal-holds": "./src/db/schemas/organization-payment-reversal-holds.ts",
     "./db/schemas/organizations": "./src/db/schemas/organizations.ts",
     "./db/schemas/payment-requests": "./src/db/schemas/payment-requests.ts",
@@ -176,6 +178,7 @@
     "./lib/auth/authentication-state": "./src/lib/auth/authentication-state.ts",
     "./lib/auth/jwt-internal": "./src/lib/auth/jwt-internal.ts",
     "./lib/auth/mobile-api-key": "./src/lib/auth/mobile-api-key.ts",
+    "./lib/auth/native-callback-fallback": "./src/lib/auth/native-callback-fallback.ts",
     "./lib/auth/playwright-test-session": "./src/lib/auth/playwright-test-session.ts",
     "./lib/auth/service-key": "./src/lib/auth/service-key.ts",
     "./lib/auth/service-key-hono-worker": "./src/lib/auth/service-key-hono-worker.ts",
@@ -734,7 +737,9 @@
     "./lib/network/gateway-delivery-receipt": "./src/lib/network/gateway-delivery-receipt.ts",
     "./db/repositories/app-pilot-redemptions": "./src/db/repositories/app-pilot-redemptions.ts",
     "./lib/services/agent-google-connector/calendar-sync-managed": "./src/lib/services/agent-google-connector/calendar-sync-managed.ts",
-    "./lib/services/agent-google-connector/calendar-sync-routes": "./src/lib/services/agent-google-connector/calendar-sync-routes.ts"
+    "./lib/services/agent-google-connector/calendar-sync-routes": "./src/lib/services/agent-google-connector/calendar-sync-routes.ts",
+    "./lib/auth/browser-sign-in": "./src/lib/auth/browser-sign-in.ts",
+    "./lib/auth/native-auth-callback-config": "./src/lib/auth/native-auth-callback-config.ts"
   },
   "scripts": {
     "build:linked-workspaces": "bun run --cwd ../../.. build:core",

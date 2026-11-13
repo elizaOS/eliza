@@ -25,6 +25,7 @@ import { users } from "@elizaos/cloud-shared/db/schemas/users";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import { drizzle } from "drizzle-orm/pglite";
+import { mobileAppAuthClients } from "../../shared/src/db/schemas/mobile-app-auth-clients";
 import { mobileAppAuthGrants } from "../../shared/src/db/schemas/mobile-app-auth-grants";
 
 const OWNER = "22222222-2222-4222-8222-222222222222";
@@ -82,7 +83,6 @@ const { MOBILE_APP_AUTH_RENEW_CREDENTIAL_MAX } = await import(
 );
 
 let clock = T0;
-let registry: Record<string, unknown>[] = [CLIENT];
 let limiter: "disabled" | "redis" | "missing" = "disabled";
 const counters = new Map<string, number>();
 
@@ -129,8 +129,6 @@ function env(overrides: Record<string, unknown> = {}): AppEnv["Bindings"] {
     ENVIRONMENT: "production",
     NODE_ENV: "test",
     ELIZA_MOBILE_APP_AUTH_ENABLED: "true",
-    ELIZA_MOBILE_APP_AUTH_APP_ID: "44444444-4444-4444-8444-4444444444ff",
-    ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: JSON.stringify(registry),
     ...(limiter === "disabled" && { RATE_LIMIT_DISABLED: "true" }),
     ...overrides,
   } as unknown as AppEnv["Bindings"];
@@ -191,7 +189,10 @@ interface Held {
 
 /** Exchange a code for an inactive credential, as `mobile/token` does. */
 async function exchange(code: string, attempt: ReturnType<typeof pkce>) {
-  const registration = resolveMobileAppAuthRegistration(env(), CLIENT.clientId);
+  const registration = await resolveMobileAppAuthRegistration(
+    env(),
+    CLIENT.clientId,
+  );
   const state = await mobileAppAuthGrantsRepository.findStateByCodeHash(
     sha256Hex(code),
   );
@@ -242,7 +243,10 @@ async function acknowledge(
   held: Held,
 ) {
   return await acknowledgeMobileAppAuthCredential({
-    registration: resolveMobileAppAuthRegistration(env(), CLIENT.clientId),
+    registration: await resolveMobileAppAuthRegistration(
+      env(),
+      CLIENT.clientId,
+    ),
     binding: {
       clientId: CLIENT.clientId,
       environment: "production",
@@ -336,7 +340,10 @@ async function renewInto(from: Held): Promise<Held> {
 async function signIn(): Promise<Held> {
   const attempt = pkce();
   const issued = await issueMobileAppAuthCode({
-    registration: resolveMobileAppAuthRegistration(env(), CLIENT.clientId),
+    registration: await resolveMobileAppAuthRegistration(
+      env(),
+      CLIENT.clientId,
+    ),
     userId: OWNER,
     organizationId: ORG,
     binding: attempt.binding,
@@ -391,6 +398,7 @@ beforeAll(async () => {
     apps,
     authEvents,
     mobileAppAuthGrants,
+    mobileAppAuthClients,
   ]) {
     const config = getTableConfig(table);
     for (const column of config.columns) {
@@ -429,11 +437,10 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   clock = T0;
-  registry = [CLIENT];
   limiter = "disabled";
   counters.clear();
   await pg.exec(
-    "TRUNCATE mobile_app_auth_grants, apps, api_keys, users, organizations, auth_events",
+    "TRUNCATE mobile_app_auth_grants, mobile_app_auth_clients, apps, api_keys, users, organizations, auth_events",
   );
   for (const id of [ORG, OTHER_ORG]) {
     await pg.query(
@@ -446,8 +453,17 @@ beforeEach(async () => {
     [OWNER, ORG],
   );
   await pg.query(
-    "INSERT INTO apps(id,is_active,is_approved) VALUES($1,true,true)",
-    [APP],
+    "INSERT INTO apps(id,is_active,is_approved,app_url,allowed_origins) VALUES($1,true,true,$2,$3)",
+    [
+      APP,
+      new URL(CLIENT.redirectUri).origin,
+      JSON.stringify([CLIENT.redirectUri]),
+    ],
+  );
+  await pg.query(
+    `INSERT INTO mobile_app_auth_clients(client_id, app_id, redirect_uri, enabled, created_at, updated_at)
+     VALUES($1, $2, $3, true, now(), now())`,
+    [CLIENT.clientId, APP, CLIENT.redirectUri],
   );
 });
 
@@ -684,17 +700,43 @@ test("a disabled, removed or re-registered client is refused with 401", async ()
     expect(answer.body.code).toBe("authentication_required");
   };
 
-  registry = [{ ...CLIENT, enabled: false }];
+  await pg.query(
+    "UPDATE mobile_app_auth_clients SET enabled=false WHERE client_id=$1",
+    [CLIENT.clientId],
+  );
   await refused();
-  registry = [];
+  await pg.query("DELETE FROM mobile_app_auth_clients WHERE client_id=$1", [
+    CLIENT.clientId,
+  ]);
   await refused();
-  registry = [
-    { ...CLIENT, redirectUri: "https://eliza.app/other/auth/callback" },
-  ];
+  await pg.query(
+    `INSERT INTO mobile_app_auth_clients(client_id, app_id, redirect_uri, enabled, created_at, updated_at)
+     VALUES($1, $2, $3, true, now(), now())`,
+    [CLIENT.clientId, APP, "https://eliza.app/other/auth/callback"],
+  );
+  // The new callback is a valid reviewed registration, but the existing
+  // credential still belongs to its original callback and must be refused.
+  await pg.query("UPDATE apps SET allowed_origins=$1::jsonb WHERE id=$2", [
+    JSON.stringify([
+      CLIENT.redirectUri,
+      "https://eliza.app/other/auth/callback",
+    ]),
+    APP,
+  ]);
   await refused();
-  registry = [{ ...CLIENT, appId: "44444444-4444-4444-8444-444444444445" }];
+  await pg.query(
+    "UPDATE mobile_app_auth_clients SET app_id=$1, redirect_uri=$2 WHERE client_id=$3",
+    [
+      "44444444-4444-4444-8444-444444444445",
+      CLIENT.redirectUri,
+      CLIENT.clientId,
+    ],
+  );
   await refused();
-  registry = [CLIENT];
+  await pg.query(
+    "UPDATE mobile_app_auth_clients SET app_id=$1, redirect_uri=$2 WHERE client_id=$3",
+    [APP, CLIENT.redirectUri, CLIENT.clientId],
+  );
   await refused({ ENVIRONMENT: "staging" });
 
   await pg.query("UPDATE apps SET is_active=false WHERE id=$1", [APP]);
@@ -706,12 +748,8 @@ test("a disabled, removed or re-registered client is refused with 401", async ()
   await refused();
   await pg.query("UPDATE apps SET is_approved=true WHERE id=$1", [APP]);
 
-  // A switched-off or unreadable server configuration is an outage to retry,
-  // never a revoked key.
-  for (const overrides of [
-    { ELIZA_MOBILE_APP_AUTH_ENABLED: "false" },
-    { ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: "{not json" },
-  ]) {
+  // A switched-off server configuration is an outage to retry, never a revoked key.
+  for (const overrides of [{ ELIZA_MOBILE_APP_AUTH_ENABLED: "false" }]) {
     const answer = await renew(first.secret, pkce().binding, {
       env: overrides,
     });

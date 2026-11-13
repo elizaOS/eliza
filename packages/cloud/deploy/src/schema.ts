@@ -98,24 +98,9 @@ export interface AdmissionComponent {
   readonly secrets: readonly string[];
 }
 
-export interface WebNativeAuthCallback {
-  readonly redirectUri: string;
-  readonly androidPackage: string;
-  readonly appName: string;
-  readonly browserSignIn?: {
-    readonly startPath: string;
-    readonly returnPath: string;
-    readonly storageKey: string;
-    readonly apiOrigin: string;
-    readonly tenant: string;
-  };
-}
-
 /** Cloudflare Pages front end. */
 export interface WebComponent {
   readonly projectName: string;
-  /** Rendered as `ELIZA_NATIVE_AUTH_CALLBACKS_JSON`. */
-  readonly nativeAuthCallbacks?: readonly WebNativeAuthCallback[];
   readonly vars?: Readonly<Record<string, string>>;
 }
 
@@ -202,7 +187,6 @@ export const WEB_DERIVED_VARS = [
   "VITE_STEWARD_TENANT_ID",
   "NEXT_PUBLIC_STEWARD_TENANT_ID",
   "VITE_ENVIRONMENT",
-  "ELIZA_NATIVE_AUTH_CALLBACKS_JSON",
 ] as const;
 
 /** Login Worker variables the renderer derives from typed fields. */
@@ -519,169 +503,6 @@ interface ComponentContext {
   readonly durableObjectTransfers: Record<string, string> | undefined;
 }
 
-function checkNativeAuthCallbacks(
-  check: Checker,
-  value: unknown,
-  path: string,
-  origins: DeploymentOrigins,
-): WebNativeAuthCallback[] {
-  const callbacks: WebNativeAuthCallback[] = [];
-  if (!Array.isArray(value)) {
-    check.fail(path, "must be an array");
-    return callbacks;
-  }
-  const pathPattern = /^\/[A-Za-z0-9/_~.-]+$/;
-  // Keep these rules aligned with the Pages selector; the app parity suite
-  // exercises both validators without adding an app runtime dependency here.
-  const reserved = (pathname: string) =>
-    /^\/(api|steward)(\/|$)/.test(pathname) ||
-    pathname.startsWith("/assets/") ||
-    [
-      "/.well-known/openid-configuration",
-      "/.well-known/oidc/jwks.json",
-      "/.well-known/assetlinks.json",
-    ].includes(pathname);
-  const seen = new Set<string>();
-  const storageKeys = new Set<string>();
-  value.forEach((entry, index) => {
-    const at = `${path}[${index}]`;
-    const callback =
-      check.object(entry, at, [
-        "redirectUri",
-        "androidPackage",
-        "appName",
-        "browserSignIn",
-      ]) ?? {};
-    const redirectUri = check.string(
-      callback.redirectUri,
-      `${at}.redirectUri`,
-      (uri) => {
-        try {
-          const url = new URL(uri);
-          return (
-            url.href === uri &&
-            url.protocol === "https:" &&
-            !url.username &&
-            !url.password &&
-            !url.search &&
-            !url.hash &&
-            !/[%;*\\]/.test(url.pathname) &&
-            !reserved(url.pathname)
-          );
-        } catch {
-          return false;
-        }
-      },
-    );
-    // A callback is served by this deployment's Pages project only.
-    let callbackOrigin = "";
-    let callbackPath = "";
-    try {
-      const callbackUrl = new URL(redirectUri);
-      callbackOrigin = callbackUrl.origin;
-      callbackPath = callbackUrl.pathname;
-    } catch {
-      // Reported above.
-    }
-    if (
-      callbackOrigin &&
-      callbackOrigin !== origins.web &&
-      callbackOrigin !== origins.app
-    ) {
-      check.fail(
-        `${at}.redirectUri`,
-        "must be on this environment's web or app origin",
-      );
-    }
-    if (redirectUri && seen.has(redirectUri))
-      check.fail(`${at}.redirectUri`, "repeats a callback route");
-    seen.add(redirectUri);
-    const androidPackage = check.string(
-      callback.androidPackage,
-      `${at}.androidPackage`,
-      /^[a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)+$/,
-    );
-    const appName = check.string(callback.appName, `${at}.appName`);
-    let browserSignIn: WebNativeAuthCallback["browserSignIn"];
-    if (callback.browserSignIn !== undefined) {
-      const signIn =
-        check.object(callback.browserSignIn, `${at}.browserSignIn`, [
-          "startPath",
-          "returnPath",
-          "storageKey",
-          "apiOrigin",
-          "tenant",
-        ]) ?? {};
-      const pathTest = (value: string) =>
-        pathPattern.test(value) &&
-        !value.startsWith("//") &&
-        new URL(value, "https://callback.invalid").pathname === value &&
-        !reserved(value);
-      browserSignIn = {
-        startPath: check.string(
-          signIn.startPath,
-          `${at}.browserSignIn.startPath`,
-          pathTest,
-        ),
-        returnPath: check.string(
-          signIn.returnPath,
-          `${at}.browserSignIn.returnPath`,
-          pathTest,
-        ),
-        storageKey: check.string(
-          signIn.storageKey,
-          `${at}.browserSignIn.storageKey`,
-          /^[A-Za-z0-9:._-]{1,128}$/,
-        ),
-        apiOrigin: check.string(
-          signIn.apiOrigin,
-          `${at}.browserSignIn.apiOrigin`,
-          (value) => isOrigin(value) && new URL(value).protocol === "https:",
-        ),
-        tenant: check.string(
-          signIn.tenant,
-          `${at}.browserSignIn.tenant`,
-          /^[A-Za-z0-9_-]{1,64}$/,
-        ),
-      };
-      if (browserSignIn.apiOrigin && browserSignIn.apiOrigin !== origins.api) {
-        check.fail(
-          `${at}.browserSignIn.apiOrigin`,
-          "must be this environment's api origin",
-        );
-      }
-      const start = `${callbackOrigin}${browserSignIn.startPath}`;
-      if (seen.has(start))
-        check.fail(`${at}.browserSignIn.startPath`, "repeats a callback route");
-      seen.add(start);
-      const storageKey = `${callbackOrigin}:${browserSignIn.storageKey}`;
-      if (storageKeys.has(storageKey))
-        check.fail(
-          `${at}.browserSignIn.storageKey`,
-          "repeats a storage key on this callback origin",
-        );
-      storageKeys.add(storageKey);
-    }
-    const callbackSuffix = "/auth/callback";
-    if (callbackPath.endsWith(callbackSuffix)) {
-      const billingReturn = `${callbackOrigin}${callbackPath.slice(0, -callbackSuffix.length)}/billing/return`;
-      if (seen.has(billingReturn))
-        check.fail(
-          `${at}.redirectUri`,
-          "repeats a derived billing return route",
-        );
-      seen.add(billingReturn);
-    }
-    callbacks.push({
-      redirectUri,
-      androidPackage,
-      appName,
-      ...(browserSignIn ? { browserSignIn } : {}),
-    });
-  });
-  return callbacks;
-}
-
 function checkComponents(
   check: Checker,
   value: unknown,
@@ -866,12 +687,7 @@ function checkComponents(
 
   if (input.web !== undefined) {
     const at = `${path}.web`;
-    const web =
-      check.object(input.web, at, [
-        "projectName",
-        "nativeAuthCallbacks",
-        "vars",
-      ]) ?? {};
+    const web = check.object(input.web, at, ["projectName", "vars"]) ?? {};
     const vars = checkVars(check, web.vars, `${at}.vars`, WEB_DERIVED_VARS);
     components.web = {
       projectName: check.string(
@@ -879,16 +695,6 @@ function checkComponents(
         `${at}.projectName`,
         /^[a-z0-9][a-z0-9-]{0,57}$/,
       ),
-      ...(web.nativeAuthCallbacks !== undefined
-        ? {
-            nativeAuthCallbacks: checkNativeAuthCallbacks(
-              check,
-              web.nativeAuthCallbacks,
-              `${at}.nativeAuthCallbacks`,
-              context.origins,
-            ),
-          }
-        : {}),
       ...(vars ? { vars } : {}),
     };
   }

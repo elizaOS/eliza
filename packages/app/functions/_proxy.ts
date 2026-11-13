@@ -20,7 +20,6 @@ export interface PagesProxyEnv {
   /** Unset or `eliza` is the eliza.app deployment; anything else is a product Cloud. */
   CLOUD_DEPLOYMENT_ID?: string;
   API_UPSTREAM?: string;
-  ELIZA_NATIVE_AUTH_CALLBACKS_JSON?: string;
   API_WORKER?: {
     fetch(request: Request): Promise<Response>;
   };
