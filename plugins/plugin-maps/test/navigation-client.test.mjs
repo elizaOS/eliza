@@ -356,35 +356,3 @@ test("route progress follows the short segment across the date line", () => {
   assert.ok(halfway.offRouteMeters < 1, `off route: ${halfway.offRouteMeters}`);
   assert.ok(Math.abs(halfway.remainingSeconds - 100) < 0.01);
 });
-
-test("a retired location cleanup failure cannot overwrite a newer accepted fix", async () => {
-  const cleanup = Promise.withResolvers();
-  let receive;
-  let stops = 0;
-  const controller = new MapsController(
-    config,
-    undefined,
-    new SavedPlaces("test", storage()),
-    {
-      awaitingPermission: () => false,
-      start: async (_oneShot, onFix) => {
-        receive = onFix;
-      },
-      stop: () => (++stops === 1 ? cleanup.promise : Promise.resolve()),
-    },
-  );
-  controller.cancelLocate();
-  await controller.locate();
-  receive({
-    coordinate: north(150),
-    accuracyMeters: 8,
-    timestamp: Date.now(),
-    precision: "precise",
-  });
-  assert.equal(controller.snapshot().position.phase, "ready");
-  cleanup.reject(new Error("old watch cleanup failed"));
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(controller.snapshot().position.phase, "ready");
-  assert.deepEqual(controller.snapshot().origin, north(150));
-  await controller.leave();
-});

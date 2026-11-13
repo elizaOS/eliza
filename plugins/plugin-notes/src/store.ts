@@ -471,21 +471,16 @@ export class NotesStore {
           raw,
         );
       } catch (error) {
-        throw this.uncertainEncryptedWriteFailure(error);
+        throw this.writeFailure(error);
       }
       if (!saved)
         throw new ElizaError("Notes changed in another view.", {
           code: "NOTES_EDIT_CONFLICT",
           severity: "ephemeral",
         });
-      let confirmed: string | null;
-      try {
-        confirmed = await this.encryptedPort.read();
-      } catch (error) {
-        throw this.uncertainEncryptedWriteFailure(error);
-      }
+      const confirmed = await this.encryptedPort.read();
       if (confirmed !== raw)
-        throw this.uncertainEncryptedWriteFailure(
+        throw this.writeFailure(
           new Error("Encrypted Notes commit readback is uncertain"),
         );
       this.shared.persistedRaw = raw;
@@ -638,8 +633,9 @@ export class NotesStore {
   }
 
   /**
-   * A failed local atomic write retains the cached document. Encrypted-port
-   * acknowledgement uncertainty also fences the cache in the helper below.
+   * A failed atomic write leaves the published file and the cached document
+   * unchanged, so the store stays ready: the caller gets the typed failure and
+   * the next read or write works when the cause is gone.
    */
   private writeFailure(error: unknown): ElizaError {
     return toStoreError(
@@ -648,16 +644,5 @@ export class NotesStore {
       "Notes state could not be written atomically.",
       this.filePath,
     );
-  }
-
-  /** A port may commit before its acknowledgement or readback fails. The old
-   * cache is then unknown, including any cleanup receipts. Fence every shared
-   * view until all handles close and an authoritative reopen loads the bytes.
-   */
-  private uncertainEncryptedWriteFailure(error: unknown): ElizaError {
-    const failure = this.writeFailure(error);
-    this.shared.failure = failure;
-    this.shared.phase = "error";
-    return failure;
   }
 }

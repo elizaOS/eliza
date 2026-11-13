@@ -617,7 +617,6 @@ export class EmbeddedWorkflowService extends Service {
    * the normal worker recovery and is never replayed.
    */
   private async settleLateScheduledStart(execution: WorkflowExecution): Promise<boolean> {
-    if (execution.mode !== 'trigger' && execution.mode !== 'schedule') return false;
     const occurrence = (execution.input as Record<string, unknown> | undefined)?.[
       TYPED_SCHEDULE_INPUT
     ] as { scheduledAt?: unknown } | undefined;
@@ -2032,7 +2031,6 @@ export class EmbeddedWorkflowService extends Service {
           ),
         };
       }
-      const startedAt = nowIso();
       const pending: WorkflowExecution = {
         id: randomUUID(),
         workflowId: id,
@@ -2041,8 +2039,7 @@ export class EmbeddedWorkflowService extends Service {
         mode: 'manual',
         status: 'queued',
         finished: false,
-        startedAt,
-        ...(workflow.metadata?.[PHONE_SPEC_KEY] ? { calendarAnchorAt: startedAt } : {}),
+        startedAt: nowIso(),
         input: snapshot,
         events: [],
         approvals: [],
@@ -2244,28 +2241,19 @@ export class EmbeddedWorkflowService extends Service {
               ...(typed.skippedLocalTime ? { skippedLocalTime: typed.skippedLocalTime } : {}),
             }
           : missed;
-      const startedAt = nowIso();
-      const mode = options.mode ?? 'manual';
-      const calendarAnchorAt =
-        typed?.status === 'ready'
-          ? typed.scheduledAt
-          : (mode === 'manual' || mode === 'chat') && workflow.metadata?.[PHONE_SPEC_KEY]
-            ? startedAt
-            : undefined;
       const pending: WorkflowExecution = {
         id: randomUUID(),
         workflowId: id,
         workflowVersionId: workflow.versionId,
         workflowName: workflow.name,
-        mode,
+        mode: options.mode ?? 'manual',
         status: settled ? 'finished' : 'queued',
         finished: !!settled,
         ...(settled ? { stoppedAt: nowIso(), output: settled } : {}),
         ...(settled?.status === 'missed'
           ? { missedOccurrenceAt: String(settled.scheduledAt) }
           : {}),
-        startedAt,
-        ...(calendarAnchorAt ? { calendarAnchorAt } : {}),
+        startedAt: nowIso(),
         input: cloneJson(
           hosted
             ? { ...options.input, ...options.triggerData, hostedDigest: hosted }
@@ -2325,12 +2313,7 @@ export class EmbeddedWorkflowService extends Service {
     // here would stall every other scheduled task. Results reach the owner as receipts
     // and digest results.
     const input = pending.input as Record<string, unknown> | undefined;
-    if (
-      ((pending.mode === 'trigger' || pending.mode === 'schedule') &&
-        input?.[TYPED_SCHEDULE_INPUT]) ||
-      input?.hostedDigest
-    )
-      return pending;
+    if (input?.[TYPED_SCHEDULE_INPUT] || input?.hostedDigest) return pending;
     const completed = await running;
     if (completed.status === 'failed' && options.throwOnError !== false) {
       throw new WorkflowApiError(

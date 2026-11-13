@@ -333,33 +333,6 @@ export function validateCalendarAvailabilityResult(
   };
 }
 
-// ---- Notes list filter ----
-export const NOTES_LIST_FILTER_CAPABILITY = "notes.list-filter.v1";
-
-/** The canonical Notes list publishes an opaque revision only while it owns presentation. */
-export function canonicalNotesListContextAllowed(context: {
-  view: string;
-  sensitive?: boolean;
-  selectedObject?: { kind: string; id: string; revision?: string } | null;
-}): boolean {
-  const selection = context.selectedObject;
-  return (
-    !context.sensitive &&
-    context.view === "notes" &&
-    selection?.kind === "canonical-note-source" &&
-    selection.id === "notes" &&
-    !(
-      "accountId" in selection ||
-      "sourceRevision" in selection ||
-      "occurrenceId" in selection ||
-      "timingVersion" in selection
-    ) &&
-    typeof selection.revision === "string" &&
-    /^(0|[1-9]\d*)$/.test(selection.revision) &&
-    Number.isSafeInteger(Number(selection.revision))
-  );
-}
-
 // ---- Notes search ----
 export const NOTES_SEARCH_CAPABILITY = "notes.search.v1";
 export const NOTES_TITLES_LIMIT = 50;

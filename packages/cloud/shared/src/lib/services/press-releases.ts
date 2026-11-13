@@ -201,15 +201,52 @@ export class PressReleaseService {
     const provider = cleanText(input.provider);
     if (!provider) return { ok: false, error: "Provider is required" };
 
-    return pressReleasesRepository.recordSubmission({
+    if (input.idempotencyKey) {
+      const existing = await pressReleasesRepository.findDistributionByIdempotencyKey(
+        input.idempotencyKey,
+      );
+      if (existing) {
+        if (existing.organization_id !== input.organizationId) {
+          return { ok: false, error: "Idempotency key already used" };
+        }
+        const release = await this.getRelease(existing.press_release_id, input.organizationId);
+        return { ok: true, release, distribution: existing };
+      }
+    }
+
+    const release = await this.getRelease(input.releaseId, input.organizationId);
+    if (!release) return { ok: false, error: "Press release not found" };
+    if (!["ready", "submitted"].includes(release.status)) {
+      return { ok: false, error: "Press release is not ready for submission" };
+    }
+
+    const distribution = await pressReleasesRepository.createDistribution({
       organization_id: input.organizationId,
       press_release_id: input.releaseId,
       provider,
       external_distribution_id: input.externalDistributionId ?? null,
+      status: "submitted",
       idempotency_key: input.idempotencyKey ?? null,
       request_payload: input.requestPayload ?? {},
       provider_response: input.providerResponse ?? {},
+      submitted_at: new Date(),
     });
+
+    const submittedRelease =
+      release.status === "submitted"
+        ? release
+        : await pressReleasesRepository.transitionRelease(
+            input.releaseId,
+            input.organizationId,
+            "ready",
+            "submitted",
+            {
+              submitted_at: new Date(),
+            },
+          );
+    return submittedRelease
+      ? { ok: true, release: submittedRelease, distribution }
+      : { ok: false, error: "Submission could not be finalized" };
   }
 
   async markDistributed(input: {

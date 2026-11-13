@@ -1,5 +1,4 @@
 import { readFileSync } from "node:fs";
-import { NOTES_LIST_FILTER_CAPABILITY } from "@elizaos/contracts";
 import { describe, expect, it } from "vitest";
 import {
   deviceOperationSupportedByCapabilities,
@@ -37,7 +36,6 @@ describe("notes organize contract", () => {
   it("recognises exactly the organise operation types", () => {
     expect([...NOTES_ORGANIZE_TYPES]).toEqual([
       "notes_filter",
-      "notes_list_filter",
       "notes_move",
       "notes_folder_create",
       "notes_restore",
@@ -45,7 +43,6 @@ describe("notes organize contract", () => {
     ]);
     expect([...NOTES_ORGANIZE_DIRECT_TYPES]).toEqual([
       "notes_filter",
-      "notes_list_filter",
       "notes_record",
     ]);
     for (const type of NOTES_ORGANIZE_TYPES)
@@ -98,28 +95,6 @@ describe("notes organize contract", () => {
     expect(invalid({ type: "notes_filter", text: "a", limit: 5 })).toThrow(
       "Unexpected Notes field",
     );
-  });
-
-  it("admits only text and kind on the canonical list capability", () => {
-    expect(
-      valid({ type: "notes_list_filter", text: " milk ", kind: "list" }),
-    ).toEqual({
-      type: "notes_list_filter",
-      text: "milk",
-      kind: "list",
-    });
-    for (const operation of [
-      { type: "notes_list_filter" },
-      { type: "notes_list_filter", folder: "Work", kind: "list" },
-      { type: "notes_list_filter", kind: "list", noteId: "n-1" },
-    ])
-      expect(invalid(operation)).toThrow();
-    for (const type of NOTES_ORGANIZE_TYPES)
-      expect(
-        deviceOperationSupportedByCapabilities(type, [
-          NOTES_LIST_FILTER_CAPABILITY,
-        ]),
-      ).toBe(type === "notes_list_filter");
   });
 
   it("validates folder names without truncating", () => {
@@ -231,9 +206,7 @@ describe("notes organize contract", () => {
     expect(NOTES_ORGANIZE_CAPABILITY).toBe("notes.organize.v1");
     const full = ["notes.local-record.v1", NOTES_ORGANIZE_CAPABILITY];
     for (const type of NOTES_ORGANIZE_TYPES) {
-      expect(deviceOperationSupportedByCapabilities(type, full)).toBe(
-        type !== "notes_list_filter",
-      );
+      expect(deviceOperationSupportedByCapabilities(type, full)).toBe(true);
       expect(
         deviceOperationSupportedByCapabilities(type, ["notes.local-record.v1"]),
       ).toBe(false);

@@ -35,6 +35,7 @@ type GoogleCalendarApiEvent = {
   iCalUID?: string;
   recurringEventId?: string;
   created?: string;
+  updated?: string;
   start?: GoogleCalendarEventDate;
   end?: GoogleCalendarEventDate;
   organizer?: {
@@ -285,6 +286,7 @@ function normalizeGoogleCalendarEvent(
       iCalUID: event.iCalUID?.trim() || null,
       recurringEventId: event.recurringEventId?.trim() || null,
       createdAt: event.created?.trim() || null,
+      updatedAt: event.updated?.trim() || null,
     },
   };
 }
@@ -312,7 +314,7 @@ export async function fetchManagedGoogleCalendarFeed(args: {
     timeMin: args.timeMin,
     timeMax: args.timeMax,
     fields:
-      "nextPageToken,items(id,etag,status,summary,description,location,htmlLink,hangoutLink,iCalUID,recurringEventId,created,start,end,organizer(email,displayName,self),attendees(email,displayName,responseStatus,self,organizer,optional),conferenceData(entryPoints(uri)))",
+      "nextPageToken,items(id,etag,status,summary,description,location,htmlLink,hangoutLink,iCalUID,recurringEventId,created,updated,start,end,organizer(email,displayName,self),attendees(email,displayName,responseStatus,self,organizer,optional),conferenceData(entryPoints(uri)))",
     timeZone: args.timeZone,
   });
 
@@ -536,7 +538,7 @@ async function fetchManagedGoogleCalendarEvent(args: {
 }): Promise<ManagedGoogleCalendarEvent | null> {
   const params = new URLSearchParams({
     fields:
-      "id,etag,status,summary,description,location,htmlLink,hangoutLink,iCalUID,recurringEventId,created,start,end,organizer(email,displayName,self),attendees(email,displayName,responseStatus,self,organizer,optional),conferenceData(entryPoints(uri))",
+      "id,etag,status,summary,description,location,htmlLink,hangoutLink,iCalUID,recurringEventId,created,updated,start,end,organizer(email,displayName,self),attendees(email,displayName,responseStatus,self,organizer,optional),conferenceData(entryPoints(uri))",
   });
   const response = await googleFetch({
     organizationId: args.organizationId,

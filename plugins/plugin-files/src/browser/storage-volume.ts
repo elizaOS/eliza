@@ -173,12 +173,8 @@ export class BrowserStorageVolume {
       ),
     };
   }
-  /** Every visible file, bounded (`truncated` when folders were left unread). Hidden folders
-   * (the trash included) are skipped. */
-  private async walk(): Promise<{
-    entries: StorageEntry[];
-    truncated: boolean;
-  }> {
+  /** Every visible file, bounded. Hidden folders (the trash included) are skipped. */
+  private async walk(): Promise<StorageEntry[]> {
     const out: StorageEntry[] = [],
       queue: [string, string][] = [["root", ""]];
     while (queue.length && out.length < WALK_MAX) {
@@ -191,11 +187,9 @@ export class BrowserStorageVolume {
         else out.push(this.row(p, e));
       }
     }
-    return { entries: out, truncated: queue.length > 0 };
+    return out;
   }
-  async category(
-    input: unknown,
-  ): Promise<{ entries: StorageEntry[]; truncated?: boolean }> {
+  async category(input: unknown): Promise<{ entries: StorageEntry[] }> {
     const category = CATEGORIES.find(({ id }) => id === input)?.id;
     if (!category) throw Error("Unknown category");
     if (category === "downloads") {
@@ -210,48 +204,48 @@ export class BrowserStorageVolume {
         throw error;
       }
     }
-    const { entries, truncated } = await this.walk();
     return {
-      entries: entries
+      entries: (await this.walk())
         .filter((e) => inCategory(category, e))
         .sort((a, b) => b.modified - a.modified),
-      truncated,
     };
   }
   /** Visible folders under the requested path, bounded like the file walk. */
-  private async walkFolders(under: string): Promise<{
-    entries: StorageEntry[];
-    truncated: boolean;
-  }> {
+  private async walkFolders(under: string): Promise<StorageEntry[]> {
     const start = validPath(under, true);
     let id: string;
     try {
       id = await this.folderId(start);
     } catch (error) {
-      if (error instanceof Missing) return { entries: [], truncated: false };
+      if (error instanceof Missing) return [];
       throw error;
     }
     const out: StorageEntry[] = [],
       queue: [string, string][] = [[id, start]];
     let visited = 0;
     for (const [folder, path] of queue) {
-      if (visited++ >= WALK_MAX) return { entries: out, truncated: true };
+      if (visited++ >= WALK_MAX) break;
       for (const entry of await this.visible(folder)) {
         if (!entry.directory) continue;
         const child = joinPath(path, entry.name);
         queue.push([entry.id, child]);
         out.push(this.row(child, entry, (await this.visible(entry.id)).length));
-        if (out.length >= WALK_MAX) return { entries: out, truncated: true };
+        if (out.length >= WALK_MAX) return out;
       }
     }
-    return { entries: out, truncated: false };
+    return out;
   }
   async query(
     input: { folders?: boolean; folder?: string } = {},
-  ): Promise<{ entries: StorageEntry[]; truncated: boolean }> {
-    return input.folders === true
-      ? this.walkFolders(typeof input.folder === "string" ? input.folder : "")
-      : this.walk();
+  ): Promise<{ entries: StorageEntry[] }> {
+    return {
+      entries:
+        input.folders === true
+          ? await this.walkFolders(
+              typeof input.folder === "string" ? input.folder : "",
+            )
+          : await this.walk(),
+    };
   }
 
   async createFolder(
@@ -667,14 +661,10 @@ export class BrowserStorageVolume {
   async share(paths: unknown): Promise<Status> {
     if (!Array.isArray(paths)) throw Error("Invalid selection");
     const items = [];
-    for (const path of paths) {
+    for (const path of paths.slice(0, 100)) {
       const row = await this.entry(validPath(path));
-      if (!row)
-        return {
-          status: "missing",
-          message: "A selected item changed. Refresh and select again.",
-        };
-      items.push({ id: row.id, expectedRevision: row.revision });
+      if (row && !row.directory)
+        items.push({ id: row.id, expectedRevision: row.revision });
     }
     if (!items.length)
       return { status: "unsupported", message: "Select files to share." };
@@ -756,12 +746,12 @@ export class BrowserStorageVolume {
         case "storageList":
           return { status: "ready", ...(await this.list(input.path ?? "")) };
         case "storageCategory": {
-          const { entries, truncated } = await this.category(input.category);
+          const { entries } = await this.category(input.category);
           return {
             status: "ready",
             ...(input.countOnly === true
               ? { count: entries.length }
-              : { entries, ...(truncated ? { truncated } : {}) }),
+              : { entries }),
           };
         }
         case "storageQuery":

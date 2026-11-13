@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-calendar",
-  "version": "2.0.5",
+  "version": "2.0.4",
   "description": "Apple EventKit Calendar and an explicit host-configured Android CalendarProvider adapter.",
   "keywords": [
     "calendar",
@@ -72,7 +72,7 @@
   },
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
-    "rollup": "^4.68.0",
+    "rollup": "^4.65.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3"
   },

@@ -170,12 +170,6 @@ An authenticated installation can read or revise its enabled-view subset at `/ap
 
 Run `vitest run --config vitest.device-actions.config.ts` from this package for real HTTP/SQL device lifecycle, workflow-owner dispatch/receipt and additive-migration scenarios.
 
-Device executors may throw `DeviceActionNotStarted` only before an effect. The
-coordinator owns failed journal records' `result.dispatch` marker; hosts must
-preserve it through journal finish, get and list. Display copy grants no new
-no-effect authority. Exact unmarked fixed no-call records from prior coordinator
-versions retain their existing recovery contract.
-
 The package root exports the memory, knowledge-delivery and notification actions.
 Hosts explicitly compose them; importing the package does not install those
 actions or change an existing host's selected behavior.

@@ -47,13 +47,6 @@ test("permitted-library identities, video copy rules and host placement", (t) =>
   );
 });
 
-test("photo crop keeps the fixed centered crop or a chosen rectangle", (t) => {
-  assert.match(
-    run(t, ["PhotoCrop"], "PhotoCropTest"),
-    /^\d+ assertions passed/,
-  );
-});
-
 test("exact selected-photo copies, document bytes, source references and PDF bounds", (t) => {
   assert.match(
     run(

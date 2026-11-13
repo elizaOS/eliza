@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { withCalendarSearchAuthorization } from "../../plugin-calendar/src/search-filter-evidence.ts";
 /**
  * Drives the registered CALENDAR action through the canonical executor over
  * real PGlite calendar, task, and approval stores. Only the remote ICS and
@@ -155,49 +154,26 @@ async function invoke(
   replyOwner?: "planner",
 ): Promise<{ delivered: Content[]; result: ActionResult }> {
   const delivered: Content[] = [];
-  const execute = () =>
-    executePlannedToolCall(
-      runtime,
-      {
-        message: actor,
-        replyOwner,
-        userRoles: ["OWNER"],
-        activeContexts: ["calendar"],
-        callback: async (content) => {
-          delivered.push(content);
-          return [];
-        },
+  const result = await executePlannedToolCall(
+    runtime,
+    {
+      message: actor,
+      replyOwner,
+      userRoles: ["OWNER"],
+      activeContexts: ["calendar"],
+      callback: async (content) => {
+        delivered.push(content);
+        return [];
       },
-      { name: actionName, params },
-      {
-        actions: promoteSubactionsToActions(
-          calendarAction,
-          calendarActionPromotionOptions,
-        ).filter((action) => action.name === actionName),
-      },
-    );
-  const query = typeof params.query === "string" ? params.query : "";
-  const text = String(actor.content.text ?? "");
-  const at = query ? text.toLowerCase().indexOf(query.toLowerCase()) : -1;
-  const result =
-    actionName === "CALENDAR_SEARCH_EVENTS" && at >= 0
-      ? await withCalendarSearchAuthorization(
-          {
-            current: actor,
-            agentId: String(runtime.agentId),
-            recent: [],
-            filterEvidence: [
-              {
-                query: text.slice(at, at + query.length),
-                quote: text.slice(at, at + query.length),
-                origin: "current",
-              },
-            ],
-            signal: new AbortController().signal,
-          },
-          execute,
-        )
-      : await execute();
+    },
+    { name: actionName, params },
+    {
+      actions: promoteSubactionsToActions(
+        calendarAction,
+        calendarActionPromotionOptions,
+      ).filter((action) => action.name === actionName),
+    },
+  );
   if (directReply) {
     expect(delivered, JSON.stringify(result)).toHaveLength(1);
     expect(delivered[0]).toMatchObject({
@@ -749,8 +725,6 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
         title: "Tomorrow upcoming event",
         startAt: "2028-09-25T18:00:00.000Z",
       });
-      expect(JSON.stringify(next.promptData)).toContain("11:00 AM");
-      expect(JSON.stringify(next.promptData)).toContain("PDT");
       expect(next.effectReceipts?.[0]?.operation).not.toBe(
         "calendar.feed.read",
       );
@@ -795,16 +769,13 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
         false,
         actionName,
       );
-      expect(result.success, JSON.stringify(result)).toBe(true);
+      expect(result.success).toBe(true);
       expect(result.effectReceipts?.[0]).toMatchObject({
         outcome: "noop",
         resource: { kind: "calendar.feed" },
       });
       expect(JSON.stringify(result.data)).toContain("School planning meeting");
       expect(JSON.stringify(result.data)).toContain(EVENT_START);
-      expect(result.promptDataMode).toBe("replace-data");
-      expect(JSON.stringify(result.promptData)).toContain("displayTime");
-      expect(JSON.stringify(result.promptData)).toContain("5:00 PM");
     },
   );
 

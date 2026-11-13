@@ -69,75 +69,8 @@
     "status": "partial",
     "limitations": [
       "One key, two writers, one external reset and one reopened reader. Browser readwrite transaction ordering and fresh document receipts are assumptions. The draft caller can receive AbortError after the raw write commits.",
-      "The mandatory Chromium hook runs 12 real draft and IndexedDB adapter groups across tabs. It checks exact receipt replacement, staged abort, retry, late cancellation and reload. The same hook runs five mixed controller groups and two Chromium restart groups. Firefox and WebKit remain available through the direct browser command.",
+      "The owning browser command runs the real draft and IndexedDB adapters across tabs. It checks exact receipt replacement, staged abort, retry, late cancellation and reload. The strict Quint lane has no installed browser engine and does not launch this command.",
       "Disk crash and eviction, upgrades, Web Locks editing, raw byte restoration outside the draft protocol and generated trace replay are separate. Native and transactional JSON draft adapters need independent persistence coverage."
-    ]
-  },
-  {
-    "id": "BrowserDraftHoldConsume",
-    "model": "packages/ui/quint/BrowserDraftStorage.qnt",
-    "sources": [
-      "packages/ui/src/state/durable-draft-controller.ts",
-      "packages/ui/src/state/durable-draft.ts",
-      "packages/ui/src/platform/browser-document-store.ts",
-      "packages/ui/src/platform/__e2e__/run-browser-document-store.mjs"
-    ],
-    "invariants": [
-      "HeldSendOwnsReceipt",
-      "SameKeyConsumeIsRefused",
-      "FreshControllerOffersMarkForReview",
-      "PendingRestoreBlocksRelease",
-      "ReleasePreservesDrafts"
-    ],
-    "status": "partial",
-    "limitations": [
-      "One held send and one consume over at most two keys. Includes a consume after the send mark, a consume queued behind the hold claim, a fresh second-tab read and a non-dispatch release waiting for a separate form restore.",
-      "The mandatory Chromium hook drives the exported controller and real IndexedDB adapter. The tests check exact marked bytes and receipt identity, fresh-controller review and the distinct durable outcomes of release and consume.",
-      "The model assumes successful writes and a host that honors the restore predicate. Longer mixed histories, same-key peer autosave, crashes during restore, external writes and host binding authorization remain outside this case."
-    ]
-  },
-  {
-    "id": "BrowserDraftCrossTabClaims",
-    "model": "packages/ui/quint/BrowserDraftStorage.qnt",
-    "sources": [
-      "packages/ui/src/state/durable-draft-controller.ts",
-      "packages/ui/src/state/durable-draft.ts",
-      "packages/ui/src/platform/browser-document-store.ts",
-      "packages/ui/src/platform/__e2e__/run-browser-document-store.mjs"
-    ],
-    "invariants": [
-      "InitialReceiptHasOneWinner",
-      "StaleConsumePreservesMarkedReceipt",
-      "StaleHoldPreservesClearReceipt",
-      "RecoveryRequiresConfirmation"
-    ],
-    "status": "partial",
-    "limitations": [
-      "Two real Chromium tabs open one draft before either writes. The bounded case checks both initial receipt winners. A stale consume preserves a held send mark. A stale hold preserves a clear awaiting host acknowledgement.",
-      "After non-dispatch release, a read-only retry retains the losing consume for review. Explicit keep-current confirmation and flush preserve the exact draft bytes under a new IndexedDB document receipt.",
-      "The case assumes fresh storage writes succeed. It excludes more than two controllers, competing review choices, third-party writes, concurrent retries, process crashes and the host's binding authorization."
-    ]
-  },
-  {
-    "id": "BrowserDraftReleaseReload",
-    "model": "packages/ui/quint/BrowserDraftStorage.qnt",
-    "sources": [
-      "packages/ui/src/state/durable-draft-controller.ts",
-      "packages/ui/src/state/durable-draft.ts",
-      "packages/ui/src/platform/browser-document-store.ts",
-      "packages/ui/src/platform/__e2e__/run-browser-document-store.mjs"
-    ],
-    "invariants": [
-      "UnconfirmedReleaseRetainsMark",
-      "MarkedReloadOffersReview",
-      "ConfirmedReleaseSurvivesReload",
-      "ReviewedCopyHasNewReceipt"
-    ],
-    "status": "partial",
-    "limitations": [
-      "One held send and one non-dispatch release. The cut is after host apply before acknowledgement or after a confirmed release. The reopened controller reads the prior exact receipt. A marked row requires explicit review; a confirmed release restores the merged draft directly.",
-      "Chromium closes the original tab and browser, then opens a new process with the same isolated profile and origin. The test checks exact IndexedDB receipt and bytes, an explicit restore and a subsequent page reload.",
-      "Unconfirmed typing is volatile. Power loss, shutdown during a queued write, consume rollback, competing writers and host binding authorization remain outside this case."
     ]
   },
   {
@@ -301,8 +234,8 @@
     "invariants": [],
     "status": "unmodeled",
     "limitations": [
-      "The finite controller cases include one pending keep-current attempt, retired consume recovery, bounded hold/consume interactions and Chromium profile restart during an unacknowledged or confirmed release. Residual obligations include longer mixed hold/commit/release/consume histories, more than two failed owners or concurrent send rounds, conflicting terminal settlements, and loss during other pending host restoration or consume rollback paths.",
-      "Other storage adapters, storage failure during abrupt process or system loss, and the host-owned authenticated owner/agent/conversation binding contract require independent implementation evidence. The controller accepts an opaque binding string."
+      "Reviewed residual obligations include arbitrary mixed hold/commit/release/consume histories, more than two failed owners or concurrent send rounds, conflicting terminal settlements, and crashes during pending host restoration or consume rollback. Ten finite controller cases cover the reviewed protocols, including one pending keep-current attempt and retired consume recovery.",
+      "Storage-adapter atomicity, crash durability and the host-owned authenticated owner/agent/conversation binding contract require their own implementation evidence. The controller accepts an opaque binding string and is not the authentication authority."
     ]
   },
   {

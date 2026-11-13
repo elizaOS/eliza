@@ -201,11 +201,6 @@ runs:
           || "$python_bin" -m pip install --user setuptools \
           || "$python_bin" -m pip install --break-system-packages setuptools
 
-    - name: Configure hosted Ubuntu package archive
-      if: ${{ runner.os == 'Linux' }}
-      shell: bash
-      run: bash packages/scripts/github/configure-hosted-apt.sh
-
     # unattended-upgrades runs continuously on the persistent self-hosted
     # runners, so an apt-get that starts while it holds the dpkg frontend lock
     # aborts at once with exit 100 and fails a lane whose only fault was timing.

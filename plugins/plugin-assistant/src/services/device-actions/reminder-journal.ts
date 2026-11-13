@@ -6,7 +6,7 @@
  * clears it only after a readback or a durable receipt proves the outcome. Nothing
  * here schedules, completes or cancels a reminder: reconciliation only reads the
  * host's reminder rows and receipts, so an unknown outcome stays journaled instead
- * of being retried. Only the owner can discard an unconfirmed request.
+ * of being retried.
  *
  * Hosts supply storage (`ReminderJournalStore`), which must apply an edit as one
  * compare-and-set and fail when the stored value changed underneath it.
@@ -251,21 +251,6 @@ export function createReminderCreationJournal(
     discardUndispatched: (row: ReminderCreation) => edit(row.id, row, null),
     check,
     /**
-     * The owner discards a creation that no readback confirmed. Call this only
-     * after the owner saw a warning: the request is not cancelled, and the
-     * reminder can still appear later. A confirmed creation is kept; the
-     * result is then false.
-     */
-    async discardUnconfirmed(id: string): Promise<boolean> {
-      if ((await check(id)) === "found") return false;
-      const row = (await all())[id];
-      // A concurrent readback may have confirmed this creation while the
-      // first check was reading an older native snapshot.
-      if (!row || row.state === "found") return false;
-      await edit(id, row, null);
-      return true;
-    },
-    /**
      * Retire a pending creation only after a definite refusal AND a readback
      * that confirms the ID is absent. A saved row is never retired here.
      */
@@ -443,17 +428,6 @@ export function createReminderActionJournal(ports: ReminderActionJournalPorts) {
     discardUndispatched: (input: PendingReminderAction) =>
       edit(input.operationId, input, null),
     acknowledge,
-    /**
-     * The owner discards an action that no receipt confirmed. Call this only
-     * after the owner saw a warning: the action is not cancelled, and it can
-     * still take effect later. The receipt is not read and nothing is executed.
-     */
-    async discardUnconfirmed(operationId: string): Promise<boolean> {
-      const input = (await all())[operationId];
-      if (!input) return false;
-      await edit(operationId, input, null);
-      return true;
-    },
     /** Clears actions with a succeeded receipt; returns how many stay pending. */
     async reconcile(): Promise<number> {
       for (const input of Object.values(await all()))

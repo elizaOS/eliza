@@ -66,6 +66,7 @@ device-unlocked policy below is a separate custody version. The unauthenticated
 constructor mode is only for host-restricted synthetic tests. Autofill metadata key strings
 retain their existing browser wire protocol identifiers.
 
+
 `DeviceCredentialSession` owns native Activity challenge/result fencing and absolute
 unlock expiry. Reserve an inclusive request-code range; forward activity results,
 `onStop`, and destruction, and call `saveState` from `onSaveInstanceState`. Pass that

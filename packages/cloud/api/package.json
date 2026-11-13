@@ -61,16 +61,16 @@
   "devDependencies": {
     "@elizaos/plugin-todos": "workspace:*",
     "@elizaos/plugin-web-search": "workspace:*",
-    "@biomejs/biome": "2.6.6",
+    "@biomejs/biome": "2.6.3",
     "@types/pg": "^8.23.1",
-    "@types/ws": "^8.18.2",
+    "@types/ws": "^8.18.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "dotenv": "^17.4.2",
     "drizzle-kit": "^0.31.10",
     "miniflare": "4.20260730.0",
     "pg": "^8.23.1",
     "typescript": "^6.0.3",
-    "ws": "^8.22.1",
+    "ws": "^8.21.3",
     "@elizaos/plugin-sqlite": "workspace:*",
     "@elizaos/plugin-network": "workspace:*"
   }

@@ -1,0 +1,14 @@
+diff --git a/lib/lockfile.js b/lib/lockfile.js
+index 97b66373d5c5057de38884bb870ee68134e5a7ee..bcc1879ee1c2ddcd75f8fd768664ad6c06807cb9 100644
+--- a/lib/lockfile.js
++++ b/lib/lockfile.js
+@@ -3,7 +3,8 @@
+ const path = require('path');
+ const fs = require('graceful-fs');
+ const retry = require('retry');
+-const onExit = require('signal-exit');
++const signalExit = require('signal-exit');
++const onExit = typeof signalExit === 'function' ? signalExit : signalExit.onExit;
+ const mtimePrecision = require('./mtime-precision');
+ 
+ const locks = {};

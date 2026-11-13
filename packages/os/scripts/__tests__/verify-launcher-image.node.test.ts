@@ -142,66 +142,6 @@ test("the Pixel 10a target admits only stallion and records its verified boot st
   );
 });
 
-test("a launcher with reviewed privileged permissions must be a priv-app holding them", () => {
-  const permission = "android.permission.READ_PRIVILEGED_PHONE_STATE";
-  const privileged = {
-    ...expected,
-    apkPath: "/product/priv-app/Eliza/Eliza.apk",
-    privilegedPermissions: [permission],
-  };
-  const dump = `privateFlags=[ PRIVILEGED ]\n    ${permission}: granted=true`;
-  const key = `shell dumpsys package ${pkg}`;
-  const report = verifyLauncherImage(
-    fixture({ [key]: dump }, privileged).run,
-    privileged,
-    "0",
-  );
-  assert.equal(report.apkPath, privileged.apkPath);
-  assert.deepEqual(report.privilegedPermissions, [permission]);
-  assert.equal(
-    "privilegedPermissions" in
-      verifyLauncherImage(fixture().run, expected, "0"),
-    false,
-  );
-  assert.throws(
-    () =>
-      verifyLauncherImage(
-        fixture({ [key]: `    ${permission}: granted=true` }, privileged).run,
-        privileged,
-        "0",
-      ),
-    /not a privileged app/,
-  );
-  assert.throws(
-    () =>
-      verifyLauncherImage(
-        fixture(
-          {
-            [key]: `privateFlags=[ PRIVILEGED ]\n    ${permission}: granted=false`,
-          },
-          privileged,
-        ).run,
-        privileged,
-        "0",
-      ),
-    /READ_PRIVILEGED_PHONE_STATE is not granted to the launcher/,
-  );
-  // Placement and the descriptor must agree in both directions.
-  assert.throws(
-    () => validateExpectation({ ...privileged, apkPath: expected.apkPath }),
-    /require a priv-app APK path/,
-  );
-  for (const privilegedPermissions of [
-    [],
-    ["android.permission.INSTALL_PACKAGES"],
-    permission,
-  ])
-    assert.throws(
-      () => validateExpectation({ ...privileged, privilegedPermissions }),
-      /must be the reviewed ones/,
-    );
-});
-
 test("the Pixel 10a target refuses an unlocked or failed verified boot state", () => {
   for (const state of ["green", "yellow"])
     assert.equal(
@@ -315,13 +255,8 @@ test("rejects a reboot or a HOME change during observation", () => {
 });
 
 test("expectations and options are explicit, bounded and nonprivileged", () => {
-  assert.throws(
-    () =>
-      validateExpectation({
-        ...expected,
-        apkPath: "/product/app/../Eliza.apk",
-      }),
-    /^Error: Expected system APK path required$/,
+  assert.throws(() =>
+    validateExpectation({ ...expected, apkPath: "/product/app/../Eliza.apk" }),
   );
   assert.throws(
     () =>

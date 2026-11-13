@@ -15,7 +15,6 @@ import {
   it,
   vi,
 } from "vitest";
-import { withCalendarSearchAuthorization } from "../../../plugin-calendar/src/search-filter-evidence.ts";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
@@ -181,27 +180,15 @@ describe("blackout preference mutation — real PGlite", () => {
       syncedAt: "2026-09-05T00:00:00.000Z",
     });
     const updateTask = vi.spyOn(runtime, "updateTask");
-    const searchMessage = message();
-    searchMessage.content.text = "Find Lunch on my calendar";
-    const result = await withCalendarSearchAuthorization(
-      {
-        current: searchMessage,
-        agentId: String(runtime.agentId),
-        recent: [],
-        filterEvidence: [{ query: "Lunch", quote: "Lunch", origin: "current" }],
-        signal: new AbortController().signal,
+    const result = await calendarAction.handler(runtime, message(), undefined, {
+      parameters: {
+        subaction: "search_events",
+        query: "Lunch",
+        timeMin: "2026-09-08T00:00:00.000Z",
+        timeMax: "2026-09-09T00:00:00.000Z",
+        blackoutWindows: [{ startLocal: "00", endLocal: "00" }],
       },
-      () =>
-        calendarAction.handler(runtime, searchMessage, undefined, {
-          parameters: {
-            subaction: "search_events",
-            query: "Lunch",
-            timeMin: "2026-09-08T00:00:00.000Z",
-            timeMax: "2026-09-09T00:00:00.000Z",
-            blackoutWindows: [{ startLocal: "00", endLocal: "00" }],
-          },
-        }),
-    );
+    });
     expect(result).toMatchObject({ success: true });
     expect(readFeed).toHaveBeenCalled();
     expect(updateTask).not.toHaveBeenCalled();

@@ -455,7 +455,6 @@ export {
 } from "./services/task";
 export {
 	getTaskSchedulerAdapter,
-	handoffTaskSchedulerAdapter,
 	markTaskSchedulerDirty,
 	registerScheduledProcessTask,
 	registerTaskSchedulerRuntime,

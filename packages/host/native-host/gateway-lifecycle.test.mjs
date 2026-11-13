@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { startGatewayLifecycle } from "./gateway-lifecycle.mjs";
 
-async function fixture(t, { failure, startupFailure, beforeResponse } = {}) {
+async function fixture(t, { failure, startupFailure } = {}) {
   const root = await mkdtemp(join(tmpdir(), "gateway-lifecycle-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const events = [];
@@ -52,7 +52,6 @@ async function fixture(t, { failure, startupFailure, beforeResponse } = {}) {
     createServer: () => {
       if (startupFailure === "server") throw new Error("start server");
       server = createServer(async (_request, response) => {
-        await beforeResponse?.();
         await handles[1].writeFile("request\n");
         response.end("ready");
       });
@@ -167,54 +166,4 @@ test("external HTTP close triggers cleanup even when its observer throws", async
     "stop tasks",
     "stop helper",
   ]);
-});
-
-test("managed shutdown joins an external HTTP drain before releasing resources", {
-  timeout: 5000,
-}, async (t) => {
-  const requestStarted = Promise.withResolvers();
-  const allowResponse = Promise.withResolvers();
-  const f = await fixture(t, {
-    async beforeResponse() {
-      requestStarted.resolve();
-      await allowResponse.promise;
-    },
-  });
-  const lifecycle = await startGatewayLifecycle(f.options);
-  const response = fetch(
-    `http://127.0.0.1:${lifecycle.server.address().port}`,
-    {
-      headers: { connection: "close" },
-    },
-  );
-  try {
-    await requestStarted.promise;
-    const externalClose = new Promise((resolve) =>
-      lifecycle.server.close(resolve),
-    );
-    assert.equal(lifecycle.server.listening, false);
-    const managedClose = lifecycle.close();
-    assert.equal(lifecycle.close(), managedClose);
-    const releasedDuringDrain = f.events.filter((event) =>
-      event.startsWith("stop "),
-    );
-    allowResponse.resolve();
-    assert.equal(await (await response).text(), "ready");
-    await Promise.all([externalClose, managedClose]);
-    assert.deepEqual(releasedDuringDrain, []);
-    assert.equal(
-      await readFile(join(f.root, "tasks"), "utf8"),
-      "request\nclosed\n",
-    );
-    assert.deepEqual(f.events.slice(-4), [
-      "stop reputation",
-      "stop capture",
-      "stop tasks",
-      "stop helper",
-    ]);
-  } finally {
-    allowResponse.resolve();
-    await response.catch(() => undefined);
-    await lifecycle.close();
-  }
 });

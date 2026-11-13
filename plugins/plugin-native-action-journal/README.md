@@ -17,7 +17,7 @@ crash, a lost bridge callback or a dropped connection without repeating an effec
 wait ten seconds after a foreground review (Calendar events, reminders):
 
 - `DeletionDeadline` - the persisted monotonic deadline (`WINDOW_MS` = 10 s). A reboot or an
-  unprovable clock reads as `clock-changed`: the row needs review and is never dispatched.
+  unprovable clock reads as `CLOCK_CHANGED`: the row needs review and is never dispatched.
 - `DeferredDeletionJournal` - durable staging, Undo, expiry and bounded history. Undo and
   expiry have one winner; a dispatching write reads back as `unknown` and is never replayed;
   a settled deletion is never reported as a successful Undo.

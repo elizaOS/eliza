@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cloud-routing",
-  "version": "2.0.5",
+  "version": "2.0.4",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -21,7 +21,7 @@
     "test": "bun test src"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.6",
+    "@biomejs/biome": "2.6.3",
     "@types/node": "^25.0.0",
     "bun-types": "1.4.2",
     "@typescript/native": "npm:typescript@^7.0.2",

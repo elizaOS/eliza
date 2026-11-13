@@ -1,6 +1,6 @@
 /** Connects hosted Eliza runtimes to configured MCP servers and exposes their permitted tools. */
 
-import { type Action, ElizaError, type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { type Action, type IAgentRuntime, logger, Service } from "@elizaos/core";
 import { toActionName } from "@elizaos/plugin-mcp/protocol-utils/action-naming";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -87,17 +87,10 @@ export class McpService extends Service {
     // snapshot taken without the flag would miss such a callback, and it would
     // then resurrect state and schedule a new retry timer after stop() returns.
     this.stopped = true;
-    // Lazy HTTP tools and failed retry state can outlive their transports.
-    const names = new Set([
-      ...this.connections.keys(),
-      ...this.connectionStates.keys(),
-      ...this.lazyConnections.keys(),
-    ]);
-    this.lazyConnections.clear();
-    for (const name of names) {
+    // Failed transport creation can leave retry state without a live connection.
+    for (const name of new Set([...this.connections.keys(), ...this.connectionStates.keys()])) {
       await this.disconnect(name);
     }
-    this.mcpProvider = buildMcpProviderData([]);
   }
   // ─── Initialization ────────────────────────────────────────────────────────
   private async init(): Promise<void> {
@@ -130,7 +123,6 @@ export class McpService extends Service {
             // Try cache first
             if (this.schemaCache.isEnabled) {
               const cached = await this.schemaCache.getSchemas(this.runtime.agentId, name, hash);
-              if (this.stopped) return;
               if (cached) {
                 this.registerToolsAsActions(name, McpSchemaCache.toTools(cached));
                 this.lazyConnections.set(name, config);
@@ -143,17 +135,14 @@ export class McpService extends Service {
             // tool use (with correct per-user API key from request context).
             const isHttpTransport = config.type && config.type !== "stdio";
             await this.connect(name, config);
-            if (this.stopped) return;
             const server = this.connections.get(name)?.server;
             if (this.schemaCache.isEnabled && server?.tools?.length) {
               await this.schemaCache.setSchemas(this.runtime.agentId, name, hash, server.tools);
-              if (this.stopped) return;
             }
             if (isHttpTransport) {
               // Disconnect and mark as lazy for per-entity reconnection
               const tools = server?.tools || [];
               await this.disconnect(name);
-              if (this.stopped) return;
               this.lazyConnections.set(name, config);
               if (tools.length) this.registerToolsAsActions(name, tools);
               results.cached.push(`${name}:${tools.length}`);
@@ -167,7 +156,6 @@ export class McpService extends Service {
           }
         }),
       );
-      if (this.stopped) return;
       const total = results.cached.length + results.connected.length;
       logger.info(
         `[MCP] Ready ${total}/${entries.length} in ${Date.now() - start}ms ` +
@@ -200,15 +188,6 @@ export class McpService extends Service {
     return s && typeof s === "object" && "servers" in s ? (s as McpSettings) : undefined;
   }
   // ─── Connection Management ─────────────────────────────────────────────────
-  private requireRunning(name: string): void {
-    if (this.stopped) {
-      throw new ElizaError("McpService stopped", {
-        code: "MCP_SERVICE_STOPPED",
-        context: { server: name },
-      });
-    }
-  }
-
   /**
    * Builds (or rebuilds) one server's connection.
    *
@@ -235,7 +214,9 @@ export class McpService extends Service {
     // A retry callback can be paused at the awaited disconnect() above while
     // stop() runs and marks shutdown. Bail out before rebuilding any state so
     // no retry ladder survives shutdown.
-    this.requireRunning(name);
+    if (this.stopped) {
+      throw new Error(`McpService stopped; not connecting "${name}"`);
+    }
     const state: ConnectionState = {
       status: "connecting",
       reconnectAttempts: carriedReconnectAttempts,
@@ -262,18 +243,10 @@ export class McpService extends Service {
           setTimeout(() => rej(new Error("Connection timeout")), 60000),
         ),
       ]);
-      this.requireRunning(name);
       const caps = client.getServerCapabilities();
       const tools = await this.fetchTools(name);
-      this.requireRunning(name);
-      let resources: Resource[] = [];
-      let resourceTemplates: ResourceTemplate[] = [];
-      if (caps?.resources) {
-        resources = await this.fetchResources(name);
-        this.requireRunning(name);
-        resourceTemplates = await this.fetchResourceTemplates(name);
-        this.requireRunning(name);
-      }
+      const resources = caps?.resources ? await this.fetchResources(name) : [];
+      const resourceTemplates = caps?.resources ? await this.fetchResourceTemplates(name) : [];
       conn.server = {
         status: "connected",
         name,
@@ -554,9 +527,12 @@ export class McpService extends Service {
   }
   private unregisterToolsAsActions(serverName: string): void {
     // Remove Tier-1 actions
+    const toRemove: string[] = [];
     for (const [name, action] of this.registeredActions) {
-      if (action._mcpMeta.serverName !== serverName) continue;
-      const idx = this.runtime.actions.indexOf(action as Action);
+      if (action._mcpMeta.serverName === serverName) toRemove.push(name);
+    }
+    for (const name of toRemove) {
+      const idx = this.runtime.actions.findIndex((a) => a.name === name);
       if (idx !== -1) this.runtime.actions.splice(idx, 1);
       this.registeredActions.delete(name);
     }

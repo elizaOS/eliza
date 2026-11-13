@@ -141,9 +141,6 @@ export function createMailReviewController(
     busy = false,
     visible = false,
     status = "";
-  // The provider answered after the dispatch attempt and reports the operation
-  // as only prepared. The owner can then discard it; see abandon() in the journal.
-  let notStarted = false;
   // An explicit refresh can overlap an older read without changing the account epoch.
   let capabilityRead: AbortController | null = null;
   let draftRead: AbortController | null = null,
@@ -246,7 +243,7 @@ export function createMailReviewController(
     running = null;
     caps = null;
     capabilitiesFailed = false;
-    busy = visible = notStarted = false;
+    busy = visible = false;
     status = "";
     failure = null;
     reported = "";
@@ -368,10 +365,7 @@ export function createMailReviewController(
       if (token === epoch) {
         status = "";
         settleSent(owned);
-        const record = owned.snapshot(),
-          receipt = record?.receipt;
-        notStarted =
-          record?.phase === "dispatching" && receipt?.state === "prepared";
+        const receipt = owned.snapshot()?.receipt;
         if (receipt?.state === "succeeded" && receipt.requestId !== reported) {
           reported = receipt.requestId;
           onReceipt?.(receipt);
@@ -381,7 +375,6 @@ export function createMailReviewController(
       }
     } catch (error) {
       if (token === epoch) {
-        notStarted = false;
         const aborted =
           error instanceof DOMException && error.name === "AbortError";
         if (!aborted && options.onSessionError?.(ownerSession, error)) {
@@ -653,21 +646,17 @@ export function createMailReviewController(
           : absent
             ? reviewBindingRefusal.absent
             : status ||
-              (notStarted
+              (uncertain
                 ? sending
-                  ? "Gmail reports that this message was not sent. A late request can still deliver it. If you discard this operation, look in Sent in Gmail before you send the message again."
-                  : "Gmail reports that this change was not made. A late request can still make it. If you discard this operation, look in Gmail before you repeat the change."
-                : uncertain
-                  ? sending
-                    ? "Delivery outcome is unknown. Check the saved receipt; do not send this message again."
-                    : "The outcome of this change is unknown. Check the saved receipt; do not repeat the change."
-                  : receiptState === "succeeded"
-                    ? "Provider confirmed this operation."
-                    : receiptState === "rejected"
-                      ? "Provider rejected this operation."
-                      : sending
-                        ? "Review every field before confirming. No mail has been sent."
-                        : "Review this change before confirming. Nothing has been changed."),
+                  ? "Delivery outcome is unknown. Check the saved receipt; do not send this message again."
+                  : "The outcome of this change is unknown. Check the saved receipt; do not repeat the change."
+                : receiptState === "succeeded"
+                  ? "Provider confirmed this operation."
+                  : receiptState === "rejected"
+                    ? "Provider rejected this operation."
+                    : sending
+                      ? "Review every field before confirming. No mail has been sent."
+                      : "Review this change before confirming. Nothing has been changed."),
         draftNote:
           (sent && sentNote?.(sent)) ||
           "The local draft stays on this device. If this operation succeeded, sending that draft again creates another message.",
@@ -685,9 +674,7 @@ export function createMailReviewController(
         clearLabel:
           record?.phase === "review" || record?.phase === "preparing"
             ? "Cancel unsent review"
-            : notStarted
-              ? "Discard this operation"
-              : "Close receipt",
+            : "Close receipt",
         kind: review?.kind || record?.proposal.kind || "Mail operation",
         from: review?.from || "",
         to: Array.isArray(review?.to) ? review.to.join(", ") : "",
@@ -786,13 +773,11 @@ export function createMailReviewController(
         canReload: record?.phase === "preparing",
         clear: () =>
           void run(async (owned, check) => {
-            await (notStarted ? owned.abandon() : owned.clear());
+            await owned.clear();
             check();
-            // An operation that the provider started after all stays on view.
-            visible = !!owned.snapshot();
+            visible = false;
           }),
         canClear:
-          notStarted ||
           record?.phase === "review" ||
           record?.phase === "preparing" ||
           ["succeeded", "rejected"].includes(receiptState || ""),

@@ -117,7 +117,7 @@ export interface ContainerExecutorDeps {
    */
   listVerifiedAppHostnames?: (appId: string) => Promise<string[]>;
   /**
-   * Publish the app's READY status and its current container binding
+   * Flip the linked app to `deployed` (status + production_url + last_deployed_at)
    * once its container is running AND its ingress route is live. Without this the
    * deploy-status route echoes `building` forever — a successful deploy never
    * reaches READY (a stranded-looking app). No-op for non-app containers (the
@@ -128,7 +128,6 @@ export interface ContainerExecutorDeps {
     appId: string,
     deploymentGeneration: string | null,
     productionUrl: string | null,
-    containerId: string,
   ) => Promise<void>;
   /**
    * Probe whether the app's public URL is HTTP-reachable (#9853). Runs after the
@@ -456,7 +455,7 @@ export async function executeContainerProvision(
         });
         return;
       }
-      await deps.markAppDeployed(row.appId, generation, endpoint?.url ?? null, row.id);
+      await deps.markAppDeployed(row.appId, generation, endpoint?.url ?? null);
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
