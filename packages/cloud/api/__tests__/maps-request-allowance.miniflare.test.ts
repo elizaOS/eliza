@@ -337,12 +337,17 @@ describe("Maps shared allowance", () => {
     expect(await revoked.json()).toMatchObject({ code: "maps_access_denied" });
     expect(providerCalls).toBe(66);
     const blockedIp = "203.0.113.221";
-    const filled = await Promise.all(
-      Array.from({ length: 600 }, () =>
-        nativeLimit.limit({ key: `global:ip:${blockedIp}` }),
-      ),
-    );
-    expect(filled.every((result) => result.success)).toBe(true);
+    // Fill the real window without opening 600 local proxy requests at once.
+    let filled = 0;
+    for (let offset = 0; offset < 600; offset += 20) {
+      const results = await Promise.all(
+        Array.from({ length: 20 }, () =>
+          nativeLimit.limit({ key: `global:ip:${blockedIp}` }),
+        ),
+      );
+      filled += results.filter((result) => result.success).length;
+    }
+    expect(filled).toBe(600);
     const beforeGlobalRefusal = authenticationCalls;
     const globalRefused = await tile("global-refused", { ip: blockedIp });
     expect(globalRefused.status).toBe(429);
