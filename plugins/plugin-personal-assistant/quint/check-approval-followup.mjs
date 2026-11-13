@@ -28,6 +28,7 @@ const result = spawnSync(
 if (result.error) throw result.error;
 if (result.status !== 0) process.exit(result.status ?? 1);
 const required = [
+  "processDueScheduledTasks \u2014 production wiring resolves owner-local cron timezone priority -1/-1/1/0",
   "processDueScheduledTasks \u2014 production wiring limits resolved approval cleanup to one task per tick without delivering deferred approvals",
   "processDueScheduledTasks \u2014 production wiring retires a resolved approval's scheduled follow-up before dispatch or escalation",
   "processDueScheduledTasks \u2014 production wiring retires a resolved approval's fired follow-up before dispatch or escalation",
