@@ -760,8 +760,11 @@ function escapeGbnfClassChar(value: string): string {
 			case "]":
 				out += "\\]";
 				break;
-			// llama.cpp reads only \x \u \U \t \r \n \\ \" \[ \] after a
-			// backslash and rejects the whole grammar on `\-` or `\^`.
+			// In the elizaOS/llama.cpp fork at the plugin-local-inference
+			// submodule pin, parse_char reads `\-` but rejects the whole
+			// grammar on `\^`. Older parsers, such as the copy in
+			// llama-cpp-capacitor 0.1.5, read only \x \u \U \t \r \n \\ \" \[ \]
+			// after a backslash and reject both. Hex escapes load in both.
 			case "-":
 				out += "\\x2d";
 				break;
