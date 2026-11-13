@@ -381,6 +381,48 @@ function confirmDeps(
 }
 
 describe("POST /api/v1/subscriptions/checkout/confirm", () => {
+  test("reports a caught database failure without exposing its query or tenant", async () => {
+    const messages: unknown[][] = [];
+    const original = console.error;
+    console.error = (...args) => messages.push(args);
+    try {
+      const { deps } = confirmDeps(SESSION, {
+        reconcile: async () => {
+          throw new Error("private query with private tenant", {
+            cause: Object.assign(new Error("private SQL values"), {
+              name: "DatabaseError",
+              code: "23514",
+              constraint: "billing_subscriptions_app_shape",
+            }),
+          });
+        },
+      });
+      const response = await post(
+        createSubscriptionCheckoutConfirmRoute(deps),
+        { sessionId: "cs_test_private" },
+      );
+      expect(response.status).toBe(500);
+      expect((await bodyOf(response)).code).toBe("internal_error");
+    } finally {
+      console.error = original;
+    }
+    expect(messages).toEqual([
+      [
+        "[SubscriptionCheckoutConfirm] Failed",
+        {
+          phase: "reconciliation",
+          name: "Error",
+          cause: {
+            name: "DatabaseError",
+            sqlstate: "23514",
+            constraint: "billing_subscriptions_app_shape",
+          },
+        },
+      ],
+    ]);
+    expect(JSON.stringify(messages)).not.toContain("private");
+  });
+
   test("settles the caller organization's session and returns the entitlement", async () => {
     for (const caller of [MOBILE, SESSION]) {
       const { deps, reconciled } = confirmDeps(caller);
