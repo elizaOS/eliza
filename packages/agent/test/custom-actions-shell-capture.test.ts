@@ -39,7 +39,6 @@ beforeAll(async () => {
     });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  vi.stubEnv("ELIZA_API_BIND_HOST", "127.0.0.1");
   vi.stubEnv("ELIZA_API_PORT", String((server.address() as AddressInfo).port));
 });
 
