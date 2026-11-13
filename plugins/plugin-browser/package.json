@@ -75,12 +75,11 @@
     "@elizaos/plugin-assistant": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
     "drizzle-orm": "0.45.4",
-    "linkify-it": "5.0.2",
+    "linkify-it": "6.1.0",
     "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
     "@types/jsdom": "^30.0.0",
-    "@types/linkify-it": "5.0.0",
     "bun-types": "1.4.2",
     "jsdom": "^31.0.0",
     "puppeteer-core": "^24.37.5",
