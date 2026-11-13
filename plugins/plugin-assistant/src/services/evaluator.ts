@@ -1145,6 +1145,7 @@ export class EvaluatorService extends BaseService {
               result.errors.length &&
               result.errors.every((entry) => entry.retryable === false)
             ) {
+              if (result.hasMoreEvidence) return undefined;
               this.runtime.logger.warn(
                 {
                   src: "service:evaluator",
@@ -1714,9 +1715,11 @@ export class EvaluatorService extends BaseService {
     error: string;
     retryAt?: number;
     retryable?: boolean;
+    hasMoreEvidence?: boolean;
   }): EvaluatorRunResult {
     return {
       skipped: false,
+      hasMoreEvidence: params.hasMoreEvidence,
       activeEvaluators: params.preparedEntries.map(
         ({ evaluator }) => evaluator.name,
       ),
@@ -2261,6 +2264,7 @@ ${JSON.stringify(references.map(evaluatorEvidenceRecord))}`
         error: error ?? "Evaluator model returned no output",
         retryAt,
         retryable,
+        hasMoreEvidence: hasDeferredEvidence,
       });
     }
     if (!output)

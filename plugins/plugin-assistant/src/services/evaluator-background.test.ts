@@ -35,6 +35,7 @@ import {
   visibleHistoryEventIds,
 } from "../runtime/history-retention.ts";
 import { EvaluatorService, runPostTurnEvaluators } from "./evaluator.ts";
+import { evaluatorEvidenceByteLength } from "./evaluator-evidence-page.ts";
 import {
   getEvaluatorProgressState,
   prepareEvaluatorProgress,
@@ -2024,6 +2025,88 @@ describe("durable background memory", () => {
     );
     expect(await runtime.getTask(task.id)).toBeNull();
     expect(runtime.useModel).toHaveBeenCalledTimes(stored.length);
+  });
+
+  it("retains the background task when a non-retryable error occurs with remaining evidence", async () => {
+    const { runtime, service, message } = await setup();
+    const eval1 = {
+      ...evaluator(),
+      name: "evaluator1",
+      schema: {
+        type: "object",
+        properties: { evaluator1: { type: "object" } },
+      },
+    };
+    runtime.registerEvaluator(eval1);
+    runtime.useModel = vi.fn(
+      async () => '{"evaluator1":{"ok":true}}',
+    ) as AgentRuntime["useModel"];
+
+    // Run evaluator1 once on message so its progress marks message as completed.
+    await service.run(message, state, {
+      phase: "post_turn",
+      didRespond: true,
+    });
+
+    // Now register evaluator2 which has not completed message yet.
+    const eval2 = {
+      ...evaluator(),
+      name: "evaluator2",
+      schema: {
+        type: "object",
+        properties: { evaluator2: { type: "object" } },
+      },
+    };
+    runtime.registerEvaluator(eval2);
+
+    const nextMessage = {
+      ...message,
+      id: stringToUuid("next-evidence-message"),
+      createdAt: 20,
+      content: { text: `Next record\n🍊 ${"source ".repeat(15)}` },
+    };
+    await runtime.upsertMemory(nextMessage, "messages");
+
+    const stored = await runtime.getMemories({
+      tableName: "messages",
+      roomId: message.roomId,
+      unique: false,
+      includeEmbedding: false,
+    });
+    const budget =
+      Math.max(...stored.map((row) => evaluatorEvidenceByteLength(row))) + 1;
+    vi.spyOn(runtime, "getSetting").mockImplementation((key) =>
+      key === "MEMORY_EVIDENCE_BATCH_BYTES" ? String(budget) : null,
+    );
+
+    let attempts = 0;
+    runtime.useModel = vi.fn(async () => {
+      attempts++;
+      if (attempts === 1) {
+        throw new ElizaError("Output limit reached", {
+          code: "EVALUATOR_INCOMPLETE_OUTPUT",
+          context: { finishReason: "length" },
+        });
+      }
+      return '{"evaluator2":{"ok":true},"evaluator1":{"ok":true}}';
+    }) as AgentRuntime["useModel"];
+
+    await service.enqueue(nextMessage, state, { phase: "post_turn" });
+    const task = await job(runtime);
+
+    // First execution: evaluator1 fails with non-retryable output limit error,
+    // but evaluator2 was deferred into another evidence page (hasMoreEvidence: true).
+    // The worker must return undefined and retain the task row.
+    const firstResult = await execute(runtime, task);
+    expect(firstResult).toBeUndefined();
+    expect(await runtime.getTask(task.id)).not.toBeNull();
+
+    // Second and subsequent executions consume the remaining pages and deferred evaluators.
+    while (await runtime.getTask(task.id)) {
+      await execute(runtime, task);
+    }
+    expect(await runtime.getTask(task.id)).toBeNull();
+    expect(attempts).toBeGreaterThanOrEqual(2);
   });
 
   it.each([
