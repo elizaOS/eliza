@@ -1,0 +1,33 @@
+{
+	"sources": [
+		"packages/core/src/security/model-failure.ts",
+		"packages/core/src/utils/model-errors.ts",
+		"packages/core/src/runtime/model-dispatch.ts",
+		"packages/core/test/model-provider-failover.model.test.ts"
+	],
+	"conformance": "packages/core/quint/check-model-provider-failover.mjs",
+	"bounds": {
+		"domain": "One useModel dispatch over three registrations in dispatch order (provider alpha at priority 30 and 20, provider beta at 10) for TEXT_SMALL or TEXT_TO_SPEECH. Each registration answers or fails with one of eight errors: a refused connection on the AI SDK error's cause, a retry envelope whose lastError carries Bun's ConnectionRefused on its cause, an HTTP 400, a funding authority denial, a processing-policy denial or an AbortError whose cause is a refused connection, a caller abort followed by a refused connection, or an exhausted provider retry budget.",
+		"limitations": "The implementation check replays all 90 reachable dispatches through AgentRuntime.useModel on a real SQLite runtime with the production classifier and dispatch loop; the handlers throw the modeled error shapes instead of calling a provider. Retries inside one provider (the SDK's own retries and generateTextWithTransientRetry) are bounded by the plugin-openai wire test, not by this model. HTTP 5xx and 429 statuses, message heuristics, local-inference availability, a pinned provider, streaming output already started, preparation rejections, error graphs deeper or more complex than the listed shallow wrappers (including cycles); production funding and cancellation checks walk the full cycle-safe graph, while transport-code lookup remains bounded to 12 nodes and cross-model-type fallback chains are outside this model."
+	},
+	"cases": [
+		{
+			"name": "dispatch",
+			"main": "ModelProviderFailover",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"EachRegistrationOnce",
+				"ExhaustedProviderSkipped",
+				"TerminalOutcomeEndsDispatch",
+				"RefusedConnectionFailsOver",
+				"RejectsWithLastFailure",
+				"AnswerIsLastAttempt"
+			],
+			"temporal": [],
+			"maxSteps": 4,
+			"samples": 2000
+		}
+	]
+}
