@@ -123,6 +123,22 @@ it("reports failed ERC-20 reads instead of an empty token list", async () => {
   );
 });
 
+it("keeps an empty tracked token list healthy without token RPC calls", async () => {
+  const methods: string[] = [];
+  await withRpcServer(
+    (request) => {
+      methods.push(request.method);
+      return { result: "0xde0b6b3a7640000" };
+    },
+    async (rpc) => {
+      const [chain] = await fetchResolvedEvmBalances(ADDRESS, keyset(rpc), []);
+      expect(chain.error).toBeNull();
+      expect(chain.tokens).toEqual([]);
+      expect(methods).toEqual(["eth_getBalance"]);
+    },
+  );
+});
+
 it("keeps a genuine zero ERC-20 balance a healthy empty token list", async () => {
   await withRpcServer(
     (request) =>

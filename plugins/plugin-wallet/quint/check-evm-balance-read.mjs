@@ -13,6 +13,7 @@ if (process.argv[2]) assert.equal(path.resolve(process.argv[2]), model);
 const test = "src/analytics/evm-balances-erc20-errors.test.ts";
 const expected = [
   "reports failed ERC-20 reads instead of an empty token list",
+  "keeps an empty tracked token list healthy without token RPC calls",
   "keeps a genuine zero ERC-20 balance a healthy empty token list",
   "keeps a real balance when only the symbol call reverts",
   "keeps a zero balance healthy when only the token metadata reverts",
@@ -31,12 +32,13 @@ const report = path.join(output, "vitest.json");
 const result = spawnSync(
   process.execPath,
   [
-    "--conditions=eliza-source",
-    path.join(root, "node_modules/vitest/vitest.mjs"),
+    path.join(root, "packages/scripts/run-vitest.ts"),
     "run",
     "--config",
     path.join(plugin, "vitest.config.ts"),
     test,
+    "--fsModuleCachePath",
+    path.join(output, "module-cache"),
     "--reporter=json",
     `--outputFile=${report}`,
   ],
