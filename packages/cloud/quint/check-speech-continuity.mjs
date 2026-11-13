@@ -20,6 +20,7 @@ const cases = [
     "src/voice/speech-relay-session.test.ts",
     [
       "closing while an extension is in flight settles every reservation exactly once",
+      "failed legacy unused settlement is retained without repeating its non-idempotent call",
     ],
   ],
   [
@@ -27,6 +28,11 @@ const cases = [
     "src/voice/speech-retirement-session.test.ts",
     [
       "paid renewal retains one STT connection and settles each window once",
+      "a nonzero unused settlement proof cannot confirm retirement",
+      "close retries a transient unused settlement once and keeps its zero target",
+      "late unused stt settlement stays owned across retirement retry",
+      "late unused tts settlement stays owned across retirement retry",
+      "a lost unused-quota reply stays unknown and is never replayed",
       ...["quota", "admission", "extension"].map(
         (pending) =>
           `Stop requests provider teardown while renewal waits on ${pending}`,

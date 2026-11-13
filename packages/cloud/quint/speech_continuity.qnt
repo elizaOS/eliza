@@ -39,6 +39,8 @@ module speech_continuity {
     pending' = -1, open' = open, granted' = granted, recorded' = recorded,
     funded' = funded, settled' = settled, confirmed' = confirmed,
     providerCloseRequested' = providerCloseRequested, quotaRelease' = quotaRelease }
+  // Completion requires matching terminal receipts, including actual zero
+  // receipts for an ungranted window. Invalid replies stay in settlementFails.
   action settleWindow(window: int): bool = all {
     not(open), pending == -1, funded.contains(window), not(settled.contains(window)),
     settled' = settled.union(Set(window)), open' = open, pending' = pending,
@@ -79,7 +81,7 @@ module speech_continuity {
     .expect(providerCloseRequested and pending >= 0 and not(confirmed))
     .then(admission).then(stoppedRenewalReturns)
     .expect(not(open) and granted == Set(0) and not(confirmed) and safety)
-  run failedZeroSettlementRetries = init.then(reserve).then(admission).then(stop)
+  run ungrantedSettlementRetry = init.then(reserve).then(admission).then(stop)
     .then(stoppedRenewalReturns).then(settlementFails)
     .expect(recorded.contains(1) and funded.contains(1) and not(settled.contains(1)))
     .then(settleWindow(1)).then(settleWindow(0)).then(quotaRefund(true)).then(confirm)
