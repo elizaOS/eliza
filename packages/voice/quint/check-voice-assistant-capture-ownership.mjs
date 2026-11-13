@@ -1,4 +1,4 @@
-/** Require the maintained controller's capture ownership cases. */
+/** Bind capture ownership scenarios to the maintained browser and native owners. */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -16,63 +16,96 @@ assert.equal(
 const output = testOutputPath("quint-voice-capture-ownership");
 mkdirSync(output, { recursive: true });
 const directory = mkdtempSync(path.join(output, "run-"));
-const junit = path.join(directory, "voice.xml");
-const result = spawnSync(
-  process.execPath,
-  [
-    "packages/scripts/run-with-deadline.ts",
-    "120000",
-    "--",
-    "bun",
-    "run",
-    "--cwd",
-    "packages/voice",
-    "test",
-    "src/voice-assistant-session.test.ts",
-    "--reporter=junit",
-    `--outputFile=${junit}`,
-  ],
-  { cwd: root, encoding: "utf8" },
-);
-const log = path.join(directory, "voice.log");
-writeFileSync(log, `${result.stdout ?? ""}${result.stderr ?? ""}`);
-if (result.error) throw result.error;
-assert.equal(
-  result.signal,
-  null,
-  `Voice controller terminated. Receipt ${log}`,
-);
-assert.equal(result.status, 0, `Voice controller failed. Receipt ${log}`);
-
-const xml = readFileSync(junit, "utf8");
-const summary = parseJunitSummary(xml);
-assert.equal(summary.failures + summary.errors + summary.skipped, 0);
-const required = [
-  "closes input at submission and keeps it closed through thinking, every sentence and drain; reopens once after the last playback",
-  "a healthy idle Mute stays quiet until Unmute, which reopens; the next turn is sent and held",
-  "a Mute close that fails for a capture still reopening after the reply ends the conversation once; the reopen settles nothing more",
-  "Stop while an idle Mute close is pending resolves once the close settles; a close that fails after Stop reports nothing",
-  "Stop waits for the cancel receipt of a capture returned after its reopen was retired",
-  "ends the conversation when the reopen is refused (a call or pause on the bridge), after one attempt",
+const suites = [
+  {
+    name: "native",
+    package: "packages/voice",
+    command: "test",
+    files: [
+      "src/voice-assistant-session.test.ts",
+      "src/native-live-voice.test.ts",
+      "src/live-voice-session.test.ts",
+    ],
+    required: [
+      "closes input at submission and keeps it closed through thinking, every sentence and drain; reopens once after the last playback",
+      "a healthy idle Mute stays quiet until Unmute, which reopens; the next turn is sent and held",
+      "a Mute close that fails for a capture still reopening after the reply ends the conversation once; the reopen settles nothing more",
+      "Stop while an idle Mute close is pending resolves once the close settles; a close that fails after Stop reports nothing",
+      "Stop waits for the cancel receipt of a capture returned after its reopen was retired",
+      "ends the conversation when the reopen is refused (a call or pause on the bridge), after one attempt",
+      "Stop rejects while the capture refuses, and the repeat asks that capture again",
+      "a close that fails after Stop's cancel confirmed proves nothing against it",
+      "a capture that opens after Stop is released, and its refusal rejects Stop",
+      "keeps the session's Stop rejected until the bridge answers, over the real capture",
+      "keeps a refused cancel: the repeat asks the same capture, and only its answer frees Transcribe",
+    ],
+  },
+  {
+    name: "browser",
+    package: "packages/ui",
+    command: "test:e2e",
+    files: [
+      "src/voice/__e2e__/voice-session-mic-capture.test.ts",
+      "src/voice/voice-session-cloud-budget-rotation.test.ts",
+      "src/hooks/useRealtimeVoiceSession.refusal.test.tsx",
+    ],
+    required: [
+      "a track that refuses leaves its siblings stopped, rejects, and confirms only on its own retry",
+      "a track that refuses keeps Stop rejected until that capture's own retry confirms",
+      "no capture opens over a release that is still refused",
+      "the real hook retains failed Stop across retry and starts only after release",
+      "Stop cancels a restart that is still releasing a retained capture",
+    ],
+  },
 ];
-const names = [];
-const parser = new SaxesParser({ xmlns: false });
-parser.on("opentag", (tag) => {
-  if (tag.name !== "testcase") return;
-  assert.equal(typeof tag.attributes.name, "string");
-  names.push(tag.attributes.name.split(" > ").at(-1));
-});
-parser.write(xml).close();
-for (const name of required)
-  assert.equal(
-    names.filter((item) => item === name).length,
-    1,
-    `Missing or repeated voice case: ${name}`,
+const receipts = [];
+for (const suite of suites) {
+  const junit = path.join(directory, `${suite.name}.xml`);
+  const result = spawnSync(
+    process.execPath,
+    [
+      "packages/scripts/run-with-deadline.ts",
+      "120000",
+      "--",
+      "bun",
+      "run",
+      "--cwd",
+      suite.package,
+      suite.command,
+      ...suite.files,
+      "--reporter=junit",
+      `--outputFile=${junit}`,
+    ],
+    { cwd: root, encoding: "utf8" },
   );
+  const log = path.join(directory, `${suite.name}.log`);
+  writeFileSync(log, `${result.stdout ?? ""}${result.stderr ?? ""}`);
+  if (result.error) throw result.error;
+  assert.equal(result.signal, null, `Capture suite terminated. Receipt ${log}`);
+  assert.equal(result.status, 0, `Capture suite failed. Receipt ${log}`);
+  const xml = readFileSync(junit, "utf8");
+  const summary = parseJunitSummary(xml);
+  assert.equal(summary.failures + summary.errors + summary.skipped, 0);
+  const names = [];
+  const parser = new SaxesParser({ xmlns: false });
+  parser.on("opentag", (tag) => {
+    if (tag.name !== "testcase") return;
+    assert.equal(typeof tag.attributes.name, "string");
+    names.push(tag.attributes.name.split(" > ").at(-1));
+  });
+  parser.write(xml).close();
+  for (const name of suite.required)
+    assert.equal(
+      names.filter((item) => item === name).length,
+      1,
+      `Missing or repeated capture case: ${name}`,
+    );
+  receipts.push({ ...suite, summary, junit, log });
+}
 writeFileSync(
   path.join(directory, "evidence.json"),
-  `${JSON.stringify({ required, summary, junit, log }, null, 2)}\n`,
+  `${JSON.stringify({ receipts }, null, 2)}\n`,
 );
 console.log(
-  `Voice capture ownership passed all six required controller cases. Receipt ${junit}`,
+  `Capture ownership scenario conformance passed. Receipt ${directory}`,
 );

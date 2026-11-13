@@ -999,7 +999,10 @@ export function useChatVoiceController(options: {
     ) {
       realtimeStartPendingRef.current = false;
       realtimeStopPendingRef.current = true;
-      void realtimeStopRef.current();
+      void realtimeStopRef.current().catch(() => {
+        // The hook retains the failed release and shows its error; allow Stop to retry.
+        realtimeStopPendingRef.current = false;
+      });
     }
   }, [realtimeWanted, realtime.active, realtime.connecting]);
 
@@ -1089,7 +1092,9 @@ export function useChatVoiceController(options: {
         // false. The composed session's stop is active-gated, so cancel the
         // realtime lifecycle directly to prevent the pending start from
         // resurrecting a socket/mic after the user's stop intent.
-        void realtimeStopRef.current();
+        void realtimeStopRef.current().catch(() => {
+          realtimeStopPendingRef.current = false;
+        });
         return;
       }
       endBatchVoiceCapture(captureOptions);
