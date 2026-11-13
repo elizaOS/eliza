@@ -145,6 +145,9 @@ export async function ensureWorkerSecretAbsent({
       "--json",
     ]);
     const expectedType = parseWorkerVersionBindingNames(output, bindingType);
+    // Secret retirement must preserve a same-name configured plain-text value.
+    // The legacy onboarding URL cleanup relies on this distinction.
+    if (bindingType !== "plain_text") return expectedType;
     const allTypes = parseWorkerVersionBindingNames(output);
     if (allTypes.has(name) && !expectedType.has(name)) {
       throw new Error("Worker binding has an unexpected type");
