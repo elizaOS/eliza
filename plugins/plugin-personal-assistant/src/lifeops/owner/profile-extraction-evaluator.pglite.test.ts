@@ -4,9 +4,11 @@
  * zone (plugin init registers the owner fact as the calendar zone resolver):
  * the period that ends the sentence is not part of the zone, an alias is
  * stored as its IANA zone, and a statement naming no zone leaves the stored
- * zone in place.
+ * zone in place. The model-case block replays the scenarios that
+ * quint/OwnerProfileTimezone.qnt generates (check-owner-profile-timezone.mjs).
  */
 
+import { readFileSync } from "node:fs";
 import { resolveCalendarTimeZone } from "@elizaos/contracts";
 import {
   type AgentRuntime,
@@ -20,15 +22,19 @@ import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../test/helpers/runtime.js";
+import { resolveConfiguredOwnerTimeZone } from "./fact-store.js";
 
 let runtimeResult: RealTestRuntimeResult | null = null;
 let runtime: AgentRuntime;
 
-async function ownerSays(text: string): Promise<void> {
+async function ownerSays(
+  text: string,
+  target: AgentRuntime = runtime,
+): Promise<void> {
   const message = {
     id: crypto.randomUUID() as UUID,
-    agentId: runtime.agentId,
-    entityId: runtime.agentId,
+    agentId: target.agentId,
+    entityId: target.agentId,
     roomId: crypto.randomUUID() as UUID,
     content: { source: "autonomy", text },
   } as Memory;
@@ -38,7 +44,7 @@ async function ownerSays(text: string): Promise<void> {
     thought: "",
   };
   const result = await runResponseHandlerEvaluators({
-    runtime,
+    runtime: target,
     message,
     state: { text: "", values: {}, data: {} },
     messageHandler,
@@ -85,4 +91,77 @@ describe("owner.profile_extraction timezone and the calendar zone", () => {
       { timeZone: "Europe/Berlin", source: "owner" },
     );
   });
+});
+
+// Model encoding (quint/OwnerProfileTimezone.qnt): zone -1 none stored,
+// 0..2 MODEL_ZONES; statement 0..3 MODEL_STATEMENTS; readZone 8 is the
+// non-owner fallback.
+const MODEL_ZONES = [
+  "Europe/Berlin",
+  "America/New_York",
+  "America/Los_Angeles",
+];
+const MODEL_STATEMENTS = [
+  "My timezone is America/New_York",
+  "My timezone is America/New_York.",
+  "my timezone is pacific.",
+  "my timezone is whatever the laptop says.",
+];
+const NON_OWNER_READ = 8;
+const modelCases: Array<{
+  prior: number;
+  statement: number;
+  stored: number;
+  readZone: number;
+}> = process.env.ELIZA_OWNER_PROFILE_TIMEZONE_MODEL_CASES
+  ? JSON.parse(
+      readFileSync(
+        process.env.ELIZA_OWNER_PROFILE_TIMEZONE_MODEL_CASES,
+        "utf8",
+      ),
+    )
+  : [
+      { prior: -1, statement: 0, stored: 1, readZone: 1 },
+      { prior: -1, statement: 1, stored: 1, readZone: 1 },
+      { prior: -1, statement: 2, stored: 2, readZone: 2 },
+      { prior: -1, statement: 3, stored: -1, readZone: NON_OWNER_READ },
+      { prior: 0, statement: 0, stored: 1, readZone: 1 },
+      { prior: 0, statement: 1, stored: 1, readZone: 1 },
+      { prior: 0, statement: 2, stored: 2, readZone: 2 },
+      { prior: 0, statement: 3, stored: 0, readZone: 0 },
+    ];
+
+describe("owner.profile_extraction timezone model cases", () => {
+  it.each(modelCases)(
+    "matches the generated owner timezone outcome (prior $prior, statement $statement)",
+    async ({ prior, statement, stored, readZone }) => {
+      const fresh = await createLifeOpsTestRuntime();
+      try {
+        if (prior >= 0) {
+          await ownerSays(
+            `My timezone is ${MODEL_ZONES[prior]}`,
+            fresh.runtime,
+          );
+        }
+        await ownerSays(MODEL_STATEMENTS[statement], fresh.runtime);
+        const now = new Date();
+
+        expect(await resolveConfiguredOwnerTimeZone(fresh.runtime, now)).toBe(
+          stored >= 0 ? MODEL_ZONES[stored] : null,
+        );
+        const read = await resolveCalendarTimeZone(fresh.runtime, now);
+        if (readZone === NON_OWNER_READ) {
+          expect(read.source).not.toBe("owner");
+        } else {
+          expect(read).toEqual({
+            timeZone: MODEL_ZONES[readZone],
+            source: "owner",
+          });
+        }
+      } finally {
+        await fresh.cleanup();
+      }
+    },
+    180_000,
+  );
 });
