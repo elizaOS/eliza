@@ -76,6 +76,7 @@ jobs:
           import { requireStripe } from './packages/cloud/shared/src/lib/stripe.ts';
           import { initialInvoiceSchema } from './packages/cloud/shared/src/lib/services/stripe-settled-invoice-schema.ts';
           import { Client } from 'pg';
+          import { execFileSync } from 'node:child_process';
           import { enforceTlsForRemote } from './packages/cloud/shared/src/db/client.ts';
           import { readDatabaseIdentityConfig, runDatabaseIdentityPreflight } from './packages/cloud/scripts/admin/preflight-database-identity.ts';
           if (process.env.TARGET_ENVIRONMENT !== 'staging' ||
@@ -85,6 +86,22 @@ jobs:
           }
           const stripe = requireStripe();
           const reference = value => typeof value === 'string' ? value : value?.id ?? null;
+          const sourceFrames = error => {
+            if (typeof error?.stack !== 'string' || typeof error?.name !== 'string' || typeof error?.message !== 'string') return [];
+            const heading = error.message ? `${error.name}: ${error.message}` : error.name;
+            if (!error.stack.startsWith(heading)) return [];
+            return error.stack.slice(heading.length).split('\n').flatMap(frame => {
+              if (!/^\s+at /.test(frame)) return [];
+              const match = /((?:packages|plugins)\/[A-Za-z0-9_./-]+\.[cm]?[jt]sx?):([1-9]\d*):([1-9]\d*)\)?$/.exec(frame);
+              if (!match) return [];
+              const line = Number(match[2]);
+              const column = Number(match[3]);
+              if (!Number.isSafeInteger(line) || !Number.isSafeInteger(column)) return [];
+              try { if (execFileSync('git', ['ls-files', '--error-unmatch', '--', match[1]], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trimEnd() !== match[1]) return []; }
+              catch { return []; }
+              return [`${match[1]}:${line}:${column}`];
+            });
+          };
           const failure = (stage, error) => {
             const safe = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(value) ? value : undefined;
             const code = safe(error?.code);
@@ -92,6 +109,7 @@ jobs:
               stage, name: safe(error?.name), type: safe(error?.type), code,
               sqlstate: code && /^[0-9A-Z]{5}$/.test(code) ? code : undefined,
               reason: safe(error?.context?.reason),
+              sourceFrames: sourceFrames(error),
               statusCode: typeof error?.statusCode === 'number' ? error.statusCode : undefined,
             }}));
             process.exitCode = 1;
@@ -251,8 +269,9 @@ jobs:
                   !parsed.success || invoice.livemode !== false || !subscription || subscription.livemode !== false) {
                 throw new Error('Selected paid test checkout is not verified');
               }
-              stage = 'reconcile_existing_paid_test_checkout';
+              stage = 'load_checkout_reconciliation';
               const { reconcileSubscriptionCheckout } = await import('./packages/cloud/shared/src/lib/services/subscription-checkout.ts');
+              stage = 'reconcile_existing_paid_test_checkout';
               await reconcileSubscriptionCheckout(session.id, session.metadata.organization_id);
               console.log(JSON.stringify({ reconciliation: { completed: true, existingPaidTestCheckout: true } }));
             }
