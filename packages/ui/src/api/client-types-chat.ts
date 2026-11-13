@@ -70,7 +70,10 @@ export interface UiSpecBlock {
 }
 /** Union of all content block types. */
 export type ContentBlock = TextBlock | ConfigFormBlock | UiSpecBlock;
-export type {ImageAttachment, TransientClientMediaInput} from "../utils/chat-attachment-types";
+export type {
+  ImageAttachment,
+  TransientClientMediaInput,
+} from "../utils/chat-attachment-types";
 /**
  * Media kind for a rendered message attachment. Values match `@elizaos/core`
  * `ContentType` so server payloads line up without pulling core into the
@@ -401,7 +404,10 @@ export function isConversationMessage(
     Number.isFinite(m.timestamp)
   );
 }
-export type {ConversationMessageSearchResult, ConversationMessageSearchResponse} from "../utils/chat-search-types";
+export type {
+  ConversationMessageSearchResponse,
+  ConversationMessageSearchResult,
+} from "../utils/chat-search-types";
 export type ConversationChannelType =
   | "DM"
   | "GROUP"
