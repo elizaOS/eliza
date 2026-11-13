@@ -227,7 +227,9 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     label: "Twilio",
     mode: "static-http",
     environment: "twilio",
-    envVars: ["ELIZA_MOCK_TWILIO_BASE"],
+    envVars: [],
+    rationale:
+      "The mocked test environment redirects fetch for api.twilio.com to this mock; the Twilio client has no base-URL setting.",
     surfaces: [
       "Programmable Messaging send",
       "Programmable Voice call create",
@@ -444,7 +446,7 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     label: "Anthropic Messages API",
     mode: "stateful-http",
     environment: "anthropic",
-    envVars: ["ELIZA_MOCK_ANTHROPIC_BASE"],
+    envVars: ["ANTHROPIC_BASE_URL"],
     surfaces: [
       "POST /v1/messages — text response (static baseline)",
       "POST /v1/messages — prompt-prefix-keyed text response (ping/echo/summarize/explain)",
@@ -469,7 +471,7 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     label: "OpenAI API",
     mode: "stateful-http",
     environment: "openai",
-    envVars: ["ELIZA_MOCK_OPENAI_BASE"],
+    envVars: ["OPENAI_BASE_URL"],
     surfaces: [
       "POST /v1/chat/completions",
       "POST /v1/embeddings (deterministic 1536-dim vector seeded by sha256 of input)",

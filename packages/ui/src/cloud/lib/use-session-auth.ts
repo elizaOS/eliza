@@ -8,9 +8,9 @@
  * the provider isn't mounted — keeping authed cloud views able to gate on
  * `{ ready, authenticated, user }` without forcing the runtime to load.
  *
- * Test builds (`VITE_PLAYWRIGHT_TEST_AUTH` / `NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH`)
- * also honor the Playwright `eliza-test-auth` marker cookie so browser-driven
- * suites can exercise authed surfaces against a mock stack.
+ * Test builds (`VITE_PLAYWRIGHT_TEST_AUTH`, a build-time constant) also honor
+ * the Playwright `eliza-test-auth` marker cookie so browser-driven suites can
+ * exercise authed surfaces against a mock stack.
  */
 import { Capacitor } from "@capacitor/core";
 import { getElizaApiToken } from "@elizaos/host/protocol";
@@ -45,17 +45,11 @@ const PLAYWRIGHT_TEST_USER_EMAIL = "local-live-test-user@agent.local";
  * Read each env var by its literal name — Vite inlines custom `VITE_*` vars only
  * on literal property access; a dynamic lookup returns `undefined` in prod and
  * silently disables the Playwright test-auth bypass.
+ *
+ * A build-time constant, so production bundles drop every test sign-in branch.
  */
-function isPlaywrightTestAuthEnabled(): boolean {
-  if (import.meta.env?.VITE_PLAYWRIGHT_TEST_AUTH === "true") return true;
-  if (
-    typeof process !== "undefined" &&
-    process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true"
-  ) {
-    return true;
-  }
-  return false;
-}
+const PLAYWRIGHT_TEST_AUTH_ENABLED =
+  import.meta.env.VITE_PLAYWRIGHT_TEST_AUTH === "true";
 function hasCookie(name: string, value?: string): boolean {
   if (typeof document === "undefined") return false;
   const expected = value ? `${name}=${value}` : `${name}=`;
@@ -64,7 +58,7 @@ function hasCookie(name: string, value?: string): boolean {
     .some((part) => part.trim().startsWith(expected));
 }
 function readPlaywrightTestSession(): StewardSessionUser {
-  if (!isPlaywrightTestAuthEnabled()) return null;
+  if (!PLAYWRIGHT_TEST_AUTH_ENABLED) return null;
   if (!hasCookie(PLAYWRIGHT_TEST_AUTH_MARKER_COOKIE, "1")) return null;
   return {
     id: PLAYWRIGHT_TEST_USER_ID,
@@ -195,6 +189,6 @@ export function useSessionAuth(): SessionAuthState {
     storageUser !== null ||
     apiKeyUser !== null ||
     testUser !== null;
-  const ready = !providerAuth.isLoading || isPlaywrightTestAuthEnabled();
+  const ready = !providerAuth.isLoading || PLAYWRIGHT_TEST_AUTH_ENABLED;
   return { ready, authenticated, user };
 }
