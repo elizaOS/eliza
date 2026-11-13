@@ -17,6 +17,7 @@ import {
   openMobilePermissionSettings,
 } from "../../platform/mobile-permissions-client";
 import { createClientPermissionsRegistry } from "../composites/chat/permission-card.helpers";
+import { useNativePermissionHost } from "./native-permission-host";
 import {
   type WalkthroughMemoryStore,
   walkthroughAttemptKey,
@@ -42,6 +43,8 @@ export type PrimingItemStatus = PermissionStatus | "unknown";
 export interface PrimingItem {
   id: PermissionId;
   status: PrimingItemStatus;
+  /** Current platform scope or limitation, never inferred from walkthrough progress. */
+  reason?: string;
   /** Whether the OS request can still be (re)fired; false once hard-denied. */
   canRequest: boolean;
   /** True while this item's OS request is in flight. */
@@ -122,19 +125,23 @@ export function usePermissionPriming(
   ids: readonly PermissionId[],
   options: PermissionPrimingOptions = {},
 ): PermissionPrimingController {
-  const { memory } = options;
-  const registry = React.useMemo(selectRegistry, []);
+  const host = useNativePermissionHost();
+  const memory = options.memory ?? host?.memory;
+  const defaultRegistry = React.useMemo(selectRegistry, []);
+  const registry = host?.registry ?? defaultRegistry;
   const idsKey = ids.join(",");
   const [items, setItems] = React.useState<PrimingItem[]>([]);
   const [ready, setReady] = React.useState(false);
-  const requestingRef = React.useRef<Set<PermissionId>>(new Set());
+  const requestingRef = React.useRef<Map<PermissionId, symbol>>(new Map());
+  const generation = React.useRef(0);
   // Mount check: probe each id WITHOUT prompting, then keep only the ones that
   // still need action. Already-granted / not-applicable / restricted ids are
   // dropped so no card is shown for them.
   // biome-ignore lint/correctness/useExhaustiveDependencies: `idsKey` is the stable string identity of `ids`; depending on the `ids` array itself would re-run the OS status check on every render for callers that pass a fresh array literal.
   React.useEffect(() => {
     let cancelled = false;
-    requestingRef.current = new Set();
+    ++generation.current;
+    requestingRef.current = new Map();
     setReady(false);
     setItems([]);
     void (async () => {
@@ -142,7 +149,12 @@ export function usePermissionPriming(
         ids.map(async (id) => {
           try {
             const state = await registry.check(id);
-            return { id, status: state.status, canRequest: state.canRequest };
+            return {
+              id,
+              status: state.status,
+              canRequest: state.canRequest,
+              reason: state.reason,
+            };
           } catch {
             // Treat an unknowable status as promptable — better to offer the
             // card than to silently skip a real permission.
@@ -157,13 +169,18 @@ export function usePermissionPriming(
       if (cancelled) return;
       setItems(
         checked
-          .filter((entry) => !isSatisfied(entry.status))
+          .filter(
+            (entry) =>
+              !isSatisfied(entry.status) &&
+              !memory?.read().reviewed?.[walkthroughAttemptKey(entry.id)],
+          )
           .map((entry) => {
             const promptShown =
               walkthroughRequestRoute(memory, entry.id) === "settings";
             return {
               id: entry.id,
               status: entry.status,
+              reason: entry.reason,
               canRequest: entry.canRequest && !promptShown,
               promptShown,
               requesting: false,
@@ -177,6 +194,8 @@ export function usePermissionPriming(
     })();
     return () => {
       cancelled = true;
+      ++generation.current;
+      requestingRef.current.clear();
     };
     // idsKey captures the id list identity; registry is stable (useMemo []).
   }, [idsKey, registry, memory]);
@@ -190,13 +209,19 @@ export function usePermissionPriming(
   );
   const request = React.useCallback(
     async (id: PermissionId) => {
+      if (!items.some((item) => item.id === id && !item.resolved)) return;
       if (requestingRef.current.has(id)) return;
       if (walkthroughRequestRoute(memory, id) === "settings") {
         // The prompt was already shown: never fire it twice. The card offers settings instead.
         patch(id, { canRequest: false, promptShown: true });
         return;
       }
-      requestingRef.current.add(id);
+      const owner = generation.current;
+      const ticket = Symbol(id);
+      requestingRef.current.set(id, ticket);
+      const current = () =>
+        generation.current === owner &&
+        requestingRef.current.get(id) === ticket;
       patch(id, {
         requesting: true,
         requestError: false,
@@ -210,66 +235,88 @@ export function usePermissionPriming(
         // The OS answered, so its prompt was shown: record it so this walkthrough never fires it
         // again, here or after a restart. A failed request (below) records nothing and may retry.
         memory?.write({ attempted: { [walkthroughAttemptKey(id)]: true } });
+        if (!current()) return;
         patch(id, {
           status: state.status,
+          reason: state.reason,
           canRequest: state.canRequest && !memory,
           promptShown: !!memory && state.status !== "granted",
           requesting: false,
           requestError: false,
           recheckError: false,
           // Granting resolves the card; a denial keeps it active for recovery.
-          resolved: state.status === "granted",
+          resolved: state.status === "granted" && !state.reason,
         });
       } catch {
         // error-policy:J4 native/transport failures remain visibly different from
         // a real OS denial and keep an explicit retry path.
-        patch(id, {
-          status: "unknown",
-          canRequest: true,
-          requesting: false,
-          requestError: true,
-          recheckError: false,
-        });
+        if (current())
+          patch(id, {
+            status: "unknown",
+            canRequest: true,
+            requesting: false,
+            requestError: true,
+            recheckError: false,
+          });
       } finally {
-        requestingRef.current.delete(id);
+        if (requestingRef.current.get(id) === ticket)
+          requestingRef.current.delete(id);
       }
     },
-    [patch, registry, memory],
+    [items, patch, registry, memory],
   );
   const skip = React.useCallback(
     (id: PermissionId) => {
+      requestingRef.current.delete(id);
+      memory?.write({
+        reviewed: {
+          ...memory.read().reviewed,
+          [walkthroughAttemptKey(id)]: true,
+        },
+      });
       patch(id, { resolved: true });
     },
-    [patch],
+    [memory, patch],
   );
-  const openSettings = React.useCallback(async (id: PermissionId) => {
-    await openSettingsFor(id);
-  }, []);
+  const openSettings = React.useCallback(
+    async (id: PermissionId) => {
+      if (host) {
+        if (!(await host.registry.openSettings(id)))
+          throw Error("Permission settings did not open");
+      } else await openSettingsFor(id);
+    },
+    [host],
+  );
   const recheck = React.useCallback(
     async (id: PermissionId) => {
+      const owner = generation.current;
       try {
         // Returning from System Settings must bypass PermissionManager's
         // short-lived cache for this exact permission; refreshing every prober
         // would couple recovery to unrelated OS integrations.
-        const state = isDesktopPlatform()
-          ? await checkDesktopPermissionFresh(id)
-          : await registry.check(id);
+        const state =
+          !host && isDesktopPlatform()
+            ? await checkDesktopPermissionFresh(id)
+            : await registry.check(id);
+        if (generation.current !== owner) return;
         patch(id, {
           status: state.status,
+          reason: state.reason,
           canRequest: state.canRequest,
           requestError: false,
           recheckError: false,
-          resolved: state.status === "granted",
+          resolved: state.status === "granted" && !state.reason,
         });
       } catch {
         // error-policy:J4 an authoritative refresh failure stays visible so
         // the recovery control never appears to do nothing.
-        patch(id, { recheckError: true });
+        if (generation.current === owner) patch(id, { recheckError: true });
       }
     },
-    [patch, registry],
+    [host, patch, registry],
   );
   const skipAll = React.useCallback(() => {
+    requestingRef.current.clear();
     memory?.write({ dismissed: true });
     setItems((current) => current.map((item) => ({ ...item, resolved: true })));
   }, [memory]);

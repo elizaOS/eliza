@@ -5,8 +5,15 @@ export { AgentSurfaceProvider } from "./agent-surface/AgentSurfaceContext.js";
 export { AgentButton } from "./agent-surface/components.js";
 export { getViewRegistry } from "./agent-surface/registry.js";
 export { useAgentElement } from "./agent-surface/useAgentElement.js";
-export { completeAndroidCloudSignIn } from "./android-cloud/android-cloud-auth.js";
-export { shouldAcknowledgeAndroidCloudCallback } from "./android-cloud/android-cloud-client.js";
+export {
+  AndroidNativeCloudSignInHost,
+  AndroidNativeCloudSignInView,
+} from "./android-cloud/AndroidNativeCloudSignInView.js";
+export {
+  type AndroidNativeCloudSignInRequest,
+  type ElizaCloudEnvironment,
+  requestAndroidNativeCloudSignIn,
+} from "./android-cloud/native-cloud-sign-in.js";
 export {
   abortableResponse,
   runAbortableRequest,
@@ -77,7 +84,9 @@ export {
   isRateLimitedError,
 } from "./api/client-types-core.js";
 export {
+  admitConversationStopReceipt,
   type ConversationRoom,
+  type ConversationStopReceipt,
   type ConversationStopResult,
   type ConversationTurnContext,
   ConversationTurnController,
@@ -85,6 +94,7 @@ export {
   type ConversationTurnObserver,
   ConversationTurnRefusal,
   type ConversationTurnRefusalCode,
+  type ConversationTurnRequestOptions,
   type ConversationTurnTransport,
   findStoppedUserTurn,
   isConversationTurnRefusal,
@@ -118,6 +128,7 @@ export {
 } from "./api/remote-control-cloud-default.js";
 export {
   createRuntimeJsonClient,
+  RUNTIME_NOT_READY,
   type RuntimeJsonBridge,
   type RuntimeJsonResponse,
   RuntimeRequestError,
@@ -167,9 +178,13 @@ export { AppBackground } from "./backgrounds/AppBackground.js";
 export { BRAND_PATHS, LOGO_FILES } from "./brand/index.js";
 export { initializeCapacitorBridge } from "./bridge/capacitor-bridge.js";
 export {
+  CLOCK_SAVED_ALARM_OUTCOMES,
   type ClockAlarmStatus,
   type ClockHost,
   type ClockProposal,
+  type ClockSavedAlarmOutcome,
+  type ClockSavedAlarmReview,
+  type ClockSavedAlarms,
   type ClockStatus,
   configureClockHost,
   getClockHost,
@@ -1484,6 +1499,7 @@ export {
 } from "./voice/draft-transcript-guard.js";
 export {
   audioBlobBase64,
+  type CumulativeCapture,
   type CumulativeCaptureOptions,
   observeMicrophonePause,
   type SpeechPauseOptions,

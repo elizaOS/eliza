@@ -29,10 +29,9 @@ import {
   ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS,
   ANDROID_SMS_GATEWAY_STRIPPED_PERMISSIONS,
   applyAndroidPlayManifestHardening,
-  isAndroidFirebaseIndependentRemoteBuild,
+  isAndroidVpsSidecarBuild,
   isCloudBannedAsset,
   isCloudBannedNativeLibrary,
-  resolveAndroidCloudCapacitorConfigPolicy,
   resolveAndroidCloudStripPolicy,
   sanitizeAndroidCloudCapacitorConfig,
 } from "./cloud-policy.ts";
@@ -45,7 +44,7 @@ import { cloudSafePlayVoicePluginJava } from "./templates/play-voice.ts";
 import { cloudSafeSecureCredentialsPluginJava } from "./templates/secure-credentials.ts";
 import { cloudSafeTasksWorkerJava } from "./templates/tasks-worker.ts";
 
-export function sanitizeAndroidCloudPackagedConfig(env = process.env) {
+export function sanitizeAndroidCloudPackagedConfig() {
   const configPath = path.join(
     androidDir,
     "app",
@@ -69,10 +68,7 @@ export function sanitizeAndroidCloudPackagedConfig(env = process.env) {
       }`,
     );
   }
-  const sanitized = sanitizeAndroidCloudCapacitorConfig(
-    parsed,
-    resolveAndroidCloudCapacitorConfigPolicy(env),
-  );
+  const sanitized = sanitizeAndroidCloudCapacitorConfig(parsed);
   fs.writeFileSync(configPath, `${JSON.stringify(sanitized, null, "\t")}\n`);
   console.log(
     "[mobile-build] Rewrote capacitor.config.json to the restricted Play runtime contract.",
@@ -82,11 +78,7 @@ export function sanitizeAndroidCloudPackagedConfig(env = process.env) {
 export function rewriteCloudJavaSources(
   javaRoots,
   androidPackage,
-  {
-    launcherKiosk = false,
-    immersiveNavigation = false,
-    safePushNotifications = true,
-  } = {},
+  { safePushNotifications = true } = {},
 ) {
   let touched = 0;
   for (const root of javaRoots) {
@@ -95,11 +87,7 @@ export function rewriteCloudJavaSources(
     if (fs.existsSync(mainActivity)) {
       fs.writeFileSync(
         mainActivity,
-        cloudSafeMainActivityJava(androidPackage, {
-          launcherKiosk,
-          immersiveNavigation,
-          safePushNotifications,
-        }),
+        cloudSafeMainActivityJava(androidPackage, { safePushNotifications }),
         "utf8",
       );
       touched += 1;
@@ -113,6 +101,25 @@ export function rewriteCloudJavaSources(
       );
       touched += 1;
     }
+    fs.writeFileSync(
+      path.join(root, "ElizaCredentialRetirement.java"),
+      `package ${androidPackage};
+
+import android.content.Context;
+
+/** This packaging excludes the resident service and its assets. No process is stopped here. */
+final class ElizaCredentialRetirement {
+    static long reserve() { return 0; }
+    static void request(Context context, long request) { }
+    static boolean stopped(Context context) { return true; }
+    static boolean acknowledged(long request) { return request == 0; }
+    static void release(long request) { }
+    static void abandon(long request) { }
+}
+`,
+      "utf8",
+    );
+    touched += 1;
     fs.writeFileSync(
       path.join(root, "ElizaSecureCredentialsPlugin.java"),
       cloudSafeSecureCredentialsPluginJava(androidPackage),
@@ -316,7 +323,7 @@ export function stripAndroidNativePlugins(strippedPlugins, label) {
 }
 
 export function stripAndroidCloudNativePlugins(env = process.env) {
-  const strippedPlugins = isAndroidFirebaseIndependentRemoteBuild(env)
+  const strippedPlugins = isAndroidVpsSidecarBuild(env)
     ? [
         ...ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
         ["@capacitor/push-notifications", "capacitor-push-notifications"],
@@ -493,8 +500,6 @@ export function stripAndroidForCloud({ env = process.env } = {}) {
     );
   }
   rewriteCloudJavaSources([activeJavaRoot], androidPackage, {
-    launcherKiosk: env.ELIZA_ANDROID_LAUNCHER_BUILD === "1",
-    immersiveNavigation: env.ELIZA_ANDROID_LAUNCHER_BUILD === "1",
     safePushNotifications: stripPolicy.safePushNotifications,
   });
 
@@ -566,7 +571,7 @@ export function stripAndroidForCloud({ env = process.env } = {}) {
   //    libeliza_*.so jniLibs disguise.
   removeCloudNativeArtifacts();
   stripAndroidCloudNativePlugins(env);
-  sanitizeAndroidCloudPackagedConfig(env);
+  sanitizeAndroidCloudPackagedConfig();
 }
 
 export function stripAndroidForSmsGateway() {

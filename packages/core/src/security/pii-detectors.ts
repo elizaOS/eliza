@@ -410,7 +410,8 @@ export const PII_DETECTORS: readonly PiiDetector[] = [
 	// E.164 / North-American phone numbers. The NANP branch requires a separator
 	// (space/dot/dash) or parenthesised area code so a bare 10-digit run (an id,
 	// timestamp, etc.) is NOT mistaken for a phone number; the intl branch needs
-	// the leading `+`.
+	// the leading `+`. entity-recognizer.ts keeps a copy so the browser-safe
+	// protocol entry does not load this module's node:crypto dependency.
 	{
 		kind: "phone",
 		pattern:

@@ -5,7 +5,9 @@
  */
 export type { JsonObject, JsonPrimitive, JsonValue } from "./types/json.ts";
 export type { ActionParameterSchema, JSONSchema } from "./types/schema.ts";
+export type { SurfaceManifest } from "./types/surface-manifest.ts";
 export type {
 	ViewCapability,
 	ViewCapabilityParameter,
 } from "./types/view-capability.ts";
+export type { ViewKind } from "./types/view-kind.ts";

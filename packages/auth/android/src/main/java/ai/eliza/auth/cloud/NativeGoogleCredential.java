@@ -2,6 +2,7 @@ package ai.eliza.auth.cloud;
 
 import android.app.Activity;
 import android.os.CancellationSignal;
+import androidx.core.content.ContextCompat;
 import androidx.credentials.Credential;
 import androidx.credentials.CredentialManager;
 import androidx.credentials.CredentialManagerCallback;
@@ -34,7 +35,7 @@ public final class NativeGoogleCredential {
        .setNonce(nonce).build();
    GetCredentialRequest request = new GetCredentialRequest.Builder().addCredentialOption(option).build();
    CredentialManager.create(activity).getCredentialAsync(activity, request, cancellation,
-       activity.getMainExecutor(), new CredentialManagerCallback<GetCredentialResponse, GetCredentialException>() {
+       ContextCompat.getMainExecutor(activity), new CredentialManagerCallback<GetCredentialResponse, GetCredentialException>() {
     @Override public void onResult(GetCredentialResponse response) {
      if (cancellation.isCanceled()) { callback.failure("cancelled"); return; }
      final String token;
@@ -64,7 +65,7 @@ public final class NativeGoogleCredential {
   if (activity == null || activity.isDestroyed()) { completed.run(); return; }
   try {
    CredentialManager.create(activity).clearCredentialStateAsync(
-       new androidx.credentials.ClearCredentialStateRequest(), null, activity.getMainExecutor(),
+       new androidx.credentials.ClearCredentialStateRequest(), null, ContextCompat.getMainExecutor(activity),
        new CredentialManagerCallback<Void, androidx.credentials.exceptions.ClearCredentialException>() {
         @Override public void onResult(Void ignored) { completed.run(); }
         @Override public void onError(androidx.credentials.exceptions.ClearCredentialException ignored) { completed.run(); }

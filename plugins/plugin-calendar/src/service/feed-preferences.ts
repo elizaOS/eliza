@@ -34,6 +34,12 @@ export interface CalendarFeedPreferenceIdentifier
   extends LifeOpsCalendarSourceKey {
   /** Used only when no durable exact-source row exists yet. */
   initialIncluded?: boolean;
+  /**
+   * Keeps a row the owner has never changed (version 0) equal to
+   * `initialIncluded`, so a source host's current default also applies to
+   * rows seeded earlier. The owner's first change ends it for that source.
+   */
+  followInitialUntilChosen?: boolean;
 }
 
 export interface CalendarFeedPreferenceSnapshot {
@@ -135,6 +141,9 @@ function normalizeIdentifier(
     calendarId,
     ...(typeof identifier.initialIncluded === "boolean"
       ? { initialIncluded: identifier.initialIncluded }
+      : {}),
+    ...(identifier.followInitialUntilChosen === true
+      ? { followInitialUntilChosen: true }
       : {}),
   };
 }
@@ -319,13 +328,42 @@ async function selectPreference(
   return rows[0] ? preferenceFromRow(rows[0]) : null;
 }
 
+/** A conditional write: an owner change or a concurrent alignment wins. */
+async function followInitial(
+  runtime: IAgentRuntime,
+  identifier: CalendarFeedPreferenceIdentifier,
+  snapshot: CalendarFeedPreferenceSnapshot,
+): Promise<CalendarFeedPreferenceSnapshot> {
+  if (
+    !identifier.followInitialUntilChosen ||
+    identifier.initialIncluded === undefined ||
+    snapshot.version !== 0 ||
+    snapshot.included === identifier.initialIncluded
+  ) {
+    return snapshot;
+  }
+  const rows = await executeRawSql(
+    runtime,
+    `UPDATE app_calendar.life_calendar_feed_preferences
+        SET included = ${sqlBoolean(identifier.initialIncluded)},
+            updated_at = ${sqlQuote(new Date().toISOString())}
+      WHERE ${identityWhere(String(runtime.agentId), identifier)}
+        AND version = 0
+        AND included = ${sqlBoolean(snapshot.included)}
+    RETURNING provider, side, grant_id, connector_account_id, calendar_id,
+              included, version, updated_at`,
+  );
+  if (rows[0]) return preferenceFromRow(rows[0]);
+  return (await selectPreference(runtime, identifier)) ?? snapshot;
+}
+
 async function ensurePreference(
   runtime: IAgentRuntime,
   rawIdentifier: CalendarFeedPreferenceIdentifier,
 ): Promise<CalendarFeedPreferenceSnapshot> {
   const identifier = normalizeIdentifier(rawIdentifier);
   const existing = await selectPreference(runtime, identifier);
-  if (existing) return existing;
+  if (existing) return followInitial(runtime, identifier, existing);
 
   const seed = await readLegacySeed(runtime, identifier);
   const now = new Date().toISOString();

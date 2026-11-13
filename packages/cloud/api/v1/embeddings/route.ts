@@ -1,3 +1,4 @@
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 /**
  * POST /api/v1/embeddings
  *
@@ -46,7 +47,6 @@ import {
   appInferenceDeveloperScope,
 } from "@elizaos/cloud-shared/lib/services/app-subscription-inference-admission";
 import type { CreditReservation } from "@elizaos/cloud-shared/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import { inferenceRateLimitConfig } from "@elizaos/cloud-shared/lib/services/inference-admission-snapshot";
 import { requireInferenceApiKeyWithOrg } from "@elizaos/cloud-shared/lib/services/inference-api-key-auth";
 import type { InferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
@@ -54,11 +54,12 @@ import {
   type InferenceAuthTelemetry,
   resolveInferenceAuthContext,
 } from "@elizaos/cloud-shared/lib/services/inference-auth-context";
-import { InferenceBalanceCacheWarmingError } from "@elizaos/cloud-shared/lib/services/inference-billing-fast-path";
+import { InferenceBillingUnavailableError } from "@elizaos/cloud-shared/lib/services/inference-billing-fast-path";
 import {
   assertInferenceCredentialActive,
   type InferenceCredentialCheck,
 } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
+import { inferenceFundingRefusal } from "@elizaos/cloud-shared/lib/services/inference-funding-refusal";
 import { isPassthroughEmbeddingsEnabled } from "@elizaos/cloud-shared/lib/services/inference-passthrough";
 import { isKnownUnacceptedProviderError } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
 import {
@@ -68,8 +69,6 @@ import {
 import {
   admitOrganizationInference,
   InferenceAdmissionUnavailableError,
-  InferenceAffiliateCacheUnavailableError,
-  InferencePricingCacheUnavailableError,
   type OrganizationInferenceAdmission,
 } from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
 import { settlementDigest } from "@elizaos/cloud-shared/lib/services/settlement-digest";
@@ -82,7 +81,7 @@ import { Hono } from "hono";
 import {
   resolveInferenceAuthStandingDenial,
   resolveInferenceCredentialAdmissionDenial,
-} from "@/api-app/lib/generative-route-auth";
+} from "../../src/lib/generative-route-auth";
 
 interface EmbeddingsRequest {
   input: string | string[];
@@ -117,7 +116,9 @@ app.post("/", async (c) => {
   let billingReservation: CreditReservation | undefined;
   let executionCtx: { waitUntil(promise: Promise<unknown>): void } | undefined;
   let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
+  let apiKeyRateLimit: number | undefined;
   let admissionCredential: InferenceCredentialCheck | undefined;
+  let refreshAuthEntry: (() => void) | undefined;
   let providerRequestId: string | undefined;
   let providerModel: string | undefined;
   try {
@@ -126,23 +127,8 @@ app.post("/", async (c) => {
       typeof candidate?.waitUntil === "function" ? candidate : undefined;
   } catch {
     // error-policy:J4 Hono intentionally throws outside Workers; local tools
-    // retain compatibility, while enabled Worker admission fails closed below.
+    // keep the synchronous primary admission.
     executionCtx = undefined;
-  }
-  if (!executionCtx && c.env?.INFERENCE_DEFERRED_ADMISSION === "true") {
-    logger.error(
-      "[Embeddings] Worker execution context is unavailable for cache-only inference",
-    );
-    return c.json(
-      {
-        error: {
-          message: "Inference authorization is warming. Retry shortly.",
-          type: "service_unavailable",
-          code: "inference_context_unavailable",
-        },
-      },
-      503,
-    );
   }
   // True once settleBilling() has taken ownership of settling/releasing the
   // reservation, so the outer catch never double-applies a release.
@@ -187,24 +173,11 @@ app.post("/", async (c) => {
     const resolution = await resolveInferenceAuthContext(inferenceRequest, {
       traceId,
       executionCtx,
-      cacheOnly: Boolean(executionCtx),
       deferStrongCredentialCheck: Boolean(executionCtx) && requestIsValid,
       onTelemetry: (telemetry) => {
         authTelemetry = telemetry;
       },
     });
-    if (resolution.kind === "warming") {
-      return c.json(
-        {
-          error: {
-            message: "Authorization cache is warming. Retry shortly.",
-            type: "service_unavailable",
-            code: "auth_cache_warming",
-          },
-        },
-        503,
-      );
-    }
     if (resolution.kind === "suspended") {
       const denial = resolveInferenceAuthStandingDenial(resolution, {
         route: "embeddings",
@@ -250,7 +223,12 @@ app.post("/", async (c) => {
       guardOrganizationId = user.organization_id;
       apiKeyId = resolution.ctx.apiKeyId;
       admissionSnapshot = resolution.ctx.admission;
+      apiKeyRateLimit =
+        "apiKeyRateLimit" in resolution.ctx
+          ? resolution.ctx.apiKeyRateLimit
+          : undefined;
       admissionCredential = resolution.credential;
+      refreshAuthEntry = resolution.refreshEntry;
     } else {
       if (executionCtx) {
         return c.json(
@@ -294,7 +272,9 @@ app.post("/", async (c) => {
           cacheOnly: Boolean(executionCtx),
           executionCtx,
           config: inferenceRateLimitConfig(admissionSnapshot, "embeddings"),
+          admissionSnapshot,
           apiKeyId,
+          apiKeyRateLimit,
         })
       : Promise.resolve(null);
 
@@ -307,24 +287,20 @@ app.post("/", async (c) => {
     try {
       orgRateLimited = await orgRateLimitPromise;
     } catch (error) {
-      // error-policy:J1 the route boundary translates a cold policy cache into
-      // a retryable response; all other errors continue to the outer boundary.
+      // error-policy:J1 the route boundary translates an unprovable policy
+      // into a retryable response; all other errors continue to the outer boundary.
       if (error instanceof OrgRateLimitCacheNotReadyError) {
         return c.json(
           {
             error: {
               message:
-                error.state === "warming"
-                  ? "Organization rate-limit policy is warming. Retry shortly."
-                  : "Organization rate-limit policy cache is unavailable. Retry shortly.",
+                "Organization rate-limit policy is unavailable. Retry shortly.",
               type: "service_unavailable",
-              code:
-                error.state === "warming"
-                  ? "rate_limit_cache_warming"
-                  : "rate_limit_cache_unavailable",
+              code: "rate_limit_unavailable",
             },
           },
           503,
+          { "Retry-After": "1" },
         );
       }
       throw error;
@@ -497,6 +473,7 @@ app.post("/", async (c) => {
           affiliateCode,
           executionCtx,
           admissionSnapshot,
+          refreshAuthEntry,
           credential: credentialGuard.credentialForAdmission(),
           atomicProviderBoundary: Boolean(executionCtx),
         });
@@ -526,16 +503,7 @@ app.post("/", async (c) => {
         );
       }
       if (error instanceof InsufficientCreditsError) {
-        return c.json(
-          {
-            error: {
-              message: `Insufficient credits. Required: $${error.required.toFixed(4)}`,
-              type: "insufficient_quota",
-              code: "insufficient_balance",
-            },
-          },
-          402,
-        );
+        return c.json({ error: inferenceFundingRefusal(error) }, 402);
       }
       if (error instanceof InferenceAdmissionUnavailableError) {
         logger.error(
@@ -562,23 +530,17 @@ app.post("/", async (c) => {
           { "Retry-After": "1" },
         );
       }
-      if (error instanceof InferenceBalanceCacheWarmingError) {
-        const unavailable =
-          error instanceof InferencePricingCacheUnavailableError ||
-          error instanceof InferenceAffiliateCacheUnavailableError;
+      if (error instanceof InferenceBillingUnavailableError) {
         return c.json(
           {
             error: {
-              message: unavailable
-                ? "Inference admission cache is unavailable. Retry shortly."
-                : "Inference admission cache is warming. Retry shortly.",
+              message: "Billing authorization is unavailable. Retry shortly.",
               type: "service_unavailable",
-              code: unavailable
-                ? "inference_admission_cache_unavailable"
-                : "inference_admission_cache_warming",
+              code: "billing_unavailable",
             },
           },
           503,
+          { "Retry-After": "1" },
         );
       }
       throw error;
@@ -888,16 +850,7 @@ app.post("/", async (c) => {
     }
 
     if (error instanceof InsufficientCreditsError) {
-      return c.json(
-        {
-          error: {
-            message: `Insufficient credits. Required: $${error.required.toFixed(4)}`,
-            type: "insufficient_quota",
-            code: "insufficient_balance",
-          },
-        },
-        402,
-      );
+      return c.json({ error: inferenceFundingRefusal(error) }, 402);
     }
     if (error instanceof InferenceAdmissionUnavailableError) {
       logger.error("[Embeddings] provider-boundary admission failed closed", {

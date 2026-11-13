@@ -227,6 +227,40 @@ describe("durable background memory", () => {
       }
     },
   );
+  it("turns provider reasoning off for the schema and JSON-object evaluation requests", async () => {
+    const { runtime, service, message } = await setup();
+    const process = vi.fn(async () => undefined);
+    runtime.registerEvaluator(evaluator(process));
+    const requests: unknown[] = [];
+    runtime.useModel = vi.fn(async (_type, params) => {
+      requests.push(params);
+      // Reject the schema attempt so the JSON-object fallback also runs.
+      if (requests.length === 1) throw new Error("response schema rejected");
+      return '{"memory":{"ok":true}}';
+    }) as AgentRuntime["useModel"];
+    await service.enqueue(message, state, { phase: "post_turn" });
+    await execute(runtime, await job(runtime));
+    const thinkingOff = {
+      providerOptions: {
+        eliza: expect.objectContaining({ thinking: "off" }),
+      },
+    };
+    expect(requests).toEqual([
+      expect.objectContaining({
+        ...thinkingOff,
+        responseSchema: expect.anything(),
+      }),
+      expect.objectContaining({
+        ...thinkingOff,
+        responseFormat: { type: "json_object" },
+      }),
+    ]);
+    expect(requests[1]).not.toHaveProperty("responseSchema");
+    // The reasoning-off answer still passes the evaluator schema.
+    expect(process).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ output: { ok: true } }),
+    );
+  });
   it.each([relationshipEvaluator, identityEvaluator])(
     "holds $name source reconciliation before inference without acknowledging the evidence",
     async (entry) => {
@@ -442,10 +476,10 @@ describe("durable background memory", () => {
     let now = Date.now() + 10_000;
     const scheduler = new TaskService(runtime, {
       now: () => now,
-      setInterval: () => {
+      setTimeout: () => {
         throw new Error("Test drives public scheduler ticks");
       },
-      clearInterval: () => undefined,
+      clearTimeout: () => undefined,
     });
     await service.enqueue(message, state, { phase: "post_turn" });
     const initial = await job(runtime);
@@ -518,10 +552,10 @@ describe("durable background memory", () => {
       const now = Date.now() + 10_000;
       const scheduler = new TaskService(runtime, {
         now: () => now,
-        setInterval: () => {
+        setTimeout: () => {
           throw new Error("Test drives public scheduler ticks");
         },
-        clearInterval: () => undefined,
+        clearTimeout: () => undefined,
       });
       await service.enqueue(message, state, { phase: "post_turn" });
       const initial = await job(runtime);
@@ -578,10 +612,10 @@ describe("durable background memory", () => {
       const createScheduler = () =>
         new TaskService(runtime, {
           now: () => now,
-          setInterval: () => {
+          setTimeout: () => {
             throw new Error("Manual ticks only");
           },
-          clearInterval: () => undefined,
+          clearTimeout: () => undefined,
         });
       try {
         await service.enqueue(message, state, { phase: "post_turn" });
@@ -644,10 +678,10 @@ describe("durable background memory", () => {
     }) as AgentRuntime["useModel"];
     const scheduler = new TaskService(runtime, {
       now: () => now,
-      setInterval: () => {
+      setTimeout: () => {
         throw new Error("Manual ticks only");
       },
-      clearInterval: () => undefined,
+      clearTimeout: () => undefined,
     });
     try {
       await service.enqueue(message, state, { phase: "post_turn" });

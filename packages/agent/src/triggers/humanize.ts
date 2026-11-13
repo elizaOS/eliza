@@ -167,9 +167,9 @@ export function describeCronSchedule(expression: string): string | null {
 
 /**
  * Describe a one-shot fire time relative to now: a countdown for near-term
- * fires ("in 5 minutes"), then clock forms in the resolved sender timezone
- * ("today at 3pm", "tomorrow at 8am", "on Saturday at 8am"). Returns null
- * only for an unparseable timestamp.
+ * fires that still names the clock time ("in 5 minutes, at 3:05pm"), then
+ * clock forms in the resolved sender timezone ("today at 3pm", "tomorrow at
+ * 8am", "on Saturday at 8am"). Returns null only for an unparseable timestamp.
  */
 export function describeOnceAt(
   scheduledAtIso: string,
@@ -180,14 +180,17 @@ export function describeOnceAt(
   if (Number.isNaN(atMs)) return null;
   const delta = atMs - nowMs;
   if (delta > 0 && delta < MINUTE_MS) return "in under a minute";
+  const at = zonedDateParts(new Date(atMs), timeZone);
+  const time = formatClockTime(at.hour, at.minute);
   if (delta > 0 && delta < RELATIVE_CUTOFF_MS) {
+    // A bare countdown left the clock time to the reply model, which echoed
+    // a misresolved Stage-1 time ("Set for 1:01 AM" for a 2:01am fire, live
+    // 2026-10-30 tj-f85ef1c139592a).
     const minutes = Math.round(delta / MINUTE_MS);
-    return minutes <= 1 ? "in a minute" : `in ${minutes} minutes`;
+    return `${minutes <= 1 ? "in a minute" : `in ${minutes} minutes`}, at ${time}`;
   }
 
-  const at = zonedDateParts(new Date(atMs), timeZone);
   const now = zonedDateParts(new Date(nowMs), timeZone);
-  const time = formatClockTime(at.hour, at.minute);
   const dayDiff = Math.round(
     (Date.UTC(at.year, at.month - 1, at.day) -
       Date.UTC(now.year, now.month - 1, now.day)) /
@@ -200,6 +203,40 @@ export function describeOnceAt(
   }
   const year = at.year === now.year ? "" : `, ${at.year}`;
   return `on ${MONTH_NAMES[at.month - 1]} ${at.day}${year} at ${time}`;
+}
+
+/**
+ * The instant as ISO 8601 in the sender timezone with its UTC offset
+ * ("2026-10-30T05:57:29.656-07:00"), for model-bound result data. The reply
+ * to "remind me in 2 hours" at 3:57am read the hour of the UTC form
+ * "2026-10-30T12:57:29.656Z" and said "12:57pm" (live tj-751d37123e42ae).
+ * The instant is unchanged, so Date.parse reads the same moment. An
+ * unparseable value is returned as given; a zone Intl cannot express as a
+ * whole-minute offset keeps the UTC form.
+ */
+export function zonedIsoTimestamp(iso: string, timeZone: string): string {
+  const date = new Date(Date.parse(iso));
+  if (Number.isNaN(date.getTime())) return iso;
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+      timeZoneName: "longOffset",
+    })
+      .formatToParts(date)
+      .map((part) => [part.type, part.value]),
+  );
+  const offset =
+    parts.timeZoneName === "GMT" ? "+00:00" : parts.timeZoneName?.slice(3);
+  if (!offset || !/^[+-]\d{2}:\d{2}$/.test(offset)) return date.toISOString();
+  const ms = String(date.getUTCMilliseconds()).padStart(3, "0");
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}.${ms}${offset}`;
 }
 
 /**

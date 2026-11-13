@@ -94,8 +94,10 @@ export class DistributedLockService {
    * @returns Lock object if acquired, null if already locked
    */
   async acquireRoomLock(roomId: string, ttl: number = 90000): Promise<Lock | null> {
-    if (!cache.isAvailable()) {
-      logger.warn("[Distributed Locks] Service disabled, skipping lock acquisition");
+    if (!this.isEnabled()) {
+      logger.warn(
+        "[Distributed Locks] No atomic cache backend (unavailable or KV), skipping lock acquisition",
+      );
       return this.createDummyLock(roomId, ttl);
     }
 
@@ -132,7 +134,7 @@ export class DistributedLockService {
    * @returns true if released, false if not owned or doesn't exist
    */
   async releaseRoomLock(roomId: string, lockId: string): Promise<boolean> {
-    if (!cache.isAvailable()) {
+    if (!this.isEnabled()) {
       return true;
     }
 
@@ -161,7 +163,7 @@ export class DistributedLockService {
    * @returns true if extended, false if not owned or doesn't exist
    */
   async extendLock(roomId: string, lockId: string, ms: number): Promise<boolean> {
-    if (!cache.isAvailable()) {
+    if (!this.isEnabled()) {
       return true;
     }
 
@@ -202,7 +204,7 @@ export class DistributedLockService {
    * @returns true if locked, false otherwise
    */
   async isLocked(roomId: string): Promise<boolean> {
-    if (!cache.isAvailable()) {
+    if (!this.isEnabled()) {
       return false;
     }
 
@@ -218,7 +220,7 @@ export class DistributedLockService {
    * @returns Lock info or null if not locked
    */
   async getLockInfo(roomId: string): Promise<{ lockId: string; ttl: number } | null> {
-    if (!cache.isAvailable()) {
+    if (!this.isEnabled()) {
       return null;
     }
 
@@ -240,7 +242,7 @@ export class DistributedLockService {
    * @returns true if released, false on error
    */
   async forceRelease(roomId: string): Promise<boolean> {
-    if (!cache.isAvailable()) {
+    if (!this.isEnabled()) {
       return true;
     }
 
@@ -252,7 +254,7 @@ export class DistributedLockService {
   }
 
   /**
-   * Create a dummy lock when service is disabled (for compatibility)
+   * Create a dummy lock when no atomic backend is available (for compatibility)
    */
   private createDummyLock(roomId: string, ttl: number): Lock {
     const lockId = uuidv4();
@@ -265,8 +267,13 @@ export class DistributedLockService {
     };
   }
 
+  /**
+   * Locks need atomic SET NX. Cloudflare KV only emulates it with get-then-put,
+   * so two instances could both "acquire" the same room; there the dummy lock
+   * is used instead, as on a cache outage.
+   */
   public isEnabled(): boolean {
-    return cache.isAvailable();
+    return cache.isAvailable() && cache.supportsAtomicOperations();
   }
 }
 

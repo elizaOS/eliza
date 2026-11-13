@@ -1,0 +1,72 @@
+{
+  "sources": [
+    "packages/ui/src/state/useCloudState.ts",
+    "packages/ui/src/app/native-cloud-session.ts",
+    "packages/ui/src/components/settings/CloudOverviewSection.tsx",
+    "packages/ui/src/state/__e2e__/native-cloud-session.test.tsx"
+  ],
+  "conformance": "packages/ui/quint/check-cloud-session-projection.mjs",
+  "bounds": {
+    "domain": "One mounted hook, two native port identities, two replacements including A to B to A, one teardown, two reads, and up to two serial sign-out calls. Reads and sign-out calls can settle after their port or revision changes.",
+    "assumptions": "Port operations return an opaque verified snapshot, refusal, or cancellation. A host can reject an aborted read with a regular error. Sign-out host acknowledgement and renderer publication are separate steps, with replacement or teardown possible in between. Fairness is optional and does not require a successful host reply.",
+    "limitations": "Models renderer account and availability publication for a supplied session port. Omits the legacy web/remote backend, explicit activation and event routing, native credential storage, periodic poll timing, and provider error payloads. Mounted conformance controls the native port and runs the production hook. It is scenario conformance and does not replay generated model traces."
+  },
+  "cases": [
+    {
+      "name": "current-native-account-projection",
+      "main": "CloudSessionProjection",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "NoStaleReadPublication",
+        "NoStaleSignOutPublication",
+        "SuppressedAccountIsCleared"
+      ],
+      "temporal": ["UnderFairHostReplies", "EveryHostCallSettles"],
+      "temporalChecks": [
+        {
+          "property": "UnderFairHostReplies",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of each pending read reply, the active sign-out reply, and the sign-out continuation after acknowledgement. Aborting a host signal fences publication but does not guarantee that the host promise returns."
+          ]
+        },
+        {
+          "property": "EveryHostCallSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. A controlled host can keep a read or sign-out pending indefinitely, even after the renderer has retired the revision."
+          ]
+        }
+      ],
+      "maxSteps": 28,
+      "samples": 1000
+    },
+    {
+      "name": "before-fix-unfenced-publication",
+      "main": "CloudSessionProjectionBeforeFix",
+      "init": "init",
+      "step": "step",
+      "invariants": ["SuppressedAccountIsCleared"],
+      "temporal": ["NoStaleErrorReceipt", "NoStaleSignOutReceipt"],
+      "temporalChecks": [
+        {
+          "property": "NoStaleErrorReceipt",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. Before the fix, an aborted port can reject with a regular error and publish unavailable after the captured revision is retired."
+          ]
+        },
+        {
+          "property": "NoStaleSignOutReceipt",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. Before the fix, a port change can run after the inner ownership check and before the outer sign-out continuation resets the account and reports success."
+          ]
+        }
+      ],
+      "maxSteps": 28,
+      "samples": 1000
+    }
+  ]
+}

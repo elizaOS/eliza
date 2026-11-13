@@ -157,6 +157,12 @@ export interface VoiceTurnMetricsReceipt {
   halfDuplexSettlingCount: number;
   halfDuplexSuppressedFrameCount: number;
   halfDuplexSuppressedBytes: number;
+  /**
+   * Subset of the suppressed totals dropped by the caller-turn busy gate alone,
+   * while no reply audio was playing or settling its echo tail.
+   */
+  halfDuplexBusySuppressedFrameCount: number;
+  halfDuplexBusySuppressedBytes: number;
 }
 
 interface VoiceTurnMetricsState extends VoiceTurnMetricsReceipt {
@@ -253,6 +259,11 @@ export interface VoiceSessionSpeechPorts {
   openStt(
     onEvent: (event: CartesiaInkRealtimeEvent) => void,
   ): Pick<CartesiaInkRealtimeSession, "sendAudioChunk" | "close" | "cancel">;
+  /**
+   * True only when `openStt` can be called again after a failed recognizer.
+   * Otherwise a lost STT transport ends the call instead of reconnecting.
+   */
+  sttReopenable?: boolean;
   tts: {
     createStream(
       options: { traceId: string; maxBufferDelayMs: number },
@@ -335,6 +346,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private assistantPlaybackSuppressedUntilMs = Number.NEGATIVE_INFINITY;
   private assistantPlaybackDroppedUplinkBytes = 0;
   private assistantPlaybackDropLogged = false;
+  private callerTurnBusy = false;
   private turnMetrics: VoiceTurnMetricsState | null = null;
 
   private state: SessionState = "ready";
@@ -369,6 +381,13 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private firstLlmTextEmitted = false;
   private callerResponseTurnCount = 0;
   private continuousHandoffEnabled = false;
+  private turnTerminalSupported = false;
+
+  setTurnTerminalSupport(supported: true): void {
+    if (this.started || this.closed)
+      throw new Error("Voice capability negotiation is closed");
+    this.turnTerminalSupported = supported;
+  }
   private assistantReferenceText = "";
   private sttTurnEchoOnly = false;
   private sttTurnDoubleTalkReported = false;
@@ -645,6 +664,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       traceId: sessionTrace,
       uiContext: true,
       playbackCompletion: true,
+      ...(this.turnTerminalSupported ? { turnTerminal: true as const } : {}),
     });
     if (this.config.openingPrompt?.trim()) {
       const traceId = this.mintTraceId("turn");
@@ -680,7 +700,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       this.config.allowContinuousHandoff === true &&
       capabilities.mode === "continuous_handoff" &&
       capabilities.echoCancellation &&
-      capabilities.referenceAwarePlayback;
+      capabilities.referenceAwarePlayback &&
+      // Fish never reports a flush, so phrase-boundary handoff cannot fire.
+      !this.fishAudioAdapter;
     logger.info(
       {
         sessionId: this.sessionId,
@@ -704,14 +726,20 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     // No AEC is guaranteed on the mobile clients. During assistant playback,
     // forwarding speaker echo to Ink makes the model transcribe and answer
     // itself. Drop before re-framing and metering so suppressed echo is neither
-    // provider input nor billed caller audio. Explicit UI barge-in clears this
-    // gate synchronously; acoustic barge-in is available only to AEC-safe
-    // clients that opt in through the session config.
+    // provider input nor billed caller audio. The same gate stays closed for
+    // the whole caller turn, from submission until the turn ends, even when
+    // its reply audio drains first. Explicit UI barge-in clears this gate
+    // synchronously; acoustic barge-in is available only to AEC-safe clients
+    // that opt in through the session config.
     if (this.isAssistantPlaybackSuppressed()) {
       this.assistantPlaybackDroppedUplinkBytes += bytes.byteLength;
       if (this.turnMetrics) {
         this.turnMetrics.halfDuplexSuppressedFrameCount += 1;
         this.turnMetrics.halfDuplexSuppressedBytes += bytes.byteLength;
+        if (!this.isAssistantPlaybackEchoPending()) {
+          this.turnMetrics.halfDuplexBusySuppressedFrameCount += 1;
+          this.turnMetrics.halfDuplexBusySuppressedBytes += bytes.byteLength;
+        }
       }
       if (!this.assistantPlaybackDropLogged) {
         this.assistantPlaybackDropLogged = true;
@@ -793,6 +821,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       halfDuplexSettlingCount: 0,
       halfDuplexSuppressedFrameCount: 0,
       halfDuplexSuppressedBytes: 0,
+      halfDuplexBusySuppressedFrameCount: 0,
+      halfDuplexBusySuppressedBytes: 0,
       lastLlmDeltaAtMs: null,
       lastSonicRequestAtMs: null,
       lastAudioFrameAtMs: null,
@@ -886,6 +916,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       halfDuplexSettlingCount: metrics.halfDuplexSettlingCount,
       halfDuplexSuppressedFrameCount: metrics.halfDuplexSuppressedFrameCount,
       halfDuplexSuppressedBytes: metrics.halfDuplexSuppressedBytes,
+      halfDuplexBusySuppressedFrameCount:
+        metrics.halfDuplexBusySuppressedFrameCount,
+      halfDuplexBusySuppressedBytes: metrics.halfDuplexBusySuppressedBytes,
     };
     try {
       this.config.onTurnMetrics?.(receipt);
@@ -1021,7 +1054,12 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   playbackComplete(traceId: string): void {
     if (this.closed || this.pendingPlaybackCompletionTraceId !== traceId)
       return;
+    // A drain ends the reply's echo tail, not the caller turn. The early
+    // reply-ready path can drain before the request has finished persisting,
+    // so the busy gate keeps the microphone closed until the turn ends.
+    const callerTurnBusy = this.callerTurnBusy;
     this.clearAssistantPlaybackSuppression();
+    this.callerTurnBusy = callerTurnBusy;
   }
 
   private isAssistantPlaybackSuppressed(): boolean {
@@ -1030,9 +1068,39 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       this.continuousHandoffEnabled
     )
       return false;
+    return this.callerTurnBusy || this.isAssistantPlaybackEchoPending();
+  }
+
+  /** Reply audio is playing or its echo tail has not settled yet. */
+  private isAssistantPlaybackEchoPending(): boolean {
     return (
       this.assistantPlaybackActive ||
       this.now() < this.assistantPlaybackSuppressedUntilMs
+    );
+  }
+
+  /**
+   * Half duplex keeps the microphone closed for the whole time a submitted
+   * caller turn is busy. An action can run for seconds before any audio, and
+   * the request can still be persisting after its audio drained. Caller speech
+   * in either gap would commit a new turn and abort a request whose action
+   * already ran. Only the end of the turn (finishTurn), interruption, Stop or
+   * session close releases this gate; playback drain never does.
+   */
+  private armCallerTurnBusy(): void {
+    if (
+      this.config.acousticBargeInEnabled === true ||
+      this.continuousHandoffEnabled
+    )
+      return;
+    this.callerTurnBusy = true;
+    this.assistantPlaybackDropLogged = false;
+    this.discardSuppressedUplinkState();
+    logger.info(
+      {
+        traceId: this.currentVoiceTurnId,
+      },
+      "[voice-session] half-duplex caller-turn busy gate armed",
     );
   }
 
@@ -1070,6 +1138,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   }
 
   private settleAssistantPlaybackSuppression(): void {
+    // The caller turn is over. Without reply audio there is no echo tail to
+    // wait out, so the caller can speak again at once, e.g. to retry.
+    this.callerTurnBusy = false;
     if (!this.assistantPlaybackActive) return;
     if (this.continuousHandoffEnabled) {
       this.assistantPlaybackActive = false;
@@ -1105,6 +1176,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private clearAssistantPlaybackSuppression(): void {
     this.pendingPlaybackCompletionTraceId = null;
     const wasSuppressed = this.isAssistantPlaybackSuppressed();
+    this.callerTurnBusy = false;
     this.assistantPlaybackActive = false;
     this.assistantPlaybackStartedAtMs = null;
     this.assistantPlaybackAudioBytes = 0;
@@ -1173,7 +1245,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         },
         "[voice-session] Ink connection timed out",
       );
-      this.send({ t: "error", code: "stt_reconnecting", retryable: true });
+      if (this.sttReopenable()) {
+        this.send({ t: "error", code: "stt_reconnecting", retryable: true });
+      }
       this.recoverSttTransport("connect_timeout", generation);
     }, timeoutMs);
     this.sttConnectTimer = timer;
@@ -1348,7 +1422,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           },
           "[voice-session] Ink transport closed",
         );
-        this.send({ t: "error", code: "stt_reconnecting", retryable: true });
+        if (this.sttReopenable()) {
+          this.send({ t: "error", code: "stt_reconnecting", retryable: true });
+        }
         this.recoverSttTransport(`close:${event.code}`, generation);
         break;
       }
@@ -1380,7 +1456,28 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         // generation fence already prevents it from reaching session state.
       }
     }
+    if (!this.sttReopenable()) {
+      logger.warn(
+        { sessionId: this.sessionId, reason },
+        "[voice-session] injected STT lost and cannot reopen",
+      );
+      this.send({
+        t: "error",
+        code: "speech_relay_unavailable",
+        retryable: false,
+      });
+      this.teardown("error");
+      return;
+    }
     this.scheduleSttReconnect(reason);
+  }
+
+  /** An injected relay's recognizer opens once unless the host opts in. */
+  private sttReopenable(): boolean {
+    return (
+      this.config.speechProvider !== "injected" ||
+      this.config.speechPorts.sttReopenable === true
+    );
   }
 
   private clearSttConnectTimeout(): void {
@@ -1424,7 +1521,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         this.openSttSession();
       } catch (error) {
         // error-policy:J4 a replacement transport that cannot be constructed
-        // stays visibly retrying, then fails the call closed at the bound.
+        // stays visibly retrying at capped backoff for the session lifetime.
         logger.warn(
           {
             sessionId: this.sessionId,
@@ -1532,6 +1629,20 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   /** Authoritative user turn: mint the turn trace, run the LLM+TTS legs. */
   private commitTurn(transcript: string): void {
     if (
+      (this.currentVoiceTurnId || this.pendingOverlapTurn) &&
+      !SPOKEN_TRANSCRIPT_RE.test(transcript)
+    ) {
+      // A noise or empty final while a reply is active is not a new turn: it
+      // must not replace the active turn id or queue an overlap reply. Its
+      // metered STT stays on the active turn's usage frame.
+      this.state = this.currentVoiceTurnId
+        ? this.assistantPlaybackActive
+          ? "speaking"
+          : "thinking"
+        : "listening";
+      return;
+    }
+    if (
       this.continuousHandoffEnabled &&
       (this.currentVoiceTurnId || this.pendingOverlapTurn) &&
       transcript.trim() !== ""
@@ -1540,6 +1651,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       return;
     }
     const traceId = this.mintTraceId("turn");
+    this.assertNoActiveVoiceTurn(traceId);
     this.currentTraceId = traceId;
     this.currentVoiceTurnId = traceId;
     // turnSttMs already holds the STT duration metered while this utterance's
@@ -1561,6 +1673,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
     this.state = "thinking";
     this.callerResponseTurnCount += 1;
+    this.armCallerTurnBusy();
     this.activeResponseModelSettled = this.runResponseTurn(
       transcript,
       traceId,
@@ -1572,6 +1685,19 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       // error-policy:J5 runResponseTurn reports failures through voice error
       // frames; the sequencing barrier must still release the next request.
       () => undefined,
+    );
+  }
+
+  /** Spoken finals interrupt the active turn first; anything else is a bug. */
+  private assertNoActiveVoiceTurn(nextTraceId: string): void {
+    if (this.currentVoiceTurnId === null) return;
+    logger.error(
+      {
+        sessionId: this.sessionId,
+        activeTraceId: this.currentVoiceTurnId,
+        nextTraceId,
+      },
+      "[voice-session] committing a turn over an active turn",
     );
   }
 
@@ -1616,6 +1742,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       }
       const result = await streamElizaConversation(
         {
+          requireTurnTerminal: this.turnTerminalSupported,
           endpoint: this.config.elizaEndpoint,
           authorization: this.config.elizaAuthorization,
           model: this.config.elizaModel,
@@ -1629,6 +1756,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           traceId: pending.traceId,
           signal: pending.abort.signal,
           fetchImpl: this.config.fetchImpl,
+          // Nothing is spoken until the reply completes, so take the rewrite.
+          onAuthoritativeReplace: (text) => {
+            if (this.pendingOverlapTurn === pending) replyText = text;
+          },
         },
         (delta) => {
           if (
@@ -1649,6 +1780,29 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         this.pendingOverlapTurn !== pending
       )
         return;
+      if (result.turnOutcome) {
+        if (result.turnOutcome.outcome === "failed") {
+          logger.warn(
+            {
+              traceId: pending.traceId,
+              code:
+                result.terminalFailure?.code &&
+                /^[A-Za-z0-9_]{1,64}$/.test(result.terminalFailure.code)
+                  ? result.terminalFailure.code
+                  : result.turnOutcome.code,
+              transient: result.terminalFailure?.transient,
+            },
+            "[voice-session] canonical overlap turn failed",
+          );
+        }
+        this.pendingOverlapTurn = null;
+        this.send({
+          t: "turn_terminal",
+          traceId: pending.traceId,
+          ...result.turnOutcome,
+        });
+        return;
+      }
       if (result.completed) {
         this.send({ t: "reply_complete", traceId: pending.traceId });
       }
@@ -1677,7 +1831,25 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         "[voice-session] overlapping response preparation failed",
       );
       if (this.pendingOverlapTurn === pending) this.pendingOverlapTurn = null;
-      this.send({ t: "error", code: "llm_error", retryable: true });
+      if (this.turnTerminalSupported) {
+        const bridgeError =
+          error instanceof ElizaSseBridgeError ? error : undefined;
+        this.send({
+          t: "error",
+          code: bridgeError?.upstreamCode ?? bridgeError?.code ?? "llm_error",
+          retryable: bridgeError?.retryable ?? true,
+          ...(bridgeError?.status
+            ? { upstreamStatus: bridgeError.status }
+            : {}),
+        });
+        this.send({
+          t: "turn_terminal",
+          traceId: pending.traceId,
+          outcome: "failed",
+        });
+      } else {
+        this.send({ t: "error", code: "llm_error", retryable: true });
+      }
     } finally {
       this.overlapRequests.delete(pending.abort);
     }
@@ -1972,6 +2144,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     let modelOutputChars = 0;
     let modelSpeakableContentSeen = false;
     let upstreamComplete = false;
+    let turnOutcome: VoiceTurnMetricsReceipt["outcome"] = "completed";
     let ttsPlaybackComplete = false;
     const abort = new AbortController();
     this.llmAbort = abort;
@@ -1979,18 +2152,36 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     this.phrase = phrase;
     let initialReplyBuffer = "";
     let streamingReplyStarted = false;
+    // Set once any reply (not progress) text has been submitted to TTS.
+    let replySpeechSubmitted = false;
+    // The authoritative reply rewrote text already spoken: stop feeding TTS.
+    let replyDiverged = false;
+    // The bridge stops progress once reply text is authorized, so every cue
+    // spoken this turn precedes the first reply delta.
+    const spokenProgressCues: string[] = [];
 
     let tts: RealtimeTtsStream | null = null;
+    // Speakable phrases sent to the current context since its last audio.
+    let unvoicedPhrases: RealtimeTtsPhraseInput[] = [];
     // Cartesia requires a non-empty terminal request carrying continue:false.
     // Keep one complete phrase pending so the final word is never synthesized
     // as a detached request with different cadence or prosody.
     let pendingPhrase: string | null = null;
+    // Speech can span provider contexts (see onComplete); end it once.
+    const endPlayback = (): void => {
+      ttsPlaybackComplete = true;
+      this.send({ t: "assistant_playing", active: false, traceId });
+      this.send({ t: "speaking_end", traceId });
+    };
     const ensureTts = (): RealtimeTtsStream => {
       if (tts) return tts;
       const callbacks: RealtimeTtsStreamCallbacks = {
         onFirstAudio: () => {
           if (this.currentVoiceTurnId !== traceId) return;
           this.armAssistantPlaybackSuppression();
+          // A reply in a fresh context after a closed cue context continues
+          // the speaking phase the cue started.
+          if (modelAudioStarted) return;
           modelAudioStarted = true;
           const firstAudioAt = this.now();
           logger.info(
@@ -2043,20 +2234,32 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         onAudioFrame: (frame) => {
           // Guard: no post-cancel / stale-turn frames ever reach the client.
           if (this.currentVoiceTurnId !== traceId) return;
+          unvoicedPhrases = [];
           this.noteAudioFrame(traceId, frame.bytes.byteLength);
           this.noteAssistantPlaybackAudio(frame.bytes.byteLength);
           this.config.downlink.sendAudio(frame.bytes);
         },
-        onComplete: () => {
+        onComplete: ({ frameCount }) => {
           if (this.currentVoiceTurnId !== traceId) return;
-          ttsPlaybackComplete = true;
-          this.send({ t: "assistant_playing", active: false, traceId });
-          this.send({ t: "speaking_end", traceId });
+          const replay = frameCount > 0 ? unvoicedPhrases : [];
+          if (!ttsReplyFinalized || replay.length > 0) {
+            // Cartesia closes a continuation context that is idle for a few
+            // seconds, e.g. after a progress cue spoken before a slow action.
+            // The reply is not over: speak it, and any phrase that raced the
+            // close, in a fresh context on the same socket.
+            unvoicedPhrases = [];
+            tts = null;
+            this.ttsStream = null;
+            for (const input of replay) sendTtsPhrase(ensureTts(), input);
+            return;
+          }
+          endPlayback();
           // Long replies and the early reply-ready path can finish playback
           // while the canonical route is still persisting its durable receipt.
           // Keep the turn alive until terminal metadata arrives so a successful
-          // VIEWS action still reaches the client after speech has ended.
-          if (upstreamComplete) this.finishTurn(traceId);
+          // VIEWS action still reaches the client after speech has ended. The
+          // half-duplex busy gate keeps the microphone closed until then.
+          if (upstreamComplete) this.finishTurn(traceId, turnOutcome);
         },
         onFlushComplete: () => {
           if (this.currentVoiceTurnId !== traceId) return;
@@ -2076,6 +2279,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           abort.abort();
           // Close out the failed turn so the client gets usage + returns to
           // listening, instead of the session being stuck on a dead turn.
+          if (modelAudioStarted && !ttsPlaybackComplete) endPlayback();
           this.finishTurn(traceId, "error");
         },
       };
@@ -2086,12 +2290,16 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     const sendTtsPhrase = (
       stream: RealtimeTtsStream,
       input: RealtimeTtsPhraseInput,
+      reply = true,
     ): void => {
+      if (reply && input.text) replySpeechSubmitted = true;
       // Count every submitted phrase once, including progress spoken before
       // the final reply. Buffered phrases are not submitted until this point.
       firstTtsPhraseSubmittedAt ??= this.now();
       this.turnTtsChars += input.text.length;
       this.noteSonicRequest(traceId, ttsTransportReadyAt !== null);
+      // Record before sending: a provider can emit audio synchronously.
+      if (SPOKEN_TRANSCRIPT_RE.test(input.text)) unvoicedPhrases.push(input);
       stream.sendPhrase(input);
     };
     const queueStreamingPhrases = (phrases: readonly string[]): void => {
@@ -2114,7 +2322,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       ttsReplyFinalized = true;
 
       if (!streamingReplyStarted) {
-        const completeShortReply = initialReplyBuffer.trim();
+        const completeShortReply = withoutRepeatedProgressCue(
+          initialReplyBuffer.trim(),
+          spokenProgressCues,
+        );
         initialReplyBuffer = "";
         if (SPOKEN_TRANSCRIPT_RE.test(completeShortReply)) {
           sendTtsPhrase(ensureTts(), {
@@ -2150,6 +2361,13 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           continueContext: false,
         });
         pendingPhrase = null;
+      } else if (spokenProgressCues.length > 0) {
+        // Only progress was spoken: the reply repeated it or had no speech.
+        // The context already carries the cue text, so an empty continue:false
+        // request just closes it, like the Sonic adapter's finish(). If the
+        // provider already closed that context, the cue's playback is over.
+        if (tts) sendTtsPhrase(tts, { text: "", continueContext: false });
+        else endPlayback();
       }
     };
 
@@ -2170,6 +2388,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         .catch(() => undefined);
 
       const request = {
+        requireTurnTerminal: this.turnTerminalSupported,
         endpoint: this.config.elizaEndpoint,
         authorization: this.config.elizaAuthorization,
         model: this.config.elizaModel,
@@ -2234,7 +2453,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
             });
             pendingPhrase = null;
           }
-          sendTtsPhrase(stream, { text, continueContext: true });
+          sendTtsPhrase(stream, { text, continueContext: true }, false);
+          spokenProgressCues.push(text);
           logger.info(
             {
               traceId,
@@ -2243,10 +2463,31 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
             "[voice-session] action progress cue",
           );
         },
+        // Content-free activity names are shown, never spoken or saved.
+        onActivity: (label: string) => {
+          if (this.currentVoiceTurnId !== traceId || abort.signal.aborted)
+            return;
+          this.send({ t: "activity", label, traceId });
+        },
         onReplyReady: finalizeTtsReply,
+        onAuthoritativeReplace: (text: string) => {
+          if (this.currentVoiceTurnId !== traceId) return;
+          if (replySpeechSubmitted || ttsReplyFinalized) {
+            // Re-speaking a rewritten reply would repeat audio. The held
+            // phrase still closes the context; the canonical text persists.
+            replyDiverged = true;
+            return;
+          }
+          phrase.reset();
+          pendingPhrase = null;
+          initialReplyBuffer = "";
+          streamingReplyStarted = false;
+          this.assistantReferenceText = "";
+          onDelta(text);
+        },
       };
       const onDelta = (delta: string) => {
-        if (this.currentVoiceTurnId !== traceId) return;
+        if (this.currentVoiceTurnId !== traceId || replyDiverged) return;
         this.noteLlmDelta(traceId);
         modelOutputChars += delta.length;
         this.assistantReferenceText += delta;
@@ -2264,11 +2505,23 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         // runtime's later terminal metadata.
         if (!streamingReplyStarted) {
           initialReplyBuffer += delta;
-          if (initialReplyBuffer.length < VOICE_TTS_STREAMING_START_CHARS) {
+          // Hold a cue's length longer so a repeated cue is complete before
+          // its sentence boundary is inspected.
+          if (
+            initialReplyBuffer.length <
+            VOICE_TTS_STREAMING_START_CHARS +
+              spokenProgressCues.reduce(
+                (length, cue) => length + cue.length + 1,
+                0,
+              )
+          ) {
             return;
           }
           streamingReplyStarted = true;
-          const buffered = initialReplyBuffer;
+          const buffered = withoutRepeatedProgressCue(
+            initialReplyBuffer,
+            spokenProgressCues,
+          );
           initialReplyBuffer = "";
           queueStreamingPhrases(phrase.push(buffered));
           return;
@@ -2317,14 +2570,38 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
       if (this.currentVoiceTurnId !== traceId) return; // interrupted mid-stream.
 
-      if (result.aborted) {
-        // Interruption already handled the teardown of this turn's TTS.
-        return;
-      }
+      // Interruption, Stop and close end the turn before aborting its request,
+      // so an abort that reaches a still-current turn came from the fetch
+      // layer, e.g. an idle timeout. Fail the turn below like a dropped stream
+      // so it cannot hold the microphone or the session forever.
+      if (result.aborted)
+        throw new ElizaSseBridgeError(
+          "Eliza request aborted outside the voice session",
+          "upstream_error",
+        );
 
       // Canonical conversation completion is independent of TTS playback.
       // Let the renderer reconcile the saved reply even when an earlier
       // acknowledgement already consumed the first speaking_start event.
+      if (result.turnOutcome) {
+        if (result.turnOutcome.outcome === "failed") {
+          logger.warn(
+            {
+              traceId,
+              code:
+                result.terminalFailure?.code &&
+                /^[A-Za-z0-9_]{1,64}$/.test(result.terminalFailure.code)
+                  ? result.terminalFailure.code
+                  : result.turnOutcome.code,
+              transient: result.terminalFailure?.transient,
+            },
+            "[voice-session] canonical turn failed",
+          );
+        }
+        turnOutcome =
+          result.turnOutcome.outcome === "failed" ? "error" : "completed";
+        this.send({ t: "turn_terminal", traceId, ...result.turnOutcome });
+      }
       if (result.completed)
         this.send({
           t: "reply_complete",
@@ -2334,7 +2611,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
             : {}),
         });
 
-      if (result.viewHandoff) {
+      if (!result.turnOutcome && result.viewHandoff) {
         this.send({
           t: "navigate_view",
           ...result.viewHandoff,
@@ -2344,7 +2621,12 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       upstreamComplete = true;
       finalizeTtsReply();
       if (ttsPlaybackComplete) {
-        this.finishTurn(traceId);
+        this.finishTurn(traceId, turnOutcome);
+        return;
+      }
+      if (result.turnOutcome && this.turnTtsChars === 0) {
+        this.ttsStream?.cancel("empty_terminal_turn");
+        this.finishTurn(traceId, turnOutcome);
         return;
       }
       if (!modelSpeakableContentSeen && this.turnTtsChars === 0) {
@@ -2405,18 +2687,22 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
             : "llm_error",
         retryable: bridgeError ? bridgeError.retryable : true,
         ...(bridgeError?.status ? { upstreamStatus: bridgeError.status } : {}),
-        ...(bridgeError?.upstreamMessage
+        ...(!this.turnTerminalSupported && bridgeError?.upstreamMessage
           ? { upstreamMessage: bridgeError.upstreamMessage }
           : {}),
-        ...(bridgeError?.upstreamSnippet
+        ...(!this.turnTerminalSupported && bridgeError?.upstreamSnippet
           ? { upstreamSnippet: bridgeError.upstreamSnippet }
           : {}),
       });
+      if (this.turnTerminalSupported)
+        this.send({ t: "turn_terminal", traceId, outcome: "failed" });
       // The socket is already open because it was prewarmed before the LLM
       // request. Do not leak an idle provider connection when that request or
       // stream fails before a terminal TTS phrase is sent. finishTurn has not
       // run yet, so ttsStream still belongs to this turn.
       this.ttsStream?.cancel("llm_error");
+      // A spoken cue opened a speaking phase the reply can no longer close.
+      if (modelAudioStarted && !ttsPlaybackComplete) endPlayback();
       this.finishTurn(traceId, "error");
       const fallbackGreeting = options.fallbackGreeting?.trim();
       if (fallbackGreeting && !modelAudioStarted) {
@@ -2483,6 +2769,13 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       this.phrase.reset();
       this.phrase = null;
     }
+    // Negotiated clients confirm global cancellation while the owned request
+    // is still unsettled; the following usage must not erase that correlation.
+    // Legacy clients retain their established usage-then-interruption order.
+    if (this.turnTerminalSupported) {
+      this.state = "interrupted";
+      this.send({ t: "interrupted", reason, traceId });
+    }
     // 5. Report the interrupted turn's usage (STT accrued + TTS chars emitted so
     //    far) so the client sees accurate accounting, then reset the per-turn
     //    accumulators so this turn's duration is NOT carried into the next
@@ -2498,7 +2791,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     this.llmAbort = null;
     // 6. Emit interrupted and return to listening.
     this.state = "interrupted";
-    this.send({ t: "interrupted", reason, traceId });
+    if (!this.turnTerminalSupported)
+      this.send({ t: "interrupted", reason, traceId });
     this.state = "listening";
   }
 
@@ -2708,6 +3002,47 @@ function normalizeVoiceWords(value: string): string[] {
     .replace(/[^a-z0-9' ]+/g, " ")
     .split(/\s+/)
     .filter(Boolean);
+}
+
+const SENTENCE_END_RE = /[.!?…]+["'”’)\]]*(?=\s|$)/gu;
+
+/** Compare cue and reply wording, ignoring case, punctuation and a "for you"/"now" tail. */
+function normalizeProgressCueWords(value: string): string {
+  return value
+    .toLocaleLowerCase("en-US")
+    .replace(/['’]/gu, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .replace(/(?: (?:for you|now)){1,2}$/u, "");
+}
+
+/**
+ * Drop the leading reply sentences that only repeat a progress cue already
+ * spoken this turn ("Opening Calendar for you." twice), keeping any new part.
+ */
+function withoutRepeatedProgressCue(
+  reply: string,
+  spokenCues: readonly string[],
+): string {
+  if (spokenCues.length === 0) return reply;
+  const cues = new Set(spokenCues.map(normalizeProgressCueWords));
+  let remaining = reply;
+  while (remaining) {
+    let repeatedEnd = 0;
+    for (const end of [
+      ...Array.from(
+        remaining.matchAll(SENTENCE_END_RE),
+        (m) => m.index + m[0].length,
+      ),
+      remaining.length,
+    ]) {
+      const lead = normalizeProgressCueWords(remaining.slice(0, end));
+      if (lead && cues.has(lead)) repeatedEnd = end;
+    }
+    if (repeatedEnd === 0) break;
+    remaining = remaining.slice(repeatedEnd).trimStart();
+  }
+  return remaining;
 }
 
 /** Conservative residual-echo filter: never reject one- or two-word speech. */

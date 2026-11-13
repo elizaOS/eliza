@@ -90,7 +90,7 @@ public class ElizaDataResetStoresTest {
         Field alias = owner.getDeclaredField("KEY_ALIAS");
         alias.setAccessible(true);
         assertEquals(alias.get(null), ElizaDataResetStores.NATIVE_SECURE_STORE_KEY_ALIAS);
-        File source = repoFile("plugins/plugin-native-secure-store/android/src/main/java/ai/eliza/plugins/securestore/nativeonly/NativeSecureStore.java");
+        File source = repoFile("plugins/plugin-native-secure-store/android-nativeonly/src/main/java/ai/eliza/plugins/securestore/nativeonly/NativeSecureStore.java");
         if (source != null) {
             assertTrue("directory name", read(source).contains("getNoBackupFilesDir(), \"" + ElizaDataResetStores.NATIVE_SECURE_STORE_DIRECTORY + "\")"));
         }

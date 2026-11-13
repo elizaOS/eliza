@@ -20,6 +20,8 @@
  * on: an occurrence that passed while the agent was not running is recorded
  * once as missed, never replayed (the shared policy in `@elizaos/core`).
  */
+
+import type { AgentHostBridge } from "@elizaos/agent/runtime/host-bridge";
 import type { ServiceRouteConfig } from "@elizaos/contracts";
 import { MISSED_SCHEDULED_OCCURRENCES_SETTING } from "@elizaos/core";
 import { buildElizaCloudServiceRoute } from "@elizaos/host/protocol";
@@ -134,18 +136,35 @@ export function nativeRuntimeRoutingPreferences(
   };
 }
 
-/** Product input from the host's admitted resources: its Cloud deployment only. */
-export interface NativeCloudRuntimeDeclaration {
+/** Required routing input from the host's admitted resources. */
+export interface NativeCloudRoutingDeclaration {
   readonly apiBaseUrl: string;
 }
 
-export function parseNativeCloudRuntimeDeclaration(
+/** Product input from the host's admitted resources, independent of sign-in. */
+export interface NativeCloudRuntimeDeclaration
+  extends NativeCloudRoutingDeclaration {
+  readonly productCharacter?: AgentHostBridge["productCharacter"];
+}
+
+/** Admit routing independently of optional product presentation. */
+export function parseNativeCloudRoutingDeclaration(
   value: unknown,
-): NativeCloudRuntimeDeclaration {
-  if (!value || typeof value !== "object" || Array.isArray(value))
+): NativeCloudRoutingDeclaration {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    !("apiBaseUrl" in value)
+  )
     throw new Error("Native Cloud runtime declaration is invalid");
-  const { apiBaseUrl, ...rest } = value as Record<string, unknown>;
-  if (Object.keys(rest).length > 0 || typeof apiBaseUrl !== "string")
+  const { apiBaseUrl } = value;
+  if (
+    Object.keys(value).some(
+      (key) => key !== "apiBaseUrl" && key !== "productCharacter",
+    ) ||
+    typeof apiBaseUrl !== "string"
+  )
     throw new Error("Native Cloud runtime declaration is invalid");
   let url: URL;
   try {
@@ -153,11 +172,16 @@ export function parseNativeCloudRuntimeDeclaration(
   } catch {
     throw new Error("Native Cloud runtime declaration is invalid");
   }
+  // Local Cloud servers use unprivileged HTTPS ports, including Android's
+  // emulator-to-host alias. Published Cloud endpoints keep their default port.
   if (
     url.protocol !== "https:" ||
     url.username ||
     url.password ||
-    url.port ||
+    (url.port &&
+      !["localhost", "127.0.0.1", "[::1]", "10.0.2.2"].includes(
+        url.hostname,
+      )) ||
     url.search ||
     url.hash ||
     url.pathname !== "/api/v1" ||
@@ -165,6 +189,40 @@ export function parseNativeCloudRuntimeDeclaration(
   )
     throw new Error("Native Cloud runtime declaration is invalid");
   return Object.freeze({ apiBaseUrl: url.href });
+}
+
+export function parseNativeCloudRuntimeDeclaration(
+  value: unknown,
+): NativeCloudRuntimeDeclaration {
+  const routing = parseNativeCloudRoutingDeclaration(value);
+  const { productCharacter: character } = value as Record<string, unknown>;
+  let productCharacter: AgentHostBridge["productCharacter"];
+  if (character !== undefined) {
+    if (
+      !character ||
+      typeof character !== "object" ||
+      Array.isArray(character) ||
+      !("name" in character) ||
+      typeof character.name !== "string" ||
+      !character.name.trim() ||
+      Object.keys(character).some((key) => key !== "name" && key !== "bio")
+    )
+      throw new Error("Native Cloud runtime declaration is invalid");
+    const bio = "bio" in character ? character.bio : undefined;
+    if (
+      bio !== undefined &&
+      (!Array.isArray(bio) || !bio.every((line) => typeof line === "string"))
+    )
+      throw new Error("Native Cloud runtime declaration is invalid");
+    productCharacter = Object.freeze({
+      name: character.name.trim(),
+      ...(bio !== undefined ? { bio: Object.freeze([...bio]) } : {}),
+    });
+  }
+  return Object.freeze({
+    ...routing,
+    ...(productCharacter ? { productCharacter } : {}),
+  });
 }
 
 type ElizaConfigLike = {
@@ -205,11 +263,11 @@ async function defaultStores(): Promise<NativeRuntimeProfileStores> {
  */
 export async function applyNativeCloudRuntimeProfile(
   env: NodeJS.ProcessEnv,
-  declaration: NativeCloudRuntimeDeclaration,
+  declaration: NativeCloudRoutingDeclaration,
   stores?: NativeRuntimeProfileStores,
 ): Promise<NativeRuntimeProfile> {
   const profile = resolveNativeRuntimeProfile(env.ELIZA_RUNTIME_PROFILE);
-  const { apiBaseUrl } = parseNativeCloudRuntimeDeclaration(declaration);
+  const { apiBaseUrl } = parseNativeCloudRoutingDeclaration(declaration);
   const small = env.ELIZAOS_CLOUD_SMALL_MODEL;
   const large = env.ELIZAOS_CLOUD_LARGE_MODEL;
   if (!small || !large || env.ELIZAOS_CLOUD_BASE_URL !== apiBaseUrl)
@@ -217,7 +275,12 @@ export async function applyNativeCloudRuntimeProfile(
   const store = stores ?? (await defaultStores());
   const config = store.loadConfig();
   const { apiKey: _desktopKey, ...cloud } = config.cloud ?? {};
-  config.cloud = { ...cloud, enabled: true, baseUrl: apiBaseUrl };
+  config.cloud = {
+    ...cloud,
+    enabled: true,
+    inferenceMode: "cloud",
+    baseUrl: apiBaseUrl,
+  };
   config.serviceRouting = {
     ...config.serviceRouting,
     ...nativeCloudServiceRouting(profile, { small, large }),
@@ -227,4 +290,58 @@ export async function applyNativeCloudRuntimeProfile(
     nativeRuntimeRoutingPreferences(profile, current),
   );
   return profile;
+}
+
+/** Explicit native direct inference replaces any persisted Cloud route, without persisting keys.
+ * Local embeddings may be unavailable in a model-free QA package; they never fall back to Cloud. */
+export async function applyNativeDirectRuntimeProfile(
+  env: NodeJS.ProcessEnv,
+  stores?: NativeRuntimeProfileStores,
+): Promise<void> {
+  resolveNativeRuntimeProfile(env.ELIZA_RUNTIME_PROFILE);
+  const model = "qwen-3.8-27b";
+  if (
+    env.ELIZA_PROVIDER !== "cerebras" ||
+    !env.CEREBRAS_API_KEY ||
+    env.CEREBRAS_SMALL_MODEL !== model ||
+    env.CEREBRAS_LARGE_MODEL !== model ||
+    env.ELIZAOS_CLOUD_USE_INFERENCE !== "false"
+  )
+    throw new Error("Native direct inference binding is incomplete");
+  const store = stores ?? (await defaultStores());
+  const config = store.loadConfig();
+  const { apiKey: _desktopKey, ...cloud } = config.cloud ?? {};
+  config.cloud = { ...cloud, enabled: false, inferenceMode: "local" };
+  config.serviceRouting = {
+    ...config.serviceRouting,
+    embeddings: { ...LOCAL_EMBEDDING_ROUTE },
+    llmText: {
+      backend: "cerebras",
+      transport: "direct",
+      nanoModel: model,
+      smallModel: model,
+      mediumModel: model,
+      largeModel: model,
+      megaModel: model,
+      responseHandlerModel: model,
+      actionPlannerModel: model,
+    },
+  };
+  store.saveConfig(config);
+  await store.updateRoutingPreferences((current) => ({
+    ...current,
+    preferredProvider: {
+      ...current.preferredProvider,
+      // Cerebras uses the OpenAI-compatible plugin's registered provider ID.
+      TEXT_SMALL: "openai",
+      TEXT_LARGE: "openai",
+    },
+    policy: {
+      ...current.policy,
+      TEXT_SMALL: "manual",
+      TEXT_LARGE: "manual",
+      TRANSCRIPTION: "local-only",
+      TEXT_TO_SPEECH: "local-only",
+    },
+  }));
 }

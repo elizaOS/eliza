@@ -4,18 +4,84 @@
  * title, and Intl month/weekday names resolve. Pure helpers, no runtime.
  */
 import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
-import { describe, expect, it } from "vitest";
+import { InferenceTurnTimer, runWithInferenceTiming } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import {
   dedupeCalendarQueries,
+  isRedundantObservedClockQuery,
   normalizeCalendarDetails,
+  observedCalendarDayWindow,
   parseExplicitLocalDate,
   textFieldAddsDetail,
   verifyAppliedCalendarMutation,
 } from "./calendar-handler";
+import { timeCalendarUpdate } from "./update-timing.js";
 
 // Thursday 2026-10-15 12:00 in Seoul; "Friday" is tomorrow.
 const NOW = new Date("2026-10-15T03:00:00.000Z");
 const ZONE = "Asia/Seoul";
+
+describe("current Calendar day observation", () => {
+  const original = {
+    text: "Move my 3pm to 4",
+    observedAt: new Date("2026-10-28T12:00:00Z"),
+  };
+  const context = {
+    view: "calendar",
+    revision: 3,
+    sensitive: false,
+    timeZone: "UTC",
+    calendarDay: { date: "2026-10-29", timeZone: "UTC" },
+  };
+  it("recognizes only a redundant original source clock, without interpreting the destination", () => {
+    const window = observedCalendarDayWindow(context, original, "UTC");
+    const base = {
+      original: original.text,
+      queries: ["3pm"],
+      window,
+      detailsDate: "2026-10-29",
+      explicitTarget: false,
+    };
+    expect(isRedundantObservedClockQuery(base)).toBe(true);
+    for (const patch of [
+      { queries: ["Dentist"] },
+      { queries: ["3pm", "Dentist"] },
+      { queries: ["3pm Dentist"] },
+      { original: "Move my '3pm' to 4" },
+      { original: 'Move my "3pm" to 4' },
+      { original: "Move my 3pm to 4 if I am free" },
+      { original: "Move my 3pm to 4 and invite Sam" },
+      { original: "Move my 3pm tomorrow to 4" },
+      { original: "Move my 3pm to 4 tomorrow" },
+      { original: "Move my 3pm to 4 in Tokyo" },
+      { original: "Move my 3pm to 4 and rename it" },
+      { detailsDate: "2026-10-30" },
+      { window: undefined },
+      { explicitTarget: true },
+    ])
+      expect(isRedundantObservedClockQuery({ ...base, ...patch })).toBe(false);
+    expect(
+      isRedundantObservedClockQuery({
+        ...base,
+        original: "Please move my 3pm to 4pm.",
+      }),
+    ).toBe(true);
+    expect(() =>
+      observedCalendarDayWindow({ ...context, revision: -1 }, original, "UTC"),
+    ).toThrow();
+  });
+  it.each([
+    "Show my events tomorrow",
+    "Show my schedule next month",
+    "Move my 3pm tomorrow to 4",
+    "Move my 3pm next week to 4",
+    "Move my meeting to 4",
+  ])("does not replace qualified targets or ordinary reads: %s", (text) => {
+    expect(
+      observedCalendarDayWindow(context, { ...original, text }, "UTC"),
+    ).toBeUndefined();
+  });
+});
 
 function seoulEvent(title: string, location: string): LifeOpsCalendarEvent {
   return {
@@ -300,3 +366,108 @@ describe("parseExplicitLocalDate Intl names", () => {
     }
   });
 });
+
+// Uses the canonical ALS turn timer; private payload/error identity must never
+// become diagnostic metadata or be retried by a timing boundary.
+it("keeps Calendar update timing bounded, optional and transparent to cancellation", async () => {
+  const secret = "PRIVATE_CALENDAR_payload_account_title_url";
+  const value = Object.freeze({ secret });
+  const untimed = vi.fn(async () => value);
+  expect(await timeCalendarUpdate("source-read", untimed)).toBe(value);
+  expect(untimed).toHaveBeenCalledTimes(1);
+  const timer = new InferenceTurnTimer({
+    turnId: "timing-fixture",
+    label: "calendar-update",
+    t0EpochMs: 1000,
+  });
+  const abort = new DOMException(secret, "AbortError");
+  const cancelled = vi.fn(async () => {
+    throw abort;
+  });
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(1000);
+  try {
+    const result = await runWithInferenceTiming(timer, () =>
+      timeCalendarUpdate("persist", async () => {
+        vi.setSystemTime(1025);
+        return value;
+      }),
+    );
+    expect(result).toBe(value);
+    await expect(
+      runWithInferenceTiming(timer, () =>
+        timeCalendarUpdate("availability", cancelled),
+      ),
+    ).rejects.toBe(abort);
+    expect(cancelled).toHaveBeenCalledTimes(1);
+    const summary = timer.close();
+    expect(summary.spans).toEqual([
+      {
+        name: "actions:calendar:update:persist",
+        startMs: 0,
+        endMs: 25,
+        durationMs: 25,
+        meta: { returned: true },
+      },
+      {
+        name: "actions:calendar:update:availability",
+        startMs: 25,
+        endMs: 25,
+        durationMs: 0,
+        meta: { returned: false },
+      },
+    ]);
+    expect(summary.totalMs).toBe(25);
+    expect(JSON.stringify(summary.spans)).not.toContain(secret);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it.each([
+  { date: "2026-03-08", hours: 23 },
+  { date: "2026-11-01", hours: 25 },
+])(
+  "bounds a selected civil day across DST without granting a write: $date",
+  ({ date, hours }) => {
+    const timeZone = "America/Los_Angeles",
+      context = {
+        view: "calendar",
+        revision: 3,
+        sensitive: false,
+        timeZone,
+        calendarDay: { date, timeZone },
+      };
+    const original = {
+      text: "Move my 3pm to 4",
+      observedAt: new Date("2026-10-28T12:00:00Z"),
+    };
+    const window = observedCalendarDayWindow(context, original, timeZone);
+    if (!window) throw Error("Missing selected day window");
+    expect((Date.parse(window.end) - Date.parse(window.start)) / 3600000).toBe(
+      hours,
+    );
+    expect(() =>
+      observedCalendarDayWindow(
+        { ...context, sensitive: true },
+        original,
+        timeZone,
+      ),
+    ).toThrow();
+    expect(() =>
+      observedCalendarDayWindow(
+        { ...context, calendarDay: { date: "2026-02-30", timeZone } },
+        original,
+        timeZone,
+      ),
+    ).toThrow();
+    expect(() => observedCalendarDayWindow(context, original, "UTC")).toThrow();
+    expect(
+      observedCalendarDayWindow(
+        context,
+        { ...original, text: "Move my 3pm tomorrow to 4" },
+        timeZone,
+      ),
+    ).toBeUndefined();
+  },
+);

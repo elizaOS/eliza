@@ -17,6 +17,10 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { FOLLOW_UP_CAPABLE_ACTION_TAG } from "@elizaos/core";
+import {
+  deviceOperationSupportedByCapabilities,
+  getDeviceActionTurn,
+} from "@elizaos/plugin-assistant";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import { isOwnerReminderNonCommandContext } from "../lifeops/reminders/direct-routing.js";
 import { runBookTravelHandler } from "./book-travel.js";
@@ -197,6 +201,27 @@ function makeOwnerLifeAction(args: {
         required: false,
         schema: { type: "number" as const },
       },
+      // Relative moves for a one-off, read as TRIGGER_UPDATE reads them.
+      ...(args.defaultKind === "definition"
+        ? [
+            {
+              name: "delayMinutes",
+              subactions: ["update"],
+              description:
+                "Move a one-off to fire this many minutes from now ('actually make that 30 minutes' -> 30).",
+              required: false,
+              schema: { type: "number" as const, minimum: 1 },
+            },
+            {
+              name: "delaySeconds",
+              subactions: ["update"],
+              description:
+                "Move a one-off to fire this many seconds from now; wins over delayMinutes.",
+              required: false,
+              schema: { type: "number" as const, minimum: 1 },
+            },
+          ]
+        : []),
       {
         name: "idempotencyKey",
         subactions: ["create"],
@@ -299,58 +324,61 @@ export const ownerRemindersAction: Action = {
       "RECURRING_REMINDER",
     ],
     description:
-      'Owner reminders: create/update/cancel/delete/complete/skip/snooze/review one-off, date-only, deadline ("by the 20th"), and recurring reminders. Cancel archives the reminder and retains its history; delete permanently removes it. Review reads saved reminders by exact title or lists existing reminders without changing them. Update changes an existing reminder. These records are separate from the TODO checklist.',
+      'Owner reminders: create/update/cancel/delete/complete/skip/snooze/review one-off, date-only, deadline ("by the 20th"), and recurring reminders. Cancel archives the reminder and retains its history; delete permanently removes it. Review reads saved reminders by exact title or lists existing reminders without changing them. Update changes an existing reminder in place, including one just created here: target its id or exact title. A relative move ("actually make that 30 minutes") is update with delayMinutes or delaySeconds, and the reminder then fires that long from now. These records are separate from the TODO checklist.',
     descriptionCompressed:
-      "owner reminders/deadlines: review=read/list saved reminders; update=edit existing; create|cancel|delete|complete|skip|snooze; cancel archives, delete removes",
+      "owner reminders/deadlines: review=read/list saved reminders; update=edit existing (delayMinutes moves a one-off); create|cancel|delete|complete|skip|snooze; cancel archives, delete removes",
     actions: [...OWNER_LIFE_ACTIONS, "cancel"],
     defaultKind: "definition",
   }),
-  name: "OWNER_REMINDERS",
   // This surface pins definitions; review lists/reads them without mutation.
   historicalObservationOperations: ["lifeops.owner.review"],
+  // Live tj-b020ae0157c06c: with TRIGGER exposed beside this surface, "actually
+  // make that 30 minutes" after an OWNER_REMINDERS create first went to
+  // TRIGGER_UPDATE with this surface's id and failed TRIGGER_NOT_FOUND.
   routingHint:
-    "saved owner reminders/deadlines: review reads by title or lists; update edits existing. Search under tasks or calendar. TODO is a separate checklist, not this reminder store.",
+    "saved owner reminders/deadlines: review reads by title or lists; update edits existing. A reminder OWNER_REMINDERS created (its id is in an OWNER_REMINDERS receipt) is changed, cancelled or deleted here, never with TRIGGER: 'actually make that 30 minutes' -> OWNER_REMINDERS_UPDATE with delayMinutes. Search under tasks or calendar. TODO is a separate checklist, not this reminder store.",
   tags: [
     ...OWNER_OPERATION_TAGS,
     "resource:reminders-records",
     FOLLOW_UP_CAPABLE_ACTION_TAG,
   ],
-  similes: [
-    "REMINDER",
-    "REMINDERS",
-    "SET_REMINDER",
-    "UPDATE_REMINDER",
-    "CANCEL_REMINDER",
-    "MODIFY_REMINDER",
-    "SEARCH_REMINDERS",
-    "REMIND_ME",
-    "REMIND_ME_TO",
-    "CREATE_REMINDER",
-    "DAILY_REMINDER",
-    "RECURRING_REMINDER",
-  ],
-  description:
-    'Owner reminders: create/update/cancel/delete/complete/skip/snooze/review one-off, date-only, deadline ("by the 20th"), and recurring reminders. Cancel archives the reminder and retains its history; delete permanently removes it. Review reads saved reminders by exact title or lists existing reminders without changing them. Update changes an existing reminder. These records are separate from the TODO checklist.',
-  descriptionCompressed:
-    "owner reminders/deadlines: review=read/list saved reminders; update=edit existing; create|cancel|delete|complete|skip|snooze; cancel archives, delete removes",
 };
+
+const OWNER_ALARMS_DESCRIPTION =
+  "Owner alarms: create/update/delete/complete/skip/snooze/review in-app LifeOps alarm reminders. Saves a reminder; it does not ring a device alarm.";
+const OWNER_ALARMS_DESCRIPTION_COMPRESSED =
+  "owner in-app alarm reminders (no device ring): action=create|update|delete|complete|skip|snooze|review";
+
+/**
+ * A device turn that negotiated the phone's Clock owns alarms: the reviewed
+ * clock proposal rings, an OWNER_ALARMS reminder does not. Keyed on the
+ * negotiated capability, not the platform.
+ */
+function deviceClockOwnsAlarms(runtime: IAgentRuntime): boolean {
+  const turn = getDeviceActionTurn();
+  if (turn?.runtime !== runtime) return false;
+  const capabilities = turn.credential.capabilities;
+  return (
+    deviceOperationSupportedByCapabilities("clock_handoff", capabilities) ||
+    deviceOperationSupportedByCapabilities("clock_alarm", capabilities)
+  );
+}
 
 export const ownerAlarmsAction: Action = {
   ...makeOwnerLifeAction({
     name: "OWNER_ALARMS",
     similes: ["ALARM", "ALARMS", "WAKE_ME", "WAKE_UP"],
-    description:
-      "Owner alarms: create/update/delete/complete/skip/snooze/review alarm reminders.",
-    descriptionCompressed:
-      "owner alarms: action=create|update|delete|complete|skip|snooze|review",
+    description: OWNER_ALARMS_DESCRIPTION,
+    descriptionCompressed: OWNER_ALARMS_DESCRIPTION_COMPRESSED,
     defaultKind: "definition",
   }),
   name: "OWNER_ALARMS",
   similes: ["ALARM", "ALARMS", "WAKE_ME", "WAKE_UP"],
-  description:
-    "Owner alarms: create/update/delete/complete/skip/snooze/review alarm reminders.",
-  descriptionCompressed:
-    "owner alarms: action=create|update|delete|complete|skip|snooze|review",
+  description: OWNER_ALARMS_DESCRIPTION,
+  descriptionCompressed: OWNER_ALARMS_DESCRIPTION_COMPRESSED,
+  validate: async (runtime, message) =>
+    !deviceClockOwnsAlarms(runtime) &&
+    OWNER_OPERATION_VALIDATE(runtime, message),
 };
 
 // Primary OWNER_GOALS surface. @elizaos/plugin-goals also declares an action

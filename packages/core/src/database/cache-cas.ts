@@ -17,8 +17,7 @@ export function encodeCacheCasValue(value: unknown): string {
 		if (typeof item === "boolean") return String(item);
 		if (typeof item === "number" && Number.isFinite(item))
 			return JSON.stringify(item);
-		if (typeof item !== "object" || item === null)
-			throw new Error("Expected JSON value");
+		if (typeof item !== "object") throw new Error("Expected JSON value");
 		if (ancestors.has(item)) throw new Error("Cyclic cache value");
 		const array = Array.isArray(item);
 		const prototype = Object.getPrototypeOf(item);

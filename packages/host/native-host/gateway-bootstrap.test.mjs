@@ -6,7 +6,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { createLocalCredentialStore } from "../../../plugins/plugin-native-agent/native-host/local-credential-client.mjs";
-import { createCredentialGate } from "../../agent/native-host/gateway.mjs";
+import {
+  createCredentialGate,
+  createLocalAgentGateway,
+} from "../../agent/native-host/gateway.mjs";
 import { startLocalGateway } from "./gateway-bootstrap.mjs";
 
 const fingerprint = (key) => createHash("sha256").update(key).digest("hex");
@@ -137,6 +140,22 @@ for (const native of [false, true]) {
       owner: `cloud:${fingerprint("fixture-account")}`,
       ...(native ? { configured: true } : {}),
     });
+    if (native) {
+      // The gateway's own account check for the request replaces the host's.
+      const requests = f.brokerRequests;
+      let checked = 0;
+      assert.equal(
+        await f.serverOptions.inferenceConfigured({
+          credentialGate: async () => checked++,
+        }),
+        true,
+      );
+      assert.equal(checked, 1);
+      assert.equal(f.brokerRequests, requests);
+      // Without one (a gateway with no credential gate), the host's own runs.
+      assert.equal(await f.serverOptions.inferenceConfigured(), true);
+      assert.ok(f.brokerRequests > requests);
+    }
     assert.equal(f.serverOptions.token, "upstream-fixture-token");
     assert.equal(
       f.serverOptions.inboundToken,
@@ -211,4 +230,67 @@ test("missing or malformed binding fails closed without creating task state", as
     SyntaxError,
   );
   await assert.rejects(readFile(f.config.databasePath), { code: "ENOENT" });
+});
+
+test("native bootstrap starts while the agent is still booting and its health follows the agent", async (t) => {
+  const f = await fixture(t, true);
+  // The agent's port is chosen but nothing listens on it yet, as when the host
+  // starts the gateway beside a booting agent.
+  const reservation = createServer();
+  const agentPort = await listen(reservation);
+  await new Promise((resolve) => reservation.close(resolve));
+  const agentRequests = [];
+  const agent = createServer((request, response) => {
+    agentRequests.push([request.url, request.headers.authorization]);
+    response.setHeader("Content-Type", "application/json");
+    response.end(JSON.stringify({ state: "running" }));
+  });
+  t.after(() => new Promise((resolve) => agent.close(resolve)));
+  const gateway = await startLocalGateway({
+    configuration: { ...f.config, upstream: `http://127.0.0.1:${agentPort}` },
+    ports: {
+      ...f.ports,
+      createFileCredentialStore: (file) =>
+        file === f.config.ownershipPath
+          ? { read: async () => null, write: async () => {} }
+          : f.ports.createFileCredentialStore(file),
+      createServer: (options) =>
+        createLocalAgentGateway({
+          ...options,
+          hostPolicy: {
+            origins: [],
+            resetPaths: [],
+            validateTitle() {},
+            isPaidAction: () => false,
+            prepareMessage: (input) => ({ body: { text: input.text } }),
+            formatTaskContext: () => "",
+          },
+        }),
+    },
+  });
+  t.after(() => gateway.close());
+  const health = () =>
+    fetch(`http://127.0.0.1:${f.config.port}/health`, {
+      headers: { Authorization: `Bearer ${"i".repeat(32)}` },
+    });
+  // Booting needed no agent: the gateway listens, and its local liveness answers.
+  assert.equal(
+    (
+      await fetch(`http://127.0.0.1:${f.config.port}/local-health`, {
+        headers: { Authorization: `Bearer ${"i".repeat(32)}` },
+      })
+    ).status,
+    200,
+  );
+  // Until the agent answers, health is a retryable "unavailable", not a crash.
+  const early = await health();
+  assert.equal(early.status, 502);
+  assert.deepEqual(await early.json(), { error: "Local agent unavailable" });
+  assert.equal((await health()).status, 502);
+  await new Promise((resolve) => agent.listen(agentPort, "127.0.0.1", resolve));
+  const later = await health();
+  assert.equal(later.status, 200);
+  assert.deepEqual(agentRequests, [
+    ["/api/status", "Bearer upstream-fixture-token"],
+  ]);
 });

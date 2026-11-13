@@ -155,6 +155,27 @@ async function fixture(calendars: LifeOpsCalendarSummary[]) {
         }),
       ),
     ),
+    async discoverCalendars() {
+      return {
+        calendars: await this.listCalendars(),
+        failures: [] as LifeOpsCalendarSourceHealth[],
+      };
+    },
+    async getCalendarFeedSnapshot() {
+      const currentFeed = await this.getCalendarFeed();
+      let calendars: LifeOpsCalendarSummary[];
+      try {
+        calendars = await this.listCalendars();
+      } catch (error) {
+        if (
+          error instanceof CalendarServiceError &&
+          error.code === "CALENDAR_SOURCES_UNAVAILABLE"
+        )
+          calendars = [];
+        else throw error;
+      }
+      return { feed: currentFeed, calendars };
+    },
     setCalendarIncluded: vi.fn(
       async (_url: URL, request: SetLifeOpsCalendarIncludedRequest) => {
         const calendar = calendars.find(
@@ -208,6 +229,28 @@ afterEach(async () => {
 });
 
 describe("calendar source administration adapter", { timeout: 30_000 }, () => {
+  it("preserves unavailable identities when catalog discovery has no usable rows", async () => {
+    const failed = summary({ accountId: "account-failed" });
+    const { runtime, service } = await fixture([]);
+    vi.spyOn(service, "discoverCalendars").mockResolvedValue({
+      calendars: [],
+      failures: [health(failed, "error")],
+    });
+    const feeds = vi.spyOn(service, "getCalendarFeedSnapshot");
+    const snapshot = await listCalendarSourceAdministration(runtime, {
+      includeFeedHealth: false,
+    });
+    expect(feeds).not.toHaveBeenCalled();
+    expect(snapshot.state).toBe("unavailable");
+    expect(snapshot.sources).toHaveLength(1);
+    expect(snapshot.sources[0]).toMatchObject({
+      key: { connectorAccountId: "account-failed" },
+      includeInFeed: null,
+      selectionVersion: null,
+      health: { status: "error" },
+    });
+  });
+
   it("uses the listed selection snapshots without reading each preference again", async () => {
     const accountA = summary({ accountId: "account-a" });
     const accountB = summary({ accountId: "account-b" });

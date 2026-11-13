@@ -168,3 +168,115 @@ func TestRememberedRevocationsCannotDisappear(t *testing.T) {
 		t.Fatal("revoked recovery silently reenabled")
 	}
 }
+
+// The admission state a refresh writes is byte for byte the version 1 shape
+// that builds from before refreshes were recorded read strictly, so a host
+// whose updater updates itself can still recover to such a build. The refresh
+// is kept beside it in refreshed.json.
+type preRefreshFloor struct {
+	Sequence int64    `json:"sequence"`
+	Revision int64    `json:"revision"`
+	Security int64    `json:"security"`
+	Core     string   `json:"core"`
+	Rollout  string   `json:"rollout"`
+	Revoked  []string `json:"revoked"`
+}
+type preRefreshState struct {
+	Version      int64                      `json:"version"`
+	Repository   string                     `json:"repository"`
+	Distribution string                     `json:"distribution"`
+	Lanes        map[string]preRefreshFloor `json:"lanes"`
+}
+type preRefreshEnvelope struct {
+	State preRefreshState `json:"state"`
+	Hash  string          `json:"hash"`
+}
+
+// A device provisioned by a build from before refreshes were recorded, and
+// never ratcheted since, holds exactly {version:1, lanes:{}}. It still reads,
+// admits, and stays readable by that older build after the ratchet.
+func TestRememberedAdmissionReadsEmptyPreRefreshState(t *testing.T) {
+	dir, v := rememberedFixture(t)
+	legacy := preRefreshState{Version: 1, Repository: "example-org/example-app", Distribution: "launcher", Lanes: map[string]preRefreshFloor{}}
+	hash, err := admissionHash(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(preRefreshEnvelope{State: legacy, Hash: hash})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(dir, "admission.json"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if stored, err := readAdmission(dir); err != nil || len(stored.Lanes) != 0 {
+		t.Fatalf("empty pre-refresh state: %+v %v", stored, err)
+	}
+	var policy admissionPolicy
+	if err = json.Unmarshal(v.Policy, &policy); err != nil {
+		t.Fatal(err)
+	}
+	if result, err := evaluateRememberedRelease(dir, v.Release, v.Device, policy, policy.Lower); err != nil || result.Decision != "eligible" {
+		t.Fatalf("empty pre-refresh state: %+v %v", result, err)
+	}
+	if data, err = os.ReadFile(filepath.Join(dir, "admission.json")); err != nil {
+		t.Fatal(err)
+	}
+	var old preRefreshEnvelope
+	if err = decodeAdmission(data, &old); err != nil {
+		t.Fatal("an older build cannot decode the state:", err)
+	}
+	if digest, _ := admissionHash(old.State); old.State.Version != 1 || digest != old.Hash || len(old.State.Lanes) != 1 {
+		t.Fatalf("an older build refuses the state: %+v", old)
+	}
+}
+
+func TestRefreshKeepsAdmissionStateReadableByOlderBuilds(t *testing.T) {
+	dir, v := rememberedFixture(t)
+	var policy admissionPolicy
+	if err := json.Unmarshal(v.Policy, &policy); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := evaluateRememberedRelease(dir, v.Release, v.Device, policy, policy.Lower); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "admission.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var old preRefreshEnvelope
+	if err = decodeAdmission(data, &old); err != nil {
+		t.Fatal("an older build cannot decode the state:", err)
+	}
+	if digest, _ := admissionHash(old.State); old.State.Version != 1 || digest != old.Hash || len(old.State.Lanes) != 1 {
+		t.Fatalf("an older build refuses the state: %+v", old)
+	}
+	stored, err := readAdmission(dir)
+	if err != nil || stored.Lanes["stable"].Refreshed != policy.Lower {
+		t.Fatalf("refresh not recorded: %+v %v", stored, err)
+	}
+	// Rewriting admission.json without a fetch, as an older build does, leaves
+	// refreshed.json: the refresh it records still happened, and floors only grow.
+	if _, err = EvaluateRememberedReleaseInterval(dir, v.Release, v.Device, v.Policy); err != nil {
+		t.Fatal(err)
+	}
+	if stored, err = readAdmission(dir); err != nil || stored.Lanes["stable"].Refreshed != policy.Lower {
+		t.Fatalf("stored bytes changed the refresh: %+v %v", stored, err)
+	}
+	// A torn or tampered refresh record reads as never refreshed, which is
+	// stale, and never stops admission.
+	for _, damaged := range [][]byte{[]byte("{"), []byte(`{"state":{"version":1,"repository":"example-org/example-app","distribution":"launcher","lanes":{"stable":9007199254740991}},"hash":"00"}`)} {
+		if err = os.WriteFile(filepath.Join(dir, "refreshed.json"), damaged, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if stored, err = readAdmission(dir); err != nil || stored.Lanes["stable"].Refreshed != 0 {
+			t.Fatalf("damaged refresh record: %+v %v", stored, err)
+		}
+	}
+	if _, err = evaluateRememberedRelease(dir, v.Release, v.Device, policy, policy.Lower+1); err != nil {
+		t.Fatal(err)
+	}
+	if stored, err = readAdmission(dir); err != nil || stored.Lanes["stable"].Refreshed != policy.Lower+1 {
+		t.Fatalf("a fetch did not repair the refresh record: %+v %v", stored, err)
+	}
+}

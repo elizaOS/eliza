@@ -9,19 +9,22 @@
  * resolves to. Maps to the bench premise `traveler.dst_boundary_reminder`; the
  * live conversational judge stays on the bench LIVE surface.
  *
- * The transition is the US fall-back on 2026-11-01 (EDT UTC-4 → EST UTC-5):
- *   - the pre-transition occurrence (Oct 31) renders to 08:00 America/New_York
- *     = 12:00Z (EDT);
- *   - the post-transition occurrence (Nov 01) renders to 08:00 America/New_York
- *     = 13:00Z (EST).
+ * The transition is the next US fall-back (the first Sunday of November, EDT
+ * UTC-4 → EST UTC-5) at least two days after the host clock:
+ *   - the pre-transition occurrence (the Saturday) renders to 08:00
+ *     America/New_York = 12:00Z (EDT);
+ *   - the post-transition occurrence (the Sunday) renders to 08:00
+ *     America/New_York = 13:00Z (EST).
  * Same local "08:00", two DIFFERENT UTC instants an hour apart. A naive
  * fixed-offset scheduler would fire the post-DST occurrence at 07:00 local.
  *
  * The cron base is pinned via `metadata.createdAtIso` (the scheduler scans cron
  * occurrences forward from the task's creation instant) so the boundary is
- * deterministic regardless of the test host's wall clock; all instants are in
- * the future relative to the host, so only the injected tick `now` decides
- * dueness. No travel signal — the cron is pinned to a concrete DST-observing
+ * deterministic regardless of the test host's wall clock. The transition is
+ * chosen from the host clock so all instants stay in the future relative to
+ * the host, and only the injected tick `now` decides dueness. (A fixed
+ * 2026-11-01 transition failed every run after its first tick passed.) No
+ * travel signal — the cron is pinned to a concrete DST-observing
  * zone. Run keyless with `TZ=UTC`.
  *
  * Fail-without-fix anchor: replace the tz-aware `computeNextCronRunAtMs`
@@ -40,15 +43,34 @@ const DELIVERY_CHANNEL_KIND = "scenario_traveler_dst_delivery";
 
 const DST_TZ = "America/New_York";
 
-// The cron base: the scheduler catches up cron occurrences forward from here.
-const CRON_BASE_ISO = "2026-10-31T00:00:00.000Z";
+const DAY_MS = 86_400_000;
 
-// Ticks bracket the 2026-11-01 fall-back. Each is just after its occurrence's
-// 08:00 local instant. Pre-DST: Oct 31 08:00 EDT = 12:00Z (tick 12:05Z). After
-// that fire the base advances to the tick, so the next occurrence is Nov 01
-// 08:00 EST = 13:00Z (tick 13:05Z).
-const PRE_DST_TICK = "2026-10-31T12:05:00.000Z";
-const POST_DST_TICK = "2026-11-01T13:05:00.000Z";
+/** 00:00Z of the next US fall-back Sunday at least two days after `now`. */
+function nextFallBackSunday(now: number): number {
+  for (let year = new Date(now).getUTCFullYear(); ; year += 1) {
+    const november = new Date(Date.UTC(year, 10, 1));
+    const sunday =
+      november.getTime() + ((7 - november.getUTCDay()) % 7) * DAY_MS;
+    if (sunday - now > 2 * DAY_MS) return sunday;
+  }
+}
+
+const POST_DST_DAY = new Date(nextFallBackSunday(Date.now()))
+  .toISOString()
+  .slice(0, 10);
+const PRE_DST_DAY = new Date(Date.parse(POST_DST_DAY) - DAY_MS)
+  .toISOString()
+  .slice(0, 10);
+
+// The cron base: the scheduler catches up cron occurrences forward from here.
+const CRON_BASE_ISO = `${PRE_DST_DAY}T00:00:00.000Z`;
+
+// Ticks bracket the fall-back. Each is just after its occurrence's 08:00 local
+// instant. Pre-DST: Saturday 08:00 EDT = 12:00Z (tick 12:05Z). After that fire
+// the base advances to the tick, so the next occurrence is Sunday 08:00 EST =
+// 13:00Z (tick 13:05Z).
+const PRE_DST_TICK = `${PRE_DST_DAY}T12:05:00.000Z`;
+const POST_DST_TICK = `${POST_DST_DAY}T13:05:00.000Z`;
 
 interface ChannelContributionLike {
   kind: string;
@@ -197,12 +219,12 @@ function assertPreDst(_status: number, body: unknown): string | undefined {
   if (hm !== "08:00") {
     return `pre-DST occurrence drifted from 08:00 local: ${fire.occurrenceAtIso} is ${hm} in ${DST_TZ}`;
   }
-  if (day !== "31") {
-    return `expected the pre-DST occurrence on Oct 31, saw local day ${day} (${fire.occurrenceAtIso})`;
+  if (day !== PRE_DST_DAY.slice(8)) {
+    return `expected the pre-DST occurrence on ${PRE_DST_DAY}, saw local day ${day} (${fire.occurrenceAtIso})`;
   }
   // Pre-DST is EDT (UTC-4): 08:00 local is 12:00Z.
-  if (!fire.occurrenceAtIso.startsWith("2026-10-31T12:00")) {
-    return `expected pre-DST occurrence at 12:00Z (08:00 EDT) on Oct 31, saw ${fire.occurrenceAtIso}`;
+  if (!fire.occurrenceAtIso.startsWith(`${PRE_DST_DAY}T12:00`)) {
+    return `expected pre-DST occurrence at 12:00Z (08:00 EDT) on ${PRE_DST_DAY}, saw ${fire.occurrenceAtIso}`;
   }
   return undefined;
 }
@@ -218,13 +240,13 @@ function assertPostDst(_status: number, body: unknown): string | undefined {
   if (hm !== "08:00") {
     return `post-DST occurrence drifted from 08:00 local: ${fire.occurrenceAtIso} is ${hm} in ${DST_TZ} — DST was not honored`;
   }
-  if (day !== "01") {
-    return `expected the post-DST occurrence on Nov 01, saw local day ${day} (${fire.occurrenceAtIso})`;
+  if (day !== POST_DST_DAY.slice(8)) {
+    return `expected the post-DST occurrence on ${POST_DST_DAY}, saw local day ${day} (${fire.occurrenceAtIso})`;
   }
   // Post-DST is EST (UTC-5): 08:00 local is 13:00Z — an hour later in UTC than
   // the pre-DST occurrence, which is the whole point.
-  if (!fire.occurrenceAtIso.startsWith("2026-11-01T13:00")) {
-    return `expected post-DST occurrence at 13:00Z (08:00 EST) on Nov 01, saw ${fire.occurrenceAtIso}`;
+  if (!fire.occurrenceAtIso.startsWith(`${POST_DST_DAY}T13:00`)) {
+    return `expected post-DST occurrence at 13:00Z (08:00 EST) on ${POST_DST_DAY}, saw ${fire.occurrenceAtIso}`;
   }
   return undefined;
 }
@@ -290,14 +312,14 @@ export default scenario({
     },
     {
       kind: "tick",
-      name: "pre-DST tick (Oct 31) → fires at 08:00 EDT = 12:00Z",
+      name: "pre-DST tick (Saturday) → fires at 08:00 EDT = 12:00Z",
       worker: "lifeops_scheduler",
       options: { now: PRE_DST_TICK, scheduledTaskLimit: 50 },
       assertResponse: assertPreDst,
     },
     {
       kind: "tick",
-      name: "post-DST tick (Nov 02) → refires at 08:00 EST = 13:00Z, local time intact",
+      name: "post-DST tick (Sunday) → refires at 08:00 EST = 13:00Z, local time intact",
       worker: "lifeops_scheduler",
       options: { now: POST_DST_TICK, scheduledTaskLimit: 50 },
       assertResponse: assertPostDst,

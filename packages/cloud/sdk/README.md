@@ -31,10 +31,28 @@ createNativeCloudAuth, requireNonSensitiveText, pickMessage, fundingError),
 planKeys, planCurrency, planInterval, speechLanguage, multipartPrefix and presentation
 messages, plus speechVoice. A host with its own sign-in passes
 `browserSignIn: false`: `/cloud/login` and `/cloud/login/status` then answer
-404 and no `cloudSiteBase` is used. These are trusted host settings, never
+404 and no `cloudSiteBase` is used. `accountGoogleLink: false` refuses every
+`/cloud/account/methods/google/*` route. `googleSignInRoutes: false` refuses
+`/cloud/native/start` with `method: "google"` and `/cloud/native/google/return`;
+the host then starts and finishes Google sign-in itself, through the enrollment
+that its `createNativeCloudAuth` built. Each refusal is 404
+`{error, code: "internal_sign_in_only"}` before the enrollment or Cloud is
+called. `error` is the host message `browserSignInUnavailable`,
+`accountGoogleLinkUnavailable` or `googleSignInRoutesUnavailable`, or
+"Cloud route not available". These are trusted host settings, never
 renderer input. The host remains responsible for origin admission and authenticating
 requests before this route handler. Native enrollment keeps its own registered
 application identity. Document runtimes are reviewed host-owned artifacts.
+
+A host that must know why an account signed out passes
+`credentialRevocation: {onRevoked, status}`. When Cloud refuses the stored key at the identity check (`GET /api/v1/user` answers 401),
+`await onRevoked({key})` runs inside the credential critical section, before the
+key is cleared, and only while that key is still stored and the account epoch
+has not changed. If it throws, the key stays and `/cloud/account/access` answers
+`unavailable`, so the next check tries again. A 401 from any other request
+clears the key as before and calls nothing. Each signed-out access answer reads
+`status()`; when it says `revoked: true`, the answer is
+`{state: "signed_out", revoked: true, localDataPending}`.
 
 This Node source entrypoint is separate from the browser-safe root SDK. Run `bun run --cwd packages/cloud/sdk test:native-host` for transport and
 private-file tests with synthetic provider responses. Consumer tests cover
@@ -84,6 +102,20 @@ trusted list. Other values return 400 before any provider request. Omitting
 language never changes the default or another capture. Hosts without the list
 continue using their default and reject explicit language selections.
 
+Subscription grant codes are off by default. A billing host that sets
+`hostPolicy.subscriptionCodes: true` gets `POST /cloud/account/subscription/redeem`
+(`{code}` in, `{replayed, grant: {planKey, startsAt, endsAt, paidPlanTakesPrecedence}}`
+out) and its `projectAccountAccess(user, snapshot, {grant})` receives the
+account's grant from the billing snapshot (`subscriptionGrantFromSnapshot`:
+`active`, `none` or `unknown`). The route uses the saved sign-in, refuses during
+a pending disconnect, derives the idempotency key from the code, replays a lost
+answer once with the same key and reports a grant only to the same sign-in. A
+refusal is `{error, code}`: `invalid` 400, `signed-out` 401, `account` 403,
+`already-redeemed`, `paid-plan-active` or `ended` 409, `rate-limited` 429 (with
+`retryAfter` seconds when Cloud gave one) and `unavailable` 503. `error` is the
+host message `subscriptionCode<Code>` (for example `subscriptionCodePaidPlanActive`).
+The parsers are in `native-host/subscription-grant.mjs`, which has no
+dependencies; `@elizaos/cloud-sdk/subscription-entitlement` re-exports them.
 
 Use `@elizaos/cloud-sdk/testing` for deterministic setup-session mocks. The older
 setup-session mock exports remain compatible; the client root does not load them.
@@ -113,7 +145,6 @@ Native account-factor transport exposes POST `/cloud/account/methods`,
 private session replacement, collision protection and cancellation. These routes
 are unavailable to service-only hosts. They do not manage Gmail consent.
 
-
 `createOrganizationSubscriptionUpgradeQuote` sends a current manager's catalog
 intent to the organization upgrade review endpoint. The returned quote separates
 due-now terms from a recurring estimate and expires after at most 60 seconds.
@@ -136,7 +167,6 @@ the existing period end. The quote expires within 60 seconds and reports no
 immediate charge plus a long-term recurring estimate. Saving it does not schedule
 a downgrade; do not show the plan as changed or scheduled after this call.
 
-
 Use `confirmOrganizationSubscriptionDowngrade` only after displaying the original
 lower-plan quote and receiving confirmation. Retain its quote/idempotency identity
 across uncertain transport outcomes. `readOrganizationSubscriptionDowngrade` is a
@@ -156,7 +186,6 @@ acknowledged numeric speed (otherwise null); clients must retain their local pac
 adjustment when an older Cloud deployment omits the acknowledgement. A mismatched
 or malformed acknowledgement rejects the audio instead of applying pace twice.
 
-
 Native progressive speech uses three JSON POST routes under `/voice/tts/stream`:
 `start` accepts a stable `requestId` (16–128 ASCII letters, digits, underscores or
 hyphens) plus the existing text/rendering controls; it returns `streamId`, state
@@ -175,14 +204,21 @@ Call the returned route handler's `closeSpeechStreams()` when shutting down a
 host. Streams are private in-memory sessions, not persistent playback jobs:
 request replay protection lasts at most ten minutes and ends on host restart.
 Never automatically restart an uncertain synthesis under a new request identity.
-Two active streams and 32 retained identities bound host resources; capacity
-rejection is explicit. Clients must stop playback on cancellation/account change
+Two active streams and 256 retained identities bound host resources; a finished
+stream whose audio the client has not received still counts as active. A finished
+stream keeps its undelivered audio for 30 s after it finished or was last pulled,
+then only its `done` frame. Capacity rejection is explicit. Clients must stop playback on cancellation/account change
 and discard unfinished media; this transport alone does not implement playback.
 
 `@elizaos/cloud-sdk/native-speech-stream` is the browser-safe counterpart to the
 native session routes. Inject the host's authenticated JSON transport into
 `createNativeSpeechStream`, call `open`/`pull`, and retain the same instance when
-explicitly retrying a lost transport reply. Its request identity and cursor do not
+explicitly retrying a lost transport reply. Each pull request sends `batch: true`
+and gets the frames the host has ready after the cursor (`{cursor, frames}`),
+up to about 512 KiB of base64 audio per reply; `pull` then returns them one at a
+time. A provider failure still delivers the frames read before it. A pull without `batch` keeps the old
+single-frame reply (`{cursor, frame}`). Pulling cursor N tells the host the
+client has every frame before N. Its request identity and cursor do not
 change on transport failure; malformed protocol data stops the session. Concurrent
 pulls share one delivery. A ten-minute client deadline prevents an expired host
 identity from accidentally starting a new synthesis. Pass an account/playback
@@ -200,6 +236,61 @@ returned strings as text; never inject them as HTML. Remote images and HTML are
 not projected, and no mailbox cache or write operations are provided. Consumers
 must separately authorize and implement their native/renderer read bridge; this
 factory does not enable an HTTP route or change task-read authority.
+Each message detail also carries `state`: Gmail's `historyId` for the message
+and whether it is unread, in the inbox or in the trash (no other labels).
+`./native-host` also exports this reduction (`mailboxState(labels, historyId)`)
+and Cloud's recipient rule:
+`mailAddress(value)` (one bare address, no display name) and
+`mailAddresses(value, required)` (at most 50; the list, or null).
+
+By default the owner's Gmail grant must be exactly read-only (`gmail.readonly`
+plus sign-in identity). A host that sets `hostPolicy.gmailOwnerWrites: true`
+asks Google for `gmail.modify` and `gmail.send` as well, and lets the owner's
+mailbox (`/gmail/list`, `/gmail/read`, `mailboxForAccount`) hold that grant;
+`/gmail/status` then also reports `canChangeMessages` and `canSendMessages`.
+Every `/gmail/status` answer reports the host policy as `ownerWrites` and the
+verdict on the grant as `grant`: `read-only`, `part-write` or `write` (it reads
+mail, and holds none, some or all of the write scopes this host asks for),
+`too-broad` (a scope this host never asks for) or `no-read`.
+`canReadMessages` is true exactly for the first three when connected.
+Agent task reads (`googleForAccount`) also accept that owner grant, so the
+agent can still read the owner's mail. The task port only sends GET reads; it
+has no write operation. Compose, full mail access or any other scope is still
+refused everywhere with `insufficient_scope`.
+
+`mailboxWriterForAccount({actorId, accountId})` exists only with that opt-in. It
+is host-only: it enables no HTTP route and never reaches agent tasks. It relays
+the owner's reviewed changes (`send`, `archive`, `unarchive`, `trash`,
+`untrash`, `mark-read`, `mark-unread`; no drafts) to Cloud's inbox-v1
+operations: `prepare({requestId, proposal})` returns Cloud's `review` and a
+`prepared` receipt to show the owner, `dispatch({requestId, reviewDigest,
+proposal})` performs exactly that review once, and `observe({requestId})` reads
+the canonical receipt. A change's receipt also carries `mailbox`, the labels
+it left reduced as a read reduces them (null for send and before dispatch).
+`prepare` refuses a send review without a valid `from`, 1 to 50 recipients in
+`to`, `cc` and `bcc`, a `subject` and file names with a 502. `capabilities()`
+returns Cloud's `attachmentPolicy` (`mimeTypes`, `maximumBytes`,
+`maximumOutgoing`, `maximumTotalBytes`) for outgoing files; a server without it
+fails with a 502, and a failed Google token read with `unavailable`.
+Before each call it checks the signed-in owner, the
+Cloud sign-in and that `accountId` is still the connected grant holding the
+scope the effect needs (`gmail.send` for send, `gmail.modify` otherwise).
+Writes are never retried. Dispatch captures the reviewed input before any
+asynchronous work and accepts only a receipt for that exact effect and review.
+An unreadable or mismatched reply fails with `outcome_unknown`. A reply is
+withheld if the owner or connected Google grant changes while the request is in
+flight, so a dispatch failure such as `account_changed` can follow a completed
+write: after any dispatch failure the host reads the receipt with `observe`
+before offering another dispatch.
+
+Credential cleanup passes the refused key to `clear(expectedKey)`. The file
+store checks and clears within its write queue. The verified account adapter
+uses compare-and-exchange. Both return `false` if the saved account changed and
+keep its replacement. Calling `clear()` still clears the current account.
+Custom credential stores should provide the same conditional clear. A legacy
+store that ignores this argument must serialize account changes and revocation
+callbacks with its host guard. The file queue does not lock other processes or
+separate store instances that write the same path.
 
 `createCloudRoutes({ verifiedAccountStore, pendingCredentialStore })` optionally
 uses one native-owned credential/owner snapshot with `read()` and

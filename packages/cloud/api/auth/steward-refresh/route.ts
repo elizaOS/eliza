@@ -1,4 +1,4 @@
-import { resolveStewardBaseUrl } from "@/api-app/steward/base-url";
+import { resolveStewardBaseUrl } from "../../src/steward/base-url";
 /**
  * POST /api/auth/steward-refresh
  *
@@ -39,6 +39,7 @@ import {
   verifyStewardTokenCached,
 } from "@elizaos/cloud-shared/lib/auth/steward-client";
 import { stewardCookieNames } from "@elizaos/cloud-shared/lib/auth/steward-cookies";
+import { isBlockedBySsoBridgeLogout } from "@elizaos/cloud-shared/lib/services/sso-bridge-codes";
 import { signStewardMutatingRequest } from "@elizaos/cloud-shared/lib/steward/sign";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
@@ -48,6 +49,13 @@ import { getCookie, setCookie } from "hono/cookie";
 
 const STEWARD_REFRESH_COOKIE_MAX_AGE = 30 * 24 * 60 * 60;
 const BEARER_REFRESH_TTL_SECONDS = 60 * 60;
+/**
+ * Absolute lifetime of a bearer-renewed session chain, measured from its
+ * signed `sst`. Native clients hold only the access token, so without this
+ * cap a token re-minted every hour would never end.
+ */
+export const STEWARD_BEARER_SESSION_MAX_SECONDS = 30 * 24 * 60 * 60;
+const MARKER_UNAVAILABLE_RETRY_AFTER_SECONDS = "5";
 function checkOrigin(
   c: {
     req: {
@@ -295,6 +303,39 @@ app.post("/", async (c) => {
     if (claims.stagingSessionBinding) {
       logRefresh("bearer-staging-session-nonrenewable");
       return c.json(errorBody("Invalid token", "invalid_token"), 401);
+    }
+    // A re-mint gets a fresh iat, and iat is what the logout barrier compares.
+    // Check the barrier for every token here, before that ordering is lost.
+    // An unreadable marker store is an outage, not a sign-out: answer 503 so
+    // native clients retry instead of clearing their session.
+    let blockedByLogout: boolean;
+    try {
+      blockedByLogout = await isBlockedBySsoBridgeLogout(
+        claims.userId,
+        claims.issuedAt,
+      );
+    } catch (error) {
+      logRefresh("bearer-logout-marker-unavailable");
+      logger.error("[steward-refresh] logout-marker store unavailable", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return c.json(
+        errorBody("Session check unavailable", "sso_unavailable"),
+        503,
+        { "Retry-After": MARKER_UNAVAILABLE_RETRY_AFTER_SECONDS },
+      );
+    }
+    if (blockedByLogout) {
+      logRefresh("bearer-session-ended");
+      return c.json(errorBody("Session was signed out", "session_ended"), 401);
+    }
+    const sessionStartedAt = claims.sessionStartedAt ?? claims.issuedAt;
+    if (
+      Math.floor(Date.now() / 1000) - sessionStartedAt >
+      STEWARD_BEARER_SESSION_MAX_SECONDS
+    ) {
+      logRefresh("bearer-session-max-age");
+      return c.json(errorBody("Session has ended", "session_ended"), 401);
     }
     const refreshed = await mintStewardTokenFromClaims(
       c.env,

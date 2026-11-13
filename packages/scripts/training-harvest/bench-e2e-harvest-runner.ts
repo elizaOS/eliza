@@ -28,10 +28,11 @@
  *     4. --deterministic (offline driver self-test — enumerate only, no live run)
  *
  * When the resolved provider is a CLI backend (claude or codex), the driver forces
- * the two env vars the CLI route requires end-to-end but that a bare provider-env
+ * the env var the CLI route requires end-to-end but that a bare provider-env
  * file may omit:
  *     ELIZA_PLANNER_NATIVE_TOOLS=0   text-planner mode (free-text CLI serves the planner)
- *     ELIZA_TRAJECTORY_RECORDING=1   keep the recorder on (it is default-on; set explicit)
+ * Every lane runs with ELIZA_TRAJECTORY_LOGGING=1, because trajectory capture is
+ * off by default under vitest (NODE_ENV=test).
  *
  * FAMILY
  *   e2e        A live app vitest lane (packages/app/test/live-agent/*). Runs the lane
@@ -43,8 +44,8 @@
  *              harvestable-vs-env-gated classification + the build precondition: BENCHMARK_E2E_README.md.
  *
  * Usage:
- *   node bench-e2e-harvest-runner.ts --family e2e --provider-env s1.json --lane <substr>
- *   node bench-e2e-harvest-runner.ts --family e2e --deterministic --dry-run   # self-test
+ *   bun bench-e2e-harvest-runner.ts --family e2e --provider-env s1.json --lane <substr>
+ *   bun bench-e2e-harvest-runner.ts --family e2e --deterministic --dry-run   # self-test
  */
 import { spawnSync } from "node:child_process";
 import {
@@ -252,7 +253,6 @@ function withCliRunEnv(providerEnv) {
   if (!CLI_BACKENDS.has(backend)) return { ...providerEnv };
   return {
     ELIZA_PLANNER_NATIVE_TOOLS: "0",
-    ELIZA_TRAJECTORY_RECORDING: "1",
     ...providerEnv,
   };
 }
@@ -317,7 +317,7 @@ function runE2eItem(laneRel, runEnv, config) {
         ...process.env,
         ...runEnv,
         ELIZA_LIVE_TEST: "1",
-        ELIZA_SAVE_TRAJECTORIES: "1",
+        ELIZA_TRAJECTORY_LOGGING: "1",
         ELIZA_TRAJECTORY_DIR: trajDir,
         // Harvest wants gpt-5.5 only: blank ambient keys so the cli branch in the
         // app selectLiveProvider is chosen unambiguously.

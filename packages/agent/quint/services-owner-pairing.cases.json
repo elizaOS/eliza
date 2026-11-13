@@ -1,0 +1,19 @@
+{
+  "sources": ["packages/agent/src/services/owner-binding.ts"],
+  "bounds": {
+    "domain": "One connector code, two owners and two attempts.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "services_owner_pairing",
+      "main": "services_owner_pairing",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

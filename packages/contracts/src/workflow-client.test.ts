@@ -208,6 +208,35 @@ test("a generic schedule's missed occurrence needs the engine-recorded missedOcc
   }
 });
 
+test("a hosted digest's unavailable settlement is a not-run occurrence only with its admission", () => {
+  const output = {
+    status: "unavailable",
+    scheduledAt: "2026-10-28T07:00:00.000Z",
+    text: "Paused: the digest source is no longer current.",
+    paused: true,
+  };
+  const hosted = parseWorkflowRun(
+    execution({ output, input: { hostedDigest: output } }),
+  );
+  assert.deepEqual(hosted.occurrence, {
+    scheduledAt: output.scheduledAt,
+    status: "unavailable",
+  });
+  assert.equal(hosted.output, output.text);
+  assert.equal(workflowOccurrenceNotRun(output, true)?.status, "unavailable");
+  // Without the hosted admission the same output is a run that finished.
+  assert.equal(workflowOccurrenceNotRun(output), undefined);
+  for (const input of [
+    {},
+    { hostedDigest: true },
+    { hostedDigest: [output] },
+  ]) {
+    const plain = parseWorkflowRun(execution({ output, input }));
+    assert.equal(plain.occurrence, undefined);
+    assert.equal(plain.output, JSON.stringify(output));
+  }
+});
+
 test("a missed occurrence skipped by a clock change carries its skipped local time", () => {
   const output = {
     status: "missed",

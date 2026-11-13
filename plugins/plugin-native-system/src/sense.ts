@@ -30,6 +30,15 @@ export type ListenerStatus =
       listening: boolean;
       microphoneOpen: boolean;
     };
+/** A saved Pause or Turn off action confirms the provider released the microphone. */
+export type ListenerStopReceipt =
+  | { available: false }
+  | (Extract<ListenerStatus, { available: true }> & {
+      saved: true;
+      listening: false;
+      microphoneOpen: false;
+    });
+
 /**
  * Who opened the assistant surface, as native recorded it from Android's caller identity:
  * `listener` (a wake from the same-signer image listener), `system` (an assistant gesture such as
@@ -51,8 +60,8 @@ const VOICE_INVOCATIONS: ReadonlySet<AssistantInvocation> = new Set([
 ]);
 export interface SensePlugin {
   status(): Promise<ListenerStatus>;
-  pause(): Promise<ListenerStatus>;
-  turnOff(): Promise<ListenerStatus>;
+  pause(): Promise<ListenerStopReceipt>;
+  turnOff(): Promise<ListenerStopReceipt>;
   openSettings(): Promise<{ opened: boolean }>;
   bindInvocationSession(options: {
     generation: number;
@@ -104,6 +113,42 @@ export function parseListenerStatus(raw: unknown): ListenerStatus {
     microphoneOpen: value.microphoneOpen === true,
   };
 }
+/** ListenerPolicy checks these conditions before or at the durable user pause. */
+const PAUSE_STOP_STATES: ReadonlySet<ListenerState> = new Set([
+  "OFF",
+  "PERMISSION_REQUIRED",
+  "NOTIFICATIONS_REQUIRED",
+  "STOPPED_AFTER_ERRORS",
+  "STOPPED_INDICATOR_LOST",
+  "PAUSED_OTHER_USER",
+  "WAITING_FOR_UNLOCK",
+  "SPEECH_UNAVAILABLE",
+  "PAUSED_USER",
+]);
+
+/** Display defaults cannot stand in for a saved action or an explicit microphone release. */
+export function parseListenerStopReceipt(
+  raw: unknown,
+  action: "pause" | "turnOff",
+): ListenerStopReceipt {
+  const value = record(raw);
+  if (
+    value.saved !== true ||
+    value.listening !== false ||
+    value.microphoneOpen !== false
+  )
+    return { available: false };
+  const status = parseListenerStatus(value);
+  if (
+    !status.available ||
+    (action === "turnOff"
+      ? status.state !== "OFF"
+      : !PAUSE_STOP_STATES.has(status.state))
+  )
+    return { available: false };
+  return { ...status, saved: true, listening: false, microphoneOpen: false };
+}
+
 export function parseAssistantInvocation(raw: unknown): AssistantInvocation {
   const value = record(raw);
   if (value.assistant !== true) return null;
@@ -196,6 +241,51 @@ function serializeInvocation<T>(run: () => Promise<T>): Promise<T> {
   return result;
 }
 
+/** Voice entry is an application policy, never permission to capture. */
+export interface SenseVoiceEntryPolicy {
+  readonly externalInvocation: boolean;
+}
+export const CONVERSATION_ONLY_VOICE_ENTRY: SenseVoiceEntryPolicy =
+  Object.freeze({ externalInvocation: false });
+export const ASSISTANT_INVOCATION_VOICE_ENTRY: SenseVoiceEntryPolicy =
+  Object.freeze({ externalInvocation: true });
+
+/** Common mobile default. An admitted AOSP host retains native-verified one-shot
+ * gestures and opted-in listener wakes; selecting this policy never starts or
+ * resumes the listener. Consent and invocation origin remain native authority. */
+export function mobileVoiceEntryPolicy(aosp: boolean): SenseVoiceEntryPolicy {
+  return aosp
+    ? ASSISTANT_INVOCATION_VOICE_ENTRY
+    : CONVERSATION_ONLY_VOICE_ENTRY;
+}
+
+/** Retire a previously enabled listener when this host selects chat-only entry.
+ * This is a native acknowledgement, not permission to enable or resume capture.
+ * Inspect raw fields: the status presentation parser intentionally normalizes
+ * inconsistent listening bits and must not be used to confirm a stop. */
+export async function stopSenseListenerForChatOnly(
+  native: Pick<SensePlugin, "turnOff"> | undefined,
+): Promise<boolean> {
+  if (!native) return false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const reply: unknown = await Promise.race([
+      native.turnOff(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("Wake listener stop timed out")),
+          5000,
+        );
+      }),
+    ]);
+    return parseListenerStopReceipt(reply, "turnOff").available;
+  } catch {
+    return false;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 /** Bind before consuming. Cold-start, changed-owner and stale async results cannot open the mic. */
 export function createSenseInvocationController(
   native: Pick<
@@ -207,7 +297,11 @@ export function createSenseInvocationController(
     | "discardProtectedPowerLaunch"
   >,
   host: SenseInvocationHost,
+  policy: SenseVoiceEntryPolicy = ASSISTANT_INVOCATION_VOICE_ENTRY,
 ) {
+  // In chat-only mode an external event must not bind, consume, or start voice.
+  // Stopping a previously enabled wake listener is a separate native host action.
+  if (!policy.externalInvocation) return { check() {}, dispose() {} };
   const bindingId = crypto.randomUUID();
   const generation = ++nextInvocationGeneration;
   activeInvocationBinding = bindingId;

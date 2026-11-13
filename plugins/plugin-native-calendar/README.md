@@ -13,7 +13,6 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd plugins/plugin-native-calendar build  # build
 ```
 
-
 ## Android CalendarProvider adapter
 
 Android uses a separate, ESM-only `@elizaos/capacitor-calendar/android` entrypoint.
@@ -32,6 +31,8 @@ The exported Android types distinguish editor timestamps/body from reviewed-agen
 ISO dates/description. Permission-required, conflict, unknown and cancellation are
 results callers must handle. Promise rejection remains possible. A saved creation
 receipt must be acknowledged explicitly; unknown operations must not be replayed.
+The owner can retire an unknown creation with `acknowledgeCreation({ creationId,
+resolution: "dismissed" })`: the provider is read first and nothing is retried.
 
 Android bridge/provider tests do not establish a host's upgrade or physical-device
 acceptance. Preserve existing host storage identities and run migration tests.
@@ -42,3 +43,11 @@ After building, `bun run --cwd plugins/plugin-native-calendar test:android-packa
 packs the package and checks an external NodeNext consumer, reviewed-operation
 types, the CommonJS Apple export, unsupported-native rejection and exact tracked
 Android source bytes. This qualifies packaging, not native execution.
+
+The canonical Android host registers `ElizaCalendar`. This registration supplies
+native methods and app-owned storage identities; it does not connect the Calendar
+UI, cloud feed or editor to Android. Those routes remain unavailable until their
+explicit data and review ports are wired. Hosts keep the complete-read default or
+choose an explicit bound with an incomplete result. The shared bridge also owns
+option creation receipts and external editor handoff; host-specific owner and
+deferred-deletion checks are preserved.

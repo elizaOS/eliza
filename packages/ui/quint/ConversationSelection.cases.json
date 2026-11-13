@@ -1,0 +1,87 @@
+{
+  "sources": [
+    "packages/ui/src/state/useChatCallbacks.ts",
+    "packages/ui/src/state/useDataLoaders.ts",
+    "packages/ui/src/components/shell/ChatOverlay.tsx",
+    "packages/ui/src/state/ChatComposerContext.hooks.ts",
+    "packages/ui/src/state/__e2e__/conversation-selection.test.tsx"
+  ],
+  "bounds": "Two selection calls, three conversation identities plus null, five symbolic draft values including empty and one unsaved initial edit. No active send or queued attachment. Cold no-cache loads project successful history to one user row. Loader-owned 404 fallback, cache/overlay internals, mounted React effects and final message-anchor application are unmodeled. Each missing-result branch isolates the outer callback interface. Each call has at most one primary and one recovery load; no counter wraps.",
+  "conformance": "packages/ui/quint/check-navigation-claims.mjs",
+  "cases": [
+    {
+      "name": "cold-selection",
+      "main": "ConversationSelection",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "invariant",
+        "finiteBounds",
+        "knownOwner",
+        "terminalCallsStayFinite"
+      ],
+      "temporal": [
+        "SettlesUnderFairReplies",
+        "EventuallyNoRetiredWriteWitness"
+      ],
+      "temporalChecks": [
+        {
+          "property": "SettlesUnderFairReplies",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of primary success, empty list completion and recovery success for each pending call. These actions model host operations that eventually settle. Two finite calls prevent perpetual supersession.",
+            "This outer callback completion does not establish message-anchor success, notification receipt, request dequeue, or progress when a provider promise never settles."
+          ]
+        },
+        {
+          "property": "EventuallyNoRetiredWriteWitness",
+          "expect": "counterexample",
+          "assumptions": [
+            "The source callback has no surface-mounted predicate. Unmount leaves the shared selection epoch current, so failure can restore the previous selection and publish a notice.",
+            "Each per-call unmount is an over-approximation of the actual overlay lifetime, which may retire multiple calls together. The one-call counterexample matches the real callback probe.",
+            "The retired-write witness never clears. An eventual suffix without that witness is equivalent to avoiding the bad event, and its violation includes a loop. The real mounted callback test independently observes the write."
+          ]
+        }
+      ],
+      "maxSteps": 20,
+      "samples": 1000
+    },
+    {
+      "name": "owned-empty-draft",
+      "main": "ConversationSelection",
+      "init": "initEmptyDraft",
+      "step": "step",
+      "invariants": [
+        "invariant",
+        "finiteBounds",
+        "knownOwner",
+        "terminalCallsStayFinite"
+      ],
+      "temporal": [
+        "SettlesUnderFairReplies",
+        "EventuallyNoRetiredWriteWitness"
+      ],
+      "temporalChecks": [
+        {
+          "property": "SettlesUnderFairReplies",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of primary success, empty list completion and recovery success for each pending call. These actions model host operations that eventually settle. Two finite calls prevent perpetual supersession.",
+            "This outer callback completion does not establish message-anchor success, notification receipt, request dequeue, or progress when a provider promise never settles."
+          ]
+        },
+        {
+          "property": "EventuallyNoRetiredWriteWitness",
+          "expect": "counterexample",
+          "assumptions": [
+            "The source callback has no surface-mounted predicate. Unmount leaves the shared selection epoch current, so failure can restore the previous selection and publish a notice.",
+            "Each per-call unmount is an over-approximation of the actual overlay lifetime, which may retire multiple calls together. The one-call counterexample matches the real callback probe.",
+            "The retired-write witness never clears. An eventual suffix without that witness is equivalent to avoiding the bad event, and its violation includes a loop. The real mounted callback test independently observes the write."
+          ]
+        }
+      ],
+      "maxSteps": 20,
+      "samples": 1000
+    }
+  ]
+}

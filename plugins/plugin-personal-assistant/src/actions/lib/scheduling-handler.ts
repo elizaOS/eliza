@@ -368,7 +368,9 @@ export function computeProposedSlots(args: {
 
   const results: ProposedMeetingSlot[] = [];
   const seenDays = new Set<string>();
-  const seenStarts = new Set<number>();
+  // Offered slots are alternatives, so none may overlap another: the second
+  // pass otherwise offered 12:00, 12:15 and 12:30 for one free hour.
+  const chosen: Array<{ start: number; end: number }> = [];
 
   const step = SLOT_STEP_MINUTES * MS_PER_MINUTE;
   const cursor =
@@ -397,7 +399,7 @@ export function computeProposedSlots(args: {
         slotEndMin <= preferredEnd;
 
       if (
-        !seenStarts.has(t) &&
+        !overlapsBusy(t, t + durationMs, chosen) &&
         withinPreferred &&
         !overlapsBusy(slotStart.getTime(), slotEnd.getTime(), busy) &&
         !overlapsBlackout(slotStart, slotEnd, tz, preferences.blackoutWindows)
@@ -405,7 +407,7 @@ export function computeProposedSlots(args: {
         const dayKey = `${parts.year}-${parts.month}-${parts.day}`;
         if (!onePerDay || !seenDays.has(dayKey)) {
           seenDays.add(dayKey);
-          seenStarts.add(t);
+          chosen.push({ start: t, end: t + durationMs });
           results.push({
             startAt: slotStart.toISOString(),
             endAt: slotEnd.toISOString(),

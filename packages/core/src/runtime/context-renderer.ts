@@ -12,6 +12,7 @@ import type {
 	ChatMessageRole,
 	PromptSegment,
 } from "../types/model";
+import { isPlainObject } from "../utils/type-guards";
 import type {
 	ContextEvent,
 	ContextInstructionEvent,
@@ -56,32 +57,44 @@ function historyMessageTimestamp(
 	const zone = segment.metadata?.displayTimeZone;
 	if (typeof zone !== "string" || !zone.trim()) return date.toISOString();
 	try {
-		const parts = Object.fromEntries(
-			new Intl.DateTimeFormat("en-CA", {
-				timeZone: zone,
-				year: "numeric",
-				month: "2-digit",
-				day: "2-digit",
-				hour: "2-digit",
-				minute: "2-digit",
-				second: "2-digit",
-				hourCycle: "h23",
-				timeZoneName: "longOffset",
-			})
-				.formatToParts(date)
-				.map((part) => [part.type, part.value]),
-		);
+		const parts: Partial<Record<Intl.DateTimeFormatPartTypes, string>> = {};
+		for (const part of displayZoneFormatter(zone).formatToParts(date)) {
+			parts[part.type] = part.value;
+		}
 		const offset =
 			parts.timeZoneName === "GMT"
 				? "Z"
-				: parts.timeZoneName?.replace(/^GMT/, "");
-		if (!offset || !/^(?:Z|[+-]\d{2}:\d{2})$/.test(offset))
-			return date.toISOString();
+				: parts.timeZoneName?.replace(GMT_PREFIX, "");
+		if (!offset || !UTC_OFFSET.test(offset)) return date.toISOString();
 		return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}.${String(date.getUTCMilliseconds()).padStart(3, "0")}${offset}`;
 	} catch {
 		// An unavailable display zone cannot erase the actual recorded UTC instant.
 		return date.toISOString();
 	}
+}
+
+const GMT_PREFIX = /^GMT/;
+const UTC_OFFSET = /^(?:Z|[+-]\d{2}:\d{2})$/;
+/** Constructing Intl.DateTimeFormat is costly; only valid zones are cached, and
+ * the set of valid IANA zones is finite. */
+const displayZoneFormatters = new Map<string, Intl.DateTimeFormat>();
+function displayZoneFormatter(zone: string): Intl.DateTimeFormat {
+	let formatter = displayZoneFormatters.get(zone);
+	if (!formatter) {
+		formatter = new Intl.DateTimeFormat("en-CA", {
+			timeZone: zone,
+			year: "numeric",
+			month: "2-digit",
+			day: "2-digit",
+			hour: "2-digit",
+			minute: "2-digit",
+			second: "2-digit",
+			hourCycle: "h23",
+			timeZoneName: "longOffset",
+		});
+		displayZoneFormatters.set(zone, formatter);
+	}
+	return formatter;
 }
 
 /** Render readable block framing while keeping machine labels in segment metadata. */
@@ -90,7 +103,7 @@ export function segmentBlock(segment: ContextObjectPromptSegment): string {
 	const content = timestamp
 		? `[message_at=${timestamp}] ${segment.content}`
 		: segment.content;
-	const label = (segment as PromptSegment & { label?: unknown }).label;
+	const label = segment.label;
 	if (
 		label === "system" ||
 		(typeof label === "string" &&
@@ -103,28 +116,19 @@ export function segmentBlock(segment: ContextObjectPromptSegment): string {
 }
 
 /**
- * Drop segments with empty content. Used by `normalizePromptSegments` and as a
- * post-step in renderers that build segment lists incrementally.
- */
-export function compactPromptSegments(
-	segments: PromptSegment[],
-): PromptSegment[] {
-	return segments.filter((segment) => segment.content.length > 0);
-}
-
-/**
  * Prefix all but the first segment with `\n\n` without changing its content.
  * Exact empty values are dropped because they carry no model-visible bytes.
  */
 export function normalizePromptSegments(
 	segments: PromptSegment[],
 ): PromptSegment[] {
-	return compactPromptSegments(
-		segments.map((segment, index) => ({
-			...segment,
-			content: `${index === 0 ? "" : "\n\n"}${segment.content}`,
-		})),
-	);
+	const normalized: PromptSegment[] = [];
+	for (let index = 0; index < segments.length; index++) {
+		const segment = segments[index];
+		const content = `${index === 0 ? "" : "\n\n"}${segment.content}`;
+		if (content.length > 0) normalized.push({ ...segment, content });
+	}
+	return normalized;
 }
 
 /**
@@ -160,23 +164,18 @@ export function buildStageChatMessages(args: {
 	dynamicBlocks: string[];
 	stepMessages: ChatMessage[];
 }): ChatMessage[] {
-	const stableContext = args.contextSegments
-		.filter((segment) => segment.stable)
-		.map(segmentBlock)
-		.filter(Boolean);
-	const dynamicContext = args.contextSegments
-		.filter((segment) => !segment.stable)
-		.map(segmentBlock)
-		.filter(Boolean);
-	const systemContent = [
-		...stableContext,
-		`${args.stageLabel}:\n${args.instructions}`,
-	]
-		.filter(Boolean)
-		.join("\n\n");
-	const userContent = [...dynamicContext, ...args.dynamicBlocks]
-		.filter((block) => block.length > 0)
-		.join("\n\n");
+	const systemBlocks: string[] = [];
+	const userBlocks: string[] = [];
+	for (const segment of args.contextSegments) {
+		const block = segmentBlock(segment);
+		if (block) (segment.stable ? systemBlocks : userBlocks).push(block);
+	}
+	systemBlocks.push(`${args.stageLabel}:\n${args.instructions}`);
+	for (const block of args.dynamicBlocks) {
+		if (block.length > 0) userBlocks.push(block);
+	}
+	const systemContent = systemBlocks.join("\n\n");
+	const userContent = userBlocks.join("\n\n");
 	return [
 		{ role: "system", content: systemContent },
 		{ role: "user", content: userContent },
@@ -198,6 +197,19 @@ const DIALOGUE_CONTENT_FIELDS = new Set([
 	"metadata",
 	"attachments",
 	"chatIdempotency",
+]);
+const CHAT_IDEMPOTENCY_STRING_FIELDS = new Set([
+	"scope",
+	"clientMessageId",
+	"fingerprint",
+]);
+const INJECTION_RISK_NUMBER_FIELDS = new Set([
+	"hiddenCharCount",
+	"nonAsciiCount",
+	"letterSplitHits",
+	"wordReversalHits",
+	"structuralInjectionHits",
+	"score",
 ]);
 const DIALOGUE_METADATA_FIELDS = new Set([
 	"selectedValue",
@@ -230,8 +242,7 @@ function isChatIdempotencyMarker(value: unknown): boolean {
 		fields.every(([key, item]) =>
 			key === "version"
 				? item === 1
-				: ["scope", "clientMessageId", "fingerprint"].includes(key) &&
-					typeof item === "string",
+				: CHAT_IDEMPOTENCY_STRING_FIELDS.has(key) && typeof item === "string",
 		)
 	);
 }
@@ -258,14 +269,7 @@ function isDialogueMetadataValue(key: string, value: unknown): boolean {
 			}
 			if (field === "socialEngineeringClasses") return isStringArray(item);
 			return (
-				[
-					"hiddenCharCount",
-					"nonAsciiCount",
-					"letterSplitHits",
-					"wordReversalHits",
-					"structuralInjectionHits",
-					"score",
-				].includes(field) &&
+				INJECTION_RISK_NUMBER_FIELDS.has(field) &&
 				typeof item === "number" &&
 				Number.isFinite(item)
 			);
@@ -352,12 +356,6 @@ function renderEvidenceValue(value: unknown): string {
 	return value === undefined ? "undefined" : JSON.stringify(value);
 }
 
-function renderProviderContent(event: ContextProviderEvent): string {
-	// Provider identity stays in segment metadata rather than prompt framing.
-	const text = event.text;
-	return text === undefined ? "" : text;
-}
-
 function toChatRole(role: string | undefined): ChatMessageRole {
 	if (
 		role === "system" ||
@@ -387,28 +385,6 @@ function appendPromptSegment(
 	});
 }
 
-function appendSyntheticSegment(
-	rendered: RenderedContextObject,
-	args: {
-		id: string;
-		label: string;
-		content: string;
-		stable: boolean;
-		role?: string;
-	},
-): void {
-	appendPromptSegment(
-		rendered,
-		{
-			id: args.id,
-			label: args.label,
-			content: args.content,
-			stable: args.stable,
-		},
-		args.role,
-	);
-}
-
 function isMessageEvent(event: ContextEvent): event is ContextMessageEvent {
 	return event.type === "message" && "message" in event;
 }
@@ -433,6 +409,50 @@ function isInstructionEvent(
 
 function isSegmentEvent(event: ContextEvent): event is ContextSegmentEvent {
 	return event.type === "segment" && "segment" in event;
+}
+
+function isEmptyValue(value: unknown): boolean {
+	return value === "" || (Array.isArray(value) && value.length === 0);
+}
+
+/** Stage-1 routing and loop verdicts from their known producers. Event id,
+ * creation time, producer name and response-handler patch diagnostics stay in
+ * the source event for structured readers and trajectories; the model reads the
+ * routing evidence (slices, intents, candidates, undelivered draft) and the
+ * verdict. Empty plan fields say nothing an absent field does not. Other events
+ * keep their complete JSON. */
+function renderRuntimeEventContent(event: ContextEvent): string {
+	const known =
+		(event.type === "message_handler" && event.source === "message-service") ||
+		(event.type === "evaluation" && event.source === "planner-loop");
+	if (!known || !isPlainObject(event.metadata)) return textFromUnknown(event);
+	const {
+		id: _id,
+		type: _type,
+		source: _source,
+		createdAt: _createdAt,
+		metadata,
+		...rest
+	} = event;
+	if (event.type === "evaluation") {
+		return textFromUnknown({ ...rest, metadata });
+	}
+	const { plan, thought, ...routing } = metadata;
+	return textFromUnknown({
+		...rest,
+		metadata: {
+			...routing,
+			plan: isPlainObject(plan)
+				? Object.fromEntries(
+						Object.entries(plan).filter(
+							([key, value]) =>
+								key !== "responseHandlerPatches" && !isEmptyValue(value),
+						),
+					)
+				: plan,
+			...(isEmptyValue(thought) ? {} : { thought }),
+		},
+	});
 }
 
 function renderEvent(
@@ -467,7 +487,8 @@ function renderEvent(
 	}
 
 	if (isProviderEvent(event)) {
-		const content = renderProviderContent(event);
+		// Provider identity stays in segment metadata rather than prompt framing.
+		const content = event.text ?? "";
 		if (!content.trim()) {
 			return;
 		}
@@ -475,11 +496,7 @@ function renderEvent(
 			id: event.id,
 			label: `provider:${event.name}`,
 			content,
-			// Honor the provider's declared cache stability (threaded through by
-			// appendStateProviderEvents). A stable provider's content belongs in
-			// the cached system message; leaving this hardcoded false forced
-			// every provider into the uncached user message in
-			// buildStageChatMessages (planner/evaluator stages).
+			// A stable provider's content belongs in the cached system message.
 			stable: event.cacheStable === true,
 		});
 		return;
@@ -527,10 +544,10 @@ function renderEvent(
 		return;
 	}
 
-	appendSyntheticSegment(rendered, {
+	appendPromptSegment(rendered, {
 		id: event.id,
 		label: `event:${event.type}`,
-		content: `${event.type}: ${textFromUnknown(event)}`,
+		content: `${event.type}: ${renderRuntimeEventContent(event)}`,
 		stable: false,
 	});
 }
@@ -578,7 +595,7 @@ export function renderContextObject(
 	// evaluator system prefix byte-stable across turns for provider prompt
 	// caches (live 2026-09-13: 6.6K of 19K system chars shared before).
 	if (context.trajectoryPrefix?.messageHandlerThought) {
-		appendSyntheticSegment(rendered, {
+		appendPromptSegment(rendered, {
 			id: "message-handler-thought",
 			label: "system",
 			content: `message_handler_thought: ${context.trajectoryPrefix.messageHandlerThought}`,
@@ -586,7 +603,7 @@ export function renderContextObject(
 		});
 	}
 	if (context.trajectoryPrefix?.selectedContexts?.length) {
-		appendSyntheticSegment(rendered, {
+		appendPromptSegment(rendered, {
 			id: "selected-contexts",
 			label: "system",
 			content: `selected_contexts: ${context.trajectoryPrefix.selectedContexts.join(", ")}`,
@@ -602,7 +619,7 @@ export function renderContextObject(
 					: `- ${definition.id}`;
 			},
 		);
-		appendSyntheticSegment(rendered, {
+		appendPromptSegment(rendered, {
 			id: "context-definitions",
 			label: "system",
 			content: `contexts:\n${lines.join("\n")}`,
@@ -619,14 +636,12 @@ export function renderContextObject(
 		renderPrefixTool(rendered, tool);
 	}
 
-	for (const event of context.events ?? []) {
-		renderEvent(
-			rendered,
-			event,
-			typeof context.metadata?.displayTimeZone === "string"
-				? context.metadata.displayTimeZone
-				: undefined,
-		);
+	const displayTimeZone =
+		typeof context.metadata?.displayTimeZone === "string"
+			? context.metadata.displayTimeZone
+			: undefined;
+	for (const event of context.events) {
+		renderEvent(rendered, event, displayTimeZone);
 	}
 
 	return rendered;

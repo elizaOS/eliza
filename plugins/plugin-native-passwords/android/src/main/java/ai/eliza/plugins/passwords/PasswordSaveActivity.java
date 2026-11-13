@@ -21,10 +21,13 @@ public class PasswordSaveActivity extends Activity {
   private PasswordVaultAccess access;
   private long ticket;
   private boolean prompting, finished;
+  private PasswordSurfaces.Hold surface;
 
   @Override protected void onCreate(Bundle state) {
     super.onCreate(state);
+    surface = PasswordSurfaces.open();
     sheet = new PasswordSheet(this);
+    if (!PasswordVaultAccess.admitted(this)) { close(); return; }
     try { access = PasswordVaultAccess.get(this); } catch (Exception unavailable) { close(); return; }
     Uri data = getIntent() == null ? null : getIntent().getData();
     if (state != null || data == null || !access.config.tokenScheme.equals(data.getScheme())) { close(); return; }
@@ -98,6 +101,7 @@ public class PasswordSaveActivity extends Activity {
 
   @Override protected void onDestroy() {
     close();
+    surface.close();
     super.onDestroy();
   }
 }

@@ -37,7 +37,7 @@ import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing"
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
+import { requirePaidRouteStanding } from "../../../../../src/lib/paid-route-standing";
 import { domainBodySchema as BuySchema } from "../schemas";
 
 const DOMAIN_PURCHASE_PROVIDER_LEASE_MS = 2 * 60 * 1000;

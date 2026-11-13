@@ -40,13 +40,7 @@ import {
   transcriptPreview,
   transcriptSpeakerCount,
 } from "@elizaos/core/protocol";
-import {
-  buildBrandEnvAliases,
-  getBootConfig,
-  isCloudInferenceSelectedInConfig,
-  readAliasedEnv,
-  setBootConfig,
-} from "@elizaos/host/protocol";
+import { isCloudInferenceSelectedInConfig } from "@elizaos/host/protocol";
 import {
   closeDownloadWriter,
   teardownFailedDownload,
@@ -197,13 +191,6 @@ type AgentModule = {
   dispatchRoute: DispatchRoute;
   cloudInferenceRejection: () => string | null;
 };
-const IOS_BRIDGE_DEFAULT_ENV_PREFIX = "MILADY";
-const IOS_BRIDGE_BRAND_ENV_SUFFIXES = [
-  "STATE_DIR",
-  "NAMESPACE",
-  "PLATFORM",
-  "API_PORT",
-] as const;
 async function loadAgentModule(): Promise<AgentModule> {
   const {
     bootElizaRuntime,
@@ -303,6 +290,8 @@ interface NativeDownloadJob {
 }
 interface NativeLlamaState {
   contextId: number | null;
+  /** Context size the native load admitted; may be below the requested size. */
+  contextSize: number | null;
   modelId: string | null;
   modelPath: string | null;
   loadedAt: string | null;
@@ -372,6 +361,7 @@ const TEXT_GENERATION_MODEL_TYPES = [
 ] as const;
 const nativeLlamaState: NativeLlamaState = {
   contextId: null,
+  contextSize: null,
   modelId: null,
   modelPath: null,
   loadedAt: null,
@@ -555,7 +545,6 @@ async function bootRuntimeWithRetry(
 async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
   installIosBackendCrashGuards();
   const argvEnv = hydrateIosEnvFromArgv();
-  installIosBridgeEnvAliases();
   // ── Mobile filesystem sandbox ────────────────────────────────────────────
   // Install the fs shim as the very first action — before any runtime code
   // runs — so that PGlite, trajectory logs, skill files, and all other agent
@@ -570,7 +559,7 @@ async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
     process.env.MOBILE_WORKSPACE_ROOT ||
     argvEnv.appSupportDir ||
     process.env.ELIZA_WORKSPACE_DIR ||
-    readAliasedEnv("ELIZA_STATE_DIR") ||
+    process.env.ELIZA_STATE_DIR?.trim() ||
     process.env.ELIZA_HOME ||
     (process.env.HOME
       ? `${process.env.HOME}/Library/Application Support/Eliza/workspace`
@@ -586,7 +575,7 @@ async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
       __ELIZA_DISABLE_DIRECT_RUN?: boolean;
     }
   ).__ELIZA_DISABLE_DIRECT_RUN = true;
-  if (!readAliasedEnv("ELIZA_PLATFORM")) {
+  if (!process.env.ELIZA_PLATFORM?.trim()) {
     process.env.ELIZA_PLATFORM = "ios";
   }
   process.env.ELIZA_MOBILE_PLATFORM =
@@ -2239,33 +2228,13 @@ function callIosHost(
   });
 }
 export function resolveMobileStateDir(): string {
-  installIosBridgeEnvAliases();
-  const explicit = readAliasedEnv("ELIZA_STATE_DIR") || process.env.ELIZA_HOME;
+  const explicit =
+    process.env.ELIZA_STATE_DIR?.trim() || process.env.ELIZA_HOME;
   if (explicit?.trim()) return explicit.trim();
   if (process.env.HOME?.trim()) {
     return path.join(process.env.HOME.trim(), ".eliza");
   }
   return "/tmp/eliza";
-}
-function installIosBridgeEnvAliases(): void {
-  const config = getBootConfig();
-  if (config.envAliases?.length) return;
-  setBootConfig({
-    ...config,
-    envAliases: resolveIosBridgeEnvAliases(),
-  });
-}
-function resolveIosBridgeEnvAliases(): ReturnType<typeof buildBrandEnvAliases> {
-  const prefixes = new Set<string>([IOS_BRIDGE_DEFAULT_ENV_PREFIX]);
-  for (const key of Object.keys(process.env)) {
-    for (const suffix of IOS_BRIDGE_BRAND_ENV_SUFFIXES) {
-      const marker = `_${suffix}`;
-      if (!key.endsWith(marker)) continue;
-      const prefix = key.slice(0, -marker.length);
-      if (prefix && prefix !== "ELIZA") prefixes.add(prefix);
-    }
-  }
-  return [...prefixes].flatMap((prefix) => buildBrandEnvAliases(prefix));
 }
 function localInferenceRootPath(): string {
   return path.join(resolveMobileStateDir(), "local-inference");
@@ -2740,6 +2709,20 @@ async function loadNativeLlamaModel(
     ? (result as Record<string, unknown>)
     : {};
 }
+/**
+ * The native load can shrink the requested context to fit the device's memory
+ * budget, so the window it reports is the one prompts must fit.
+ */
+export function loadedNativeContextSize(
+  record: Record<string, unknown>,
+): number {
+  const contextSize =
+    positiveInteger(record.context_size) ?? positiveInteger(record.contextSize);
+  if (contextSize == null) {
+    throw new Error("Native llama load did not report its context size");
+  }
+  return contextSize;
+}
 async function ensureNativeModelLoaded(
   slot: string,
 ): Promise<NativeLlamaState> {
@@ -2779,11 +2762,13 @@ async function ensureNativeModelLoaded(
       throw new Error("Native llama load returned no context_id");
     }
     nativeLlamaState.contextId = contextId;
+    nativeLlamaState.contextSize = loadedNativeContextSize(record);
     nativeLlamaState.loadedAt = new Date().toISOString();
     nativeLlamaState.status = "ready";
     return nativeLlamaState;
   } catch (error) {
     nativeLlamaState.contextId = null;
+    nativeLlamaState.contextSize = null;
     nativeLlamaState.loadedAt = null;
     nativeLlamaState.status = "error";
     nativeLlamaState.error =
@@ -2794,6 +2779,7 @@ async function ensureNativeModelLoaded(
 async function unloadNativeLlamaModel(): Promise<void> {
   const contextId = nativeLlamaState.contextId;
   nativeLlamaState.contextId = null;
+  nativeLlamaState.contextSize = null;
   nativeLlamaState.loadedAt = null;
   nativeLlamaState.status = "idle";
   if (contextId != null) {
@@ -3002,7 +2988,7 @@ function mergeStopSequences(values: unknown): string[] {
 function makeIosNativeGenerateHandler(slot: string): GenerateTextHandler {
   return async (_runtime, params) => {
     const state = await ensureNativeModelLoaded(slot);
-    if (state.contextId == null) {
+    if (state.contextId == null || state.contextSize == null) {
       throw new Error(
         "[ios-native-llama] model load did not produce a context",
       );
@@ -3022,16 +3008,20 @@ function makeIosNativeGenerateHandler(slot: string): GenerateTextHandler {
       top_k: positiveInteger(params.topK) ?? 40,
       stop: mergeStopSequences(params.stopSequences),
     };
+    const contextId = state.contextId;
     const text = await dispatchIosNativeGeneration({
       provider: IOS_NATIVE_LLAMA_PROVIDER,
       model:
         state.modelId ??
         (state.modelPath ? path.basename(state.modelPath) : "ios-native-llama"),
-      contextWindowTokens: nativeLlamaContextSize(),
+      contextWindowTokens: state.contextSize,
       requestedMaxTokens: params.maxTokens,
       request: nativeRequest,
       invoke: (request, timeoutMs) =>
         callIosHost("llama_generate", request, timeoutMs),
+      cancel: () =>
+        callIosHost("llama_cancel", { context_id: contextId }, 5000),
+      signal: params.signal,
     });
     const cleanedText = stripReasoningBlocks(text);
     if (params.onStreamChunk && cleanedText) {
@@ -3493,19 +3483,32 @@ function nativeTextReadiness(): Record<string, unknown> {
 function hasNativeLocalTtsExecutor(): boolean {
   return hostProtocolWrite != null;
 }
+function kokoroCoreMlTtsEnabled(): boolean {
+  const value = process.env.ELIZA_IOS_ENABLE_KOKORO_COREML_TTS?.toLowerCase();
+  return value === "1" || value === "true" || value === "yes" || value === "on";
+}
 function hasNativeVoiceBundle(bundleDir: string): boolean {
-  // A voice bundle is usable if it ships ANY recognized TTS engine. The CoreML
-  // Kokoro model is the preferred (ANE) engine but optional — its absence must
-  // not hide the fused OmniVoice/Kokoro-GGUF assets, which the native bridge can
-  // still resolve (TTS engine selection happens later, in synthesizeSpeech).
+  // A voice bundle is usable if it ships a TTS engine the native bridge will
+  // run. CoreML Kokoro only counts while ELIZA_IOS_ENABLE_KOKORO_COREML_TTS is
+  // on; otherwise synthesizeSpeech routes to the fused OmniVoice/GGUF assets,
+  // so a CoreML-only bundle would report ready and then fail.
   const ttsDir = path.join(bundleDir, "tts");
-  // 1. CoreML Kokoro (preferred).
-  try {
-    const coreml = path.join(ttsDir, "kokoro-coreml", "kokoro_5s.mlmodelc");
-    const voice = path.join(ttsDir, "kokoro-coreml", "voices", "af_heart.json");
-    if (statSync(coreml).isDirectory() && statSync(voice).isFile()) return true;
-  } catch {
-    /* fall through to fused-asset detection */
+  // 1. CoreML Kokoro, when enabled.
+  if (kokoroCoreMlTtsEnabled()) {
+    try {
+      const coreml = path.join(ttsDir, "kokoro-coreml", "kokoro_5s.mlmodelc");
+      const voice = path.join(
+        ttsDir,
+        "kokoro-coreml",
+        "voices",
+        "af_heart.json",
+      );
+      if (statSync(coreml).isDirectory() && statSync(voice).isFile()) {
+        return true;
+      }
+    } catch {
+      /* fall through to fused-asset detection */
+    }
   }
   // 2. Fused OmniVoice / GGUF Kokoro.
   try {
@@ -3804,13 +3807,11 @@ async function transcribeNativeIosLocalAsr(
     throw new Error("No Eliza-1 voice bundle is installed");
   }
   const sampleRate = optionalPositiveNumber(request.sampleRate) ?? 16000;
-  // Send fp32 PCM as a JSON number array; `handleAsrTranscribe` in
-  // FullBunEngineHost.swift parses the same shape via `floatArrayValue`.
   const result = await callIosHost(
     "eliza_asr_transcribe",
     {
       bundleDir,
-      pcm: request.pcm,
+      pcmBase64: encodeIosAsrPcm(request.pcm, sampleRate),
       sampleRate,
     },
     180000,
@@ -3824,6 +3825,29 @@ async function transcribeNativeIosLocalAsr(
     throw new Error("Native iOS local ASR returned no transcript");
   }
   return text;
+}
+// The native host reads one NDJSON line of at most 16 MiB; keep 1 MiB for
+// the rest of the frame.
+const IOS_ASR_MAX_PCM_BASE64_BYTES = 15 * 1024 * 1024;
+/**
+ * Encodes mono PCM as little-endian fp32 in base64 (`pcmBase64`), which
+ * `handleAsrTranscribe` in FullBunEngineHost.swift decodes. A JSON number
+ * array costs ~20 bytes per sample and overflows the frame near 50 s.
+ */
+export function encodeIosAsrPcm(pcm: number[], sampleRate: number): string {
+  const encodedBytes = Math.ceil((pcm.length * 4) / 3) * 4;
+  if (encodedBytes > IOS_ASR_MAX_PCM_BASE64_BYTES) {
+    const maxSeconds = Math.floor(
+      (IOS_ASR_MAX_PCM_BASE64_BYTES * 3) / 4 / 4 / sampleRate,
+    );
+    throw new Error(
+      `Recording is too long for on-device transcription (limit about ${maxSeconds} s)`,
+    );
+  }
+  const samples = new Float32Array(pcm.length);
+  const view = new DataView(samples.buffer);
+  for (let i = 0; i < pcm.length; i++) view.setFloat32(i * 4, pcm[i], true);
+  return Buffer.from(samples.buffer).toString("base64");
 }
 function parsePcmFloatArray(value: unknown): number[] | null {
   if (!Array.isArray(value) || value.length === 0) {

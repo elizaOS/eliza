@@ -1,7 +1,7 @@
 [
   {
     "id": "mobile-voice",
-    "version": "1.4.0",
+    "version": "1.4.1",
     "publishedToHfAt": "2026-10-21T00:00:00Z",
     "hfRepo": "elizaos/eliza-1",
     "hfRevision": "1e4c73713e11f7ff42bc2a686cc5b178c8cac14f",
@@ -10,7 +10,7 @@
     "evalDeltas": {
       "netImprovement": false
     },
-    "changelogEntry": "1.4.0 - Paradee-8M v1.2 replaces v1.1 as the TTS: paradee-8m-v1_2.gguf, converted with elizaOS/llama.cpp tools/paradee/convert_paradee_pt_to_gguf.py --version 1.2 (byte-reproducible; elizaOS/llama.cpp#88). v1.2 is v1.1 retrained with four voices in a style table (af_heart, bf_isabella, am_puck, bm_fable); libelizainference speaks af_heart by default and refuses the British voices, which need a British misaki lexicon that is not shipped. The row id changes, so a device that staged tts/paradee/ with v1.1 re-stages it. The eSpeak NG data gains the Spanish (Spain) dictionary (es_dict, lang/roa/es), which the Castilian Spanish Delibes-8M-esES voice of the APK bundle uses (elizaOS/llama.cpp#89, libelizainference ABI 20 voice slots); this catalog does not download Delibes yet. The misaki, Phonon-2 and VAD rows are unchanged from 1.3.0. Paradee v1.2 is converted on the build host from sahilmahendrakar/Paradee-8M-v1.2@ed2934d4df8a4fd891e29584c5e1104649409765 and is not re-uploaded to elizaos/eliza-1; hfRevision pins the elizaos/eliza-1 commit that holds the Silero VAD row. packages/scripts/verify-voice-product-release.ts is the release gate.",
+    "changelogEntry": "1.4.1 - Rebuilds Paradee with the deterministic binary64 weight-normalization fold from elizaOS/llama.cpp#91. The source weights and model shapes are unchanged; normalized F32 values receive one final rounding. The updated checksum also records the current converter source. Existing 1.4.0 artifacts must be restaged. 1.4.0 - Paradee-8M v1.2 replaces v1.1 as the TTS: paradee-8m-v1_2.gguf, converted with elizaOS/llama.cpp tools/paradee/convert_paradee_pt_to_gguf.py --version 1.2 (byte-reproducible; elizaOS/llama.cpp#88). v1.2 is v1.1 retrained with four voices in a style table (af_heart, bf_isabella, am_puck, bm_fable); libelizainference speaks af_heart by default and refuses the British voices, which need a British misaki lexicon that is not shipped. The row id changes, so a device that staged tts/paradee/ with v1.1 re-stages it. The eSpeak NG data gains the Spanish (Spain) dictionary (es_dict, lang/roa/es), which the Castilian Spanish Delibes-8M-esES voice of the APK bundle uses (elizaOS/llama.cpp#89, libelizainference ABI 20 voice slots); this catalog does not download Delibes yet. The misaki, Phonon-2 and VAD rows are unchanged from 1.3.0. Paradee v1.2 is converted on the build host from sahilmahendrakar/Paradee-8M-v1.2@ed2934d4df8a4fd891e29584c5e1104649409765 and is not re-uploaded to elizaos/eliza-1; hfRevision pins the elizaos/eliza-1 commit that holds the Silero VAD row. packages/scripts/verify-voice-product-release.ts is the release gate.",
     "minBundleVersion": "0.0.0",
     "files": [
       {
@@ -21,7 +21,7 @@
         "hfPath": "voice/paradee/paradee-8m-v1_2.gguf",
         "url": null,
         "revision": null,
-        "sha256": "a43118932f7ec01bb3e9f1b92a56b24dd2622011c8fd5c77dca1e353b56e6df6",
+        "sha256": "4b2819180a9e3b096fb71a93d6a719794246ee230f7faa857edcc0bee2a1529e",
         "bytes": 31276064,
         "license": "Apache-2.0",
         "status": "unpublished",

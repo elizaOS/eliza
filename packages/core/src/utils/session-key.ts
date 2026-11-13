@@ -165,69 +165,40 @@ export function normalizeMainKey(value: string | undefined | null): string {
 }
 
 /**
- * Normalize an agent ID.
- *
- * Ensures the ID is path-safe and shell-friendly.
- *
- * @param value - Value to normalize
- * @returns Normalized agent ID
+ * Path-safe, shell-friendly id: valid ids are lowercased, anything else has
+ * invalid runs collapsed to "-" and is capped at 64 characters.
  */
+function normalizeIdToken(
+	value: string | undefined | null,
+	fallback: string,
+): string {
+	const rawTrimmed = trimOptionalString(value);
+	if (!rawTrimmed) {
+		return fallback;
+	}
+	const trimmed =
+		rawTrimmed.length > 1024 ? rawTrimmed.slice(0, 1024) : rawTrimmed;
+	if (VALID_ID_RE.test(trimmed)) {
+		return trimmed.toLowerCase();
+	}
+	return (
+		trimmed
+			.toLowerCase()
+			.replace(INVALID_CHARS_RE, "-")
+			.replace(LEADING_DASH_RE, "")
+			.replace(TRAILING_DASH_RE, "")
+			.slice(0, 64) || fallback
+	);
+}
+
+/** Normalize an agent ID (path-safe and shell-friendly). */
 export function normalizeAgentId(value: string | undefined | null): string {
-	const rawTrimmed = trimOptionalString(value);
-	if (!rawTrimmed) {
-		return DEFAULT_AGENT_ID;
-	}
-	const trimmed =
-		rawTrimmed.length > 1024 ? rawTrimmed.slice(0, 1024) : rawTrimmed;
-	// Keep it path-safe + shell-friendly.
-	if (VALID_ID_RE.test(trimmed)) {
-		return trimmed.toLowerCase();
-	}
-	// Best-effort fallback: collapse invalid characters to "-"
-	return (
-		trimmed
-			.toLowerCase()
-			.replace(INVALID_CHARS_RE, "-")
-			.replace(LEADING_DASH_RE, "")
-			.replace(TRAILING_DASH_RE, "")
-			.slice(0, 64) || DEFAULT_AGENT_ID
-	);
+	return normalizeIdToken(value, DEFAULT_AGENT_ID);
 }
 
-/**
- * Sanitize an agent ID (alias for normalizeAgentId).
- *
- * @param value - Value to sanitize
- * @returns Sanitized agent ID
- */
-export function sanitizeAgentId(value: string | undefined | null): string {
-	return normalizeAgentId(value);
-}
-
-/**
- * Normalize an account ID.
- *
- * @param value - Value to normalize
- * @returns Normalized account ID
- */
+/** Normalize an account ID (path-safe and shell-friendly). */
 export function normalizeAccountId(value: string | undefined | null): string {
-	const rawTrimmed = trimOptionalString(value);
-	if (!rawTrimmed) {
-		return DEFAULT_ACCOUNT_ID;
-	}
-	const trimmed =
-		rawTrimmed.length > 1024 ? rawTrimmed.slice(0, 1024) : rawTrimmed;
-	if (VALID_ID_RE.test(trimmed)) {
-		return trimmed.toLowerCase();
-	}
-	return (
-		trimmed
-			.toLowerCase()
-			.replace(INVALID_CHARS_RE, "-")
-			.replace(LEADING_DASH_RE, "")
-			.replace(TRAILING_DASH_RE, "")
-			.slice(0, 64) || DEFAULT_ACCOUNT_ID
-	);
+	return normalizeIdToken(value, DEFAULT_ACCOUNT_ID);
 }
 
 // Building Functions
@@ -436,9 +407,6 @@ export function toAgentStoreSessionKey(params: {
 	const lowered = raw.toLowerCase();
 	if (lowered.startsWith("agent:")) {
 		return lowered;
-	}
-	if (lowered.startsWith("subagent:")) {
-		return `agent:${normalizeAgentId(params.agentId)}:${lowered}`;
 	}
 	return `agent:${normalizeAgentId(params.agentId)}:${lowered}`;
 }

@@ -150,7 +150,7 @@ function collapseInlineWhitespace(input: string): string {
 }
 
 export function looksLikeStageDirection(input: string): boolean {
-	const normalized = collapseInlineWhitespace(input).trim();
+	const normalized = collapseInlineWhitespace(input);
 	if (!normalized || normalized.length > 100) return false;
 
 	// biome-ignore lint/suspicious/noControlCharactersInRegex: intentional ASCII-range check to reject non-ASCII input

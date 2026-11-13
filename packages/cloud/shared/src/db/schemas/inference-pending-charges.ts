@@ -6,37 +6,11 @@ import { organizations } from "./organizations";
 import { users } from "./users";
 
 /**
- * DB-backed pending-charge + settlement ledger for Tier-2 optimistic inference
- * billing (#9899).
- *
- * This is the durable, exactly-once replacement for the KV pending-charge
- * backstop (`iac:pending:<requestId>`). It exists to close the at-scale residuals
- * that a KV-only backstop cannot — they require a real database:
- *
- *   1. Hard concurrent-overdraw bound — admission accounts for every in-flight
- *      pending charge of the org under a row lock, so a burst can't collectively
- *      overdraw. KV has no per-org atomic accounting.
- *   2. Exactly-once settlement — `request_id` is the primary key and the settle
- *      is an atomic `UPDATE ... WHERE status = 'pending'` claim, so the inline
- *      settler and the cron sweep can never both charge one request. KV's
- *      get-then-delete is only near-atomic.
- *   3. Age-ordered sweep drain — the cron drains oldest-pending-first via an
- *      indexed `ORDER BY enqueued_at` cursor with no silent cap. KV scan is an
- *      unordered, bounded prefix scan.
- *
- * Lifecycle of a row:
- *   - `pending`     — admitted on the hot path; counted against the org balance.
- *   - `settled`     — the inline settler (or sweep) claimed it and the actual
- *                     (or estimated) cost was debited.
- *   - `uncollected` — claimed, but the debit was refused (balance would go
- *                     negative; the DB `CHECK(credit_balance >= 0)` forbids it).
- *                     Bounded over-spend, recorded for alerting/audit, never a
- *                     free-forever loop (the org drops to the safe path).
- *   - `corrupt`     — sweep found an invalid persisted estimate; the row is
- *                     terminal and auditable instead of being fabricated into a
- *                     debit amount.
- *
- * See `lib/services/inference-billing-ledger.ts`.
+ * Retired pending-charge ledger of the deleted optimistic inference lane
+ * (#9899). Nothing writes, settles or sweeps it any more: Worker inference is
+ * fenced by the organization Durable Object lease and settles under its
+ * alarm. The table is kept only until a drop migration, and must hold no
+ * `pending` rows when that runs.
  */
 export const inferencePendingCharges = pgTable(
   "inference_pending_charges",

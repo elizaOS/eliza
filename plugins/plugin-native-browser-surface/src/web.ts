@@ -106,6 +106,9 @@ export class BrowserSurfaceWeb
   async reloadSurface(_options: SurfaceIdOptions): Promise<void> {
     throw this.unavailable(UNAVAILABLE);
   }
+  async stopLoading(_options: SurfaceIdOptions): Promise<void> {
+    throw this.unavailable(UNAVAILABLE);
+  }
   async goBack(_options: SurfaceIdOptions): Promise<void> {
     throw this.unavailable(UNAVAILABLE);
   }
@@ -137,7 +140,7 @@ export class BrowserSurfaceWeb
   }
   async purgeProfiles(
     _options: Parameters<ElizaSurfaceManagerPlugin["purgeProfiles"]>[0],
-  ): Promise<{ purged: number }> {
+  ): ReturnType<ElizaSurfaceManagerPlugin["purgeProfiles"]> {
     throw this.unavailable(UNAVAILABLE);
   }
   async captureSurface(
@@ -161,6 +164,12 @@ export class BrowserSurfaceWeb
     throw this.unavailable(UNAVAILABLE);
   }
   async presentSurface(_options: PresentSurfaceOptions): Promise<void> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async pauseSurface(_options: SurfaceIdOptions): Promise<void> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async resumeSurface(_options: SurfaceIdOptions): Promise<void> {
     throw this.unavailable(UNAVAILABLE);
   }
   async destroySurface(_options: SurfaceIdOptions): Promise<void> {

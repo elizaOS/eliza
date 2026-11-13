@@ -6,7 +6,7 @@
  * keep that host's identity. The rewrite anchors are owned here, next to the
  * sources they match, and every anchor fails closed when the source changes.
  * The consumer supplies only data: package, socket namespaces, notification
- * resources, optional environment and lifecycle hooks, the optional shared
+ * resources and primary action, optional environment and lifecycle hooks, the optional shared
  * notification classes it compiles, and the shared plugin helper sources it
  * compiles beside them.
  */
@@ -76,6 +76,7 @@ export const RESIDENT_HOST_HELPERS = Object.freeze({
   ...Object.fromEntries(
     [
       ["ChromiumBrowserIdentity", "verbatim"],
+      ["ChromiumBindingDemand", "verbatim"],
       ["ChromiumBrowserConnection", "host-build-config"],
       ["BrowserWebOrigin", "verbatim"],
       ["BrowserDownloadPolicy", "verbatim"],
@@ -90,6 +91,19 @@ export const RESIDENT_HOST_HELPERS = Object.freeze({
   ),
 });
 
+const BROWSER_SURFACE =
+  "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface";
+/**
+ * Helpers that compile only beside others: a host selecting the key must select
+ * every listed source too, or its javac fails on a missing symbol after a pin bump.
+ */
+export const RESIDENT_HELPER_DEPENDENCIES = Object.freeze({
+  [`${BROWSER_SURFACE}/ChromiumBrowserConnection.java`]: Object.freeze([
+    `${BROWSER_SURFACE}/ChromiumBindingDemand.java`,
+    `${BROWSER_SURFACE}/ChromiumBrowserIdentity.java`,
+  ]),
+});
+
 /** Runtime notification text in ElizaAgentService, by semantic key: anchor and occurrences. */
 export const RESIDENT_NOTIFICATION_STRINGS = Object.freeze([
   ["channelName", '"Eliza Agent"', 1],
@@ -97,13 +111,28 @@ export const RESIDENT_NOTIFICATION_STRINGS = Object.freeze([
   ["title", '"Eliza agent"', 2],
   ["running", '"Eliza agent · Running"', 1],
   ["starting", '"Eliza agent · Starting"', 1],
-  ["stopped", '"Eliza agent · Stopped"', 1],
+  ["stopped", '"Eliza agent · Stopped"', 2],
   ["assetError", '"Eliza agent · Asset error"', 1],
   ["missingFiles", '"Eliza agent · Missing files"', 1],
   ["spawnFailed", '"Eliza agent · Spawn failed"', 1],
   ["restartBlocked", '"Eliza agent · Restart blocked"', 1],
   ["runningDetail", '"On-device agent ready"', 1],
+  ["startingDetail", '"Preparing on-device runtime…"', 1],
+  ["bootstrapDetail", '"Starting…"', 1],
+  ["crashedDetail", '"Agent crashed repeatedly; tap to investigate"', 2],
+  ["extractFailedDetail", '"Could not unpack runtime"', 1],
+  ["spawnFailedDetail", '"Could not start runtime process"', 1],
+  ["stopFailedDetail", '"The running runtime could not be stopped safely"', 1],
+  ["missingFilesDetail", '"Runtime files are missing; reinstall the app"', 1],
+  ["genericDetail", '"Open the app to check the agent"', 2],
 ]);
+/** The ongoing notification's action; "stop" is upstream's default. */
+export const RESIDENT_NOTIFICATION_ACTIONS = Object.freeze([
+  "stop",
+  "restart",
+  "none",
+]);
+const PRIMARY_ACTION_ANCHOR = 'NOTIFICATION_PRIMARY_ACTION = "stop";';
 /** NativeNotificationChannels labels by channel: anchor and the suffix after the host label. */
 const CHANNEL_LABELS = Object.freeze([
   ['name = "Eliza alerts"', " alerts"],
@@ -114,9 +143,9 @@ const CHANNEL_LABELS = Object.freeze([
 const PROJECTOR_ICON = "android.R.drawable.ic_dialog_info";
 // ElizaAgentService publishes a rotated local-agent root here, once.
 const ROOT_PUBLICATION_ANCHOR = "            currentLocalAgentToken = token;";
-// Every path that reaches the running state: start, detached adoption and the ready probes.
+// Every path that reaches the running state: the startup/adoption probe and the watchdog.
 const READY_ANCHOR = 'currentStatus = "running";';
-const READY_OCCURRENCES = 4;
+const READY_OCCURRENCES = 2;
 const ENVIRONMENT_ANCHOR =
   'agentEnv.put("ELIZA_LOCAL_AGENT_SOCKET_PATH",privateSocketPath);';
 const SOCKET_ANCHORS = Object.freeze({
@@ -194,6 +223,10 @@ export function residentHostIdentity(identity) {
     "Resident host notifications need a drawable small icon",
   );
   requireValue(
+    RESIDENT_NOTIFICATION_ACTIONS.includes(notification.primaryAction),
+    `Notification primaryAction must be one of ${RESIDENT_NOTIFICATION_ACTIONS.join(", ")}`,
+  );
+  requireValue(
     notification.color === undefined ||
       notification.color === null ||
       /^0x[0-9a-f]{8}$/.test(notification.color),
@@ -248,6 +281,7 @@ export function residentHostIdentity(identity) {
     sockets: { ...sockets },
     notification: {
       smallIcon: notification.smallIcon,
+      primaryAction: notification.primaryAction,
       color: notification.color ?? null,
       strings: strings && { ...strings },
       channelLabel: notification.channelLabel ?? null,
@@ -297,7 +331,15 @@ export function rewriteResidentClass(name, source, identity) {
   }
   if (name !== "ElizaAgentService") return value;
   // Product presentation over the canonical runtime: the state machine,
-  // notification timing, Stop action and binder-free bootstrap stay unchanged.
+  // notification timing and binder-free bootstrap stay unchanged; the host
+  // picks the ongoing notification's action.
+  value = replaceCounted(
+    value,
+    PRIMARY_ACTION_ANCHOR,
+    `NOTIFICATION_PRIMARY_ACTION = ${JSON.stringify(host.notification.primaryAction)};`,
+    1,
+    "Review changed runtime notification action",
+  );
   if (host.notification.strings)
     for (const [key, anchor, expected] of RESIDENT_NOTIFICATION_STRINGS)
       value = replaceCounted(
@@ -347,7 +389,7 @@ export function rewriteResidentClass(name, source, identity) {
   if (host.environmentHook) {
     const { className, method, unavailableStatus } = host.environmentHook;
     environment.push(
-      `try { ${className}.${method}(this, agentEnv); } catch (java.io.IOException unavailable) { currentStatus = ${JSON.stringify(unavailableStatus)}; updateNotification(); return; }`,
+      `try { ${className}.${method}(this, agentEnv); } catch (java.io.IOException unavailable) { currentStatus = ${JSON.stringify(unavailableStatus)}; updateNotification(); return false; }`,
     );
   }
   return value.replace(ENVIRONMENT_ANCHOR, () =>
@@ -420,7 +462,16 @@ export function stageResidentHostSources({
     Array.isArray(helpers) && new Set(helpers).size === helpers.length,
     "Resident helpers must be distinct",
   );
-  for (const relative of helpers) residentHelperKind(relative);
+  for (const relative of helpers) {
+    residentHelperKind(relative);
+    const missing = (RESIDENT_HELPER_DEPENDENCIES[relative] ?? []).filter(
+      (dependency) => !helpers.includes(dependency),
+    );
+    requireValue(
+      missing.length === 0,
+      `Resident helper ${relative} needs ${missing.join(", ")} staged beside it`,
+    );
+  }
   const rows = [];
   const write = (relative, target, input, value) => {
     fs.mkdirSync(path.dirname(target), { recursive: true });

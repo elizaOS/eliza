@@ -1,0 +1,57 @@
+[
+  {
+    "id": "plugin-sql.TaskWake",
+    "model": "plugins/plugin-sql/quint/TaskWake.qnt",
+    "sources": ["plugins/plugin-sql/src/stores/task-wake.ts"],
+    "invariants": ["RevisionMonotonic", "EarliestOutstandingWake", "TypeOK"],
+    "status": "partial",
+    "limitations": [
+      "Two readers, three successful requests, and three discrete due times.",
+      "Safe-integer input parsing and corrupt stored JSON are represented by a rejected operation. SQL runtime parsing needs the implementation test."
+    ],
+    "implementationTests": [
+      "plugins/plugin-sql/src/__tests__/task-wake-atomic.real.test.ts"
+    ]
+  },
+  {
+    "id": "plugin-sql.PgliteExportLifecycle",
+    "model": "plugins/plugin-sql/quint/PgliteExportLifecycle.qnt",
+    "sources": ["plugins/plugin-sql/src/pglite/manager.ts"],
+    "invariants": [
+      "NoReleaseDuringArchiveUse",
+      "QueryInsideLifecycle",
+      "ExportOwnerUnique",
+      "CloseRespectsExport",
+      "NoQueryAfterClose"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two archive exporters and one close on one initialized data-directory owner.",
+      "Readiness, dump and archive release progress are explicit fairness assumptions. A consumer retaining its lease can block close.",
+      "Cross-process PID/boot ownership, maintenance, initialization failures and filesystem durability need separate models and platform tests."
+    ],
+    "implementationTests": [
+      "plugins/plugin-sql/src/__tests__/pglite-lifecycle-serialization.test.ts"
+    ]
+  },
+  {
+    "id": "plugin-sql.CarveOutReceipt",
+    "model": "plugins/plugin-sql/quint/CarveOutReceipt.qnt",
+    "sources": ["plugins/plugin-sql/src/database-utils/carve-out-migration.ts"],
+    "invariants": [
+      "ReceiptPreventsResurrection",
+      "SingleTransactionOwner",
+      "NoUncommittedCopy",
+      "PriorClaimRespected",
+      "VerifiedCompletion"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two transactions with two attempts each, one current receipt, one earlier receipt and two exact source rows.",
+      "The callback copies missing rows and verifies the exact projection before completion. Arbitrary caller-supplied callbacks and SQL collision parsing need implementation tests."
+    ],
+    "implementationTests": [
+      "plugins/plugin-sql/src/carve-out-migration.pglite.test.ts"
+    ]
+  }
+]

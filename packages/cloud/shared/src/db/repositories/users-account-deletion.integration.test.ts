@@ -9,6 +9,7 @@ import { pushSchema } from "drizzle-kit/api";
 import { asc, eq, inArray, sql } from "drizzle-orm";
 import { resolveAccountDeletionTestDatabase } from "../account-deletion-test-database";
 import { closeDatabaseConnectionsForTests, dbWrite, getPgliteClientForTests } from "../client";
+import { apiKeys } from "../schemas/api-keys";
 import { appBillingRegistrations, appSubscriberAccounts } from "../schemas/app-billing-accounts";
 import {
   appDeploymentStatusEnum,
@@ -18,6 +19,8 @@ import {
   userDatabaseStatusEnum,
 } from "../schemas/apps";
 import { organizationSubscriptionAuthorities } from "../schemas/billing-subscriptions";
+import { generations } from "../schemas/generations";
+import { jobs } from "../schemas/jobs";
 import { organizationPolicyAudit } from "../schemas/organization-policy-audit";
 import { organizationBalanceRevisionSequence, organizations } from "../schemas/organizations";
 import {
@@ -25,6 +28,7 @@ import {
   personalSharedGroupJoinChallenges,
   personalSharedGroupParticipants,
 } from "../schemas/personal-shared-groups";
+import { usageRecords } from "../schemas/usage-records";
 import { userIdentities } from "../schemas/user-identities";
 import { users } from "../schemas/users";
 import { installOrganizationPolicyTestSchema } from "./organization-policy-test-fixture";
@@ -171,6 +175,10 @@ beforeAll(async () => {
     if (TEST_DATABASE === "pglite") {
       const { apply } = await pushSchema(
         {
+          apiKeys,
+          generations,
+          jobs,
+          usageRecords,
           apps,
           appUsers,
           appDeploymentStatusEnum,
@@ -190,11 +198,19 @@ beforeAll(async () => {
       await installOrganizationPolicyTestSchema((statement) =>
         getPgliteClientForTests().exec(statement),
       );
-      const migration = await Bun.file(
-        new URL("../migrations/0381_app_billing_registration.sql", import.meta.url),
-      ).text();
-      for (const statement of migration.split("--> statement-breakpoint")) {
-        if (statement.trim()) await getPgliteClientForTests().exec(statement);
+      // Replay billing's historical schema before the creator-audit cutover.
+      await getPgliteClientForTests().exec(
+        "DROP INDEX apps_billing_owner_idx; CREATE UNIQUE INDEX apps_billing_owner_idx ON apps(id, organization_id, created_by_user_id)",
+      );
+      for (const file of [
+        "0381_app_billing_registration.sql",
+        "0550_app_creator_audit_reference.sql",
+        "0551_native_app_publishers.sql",
+      ]) {
+        const migration = await Bun.file(new URL(`../migrations/${file}`, import.meta.url)).text();
+        for (const statement of migration.split("--> statement-breakpoint")) {
+          if (statement.trim()) await getPgliteClientForTests().exec(statement);
+        }
       }
     } else {
       await dbWrite.execute(sql`

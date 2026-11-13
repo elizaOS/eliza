@@ -48,6 +48,7 @@ export async function persistCharacterPatch(
       character: nextCharacter,
       previousCharacter,
       previousName,
+      nameWasExplicitlyEdited: Object.hasOwn(patch, "name"),
       source: "agent",
     });
     if (!result.success) {

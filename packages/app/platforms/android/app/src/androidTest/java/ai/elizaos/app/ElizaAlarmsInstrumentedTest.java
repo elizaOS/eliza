@@ -214,4 +214,86 @@ public final class ElizaAlarmsInstrumentedTest {
             assertTrue("Fixture native store restored", editor.commit());
         }
     }
+
+    /** Saved alarms under HAND_OFF_TO_CLOCK: journaled once, ringing until confirmed, retired with
+     * their platform tokens. Opens no Clock app and never confirms on the owner's behalf. */
+    @Test public void savedAlarmHandoffKeepsRingingUntilTheOwnerConfirms() throws Exception {
+        Assume.assumeTrue("Explicit owned alarm fixture required", "1".equals(
+                InstrumentationRegistry.getArguments().getString("ownedAlarmFixture")));
+        assertTrue(BuildConfig.DEBUG);
+        assertTrue("Disposable secondary user only", Process.myUid() / 100000 > 0);
+        assertTrue("Eliza is handoff-only", ElizaAlarmMigration.active());
+        assertEquals("clock.handoff.v1,clock.handoff.v2", SlotClockPlugin.CLOCK_PROFILE.capabilities);
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        SharedPreferences prefs = context.createDeviceProtectedStorageContext()
+                .getSharedPreferences("eliza_owned_native_alarms", Context.MODE_PRIVATE);
+        String baseline = prefs.getString("state", null);
+        if (baseline != null) {
+            JSONObject saved = new JSONObject(baseline);
+            assertEquals("No preexisting definitions", 0, saved.getJSONArray("alarms").length());
+            assertEquals("No preexisting occurrences", 0, saved.getJSONArray("occurrences").length());
+        }
+        ArrayList<String> created = new ArrayList<>();
+        try {
+            if (baseline != null) {
+                JSONObject cleared = new JSONObject(baseline); cleared.remove(ElizaAlarmHandoff.KEY);
+                assertTrue(prefs.edit().putString("state", cleared.toString()).commit());
+            }
+            ZonedDateTime future = ZonedDateTime.now().plusHours(1);
+            String first = UUID.randomUUID().toString(); created.add(first);
+            String second = UUID.randomUUID().toString(); created.add(second);
+            ElizaAlarms.Alarm wake = ElizaAlarms.create(context, first, OWNER, future.getHour(), future.getMinute(), "Handoff fixture", DAILY);
+            ElizaAlarms.create(context, second, OTHER_OWNER, future.getHour(), future.getMinute(), "", List.of());
+
+            // Upgrade/boot: the marker is written once; a second restore commits nothing new.
+            ElizaAlarmMigration.restore(context);
+            JSONObject journal = new JSONObject(prefs.getString("state", "")).getJSONObject(ElizaAlarmHandoff.KEY);
+            long started = journal.getLong("startedAt");
+            assertEquals(2, journal.getJSONArray("entries").length());
+            ElizaAlarmMigration.restore(context);
+            assertEquals(started, new JSONObject(prefs.getString("state", "")).getJSONObject(ElizaAlarmHandoff.KEY).getLong("startedAt"));
+            JSONObject counts = ElizaAlarmMigration.status(context);
+            assertEquals(2, counts.getInt("pending")); assertEquals(0, counts.getInt("awaitingConfirmation"));
+            assertEquals("Status never carries alarm content", -1, counts.toString().indexOf("Handoff fixture"));
+            if (ElizaAlarms.canSchedule(context)) {
+                assertNotNull("Pending legacy alarm stays armed", pending(context, first, ElizaAlarms.find(context, first, OWNER).generation));
+            }
+
+            // Clock opened (journaled offer): not a receipt, so the alarm stays saved and armed.
+            ElizaAlarmHandoff.Entry next = ElizaAlarms.handoff(context, (state, now) -> ElizaAlarmHandoff.next(state));
+            assertEquals(first, next.id);
+            String attempt = UUID.randomUUID().toString();
+            ElizaAlarms.handoff(context, (state, now) -> ElizaAlarmHandoff.offer(state, first, next.digest, attempt, now));
+            ElizaAlarmMigration.restore(context);
+            assertEquals(wake.id, ElizaAlarms.find(context, first, OWNER).id);
+            assertEquals(1, ElizaAlarmMigration.status(context).getInt("awaitingConfirmation"));
+            rejects(() -> ElizaAlarms.retireForHandoff(context, first, UUID.randomUUID().toString(), next.digest, ElizaAlarmHandoff.SAVED_IN_CLOCK));
+            assertEquals(wake.id, ElizaAlarms.find(context, first, OWNER).id);
+
+            // The owner confirms: definition, journal entry and platform token leave together.
+            long generation = ElizaAlarms.find(context, first, OWNER).generation;
+            ElizaAlarmHandoff.Retirement retired = ElizaAlarms.retireForHandoff(context, first, attempt, next.digest, ElizaAlarmHandoff.SAVED_IN_CLOCK);
+            assertFalse(retired.already); created.remove(first);
+            rejects(() -> ElizaAlarms.find(context, first, OWNER));
+            assertNull("Retired alarm no longer rings", pending(context, first, generation));
+            long afterRetire = ElizaAlarms.revision(context);
+            assertTrue(ElizaAlarms.retireForHandoff(context, first, attempt, next.digest, ElizaAlarmHandoff.SAVED_IN_CLOCK).already);
+            assertEquals("Repeated confirmation commits nothing", afterRetire, ElizaAlarms.revision(context));
+            counts = ElizaAlarmMigration.status(context);
+            assertEquals(1, counts.getInt("pending")); assertEquals(1, counts.getInt("moved"));
+            assertEquals("The other owner's alarm is untouched", second, ElizaAlarms.list(context, OTHER_OWNER).get(0).id);
+            System.out.println("SAVED_ALARM_HANDOFF_JOURNAL_PASS");
+        } finally {
+            JSONObject saved = new JSONObject(prefs.getString("state", "{\"alarms\":[]}"));
+            JSONArray alarms = saved.getJSONArray("alarms");
+            for (int i = 0; i < alarms.length(); i++) {
+                JSONObject alarm = alarms.getJSONObject(i);
+                if (!created.contains(alarm.getString("id"))) continue;
+                for (long token = 1; token <= alarm.getLong("sequence"); token++) cancelToken(context, alarm.getString("id"), token);
+            }
+            SharedPreferences.Editor editor = prefs.edit();
+            if (baseline == null) editor.remove("state"); else editor.putString("state", baseline);
+            assertTrue("Fixture native store restored", editor.commit());
+        }
+    }
 }

@@ -48,31 +48,7 @@ export async function handleImageGeneration(
     };
 
     const client = createElizaCloudClient(runtime);
-    let typedData: Awaited<ReturnType<typeof client.generateImage>> | undefined;
-    let warmingRetries = 0;
-    for (;;) {
-      try {
-        typedData = await client.generateImage(requestBody);
-        break;
-      } catch (err) {
-        // Cold-cache warming: this box runs text on Cerebras, so the cloud's
-        // generative admission cache goes cold between rare image-gen calls
-        // and the first hit throws "Generative admission cache is warming;
-        // retry shortly", clearing within ~1s (verified live: success on the
-        // first retry). Ride through it — the same transient the description
-        // path handles in-place. A non-warming error still fails fast.
-        const msg = err instanceof Error ? err.message : String(err);
-        if (/warming|admission cache/i.test(msg) && warmingRetries < 2) {
-          warmingRetries++;
-          logger.warn(
-            `[ELIZAOS_CLOUD] Image generation cold-cache warming, retry ${warmingRetries}/2...`
-          );
-          await new Promise((r) => setTimeout(r, 1500));
-          continue;
-        }
-        throw err;
-      }
-    }
+    const typedData = await client.generateImage(requestBody);
 
     // Fail closed, matching the sibling handlers in this package: video/audio
     // throw "...returned no video/audio URL" and image-description throws on an
@@ -203,15 +179,9 @@ export async function handleImageDescription(
       response = attemptResponse;
       if (attemptResponse.ok) break;
 
-      // Transient cold-cache warming: this box runs text on Cerebras, so the
-      // cloud's per-model billing/auth admission cache for the vision model
-      // goes cold between rare image calls. The first image then hits a 503
-      // whose body carries `billing_cache_warming`/`auth_cache_warming`
-      // (type `service_unavailable`, retryable) that clears within ~1s — the
-      // client-side companion to the server escape in #18249. Riding through
-      // it here restores vision without waiting on the prod-cloud promote
-      // (verified live: 200 on the first retry). The 429 branch below stays a
-      // single retry; warming gets a few because a cold cache can need two.
+      // A typed transient 503 (`type: service_unavailable`: the admission
+      // Durable Object or primary was briefly unreachable) gets two short
+      // retries. The 429 branch below stays a single retry.
       if (attemptResponse.status === 503 && warmingRetries < 2) {
         let warming = false;
         let warmingWait = 1;
@@ -224,10 +194,7 @@ export async function handleImageDescription(
           };
           const code = String(peek?.error?.code ?? peek?.code ?? "");
           const type = String(peek?.error?.type ?? peek?.type ?? "");
-          warming =
-            code === "billing_cache_warming" ||
-            code === "auth_cache_warming" ||
-            type === "service_unavailable";
+          warming = code === "service_unavailable" || type === "service_unavailable";
           const ra = peek?.error?.retryAfter ?? peek?.retryAfter;
           if (typeof ra === "number" && Number.isFinite(ra) && ra > 0) {
             warmingWait = Math.min(ra, 3);
@@ -238,7 +205,7 @@ export async function handleImageDescription(
         if (warming) {
           warmingRetries++;
           logger.warn(
-            `[ELIZAOS_CLOUD] Image analysis cold-cache warming (503), retry ${warmingRetries}/2 after ${warmingWait}s...`
+            `[ELIZAOS_CLOUD] Image analysis transient unavailability (503), retry ${warmingRetries}/2 after ${warmingWait}s...`
           );
           await sleepWithAbort(warmingWait * 1000, signal);
           continue;

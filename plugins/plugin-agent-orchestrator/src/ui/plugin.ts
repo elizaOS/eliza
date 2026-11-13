@@ -23,13 +23,14 @@ const ORCHESTRATOR_CAPABILITIES: ViewCapability[] = [
     },
   },
   {
-    id: "orchestrator-open-task",
-    description: "Open an orchestrator task thread",
+    id: "orchestrator-get-task",
+    description:
+      "Read an orchestrator task thread; does not change what the view shows",
     params: {
       taskId: {
         type: "string",
         description:
-          "Task thread id to open; opens the most recent task when omitted",
+          "Task thread id to read; reads the most recent task when omitted",
       },
     },
   },
@@ -232,8 +233,9 @@ export const taskCoordinatorPlugin: Plugin = {
           },
         },
         {
-          id: "open-thread",
-          description: "Open a coding-agent task thread",
+          id: "get-thread",
+          description:
+            "Read a coding-agent task thread; does not change what the view shows",
           params: {
             threadId: { type: "string", description: "Task thread id" },
           },
@@ -241,6 +243,7 @@ export const taskCoordinatorPlugin: Plugin = {
         {
           id: "stop-session",
           description: "Stop a running coding-agent session",
+          authority: "human",
           params: {
             sessionId: { type: "string", description: "Session id to stop" },
           },
@@ -309,10 +312,10 @@ export const taskCoordinatorPlugin: Plugin = {
       surface: { capabilities: ["agent-surface"] },
       componentExport: "CockpitRoute",
       // The cockpit drives the same orchestrator interact protocol (list /
-      // open-task / create-task / send-message / stop-agent …) as
+      // get-task / create-task / send-message / stop-agent …) as
       // /orchestrator, so it advertises the same capability descriptors,
       // including their `authority`. app-control may route the agent-callable
-      // ones (status/list/open/create/send-message) to the cockpit; the
+      // ones (status/list/get/create/send-message) to the cockpit; the
       // human-only mutations such as stop-agent are listed so the shared
       // dispatcher refuses them uniformly, never so the planner selects them.
       capabilities: ORCHESTRATOR_CAPABILITIES,

@@ -10,13 +10,16 @@
 //      MTP drafter-arch + the metal/vulkan/cpu kernel patches). x86_64 for
 //      a cvd target.
 //   2. Stage them + the bundled models into the AOSP vendor tree
-//      (sync-to-aosp / stage-default-models), build the privileged APK
-//      (build-aosp.ts --rebuild-privileged-apk; or, with --skip-aosp-build,
-//      reuse the last-built APK).
-//   3. For Cuttlefish, `adb install -r -g` the platform-signed APK onto the
-//      matching running image. For physical targets, REFUSE to sideload: verify
-//      that the codename-matched elizaOS system image is already flashed and
-//      that Eliza is installed as a privileged system package. Physical image
+//      (sync-to-aosp / stage-default-models), rebuild the image APK
+//      (build-aosp.ts --rebuild-launcher-apk) and stage the signed launcher
+//      given by --launcher-apk (with --launcher-descriptor or
+//      --development-launcher), or, with --skip-aosp-build, reuse the last
+//      build.
+//   3. For Cuttlefish, `adb install -r -g` the presigned launcher module
+//      output onto the matching running image. For physical targets, REFUSE to
+//      sideload: verify that the codename-matched elizaOS system image is
+//      already flashed and that Eliza is installed as the nonprivileged product
+//      launcher (/product/app/Eliza/Eliza.apk). Physical image
 //      flashing belongs to the release-manifest installer, which requires an
 //      explicit destructive-action confirmation.
 //   4. `adb shell monkey -p <pkg> 1` to launch the main activity.
@@ -37,12 +40,12 @@
 // attached.
 //
 // Usage:
-//   node scripts/android/deploy-pixel.ts \
+//   bun scripts/android/deploy-pixel.ts \
 //     --aosp-root /path/to/aosp [--abi arm64-v8a|x86_64] [--device <serial>] \
 //     [--skip-libllama] [--skip-aosp-build] [--voice] [--jobs N] [--dry-run]
 //
 // For a running cvd (no AOSP build needed if the cvd already has the app):
-//   node scripts/android/deploy-pixel.ts --abi x86_64 \
+//   bun scripts/android/deploy-pixel.ts --abi x86_64 \
 //     --skip-libllama --skip-aosp-build --voice
 
 import { spawnSync } from "node:child_process";
@@ -50,12 +53,9 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { loadAospLock } from "./bootstrap-aosp.ts";
-import {
-  DEFAULT_BRAND_CONFIG,
-  loadBrandConfig,
-} from "./brand-config.ts";
 import { resolveElizaSourceRoot } from "../eliza-source.ts";
+import { loadAospLock } from "./bootstrap-aosp.ts";
+import { DEFAULT_BRAND_CONFIG, loadBrandConfig } from "./brand-config.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const osRepoRoot = path.resolve(here, "../..");
@@ -79,6 +79,9 @@ export function parseArgs(argv) {
     jobs: null,
     dryRun: false,
     brandConfig: DEFAULT_BRAND_CONFIG,
+    launcherApk: null,
+    launcherDescriptor: null,
+    developmentLauncher: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -94,6 +97,9 @@ export function parseArgs(argv) {
     } else if (a === "--brand-config") args.brandConfig = argv[++i];
     else if (a === "--skip-libllama") args.skipLibllama = true;
     else if (a === "--skip-aosp-build") args.skipAospBuild = true;
+    else if (a === "--launcher-apk") args.launcherApk = argv[++i];
+    else if (a === "--launcher-descriptor") args.launcherDescriptor = argv[++i];
+    else if (a === "--development-launcher") args.developmentLauncher = true;
     else if (a === "--voice") args.voice = true;
     else if (a === "--voice-only") {
       args.voice = true;
@@ -101,23 +107,19 @@ export function parseArgs(argv) {
     } else if (a === "--dry-run") args.dryRun = true;
     else if (a === "--help" || a === "-h") {
       console.log(
-        "Usage: node scripts/android/deploy-pixel.ts " +
-          "[--aosp-root <DIR>] [--abi arm64-v8a|x86_64|riscv64] [--device <serial>] " +
-          "[--brand-config <PATH>] [--skip-libllama] [--skip-aosp-build] [--voice|--voice-only] [--jobs N] [--dry-run]",
+        "Usage: bun scripts/android/deploy-pixel.ts " +
+          "[--aosp-root <DIR>] [--abi arm64-v8a|x86_64] [--device <serial>] " +
+          "[--brand-config <PATH>] [--skip-libllama] [--skip-aosp-build] " +
+          "[--launcher-apk <SIGNED_APK> (--launcher-descriptor <JSON> | --development-launcher)] " +
+          "[--voice|--voice-only] [--jobs N] [--dry-run]",
       );
       process.exit(0);
     } else {
       throw new Error(`Unknown argument: ${a} (see --help)`);
     }
   }
-  if (
-    args.abi !== "arm64-v8a" &&
-    args.abi !== "x86_64" &&
-    args.abi !== "riscv64"
-  ) {
-    throw new Error(
-      `--abi must be arm64-v8a, x86_64, or riscv64 (got "${args.abi}")`,
-    );
+  if (args.abi !== "arm64-v8a" && args.abi !== "x86_64") {
+    throw new Error(`--abi must be arm64-v8a or x86_64 (got "${args.abi}")`);
   }
   if (
     args.jobs !== null &&
@@ -125,24 +127,11 @@ export function parseArgs(argv) {
   ) {
     throw new Error("--jobs must be an integer from 1 through 256");
   }
-  // Pixel hardware is arm64-only. x86_64 lands on a running cvd. riscv64
-  // has no shipping Pixel device — refuse the no-device case so we don't
-  // silently try to push a riscv64 APK at an arm64 phone. If the operator
-  // really has a riscv64 dev board, they pass --device <serial> and we
-  // trust them.
-  if (args.abi === "riscv64" && !args.device) {
-    throw new Error(
-      `[deploy-pixel] --abi riscv64 needs an explicit --device <serial> (Pixel is arm64; ` +
-        `there is no shipping Google riscv64 phone). For Cuttlefish cf_riscv64_phone, ` +
-        `use \`make -C android sim ARCH=riscv64\` instead.`,
-    );
-  }
   return args;
 }
 
 // The AOSP product output directory is out/target/product/<PRODUCT_DEVICE>,
-// not <PRODUCT_NAME>: eliza_cf_arm64_phone builds into vsoc_arm64 and
-// eliza_grizzly_phone into grizzly. Derive the device dir from the brand's
+// not <PRODUCT_NAME>: eliza_cf_arm64_phone builds into vsoc_arm64. Derive the device dir from the brand's
 // device tree paths (vsoc_* for Cuttlefish, the vendor device segment for
 // generated Pixel trees) so the APK is resolved where the build put it.
 export function deriveProductOutDir(brand) {
@@ -158,7 +147,8 @@ export function deriveProductOutDir(brand) {
   return brand.productName;
 }
 
-export function resolveBuiltPrivilegedApk({
+/** The presigned launcher module output for this product (never a priv-app). */
+export function resolveBuiltLauncherApk({
   aospRoot,
   productName,
   deviceDir,
@@ -177,8 +167,8 @@ export function resolveBuiltPrivilegedApk({
     "target",
     "product",
     deviceDir ?? productName,
-    "system",
-    "priv-app",
+    "product",
+    "app",
     "Eliza",
     "Eliza.apk",
   );
@@ -275,10 +265,10 @@ async function main(argv = process.argv.slice(2)) {
   // Android CPU-fused is the only backend whose compiler and staging contract
   // is complete. The upstream compiler deliberately fails closed for Android
   // Vulkan until shader-tool and backend artifact staging are fully wired.
-  let target;
-  if (args.abi === "x86_64") target = "android-x86_64-cpu-fused";
-  else if (args.abi === "riscv64") target = "android-riscv64-cpu-fused";
-  else target = "android-arm64-cpu-fused";
+  const target =
+    args.abi === "x86_64"
+      ? "android-x86_64-cpu-fused"
+      : "android-arm64-cpu-fused";
 
   console.log(
     `[deploy-pixel] target=${target} device=${args.device ?? "(auto)"} ` +
@@ -332,7 +322,7 @@ async function main(argv = process.argv.slice(2)) {
     console.log("[deploy-pixel] step 1/5: --skip-libllama → reuse last build");
   }
 
-  // ── 2. Build the AOSP privileged APK ─────────────────────────────────────
+  // ── 2. Build the image APK and stage the signed launcher ─────────────────
   if (!args.skipAospBuild) {
     if (!args.aospRoot) {
       throw new Error(
@@ -340,24 +330,26 @@ async function main(argv = process.argv.slice(2)) {
           "to reuse the previously-built APK / deploy to a cvd that already has the app.",
       );
     }
-    console.log("[deploy-pixel] step 2/5: build AOSP privileged APK");
+    console.log("[deploy-pixel] step 2/5: build image APK and stage launcher");
     const aospArgs = [
       path.join(osRepoRoot, "scripts/android/build-aosp.ts"),
       "--aosp-root",
       args.aospRoot,
       "--brand-config",
       brand.brandConfigPath,
-      "--rebuild-privileged-apk",
+      "--rebuild-launcher-apk",
     ];
+    if (args.launcherApk) aospArgs.push("--launcher-apk", args.launcherApk);
+    if (args.launcherDescriptor)
+      aospArgs.push("--launcher-descriptor", args.launcherDescriptor);
+    if (args.developmentLauncher) aospArgs.push("--development-launcher");
     if (args.jobs) aospArgs.push("--jobs", String(args.jobs));
     if (args.dryRun) {
       console.log(
         `[deploy-pixel] (dry-run) would run: node ${aospArgs.join(" ")}`,
       );
     } else {
-      run("node", aospArgs, {
-        env: args.abi === "riscv64" ? {} : { ELIZA_BUN_RISCV64_OPTIONAL: "1" },
-      });
+      run("node", aospArgs);
     }
   } else {
     console.log("[deploy-pixel] step 2/5: --skip-aosp-build → reuse last APK");
@@ -384,10 +376,9 @@ async function main(argv = process.argv.slice(2)) {
   const pkg = brand.packageName;
 
   // ── 3. Deploy to CVD, or verify a flashed physical image ─────────────────
-  // The vendor input APK is intentionally unsigned: Soong signs it with the
-  // product platform certificate while assembling the image. Never sideload
-  // that raw input, and never select an arbitrary recently-built priv-app APK.
-  // Install only the exact platform-signed module output for this product.
+  // The vendor build output APK is unsigned and is never sideloaded. Install
+  // only the exact presigned launcher module output for this product, whose
+  // bytes and signer were pinned when vendor/<brand>/launcher was staged.
   // For --skip-aosp-build deploys to an image that already has the app, step 3
   // is a no-op.
   console.log(
@@ -433,14 +424,14 @@ async function main(argv = process.argv.slice(2)) {
       if (
         !alreadyInstalled ||
         !fingerprint.startsWith(physicalTarget.expectedFingerprintPrefix) ||
-        packagePath !== "package:/system/priv-app/Eliza/Eliza.apk"
+        packagePath !== "package:/product/app/Eliza/Eliza.apk"
       ) {
         throw new Error(
           `[deploy-pixel] ${physicalTarget.targetId} is not running the expected flashed elizaOS image. ` +
             `fingerprint=${JSON.stringify(fingerprint)} packagePath=${JSON.stringify(packagePath)}. ` +
-            "Use node scripts/android/install-release.ts with a lab-validated " +
+            "Use bun scripts/android/install-release.ts with a lab-validated " +
             "signed release manifest, --execute, and --confirm-flash. " +
-            "The platform-signed privileged APK will not be sideloaded onto a physical target.",
+            "The image launcher APK will not be sideloaded onto a physical target.",
         );
       }
       console.log(
@@ -449,7 +440,7 @@ async function main(argv = process.argv.slice(2)) {
     } else {
       let apkPath = null;
       if (args.aospRoot) {
-        const candidate = resolveBuiltPrivilegedApk({
+        const candidate = resolveBuiltLauncherApk({
           aospRoot: args.aospRoot,
           productName: brand.productName,
           deviceDir: deriveProductOutDir(brand),
@@ -464,15 +455,15 @@ async function main(argv = process.argv.slice(2)) {
         );
       } else {
         const expectedApk = args.aospRoot
-          ? resolveBuiltPrivilegedApk({
+          ? resolveBuiltLauncherApk({
               aospRoot: args.aospRoot,
               productName: brand.productName,
               deviceDir: deriveProductOutDir(brand),
             })
-          : "<aosp-root>/out/target/product/<product>/system/priv-app/Eliza/Eliza.apk";
+          : "<aosp-root>/out/target/product/<product>/product/app/Eliza/Eliza.apk";
         throw new Error(
           `[deploy-pixel] ${pkg} is not installed and no built APK was found. ` +
-            `Expected the platform-signed output at ${expectedApk}. ` +
+            `Expected the presigned launcher output at ${expectedApk}. ` +
             "Build the AOSP product first; the unsigned vendor input cannot be sideloaded.",
         );
       }
@@ -502,7 +493,7 @@ async function main(argv = process.argv.slice(2)) {
   if (args.dryRun) {
     if (!args.voiceOnly) {
       console.log(
-        `[deploy-pixel] (dry-run) would run: node scripts/android/smoke-cuttlefish.ts` +
+        `[deploy-pixel] (dry-run) would run: bun scripts/android/smoke-cuttlefish.ts` +
           ` --package-name ${pkg} --app-name ${brand.appName}`,
       );
     }

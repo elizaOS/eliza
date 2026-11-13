@@ -63,22 +63,28 @@ const SENSITIVE_KEY_EXACT: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Telemetry/schema keys whose names contain "token" but whose values are
- * counts, budgets, or correlation ids rather than credentials. Closed list,
- * shared by log sinks and model-output redaction.
+ * Keys whose names contain "token" or end in "Key" but whose values are
+ * counts, budgets, or opaque request-correlation ids rather than credentials.
+ * Closed list, shared by log sinks and model-output redaction. Model-bound
+ * tool history must show request ids exactly: a masked id is copied back into
+ * tool arguments (the planner saw its own operationKey as "[REDACTED]").
  */
-const NON_SECRET_TOKEN_METADATA_KEYS: ReadonlySet<string> = new Set([
+const NON_SECRET_KEY_METADATA_KEYS: ReadonlySet<string> = new Set([
 	"budgettokens",
 	"cachecreationinputtokens",
 	"cachereadinputtokens",
 	"completiontokens",
 	"compactionthresholdtokens",
 	"contextwindowtokens",
+	"dedupekey",
 	"estimatedinputtokens",
 	"finalprompttokens",
+	"groupkey",
+	"idempotencykey",
 	"inputtokens",
 	"maxtokens",
 	"maxtokensomitted",
+	"operationkey",
 	"originalprompttokens",
 	"outputreservetokens",
 	"outputtokens",
@@ -98,7 +104,7 @@ const NON_SECRET_TOKEN_METADATA_KEYS: ReadonlySet<string> = new Set([
  */
 export function isSensitiveLogKey(key: string): boolean {
 	const normalized = key.toLowerCase().replace(/[_\-. ]/g, "");
-	if (NON_SECRET_TOKEN_METADATA_KEYS.has(normalized)) return false;
+	if (NON_SECRET_KEY_METADATA_KEYS.has(normalized)) return false;
 	if (SENSITIVE_KEY_EXACT.has(normalized)) return true;
 	if (SENSITIVE_KEY_SUBSTRINGS.some((needle) => normalized.includes(needle))) {
 		return true;
@@ -205,7 +211,13 @@ export const SENSITIVE_TEXT_PATTERNS: readonly string[] = [
 	String.raw`/\b(ya29\.[A-Za-z0-9_\-.]{10,})/g`,
 ];
 
-function parseSensitiveTextPattern(raw: string): RegExp | null {
+/**
+ * Compile one redaction pattern string: `/source/flags` keeps its flags (plus
+ * `g`), a bare source becomes `gi`. Blank or invalid patterns compile to null.
+ * The single parser for log, model-output, and secret-swap pattern sets.
+ */
+export function compileSensitiveTextPattern(raw: string): RegExp | null {
+	if (!raw.trim()) return null;
 	const match = raw.match(/^\/(.+)\/([gimsuy]*)$/);
 	try {
 		if (match) {
@@ -214,17 +226,21 @@ function parseSensitiveTextPattern(raw: string): RegExp | null {
 		}
 		return new RegExp(raw, "gi");
 	} catch {
-		// error-policy:J3 a configured pattern that no longer compiles is excluded
-		// from the detector set rather than breaking logger module load.
+		// error-policy:J3 custom patterns are untrusted configuration; an invalid
+		// expression is excluded from the compiled detector set.
 		return null;
 	}
 }
 
-// Compiled once at module load; String.prototype.replace resets a global
-// regex's lastIndex before each call, so the shared array is safe to reuse.
-const SENSITIVE_TEXT_REGEXPS: readonly RegExp[] = SENSITIVE_TEXT_PATTERNS.map(
-	parseSensitiveTextPattern,
-).filter((re): re is RegExp => Boolean(re));
+/**
+ * {@link SENSITIVE_TEXT_PATTERNS} compiled once at module load and shared by
+ * every redactor. `replace` and `matchAll` never carry a global regex's
+ * `lastIndex` across calls, so the shared objects are safe to reuse.
+ */
+export const SENSITIVE_TEXT_REGEXPS: readonly RegExp[] =
+	SENSITIVE_TEXT_PATTERNS.map(compileSensitiveTextPattern).filter(
+		(re): re is RegExp => re !== null,
+	);
 
 const SENSITIVE_TEXT_MIN_LENGTH = 18;
 const SENSITIVE_TEXT_KEEP_START = 6;

@@ -1,15 +1,6 @@
 /** Proves active billing excludes pool capacity while retaining claimed Dedicated resources. */
 
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  spyOn,
-  test,
-} from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { pushSchema } from "drizzle-kit/api";
 import { eq, sql } from "drizzle-orm";
 
@@ -35,19 +26,12 @@ import { creditTransactions } from "../../db/schemas/credit-transactions";
 import { organizations } from "../../db/schemas/organizations";
 import { userCharacters } from "../../db/schemas/user-characters";
 import { users } from "../../db/schemas/users";
-import { provisioningJobService } from "./provisioning-job-queue";
 
 const { activeBillingService } = await import("./active-billing");
 
 const PGLITE_TIMEOUT = 60_000;
 let organizationId = "";
 let userId = "";
-let enqueueSuspendCalls = 0;
-let enqueueDeleteCalls = 0;
-let triggerImmediateCalls = 0;
-let enqueueSuspendMutation: (() => Promise<void>) | null = null;
-let enqueueSuspendFailure: Error | null = null;
-let restoredSpies: Array<{ mockRestore: () => void }> = [];
 
 beforeAll(async () => {
   const schema = {
@@ -108,26 +92,6 @@ beforeAll(async () => {
 }, PGLITE_TIMEOUT);
 
 beforeEach(async () => {
-  enqueueSuspendCalls = 0;
-  enqueueDeleteCalls = 0;
-  triggerImmediateCalls = 0;
-  enqueueSuspendMutation = null;
-  enqueueSuspendFailure = null;
-  restoredSpies = [
-    spyOn(provisioningJobService, "enqueueAgentSuspendOnce").mockImplementation(async () => {
-      enqueueSuspendCalls += 1;
-      await enqueueSuspendMutation?.();
-      if (enqueueSuspendFailure) throw enqueueSuspendFailure;
-      return { job: { id: crypto.randomUUID() } as never, created: true };
-    }),
-    spyOn(provisioningJobService, "enqueueAgentDeleteOnce").mockImplementation(async () => {
-      enqueueDeleteCalls += 1;
-      return { job: { id: crypto.randomUUID() } as never, created: true };
-    }),
-    spyOn(provisioningJobService, "triggerImmediate").mockImplementation(async () => {
-      triggerImmediateCalls += 1;
-    }),
-  ];
   await dbWrite.delete(containerComputeStopIntents);
   await dbWrite.delete(agentComputeStopIntents);
   await dbWrite.delete(creditTransactions);
@@ -149,11 +113,6 @@ beforeEach(async () => {
     .returning();
   organizationId = org.id;
   userId = user.id;
-});
-
-afterEach(() => {
-  for (const activeSpy of restoredSpies) activeSpy.mockRestore();
-  restoredSpies = [];
 });
 
 afterAll(async () => {
@@ -261,36 +220,6 @@ async function seedDedicated(poolStatus: "unclaimed" | null): Promise<string> {
   return seedAgent({ poolStatus });
 }
 
-async function expectSuspendAuthorityConflict(
-  agentId: string,
-  mutateAuthority: () => Promise<void>,
-  remainsBillable = false,
-): Promise<void> {
-  enqueueSuspendMutation = mutateAuthority;
-
-  await expect(
-    activeBillingService.cancelResource({
-      organizationId,
-      resourceId: agentId,
-      resourceType: "agent_sandbox",
-      authorizeInfrastructureMutation: async () => undefined,
-    }),
-  ).rejects.toMatchObject({ status: 409, code: "session_not_ready" });
-
-  expect(enqueueSuspendCalls).toBe(1);
-  expect(triggerImmediateCalls).toBe(1);
-  const [stored] = await dbWrite
-    .select({ billing_status: agentSandboxes.billing_status })
-    .from(agentSandboxes)
-    .where(eq(agentSandboxes.id, agentId));
-  expect(stored.billing_status).toBe("active");
-  const listed = (await activeBillingService.listActiveResources(organizationId)).map(
-    (resource) => resource.resourceId,
-  );
-  if (remainsBillable) expect(listed).toContain(agentId);
-  else expect(listed).not.toContain(agentId);
-}
-
 describe("active billing warm-pool authority", () => {
   test("list exposes the claimed Dedicated resource but never its pool-owned sibling", async () => {
     const poolId = await seedDedicated("unclaimed");
@@ -300,6 +229,9 @@ describe("active billing warm-pool authority", () => {
     const ids = resources.map((resource) => resource.resourceId);
     expect(ids).toContain(claimedId);
     expect(ids).not.toContain(poolId);
+    await expect(
+      activeBillingService.resolveCancellationTarget(organizationId, poolId, "agent_sandbox"),
+    ).rejects.toMatchObject({ status: 404 });
   });
 
   test("deleting a provider-confirmed stopped agent without a backup never advertises a new storage charge", async () => {
@@ -342,51 +274,6 @@ describe("active billing warm-pool authority", () => {
     expect(resources.map((resource) => resource.resourceId)).not.toContain(agentId);
   });
 
-  test("pool capacity cannot be cancelled or mutated through the billing surface", async () => {
-    const poolId = await seedDedicated("unclaimed");
-
-    await expect(
-      activeBillingService.cancelResource({
-        organizationId,
-        resourceId: poolId,
-        resourceType: "agent_sandbox",
-        authorizeInfrastructureMutation: async () => undefined,
-      }),
-    ).rejects.toThrow("Billable resource not found");
-    expect(enqueueSuspendCalls).toBe(0);
-    expect(enqueueDeleteCalls).toBe(0);
-    expect(triggerImmediateCalls).toBe(0);
-    const [stored] = await dbWrite
-      .select({ billing_status: agentSandboxes.billing_status })
-      .from(agentSandboxes)
-      .where(eq(agentSandboxes.id, poolId));
-    expect(stored.billing_status).toBe("active");
-  });
-
-  test("a claimed slot queues cancellation without suspending billing before confirmation", async () => {
-    const claimedId = await seedDedicated(null);
-
-    await expect(
-      activeBillingService.cancelResource({
-        organizationId,
-        resourceId: claimedId,
-        resourceType: "agent_sandbox",
-        authorizeInfrastructureMutation: async () => undefined,
-      }),
-    ).resolves.toMatchObject({
-      stoppedBilling: false,
-      infrastructureAction: { attempted: false, status: "queued" },
-      resource: { billingStatus: "active" },
-    });
-    expect(enqueueSuspendCalls).toBe(1);
-    expect(triggerImmediateCalls).toBe(1);
-    const [stored] = await dbWrite
-      .select({ billing_status: agentSandboxes.billing_status })
-      .from(agentSandboxes)
-      .where(eq(agentSandboxes.id, claimedId));
-    expect(stored.billing_status).toBe("active");
-  });
-
   test("all canonical container-backed tiers remain listed and cancellable", async () => {
     const seeded = await Promise.all(
       CONTAINER_BACKED_EXECUTION_TIERS.map(async (executionTier) => ({
@@ -402,23 +289,8 @@ describe("active billing warm-pool authority", () => {
 
     for (const { id } of seeded) {
       await expect(
-        activeBillingService.cancelResource({
-          organizationId,
-          resourceId: id,
-          resourceType: "agent_sandbox",
-          authorizeInfrastructureMutation: async () => undefined,
-        }),
-      ).resolves.toMatchObject({ stoppedBilling: false });
-    }
-    expect(enqueueSuspendCalls).toBe(CONTAINER_BACKED_EXECUTION_TIERS.length);
-    expect(triggerImmediateCalls).toBe(CONTAINER_BACKED_EXECUTION_TIERS.length);
-
-    for (const { id } of seeded) {
-      const [stored] = await dbWrite
-        .select({ billing_status: agentSandboxes.billing_status })
-        .from(agentSandboxes)
-        .where(eq(agentSandboxes.id, id));
-      expect(stored.billing_status).toBe("active");
+        activeBillingService.resolveCancellationTarget(organizationId, id, "agent_sandbox"),
+      ).resolves.toMatchObject({ resourceType: "agent_sandbox" });
     }
   });
 
@@ -434,22 +306,8 @@ describe("active billing warm-pool authority", () => {
 
     for (const resourceId of [sharedId, unknownId]) {
       await expect(
-        activeBillingService.cancelResource({
-          organizationId,
-          resourceId,
-          resourceType: "agent_sandbox",
-          authorizeInfrastructureMutation: async () => undefined,
-        }),
-      ).rejects.toThrow("Billable resource not found");
-    }
-    expect(enqueueSuspendCalls).toBe(0);
-    expect(triggerImmediateCalls).toBe(0);
-    for (const resourceId of [sharedId, unknownId]) {
-      const [stored] = await dbWrite
-        .select({ billing_status: agentSandboxes.billing_status })
-        .from(agentSandboxes)
-        .where(eq(agentSandboxes.id, resourceId));
-      expect(stored.billing_status).toBe("active");
+        activeBillingService.resolveCancellationTarget(organizationId, resourceId, "agent_sandbox"),
+      ).rejects.toMatchObject({ status: 404 });
     }
   });
 
@@ -469,113 +327,9 @@ describe("active billing warm-pool authority", () => {
 
     for (const resourceId of [deletedId, deletionOwnedId]) {
       await expect(
-        activeBillingService.cancelResource({
-          organizationId,
-          resourceId,
-          resourceType: "agent_sandbox",
-          authorizeInfrastructureMutation: async () => undefined,
-        }),
-      ).rejects.toThrow("Billable resource not found");
+        activeBillingService.resolveCancellationTarget(organizationId, resourceId, "agent_sandbox"),
+      ).rejects.toMatchObject({ status: 404 });
     }
-    expect(enqueueSuspendCalls).toBe(0);
-    expect(triggerImmediateCalls).toBe(0);
-    for (const resourceId of [deletedId, deletionOwnedId]) {
-      const [stored] = await dbWrite
-        .select({ billing_status: agentSandboxes.billing_status })
-        .from(agentSandboxes)
-        .where(eq(agentSandboxes.id, resourceId));
-      expect(stored.billing_status).toBe("active");
-    }
-  });
-
-  test("a concurrent transition to Shared wins over billing suspension", async () => {
-    const agentId = await seedDedicated(null);
-
-    await expectSuspendAuthorityConflict(agentId, async () => {
-      await dbWrite
-        .update(agentSandboxes)
-        .set({ execution_tier: "shared" })
-        .where(eq(agentSandboxes.id, agentId));
-    });
-  });
-
-  test("a concurrent transition back to pool authority wins over billing suspension", async () => {
-    const agentId = await seedDedicated(null);
-
-    await expectSuspendAuthorityConflict(agentId, async () => {
-      await dbWrite
-        .update(agentSandboxes)
-        .set({ pool_status: "unclaimed" })
-        .where(eq(agentSandboxes.id, agentId));
-    });
-  });
-
-  test("a concurrent deletion attempt wins over billing suspension", async () => {
-    const agentId = await seedDedicated(null);
-
-    await expectSuspendAuthorityConflict(
-      agentId,
-      async () => {
-        await dbWrite
-          .update(agentSandboxes)
-          .set({
-            deletion_attempt_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-            deletion_started_at: new Date("2026-08-22T10:00:00.000Z"),
-          })
-          .where(eq(agentSandboxes.id, agentId));
-      },
-      true,
-    );
-  });
-
-  test("a concurrent soft deletion wins over billing suspension", async () => {
-    const agentId = await seedDedicated(null);
-
-    await expectSuspendAuthorityConflict(agentId, async () => {
-      await dbWrite
-        .update(agentSandboxes)
-        .set({ deleted_at: new Date("2026-08-22T10:00:00.000Z") })
-        .where(eq(agentSandboxes.id, agentId));
-    });
-  });
-
-  test("a row deleted concurrently fails closed instead of fabricating completion", async () => {
-    const agentId = await seedDedicated(null);
-    enqueueSuspendMutation = async () => {
-      await dbWrite.delete(agentSandboxes).where(eq(agentSandboxes.id, agentId));
-    };
-
-    await expect(
-      activeBillingService.cancelResource({
-        organizationId,
-        resourceId: agentId,
-        resourceType: "agent_sandbox",
-        authorizeInfrastructureMutation: async () => undefined,
-      }),
-    ).rejects.toMatchObject({ status: 409, code: "session_not_ready" });
-    expect(enqueueSuspendCalls).toBe(1);
-    expect(triggerImmediateCalls).toBe(1);
-  });
-
-  test("an enqueue failure leaves billing active and returns a typed failure", async () => {
-    const agentId = await seedDedicated(null);
-    enqueueSuspendFailure = new Error("queue unavailable");
-
-    await expect(
-      activeBillingService.cancelResource({
-        organizationId,
-        resourceId: agentId,
-        resourceType: "agent_sandbox",
-        authorizeInfrastructureMutation: async () => undefined,
-      }),
-    ).rejects.toMatchObject({ code: "BILLING_CANCEL_AGENT_ENQUEUE_FAILED" });
-    expect(enqueueSuspendCalls).toBe(1);
-    expect(triggerImmediateCalls).toBe(0);
-    const [stored] = await dbWrite
-      .select({ billing_status: agentSandboxes.billing_status })
-      .from(agentSandboxes)
-      .where(eq(agentSandboxes.id, agentId));
-    expect(stored.billing_status).toBe("active");
   });
 
   test("resolves the legacy container target and current lifecycle revision", async () => {

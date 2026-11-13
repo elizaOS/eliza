@@ -3,7 +3,7 @@
 # Pre-built artifacts come from GHA (bun install + tsdown + vite build done before docker)
 ARG NODE_VERSION=24
 ARG BUN_VERSION=1.4.2
-# Base image references. Reproducible deployments (deploy/dstack-alpha) pass
+# Base image references. Reproducible deployments (deploy/dstack) pass
 # digest-pinned values; the defaults keep the tag-based CI behavior.
 ARG NODE_IMAGE=node:${NODE_VERSION}-slim
 ARG BUN_IMAGE=oven/bun:${BUN_VERSION}

@@ -24,6 +24,10 @@ import {
 } from "react";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { client } from "../api/client";
+import {
+  APP_RUN_API_UNSUPPORTED_MESSAGE,
+  probeAppRunApi,
+} from "../components/apps/app-run-api";
 import { loadAppsCatalog } from "../components/apps/load-apps-catalog";
 import { getActiveViewModality } from "../platform/platform-guards";
 import { useAppSelector } from "../state/app-store";
@@ -530,6 +534,12 @@ export function useViewCatalog({
         },
       }));
       try {
+        // Without a run API on the agent the launch would post to a route
+        // nothing serves; fail with a plain message and send no request.
+        if (!(await probeAppRunApi())) {
+          throw new Error(APP_RUN_API_UNSUPPORTED_MESSAGE);
+        }
+        if (getActiveAgentAuthority() !== authority) return null;
         const launch = await client.launchApp(name);
         // The launch belonged to the authority captured by this callback. If
         // the user switched agents while it was in flight, do not refresh the

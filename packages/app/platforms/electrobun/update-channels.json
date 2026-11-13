@@ -14,8 +14,7 @@
 				"macos-x64": { "type": "string", "format": "uri" },
 				"windows-x64": { "type": "string", "format": "uri" },
 				"linux-x64": { "type": "string", "format": "uri" },
-				"linux-arm64": { "type": "string", "format": "uri" },
-				"linux-riscv64": { "type": "string", "format": "uri" }
+				"linux-arm64": { "type": "string", "format": "uri" }
 			}
 		}
 	}

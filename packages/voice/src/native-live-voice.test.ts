@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { LIVE_ASR_PATH, LIVE_ASR_STATUS_PATH } from "./live-voice-session";
 import {
   createNativeLiveVoice,
+  NATIVE_PENDING_FINALS,
   type NativeLiveCapturePort,
   type NativeResidentBinding,
   nativeVoiceStageSink,
@@ -9,6 +10,11 @@ import {
   readNativeVoiceTiming,
   residentLiveTransport,
 } from "./native-live-voice";
+import {
+  type AssistantListenHandlers,
+  type AssistantReply,
+  VoiceAssistantSession,
+} from "./voice-assistant-session";
 
 // Contract of the renderer transport against a fake native speech bridge and a stub resident
 // agent. Not microphone, VAD, recognition or latency evidence.
@@ -20,6 +26,7 @@ function fakeBridge(
     serverClosed?: boolean;
     echoCancelled?: boolean;
     startDelay?: Promise<void>;
+    stopDelay?: Promise<void>;
   } = {},
 ) {
   const listeners = new Map<string, Set<Listener>>();
@@ -43,6 +50,7 @@ function fakeBridge(
     },
     stopLiveCapture: async (input) => {
       stops.push({ ...input });
+      await options.stopDelay;
       return {
         captureId: input.captureId,
         durationMs: 10,
@@ -262,6 +270,50 @@ describe("native resident capture", () => {
     expect(out.lost).toEqual([]);
   });
 
+  it("keeps a long conversation alive past the remembered turn ids and still drops a repeated final", async () => {
+    const bridge = fakeBridge();
+    const agent = residentAgent();
+    const voice = createNativeLiveVoice({
+      port: bridge.port,
+      available: () => true,
+      resident: agent.resident,
+    });
+    const out = handlers();
+    const capture = await voice.open(out.open(new AbortController().signal));
+    const id = bridge.captureId;
+    const turns = 600;
+    for (let i = 0; i < turns; i++) {
+      bridge.emit("liveCaptureFrames", {
+        captureId: id,
+        vad: [
+          { type: "speech-start", timestampMs: i * 10 },
+          { type: "speech-end", timestampMs: i * 10 + 5 },
+        ],
+      });
+      bridge.emit("liveCaptureTranscript", {
+        captureId: id,
+        final: { turnId: `turn-${i}`, text: `line ${i}`, mode: "stream" },
+      });
+    }
+    expect(out.lost).toEqual([]);
+    expect(out.segments).toHaveLength(turns);
+    expect(out.segments.at(-1)).toBe(`line ${turns - 1}`);
+    bridge.emit("liveCaptureFrames", {
+      captureId: id,
+      vad: [
+        { type: "speech-start", timestampMs: turns * 10 },
+        { type: "speech-end", timestampMs: turns * 10 + 5 },
+      ],
+    });
+    bridge.emit("liveCaptureTranscript", {
+      captureId: id,
+      final: { turnId: `turn-${turns - 1}`, text: "again", mode: "stream" },
+    });
+    expect(out.segments).toHaveLength(turns);
+    expect(out.lost).toEqual([]);
+    await capture.cancel();
+  });
+
   it("shows partials only for the open turn, in sequence, and clears them at the final", async () => {
     const bridge = fakeBridge();
     const agent = residentAgent();
@@ -329,6 +381,45 @@ describe("native resident capture", () => {
     });
     expect(out.segments).toEqual([]);
     expect(out.lost).toHaveLength(1);
+  });
+
+  it("ends with a live-asr code when transcription fails or falls behind", async () => {
+    const voice = (bridge: ReturnType<typeof fakeBridge>) =>
+      createNativeLiveVoice({
+        port: bridge.port,
+        available: () => true,
+        resident: residentAgent().resident,
+      });
+    const failing = fakeBridge();
+    const failed = handlers();
+    await voice(failing).open(failed.open(new AbortController().signal));
+    failing.emit("liveCaptureTranscript", {
+      captureId: failing.captureId,
+      error: "MODEL_MISSING",
+    });
+    expect(failed.lost).toHaveLength(1);
+    expect(failed.lost[0]).toMatchObject({
+      message: "Native transcription unavailable.",
+      code: "live-asr",
+      reason: "MODEL_MISSING",
+    });
+
+    const behind = fakeBridge();
+    const out = handlers();
+    await voice(behind).open(out.open(new AbortController().signal));
+    // Finals with no closed segment to answer stay pending until the limit.
+    for (let i = 0; i <= NATIVE_PENDING_FINALS; i++)
+      behind.emit("liveCaptureTranscript", {
+        captureId: behind.captureId,
+        final: { turnId: `t${i}`, text: `line ${i}`, mode: "stream" },
+      });
+    expect(out.segments).toEqual([]);
+    expect(out.lost).toHaveLength(1);
+    expect(out.lost[0]).toMatchObject({
+      message: "Native transcription fell behind.",
+      code: "live-asr",
+      reason: "backlog",
+    });
   });
 
   it("fences events once the owner's session changes", async () => {
@@ -576,6 +667,211 @@ describe("renderer transport and readiness", () => {
         resident: agent.resident,
       }).open(out.open(signal)),
     ).rejects.toThrow(/not connected/);
+  });
+});
+
+/**
+ * The voice assistant over the native listen port (Route C): one turn is spoken through the
+ * bridge's VAD and final events; `send` and `speak` settle when the test says so.
+ */
+function assistantOver(bridge: ReturnType<typeof fakeBridge>) {
+  const timers = new Set<() => void>();
+  const replies: Array<(text: string) => void> = [];
+  const speeches: Array<() => void> = [];
+  const voice = createNativeLiveVoice({
+    port: bridge.port,
+    available: () => true,
+    resident: residentAgent().resident,
+  });
+  const session = new VoiceAssistantSession(
+    {
+      conversationId: "room-1",
+      assertCurrent() {},
+      listen: voice.assistantListener(),
+      send: (input) =>
+        new Promise<AssistantReply>((resolve) => {
+          replies.push((text) =>
+            resolve({
+              requestId: input.turnId,
+              conversationId: "room-1",
+              userMessageId: "u-1",
+              assistantMessageId: "a-1",
+              text,
+              complete: true,
+            }),
+          );
+        }),
+      speak: () =>
+        new Promise<void>((resolve) => {
+          speeches.push(resolve);
+        }),
+    },
+    {
+      clock: {
+        now: () => Date.now(),
+        setTimer: (callback) => {
+          timers.add(callback);
+          return callback;
+        },
+        clearTimer: (handle) => {
+          timers.delete(handle as () => void);
+        },
+      },
+    },
+  );
+  return {
+    session,
+    replies,
+    speeches,
+    /** One utterance on capture `id`, then the endpoint gap elapses. */
+    async say(id: string, text: string, turnId: string) {
+      bridge.emit("liveCaptureFrames", {
+        captureId: id,
+        vad: [
+          { type: "speech-start", timestampMs: 1 },
+          { type: "speech-end", timestampMs: 2 },
+        ],
+      });
+      bridge.emit("liveCaptureTranscript", {
+        captureId: id,
+        final: { turnId, text, mode: "stream" },
+      });
+      await flush();
+      for (const callback of [...timers]) {
+        timers.delete(callback);
+        callback();
+      }
+      await flush();
+    },
+  };
+}
+
+describe("native capture under the assistant's busy hold", () => {
+  it("stops the native capture at submission, sends the turn only once the stop was answered, and starts a new one only after the reply played", async () => {
+    let answerStop!: () => void;
+    const bridge = fakeBridge({
+      stopDelay: new Promise<void>((resolve) => {
+        answerStop = resolve;
+      }),
+    });
+    const h = assistantOver(bridge);
+    await h.session.start();
+    const first = bridge.captureId;
+    await h.say(first, "what is on today", "t1");
+    expect(h.replies).toHaveLength(0);
+    expect(bridge.stops).toEqual([
+      { captureId: first, discard: false, cutoffMs: expect.any(Number) },
+    ]);
+    expect(h.session.getSnapshot().inputHeld).toBeUndefined();
+    answerStop();
+    await flush();
+    expect(h.replies).toHaveLength(1);
+    expect(h.session.getSnapshot()).toMatchObject({
+      phase: "thinking",
+      inputHeld: true,
+    });
+    // Events for the stopped capture are dropped.
+    await h.say(first, "cancel that", "t2");
+    expect(h.replies).toHaveLength(1);
+    h.replies[0]?.("You have one meeting.");
+    await flush();
+    expect(h.speeches).toHaveLength(1);
+    expect(bridge.starts).toHaveLength(1);
+    h.speeches[0]?.();
+    await flush();
+    expect(bridge.starts).toHaveLength(2);
+    expect(bridge.starts[1]).toMatchObject({ reopen: true, nativeAsr: true });
+    expect(bridge.captureId).not.toBe(first);
+    expect(h.session.getSnapshot()).toEqual({ phase: "listening" });
+    await h.session.stop();
+  });
+
+  it("ends the conversation without sending when the bridge answers the stop with no confirmed close", async () => {
+    const bridge = fakeBridge({ serverClosed: false });
+    const h = assistantOver(bridge);
+    await h.session.start();
+    await h.say(bridge.captureId, "what is on today", "t1");
+    await flush();
+    expect(bridge.stops).toHaveLength(1);
+    expect(h.replies).toHaveLength(0);
+    expect(h.speeches).toHaveLength(0);
+    expect(h.session.getSnapshot()).toMatchObject({
+      phase: "error",
+      error: { code: "capture" },
+    });
+    expect(bridge.starts).toHaveLength(1);
+  });
+
+  it("forwards an automatic reopen to the bridge on both transports, and only then", async () => {
+    for (const nativeTransport of [true, false]) {
+      const bridge = fakeBridge({ nativeTransport });
+      const voice = createNativeLiveVoice({
+        port: bridge.port,
+        available: () => true,
+        resident: residentAgent().resident,
+        endedTimeoutMs: 5,
+      });
+      const out = handlers();
+      const opened = await voice.open(out.open(new AbortController().signal));
+      const reopened = await voice.open({
+        ...out.open(new AbortController().signal),
+        reopen: true,
+      });
+      expect(bridge.starts[0]).not.toHaveProperty("reopen");
+      expect(bridge.starts[1]).toMatchObject({ reopen: true });
+      await opened.cancel();
+      await reopened.cancel();
+    }
+    const bridge = fakeBridge();
+    const listen = createNativeLiveVoice({
+      port: bridge.port,
+      available: () => true,
+      resident: residentAgent().resident,
+    }).assistantListener();
+    const listenHandlers = (reopen?: true): AssistantListenHandlers => ({
+      signal: new AbortController().signal,
+      onSpeechStart() {},
+      onSpeechEnd() {},
+      onSegment() {},
+      onEnd() {},
+      ...(reopen ? { reopen } : {}),
+    });
+    await listen(listenHandlers());
+    await listen(listenHandlers(true));
+    expect(bridge.starts.map((start) => start.reopen)).toEqual([
+      undefined,
+      true,
+    ]);
+  });
+
+  it("ends the conversation when the bridge refuses the reopen after a pause or a call; never retries", async () => {
+    for (const [message, code] of [
+      ["Recording cancelled", undefined],
+      ["Voice was interrupted", "call-active"],
+    ] as const) {
+      const bridge = fakeBridge();
+      const start = bridge.port.startLiveCapture;
+      bridge.port.startLiveCapture = async (input) => {
+        if (!input.reopen) return start(input);
+        bridge.starts.push({ ...input });
+        throw Object.assign(Error(message), code ? { code } : {});
+      };
+      const h = assistantOver(bridge);
+      await h.session.start();
+      await h.say(bridge.captureId, "what is on today", "t1");
+      h.replies[0]?.("You have one meeting.");
+      await flush();
+      h.speeches[0]?.();
+      // The refused start discards its capture on the bridge before it rejects.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(bridge.starts).toHaveLength(2);
+      expect(h.session.getSnapshot()).toMatchObject({
+        phase: "error",
+        error: { message },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(bridge.starts).toHaveLength(2);
+    }
   });
 });
 

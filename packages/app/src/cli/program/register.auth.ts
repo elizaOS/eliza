@@ -22,7 +22,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { isLoopbackBindHost } from "@elizaos/core/protocol";
-import { readAliasedEnv, resolveApiBindHost } from "@elizaos/host/protocol";
+import { resolveApiBindHost } from "@elizaos/host/protocol";
 import type { Command } from "commander";
 import { runCommandWithRuntime } from "../cli-utils";
 import { theme } from "../terminal.js";
@@ -36,9 +36,9 @@ const RESET_PROOF_FILENAME = "RESET_PROOF.txt";
  * `resolveStateDir`.
  */
 function resolveElizaStateDir(): string {
-  const explicit = readAliasedEnv("ELIZA_STATE_DIR");
+  const explicit = process.env.ELIZA_STATE_DIR?.trim();
   if (explicit) return path.resolve(explicit);
-  const namespace = readAliasedEnv("ELIZA_NAMESPACE") || "eliza";
+  const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
   const home =
     process.env.HOME?.trim() ||
     process.env.USERPROFILE?.trim() ||

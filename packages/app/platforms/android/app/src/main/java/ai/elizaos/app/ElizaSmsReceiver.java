@@ -7,6 +7,7 @@ import android.content.Intent;
 import android.net.Uri;
 import android.provider.Telephony;
 import android.telephony.SmsMessage;
+import android.telephony.SubscriptionManager;
 import android.text.TextUtils;
 import android.util.Log;
 
@@ -35,13 +36,19 @@ public class ElizaSmsReceiver extends BroadcastReceiver {
             }
         }
 
+        // The SIM the text arrived on: a drafted reply is proposed from the same SIM.
+        int subscriptionId = intent.getIntExtra(
+                SubscriptionManager.EXTRA_SUBSCRIPTION_INDEX,
+                intent.getIntExtra("subscription", -1)
+        );
         Uri messageUri = persistIncomingSms(context, sender, body.toString(), timestamp);
         boolean gatewayStarted = ElizaSmsGatewayService.start(
                 context,
                 sender,
                 body.toString(),
                 timestamp > 0L ? timestamp : System.currentTimeMillis(),
-                messageUri != null ? messageUri.getLastPathSegment() : null
+                messageUri != null ? messageUri.getLastPathSegment() : null,
+                subscriptionId
         );
         if (gatewayStarted) {
             return;

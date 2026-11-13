@@ -11,26 +11,34 @@ import type {
   State,
 } from "@elizaos/core";
 import {
+  activeCommittedEffectReceipts,
   canActionRun,
   type DirectActionRoutingRule,
   evaluateConnectorAccountPolicies,
   getCandidateActionBackstopRules,
   getDirectActionRoutingRules,
   getUserMessageText,
+  normalizeContextId,
 } from "@elizaos/core";
 import { preferredOperationNames } from "../../runtime/action-retrieval.ts";
 import { SIMPLE_CONTEXT_ID } from "../../runtime/message-handler";
 import {
+  actionDiscoveryContexts,
   mergeAgentContexts,
   messageHandlerStageOneReplyContexts,
   retrieveContextualPlannerActions,
 } from "./action-surface.js";
 import {
   getActionInferenceMessageText,
+  getStructuredRecentMessages,
   isSubAgentCompletionArtifact,
   resolveContinuationInferenceMessageText,
 } from "./dialogue-context.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
+import {
+  historicalActionResults,
+  historicalReceiptGroups,
+} from "./navigation-history.ts";
 import {
   replyClaimsCompletedSideEffect,
   replyClaimsEmptyTrackedWorkState,
@@ -173,6 +181,74 @@ export async function resolveEligibleDirectActionRoutes(args: {
     }
   }
   return found;
+}
+
+/**
+ * Actions behind the newest committed effect in this room, read from the same
+ * authorized request outcomes Stage 1 receives as runtime:historical_effects.
+ * A referential follow-up ("move it to 4pm") names its target only through
+ * that effect, so retrieval over its own words finds no owner.
+ */
+function latestCommittedEffectActions(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State,
+): Action[] {
+  let latestAt = Number.NEGATIVE_INFINITY;
+  let actionNames = new Set<string>();
+  for (const request of getStructuredRecentMessages(state) ?? []) {
+    if (typeof request.createdAt !== "number" || request.createdAt < latestAt)
+      continue;
+    const { effects } = historicalReceiptGroups(
+      historicalActionResults(request, message, runtime.agentId),
+      runtime.actions ?? [],
+    );
+    let committed: ReadonlySet<string>;
+    try {
+      committed = new Set(
+        activeCommittedEffectReceipts(
+          effects.map(({ receipt }) => receipt),
+        ).map((receipt) => receipt.receiptId),
+      );
+    } catch {
+      // error-policy:J3 Conflicting stored receipt IDs cannot supply
+      // historical evidence; the reroute keeps its general fallback.
+      continue;
+    }
+    const names = effects.flatMap(({ actionName, receipt }) =>
+      actionName && committed.has(receipt.receiptId) ? [actionName] : [],
+    );
+    if (names.length === 0) continue;
+    if (request.createdAt > latestAt) {
+      latestAt = request.createdAt;
+      actionNames = new Set();
+    }
+    for (const name of names) actionNames.add(name);
+  }
+  return (runtime.actions ?? []).filter((action) =>
+    actionNames.has(action.name),
+  );
+}
+
+/**
+ * The discovery contexts an effect's action owns through its own domain or
+ * resource tags, else all of them. A calendar write also declares tasks and
+ * contacts; with LifeOps those pull every reminder, alarm and routine family
+ * into the first planner surface.
+ */
+function effectOwnerContexts(action: Action): AgentContext[] {
+  const contexts = actionDiscoveryContexts(action);
+  const owned = new Set(
+    (action.tags ?? []).flatMap((tag) =>
+      tag.startsWith("domain:") || tag.startsWith("resource:")
+        ? [normalizeContextId(tag.slice(tag.indexOf(":") + 1))]
+        : [],
+    ),
+  );
+  const primary = contexts.filter((context) =>
+    owned.has(normalizeContextId(context)),
+  );
+  return primary.length > 0 ? primary : contexts;
 }
 
 export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
@@ -522,6 +598,10 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
       // confirmation the user reads is grounded in a tool result. Recover
       // candidates from the original request through ordinary action retrieval.
       // A backstop protection list or fabricated reply does not select work.
+      // With no candidates, plan in the domains of the newest committed effect
+      // (the request's referent) rather than the broad general surface. Its
+      // action is not a candidate: hinting a create for "move it" narrows the
+      // planner to that create.
       name: "core.simple_completed_side_effect_claim",
       description:
         "Blocks simple-path replies that claim an already-completed scheduling/save side effect no tool performed; reroutes the turn to the planner.",
@@ -550,7 +630,13 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
           replyClaimsCompletedSideEffect(reply)
         );
       },
-      evaluate: ({ message, messageHandler, runtime, state }) => {
+      evaluate: ({
+        message,
+        messageHandler,
+        runtime,
+        state,
+        availableContexts,
+      }) => {
         const query =
           resolveContinuationInferenceMessageText(runtime, message, state) ??
           getActionInferenceMessageText(message);
@@ -573,9 +659,22 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
             ? retrieved
             : []),
         ]);
+        const effectContexts =
+          candidateActions.length > 0
+            ? []
+            : filterSelectedContextsForRole(
+                mergeAgentContexts(
+                  ...latestCommittedEffectActions(runtime, message, state).map(
+                    effectOwnerContexts,
+                  ),
+                ),
+                availableContexts,
+              );
+        const contexts =
+          effectContexts.length > 0 ? effectContexts : ["general"];
         return {
           requiresTool: true,
-          addContexts: ["general"],
+          addContexts: contexts,
           ...(candidateActions.length > 0
             ? { addCandidateActions: candidateActions }
             : {}),
@@ -583,7 +682,7 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
           // fabricated claim instead of synthesizing an ack in its place.
           clearReply: true,
           debug: [
-            `simple reply claimed a completed side effect with no tool run; rerouting to the planner (candidates: ${candidateActions.join(", ") || "none"})`,
+            `simple reply claimed a completed side effect with no tool run; rerouting to the planner (candidates: ${candidateActions.join(", ") || "none"}; contexts: ${contexts.join(", ")})`,
           ],
         };
       },

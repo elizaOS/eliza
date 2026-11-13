@@ -1,0 +1,19 @@
+{
+  "sources": ["packages/agent/src/services/escalation.ts"],
+  "bounds": {
+    "domain": "One agent with two escalation steps.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "services_escalation",
+      "main": "services_escalation",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

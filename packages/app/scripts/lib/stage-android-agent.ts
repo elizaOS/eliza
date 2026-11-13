@@ -20,13 +20,6 @@
  *   arm64-v8a/ld-musl-aarch64.so.1
  *   arm64-v8a/libstdc++.so.6.0.33
  *   arm64-v8a/libgcc_s.so.1
- *   riscv64/bun                     (cuttlefish riscv64; required unless
- *                                    ELIZA_BUN_RISCV64_OPTIONAL=1 since
- *                                    upstream Bun has no riscv64-linux-musl
- *                                    release)
- *   riscv64/ld-musl-riscv64.so.1
- *   riscv64/libstdc++.so.6.0.33
- *   riscv64/libgcc_s.so.1
  *
  * Downloads are cached under `~/.cache/eliza-android-agent/<bun-version>/`
  * and the staging step is idempotent — already-staged files with matching
@@ -73,7 +66,6 @@ const DOWNLOAD_TIMEOUT_MS = 60_000;
 // All Android builds use the repository stable pin unless explicitly overridden.
 const DEFAULT_BUN_CHANNEL = "stable";
 const ALPINE_BRANCH = "v3.21";
-const RISCV64_BUN_ARTIFACT_FILENAME = "bun-linux-riscv64-musl.zip";
 export const RUNTIME_PROVENANCE_FILENAME =
   "android-agent-runtime-provenance.json";
 
@@ -125,19 +117,10 @@ const ABI_TARGETS = [
     alpineArch: "aarch64",
     ldName: "ld-musl-aarch64.so.1",
   },
-  {
-    // Upstream Bun has no riscv64-linux-musl release as of this writing,
-    // so this ABI only succeeds when `ELIZA_BUN_RISCV64_FILE` or
-    // `ELIZA_BUN_RISCV64_URL` points at a self-built canary zip produced
-    // by the elizaOS/os Bun RISC-V toolchain. Objective AOSP
-    // builds fail closed by default; local native-library iteration can
-    // opt out with ELIZA_BUN_RISCV64_OPTIONAL=1.
-    androidAbi: "riscv64",
-    bunArch: "riscv64",
-    alpineArch: "riscv64",
-    ldName: "ld-musl-riscv64.so.1",
-  },
 ];
+
+// Retired ABIs: a reused checkout may still hold their staged assets; always prune.
+const RETIRED_ANDROID_ABIS = ["riscv64"];
 
 /** Select the product ABIs explicitly; unspecified builds retain all targets. */
 export function selectAndroidRuntimeTargets(value) {
@@ -154,6 +137,22 @@ export function selectAndroidRuntimeTargets(value) {
     );
   }
   return ABI_TARGETS.filter((target) => names.includes(target.androidAbi));
+}
+
+function pruneUnselectedRuntimeAbis({ assetsAgentDir, targets }) {
+  const selected = new Set(targets.map(({ androidAbi }) => androidAbi));
+  let removed = 0;
+  for (const androidAbi of [
+    ...ABI_TARGETS.map((target) => target.androidAbi),
+    ...RETIRED_ANDROID_ABIS,
+  ]) {
+    if (selected.has(androidAbi)) continue;
+    const directory = path.join(assetsAgentDir, androidAbi);
+    if (!fs.existsSync(directory)) continue;
+    removePathRecursiveSync(directory);
+    removed += 1;
+  }
+  return removed;
 }
 
 const NATIVE_LLAMA_ASSET_ENV_KEYS = [
@@ -254,7 +253,6 @@ process.exit(ok ? 0 : 1);
 function jniLoaderName(ldName) {
   if (ldName.includes("aarch64")) return "libeliza_ld_musl_aarch64.so";
   if (ldName.includes("x86_64")) return "libeliza_ld_musl_x86_64.so";
-  if (ldName.includes("riscv64")) return "libeliza_ld_musl_riscv64.so";
   return `libeliza_${ldName.replace(/[^a-zA-Z0-9]+/g, "_")}.so`;
 }
 
@@ -523,65 +521,11 @@ async function downloadFile(url, targetPath, options = {}) {
   }
 }
 
-function normalizeSha256(value, envName) {
-  const sha256 = value?.trim().toLowerCase();
-  if (!sha256) return null;
-  if (!/^[a-f0-9]{64}$/.test(sha256)) {
-    throw new Error(
-      `${envName} must be a lowercase or uppercase 64-character SHA-256 hex digest.`,
-    );
-  }
-  return sha256;
-}
-
 function firstEnvValue(names) {
   for (const name of names) {
     const value = process.env[name]?.trim();
     if (value) return { name, value };
   }
-  return null;
-}
-
-function riscv64BunSha256() {
-  const configured = firstEnvValue(["ELIZA_BUN_RISCV64_SHA256"]);
-  return normalizeSha256(
-    configured?.value,
-    configured?.name ?? "ELIZA_BUN_RISCV64_SHA256",
-  );
-}
-
-function defaultRiscv64BunArtifactPath() {
-  const osRepositoryRoot = path.resolve(
-    process.env.ELIZAOS_OS_REPO_ROOT?.trim() ||
-      path.join(ELIZA_REPO_ROOT, "..", "os"),
-  );
-  return path.join(
-    osRepositoryRoot,
-    "packages",
-    "os",
-    "toolchains",
-    "bun-riscv64",
-    "dist",
-    RISCV64_BUN_ARTIFACT_FILENAME,
-  );
-}
-
-function riscv64BunFilePath() {
-  const configured = firstEnvValue(["ELIZA_BUN_RISCV64_FILE"]);
-  if (configured) return path.resolve(configured.value);
-  const defaultPath = defaultRiscv64BunArtifactPath();
-  return fs.existsSync(defaultPath) ? defaultPath : null;
-}
-
-function riscv64BunUrl() {
-  return firstEnvValue(["ELIZA_BUN_RISCV64_URL"])?.value ?? null;
-}
-
-function riscv64BunArtifactSource() {
-  const filePath = riscv64BunFilePath();
-  if (filePath) return { kind: "file", ...provenancePath(filePath) };
-  const url = riscv64BunUrl();
-  if (url) return { kind: "url", url };
   return null;
 }
 
@@ -653,11 +597,6 @@ function normalizeSourceForProvenance(value) {
   return normalized;
 }
 
-function readJsonIfExists(filePath) {
-  if (!fs.existsSync(filePath)) return null;
-  return JSON.parse(fs.readFileSync(filePath, "utf8"));
-}
-
 function fileProvenanceEntry({ filePath, relativePath, source }) {
   const stat = fs.statSync(filePath);
   return {
@@ -715,95 +654,19 @@ async function ensureBunBinary({
   bunTarget,
   log,
 }) {
-  if (bunArch !== "riscv64") {
-    const artifact = resolvePinnedBunArtifact(bunChannel, bunArch, bunTarget);
-    const configured = firstEnvValue([
-      bunArch === "x64" ? "ELIZA_BUN_X64_FILE" : "ELIZA_BUN_AARCH64_FILE",
-    ]);
-    const sourceFile = configured ? path.resolve(configured.value) : null;
-    return stagePinnedBunArtifact({
-      cacheDir,
-      artifact,
-      sourceFile,
-      sourceProvenance: sourceFile ? provenancePath(sourceFile) : {},
-      download: downloadFile,
-      log,
-    });
-  }
-  // RISC-V continues to use its separate operator-supplied archive/hash contract.
-
-  const cacheKey = bunCacheKey(bunChannel);
-  const archCache = path.join(cacheDir, `bun-riscv64-${cacheKey}`);
-  const bunPath = path.join(archCache, "bun");
-  const sourceSha256Path = path.join(archCache, ".source.sha256");
-  const expectedSha256 = riscv64BunSha256();
-  if (!expectedSha256) {
-    throw new Error(
-      "Bun riscv64 artifact hash is required: set ELIZA_BUN_RISCV64_SHA256 to the SHA-256 of bun-linux-riscv64-musl.zip.",
-    );
-  }
-  if (
-    fs.existsSync(bunPath) &&
-    fs.statSync(bunPath).size > 1_000_000 &&
-    fs.existsSync(sourceSha256Path) &&
-    fs.readFileSync(sourceSha256Path, "utf8").trim() === expectedSha256 &&
-    (bunChannel !== "canary" ||
-      Date.now() - fs.statSync(bunPath).mtimeMs < 24 * 60 * 60 * 1000)
-  ) {
-    return {
-      bunPath,
-      source: {
-        kind: "cache",
-        cache_key: path.basename(archCache),
-        artifact_sha256: expectedSha256,
-      },
-    };
-  }
-  const sourceFile = riscv64BunFilePath();
-  const url = riscv64BunUrl();
-  if (!sourceFile && !url) {
-    throw new Error(
-      "Bun riscv64 artifact not available: set ELIZA_BUN_RISCV64_FILE or ELIZA_BUN_RISCV64_URL to the OS cross-build artifact, or ELIZA_BUN_RISCV64_OPTIONAL=1 for local non-objective builds.",
-    );
-  }
-  fs.mkdirSync(archCache, { recursive: true });
-  const zipPath = path.join(archCache, "bun.zip");
-  if (sourceFile) {
-    log(
-      `Using local ${bunChannelLabel(bunChannel)} (riscv64-musl) artifact at ${sourceFile}`,
-    );
-    fs.copyFileSync(sourceFile, zipPath);
-  } else {
-    await downloadFile(url, zipPath, { log });
-  }
-  const actualSha256 = sha256File(zipPath);
-  if (actualSha256 !== expectedSha256) {
-    fs.rmSync(zipPath, { force: true });
-    throw new Error(
-      `bun-linux-riscv64-musl.zip SHA-256 mismatch: expected ${expectedSha256}, got ${actualSha256}`,
-    );
-  }
-  await run("unzip", ["-q", "-o", zipPath, "-d", archCache]);
-  const extractedDir = path.join(archCache, "bun-linux-riscv64-musl");
-  const extractedBun = path.join(extractedDir, "bun");
-  if (!fs.existsSync(extractedBun))
-    throw new Error(`bun zip did not contain bun at ${extractedBun}`);
-  if (fs.existsSync(bunPath)) fs.unlinkSync(bunPath);
-  fs.renameSync(extractedBun, bunPath);
-  removePathRecursiveSync(extractedDir);
-  fs.rmSync(zipPath, { force: true });
-  fs.chmodSync(bunPath, 0o755);
-  fs.writeFileSync(sourceSha256Path, `${expectedSha256}\n`, "utf8");
-  return {
-    bunPath,
-    source: {
-      kind: sourceFile ? "file" : "url",
-      ...(sourceFile ? provenancePath(sourceFile) : {}),
-      url: sourceFile ? null : url,
-      artifact_filename: RISCV64_BUN_ARTIFACT_FILENAME,
-      artifact_sha256: expectedSha256,
-    },
-  };
+  const artifact = resolvePinnedBunArtifact(bunChannel, bunArch, bunTarget);
+  const configured = firstEnvValue([
+    bunArch === "x64" ? "ELIZA_BUN_X64_FILE" : "ELIZA_BUN_AARCH64_FILE",
+  ]);
+  const sourceFile = configured ? path.resolve(configured.value) : null;
+  return stagePinnedBunArtifact({
+    cacheDir,
+    artifact,
+    sourceFile,
+    sourceProvenance: sourceFile ? provenancePath(sourceFile) : {},
+    download: downloadFile,
+    log,
+  });
 }
 
 /**
@@ -1238,7 +1101,7 @@ export function stageSeccompShimForAbi({
       `[stage-android-agent] Missing compiled SIGSYS shim for ${androidAbi}, or cache source/output identity is stale. ` +
         `Stock Android kills the raw Alpine loader with SIGSYS during Bun's ` +
         `event loop startup; refusing to build an APK that cannot boot. Run ` +
-        `\`node packages/app/scripts/aosp/compile-shim.ts --abi ${androidAbi}\` ` +
+        `\`bun packages/app/scripts/aosp/compile-shim.ts --abi ${androidAbi}\` ` +
         `or restore ${path.relative(process.cwd(), abiCacheDir)} before building.`,
     );
   }
@@ -1325,6 +1188,7 @@ export function stageAndroidPgliteAssets({
     "initdb.wasm",
     "pglite.data",
     "pglite-initdb.bin",
+    "pglite-migrated.bin",
     "vector.tar.gz",
     "fuzzystrmatch.tar.gz",
     "pg_trgm.tar.gz",
@@ -1413,6 +1277,8 @@ export async function stageAndroidEmbeddingArtifact({
  *   bunChannel  stable | canary. ELIZA_BUN_CHANNEL overrides this option.
  *   bunTarget   linux-musl (legacy) | android. Explicit target; no ABI fallback.
  *               ELIZA_ANDROID_BUN_TARGET overrides this option.
+ *   embeddingModel  Defaults to true. false stages no BGE embedding model, for a
+ *               host whose agent never loads it; a model an earlier run staged is removed.
  *   log         Defaults to console.log.
  */
 export async function stageAndroidAgentRuntime({
@@ -1421,11 +1287,15 @@ export async function stageAndroidAgentRuntime({
   cacheDir,
   bunChannel: preferredBunChannel,
   bunTarget: preferredBunTarget,
-  objective = false,
+  embeddingModel = true,
   log = console.log,
 } = {}) {
   if (!androidDir)
     throw new Error("stageAndroidAgentRuntime: androidDir is required");
+  if (typeof embeddingModel !== "boolean")
+    throw new Error(
+      "stageAndroidAgentRuntime: embeddingModel must be a boolean",
+    );
   if (!spikeDir)
     throw new Error("stageAndroidAgentRuntime: spikeDir is required");
 
@@ -1462,60 +1332,32 @@ export async function stageAndroidAgentRuntime({
     "agent",
   );
   fs.mkdirSync(assetsAgentDir, { recursive: true });
-  const embeddingTarget = await stageAndroidEmbeddingArtifact({
-    assetsAgentDir,
-  });
+  const stagedFiles = [];
+  if (embeddingModel) {
+    const embeddingTarget = await stageAndroidEmbeddingArtifact({
+      assetsAgentDir,
+    });
+    stagedFiles.push(
+      fileProvenanceEntry({
+        filePath: embeddingTarget,
+        relativePath: path.relative(
+          path.join(androidDir, "app", "src", "main"),
+          embeddingTarget,
+        ),
+        source: { kind: "pinned-embedding-model", ...FUSED_EMBEDDING_ARTIFACT },
+      }),
+    );
+  } else
+    fs.rmSync(
+      path.join(assetsAgentDir, "models", FUSED_EMBEDDING_ARTIFACT.filename),
+      { force: true },
+    );
   const jniLibsDir = path.join(androidDir, "app", "src", "main", "jniLibs");
   fs.mkdirSync(jniLibsDir, { recursive: true });
 
   let stagedCount = 0;
-  const stagedFiles = [
-    fileProvenanceEntry({
-      filePath: embeddingTarget,
-      relativePath: path.relative(
-        path.join(androidDir, "app", "src", "main"),
-        embeddingTarget,
-      ),
-      source: { kind: "pinned-embedding-model", ...FUSED_EMBEDDING_ARTIFACT },
-    }),
-  ];
-  const riscv64Artifact = {
-    required:
-      objective && targets.some((target) => target.bunArch === "riscv64"),
-    filename: RISCV64_BUN_ARTIFACT_FILENAME,
-    sha256: riscv64BunSha256(),
-    source: riscv64BunArtifactSource(),
-  };
-
   for (const target of targets) {
     const { androidAbi, bunArch, alpineArch, ldName } = target;
-    // Objective builds fail closed on riscv64. Upstream Bun has no
-    // riscv64-linux-musl release, so provide ELIZA_BUN_RISCV64_FILE or
-    // ELIZA_BUN_RISCV64_URL from the elizaOS/os Bun RISC-V toolchain.
-    // Local native-library iteration may opt out with
-    // ELIZA_BUN_RISCV64_OPTIONAL=1, but that build is not valid AOSP/chip
-    // objective evidence.
-    if (bunArch === "riscv64") {
-      const riscvFile = riscv64BunFilePath();
-      const riscvUrl = riscv64BunUrl();
-      // riscv64 is fail-closed ONLY for objective AOSP/chip builds (they ship
-      // riscv64 and must prove it). A stock arm64 phone build skips the slice
-      // when no artifact is configured instead of aborting — upstream Bun has
-      // no riscv64-linux-musl release, so a plain `build:android` would
-      // otherwise demand a binary it never packages. ELIZA_BUN_RISCV64_OPTIONAL=1
-      // still force-skips even for objective builds (native-lib iteration). A
-      // genuine riscv64 build supplies ELIZA_BUN_RISCV64_FILE/_URL, so the slice
-      // stages either way — the skip only fires when there is no artifact at all.
-      const forceSkip = process.env.ELIZA_BUN_RISCV64_OPTIONAL === "1";
-      if (!riscvFile && !riscvUrl && (!objective || forceSkip)) {
-        tlog(
-          `Skipping ABI ${androidAbi}: no ELIZA_BUN_RISCV64_FILE or URL is set ` +
-            `(upstream Bun has no riscv64-linux-musl release). Build with ` +
-            `elizaOS/os packages/os/toolchains/bun-riscv64/build.sh and re-run for AOSP/chip evidence.`,
-        );
-        continue;
-      }
-    }
     const abiAssetsDir = path.join(assetsAgentDir, androidAbi);
     const abiJniDir = path.join(jniLibsDir, androidAbi);
     fs.mkdirSync(abiAssetsDir, { recursive: true });
@@ -1821,19 +1663,13 @@ export async function stageAndroidAgentRuntime({
     }),
   );
 
-  const bunRiscv64VersionPath = path.resolve(
-    process.env.ELIZAOS_OS_REPO_ROOT?.trim() ||
-      path.join(ELIZA_REPO_ROOT, "..", "os"),
-    "packages",
-    "os",
-    "toolchains",
-    "bun-riscv64",
-    "bun-version.json",
-  );
   const runtimeProvenanceTarget = path.join(
     assetsAgentDir,
     RUNTIME_PROVENANCE_FILENAME,
   );
+  // JNI abiFilters do not filter assets. Prune only our excluded asset trees
+  // after the selected runtimes and shared payload have staged successfully.
+  stagedCount += pruneUnselectedRuntimeAbis({ assetsAgentDir, targets });
   const runtimeProvenance = {
     schema: "eliza.android_agent_runtime_provenance.v1",
     generated_by: "packages/app/scripts/lib/stage-android-agent.ts",
@@ -1843,19 +1679,15 @@ export async function stageAndroidAgentRuntime({
       target: bunTarget,
       version: resolvePinnedBunArtifact(
         bunChannel,
-        targets.find((target) => target.bunArch !== "riscv64")?.bunArch ??
-          "x64",
+        targets[0]?.bunArch ?? "x64",
         bunTarget,
       ).version,
       revision: resolvePinnedBunArtifact(
         bunChannel,
-        targets.find((target) => target.bunArch !== "riscv64")?.bunArch ??
-          "x64",
+        targets[0]?.bunArch ?? "x64",
         bunTarget,
       ).revision,
-      architectures: targets
-        .filter((target) => target.bunArch !== "riscv64")
-        .map((target) => target.androidAbi),
+      architectures: targets.map((target) => target.androidAbi),
       channel: bunChannel,
       artifact_lock: "packages/app/scripts/lib/android-bun-artifacts.lock.json",
     },
@@ -1866,8 +1698,6 @@ export async function stageAndroidAgentRuntime({
             branch: ALPINE_BRANCH,
           },
         }),
-    riscv64_bun_artifact: riscv64Artifact,
-    riscv64_bun_build_contract: readJsonIfExists(bunRiscv64VersionPath),
     files: deduplicateProvenanceFiles(stagedFiles),
   };
   if (
@@ -1892,6 +1722,7 @@ export async function stageAndroidAgentRuntime({
 }
 
 export const __testables = {
+  pruneUnselectedRuntimeAbis,
   ensureAlpineApkExtracted,
   stageNativeLlamaAssetsForAbi,
   deduplicateProvenanceFiles,
@@ -1902,13 +1733,8 @@ export const __testables = {
   LAUNCH_CHILD_SCRIPT,
   LAUNCH_SCRIPT,
   LLAMA_KERNEL_DIAGNOSTIC_SCRIPT,
-  RISCV64_BUN_ARTIFACT_FILENAME,
   RUNTIME_PROVENANCE_FILENAME,
   downloadRetryDelayMs,
-  defaultRiscv64BunArtifactPath,
-  riscv64BunFilePath,
-  riscv64BunArtifactSource,
-  riscv64BunSha256,
   resolveZigToolchain,
   provenancePath,
   downloadFile,

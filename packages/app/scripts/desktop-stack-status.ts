@@ -8,8 +8,8 @@
  * For Cursor agents and humans verifying `bun run dev:desktop` / `dev:desktop:watch`.
  *
  * Usage:
- *   node eliza/packages/app/scripts/desktop-stack-status.ts
- *   node eliza/packages/app/scripts/desktop-stack-status.ts --json
+ *   bun eliza/packages/app/scripts/desktop-stack-status.ts
+ *   bun eliza/packages/app/scripts/desktop-stack-status.ts --json
  */
 
 import { gatherDesktopStackStatus } from "./lib/desktop-stack-status.ts";

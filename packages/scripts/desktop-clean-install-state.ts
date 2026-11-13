@@ -134,7 +134,7 @@ export function parseCleanArgs(argv) {
 }
 
 function printUsage() {
-  console.log(`Usage: node packages/scripts/desktop-clean-install-state.ts [options]
+  console.log(`Usage: bun packages/scripts/desktop-clean-install-state.ts [options]
 
 Wipes macOS Eliza desktop install state: app data, WebKit storage, caches,
 preferences, the agent state dir, AND the Keychain records (the part a

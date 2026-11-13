@@ -12,7 +12,10 @@ if (product.target != 'pixel10a' || product.releaseQualified != false || !(host 
     !config.assistActivity.startsWith(host + '.') || !(config.appName ==~ /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,79}$/) ||
     !(config.storageName ==~ /^[a-z][a-z0-9-]{0,63}$/) || !(config.wakeNames instanceof List) ||
     config.wakeNames.isEmpty() || config.wakeNames.size() > 8 || config.wakeNames.any { !(it instanceof String) || !(it ==~ /^[a-z][a-z0-9]{0,31}$/) } ||
-    config.wakeNames.toSet().size() != config.wakeNames.size()) throw new GradleException('[sense] invalid product identity or wake names')
+    config.wakeNames.toSet().size() != config.wakeNames.size() ||
+    (config.wakeLabel != null && !(config.wakeLabel ==~ /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,79}$/))) throw new GradleException('[sense] invalid product identity or wake names')
+// Wake names stay lowercase for recognition; the label is only what the user reads.
+def wakeLabel = config.wakeLabel ?: config.wakeNames[0].substring(0, 1).toUpperCase() + config.wakeNames[0].substring(1)
 if (!project.hasProperty('elizaSenseSpeechProject')) throw new GradleException('[sense] elizaSenseSpeechProject is required')
 def literal = { value -> groovy.json.JsonOutput.toJson(value) }
 def envValue = { String name -> def value = System.getenv(name); value == null || value.trim().isEmpty() ? null : value.trim() }
@@ -24,7 +27,6 @@ android {
  namespace 'ai.eliza.sense'
  compileSdk rootProject.ext.compileSdkVersion
  ndkVersion '28.2.13676358'
- androidResources { noCompress += ['gguf', 'lex'] }
  buildFeatures { buildConfig true }
  defaultConfig {
   applicationId host + '.sense'
@@ -36,7 +38,7 @@ android {
   buildConfigField 'String', 'SENSE_HOST_PACKAGE', literal(host)
   buildConfigField 'String', 'SENSE_ASSIST_ACTIVITY', literal(config.assistActivity)
   buildConfigField 'String', 'SENSE_APP_NAME', literal(config.appName)
-  buildConfigField 'String', 'SENSE_WAKE_LABEL', literal(config.wakeNames[0])
+  buildConfigField 'String', 'SENSE_WAKE_LABEL', literal(wakeLabel)
   buildConfigField 'String', 'SENSE_WAKE_NAMES', literal(config.wakeNames.join(','))
   buildConfigField 'String', 'SENSE_COMPONENT_PACKAGE', literal(config.componentPackage)
   buildConfigField 'String', 'SENSE_STORAGE_NAME', literal(config.storageName)

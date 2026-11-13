@@ -198,15 +198,11 @@ it("names required native scope in the system rule and keeps its meaning on ever
   for (const tool of tools) {
     const scope = tool.parameters?.properties?.[TURN_SCOPE_ARG];
     expect(tool.parameters?.required).toContain(TURN_SCOPE_ARG);
-    expect(scope?.enum).toEqual(["final", "more_work_pending"]);
-    expect(scope?.description).toContain("Required on every native call");
-    expect(scope?.description).toContain(
-      '"final": this batch covers the remaining operations',
-    );
-    expect(scope?.description).toContain(
-      '"more_work_pending": results must ground a later operation',
-    );
-    expect(scope?.description).not.toContain("on tool ");
-    expect(scope?.description).not.toContain(plannerBatchScopeDescription);
+    // The system prompt carries the protocol once; each tool keeps only the
+    // required enum.
+    expect(scope).toEqual({
+      type: "string",
+      enum: ["final", "more_work_pending"],
+    });
   }
 });

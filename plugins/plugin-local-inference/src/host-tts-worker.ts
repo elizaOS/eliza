@@ -38,7 +38,7 @@ import { loadElizaInferenceFfi } from "./services/voice/ffi-bindings";
 export const PARADEE_ASSETS: readonly PinnedSpeechAsset[] = [
 	{
 		path: "paradee-8m-v1_2.gguf",
-		sha256: "a43118932f7ec01bb3e9f1b92a56b24dd2622011c8fd5c77dca1e353b56e6df6",
+		sha256: "4b2819180a9e3b096fb71a93d6a719794246ee230f7faa857edcc0bee2a1529e",
 		bytes: 31_276_064,
 	},
 	{

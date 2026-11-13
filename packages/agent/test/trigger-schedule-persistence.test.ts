@@ -168,6 +168,7 @@ it.each([
             ? "The corrected trigger has a durable receipt."
             : "No trigger was created.",
           messageToUser: expectedMessage,
+          raw: { messageToUser: expectedMessage },
           requestFullyCovered: corrected,
           ...(corrected
             ? {
@@ -332,6 +333,43 @@ it.each([
   },
 );
 
+it("fires an omitted-instructions reminder with the request, not the help envelope", async () => {
+  // content.text as chat augmentation rewrites it for a short request.
+  const request = `stretch reminder ${randomUUID()}`;
+  const text = [
+    "Answer the user request using the contextual documents below as the source of truth when they contain the answer.",
+    "If the answer appears verbatim in the contextual documents, repeat it exactly.",
+    "Do not ask follow-up questions or invoke tools/actions when the contextual documents already answer the request.",
+    "",
+    "<contextual_documents>",
+    '<source title="source-1" similarity="1.000">',
+    "Q: What can Eliza actually do?\nA: Beyond chatting, Eliza can manage tasks and reminders.",
+    "</source>",
+    "</contextual_documents>",
+    "",
+    "<user_request>",
+    request,
+    "</user_request>",
+  ].join("\n");
+  const result = await triggerAction.handler(
+    fixture.runtime,
+    {
+      entityId: fixture.runtime.agentId,
+      agentId: fixture.runtime.agentId,
+      roomId: randomUUID() as UUID,
+      content: { text },
+    } as Memory,
+    undefined,
+    { parameters: { action: "create", delayMinutes: 5 } },
+  );
+  expect(result).toMatchObject({ success: true });
+  const tasks = await fixture.runtime.getTasks({ tags: ["trigger"] });
+  const task = tasks.find((task) =>
+    task.metadata?.trigger?.instructions?.includes(request),
+  );
+  expect(task && readTriggerConfig(task)?.instructions).toBe(request);
+});
+
 it.each<{ label: string; schedule: JsonObject }>([
   {
     label: "triggerType=interval alone when intervalMs is absent",
@@ -454,6 +492,76 @@ it("updates a trigger by the triggerId create returned and refuses fields it can
   }
 });
 
+it("edits a paused trigger through the action and keeps it paused", async () => {
+  const message = {
+    entityId: fixture.runtime.agentId,
+    agentId: fixture.runtime.agentId,
+    roomId: randomUUID() as UUID,
+    content: { text: "Remind me every morning to stretch." },
+  } as Memory;
+  const run = (parameters: JsonObject) =>
+    triggerAction.handler(fixture.runtime, message, undefined, { parameters });
+  const created = await run({
+    action: "create",
+    displayName: "Stretch",
+    instructions: "Remind the user to stretch.",
+    cronExpression: "0 9 * * *",
+  });
+  if (!created?.success) throw new Error(created?.text ?? "create failed");
+  const { taskId, triggerId } = created.data as {
+    taskId: UUID;
+    triggerId: UUID;
+  };
+  try {
+    const paused = await run({
+      action: "toggle",
+      taskId: triggerId,
+      enabled: false,
+    });
+    expect(paused, paused?.text).toMatchObject({ success: true });
+
+    // Like the PUT route's "Renamed while paused": the edit is saved and the
+    // trigger stays paused on the disabled interval.
+    const edited = await run({
+      action: "update",
+      taskId: triggerId,
+      displayName: "Stretch and breathe",
+      cronExpression: "0 17 * * *",
+    });
+    expect(edited, edited?.text).toMatchObject({ success: true });
+    expect(edited?.text).toContain("(paused)");
+    const saved = await fixture.runtime.getTask(taskId);
+    expect(saved && readTriggerConfig(saved)).toMatchObject({
+      displayName: "Stretch and breathe",
+      cronExpression: "0 17 * * *",
+      enabled: false,
+    });
+    expect(
+      (saved?.metadata as { updateInterval?: number } | undefined)
+        ?.updateInterval,
+    ).toBe(DISABLED_TRIGGER_INTERVAL_MS);
+
+    // Resuming schedules the edited time.
+    const resumed = await run({
+      action: "toggle",
+      taskId: triggerId,
+      enabled: true,
+    });
+    expect(resumed, resumed?.text).toMatchObject({ success: true });
+    const live = await fixture.runtime.getTask(taskId);
+    expect(live && readTriggerConfig(live)).toMatchObject({
+      cronExpression: "0 17 * * *",
+      enabled: true,
+    });
+    expect(
+      (live?.metadata as { updateInterval?: number } | undefined)
+        ?.updateInterval,
+    ).not.toBe(DISABLED_TRIGGER_INTERVAL_MS);
+  } finally {
+    await fixture.runtime.deleteTask(taskId);
+  }
+});
+
 it("reads a once time with no offset in the user's zone on create and update", async () => {
   // Asia/Kolkata is UTC+05:30 all year, so the expected instant does not
   // depend on the zone of the host that runs this test.
@@ -505,6 +613,81 @@ it("reads a once time with no offset in the user's zone on create and update", a
       scheduledAtIso: "2099-01-17T09:00:00-08:00",
       nextRunAtMs: Date.parse("2099-01-17T17:00:00.000Z"),
     });
+  } finally {
+    await fixture.runtime.deleteTask(taskId);
+  }
+});
+// Live tj-9f09a0f51d65aa, "actually make it 30 minutes": the planner sent
+// TRIGGER_UPDATE delayMinutes:30 and got INVALID_UPDATE, then a second round
+// re-sent the same move as scheduledAtIso.
+it("moves a one-off trigger by a relative delay on update, as create reads it", async () => {
+  const message = {
+    entityId: fixture.runtime.agentId,
+    agentId: fixture.runtime.agentId,
+    roomId: randomUUID() as UUID,
+    content: { text: "Set a reminder for 20 minutes from now to stretch." },
+  } as Memory;
+  const instructions = `Remind the user to stretch ${randomUUID()}`;
+  const created = await triggerAction.handler(
+    fixture.runtime,
+    message,
+    undefined,
+    { parameters: { action: "create", instructions, delayMinutes: 20 } },
+  );
+  if (!created?.success) throw new Error(created?.text ?? "create failed");
+  const { taskId } = created.data as { taskId: UUID };
+  try {
+    const update = (parameters: Record<string, unknown>) =>
+      triggerAction.handler(fixture.runtime, message, undefined, {
+        parameters: { action: "update", taskId, ...parameters },
+      });
+    for (const delayMinutes of [0, -5, 366 * 24 * 60 + 1]) {
+      const refused = await update({ delayMinutes });
+      expect(refused, String(delayMinutes)).toMatchObject({
+        success: false,
+        error: "INVALID_UPDATE",
+      });
+      expect(refused?.effectReceipts).toBeUndefined();
+    }
+    const before = Date.now();
+    const moved = await update({ delayMinutes: 30 });
+    const after = Date.now();
+    expect(moved, moved?.text).toMatchObject({
+      success: true,
+      effectReceipts: [{ operation: "trigger.update", outcome: "applied" }],
+    });
+    const stored = await fixture.runtime.getTask(taskId);
+    const config = stored && readTriggerConfig(stored);
+    const firesAt = Date.parse(config?.scheduledAtIso ?? "");
+    expect(firesAt).toBeGreaterThanOrEqual(before + 30 * 60_000);
+    expect(firesAt).toBeLessThanOrEqual(after + 30 * 60_000);
+    expect(config).toMatchObject({
+      triggerType: "once",
+      delayMs: 30 * 60_000,
+      nextRunAtMs: firesAt,
+    });
+    // The moved trigger carries create's relative identity: an immediate
+    // "in 30 minutes" create for it replays instead of adding a duplicate.
+    const retried = await triggerAction.handler(
+      fixture.runtime,
+      message,
+      undefined,
+      { parameters: { action: "create", instructions, delayMinutes: 30 } },
+    );
+    expect(retried?.effectReceipts?.[0]).toMatchObject({ outcome: "noop" });
+    // An explicit scheduledAtIso still wins over a delay sent beside it.
+    const pinned = await update({
+      scheduledAtIso: "2099-01-01T17:00:00Z",
+      delayMinutes: 45,
+    });
+    expect(pinned, pinned?.text).toMatchObject({ success: true });
+    const afterPinned = await fixture.runtime.getTask(taskId);
+    expect(afterPinned && readTriggerConfig(afterPinned)).toMatchObject({
+      scheduledAtIso: "2099-01-01T17:00:00Z",
+    });
+    expect(
+      afterPinned && readTriggerConfig(afterPinned)?.delayMs,
+    ).toBeUndefined();
   } finally {
     await fixture.runtime.deleteTask(taskId);
   }
@@ -672,6 +855,7 @@ it("persists the timezone through pause and re-enable and schedules in that zone
         method: "PUT",
         pathname: `/api/triggers/${triggerId}`,
         runtime: fixture.runtime,
+        assertCurrentRuntime: () => {},
         ownerEntityId: resolveOwnerEntityIdOrDefault(fixture.runtime),
         localOwnerEntityId: resolveOwnerEntityIdOrDefault(fixture.runtime),
         req: {} as http.IncomingMessage,
@@ -755,8 +939,12 @@ async function requestTrigger(
         req,
         res,
         runtime: fixture.runtime,
-        resolvePromptDeliveryRoom: (runtime) =>
-          resolvePromptDeliveryRoom(state, runtime),
+        resolvePromptDeliveryRoom: (runtime, conversationId) =>
+          resolvePromptDeliveryRoom(state, runtime, conversationId),
+        assertCurrentRuntime: (runtime) => {
+          if (runtime !== state.runtime)
+            throw new Error("Agent runtime changed");
+        },
         ownerEntityId: resolveOwnerEntityIdOrDefault(fixture.runtime),
         localOwnerEntityId: resolveOwnerEntityIdOrDefault(fixture.runtime),
         readJsonBody: async () => {
@@ -1149,6 +1337,8 @@ it.each([
   "delivery-failure",
   "missing-at-create",
   "missing-at-dispatch",
+  "two-windows",
+  "missing-selected",
 ])(
   "delivers an API Once reply through the persisted owner room (%s)",
   async (scenario) => {
@@ -1176,6 +1366,16 @@ it.each([
     if (scenario === "missing-at-create" && original) {
       await runtime.deleteRoom(original.roomId);
     }
+    if (scenario === "two-windows" || scenario === "missing-selected") {
+      const otherState = {
+        ...state,
+        conversations: new Map(),
+        activeConversationId: null,
+      } as ServerState;
+      const other = await ensureOwnerConversation(otherState, runtime);
+      state.conversations.set(other.id, other);
+      state.activeConversationId = other.id;
+    }
     registerClientChatSendHandler(runtime, state);
     const instructions = `Offline Once delivery ${randomUUID()}`;
     const response = await requestTrigger(
@@ -1188,9 +1388,23 @@ it.each([
         triggerType: "once",
         scheduledAtIso: new Date(Date.now() + 60_000).toISOString(),
         roomId: randomUUID(),
+        ...(scenario === "two-windows"
+          ? { deliveryConversationId: original!.id }
+          : scenario === "missing-selected"
+            ? { deliveryConversationId: randomUUID() }
+            : {}),
       },
       state,
     );
+    if (scenario === "missing-selected") {
+      expect(response.status).toBe(409);
+      expect(
+        (await listTriggerTasks(runtime)).some(
+          (task) => readTriggerConfig(task)?.instructions === instructions,
+        ),
+      ).toBe(false);
+      return;
+    }
     if (scenario === "missing-at-create") {
       expect(response.status).toBe(503);
       expect(
@@ -1202,8 +1416,13 @@ it.each([
       return;
     }
     expect(response.status).toBe(201);
-    expect(state.conversations.size).toBe(1);
-    const conversation = await ensureOwnerConversation(state, runtime);
+    if (scenario === "two-windows")
+      expect(response.payload.deliveryConversationId).toBe(original!.id);
+    expect(state.conversations.size).toBe(scenario === "two-windows" ? 2 : 1);
+    const conversation =
+      scenario === "two-windows"
+        ? original!
+        : await ensureOwnerConversation(state, runtime);
     if (original) expect(conversation.id).toBe(original.id);
     const task = (await listTriggerTasks(runtime)).find(
       (task) => readTriggerConfig(task)?.instructions === instructions,
@@ -1417,3 +1636,192 @@ it("rejects a prompt delivery binding when the host runtime changes during conve
     await replacement.cleanup();
   }
 });
+
+it.each(["POST", "PUT"])(
+  "refuses %s persistence when the runtime changes during the delivery-room read",
+  async (method) => {
+    const runtime = fixture.runtime;
+    const state = {
+      runtime,
+      config: {},
+      agentName: "TriggerScheduleBoundary",
+      adminEntityId: null,
+      chatUserId: null,
+      logBuffer: [],
+      conversations: new Map(),
+      activeChatTurnCount: 0,
+      conversationRestorePromise: null,
+      deletedConversationIds: new Set(),
+    } as unknown as ServerState;
+    const selected = await ensureOwnerConversation(state, runtime);
+    const body = {
+      kind: "prompt",
+      displayName: `Runtime fence ${randomUUID()}`,
+      instructions: "Synthetic prompt: do not execute",
+      triggerType: "interval",
+      intervalMs: 3_600_000,
+      enabled: false,
+      deliveryConversationId: selected.id,
+    };
+    const created =
+      method === "PUT"
+        ? await requestTrigger("POST", "/api/triggers", body, state)
+        : null;
+    if (created) expect(created.status).toBe(201);
+    const taskId = created?.payload.trigger.taskId as UUID | undefined;
+    const before = await runtime.getTasks({ tags: ["trigger"] });
+    let readStarted!: () => void, releaseRead!: () => void;
+    const started = new Promise<void>((resolve) => {
+      readStarted = resolve;
+    });
+    const held = new Promise<void>((resolve) => {
+      releaseRead = resolve;
+    });
+    const original = runtime.getRoom.bind(runtime);
+    const roomRead = vi
+      .spyOn(runtime, "getRoom")
+      .mockImplementationOnce(async (id) => {
+        expect(id).toBe(selected.roomId);
+        const room = await original(id);
+        readStarted();
+        await held;
+        return room;
+      });
+    try {
+      const pending = requestTrigger(
+        method,
+        created
+          ? `/api/triggers/${created.payload.trigger.id}`
+          : "/api/triggers",
+        { ...body, displayName: `${body.displayName} changed` },
+        state,
+      );
+      await started;
+      state.runtime = null;
+      releaseRead();
+      const response = await pending;
+      expect(response.status).toBe(409);
+      expect(response.payload.error).toBe(
+        "Agent changed before saving automation",
+      );
+      expect(await runtime.getTasks({ tags: ["trigger"] })).toEqual(before);
+    } finally {
+      releaseRead();
+      roomRead.mockRestore();
+      state.runtime = runtime;
+      if (taskId) await runtime.deleteTask(taskId);
+    }
+  },
+);
+
+it.each([
+  { status: "failed", delivered: false },
+  { status: "cancelled", delivered: false },
+  { status: "denied", delivered: false },
+  { status: "failed", delivered: true },
+  { status: "completed", delivered: false },
+] as const)(
+  "records the resolved prompt turn outcome $status with prior delivery $delivered",
+  async ({ status, delivered }) => {
+    const runtime = fixture.runtime;
+    const broadcasts: unknown[] = [];
+    const state = {
+      runtime,
+      config: {},
+      agentName: "TriggerScheduleBoundary",
+      adminEntityId: null,
+      chatUserId: null,
+      logBuffer: [],
+      conversations: new Map(),
+      activeChatTurnCount: 0,
+      conversationRestorePromise: null,
+      deletedConversationIds: new Set(),
+      broadcastWs: (event: unknown) => broadcasts.push(event),
+    } as unknown as ServerState;
+    const conversation = await ensureOwnerConversation(state, runtime);
+    registerClientChatSendHandler(runtime, state);
+    const created = await requestTrigger(
+      "POST",
+      "/api/triggers",
+      {
+        kind: "prompt",
+        displayName: `Turn outcome ${randomUUID()}`,
+        instructions: "Synthetic result: do not call a model",
+        triggerType: "interval",
+        intervalMs: 3_600_000,
+        enabled: false,
+        deliveryConversationId: conversation.id,
+      },
+      state,
+    );
+    expect(created.status).toBe(201);
+    const task = await runtime.getTask(created.payload.trigger.taskId);
+    if (!task?.id) throw new Error("Created prompt task missing");
+    const priorMessageService = runtime.messageService;
+    let turns = 0;
+    const explanation =
+      "Synthetic terminal reason; prior effects must not be repeated";
+    runtime.messageService = {
+      handleMessage: async (_runtime, _message, callback) => {
+        turns++;
+        const responseMessages = delivered
+          ? await callback?.({ text: explanation })
+          : [];
+        return {
+          outcome:
+            status === "failed"
+              ? {
+                  status,
+                  error: {
+                    kind: "model_error",
+                    code: "SYNTHETIC_FAILURE",
+                    transient: false,
+                    message: explanation,
+                  },
+                  effects: [],
+                }
+              : status === "completed"
+                ? { status, effects: [] }
+                : { status, reason: explanation, effects: [] },
+          didRespond: delivered,
+          responseMessages: responseMessages ?? [],
+        };
+      },
+    } satisfies Pick<
+      IMessageService,
+      "handleMessage"
+    > as unknown as IMessageService;
+    try {
+      const result = await executeTriggerTask(runtime, task, {
+        source: "manual",
+        force: true,
+      });
+      const expected = status === "completed" ? "success" : "error";
+      expect(result.status).toBe(expected);
+      expect(result.runRecord?.status).toBe(expected);
+      expect(turns).toBe(1);
+      if (status !== "completed") expect(result.error).toContain(explanation);
+      const retained = await runtime.getTask(task.id);
+      if (!retained) throw new Error("Prompt run record was not retained");
+      expect(readTriggerConfig(retained)?.lastStatus).toBe(expected);
+      expect(readTriggerConfig(retained)?.enabled).toBe(false);
+      expect(readTriggerRuns(retained).at(-1)?.status).toBe(expected);
+      expect(
+        broadcasts.filter(
+          (event) => (event as { type?: string }).type === "proactive-message",
+        ),
+      ).toHaveLength(delivered ? 1 : 0);
+      const messages = await runtime.getMemories({
+        roomId: conversation.roomId,
+        tableName: "messages",
+        count: 20,
+      });
+      expect(
+        messages.filter((memory) => memory.content.text === explanation),
+      ).toHaveLength(delivered ? 1 : 0);
+    } finally {
+      runtime.messageService = priorMessageService;
+      await runtime.deleteTask(task.id);
+    }
+  },
+);

@@ -135,13 +135,30 @@ function goalsPayload() {
 
 // CalendarUpcomingWidget reads /api/lifeops/calendar/feed. A timed event
 // starting within the next 2h -> reminder self-signal (weight 6).
+const calendarSource = {
+  provider: "eliza",
+  side: "owner",
+  grantId: "home-fixture-grant",
+  connectorAccountId: "home-fixture-account",
+  calendarId: "primary",
+  includeInFeed: true,
+  accessRole: "owner",
+};
 function calendarFeed() {
   const startAt = new Date(Date.now() + 45 * 60 * 1000).toISOString();
   const endAt = new Date(Date.now() + 105 * 60 * 1000).toISOString();
+  const now = new Date();
   return {
+    state: "complete",
+    sources: [],
+    timeMin: new Date(now.getFullYear(), now.getMonth(), 1).toISOString(),
+    timeMax: new Date(now.getFullYear(), now.getMonth() + 2, 1).toISOString(),
     events: [
       {
+        ...calendarSource,
         id: "evt-soon",
+        externalId: "evt-soon",
+        status: "confirmed",
         title: "Design review",
         startAt,
         endAt,
@@ -370,9 +387,8 @@ async function installHomeWidgetRoutes(page: Page): Promise<void> {
     await fulfillJson(route, { plugins: PLUGIN_SNAPSHOT });
   });
 
-  // CalendarUpcomingWidget self-hides unless the Google connector probe finds
-  // a usable connected account. Override the default zero-account smoke route
-  // so seeded calendar feed data can render the real calendar card.
+  // Other connector fixtures retain a connected account; Home Calendar uses
+  // its own current complete feed and exact source declarations below.
   await page.route("**/api/connectors/google/accounts", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -410,6 +426,9 @@ async function installHomeWidgetRoutes(page: Page): Promise<void> {
   // Seeded attention data for kept sparse-home widgets.
   await page.route("**/api/lifeops/goals**", async (route) => {
     await fulfillJson(route, goalsPayload());
+  });
+  await page.route("**/api/lifeops/calendar/calendars**", async (route) => {
+    await fulfillJson(route, { calendars: [calendarSource] });
   });
   await page.route("**/api/lifeops/calendar/feed**", async (route) => {
     await fulfillJson(route, calendarFeed());

@@ -228,6 +228,52 @@ function listItemToUi(
 // Flatten the recorded steps into the flat UI arrays the viewer's phase
 // classifier (`summarizePhases`) reads: llmCalls keyed by stepType/purpose drive
 // HANDLE/PLAN/EVALUATE; the per-step action drives the ACTION phase.
+/** Control-flow facts only. Keep model text and tool arguments in the opt-in payload. */
+function stageDecision(stage: TrajectorySemanticStageRecord) {
+  if (stage.kind !== "evaluation" && stage.kind !== "planner") return null;
+  const summary: Record<string, string | number | boolean> = {
+    stageId: stage.stageId,
+    kind: stage.kind,
+  };
+  if (stage.iteration !== undefined) summary.iteration = stage.iteration;
+  if (stage.kind === "planner") {
+    const model = stage.payload.model;
+    if (model && typeof model === "object" && !Array.isArray(model)) {
+      const calls = model.toolCalls;
+      if (Array.isArray(calls)) summary.toolCallCount = calls.length;
+    }
+  } else {
+    const evaluation = stage.payload.evaluation;
+    if (
+      evaluation &&
+      typeof evaluation === "object" &&
+      !Array.isArray(evaluation)
+    ) {
+      if (
+        evaluation.decision === "FINISH" ||
+        evaluation.decision === "CONTINUE" ||
+        evaluation.decision === "NEXT_RECOMMENDED"
+      ) {
+        summary.decision = evaluation.decision;
+      }
+      for (const key of [
+        "success",
+        "protocolFailure",
+        "requestFullyCovered",
+        "gated",
+        "llmCallSkipped",
+        "typedReadAwaitingEvidence",
+        "typedReadFinal",
+        "typedReadRendered",
+      ]) {
+        if (typeof evaluation[key] === "boolean")
+          summary[key] = evaluation[key];
+      }
+    }
+  }
+  return summary;
+}
+
 function detailToUi(
   traj: ServiceTrajectory,
   roomContext?: ResolvedRoomContext | null,
@@ -239,10 +285,15 @@ function detailToUi(
   const providerAccesses: Array<Record<string, unknown>> = [];
   const toolEvents: Array<Record<string, unknown>> = [];
   const semanticStages: TrajectorySemanticStageRecord[] = [];
+  const stageDecisions: Array<Record<string, string | number | boolean>> = [];
 
   const steps = traj.steps;
   for (const step of steps) {
     if (step.semanticStages) {
+      for (const stage of step.semanticStages) {
+        const decision = stageDecision(stage);
+        if (decision) stageDecisions.push(decision);
+      }
       semanticStages.push(
         ...step.semanticStages.map((stage) =>
           includePayloads ? stage : { ...stage, payload: {} },
@@ -356,6 +407,7 @@ function detailToUi(
     toolEvents,
     evaluationEvents: [],
     semanticStages,
+    stageDecisions,
   };
 }
 

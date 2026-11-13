@@ -17,8 +17,14 @@
  * This middleware is mounted globally before the router in src/index.ts.
  */
 
-import { getCurrentUser } from "@elizaos/cloud-shared/auth";
-import { jsonError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  getCurrentUser,
+  stewardAccountSyncFailureError,
+} from "@elizaos/cloud-shared/auth";
+import {
+  failureResponse,
+  jsonError,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { getRequestIp } from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
@@ -151,6 +157,9 @@ const publicPathPrefixes = [
   // (POST /session/:id/revoke) siblings still require the Eliza bearer. The
   // `=== p || startsWith(p+"/")` match keeps this scoped to the ws path.
   "/api/v1/voice/session/ws",
+  // Each speech-only route authenticates itself. The WS capability is checked
+  // in its first hello; bootstrap and revoke use combined caller admission.
+  "/api/v1/voice/speech",
   // Twilio cannot present an Eliza session. Both telephony entrypoints instead
   // fail closed on the provider's HMAC signature before accepting call data or
   // opening paid Cartesia streams.
@@ -521,8 +530,13 @@ export const authMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
   }
 
   // Steward session path. Resolve the user; on failure return 401 for /api/.
+  // A valid session whose account could not be provisioned is not a revoked
+  // session: an outage is a retryable 503 and an identity conflict a 409,
+  // exactly as `requireUser` answers on the routes that authenticate themselves.
   const user = await getCurrentUser(c);
   if (!user) {
+    const provisioningFailure = stewardAccountSyncFailureError(c);
+    if (provisioningFailure) return failureResponse(c, provisioningFailure);
     return jsonError(c, 401, "Unauthorized", "authentication_required");
   }
   await next();

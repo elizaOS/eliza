@@ -287,8 +287,13 @@ function embeddedIpv4ForPolicy(hextets: number[]): number[] | null {
 	// IPv4-compatible::/96 and IPv4-mapped::ffff:0:0/96 spellings that
 	// survived normalizeIpForPolicy — the embedded address is the low 32 bits.
 	// (`::` and `::1` are classified by the caller before this runs.)
+	// Also the RFC 6145 IPv4-translated ::ffff:0:0:0/96 form, which SIIT
+	// translators map to the embedded IPv4.
 	if (h0 === 0 && h1 === 0 && h2 === 0 && hextets[3] === 0) {
 		if (hextets[4] === 0 && (h5 === 0 || h5 === 0xffff)) {
+			return low32ToIpv4();
+		}
+		if (hextets[4] === 0xffff && h5 === 0) {
 			return low32ToIpv4();
 		}
 	}
@@ -549,14 +554,4 @@ export async function resolvePinnedHostname(
 	lookupFn?: LookupFn,
 ): Promise<PinnedHostname> {
 	return resolvePinnedHostnameWithPolicy(hostname, { lookupFn });
-}
-
-/**
- * Assert that a hostname resolves to a public IP address.
- */
-export async function assertPublicHostname(
-	hostname: string,
-	lookupFn?: LookupFn,
-): Promise<void> {
-	await resolvePinnedHostname(hostname, lookupFn);
 }

@@ -62,7 +62,7 @@ public final class MailNoticePoster implements MailBackgroundDelivery.Notices {
   PendingIntent askTap=PendingIntent.getActivity(context,0,intent(key,true),PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT);
   Notification.Action.Builder ask=new Notification.Action.Builder(null,config.askLabel,askTap);if(Build.VERSION.SDK_INT>=31)ask.setAuthenticationRequired(true);
   Notification redacted=new Notification.Builder(context,config.channel).setSmallIcon(config.smallIcon).setContentTitle(config.publicTitle).setContentText(config.publicText).build();
-  manager.notify(config.tagPrefix+key,0,new Notification.Builder(context,config.channel).setSmallIcon(config.smallIcon).setContentTitle(config.title).setContentText(config.text).setPublicVersion(redacted).setVisibility(Notification.VISIBILITY_PRIVATE).setContentIntent(tap).addAction(ask.build()).setOnlyAlertOnce(true).setAutoCancel(true).setTimeoutAfter(LIFETIME_MS).setCategory(Notification.CATEGORY_EMAIL).build());
+  manager.notify(config.tagPrefix+key,0,new Notification.Builder(context,config.channel).setSmallIcon(config.smallIcon).setContentTitle(config.title).setContentText(config.text).setPublicVersion(redacted).setVisibility(Notification.VISIBILITY_PRIVATE).setContentIntent(tap).addAction(ask.build()).setOnlyAlertOnce(true).setAutoCancel(true).setTimeoutAfter(LIFETIME_MS).setCategory(Notification.CATEGORY_EMAIL).setGroup(config.tagPrefix).build());
   // A bounded observation distinguishes posted from uncertain; the caller never replays an uncertain post.
   long until=SystemClock.elapsedRealtime()+500;
   while(!active(key)&&SystemClock.elapsedRealtime()<until){try{Thread.sleep(25);}catch(InterruptedException interrupted){Thread.currentThread().interrupt();break;}}

@@ -6,7 +6,7 @@ import { authorizePersonalGoogleContextRead } from "../../../db/repositories/per
 import { platformCredentials } from "../../../db/schemas/platform-credentials";
 import { boundedProviderFetch } from "../../utils/bounded-provider-fetch";
 import type { GmailMessageLink } from "../../utils/gmail-mime-text";
-import { googleFetchWithToken } from "../../utils/google-mcp-shared";
+import { GoogleApiError, googleFetchWithToken } from "../../utils/google-mcp-shared";
 import { NO_FOLLOW_REDIRECT, withoutRedirects } from "../../utils/no-redirect-fetch";
 import { oauthService } from "../oauth";
 import { getPreferredActiveConnection } from "../oauth/oauth-service";
@@ -61,6 +61,11 @@ export interface ManagedGoogleCalendarEvent {
   timezone: string | null;
   htmlLink: string | null;
   conferenceLink: string | null;
+  /**
+   * Google's event revision, passed through unchanged. Send it back as
+   * `If-Match` on PATCH/DELETE to refuse a change to a newer revision (412).
+   */
+  etag: string | null;
   organizer: Record<string, unknown> | null;
   attendees: Array<{
     email: string | null;
@@ -447,6 +452,9 @@ export async function googleFetch(
     }
     return await googleFetchWithToken(accessToken, args.url, args.options);
   } catch (error) {
+    // An If-Match the event no longer matches is the caller's stale revision, not an outage.
+    if (error instanceof GoogleApiError && error.status === 412)
+      fail(412, "The event changed since it was read. Read it again before changing it.");
     // error-policy:J1 translate a Google API transport/timeout failure into a 502 boundary error
     fail(502, error instanceof Error ? error.message : String(error));
   }

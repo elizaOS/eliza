@@ -21,35 +21,65 @@ Use `./client/map-plane` for the optional MapLibre renderer and supply its worke
 fonts, colors, regional transport and protocol. Native location uses the host
 bridge supplied to `./client/native-location`; no plugin registry or provider
 authority is chosen by the client library. Callers cancel regional requests and
-retire location ownership; the library does not impose elapsed-time deadlines.
+retire location ownership. A user-requested one-shot location read times out after 15 seconds;
+continuous navigation waits for later usable fixes.
 
 Device navigation exposes provider-reported maneuvers, route progress, origin
 search, saved-place matches and explicit rerouting. Route projection uses the
 short great-circle segments, including routes across the date line. The optional
 map plane draws selectable pins and a moving-device heading, and can follow the
-position during navigation. Hosts still own location permission, voice policy,
-provider configuration and presentation.
+position during navigation. `onInteraction` reports a direct map gesture (pass it to
+`stopFollowing`) and `onViewport` the settled centre and zoom (pass it to
+`setViewport`, which ranks later searches around a regional view). `MapsScreen`
+passes both callbacks to the host's `createPlane` argument; forward them to
+`MapPlaneOptions`. Hosts still own location permission, voice policy, provider
+configuration and presentation.
+
+Hosts may set `initialView` to choose the opening centre and zoom of a worldwide
+basemap. Regional maps keep their coverage. A new complete result-pin input is
+fitted once; repeating it leaves the camera alone. Selection, routes and active
+following retain camera ownership. `MapsObservation.qnt` includes this bounded
+camera contract; it does not prove an external host uses the opening option.
 
 A host may supply `selectionPadding` for its own panels. The map samples it on
 updates and idle after resize, so a selected place stays visible when panels
 move. Layout changes preserve the current zoom and marker, and do not take the
 camera from a route or active position following.
 
+`visibleMapPadding` (`./client/map-layout`) measures the canonical React screen's
+overlapping controls and keeps a usable camera area in short windows. Pass a
+callback to `selectionPadding`; numeric getters in `routePadding` can call the
+same helper when a route is fitted. Controls outside the map reserve no space.
+
 ## Phone Maps screen
 
 `MapsScreenController` (`./client/maps-screen`) is the phone Maps screen without
 markup: search and coordinate pins, place detail with saved places and renaming,
-directions from an explicit origin, provider-limited travel modes, foreground
+directions from the device position when location is already granted (otherwise from a
+chosen starting point), provider-limited travel modes, foreground
 guidance from fresh precise fixes, explicit reroute, screen-off sessions, voice,
-sharing, cross-app hand-offs (for example a Calendar event's location, with Back
+sharing, retained place/route state across view changes, cross-app hand-offs (for example a Calendar event's location, with Back
 to that event) and the agent's `MapsNavigationSurface`. A host renders `view()`
 in its own markup and supplies the platform ports: provider connection, location,
 voice, screen-off session, share sheet, website opening and agent context.
 `createMapsScreen` adds a change subscription, and the `./screen` entry exports
 `MapsScreen`, a React rendering of the same controller. Hosts theme it with
 `--maps-*` custom properties (`--maps-bg`, `--maps-fg`, `--maps-accent`,
-`--maps-font`, …) and their own icon paths, and supply the map plane. The screen
-never invents a place, route, arrival time or location.
+`--maps-font`, `--maps-link`, …) and their own icon paths, and supply the map plane. The screen
+uses `--maps-inset-top`, `--maps-inset-right`, `--maps-inset-bottom` and
+`--maps-inset-left` (safe-area insets by default), plus `--maps-bottom-clearance`
+(zero by default) for host controls such as a composer. Sheets scroll within that
+space and use side-by-side panels in wide, short windows. `--maps-text-scale`
+(one by default) scales text; enlarged text uses one reading column with sticky
+navigation actions, while ordinary text keeps map overlays. Primary
+controls precede the map and sheets in reading order. Map Retry recreates only
+the map plane; the selected place, route and navigation remain in the controller.
+The screen never invents a place, route, arrival time or location. Search context
+revisions bind the admitted query, provider, area, readiness and complete ordered
+results. An unchanged render retains its revision. `quint/MapsObservation.qnt`
+checks this bounded observation contract and camera intent against the real
+controller and complete React view suite. It does not prove external host wiring
+or physical navigation.
 
 ## Eliza Cloud Maps
 
@@ -69,6 +99,12 @@ registers a `MapsDeviceNavigation` with `MapsService.registerDeviceNavigation`; 
 `MAPS_SELECT` and `MAPS_NAVIGATION_START`, `_REROUTE` and `_STOP` actions ask it and
 report its state. Without one they return `MAPS_DEVICE_UNAVAILABLE`. GPS, the active
 route and guidance stay on the device; `MAPS_SHARE` still needs the user's confirmation.
+
+The Cloud adapter waits up to 20 seconds for an answer (Cloud's own provider
+timeout is 10 seconds), accepts route bodies up to 5 MiB, and asks for at most 20
+places per search. Breaking change: the unused `google`, `transport` and
+`JsonMapsHttpAdapter` modules and the managed-provider SDK exports are removed;
+an importer of `@elizaos/plugin-maps/google` must supply its own adapter.
 
 The agent host loads Maps on mobile and lean chat profiles. A phone can offer
 its navigation through the authenticated `/api/client-devices/maps-navigation`

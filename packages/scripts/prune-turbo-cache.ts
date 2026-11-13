@@ -17,7 +17,7 @@
  * eviction so a typo cannot skip pruning or wipe the cache.
  *
  * Usage:
- *   node packages/scripts/prune-turbo-cache.ts [--max-gb=20] [--dry-run]
+ *   bun packages/scripts/prune-turbo-cache.ts [--max-gb=20] [--dry-run]
  */
 
 import fs from "node:fs";

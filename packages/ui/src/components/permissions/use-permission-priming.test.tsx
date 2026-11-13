@@ -1,8 +1,17 @@
 // @vitest-environment jsdom
 import type { PermissionId } from "@elizaos/core/protocol";
 import { act, renderHook, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { walkthroughMemory } from "./permission-walkthrough";
+import {
+  NativePermissionHostProvider,
+  type PermissionPrimingHost,
+} from "./native-permission-host";
+import { resolvePrimingSet } from "./permission-priming";
+import {
+  type WalkthroughMemoryStore,
+  walkthroughMemory,
+} from "./permission-walkthrough";
 
 const registry = {
   check: vi.fn(),
@@ -43,6 +52,169 @@ beforeEach(() => {
   registry.check.mockResolvedValue({
     status: "not-determined",
     canRequest: true,
+  });
+});
+
+describe("installed permission host", () => {
+  function hostFixture(memory?: WalkthroughMemoryStore) {
+    const host: PermissionPrimingHost = {
+      supported: ["photos", "location"],
+      memory,
+      registry: {
+        check: vi.fn<PermissionPrimingHost["registry"]["check"]>(
+          async (id) => ({
+            id,
+            status: "not-determined",
+            canRequest: true,
+            platform: "android",
+            lastChecked: 0,
+          }),
+        ),
+        request: vi.fn<PermissionPrimingHost["registry"]["request"]>(
+          async (id) => ({
+            id,
+            status: "limited",
+            canRequest: false,
+            platform: "android",
+            lastChecked: 1,
+            reason: "Selected photos and videos only",
+          }),
+        ),
+        openSettings: vi.fn(async () => true),
+      },
+    };
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <NativePermissionHostProvider host={host}>
+        {children}
+      </NativePermissionHostProvider>
+    );
+    return { host, wrapper };
+  }
+
+  it("filters the six Android cards by installed capabilities without prompting on mount", async () => {
+    const { host, wrapper } = hostFixture();
+    const selected = resolvePrimingSet({
+      platform: "android",
+      supported: host.supported,
+    });
+    expect(selected).toEqual(["location", "photos"]);
+    const hook = renderHook(() => usePermissionPriming(selected), { wrapper });
+    await waitFor(() => expect(hook.result.current.ready).toBe(true));
+    expect(host.registry.request).not.toHaveBeenCalled();
+    await act(() => hook.result.current.request("camera"));
+    expect(host.registry.request).not.toHaveBeenCalled();
+  });
+
+  it("keeps selected-photo and approximate-location scope visible after platform readback", async () => {
+    const { host, wrapper } = hostFixture();
+    const hook = renderHook(
+      () => usePermissionPriming(["photos", "location"]),
+      { wrapper },
+    );
+    await waitFor(() => expect(hook.result.current.ready).toBe(true));
+    await act(() => hook.result.current.request("photos"));
+    expect(hook.result.current.active).toMatchObject({
+      id: "photos",
+      status: "limited",
+      reason: "Selected photos and videos only",
+      resolved: false,
+    });
+    act(() => hook.result.current.skip("photos"));
+    vi.mocked(host.registry.request).mockResolvedValueOnce({
+      id: "location",
+      status: "granted",
+      canRequest: false,
+      platform: "android",
+      lastChecked: 2,
+      reason: "Approximate location allowed",
+    });
+    await act(() => hook.result.current.request("location"));
+    expect(hook.result.current.active).toMatchObject({
+      status: "granted",
+      reason: "Approximate location allowed",
+      resolved: false,
+    });
+    expect(registry.request).not.toHaveBeenCalled();
+  });
+
+  it("does not advance a skipped card or a new mount from a late platform answer", async () => {
+    const { host, wrapper } = hostFixture();
+    let answer!: (
+      value: Awaited<ReturnType<typeof host.registry.request>>,
+    ) => void;
+    vi.mocked(host.registry.request).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    const hook = renderHook(
+      () => usePermissionPriming(["photos", "location"]),
+      { wrapper },
+    );
+    await waitFor(() => expect(hook.result.current.ready).toBe(true));
+    let pending!: Promise<void>;
+    act(() => {
+      pending = hook.result.current.request("photos");
+    });
+    act(() => hook.result.current.skip("photos"));
+    hook.unmount();
+    const next = renderHook(() => usePermissionPriming(["location"]), {
+      wrapper,
+    });
+    await waitFor(() => expect(next.result.current.ready).toBe(true));
+    await act(async () => {
+      answer({
+        id: "photos",
+        status: "granted",
+        canRequest: false,
+        platform: "android",
+        lastChecked: 2,
+      });
+      await pending;
+    });
+    expect(next.result.current.active).toMatchObject({
+      id: "location",
+      status: "not-determined",
+      resolved: false,
+    });
+  });
+
+  it("preserves reviewed choices across restart and clears them only on explicit reopen", async () => {
+    const store = mapStore();
+    const memory = walkthroughMemory(
+      "native-memory",
+      "native-reopen",
+      () => store,
+    );
+    const { host, wrapper } = hostFixture(memory);
+    const first = renderHook(
+      () => usePermissionPriming(["photos", "location"]),
+      { wrapper },
+    );
+    await waitFor(() => expect(first.result.current.ready).toBe(true));
+    act(() => first.result.current.skip("photos"));
+    first.unmount();
+    const second = renderHook(
+      () => usePermissionPriming(["photos", "location"]),
+      { wrapper },
+    );
+    await waitFor(() => expect(second.result.current.ready).toBe(true));
+    expect(second.result.current.items.map((item) => item.id)).toEqual([
+      "location",
+    ]);
+    second.unmount();
+    memory.reopen();
+    const third = renderHook(
+      () => usePermissionPriming(["photos", "location"]),
+      { wrapper },
+    );
+    await waitFor(() => expect(third.result.current.ready).toBe(true));
+    expect(third.result.current.items.map((item) => item.id)).toEqual([
+      "photos",
+      "location",
+    ]);
+    expect(host.registry.request).not.toHaveBeenCalled();
   });
 });
 

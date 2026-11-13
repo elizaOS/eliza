@@ -489,6 +489,10 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, ScopedHostExternalImporter> = {
   "@elizaos/host/protocol": () => import("@elizaos/host/protocol"),
   "@elizaos/ui": importUiRootCompat,
   "@elizaos/ui/view-primitives": () => import("../../view-primitives.js"),
+  // View bundles leave framework imports external. Resolve this side effect
+  // through the host build so the controlled workspace keeps its scoped CSS.
+  "@elizaos/ui/styles/mobile-workspaces.css": () =>
+    import("../../styles/mobile-workspaces.css"),
   "lucide-react": () => import("lucide-react"),
   "@pixiv/three-vrm": () => import("@pixiv/three-vrm"),
   "@pixiv/three-vrm/nodes": () => import("@pixiv/three-vrm/nodes"),

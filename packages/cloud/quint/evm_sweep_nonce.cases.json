@@ -1,0 +1,39 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/lib/services/direct-wallet-payments.ts",
+    "packages/cloud/shared/src/lib/services/evm-sweep-authority.ts",
+    "packages/cloud/shared/src/lib/services/account-deletion-crypto-sweeps.ts",
+    "packages/cloud/shared/src/lib/services/evm-sweep-authority.pglite.test.ts",
+    "packages/cloud/shared/src/db/migrations/0561_evm_sweep_nonce_authority.sql"
+  ],
+  "conformance": "packages/cloud/quint/check-evm-speech-conformance.ts",
+  "bounds": {
+    "assumptions": [
+      "One original wallet/network, two durable outboxes, chain nonces zero through two, one unrelated pending transaction and one configured-wallet rotation. Signed bytes and transaction identity remain immutable; activity from the replacement wallet is outside this model.",
+      "Signing and persistence commit atomically under the wallet lock. One matching successful chain receipt is trusted as nonce consumption; arbitrary reorgs, RPC dishonesty and cryptography are excluded.",
+      "Account deletion preserves unconfirmed signed authority. Terminal recovery observes the original receipt without another send. The model does not establish TypeScript/SQL refinement, safe retry of reverted sweeps, or liveness.",
+      "A matching original receipt remains recoverable after configuration rotation. Any new send still requires current-wallet authorization; disabled networks and unbounded external configuration changes are not modeled."
+    ],
+    "progress": "No additional progress guarantee; safety only."
+  },
+  "limitations": [
+    "One original wallet/network, two durable outboxes, chain nonces zero through two, one unrelated pending transaction and one configured-wallet rotation. Signed bytes and transaction identity remain immutable; activity from the replacement wallet is outside this model.",
+    "Signing and persistence commit atomically under the wallet lock. One matching successful chain receipt is trusted as nonce consumption; arbitrary reorgs, RPC dishonesty and cryptography are excluded.",
+    "Account deletion preserves unconfirmed signed authority. Terminal recovery observes the original receipt without another send. The model does not establish TypeScript/SQL refinement, safe retry of reverted sweeps, or liveness.",
+    "A matching original receipt remains recoverable after configuration rotation. Any new send still requires current-wallet authorization; disabled networks and unbounded external configuration changes are not modeled.",
+    "Existing SQL/provider tests are independent evidence; this port does not establish executable refinement or live provider acceptance."
+  ],
+  "cases": [
+    {
+      "name": "evm-sweep-nonce",
+      "main": "evm_sweep_nonce",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 40,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ]
+}

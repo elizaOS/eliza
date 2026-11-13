@@ -4,8 +4,10 @@
  * during plugin initialization and mounts the rawPath routes directly onto
  * the agent runtime.
  *
- * No-op under store builds — the routes drive spawn/control surfaces that
- * are unavailable when local code execution is disabled.
+ * No-op when the plugin itself runs without its services: store builds (local
+ * code execution disabled) and hosts without terminal support (for example
+ * Android without local-yolo). The routes drive spawn/control surfaces that
+ * would otherwise answer 503 "initializing" forever.
  *
  * Implementation note: the registration kick-off used to be a bare
  * top-level `void registerCodingAgentRoutePluginLoader()` call relying
@@ -22,9 +24,12 @@
 
 import { isLocalCodeExecutionAllowed } from "@elizaos/host";
 import { registerAppRoutePluginLoader } from "@elizaos/host/protocol";
+import { detectOrchestratorTerminalSupport } from "./services/terminal-capabilities.js";
 
 function registerCodingAgentRoutePluginLoader(): void {
+  // Same gate as `codeExecutionAllowed` in index.ts.
   if (!isLocalCodeExecutionAllowed()) return;
+  if (!detectOrchestratorTerminalSupport().supported) return;
   registerAppRoutePluginLoader(
     "@elizaos/plugin-agent-orchestrator:routes",
     async () => {

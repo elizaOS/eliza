@@ -40,6 +40,9 @@ export const standaloneCalendarDeps: CalendarActionDeps = {
             ...(args.temperature !== undefined
               ? { temperature: args.temperature }
               : {}),
+            ...(args.thinking
+              ? { providerOptions: { eliza: { thinking: args.thinking } } }
+              : {}),
           }),
       );
       // Native structured-output requests return the text in a result envelope.

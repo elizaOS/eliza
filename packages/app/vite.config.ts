@@ -12,13 +12,11 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  DEFAULT_APP_ROUTE_PLUGIN_MODULES,
   resolveAppBranding,
   resolveDesktopApiPort,
   resolveDesktopApiPortPreference,
   resolveDesktopUiPort,
   resolveDesktopUiPortPreference,
-  syncElizaEnvAliases,
 } from "@elizaos/host/protocol";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
@@ -50,7 +48,6 @@ import {
   formatDevSettingsTable,
   prependDevSubsystemFigletHeading,
 } from "./src/dev-tools.ts";
-import { normalizeEnvPrefix } from "./src/env-prefix.js";
 import { appSideEffectModulesPlugin } from "./vite/app-side-effect-modules.ts";
 import { calendarOptimizeDeps } from "./vite/calendar-optimize-deps.ts";
 import { configureDevApiProxy } from "./vite/dev-http-proxy.ts";
@@ -939,29 +936,6 @@ function resolveAppShellMetadata() {
   };
 }
 const APP_SHELL_METADATA = resolveAppShellMetadata();
-const APP_ENV_PREFIX = normalizeEnvPrefix(
-  appConfig.envPrefix?.trim() || appConfig.cliName.trim(),
-);
-const APP_NAMESPACE = appConfig.namespace?.trim() || appConfig.cliName.trim();
-const BRANDED_ENV = {
-  apiPort: `${APP_ENV_PREFIX}_API_PORT`,
-  appSourcemap: `${APP_ENV_PREFIX}_APP_SOURCEMAP`,
-  assetBaseUrl: `${APP_ENV_PREFIX}_ASSET_BASE_URL`,
-  desktopFastDist: `${APP_ENV_PREFIX}_DESKTOP_VITE_FAST_DIST`,
-  devPolling: `${APP_ENV_PREFIX}_DEV_POLLING`,
-  hmrHost: `${APP_ENV_PREFIX}_HMR_HOST`,
-  settingsDebug: `${APP_ENV_PREFIX}_SETTINGS_DEBUG`,
-  ttsDebug: `${APP_ENV_PREFIX}_TTS_DEBUG`,
-  viteLoopbackOrigin: `${APP_ENV_PREFIX}_VITE_LOOPBACK_ORIGIN`,
-  viteOrigin: `${APP_ENV_PREFIX}_VITE_ORIGIN`,
-  viteSettingsDebug: `VITE_${APP_ENV_PREFIX}_SETTINGS_DEBUG`,
-};
-// Mirror branded app env into ELIZA_* before the shared runtime helpers resolve ports.
-syncElizaEnvAliases({
-  brandedPrefix: APP_ENV_PREFIX,
-  cloudManagedAgentsApiSegment: APP_NAMESPACE,
-  appRoutePluginModules: DEFAULT_APP_ROUTE_PLUGIN_MODULES,
-});
 const NATIVE_PLUGIN_ALIAS_ENTRIES = CAPACITOR_PLUGIN_NAMES.map((name) => ({
   find: new RegExp(`^@elizaos/capacitor-${escapeRegExp(name)}$`),
   replacement: path.join(
@@ -1374,20 +1348,20 @@ function forcedHostModeFlagGuardPlugin(): Plugin {
     },
   };
 }
-// The dev script sets the branded API port env; default to 31337 for standalone vite dev.
+// The dev script sets ELIZA_API_PORT; default to 31337 for standalone vite dev.
 const apiPort = resolveDesktopApiPort(process.env);
-const uiPort = resolveDesktopUiPort(process.env);
+// The dev scripts pass the Vite port as ELIZA_PORT; ELIZA_UI_PORT wins when set.
+const UI_PORT_ENV = {
+  ELIZA_UI_PORT: process.env.ELIZA_UI_PORT ?? process.env.ELIZA_PORT,
+};
+const uiPort = resolveDesktopUiPort(UI_PORT_ENV);
 const localVoiceGatewayPort = resolveOptionalLocalVoiceGatewayPort(
   process.env.ELIZA_LOCAL_VOICE_GATEWAY_PORT,
 );
-const viteDevServerRuntime = resolveViteDevServerRuntime(
-  process.env,
-  uiPort,
-  APP_ENV_PREFIX,
-);
-const enableAppSourceMaps = process.env[BRANDED_ENV.appSourcemap] === "1";
+const viteDevServerRuntime = resolveViteDevServerRuntime(process.env, uiPort);
+const enableAppSourceMaps = process.env.ELIZA_APP_SOURCEMAP === "1";
 /** Set by eliza/packages/app/scripts/dev-platform.ts for `vite build --watch` (Electrobun desktop). */
-const desktopFastDist = process.env[BRANDED_ENV.desktopFastDist] === "1";
+const desktopFastDist = process.env.ELIZA_DESKTOP_VITE_FAST_DIST === "1";
 function resolveOptionalLocalVoiceGatewayPort(
   raw: string | undefined,
 ): number | null {
@@ -1439,7 +1413,6 @@ export function resolveLocalRealtimeVoiceDefinesFromEnv(
   );
 }
 export function appDevWsBasePlugin(): Plugin {
-  const brandedWsBaseKey = `__${APP_ENV_PREFIX}_WS_BASE__`;
   // The browser must dial the origin it actually loaded, because tunneled
   // development exposes the Vite port without exposing the API loopback port.
   // Vite proxies the resulting same-origin `/ws` upgrade to the API alongside
@@ -1458,7 +1431,6 @@ export function appDevWsBasePlugin(): Plugin {
           children: [
             `window.__ELIZA_WS_BASE__ = ${wsBaseExpr};`,
             `window.__ELIZAOS_WS_BASE__ = ${wsBaseExpr};`,
-            `window[${JSON.stringify(brandedWsBaseKey)}] = ${wsBaseExpr};`,
           ].join("\n"),
         },
       ];
@@ -1655,64 +1627,64 @@ function buildViteDevSettingsRows(
   mode: "dev-server" | "build-watch",
 ): DevSettingsRow[] {
   const apiPref = resolveDesktopApiPortPreference(process.env);
-  const uiPref = resolveDesktopUiPortPreference(process.env);
+  const uiPref = resolveDesktopUiPortPreference(UI_PORT_ENV);
   const apiPort = resolveDesktopApiPort(process.env);
-  const uiPort = resolveDesktopUiPort(process.env);
+  const uiPort = resolveDesktopUiPort(UI_PORT_ENV);
   const assetBase =
     process.env.VITE_ASSET_BASE_URL?.trim() ||
-    process.env[BRANDED_ENV.assetBaseUrl]?.trim() ||
+    process.env.ELIZA_ASSET_BASE_URL?.trim() ||
     "—";
   return [
     {
-      setting: BRANDED_ENV.appSourcemap,
-      effective: envFlagEffective(BRANDED_ENV.appSourcemap),
-      source: envFlagSource(BRANDED_ENV.appSourcemap),
-      change: `export ${BRANDED_ENV.appSourcemap}=1 to enable; unset for off`,
+      setting: "ELIZA_APP_SOURCEMAP",
+      effective: envFlagEffective("ELIZA_APP_SOURCEMAP"),
+      source: envFlagSource("ELIZA_APP_SOURCEMAP"),
+      change: `export ELIZA_APP_SOURCEMAP=1 to enable; unset for off`,
     },
     {
-      setting: BRANDED_ENV.desktopFastDist,
-      effective: envFlagEffective(BRANDED_ENV.desktopFastDist),
-      source: envFlagSource(BRANDED_ENV.desktopFastDist),
+      setting: "ELIZA_DESKTOP_VITE_FAST_DIST",
+      effective: envFlagEffective("ELIZA_DESKTOP_VITE_FAST_DIST"),
+      source: envFlagSource("ELIZA_DESKTOP_VITE_FAST_DIST"),
       change:
         "set by dev orchestrator for Rollup watch; unset for normal dev server",
     },
     {
-      setting: BRANDED_ENV.ttsDebug,
-      effective: process.env[BRANDED_ENV.ttsDebug]?.trim() ? "set" : "—",
-      source: process.env[BRANDED_ENV.ttsDebug]?.trim()
-        ? `env set — ${BRANDED_ENV.ttsDebug}`
+      setting: "ELIZA_TTS_DEBUG",
+      effective: process.env.ELIZA_TTS_DEBUG?.trim() ? "set" : "—",
+      source: process.env.ELIZA_TTS_DEBUG?.trim()
+        ? `env set — ELIZA_TTS_DEBUG`
         : "default (unset)",
-      change: `export ${BRANDED_ENV.ttsDebug}=1 for TTS trace logs`,
+      change: `export ELIZA_TTS_DEBUG=1 for TTS trace logs`,
     },
     {
-      setting: `${BRANDED_ENV.settingsDebug} / ${BRANDED_ENV.viteSettingsDebug}`,
+      setting: `ELIZA_SETTINGS_DEBUG / VITE_ELIZA_SETTINGS_DEBUG`,
       effective:
-        process.env[BRANDED_ENV.settingsDebug]?.trim() ||
-        process.env[BRANDED_ENV.viteSettingsDebug]?.trim()
+        process.env.ELIZA_SETTINGS_DEBUG?.trim() ||
+        process.env.VITE_ELIZA_SETTINGS_DEBUG?.trim()
           ? "set"
           : "—",
-      source: process.env[BRANDED_ENV.viteSettingsDebug]?.trim()
-        ? `env set — ${BRANDED_ENV.viteSettingsDebug}`
-        : process.env[BRANDED_ENV.settingsDebug]?.trim()
-          ? `env set — ${BRANDED_ENV.settingsDebug}`
+      source: process.env.VITE_ELIZA_SETTINGS_DEBUG?.trim()
+        ? `env set — VITE_ELIZA_SETTINGS_DEBUG`
+        : process.env.ELIZA_SETTINGS_DEBUG?.trim()
+          ? `env set — ELIZA_SETTINGS_DEBUG`
           : "default (unset)",
-      change: `export ${BRANDED_ENV.settingsDebug}=1 or ${BRANDED_ENV.viteSettingsDebug}=1`,
+      change: `export ELIZA_SETTINGS_DEBUG=1 or VITE_ELIZA_SETTINGS_DEBUG=1`,
     },
     {
-      setting: `VITE_ASSET_BASE_URL / ${BRANDED_ENV.assetBaseUrl}`,
+      setting: `VITE_ASSET_BASE_URL / ELIZA_ASSET_BASE_URL`,
       effective: assetBase,
       source: process.env.VITE_ASSET_BASE_URL?.trim()
         ? "env set — VITE_ASSET_BASE_URL"
-        : process.env[BRANDED_ENV.assetBaseUrl]?.trim()
-          ? `env set — ${BRANDED_ENV.assetBaseUrl}`
+        : process.env.ELIZA_ASSET_BASE_URL?.trim()
+          ? `env set — ELIZA_ASSET_BASE_URL`
           : "default (unset — empty)",
-      change: `export VITE_ASSET_BASE_URL=… or ${BRANDED_ENV.assetBaseUrl}=…`,
+      change: `export VITE_ASSET_BASE_URL=… or ELIZA_ASSET_BASE_URL=…`,
     },
     {
-      setting: BRANDED_ENV.devPolling,
-      effective: envFlagEffective(BRANDED_ENV.devPolling),
-      source: envFlagSource(BRANDED_ENV.devPolling),
-      change: `export ${BRANDED_ENV.devPolling}=1 for watch polling (VM/file shares)`,
+      setting: "ELIZA_DEV_POLLING",
+      effective: envFlagEffective("ELIZA_DEV_POLLING"),
+      source: envFlagSource("ELIZA_DEV_POLLING"),
+      change: `export ELIZA_DEV_POLLING=1 for watch polling (VM/file shares)`,
     },
     {
       setting: "API port (resolved)",
@@ -1756,7 +1728,7 @@ function appDevSettingsBannerPlugin(): Plugin {
       };
     },
     buildStart() {
-      if (process.env[BRANDED_ENV.desktopFastDist] === "1" && !printedWatch) {
+      if (process.env.ELIZA_DESKTOP_VITE_FAST_DIST === "1" && !printedWatch) {
         printedWatch = true;
         console.log(
           colorizeDevSettingsStartupBanner(
@@ -2031,21 +2003,19 @@ export default defineConfig(({ command, mode }) => ({
     __ELIZA_CHAT_UI_HARNESS__: JSON.stringify(
       process.env.ELIZA_CHAT_UI_HARNESS === "1",
     ),
-    // Mirror the branded TTS debug env into the client bundle so one env
+    // Mirror the TTS debug env into the client bundle so one env
     // enables UI + server TTS logs in dev.
-    [`import.meta.env.${BRANDED_ENV.ttsDebug}`]: JSON.stringify(
-      process.env[BRANDED_ENV.ttsDebug] ?? "",
+    "import.meta.env.ELIZA_TTS_DEBUG": JSON.stringify(
+      process.env.ELIZA_TTS_DEBUG ?? "",
     ),
-    [`import.meta.env.${BRANDED_ENV.settingsDebug}`]: JSON.stringify(
-      process.env[BRANDED_ENV.settingsDebug] ?? "",
+    "import.meta.env.ELIZA_SETTINGS_DEBUG": JSON.stringify(
+      process.env.ELIZA_SETTINGS_DEBUG ?? "",
     ),
-    [`import.meta.env.${BRANDED_ENV.viteSettingsDebug}`]: JSON.stringify(
-      process.env[BRANDED_ENV.viteSettingsDebug] ?? "",
+    "import.meta.env.VITE_ELIZA_SETTINGS_DEBUG": JSON.stringify(
+      process.env.VITE_ELIZA_SETTINGS_DEBUG ?? "",
     ),
     "import.meta.env.VITE_ASSET_BASE_URL": JSON.stringify(
-      process.env.VITE_ASSET_BASE_URL ??
-        process.env[BRANDED_ENV.assetBaseUrl] ??
-        "",
+      process.env.VITE_ASSET_BASE_URL ?? process.env.ELIZA_ASSET_BASE_URL ?? "",
     ),
   },
   plugins: [
@@ -2615,6 +2585,9 @@ export const INVALID_TRACER_PROVIDER = {};
         path.resolve(elizaRoot, "packages/cloud/shared"),
       ]),
       ...createWorkspacePackageExportAliases([
+        // The root UI alias already uses source. Public leaves must share its
+        // context, transport and storage modules in production builds too.
+        path.resolve(elizaRoot, "packages/ui"),
         path.resolve(elizaRoot, "plugins/plugin-relationships"),
         path.resolve(elizaRoot, "plugins/plugin-calendar"),
         path.resolve(elizaRoot, "plugins/plugin-notes"),
@@ -3089,7 +3062,7 @@ export const INVALID_TRACER_PROVIDER = {};
     },
     watch: {
       // Polling is only needed in Docker/WSL where native fs events are unreliable
-      usePolling: process.env[BRANDED_ENV.devPolling] === "1",
+      usePolling: process.env.ELIZA_DEV_POLLING === "1",
       // Electrobun postBuild copies renderer HTML/assets into electrobun/build/.
       // Watching those paths triggers full reloads while deps are still optimizing,
       // which breaks with "chunk-*.js does not exist" in node_modules/.vite/deps.

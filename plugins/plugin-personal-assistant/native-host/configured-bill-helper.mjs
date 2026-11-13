@@ -120,6 +120,9 @@ export async function createConfiguredBillHelper({
       },
     ]),
   );
+  // The actuator sends this browser only the options it advertised.
+  if (typeof native.hasCapability === "function")
+    target.hasCapability = (capability) => native.hasCapability(capability);
   const requireTask = (task) => {
     if (
       task.owner.actorId !== config.actorId ||

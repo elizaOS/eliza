@@ -104,54 +104,21 @@ export interface CapabilityHandoffRequest {
 	};
 }
 
-const CAPABILITY_IDS: ReadonlySet<string> = new Set<AgentCapabilityId>([
-	"conversation",
-	"drafting",
-	"web-search",
-	"reminders",
-	"todos",
-	"image-generation",
-	"calendar",
-	"bookings",
-	"communications",
-	"purchases",
-	"notes",
-	"cloud-apps",
-	"coding-runtime",
-	"shell",
-	"filesystem",
-	"browser-control",
-	"profile-memory",
-]);
-const PERSONAL_WORKSPACE_CAPABILITY_IDS: ReadonlySet<string> = new Set([
-	"calendar",
-	"bookings",
-	"communications",
-	"purchases",
-	"notes",
-	"cloud-apps",
-	"coding-runtime",
-	"shell",
-	"filesystem",
-	"browser-control",
-	"profile-memory",
-]);
-const HANDOFF_AVAILABILITIES: ReadonlySet<string> = new Set([
-	"needs_account",
-	"needs_workspace",
-	"needs_connection",
-	"needs_permission",
-	"provisioning",
-	"unavailable",
-]);
-const HANDOFF_NEXT_ACTIONS: ReadonlySet<string> = new Set([
-	"sign_up",
-	"upgrade_workspace",
-	"connect_account",
-	"request_permission",
-	"wait_for_provisioning",
-	"retry",
-]);
+/** The only capabilities a Shared-to-personal handoff may name. */
+const PERSONAL_WORKSPACE_CAPABILITY_IDS: ReadonlySet<string> =
+	new Set<AgentCapabilityId>([
+		"calendar",
+		"bookings",
+		"communications",
+		"purchases",
+		"notes",
+		"cloud-apps",
+		"coding-runtime",
+		"shell",
+		"filesystem",
+		"browser-control",
+		"profile-memory",
+	]);
 
 function handoffRecord(value: unknown): Record<string, unknown> | null {
 	if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -161,13 +128,6 @@ function handoffRecord(value: unknown): Record<string, unknown> | null {
 	return prototype === Object.prototype || prototype === null
 		? (value as Record<string, unknown>)
 		: null;
-}
-
-function hasOwnHandoffField(
-	value: Record<string, unknown>,
-	key: string,
-): boolean {
-	return Object.hasOwn(value, key);
 }
 
 function boundedHandoffText(value: unknown, maximum: number): string | null {
@@ -242,12 +202,7 @@ function parsePersonalWorkspaceCapabilityHandoffUnsafe(
 		handoff.nextAction !== "upgrade_workspace" ||
 		handoff.requiresConfirmation !== true ||
 		typeof handoff.capabilityId !== "string" ||
-		!CAPABILITY_IDS.has(handoff.capabilityId) ||
-		!PERSONAL_WORKSPACE_CAPABILITY_IDS.has(handoff.capabilityId) ||
-		typeof handoff.availability !== "string" ||
-		!HANDOFF_AVAILABILITIES.has(handoff.availability) ||
-		typeof handoff.nextAction !== "string" ||
-		!HANDOFF_NEXT_ACTIONS.has(handoff.nextAction)
+		!PERSONAL_WORKSPACE_CAPABILITY_IDS.has(handoff.capabilityId)
 	) {
 		return null;
 	}
@@ -261,14 +216,14 @@ function parsePersonalWorkspaceCapabilityHandoffUnsafe(
 	if (!agentId || (expectedAgentId && agentId !== expectedAgentId)) return null;
 	let originalIntent: string | null = null;
 	let clientMessageId: string | null = null;
-	if (hasOwnHandoffField(handoff, "continuation")) {
+	if (Object.hasOwn(handoff, "continuation")) {
 		const continuation = handoffRecord(handoff.continuation);
 		if (!continuation) return null;
-		if (hasOwnHandoffField(continuation, "originalIntent")) {
+		if (Object.hasOwn(continuation, "originalIntent")) {
 			originalIntent = completeHandoffText(continuation.originalIntent);
 			if (!originalIntent) return null;
 		}
-		if (hasOwnHandoffField(continuation, "clientMessageId")) {
+		if (Object.hasOwn(continuation, "clientMessageId")) {
 			clientMessageId = boundedHandoffText(continuation.clientMessageId, 128);
 			if (!clientMessageId) return null;
 		}

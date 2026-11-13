@@ -145,9 +145,8 @@ async function fetchTextToSpeech(
   );
 
   try {
-    // Ride through the cloud's transient cold-cache warming 503 — the
-    // raw-Response companion to the throw-shaped retries in image/video/music
-    // (#18323/#18325/#18333). A non-warming failure still throws immediately.
+    // Retry the cloud's typed transient 503 (see utils/warming.ts); any other
+    // failure throws immediately.
     let res: Response;
     let warmingRetries = 0;
     for (;;) {
@@ -171,7 +170,7 @@ async function fetchTextToSpeech(
         if (waitSeconds !== null) {
           warmingRetries++;
           logger.warn(
-            `[ELIZAOS_CLOUD] TTS cold-cache warming (503), retry ${warmingRetries}/2 after ${waitSeconds}s...`,
+            `[ELIZAOS_CLOUD] TTS transient unavailability (503), retry ${warmingRetries}/2 after ${waitSeconds}s...`,
           );
           await new Promise((r) => setTimeout(r, waitSeconds * 1000));
           continue;

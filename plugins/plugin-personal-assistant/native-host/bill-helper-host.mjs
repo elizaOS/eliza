@@ -1,4 +1,5 @@
 import { BillCodeCoordinator } from "./bill-code-coordinator.mjs";
+import { billOwnerKey as ownerKey } from "./bill-owner-key.mjs";
 import {
   createPdfBillParser,
   pdfBillAttachmentPolicy,
@@ -7,14 +8,20 @@ import { BillSourceDiscovery } from "./bill-source-discovery.mjs";
 import { BillWorkflow } from "./bill-workflow.mjs";
 import { BillHostError } from "./errors.mjs";
 
-const ownerKey = (owner) =>
-  JSON.stringify([
-    owner.actorId,
-    owner.agentId,
-    owner.connector.source,
-    owner.connector.accountId,
-  ]);
-/** Trusted host composition. All bill/provider policy comes from reviewed server configuration. */
+/**
+ * Trusted host composition. All bill/provider policy comes from reviewed server configuration.
+ *
+ * Optional product composition:
+ * - `assistantName` names the assistant in the browser overlay and in fixed workflow words.
+ * - `actuatorOptions` are more `NativeTaskActuator` options, for example
+ *   `describeAction(task, proposal)`. The options this host binds (target, policy,
+ *   value resolution, verification, readback, evidence and the gateway's own) win.
+ * - `valueResolver(reference, task, resolveCode)` resolves a host-held fill value. It
+ *   calls `resolveCode(reference, task)` for a reference it does not hold.
+ * - `createWorkflow(options, input)` returns the workflow for one task: an instance of
+ *   `BillWorkflow` or of a subclass, made from the `options` this host prepared.
+ *   `input` is the `workflowFactory` input, with any host fields the caller added.
+ */
 export function createBillHelperHost({
   deriveBillDecision,
   runtimeModule,
@@ -30,6 +37,10 @@ export function createBillHelperHost({
   billDiscovery,
   controls,
   selectionGuidance,
+  assistantName,
+  actuatorOptions = {},
+  valueResolver,
+  createWorkflow,
 }) {
   for (const value of [
     runtimeModule?.NativeTaskActuator,
@@ -44,6 +55,21 @@ export function createBillHelperHost({
       throw new BillHostError("Incomplete bill helper host configuration");
   if (reconcileMethod != null && typeof reconcileMethod !== "function")
     throw new BillHostError("Invalid bill reconciliation policy");
+  if (
+    !actuatorOptions ||
+    typeof actuatorOptions !== "object" ||
+    [valueResolver, createWorkflow].some(
+      (value) => value != null && typeof value !== "function",
+    )
+  )
+    throw new BillHostError("Invalid bill helper host composition");
+  if (
+    assistantName !== undefined &&
+    (typeof assistantName !== "string" ||
+      !assistantName.trim() ||
+      assistantName.length > 64)
+  )
+    throw new BillHostError("Invalid assistant name");
   if (typeof deriveBillDecision !== "function")
     throw new BillHostError("Reviewed bill observation policy is required");
   if (
@@ -142,15 +168,35 @@ export function createBillHelperHost({
         actuator: null,
         discovery: null,
       };
+      const resolveCode = async (reference, task) => {
+        if (!entry.coordinator)
+          throw new BillHostError("Protected code resolution unavailable");
+        return entry.coordinator.resolveValue(reference, task);
+      };
+      // Commit grants the workflow issued for the person's own choice, by
+      // proposal: each is handed out once, for that proposal only.
+      const grants = new Map();
+      entry.grantCommit = (proposalId, grant) =>
+        grant === null
+          ? grants.delete(proposalId)
+          : grants.set(proposalId, grant);
       const actuator = new runtimeModule.NativeTaskActuator({
+        ...actuatorOptions,
         ...host,
         target,
+        commitGrant: (task, proposal) => {
+          const granted = grants.get(proposal.id);
+          grants.delete(proposal.id);
+          if (granted?.taskId === task.id) return granted;
+          return actuatorOptions.commitGrant?.(task, proposal);
+        },
+        ...(assistantName === undefined ? {} : { assistantName }),
         policy: (task) => policyForTask(task),
         resolveValue: async (reference, task) => {
           await requireOwner(host.owner);
-          if (!entry.coordinator)
-            throw new BillHostError("Protected code resolution unavailable");
-          return entry.coordinator.resolveValue(reference, task);
+          return valueResolver
+            ? valueResolver(reference, task, resolveCode)
+            : resolveCode(reference, task);
         },
         verify: async (...args) => {
           await requireOwner(host.owner);
@@ -268,14 +314,15 @@ export function createBillHelperHost({
       const context = await contextFor(runtime.get(task.id));
       return discoveryFor(entry, runtime).discover(context, signal);
     },
-    workflowFactory({
-      runtime,
-      task,
-      outcomes,
-      sourceSelection,
-      signal,
-      stillAuthorized,
-    }) {
+    workflowFactory(input) {
+      const {
+        runtime,
+        task,
+        outcomes,
+        sourceSelection,
+        signal,
+        stillAuthorized,
+      } = input;
       if (closed) throw new BillHostError("Bill helper is closed");
       if (
         billDiscovery &&
@@ -343,7 +390,7 @@ export function createBillHelperHost({
           }
         : billForTask(task);
       entry.billRecord = { taskId: task.id, bill: structuredClone(bill) };
-      return new BillWorkflow({
+      const options = {
         deriveBillDecision,
         runtime,
         actuator: entry.actuator,
@@ -354,7 +401,9 @@ export function createBillHelperHost({
         stillAuthorized,
         controls,
         selectionGuidance,
+        ...(assistantName === undefined ? {} : { assistantName }),
         codeCoordinator: entry.coordinator,
+        grantCommit: entry.grantCommit,
         // The receipt for a saved outcome is looked for in the same mailbox
         // scope as the bill, under the same task authorization.
         ...(billDiscovery
@@ -369,7 +418,12 @@ export function createBillHelperHost({
               },
             }
           : {}),
-      });
+      };
+      if (!createWorkflow) return new BillWorkflow(options);
+      const workflow = createWorkflow(options, input);
+      if (!(workflow instanceof BillWorkflow))
+        throw new BillHostError("Invalid bill workflow");
+      return workflow;
     },
     /** Call after the task gateway has quiesced owned browser work. */
     close() {

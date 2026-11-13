@@ -110,7 +110,31 @@ interface RequestContext {
   duplicateDbReadCalls: number;
   readKeys: Map<string, number>;
   slowDbCalls: CloudDbTelemetry[];
+  /** Durable Object call splits, exposed to the caller through Server-Timing. */
+  gateTimings?: GateServerTiming[];
 }
+
+/** Matches http-telemetry's ServerTimingMetric without importing it here. */
+export interface GateServerTiming {
+  name: string;
+  durationMs: number;
+  description?: string;
+}
+
+/**
+ * Where one Durable Object call spent its wall time, from the object's own
+ * clock readings. `entryMs` is routing, activation and input-gate wait before
+ * the handler ran; the remainder after the handler is the output gate's
+ * storage commit plus the return hop. Cross-machine clocks are only
+ * approximately synchronized, so an implausible entry is dropped, not clamped.
+ */
+export interface DurableObjectCallTiming {
+  handlerMs?: number;
+  entryMs?: number;
+  cold?: boolean;
+}
+
+const MAX_GATE_TIMINGS = 16;
 
 const requestAls = new AsyncLocalStorage<RequestContext>();
 const sdkStreamAls = new AsyncLocalStorage<SdkStreamTiming>();
@@ -162,7 +186,7 @@ export async function observeInferenceDependency<T>(
   dependency: "policy_lock" | "policy_read" | "transaction" | "durable_object",
   operation: string,
   fn: () => Promise<T>,
-  handlerTiming?: (result: T) => number | undefined,
+  callTiming?: (result: T) => DurableObjectCallTiming | undefined,
 ): Promise<T> {
   const context = requestAls.getStore();
   if (
@@ -181,24 +205,28 @@ export async function observeInferenceDependency<T>(
     return result;
   } finally {
     const durationMs = elapsedMs(startedAt);
+    let split: ReturnType<typeof splitCallTiming> | undefined;
+    try {
+      split =
+        completion.outcome === "returned" && callTiming
+          ? splitCallTiming(callTiming(completion.result), durationMs)
+          : undefined;
+      if (split) recordGateTiming(context, operation, durationMs, split);
+    } catch {
+      // error-policy:J7 malformed telemetry headers never change admission.
+      split = undefined;
+    }
     if (durationMs >= DEFAULT_SLOW_DB_MS) {
       // Operations are static caller labels, never SQL, credentials, prompts,
       // responses, or error messages. Nested spans overlap; do not add them.
       try {
-        const handlerMs =
-          completion.outcome === "returned" && handlerTiming
-            ? handlerTiming(completion.result)
-            : undefined;
         logger.audit("[InferenceAdmission] dependency timing", {
           traceId: context.traceId,
           dependency,
           operation,
           durationMs,
           outcome: completion.outcome,
-          ...(typeof handlerMs === "number" &&
-            Number.isFinite(handlerMs) &&
-            handlerMs >= 0 &&
-            handlerMs <= durationMs && { handlerMs }),
+          ...split,
         });
       } catch {
         // error-policy:J7 this Cloud boundary has no AgentRuntime. Warn without
@@ -216,6 +244,59 @@ export async function observeInferenceDependency<T>(
       }
     }
   }
+}
+
+function splitCallTiming(
+  timing: DurableObjectCallTiming | undefined,
+  durationMs: number,
+): { handlerMs?: number; entryMs?: number; afterMs?: number; cold?: boolean } | undefined {
+  if (!timing) return undefined;
+  const within = (value: number | undefined) =>
+    typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= durationMs
+      ? Math.round(value * 100) / 100
+      : undefined;
+  const handlerMs = within(timing.handlerMs);
+  const entryMs = within(timing.entryMs);
+  const afterMs =
+    handlerMs !== undefined && entryMs !== undefined && entryMs + handlerMs <= durationMs
+      ? Math.round((durationMs - entryMs - handlerMs) * 100) / 100
+      : undefined;
+  return {
+    ...(handlerMs !== undefined && { handlerMs }),
+    ...(entryMs !== undefined && { entryMs }),
+    ...(afterMs !== undefined && { afterMs }),
+    ...(typeof timing.cold === "boolean" && { cold: timing.cold }),
+  };
+}
+
+function recordGateTiming(
+  context: RequestContext,
+  operation: string,
+  durationMs: number,
+  split: NonNullable<ReturnType<typeof splitCallTiming>>,
+): void {
+  const timings = (context.gateTimings ??= []);
+  if (timings.length >= MAX_GATE_TIMINGS) return;
+  const name = `gate_${operation.replace(/^\//, "").replace(/[^A-Za-z0-9_.-]/g, "_")}`;
+  timings.push({
+    name,
+    durationMs,
+    ...(split.cold !== undefined && {
+      description: split.cold ? "cold" : "warm",
+    }),
+  });
+  for (const [suffix, value] of [
+    ["entry", split.entryMs],
+    ["handler", split.handlerMs],
+    ["after", split.afterMs],
+  ] as const)
+    if (value !== undefined && timings.length < MAX_GATE_TIMINGS)
+      timings.push({ name: `${name}_${suffix}`, durationMs: value });
+}
+
+/** Durable Object splits recorded for the current request, in call order. */
+export function currentGateServerTimings(): readonly GateServerTiming[] {
+  return requestAls.getStore()?.gateTimings ?? [];
 }
 
 export async function observeCloudRequest<T>(

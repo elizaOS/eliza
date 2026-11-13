@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-computeruse",
-  "version": "2.0.12-beta.0",
+  "version": "2.0.6",
   "description": "Desktop automation plugin \u2014 screenshots, mouse/keyboard control, browser CDP, and window management for elizaOS agents. Ported from open-computer-use (Apache 2.0).",
   "type": "module",
   "main": "dist/index.js",
@@ -41,17 +41,17 @@
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "validate:ios-device-evidence": "node ../../packages/scripts/plugins/plugin-computeruse/validate-ios-device-evidence.ts",
-    "validate:platform-evidence": "node ../../packages/scripts/plugins/plugin-computeruse/validate-platform-evidence.ts",
-    "validate:android-device-evidence": "node ../../packages/scripts/plugins/plugin-computeruse/validate-platform-evidence.ts docs/android-device-validation.json",
-    "validate:android-aosp-evidence": "node ../../packages/scripts/plugins/plugin-computeruse/validate-platform-evidence.ts docs/android-aosp-validation.json",
+    "validate:ios-device-evidence": "bun ../../packages/scripts/plugins/plugin-computeruse/validate-ios-device-evidence.ts",
+    "validate:platform-evidence": "bun ../../packages/scripts/plugins/plugin-computeruse/validate-platform-evidence.ts",
+    "validate:android-device-evidence": "bun ../../packages/scripts/plugins/plugin-computeruse/validate-platform-evidence.ts docs/android-device-validation.json",
+    "validate:android-aosp-evidence": "bun ../../packages/scripts/plugins/plugin-computeruse/validate-platform-evidence.ts docs/android-aosp-validation.json",
     "capture:macos-desktop-evidence": "bun ../../packages/scripts/plugins/plugin-computeruse/capture-macos-desktop-evidence.ts",
     "capture:linux-desktop-evidence": "bun ../../packages/scripts/plugins/plugin-computeruse/capture-linux-desktop-evidence.ts",
     "capture:windows-desktop-evidence": "bun ../../packages/scripts/plugins/plugin-computeruse/capture-windows-desktop-evidence.ts",
     "record:windows-cua-input": "bun ../../packages/scripts/plugins/plugin-computeruse/record-windows-cua-input.ts",
-    "validate:macos-desktop-evidence": "node ../../packages/scripts/plugins/plugin-computeruse/validate-platform-evidence.ts docs/macos-desktop-validation.json",
-    "validate:linux-desktop-evidence": "node ../../packages/scripts/plugins/plugin-computeruse/validate-platform-evidence.ts docs/linux-desktop-validation.json",
-    "validate:windows-desktop-evidence": "node ../../packages/scripts/plugins/plugin-computeruse/validate-platform-evidence.ts docs/windows-desktop-validation.json"
+    "validate:macos-desktop-evidence": "bun ../../packages/scripts/plugins/plugin-computeruse/validate-platform-evidence.ts docs/macos-desktop-validation.json",
+    "validate:linux-desktop-evidence": "bun ../../packages/scripts/plugins/plugin-computeruse/validate-platform-evidence.ts docs/linux-desktop-validation.json",
+    "validate:windows-desktop-evidence": "bun ../../packages/scripts/plugins/plugin-computeruse/validate-platform-evidence.ts docs/windows-desktop-validation.json"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*",
@@ -68,20 +68,20 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "bun-types": "1.4.2",
-    "jsdom": "^30.1.3",
+    "jsdom": "^31.0.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vite": "^8.3.3",
-    "vitest": "5.0.5"
+    "vitest": "5.1.0"
   },
   "dependencies": {
     "@elizaos/cloud-routing": "workspace:*",
     "@elizaos/host": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@nut-tree-fork/nut-js": "^4.2.6",
-    "puppeteer-core": "^24.9.0",
+    "puppeteer-core": "^25.16.0",
     "@elizaos/contracts": "workspace:*"
   },
   "optionalDependencies": {

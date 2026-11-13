@@ -112,11 +112,14 @@ android {
   targetCompatibility JavaVersion.toVersion(profile.toolchain.java)
  }
  if (profile.kotlin) kotlinOptions { jvmTarget = String.valueOf(profile.toolchain.java) }
- if (profile.preserveRuntimeBytes) packaging.jniLibs.useLegacyPackaging = true
+ if (profile.preserveRuntimeBytes || profile.nativeLibraries == 'extract-16k') packaging.jniLibs.useLegacyPackaging = true
+ // extract-16k: extracted on install, and also stored and 16 KiB aligned in the APK (see below).
+ if (profile.nativeLibraries == 'extract-16k') androidResources.noCompress += 'so'
  if (profile.runtimeMain) {
   // AGP's asset merger does not honor AndroidSourceDirectorySet exclusions.
   def runtimeAssets = tasks.register('stageElizaConsumerRuntimeAssets', Sync) {
    from new File(profile.runtimeMain, 'assets')
+   // riscv64 is retired; an older checkout may still hold its staged assets.
    exclude 'agent/arm64-v8a/**', 'agent/x86_64/**', 'agent/riscv64/**'
    into layout.buildDirectory.dir('generated/eliza-consumer-runtime-assets')
   }
@@ -145,6 +148,44 @@ if (!profile.assetFiles.isEmpty()) {
  }
  android.sourceSets.main.assets.srcDir(assetDirectory)
  tasks.named('preBuild').configure { dependsOn assetFiles }
+}
+// extract-16k: Android extracts the libraries on install, and the APK also stores each
+// lib/<abi>/*.so uncompressed on a 16 KiB page (for example for an image's prebuilt checks).
+// AGP page-aligns libraries only when it does not extract them, so each package task realigns
+// its APK with zipalign -P 16 and signs it again with the variant's own signing configuration.
+// An unsigned release is only realigned. A signature that this script cannot renew (for
+// example an injected signing key) fails the build, because realignment would break it.
+if (profile.nativeLibraries == 'extract-16k') androidComponents.onVariants(androidComponents.selector().all()) { variant ->
+ def buildTools = new File(androidComponents.sdkComponents.sdkDirectory.get().asFile, "build-tools/${android.buildToolsVersion}")
+ def signing = android.buildTypes.getByName(variant.buildType).signingConfig
+ tasks.matching { it.name == "package${variant.name.capitalize()}" }.configureEach { pack ->
+  pack.doLast {
+   def apks = pack.outputDirectory.get().asFile.listFiles().findAll { it.name.endsWith('.apk') }
+   if (apks.size() != 1) throw new GradleException("${pack.name} wrote ${apks.size()} APKs, expected one")
+   File apk = apks[0], aligned = new File(apk.parentFile, "${apk.name}.aligned")
+   if (signing == null && !apk.name.endsWith('-unsigned.apk'))
+    throw new GradleException("${apk.name} is signed by a key that 16 KiB realignment cannot renew")
+   aligned.delete()
+   project.exec { commandLine new File(buildTools, 'zipalign'), '-P', '16', '-f', '4', apk, aligned }
+   if (signing != null) {
+    // The keystore type and schemes AGP signed with. Passwords reach apksigner through its
+    // environment, never through its arguments.
+    project.exec {
+     environment 'ELIZA_CONSUMER_STORE_PASSWORD', signing.storePassword
+     environment 'ELIZA_CONSUMER_KEY_PASSWORD', signing.keyPassword
+     commandLine new File(buildTools, 'apksigner'), 'sign', '--ks', signing.storeFile,
+      *(signing.storeType ? ['--ks-type', signing.storeType] : []), '--ks-key-alias', signing.keyAlias,
+      '--ks-pass', 'env:ELIZA_CONSUMER_STORE_PASSWORD', '--key-pass', 'env:ELIZA_CONSUMER_KEY_PASSWORD',
+      '--v1-signing-enabled', String.valueOf(signing.enableV1Signing == true),
+      '--v2-signing-enabled', String.valueOf(signing.enableV2Signing != false),
+      '--v3-signing-enabled', String.valueOf(signing.enableV3Signing == true),
+      '--v4-signing-enabled', 'false', aligned
+    }
+   }
+   project.exec { commandLine new File(buildTools, 'zipalign'), '-c', '-P', '16', '4', aligned }
+   if (!apk.delete() || !aligned.renameTo(apk)) throw new GradleException("Cannot replace ${apk}")
+  }
+ }
 }
 // Consumer-owned product configuration, applied after the generated policy.
 profile.appScripts.each { script -> apply from: script }

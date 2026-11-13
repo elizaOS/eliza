@@ -285,42 +285,13 @@ export class AppFactoryService {
     options?: { deleteGitHubRepo?: boolean },
   ): Promise<{ success: boolean; errors: string[] }> {
     const { deleteGitHubRepo = false } = options || {};
-    const errors: string[] = [];
-
-    const app = await appsService.getById(appId);
-    if (!app) {
-      return { success: false, errors: ["App not found"] };
-    }
-
-    // Delete GitHub repo if requested
-    if (deleteGitHubRepo && app.github_repo) {
-      try {
-        const repoName = app.github_repo.includes("/")
-          ? app.github_repo.split("/").pop()!
-          : app.github_repo;
-
-        await githubReposService.deleteAppRepo(repoName);
-
-        logger.info("AppFactory: Deleted GitHub repo", {
-          appId,
-          githubRepo: app.github_repo,
-        });
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : "Unknown error";
-        errors.push(`Failed to delete GitHub repo: ${errorMessage}`);
-        logger.warn("AppFactory: Failed to delete GitHub repo", {
-          appId,
-          error: errorMessage,
-        });
-      }
-    }
-
-    // Delete the app record
-    await appsService.delete(appId);
-
-    logger.info("AppFactory: Deleted app", { appId });
-
-    return { success: true, errors };
+    const deletion = await appsService.delete(appId, { deleteGitHubRepo });
+    if (!deletion) return { success: false, errors: ["App not found"] };
+    return {
+      success: deletion.state === "completed",
+      errors:
+        deletion.state === "completed" ? [] : ["App deletion is pending; follow the original job"],
+    };
   }
 
   /**

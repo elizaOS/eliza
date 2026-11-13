@@ -2,12 +2,7 @@
 
 import path from "node:path";
 import process from "node:process";
-import {
-  ANDROID_LP3_POLICY_CLASSES,
-  ANDROID_LP3_POLICY_MARKERS,
-  ANDROID_LP3_PRIVATE_ACTIONS,
-  resolveAndroidArtifactKind,
-} from "../../lib/android-cloud-artifact-audit.ts";
+import { resolveAndroidArtifactKind } from "../../lib/android-cloud-artifact-audit.ts";
 import {
   ANDROID_CLOUD_ROUTING_MARKERS,
   findAndroidCloudRoutingMarkers,
@@ -69,43 +64,6 @@ export function applyAndroidCloudSplashTheme(source, { cloudBuild }) {
 // components.
 //
 // Components deleted from the manifest (and from app/src/main/java/...):
-export const ANDROID_LP3_COLOR_POLICY_COMPONENTS = [
-  "Lp3ColorPolicyInitializer",
-  "Lp3ColorPolicyService",
-  "Lp3ColorPolicyBootReceiver",
-];
-
-export const ANDROID_LP3_COLOR_POLICY_PERMISSIONS = [
-  "WRITE_SECURE_SETTINGS",
-  "RECEIVE_BOOT_COMPLETED",
-  "FOREGROUND_SERVICE",
-  "FOREGROUND_SERVICE_SPECIAL_USE",
-];
-
-export const ANDROID_LP3_COLOR_POLICY_REQUIRED_PERMISSIONS = [
-  ...ANDROID_LP3_COLOR_POLICY_PERMISSIONS,
-  "POST_NOTIFICATIONS",
-];
-
-export const ANDROID_LP3_COLOR_POLICY_JAVA_FILES = [
-  "Lp3ColorPolicy.java",
-  "Lp3ColorPolicyInitializer.java",
-  "Lp3ColorPolicyService.java",
-  "Lp3ColorPolicyBootReceiver.java",
-];
-
-export const ANDROID_LP3_COLOR_POLICY_COMMAND_ACTIONS = [
-  "ai.elizaos.app.action.ENABLE_LP3_COLOR_POLICY",
-  "ai.elizaos.app.action.DISABLE_LP3_COLOR_POLICY",
-  "ai.elizaos.app.action.SYNC_LP3_COLOR_POLICY",
-];
-
-export const ANDROID_LP3_COLOR_POLICY_ACTIONS = [
-  "android.intent.action.BOOT_COMPLETED",
-  "android.intent.action.MY_PACKAGE_REPLACED",
-  ...ANDROID_LP3_COLOR_POLICY_COMMAND_ACTIONS,
-];
-
 // <queries> package-visibility entries the Play cloud client must not declare.
 export const ANDROID_CLOUD_STRIPPED_QUERY_PACKAGES = [
   // biome-ignore lint/suspicious/noTemplateCurlyInString: literal Gradle manifest placeholder in AndroidManifest.xml.
@@ -146,6 +104,7 @@ export const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
   "ElizaSmsGatewayService",
   "ElizaRespondViaMessageService",
   "ElizaSmsComposeActivity",
+  "ElizaSmsReplyReviewActivity",
   "ElizaBootReceiver",
   "ElizaBrowserActivity",
   "ElizaContactsActivity",
@@ -161,7 +120,6 @@ export const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
   // (stripped below) and admits pending resets from ElizaApplication (also
   // stripped); the thin Cloud client relies on Android's own Clear storage.
   "ElizaDataResetRecoveryActivity",
-  ...ANDROID_LP3_COLOR_POLICY_COMPONENTS,
 ];
 
 // Permissions removed from the manifest. Anything that triggers a Play
@@ -229,6 +187,19 @@ export const ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS = [
 
 // Java sources removed from the merged sources tree so they don't
 // reference manifest-stripped classes and break compilation.
+/**
+ * Helpers of the SMS components that are not manifest components: the reviewed
+ * reply proposals, the gateway flow and this app's reviewed-send identity. Cloud
+ * builds strip them with the SMS components; SMS gateway builds keep them.
+ */
+export const ANDROID_SMS_REVIEWED_SEND_JAVA_FILES = [
+  "ElizaSmsGatewayFlow.java",
+  "ElizaSmsReplyProposals.java",
+  "ElizaSmsReviewedSend.java",
+];
+export const ANDROID_SMS_REVIEWED_SEND_NATIVE_PLUGIN =
+  "@elizaos/plugin-native-messages";
+
 export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "BatteryOptimizationPlugin.java",
   "BrowserNativeMessagingService.java",
@@ -288,7 +259,8 @@ export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "ElizaRespondViaMessageService.java",
   "ElizaSmsComposeActivity.java",
   "ElizaSmsReceiver.java",
-  ...ANDROID_LP3_COLOR_POLICY_JAVA_FILES,
+  ...ANDROID_SMS_REVIEWED_SEND_JAVA_FILES,
+  "ElizaSmsReplyReviewActivity.java",
 ];
 
 // Host-side JVM tests for source-stripped on-device runtime code must not be
@@ -310,6 +282,7 @@ export const ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES = [
   "ElizaAgentWatchdogPolicyInstrumentedTest.java",
   "ElizaAssetExtractionPolicyTest.java",
   "ElizaAssistantSurfaceInstrumentedTest.java",
+  "ElizaSmsReplyReviewTest.java",
   "ElizaWorkSchedulerPolicyTest.java",
   "InferenceMemoryPolicyTest.java",
   "NativeTranscriptReducerTest.java",
@@ -317,66 +290,25 @@ export const ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES = [
   "ResidentStreamTransportInstrumentedTest.java",
 ];
 
-export function isAndroidLp3ColorPolicyEnabled(env = process.env) {
-  return ["1", "true", "yes"].includes(
-    String(env.ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED ?? "")
-      .trim()
-      .toLowerCase(),
-  );
-}
-
-export function resolveAndroidLp3ColorPolicyBuildEnv(env = process.env) {
-  return {
-    ...env,
-    ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED: isAndroidLp3ColorPolicyEnabled(env)
-      ? "1"
-      : "0",
-  };
-}
-
-export function isAndroidLp3RemoteFallbackRequired(env = process.env) {
-  return ["1", "true", "yes"].includes(
-    String(env.ELIZA_ANDROID_LP3_REMOTE_FALLBACK_REQUIRED ?? "")
-      .trim()
-      .toLowerCase(),
-  );
-}
-
 export function isAndroidVpsSidecarBuild(env = process.env) {
   return isTruthyEnv(env.ELIZA_ANDROID_VPS_SIDECAR);
 }
 
-export function enforceAndroidLp3RemoteFallbackBuildPolicy({
+export function enforceAndroidVpsSidecarBuildPolicy({
   targetName,
+  debug = false,
   env = process.env,
 }) {
-  const lp3Required = isAndroidLp3RemoteFallbackRequired(env);
-  const sidecarRequired = isAndroidVpsSidecarBuild(env);
-  if (!lp3Required && !sidecarRequired) return;
-  if (lp3Required && sidecarRequired) {
+  if (!isAndroidVpsSidecarBuild(env)) return;
+  if (targetName !== "android-cloud" || !debug) {
     throw new Error(
-      "[mobile-build] LP3 and VPS sidecar remote profiles are mutually exclusive.",
-    );
-  }
-  if (targetName !== "android-cloud-debug") {
-    throw new Error(
-      "[mobile-build] remote fallback profiles are restricted to android-cloud-debug.",
-    );
-  }
-  if (lp3Required && !isAndroidLp3ColorPolicyEnabled(env)) {
-    throw new Error(
-      "[mobile-build] ELIZA_ANDROID_LP3_REMOTE_FALLBACK_REQUIRED is restricted to the LP3 android-cloud-debug direct profile.",
-    );
-  }
-  if (sidecarRequired && isAndroidLp3ColorPolicyEnabled(env)) {
-    throw new Error(
-      "[mobile-build] ELIZA_ANDROID_VPS_SIDECAR must not enable the LP3 color policy.",
+      "[mobile-build] the VPS sidecar profile is restricted to android-cloud --debug.",
     );
   }
   const raw = String(env.VITE_ELIZA_REMOTE_FALLBACK_API_BASE ?? "").trim();
   if (!raw) {
     throw new Error(
-      "[mobile-build] the remote fallback profile requires VITE_ELIZA_REMOTE_FALLBACK_API_BASE",
+      "[mobile-build] the VPS sidecar profile requires VITE_ELIZA_REMOTE_FALLBACK_API_BASE",
     );
   }
   let parsed;
@@ -404,77 +336,16 @@ export function enforceAndroidLp3RemoteFallbackBuildPolicy({
   }
 }
 
-// LP3 is an elizaOS direct-debug policy, never a whitelabel capability. Build
-// entrypoints pass their resolved identity explicitly so nested hosts cannot
-// leak ambient branding into these pure policy helpers.
-export const ANDROID_LP3_CANONICAL_APP_ID = "ai.elizaos.app";
-
-export function enforceAndroidLp3ColorPolicyBuildPolicy({
-  targetName,
-  env = process.env,
-  appId = ANDROID_LP3_CANONICAL_APP_ID,
-}) {
-  if (!isAndroidLp3ColorPolicyEnabled(env)) return;
-  const playSignaled =
-    env.ELIZA_PLAY_STORE_BUILD === "1" ||
-    String(env.ELIZA_BUILD_VARIANT ?? "").toLowerCase() === "store";
-  const nonCanonicalTree =
-    env.ELIZA_ANDROID_USE_APP_DIR === "1" || appId !== "ai.elizaos.app";
-  if (
-    targetName !== "android-cloud-debug" ||
-    playSignaled ||
-    nonCanonicalTree
-  ) {
-    throw new Error(
-      "[mobile-build] ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED is restricted to " +
-        "the canonical android-cloud-debug direct-distribution lane; it is " +
-        "forbidden for release, Play, SMS gateway, sideload, AOSP, app-dir, " +
-        "and whitelabel targets.",
-    );
-  }
-}
-
-export function isAndroidFirebaseIndependentRemoteBuild(env = process.env) {
-  return (
-    isAndroidLp3RemoteFallbackRequired(env) || isAndroidVpsSidecarBuild(env)
-  );
-}
-
 export function resolveAndroidCloudStripPolicy(env = process.env) {
-  const stripPolicy = !isAndroidLp3ColorPolicyEnabled(env)
-    ? {
-        components: ANDROID_CLOUD_STRIPPED_COMPONENTS,
-        permissions: ANDROID_CLOUD_STRIPPED_PERMISSIONS,
-        mergerRemovedPermissions:
-          ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS,
-        javaFiles: ANDROID_CLOUD_STRIPPED_JAVA_FILES,
-        testJavaFiles: ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES,
-      }
-    : (() => {
-        const allowedComponents = new Set(ANDROID_LP3_COLOR_POLICY_COMPONENTS);
-        const allowedPermissions = new Set(
-          ANDROID_LP3_COLOR_POLICY_REQUIRED_PERMISSIONS,
-        );
-        const allowedJavaFiles = new Set(ANDROID_LP3_COLOR_POLICY_JAVA_FILES);
-        return {
-          components: ANDROID_CLOUD_STRIPPED_COMPONENTS.filter(
-            (component) => !allowedComponents.has(component),
-          ),
-          permissions: ANDROID_CLOUD_STRIPPED_PERMISSIONS.filter(
-            (permission) => !allowedPermissions.has(permission),
-          ),
-          mergerRemovedPermissions:
-            ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS.filter(
-              (permission) => !allowedPermissions.has(permission),
-            ),
-          javaFiles: ANDROID_CLOUD_STRIPPED_JAVA_FILES.filter(
-            (file) => !allowedJavaFiles.has(file),
-          ),
-          testJavaFiles: ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES,
-        };
-      })();
+  const stripPolicy = {
+    components: ANDROID_CLOUD_STRIPPED_COMPONENTS,
+    permissions: ANDROID_CLOUD_STRIPPED_PERMISSIONS,
+    mergerRemovedPermissions: ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS,
+    javaFiles: ANDROID_CLOUD_STRIPPED_JAVA_FILES,
+    testJavaFiles: ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES,
+  };
 
-  if (!isAndroidFirebaseIndependentRemoteBuild(env)) {
+  if (!isAndroidVpsSidecarBuild(env)) {
     return { ...stripPolicy, safePushNotifications: true };
   }
 
@@ -497,6 +368,17 @@ export function resolveAndroidCloudStripPolicy(env = process.env) {
   };
 }
 
+// Native Eliza Cloud sign-in host (packages/auth/android's CloudSignInPlugin):
+// every Cloud variant signs in through it, so the strip must keep these.
+export const ANDROID_CLOUD_NATIVE_SIGN_IN_JAVA_FILES = Object.freeze([
+  "ElizaCloudSignInPlugin.java",
+  "ElizaCloudSignInRegistration.java",
+  "ElizaCloudCredentialSlots.java",
+  "ElizaResidentCredentials.java",
+  "ElizaSecureStorePlugin.java",
+  "ElizaCredentialRetirement.java",
+]);
+
 // Java sources that survive the cloud strip but are rewritten (or deleted) by
 // rewriteCloudJavaSources() so that the android-cloud tree compiles without
 // ElizaAgentService. Kept as an exported single source of truth so the strip
@@ -505,6 +387,7 @@ export const ANDROID_CLOUD_REWRITTEN_JAVA_FILES = [
   "MainActivity.java",
   "AgentPlugin.java",
   "ElizaNativeBridge.java",
+  "ElizaCredentialRetirement.java",
 ];
 
 export const ANDROID_CLOUD_STRIPPED_ASSET_FILES = new Set([
@@ -611,7 +494,7 @@ export const ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES = Object.freeze([
 export function resolveAndroidCloudAllowedNativePluginPackages(
   env = process.env,
 ) {
-  return isAndroidFirebaseIndependentRemoteBuild(env)
+  return isAndroidVpsSidecarBuild(env)
     ? ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES.filter(
         (pkg) => pkg !== "@capacitor/push-notifications",
       )
@@ -624,34 +507,12 @@ export const ANDROID_PLAY_ALLOWED_CAPACITOR_CONFIG_PLUGINS = Object.freeze([
   "SplashScreen",
 ]);
 
-export const ANDROID_LAUNCHER_IN_APP_AUTH_HOSTS = Object.freeze([
-  "cloud.eliza.app",
-  "cloud-staging.eliza.app",
-]);
-
-/** Resolves the one sanitizer policy shared by write-time and source audits. */
-export function resolveAndroidCloudCapacitorConfigPolicy(env = process.env) {
-  const launcherKiosk = env.ELIZA_ANDROID_LAUNCHER_BUILD === "1";
-  return {
-    allowInAppAuthNavigation: launcherKiosk,
-    launcherKiosk,
-    webViewDebugging: launcherKiosk && env.ELIZA_WEBVIEW_DEBUG === "1",
-  };
-}
-
 export function isJsonRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 /** Returns the minimal runtime config that is safe to package in a Play APK/AAB. */
-export function sanitizeAndroidCloudCapacitorConfig(
-  value,
-  {
-    allowInAppAuthNavigation = false,
-    launcherKiosk = false,
-    webViewDebugging = false,
-  } = {},
-) {
+export function sanitizeAndroidCloudCapacitorConfig(value) {
   if (!isJsonRecord(value)) {
     throw new Error(
       "android-cloud capacitor.config.json must contain an object",
@@ -671,9 +532,6 @@ export function sanitizeAndroidCloudCapacitorConfig(
     loggingBehavior: "none",
     server: {
       androidScheme: "https",
-      ...(allowInAppAuthNavigation
-        ? { allowNavigation: [...ANDROID_LAUNCHER_IN_APP_AUTH_HOSTS] }
-        : {}),
     },
     plugins,
     android: {
@@ -683,7 +541,7 @@ export function sanitizeAndroidCloudCapacitorConfig(
           : "#000000",
       allowMixedContent: false,
       captureInput: sourceAndroid.captureInput === true,
-      webContentsDebuggingEnabled: launcherKiosk && webViewDebugging,
+      webContentsDebuggingEnabled: false,
     },
   };
 }
@@ -700,11 +558,31 @@ export const ANDROID_PLAY_ALLOWED_PERMISSIONS = Object.freeze([
   `${APP.appId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`,
 ]);
 
+/**
+ * Components and metadata that Android's Credential Manager and Google
+ * Identity libraries declare. The shared native Cloud sign-in library
+ * (packages/auth/android) brings them for the native Google account picker;
+ * none is exported without a Google Play services signature permission.
+ */
+export const ANDROID_NATIVE_SIGN_IN_COMPONENTS = Object.freeze([
+  "activity:androidx.credentials.playservices.controllers.identityauth.HiddenActivity",
+  "activity:androidx.credentials.playservices.controllers.identitycredentials.IdentityCredentialApiHiddenActivity",
+  "activity:com.google.android.gms.auth.api.signin.internal.SignInHubActivity",
+  "activity:com.google.android.gms.common.api.GoogleApiActivity",
+  "service:androidx.credentials.playservices.CredentialProviderMetadataHolder",
+  "service:com.google.android.gms.auth.api.signin.RevocationBoundService",
+]);
+
+export const ANDROID_NATIVE_SIGN_IN_METADATA_NAMES = Object.freeze([
+  "androidx.credentials.CREDENTIAL_PROVIDER_KEY",
+  "com.google.android.gms.version",
+]);
+
 export const ANDROID_PLAY_ALLOWED_COMPONENTS = Object.freeze([
+  ...ANDROID_NATIVE_SIGN_IN_COMPONENTS,
   `activity:${APP.appId}.ElizaShareActivity`,
   `activity:${APP.appId}.MainActivity`,
   "activity:com.capacitorjs.plugins.browser.BrowserControllerActivity",
-  "activity:com.google.android.gms.common.api.GoogleApiActivity",
   "provider:com.capacitorjs.plugins.localnotifications.LocalNotificationsAssetProvider",
   "provider:com.google.firebase.provider.FirebaseInitProvider",
   "provider:androidx.core.content.FileProvider",
@@ -742,6 +620,7 @@ export const ANDROID_PLAY_ALLOWED_ACTIONS = Object.freeze([
 ]);
 
 export const ANDROID_PLAY_ALLOWED_METADATA_NAMES = Object.freeze([
+  ...ANDROID_NATIVE_SIGN_IN_METADATA_NAMES,
   "android.app.shortcuts",
   "android.support.FILE_PROVIDER_PATHS",
   "androidx.emoji2.text.EmojiCompatInitializer",
@@ -749,7 +628,6 @@ export const ANDROID_PLAY_ALLOWED_METADATA_NAMES = Object.freeze([
   "androidx.profileinstaller.ProfileInstallerInitializer",
   "backend:com.google.android.datatransport.cct.CctBackendFactory",
   "com.google.android.gms.cloudmessaging.FINISHED_AFTER_HANDLED",
-  "com.google.android.gms.version",
   "com.google.firebase.components:com.google.firebase.FirebaseCommonKtxRegistrar",
   "com.google.firebase.components:com.google.firebase.datatransport.TransportRegistrar",
   "com.google.firebase.components:com.google.firebase.installations.FirebaseInstallationsKtxRegistrar",
@@ -775,7 +653,7 @@ export const ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES = Object.freeze([
 ]);
 
 export function resolveAndroidCloudAllowedNativeLibraries(env = process.env) {
-  return isAndroidFirebaseIndependentRemoteBuild(env)
+  return isAndroidVpsSidecarBuild(env)
     ? []
     : [...ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES];
 }
@@ -955,8 +833,9 @@ export function createAndroidPlayManifestPolicy({
     targetSdkVersion: "36",
   };
   if (!firebaseIndependent) return policy;
+  // Google Play services' API activity and version metadata stay: the native
+  // sign-in library needs them without Firebase.
   const firebaseComponents = [
-    "activity:com.google.android.gms.common.api.GoogleApiActivity",
     "provider:com.google.firebase.provider.FirebaseInitProvider",
     "receiver:com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerSchedulerBroadcastReceiver",
     "receiver:com.google.firebase.iid.FirebaseInstanceIdReceiver",
@@ -968,7 +847,6 @@ export function createAndroidPlayManifestPolicy({
     "service:com.google.firebase.messaging.FirebaseMessagingService",
   ];
   const firebaseMetadata = [
-    "com.google.android.gms.version",
     "backend:com.google.android.datatransport.cct.CctBackendFactory",
     "com.google.android.gms.cloudmessaging.FINISHED_AFTER_HANDLED",
     "com.google.firebase.components:com.google.firebase.datatransport.TransportRegistrar",
@@ -1004,6 +882,7 @@ export const ANDROID_SMS_GATEWAY_COMPONENTS = new Set([
   "ElizaRespondViaMessageService",
   "ElizaSmsComposeActivity",
   "ElizaSmsGatewayService",
+  "ElizaSmsReplyReviewActivity",
 ]);
 
 export const ANDROID_SMS_GATEWAY_PERMISSIONS = new Set([
@@ -1029,14 +908,20 @@ export const ANDROID_SMS_GATEWAY_STRIPPED_PERMISSIONS =
 
 export const ANDROID_SMS_GATEWAY_STRIPPED_JAVA_FILES = [
   ...ANDROID_CLOUD_STRIPPED_JAVA_FILES.filter(
-    (file) => !ANDROID_SMS_GATEWAY_COMPONENTS.has(file.replace(/\.java$/, "")),
+    (file) =>
+      !ANDROID_SMS_GATEWAY_COMPONENTS.has(file.replace(/\.java$/, "")) &&
+      !ANDROID_SMS_REVIEWED_SEND_JAVA_FILES.includes(file),
   ),
   "SafePushNotificationsPlugin.java",
   "ElizaReminderMessagingService.java",
 ];
 
 export const ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS = [
-  ...ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
+  // The gateway keeps plugin-native-messages: its replies are sent only through
+  // that plugin's reviewed send (ReviewedSmsSend), after the owner's review.
+  ...ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS.filter(
+    ([pkg]) => pkg !== ANDROID_SMS_REVIEWED_SEND_NATIVE_PLUGIN,
+  ),
   ["@capacitor/background-runner", "capacitor-background-runner"],
   ["@capacitor/barcode-scanner", "capacitor-barcode-scanner"],
   ["@capacitor/haptics", "capacitor-haptics"],
@@ -1101,183 +986,6 @@ export function findAndroidCloudPackagedRuntimeOffenders(entries) {
       (isNativeLibrary && isCloudBannedNativeLibrary(baseName))
     );
   });
-}
-
-export function findAndroidManifestElementBlock(
-  manifestText,
-  elementName,
-  qualifiedName,
-) {
-  const lines = manifestText.split(/\r?\n/);
-  for (let index = 0; index < lines.length; index += 1) {
-    const match = lines[index].match(/^(\s*)E: (\S+)/);
-    if (!match || match[2] !== elementName) continue;
-    const indent = match[1].length;
-    let end = index + 1;
-    while (end < lines.length) {
-      const nextElement = lines[end].match(/^(\s*)E: /);
-      if (nextElement && nextElement[1].length <= indent) break;
-      end += 1;
-    }
-    const block = lines.slice(index, end).join("\n");
-    if (block.includes(qualifiedName)) return block;
-  }
-  return null;
-}
-
-export function assertAndroidLp3ColorPolicyManifest(manifestText) {
-  const initializerName = `${APP.appId}.Lp3ColorPolicyInitializer`;
-  const serviceName = `${APP.appId}.Lp3ColorPolicyService`;
-  const receiverName = `${APP.appId}.Lp3ColorPolicyBootReceiver`;
-  const initializer = findAndroidManifestElementBlock(
-    manifestText,
-    "provider",
-    initializerName,
-  );
-  const service = findAndroidManifestElementBlock(
-    manifestText,
-    "service",
-    serviceName,
-  );
-  const receiver = findAndroidManifestElementBlock(
-    manifestText,
-    "receiver",
-    receiverName,
-  );
-  const mainActivity = findAndroidManifestElementBlock(
-    manifestText,
-    "activity",
-    `${APP.appId}.MainActivity`,
-  );
-  if (!initializer) {
-    throw new Error(
-      `[mobile-build] opted-in LP3 artifact is missing ${initializerName}`,
-    );
-  }
-  if (!service) {
-    throw new Error(
-      `[mobile-build] opted-in LP3 artifact is missing ${serviceName}`,
-    );
-  }
-  if (!receiver) {
-    throw new Error(
-      `[mobile-build] opted-in LP3 artifact is missing ${receiverName}`,
-    );
-  }
-  if (
-    !mainActivity ||
-    !/android:screenOrientation[^\n]*0x1/.test(mainActivity)
-  ) {
-    throw new Error(
-      "[mobile-build] opted-in LP3 MainActivity must be locked to portrait",
-    );
-  }
-  if (!/android:exported[^\n]*(?:0x0|false)/.test(service)) {
-    throw new Error(
-      `[mobile-build] opted-in LP3 service must be android:exported=false`,
-    );
-  }
-  if (!/android:exported[^\n]*(?:0x0|false)/.test(initializer)) {
-    throw new Error(
-      `[mobile-build] opted-in LP3 initializer must be android:exported=false`,
-    );
-  }
-  if (!initializer.includes(`${APP.appId}.lp3-color-policy-initializer`)) {
-    throw new Error(
-      `[mobile-build] opted-in LP3 initializer is missing its private authority`,
-    );
-  }
-  if (!/android:exported[^\n]*(?:0x0|false)/.test(receiver)) {
-    throw new Error(
-      `[mobile-build] opted-in LP3 receiver must be android:exported=false`,
-    );
-  }
-  if (
-    !/android:foregroundServiceType[^\n]*0x40000000/.test(service) ||
-    !service.includes("android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE")
-  ) {
-    throw new Error(
-      `[mobile-build] opted-in LP3 service is missing its specialUse foreground contract`,
-    );
-  }
-  for (const action of ANDROID_LP3_COLOR_POLICY_ACTIONS) {
-    if (!receiver.includes(action)) {
-      throw new Error(
-        `[mobile-build] opted-in LP3 receiver is missing action ${action}`,
-      );
-    }
-  }
-}
-
-export function assertAndroidArtifactOmitsLp3ManifestMarkers(
-  manifestText,
-  { appId = ANDROID_LP3_CANONICAL_APP_ID, label, permissions = [] },
-) {
-  const forbiddenMarkers = [
-    ...ANDROID_LP3_POLICY_CLASSES.map((className) => `${appId}.${className}`),
-    ...ANDROID_LP3_PRIVATE_ACTIONS,
-    ...ANDROID_LP3_POLICY_MARKERS,
-    ...permissions.map((permission) => `android.permission.${permission}`),
-  ];
-  const findings = forbiddenMarkers.filter((marker) =>
-    manifestText.includes(marker),
-  );
-  if (findings.length > 0) {
-    throw mobileBuildError(
-      `[mobile-build] ${label} artifact manifest still contains LP3 policy markers:\n` +
-        findings.map((marker) => `  - ${marker}`).join("\n"),
-    );
-  }
-}
-
-export function assertAndroidLauncherManifest(
-  manifestText,
-  { label = "android-launcher artifact" } = {},
-) {
-  const requiredMarkers = [
-    "android.intent.action.MAIN",
-    "android.intent.category.HOME",
-    "android.intent.category.DEFAULT",
-  ];
-  const sourceFilters = [
-    ...manifestText.matchAll(
-      /<intent-filter\b[^>]*>([\s\S]*?)<\/intent-filter>/g,
-    ),
-  ].map((match) => match[1]);
-  const aaptLines = manifestText.split(/\r?\n/);
-  const aaptFilters = [];
-  for (let index = 0; index < aaptLines.length; index += 1) {
-    const match = aaptLines[index].match(/^(\s*)E: intent-filter\b/);
-    if (!match) continue;
-    const indent = match[1].length;
-    const block = [aaptLines[index]];
-    for (let next = index + 1; next < aaptLines.length; next += 1) {
-      const nextLine = aaptLines[next];
-      const nextElement = nextLine.match(/^(\s*)E: /);
-      if (nextElement && nextElement[1].length <= indent) break;
-      block.push(nextLine);
-    }
-    aaptFilters.push(block.join("\n"));
-  }
-  const intentFilters = sourceFilters.length > 0 ? sourceFilters : aaptFilters;
-  if (
-    intentFilters.some((filter) =>
-      requiredMarkers.every((marker) => filter.includes(marker)),
-    )
-  ) {
-    return;
-  }
-
-  const missingMarkers = requiredMarkers.filter(
-    (marker) => !manifestText.includes(marker),
-  );
-  const detail =
-    missingMarkers.length > 0
-      ? `missing ${missingMarkers.join(", ")}`
-      : "MAIN, HOME, and DEFAULT are not declared together in one intent-filter";
-  throw mobileBuildError(
-    `[mobile-build] ${label} does not qualify for ROLE_HOME: ${detail}`,
-  );
 }
 
 export function assertAndroidSmsGatewayBadging(badging) {

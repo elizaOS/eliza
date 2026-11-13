@@ -4,7 +4,10 @@
  */
 
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
-import { verifyWalletSignature } from "@elizaos/cloud-shared/lib/auth/wallet-auth";
+import {
+  verifyWalletSignature,
+  WalletAuthUnavailableError,
+} from "@elizaos/cloud-shared/lib/auth/wallet-auth";
 import {
   RateLimitPresets,
   rateLimit,
@@ -109,13 +112,22 @@ app.post("/", async (c) => {
       );
     }
 
+    // The nonce store is down: the signature was never checked, so the
+    // client should retry rather than treat its key as bad.
+    if (error instanceof WalletAuthUnavailableError) {
+      return c.json(
+        { success: false, error: error.message, code: "service_unavailable" },
+        503,
+        { "Retry-After": "30" },
+      );
+    }
+
     if (
       error instanceof Error &&
       (error.message.includes("Invalid wallet signature") ||
         error.message.includes("Wallet authentication failed") ||
         error.message.includes("Signature has already been used") ||
-        error.message.includes("Signature timestamp expired") ||
-        error.message.includes("Service temporarily unavailable"))
+        error.message.includes("Signature timestamp expired"))
     ) {
       return c.json({ success: false, error: error.message }, 401);
     }

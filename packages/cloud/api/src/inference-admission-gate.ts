@@ -7,6 +7,10 @@
  * resetting an active quota window. The object never queries Postgres or Redis.
  */
 
+import {
+  CACHE_CIRCUIT_CLOCK_PATH,
+  CACHE_CIRCUIT_ID_PREFIX,
+} from "@elizaos/cloud-shared/lib/cache/cache-circuit-clock";
 import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import { isAffiliateBillingAttribution } from "@elizaos/cloud-shared/lib/services/affiliate-billing-attribution";
 import type { InferenceBalanceFence } from "@elizaos/cloud-shared/lib/services/credits";
@@ -14,8 +18,10 @@ import type {
   InferenceAdmissionRecoveryContext,
   InferenceAdmissionRecoveryResult,
 } from "@elizaos/cloud-shared/lib/services/inference-admission-recovery";
+import { INFERENCE_RATE_LIMIT_GATE_PREFIX } from "@elizaos/cloud-shared/lib/services/inference-policy-contract";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { SpeechRevocationRegistry } from "./speech-revocation-registry";
 
 interface ActiveLeaseTiming {
   estimatedCostUsd: number;
@@ -59,6 +65,7 @@ interface GateLedger {
   activeEstimateUsd: number;
   nextAlarmAt: number | null;
   settledRequestIds: string[];
+  settledFenceEstimates?: Record<string, number>;
   /**
    * Highest organization policy generation observed from an authoritative
    * policy read (primary admission or snapshot publication). Cache-served
@@ -190,6 +197,11 @@ interface OrganizationStateRequest {
   active: boolean;
 }
 
+interface PolicyFenceRequest {
+  mutationId: string;
+  policyGeneration?: string;
+}
+
 interface RateLimitCutoverRequest {
   windowMs: number;
 }
@@ -228,6 +240,16 @@ const LEASE_EXPIRY_KEY_PREFIX = "lease-expiry:";
 const RATE_LIMITS_KEY = "rate-limits";
 const API_KEY_RATE_LIMIT_WINDOW_PREFIX = "api-key:";
 const ORGANIZATION_DISABLED_KEY = "revocation:organization-disabled";
+/**
+ * Standing fence for cache-served admission. Every organization policy or
+ * billing-hold mutation opens a pending entry before its database write and
+ * closes it after COMMIT with the generation the write produced. While any
+ * entry is open no new lease or dispatch is admitted, and afterwards a lease
+ * decided from an older generation is stale. An abandoned entry expires.
+ */
+const POLICY_FENCE_PENDING_KEY = "policy-fence:pending";
+const POLICY_FENCE_GENERATION_KEY = "policy-fence:generation";
+const POLICY_FENCE_MAX_PENDING_MS = 120_000;
 const REVOKED_API_KEY_PREFIX = "revocation:api-key:";
 const DISABLED_SUBJECT_PREFIX = "revocation:subject-disabled:";
 const SESSION_CUTOFF_PREFIX = "revocation:session-cutoff:";
@@ -385,7 +407,7 @@ function validOptionalPolicyNumber(value: unknown): boolean {
 function validAppPolicy(policy: Record<string, unknown>): boolean {
   return (
     validId(policy.name) &&
-    validId(policy.creatorUserId) &&
+    (policy.creatorUserId === null || validTrimmedId(policy.creatorUserId)) &&
     typeof policy.monetizationEnabled === "boolean" &&
     typeof policy.reviewStatus === "string" &&
     APP_REVIEW_STATUSES.has(policy.reviewStatus) &&
@@ -494,6 +516,9 @@ function cloneLedger(ledger: GateLedger): GateLedger {
     activeEstimateUsd: ledger.activeEstimateUsd,
     nextAlarmAt: ledger.nextAlarmAt,
     settledRequestIds: [...ledger.settledRequestIds],
+    ...(ledger.settledFenceEstimates && {
+      settledFenceEstimates: { ...ledger.settledFenceEstimates },
+    }),
     ...(ledger.policyGeneration !== undefined && {
       policyGeneration: ledger.policyGeneration,
     }),
@@ -517,13 +542,42 @@ function cloneRateLimitWindows(windows: RateLimitWindows): RateLimitWindows {
   );
 }
 
-function rememberSettledRequest(ledger: GateLedger, requestId: string): void {
+function validSettledFenceEstimates(
+  value: unknown,
+  requestIds: readonly string[],
+): boolean {
+  if (value === undefined) return true;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const ids = new Set(requestIds);
+  return Object.entries(value).every(
+    ([id, amount]) => ids.has(id) && nonNegativeFinite(amount),
+  );
+}
+
+function rememberSettledRequest(
+  ledger: GateLedger,
+  requestId: string,
+  fencedEstimateUsd?: number,
+): void {
+  // Only bounded speech IDs require this replay metadata. Duplicating arbitrary
+  // 128-byte request IDs can exhaust the existing 512 KiB ledger bound.
+  const speechRequest =
+    /^speech:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:(stt|tts)$/i.test(
+      requestId,
+    );
+  if (speechRequest && fencedEstimateUsd !== undefined) {
+    ledger.settledFenceEstimates = {
+      ...ledger.settledFenceEstimates,
+      [requestId]: fencedEstimateUsd,
+    };
+  }
   ledger.settledRequestIds.push(requestId);
   if (ledger.settledRequestIds.length > MAX_SETTLED_REQUEST_IDS) {
-    ledger.settledRequestIds.splice(
+    const removed = ledger.settledRequestIds.splice(
       0,
       ledger.settledRequestIds.length - MAX_SETTLED_REQUEST_IDS,
     );
+    for (const id of removed) delete ledger.settledFenceEstimates?.[id];
   }
 }
 
@@ -649,6 +703,9 @@ interface LeaseStorageMutation {
 export class InferenceAdmissionGate {
   private readonly state: DurableObjectState;
   private readonly env: AppEnv["Bindings"];
+  private readonly speechSubscriptions = new SpeechRevocationRegistry(
+    (credential) => this.credentialDenial(credential),
+  );
   private ledger: GateLedger | undefined;
   private rateLimitWindows: RateLimitWindows | undefined;
   private operationQueue: Promise<void> = Promise.resolve();
@@ -659,6 +716,7 @@ export class InferenceAdmissionGate {
   // comes from the distinct Durable Object identity selected by the caller.
   private rateLimitOperationQueue: Promise<void> = Promise.resolve();
   private fundedBudgetController?: import("./inference-funded-budget-controller").InferenceFundedBudgetController;
+  private cacheCircuitClock?: import("./cache-circuit-clock").CacheCircuitClock;
 
   private async fundedBudgets() {
     if (!this.fundedBudgetController) {
@@ -701,11 +759,35 @@ export class InferenceAdmissionGate {
               }),
             );
           },
+          consumeRatePolicy: async (value) => {
+            // The primary path's rate object still owns the durable windows.
+            const namespace = this.env.INFERENCE_ADMISSION_GATES;
+            if (!namespace)
+              return jsonError("Inference rate binding is missing", 503);
+            return namespace
+              .getByName(
+                `${INFERENCE_RATE_LIMIT_GATE_PREFIX}${value.organizationId}`,
+              )
+              .fetch(
+                new Request("https://inference-admission.internal/rate-limit", {
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({ ...value, windowMs: 60_000 }),
+                  signal: AbortSignal.timeout(
+                    Math.max(1, value.operationDeadlineAt - Date.now()),
+                  ),
+                }),
+              );
+          },
         },
       );
     }
     return this.fundedBudgetController;
   }
+
+  // Wall clock when this instance was constructed. A caller that sent its
+  // request before this time paid the object's activation on that request.
+  private readonly activatedAt = Date.now();
 
   constructor(state: DurableObjectState, env: AppEnv["Bindings"]) {
     this.state = state;
@@ -730,6 +812,10 @@ export class InferenceAdmissionGate {
             this.ledger.nextAlarmAt <= 0)) ||
         !Array.isArray(this.ledger.settledRequestIds) ||
         this.ledger.settledRequestIds.length > MAX_SETTLED_REQUEST_IDS ||
+        !validSettledFenceEstimates(
+          this.ledger.settledFenceEstimates,
+          this.ledger.settledRequestIds,
+        ) ||
         (this.ledger.policyGeneration !== undefined &&
           balanceRevision(this.ledger.policyGeneration) === null) ||
         this.ledger.settledRequestIds.some(
@@ -1079,7 +1165,10 @@ export class InferenceAdmissionGate {
     }
     // A new lease decided under a superseded policy generation never reaches
     // the provider. Replays of an existing lease above keep their identity.
-    if (!observePolicyGeneration(ledger, request.policyGeneration)) {
+    if (
+      !(await this.policyFenceAdmits(request.policyGeneration)) ||
+      !observePolicyGeneration(ledger, request.policyGeneration)
+    ) {
       await this.save(ledger);
       return policyStale();
     }
@@ -1233,7 +1322,7 @@ export class InferenceAdmissionGate {
       request.balanceView,
     );
     recomputeAvailable(ledger);
-    rememberSettledRequest(ledger, request.requestId);
+    rememberSettledRequest(ledger, request.requestId, lease.estimatedCostUsd);
     await this.save(ledger, {
       delete: [{ requestId: request.requestId, lease }],
     });
@@ -1288,7 +1377,10 @@ export class InferenceAdmissionGate {
       });
       return Response.json({ dispatched: true, duplicate: true });
     }
-    if (!policyGenerationIsCurrent(ledger, lease.policyGeneration)) {
+    if (
+      !policyGenerationIsCurrent(ledger, lease.policyGeneration) ||
+      !(await this.policyFenceAdmits(lease.policyGeneration))
+    ) {
       return policyStale();
     }
     const dispatched: ActiveLease = {
@@ -1325,7 +1417,17 @@ export class InferenceAdmissionGate {
       return jsonError("Inference admission ledger is unavailable", 503);
     }
     if (existing.settledRequestIds.includes(request.requestId)) {
-      return jsonError("Request ID was already settled", 409);
+      const estimate = existing.settledFenceEstimates?.[request.requestId];
+      if (estimate === undefined || estimate !== request.estimatedCostUsd)
+        return jsonError(
+          "Settled request fence target is unavailable or changed",
+          409,
+        );
+      return Response.json({
+        settlementFenced: true,
+        estimatedCostUsd: estimate,
+        duplicate: true,
+      });
     }
     const ledger = cloneLedger(existing);
     const lease = await this.loadLease(request.requestId);
@@ -1718,6 +1820,12 @@ export class InferenceAdmissionGate {
       revocationStorageKey(REVOKED_API_KEY_PREFIX, request.credentialId),
       true,
     );
+    this.speechSubscriptions.revoke(
+      (identity) =>
+        identity.organizationId === request.organizationId &&
+        identity.credential.kind === "api_key" &&
+        identity.credential.credentialId === request.credentialId,
+    );
     return Response.json({ committed: true });
   }
 
@@ -1735,6 +1843,12 @@ export class InferenceAdmissionGate {
     const key = subjectRevocationStorageKey(request.userId, request.reason);
     if (request.active) await this.state.storage.delete(key);
     else await this.state.storage.put(key, true);
+    if (!request.active)
+      this.speechSubscriptions.revoke(
+        (identity) =>
+          identity.organizationId === request.organizationId &&
+          identity.credential.userId === request.userId,
+      );
     return Response.json({ committed: true });
   }
 
@@ -1752,6 +1866,13 @@ export class InferenceAdmissionGate {
     const key = revocationStorageKey(SESSION_CUTOFF_PREFIX, request.userId);
     const previous = (await this.state.storage.get<number>(key)) ?? 0;
     await this.state.storage.put(key, Math.max(previous, request.issuedAt));
+    this.speechSubscriptions.revoke(
+      (identity) =>
+        identity.organizationId === request.organizationId &&
+        identity.credential.kind === "steward_session" &&
+        identity.credential.userId === request.userId &&
+        identity.credential.issuedAt <= request.issuedAt,
+    );
     return Response.json({ committed: true });
   }
 
@@ -1769,6 +1890,83 @@ export class InferenceAdmissionGate {
     const key = sessionBindingStorageKey(request.userId, request.stewardUserId);
     if (request.active) await this.state.storage.delete(key);
     else await this.state.storage.put(key, true);
+    if (!request.active)
+      this.speechSubscriptions.revoke(
+        (identity) =>
+          identity.organizationId === request.organizationId &&
+          identity.credential.kind === "steward_session" &&
+          identity.credential.userId === request.userId &&
+          identity.credential.stewardUserId === request.stewardUserId,
+      );
+    return Response.json({ committed: true });
+  }
+
+  /**
+   * True when no policy mutation is open and the caller's generation is not
+   * older than the newest committed mutation this gate has been told about.
+   */
+  private async policyFenceAdmits(
+    generation: string | undefined,
+  ): Promise<boolean> {
+    const [pending, floor] = await Promise.all([
+      this.state.storage.get<Record<string, number>>(POLICY_FENCE_PENDING_KEY),
+      this.state.storage.get<string>(POLICY_FENCE_GENERATION_KEY),
+    ]);
+    const now = Date.now();
+    if (pending && Object.values(pending).some((until) => until > now)) {
+      return false;
+    }
+    if (floor === undefined || generation === undefined) return true;
+    const leased = balanceRevision(generation);
+    const committed = balanceRevision(floor);
+    return leased !== null && committed !== null && leased >= committed;
+  }
+
+  private async policyFence(
+    path: string,
+    request: PolicyFenceRequest,
+  ): Promise<Response> {
+    if (
+      !validTrimmedId(request.mutationId) ||
+      (request.policyGeneration !== undefined &&
+        balanceRevision(request.policyGeneration) === null)
+    ) {
+      return jsonError("Invalid inference policy fence request", 400);
+    }
+    const now = Date.now();
+    const stored =
+      (await this.state.storage.get<Record<string, number>>(
+        POLICY_FENCE_PENDING_KEY,
+      )) ?? {};
+    const pending = Object.fromEntries(
+      Object.entries(stored).filter(([, until]) => until > now),
+    );
+    if (path === "/policy-fence/begin") {
+      pending[request.mutationId] = now + POLICY_FENCE_MAX_PENDING_MS;
+      await this.state.storage.put(POLICY_FENCE_PENDING_KEY, pending);
+      return Response.json({ blocked: true });
+    }
+    delete pending[request.mutationId];
+    await this.state.storage.put(POLICY_FENCE_PENDING_KEY, pending);
+    if (path === "/policy-fence/commit" && request.policyGeneration) {
+      const floor = await this.state.storage.get<string>(
+        POLICY_FENCE_GENERATION_KEY,
+      );
+      const incoming = balanceRevision(request.policyGeneration)!;
+      const current = floor === undefined ? null : balanceRevision(floor);
+      if (current === null || incoming > current) {
+        await this.state.storage.put(
+          POLICY_FENCE_GENERATION_KEY,
+          request.policyGeneration,
+        );
+      }
+      const existing = await this.load();
+      if (existing) {
+        const ledger = cloneLedger(existing);
+        observePolicyGeneration(ledger, request.policyGeneration);
+        await this.save(ledger);
+      }
+    }
     return Response.json({ committed: true });
   }
 
@@ -1784,6 +1982,10 @@ export class InferenceAdmissionGate {
     if (request.active)
       await this.state.storage.delete(ORGANIZATION_DISABLED_KEY);
     else await this.state.storage.put(ORGANIZATION_DISABLED_KEY, true);
+    if (!request.active)
+      this.speechSubscriptions.revoke(
+        (identity) => identity.organizationId === request.organizationId,
+      );
     return Response.json({ committed: true });
   }
 
@@ -1793,7 +1995,55 @@ export class InferenceAdmissionGate {
   }
 
   async fetch(request: Request): Promise<Response> {
+    // Workers clocks advance only across I/O, so this is the event's arrival
+    // time. Callers compare it with their send time to separate routing and
+    // activation from handler work and the output gate's storage commit.
+    const enteredAt = Date.now();
     const handlerStartedAt = performance.now();
+    const routed = await this.route(request);
+    if (routed.status === 101) return routed;
+    // A handler may return a Response with immutable headers; copy it once.
+    const response = new Response(routed.body, routed);
+    // Internal binding telemetry only. It includes body parsing and our
+    // queues, but excludes time before handler entry and the platform output
+    // gate that commits storage before delivering the response.
+    response.headers.set(
+      "x-eliza-gate-handler-ms",
+      String(Math.max(0, performance.now() - handlerStartedAt)),
+    );
+    response.headers.set("x-eliza-gate-entered-at", String(enteredAt));
+    response.headers.set("x-eliza-gate-activated-at", String(this.activatedAt));
+    return response;
+  }
+
+  private async route(request: Request): Promise<Response> {
+    const route = new URL(request.url).pathname;
+    const objectName = this.state.id?.name;
+    const clockIdentity =
+      objectName?.startsWith(CACHE_CIRCUIT_ID_PREFIX) === true;
+    if (clockIdentity || route === CACHE_CIRCUIT_CLOCK_PATH) {
+      if (
+        !clockIdentity ||
+        route !== CACHE_CIRCUIT_CLOCK_PATH ||
+        request.method !== "POST"
+      )
+        return new Response("Not found", { status: 404 });
+      if (!this.cacheCircuitClock) {
+        const { CacheCircuitClock } = await import("./cache-circuit-clock");
+        this.cacheCircuitClock = new CacheCircuitClock(this.state, objectName!);
+      }
+      return this.cacheCircuitClock.handle(request);
+    }
+    if (
+      new URL(request.url).pathname === "/speech/subscribe" &&
+      request.headers.get("Upgrade")?.toLowerCase() === "websocket"
+    ) {
+      if (this.env.VOICE_SPEECH_RELAY_ENABLED !== "true")
+        return new Response("Not found", { status: 404 });
+      return this.serializeRevocation(() =>
+        this.speechSubscriptions.subscribe(request),
+      );
+    }
     if (request.method !== "POST") {
       return new Response("Method not allowed", { status: 405 });
     }
@@ -1813,6 +2063,7 @@ export class InferenceAdmissionGate {
       | SessionRevokeRequest
       | SessionBindingStateRequest
       | OrganizationStateRequest
+      | PolicyFenceRequest
       | RateLimitCutoverRequest;
     try {
       body = (await request.json()) as
@@ -1831,6 +2082,7 @@ export class InferenceAdmissionGate {
         | SessionRevokeRequest
         | SessionBindingStateRequest
         | OrganizationStateRequest
+        | PolicyFenceRequest
         | RateLimitCutoverRequest;
     } catch {
       // error-policy:J3 malformed request bodies are rejected explicitly.
@@ -1838,9 +2090,23 @@ export class InferenceAdmissionGate {
     }
     if (!body) return jsonError("Invalid JSON body", 400);
     const path = new URL(request.url).pathname;
-    if (path.startsWith("/budget/") || path.startsWith("/policy-mutation/")) {
-      if (this.env.INFERENCE_FUNDED_BUDGET_ADMISSION !== "true")
-        return jsonError("Funded inference admission is not enabled", 503);
+    if (
+      path.startsWith("/budget/") ||
+      path.startsWith("/policy-mutation/") ||
+      path.startsWith("/rate-policy/")
+    ) {
+      const funded = this.env.INFERENCE_FUNDED_BUDGET_ADMISSION === "true";
+      // Mutation fences stay served whenever either lane may have enrolled an
+      // organization.
+      const ratePolicy = this.env.INFERENCE_RATE_POLICY_ADMISSION === "true";
+      if (
+        path.startsWith("/budget/")
+          ? !funded
+          : path.startsWith("/rate-policy/")
+            ? !ratePolicy
+            : !(funded || ratePolicy)
+      )
+        return jsonError("Inference policy admission is not enabled", 503);
       return (await this.fundedBudgets()).handle(path, body);
     }
     if (path === "/lease") {
@@ -1915,21 +2181,16 @@ export class InferenceAdmissionGate {
         this.release(body as LeaseIdentityRequest),
       );
     }
+    // Request routes count their rate in the isolate and never call these.
+    // The durable windows remain for the delegated-budget controller
+    // (`consumeRatePolicy`), which is their only caller; `/rate-limit-warm`
+    // is kept for the hosting probe.
     if (path === "/rate-limit" || path === "/rate-limit-warm") {
-      const response = await this.serializeRateLimit(() =>
+      return await this.serializeRateLimit(() =>
         path === "/rate-limit"
           ? this.rateLimit(body as RateLimitRequest)
           : this.warmRateLimit(),
       );
-      // Internal binding telemetry only. This includes body parsing and our
-      // queue, but excludes time before handler entry and the platform output
-      // gate that commits storage before delivering the response. Do not label
-      // the difference from caller elapsed time as network time alone.
-      response.headers.set(
-        "x-eliza-gate-handler-ms",
-        String(Math.max(0, performance.now() - handlerStartedAt)),
-      );
-      return response;
     }
     if (path === "/rate-limit-v2-cutover") {
       return await this.serializeRateLimit(() =>
@@ -1959,6 +2220,15 @@ export class InferenceAdmissionGate {
     if (path === "/session/set-binding-active") {
       return await this.serializeRevocation(() =>
         this.setSessionBindingActive(body as SessionBindingStateRequest),
+      );
+    }
+    if (
+      path === "/policy-fence/begin" ||
+      path === "/policy-fence/commit" ||
+      path === "/policy-fence/abort"
+    ) {
+      return await this.serialize(() =>
+        this.policyFence(path, body as PolicyFenceRequest),
       );
     }
     if (path === "/organization/set-active") {
@@ -2173,7 +2443,10 @@ export class InferenceAdmissionGate {
   }
 
   async alarm(): Promise<void> {
-    if (this.env.INFERENCE_FUNDED_BUDGET_ADMISSION === "true")
+    if (
+      this.env.INFERENCE_FUNDED_BUDGET_ADMISSION === "true" ||
+      this.env.INFERENCE_RATE_POLICY_ADMISSION === "true"
+    )
       await (await this.fundedBudgets()).alarm();
     const expired = await this.serialize(() => this.claimExpiredLeases());
     if (expired.length === 0) return;

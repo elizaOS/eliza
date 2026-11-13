@@ -4,6 +4,10 @@
  * through one typed surface.
  */
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
+import type {
+  CameraAccessPermissionStatus,
+  CameraPermissionStatus as NativeCameraPermissionStatus,
+} from "@elizaos/capacitor-camera";
 
 type NativePlugin = Record<string, unknown>;
 type CapacitorPermissionState =
@@ -709,13 +713,11 @@ export interface TalkModePermissionStatus {
   speechRecognition?: "granted" | "denied" | "prompt" | "not_supported";
 }
 
-export interface CameraPermissionStatus {
-  camera: "granted" | "denied" | "prompt";
-  microphone: "granted" | "denied" | "prompt";
-  photos: "granted" | "denied" | "prompt" | "limited";
-}
+export type CameraPermissionStatus = NativeCameraPermissionStatus;
 
 export interface CameraPluginLike extends NativePlugin {
+  checkCameraPermission?: () => Promise<CameraAccessPermissionStatus>;
+  requestCameraPermission?: () => Promise<CameraAccessPermissionStatus>;
   checkPermissions?: () => Promise<CameraPermissionStatus>;
   requestPermissions?: () => Promise<CameraPermissionStatus>;
 }
@@ -1167,7 +1169,38 @@ export function getAppBlockerPlugin(): AppBlockerPluginLike {
 
 export function getCameraPlugin(): CameraPluginLike {
   const plugins = getCapacitorPlugins();
-  return (plugins.AppCamera ?? plugins.Camera ?? {}) as CameraPluginLike;
+  return (plugins.ElizaCamera ??
+    plugins.AppCamera ??
+    plugins.Camera ??
+    {}) as CameraPluginLike;
+}
+
+/** Native proxies expose unknown methods too; admit only the installed scoped API. */
+export function hasCameraPermissionMethods(
+  camera = getCameraPlugin(),
+): boolean {
+  if (
+    typeof camera.checkCameraPermission !== "function" ||
+    typeof camera.requestCameraPermission !== "function"
+  )
+    return false;
+  if (!Capacitor.isNativePlatform()) return true;
+  const plugins = getCapacitorPlugins();
+  const name = ["ElizaCamera", "AppCamera", "Camera"].find(
+    (name) => plugins[name] === camera,
+  );
+  const headers = (
+    Capacitor as typeof Capacitor & {
+      PluginHeaders?: readonly {
+        name: string;
+        methods: readonly { name: string }[];
+      }[];
+    }
+  ).PluginHeaders;
+  const methods = headers?.find((header) => header.name === name)?.methods;
+  return ["checkCameraPermission", "requestCameraPermission"].every(
+    (method) => methods?.some((entry) => entry.name === method) === true,
+  );
 }
 
 export function getLocationPlugin(): LocationPluginLike {

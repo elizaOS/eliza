@@ -112,6 +112,58 @@ test("structured validation issue retains bounded code/path only, never message 
   expect(JSON.stringify(out)).not.toMatch(/private|secret|received/);
 });
 
+test("gateway authentication reasons survive the real log redactor without other provider details", () => {
+  for (const status of [401, 403]) {
+    for (const reason of [
+      "credential_invalid",
+      "credential_inactive",
+      "account_inactive",
+      "organization_inactive",
+      "membership_missing",
+      "moderation_blocked",
+    ]) {
+      const out = read(new Response(null, { status }), {
+        error: {
+          type: status === 401 ? "authentication_error" : "permission_error",
+          details: { reason, credential: "sk-private", url: "https://private.invalid" },
+          message: "private response text",
+        },
+      });
+      expect(out.authReason).toBe(reason);
+      expect(redactLogValue(out, new WeakSet<object>(), 0)).toMatchObject({ authReason: reason });
+      expect(JSON.stringify(out)).not.toMatch(/sk-private|private\.invalid|private response/);
+    }
+  }
+});
+
+test("unknown or misplaced auth detail never becomes a diagnostic reason", () => {
+  for (const reason of [
+    undefined,
+    null,
+    401,
+    {},
+    [],
+    "",
+    "credential_revoked",
+    "CREDENTIAL_INVALID",
+    " credential_invalid",
+    "credential_invalid ",
+    "credential_invalid\nBearer sk-private",
+    "https://private.invalid",
+  ]) {
+    const out = read(new Response(null, { status: 401 }), { error: { details: { reason } } });
+    expect(out).not.toHaveProperty("authReason");
+  }
+  expect(
+    read(new Response(null, { status: 401 }), { details: { reason: "credential_invalid" } })
+  ).not.toHaveProperty("authReason");
+  for (const status of [400, 429, 503]) {
+    expect(
+      read(new Response(null, { status }), { error: { details: { reason: "credential_invalid" } } })
+    ).not.toHaveProperty("authReason");
+  }
+});
+
 test("actual central text error boundary emits only projected metadata while preserving error status/body/rate contract", async () => {
   const { readFileSync } = await import("node:fs");
   const source = readFileSync(new URL("../src/models/text.ts", import.meta.url), "utf8");
@@ -172,4 +224,20 @@ test("actual central text error boundary emits only projected metadata while pre
     },
   });
   expect(source.match(/cloudTextRequestError\(response, [^\n]+requestBody\)/g)).toHaveLength(4);
+  const authBody = {
+    error: {
+      message: "private auth failure",
+      type: "authentication_error",
+      details: { reason: "credential_invalid", credential: "sk-private" },
+    },
+  };
+  const authError = fn(new Response(null, { status: 401 }), authBody, {});
+  expect(authError.status).toBe(401);
+  expect(authError.error).toBe(authBody.error);
+  expect(logs).toHaveLength(2);
+  expect(redactLogValue(logs[1], new WeakSet<object>(), 0)).toMatchObject({
+    status: 401,
+    authReason: "credential_invalid",
+  });
+  expect(JSON.stringify(logs[1])).not.toMatch(/private auth|sk-private/);
 });

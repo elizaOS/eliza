@@ -205,11 +205,6 @@ export function resolveSecretKeyAlias(key: string): string {
 	return SECRET_KEY_ALIASES[key] ?? key;
 }
 
-/** Check whether a key is a known alias. */
-export function isSecretKeyAlias(key: string): boolean {
-	return key in SECRET_KEY_ALIASES;
-}
-
 /** Get all aliases that map to a canonical key. */
 export function getAliasesForKey(canonicalKey: string): string[] {
 	return Object.entries(SECRET_KEY_ALIASES)
@@ -298,32 +293,6 @@ export function getProviderForApiKey(apiKey: string): string | null {
 		}
 	}
 	return null;
-}
-
-/**
- * Get required secrets for a channel.
- *
- * @param channel - The channel name
- * @returns Array of required secret key names
- */
-export function getRequiredSecretsForChannel(channel: string): string[] {
-	return CHANNEL_SECRETS[channel] ?? [];
-}
-
-/**
- * Get all secrets (required + optional) for a channel.
- *
- * @param channel - The channel name
- * @returns Object with required and optional secret arrays
- */
-export function getAllSecretsForChannel(channel: string): {
-	required: string[];
-	optional: string[];
-} {
-	return {
-		required: CHANNEL_SECRETS[channel] ?? [],
-		optional: CHANNEL_OPTIONAL_SECRETS[channel] ?? [],
-	};
 }
 
 /** Canonical validation patterns for secrets accepted by core and plugins. */
@@ -648,6 +617,18 @@ export function validateSecretKey(
 	};
 }
 
+/** Lowercased substrings that mark a configured value as an unfilled template. */
+const PLACEHOLDER_SECRET_VALUES: readonly string[] = [
+	"your_api_key_here",
+	"your-api-key",
+	"xxx",
+	"to" + "do",
+	"replace_me",
+	"placeholder",
+	"<your_key>",
+	"[your_key]",
+];
+
 /**
  * Basic validation for secrets without specific patterns.
  *
@@ -668,24 +649,9 @@ function validateBasicSecret(
 		};
 	}
 
-	// Check for placeholder values
-	const placeholders = [
-		"your_api_key_here",
-		"your-api-key",
-		"xxx",
-		"TO" + "DO",
-		"REPLACE_ME",
-		"placeholder",
-		"<your_key>",
-		"[your_key]",
-	];
-
 	const lowerValue = value.toLowerCase();
-	for (const placeholder of placeholders) {
-		if (
-			lowerValue === placeholder.toLowerCase() ||
-			lowerValue.includes(placeholder.toLowerCase())
-		) {
+	for (const placeholder of PLACEHOLDER_SECRET_VALUES) {
+		if (lowerValue.includes(placeholder)) {
 			return {
 				isValid: false,
 				error: "Secret appears to be a placeholder value",
@@ -769,28 +735,6 @@ export function checkRequiredSecrets(
 		invalid,
 		results,
 	};
-}
-
-/**
- * Get the validation pattern for a secret key.
- *
- * @param key - The secret key name
- * @returns The validation pattern, or undefined if none exists
- */
-export function getValidationPattern(
-	key: string,
-): SecretValidationPattern | undefined {
-	return SECRET_VALIDATION_PATTERNS[key];
-}
-
-/**
- * Check if a key has a specific validation pattern.
- *
- * @param key - The secret key name
- * @returns true if a pattern exists for this key
- */
-export function hasValidationPattern(key: string): boolean {
-	return key in SECRET_VALIDATION_PATTERNS;
 }
 
 /**

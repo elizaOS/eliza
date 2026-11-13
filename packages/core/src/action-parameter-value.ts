@@ -120,10 +120,7 @@ export function parseActionParams(
 	const parsed =
 		typeof paramsInput === "string"
 			? parseActionParamsJson(paramsInput)
-			: (paramsInput ?? null);
-	if (parsed === null || parsed === undefined) {
-		return new Map();
-	}
+			: paramsInput;
 	return parseActionParamsRecord(parsed, newWalkContext());
 }
 
@@ -133,7 +130,7 @@ function parseActionParamsJson(input: string): unknown | null {
 		return null;
 	}
 	try {
-		return JSON.parse(trimmed) as unknown;
+		return JSON.parse(trimmed);
 	} catch {
 		// error-policy:J3 action parameters cross an untrusted model boundary;
 		// malformed JSON is an explicit invalid result.
@@ -261,7 +258,7 @@ function toActionParameterValueInner(
 		if (!visitAlreadyReserved) reserve(ctx, 1);
 		return value;
 	}
-	if (!value || typeof value !== "object") {
+	if (typeof value !== "object") {
 		if (!visitAlreadyReserved) reserve(ctx, 1);
 		return inspectRecord("primitiveToString", () => String(value));
 	}

@@ -187,6 +187,55 @@ export function createElizaCalendarEvent(args: {
   };
 }
 
+/** Recreates a deleted built-in event under its original id at `revision`. */
+export function restoreElizaCalendarEvent(args: {
+  agentId: string;
+  eventId: string;
+  title: string;
+  description: string;
+  location: string;
+  startAt: string;
+  endAt: string;
+  timeZone: string;
+  isAllDay: boolean;
+  attendees: readonly CreateLifeOpsCalendarEventAttendee[];
+  revision: number;
+  now: Date;
+}): LifeOpsCalendarEvent {
+  const prefix = eventId(args.agentId, "");
+  if (!args.eventId.startsWith(prefix) || args.eventId === prefix) {
+    throw new CalendarServiceError(
+      409,
+      "The event id does not belong to the built-in Eliza calendar.",
+      "ELIZA_CALENDAR_EVENT_PROVIDER_MISMATCH",
+    );
+  }
+  const created = createElizaCalendarEvent({
+    agentId: args.agentId,
+    request: {
+      title: args.title,
+      description: args.description,
+      location: args.location,
+    },
+    startAt: args.startAt,
+    endAt: args.endAt,
+    timeZone: args.timeZone,
+    isAllDay: args.isAllDay,
+    attendees: args.attendees,
+    now: args.now,
+  });
+  return {
+    ...created,
+    id: args.eventId,
+    externalId: args.eventId.slice(prefix.length),
+    metadata: {
+      ...created.metadata,
+      version: args.revision,
+      etag: calendarEtag(args.revision),
+    },
+  };
+}
+
 export function updateElizaCalendarEvent(args: {
   event: LifeOpsCalendarEvent;
   title?: string;

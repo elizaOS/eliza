@@ -3,11 +3,36 @@
 export * from "./access-context";
 export * from "./access-control/provenance-envelope";
 export * from "./actions";
+// Request-bound negative operation constraints; never positive permission.
 export {
+	type BoundRequestOperationAttempt,
+	BoundRequestOperationError,
+	beginRequestOperationAttempt,
+	beginRequestOperationIssuer,
+	bindRequestOperationProjection,
+	bindRequestOperationResult,
 	bindTaskExtractionContext,
+	checkBoundNotesOperation,
+	commitNotesRequestRestriction,
+	copyRequestOperationResult,
+	getBoundOperationDenialAttempt,
+	getBoundOperationDenialOperation,
+	getRequestOperationIssuer,
+	isMatchingNotesMutationCompletion,
+	isVerifiedOutsideRequestDenial,
+	NOTES_REQUEST_OPERATIONS,
+	type NotesMutationCompletion,
+	type NotesRequestInterpretation,
+	type NotesRequestOperation,
+	normalizeNotesRequestInterpretation,
+	type RequestOperationClassification,
+	type RequestOperationIssuer,
+	readNotesMutationCompletion,
 	readTaskExtractionContext,
+	readTaskExtractionNotesRestriction,
 	readTaskExtractionRequestIntents,
 	readTaskExtractionUserSources,
+	transferBoundOperationDenial,
 } from "./actions/task-extraction-context";
 export {
 	actionToTool,
@@ -37,7 +62,6 @@ export {
 	type RegistryValidationError,
 } from "./catalog/loader.js";
 export {
-	clearRegistryCacheForTests,
 	loadRegistry,
 	registerRegistryEntry,
 } from "./catalog/registry.js";
@@ -68,10 +92,8 @@ export {
 	type SecondarySurface,
 } from "./catalog/schema.js";
 export { getClientChatRooms } from "./client-chat-rooms.js";
-// Connection management (ensureConnection/ensureConnections) - standalone batch helpers
 export * from "./connection";
 export * from "./connectors/account-manager";
-export * from "./connectors/oauth-role";
 export {
 	conversationClientUserMemoryId,
 	type DurableConversationChatMarker,
@@ -84,9 +106,7 @@ export {
 	collectKeywordTermMatches,
 	collectPreparedKeywordTermMatches,
 	findKeywordTermMatch,
-	getCatalogValidationKeywordLocaleTerms,
 	getCatalogValidationKeywordTerms,
-	getValidationKeywordLocaleTerms,
 	getValidationKeywordTerms,
 	hasPreparedKeywordTermMatch,
 	normalizeKeywordMatchText,
@@ -117,12 +137,10 @@ export {
 	type IntegrationTelemetrySpan,
 } from "./integration-observability.ts";
 export {
-	__loggerTestHooks,
 	addLogListener,
 	type ChatInLogParams,
 	type ChatOutLogParams,
 	createLogger,
-	customLevels,
 	elizaLogger,
 	type LogEntry,
 	type Logger,
@@ -139,7 +157,6 @@ export {
 	recentLogs,
 	removeLogListener,
 } from "./logger.js";
-
 // Shared media boundary: fetching, attachment decoding, MIME detection, and cache.
 export * from "./media/attachments.js";
 export * from "./media/fetch.js";
@@ -147,7 +164,6 @@ export * from "./media/image-description-cache.js";
 export * from "./media/local-store.js";
 export * from "./media/mime.js";
 export * from "./media/outbound.js";
-export * from "./messaging/interaction-dashboard-markers";
 export * from "./messaging/interaction-host";
 export * from "./messaging/interaction-layout";
 export * from "./messaging/interaction-parse";
@@ -156,7 +172,6 @@ export * from "./messaging/interaction-profiles";
 export * from "./messaging/interaction-serialize";
 export * from "./messaging/interaction-sessions";
 export * from "./messaging/manage-server-authorization";
-// Export network utilities (SSRF protection, secure fetch)
 export {
 	fetchWithSsrfGuard,
 	type GuardedFetchOptions,
@@ -189,7 +204,9 @@ export {
 	actionGateFailure,
 	actionGateNeedsCallerRoles,
 	actionGateRejection,
+	assertActionAllowlistMatchesActions,
 	canActionRun,
+	readActionAllowlist,
 	resolveActionCallerRoles,
 	resolveActionGateFailure,
 	withActionGatePolicy,
@@ -197,10 +214,14 @@ export {
 export { settleActionHandler } from "./runtime/action-handler-settlement.ts";
 export { isLocalProvider } from "./runtime/action-model-routing";
 export {
+	_resetActionRolePolicyCacheForTests,
 	resolveActionRolePolicyRole,
 	warnOnUnmatchedActionRolePolicyKeys,
 } from "./runtime/action-role-policy";
-export { runWithActionRoutingContext } from "./runtime/action-routing-context.ts";
+export {
+	getActionRoutingContext,
+	runWithActionRoutingContext,
+} from "./runtime/action-routing-context.ts";
 export {
 	COMPLETION_CONTEXT_SCHEMA,
 	COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS,
@@ -223,13 +244,13 @@ export {
 export * from "./runtime/execute-planned-tool-call";
 export * from "./runtime/message-content-segments";
 export * from "./runtime/message-content-storage";
+export { copyBoundOperationDenial } from "./runtime/operation-restriction-projection";
 export { createPreparedModelRequestGuard } from "./runtime/prepared-model-request";
 export {
 	projectDeferredProviders,
 	providerReviewSources,
 	withProviderReviewSchema,
 } from "./runtime/provider-context.ts";
-// Export recent-errors provider
 export * from "./runtime/recent-errors-provider";
 export * from "./runtime/response-grammar";
 export * from "./runtime/room-handler-queue";
@@ -375,8 +396,6 @@ export {
 	type ProcessingRequest,
 	type ProcessingScope,
 } from "./security/processing-policy.js";
-// Bounded owner capture shares the canonical credential redaction policy.
-export { isSensitiveKeyName, redactSensitiveText } from "./security/redact";
 export * from "./security/secret-swap";
 export {
 	attestAuthenticatedApiDeliveryAudience,
@@ -430,10 +449,13 @@ export { PiiScrubService } from "./services/pii-scrub.ts";
 export {
 	TaskService,
 	type TaskServiceClock,
+	type TaskServiceIntervalClock,
+	type TaskServiceTimeoutClock,
 	type TaskServiceTimerHandle,
 } from "./services/task";
 export {
 	getTaskSchedulerAdapter,
+	handoffTaskSchedulerAdapter,
 	markTaskSchedulerDirty,
 	registerScheduledProcessTask,
 	registerTaskSchedulerRuntime,
@@ -466,7 +488,6 @@ export * from "./trajectory-context";
 export * from "./trajectory-utils";
 export * from "./types/action-reply.js";
 export * from "./types/provider-integrations.js";
-// Export utils first to avoid circular dependency issues
 export * from "./utils";
 export {
 	readJsonFile,
@@ -486,10 +507,8 @@ export {
 export * from "./utils/buffer";
 // Unified two-phase confirmation helper for destructive actions.
 export {
-	clearPendingConfirmation,
 	gateDestructiveConfirmation,
 	isAffirmativeConfirmationReply,
-	llmConfirmedFlagIsAuthoritative,
 	requireConfirmation,
 } from "./utils/confirmation";
 export {
@@ -516,13 +535,6 @@ export {
 	shouldIncludeByContext,
 } from "./utils/context-routing";
 export { createHash } from "./utils/crypto-compat.ts";
-export { parseDurationMs } from "./utils/duration.ts";
-export {
-	isEnvDisabled,
-	isExactTrueEnvFlag,
-	normalizeEnvValue,
-	normalizeEnvValueOrNull,
-} from "./utils/env.js";
 export * from "./utils/environment";
 export {
 	copy,
@@ -539,7 +551,6 @@ export {
 	writeJson,
 } from "./utils/filesystem.js";
 export * from "./utils/inference-priority-gate";
-export { getLogPrefix } from "./utils/log-prefix.js";
 export {
 	extractUserText,
 	getUserMessageText,
@@ -547,11 +558,6 @@ export {
 	normalizeUserMessageText,
 	stripAugmentationForPersistence,
 } from "./utils/message-text";
-export {
-	getMacPermissionDeepLink,
-	openPermissionSettings,
-} from "./utils/permission-deep-links.js";
-// Export Node-specific utilities
 export * from "./utils/project-memory-scope";
 // Eliza state-dir resolution (ELIZA_STATE_DIR → XDG state home)
 export * from "./utils/state-dir";
@@ -560,10 +566,8 @@ export {
 	isSyntheticConversationArtifactMemory,
 	isSyntheticConversationArtifactText,
 } from "./utils/synthetic-conversation-artifact";
-export { extractFirstSentence, hasFirstSentence } from "./utils/text-splitting";
 export {
 	isTtsDebugEnabled,
 	ttsDebug,
 	ttsDebugTextPreview,
 } from "./utils/tts-debug.js";
-export { validateUuid } from "./utils/uuid.js";

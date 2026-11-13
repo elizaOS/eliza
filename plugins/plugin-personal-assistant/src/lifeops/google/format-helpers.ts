@@ -82,6 +82,7 @@ type LifeOpsModelCallArgs = {
   purpose?: string;
   temperature?: number;
   responseSchema?: GenerateTextParams["responseSchema"];
+  thinking?: "off";
 };
 
 export type LifeOpsJsonModelResult<
@@ -122,6 +123,9 @@ export async function runLifeOpsTextModel(
             : {}),
           ...(args.temperature !== undefined
             ? { temperature: args.temperature }
+            : {}),
+          ...(args.thinking
+            ? { providerOptions: { eliza: { thinking: args.thinking } } }
             : {}),
         }),
     );

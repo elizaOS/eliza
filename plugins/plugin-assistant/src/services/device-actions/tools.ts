@@ -4,12 +4,9 @@ import type {
   ActionParameterSchema,
   HandlerOptions,
 } from "@elizaos/core";
-import {
-  ElizaError,
-  parseWebResourceAddress,
-  registerDirectActionRoutingRule,
-} from "@elizaos/core";
+import { ElizaError, registerDirectActionRoutingRule } from "@elizaos/core";
 import { proposeDeviceAction } from "./action.ts";
+import { authoredBrowserDestination } from "./browser-request-grounding.ts";
 import {
   CALENDAR_CAPABILITY,
   CALENDAR_CREATE_CAPABILITY,
@@ -18,6 +15,8 @@ import {
 import { deviceOperationSupportedByCapabilities } from "./contract.ts";
 import { MAPS_CAPABILITY } from "./maps-contract.ts";
 import { NOTES_CAPABILITY, notesSelectionTarget } from "./notes-contract.ts";
+import { isNotesOrganizeType } from "./notes-organize-contract.ts";
+import { isPhotosViewType } from "./photos-view-contract.ts";
 import { deviceReadHostContextRevision } from "./read-completion.ts";
 import {
   REMINDER_CAPABILITY,
@@ -56,6 +55,12 @@ function capabilityAvailable(
       caps?.includes(CALENDAR_CAPABILITY) === true &&
       deviceReadHostContextRevision(runtime) !== null
     );
+  if (isNotesOrganizeType(type))
+    return deviceOperationSupportedByCapabilities(type, caps);
+  if (isPhotosViewType(type))
+    return (
+      turn.isCurrent() && deviceOperationSupportedByCapabilities(type, caps)
+    );
   if (
     type === "reminder_create_after" &&
     runtime.actions.some((action) => action.name === "OWNER_REMINDERS") &&
@@ -85,6 +90,16 @@ const capabilityBoundTypes = new Set([
   "calendar_update",
   "maps_read_selected",
   "reminder_create_after",
+  "notes_filter",
+  "notes_list_filter",
+  "notes_move",
+  "notes_folder_create",
+  "notes_restore",
+  "notes_record",
+  "photos_filter",
+  "photos_open",
+  "photos_album_create",
+  "photos_share",
 ]);
 const reminderTypes = new Set([
   "reminder_create",
@@ -117,7 +132,7 @@ const declarations = [
   [
     "DEVICE_BROWSER_OPEN",
     "browser_navigate",
-    "Open an explicitly requested HTTPS address in this requesting app Browser. Use this app-owned operation instead of the server Browser workspace when the user asks to open a site in this app. Navigation only; do not claim page content or successful loading.",
+    "Open a web address the user typed in this message in this requesting app Browser, only when they ask to open, visit or go to it now. Pass the address exactly as typed. Use this app-owned operation instead of the server Browser workspace when the user asks to open a site in this app. Navigation only; do not claim page content or successful loading.",
   ],
   [
     "DEVICE_NOTE_UPDATE",
@@ -138,6 +153,56 @@ const declarations = [
     "DEVICE_NOTE_READ",
     "notes_read_selected",
     "Read one selected connected device note using the exact source and record identity/revision returned by the current phone selection or DEVICE_NOTES_QUERY. If the user names a title and those opaque fields are missing, first discover and run DEVICE_NOTES_QUERY; do not derive noteId from title text, guess a revision, or substitute unknown. Never treat a title string as a selected record ID.",
+  ],
+  [
+    "DEVICE_NOTES_FILTER",
+    "notes_filter",
+    "Filter the Notes list on this phone by text, folder name and/or kind (text, list, voice, link). Read-only: the phone shows the matching notes with a clearable filter and returns no note content to the agent.",
+  ],
+  [
+    "DEVICE_CANONICAL_NOTES_FILTER",
+    "notes_list_filter",
+    "Filter the open Notes list by text or kind (text, list, voice, link). The phone shows the filtered list with a clearable filter and returns no note content. Requires the canonical Notes list to be open.",
+  ],
+  [
+    "DEVICE_NOTE_MOVE",
+    "notes_move",
+    "Move one note to a folder by folder name, or to no folder with folder null. Use the exact selected note source and record identity/revision; never guess them. The owner reviews the move; it is refused if the note changed since review or the folder does not exist.",
+  ],
+  [
+    "DEVICE_NOTES_FOLDER_CREATE",
+    "notes_folder_create",
+    "Create a Notes folder with the given name (at most 40 characters). The owner reviews it first. An existing folder with the same name is kept.",
+  ],
+  [
+    "DEVICE_NOTE_RESTORE",
+    "notes_restore",
+    "Restore a note from Notes Recently deleted by its noteId. Never guess the noteId. The owner reviews it first; notes deleted more than 30 days ago cannot be restored.",
+  ],
+  [
+    "DEVICE_NOTES_RECORD",
+    "notes_record",
+    "Start or stop a voice note recording in the Notes app on this phone. Only works while Notes is open. Runs directly when the owner's current message asked for it, otherwise the owner reviews it. A proposal does not prove recording started or stopped.",
+  ],
+  [
+    "DEVICE_PHOTOS_FILTER",
+    "photos_filter",
+    "Filter the Photos grid on this phone by date range (epoch ms), kind (image or video), favorite, album and/or text matched on the phone. Read-only: Photos shows the matching items behind a clearable filter chip and returns only how many it shows, never the items.",
+  ],
+  [
+    "DEVICE_PHOTOS_OPEN",
+    "photos_open",
+    "Open one photo or video in the Photos viewer on this phone by a library id the phone returned. Nothing is changed or shared. Never guess the id.",
+  ],
+  [
+    "DEVICE_PHOTOS_ALBUM_CREATE",
+    "photos_album_create",
+    "Create a Photos album with a name (1 to 80 characters) and the given library ids. The owner reviews the name and items in Photos first; review_opened does not prove the album was created. Never guess ids.",
+  ],
+  [
+    "DEVICE_PHOTOS_SHARE",
+    "photos_share",
+    "Share up to 100 photos or videos by library id. The owner reviews them in Photos, then picks a target in Android's share sheet; nothing leaves the phone before that. review_opened does not prove anything was shared. Never retry automatically.",
   ],
   [
     "DEVICE_CALENDAR_CREATE",
@@ -204,7 +269,11 @@ const declarations = [
     "maps_read_selected",
     "Share only the current explicitly selected map place or route after device review. This does not request location or search for places.",
   ],
-] as const;
+] as const satisfies readonly (readonly [
+  name: string,
+  type: string,
+  description: string,
+])[];
 function operationSchema(type: string): ActionParameterSchema {
   if (type === "calendar_update" || type === "notes_update")
     return {
@@ -245,6 +314,12 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
     ...proposeDeviceAction,
     name,
     description,
+    ...(type === "browser_navigate"
+      ? {
+          routingHint:
+            'the user asks to open, visit or go to a web address they typed, now -> DEVICE_BROWSER_OPEN with that address as typed; NOT for a deferred ("at 5pm", "in five minutes", "tomorrow"), hypothetical, question-about ("is there a way to open...", "do I need to go to..."), past ("I used to visit") or reported ("my mom wants me to") mention, nor for a site name with no address, or one the user says not to open',
+        }
+      : {}),
     selectionIdentity:
       type === "notes_update" || type === "notes_read_selected"
         ? (selection: unknown) => {
@@ -321,9 +396,11 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
               ? ["tasks", "reminders", "general"]
               : type === "browser_navigate"
                 ? ["browser", "web", "general"]
-                : type.startsWith("calendar_create")
-                  ? ["calendar", "general"]
-                  : ["notes", "general"],
+                : isPhotosViewType(type)
+                  ? ["media", "general"]
+                  : type.startsWith("calendar_create")
+                    ? ["calendar", "general"]
+                    : ["notes", "general"],
     validate: async (
       runtime: Parameters<NonNullable<Action["validate"]>>[0],
       message: Parameters<NonNullable<Action["validate"]>>[1],
@@ -515,8 +592,9 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
   })),
 );
 
-/** Availability for a complete URL-open request; the existing tool still creates
- * a reviewed proposal and the phone's typed receipt owns completion.
+/** Availability for a complete URL-open request. The tool creates a durable
+ * proposal that the requesting phone runs directly in direct-request mode
+ * (reviewed otherwise); the phone's typed receipt owns completion.
  */
 export function registerDeviceBrowserOpenRouting(
   runtime: Parameters<typeof registerDirectActionRoutingRule>[0],
@@ -543,13 +621,10 @@ export function registerDeviceBrowserOpenRouting(
       )
     )
       return false;
-    const command =
-      /^(?:please\s+)?(?:open|visit|navigate\s+to|go\s+to)\s+([^\s]+)[.!]?$/iu.exec(
-        text.trim(),
-      );
-    if (!command) return false;
-    const address = parseWebResourceAddress(command[1].replace(/[.!]$/u, ""));
-    return address?.protocol === "https:";
+    // Only the strict whole-message command skips the model's judgment.
+    // Every other phrasing goes to the planner, whose browser proposal the
+    // service grounds in the address the user typed.
+    return authoredBrowserDestination(text) !== undefined;
   };
   registerDirectActionRoutingRule(runtime, {
     id: "device.browser-open",

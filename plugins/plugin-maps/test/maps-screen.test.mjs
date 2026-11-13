@@ -4,6 +4,10 @@
 // GPS, local speech or physical navigation.
 import assert from "node:assert/strict";
 import test from "node:test";
+import { BackgroundNavigation } from "../src/client/background-navigation.ts";
+import { createCloudMaps } from "../src/client/cloud-provider.ts";
+import { MapsFailure } from "../src/client/contracts.ts";
+import { guidanceDistance } from "../src/client/guidance.ts";
 import { MapsScreenController } from "../src/client/maps-screen.ts";
 import { SavedPlaces } from "../src/client/saved-places.ts";
 import { MapsController } from "../src/client/state.ts";
@@ -47,6 +51,7 @@ function fixture(options = {}) {
     background: [],
     voice: [],
     published: [],
+    contexts: [],
     released: 0,
     handoffDiscarded: 0,
     initialized: 0,
@@ -137,10 +142,11 @@ function fixture(options = {}) {
       stopped++;
     },
   };
-  let deviceFix;
+  let deviceFix, deviceFixListener;
   const deviceLocation = {
     awaitingPermission: () => false,
     async start(_oneShot, onFix) {
+      deviceFixListener = onFix;
       if (deviceFix) queueMicrotask(() => onFix(deviceFix));
     },
     async stop() {},
@@ -209,9 +215,15 @@ function fixture(options = {}) {
     handoffReturn: () => options.handoffReturn ?? false,
     released: () => calls.released++,
     now: () => now,
-    publishContext: (kind) => calls.published.push(kind),
+    publishContext: (kind, _identity, revision, read) => {
+      calls.published.push(kind);
+      calls.contexts.push({ kind, revision, value: read?.() });
+    },
     clearContext: () => {},
     ...(options.mapsApp ? { mapsApp: options.mapsApp } : {}),
+    ...(options.unconfiguredText
+      ? { unconfiguredText: options.unconfiguredText }
+      : {}),
   };
   const screen = new MapsScreenController(host);
   screen.ensure();
@@ -233,6 +245,7 @@ function fixture(options = {}) {
       now += ms;
     },
     stops: () => stopped,
+    emitDevice: (value) => deviceFixListener?.(value),
     setDeviceFix: (value) => {
       deviceFix = value;
     },
@@ -275,6 +288,8 @@ test("search results, place detail, saved place and rename", async () => {
   await settle();
   view = f.screen.view();
   assert.equal(view.mode, "place");
+  assert.equal(view.place?.origin, "provider");
+  assert.equal(view.place?.providerId, "fixture");
   assert.equal(view.place?.address, "1 Destination Street");
   assert.equal(view.place?.hours, "Mo-Fr 09:00-17:00");
   assert.equal(view.place?.website, "https://destination.example/");
@@ -345,6 +360,50 @@ test("an unsafe provider website is never offered or opened", async () => {
   assert.deepEqual(f.calls.websites, []);
 });
 
+test("place labels name provider places and typed coordinates", async () => {
+  const f = fixture();
+  f.screen.setQuery("Destination");
+  f.screen.submit();
+  await settle();
+  f.screen.choose("place:fixture:destination");
+  await settle();
+  assert.match(f.screen.view().place?.meta ?? "", /^Place/);
+  f.screen.openDirections();
+  const directions = f.screen.view().directions;
+  assert.equal(directions?.routeReady, false);
+  assert.equal(directions?.meta, "");
+  f.screen.dispose();
+
+  const typed = fixture();
+  typed.screen.setQuery("1, 2");
+  typed.screen.submit();
+  await settle();
+  assert.match(typed.screen.view().place?.meta ?? "", /^Coordinates/);
+});
+
+test("a host replaces the missing-provider text", async () => {
+  const text = "Sign in to use Maps.";
+  const directions = fixture({ unconfigured: true, unconfiguredText: text });
+  directions.screen.setQuery("1, 2");
+  directions.screen.submit();
+  directions.screen.openDirections();
+  assert.equal(directions.screen.view().status.text, text);
+
+  const search = fixture({ unconfigured: true, unconfiguredText: text });
+  search.screen.setQuery("Cafe");
+  search.screen.submit();
+  await settle();
+  await settle();
+  assert.equal(search.screen.view().status.text, text);
+
+  const plain = fixture({ unconfigured: true });
+  plain.screen.setQuery("Cafe");
+  plain.screen.submit();
+  await settle();
+  await settle();
+  assert.match(plain.screen.view().status.text, /Connect a Maps provider/);
+});
+
 test("directions need a real origin and a served mode", async () => {
   const unconfigured = fixture({ unconfigured: true });
   unconfigured.screen.setQuery("1, 2");
@@ -366,10 +425,7 @@ test("directions need a real origin and a served mode", async () => {
   let view = f.screen.view();
   assert.equal(view.mode, "directions");
   assert.equal(view.directions?.routeReady, false);
-  assert.equal(
-    view.directions?.via,
-    "Choose a real origin to calculate a route.",
-  );
+  assert.equal(view.directions?.via, "Choose a starting point to see a route.");
   assert.deepEqual(
     view.directions?.modes.map((choice) => [choice.mode, choice.available]),
     [
@@ -392,7 +448,10 @@ test("directions need a real origin and a served mode", async () => {
   view = f.screen.view();
   assert.equal(view.directions?.routeReady, true);
   assert.equal(view.directions?.duration, "5 min");
-  assert.equal(view.directions?.meta, "1.2 km · no live traffic");
+  assert.equal(
+    view.directions?.meta,
+    `${guidanceDistance(1200)} · no live traffic`,
+  );
   f.screen.setMode("walk");
   await settle();
   assert.deepEqual(
@@ -425,8 +484,8 @@ test("an offered route choice keeps the provider's order; choosing requests noth
       selected,
     ]),
     [
-      ["Recommended", "5 min", "1.2 km", true],
-      ["Alternative 1", "7 min", "1.5 km", false],
+      ["Recommended", "5 min", guidanceDistance(1200), true],
+      ["Alternative 1", "7 min", guidanceDistance(1500), false],
     ],
   );
   f.screen.chooseRoute(view.directions.routes[1].id);
@@ -513,6 +572,147 @@ test("Start guides from fresh fixes; arrival and End release the watch", async (
   assert.ok(f.stops() >= 1);
 });
 
+test("a retired location callback cannot guide a later Start", async () => {
+  const f = fixture({ background: true });
+  const watches = [];
+  const start = f.host.navigationLocation.start;
+  f.host.navigationLocation.start = (...args) => {
+    watches.push(args[1]);
+    return start(...args);
+  };
+  try {
+    await planned(f);
+    f.screen.start();
+    await settle();
+    f.screen.end();
+    f.screen.start();
+    await settle();
+    const surface = f.screen.surface(async () => true);
+    const effects = f.calls.voice.length;
+    watches[0](f.fix());
+    assert.equal(surface.guidance().fix, undefined);
+    assert.equal(f.calls.voice.length, effects);
+    watches[1](f.fix());
+    assert.deepEqual(surface.guidance().fix, f.fix());
+  } finally {
+    f.screen.dispose();
+  }
+});
+
+test("arrival ignores later fixes until End", async () => {
+  const f = fixture({ background: true });
+  try {
+    await planned(f);
+    f.screen.start();
+    await settle();
+    f.emit(f.fix({ coordinate: END }));
+    const effects = f.calls.voice.length;
+    f.emit(f.fix({ coordinate: { latitude: 43.732, longitude: 7.42 } }));
+    assert.equal(f.screen.view().navigation.arrived, true);
+    assert.equal(f.screen.view().status.text, "Destination reached.");
+    assert.equal(f.calls.voice.length, effects);
+  } finally {
+    f.screen.dispose();
+  }
+});
+
+test("a completed old background Start cannot stop its replacement", async () => {
+  const f = fixture();
+  const pending = Promise.withResolvers();
+  const entered = Promise.withResolvers();
+  const started = [],
+    active = new Set();
+  f.host.background = new BackgroundNavigation(
+    {
+      async navigationAvailability() {
+        return { background: true };
+      },
+      async addListener() {
+        return { remove: async () => {} };
+      },
+      async startNavigation({ sessionId }) {
+        started.push(sessionId);
+        if (started.length === 1) {
+          entered.resolve();
+          await pending.promise;
+        }
+        active.add(sessionId);
+      },
+      async stopNavigation({ sessionId }) {
+        active.delete(sessionId);
+        return { stopped: true };
+      },
+      async updateNavigation({ sessionId }) {
+        return { active: active.has(sessionId) };
+      },
+    },
+    () => true,
+  );
+  try {
+    await planned(f);
+    f.screen.start();
+    await entered.promise;
+    pending.resolve();
+    // Let the helper finish, then replace the screen session before its completion callback.
+    queueMicrotask(() =>
+      queueMicrotask(() => {
+        f.screen.end();
+        f.screen.start();
+      }),
+    );
+    await settle();
+    assert.equal(f.screen.isNavigating(), true);
+    assert.equal(f.host.background.active(), true);
+    assert.equal(f.screen.view().navigation.background, true);
+    assert.equal(started.length, 2);
+    assert.deepEqual([...active], [started[1]]);
+  } finally {
+    f.screen.dispose();
+  }
+});
+
+test("a rejected navigation watch ends guidance and reports the failure", async () => {
+  const f = fixture({ background: true });
+  const start = f.host.navigationLocation.start;
+  f.host.navigationLocation.start = async () => {
+    throw new MapsFailure(
+      "unavailable",
+      "Native location is unavailable in this build.",
+    );
+  };
+  try {
+    await planned(f);
+    f.screen.start();
+    await settle();
+    assert.equal(f.screen.isNavigating(), false);
+    assert.equal(f.host.background.active(), false);
+    assert.equal(
+      f.screen.view().status.text,
+      "Native location is unavailable in this build.",
+    );
+    const pending = Promise.withResolvers();
+    f.host.navigationLocation.start = () => pending.promise;
+    f.screen.start();
+    f.screen.end();
+    f.host.navigationLocation.start = start;
+    f.screen.start();
+    await settle();
+    const effects = f.calls.voice.length;
+    pending.reject(new MapsFailure("unavailable", "Retired watch failed."));
+    await settle();
+    assert.equal(f.screen.isNavigating(), true);
+    assert.equal(f.host.background.active(), true);
+    assert.equal(f.calls.voice.length, effects);
+    f.emit(f.fix());
+    assert.deepEqual(
+      f.screen.surface(async () => true).guidance().fix,
+      f.fix(),
+    );
+  } finally {
+    f.screen.dispose();
+  }
+});
+
 test("a notification Stop ends navigation once; a refused service stays foreground-only", async () => {
   const f = fixture({ background: true });
   await planned(f);
@@ -578,12 +778,12 @@ test("an approximate or inaccurate update invalidates an older precise fix", asy
   }
 });
 
-test("hiding Maps releases it unless screen-off navigation continues", async () => {
+test("hiding Maps retains the selected route; screen-off navigation continues", async () => {
   const foreground = fixture();
   await planned(foreground);
   foreground.screen.hidden();
   assert.equal(foreground.calls.released, 1);
-  assert.equal(foreground.screen.view().mode, "base");
+  assert.equal(foreground.screen.view().mode, "directions");
 
   const background = fixture({ background: true });
   await planned(background);
@@ -691,4 +891,534 @@ test("coverage notices keep the coordinates of a place outside the region", asyn
   assert.match(view.status.text, /outside Monaco map coverage/);
   assert.equal(view.map.selected, undefined);
   assert.equal(view.place?.address, "48.85660, 2.35220");
+});
+
+test("Cloud admission failure remains visible through explicit search without provider calls", async () => {
+  for (const [status, code, message] of [
+    [403, "subscription_required", "Maps needs an active Cloud subscription."],
+    [401, "unauthorized", "Sign in to Cloud to use Maps."],
+  ]) {
+    const f = fixture({ unconfigured: true });
+    await settle();
+    const calls = [];
+    const maps = createCloudMaps(
+      () => async (route) => {
+        calls.push(route);
+        throw Object.assign(
+          new Error("private response must not be displayed"),
+          {
+            name: "CloudProtocolError",
+            code: "http",
+            status,
+            data: { code },
+          },
+        );
+      },
+      () => {
+        throw Error("Denied provider must not be installed");
+      },
+    );
+    f.host.initialize = maps.initializeCloudMaps;
+    f.host.diagnostics = maps.cloudMapsDiagnostics;
+    await maps.initializeCloudMaps();
+    f.screen.setQuery("Ferry Building, San Francisco");
+    f.screen.submit();
+    await settle();
+    assert.equal(f.screen.view().status.text, message);
+    assert.equal(f.screen.view().hasResults, false);
+    assert.deepEqual(f.calls.searches, []);
+    assert.deepEqual(f.calls.routes, []);
+    assert.deepEqual(calls, ["capabilities", "capabilities"]);
+    f.screen.submit();
+    await settle();
+    assert.equal(f.screen.view().status.text, message);
+    assert.deepEqual(calls, ["capabilities", "capabilities", "capabilities"]);
+    f.screen.dispose();
+  }
+});
+
+test("leaving the view retains navigation and an unavailable reroute keeps the exact route", async () => {
+  const f = fixture({ background: true });
+  await planned(f);
+  f.screen.start();
+  await settle();
+  f.emit(f.fix());
+  const surface = f.screen.surface(async () => true),
+    before = surface.snapshot().route.value;
+  f.screen.leaveView();
+  assert.equal(f.screen.isNavigating(), true);
+  assert.equal(f.screen.view().mode, "navigation");
+  assert.equal(f.calls.background.filter((row) => row[0] === "stop").length, 0);
+  f.host.connection().provider.route = async () => {
+    throw new MapsFailure("unavailable", "Offline.");
+  };
+  f.screen.reroute();
+  await settle();
+  assert.equal(f.screen.isNavigating(), true);
+  assert.deepEqual(surface.snapshot().route.value, before);
+  assert.equal(f.screen.view().mode, "navigation");
+  assert.match(f.screen.view().status.text, /Offline/);
+  assert.equal(f.calls.background.filter((row) => row[0] === "stop").length, 0);
+  f.screen.dispose();
+});
+
+test("GPS progress keeps the selected route approval current; a new route retires it", async () => {
+  const f = fixture();
+  await planned(f);
+  f.screen.start();
+  await settle();
+  f.emit(f.fix());
+  const before = f.calls.contexts.at(-1);
+  f.emit(f.fix({ coordinate: ORIGIN }));
+  const progress = f.calls.contexts.at(-1);
+  assert.equal(progress.kind, "map-route");
+  assert.equal(progress.revision, before.revision);
+  assert.deepEqual(progress.value, before.value);
+  f.emit(f.fix());
+  f.screen.reroute();
+  await settle();
+  assert.notEqual(f.calls.contexts.at(-1).revision, before.revision);
+  f.screen.dispose();
+});
+
+test("recenter keeps the viewed place, reports its map coverage and biases a later search from the explicit position", async () => {
+  const f = fixture({
+    coverage: {
+      name: "Monaco",
+      mapRestricted: true,
+      contains: (point) => point.latitude > 43.72 && point.latitude < 43.76,
+    },
+  });
+  f.screen.setQuery("Destination");
+  f.screen.submit();
+  await settle();
+  f.screen.choose("place:fixture:destination");
+  await settle();
+  const before = f.screen.view().place;
+  f.setDeviceFix(
+    f.fix({ coordinate: { latitude: 48.8566, longitude: 2.3522 } }),
+  );
+  f.screen.recenter();
+  await settle();
+  const outside = f.screen.view();
+  assert.equal(outside.place.name, before.name);
+  assert.equal(outside.status.map, "outside-coverage");
+  assert.match(outside.status.text, /outside Monaco map coverage/);
+  assert.equal(outside.map.selected, undefined);
+  f.setDeviceFix(f.fix());
+  f.screen.recenter();
+  await settle();
+  const view = f.screen.view();
+  assert.equal(view.place.name, before.name);
+  assert.deepEqual(view.map.selected, OFF_ROUTE);
+  let options;
+  f.host.connection().provider.search = async (_query, _signal, input) => {
+    options = input;
+    return [];
+  };
+  f.screen.searchFor("Coffee");
+  await settle();
+  assert.deepEqual(options.near, OFF_ROUTE);
+  f.screen.dispose();
+});
+
+test("an unanswered explicit location request becomes retryable after fifteen seconds", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const f = fixture();
+  f.screen.locate();
+  assert.equal(f.screen.view().status.locationBusy, true);
+  t.mock.timers.tick(15_000);
+  await settle();
+  assert.equal(f.screen.view().status.locationBusy, false);
+  assert.match(f.screen.view().status.text, /Couldn't find your location/);
+  f.screen.dispose();
+});
+
+test("late location and provider callbacks after leaving cannot publish a selection", async () => {
+  const options = {},
+    f = fixture(options);
+  let finish;
+  f.host.connection().provider.search = () =>
+    new Promise((resolve) => {
+      finish = resolve;
+    });
+  f.screen.locate();
+  f.screen.setQuery("Destination");
+  f.screen.submit();
+  await settle();
+  options.inactive = true;
+  f.screen.leaveView();
+  const contexts = f.calls.contexts.length;
+  f.emitDevice(f.fix());
+  finish([f.destination]);
+  await settle();
+  assert.equal(f.screen.surface(async () => true).snapshot().origin, null);
+  assert.equal(f.screen.view().mode, "results");
+  assert.equal(f.screen.view().hasResults, false);
+  assert.equal(f.calls.contexts.length, contexts);
+  f.screen.dispose();
+});
+
+test("leaving Maps keeps foreground navigation even without background-service support", async () => {
+  const f = fixture();
+  await planned(f);
+  f.screen.start();
+  await settle();
+  f.emit(f.fix());
+  const route = f.screen.surface(async () => true).guidance().routeId;
+  f.screen.leaveView();
+  f.emit(f.fix({ coordinate: ORIGIN }));
+  assert.equal(f.screen.isNavigating(), true);
+  assert.equal(f.screen.surface(async () => true).guidance().routeId, route);
+  assert.equal(f.stops(), 0);
+  f.screen.dispose();
+});
+
+test("a location callback after the timeout cannot replace the retained origin", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const f = fixture();
+  f.screen.locate();
+  t.mock.timers.tick(15_000);
+  await settle();
+  f.emitDevice(f.fix());
+  assert.equal(f.screen.surface(async () => true).snapshot().origin, null);
+  assert.equal(f.screen.view().mode, "base");
+  assert.match(f.screen.view().status.text, /Couldn't find your location/);
+  f.screen.dispose();
+});
+
+test("a newer search, origin or Start retires a pending location request", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const origin = (f) => f.screen.surface(async () => true).snapshot().origin;
+
+  // A submitted search keeps its results when the fix arrives late.
+  const searched = fixture();
+  searched.screen.locate();
+  searched.screen.setQuery("Destination");
+  searched.screen.submit();
+  await settle();
+  assert.equal(searched.screen.view().status.locationBusy, false);
+  searched.emitDevice(searched.fix());
+  assert.equal(searched.screen.view().mode, "results");
+  assert.equal(searched.screen.view().hasResults, true);
+  searched.screen.dispose();
+
+  // A typed origin ends the request. The late fix and the timer change nothing.
+  const typed = fixture();
+  typed.screen.setQuery("Destination");
+  typed.screen.submit();
+  await settle();
+  typed.screen.choose("place:fixture:destination");
+  await settle();
+  typed.screen.openDirections();
+  typed.screen.locate();
+  typed.screen.setOriginText(`${ORIGIN.latitude}, ${ORIGIN.longitude}`);
+  typed.screen.planOrigin();
+  await settle();
+  assert.equal(typed.screen.view().status.locationBusy, false);
+  typed.emitDevice(typed.fix());
+  t.mock.timers.tick(15_000);
+  await settle();
+  assert.deepEqual(origin(typed), ORIGIN);
+  assert.equal(typed.screen.view().directions?.routeReady, true);
+  assert.doesNotMatch(typed.screen.view().status.text, /Couldn't find/);
+  assert.equal(typed.calls.routes.length, 1);
+
+  // Start keeps its route when a pending current-location fix arrives.
+  typed.screen.locate();
+  typed.screen.start();
+  await settle();
+  typed.emitDevice(typed.fix());
+  await settle();
+  assert.equal(typed.screen.isNavigating(), true);
+  assert.deepEqual(origin(typed), ORIGIN);
+  typed.screen.dispose();
+});
+
+test("a hidden page without background admission stops guidance and keeps its route for explicit resume", async () => {
+  const f = fixture();
+  await planned(f);
+  f.screen.start();
+  await settle();
+  f.emit(f.fix());
+  const surface = f.screen.surface(async () => true),
+    route = surface.snapshot().route.value;
+  f.screen.hidden();
+  await settle();
+  assert.equal(f.screen.isNavigating(), false);
+  assert.equal(f.screen.view().mode, "directions");
+  assert.deepEqual(surface.snapshot().route.value, route);
+  assert.equal(f.stops(), 1);
+  assert.match(f.screen.view().status.text, /Tap Start to resume/);
+  f.screen.refresh();
+  assert.equal(
+    f.screen.isNavigating(),
+    false,
+    "foreground return does not restart guidance",
+  );
+  f.screen.dispose();
+});
+
+test("hiding without background admission during reroute retains the admitted route and ignores its late answer", async () => {
+  const f = fixture();
+  await planned(f);
+  f.screen.start();
+  await settle();
+  f.emit(f.fix());
+  const surface = f.screen.surface(async () => true),
+    route = surface.snapshot().route.value;
+  let finish;
+  f.host.connection().provider.route = () =>
+    new Promise((resolve) => {
+      finish = resolve;
+    });
+  f.screen.reroute();
+  await settle();
+  f.screen.hidden();
+  await settle();
+  finish({ ...route, id: "late_route_0123456789", from: OFF_ROUTE });
+  await settle();
+  assert.equal(f.screen.isNavigating(), false);
+  assert.equal(f.screen.view().directions.routeReady, true);
+  assert.deepEqual(surface.snapshot().route.value, route);
+  assert.deepEqual(surface.snapshot().origin, route.from);
+  f.screen.dispose();
+});
+
+test("retiring a provider clears a recentered location without a selected place", async () => {
+  const f = fixture();
+  f.setDeviceFix(f.fix());
+  f.screen.recenter();
+  await settle();
+  assert.deepEqual(f.screen.view().map.selected, OFF_ROUTE);
+  f.screen.release(false);
+  assert.equal(f.screen.view().map.selected, undefined);
+  f.screen.dispose();
+});
+
+test("Directions start from the device position when location is already granted", async () => {
+  const f = fixture();
+  f.setDeviceFix(f.fix({ coordinate: ORIGIN }));
+  f.screen.setQuery("Destination");
+  f.screen.submit();
+  await settle();
+  f.screen.choose("place:fixture:destination");
+  await settle();
+  f.screen.openDirections();
+  await settle();
+  const view = f.screen.view();
+  assert.equal(view.directions?.originText, "Your location");
+  assert.equal(view.directions?.routeReady, true);
+  assert.deepEqual(f.calls.routes.at(-1).from, ORIGIN);
+  f.screen.planOrigin();
+  await settle();
+  assert.equal(f.calls.routes.length, 2, "Enter plans again from the fix");
+  assert.deepEqual(f.calls.searches, ["Destination"]);
+  f.screen.dispose();
+
+  const denied = fixture({ granted: false });
+  denied.setDeviceFix(denied.fix({ coordinate: ORIGIN }));
+  denied.screen.setQuery("Destination");
+  denied.screen.submit();
+  await settle();
+  denied.screen.choose("place:fixture:destination");
+  await settle();
+  denied.screen.openDirections();
+  await settle();
+  assert.equal(denied.screen.view().directions?.routeReady, false);
+  assert.equal(denied.screen.view().status.locationBusy, false);
+  assert.deepEqual(denied.calls.routes, []);
+  denied.screen.dispose();
+
+  const typed = fixture();
+  typed.screen.setQuery("Destination");
+  typed.screen.submit();
+  await settle();
+  typed.screen.choose("place:fixture:destination");
+  await settle();
+  typed.screen.openDirections();
+  await settle();
+  assert.equal(typed.screen.view().status.locationBusy, true);
+  typed.screen.setOriginText("Harbour");
+  assert.equal(typed.screen.view().status.locationBusy, false);
+  typed.emitDevice(typed.fix({ coordinate: ORIGIN }));
+  await settle();
+  assert.equal(typed.screen.view().directions?.originText, "Harbour");
+  assert.deepEqual(typed.calls.routes, [], "a withdrawn fix plans nothing");
+  typed.screen.dispose();
+});
+
+test("search ranks around the visible map, rows show distance, and the search revision follows the query", async () => {
+  const f = fixture();
+  let options;
+  const search = f.host.connection().provider.search;
+  f.host.connection().provider.search = async (query, signal, input) => {
+    options = input;
+    return search(query, signal);
+  };
+  f.screen.setViewport({ latitude: 0, longitude: 20 }, 2);
+  f.screen.searchFor("Destination");
+  await settle();
+  assert.equal(options, undefined, "a world view is not a search area");
+  assert.equal(f.screen.view().results[0].distance, undefined);
+  assert.equal(f.screen.view().results[0].detail, "1 Destination Street");
+  const first = f.calls.contexts.at(-1);
+  assert.equal(first.kind, "map-search");
+  f.screen.refresh();
+  f.screen.refresh();
+  assert.equal(f.calls.contexts.at(-1).revision, first.revision);
+  f.screen.setViewport(ORIGIN, 14);
+  f.screen.searchFor("Coffee");
+  await settle();
+  assert.deepEqual(options, { near: ORIGIN });
+  assert.notEqual(f.calls.contexts.at(-1).revision, first.revision);
+
+  f.setDeviceFix(f.fix({ coordinate: ORIGIN }));
+  f.screen.recenter();
+  await settle();
+  f.screen.searchFor("Destination");
+  await settle();
+  const row = f.screen.view().results[0];
+  assert.equal(row.distance, guidanceDistance(1112));
+  assert.equal(row.detail, `${row.distance} · 1 Destination Street`);
+  f.screen.dispose();
+});
+
+test("a provider phone number is a separate, callable field; Recenter reflects camera following", async () => {
+  const f = fixture();
+  f.destination.phone = "+377 98 06 20 00";
+  await planned(f);
+  f.screen.back();
+  const place = f.screen.view().place;
+  assert.equal(place.meta, "Place");
+  assert.equal(place.phone, "+377 98 06 20 00");
+  assert.equal(place.phoneHref, "tel:+37798062000");
+  f.screen.openDirections();
+  f.screen.setOriginText(`${ORIGIN.latitude}, ${ORIGIN.longitude}`);
+  f.screen.planOrigin();
+  await settle();
+  f.screen.start();
+  f.emit(f.fix({ coordinate: ORIGIN }));
+  assert.equal(f.screen.view().navigation.cameraFollowing, true);
+  assert.equal(f.screen.view().map.overlay.follow, true);
+  f.screen.stopFollowing();
+  assert.equal(f.screen.view().navigation.cameraFollowing, false);
+  assert.equal(f.screen.view().map.overlay.follow, false);
+  f.screen.recenter();
+  assert.equal(f.screen.view().map.overlay.follow, true);
+  f.screen.dispose();
+});
+
+// The observation envelope is the actual boundary used by device request policy.
+import {
+  clearMapsSelection,
+  getMapsSelectedObject,
+  publishMapsSelection,
+  validateMapsSelectedObject,
+} from "../src/client/agent-context.ts";
+
+for (const change of ["area", "results"]) {
+  test(`search observations retire when the same query has changed ${change}`, async () => {
+    const f = fixture();
+    const publish = f.host.publishContext;
+    f.host.publishContext = (...args) => {
+      publish(...args);
+      publishMapsSelection(...args);
+    };
+    let edition = 0;
+    f.host.connection().provider.search = async () => [
+      {
+        ...f.destination,
+        id: edition ? "new-result" : "old-result",
+        name: edition ? "New result" : "Old result",
+      },
+    ];
+    try {
+      f.screen.setViewport(ORIGIN, 14);
+      f.screen.searchFor("Coffee");
+      await settle();
+      const old = getMapsSelectedObject();
+      assert.equal(f.screen.view().results[0].name, "Old result");
+      f.screen.refresh();
+      await settle();
+      assert.equal(
+        getMapsSelectedObject().revision,
+        old.revision,
+        "a render with unchanged content keeps the observation",
+      );
+      if (change === "area") f.screen.setViewport(END, 14);
+      else edition = 1;
+      f.screen.searchFor("Coffee");
+      await settle();
+      assert.equal(
+        f.screen.view().results[0].name,
+        change === "area" ? "Old result" : "New result",
+      );
+      assert.notEqual(
+        getMapsSelectedObject().revision,
+        old.revision,
+        "changed search source requires a new observation receipt",
+      );
+      assert.equal(
+        validateMapsSelectedObject(old),
+        false,
+        "a prior observation must not validate against changed source",
+      );
+    } finally {
+      f.screen.dispose();
+      clearMapsSelection();
+    }
+  });
+}
+
+test("a pending search cannot reuse the prior empty-result observation", async () => {
+  const f = fixture();
+  const publish = f.host.publishContext;
+  f.host.publishContext = (...args) => {
+    publish(...args);
+    publishMapsSelection(...args);
+  };
+  let finish;
+  try {
+    f.host.connection().provider.search = async () => [];
+    f.screen.setViewport(ORIGIN, 14);
+    f.screen.searchFor("Coffee");
+    await settle();
+    assert.equal(f.screen.ensure().snapshot().search.phase, "empty");
+    const old = getMapsSelectedObject();
+    f.host.connection().provider.search = () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      });
+    f.screen.searchFor("Coffee");
+    await settle();
+    assert.equal(f.screen.ensure().snapshot().search.phase, "loading");
+    assert.deepEqual(f.screen.view().results, []);
+    assert.equal(
+      validateMapsSelectedObject(old),
+      false,
+      "a prior empty result is not an observation of the pending replacement",
+    );
+    finish([]);
+    await settle();
+  } finally {
+    finish?.([]);
+    f.screen.dispose();
+    clearMapsSelection();
+  }
+});
+
+test("an unsupported provider phone remains visible without a fabricated Call target", async () => {
+  const f = fixture();
+  f.destination.phone = "+++";
+  try {
+    f.screen.searchFor("Destination");
+    await settle();
+    f.screen.choose("place:fixture:destination");
+    await settle();
+    assert.equal(f.screen.view().place.phone, "+++");
+    assert.equal(f.screen.view().place.phoneHref, undefined);
+  } finally {
+    f.screen.dispose();
+  }
 });

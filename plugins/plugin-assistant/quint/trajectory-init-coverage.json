@@ -1,0 +1,26 @@
+[
+  {
+    "id": "DeferredTrajectoryInit",
+    "model": "plugins/plugin-assistant/quint/DeferredTrajectoryInit.qnt",
+    "sources": [
+      "plugins/plugin-assistant/src/features/trajectories/TrajectoriesService.ts"
+    ],
+    "invariants": [
+      "TypeOK",
+      "OneInitializer",
+      "CacheOwned",
+      "NoDuplicateMigration",
+      "PublishedSchemaReady"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two callers, each with at most two first-use calls, two shared initialization attempts, one SQL schema change and at most one initialization failure. Read and capture callers share the same initializer.",
+      "Weak fairness assumes enabled schema inspection, migration, publication and caller observation settle. The first attempt may fail; after that one allowed failure a started retry succeeds. No retry occurs until a later caller requests storage, and no permanent database failure or wall-clock deadline is proved.",
+      "SQL inspection and migration are separate model transitions. A failed initialization may leave a committed schema update; a retry observes it instead of repeating the ALTER. The production PGlite regression exercises concurrent readers against a legacy table.",
+      "The instance assumes an adapter with SQL support. Stop does not undo admitted schema changes. Capture admission, effect durability, query payloads, unsupported adapters, later schema mutation and arbitrary database/provider schedules remain outside this initializer projection. Existing capture and stop ownership are not replaced."
+    ],
+    "implementationTests": [
+      "plugins/plugin-assistant/src/features/trajectories/TrajectoriesService.test.ts"
+    ]
+  }
+]

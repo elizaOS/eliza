@@ -121,8 +121,21 @@ export interface CloudResidentBindingPorts<
     identity: ResidentIdentity,
     signal: AbortSignal,
   ): Promise<ResidentPlanCheck<V>>;
-  /** Binds Cloud inference for this credential to the running agent. */
-  bindProvider(credentialId: string, signal: AbortSignal): Promise<void>;
+  /** Binds Cloud inference and optionally returns the opaque identity/generation
+   * guard captured atomically for this invocation's applied or attached binding.
+   * Legacy hosts can return void, but cannot perform automatic failed-bind cleanup. */
+  bindProvider(
+    credentialId: string,
+    signal: AbortSignal,
+    // biome-ignore lint/suspicious/noConfusingVoidType: existing host ports return Promise<void>.
+  ): Promise<void | string>;
+  /** Clears only the exact binding represented by the guard, checking it under
+   * the host's existing lifecycle/storage lock before and after any shutdown.
+   * A changed binding must remain untouched. Never implement with read-then-clear. */
+  clearProviderIfCurrent?(
+    bindingGuard: string,
+    signal: AbortSignal,
+  ): Promise<"cleared" | "changed">;
   /**
    * Removes any Cloud inference binding. Throws when the removal cannot be confirmed. `reason` is
    * `unbound` for a plain unbind (a host may skip work when nothing is stored) and `bind-failed`
@@ -521,8 +534,15 @@ export class CloudResidentBindingController<
     if (admission.binding === "kept") return { binding: "kept" };
     const credentialId = admission.identity?.credentialId;
     if (admission.binding === "cloud" && credentialId) {
+      await this.assertSameCredential(credentialId, signal);
+      let bindingGuard: string | undefined;
       try {
-        await this.ports.bindProvider(credentialId, signal);
+        const appliedGuard = await this.ports.bindProvider(
+          credentialId,
+          signal,
+        );
+        bindingGuard =
+          typeof appliedGuard === "string" ? appliedGuard : undefined;
         signal.throwIfAborted();
         await this.assertSameCredential(credentialId, signal);
         return { binding: "cloud" };
@@ -532,8 +552,33 @@ export class CloudResidentBindingController<
         // a sign-out or a reset) owns the binding next and applies or clears it. Clearing here
         // could remove the newer operation's binding. Cloud still refuses a revoked key at use.
         signal.throwIfAborted();
+        // An old completion must not mint a fresh native clear intent after a
+        // different Activity has replaced the sign-in. A bind failure is only
+        // eligible for cleanup while its original credential is still current.
+        if (error instanceof CloudResidentBindingError) throw error;
+        await this.assertSameCredential(credentialId, signal);
+        if (
+          typeof bindingGuard !== "string" ||
+          !bindingGuard ||
+          !this.ports.clearProviderIfCurrent
+        ) {
+          return {
+            binding: "unknown",
+            failure: { kind: "bind-failed", cause: error },
+          };
+        }
         try {
-          await this.ports.clearProvider(signal, "bind-failed");
+          const cleared = await this.ports.clearProviderIfCurrent(
+            bindingGuard,
+            signal,
+          );
+          signal.throwIfAborted();
+          if (cleared !== "cleared") {
+            return {
+              binding: "unknown",
+              failure: { kind: "bind-failed", cause: error },
+            };
+          }
         } catch {
           signal.throwIfAborted();
           return {

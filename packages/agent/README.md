@@ -7,12 +7,41 @@ repository root with `bun run start`; use `bun run dev` for the app and API toge
 Configure providers and connectors through the host configuration; never expose host
 secrets to ungranted agents.
 
+Stdio MCP configuration requires `ELIZA_TERMINAL_RUN_TOKEN` and a matching
+request credential, in addition to normal API authorization. The retired
+`ELIZA_ALLOW_UNAUTHENTICATED_STDIO_MCP` flag does not change that check. Dashboard
+HTML contains public connection settings, never a full API token from
+`ELIZA_FORCE_INJECT_TOKEN`. Use the host's existing authorization flow.
+
+Native hosts that rotate `ELIZA_HOST_CONTEXT_REVISION` can expose the latest
+owner chat's timing through the existing authenticated `GET /api/status`.
+`nativeInferenceTiming` contains fixed stage durations and a validated trace ID,
+not conversation text or raw spans. It is absent for non-owner requests, retired
+host bindings and hosts without that revision contract. Status reads do not
+query the log store. A newer turn prevents an older callback from replacing it.
+
 `build:mobile --target=android` compacts syntax and whitespace while keeping
 identifier names. Its `plugins-manifest.json` records each npm package that
 contributes emitted bytes, the package metadata hash, and the final bundle hash.
 Notice consumers use `scripts/mobile-bundle-dependencies.ts` to validate this
 inventory against the bundle and prepared source before reading license files.
 Missing or changed inputs fail validation; source comments are not an inventory.
+
+A host that never loads a package can set `ELIZA_MOBILE_STUB_PLUGINS` to a
+comma-separated list of package names (for example `googleapis,three`). The
+build resolves each one, and its subpaths, to the null-plugin stub, and lists
+them as `hostStubs` in the manifest. A named import from a stub is `undefined`,
+so using it fails with a TypeError; properties read off its default export are
+functions that throw `MOBILE_CAPABILITY_UNAVAILABLE`. The load smoke still runs;
+check the boot and the features you keep too. Known limits:
+
+- `@elizaos/plugin-calendar/format` and `@elizaos/plugin-browser/schema` stay
+  real under a stub of their package, because app code imports them at boot.
+- Do not stub `@elizaos/plugin-workflow` if the host sets
+  `ELIZA_MOBILE_WORKFLOWS=1`.
+- Stubbing `phonemizer` makes Kokoro use its bundled ASCII G2P.
+- `@elizaos/plugin-todos` named imports back the shared todo cutover route;
+  stub it only if the host never uses that route.
 
 Import public runtime, service, role, and operation APIs from `@elizaos/agent`.
 Agent code imports core APIs and catalog maps through `@elizaos/core`.
@@ -89,6 +118,13 @@ matching `cancel-read-completion` route retires the completion. Deploy the addit
 `0006_device_read_completion` migration without resetting existing approvals.
 
 ## Development
+
+Run `bun run --cwd packages/agent test:formal` with Java 21 available to check
+the source-linked Quint models in `quint/` through the shared repository runner.
+It runs scenarios, seeded simulation and exhaustive finite-state safety checks.
+Results and raw logs go to `test-results/quint/`. The coverage manifest lists
+reduced domains and remaining obligations. These checks complement the real
+host tests and do not establish implementation equivalence.
 
 Install dependencies with `bun install` at the repository root. Run from that root:
 
@@ -220,13 +256,46 @@ transport, bounded JSON, conversation ownership, request cancellation, account
 fencing and authenticated task presentation. Only trusted host code provides this
 policy; never accept it from renderer input.
 
+A renderer bridge that cannot read a streamed response can pull a reply as it
+is written. `POST /conversations/{id}/messages/stream/start` takes the message
+body and returns `{streamId}`. `POST .../stream/pull` with `{streamId, cursor}`
+waits up to `holdMs` and returns `{events, cursor, done}`; each event appends
+`text` or replaces all text with `fullText`, and `provisional` text must
+not be spoken before `done`. The cursor confirms earlier events, which are then
+released. On `done`, `message` is the exact buffered reply. Every check of the
+buffered route also applies; a failed pull answers as the buffered route would,
+and the renderer then discards the pulled text. `POST .../stream/cancel` with
+`{streamId}` closes the relay and frees its slot. A paired-session upstream can
+continue its accepted turn after that transport closes. For Stop, first call
+`POST /turns/{roomId}/abort` using the `roomId` returned by
+`POST /conversations`, then release the stream. An unsuccessful abort leaves
+the turn's outcome unconfirmed. After `done`, use `stream/cancel` alone to free
+the slot. The `messageStream` option sets `maxStreams` per account (default 2),
+`maxBufferedChars` of unconfirmed text (more fails, never truncates), `idleMs`
+until an unpulled stream is cancelled, `holdMs` (default 2 s) and `coalesceMs`
+(default 150 ms): new text waits that long for more, unless it ends a phrase.
+Only one pull waits on a stream; a newer pull answers the older one at once.
+A waiting pull holds one native bridge worker, so `maxStreams` held pulls must
+leave workers free; the Android dispatcher runs `.../stream/cancel` as an urgent
+control. A failure the agent reports after its stream opens (an SSE `error`
+frame, or no `done` frame) answers 502 with the agent's message and code, not
+the status the buffered route would give.
+
 Native hosts can opt into `native-host/surface-channel.mjs` with an authenticated
 `credentialGate` and pass that channel as `surfaceChannel` to the gateway. The
 four POST routes under `/browser/surface/` require the inbound bearer token and
 normal origin policy. The browser-safe `surface-client.mjs` accepts the host's
 authenticated request adapter and native command handler; it never reads keys.
 Connections use increasing renderer epochs. Commands have bounded deadlines,
-are delivered once, and are never retried or reconnected automatically. Account
+are delivered once, and are never retried or reconnected automatically. An idle
+pull is held for `SURFACE_PULL_HOLD_MS` (10 s, below the 15 s connection expiry;
+hosts may pass a shorter `pullHoldMs`) and returns early on a new command,
+cancellation, close, revoke or new connection; an account change is seen at the
+next owner check, at the latest when the hold ends. The connection expiry is
+renewed when a pull arrives and when it returns, so a client has the full 15 s
+to send its next pull. The client closes the host connection as soon as it
+stops, which ends a held pull even if the request adapter cannot abort it;
+adapters should still pass the signal to their transport. Account
 replacement and close retire pending commands. Losing a delivered effect returns
 `UNCERTAIN_OUTCOME`; a receipt is not proof that the website achieved the goal.
 Complete replies up to the explicit 2 MiB transport limit are accepted; larger
@@ -237,7 +306,10 @@ no task authority, task store, browser profile or Chromium-extension identity.
 Source-bundle consumers must include the gateway, channel, and task-id source modules.
 
 `native-host/account-state.mjs` preserves private credential-derived namespaces
-and configuration migration. `native-host/runtime-supervisor.mjs` serializes
+and configuration migration. Run credential scrubbing while no other process
+or task writes those files. Each file is replaced separately. A failed call
+keeps earlier rewrites. Resolve the error before retrying.
+`native-host/runtime-supervisor.mjs` serializes
 identity transitions and stops only the child returned by the host launcher.
 These are source entrypoints for explicit payload composition, not additional
 browser SDK or published dist exports. Production consumers must preserve their

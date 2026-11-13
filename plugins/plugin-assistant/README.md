@@ -89,10 +89,14 @@ or its restoration.
 The default `mode=load` enables the selected complete schemas in the next planner
 round. `mode=describe` reads descriptions and schemas without enabling them.
 Exact `names` load known operations or whole named families. `mode=describe`
-with `names=[]` reads the complete authorized catalog; an empty load searches
-for operations relevant to the current task. Exact-name and full-catalog requests
-are not limited to ten; no selected definition is truncated. Search and exact
-loads refresh permissions, and
+with `names=[]` reads the complete authorized catalog with full definitions while
+they fit core's action-result prompt-size threshold. A larger catalog returns an
+explicit complete index instead (`catalogDetail: "index"`,
+`completeDefinitions: false`): every family and child name, with its authored
+`descriptionCompressed` when it has one. Full definitions then come from exact
+names. An empty load searches for operations relevant to the current task.
+Exact-name and full-catalog requests are not limited to ten; no name or selected
+definition is truncated. Search and exact loads refresh permissions, and
 execution checks them again. Discovery does not execute domain work. There is
 one canonical planner discovery action. `SEARCH_ACTIONS` remains a cloud MCP
 simile for connector discovery, not a separate planner registry;
@@ -165,6 +169,12 @@ Device enrollment retains the authenticated subject for approval review, claims 
 An authenticated installation can read or revise its enabled-view subset at `/api/client-devices/view-profile`. Updates use an expected revision; empty subsets disable all view proposals, while a null legacy profile preserves existing behavior. Open-view proposals bind the current profile revision and revalidate at approval and claim. Per-turn tool schemas are cloned, so one installation cannot narrow another installation’s registered catalog. These restrictions do not authorize execution. Nullable `view_profile` migrates without replacing device keys or enrollment identities.
 
 Run `vitest run --config vitest.device-actions.config.ts` from this package for real HTTP/SQL device lifecycle, workflow-owner dispatch/receipt and additive-migration scenarios.
+
+Device executors may throw `DeviceActionNotStarted` only before an effect. The
+coordinator owns failed journal records' `result.dispatch` marker; hosts must
+preserve it through journal finish, get and list. Display copy grants no new
+no-effect authority. Exact unmarked fixed no-call records from prior coordinator
+versions retain their existing recovery contract.
 
 The package root exports the memory, knowledge-delivery and notification actions.
 Hosts explicitly compose them; importing the package does not install those

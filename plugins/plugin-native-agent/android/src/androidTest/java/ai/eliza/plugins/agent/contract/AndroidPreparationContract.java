@@ -28,6 +28,8 @@ public final class AndroidPreparationContract {
     public CheckDecision beginStagingInterval(String directory,long l,long u,long g){throw new AssertionError("Unexpected scheduling");}
     public CheckDecision finishStagingInterval(String directory,String token,long l,long u,boolean success,long retry){throw new AssertionError("Unexpected scheduling");}
     public String evaluateRememberedReleaseInterval(String directory,byte[] d,byte[] device,byte[] policy){throw new AssertionError("Unexpected admission");}
+    public String evaluatePreparedForCommit(String prepared,String admission,String id,byte[] policy){throw new AssertionError("Unexpected admission");}
+    public String evaluatePreparedRecovery(String prepared,String admission,String id,String c,long cv,String r,long rv,String signer,long floor){throw new AssertionError("Unexpected admission");}
    };
    InputProvider inputs=new InputProvider(){public Inputs read(){throw new AssertionError("Unexpected observation");}public QualifiedClockAnchor.Interval readTime(){throw new AssertionError("Unexpected clock");}};
    ArtifactVerifier verifier=(s,c,r,h,a,cf,rf,p,g)->{throw new AssertionError("Unexpected APK verification");};

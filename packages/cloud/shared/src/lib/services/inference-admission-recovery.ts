@@ -206,7 +206,7 @@ async function recoverAppReservation(
     !Number.isFinite(context.estimatedBaseCostUsd) ||
     context.estimatedBaseCostUsd < 0 ||
     context.appPolicy.name.trim() === "" ||
-    context.appPolicy.creatorUserId.trim() === ""
+    (context.appPolicy.creatorUserId !== null && context.appPolicy.creatorUserId.trim() === "")
   ) {
     throw new Error("App inference recovery policy is invalid");
   }

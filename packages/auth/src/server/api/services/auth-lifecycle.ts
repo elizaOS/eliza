@@ -6,6 +6,7 @@ export { buildTwilioVerifyProviderFromEnvironment } from "../../auth/phone-provi
 import { randomBytes } from "node:crypto";
 import { ElizaError, logger } from "@elizaos/core";
 import { sql } from "drizzle-orm";
+import { CloudflareEmailProvider } from "../../auth/cloudflare-email-provider";
 import {
   ACCESS_TOKEN_EXPIRY,
   buildBackend,
@@ -192,6 +193,7 @@ export type LoginMethodName =
   | "siws"
   | "telegram"
   | "farcaster"
+  | "guest"
   | "oauth"
   | "oidc";
 
@@ -205,6 +207,7 @@ const LOGIN_METHOD_NAMES = new Set<string>([
   "siws",
   "telegram",
   "farcaster",
+  "guest",
   "oauth",
   "oidc",
 ]);
@@ -244,6 +247,15 @@ export async function tenantSwitchLoginRefusal(
   claims: Record<string, unknown>,
 ): Promise<string | null> {
   const method = claims.authMethod;
+  const loginMethods = (await authTenantConfigSubject(tenantId))
+    ?.auth_abuse_config?.loginMethods;
+  if (method === undefined) {
+    // A session that does not record how it signed in cannot show the switch
+    // is allowed, so a tenant that turns any method off refuses it.
+    return restrictsLoginMethods(loginMethods)
+      ? "This session cannot switch into a tenant that limits login methods; sign in again"
+      : null;
+  }
   if (typeof method !== "string" || !LOGIN_METHOD_NAMES.has(method)) {
     return null;
   }
@@ -254,9 +266,20 @@ export async function tenantSwitchLoginRefusal(
         ? claims.oauthProviderId
         : undefined;
   return loginMethodRefusal(
-    (await authTenantConfigSubject(tenantId))?.auth_abuse_config?.loginMethods,
+    loginMethods,
     method as LoginMethodName,
     typeof providerId === "string" ? providerId : undefined,
+  );
+}
+
+function restrictsLoginMethods(
+  loginMethods: TenantAuthAbuseConfig["loginMethods"] | undefined,
+): boolean {
+  if (!loginMethods) return false;
+  return Object.values(loginMethods).some((value) =>
+    typeof value === "boolean"
+      ? value === false
+      : Object.values(value ?? {}).includes(false),
   );
 }
 
@@ -293,7 +316,17 @@ export async function createSessionToken(
       }
     }
   }
-  return signAccessToken({ address, tenantId, ...extra }, expiresIn);
+  // auth_time is when the user last authenticated. A caller carrying an
+  // existing session (refresh rotation, tenant switch) passes it through;
+  // every other caller is a sign-in and stamps now.
+  const authTime =
+    typeof extra?.auth_time === "number"
+      ? extra.auth_time
+      : Math.floor(Date.now() / 1000);
+  return signAccessToken(
+    { address, tenantId, ...extra, auth_time: authTime },
+    expiresIn,
+  );
 }
 
 let _nonceBackend: import("../../auth/index.ts").StoreBackend | null = null;
@@ -657,7 +690,13 @@ export function getPasskeyAuth(requestOrigin?: string): PasskeyAuth {
 
 // ─── EmailAuth cache ──────────────────────────────────────────────────────────
 
-const _emailAuthByTenant = new Map<string, Promise<EmailAuth>>();
+// Entries expire so tenant email config edited on another instance is picked
+// up without a restart; the Promise still dedupes concurrent builds.
+const EMAIL_AUTH_CACHE_TTL_MS = 60_000;
+const _emailAuthByTenant = new Map<
+  string,
+  { pending: Promise<EmailAuth>; expiresAt: number }
+>();
 
 let _emailKeyStore: KeyStore | null = null;
 
@@ -842,20 +881,22 @@ function buildGlobalEmailAuth(overrides?: {
   subjectOverride?: string;
   replyTo?: string;
   templates?: TenantEmailConfig["templates"];
+  cloudflare?: { from: string; provider: CloudflareEmailProvider | null };
 }): EmailAuth {
   const resendKey = process.env.RESEND_API_KEY;
+  const from =
+    overrides?.cloudflare?.from || process.env.EMAIL_FROM || "login@eliza.app";
   // Mock takes precedence in non-production for deterministic e2e testing.
   const provider = isMockEmailEnabled()
     ? new MockEmailProvider()
-    : resendKey
-      ? new ResendProvider({
-          apiKey: resendKey,
-          from: process.env.EMAIL_FROM || "login@eliza.app",
-        })
-      : undefined;
+    : overrides?.cloudflare
+      ? overrides.cloudflare.provider
+      : resendKey
+        ? new ResendProvider({ apiKey: resendKey, from })
+        : undefined;
 
   return new EmailAuth({
-    from: process.env.EMAIL_FROM || "login@eliza.app",
+    from,
     baseUrl:
       overrides?.baseUrl?.replace(/\/$/, "") || globalEmailMagicLinkBaseUrl(),
     callbackPath: overrides?.callbackPath || globalEmailMagicLinkCallbackPath(),
@@ -913,12 +954,25 @@ async function createEmailAuthForTenant(tenantId: string): Promise<EmailAuth> {
     ? emailConfig?.magicLinkCallbackPath || "/auth/email/verify"
     : undefined; // let EmailAuth fall through to its DEFAULT_CALLBACK
 
-  if (!emailConfig?.apiKeyEncrypted) {
-    // No per-tenant Resend config (or only magic-link override) — use the
-    // global env-backed provider but still honor the per-tenant magic-link
-    // AND template overrides if present. Without the template pass-through a
-    // tenant that sets only `templateId` (no own Resend key) silently got the
-    // Steward-branded default email instead of its configured branding.
+  const cloudflareSelected =
+    tenantId === process.env.CLOUDFLARE_EMAIL_TENANT_ID?.trim();
+  if (cloudflareSelected || !emailConfig?.apiKeyEncrypted) {
+    // Keep tenant branding and link destinations when the provider is
+    // selected by the operator rather than configured by the tenant.
+    const accountId = process.env.CLOUDFLARE_EMAIL_ACCOUNT_ID?.trim() || "";
+    const apiToken = process.env.CLOUDFLARE_EMAIL_API_TOKEN?.trim() || "";
+    const from = process.env.CLOUDFLARE_EMAIL_FROM?.trim() || "";
+    const cloudflare = cloudflareSelected
+      ? {
+          from,
+          provider:
+            /^[a-f0-9]{32}$/i.test(accountId) &&
+            apiToken &&
+            /^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(from)
+              ? new CloudflareEmailProvider({ accountId, apiToken, from })
+              : null,
+        }
+      : undefined;
     return buildGlobalEmailAuth({
       baseUrl: magicLinkBaseUrl,
       callbackPath,
@@ -927,6 +981,7 @@ async function createEmailAuthForTenant(tenantId: string): Promise<EmailAuth> {
       subjectOverride: emailConfig?.subjectOverride,
       replyTo: emailConfig?.replyTo,
       templates: emailConfig?.templates,
+      cloudflare,
     });
   }
 
@@ -966,13 +1021,18 @@ export async function getEmailAuthForTenant(
   tenantId: string,
 ): Promise<EmailAuth> {
   const cached = _emailAuthByTenant.get(tenantId);
-  if (cached) return cached;
+  if (cached && cached.expiresAt > Date.now()) return cached.pending;
 
   const pending = createEmailAuthForTenant(tenantId).catch((error) => {
-    _emailAuthByTenant.delete(tenantId);
+    if (_emailAuthByTenant.get(tenantId)?.pending === pending) {
+      _emailAuthByTenant.delete(tenantId);
+    }
     throw error;
   });
-  _emailAuthByTenant.set(tenantId, pending);
+  _emailAuthByTenant.set(tenantId, {
+    pending,
+    expiresAt: Date.now() + EMAIL_AUTH_CACHE_TTL_MS,
+  });
   return pending;
 }
 
@@ -1062,7 +1122,7 @@ function parseOAuthRedirectUri(redirectUri: string): URL {
   if (redirectUrl.protocol === "http:") {
     const host = redirectUrl.hostname.toLowerCase();
     const isLoopback =
-      host === "localhost" || host === "127.0.0.1" || host === "::1";
+      host === "localhost" || host === "127.0.0.1" || host === "[::1]";
     if (!isLoopback) {
       throw new Error(
         "redirect_uri must use https except for loopback development origins",

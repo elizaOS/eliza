@@ -8,6 +8,8 @@ import test from "node:test";
 import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import { assetNames } from "../../browser/scripts/chromium-component.mjs";
 import { parseSubArgs as parseBuildArgs } from "../android/build-aosp.ts";
+import { chromiumBuildPlan } from "../android/build-chromium-browser.ts";
+import { stageImageLauncher } from "../android/image-launcher.ts";
 import {
   assertBrowserAppsStaged,
   bindBrowserCertificate,
@@ -15,6 +17,7 @@ import {
   stageBrowserApps,
 } from "../android/stage-browser-apps.ts";
 import { syncToAosp } from "../android/sync-to-aosp.ts";
+import { fakeTools } from "./image-launcher-fixture.ts";
 
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const rootUrl = new URL("../../browser/", import.meta.url);
@@ -80,8 +83,14 @@ function fixture(t, application = "ai.elizaos.app") {
           "storage",
           "tabs",
           "webNavigation",
+          "webRequest",
         ],
-        host_permissions: ["http://*/*", "https://*/*"],
+        host_permissions: [
+          "http://*/*",
+          "https://*/*",
+          "ws://*/*",
+          "wss://*/*",
+        ],
         background: { service_worker: "background.mjs", type: "module" },
       });
     if (name === "runtime-config.mjs")
@@ -143,6 +152,28 @@ function fixture(t, application = "ai.elizaos.app") {
     `#!/usr/bin/env node\nimport fs from 'node:fs';import path from 'node:path';const pins=JSON.parse(fs.readFileSync(${JSON.stringify(path.join(vendorDir, "manifests/browser-apps.json"))},'utf8'));const pin=process.argv.at(-1).endsWith('Chromium.apk')?pins.chromium.variants.x86_64:pins.bitwarden;let fault='';try{fault=fs.readFileSync(${JSON.stringify(path.join(vendorDir, "fault"))},'utf8')}catch{};if(process.argv[2]==='verify')console.log('Signer #1 certificate SHA-256 digest: '+(fault==='signer'?'f'.repeat(64):pin.signerSha256));else console.log("package: name='"+(fault==='package'?'wrong':pin.packageName)+"' versionCode='"+pin.versionCode+"' versionName='"+pin.versionName+"'\\nnative-code: '"+(fault==='abi'?'wrong':"x86_64' 'arm64-v8a")+"'");\n`,
   );
   fs.chmodSync(tool, 0o755);
+  // A system-only x86_64 product: the staged launcher carries no native runtime.
+  const brand = {
+    brand: "eliza",
+    appName: "Eliza",
+    distroName: "elizaOS",
+    packageName: "ai.elizaos.app",
+    architecture: "x86_64",
+    productName: "eliza_gsi_x86_64",
+    lunchTarget: "eliza_gsi_x86_64-cp2a-userdebug",
+    buildAndroidSystemCmd: ["bun", "run", "build:android:system"],
+  };
+  const launcherTools = fakeTools(
+    path.join(path.dirname(vendorDir), `${path.basename(vendorDir)}-tools`),
+  );
+  stageImageLauncher({
+    brand,
+    apk: launcherTools.apk,
+    development: true,
+    output: path.join(vendorDir, "launcher"),
+    aapt: launcherTools.aapt,
+    apksigner: launcherTools.apksigner,
+  });
   return {
     vendorDir,
     pins,
@@ -161,15 +192,7 @@ function fixture(t, application = "ai.elizaos.app") {
       apksigner: tool,
       aapt: tool,
     },
-    brand: {
-      brand: "eliza",
-      appName: "Eliza",
-      distroName: "elizaOS",
-      architecture: "x86_64",
-      productName: "eliza_cf_x86_64_phone",
-      lunchTarget: "eliza_cf_x86_64_phone-trunk_staging-userdebug",
-      buildAndroidSystemCmd: ["bun", "run", "build:android:system"],
-    },
+    brand,
   };
 }
 test("owned component preserves exact APK admission and explicit development status", (t) => {
@@ -543,4 +566,47 @@ test("owned admission checks the full guidance resource inventory and bytes", (t
     () => stageBrowserApps(f.options),
     /overlay resource inventory/,
   );
+});
+
+test("the Chromium build plan admits a WebView provider only with its package named once", () => {
+  const plan = (target, gnArgs) =>
+    chromiumBuildPlan({
+      source: "/chromium/src",
+      build: "/chromium/src/out/webview",
+      gnArgs,
+      jobs: 4,
+      target,
+    });
+  const webview =
+    'target_os = "android"\ntarget_cpu = "x64"\nsystem_webview_package_name = "com.android.webview"\n';
+  assert.deepEqual(plan("system_webview_apk", webview), {
+    target: "system_webview_apk",
+    apks: [
+      "/chromium/src/out/webview/apks/SystemWebView.apk",
+      "/chromium/src/out/webview/apks/SystemWebView64.apk",
+    ],
+    commands: [
+      ["gn", ["gen", "out/webview"]],
+      ["autoninja", ["-C", "out/webview", "-j", "4", "system_webview_apk"]],
+    ],
+  });
+  assert.throws(
+    () =>
+      plan("system_webview_apk", 'target_os = "android"\ntarget_cpu = "x64"\n'),
+    /explicit once: system_webview_package_name/,
+  );
+  assert.throws(
+    () =>
+      plan(
+        "system_webview_apk",
+        webview.replace('"com.android.webview"', '"../x"'),
+      ),
+    /reviewed Android WebView provider/,
+  );
+  // The default stays the owned browser, which a WebView argument file never satisfies.
+  assert.throws(
+    () => plan(undefined, webview),
+    /explicit once: is_desktop_android/,
+  );
+  assert.throws(() => plan("monochrome_apk", webview), /target must be one of/);
 });

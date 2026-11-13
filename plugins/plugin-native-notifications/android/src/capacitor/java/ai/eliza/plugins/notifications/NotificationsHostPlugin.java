@@ -81,6 +81,8 @@ public abstract class NotificationsHostPlugin extends Plugin {
  /** The poster for workflow notices on the host's channels. */
  protected HostNoticePoster poster(){NoticeRoutes routes=routes();return new HostNoticePoster(getContext(),posterConfig(),routes::token);}
  protected NoticeDelivery delivery(){return new NoticeDelivery(deliveryConfig(),noticeStorage(),poster());}
+ /** Posts and sweeps through one receipt ledger and its routes. */
+ protected NoticeCoordinator coordinator(){return new NoticeCoordinator(delivery(),routes());}
 
  private final Handler noticeMain=new Handler(Looper.getMainLooper());
  private final ForegroundNoticeGate noticeGate=new ForegroundNoticeGate(new ForegroundNoticeGate.MainThread(){
@@ -114,8 +116,13 @@ public abstract class NotificationsHostPlugin extends Plugin {
  @Override public void load(){
   super.load();
   HostNoticePoster.Config poster=posterConfig();
-  workflowInbox=new NoticeTapInbox<>(routes(),poster.openAction,poster.askAction,poster.routePrefix);
-  captureWorkflowTap(getActivity().getIntent());
+  NoticeRoutes routes=routes();
+  workflowInbox=new NoticeTapInbox<>(routes,poster.openAction,poster.askAction,poster.routePrefix,token->{String id=routes.operation(token);if(id!=null)delivery().recheck(id);});
+  Intent launch=getActivity().getIntent();
+  // A relaunch from Recents, also after process death, replays the original notice Intent. Its tap was
+  // captured then and may have been settled since (a cancelled Ask), so it must not queue again.
+  if(launch!=null&&(launch.getFlags()&Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY)!=0&&workflowInbox.token(launch,INTENTS)!=null)launch.setData(null);
+  else captureWorkflowTap(launch);
  }
  @Override protected void handleOnDestroy(){noticeGate.destroy();super.handleOnDestroy();}
  @Override protected void handleOnNewIntent(Intent intent){super.handleOnNewIntent(intent);captureWorkflowTap(intent);}
@@ -147,9 +154,10 @@ public abstract class NotificationsHostPlugin extends Plugin {
   String failure="Workflow notification link unavailable; retry after unlocking.";
   noticeMain.post(()->{try{foreground();captureWorkflowTap(getActivity().getIntent());noticeWork(call,failure,()->call.resolve(new JSObject(workflowInbox.pending(clearCapturedIntent,this::addQuestionNotice).toString())));}catch(Exception unavailable){call.reject(failure);}});
  }
- /** Completes the renderer's handling of the exact pending tap; a completed approval Ask keeps its notice and tap. */
+ /** Completes the renderer's handling of the exact pending tap; a completed approval Ask keeps its notice and tap.
+  * `unavailable` settles a tap whose target is definitively gone, unless its receipt is still uncertain. */
  @PluginMethod public void consumeWorkflowTap(PluginCall call){noticeWork(call,"Workflow notification link was retained; retry.",()->{
-  String opened=workflowInbox.consume(call.getString("token"),Boolean.TRUE.equals(call.getBoolean("discard",false)),call.getString("noticeRevision"),this::addQuestionNotice,this::requireNoticeForeground);
+  String opened=Boolean.TRUE.equals(call.getBoolean("unavailable",false))?workflowInbox.discard(call.getString("token")):workflowInbox.consume(call.getString("token"),Boolean.TRUE.equals(call.getBoolean("discard",false)),call.getString("noticeRevision"),this::addQuestionNotice,this::requireNoticeForeground);
   if(opened!=null)manager().cancel(posterConfig().tagPrefix+opened,0);
   call.resolve();
  });}
@@ -171,9 +179,7 @@ public abstract class NotificationsHostPlugin extends Plugin {
  }
  /** Records and posts one workflow notice at most once; resolves the ledger status. */
  @PluginMethod public void postWorkflow(PluginCall call){noticeWork(call,"Workflow notification could not be confirmed. It will not be repeated automatically.",()->{
-  routes().prepare(call.getString("operationId"),call.getString("bindingHash"),call.getObject("route"));
-  requireNoticeForeground();
-  String status=delivery().publish(call.getString("operationId"),call.getString("bindingHash"),call.getString("title"),call.getString("body"));
+  String status=coordinator().postStep(call.getString("operationId"),call.getString("bindingHash"),call.getObject("route"),call.getString("title"),call.getString("body"),this::requireNoticeForeground);
   JSObject result=new JSObject();result.put("status",status);call.resolve(result);
  });}
  /** The retained receipt for an exact notice (never posts). */
@@ -211,8 +217,8 @@ public abstract class NotificationsHostPlugin extends Plugin {
  /** The mirror, or throws so cross-app calls reject on a host without notification access. */
  private NotificationMirror requireMirror(){NotificationMirror mirror=mirror();if(mirror==null)throw new IllegalStateException("No notification access on this host");return mirror;}
  @PluginMethod public void crossAppStatus(PluginCall call){try{call.resolve(new JSObject(requireMirror().status(getContext()).toString()));}catch(Exception failure){call.reject("Notification access status is unavailable. History may need clearing.");}}
- @PluginMethod public void notificationApps(PluginCall call){try{foreground();JSObject out=new JSObject();out.put("apps",new JSArray(requireMirror().apps(getContext()).toString()));call.resolve(out);}catch(Exception failure){call.reject("Notification app choices are unavailable");}}
- @PluginMethod public void setNotificationPolicy(PluginCall call){try{foreground();call.resolve(new JSObject(requireMirror().update(getContext(),call.getData()).toString()));}catch(Exception failure){call.reject("Notification settings changed or could not be saved. Refresh Settings.");}}
+ @PluginMethod public void notificationApps(PluginCall call){try{foreground();JSObject out=new JSObject();out.put("apps",new JSArray(requireMirror().apps(getContext()).toString()));call.resolve(out);}catch(NotificationMirrorPolicy.Rejected rejected){call.reject(rejected.getMessage());}catch(Exception failure){call.reject("Notification app choices are unavailable");}}
+ @PluginMethod public void setNotificationPolicy(PluginCall call){try{foreground();call.resolve(new JSObject(requireMirror().update(getContext(),call.getData()).toString()));}catch(NotificationMirrorPolicy.Rejected rejected){call.reject(rejected.getMessage());}catch(Exception failure){call.reject("Notification settings changed or could not be saved. Refresh Settings.");}}
  @PluginMethod public void resumeCrossApp(PluginCall call){try{
   foreground();NotificationMirror mirror=requireMirror();
   synchronized(mirror.lock){
@@ -229,7 +235,7 @@ public abstract class NotificationsHostPlugin extends Plugin {
  @PluginMethod public void notificationHistory(PluginCall call){try{foreground();JSObject out=new JSObject();out.put("items",new JSArray(requireMirror().history(getContext()).toString()));call.resolve(out);}catch(Exception failure){call.reject("Local notification history is unavailable");}}
  @PluginMethod public void clearNotificationHistory(PluginCall call){try{foreground();requireMirror().clearHistoryBoundary(getContext());call.resolve();}catch(Exception failure){call.reject("Local notification history could not be cleared");}}
 
- /** Own rows (newest first), then allowed cross-app rows. Every row is returned. */
+ /** Own rows (newest first), then the newest allowed cross-app rows. A mirror failure leaves only own rows. */
  @PluginMethod public void list(PluginCall call){try{
   JSArray items=new JSArray();Set<String> current=new HashSet<>();boolean locked=locked();String label=appLabel();
   StatusBarNotification[] rows=manager().getActiveNotifications();Arrays.sort(rows,Comparator.comparingLong(StatusBarNotification::getPostTime).reversed());
@@ -243,7 +249,7 @@ public abstract class NotificationsHostPlugin extends Plugin {
   }
   ids.retain(current);
   NotificationMirror mirror=mirror();
-  if(mirror!=null){JSONArray external=mirror.list(getContext());for(int i=0;i<external.length();i++)items.put(external.get(i));}
+  if(mirror!=null){try{JSONArray external=mirror.list(getContext());for(int i=0;i<external.length();i++)items.put(external.get(i));}catch(Exception unavailable){/* Own rows stay readable without the mirror. */}}
   JSObject result=new JSObject();result.put("items",items);result.put("scope",scope());call.resolve(result);
  }catch(Exception error){call.reject("Notifications could not be read");}}
  @PluginMethod public void open(PluginCall call){try{

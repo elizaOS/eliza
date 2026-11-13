@@ -87,9 +87,14 @@ export type AndroidCalendarAgentResult =
         | "cancelled"
         | "unknown";
     };
+/**
+ * `failed`: the provider made no row. `dismissed`: the owner retired an
+ * unknown creation after the provider showed no matching event. Neither is
+ * retried.
+ */
 export type AndroidCalendarCreation =
   | { status: "saved"; creationId: string; id: string; calendarId: string }
-  | { status: "unknown"; creationId: string };
+  | { status: "unknown" | "failed" | "dismissed"; creationId: string };
 export interface AndroidCalendarRow {
   id: string;
   name?: string;
@@ -108,8 +113,9 @@ export interface AndroidCalendarEvent {
   allDay: boolean;
   recurring: boolean;
   /**
-   * The creation id passed to `save` when this host created the event. Row ids
-   * can be reused after a deletion; this id stays with its event.
+   * The creation id passed to `save` or `saveOptions` when this host created
+   * the event. Row ids can be reused after a deletion; this id stays with its
+   * event.
    */
   creationId?: string;
 }
@@ -126,6 +132,25 @@ export type AndroidCalendarSave = AndroidCalendarEditorFields &
     | { id?: ""; creationId: string; separateCreation?: boolean }
     | { id: string; expected: AndroidCalendarExpected & { revision: string } }
   );
+/** Direct creation options. Richer invitations and alerts use the installed editor. */
+export interface AndroidCalendarOptions {
+  title: string;
+  body?: string;
+  location?: string;
+  begin: number;
+  end: number;
+  allDay?: boolean;
+  timeZone?: string;
+  rrule?: string;
+}
+/**
+ * `saveOptions` requires both. `insertHandoff` requires `allDay` and defaults
+ * the time zone to UTC.
+ */
+export interface AndroidCalendarOptionsEvent extends AndroidCalendarOptions {
+  allDay: boolean;
+  timeZone: string;
+}
 export interface AndroidCalendarPlugin {
   requestAccess(): Promise<{ status: "granted" | "denied" }>;
   requestWorkflowReadAccess(): Promise<{ status: "granted" | "denied" }>;
@@ -141,7 +166,12 @@ export interface AndroidCalendarPlugin {
   workflowCalendars(): Promise<
     | {
         status: "ready";
-        calendars: Array<{ id: string; name: string; account: string }>;
+        calendars: Array<{
+          id: string;
+          name: string;
+          account: string;
+          sourceRevision: string;
+        }>;
       }
     | { status: "permission-required" }
   >;
@@ -149,6 +179,8 @@ export interface AndroidCalendarPlugin {
     calendarIds: string[];
     start: string;
     end: string;
+    /** Reviewed zone for civil all-day dates and the seven-day bound. */
+    timeZone?: string;
     maximumEvents: number;
   }): Promise<
     | {
@@ -204,13 +236,52 @@ export interface AndroidCalendarPlugin {
     | { status: "saved"; id: string; calendarId: string }
     | { status: "permission-required" | "conflict" | "pending-creation" }
   >;
+  saveOptions(input: {
+    event: AndroidCalendarOptionsEvent;
+    calendarId?: string;
+    creationId: string;
+    separateCreation?: boolean;
+  }): Promise<
+    | AndroidCalendarCreation
+    | { status: "permission-required" | "pending-creation" | "read-only" }
+  >;
+  readOptions(input: { id: string }): Promise<
+    | {
+        status: "ready";
+        allDay: boolean;
+        timeZone: string;
+        rrule: string;
+        duration: string;
+      }
+    | { status: "permission-required" | "missing" }
+  >;
+  /** Opening the external editor is not proof that an event was saved. */
+  insertHandoff(input: {
+    event: AndroidCalendarOptions & {
+      allDay: boolean;
+      attendees?: string[];
+      alerts?: number[];
+    };
+  }): Promise<
+    | { status: "opened"; alertsPrefilled: boolean }
+    | { status: "unavailable" | "invalid" | "unknown" }
+  >;
   pendingCreations(): Promise<
     | { status: "ready"; creations: AndroidCalendarCreation[] }
     | { status: "permission-required" }
   >;
+  /**
+   * With `resolution: "dismissed"`, retires an `unknown` creation. The
+   * provider is read first: a matching event resolves `acknowledged` (saved),
+   * no match resolves `dismissed`, and a failed read rejects. Nothing is
+   * retried.
+   */
   acknowledgeCreation(input: {
     creationId: string;
-  }): Promise<{ status: "acknowledged" | "permission-required" }>;
+    resolution?: "dismissed";
+  }): Promise<{
+    status: "acknowledged" | "dismissed" | "permission-required";
+  }>;
   prepareAgentSource(): Promise<
     | ({ status: "ready" } & AndroidCalendarSource)
     | { status: "permission-required" | "unavailable" }

@@ -95,7 +95,8 @@ export interface RegexEntityRecognizerOptions {
 const STREET_ADDRESS =
 	/\b\d{1,6}[A-Za-z]?\s+(?:[A-Z][A-Za-z.'-]+\s+){1,4}(?:Street|St|Avenue|Ave|Boulevard|Blvd|Road|Rd|Lane|Ln|Drive|Dr|Court|Ct|Way|Terrace|Ter|Place|Pl|Circle|Cir|Highway|Hwy|Parkway|Pkwy|Loop|Trail|Trl|Plaza|Square|Sq|Row|Alley|Crescent|Cres|Pike|Walk|Path)\b\.?(?:\s*(?:#|Apt\.?|Suite|Ste\.?|Unit)\s*\w+)?(?:,\s*[A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+)*)?(?:,\s*[A-Z]{2})?(?:\s+\d{5}(?:-\d{4})?)?/g;
 
-// Reuse the same well-tested email/phone shapes the secret-swap detectors use.
+// Same shape as the pii-detectors "phone" detector; copied rather than imported
+// so this protocol-exported module stays free of node:crypto.
 const PHONE =
 	/(?<!\d)(?:\+?1[ .-]?)?(?:\(\d{3}\)[ .-]?|\d{3}[ .-])\d{3}[ .-]?\d{4}(?!\d)|\+[1-9]\d{7,14}(?!\d)/g;
 
@@ -191,11 +192,12 @@ export class GazetteerEntityRecognizer implements PiiEntityRecognizer {
 	}
 }
 
+function isWordChar(text: string, index: number): boolean {
+	return index >= 0 && index < text.length && /[A-Za-z0-9_]/.test(text[index]);
+}
+
 function isWordBoundary(text: string, start: number, end: number): boolean {
-	const before = start === 0 ? "" : text[start - 1];
-	const after = end >= text.length ? "" : text[end];
-	const isWord = (c: string) => c !== "" && /[A-Za-z0-9_]/.test(c);
-	return !isWord(before) && !isWord(after);
+	return !isWordChar(text, start - 1) && !isWordChar(text, end);
 }
 
 /**

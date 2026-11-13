@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-browser-surface",
-  "version": "2.0.12-beta.0",
+  "version": "2.0.6",
   "description": "Layers isolated native web surfaces (iOS WKWebView pool, Android out-of-process WebView) for the Browser view's third-party tabs.",
   "keywords": [
     "browser",
@@ -68,27 +68,27 @@
     "url": "https://github.com/elizaOS/eliza"
   },
   "scripts": {
-    "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-browser-surface -- bun run build:unlocked",
-    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
+    "build": "bun ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-browser-surface -- bun run build:unlocked",
+    "clean": "bun ../../packages/scripts/rm-path-recursive.ts dist",
     "prepublishOnly": "bun run build",
-    "test": "node scripts/build-control-channel.mjs --check && vitest run --config vitest.config.ts && bun run test:native-policy",
+    "test": "bun scripts/build-control-channel.mjs --check && vitest run --config vitest.config.ts && bun run test:native-policy",
     "watch": "tsc6 --watch",
-    "build:unlocked": "node scripts/build-control-channel.mjs && bun run clean && tsc6 && bunx rollup -c rollup.config.mjs",
+    "build:unlocked": "bun scripts/build-control-channel.mjs && bun run clean && tsc6 && bunx rollup -c rollup.config.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "test:native-policy": "node --test test/native-host/policies.node.mjs",
-    "test:control": "node scripts/build-control-channel.mjs --check && node scripts/test-control-channel.mjs"
+    "test:native-policy": "bun test --timeout=120000 ./test/native-host/policies.node.mjs",
+    "test:control": "bun scripts/build-control-channel.mjs --check && bun scripts/test-control-channel.mjs"
   },
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
     "@rollup/plugin-node-resolve": "^16.0.0",
-    "rollup": "^4.65.0",
+    "rollup": "^4.68.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.3.1"
@@ -117,5 +117,8 @@
       "ios": true,
       "android": true
     }
+  },
+  "dependencies": {
+    "@elizaos/contracts": "workspace:*"
   }
 }

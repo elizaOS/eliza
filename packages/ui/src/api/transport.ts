@@ -4,6 +4,8 @@
  * the platform-specific transports share.
  */
 export interface AgentRequestContext {
+  /** Expected authenticated native owner, captured before asynchronous request work. */
+  ownerId?: string;
   timeoutMs?: number;
   responseType?: "text" | "arraybuffer";
 }

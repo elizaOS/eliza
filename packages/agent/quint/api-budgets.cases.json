@@ -1,0 +1,23 @@
+{
+  "sources": [
+    "packages/agent/src/api/rate-limiter.ts",
+    "packages/agent/src/api/request-storm-cap.ts",
+    "packages/agent/src/api/world-metadata-retry.ts"
+  ],
+  "bounds": {
+    "domain": "Two tokens and three CAS attempts.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "api_budgets",
+      "main": "api_budgets",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

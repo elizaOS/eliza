@@ -78,6 +78,19 @@ export const STANDARD_CAPABILITIES = {
 export type StandardCapability =
 	(typeof STANDARD_CAPABILITIES)[keyof typeof STANDARD_CAPABILITIES];
 
+/** Protocol observations only; refresh, focus, fill and click are excluded.
+ * Shared by broker admission and owner effect restrictions. Membership here
+ * does not replace the caller's existing role, installation or scope gates.
+ */
+export const READ_ONLY_VIEW_CAPABILITY_IDS: ReadonlySet<string> = new Set([
+	STANDARD_CAPABILITIES.GET_STATE,
+	STANDARD_CAPABILITIES.GET_TEXT,
+	"list-elements",
+	"describe-element",
+	"get-focus",
+	"get-agent-state",
+]);
+
 /**
  * Capability ids handled generically by the agent-surface registry (addressable
  * elements, focus, programmatic fill/click). DynamicViewLoader routes any of

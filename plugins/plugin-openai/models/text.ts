@@ -27,6 +27,7 @@ import {
   getInferenceTimer,
   getModelAttemptLease,
   getTrajectoryContext,
+  isModelOutputLimitFinishReason,
   isPermanentQuotaError,
   logActiveTrajectoryLlmCall,
   logger,
@@ -1533,9 +1534,14 @@ function restoreRecordArgInput(input: unknown, transforms: RecordArgTransform[])
 
 function restoreRecordArgToolCalls(
   toolCalls: unknown,
-  transformsByTool: Record<string, RecordArgTransform[]>
+  transformsByTool: Record<string, RecordArgTransform[]>,
+  finishReason: unknown
 ): ToolCall[] | undefined {
-  if (toolCalls === undefined) return undefined;
+  // Output cut off at its token cap can end inside a tool call's JSON. Do not
+  // parse it: the completeness check then reports MODEL_OUTPUT_INCOMPLETE with
+  // its billed usage, which the planner retries, instead of "invalid tool
+  // arguments" (live 2026-10-30: a capped calendar create failed the turn).
+  if (toolCalls === undefined || isModelOutputLimitFinishReason(finishReason)) return undefined;
   if (!Array.isArray(toolCalls)) throw new TypeError("Invalid provider tool-call list");
 
   return toolCalls.map((toolCall) => {
@@ -3582,7 +3588,10 @@ async function generateTextAtEndpoint(
     maxRetries: 0,
     ...(progressTransform ? { experimental_transform: progressTransform } : {}),
     ...(requestSignal ? { abortSignal: requestSignal } : {}),
-    // An omitted caller cap delegates the output boundary to the provider/model.
+    // Callers own the output cap. Stage 1 and reply text omit it, which
+    // delegates the boundary to the provider/model; the non-coding planner
+    // sends 8192 by default so a runaway tool call (live: 40,960 tokens in
+    // 29s) stops early.
     ...(params.omitMaxTokens || params.maxTokens === undefined
       ? {}
       : { maxOutputTokens: params.maxTokens }),
@@ -3774,7 +3783,8 @@ async function generateTextAtEndpoint(
         const text = restoreResponseText(result.text);
         const toolCalls = restoreRecordArgToolCalls(
           toolArgumentEnvelope.decodeCalls(result.toolCalls),
-          normalizedToolResult.recordArgTransformsByTool
+          normalizedToolResult.recordArgTransformsByTool,
+          result.finishReason
         );
         details.response = text;
         details.toolCalls = toolCalls;
@@ -4027,11 +4037,14 @@ async function generateTextAtEndpoint(
     const rawUsagePromise = streamCompanions.usage;
     const rawFinishReasonPromise = streamCompanions.finishReason;
     const rawToolCallsPromise = streamCompanions.toolCalls;
-    const restoredToolCallsPromise = handledMappedPromise(rawToolCallsPromise, (toolCalls) =>
-      restoreRecordArgToolCalls(
-        toolArgumentEnvelope.decodeCalls(toolCalls),
-        normalizedToolResult.recordArgTransformsByTool
-      )
+    const restoredToolCallsPromise = handledMappedPromise(
+      Promise.all([rawToolCallsPromise, rawFinishReasonPromise]),
+      ([toolCalls, finishReason]) =>
+        restoreRecordArgToolCalls(
+          toolArgumentEnvelope.decodeCalls(toolCalls),
+          normalizedToolResult.recordArgTransformsByTool,
+          finishReason
+        )
     );
     const usagePromise = handledMappedPromise(rawUsagePromise, convertUsage);
     const finishReasonPromise = handledMappedPromise(
@@ -4265,7 +4278,8 @@ async function generateTextAtEndpoint(
       : [];
     const restoredToolCalls = restoreRecordArgToolCalls(
       toolArgumentEnvelope.decodeCalls(result.toolCalls),
-      normalizedToolResult.recordArgTransformsByTool
+      normalizedToolResult.recordArgTransformsByTool,
+      result.finishReason
     );
     details.response = restoredText;
     if (reasoningContent.length)

@@ -2,7 +2,8 @@
  * PTY output streamer for a coding-agent session, rendered in drawer,
  * side-panel, or full variant. Subscribes to `pty-output` WS events and shows
  * the buffered + streamed scrollback with a single-line input and
- * interrupt/stop controls.
+ * interrupt/stop controls. Those controls write to or stop the session, so
+ * they are human-authority controls the agent surface cannot drive.
  *
  * Scrollback is capped at `MAX_BUFFER_CHARS` (200,000) — older output is
  * silently trimmed from the head. Backs the PtyConsoleDrawer /
@@ -26,6 +27,8 @@ import {
   useRef,
   useState,
 } from "react";
+import { streamPtyOutput } from "./pty-output-stream";
+import { stripAnsi } from "./view-format";
 
 const MAX_BUFFER_CHARS = 200_000;
 
@@ -52,26 +55,17 @@ export function PtyConsoleBase({
   );
 
   useEffect(() => {
-    let disposed = false;
     setOutput("");
-    void client.getPtyBufferedOutput(activeSessionId).then((buffered) => {
-      if (!disposed) setOutput(trimBuffer(buffered));
+    const stop = streamPtyOutput(activeSessionId, {
+      onSnapshot: (text) => setOutput(trimBuffer(text)),
+      onData: (text) => setOutput((current) => trimBuffer(current + text)),
     });
-
-    const unbind = client.onWsEvent("pty-output", (event) => {
-      const message = event as { sessionId?: string; data?: string };
-      if (message.sessionId !== activeSessionId || !message.data) return;
-      setOutput((current) => trimBuffer(current + message.data));
-    });
-    client.subscribePtyOutput(activeSessionId);
     client.resizePty(activeSessionId, variant === "full" ? 120 : 96, 32);
-
-    return () => {
-      disposed = true;
-      unbind();
-      client.unsubscribePtyOutput(activeSessionId);
-    };
+    return stop;
   }, [activeSessionId, variant]);
+
+  // Cursor-addressed TUIs stay approximate here; the CLI view renders them.
+  const displayed = useMemo(() => stripAnsi(output), [output]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: output changes should scroll the terminal to the newest line.
   useEffect(() => {
@@ -106,44 +100,6 @@ export function PtyConsoleBase({
   const stopSession = useCallback(() => {
     void client.stopCodingAgent(activeSessionId);
   }, [activeSessionId]);
-  const { ref: interruptRef, agentProps: interruptAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: "cockpit-terminal-interrupt",
-      role: "button",
-      label: "Interrupt terminal process",
-      group: "cockpit-terminal-controls",
-      description: "Send Ctrl-C to the active terminal session",
-      onActivate: () => sendInput("\u0003"),
-    });
-  const { ref: stopRef, agentProps: stopAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: "cockpit-terminal-stop",
-      role: "button",
-      label: "Stop terminal session",
-      group: "cockpit-terminal-controls",
-      description: "Stop the active coding-agent terminal session",
-      onActivate: stopSession,
-    });
-  const { ref: inputRef, agentProps: inputAgentProps } =
-    useAgentElement<HTMLInputElement>({
-      id: "cockpit-terminal-input",
-      role: "text-input",
-      label: "Terminal input",
-      group: "cockpit-terminal-controls",
-      description: "Enter a line to send to the active terminal session",
-      getValue: () => input,
-      onFill: setInput,
-    });
-  const { ref: sendRef, agentProps: sendAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: "cockpit-terminal-send",
-      role: "button",
-      label: "Send terminal input",
-      group: "cockpit-terminal-controls",
-      description: "Send the prepared line to the active terminal session",
-      status: input.length > 0 ? "ready" : "empty",
-      onActivate: sendLine,
-    });
 
   return (
     <Card
@@ -173,24 +129,24 @@ export function PtyConsoleBase({
               </div>
             </div>
             <Button
-              ref={interruptRef}
               variant="ghost"
               size="icon"
               onClick={() => sendInput("\u0003")}
               title="Interrupt"
               aria-label="Interrupt terminal"
-              {...interruptAgentProps}
+              data-agent-authority="human"
+              data-agent-human-id="cockpit-terminal-interrupt"
             >
               <Square className="size-4" aria-hidden />
             </Button>
             <Button
-              ref={stopRef}
               variant="ghost"
               size="icon"
               onClick={stopSession}
               title="Stop session"
               aria-label="Stop terminal session"
-              {...stopAgentProps}
+              data-agent-authority="human"
+              data-agent-human-id="cockpit-terminal-stop"
             >
               <Square className="size-4 fill-current" aria-hidden />
             </Button>
@@ -203,7 +159,7 @@ export function PtyConsoleBase({
             className="min-h-0 flex-1 overflow-auto p-3 font-mono text-[11px] leading-relaxed text-neutral-100"
           >
             <pre className="whitespace-pre-wrap break-words">
-              {output || "\u001b[2mConnecting to terminal...\u001b[0m"}
+              {displayed || "Connecting to terminal…"}
             </pre>
           </div>
         </Card>
@@ -214,7 +170,6 @@ export function PtyConsoleBase({
         >
           <footer>
             <Input
-              ref={inputRef}
               variant="secret"
               density="compact"
               value={input}
@@ -224,16 +179,17 @@ export function PtyConsoleBase({
               aria-label="Terminal input"
               autoComplete="off"
               spellCheck={false}
-              {...inputAgentProps}
+              data-agent-authority="human"
+              data-agent-human-id="cockpit-terminal-input"
             />
             <Button
-              ref={sendRef}
               variant="ghost"
               size="icon"
               onClick={sendLine}
               title="Send"
               aria-label="Send terminal input"
-              {...sendAgentProps}
+              data-agent-authority="human"
+              data-agent-human-id="cockpit-terminal-send"
             >
               <Send className="size-4" aria-hidden />
             </Button>

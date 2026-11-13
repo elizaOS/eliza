@@ -110,6 +110,7 @@ export {
   useCalendarWeek,
 } from "./hooks/useCalendarWeek.js";
 export {
+  DEFAULT_TIMED_CALENDAR_EVENT_DURATION_MINUTES,
   normalizeCalendarAttendees,
   normalizeCalendarDateOnly,
   normalizeCalendarTimeZone,
@@ -137,7 +138,10 @@ export * from "./meetings/index.js";
 export * from "./microsoft/index.js";
 export {
   CALENDAR_MUTATION_PORT_SERVICE,
+  type CalendarApprovalOutcome,
+  calendarApprovalOutcome,
   resolveCalendarApproval,
+  resolveOwnerCalendarApproval,
 } from "./mutations/resolve.js";
 export { calendarPlugin, calendarPlugin as default } from "./plugin.js";
 export * from "./providers/index.js";

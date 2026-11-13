@@ -721,6 +721,10 @@ test.describe("bounded built-in interaction activity smoke", () => {
         if (url.startsWith("data:") || url.startsWith("blob:")) return;
         const failureText = request.failure()?.errorText ?? "";
         if (failureText === "net::ERR_ABORTED") return;
+        // A website open in the browser view makes its own third-party
+        // requests (a live page's CSP report beacon, say); only the app's
+        // own requests are this contract's.
+        if (new URL(url).origin !== new URL(page.url()).origin) return;
         networkFailures.push(`requestfailed: ${url} ${failureText}`);
       });
       // The generic ladders cannot see a rejected workflow create: a 4xx

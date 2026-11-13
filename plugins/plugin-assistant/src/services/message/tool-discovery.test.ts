@@ -7,8 +7,10 @@ import type {
   Memory,
 } from "@elizaos/core";
 import {
+  ACTION_RESULT_OVERSIZE_WARNING_TOKENS,
   buildPlannerToolsFromActions,
   ContextRegistry,
+  estimateActionResultTokens,
   normalizeActionJsonSchema,
   promoteSubactionsToActions,
 } from "@elizaos/core";
@@ -33,6 +35,60 @@ const runtime = {} as IAgentRuntime;
 const message = {} as Memory;
 
 describe("canonical discovery surface", () => {
+  it("treats empty names, contexts and a blank query as omitted selectors (live: describe with names=[] beside a query, tj-786ca91739ceaa)", async () => {
+    const loads: string[][] = [];
+    const update: Action = {
+      name: "CALENDAR_UPDATE_EVENT",
+      description: "Move a calendar event to a new time",
+      contexts: ["calendar"],
+      handler: async () => ({ success: true }),
+    };
+    const notes: Action = {
+      name: "NOTES_LIST",
+      description: "Search saved notes by title",
+      contexts: ["notes"],
+      handler: async () => ({ success: true }),
+    };
+    const discovery = createPlannerToolDiscoveryAction(
+      [update, notes],
+      (actions) => loads.push(actions.map((action) => action.name)),
+      async () => [update, notes],
+      { deferNameIndex: true },
+    );
+    const call = (parameters: Record<string, unknown>) =>
+      discovery.handler?.(runtime, message, undefined, { parameters });
+    const described = await call({
+      mode: "describe",
+      names: [],
+      query: "move calendar event time update event",
+    });
+    expect(described?.success).toBe(true);
+    expect(described?.data?.catalog).toEqual([
+      expect.objectContaining({ name: "CALENDAR_UPDATE_EVENT" }),
+    ]);
+    expect(loads).toEqual([]);
+    const loaded = await call({
+      names: [],
+      contexts: [],
+      query: "move calendar event",
+    });
+    expect(loaded?.data?.loadedTools).toEqual(["CALENDAR_UPDATE_EVENT"]);
+    const scoped = await call({ names: [], query: " ", contexts: ["notes"] });
+    expect(scoped?.data?.loadedTools).toEqual(["NOTES_LIST"]);
+    const catalog = await call({ mode: "describe", query: "" });
+    expect(catalog?.success).toBe(true);
+    expect(catalog?.data?.catalog).toEqual([
+      expect.objectContaining({ name: "CALENDAR_UPDATE_EVENT" }),
+      expect.objectContaining({ name: "NOTES_LIST" }),
+    ]);
+    const conflicting = await call({
+      names: ["NOTES_LIST"],
+      contexts: ["notes"],
+    });
+    expect(conflicting?.error).toContain("not both");
+    expect(loads).toEqual([["CALENDAR_UPDATE_EVENT"], ["NOTES_LIST"]]);
+  });
+
   it("emits identical complete tools and alias contracts across discovery orders", async () => {
     const parent: Action = {
       name: "LEDGER",
@@ -521,6 +577,181 @@ describe("planner tool discovery", () => {
       await call(discovery, { names: ["REVOKED"], mode: "describe" }),
     ).toMatchObject({ success: false });
     expect(loads).toEqual([]);
+    // The read above carries every full definition, but its copy sold it as a
+    // name index; a planner with NOTES_LIST already exposed made that read and
+    // received 407,397 chars of catalog (live 2026-10-30, tj-7138d70800aff4).
+    const copy = [discovery, legacy].flatMap((action) => [
+      action.description,
+      ...(action.parameters ?? []).map((parameter) => parameter.description),
+    ]);
+    for (const parameters of [{}, { query: "zzqx" }, { query: "custom" }]) {
+      const result = await call(legacy, parameters);
+      copy.push(result?.text ?? "", String(result?.error ?? ""));
+    }
+    const describeAllClaims = copy
+      .flatMap((text) => text.split(/(?<=[.;])\s+/))
+      .filter((sentence) => sentence.includes("names=[]"));
+    expect(describeAllClaims.length).toBeGreaterThan(0);
+    for (const sentence of describeAllClaims)
+      expect(sentence).not.toMatch(/(?<!not a )\b(name|routing) index\b/i);
+  });
+
+  it("returns the complete name index when full catalog definitions exceed the result budget", async () => {
+    // The live surface had 54 families with these child counts and 407,397
+    // chars of full definitions (2026-10-30, tj-7138d70800aff4). Every entry
+    // here carries an authored summary, more than the live surface had.
+    const childCounts = [
+      0, 0, 7, 0, 0, 0, 3, 0, 7, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 2,
+      8, 3, 5, 26, 0, 6, 0, 0, 11, 5, 3, 0, 0, 6, 5, 0, 0, 0, 0, 0, 0, 0, 0, 6,
+      0, 2, 0, 0, 0,
+    ];
+    const summary = (name: string) =>
+      `${name}: authored summary for list|search|create|update|delete with the exact Ω target.`;
+    const buildCatalog = (counts: readonly number[], detail: string) =>
+      counts.flatMap((count, i) => {
+        const operations = Array.from({ length: count }, (_, j) => `op_${j}`);
+        const parent: Action = {
+          name: `FAMILY_${i}`,
+          description: `FAMILY_${i} documentation. ${detail}`,
+          descriptionCompressed: summary(`FAMILY_${i}`),
+          parameters: [
+            ...(count > 0
+              ? [
+                  {
+                    name: "action",
+                    description: "Operation",
+                    required: true,
+                    schema: { type: "string" as const, enum: operations },
+                  },
+                ]
+              : []),
+            {
+              name: "details",
+              description: `Exact parameter guidance. ${detail}`,
+              schema: { type: "string" as const },
+            },
+          ],
+        };
+        return promoteSubactionsToActions(parent, {
+          overrides: Object.fromEntries(
+            operations.map((operation) => [
+              operation,
+              {
+                description: `Run ${operation}.`,
+                descriptionCompressed: summary(
+                  `FAMILY_${i}_${operation.toUpperCase()}`,
+                ),
+              },
+            ]),
+          ),
+        });
+      });
+    const actions = buildCatalog(
+      childCounts,
+      "Complete guidance Ω. ".repeat(40),
+    );
+    expect(actions).toHaveLength(171);
+    let loads = 0;
+    const discovery = createPlannerToolDiscoveryAction(actions, () => {
+      loads++;
+    });
+    const call = (parameters: Record<string, unknown>) =>
+      discovery.handler?.(runtime, message, undefined, { parameters });
+    const familyNames = childCounts.map((_, i) => `FAMILY_${i}`);
+    const definitions = await call({ names: familyNames, mode: "describe" });
+    expect(
+      estimateActionResultTokens(JSON.stringify(definitions?.data)),
+    ).toBeGreaterThan(ACTION_RESULT_OVERSIZE_WARNING_TOKENS);
+
+    const index = await call({ names: [], mode: "describe" });
+    expect(index).toMatchObject({
+      success: true,
+      data: {
+        readOnlyOperation: true,
+        catalogDetail: "index",
+        completeDefinitions: false,
+      },
+    });
+    expect(index?.text).toContain("mode=describe and exact names");
+    expect(
+      estimateActionResultTokens(JSON.stringify(index?.data)),
+    ).toBeLessThanOrEqual(ACTION_RESULT_OVERSIZE_WARNING_TOKENS);
+    expect(JSON.stringify(index)).not.toContain("Complete guidance");
+    const entries = index?.data?.catalog as Array<{
+      name: string;
+      summary?: string;
+      children: string[];
+      childSummaries?: Record<string, string>;
+    }>;
+    expect(entries.map((entry) => entry.name).sort()).toEqual(
+      [...familyNames].sort(),
+    );
+    expect(
+      entries.flatMap((entry) => [entry.name, ...entry.children]).sort(),
+    ).toEqual(actions.map((action) => action.name).sort());
+    expect(
+      Object.fromEntries(
+        entries.flatMap((entry) => [
+          [entry.name, entry.summary],
+          ...Object.entries(entry.childSummaries ?? {}),
+        ]),
+      ),
+    ).toEqual(
+      Object.fromEntries(
+        actions.map((action) => [action.name, action.descriptionCompressed]),
+      ),
+    );
+
+    // Exact names are unchanged: complete definitions with no budget.
+    const child = actions.find((action) => action.name === "FAMILY_28_OP_25");
+    if (!child) throw new Error("Missing live-sized child");
+    expect(
+      await call({ names: ["FAMILY_28_OP_25"], mode: "describe" }),
+    ).toMatchObject({
+      success: true,
+      data: {
+        catalog: [
+          {
+            name: "FAMILY_28_OP_25",
+            description: child.description,
+            parameters: normalizeActionJsonSchema(child),
+            children: [],
+          },
+        ],
+      },
+    });
+    expect(loads).toBe(0);
+    expect(
+      (await call({ names: ["FAMILY_28_OP_25"] }))?.data?.loadedTools,
+    ).toEqual(["FAMILY_28_OP_25"]);
+    expect(loads).toBe(1);
+
+    // A catalog within the budget keeps returning every full definition.
+    const smallCounts = childCounts.slice(0, 10);
+    const small = createPlannerToolDiscoveryAction(
+      buildCatalog(smallCounts, ""),
+      () => {},
+    );
+    const smallCatalog = await small.handler?.(runtime, message, undefined, {
+      parameters: { names: [], mode: "describe" },
+    });
+    expect(smallCatalog?.text).toBe(
+      "Complete authorized catalog with full descriptions and schemas; no domain work was performed.",
+    );
+    expect(Object.keys(smallCatalog?.data ?? {})).toEqual([
+      "readOnlyOperation",
+      "catalog",
+    ]);
+    expect(smallCatalog?.data?.catalog).toEqual(
+      (
+        await small.handler?.(runtime, message, undefined, {
+          parameters: {
+            names: smallCounts.map((_, i) => `FAMILY_${i}`),
+            mode: "describe",
+          },
+        })
+      )?.data?.catalog,
+    );
   });
 
   it("keeps inline callers unchanged while the reference preserves native parameters", () => {

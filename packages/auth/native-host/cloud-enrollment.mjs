@@ -4,6 +4,20 @@ import { createNativeAccountMethods } from "./account-methods.mjs";
 const fail = (message, status = 400, code) =>
   Object.assign(new Error(message), { status, ...(code ? { code } : {}) });
 /**
+ * Stable codes for the 409s a caller must tell apart, whatever the message
+ * text: the host is busy or cancelling, so the same step can be tried again
+ * soon; the sign-in was cancelled; or an account, a saved sign-in or an
+ * unfinished disconnect holds the host, so that must be finished first.
+ */
+export const SIGN_IN_CONFLICT = Object.freeze({
+  busy: "sign_in_busy",
+  cancelling: "sign_in_cancelling",
+  cancelled: "sign_in_cancelled",
+  connected: "sign_in_account_connected",
+  saved: "sign_in_saved_pending",
+  disconnecting: "sign_in_disconnect_pending",
+});
+/**
  * A 429 with the wait in whole seconds, when it is known: the service's
  * `Retry-After` delta-seconds, or this host's own resend gate. An HTTP-date or
  * a malformed value is left out, so a caller never shows an invented time.
@@ -109,6 +123,10 @@ export function createNativeCloudAuth({
   readActive = async () => null,
   clearActive = async () => {},
   beforeStart = async () => {},
+  // true: `config` answers `{available: false}` when Cloud does not know or
+  // confirm this application (HTTP 400, 401 or 403, or a binding that does not
+  // match) instead of throwing. Other failures still throw.
+  answerUnavailableConfig = false,
 }) {
   if (
     !binding ||
@@ -127,6 +145,8 @@ export function createNativeCloudAuth({
     );
   if (activateVerified !== undefined && typeof activateVerified !== "function")
     throw new TypeError("Verified activation callback must be a function");
+  if (typeof answerUnavailableConfig !== "boolean")
+    throw new TypeError("Unavailable configuration answer must be a boolean");
   const redirect = new URL(binding.redirectUri);
   if (
     redirect.protocol !== "https:" ||
@@ -173,7 +193,11 @@ export function createNativeCloudAuth({
     settle;
   const check = (ticket) => {
     if (ticket !== epoch)
-      throw fail(message("error1", "Sign-in cancelled. Start again."), 409);
+      throw fail(
+        message("error1", "Sign-in cancelled. Start again."),
+        409,
+        SIGN_IN_CONFLICT.cancelled,
+      );
   };
   async function call(base, path, input, token, ticket, method) {
     check(ticket);
@@ -214,6 +238,8 @@ export function createNativeCloudAuth({
           ),
           403,
         );
+      if (response.status === 410 && path === "/api/v1/app-auth/mobile/ack")
+        throw fail(message("error9", "Sign-in expired. Start again."), 410);
       if (
         response.status === 409 &&
         (path.startsWith("/user/me/accounts") || path.startsWith("/auth/mfa/"))
@@ -262,6 +288,7 @@ export function createNativeCloudAuth({
       throw fail(
         message("error8", "Application account registration is unavailable."),
         503,
+        "application_unregistered",
       );
     return {
       available: true,
@@ -630,15 +657,31 @@ export function createNativeCloudAuth({
       call(auth, path, input, token, ticket, method),
   });
   async function finish(ticket, pending, session, scope) {
-    if (!validTime(pending.acknowledgeBy))
-      throw fail(message("error9", "Sign-in expired. Start again."), 410);
-    const result = await call(
-      api,
-      "/api/v1/app-auth/mobile/ack",
-      pending.proof,
-      undefined,
-      ticket,
-    );
+    // No local refusal once `acknowledgeBy` has passed: the ack may have
+    // landed at Cloud with its reply lost. A landed ack moves the grant's
+    // expiry to the key's own expiry, so Cloud replays it and the key is
+    // activated here. An ack that never landed is refused by Cloud with 410
+    // once the code expires, which `call` reports as an expired sign-in.
+    // That first 410 also makes Cloud delete the expired grant, so a later
+    // replay of the same proof gets 400/401; past `acknowledgeBy` that is the
+    // same expired sign-in, not a bad code.
+    let result;
+    try {
+      result = await call(
+        api,
+        "/api/v1/app-auth/mobile/ack",
+        pending.proof,
+        undefined,
+        ticket,
+      );
+    } catch (error) {
+      if (
+        (error?.status === 400 || error?.status === 401) &&
+        Date.parse(pending.acknowledgeBy) <= Date.now()
+      )
+        throw fail(message("error9", "Sign-in expired. Start again."), 410);
+      throw error;
+    }
     if (
       result.status !== "acknowledged" ||
       result.credentialId !== pending.proof.credentialId ||
@@ -740,6 +783,19 @@ export function createNativeCloudAuth({
         message("error12", "Account service returned no session."),
         502,
       );
+    // One receipt at a time. A second credential would overwrite the first
+    // one's receipt, and Cloud would keep that key live with nothing on this
+    // host to finish or revoke it.
+    if (await pendingStore.read())
+      throw fail(
+        message(
+          "error24",
+          "A saved sign-in needs to be finished or cancelled first.",
+        ),
+        409,
+        SIGN_IN_CONFLICT.saved,
+      );
+    check(ticket);
     // The Cloud API verifies the interactive session and tenant; a renderer never supplies it.
     const state = opaque(),
       verifier = opaque();
@@ -966,6 +1022,7 @@ export function createNativeCloudAuth({
         throw fail(
           message("error15", "Cancellation is already in progress."),
           409,
+          SIGN_IN_CONFLICT.cancelling,
         );
       cancelling = true;
       epoch++;
@@ -1096,6 +1153,7 @@ export function createNativeCloudAuth({
         throw fail(
           message("error19", "A sign-in request is already in progress."),
           409,
+          SIGN_IN_CONFLICT.busy,
         );
       busy = true;
       settled = new Promise((resolve) => {
@@ -1108,7 +1166,29 @@ export function createNativeCloudAuth({
           return await accountMethods.handle(operation, input, ticket);
         if (BILLING_OPERATIONS.includes(operation))
           return await billingOperation(operation, input, ticket, scope);
-        if (operation === "config") return await config(ticket);
+        if (operation === "config") {
+          try {
+            return await config(ticket);
+          } catch (error) {
+            if (
+              !answerUnavailableConfig ||
+              !(
+                error.code === "application_unregistered" ||
+                [400, 401, 403].includes(error.status)
+              )
+            )
+              throw error;
+            // A saved sign-in cannot finish for an application Cloud refuses.
+            return {
+              available: false,
+              pending: false,
+              unavailable: message(
+                "error8",
+                "Application account registration is unavailable.",
+              ),
+            };
+          }
+        }
         if (operation === "resume") {
           const raw = await pendingStore.read();
           check(ticket);
@@ -1129,6 +1209,7 @@ export function createNativeCloudAuth({
                 "Disconnect is not confirmed. Select Cancel to retry disconnecting.",
               ),
               409,
+              SIGN_IN_CONFLICT.disconnecting,
             );
           if (
             pending?.version !== 1 ||
@@ -1153,6 +1234,7 @@ export function createNativeCloudAuth({
                 "Disconnect the current account before signing in again.",
               ),
               409,
+              SIGN_IN_CONFLICT.connected,
             );
           if (await pendingStore.read())
             throw fail(
@@ -1161,6 +1243,7 @@ export function createNativeCloudAuth({
                 "A saved sign-in needs to be finished or cancelled first.",
               ),
               409,
+              SIGN_IN_CONFLICT.saved,
             );
           check(ticket);
           const method = input.method ?? "email";

@@ -168,8 +168,15 @@ const aiEntry = assistantPackageRequire.resolve("ai");
 const fsExtraEntry = lifeopsPackageRequire.resolve("fs-extra");
 const handlebarsEntry = corePackageRequire.resolve("handlebars");
 const mammothEntry = assistantPackageRequire.resolve("mammoth");
-const markdownItRoot = path.dirname(
-  corePackageRequire.resolve("markdown-it/package.json"),
+const markdownItManifest = corePackageRequire.resolve(
+  "markdown-it/package.json",
+);
+const { module: markdownItModule } = corePackageRequire(markdownItManifest) as {
+  module: string;
+};
+const markdownItEntry = path.resolve(
+  path.dirname(markdownItManifest),
+  markdownItModule,
 );
 const telegramSessionsEntry = path.join(
   elizaRoot,
@@ -350,7 +357,7 @@ export default defineConfig({
       { find: /^mammoth$/, replacement: mammothEntry },
       {
         find: /^markdown-it$/,
-        replacement: path.join(markdownItRoot, "index.mjs"),
+        replacement: markdownItEntry,
       },
       {
         find: new RegExp(`^${escapedAgentSourceRoot}/(.+)\\.js$`),
@@ -361,7 +368,7 @@ export default defineConfig({
         replacement: `${agentSourceRoot}/$1.ts`,
       },
       {
-        find: "@elizaos/ui",
+        find: /^@elizaos\/ui$/,
         replacement: path.join(lifeopsTestStubsRoot, "ui.ts"),
       },
       {
@@ -386,6 +393,14 @@ export default defineConfig({
       {
         find: /^@elizaos\/agent\/runtime\/owner-entity$/,
         replacement: path.join(agentSourceRoot, "runtime", "owner-entity.ts"),
+      },
+      {
+        find: /^@elizaos\/agent\/runtime\/deferred-boot-status$/,
+        replacement: path.join(
+          agentSourceRoot,
+          "runtime",
+          "deferred-boot-status.ts",
+        ),
       },
       {
         find: /^@elizaos\/plugin-relationships$/,
@@ -735,7 +750,7 @@ export default defineConfig({
         ? baseConfig.resolve.alias
         : []),
       {
-        find: "@elizaos/ui",
+        find: /^@elizaos\/ui$/,
         replacement: path.join(lifeopsTestStubsRoot, "ui.ts"),
       },
       {

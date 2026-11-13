@@ -29,6 +29,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import { isHostManagedInference } from "./host-operation-policy.ts";
 
 const CONNECT_ACCOUNT = "CONNECT_ACCOUNT";
 
@@ -121,6 +122,7 @@ function providerDisplayName(id: ConnectableProvider): string {
 export const connectAccountAction: Action = {
   name: CONNECT_ACCOUNT,
   contexts: ["settings", "messaging"],
+  roleGate: { minRole: "OWNER" },
   similes: [
     "ADD_ACCOUNT",
     "ADD_PROVIDER_ACCOUNT",
@@ -142,6 +144,8 @@ export const connectAccountAction: Action = {
     _state?: State,
     _options?: HandlerOptions,
   ): Promise<boolean> => {
+    // A host that owns inference never offers provider sign-in in chat.
+    if (isHostManagedInference()) return false;
     const text =
       typeof message.content.text === "string" ? message.content.text : "";
     if (!text.trim()) return false;

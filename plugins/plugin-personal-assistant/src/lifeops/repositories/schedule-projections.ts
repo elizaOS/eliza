@@ -930,6 +930,7 @@ export class ScheduleProjectionRepository {
     definition: LifeOpsTaskDefinition,
     key: string,
     requestJson: string,
+    assertNewCreation?: () => void,
   ): Promise<{ definition: LifeOpsTaskDefinition; replayed: boolean }> {
     const claimed = await withTransaction(this.runtime, async (tx) => {
       const rows = await executeRawSqlTx(
@@ -941,6 +942,9 @@ export class ScheduleProjectionRepository {
         ON CONFLICT (agent_id, event_type, idempotency_key) DO NOTHING RETURNING id`,
       );
       if (rows.length === 0) return false;
+      // A rejected new creation rolls back its claim; prior committed claims
+      // retain their normal readback path without re-running this guard.
+      assertNewCreation?.();
       await this.insertDefinition(definition, tx);
       return true;
     });

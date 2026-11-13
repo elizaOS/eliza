@@ -124,6 +124,11 @@ export interface AgentNativeOwnerReminderContext {
  * writes reject explicitly instead of reporting a successful no-op.
  */
 export interface AgentHostBridge {
+  /** Product-owned display persona; canonical identity remains selected by config. */
+  readonly productCharacter?: {
+    readonly name: string;
+    readonly bio?: readonly string[];
+  };
   /** Installed only by a real private native host; absence must remain unavailable. */
   readNativeOwnerReminderContext?(
     runtime: AgentRuntime,

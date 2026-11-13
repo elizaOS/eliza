@@ -19,7 +19,7 @@ import {
   integrationHealth,
   plannerVisibleFeatures,
   resolveIntegrationAvailability,
-} from "@/api-app/lib/mcp/integration-catalog";
+} from "../../src/lib/mcp/integration-catalog";
 
 // MCP definitions with their tools and schemas
 const mcpDefinitions = [

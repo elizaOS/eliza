@@ -1,0 +1,29 @@
+{
+  "sources": [
+    "packages/cloud/services/agent-server/src/agent-manager.ts",
+    "packages/cloud/services/agent-server/src/agent-lifecycle.ts",
+    "packages/cloud/services/agent-server/src/agent-lifecycle.test.ts",
+    "packages/cloud/services/agent-server/src/routes.ts"
+  ],
+  "bounds": {
+    "assumptions": [
+      "One agent projection; initialize, stop and publication acknowledge independently.",
+      "Failures may repeat forever; no availability or eventual recovery assumption.",
+      "Capacity, actual runtime cleanup and cross-agent effects require implementation tests."
+    ],
+    "progress": "No temporal or fairness claim. Each model permits stuttering and repeated failures."
+  },
+  "cases": [
+    {
+      "name": "agent-lifecycle",
+      "main": "agent_lifecycle",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 40,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ]
+}

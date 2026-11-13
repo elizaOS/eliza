@@ -25,6 +25,8 @@ import {
   assertCheckoutProviderAuthority,
   type CheckoutContract,
   checkoutPresentation,
+  MOBILE_CHECKOUT_RETURN_SUFFIX,
+  mobileCheckoutReturnUrl,
   readCheckoutContract,
   requireCheckoutContract,
   requireCheckoutPublishableKey,
@@ -41,6 +43,16 @@ const STRIPE_MIN_SESSION_REMAINING_MS = 30 * 60 * 1000;
 const PROVIDER_RETRY_WINDOW_MS = 23 * 60 * 60 * 1000;
 /** A create admitted before its deadline is visible to session listing well within this margin. */
 const PROVIDER_CREATE_SETTLE_MS = 5 * 60 * 1000;
+/**
+ * How long after dispatch the recovery sweep first reads a pending checkout back from the
+ * provider. The webhook and its one-minute drain normally settle a payment first; this only
+ * bounds how long a paid checkout waits when that delivery is late or dead-lettered. It is
+ * independent of PROVIDER_RETRY_WINDOW_MS, which still alone decides when a missing session may
+ * be created or declared expired.
+ */
+export const CHECKOUT_SETTLE_SWEEP_MIN_AGE_MS = 2 * 60 * 1000;
+/** Longest wait between two read-backs of the same still-open checkout (2, 4, 8… minutes, then this). */
+export const CHECKOUT_SETTLE_SWEEP_MAX_BACKOFF_MS = 30 * 60 * 1000;
 
 export type SubscriptionCheckoutResult =
   /** Hosted (default): this account's own browser redirect, unchanged from the original contract. */
@@ -70,6 +82,18 @@ export type SubscriptionCheckoutResult =
       presentation: "shared";
       commandId: string;
       checkoutUrl: string;
+      expiresAt: string;
+    }
+  /**
+   * A hosted page opened by a first-party native app from its own credential. Returns land on
+   * the app's registered billing return; the app confirms with `sessionId` when it resumes.
+   */
+  | {
+      status: "open";
+      presentation: "mobile";
+      commandId: string;
+      checkoutUrl: string;
+      sessionId: string;
       expiresAt: string;
     }
   /** The provider payment is captured and the subscription it created is still live. */
@@ -329,6 +353,15 @@ function openResult(
       checkoutUrl: session.url,
       expiresAt,
     };
+  if (presentation === "mobile")
+    return {
+      status: "open",
+      presentation,
+      commandId: command.id,
+      checkoutUrl: session.url,
+      sessionId: session.id,
+      expiresAt,
+    };
   return { status: "open", commandId: command.id, checkoutUrl: session.url };
 }
 
@@ -350,10 +383,29 @@ function httpsOrigin(value: string | undefined, missing: string, invalid: string
 function returnParams(
   presentation: SubscriptionCheckoutPresentation,
   env: NodeJS.ProcessEnv,
+  mobileReturnUrl: string | undefined,
 ):
   | { ui_mode: "embedded"; redirect_on_completion: "never" }
   | { success_url: string; cancel_url: string } {
   if (presentation === "embedded") return { ui_mode: "embedded", redirect_on_completion: "never" };
+  if (presentation === "mobile") {
+    // The route derives this from the caller's registered native client, never from the request.
+    if (!mobileReturnUrl) rejected("mobile_return_unavailable");
+    const origin = httpsOrigin(mobileReturnUrl, "missing_mobile_return", "invalid_mobile_return");
+    const target = new URL(mobileReturnUrl);
+    if (
+      target.search ||
+      target.hash ||
+      !target.pathname.endsWith(MOBILE_CHECKOUT_RETURN_SUFFIX) ||
+      `${origin}${target.pathname}` !== mobileReturnUrl
+    )
+      unavailable("invalid_mobile_return");
+    return {
+      success_url: mobileCheckoutReturnUrl(mobileReturnUrl, "success"),
+      cancel_url: mobileCheckoutReturnUrl(mobileReturnUrl, "cancel"),
+    };
+  }
+  if (mobileReturnUrl) rejected("mobile_return_requires_mobile_presentation");
   if (presentation === "shared") {
     const api = httpsOrigin(env.NEXT_PUBLIC_API_URL, "missing_api_origin", "invalid_api_origin");
     return {
@@ -366,6 +418,16 @@ function returnParams(
     success_url: `${app}/cloud/billing?subscription_session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${app}${SUBSCRIPTION_CHECKOUT_CANCEL_PATH}`,
   };
+}
+
+/** True when a stored checkout returns to exactly the addresses this request would use. */
+function sameReturns(
+  command: BillingSubscriptionCommand,
+  returns: ReturnType<typeof returnParams>,
+): boolean {
+  if (!("success_url" in returns)) return false;
+  const params = readCheckoutContract(command).params;
+  return params.success_url === returns.success_url && params.cancel_url === returns.cancel_url;
 }
 
 function classify(command: BillingSubscriptionCommand): PendingCheckoutSettlement {
@@ -383,14 +445,22 @@ async function settlePendingCheckout(
   env: NodeJS.ProcessEnv,
   command: BillingSubscriptionCommand,
   errorCode: string,
-  options: { expireOpen: boolean; createIfMissing: boolean; reauthorize?: Reauthorize },
+  options: {
+    expireOpen: boolean;
+    createIfMissing: boolean;
+    reauthorize?: Reauthorize;
+    /** One provider account read shared by a sweep; read here when absent. */
+    providerAccountId?: () => Promise<string>;
+  },
 ): Promise<PendingCheckoutSettlement> {
   // PREPARED never reached the provider; the CAS makes a concurrent dispatch lose.
   if (command.status === "PREPARED") return classify(await retireCommand(command, errorCode));
   if (command.status !== "OUTCOME_UNKNOWN") return classify(command);
   const contract = readCheckoutContract(command);
-  const account = await stripe.accounts.retrieve(null);
-  assertCheckoutProviderAuthority(contract, account.id, env);
+  const accountId = options.providerAccountId
+    ? await options.providerAccountId()
+    : (await stripe.accounts.retrieve(null)).id;
+  assertCheckoutProviderAuthority(contract, accountId, env);
   const customerId = contract.params.customer;
   let session = await findCheckoutSession(stripe, customerId, command.id);
   if (!session) {
@@ -421,7 +491,11 @@ async function settlePendingCheckout(
   }
   if (parsed.status === "expired") return classify(await retireCommand(command, errorCode));
   if (parsed.status === "complete") {
-    await reconcileSubscriptionCheckout(session.id, command.organization_id);
+    await reconcileSubscriptionCheckout(
+      session.id,
+      command.organization_id,
+      options.providerAccountId,
+    );
     return "completed";
   }
   return "pending";
@@ -435,13 +509,18 @@ export async function submitSubscriptionCheckout(
     idempotencyKey: string;
     /** Defaults to `hosted`, the original browser-redirect checkout. */
     presentation?: SubscriptionCheckoutPresentation;
+    /**
+     * Required for (and only for) `mobile`: the billing return of the registered native
+     * client that owns the caller's credential, resolved by the route from server config.
+     */
+    mobileReturnUrl?: string;
   },
   reauthorize: Reauthorize,
 ): Promise<SubscriptionCheckoutResult> {
   const stripe = requireStripe();
   const env = getCloudAwareEnv();
   const presentation = input.presentation ?? "hosted";
-  const returns = returnParams(presentation, env);
+  const returns = returnParams(presentation, env, input.mobileReturnUrl);
   // Fail before any provider write when the app could never mount the form.
   if (presentation === "embedded") requireCheckoutPublishableKey(isProductionDeployment(env), env);
   const requestDigest = createHash("sha256")
@@ -454,6 +533,8 @@ export async function submitSubscriptionCheckout(
         // Hosted digests keep their original shape.
         ...("success_url" in returns ? [new URL(returns.success_url).origin] : []),
         ...(presentation === "hosted" ? [] : [presentation]),
+        // A native return is per registered client; another client's replay must not match.
+        ...(presentation === "mobile" && "success_url" in returns ? [returns.success_url] : []),
       ]),
     )
     .digest("hex");
@@ -468,7 +549,8 @@ export async function submitSubscriptionCheckout(
       replay.kind !== "checkout" ||
       replay.requested_by_user_id !== input.actorId ||
       replay.target_plan_key !== input.planKey ||
-      (replay.checkout_contract !== null && commandPresentation(replay) !== presentation)
+      (replay.checkout_contract !== null && commandPresentation(replay) !== presentation) ||
+      (presentation === "mobile" && !sameReturns(replay, returns))
     )
       rejected("checkout_replay_mismatch");
     return driveCheckout(stripe, env, replay, reauthorize);
@@ -476,7 +558,11 @@ export async function submitSubscriptionCheckout(
   const pending = await operations.findPendingCheckout(input.organizationId);
   if (pending) {
     const samePlan = pending.target_plan_key === input.planKey;
-    if (samePlan && commandPresentation(pending) === presentation) {
+    if (
+      samePlan &&
+      commandPresentation(pending) === presentation &&
+      (presentation !== "mobile" || sameReturns(pending, returns))
+    ) {
       // Resume the organization's single pending checkout across devices and keys.
       const resumed = await driveCheckout(stripe, env, pending, reauthorize);
       if (resumed.status !== "expired") return resumed;
@@ -565,6 +651,8 @@ export async function submitSubscriptionCheckout(
 export async function reconcileSubscriptionCheckout(
   sessionId: string,
   expectedOrganizationId?: string,
+  /** The recovery sweep's shared provider account read; read here when absent. */
+  providerAccountId?: () => Promise<string>,
 ) {
   const stripe = requireStripe();
   const session = await stripe.checkout.sessions.retrieve(sessionId);
@@ -584,8 +672,10 @@ export async function reconcileSubscriptionCheckout(
     command.status === "APPLIED" && command.checkout_contract === null
       ? null
       : readCheckoutContract(command);
-  const account = await stripe.accounts.retrieve(null);
-  if (contract) assertCheckoutProviderAuthority(contract, account.id, getCloudAwareEnv());
+  const accountId = providerAccountId
+    ? await providerAccountId()
+    : (await stripe.accounts.retrieve(null)).id;
+  if (contract) assertCheckoutProviderAuthority(contract, accountId, getCloudAwareEnv());
   if (
     parsed.status !== "complete" ||
     parsed.payment_status !== "paid" ||
@@ -603,7 +693,7 @@ export async function reconcileSubscriptionCheckout(
   ]);
   try {
     return await finalizeSubscriptionCheckout({
-      providerAccountId: account.id,
+      providerAccountId: accountId,
       session,
       invoice,
       subscription,
@@ -669,10 +759,25 @@ export async function expirePendingSubscriptionCheckoutsForOrganization(
 }
 
 /**
- * Settles org checkouts that reached their provider expiry (observed, never forced) and closes
- * payable sessions for fenced organizations. Completed sessions are reconciled, not discarded.
+ * Two lanes with separate budgets, so neither can starve the other:
+ *
+ * 1. `limit`: org checkouts that reached their provider expiry (observed, never forced) and
+ *    payable sessions of fenced organizations, which are closed.
+ * 2. `inspectionLimit`: every other dispatched checkout is read back from the provider once it
+ *    is a few minutes old, with a doubling per-checkout backoff, so a captured payment whose
+ *    webhook is late or dead-lettered is entitled within minutes instead of at provider expiry.
+ *    This lane only observes: an open session is left payable and rotated.
+ *
+ * Completed sessions are reconciled (idempotently with the webhook and `checkout/confirm`),
+ * never discarded. One successful provider account read serves the whole sweep, the
+ * settlement of completed sessions included. A failed read is not remembered: the next
+ * candidate reads again, and the candidate it failed for is left exactly as due as it was,
+ * because that failure says nothing about the checkout and must not advance its backoff.
  */
-export async function recoverStaleSubscriptionCheckouts(limit = 10): Promise<{
+export async function recoverStaleSubscriptionCheckouts(
+  limit = 10,
+  inspectionLimit = limit,
+): Promise<{
   inspected: number;
   settled: number;
   completed: number;
@@ -680,32 +785,65 @@ export async function recoverStaleSubscriptionCheckouts(limit = 10): Promise<{
   unavailable: number;
 }> {
   const result = { inspected: 0, settled: 0, completed: 0, pending: 0, unavailable: 0 };
-  const candidates = await recovery.listStalePendingCheckouts(
-    new Date(Date.now() - PROVIDER_RETRY_WINDOW_MS),
-    limit,
-  );
+  const now = Date.now();
+  const horizon = new Date(now - PROVIDER_RETRY_WINDOW_MS);
+  const stale = await recovery.listStalePendingCheckouts(horizon, limit);
+  const due =
+    inspectionLimit > 0
+      ? await recovery.listDispatchedCheckoutsDueForInspection({
+          now: new Date(now),
+          createdAfter: horizon,
+          minAgeMs: CHECKOUT_SETTLE_SWEEP_MIN_AGE_MS,
+          maxBackoffMs: CHECKOUT_SETTLE_SWEEP_MAX_BACKOFF_MS,
+          limit: inspectionLimit,
+        })
+      : [];
+  const candidates = [...stale, ...due.map((command) => ({ command, organizationFenced: false }))];
   if (candidates.length === 0) return result;
   const stripe = requireStripe();
   const env = getCloudAwareEnv();
+  let account: Promise<string> | undefined;
+  const accountReadFailures = new Set<unknown>();
+  const providerAccountId = () => {
+    account ??= stripe.accounts
+      .retrieve(null)
+      .then((value) => value.id)
+      .catch((error: unknown) => {
+        // error-policy:J2 Forget the failed read so the next candidate tries again, and mark
+        // the failure so the loop below can tell it from a failure of the checkout itself.
+        account = undefined;
+        if (error && typeof error === "object") accountReadFailures.add(error);
+        throw error;
+      });
+    return account;
+  };
   for (const { command, organizationFenced } of candidates) {
     result.inspected++;
     try {
       const outcome = await settlePendingCheckout(stripe, env, command, "CHECKOUT_EXPIRED", {
         expireOpen: organizationFenced,
         createIfMissing: false,
+        providerAccountId,
       });
       result[outcome]++;
       if (outcome === "pending") await recovery.rotateCheckoutRecovery(command);
     } catch (error) {
       // error-policy:J4 One unverifiable checkout must not starve the others; it is rotated.
+      // A failed provider account read is not about this checkout: its session was never
+      // read, so it keeps its place and its backoff and is due again on the next sweep.
+      const accountReadFailed = accountReadFailures.has(error);
       logger.warn("[SubscriptionCheckout] Stale checkout recovery unavailable", {
         organizationId: command.organization_id,
         commandId: command.id,
-        code: error instanceof ElizaError ? error.code : "SUBSCRIPTION_CHECKOUT_RECOVERY_FAILED",
+        code: accountReadFailed
+          ? "SUBSCRIPTION_CHECKOUT_PROVIDER_ACCOUNT_UNAVAILABLE"
+          : error instanceof ElizaError
+            ? error.code
+            : "SUBSCRIPTION_CHECKOUT_RECOVERY_FAILED",
         reason: error instanceof ElizaError ? error.context?.reason : undefined,
       });
       result.unavailable++;
-      await recovery.rotateCheckoutRecovery(command);
+      if (!accountReadFailed) await recovery.rotateCheckoutRecovery(command);
     }
   }
   return result;

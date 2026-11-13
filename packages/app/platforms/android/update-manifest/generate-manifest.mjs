@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Generates an elizaOS Android sideload update manifest JSON file.
-// Usage: node generate-manifest.mjs --version <v> --version-code <n> --sha256 <hash> --download-url <url> [options]
+// Usage: bun generate-manifest.mjs --version <v> --version-code <n> --sha256 <hash> --download-url <url> [options]
 
 const args = process.argv.slice(2);
 

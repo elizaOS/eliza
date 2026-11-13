@@ -62,11 +62,13 @@ function NoteRow({
   note,
   selected,
   sequence,
+  editorOpen,
   onSelect,
 }: {
   note: StickyNoteModel;
   selected: boolean;
   sequence: number;
+  editorOpen: boolean;
   onSelect?: (id: string) => void;
 }) {
   const content = reconstructNoteContent(note);
@@ -81,10 +83,20 @@ function NoteRow({
     onActivate: onSelect ? () => onSelect(note.id) : undefined,
   });
   useEffect(() => {
-    if (!selected || sequence < 1) return;
-    card.ref.current?.scrollIntoView({ block: "center" });
-    card.ref.current?.focus({ preventScroll: true });
-  }, [selected, sequence, card.ref]);
+    const element = card.ref.current;
+    if (!selected || sequence < 1 || !element) return;
+    // On a narrow screen the open editor hides the list: focus follows the
+    // note into its editor instead of falling to the page.
+    if (editorOpen && element.getClientRects().length === 0) {
+      element
+        .closest(".notes-workspace-columns")
+        ?.querySelector<HTMLElement>(".notes-workspace-editor")
+        ?.focus({ preventScroll: true });
+      return;
+    }
+    element.scrollIntoView({ block: "center" });
+    element.focus({ preventScroll: true });
+  }, [selected, sequence, editorOpen, card.ref]);
   const material = COLOR_MATERIALS[note.color];
 
   return (
@@ -594,6 +606,7 @@ export function NotesSurface({
                               (selectedNoteId ?? sourceNoteTarget?.id)
                             }
                             sequence={sourceNoteTarget?.sequence ?? 0}
+                            editorOpen={Boolean(editor)}
                             onSelect={onSelect}
                           />
                         ))}

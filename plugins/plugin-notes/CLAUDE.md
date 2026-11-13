@@ -63,12 +63,11 @@ reject ambiguous, absent, conflicting or normalization-dependent edits without a
 write. Full replacement and legacy selector/content forms remain supported, but replacement writes now require a read-bound expectedRevision. This is
 structured tool input, never a natural-language shortcut or a second write path.
 
-Conversational NOTES_PATCH uses a typed target and field changes or one literal textEdit. Omitted fields stay unchanged. Ambiguous named titles require selection even if a planner substitutes an ID; resolve again under the service write barrier. Keep legacy NOTES_UPDATE content alternatives and their conflict validation.
+Conversational NOTES_PATCH uses a typed target and field changes or one textEdit (literal substitution or plain-note append). Planner text routes appends here because strict tool grammars cannot require UPDATE's target or revision. Omitted fields stay unchanged. Ambiguous named titles require selection even if a planner substitutes an ID; resolve again under the service write barrier. Keep legacy NOTES_UPDATE content alternatives and their conflict validation.
 
 NOTES_LIST may combine title/topic lookup with an explicit createdAt/updatedAt dateRange. Bounds are offset-bearing instants, start-inclusive/end-exclusive. Date filters never authorize a write or change source ownership.
 
 NAMED_NOTES supplies complete current records only for titles explicitly named in the request, including every same-title match. Planning and explicit context reads admit it with the existing OWNER gate. Unrelated messages receive no named-note text; source failures do not authorize claims from historical contents.
-
 
 Individual field and full-note replacements require `expectedRevision` from the
 complete note snapshot used to prepare the edit. `NOTES_GET` / `NOTES_LIST` and

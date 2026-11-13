@@ -66,6 +66,9 @@ public final class ConsumerReadAccessTest {
         assertEquals("Owned body", event.getString("body")); assertFalse(event.getBoolean("recurring"));
       }
       assertEquals(2101, count); assertTrue(last);
+      JSONObject bounded = reader.window(begin, end, 2000);
+      assertEquals(2000, bounded.getJSONArray("events").length());
+      assertTrue("The provider had more rows; callers must show an incomplete result", bounded.getBoolean("truncated"));
       // Journaled creations carry their creation id; foreign or malformed custom fields do not.
       String prefix = "example-calendar://creation/", creation = UUID.randomUUID().toString();
       String[][] tagged = {{context.getPackageName(), prefix + creation}, {"other.package", prefix + UUID.randomUUID()},

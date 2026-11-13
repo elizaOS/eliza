@@ -152,3 +152,34 @@ test("the default warning style adapts to dark, high-contrast and forced-colors 
   assert.doesNotMatch(forced, /#[0-9a-f]{3,6}\b/i);
   assert.doesNotMatch(css, /forced-color-adjust:\s*none/);
 });
+
+test("a reviewed never-block list reaches the built worker and is validated at build time", async () => {
+  const output = await mkdtemp(join(tmpdir(), "protection-never-block-"));
+  try {
+    await buildBrowserProtection(output, {
+      neverBlock: ["sites.false-positive.example", "false-positive.example"],
+    });
+    const background = await readFile(join(output, "background.mjs"), "utf8");
+    assert.ok(
+      background.includes(
+        '"neverBlock":["false-positive.example","sites.false-positive.example"]',
+      ),
+    );
+    const plain = await mkdtemp(join(tmpdir(), "protection-never-block-"));
+    try {
+      await buildBrowserProtection(plain);
+      assert.doesNotMatch(
+        await readFile(join(plain, "background.mjs"), "utf8"),
+        /"neverBlock"/,
+      );
+    } finally {
+      await rm(plain, { recursive: true, force: true });
+    }
+    await assert.rejects(
+      buildBrowserProtection(output, { neverBlock: ["*.example.com"] }),
+      /Invalid never-block hosts/,
+    );
+  } finally {
+    await rm(output, { recursive: true, force: true });
+  }
+});

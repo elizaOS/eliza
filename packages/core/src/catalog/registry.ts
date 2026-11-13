@@ -158,11 +158,3 @@ export function loadRegistry(): LoadedRegistry {
 	cacheSlot.value = indexEntries([...merged.values()]);
 	return cacheSlot.value;
 }
-
-export function clearRegistryCacheForTests(): void {
-	if (!cacheSlot) {
-		cacheSlot = { value: null };
-		return;
-	}
-	cacheSlot.value = null;
-}

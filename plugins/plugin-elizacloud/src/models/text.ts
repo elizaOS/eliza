@@ -26,6 +26,7 @@ import {
   MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED,
   createPreparedModelRequestGuard,
   ElizaError,
+  HANDLE_RESPONSE_TOOL_NAME,
   logger,
   ModelType,
   parseProviderRateLimit,
@@ -494,13 +495,13 @@ function firstNumber(...values: unknown[]): number | undefined {
 }
 
 /**
- * Bounded retry for the cold-gateway "warming" 503 (first turn after idle).
+ * Bounded retry for the gateway's typed transient 503.
  *
- * A cold Cloudflare Worker answers with 503 and a machine-readable transient
- * code (`*_cache_warming`, `inference_admission_unavailable`,
- * `rate_limit_unavailable`, or the generative ApiError
- * retryable envelope) while it hydrates auth/billing/admission state under
- * waitUntil or starts the inference-admission Durable Object — recovery is ~3s.
+ * The Cloud gateway fills cold caches inline, so it no longer answers a cold
+ * request with a warming 503. It still answers 503 with a machine-readable
+ * transient code (`inference_admission_unavailable`, `billing_unavailable`,
+ * `rate_limit_unavailable`, or the generative ApiError retryable envelope)
+ * when the admission Durable Object or the primary is briefly unreachable.
  * That 503 is a retry-shortly signal, NOT a dead provider, but the runtime's
  * useModel failover ladder classifies any thrown 503 as fallback-class and
  * advances instantly, so one cold gateway spent the whole
@@ -511,20 +512,20 @@ function firstNumber(...values: unknown[]): number | undefined {
  * retaining failover to a distinct provider. The gate is structural — HTTP
  * status + typed body code/flag — never message prose, so a genuinely dead
  * provider (any other 503 body, or any non-503) still throws immediately.
- * The schedule is bounded and sums past the measured ~3s recovery; a
+ * The schedule is bounded (about 3s in total); a
  * Retry-After header or `details.retryAfterSeconds` stretches an individual
  * wait up to a hard cap but never adds attempts.
  */
 const WARMING_RETRY_DELAYS_MS: readonly number[] = [250, 500, 1000, 1500];
 const WARMING_RETRY_MAX_WAIT_MS = 2_000;
 
-/** Persistent cache warming after the provider's complete bounded retry budget. */
+/** A typed transient 503 persisted through the provider's bounded retry budget. */
 export class ElizaCloudGatewayWarmingExhaustedError extends ElizaError {
   override readonly name = "ElizaCloudGatewayWarmingExhaustedError";
   readonly status = 503;
 
   constructor(label: string, attempts: number) {
-    super("elizaOS Cloud gateway remained unavailable after cache warming retries", {
+    super("elizaOS Cloud gateway remained unavailable after transient retries", {
       code: MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED,
       context: { attempts, provider: "elizaOSCloud", route: label, status: 503 },
       severity: "ephemeral",
@@ -642,8 +643,8 @@ function parseJsonRecord(text: string): Record<string, unknown> | undefined {
 
 /**
  * True only for the gateway's explicit transient 503 shapes:
- * `{ error: { code: "*_cache_warming" | "inference_admission_unavailable" } }`
- * (chat/completions, embeddings) or
+ * `{ error: { code: "inference_admission_unavailable" | "billing_unavailable"
+ * | "rate_limit_unavailable" } }` (chat/completions, embeddings) or
  * the generative ApiError envelope `{ code: "service_unavailable",
  * details: { retryable: true } }`, plus the inference-admission boundary's
  * `{ success: false, code: "rate_limit_unavailable" }`. Everything else —
@@ -657,7 +658,8 @@ export function isWarmingUnavailableResponse(status: number, bodyText: string): 
   const errorCode = asRecord(body.error).code;
   if (
     errorCode === "inference_admission_unavailable" ||
-    (typeof errorCode === "string" && errorCode.endsWith("_cache_warming"))
+    errorCode === "billing_unavailable" ||
+    errorCode === "rate_limit_unavailable"
   ) {
     return true;
   }
@@ -717,35 +719,151 @@ function sleepMs(ms: number, signal?: AbortSignal): Promise<void> {
 }
 
 /**
+ * Bounded retry for a Cloud connection that resets before any response.
+ *
+ * A socket reset before the response headers (Bun: an Error with code
+ * `ECONNRESET`; Node: `fetch failed` with a `UND_ERR_SOCKET` or `ECONNRESET`
+ * cause) leaves no HTTP status, and it failed the whole turn. The same request
+ * is sent again in place, at most CONNECTION_RESET_RETRY_DELAYS_MS.length
+ * times. Each wait is its scheduled delay plus up to the same again of jitter,
+ * so the added wait stays under 2 s. A reset while a body is read comes after
+ * the headers, when the server has answered and may have billed the call, so
+ * it is never retried. Every HTTP status, a 429 included, keeps its normal
+ * path. A spent budget throws the typed exhaustion, so the runtime skips the
+ * sibling registrations backed by this same provider, as it does for warming.
+ *
+ * Missing headers do not prove that the server never ran the request: the
+ * buffered routes send their headers only after the whole generation, so a
+ * reset before the headers can follow a finished and billed generation. Only a
+ * reset within CONNECTION_RESET_RETRY_WINDOW_MS of its attempt's send is
+ * retried; a later one is thrown unchanged, as before this retry existed.
+ */
+const CONNECTION_RESET_RETRY_DELAYS_MS: readonly number[] = [250, 750];
+/**
+ * A connection that was already dead (a pooled keep-alive socket the far end
+ * closed, or a dropped handshake) fails within a few network round trips of
+ * the send. QA's observed reset came 156 ms after the send, and a gateway round
+ * trip with no generation takes about 125 ms (the warming note above
+ * WARMING_RETRY_DELAYS_MS: four 503 round trips in ~500 ms). 1 s covers a few
+ * such round trips, with room for slow links. It is a bound, not a proof: a
+ * generation that finished in under 1 s and then lost its connection before
+ * the headers would still be sent again. A reset that is not retried only
+ * keeps the old behavior, and a wrong retry can bill twice, so the window is
+ * kept short.
+ */
+const CONNECTION_RESET_RETRY_WINDOW_MS = 1_000;
+const CONNECTION_RESET_CODES = new Set(["ECONNRESET", "UND_ERR_SOCKET"]);
+
+/** A Cloud connection that kept resetting before any response, after its bounded retries. */
+export class ElizaCloudConnectionResetExhaustedError extends ElizaError {
+  override readonly name = "ElizaCloudConnectionResetExhaustedError";
+
+  constructor(label: string, attempts: number, cause: unknown) {
+    super("elizaOS Cloud connection reset before any response after retries", {
+      code: MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED,
+      context: { attempts, provider: "elizaOSCloud", route: label },
+      severity: "ephemeral",
+      cause,
+    });
+  }
+}
+
+/** True when the transport error, or one of its causes, is a dropped connection. */
+function isConnectionResetError(error: unknown): boolean {
+  let node = error;
+  for (let depth = 0; depth < 4 && typeof node === "object" && node !== null; depth++) {
+    const { code, cause } = node as { code?: unknown; cause?: unknown };
+    if (typeof code === "string" && CONNECTION_RESET_CODES.has(code)) return true;
+    node = cause;
+  }
+  return false;
+}
+
+/**
+ * Next step for a request that failed before any response: the jittered wait
+ * before it is sent again, or the error to throw. That error is the original
+ * one when it is not a connection reset, the reset came more than
+ * CONNECTION_RESET_RETRY_WINDOW_MS after the send (`elapsedMs`), or the call
+ * was cancelled, and the typed exhaustion once the retries are spent.
+ */
+export function nextConnectionResetRetry(
+  state: { attempt: number },
+  error: unknown,
+  elapsedMs: number,
+  label: string,
+  signal?: AbortSignal
+): { delayMs: number } | { error: unknown } {
+  if (
+    signal?.aborted ||
+    elapsedMs > CONNECTION_RESET_RETRY_WINDOW_MS ||
+    !isConnectionResetError(error)
+  ) {
+    return { error };
+  }
+  if (state.attempt >= CONNECTION_RESET_RETRY_DELAYS_MS.length) {
+    return { error: new ElizaCloudConnectionResetExhaustedError(label, state.attempt + 1, error) };
+  }
+  const scheduled = CONNECTION_RESET_RETRY_DELAYS_MS[state.attempt];
+  state.attempt += 1;
+  const delayMs = scheduled + Math.floor(Math.random() * scheduled);
+  logger.warn(
+    `[ELIZAOS_CLOUD] cloud connection reset before any response on ${label}; retrying in ${delayMs}ms (attempt ${state.attempt}/${CONNECTION_RESET_RETRY_DELAYS_MS.length})`
+  );
+  return { delayMs };
+}
+
+/**
  * Run a buffered cloud text round-trip under the shared concurrency cap,
- * retrying in place while the gateway reports the structural warming 503.
+ * retrying in place while the gateway reports the structural warming 503 and
+ * within its own budget when the connection resets before any response.
  * The permit is held only across each network attempt — body reads and
  * backoff sleeps run unguarded. Returns the final response with its body
- * already read so callers never double-consume it. Non-warming failures return
- * immediately for the caller's normal error path; persistent structural
- * warming throws the typed exhaustion signal after this one complete budget.
+ * already read so callers never double-consume it. Other failures return
+ * immediately for the caller's normal error path; a persistent structural
+ * warming or connection reset throws the typed exhaustion signal after its
+ * one complete budget.
  */
 export async function requestNativeWithWarmingRetry(
   doRequest: () => Promise<Response>,
   label: string,
-  /** The caller's cancellation signal; it also ends a warming backoff sleep. */
+  /** The caller's cancellation signal; it also ends a retry backoff sleep. */
   signal?: AbortSignal,
   ownedTraceId?: string,
 ): Promise<{ response: Response; bodyText: string }> {
   const state: WarmingRetryState = { attempt: 0 };
+  const resetRetryState = { attempt: 0 };
   const timing = createModelHttpTiming(label, ownedTraceId);
   for (;;) {
     const queuedAt = performance.now();
-    const observed = await withNativeChatLimit(
-      () => timing.request(doRequest, performance.now() - queuedAt),
-      label,
-    );
+    let sentAt = queuedAt;
+    let observed: Awaited<ReturnType<typeof timing.request>>;
+    try {
+      observed = await withNativeChatLimit(() => {
+        sentAt = performance.now();
+        return timing.request(doRequest, sentAt - queuedAt);
+      }, label);
+    } catch (error) {
+      // No response headers arrived. That does not prove the server never ran
+      // the request: these routes send headers only after the whole
+      // generation. So only a reset soon after the send is sent again.
+      const retry = nextConnectionResetRetry(
+        resetRetryState,
+        error,
+        performance.now() - sentAt,
+        label,
+        signal,
+      );
+      if ("error" in retry) throw retry.error;
+      await sleepMs(retry.delayMs, signal);
+      continue;
+    }
     const response = observed.response;
     let bodyText: string;
     try {
       bodyText = await response.text();
       observed.bodyDone("completed");
     } catch (error) {
+      // After the headers the server has answered: never sent again.
       observed.bodyDone(signal?.aborted ? "aborted" : "failed");
       throw error;
     }
@@ -1272,6 +1390,36 @@ function applyOpenRouterPassthroughFields(
   }
 }
 
+function projectQwenHandleResponseTool(tool: unknown): unknown {
+  const entry = asRecord(tool);
+  const definition = recordAt(entry, "function");
+  const schema = recordAt(definition, "parameters");
+  if (
+    definition.name !== HANDLE_RESPONSE_TOOL_NAME ||
+    definition.strict !== true ||
+    !Object.hasOwn(recordAt(schema, "properties"), "calendarReadBindings")
+  ) {
+    return tool;
+  }
+  // Calendar validates these string bounds and source evidence locally. Omit
+  // only these provider-unsupported keywords so Qwen can enforce intents as an array.
+  const parameters = structuredClone(schema);
+  const calendar = recordAt(
+    recordAt(parameters, "properties"),
+    "calendarReadBindings"
+  );
+  const calendarFields = recordAt(recordAt(calendar, "items"), "properties");
+  const evidence = recordAt(calendarFields, "filterEvidence");
+  const evidenceFields = recordAt(recordAt(evidence, "items"), "properties");
+  for (const field of ["query", "quote"]) {
+    const property = recordAt(evidenceFields, field);
+    if (property.type !== "string") continue;
+    delete property.minLength;
+    delete property.maxLength;
+  }
+  return { ...entry, function: { ...definition, parameters } };
+}
+
 function buildNativeRequestBody(
   params: GenerateTextParamsWithNativeOptions,
   modelName: string,
@@ -1286,18 +1434,25 @@ function buildNativeRequestBody(
   // a model name or caller providerOptions alone cannot select this behavior.
   // Normalize before final serialization/quote/hash; never rewrite after quote.
   if (runtime && normalizeCerebrasModelId(modelName) === "qwen-3.8-27b" &&
-      usesCanonicalCerebrasNativeSerialization(runtime)) {
+      usesCanonicalCerebrasNativeSerialization(runtime, { stagingMobileTools: true })) {
     // Cerebras accepts one strictness mode for the entire tool batch. If any
     // tool needs non-strict provider decoding, retain every schema and use
     // non-strict decoding consistently; execution still validates arguments.
-    const needsCompatibleToolBatch = tools?.some(tool => {
-      const definition = asRecord(asRecord(tool).function);
-      return definition.strict !== true || hasQwenUnsupportedStrictStringKeywords(definition.parameters);
+    const projected = tools?.map(projectQwenHandleResponseTool);
+    const needsCompatibleToolBatch = projected?.some((tool) => {
+      const definition = recordAt(asRecord(tool), "function");
+      return (
+        definition.strict !== true ||
+        hasQwenUnsupportedStrictStringKeywords(definition.parameters)
+      );
     });
-    if (needsCompatibleToolBatch) tools = tools?.map(tool => {
-      const entry = asRecord(tool), definition = asRecord(entry.function);
-      return { ...entry, function: { ...definition, strict: false } };
-    });
+    tools = needsCompatibleToolBatch
+      ? tools?.map((tool) => {
+          const entry = asRecord(tool);
+          const definition = recordAt(entry, "function");
+          return { ...entry, function: { ...definition, strict: false } };
+        })
+      : projected;
   }
   const toolChoice = normalizeNativeToolChoice(params.toolChoice);
   let responseFormat = buildNativeResponseFormat(params.responseSchema, modelName);
@@ -1848,17 +2003,19 @@ export async function generateNativeChatCompletion(
   }
 
   const text = extractChatCompletionText(data);
-  const toolCalls = extractNativeToolCalls(data);
+	// Before tool-call finalization: a truncated tool call is incomplete
+	// output, not an invalid one.
 	assertModelOutputComplete({
 		finishReason: data.choices?.[0]?.finish_reason,
 		provider: "elizacloud",
 		model: context.modelName,
 		maxTokens: typeof requestBody.max_tokens === "number" ? requestBody.max_tokens : null,
 		finishReasonSource: "cloud-chat-completions",
-		emptyVisibleOutput: !text.trim() && toolCalls.length === 0,
+		emptyVisibleOutput: !text.trim() && !data.choices?.[0]?.message?.tool_calls?.length,
 		usage,
 		costUsd: extractCostUsd(data.usage, response),
 	});
+  const toolCalls = extractNativeToolCalls(data);
   if (!text.trim() && toolCalls.length === 0) {
     throw new Error("elizaOS Cloud returned no text or tool calls");
   }
@@ -2234,11 +2391,14 @@ export async function streamNativeChatCompletion(
   };
 
   // Per-attempt permit: acquired before each round-trip, released across
-  // warming-retry sleeps so a cold gateway never starves concurrent calls.
+  // retry sleeps so a cold gateway never starves concurrent calls.
   // A warming 503's body is consumed for classification, so its terminal
   // throw happens here; every other non-ok status leaves the body unread for
-  // the error path below.
+  // the error path below. A connection reset is retried only here, before
+  // any response (so nothing has streamed yet), and only soon after its send
+  // (see nextConnectionResetRetry).
   const warmingRetryState: WarmingRetryState = { attempt: 0 };
+  const resetRetryState = { attempt: 0 };
   let response: Response;
   const modelHttpTiming = createModelHttpTiming("chat/completions:stream", headers["X-Eliza-Trace-Id"]);
   let bodyDone: ((outcome: "completed" | "failed" | "aborted") => void) | undefined;
@@ -2250,19 +2410,37 @@ export async function streamNativeChatCompletion(
     recordInferenceSpan("cloud.semaphore-wait", Date.now() - waitStartedAt, {
       route: "chat/completions:stream",
     });
+    const sentAt = performance.now();
     try {
       preparedRequest.assertBeforeAttempt();
       const observed = await modelHttpTiming.request(() => createCloudApiClient(runtime).requestRaw("POST", "/chat/completions", {
         headers,
         json: requestBody,
         ...(signal ? { signal } : {}),
-      }), performance.now() - queuedAt);
+      }), sentAt - queuedAt);
       response = observed.response;
       bodyDone = observed.bodyDone;
     } catch (err) {
       releasePermit();
-      if (!abortSignal?.aborted) recordCloudInferenceFailure(runtime, modelType, requestBody, err);
-      throw err;
+      const retry = nextConnectionResetRetry(
+        resetRetryState,
+        err,
+        performance.now() - sentAt,
+        "chat/completions:stream",
+        signal
+      );
+      if ("error" in retry) {
+        if (!abortSignal?.aborted) recordCloudInferenceFailure(runtime, modelType, requestBody, retry.error);
+        throw retry.error;
+      }
+      // The stream timeout can end the call during this wait: the reset stays
+      // its recorded failure, as when it was not retried. A caller's Stop
+      // records nothing, as everywhere here.
+      await sleepMs(retry.delayMs, signal).catch((stop) => {
+        if (!abortSignal?.aborted) recordCloudInferenceFailure(runtime, modelType, requestBody, err);
+        throw stop;
+      });
+      continue;
     }
     if (response.status !== 503) break;
     let warmingBodyText: string;
@@ -2342,7 +2520,6 @@ export async function streamNativeChatCompletion(
       }
     }
     const text = extractChatCompletionText(data);
-    const toolCalls = extractNativeToolCalls(data);
     const usage = convertNativeUsage(data.usage);
     const costUsd = extractCostUsd(data.usage, response);
     // Billed tokens are reported before an incomplete output is rejected.
@@ -2352,16 +2529,19 @@ export async function streamNativeChatCompletion(
         ...(typeof costUsd === "number" ? { costUsd } : {}),
       });
     }
+		// Before tool-call finalization: a truncated tool call is incomplete
+		// output, not an invalid one.
 		assertModelOutputComplete({
 			finishReason: data.choices?.[0]?.finish_reason,
 			provider: "elizacloud",
 			model: context.modelName,
 			maxTokens: typeof requestBody.max_tokens === "number" ? requestBody.max_tokens : null,
 			finishReasonSource: "cloud-chat-completions",
-			emptyVisibleOutput: !text.trim() && toolCalls.length === 0,
+			emptyVisibleOutput: !text.trim() && !data.choices?.[0]?.message?.tool_calls?.length,
 			usage,
 			costUsd,
 		});
+    const toolCalls = extractNativeToolCalls(data);
     if (!text.trim() && toolCalls.length === 0) {
       throw new Error("elizaOS Cloud returned no text or tool calls");
     }
@@ -2673,10 +2853,20 @@ function onlyNativeCacheBookkeeping(options:Record<string,unknown>,raw:unknown,k
 
 /** Formatting only. Reuse Core's actual selected handlers and the normal Cloud
  * transport tuple; no mirrored registry, lease, financial or permission state. */
-function usesCanonicalCerebrasNativeSerialization(runtime: IAgentRuntime): boolean {
+function usesCanonicalCerebrasNativeSerialization(
+  runtime: IAgentRuntime,
+  options?: { stagingMobileTools: true },
+): boolean {
   try {
     const tuple = resolveCloudSdkAuthorityTuple(runtime);
-    if (!tuple.outboundAllowed || !tuple.apiKey || tuple.apiBaseUrl.replace(/\/+$/, "") !== "https://api.eliza.app/api/v1") return false;
+    if (!tuple.outboundAllowed || !tuple.apiKey) return false;
+    const base = tuple.apiBaseUrl.replace(/\/+$/, "");
+    const stagingMobileTools =
+      options?.stagingMobileTools &&
+      tuple.authority === "staging-explicit" &&
+      base === "https://api-staging.eliza.app/api/v1" &&
+      tuple.apiKey.startsWith("eliza_mobile_");
+    if (base !== "https://api.eliza.app/api/v1" && !stagingMobileTools) return false;
     const ownHandlers: ReadonlyArray<readonly [ModelTypeName, unknown]> = [
       [TEXT_NANO_MODEL_TYPE, handleTextNano], [TEXT_SMALL_MODEL_TYPE, handleTextSmall],
       [TEXT_MEDIUM_MODEL_TYPE, handleTextMedium], [TEXT_LARGE_MODEL_TYPE, handleTextLarge],

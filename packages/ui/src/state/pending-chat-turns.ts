@@ -20,7 +20,17 @@ export interface PendingChatTurnReceipt {
   sentAt: number;
   restoreAt: number;
   restoredToDraft?: boolean;
+  /**
+   * Ids of user rows already in the thread when this receipt was written. None
+   * of them can be this turn. Receipts from older builds have none.
+   */
+  knownUserMessageIds?: string[];
 }
+
+/** Clock skew allowed between the local send time and the server's row stamp. */
+export const PENDING_CHAT_TURN_CLOCK_SKEW_MS = 5_000;
+/** Match window for receipts written without `knownUserMessageIds`. */
+const LEGACY_PENDING_CHAT_TURN_SLACK_MS = 60_000;
 
 function keyFor(conversationId: string, clientMessageId: string): string {
   return `${PENDING_CHAT_TURN_PREFIX}${conversationId}:${clientMessageId}`;
@@ -34,11 +44,14 @@ function isReceipt(value: unknown): value is PendingChatTurnReceipt {
     typeof record.text === "string" &&
     (record.restoredToDraft === undefined ||
       typeof record.restoredToDraft === "boolean") &&
+    (record.knownUserMessageIds === undefined ||
+      (Array.isArray(record.knownUserMessageIds) &&
+        record.knownUserMessageIds.every((id) => typeof id === "string"))) &&
     // Number.isFinite, not typeof: these come back from localStorage, which is
     // untrusted persisted input, and `typeof NaN === "number"` while JSON's
     // `1e999` parses to Infinity. A non-finite stamp survives to break the
     // sentAt ordering (Infinity - Infinity is NaN), the settle comparison in
-    // clearSettledPendingChatTurns (`timestamp >= sentAt - 60_000` never holds,
+    // clearSettledPendingChatTurns (`timestamp >= sentAt - slack` never holds,
     // so the receipt is never cleared), and the restore delay derived from
     // restoreAt. Rejecting it here keeps that guard in one place.
     Number.isFinite(record.sentAt) &&
@@ -159,31 +172,69 @@ export function listPendingChatTurns(
   return receipts.sort((a, b) => a.sentAt - b.sentAt);
 }
 
+/**
+ * True when `messages` holds the user row of a send made at `sentAt`. A row
+ * whose id was already known at send time is an earlier message, even with
+ * the same text. Without known ids the older 60 s window applies.
+ */
+export function pendingUserTurnPresent(
+  messages: readonly ConversationMessage[],
+  sentText: string,
+  sentAt: number,
+  knownUserMessageIds?: readonly string[],
+): boolean {
+  const text = sentText.trim();
+  const known = knownUserMessageIds ? new Set(knownUserMessageIds) : null;
+  const earliest =
+    sentAt -
+    (known
+      ? PENDING_CHAT_TURN_CLOCK_SKEW_MS
+      : LEGACY_PENDING_CHAT_TURN_SLACK_MS);
+  return messages.some(
+    (message) =>
+      message.role === "user" &&
+      !known?.has(message.id) &&
+      message.timestamp >= earliest &&
+      message.text.trim() === text,
+  );
+}
+
+/** Clears a receipt and tells a composer holding its restored draft. */
+export function settlePendingChatTurn(
+  conversationId: string,
+  clientMessageId: string,
+): void {
+  const receipt = listPendingChatTurns(conversationId).find(
+    (pending) => pending.clientMessageId === clientMessageId,
+  );
+  clearPendingChatTurn(conversationId, clientMessageId);
+  if (receipt?.restoredToDraft === true && typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent(PENDING_CHAT_TURN_SETTLED_EVENT, {
+        detail: {
+          conversationId,
+          clientMessageId: receipt.clientMessageId,
+          text: receipt.text,
+        },
+      }),
+    );
+  }
+}
+
 export function clearSettledPendingChatTurns(
   conversationId: string,
   messages: readonly ConversationMessage[],
 ): void {
   for (const receipt of listPendingChatTurns(conversationId)) {
-    const text = receipt.text.trim();
-    const settled = messages.some(
-      (message) =>
-        message.role === "user" &&
-        message.timestamp >= receipt.sentAt - 60_000 &&
-        message.text.trim() === text,
-    );
-    if (settled) {
-      clearPendingChatTurn(conversationId, receipt.clientMessageId);
-      if (receipt.restoredToDraft === true && typeof window !== "undefined") {
-        window.dispatchEvent(
-          new CustomEvent(PENDING_CHAT_TURN_SETTLED_EVENT, {
-            detail: {
-              conversationId,
-              clientMessageId: receipt.clientMessageId,
-              text: receipt.text,
-            },
-          }),
-        );
-      }
+    if (
+      pendingUserTurnPresent(
+        messages,
+        receipt.text,
+        receipt.sentAt,
+        receipt.knownUserMessageIds,
+      )
+    ) {
+      settlePendingChatTurn(conversationId, receipt.clientMessageId);
     }
   }
 }

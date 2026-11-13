@@ -9,6 +9,7 @@ import {
   ChannelType,
   ElizaError,
   executePlannedToolCall,
+  type IAgentRuntime,
   type Memory,
   SEND_HANDLER_NOT_FOUND,
   TaskService,
@@ -20,6 +21,8 @@ import {
   createLifeOpsTestRuntime as createBaseLifeOpsTestRuntime,
   getRecordedTestNotifications,
 } from "../../test/helpers/runtime.js";
+import * as taskCreate from "../actions/lib/extract-task-plan.js";
+import { PersonalAssistantStartupService } from "../startup-work.js";
 import {
   ensureLifeOpsSchedulerTask,
   LIFEOPS_TASK_NAME,
@@ -248,6 +251,9 @@ it.each([
 
 async function createLifeOpsTestRuntime() {
   const fixture = await createBaseLifeOpsTestRuntime();
+  // This suite owns scheduler ticks. Drain deferred boot registration before
+  // freezing the scheduler state, so a startup retry cannot inject a wake.
+  await PersonalAssistantStartupService.forRuntime(fixture.runtime).stop();
   await TaskService.stop(fixture.runtime);
   // Supersede boot observations with an actual persisted owner wake signal.
   vi.setSystemTime(Date.now() + 1);
@@ -261,6 +267,190 @@ async function createLifeOpsTestRuntime() {
   return fixture;
 }
 
+type WakeProducer =
+  | "scheduler_ensure"
+  | "definition_create"
+  | "definition_update"
+  | "definition_snooze"
+  | "owner_profile"
+  | "task_consume"
+  | "unknown";
+type EnsureCaller =
+  | "startup_retry"
+  | "owner_profile"
+  | "fixture_manual"
+  | "unknown"
+  | "not_ensure";
+type WakeTrace = {
+  callIndex: number;
+  producer: WakeProducer;
+  ensureCaller: EnsureCaller;
+  timestamp: number;
+  requestAt: number | null;
+  consumeRevision: number | null;
+  revisionBefore: null;
+  revisionAfter: null;
+  outcome:
+    | "pending"
+    | "patched"
+    | "missing"
+    | "unsupported"
+    | "unknown"
+    | "rejected";
+};
+/** Raw stacks are inspected synchronously, then discarded; only fixed enums escape. */
+function observeWakeProducers(runtime: IAgentRuntime) {
+  const original = runtime.patchTaskMetadata.bind(runtime);
+  const trace: WakeTrace[] = [];
+  let omitted = 0,
+    callIndex = 0;
+  const patches = vi
+    .spyOn(runtime, "patchTaskMetadata")
+    .mockImplementation((id, patch) => {
+      const index = callIndex++;
+      const classification: {
+        producer: WakeProducer;
+        ensureCaller: EnsureCaller;
+      } = (() => {
+        const stack = new Error().stack ?? "";
+        const producer: WakeProducer =
+          patch.wake?.consumeRevision !== undefined
+            ? "task_consume"
+            : /ensureLifeOpsSchedulerTask/.test(stack)
+              ? "scheduler_ensure"
+              : /owner-profile\.(?:ts|js)/.test(stack)
+                ? "owner_profile"
+                : /snoozeOccurrence/.test(stack)
+                  ? "definition_snooze"
+                  : /updateDefinition/.test(stack)
+                    ? "definition_update"
+                    : /createDefinition/.test(stack)
+                      ? "definition_create"
+                      : "unknown";
+        // These are finite source-callsite heuristics, never raw stack telemetry.
+        // Startup retry has priority over a test frame retained by an async stack.
+        const ensureCaller: EnsureCaller =
+          producer !== "scheduler_ensure"
+            ? "not_ensure"
+            : /ensureTaskWithRetries/.test(stack)
+              ? "startup_retry"
+              : /owner-profile\.(?:ts|js)/.test(stack)
+                ? "owner_profile"
+                : /reminder-wake\.pglite\.integration\.test\.(?:ts|js)/.test(
+                      stack,
+                    )
+                  ? "fixture_manual"
+                  : "unknown";
+        return { producer, ensureCaller };
+      })();
+      const safe = (value: unknown) =>
+        typeof value === "number" && Number.isSafeInteger(value) ? value : null;
+      const row: WakeTrace | undefined = patch.wake
+        ? {
+            callIndex: index,
+            ...classification,
+            timestamp: Date.now(),
+            requestAt: safe(patch.wake.requestAt),
+            consumeRevision: safe(patch.wake.consumeRevision),
+            // The existing patch result is an enum, not a row/revision snapshot.
+            // Do not add database reads or invent a before/after revision.
+            revisionBefore: null,
+            revisionAfter: null,
+            outcome: "pending",
+          }
+        : undefined;
+      if (row) {
+        if (trace.length === 32) {
+          trace.shift();
+          omitted++;
+        }
+        trace.push(row);
+      }
+      try {
+        const result = original(id, patch);
+        // Observe settlement without changing the promise returned to the caller.
+        void result.then(
+          (value) => {
+            if (row)
+              row.outcome =
+                value === "patched" ||
+                value === "missing" ||
+                value === "unsupported"
+                  ? value
+                  : "unknown";
+          },
+          () => {
+            if (row) row.outcome = "rejected";
+          },
+        );
+        return result;
+      } catch (error) {
+        if (row) row.outcome = "rejected";
+        throw error;
+      }
+    });
+  return { patches, trace, omitted: () => omitted };
+}
+
+/** Failure diagnostics expose only bounded scheduler timestamps and wake outcomes. */
+async function wakeDiagnostics(
+  now: number,
+  task: Awaited<ReturnType<IAgentRuntime["getTask"]>>,
+  calls: Parameters<IAgentRuntime["patchTaskMetadata"]>[],
+  results: { type: string; value?: unknown }[],
+  producers: { trace: WakeTrace[]; omitted(): number },
+): Promise<string> {
+  const number = (value: unknown) =>
+    typeof value === "number" && Number.isFinite(value) ? value : null;
+  const indexes = calls.flatMap(([id, patch], index) =>
+    id === task?.id && patch.wake ? [index] : [],
+  );
+  const wakeCalls = await Promise.all(
+    indexes.slice(-16).map(async (index) => {
+      const patch = calls[index]?.[1];
+      const result = results[index];
+      let outcome = result?.type === "throw" ? "threw" : "incomplete";
+      if (result?.type === "return") {
+        try {
+          const value = await result.value;
+          outcome =
+            value === "patched" ||
+            value === "missing" ||
+            value === "unsupported"
+              ? value
+              : "unknown";
+        } catch {
+          outcome = "rejected";
+        }
+      }
+      return {
+        requestAt: number(patch?.wake?.requestAt),
+        consumeRevision: number(patch?.wake?.consumeRevision),
+        updatedAt: number(patch?.set?.updatedAt),
+        outcome,
+      };
+    }),
+  );
+  return JSON.stringify({
+    clockNow: now,
+    dateNow: Date.now(),
+    updatedAt: number(task?.metadata?.updatedAt),
+    wakeAt: number(task?.metadata?.wakeAt),
+    wakeRevision: number(task?.metadata?.wakeRevision),
+    omittedWakeCalls: Math.max(0, indexes.length - 16),
+    producerCalls: producers.trace
+      .filter((row) => indexes.includes(row.callIndex))
+      .slice(-16)
+      .map(({ callIndex: _index, ...row }) => row),
+    omittedProducerCalls:
+      indexes.length -
+      producers.trace
+        .filter((row) => indexes.includes(row.callIndex))
+        .slice(-16).length,
+    wakeCalls,
+  });
+}
+
 it("committed create and snooze reconcile the same task, then deliver once at its due tick without idle full polling", async () => {
   const f = await createLifeOpsTestRuntime();
   const runtime = f.runtime;
@@ -271,7 +461,8 @@ it("committed create and snooze reconcile the same task, then deliver once at it
   const base = resolveLifeOpsTaskIntervalMs(runtime.agentId);
   let passes = 0,
     ticks = 0;
-  const patches = vi.spyOn(runtime, "patchTaskMetadata");
+  const producers = observeWakeProducers(runtime);
+  const { patches } = producers;
   const passTimes: number[] = [];
   try {
     const service = new LifeOpsService(runtime);
@@ -319,13 +510,14 @@ it("committed create and snooze reconcile the same task, then deliver once at it
     );
     const clock = {
       now: () => now,
-      setInterval: () => {
+      setTimeout: () => {
         throw Error("No second timer");
       },
-      clearInterval: () => {},
+      clearTimeout: () => {},
     };
     let scheduler = new TaskService(runtime, clock);
     const tick = async () => {
+      vi.setSystemTime(now);
       ticks++;
       const row = await runtime.getTask(taskId);
       if (row) await scheduler.runTick([row]);
@@ -351,7 +543,17 @@ it("committed create and snooze reconcile the same task, then deliver once at it
     now = Math.max(now, Date.now() + 1);
     await tick();
     expect(passes).toBe(2);
-    expect((await runtime.getTask(taskId))?.metadata?.wakeAt).toBe(newDue);
+    const reconciled = await runtime.getTask(taskId);
+    expect(
+      reconciled?.metadata?.wakeAt,
+      await wakeDiagnostics(
+        now,
+        reconciled,
+        patches.mock.calls,
+        patches.mock.results,
+        producers,
+      ),
+    ).toBe(newDue);
     scheduler = new TaskService(runtime, clock);
     for (now += 1000; now < newDue; now += 1000) await tick();
     expect(getRecordedTestNotifications(runtime)).toHaveLength(0);
@@ -480,6 +682,8 @@ it("quiet-blocked due work consumes its wake without a one-second retry loop", a
   const model = vi
     .spyOn(f.runtime, "useModel")
     .mockRejectedValue(Error("No inference"));
+  const producers = observeWakeProducers(f.runtime);
+  const { patches } = producers;
   let now = Date.now(),
     passes = 0;
   try {
@@ -524,12 +728,13 @@ it("quiet-blocked due work consumes its wake without a one-second retry loop", a
     });
     const scheduler = new TaskService(f.runtime, {
       now: () => now,
-      setInterval: () => {
+      setTimeout: () => {
         throw Error("No new clock");
       },
-      clearInterval: () => {},
+      clearTimeout: () => {},
     });
     const tick = async () => {
+      vi.setSystemTime(now);
       const row = await f.runtime.getTask(taskId);
       if (row) await scheduler.runTick([row]);
     };
@@ -546,9 +751,20 @@ it("quiet-blocked due work consumes its wake without a one-second retry loop", a
       now += 1000;
       await tick();
     }
-    expect(passes).toBe(1);
+    const settled = await f.runtime.getTask(taskId);
+    expect(
+      passes,
+      await wakeDiagnostics(
+        now,
+        settled,
+        patches.mock.calls,
+        patches.mock.results,
+        producers,
+      ),
+    ).toBe(1);
     expect(model).not.toHaveBeenCalled();
   } finally {
+    patches.mockRestore();
     model.mockRestore();
     await f.cleanup();
   }
@@ -850,6 +1066,27 @@ it("native owner creation and a current body edit deliver exact UTF text once th
       text: `In two minutes, remind me once in Eliza. Title: ${title}. Body: ${originalBody} Use my usual in-app and Android notifications.`,
     },
   };
+  const createPlan = {
+    mode: "create",
+    multiStep: false,
+    requestKind: "reminder",
+    nativeProjection: "in_app_only",
+    notificationMode: "default",
+    timeOfDay: null,
+    timeZone: null,
+    title,
+    description: originalBody,
+    cadenceKind: "once",
+    dueDate: null,
+    dueInDays: null,
+    dueWeekday: null,
+    dueInMinutes: 2,
+  };
+  const verifiedPlan = taskCreate.buildTaskCreatePlan(createPlan);
+  if (!verifiedPlan) throw new Error("Invalid reminder extraction fixture");
+  const extraction = vi
+    .spyOn(taskCreate, "extractTaskCreatePlanWithLlm")
+    .mockResolvedValue(verifiedPlan);
   try {
     await attestDeliveryAudienceFromCanonicalRoom(runtime, message);
     const ordinary = await service.createDefinition({
@@ -898,26 +1135,28 @@ it("native owner creation and a current body edit deliver exact UTF text once th
         name: "OWNER_REMINDERS_CREATE",
         params: {
           intent: message.content.text,
-          createPlan: {
-            mode: "create",
-            multiStep: false,
-            requestKind: "reminder",
-            nativeProjection: "in_app_only",
-            title,
-            description: originalBody,
-            cadenceKind: "once",
-            dueDate: null,
-            dueInDays: null,
-            dueWeekday: null,
-            dueInMinutes: 2,
-          },
+          createPlan,
         },
       },
     );
+    expect(extraction).toHaveBeenCalledOnce();
+    const verification = extraction.mock.calls[0]?.[0];
+    expect(verification?.intent).toBe(
+      `In two minutes, remind me once in Eliza. Title: ${title}. Body: Clock scope reminder QA, verification cdfaacf9. Résumé — café ☕; keep punctuation! Use my usual in-app and Android notifications.`,
+    );
+    expect(verification?.message?.id).toBe(message.id);
+    expect(verification?.message?.content.text).toBe(message.content.text);
     expect(created.success, JSON.stringify(created)).toBe(true);
-    const id = created.effectReceipts?.find(
+    const applied = created.effectReceipts?.find(
       (receipt) => receipt.operation === "lifeops.definition.create",
-    )?.resource.id;
+    );
+    expect(applied).toMatchObject({
+      outcome: "applied",
+      operation: "lifeops.definition.create",
+      resource: { kind: "lifeops.definition", id: expect.any(String) },
+      commit: { kind: "durable", id: expect.any(String) },
+    });
+    const id = applied?.resource.id;
     if (!id) throw Error("Missing durable create receipt");
     const saved = await service.getDefinitionRecord(id);
     expect(saved.definition.description).toBe(originalBody);
@@ -979,6 +1218,7 @@ it("native owner creation and a current body edit deliver exact UTF text once th
     emit.mockRestore();
     model.mockRestore();
   } finally {
+    extraction.mockRestore();
     await f.cleanup();
   }
 }, 120000);

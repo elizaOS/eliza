@@ -43,6 +43,8 @@ separately owned production service, so it stays off unless the host sets
 with `CALENDAR_MANAGED_DELETE_UNAVAILABLE` before an owner review is queued, and
 the mutation port refuses it again before any host call.
 
+Managed reads cache verified Google events in the canonical imported-event store for selected reads. Only mapped changes reconcile existing Eliza records; reading an unlinked Google event does not create an Eliza event. Removing imported data drains admitted reads for that managed grant. A later read can import again while the source remains enabled. A shared wire ID that conflicts with a stored owner or source fails closed; selected and wire IDs are not renamed.
+
 ## Phone and browser Calendar controllers
 
 Browser-safe, erasable-TypeScript controllers for device and browser hosts:
@@ -75,3 +77,18 @@ Browser-safe, erasable-TypeScript controllers for device and browser hosts:
   revisions, the exact result is confirmed and re-read before sharing, free,
   cancelled and declined entries are never busy, and any stale or unknown read
   shares nothing.
+
+### Visible-day observation
+
+`@elizaos/plugin-calendar/client/day-observation` projects a committed canonical day
+view into the shared current-turn Calendar-day contract. It refuses month/event/editor
+views, unready or mutating snapshots and stale owners, and performs civil-day arithmetic
+in the supplied time zone. The application supplies current visibility and owner facts;
+this hint contains no event contents and authorizes no read or mutation.
+
+`CalendarWorkspace` is the controlled day/week/month renderer used by the main
+Calendar section and mobile consumers. The host supplies the current feed,
+source state, navigation and explicit open/create callbacks; it owns authority,
+retained forms and mutations. `CalendarSection` binds the canonical client and
+existing event editor. The shared `@elizaos/ui/styles/mobile-workspaces.css`
+export supplies scoped utilities without an application reset or brand identity.

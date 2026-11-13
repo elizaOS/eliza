@@ -15,7 +15,7 @@ bun run --cwd plugins/plugin-native-system build  # build
 
 ## Android device verification
 
-From the repository root, run `node packages/app/scripts/android-native-plugins.ts --serial <emulator> --plugin plugin-native-system --system-controls` on an isolated stock emulator without the user app. This verifies real brightness and music-volume changes, clamping, permission denial/revocation, and restoration against Android settings and AudioManager. A second instrumentation process verifies recovery of persisted original settings after the first process exits with changes outstanding. Reports include bridge receipts and native observations. Home/SMS/assistant role flows and physical-device behavior require separate coverage.
+From the repository root, run `bun packages/app/scripts/android-native-plugins.ts --serial <emulator> --plugin plugin-native-system --system-controls` on an isolated stock emulator without the user app. This verifies real brightness and music-volume changes, clamping, permission denial/revocation, and restoration against Android settings and AudioManager. A second instrumentation process verifies recovery of persisted original settings after the first process exits with changes outstanding. Reports include bridge receipts and native observations. Home/SMS/assistant role flows and physical-device behavior require separate coverage.
 
 The installed-app hosted lane (`ELIZA_ANDROID_BACKEND=host node
 packages/app/scripts/android-e2e.ts --serial <emulator> --build --skip-local-chat
@@ -109,6 +109,10 @@ cannot enable or resume capture. The native `SenseListenerClient` verifies the
 listener package, matching signer and control permission. Settings metadata is
 read only from that admitted APK; the target must be an enabled exported
 activity in the same package and UID. Hosts may keep a legacy bridge-name alias.
+
+Pause and Turn off return a successful receipt only after the companion confirms
+the save and reports both listening and microphone capture stopped. A missing or
+inconsistent acknowledgement leaves the action unconfirmed. Status is for display.
 
 `createSenseInvocationController` binds an opaque digest of the current
 authenticated owner/agent/session tuple before consuming native invocations.
@@ -283,9 +287,9 @@ A host builds one `DataReset` with its installed identities and shares it:
   it revokes each registered environment's saved key on an interrupted daemon
   worker, capped at 8 seconds.
 - The same-signer image listener (`SenseListenerClient.resetForData()`) must
-  acknowledge first. An installed listener that does not durably acknowledge
-  consent revocation keeps the marker and all app data; an absent listener is
-  safe to reset.
+  confirm durable consent revocation and microphone release before reset. Until
+  the listener confirms both, the pending marker and app data are kept. An
+  absent listener allows the reset to proceed.
 - The failure record keeps the last failed attempt's outcome, so the recovery
   screen explains what actually happened (Android refused the clear, or the
   listener did not acknowledge) rather than guessing from the listener's
@@ -364,7 +368,29 @@ operation's days in any order, sorts and de-duplicates them, and reads an empty
 list as a one-time alarm. `explicit` keeps a reviewed request's order.
 `clock.ClockProfile` names what a host advertises: `HANDOFF_ONLY`
 (`clock.handoff.v1,clock.handoff.v2`, Android Clock owns alarms) or
-`OWNED_ALARMS` (`clock.alarms.v1`, the Eliza app's `ElizaAlarms`). A host that
+`OWNED_ALARMS` (`clock.alarms.v1`, a host-owned alarm store). A host that
 leaves `OWNED_ALARMS` must also choose a `SavedAlarms` path for alarms it
-already saved. `test/clock.test.mjs` runs on a host JVM; real Clock apps need
+already saved. The Eliza app is `HANDOFF_ONLY` and takes `HAND_OFF_TO_CLOCK`
+for the alarms it saved earlier. `test/clock.test.mjs` runs on a host JVM; real Clock apps need
 an instrumented run.
+
+### Voice entry policy
+
+`createSenseInvocationController` accepts an optional `SenseVoiceEntryPolicy`. Pass
+`CONVERSATION_ONLY_VOICE_ENTRY` for a chat-only application: external events do not bind,
+consume or start a voice session. `ASSISTANT_INVOCATION_VOICE_ENTRY` preserves the existing
+assistant-entry behavior and remains the default for existing callers. Policy selection
+is application behavior, not branding. A host adopting chat-only mode must separately
+request the native listener's `turnOff` and report an unconfirmed stop; this controller
+does not claim to stop a previously running listener.
+
+`mobileVoiceEntryPolicy(aosp)` applies the same mobile default to every product:
+conversation-only outside the admitted AOSP lane, existing native-verified
+invocation handling within it. It never enables or resumes the listener, and
+listener consent does not replace the separate native system/Power receipt rules.
+
+Chat-only native hosts call `stopSenseListenerForChatOnly` separately from the
+inert invocation controller. It waits at most five seconds and accepts only a
+raw available/OFF/listening-false/microphone-closed receipt; missing or contradictory
+fields stay unconfirmed. Hosts display that failure and may retry the same stop.
+The helper never requests consent, enables or resumes the listener.

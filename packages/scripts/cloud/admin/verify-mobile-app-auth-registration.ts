@@ -5,7 +5,10 @@
  * the Worker is live. Database credentials are accepted only through env.
  */
 import pg from "pg";
-import { selectRegisteredMobileClient } from "../../../cloud/shared/src/lib/services/mobile-client-registry.ts";
+import {
+  parseRegisteredMobileClients,
+  selectRegisteredMobileClient,
+} from "../../../cloud/shared/src/lib/services/mobile-client-registry.ts";
 
 const { Client } = pg;
 
@@ -59,6 +62,8 @@ export interface MobileAppAuthRegistrationRow {
   is_approved: boolean;
   organization_exists: boolean;
   organization_is_active: boolean;
+  publisher_registered?: boolean;
+  publisher_member_count?: number;
   creator_exists: boolean;
   creator_is_active: boolean;
   creator_matches_organization: boolean;
@@ -91,6 +96,8 @@ SELECT app.id::text,
        app.is_approved,
        organization.id IS NOT NULL AS organization_exists,
        COALESCE(organization.is_active, FALSE) AS organization_is_active,
+       publisher.organization_id IS NOT NULL AS publisher_registered,
+       (SELECT count(*)::integer FROM users member WHERE member.organization_id = app.organization_id) AS publisher_member_count,
        creator.id IS NOT NULL AS creator_exists,
        COALESCE(creator.is_active AND creator.deleted_at IS NULL, FALSE) AS creator_is_active,
        COALESCE(creator.organization_id = app.organization_id, FALSE) AS creator_matches_organization,
@@ -99,15 +106,13 @@ SELECT app.id::text,
        generated_key.id IS NULL AS api_key_row_absent,
        COALESCE(NOT generated_key.is_active AND generated_key.deleted_at IS NOT NULL, FALSE)
          AS api_key_row_revoked,
-       COALESCE(
-         generated_key.organization_id = app.organization_id
-           AND generated_key.user_id = app.created_by_user_id,
-         FALSE
-       ) AS api_key_ownership_matches,
+       COALESCE(generated_key.organization_id = app.organization_id, FALSE)
+         AS api_key_ownership_matches,
        (SELECT count(*)::integer FROM matching_registrations)
          AS matching_active_approved_registration_count
   FROM apps AS app
   LEFT JOIN organizations AS organization ON organization.id = app.organization_id
+  LEFT JOIN native_app_publishers AS publisher ON publisher.organization_id = app.organization_id
   LEFT JOIN users AS creator ON creator.id = app.created_by_user_id
   LEFT JOIN api_keys AS generated_key ON generated_key.id = app.api_key_id
  WHERE app.id = $1::uuid
@@ -311,6 +316,7 @@ export function validateMobileAppAuthRegistrationRow(
   row: MobileAppAuthRegistrationRow | undefined,
   expectedAppId: string,
   target: MobileAppAuthRegistrationTarget = PRIMARY_MOBILE_APP_AUTH_TARGET,
+  options: { requirePublisher?: boolean } = {},
 ): void {
   if (!row) {
     fail(
@@ -349,18 +355,17 @@ export function validateMobileAppAuthRegistrationRow(
       "The mobile App Auth registration organization must exist and be active",
     );
   }
-  if (!row.creator_exists || !row.creator_is_active) {
-    fail("The mobile App Auth registration creator must exist and be active");
-  }
-  if (!row.creator_matches_organization) {
+  if (
+    (options.requirePublisher || row.publisher_registered) &&
+    (!row.publisher_registered || row.publisher_member_count !== 0)
+  ) {
     fail(
-      "The mobile App Auth registration creator must belong to its organization",
+      "The mobile App Auth registration requires a memberless native app publisher",
     );
   }
-  if (row.creator_role !== "owner" && row.creator_role !== "admin") {
-    fail("The mobile App Auth registration creator must be an owner or admin");
-  }
-  if (!row.has_api_key_id) {
+  // The organization owns the registration. Its creator is audit metadata:
+  // leaving that organization or deleting that user cannot disable the product.
+  if (!row.has_api_key_id && !row.publisher_registered) {
     fail(
       "The mobile App Auth registration must retain its generated key reference",
     );
@@ -370,7 +375,7 @@ export function validateMobileAppAuthRegistrationRow(
     (!row.api_key_row_revoked || !row.api_key_ownership_matches)
   ) {
     fail(
-      "The mobile App Auth registration generated key must be absent or revoked for the same owner",
+      "The mobile App Auth registration generated key must be absent or revoked for the same organization",
     );
   }
   if (row.matching_active_approved_registration_count !== 1) {
@@ -667,18 +672,96 @@ export async function verifyDatabaseMobileAppAuthRegistration(
   validateMobileAppAuthRegistrationRow(row, appId, target);
 }
 
+/** The complete declared release surface; disabled entries are not live clients. */
+export function resolveMobileAppAuthReleaseRegistrations(
+  primaryAppId: unknown,
+  registry: unknown,
+  environment: unknown,
+): Array<{ appId: string; target: MobileAppAuthRegistrationTarget }> {
+  requireMobileAppAuthEnvironment(environment);
+  const primary = requireMobileAppAuthAppId(primaryAppId);
+  const parsed = parseRegisteredMobileClients(
+    registry === undefined || registry === "" ? "[]" : registry,
+    {
+      clientId: MOBILE_APP_AUTH_CLIENT_ID,
+      appId: primary,
+      redirectUri: MOBILE_APP_AUTH_REDIRECT_URI,
+    },
+  );
+  if (!parsed.ok) fail("Invalid server mobile client registry");
+  return [
+    { appId: primary, target: PRIMARY_MOBILE_APP_AUTH_TARGET },
+    ...parsed.registrations
+      .filter((entry) => entry.enabled)
+      .map((entry) =>
+        resolveMobileAppAuthRegistrationSelection(
+          entry.clientId,
+          environment,
+          registry,
+          primary,
+        ),
+      ),
+  ];
+}
+
+/** Release gates check every client from the same protected source that is deployed.
+ * These ports let the existing database and HTTP fixture tests exercise the whole
+ * gate. No registration, UUID, or registry contents are logged. */
+export async function verifyMobileAppAuthReleaseRegistrations(
+  input: {
+    primaryAppId: unknown;
+    registry: unknown;
+    environment: unknown;
+    databaseUrl?: string;
+    verifyLive?: boolean;
+  },
+  ports: {
+    database?: typeof verifyDatabaseMobileAppAuthRegistration;
+    fetch?: MobileAppAuthFetch;
+  } = {},
+): Promise<void> {
+  const environment = requireMobileAppAuthEnvironment(input.environment);
+  const registrations = resolveMobileAppAuthReleaseRegistrations(
+    input.primaryAppId,
+    input.registry,
+    environment,
+  );
+  for (const { appId, target } of registrations) {
+    if (input.databaseUrl !== undefined)
+      await (ports.database ?? verifyDatabaseMobileAppAuthRegistration)(
+        input.databaseUrl,
+        appId,
+        target,
+      );
+    if (input.verifyLive)
+      await verifyLiveMobileAppAuthConfig(
+        environment,
+        ports.fetch ?? fetch,
+        true,
+        target,
+      );
+  }
+}
+
 interface CliOptions {
   skipDatabase: boolean;
   verifyLive: boolean;
+  allClients: boolean;
 }
 
 function parseOptions(args: string[]): CliOptions {
-  const options: CliOptions = { skipDatabase: false, verifyLive: false };
+  const options: CliOptions = {
+    skipDatabase: false,
+    verifyLive: false,
+    allClients: false,
+  };
   for (const arg of args) {
     if (arg === "--skip-database") {
       options.skipDatabase = true;
     } else if (arg === "--verify-live") {
       options.verifyLive = true;
+    } else if (arg === "--all-clients") {
+      options.allClients = true;
     } else {
       return fail(`Unknown argument: ${arg}`);
     }
@@ -704,6 +787,26 @@ async function main(): Promise<void> {
   const environment = readEnvironmentVariable(
     "ELIZA_MOBILE_APP_AUTH_ENVIRONMENT",
   );
+  if (options.allClients && clientId && clientId !== MOBILE_APP_AUTH_CLIENT_ID)
+    fail("--all-clients cannot select one target client");
+  if (enabled && options.allClients) {
+    const databaseUrl = options.skipDatabase
+      ? undefined
+      : readEnvironmentVariable("DATABASE_URL");
+    if (!options.skipDatabase && !databaseUrl)
+      fail("DATABASE_URL is required for the mobile App Auth preflight");
+    await verifyMobileAppAuthReleaseRegistrations({
+      primaryAppId,
+      registry,
+      environment,
+      databaseUrl,
+      verifyLive: options.verifyLive,
+    });
+    console.log(
+      "[MobileAppAuthPreflight] All enabled mobile registrations are valid.",
+    );
+    return;
+  }
   const selection =
     enabled && !options.skipDatabase
       ? resolveMobileAppAuthRegistrationSelection(

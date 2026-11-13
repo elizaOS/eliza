@@ -6,6 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  RESIDENT_HELPER_DEPENDENCIES,
   RESIDENT_HOST_CLASSES,
   RESIDENT_HOST_HELPERS,
   RESIDENT_NOTIFICATION_CLASSES,
@@ -38,6 +39,7 @@ const identity = (overrides = {}) => ({
   },
   notification: {
     smallIcon: "notification_icon",
+    primaryAction: "restart",
     color: "0xff0000ff",
     strings,
   },
@@ -107,10 +109,22 @@ test("every current resident anchor matches and the host identity replaces the u
     agent.split("HostAgentEnvironment.configure(this, agentEnv);").length,
     2,
   );
+  assert.match(
+    agent,
+    /private boolean startAgentProcess\(boolean allowAdoption\)/,
+  );
+  assert.match(
+    agent,
+    /HostAgentEnvironment\.configure\(this, agentEnv\);[^\n]*return false;/,
+  );
   assert.equal(agent.split(".setColor(0xff0000ff)").length, 3);
   for (const [, anchor] of RESIDENT_NOTIFICATION_STRINGS)
     assert.ok(!agent.includes(anchor), anchor);
   assert.ok(agent.includes("getString(R.string.host_runtime_channel_name)"));
+  assert.ok(agent.includes("getString(R.string.host_runtime_generic_detail)"));
+  // The notification never shows a raw internal status.
+  assert.doesNotMatch(agent, /text\s*=\s*currentStatus/);
+  assert.ok(agent.includes('NOTIFICATION_PRIMARY_ACTION = "restart";'));
   const connection = fs.readFileSync(
     path.join(
       output,
@@ -129,11 +143,12 @@ test("optional presentation keeps upstream text while sockets and the secure-sto
     "ElizaAgentService",
     service(),
     identity({
-      notification: { smallIcon: "notification_icon" },
+      notification: { smallIcon: "notification_icon", primaryAction: "stop" },
       environmentHook: null,
     }),
   );
   assert.ok(text.includes('"Eliza agent · Running"'));
+  assert.ok(text.includes('NOTIFICATION_PRIMARY_ACTION = "stop";'));
   assert.doesNotMatch(text, /setColor|HostAgentEnvironment/);
   assert.ok(text.includes('"example.host.secure-store"'));
   assert.ok(text.includes('"example.host.agent.v1"'));
@@ -148,6 +163,7 @@ test("a changed anchor fails closed instead of producing a partly branded servic
       /insertion point changed/,
     ],
     [".setSmallIcon(R.mipmap.ic_launcher)", /notification builders/],
+    ['NOTIFICATION_PRIMARY_ACTION = "stop";', /notification action/],
   ]) {
     const changed = source.replace(anchor, "/* reviewed upstream change */");
     assert.notEqual(changed, source, anchor);
@@ -183,7 +199,7 @@ test("lifecycle hooks wrap the one root publication and follow every running pat
     text.split(
       'currentStatus = "running"; HostNotifications.resume(getApplicationContext());',
     ).length,
-    5,
+    3,
   );
   // Without hooks the upstream lifecycle is unchanged.
   const plain = rewriteResidentClass(
@@ -308,6 +324,9 @@ test("identity mappings are complete, distinct and never reuse the upstream iden
     (value) => (value.notification.color = "#0000ff"),
     (value) => (value.notification.smallIcon = "Icon"),
     (value) => delete value.notification.strings.runningDetail,
+    (value) => delete value.notification.strings.genericDetail,
+    (value) => delete value.notification.primaryAction,
+    (value) => (value.notification.primaryAction = "disconnect"),
     (value) => (value.environmentHook.method = "configure()"),
     (value) => (value.environmentHook.unavailableStatus = "$&"),
     (value) => (value.notification.channelLabel = "Host\nalerts"),
@@ -414,4 +433,48 @@ test("a host selects shared plugin helpers as data: reviewed rewrites apply, oth
     undefined,
   ])
     assert.throws(() => residentHelperKind(relative), ResidentHostSourceError);
+});
+
+test("a helper is staged only with the helpers it compiles against", (t) => {
+  const browser =
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface";
+  const connection = `${browser}/ChromiumBrowserConnection.java`;
+  const needs = RESIDENT_HELPER_DEPENDENCIES[connection];
+  assert.deepEqual(needs, [
+    `${browser}/ChromiumBindingDemand.java`,
+    `${browser}/ChromiumBrowserIdentity.java`,
+  ]);
+  // Every declared dependency is a real helper source the connection refers to.
+  const source = fs.readFileSync(path.join(upstreamRoot, connection), "utf8");
+  for (const dependency of needs) {
+    assert.ok(fs.existsSync(path.join(upstreamRoot, dependency)));
+    assert.match(
+      source,
+      new RegExp(`\\b${path.basename(dependency, ".java")}\\b`),
+    );
+  }
+  const root = temporary(t);
+  for (const missing of needs) {
+    const output = path.join(root, path.basename(missing, ".java"));
+    assert.throws(
+      () =>
+        stageResidentHostSources({
+          sourceRoot: upstreamRoot,
+          output,
+          identity: identity(),
+          helpers: [connection, ...needs.filter((name) => name !== missing)],
+        }),
+      (error) =>
+        error instanceof ResidentHostSourceError &&
+        error.message.includes(missing),
+    );
+    assert.equal(fs.existsSync(output), false);
+  }
+  const result = stageResidentHostSources({
+    sourceRoot: upstreamRoot,
+    output: path.join(root, "complete"),
+    identity: identity(),
+    helpers: [connection, ...needs],
+  });
+  assert.equal(result.files.length, RESIDENT_HOST_CLASSES.length + 3);
 });

@@ -15,7 +15,7 @@
  *   - when `--expected-sha` is given, the served commit equals it exactly.
  *
  * Usage:
- *   node packages/cloud/scripts/release-authority-drift.ts \
+ *   bun packages/cloud/scripts/release-authority-drift.ts \
  *     --environment staging \
  *     [--expected-sha <40-hex>] \
  *     [--output <report.json>]

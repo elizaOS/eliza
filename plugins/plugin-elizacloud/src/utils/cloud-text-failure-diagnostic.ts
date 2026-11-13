@@ -39,6 +39,15 @@ const parameter = (v: unknown) =>
 	)
 		? v
 		: undefined;
+// Exact gateway standing reasons, never arbitrary provider detail or auth-layer attribution.
+const authReasons = new Set([
+	"credential_invalid",
+	"credential_inactive",
+	"account_inactive",
+	"organization_inactive",
+	"membership_missing",
+	"moderation_blocked",
+]);
 export function readCloudTextFailureDiagnostic(
 	response: Response,
 	body: unknown,
@@ -52,6 +61,7 @@ export function readCloudTextFailureDiagnostic(
 				: typeof top.error === "string"
 					? top.error
 					: "";
+	const authReason = record(error.details).reason;
 	const trace = response.headers.get("x-eliza-trace-id");
 	const model =
 		typeof request.model === "string" &&
@@ -71,6 +81,11 @@ export function readCloudTextFailureDiagnostic(
 					: "absent",
 		code: machine(error.code ?? top.code),
 		type: machine(error.type ?? top.type),
+		...((response.status === 401 || response.status === 403) &&
+		typeof authReason === "string" &&
+		authReasons.has(authReason)
+			? { authReason }
+			: {}),
 		param: parameter(error.param ?? top.param),
 		validationIssues: (Array.isArray(record(error.details).issues)
 			? (record(error.details).issues as unknown[])

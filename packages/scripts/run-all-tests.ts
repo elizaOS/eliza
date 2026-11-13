@@ -261,7 +261,7 @@ const planFormat = planFlag || "text";
 if (helpFlag) {
   process.stdout.write(
     [
-      "Usage: node packages/scripts/run-all-tests.ts [options]",
+      "Usage: bun packages/scripts/run-all-tests.ts [options]",
       "",
       "Options:",
       "  --no-cloud           Skip cloud package tasks and the final cloud test step.",
@@ -806,7 +806,7 @@ function isSingleVitestWrapperCommand(command) {
   if (/[;&|]/.test(commandWithoutEnv)) {
     return false;
   }
-  return /^node\s+(?:\.\.\/)+scripts\/run-vitest\.ts\s+run\b/.test(
+  return /^(?:bun|node)\s+(?:\.\.\/)+scripts\/run-vitest\.ts\s+run\b/.test(
     commandWithoutEnv,
   );
 }
@@ -814,7 +814,7 @@ function isSingleVitestWrapperCommand(command) {
 function isSingleVitestBatchWrapperCommand(command) {
   // The agent's mobile-entry preflight must succeed before its final batch
   // runner receives the JUnit arguments appended to the package command.
-  return /^(?:bun\s+run\s+test:mobile-workspace-entry\s+&&\s+)?node\s+scripts\/run-vitest-batches\.ts$/.test(
+  return /^(?:bun\s+run\s+test:mobile-workspace-entry\s+&&\s+)?(?:bun|node)\s+scripts\/run-vitest-batches\.ts$/.test(
     stripLeadingEnvAssignments(command),
   );
 }
@@ -838,14 +838,14 @@ function unwrapKnownBunTestSupervisors(command) {
   let current = stripLeadingEnvAssignments(command);
   for (let depth = 0; depth < 3; depth += 1) {
     const flakeRetry = current.match(
-      /^node\s+(?:\.\.\/)+packages\/scripts\/run-with-flake-retry\.ts\s+(?:'[^']*'|"[^"]*"|\S+)\s+--\s+(.+)$/,
+      /^(?:bun|node)\s+(?:\.\.\/)+packages\/scripts\/run-with-flake-retry\.ts\s+(?:'[^']*'|"[^"]*"|\S+)\s+--\s+(.+)$/,
     );
     if (flakeRetry) {
       current = flakeRetry[1];
       continue;
     }
     const deadline = current.match(
-      /^node\s+(?:\.\.\/)+packages\/scripts\/run-with-deadline\.ts\s+[1-9]\d*\s+--\s+(.+)$/,
+      /^(?:bun|node)\s+(?:\.\.\/)+packages\/scripts\/run-with-deadline\.ts\s+[1-9]\d*\s+--\s+(.+)$/,
     );
     if (deadline) {
       current = deadline[1];
@@ -857,7 +857,7 @@ function unwrapKnownBunTestSupervisors(command) {
 }
 
 function isSingleIsolatedBunTestWrapperCommand(command) {
-  return /^node\s+(?:scripts|(?:\.\.\/)+packages\/scripts\/plugins\/plugin-workflow)\/run-isolated-tests\.ts$/.test(
+  return /^(?:bun|node)\s+(?:scripts|(?:\.\.\/)+packages\/scripts\/plugins\/plugin-workflow)\/run-isolated-tests\.ts$/.test(
     unwrapKnownBunTestSupervisors(command),
   );
 }

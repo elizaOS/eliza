@@ -233,6 +233,15 @@ export interface CreditReservation {
 }
 
 export interface CreditReconciliationResult {
+  /** Produced only after the canonical admission's backing and gate effects complete. */
+  terminalReceipt?: Readonly<{
+    version: 1;
+    organizationId: string;
+    requestId: string;
+    amountUsd: string;
+    mode: string;
+    status: "canonical_completed" | "funded_persisted";
+  }>;
   reservedAmount: number;
   actualCost: number;
   /**
@@ -1147,11 +1156,9 @@ export class CreditsService {
    * observed aggregate with request-scoped `waitUntil`; non-Worker callers
    * await the same aggregate. The periodic durable sweep remains the auto-top-up
    * recovery backstop if a Worker reaches its post-response time limit. Exposed
-   * (not inlined) so EVERY debit path stays at parity: the synchronous reserve
-   * calls it here, and the optimistic inference ledger
-   * (`inference-billing-ledger.ts`), which mutates the balance with its own
-   * transactional SQL rather than through `deductCredits`, calls it after a
-   * successful debit so its orgs still get low-balance warnings.
+   * (not inlined) so every debit path, including ones that mutate the balance
+   * with their own transactional SQL rather than through `deductCredits`, can
+   * raise the same low-balance warnings.
    */
   async notifyBalanceDecrease(
     organizationId: string,
@@ -2617,22 +2624,26 @@ export class CreditsService {
       capHit: false,
     };
 
-    // A hold this run could not settle keeps `settled_at` null, so it would be
-    // selected again by every later batch and, once a full batch of such holds
-    // exists, by every later run; newer holds behind it would never settle.
-    // Each run excludes the holds it has already skipped.
-    const skipped: string[] = [];
+    // Advance past every visited row, including failed settlements. This keeps
+    // each batch query bounded instead of growing a NOT IN list of failed IDs.
+    // Keep PostgreSQL's full timestamp precision; a JavaScript Date would truncate
+    // microseconds and revisit rows tied within one millisecond. A new cron run
+    // starts from the beginning so failed reservations remain retryable.
+    let cursor: { createdAt: string; id: string } | null = null;
+    type StaleReservationRow = {
+      id: string;
+      organization_id: string;
+      amount: string | number;
+      description: string | null;
+      metadata: Record<string, unknown> | string | null;
+      cursor_created_at: string;
+    };
     for (let batch = 0; batch < maxBatches; batch++) {
-      const rows = await sqlRows<{
-        id: string;
-        organization_id: string;
-        amount: string | number;
-        description: string | null;
-        metadata: Record<string, unknown> | string | null;
-      }>(
+      const rows: StaleReservationRow[] = await sqlRows<StaleReservationRow>(
         dbWrite,
         sql`
-          SELECT id, organization_id, amount, description, metadata
+          SELECT id, organization_id, amount, description, metadata,
+                 created_at::text AS cursor_created_at
           FROM credit_transactions
           WHERE type = 'debit'
             AND (
@@ -2651,14 +2662,11 @@ export class CreditsService {
             AND settled_at IS NULL
             AND created_at < NOW() - (${String(graceMs)} || ' milliseconds')::interval
             ${
-              skipped.length
-                ? sql`AND id NOT IN (${sql.join(
-                    skipped.map((id) => sql`${id}`),
-                    sql`, `,
-                  )})`
+              cursor
+                ? sql`AND (created_at, id) > (${cursor.createdAt}::timestamp, ${cursor.id}::uuid)`
                 : sql``
             }
-          ORDER BY created_at ASC
+          ORDER BY created_at ASC, id ASC
           LIMIT ${batchSize}
         `,
       );
@@ -2667,14 +2675,13 @@ export class CreditsService {
       stats.scanned += rows.length;
 
       for (const row of rows) {
-        const settledBefore = stats.settled;
-        const reservedAmount = Math.abs(parseNumeric(row.amount, "reservation_amount"));
-        const reservationMetadata = parseMetadata(row.metadata);
-        const description = (row.description ?? "Credit reservation").replace(
-          /\s+\(reserved\)$/,
-          "",
-        );
         try {
+          const reservedAmount = Math.abs(parseNumeric(row.amount, "reservation_amount"));
+          const reservationMetadata = parseMetadata(row.metadata);
+          const description = (row.description ?? "Credit reservation").replace(
+            /\s+\(reserved\)$/,
+            "",
+          );
           // App-chat holds must settle through the app-credits lane — the SAME
           // lane the route's late settle uses — never the generic reconcile
           // below (#11683): the generic lane keys its refund on
@@ -2733,12 +2740,11 @@ export class CreditsService {
             organizationId: row.organization_id,
             error: error instanceof Error ? error.message : String(error),
           });
-        } finally {
-          // Every row this run did not settle, whichever branch it took.
-          if (stats.settled === settledBefore) skipped.push(row.id);
         }
       }
 
+      const last = rows[rows.length - 1];
+      cursor = { createdAt: last.cursor_created_at, id: last.id };
       if (rows.length < batchSize) break;
       if (batch === maxBatches - 1) stats.capHit = true;
     }

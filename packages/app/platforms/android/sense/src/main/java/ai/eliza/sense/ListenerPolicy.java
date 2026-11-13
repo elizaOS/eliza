@@ -149,6 +149,9 @@ public final class ListenerPolicy {
   }
  }
 
+ /** The user can pause now: the notification, tile and settings offer Pause in exactly these states. */
+ public static boolean pausable(State state){return foreground(state)&&state!=State.PAUSED_USER;}
+
  /** States the user should be told about although nothing is captured. */
  public static boolean needsAttention(State state){
   return state==State.PERMISSION_REQUIRED||state==State.NOTIFICATIONS_REQUIRED||state==State.STOPPED_AFTER_ERRORS||state==State.WAITING_FOR_UNLOCK||state==State.SPEECH_UNAVAILABLE

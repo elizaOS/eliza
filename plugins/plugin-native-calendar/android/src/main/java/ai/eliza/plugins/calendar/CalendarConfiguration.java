@@ -4,7 +4,14 @@ package ai.eliza.plugins.calendar;
 public final class CalendarConfiguration {
  public final String accountName, localCalendarName, displayName, journalName, creationUriPrefix;
  public final int color;
+ /** Zero keeps complete reads; a positive host bound reports truncation explicitly. */
+ public final int maximumReadEvents;
  public CalendarConfiguration(String accountName,String localCalendarName,String displayName,String journalName,String creationUriPrefix,int color) {
+  this(accountName,localCalendarName,displayName,journalName,creationUriPrefix,color,0);
+ }
+ public CalendarConfiguration(String accountName,String localCalendarName,String displayName,String journalName,String creationUriPrefix,int color,int maximumReadEvents) {
+  if(maximumReadEvents<0)throw new IllegalArgumentException("Invalid calendar read bound");
+  this.maximumReadEvents=maximumReadEvents;
   this.accountName=text(accountName);this.localCalendarName=text(localCalendarName);this.displayName=text(displayName);
   if(journalName==null||!journalName.matches("[A-Za-z0-9_-]{1,128}"))throw new IllegalArgumentException("Invalid calendar journal name");
   android.net.Uri uri=android.net.Uri.parse(text(creationUriPrefix));

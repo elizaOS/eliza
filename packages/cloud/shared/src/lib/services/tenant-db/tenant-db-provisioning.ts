@@ -22,7 +22,11 @@ export interface TenantDbProvisioning {
    * (not deprovisioned) for a shared/unknown DSN. Requires the deprovision deps
    * to be wired (throws a clear error otherwise).
    */
-  deprovisionForApp(appId: string, dsn: string): Promise<TenantDbDeprovisionResult>;
+  deprovisionForApp(
+    appId: string,
+    dsn: string,
+    authority?: { originalClusterId: string; retainPlacement: true },
+  ): Promise<TenantDbDeprovisionResult>;
 }
 
 /** A per-cluster provisioner (the U2 `SqlTenantDbProvisioner` shape). */
@@ -79,7 +83,11 @@ export class SqlTenantDbProvisioning implements TenantDbProvisioning {
     return { dsn: result.dsn, clusterId: cluster.id };
   }
 
-  async deprovisionForApp(appId: string, dsn: string): Promise<TenantDbDeprovisionResult> {
+  async deprovisionForApp(
+    appId: string,
+    dsn: string,
+    authority?: { originalClusterId: string; retainPlacement: true },
+  ): Promise<TenantDbDeprovisionResult> {
     const { resolveClusterByHost, releaseSlot } = this.deps;
     if (!resolveClusterByHost || !releaseSlot) {
       throw new Error(
@@ -91,13 +99,18 @@ export class SqlTenantDbProvisioning implements TenantDbProvisioning {
       resolveClusterByHost: async (host) => {
         const cluster = await resolveClusterByHost(host);
         if (!cluster) return null;
+        if (authority && cluster.id !== authority.originalClusterId) {
+          throw new Error("Original app database cluster identity changed");
+        }
         resolvedClusterId = cluster.id;
         return { id: cluster.id, adminDsn: await this.deps.decrypt(cluster.adminDsnEncrypted) };
       },
       makeDeprovisioner: (adminDsn, host) => this.deps.makeProvisioner({ host }, adminDsn),
-      releaseSlot,
+      // Durable app deletion settles placement and capacity together in the
+      // control DB. Provider existence is never capacity-release authority.
+      releaseSlot: authority ? async () => {} : releaseSlot,
     });
-    if (result.deprovisioned && resolvedClusterId && this.deps.clearPlacement) {
+    if (!authority && result.deprovisioned && resolvedClusterId && this.deps.clearPlacement) {
       await this.deps.clearPlacement(appId, resolvedClusterId);
     }
     return result;
