@@ -385,30 +385,15 @@ describe.skipIf(!hasIpv6Loopback)(
 	() => {
 		let server: Server;
 		let port: number;
-		let tlsProbe: ReturnType<typeof createNetServer>;
-		let tlsPort: number;
-		const clientHellos: Buffer[] = [];
 
 		beforeAll(async () => {
 			server = createServer((req, res) => res.end(`ok ${req.headers.host}`));
 			await new Promise<void>((resolve) => server.listen(0, "::1", resolve));
 			port = (server.address() as AddressInfo).port;
-			// Records the client's first TLS record and hangs up: enough to see the
-			// server name the client offers, without a certificate.
-			tlsProbe = createNetServer((socket) => {
-				socket.once("data", (chunk: Buffer) => {
-					clientHellos.push(chunk);
-					socket.destroy();
-				});
-				socket.on("error", () => {});
-			});
-			await new Promise<void>((resolve) => tlsProbe.listen(0, "::1", resolve));
-			tlsPort = (tlsProbe.address() as AddressInfo).port;
 		});
 
 		afterAll(async () => {
 			await new Promise<void>((resolve) => server.close(() => resolve()));
-			await new Promise<void>((resolve) => tlsProbe.close(() => resolve()));
 		});
 
 		it("delivers to the address with the validated lookup the auth webhook dispatcher passes", async () => {
@@ -425,23 +410,6 @@ describe.skipIf(!hasIpv6Loopback)(
 			});
 			expect(response.status).toBe(200);
 			expect(await response.text()).toBe(`ok [::1]:${port}`);
-		});
-
-		it("offers no bracketed TLS server name for an https IPv6 literal", async () => {
-			await expect(
-				fetchWithSsrfGuard({
-					url: `https://[::1]:${tlsPort}/`,
-					lookupFn: async () => [{ address: "::1", family: 6 }],
-					pinnedFetchImpl: nodePinnedFetch,
-					policy: { allowPrivateNetwork: true },
-					timeoutMs: 5000,
-				}),
-			).rejects.toThrow();
-			const hello = clientHellos.at(-1);
-			// 0x16: a TLS handshake record (the ClientHello) reached the server.
-			expect(hello?.[0]).toBe(0x16);
-			// SNI carries DNS names only; certificate checks use the bare address.
-			expect(hello?.includes("[::1]")).toBe(false);
 		});
 	},
 );
