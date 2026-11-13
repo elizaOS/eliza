@@ -1,5 +1,5 @@
 {
-  "extends": "../../../tsconfig.json",
+  "extends": ["../../../tsconfig.json", "../../agent/tsconfig.json"],
   "compilerOptions": {
     "composite": false,
     "incremental": false,
