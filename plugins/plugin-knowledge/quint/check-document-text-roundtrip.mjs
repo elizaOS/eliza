@@ -74,7 +74,9 @@ const result = spawnSync(
     cwd: root,
     env: { ...process.env, ELIZA_DOCUMENT_TEXT_MODEL_CASES: input },
     stdio: "inherit",
-    timeout: 240000,
+    // Include cold workspace-source compilation and PGlite initialization.
+    // The actual test and fixture deadlines remain bounded by Vitest.
+    timeout: 600000,
   },
 );
 if (result.error) throw result.error;
