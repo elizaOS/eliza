@@ -48,14 +48,7 @@ export const mobileAppAuthClientsRepository = {
       })
       .from(mobileAppAuthClients)
       .innerJoin(apps, eq(apps.id, mobileAppAuthClients.app_id))
-      .where(
-        and(
-          eq(mobileAppAuthClients.client_id, clientId),
-          eq(mobileAppAuthClients.enabled, true),
-          eq(apps.is_active, true),
-          eq(apps.is_approved, true),
-        ),
-      )
+      .where(eq(mobileAppAuthClients.client_id, clientId))
       .limit(1);
 
     if (rows.length === 0) return null;
@@ -64,6 +57,7 @@ export const mobileAppAuthClientsRepository = {
 
   /**
    * List Digital Asset Links statements for all active, enabled Android clients.
+   * Merges fingerprints across multiple client registrations for the same package.
    */
   async listActiveAndroidAssetLinks(): Promise<AndroidAssetLinkStatement[]> {
     const rows = await dbRead
@@ -83,8 +77,7 @@ export const mobileAppAuthClientsRepository = {
         ),
       );
 
-    const statements: AndroidAssetLinkStatement[] = [];
-    const seenPackages = new Set<string>();
+    const packageFingerprints = new Map<string, Set<string>>();
 
     for (const row of rows) {
       const packageName = row.packageName;
@@ -92,15 +85,22 @@ export const mobileAppAuthClientsRepository = {
       if (!packageName || !Array.isArray(fingerprints) || fingerprints.length === 0) {
         continue;
       }
-      if (seenPackages.has(packageName)) continue;
-      seenPackages.add(packageName);
+      const existing = packageFingerprints.get(packageName) ?? new Set<string>();
+      for (const fp of fingerprints) {
+        if (typeof fp === "string" && fp.trim()) existing.add(fp);
+      }
+      packageFingerprints.set(packageName, existing);
+    }
 
+    const statements: AndroidAssetLinkStatement[] = [];
+    for (const [packageName, fingerprints] of packageFingerprints) {
+      if (fingerprints.size === 0) continue;
       statements.push({
         relation: ["delegate_permission/common.handle_all_urls"],
         target: {
           namespace: "android_app",
           package_name: packageName,
-          sha256_cert_fingerprints: fingerprints,
+          sha256_cert_fingerprints: Array.from(fingerprints),
         },
       });
     }
