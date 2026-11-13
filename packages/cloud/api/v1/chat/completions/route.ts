@@ -242,15 +242,8 @@ function buildProviderBillingFields(
     return {};
   }
   return {
-    providerInstanceId:
-      process.env.VAST_PROVIDER_INSTANCE_ID ??
-      process.env.VAST_INSTANCE_ID ??
-      null,
-    providerEndpoint:
-      process.env.VAST_PROVIDER_ENDPOINT ??
-      process.env.VAST_ENDPOINT_URL ??
-      process.env.VAST_BASE_URL ??
-      null,
+    providerInstanceId: process.env.VAST_INSTANCE_ID ?? null,
+    providerEndpoint: process.env.VAST_BASE_URL ?? null,
   };
 }
 

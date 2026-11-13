@@ -71,7 +71,7 @@ export class UserContextService {
       entityId: "system",
       organizationId: "system",
       agentMode,
-      apiKey: process.env.SYSTEM_ELIZAOS_API_KEY || process.env.SHARED_ELIZAOS_API_KEY || "",
+      apiKey: process.env.SYSTEM_ELIZAOS_API_KEY || "",
       isAnonymous: false,
       name: "System",
     };

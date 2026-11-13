@@ -125,7 +125,7 @@ export function resolveVastEndpointConfig(
   if (!isVastNativeModel(model)) return null;
 
   const suffix = vastModelEnvSuffix(model);
-  const modelBaseUrl = reader(`VAST_BASE_URL_${suffix}`) ?? reader(`VAST_ENDPOINT_URL_${suffix}`);
+  const modelBaseUrl = reader(`VAST_BASE_URL_${suffix}`);
   const modelApiKey = reader(`VAST_API_KEY_${suffix}`);
   const modelApiModelId = reader(`VAST_API_MODEL_${suffix}`);
 

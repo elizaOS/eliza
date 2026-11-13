@@ -6,8 +6,6 @@ type Env = {
   ELIZA_CLOUD_ORIGIN?: string;
   CF_ALLOWED_ORIGINS?: string;
   CF_PROXY_PATH_PREFIXES?: string;
-  ALLOWED_ORIGINS?: string;
-  PROXY_PATH_PREFIXES?: string;
 };
 
 function resolveUpstreamOrigin(env: Env): string {
@@ -18,15 +16,14 @@ function resolveUpstreamOrigin(env: Env): string {
 }
 
 function resolveAllowedOrigins(env: Env): Set<string> {
-  const configured = (env.CF_ALLOWED_ORIGINS || env.ALLOWED_ORIGINS)
-    ?.split(",")
+  const configured = env.CF_ALLOWED_ORIGINS?.split(",")
     .map((item) => item.trim())
     .filter(Boolean);
   return new Set(configured?.length ? configured : DEFAULT_ALLOWED_ORIGINS);
 }
 
 function resolveProxyPathPrefixes(env: Env): string[] {
-  return (env.CF_PROXY_PATH_PREFIXES || env.PROXY_PATH_PREFIXES || "")
+  return (env.CF_PROXY_PATH_PREFIXES || "")
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);

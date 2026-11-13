@@ -31,7 +31,7 @@
  *    literal.
  *
  * Construction is fully injectable for unit testing: an injected `fetch` and a
- * lazy token getter (env `DO_API_TOKEN` || `DIGITALOCEAN_TOKEN`). The token is
+ * lazy token getter (env `DIGITALOCEAN_TOKEN`). The token is
  * resolved per request, so tests can set it after construction and a request
  * only throws `missing_token` when it actually fires.
  */
@@ -181,9 +181,9 @@ export interface DOComputeVolume extends ComputeVolume {
 /** Resolves the DO API token lazily. Returns undefined when unconfigured. */
 export type DigitalOceanTokenGetter = () => string | undefined;
 
-/** Default token getter: `DO_API_TOKEN` || `DIGITALOCEAN_TOKEN`. */
+/** Default token getter: `DIGITALOCEAN_TOKEN`. */
 export function defaultDigitalOceanTokenGetter(): string | undefined {
-  const raw = process.env.DO_API_TOKEN ?? process.env.DIGITALOCEAN_TOKEN;
+  const raw = process.env.DIGITALOCEAN_TOKEN;
   if (!raw) return undefined;
   const trimmed = raw.trim();
   return trimmed.length > 0 ? trimmed : undefined;
@@ -192,7 +192,7 @@ export function defaultDigitalOceanTokenGetter(): string | undefined {
 export interface DigitalOceanComputeProviderOptions {
   /** Injected fetch (defaults to the global). */
   fetch?: typeof globalThis.fetch;
-  /** Lazy token getter (defaults to `DO_API_TOKEN` || `DIGITALOCEAN_TOKEN`). */
+  /** Lazy token getter (defaults to `DIGITALOCEAN_TOKEN`). */
   tokenGetter?: DigitalOceanTokenGetter;
   /** Override the API base (defaults to the public v2 endpoint). */
   apiBase?: string;
@@ -516,7 +516,7 @@ export class DigitalOceanComputeProvider implements ComputeProvider {
     if (!token) {
       throw new DigitalOceanComputeError(
         "missing_token",
-        "DigitalOcean API token is not configured. Set DO_API_TOKEN or DIGITALOCEAN_TOKEN to enable elastic droplet provisioning.",
+        "DigitalOcean API token is not configured. Set DIGITALOCEAN_TOKEN to enable elastic droplet provisioning.",
       );
     }
 

@@ -41,8 +41,7 @@ function normalizePem(value: string): string {
 }
 
 function getPrivateKeyPem(): string | undefined {
-  const raw =
-    envString("AGENT_TOKEN_PRIVATE_KEY_PEM") ?? envString("ELIZA_AGENT_TOKEN_PRIVATE_KEY_PEM");
+  const raw = envString("AGENT_TOKEN_PRIVATE_KEY_PEM");
   return raw ? normalizePem(raw) : undefined;
 }
 
@@ -94,7 +93,7 @@ async function exportedPublicJwkForCurrentKey(): Promise<JWK> {
 }
 
 export async function getAgentTokenKeyId(): Promise<string> {
-  const configured = envString("AGENT_TOKEN_KEY_ID") ?? envString("ELIZA_AGENT_TOKEN_KEY_ID");
+  const configured = envString("AGENT_TOKEN_KEY_ID");
   if (configured) return configured;
 
   const pem = getPrivateKeyPem();

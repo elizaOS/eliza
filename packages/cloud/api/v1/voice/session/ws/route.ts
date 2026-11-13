@@ -123,8 +123,7 @@ app.get("/", (c) => {
   }
   const fishAudioEnabled = isFishRealtimeTtsEnabled(env);
   const fishAudioApiKey = env.FISH_AUDIO_API_KEY;
-  const fishAudioReferenceId =
-    env.FISH_AUDIO_REFERENCE_ID ?? env.FISH_AUDIO_VOICE_ID;
+  const fishAudioReferenceId = env.FISH_AUDIO_REFERENCE_ID;
   const fishAudioModel = resolveFishRealtimeModel(env);
   const fishAudioSampleRate = resolveFishRealtimeSampleRate(env);
   const elizaEndpoint = env.VOICE_REALTIME_ELIZA_ENDPOINT;

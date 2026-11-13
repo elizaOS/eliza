@@ -31,10 +31,7 @@ export function normalizeContainerMode(rawMode, env = process.env) {
 }
 
 export function resolveContainerLaunch(env = process.env) {
-  const mode = normalizeContainerMode(
-    env.ELIZA_CONTAINER_MODE ?? env.ELIZA_AGENT_IMAGE_MODE,
-    env,
-  );
+  const mode = normalizeContainerMode(env.ELIZA_CONTAINER_MODE, env);
   const launchEnv = { ...env };
 
   if (mode === "cloud-agent") {

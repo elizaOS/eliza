@@ -345,9 +345,7 @@ class TwitterAutomationService {
   }
 
   private resolveOAuthFlow(): TwitterOAuthFlow {
-    const configured = (process.env.TWITTER_OAUTH_FLOW ?? process.env.TWITTER_OAUTH_MODE ?? "")
-      .trim()
-      .toLowerCase();
+    const configured = (process.env.TWITTER_OAUTH_FLOW ?? "").trim().toLowerCase();
     if (configured === "oauth1" || configured === "oauth1a") {
       return "oauth1a";
     }

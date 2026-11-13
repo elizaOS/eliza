@@ -13,7 +13,7 @@ type EnvLike = Record<string, string | undefined>;
 const DEFAULT_PGLITE_DATA_DIR = ".eliza/.pgdata";
 
 export function getLocalPGliteDatabaseUrl(env: EnvLike = process.env): string {
-  const dataDir = env.PGLITE_DATA_DIR || env.LOCAL_DATABASE_PATH || DEFAULT_PGLITE_DATA_DIR;
+  const dataDir = env.PGLITE_DATA_DIR || DEFAULT_PGLITE_DATA_DIR;
   // pglite:// URLs are relative paths that the db client passes straight
   // through to drizzle-orm/pglite. Normalize to an absolute path so multiple
   // processes (API, migrations, tests) all touch the same store.

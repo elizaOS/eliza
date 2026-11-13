@@ -1538,11 +1538,7 @@ class X402FacilitatorService {
     }
 
     if (secretsService) {
-      for (const keyName of [
-        "X402_SOLANA_FACILITATOR_PRIVATE_KEY",
-        "SOLANA_FACILITATOR_PRIVATE_KEY",
-        "SOLANA_PAYOUT_PRIVATE_KEY",
-      ]) {
+      for (const keyName of ["X402_SOLANA_FACILITATOR_PRIVATE_KEY", "SOLANA_PAYOUT_PRIVATE_KEY"]) {
         let key: string | null;
         try {
           key = await secretsService.getSystemSecret(keyName);
@@ -1560,12 +1556,7 @@ class X402FacilitatorService {
     }
 
     const env = getCloudAwareEnv();
-    return (
-      env.X402_SOLANA_FACILITATOR_PRIVATE_KEY ??
-      env.SOLANA_FACILITATOR_PRIVATE_KEY ??
-      env.SOLANA_PAYOUT_PRIVATE_KEY ??
-      null
-    );
+    return env.X402_SOLANA_FACILITATOR_PRIVATE_KEY ?? env.SOLANA_PAYOUT_PRIVATE_KEY ?? null;
   }
 
   /**
@@ -1603,7 +1594,7 @@ class X402FacilitatorService {
 
     // Fallback to environment variable (development)
     const env = getCloudAwareEnv();
-    const envKey = env.FACILITATOR_PRIVATE_KEY ?? env.X402_FACILITATOR_PRIVATE_KEY;
+    const envKey = env.FACILITATOR_PRIVATE_KEY;
 
     if (envKey) {
       if (env.NODE_ENV === "production") {

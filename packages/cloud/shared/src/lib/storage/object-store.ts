@@ -390,7 +390,7 @@ function storageConfigured(): boolean {
 
 export function shouldUseObjectStorage(): boolean {
   const env = getCloudAwareEnv();
-  const mode = env.SQL_HEAVY_PAYLOAD_STORAGE ?? env.HEAVY_PAYLOAD_STORAGE;
+  const mode = env.SQL_HEAVY_PAYLOAD_STORAGE;
   if (mode === "inline") return false;
   if (mode === "r2") {
     if (!storageConfigured()) {

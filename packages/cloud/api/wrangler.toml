@@ -472,7 +472,7 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #       is set. Optional — LocalKMSProvider is the default. Container backend
 #       has moved off AWS (see CONTAINERS_MIGRATION.md), so the rest of the
 #       AWS_* / ECS_* / ACM_* secrets are gone.
-#   GITHUB_APP_TOKEN  (or GIT_ACCESS_TOKEN)
+#   GITHUB_APP_TOKEN
 #   CRON_SECRET                        Scheduled-job auth
 #   CONTAINER_CONTROL_PLANE_URL        Node sidecar URL for container mutations + hot-pool image pre-pull
 #   CONTAINER_CONTROL_PLANE_TOKEN      Shared Worker↔sidecar secret

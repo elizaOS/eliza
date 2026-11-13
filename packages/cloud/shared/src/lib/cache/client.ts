@@ -177,9 +177,7 @@ export class CacheClient {
 
   private getBackendPreference(): "auto" | "redis" | "redis-rest" | "wadis" | "kv" | "memory" {
     const env = getCloudAwareEnv();
-    const raw = (env.CACHE_BACKEND || env.CACHE_ADAPTER || env.CACHE_DRIVER || "auto")
-      .trim()
-      .toLowerCase();
+    const raw = (env.CACHE_BACKEND || "auto").trim().toLowerCase();
 
     if (raw === "redis" || raw === "native-redis" || raw === "redis-native") return "redis";
     if (raw === "upstash" || raw === "rest" || raw === "redis-rest") return "redis-rest";

@@ -31,10 +31,10 @@ let octokitInstance: Octokit | null = null;
 
 function getOctokit(): Octokit {
   if (!octokitInstance) {
-    const token = process.env.GITHUB_APP_TOKEN || process.env.GIT_ACCESS_TOKEN;
+    const token = process.env.GITHUB_APP_TOKEN;
     if (!token) {
       throw new Error(
-        "GitHub token not configured. Set GITHUB_APP_TOKEN or GIT_ACCESS_TOKEN environment variable.",
+        "GitHub token not configured. Set the GITHUB_APP_TOKEN environment variable.",
       );
     }
     octokitInstance = new Octokit({ auth: token });
@@ -345,7 +345,7 @@ export async function listCommits(
  * Used for cloning private repos in sandboxes
  */
 export function getAuthenticatedCloneUrl(repoName: string): string {
-  const token = process.env.GITHUB_APP_TOKEN || process.env.GIT_ACCESS_TOKEN;
+  const token = process.env.GITHUB_APP_TOKEN;
   if (!token) {
     throw new Error("GitHub token not configured");
   }
@@ -356,7 +356,7 @@ export function getAuthenticatedCloneUrl(repoName: string): string {
  * Get git credentials for sandbox commands
  */
 export function getGitCredentials(): { username: string; password: string } {
-  const token = process.env.GITHUB_APP_TOKEN || process.env.GIT_ACCESS_TOKEN;
+  const token = process.env.GITHUB_APP_TOKEN;
   if (!token) {
     throw new Error("GitHub token not configured");
   }

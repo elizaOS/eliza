@@ -289,8 +289,6 @@ export interface Bindings {
   FISH_AUDIO_MODEL?: string;
   /** Fish reference/voice id for realtime TTS. */
   FISH_AUDIO_REFERENCE_ID?: string;
-  /** Legacy alias for the Fish realtime reference id. */
-  FISH_AUDIO_VOICE_ID?: string;
   /** Fish realtime output sample rate; the voice-session contract is raw PCM at 16 kHz. */
   FISH_AUDIO_SAMPLE_RATE?: string;
   /** Pre-first-audio timeout that permits Fish -> Cartesia fallback. */

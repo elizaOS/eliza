@@ -13,9 +13,7 @@ export type RuntimeDatabaseBackend = "postgresql" | "pglite";
 const DEFAULT_PGLITE_DATA_DIR = ".eliza/.elizadb";
 
 function normalizeDatabaseBackend(env: EnvLike): RuntimeDatabaseBackend {
-  const raw = (env.DATABASE_ADAPTER || env.DATABASE_ENGINE || env.DATABASE_DIALECT || "postgresql")
-    .trim()
-    .toLowerCase();
+  const raw = (env.DATABASE_ADAPTER || "postgresql").trim().toLowerCase();
 
   if (raw === "postgres" || raw === "postgresql" || raw === "pg" || raw === "neon") {
     return "postgresql";
@@ -25,7 +23,7 @@ function normalizeDatabaseBackend(env: EnvLike): RuntimeDatabaseBackend {
     return "pglite";
   }
 
-  throw new Error(`Unsupported DATABASE_ENGINE/DATABASE_DIALECT value: ${raw}`);
+  throw new Error(`Unsupported DATABASE_ADAPTER value: ${raw}`);
 }
 
 export function getRuntimeDatabaseBackend(env: EnvLike = process.env): RuntimeDatabaseBackend {
@@ -39,12 +37,7 @@ export function resolveRuntimeDatabaseAdapterConfig(
 
   if (backend === "pglite") {
     return {
-      dataDir:
-        env.PGLITE_DATA_DIR ||
-        env.SQLITE_DATABASE_PATH ||
-        env.SQLITE_DATABASE_URL ||
-        env.LOCAL_DATABASE_PATH ||
-        DEFAULT_PGLITE_DATA_DIR,
+      dataDir: env.PGLITE_DATA_DIR || DEFAULT_PGLITE_DATA_DIR,
     };
   }
 

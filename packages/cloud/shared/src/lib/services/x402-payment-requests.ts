@@ -231,12 +231,10 @@ function normalizeNetwork(raw?: string): NetworkConfig {
 
 function publicBaseUrl(): string {
   const env = getCloudAwareEnv();
-  return (
-    env.X402_PUBLIC_BASE_URL ??
-    env.X402_BASE_URL ??
-    env.NEXT_PUBLIC_API_URL ??
-    "https://x402.eliza.app"
-  ).replace(/\/$/, "");
+  return (env.X402_PUBLIC_BASE_URL ?? env.NEXT_PUBLIC_API_URL ?? "https://x402.eliza.app").replace(
+    /\/$/,
+    "",
+  );
 }
 
 function randomHex(bytes: number): string {

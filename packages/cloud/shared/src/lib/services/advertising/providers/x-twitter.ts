@@ -58,13 +58,13 @@ interface XStatsRow {
 }
 
 function consumerKey(): string {
-  const value = process.env.X_ADS_CONSUMER_KEY ?? process.env.TWITTER_ADS_CONSUMER_KEY;
+  const value = process.env.X_ADS_CONSUMER_KEY;
   if (!value) throw new Error("X Ads consumer key is not configured");
   return value;
 }
 
 function consumerSecret(): string {
-  const value = process.env.X_ADS_CONSUMER_SECRET ?? process.env.TWITTER_ADS_CONSUMER_SECRET;
+  const value = process.env.X_ADS_CONSUMER_SECRET;
   if (!value) throw new Error("X Ads consumer secret is not configured");
   return value;
 }

@@ -28,7 +28,6 @@ export interface VoiceRealtimeEnv {
   FISH_AUDIO_API_KEY?: string;
   FISH_AUDIO_MODEL?: string;
   FISH_AUDIO_REFERENCE_ID?: string;
-  FISH_AUDIO_VOICE_ID?: string;
   FISH_AUDIO_SAMPLE_RATE?: string;
   FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS?: string;
   VOICE_REALTIME_ELIZA_ENDPOINT?: string;

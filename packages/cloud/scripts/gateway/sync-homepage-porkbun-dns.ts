@@ -25,7 +25,7 @@ function usage() {
     "  --domain <domain>         Domain to manage. Defaults to eliza.app.",
     "  --apply                   Apply the plan. Defaults to dry-run.",
     "  --api-key <key>           Porkbun API key. Defaults to PORKBUN_API_KEY.",
-    "  --secret-api-key <key>    Porkbun secret API key. Defaults to PORKBUN_SECRET_API_KEY or PORKBUN_SECRET_KEY.",
+    "  --secret-api-key <key>    Porkbun secret API key. Defaults to PORKBUN_SECRET_API_KEY.",
     "  --api-base <url>          Porkbun API base URL. Defaults to production Porkbun.",
   ].join("\n");
 }
@@ -35,10 +35,7 @@ function parseArgs(argv) {
     domain: defaultDomain,
     apply: false,
     apiKey: process.env.PORKBUN_API_KEY || "",
-    secretApiKey:
-      process.env.PORKBUN_SECRET_API_KEY ||
-      process.env.PORKBUN_SECRET_KEY ||
-      "",
+    secretApiKey: process.env.PORKBUN_SECRET_API_KEY || "",
     apiBase: process.env.PORKBUN_API_BASE || porkbunBaseUrl,
   };
 
