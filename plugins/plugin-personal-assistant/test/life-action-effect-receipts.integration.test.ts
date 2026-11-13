@@ -140,6 +140,7 @@ beforeAll(async () => {
 }, 180_000);
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -1109,6 +1110,8 @@ it.each([
 );
 
 it("retains the supplied reminder clock after independent intent verification", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-11-11T12:00:00Z"));
   const createPlan = {
     mode: "create",
     requestKind: "reminder",
@@ -1157,6 +1160,8 @@ it("retains the supplied reminder clock after independent intent verification", 
 });
 
 it("uses the current client clock when a reminder plan needs extraction", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-11-11T12:00:00Z"));
   const extraction = vi
     .spyOn(taskCreate, "extractTaskCreatePlanWithLlm")
     .mockResolvedValue(
@@ -1203,6 +1208,8 @@ it("uses the current client clock when a reminder plan needs extraction", async 
 it.each(["destination", "alert", "destination and alert"])(
   "recovers unresolved %s from verification while retaining supplied reminder timing",
   async (unresolved) => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-11-11T12:00:00Z"));
     const createPlan = {
       mode: "create",
       requestKind: "unspecified",
