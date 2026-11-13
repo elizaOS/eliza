@@ -17,6 +17,7 @@ const cases = new Map([
       "live provider isolation from LLM mocks refuses a selected live provider whose OPENAI_BASE_URL still names its mock",
       "live provider isolation from LLM mocks refuses a selected live provider whose ANTHROPIC_BASE_URL still names its mock",
       "live provider isolation from LLM mocks keeps the world's mock LLM base URLs out of a live runtime's settings",
+      "live provider isolation from LLM mocks refuses loopback aliases of known mock servers",
       "live provider isolation from LLM mocks restores the process's own base URL, drops a mock one, and lets the provider win",
       "live provider isolation from LLM mocks leaves the deterministic lane on the mocks",
       "redirectTwilioFetch redirects a Twilio Request over real loopback HTTP and restores ownership",
@@ -68,5 +69,5 @@ for (const [file, names] of cases) {
   requireVitestConformance(summary, path.join(owner, file), names);
 }
 console.log(
-  `Scenario runtime conformance passed 9 required cases. Evidence ${directory}`,
+  `Scenario runtime conformance passed 10 required cases. Evidence ${directory}`,
 );

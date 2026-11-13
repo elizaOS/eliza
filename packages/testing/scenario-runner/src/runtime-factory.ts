@@ -9,6 +9,7 @@ import {
   parseSyntheticWorldConfiguration,
   withoutLlmMockBaseUrls,
 } from "./synthetic-world-settings.ts";
+import { isLoopbackUrl } from "./utils.ts";
 /**
  * Build a real AgentRuntime for scenario execution. Uses PGLite for storage
  * (no SQL mocks) and registers either the first available live LLM provider
@@ -938,7 +939,11 @@ export function restoreLlmBaseUrlsForLiveProvider(
   const origin = (value: string | undefined) => {
     if (!value) return undefined;
     try {
-      return new URL(value).origin;
+      const parsed = new URL(value);
+      // localhost, IPv4 and IPv6 loopback can reach the same local fixture.
+      return isLoopbackUrl(value)
+        ? `${parsed.protocol}//loopback:${parsed.port}`
+        : parsed.origin;
     } catch {
       return undefined;
     }
