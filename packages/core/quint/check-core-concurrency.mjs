@@ -91,6 +91,13 @@ const suites = new Map([
 		},
 	],
 	[
+		"ActivePromptTraces.qnt",
+		{
+			file: "test/active-prompt-traces.integration.test.ts",
+			tests: ["isolates and retires active prompt traces through the runtime"],
+		},
+	],
+	[
 		"ServiceLifecycle.qnt",
 		{
 			file: "test/service-lifecycle-model.test.ts",

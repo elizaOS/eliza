@@ -80,6 +80,31 @@
 		]
 	},
 	{
+		"id": "core.ActivePromptTraces",
+		"model": "packages/core/quint/ActivePromptTraces.qnt",
+		"sources": [
+			"packages/core/src/runtime/active-prompt-traces.ts",
+			"packages/core/src/runtime.ts",
+			"packages/core/src/runtime/model-dispatch.ts",
+			"packages/core/src/runtime/state-composition.ts",
+			"plugins/plugin-assistant/src/runtime/structured-prompt/executor.ts"
+		],
+		"invariants": [
+			"IndexAgreesWithOwners",
+			"IndexKeepsInsertionOrder",
+			"LatestIsNewest",
+			"OnlyLiveTracesAreEnriched"
+		],
+		"status": "modeled",
+		"limitations": [
+			"Two runs, three unique trace IDs and a bounded clock. The model abstracts score values, periodic purge cadence, wall-clock rollback and durable trajectory storage.",
+			"The conformance fixture uses the real AgentRuntime API and a controlled wall clock to check run isolation, latest-trace selection, targeted and run-wide enrichment, exact expiry and removal."
+		],
+		"implementationTests": [
+			"packages/core/test/active-prompt-traces.integration.test.ts"
+		]
+	},
+	{
 		"id": "core.RoomHandlerQueue",
 		"model": "packages/core/quint/RoomHandlerQueue.qnt",
 		"sources": ["packages/core/src/runtime/room-handler-queue.ts"],
