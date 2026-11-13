@@ -264,6 +264,7 @@ export const ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES = [
   "ElizaDataResetStoresTest.java",
   "ElizaAgentEventSubscriptionTest.java",
   "ElizaAgentWatchdogPolicyInstrumentedTest.java",
+  "ElizaAgentWatchdogPolicyTest.java",
   "ElizaAssetExtractionPolicyTest.java",
   "ElizaAssistantSurfaceInstrumentedTest.java",
   "ElizaSmsReplyReviewTest.java",
@@ -272,6 +273,7 @@ export const ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES = [
   "NativeTranscriptReducerTest.java",
   "ResidentStopOwnershipInstrumentedTest.java",
   "ResidentStreamTransportInstrumentedTest.java",
+  "CopiedModelAssetsInstrumentedTest.java",
 ];
 
 export function isAndroidVpsSidecarBuild(env = process.env) {
