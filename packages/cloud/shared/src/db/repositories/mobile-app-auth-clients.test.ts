@@ -237,6 +237,7 @@ describe("mobileAppAuthClientsRepository", () => {
         ["https://eliza.app"],
         ["https://*.app/auth/callback"],
         ["https://eliza.app/other"],
+        "https://eliza.app/auth/callback",
       ]) {
         await dbWrite.execute(
           `UPDATE apps SET allowed_origins='${JSON.stringify(allowed)}'::jsonb WHERE id='${APP_ACTIVE_ID}'`,

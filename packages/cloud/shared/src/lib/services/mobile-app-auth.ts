@@ -209,7 +209,7 @@ export async function admitMobileAppAuthRegistration(
     ttl > MOBILE_CLIENT_MAX_CREDENTIAL_TTL_SECONDS
   )
     return invalid("server_configuration_error", "Invalid mobile App Auth registration");
-  if (!app.allowed_origins?.includes(client.redirect_uri)) {
+  if (!Array.isArray(app.allowed_origins) || !app.allowed_origins.includes(client.redirect_uri)) {
     return invalid(
       "server_configuration_error",
       "Configured mobile App Auth app does not allow the registered redirect",
