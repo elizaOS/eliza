@@ -48,5 +48,49 @@
       "Refusal before dispatch prevents an effect. Refusal after a completed native call suppresses the result while a committed write survives. Native exceptions leave effects unknown. An acknowledged close retires the handle, and an unacknowledged close may be retried.",
       "The strict fixture uses the adapter with a controlled loader and real local SQLite persistence. Key custody, authentication, native encryption and lease behavior, multi-statement transactions, reentrant calls and platform qualification remain outside this proof."
     ]
+  },
+  {
+    "id": "TraceQueueReceipt",
+    "model": "packages/host/quint/TraceQueueReceipt.qnt",
+    "sources": [
+      "packages/host/native-host/trace-queue.mjs",
+      "packages/host/native-host/trace-queue.test.mjs",
+      "packages/host/quint/check-trace-queue-receipt.mjs"
+    ],
+    "invariants": [
+      "QueueBounds",
+      "PendingOwnsSnapshot",
+      "WithdrawalClearsDurableCapture",
+      "CloseRequiresSettledUpload"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One queue handle with at most two rows, three event IDs, one checkpoint, one pending upload and one clean reopen. An exact durable reply can remove only the captured IDs. Withdrawal clears the queue and checkpoint and persists after a late reply.",
+      "Existing real SQLite cases cover encrypted retention across reopen, exact reply checking, withdrawal, serialization and overflow. A controlled sender supplies replies. Fair progress assumes settlement of the admitted callback and its local continuation.",
+      "Producer capture and cancellation, collector authority, database leases, timer policy, multiple handles, arbitrary storage faults and crash durability remain separate."
+    ]
+  },
+  {
+    "id": "ResearchRotationRecovery",
+    "model": "packages/host/quint/ResearchRotationRecovery.qnt",
+    "sources": [
+      "packages/host/native-host/research-configuration.mjs",
+      "packages/host/native-host/research-configuration.test.mjs",
+      "packages/host/native-host/research-store.mjs",
+      "packages/host/native-host/database-lease.mjs",
+      "packages/host/quint/check-research-rotation-recovery.mjs"
+    ],
+    "invariants": [
+      "CommittedKeyRemainsAvailable",
+      "PublishedKeyMatchesDatabase",
+      "SuccessRequiresPublishedKey",
+      "InterruptedLeaseRemainsOwned"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One initialized private configuration and one offline rotation under the existing exclusive lease. Recovery files precede the SQLite commit. Successful publication precedes release. A committed key remains in the active or retained next file.",
+      "Real SQLite and child-process checks prove the after-commit, before-publication recovery path. The stale lock blocks reopen until confirmed exit and explicit removal. The retained new key reopens the actual data and audit.",
+      "Earlier crash boundaries, partial writes, arbitrary close/release failures, later rotation, operator authentication and power-loss durability remain outside this proof. Lease implementation internals are abstracted."
+    ]
   }
 ]
