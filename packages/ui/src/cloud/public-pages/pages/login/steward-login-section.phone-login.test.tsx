@@ -336,7 +336,7 @@ describe("StewardLoginSection phone login", () => {
       "Use an existing passkey",
       "Continue with a wallet",
     ]) {
-      expect(screen.queryByRole("button", { name, exact: true })).toBeNull();
+      expect(screen.queryByRole("button", { name: new RegExp(`^${name}$`) })).toBeNull();
     }
   });
 
