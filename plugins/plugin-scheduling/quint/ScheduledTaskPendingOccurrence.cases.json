@@ -1,0 +1,32 @@
+{
+  "sources": [
+    "plugins/plugin-scheduling/src/scheduled-task/runner.ts",
+    "plugins/plugin-scheduling/src/scheduled-task/due.ts",
+    "plugins/plugin-scheduling/src/scheduled-task/next-fire-at.ts",
+    "plugins/plugin-scheduling/src/scheduled-task/standalone-tick.ts",
+    "plugins/plugin-scheduling/src/scheduled-task/runner-pending-occurrence.test.ts"
+  ],
+  "implementationTests": [
+    "plugins/plugin-scheduling/src/scheduled-task/runner-pending-occurrence.test.ts"
+  ],
+  "conformance": "plugins/plugin-scheduling/quint/check-pending-occurrence.mjs",
+  "bounds": "One daily recurring task over three occurrences, created the evening before the first. Before each tick the owner may skip, complete or dismiss the row once if it is scheduled or fired. All 22 generated verb/tick sequences are replayed through the production runner (apply, resolveDueDecision, fireWithResult with allowTerminalRefire as the standalone tick calls them) with in-memory stores, once with a cron trigger and once with a during_window trigger; after every step the row status and the dispatched occurrences must match the model. Interval triggers, applyWithResult and a snoozed row are separate tests in runner-pending-occurrence.test.ts; reopen, gates and the global pause keep their existing coverage.",
+  "cases": [
+    {
+      "name": "owner-verbs-over-three-occurrences",
+      "main": "ScheduledTaskPendingOccurrence",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "SettledPendingNeverDispatched",
+        "DispatchOncePerOccurrence",
+        "UnsettledOccurrencesFire",
+        "DismissStopsDispatch",
+        "TypeOK"
+      ],
+      "temporal": [],
+      "maxSteps": 8,
+      "samples": 1000
+    }
+  ]
+}
