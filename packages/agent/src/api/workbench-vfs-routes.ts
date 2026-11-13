@@ -416,7 +416,12 @@ async function handleFile(
   }
 
   if (method === "PUT") {
-    const raw = await readJsonBody<Record<string, unknown>>(req, res);
+    // JSON can encode one UTF-8 control byte as six ASCII bytes (\u0000).
+    // This also covers base64 expansion. The VFS still applies its decoded
+    // per-file limit; this request budget only covers transport and framing.
+    const raw = await readJsonBody<Record<string, unknown>>(req, res, {
+      maxBytes: vfs.maxFileBytes * 6 + 4096,
+    });
     if (raw === null) return;
     const parsed = PutWorkbenchVfsFileRequestSchema.safeParse(raw);
     if (!parsed.success) {

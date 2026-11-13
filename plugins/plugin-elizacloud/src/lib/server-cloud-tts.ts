@@ -337,7 +337,10 @@ export async function handleCloudTtsPreviewRoute(req: http.IncomingMessage, res:
                 bytes+=chunk.value.byteLength;
                 if(!res.write(chunk.value))await once(res,"drain",{signal});
             }
-            if(firstChunkMs===undefined)commit();
+            if(firstChunkMs===undefined){
+                sendJsonErrorResponse(res, 502, "Eliza Cloud TTS returned an empty audio response");
+                return true;
+            }
         }
         catch(error){
             emitSpeechProxyTiming(timingSink,{kind:"tts",proxyRequestId,candidate:successfulCandidate,phase:"body_drain",durationMs:Math.max(0,Date.now()-drainStarted),bytes,firstChunkMs,status:audio.status,outcome:"threw",failureClass:speechProxyFailureClass(signal.aborted?signal.reason:error),upstreamTraceId:speechUpstreamTraceId(audio)});

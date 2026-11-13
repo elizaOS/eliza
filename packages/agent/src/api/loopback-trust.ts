@@ -1,7 +1,6 @@
 /** Agent host environment policy for strict same-machine request classification. */
 
 import { isTrustedLocalRequest as classifyLocalRequest } from "@elizaos/core";
-import { readAliasedEnv } from "@elizaos/host/protocol";
 
 import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/cloud-config/cloud-provisioning";
 
@@ -35,7 +34,7 @@ export interface LoopbackTrustOptions {
 
 function cloudBlocksLocalTrust(cloudCheck: "env" | "container"): boolean {
   if (cloudCheck === "container") return isCloudProvisionedContainer();
-  return readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1";
+  return process.env.ELIZA_CLOUD_PROVISIONED?.trim() === "1";
 }
 
 function localAuthRequired(options: LoopbackTrustOptions): boolean {

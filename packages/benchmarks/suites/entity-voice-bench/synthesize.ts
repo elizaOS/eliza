@@ -25,6 +25,7 @@ import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveFusedLibraryPath } from "@elizaos/plugin-local-inference/services/desktop-fused-ffi-backend-runtime";
@@ -243,8 +244,8 @@ function writeManifest(): void {
   ].sort((a, b) => a.id.localeCompare(b.id));
   const manifest: Manifest = {
     generatedAt: new Date().toISOString(),
-    libPath,
-    modelFile: kokoro.layout.modelFile,
+    libPath: `~/${path.relative(os.homedir(), path.resolve(libPath)).split(path.sep).join("/")}`,
+    modelFile: `~/${path.relative(os.homedir(), path.resolve(kokoro.layout.modelFile)).split(path.sep).join("/")}`,
     items: merged,
   };
   writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);

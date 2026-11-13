@@ -1,0 +1,35 @@
+{
+  "repository": "https://repo.maven.apache.org/maven2/",
+  "consumer": "plugins/plugin-local-inference/native/android/consumer.gradle",
+  "consumerDependency": "com.squareup.okhttp3:okhttp:5.3.2",
+  "artifacts": [
+    {
+      "id": "okhttp",
+      "path": "com/squareup/okhttp3/okhttp-android/5.3.2/okhttp-android-5.3.2.aar",
+      "file": "okhttp-release.aar",
+      "bytes": 866874,
+      "sha256": "f1a78812ebeef4d45eee0dbeb4f27347210f564d2b8ee411f012ce8573b0a658"
+    },
+    {
+      "id": "okio",
+      "path": "com/squareup/okio/okio-jvm/3.16.4/okio-jvm-3.16.4.jar",
+      "file": "okio-jvm-3.16.4.jar",
+      "bytes": 383010,
+      "sha256": "2196b993cd34dbbd919e7e01f57a4781b58bee80f86106163e287c20343a96a7"
+    },
+    {
+      "id": "kotlin",
+      "path": "org/jetbrains/kotlin/kotlin-stdlib/2.2.21/kotlin-stdlib-2.2.21.jar",
+      "file": "kotlin-stdlib-2.2.21.jar",
+      "bytes": 1761445,
+      "sha256": "6558a3d233da56a20934b32159f9db5f86ed5816ef098f78a2c223dc6abb79dd"
+    },
+    {
+      "id": "json",
+      "path": "org/json/json/20250517/json-20250517.jar",
+      "file": "json-20250517.jar",
+      "bytes": 82710,
+      "sha256": "3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796"
+    }
+  ]
+}

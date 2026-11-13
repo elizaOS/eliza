@@ -1,0 +1,28 @@
+{
+  "sources": [
+    "plugins/plugin-personal-assistant/src/lifeops/owner/profile-extraction-evaluator.ts",
+    "plugins/plugin-personal-assistant/src/lifeops/owner/fact-store.ts",
+    "packages/contracts/src/lifeops-normalize/time-zone.ts",
+    "packages/contracts/src/lifeops-normalize/calendar-time-zone.ts",
+    "plugins/plugin-personal-assistant/src/lifeops/owner/profile-extraction-evaluator.pglite.test.ts"
+  ],
+  "conformance": "plugins/plugin-personal-assistant/quint/check-owner-profile-timezone.mjs",
+  "bounds": "Eight scenarios: no stored zone or a valid stored zone (Europe/Berlin), then one owner statement: an IANA zone, the same zone ending the sentence with a period, an alias ending the sentence, or text that names no zone. The implementation check sends each generated scenario through the real owner.profile_extraction evaluator (runResponseHandlerEvaluators) on a fresh PGlite runtime with the production plugin, then reads the stored owner zone and the shared calendar zone. Model-extracted timezone facts (core-fact-memory-bridge.ts), other fact keys, the full alias table and concurrent owner messages remain outside this model. Safety is unconditional.",
+  "cases": [
+    {
+      "name": "owner-profile-timezone-update",
+      "main": "OwnerProfileTimezone",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "StoredZoneKnown",
+        "NamedZoneReplaces",
+        "UnnamedKeepsPrior",
+        "CalendarReadsStoredZone"
+      ],
+      "temporal": [],
+      "maxSteps": 4,
+      "samples": 300
+    }
+  ]
+}

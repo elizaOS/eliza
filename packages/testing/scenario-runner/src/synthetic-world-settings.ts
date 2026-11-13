@@ -59,6 +59,25 @@ export function syntheticWorldSettings(
   };
 }
 
+/** The model-provider settings the wire-level LLM mocks point at themselves. */
+export const LLM_MOCK_BASE_URL_SETTINGS = [
+  "ANTHROPIC_BASE_URL",
+  "OPENAI_BASE_URL",
+] as const;
+
+/**
+ * A live model run must never inherit a mock's LLM base URL: the providers read
+ * runtime settings before process.env, so a mock URL left in either would
+ * answer every "live" call. Connector settings (gmail, twilio, ...) stay.
+ */
+export function withoutLlmMockBaseUrls(
+  settings: Readonly<Record<string, string>>,
+): Record<string, string> {
+  const out = { ...settings };
+  for (const key of LLM_MOCK_BASE_URL_SETTINGS) delete out[key];
+  return out;
+}
+
 export function parseSyntheticWorldConfiguration(serialized: string): {
   endpoints: Record<string, string>;
   settings: Record<string, string>;

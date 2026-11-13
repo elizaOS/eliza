@@ -14,6 +14,13 @@ assert.equal(
 );
 const suites = new Map([
   [
+    "packages/cloud/api/__tests__/inference-single-store-call.test.ts",
+    [
+      "a gate fence (credential_revoked) refuses the current request and rewrites the entry while the primary still allows the key",
+      "a gate fence (subject_moderation_disabled) refuses the current request and rewrites the entry while the primary still allows the key",
+    ],
+  ],
+  [
     "packages/cloud/api/__tests__/inference-admission-gate.miniflare.test.ts",
     [
       "independent callers observe API-key revocation immediately",
@@ -64,7 +71,13 @@ const result = spawnSync(
     `--reporter-outfile=${report}`,
     ...suites.keys(),
   ],
-  { cwd: root, stdio: "inherit" },
+  {
+    cwd: root,
+    stdio: "inherit",
+    // This conformance run exercises the cache. Cloud CI disables the cache
+    // globally, so select the same isolated in-memory backend as the suite.
+    env: { ...process.env, CACHE_ENABLED: "true", MOCK_REDIS: "1" },
+  },
 );
 if (result.error) throw result.error;
 if (result.signal) process.kill(process.pid, result.signal);

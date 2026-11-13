@@ -92,7 +92,9 @@ const NEGATIVE_WORDS = new Set([
 	"stop",
 	"wait",
 	"non",
+	"pas",
 	"nein",
+	"nicht",
 	"いいえ",
 	"不",
 	"不要",
@@ -100,6 +102,24 @@ const NEGATIVE_WORDS = new Set([
 	"아니",
 	"아니요",
 ]);
+
+/**
+ * Chinese and Japanese put no space between words, so a no word there sits
+ * inside a longer run of text ("确认，先不要" is "确认" and "先不要").
+ */
+const UNSPACED_SCRIPT =
+	/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u;
+const UNSPACED_NEGATIVE_WORDS = [...NEGATIVE_WORDS].filter((word) =>
+	UNSPACED_SCRIPT.test(word),
+);
+
+function isNegativeWord(word: string): boolean {
+	return (
+		NEGATIVE_WORDS.has(word) ||
+		(UNSPACED_SCRIPT.test(word) &&
+			UNSPACED_NEGATIVE_WORDS.some((negative) => word.includes(negative)))
+	);
+}
 
 /** A thumbs-down or cross mark in a reply makes it a no too. */
 const NEGATIVE_SYMBOLS = /[\u{1F44E}\u274C\u274E\u{1F6AB}\u2716]/u;
@@ -123,10 +143,7 @@ function classifyConfirmationReply(message: Memory): ConfirmationReply {
 	const words = (text.match(/[\p{L}\p{N}']+/gu) ?? [])
 		.map((word) => word.replace(/^'+|'+$/g, ""))
 		.filter(Boolean);
-	if (
-		NEGATIVE_SYMBOLS.test(text) ||
-		words.some((word) => NEGATIVE_WORDS.has(word))
-	)
+	if (NEGATIVE_SYMBOLS.test(text) || words.some(isNegativeWord))
 		return "negative";
 	if (/[?？¿]/u.test(text)) return "unclear";
 	// Skip leading politeness ("please, yes"), then require a yes.

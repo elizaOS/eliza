@@ -1,11 +1,13 @@
 /** Durable organization Maps count and observational usage. No inference balance or money is mutated. */
 import {
   type MapsAllowanceRequest,
+  type MapsRequestAllowance,
   type MapsUsageOutcome,
   mapsRequestAllowance,
 } from "@elizaos/cloud-shared/lib/services/maps-request-policy";
 import {
   readPlanRequestLimitConfig,
+  type ServiceRequestLimits,
   type TokenBucketLimit,
 } from "@elizaos/cloud-shared/lib/services/plan-request-limiter";
 
@@ -22,11 +24,12 @@ type Window = {
 type Usage = {
   operation: string;
   userId: string;
-  windowStart: number;
+  windowStart: number | null;
   admittedAt: number;
   outcome: "unknown" | MapsUsageOutcome;
 };
 const WINDOW_KEY = "maps:allowance:window";
+const RATE_KEY = "maps:allowance:rate";
 const fail = (
   code: string,
   status: number,
@@ -58,7 +61,7 @@ function valid(value: unknown): value is MapsAllowanceRequest {
     /^(0|[1-9]\d*)$/.test(v.policy.generation) &&
     typeof v.policy.planKey === "string" &&
     v.policy.planKey.length <= 128 &&
-    v.policy.subscriptionFunded === true &&
+    typeof v.policy.subscriptionFunded === "boolean" &&
     typeof v.policy.effectiveFrom === "string" &&
     (v.policy.effectiveUntil === null ||
       typeof v.policy.effectiveUntil === "string")
@@ -152,11 +155,13 @@ export class MapsRequestAllowanceController {
       now >= until
     )
       return fail("maps_policy_stale", 503);
-    let allowance;
-    let limits;
+    let allowance: MapsRequestAllowance | null = null;
+    let limits: ServiceRequestLimits | undefined;
     let configurationStage = "allowance";
     try {
-      allowance = mapsRequestAllowance(this.env, request.policy.planKey);
+      allowance = request.policy.subscriptionFunded
+        ? mapsRequestAllowance(this.env, request.policy.planKey)
+        : null;
       configurationStage = "rate-limits";
       const mapsLimits = this.env.ELIZA_CLOUD_MAPS_PLAN_RATE_LIMITS;
       const config = readPlanRequestLimitConfig(
@@ -187,7 +192,7 @@ export class MapsRequestAllowanceController {
       });
       return fail("maps_allowance_unconfigured", 503);
     }
-    if (!allowance || !limits) {
+    if ((request.policy.subscriptionFunded && !allowance) || !limits) {
       logger.warn("[MapsAllowance] plan configuration unavailable", {
         allowancePresent: allowance !== null,
         rateLimitsPresent: limits !== undefined,
@@ -198,9 +203,9 @@ export class MapsRequestAllowanceController {
       });
       return fail("maps_allowance_unconfigured", 503);
     }
-    const period = allowance.windowSeconds * 1000;
-    const start = Math.floor(now / period) * period,
-      end = start + period;
+    const period = allowance ? allowance.windowSeconds * 1000 : null;
+    const start = period ? Math.floor(now / period) * period : null;
+    const end = period && start !== null ? start + period : null;
     return this.storage.transaction(async (tx) => {
       const previous = await tx.get<Usage>(key);
       if (previous)
@@ -212,7 +217,12 @@ export class MapsRequestAllowanceController {
           409,
         );
       const old = await tx.get<Window>(WINDOW_KEY);
-      if (old && old.end > now && (old.start !== start || old.end !== end))
+      if (
+        allowance &&
+        old &&
+        old.end > now &&
+        (old.start !== start || old.end !== end)
+      )
         return fail("maps_allowance_window_conflict", 503);
       if (
         old &&
@@ -230,25 +240,46 @@ export class MapsRequestAllowanceController {
           ))
       )
         return fail("maps_allowance_storage_invalid", 503);
-      const window: Window =
-        old && old.end > now
-          ? { ...old }
-          : {
-              start,
-              end,
-              used: 0,
-              ...(old?.burst && { burst: old.burst }),
-              ...(old?.sustained && { sustained: old.sustained }),
-            };
-      if (window.used >= allowance.requests)
+      const window: Window | null =
+        !allowance || start === null || end === null
+          ? null
+          : old && old.end > now
+            ? { ...old }
+            : {
+                start,
+                end,
+                used: 0,
+                ...(old?.burst && { burst: old.burst }),
+                ...(old?.sustained && { sustained: old.sustained }),
+              };
+      if (
+        window &&
+        allowance &&
+        end !== null &&
+        window.used >= allowance.requests
+      )
         return fail("allowance_exhausted", 429, {
           service: "maps",
           resetsAt: new Date(end).toISOString(),
           retryAfterSeconds: Math.max(1, Math.ceil((end - now) / 1000)),
         });
+      const rate =
+        (await tx.get<Pick<Window, "burst" | "sustained">>(RATE_KEY)) ??
+        old ??
+        {};
+      if (
+        [rate.burst, rate.sustained].some(
+          (bucket) =>
+            bucket &&
+            (!Number.isFinite(bucket.tokens) ||
+              bucket.tokens < 0 ||
+              !Number.isFinite(bucket.at)),
+        )
+      )
+        return fail("maps_allowance_storage_invalid", 503);
       if (limits) {
-        const burst = refill(window.burst, limits.burst, now),
-          sustained = refill(window.sustained, limits.sustained, now);
+        const burst = refill(rate.burst, limits.burst, now),
+          sustained = refill(rate.sustained, limits.sustained, now);
         if (burst.tokens < 1 || sustained.tokens < 1)
           return fail("rate_limited", 429, {
             service: "maps",
@@ -262,12 +293,17 @@ export class MapsRequestAllowanceController {
               ),
             ),
           });
-        window.burst = { ...burst, tokens: burst.tokens - 1 };
-        window.sustained = { ...sustained, tokens: sustained.tokens - 1 };
+        rate.burst = { ...burst, tokens: burst.tokens - 1 };
+        rate.sustained = { ...sustained, tokens: sustained.tokens - 1 };
       }
-      window.used++;
+      if (window) {
+        window.used++;
+        window.burst = rate.burst;
+        window.sustained = rate.sustained;
+      }
       await tx.put({
-        [WINDOW_KEY]: window,
+        ...(window ? { [WINDOW_KEY]: window } : {}),
+        [RATE_KEY]: rate,
         [key]: {
           operation: request.operation,
           userId: request.credential.userId,
@@ -278,8 +314,12 @@ export class MapsRequestAllowanceController {
       });
       return Response.json({
         admitted: true,
-        remaining: allowance.requests - window.used,
-        resetsAt: new Date(end).toISOString(),
+        ...(window && allowance && end !== null
+          ? {
+              remaining: allowance.requests - window.used,
+              resetsAt: new Date(end).toISOString(),
+            }
+          : {}),
       });
     });
   }

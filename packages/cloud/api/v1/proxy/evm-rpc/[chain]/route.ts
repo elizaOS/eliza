@@ -18,7 +18,7 @@ import {
 import type { ProxyRequestBody } from "@elizaos/cloud-shared/lib/services/proxy/types";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { executeGuardedPaidProxyWithPreflight } from "@/api-app/lib/guarded-paid-proxy";
+import { executeGuardedPaidProxyWithPreflight } from "../../../../src/lib/guarded-paid-proxy";
 
 const LEGACY_CHAIN_ALIASES: Record<
   string,

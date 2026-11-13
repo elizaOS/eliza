@@ -35,6 +35,9 @@ let authCalls = 0;
 let admissions = 0;
 let normalSettlements = 0;
 let unknownSettlements = 0;
+let lastSettledCost: number | undefined;
+let holdDispatch: (() => Promise<void>) | undefined;
+let holdProvider: ((signal: AbortSignal) => Promise<Response>) | undefined;
 const spies: Array<{ mockRestore(): void }> = [];
 const model = createOpenAI({
   apiKey: "local-test-key",
@@ -43,6 +46,11 @@ const model = createOpenAI({
     expect(String(input)).toBe("https://provider.invalid/v1/chat/completions");
     const body = JSON.parse(String(init?.body));
     wireRequests.push(body);
+    if (holdProvider) {
+      const signal = init?.signal;
+      if (!signal) throw new Error("SDK fetch omitted the request signal");
+      return holdProvider(signal);
+    }
     if (body.stream) {
       const chunk = {
         id: "provider-original",
@@ -112,10 +120,12 @@ beforeAll(() => {
         let settled = false;
         return {
           mode: "durable_object_debit",
-          settle: async () => {
+          ...(holdDispatch && { markProviderDispatched: holdDispatch }),
+          settle: async (cost: number) => {
             if (settled) return null;
             settled = true;
             normalSettlements++;
+            lastSettledCost = cost;
             return null;
           },
           settleUnknown: async () => {
@@ -169,58 +179,48 @@ test("all system messages and media reach the actual SDK wire in order", async (
     },
     { role: "developer", content: " third instruction \n" },
   ];
-  // A non-Worker direct chat call uses the same conversion. The Hono wrapper supplies
-  // an execution context; we provide cache-only catalogue data for that path below.
-  const cached = spyOn(
-    catalogue,
-    "getGatewayModelByIdCacheOnly",
-  ).mockResolvedValue({ kind: "ready", model: null, stale: false });
-  try {
-    const response = await app.fetch(
-      new Request("https://cloud.test/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "openai/test",
-          instructions: " first instruction \n",
-          input,
-        }),
+  const response = await app.fetch(
+    new Request("https://cloud.test/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "openai/test",
+        instructions: " first instruction \n",
+        input,
       }),
-      {},
-      {
-        waitUntil(task) {
-          tasks.push(task);
+    }),
+    {},
+    {
+      waitUntil(task) {
+        tasks.push(task);
+      },
+      passThroughOnException() {},
+      props: {},
+    },
+  );
+  const body = (await response.json()) as { output_text: string };
+  await Promise.all(tasks);
+  expect(response.status).toBe(200);
+  expect(authCalls).toBe(1);
+  expect(admissions).toBe(1);
+  expect(wireRequests).toHaveLength(1);
+  expect(wireRequests[0]?.messages).toEqual([
+    { role: "system", content: " first instruction \n" },
+    { role: "system", content: " second instruction \n" },
+    {
+      role: "user",
+      content: [
+        { type: "text", text: "before" },
+        {
+          type: "image_url",
+          image_url: { url: "https://images.test/image.png" },
         },
-        passThroughOnException() {},
-        props: {},
-      },
-    );
-    const body = (await response.json()) as { output_text: string };
-    await Promise.all(tasks);
-    expect(response.status).toBe(200);
-    expect(authCalls).toBe(1);
-    expect(admissions).toBe(1);
-    expect(wireRequests).toHaveLength(1);
-    expect(wireRequests[0]?.messages).toEqual([
-      { role: "system", content: " first instruction \n" },
-      { role: "system", content: " second instruction \n" },
-      {
-        role: "user",
-        content: [
-          { type: "text", text: "before" },
-          {
-            type: "image_url",
-            image_url: { url: "https://images.test/image.png" },
-          },
-          { type: "text", text: "after" },
-        ],
-      },
-      { role: "system", content: " third instruction \n" },
-    ]);
-    expect(body.output_text).toBe("  exact output \n");
-  } finally {
-    cached.mockRestore();
-  }
+        { type: "text", text: "after" },
+      ],
+    },
+    { role: "system", content: " third instruction \n" },
+  ]);
+  expect(body.output_text).toBe("  exact output \n");
 });
 
 test("distinct requests keep distinct response identities within one clock tick", async () => {
@@ -292,10 +292,6 @@ test("streaming retains instructions and a stable unique identity per request", 
 
 test("a real SDK refusal keeps its text, status and recorded content", async () => {
   const { default: app } = await import("./route");
-  const cached = spyOn(
-    catalogue,
-    "getGatewayModelByIdCacheOnly",
-  ).mockResolvedValue({ kind: "ready", model: null, stale: false });
   const tasks: Promise<unknown>[] = [];
   providerMessage = {
     role: "assistant",
@@ -337,16 +333,11 @@ test("a real SDK refusal keeps its text, status and recorded content", async () 
     );
   } finally {
     providerMessage = defaultProviderMessage;
-    cached.mockRestore();
   }
 });
 
 test("unknown provider finish reason fails without a fabricated completion", async () => {
   const { default: app } = await import("./route");
-  const cached = spyOn(
-    catalogue,
-    "getGatewayModelByIdCacheOnly",
-  ).mockResolvedValue({ kind: "ready", model: null, stale: false });
   const tasks: Promise<unknown>[] = [];
   providerFinishReason = "provider_error";
   const normalBefore = normalSettlements;
@@ -375,7 +366,6 @@ test("unknown provider finish reason fails without a fabricated completion", asy
     expect(unknownSettlements).toBe(unknownBefore + 1);
   } finally {
     providerFinishReason = "stop";
-    cached.mockRestore();
   }
 });
 
@@ -449,10 +439,6 @@ test("malformed provider refusal fails without coercing or discarding it", async
 
 test("an empty provider refusal cannot turn billed empty output into success", async () => {
   const { default: app } = await import("./route");
-  const cached = spyOn(
-    catalogue,
-    "getGatewayModelByIdCacheOnly",
-  ).mockResolvedValue({ kind: "ready", model: null, stale: false });
   const tasks: Promise<unknown>[] = [];
   providerMessage = { role: "assistant", content: null, refusal: "" };
   try {
@@ -481,6 +467,102 @@ test("an empty provider refusal cannot turn billed empty output into success", a
     expect(body.incomplete_details).toEqual({ reason: "max_output_tokens" });
   } finally {
     providerMessage = defaultProviderMessage;
-    cached.mockRestore();
   }
 });
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+for (const phase of ["dispatch commit", "provider fetch"] as const) {
+  test(`Responses forwards cancellation during ${phase}`, async () => {
+    const { default: app } = await import("./route");
+    const abort = new AbortController();
+    const entered = deferred();
+    const release = deferred();
+    const tasks: Promise<unknown>[] = [];
+    const wireBefore = wireRequests.length;
+    const normalBefore = normalSettlements;
+    const unknownBefore = unknownSettlements;
+    let providerSignal: AbortSignal | undefined;
+    if (phase === "dispatch commit") {
+      holdDispatch = async () => {
+        entered.resolve();
+        await release.promise;
+      };
+    } else {
+      holdProvider = (signal) => {
+        providerSignal = signal;
+        const reply = new Promise<never>((_resolve, reject) => {
+          if (signal.aborted) reject(signal.reason);
+          else {
+            signal.addEventListener("abort", () => reject(signal.reason), {
+              once: true,
+            });
+          }
+        });
+        entered.resolve();
+        return reply;
+      };
+    }
+    const pending = Promise.resolve(
+      app.fetch(
+        new Request("https://cloud.test/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "openai/test", input: "hello" }),
+          signal: abort.signal,
+        }),
+        {},
+        {
+          props: {},
+          waitUntil(task) {
+            tasks.push(task);
+          },
+          passThroughOnException() {},
+        },
+      ),
+    );
+    try {
+      await Promise.race([
+        entered.promise,
+        pending.then((reply) => {
+          throw new Error(`Responses returned ${reply.status} before ${phase}`);
+        }),
+      ]);
+      abort.abort();
+      release.resolve();
+      const response = await pending;
+      const body = await response.json();
+      await Promise.all(tasks);
+      if (phase === "dispatch commit") {
+        expect(response.status).toBe(499);
+        expect(body).toMatchObject({
+          error: { code: "client_closed_request" },
+        });
+        expect(wireRequests).toHaveLength(wireBefore);
+        expect(normalSettlements).toBe(normalBefore + 1);
+        expect(lastSettledCost).toBe(0);
+        expect(unknownSettlements).toBe(unknownBefore);
+      } else {
+        expect(response.status).toBe(503);
+        expect(body).toMatchObject({ success: false, code: "internal_error" });
+        expect(providerSignal?.aborted).toBe(true);
+        expect(wireRequests).toHaveLength(wireBefore + 1);
+        expect(normalSettlements).toBe(normalBefore);
+        expect(unknownSettlements).toBe(unknownBefore + 1);
+      }
+    } finally {
+      abort.abort();
+      release.resolve();
+      await Promise.allSettled([pending]);
+      await Promise.allSettled(tasks);
+      holdDispatch = undefined;
+      holdProvider = undefined;
+    }
+  });
+}

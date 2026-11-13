@@ -1,0 +1,32 @@
+{
+	"sources": [
+		"packages/core/src/network/node-pinned-fetch.ts",
+		"packages/core/src/network/fetch-guard.ts",
+		"packages/core/test/pinned-transport-host.integration.test.ts",
+		"packages/core/quint/check-pinned-transport-host.mjs",
+		"packages/scripts/lib/vitest-conformance.ts",
+		"packages/scripts/lib/test-output.ts",
+		"packages/scripts/run-vitest.ts",
+		"packages/scripts/run-with-deadline.ts"
+	],
+	"conformance": "packages/core/quint/check-pinned-transport-host.mjs",
+	"bounds": "Six scenarios: the URL host is the DNS name localhost, the IPv4 literal 127.0.0.1 or the IPv6 literal [::1], over http or https. The implementation check sends each generated scenario through fetchWithSsrfGuard and nodePinnedFetch to a real local server of the matching loopback family. The HTTPS servers present a certificate for localhost, 127.0.0.1 and ::1, so Node's own certificate check runs; the servers report the Host header and the TLS server name they received. Other IPv6 forms (zone ids, IPv4-mapped addresses), public addresses, redirects and the auth dispatcher's DNS-validated lookup are outside this model; pinned-fetch.integration.test.ts covers that lookup for an http IPv6 literal. Safety is unconditional.",
+	"cases": [
+		{
+			"name": "pinned-transport-host",
+			"main": "PinnedTransportHost",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"Delivered",
+				"TransportGetsBareHost",
+				"NoIpServerName",
+				"DnsNameServerName",
+				"HostHeaderKeepsUrlForm"
+			],
+			"temporal": [],
+			"maxSteps": 4,
+			"samples": 300
+		}
+	]
+}

@@ -16,6 +16,7 @@ let provided = 0;
 let admissions: Admission[] = [];
 let settled: number[] = [];
 let waits: Promise<unknown>[] = [];
+let standaloneCredentialChecks = 0;
 const user = { id: "proxy-user", organization_id: "proxy-org" };
 const worker = {
   waitUntil: (promise: Promise<unknown>) => void waits.push(promise),
@@ -78,6 +79,9 @@ mock.module(`${lib}/services/inference-credential-revocation`, () => ({
   InferenceCredentialRevocationUnavailableError: class extends Error {},
   InferenceCredentialRevokedError: class extends Error {},
   inferenceCredentialRevocationReason: String,
+  assertInferenceCredentialActive: async () => {
+    standaloneCredentialChecks++;
+  },
 }));
 mock.module(`${lib}/services/proxy/pricing`, () => ({
   PricingNotFoundError: class extends Error {},
@@ -123,7 +127,53 @@ beforeEach(() => {
   admissions = [];
   settled = [];
   waits = [];
+  standaloneCredentialChecks = 0;
 });
+
+test.each([true, false])(
+  "deferred credential stays owned through async preflight (paid work: %s)",
+  async (paidWork) => {
+    caller = {
+      ...authoritative,
+      credential: {
+        kind: "api_key",
+        credentialId: "proxy-key",
+        userId: user.id,
+      },
+    };
+    let entered!: () => void;
+    const preflightEntered = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    let release!: () => void;
+    const preflightGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const delayedApp = new Hono<AppEnv>().get("/", (c) =>
+      executeGuardedPaidProxyWithPreflight(c, async () => {
+        entered();
+        await preflightGate;
+        return paidWork
+          ? tokenBalances
+          : c.json({ error: "Invalid chain" }, 400);
+      }),
+    );
+    const pending = delayedApp.request(
+      "/",
+      {},
+      { NODE_ENV: "production" },
+      worker,
+    );
+    await preflightEntered;
+    release();
+    const response = await pending;
+    await Promise.all(waits);
+    expect(response.status).toBe(paidWork ? 200 : 400);
+    expect(provided).toBe(paidWork ? 1 : 0);
+    expect(admissions).toHaveLength(paidWork ? 1 : 0);
+    expect(standaloneCredentialChecks).toBe(paidWork ? 0 : 1);
+  },
+);
 test("authoritatively authorized Worker caller without a snapshot is admitted durably, not refused", async () => {
   caller = authoritative;
   const response = await call();

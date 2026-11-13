@@ -60,6 +60,11 @@ interface GateCall {
 const gateCalls: GateCall[] = [];
 const gateWindows = new Map<string, number>();
 let gateDown = false;
+let credentialChecks = 0;
+let credentialCheckTimesOut = false;
+let credentialAllowed = true;
+let speechPrepares = 0;
+let onCredentialTimeout: (() => void) | undefined;
 /** Fixed windows like the real object: one per endpoint, one per key across endpoints. */
 const INFERENCE_ADMISSION_GATES = {
   getByName(name: string) {
@@ -73,8 +78,26 @@ const INFERENCE_ADMISSION_GATES = {
         };
         // The gate is also the revocation boundary and the snapshot
         // publication target; only limiter decisions are recorded here.
-        if (call.path === "/credential/check")
-          return Response.json({ allowed: true });
+        if (call.path === "/credential/check") {
+          credentialChecks += 1;
+          if (credentialCheckTimesOut) {
+            credentialCheckTimesOut = false;
+            return new Promise<Response>((_resolve, reject) => {
+              const abort = () => {
+                onCredentialTimeout?.();
+                reject(request.signal.reason);
+              };
+              request.signal.addEventListener("abort", abort, { once: true });
+              if (request.signal.aborted) abort();
+            });
+          }
+          return credentialAllowed
+            ? Response.json({ allowed: true })
+            : Response.json(
+                { allowed: false, reason: "credential_revoked" },
+                { status: 403 },
+              );
+        }
         if (call.path !== "/rate-limit")
           return Response.json({ committed: true, hydrated: true });
         gateCalls.push(call);
@@ -128,7 +151,8 @@ const keys: Record<
   | "cold_stt"
   | "cold_tts"
   | "cold_consent"
-  | "cold_session",
+  | "cold_session"
+  | "revoked_consent",
   { id: string; raw: string }
 > = {} as never;
 
@@ -201,6 +225,7 @@ beforeAll(async () => {
     keys[name] = { id, raw };
   };
   await seed("plain");
+  await seed("revoked_consent");
   // The pay-as-you-go tiers sum to 195 requests per minute, so 1 binds.
   await seed("capped", { rateLimit: 1 });
   await seed("inactive", { active: false });
@@ -262,6 +287,11 @@ beforeEach(() => {
   gateCalls.length = 0;
   gateWindows.clear();
   gateDown = false;
+  credentialChecks = 0;
+  credentialCheckTimesOut = false;
+  credentialAllowed = true;
+  speechPrepares = 0;
+  onCredentialTimeout = undefined;
   redisCalls = 0;
   redisWindows.clear();
 });
@@ -277,6 +307,8 @@ async function speak(route: "stt" | "tts", rawKey: string) {
 async function speakOnce(
   route: "stt" | "tts" | "consent" | "session",
   rawKey: string,
+  prepareConsent = false,
+  signal?: AbortSignal,
 ) {
   const relay = route === "consent" || route === "session";
   const pending: Promise<unknown>[] = [];
@@ -295,16 +327,32 @@ async function speakOnce(
             }
           : {
               method: "POST",
+              signal,
               headers: {
                 authorization: `Bearer ${rawKey}`,
                 "content-type": "application/json",
+                ...(prepareConsent
+                  ? {
+                      "X-Eliza-Speech-Retirement-Version": "1",
+                      "X-Eliza-Speech-Recovery-Version": "1",
+                    }
+                  : {}),
               },
               body: JSON.stringify({ text: "" }),
             },
         {
           VOICE_SPEECH_RELAY_ENABLED: "true",
+          VOICE_SPEECH_RETIREMENT_PROOF_ENABLED: "true",
           SPEECH_RELAY_SESSIONS: {
             getByName() {
+              if (prepareConsent)
+                return {
+                  async fetch(url: string) {
+                    expect(new URL(url).pathname).toBe("/prepare");
+                    speechPrepares += 1;
+                    return Response.json({ prepared: true });
+                  },
+                };
               throw new Error("Cold auth must not dispatch a speech session");
             },
           },
@@ -360,6 +408,45 @@ async function generatePersonalMediaOnce(
 }
 
 describe("Worker speech rate limit without an admission snapshot", () => {
+  test("speech consent cancellation after a credential timeout prevents its recheck", async () => {
+    expect((await speak("stt", keys.plain.raw)).status).toBe(400);
+    gateCalls.length = 0;
+    credentialChecks = 0;
+    credentialCheckTimesOut = true;
+    const controller = new AbortController();
+    onCredentialTimeout = () => controller.abort();
+
+    const response = await speakOnce(
+      "consent",
+      keys.plain.raw,
+      true,
+      controller.signal,
+    );
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(credentialChecks).toBe(1);
+    expect(gateCalls).toHaveLength(0);
+    expect(speechPrepares).toBe(0);
+  });
+
+  for (const allowed of [true, false]) {
+    test(`speech consent retries one credential deadline before any preparation (allowed=${allowed})`, async () => {
+      const rawKey = allowed ? keys.plain.raw : keys.revoked_consent.raw;
+      expect((await speak("stt", rawKey)).status).toBe(400);
+      gateCalls.length = 0;
+      credentialChecks = 0;
+      credentialCheckTimesOut = true;
+      credentialAllowed = allowed;
+
+      const response = await speakOnce("consent", rawKey, true);
+      expect(response.status).toBe(allowed ? 200 : 401);
+      // A denial also triggers the existing authoritative cache refresh.
+      // Its fence check is separate from the one consent retry.
+      expect(credentialChecks).toBe(allowed ? 2 : 3);
+      expect(gateCalls).toHaveLength(allowed ? 1 : 0);
+      expect(speechPrepares).toBe(allowed ? 1 : 0);
+    });
+  }
+
   test("a cold projection hydrates inside the first STT, TTS and relay bootstrap request", async () => {
     const [
       { cache },

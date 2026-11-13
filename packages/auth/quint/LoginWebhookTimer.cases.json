@@ -1,0 +1,94 @@
+{
+  "sources": [
+    "packages/auth/src/server/runtime.ts",
+    "packages/auth/src/server/webhooks/persistent-queue.ts",
+    "packages/auth/src/server/webhooks/dispatcher.ts",
+    "packages/auth/src/server/db/client.ts",
+    "packages/auth/src/server/db/pglite.ts",
+    "packages/core/src/services/task-scheduler.ts",
+    "packages/auth/test/login/webhook-timer.integration.test.ts",
+    "packages/auth/src/server/api/routes/auth.ts",
+    "packages/auth/src/server/api/services/webhook-dispatch.ts",
+    "packages/auth/test/login/local-webhook-fixture.ts",
+    "packages/auth/test/login/request-webhook.integration.test.ts"
+  ],
+  "conformance": "packages/auth/quint/check-login-webhook-timer.mjs",
+  "bounds": {
+    "shared-login-webhook-timer": "One Core task adapter, one named login worker, two sequential Auth owners, and two durable jobs. The worker is retained through invocation, claim, network and receipt phases. Empty ticks stutter. Network success and HTTP failure can each commit a receipt. Failure retry delay has not elapsed inside the bound. Request-emitted delivery drainage and database shutdown are represented by the final close step after the worker settles.",
+    "request-emitted-immediate-fanout": "One successful SIWE request emits to two configurations for one tenant before shutdown. One persisted secret is unreadable, and its sibling owns a committed claim and one signed HTTP attempt. The immediate delivery commits its success or HTTP failure receipt before the aggregate releases. The listener and scheduled worker finish before the request fan-out drain. Requests that emit after listener shutdown, transaction-bound deferred enqueues, retry timing, and database write failures are outside this projection."
+  },
+  "cases": [
+    {
+      "name": "shared-login-webhook-timer",
+      "main": "LoginWebhookTimer",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TimerFollowsOwners",
+        "StorageOutlivesCallback",
+        "WorkerStopsAdmitting",
+        "AuthOwnsRegistration"
+      ],
+      "temporal": [
+        "CloseCompletes",
+        "DetachedDeliveryProgress",
+        "CloseWithoutFairness"
+      ],
+      "temporalChecks": [
+        {
+          "property": "CloseCompletes",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of listener retirement, the original worker continuation and final closure. Admitted claims and network work settle, receipt writes finish, and remaining request delivery drainage and storage close settle. Closing does not require successful network delivery."
+          ]
+        },
+        {
+          "property": "DetachedDeliveryProgress",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of worker progress. A serving Auth owner with a due job still receives timer callbacks after the task adapter detaches. The bounded claim, network and receipt phases settle, or Auth leaves serving state."
+          ]
+        },
+        {
+          "property": "CloseWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. An admitted callback or shutdown continuation can remain unsettled, so the host can retain the database indefinitely."
+          ]
+        }
+      ],
+      "maxSteps": 48,
+      "samples": 700
+    },
+    {
+      "name": "request-emitted-immediate-fanout",
+      "main": "LoginRequestWebhookFanout",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "StorageOutlivesSiblings",
+        "FanoutTracksSiblings",
+        "FailureFollowsSiblings"
+      ],
+      "temporal": ["CloseCompletes", "CloseWithoutFairness"],
+      "temporalChecks": [
+        {
+          "property": "CloseCompletes",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of listener and periodic worker retirement, sibling settlement and final database close. The admitted request delivery returns or times out, its receipt write settles, and the aggregate reports the configuration failure only after both siblings settle."
+          ]
+        },
+        {
+          "property": "CloseWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. An admitted delivery can remain in the modeled sending phase and retain its database. This is not a wall-clock transport deadline."
+          ]
+        }
+      ],
+      "maxSteps": 32,
+      "samples": 500
+    }
+  ]
+}

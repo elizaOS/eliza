@@ -10,7 +10,6 @@ const result = spawnSync(
     "--conditions=eliza-source",
     "test",
     "packages/cloud/scripts/pages-browser-sign-in.test.ts",
-    "packages/cloud/scripts/pages-native-auth-callbacks.test.ts",
   ],
   {
     cwd: fileURLToPath(new URL("../../../", import.meta.url)),

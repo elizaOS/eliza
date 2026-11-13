@@ -92,6 +92,74 @@ function runtimeInvocation(runtime: "bun" | "node-test"): {
 }
 
 describe("account storage subprocess ownership", () => {
+  it("refuses a missing runtime vault key even under test process signals", () => {
+    const root = path.join(container, "missing-runtime-key");
+    const { child, result } = runProbe(
+      "bun",
+      {
+        NODE_ENV: "test",
+        BUN_ENV: "test",
+        VITEST: "true",
+        ELIZA_VAULT_DISABLE_KEYCHAIN: "1",
+        ELIZA_VAULT_PASSPHRASE: "",
+        ELIZA_STORAGE_PROBE_MODE: "runtime-write",
+      },
+      root,
+    );
+    expect(child.status, child.stderr).toBe(0);
+    expect(result).toMatchObject({
+      ok: false,
+      name: "MasterKeyUnavailableError",
+    });
+    expect(
+      fs.existsSync(
+        path.join(root, "auth", "openai-codex", "child-account.json"),
+      ),
+    ).toBe(false);
+  });
+  it.each(["bun", "node-test"] as const)(
+    "keeps runtime credentials readable after %s test signals and process restart",
+    (writer) => {
+      const root = path.join(container, `${writer}-persistent`);
+      const vault = {
+        ELIZA_VAULT_DISABLE_KEYCHAIN: "1",
+        ELIZA_VAULT_PASSPHRASE: "runtime-policy-persistence-test-key",
+      };
+      const write = runProbe(
+        writer,
+        {
+          ...vault,
+          NODE_ENV: "test",
+          BUN_ENV: "test",
+          VITEST: "true",
+          ELIZA_STORAGE_PROBE_MODE: "runtime-write",
+        },
+        root,
+      );
+      expect(write.child.status, write.child.stderr).toBe(0);
+      expect(write.result).toEqual({ ok: true, owner: "runtime" });
+      const persisted = fs.readFileSync(
+        path.join(root, "auth", "openai-codex", "child-account.json"),
+        "utf8",
+      );
+      expect(typeof JSON.parse(persisted).ciphertext).toBe("string");
+      expect(persisted).not.toContain('"credentials"');
+      const reader = writer === "bun" ? "node-test" : "bun";
+      const read = runProbe(
+        reader,
+        {
+          ...vault,
+          NODE_ENV: "production",
+          BUN_ENV: "production",
+          VITEST: "false",
+          ELIZA_STORAGE_PROBE_MODE: "runtime-read",
+        },
+        root,
+      );
+      expect(read.child.status, read.child.stderr).toBe(0);
+      expect(read.result).toEqual({ ok: true, owner: "runtime" });
+    },
+  );
   it.each([
     ["bun", { BUN_ENV: "test" }],
     ["node-test", { NODE_ENV: "test", VITEST: "true", TURBO_HASH: "signal" }],
@@ -492,8 +560,10 @@ it("retains a live successor when a stale lock observation is renamed", async ()
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(fs.existsSync(path.join(root, "reaper-ready"))).toBe(false);
     fs.writeFileSync(path.join(root, "holder-go"), "go");
-    expect(await finishOwnershipProbe(holder)).toEqual({ ok: true });
+    await waitForOwnershipBarrier(holder, "holder-release-unlinked");
     await waitForOwnershipBarrier(reaper, "reaper-ready");
+    fs.writeFileSync(path.join(root, "holder-release-go"), "go");
+    expect(await finishOwnershipProbe(holder)).toEqual({ ok: true });
     fs.writeFileSync(path.join(root, "reaper-go"), "go");
     expect(await finishOwnershipProbe(reaper)).toEqual({ ok: true });
     expect(

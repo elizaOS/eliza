@@ -15,7 +15,7 @@ test("Android make rejects unsupported targets before build or provisioning", as
   try {
     await writeFile(
       path.join(directory, "node"),
-      '#!/bin/sh\nprintf "NODE_STARTED %s\\n" "$@"\ncase "$1" in *build-aosp.ts) printf "RISCV_OPTIONAL=%s\\n" "${ELIZA_BUN_RISCV64_OPTIONAL-unset}";; esac\n',
+      '#!/bin/sh\nprintf "NODE_STARTED %s\\n" "$@"\n',
       { mode: 0o700 },
     );
     // A pre-provisioned launcher keeps this test offline: the digest-pinned
@@ -41,18 +41,17 @@ test("Android make rejects unsupported targets before build or provisioning", as
           encoding: "utf8",
           env: {
             ...process.env,
-            ELIZA_BUN_RISCV64_OPTIONAL: undefined,
             PATH: `${directory}:${process.env.PATH}`,
           },
         },
       );
-    for (const arch of ["x86_64", "arm64", "", "riscv64;echo injected"]) {
-      const result = run("build-e1", arch);
-      assert.notEqual(result.status, 0);
-      assert.match(result.stderr, /E1 simulator requires ARCH=riscv64/);
-      assert.doesNotMatch(result.stdout, /NODE_STARTED/);
-    }
-    for (const arch of ["", "x86_64 arm64", "%", "x86_64;echo injected"]) {
+    for (const arch of [
+      "",
+      "riscv64",
+      "x86_64 arm64",
+      "%",
+      "x86_64;echo injected",
+    ]) {
       const result = run("build", arch);
       assert.notEqual(result.status, 0);
       assert.match(result.stderr, /Unsupported ARCH/);
@@ -75,18 +74,6 @@ test("Android make rejects unsupported targets before build or provisioning", as
         );
       }
     }
-    const valid = run("build-e1", "riscv64");
-    assert.equal(valid.status, 0, valid.stderr);
-    assert.match(valid.stdout, /NODE_STARTED .*compile-libllama/);
-    assert.match(valid.stdout, /NODE_STARTED .*provision-cuttlefish-e1/);
-    assert.match(valid.stdout, /NODE_STARTED .*build-aosp/);
-    assert.match(valid.stdout, /RISCV_OPTIONAL=unset/);
-    assert.equal(
-      valid.stdout
-        .split("\n")
-        .filter((line) => line === `NODE_STARTED ${directory}`).length,
-      2,
-    );
   } finally {
     await rm(directory, { recursive: true, force: true });
     await rm(launcherDirectory, { recursive: true, force: true });

@@ -12,7 +12,7 @@
  * No per-test HTML is generated; use generate-viewer.ts for the index.
  *
  * Usage:
- *   node packages/scripts/e2e-recordings/generate-contact-sheets.ts
+ *   bun packages/scripts/e2e-recordings/generate-contact-sheets.ts
  */
 
 import { spawnSync } from "node:child_process";

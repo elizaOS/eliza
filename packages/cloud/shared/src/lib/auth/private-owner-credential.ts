@@ -5,7 +5,11 @@ import {
 } from "../../db/repositories/private-owner-credential";
 import type { Variables } from "../../types/cloud-worker-env";
 import { ForbiddenError } from "../api/cloud-worker-errors";
-import type { MobileAppAuthRuntimeEnv } from "../services/mobile-app-auth";
+import {
+  admitMobileAppAuthRegistration,
+  MobileAppAuthProtocolError,
+  type MobileAppAuthRuntimeEnv,
+} from "../services/mobile-app-auth";
 
 export async function requirePrivateOwnerCredential(args: {
   userId: string;
@@ -59,20 +63,36 @@ export async function requirePrivateOwnerCredential(args: {
     !row.mobileApp.approved
   )
     throw refuse();
-  const { resolveMobileAppAuthRegistration, MobileAppAuthProtocolError } = await import(
-    "../services/mobile-app-auth"
-  );
-  let registration: ReturnType<typeof resolveMobileAppAuthRegistration>;
+  if (!row.mobileClient || !row.mobileClient.clientId || !row.mobileClient.enabled) {
+    throw refuse();
+  }
+  let registration;
   try {
-    registration = resolveMobileAppAuthRegistration(args.env, grant.clientId);
+    registration = await admitMobileAppAuthRegistration(args.env, {
+      client: {
+        client_id: row.mobileClient.clientId,
+        app_id: row.mobileClient.appId,
+        redirect_uri: row.mobileClient.redirectUri,
+        enabled: row.mobileClient.enabled,
+        credential_ttl_seconds: row.mobileClient.credentialTtlSeconds,
+      },
+      app: {
+        id: row.mobileApp.id,
+        is_active: row.mobileApp.active,
+        is_approved: row.mobileApp.approved,
+        app_url: row.mobileApp.appUrl,
+        allowed_origins: row.mobileApp.allowedOrigins,
+      },
+    });
   } catch (error) {
     if (error instanceof MobileAppAuthProtocolError) throw refuse();
     throw error;
   }
   if (
     registration.appId !== grant.appId ||
-    registration.environment !== grant.environment ||
+    registration.clientId !== grant.clientId ||
     registration.redirectUri !== grant.redirectUri ||
+    registration.environment !== grant.environment ||
     !Array.isArray(grant.scopes) ||
     grant.scopes.length !== registration.scopes.length ||
     !registration.scopes.every((scope) => grant.scopes.includes(scope))

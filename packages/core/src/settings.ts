@@ -1,4 +1,4 @@
-/** Encrypts secret settings with AES-256-GCM and authenticated versioned envelopes; decrypts supported CBC envelopes. Production requires an explicit salt unless the operator enables the default-salt exception. Development without a salt uses a warned, process-local random key. Decryption errors fail explicitly; non-string settings pass through. */
+/** Encrypts secret settings with AES-256-GCM and authenticated versioned envelopes; decrypts supported CBC envelopes. Production requires an explicit, non-default salt. Development without a salt uses a warned, process-local random key. Decryption errors fail explicitly; non-string settings pass through. */
 import { createUniqueUuid } from "./entities";
 import { ElizaError } from "./errors";
 import { logger } from "./logger";
@@ -44,8 +44,8 @@ let saltCache: SaltCache | null = null;
 let saltErrorLogged = false;
 const SALT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes TTL
 
-/** The historical hardcoded fallback — a publicly known key input. */
-const LEGACY_DEFAULT_SECRET_SALT = "secretsalt";
+/** The historical hardcoded fallback, publicly known and therefore rejected. */
+const PUBLICLY_KNOWN_SECRET_SALT = "secretsalt";
 
 /**
  * Random per-process salt for the unset-outside-production case. Deliberately
@@ -122,22 +122,17 @@ export function getSalt(): string {
 	const envSalt = getEnv("SECRET_SALT", "") || "";
 	const nodeEnv = (getEnv("NODE_ENV", "") || "").toLowerCase();
 	const isProduction = nodeEnv === "production";
-	const allowDefaultSaltRaw =
-		getEnv("ELIZA_ALLOW_DEFAULT_SECRET_SALT", "") || "";
-	const allowDefaultSalt = allowDefaultSaltRaw.toLowerCase() === "true";
+	const isKnownOrUnset =
+		envSalt === "" || envSalt === PUBLICLY_KNOWN_SECRET_SALT;
 
-	const isDefaultOrUnset =
-		envSalt === "" || envSalt === LEGACY_DEFAULT_SECRET_SALT;
-
-	if (isProduction && isDefaultOrUnset && !allowDefaultSalt) {
+	if (isProduction && isKnownOrUnset) {
 		throw new Error(
-			"SECRET_SALT must be set to a non-default value in production. " +
-				"Set ELIZA_ALLOW_DEFAULT_SECRET_SALT=true to override (not recommended).",
+			"SECRET_SALT must be set to a non-default value in production.",
 		);
 	}
 
-	let value: string;
-	if (isDefaultOrUnset && !allowDefaultSalt) {
+	let value = envSalt;
+	if (isKnownOrUnset) {
 		// Never key ciphertext by the publicly known constant: derive an
 		// ephemeral random salt instead. The loud trade-off is that settings
 		// encrypted under it are not decryptable after a process restart —
@@ -150,16 +145,6 @@ export function getSalt(): string {
 				"SECRET_SALT is not set — generated an EPHEMERAL random salt for this process. " +
 					"Settings encrypted now will NOT be decryptable after restart. " +
 					"Set SECRET_SALT to a stable random value to persist encrypted settings.",
-			);
-			saltErrorLogged = true;
-		}
-	} else {
-		// Use the explicit salt or the default constant under operator opt-in.
-		value = isDefaultOrUnset ? LEGACY_DEFAULT_SECRET_SALT : envSalt;
-		if (isDefaultOrUnset && !saltErrorLogged) {
-			logger.warn(
-				{ src: "core:settings", event: "core.settings.default_secret_salt" },
-				"SECRET_SALT is not set or using default value",
 			);
 			saltErrorLogged = true;
 		}

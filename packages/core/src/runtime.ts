@@ -99,6 +99,7 @@ import {
 	pendingPostDeliveryTaskCount,
 } from "./services/post-delivery-task-tracker.ts";
 import type { TaskService } from "./services/task";
+import { stopTaskSchedulerForAdapter } from "./services/task-scheduler";
 import { decryptSecret, getSalt } from "./settings";
 import {
 	invalidateTurnMemoPrefix,
@@ -3686,11 +3687,17 @@ export class AgentRuntime implements IAgentRuntime {
 			// Each handler starts in its own async frame so a handler that throws
 			// synchronously rejects like an async one instead of aborting the map
 			// before its siblings (registered by later plugins) have been invoked.
-			await Promise.all(
-				eventHandlers.map(async (handler) =>
-					handler(payload as EventPayloadMap[keyof EventPayloadMap]),
-				),
+			const pending = eventHandlers.map(async (handler) =>
+				handler(payload as EventPayloadMap[keyof EventPayloadMap]),
 			);
+			try {
+				await Promise.all(pending);
+			} catch (error) {
+				// A rejecting handler does not retire its siblings. Keep the event
+				// owner until they settle, then propagate the original failure.
+				await Promise.allSettled(pending);
+				throw error;
+			}
 		}
 	}
 
@@ -3895,10 +3902,49 @@ export class AgentRuntime implements IAgentRuntime {
 	 * Closes the database adapter. Call after stop() for full teardown (stops services then closes DB/connection).
 	 */
 	async close(): Promise<void> {
-		await this.modelDispatch.drainDiagnostics();
-		if (this.adapter) {
-			await this.adapter.close();
+		if (this.adapter) await stopTaskSchedulerForAdapter(this.adapter);
+		let retirementFailure: unknown;
+		try {
+			await this.retirement.drain({ beforeCloseOnly: true });
+		} catch (error) {
+			// error-policy:J6 A settled outgoing failure must not prevent final
+			// resource release; preserve it after attempting adapter closure.
+			retirementFailure = error;
 		}
+		try {
+			await this.modelDispatch.drainDiagnostics();
+			if (this.adapter) await this.adapter.close();
+		} catch (error) {
+			if (retirementFailure) {
+				throw new ElizaError("Shared adapter retirement and closure failed", {
+					code: "RUNTIME_ADAPTER_RETIREMENT_CLOSE_FAILED",
+					cause: new AggregateError([retirementFailure, error]),
+				});
+			}
+			throw error;
+		}
+		if (retirementFailure) throw retirementFailure;
+	}
+
+	/** A host that reuses this adapter's storage retains the outgoing cleanup
+	 * before publishing its first asynchronous continuation. Only this adopted
+	 * work also gates close(); ordinary fast-stop callbacks keep their budget. */
+	retainSharedAdapterRetirement(operation: () => Promise<void>): Promise<void> {
+		return this.retirement.run(
+			async () => {
+				try {
+					await operation();
+				} catch (error) {
+					// error-policy:J2 Original callers and later close/strict-stop callers
+					// observe the same retained failure after the original work settles.
+					this.retirement.recordFailure("shared-adapter-retirement", error, {
+						beforeClose: true,
+					});
+					throw error;
+				}
+			},
+			{ beforeClose: true },
+		);
 	}
 	async getAgent(agentId: UUID): Promise<Agent | null> {
 		const agents = await this.adapter.getAgentsByIds([agentId]);
@@ -4280,31 +4326,55 @@ export class AgentRuntime implements IAgentRuntime {
 			"transcripts",
 		];
 		const allMemories: Memory[] = [];
-
-		for (const tableName of tables) {
-			// Paginate until a short page: a single 10k-bounded read silently
-			// truncates a larger partition, and the media GC would then delete
-			// files referenced only by rows past the cap as "orphaned".
-			//
-			// Accepted race (wave-5 audit, W5-022): offset pagination is the only
-			// mechanism the IDatabaseAdapter contract guarantees — it has no
-			// unique-key cursor, and `createdAt` is optional and non-unique, so
-			// keyset pagination cannot be expressed through the interface. A
-			// `deleteMemory` racing the sweep shifts later pages up and can skip
-			// a row; media referenced only by that row is then collected after
-			// the grace window. The window is narrow (a delete must race the
-			// daily task) and the grace window protects fresh media, so this is
-			// documented rather than re-architected.
+		const seenIds = new Set<string>();
+		const append = (memories: Memory[]) => {
+			for (const memory of memories) {
+				if (memory.id) {
+					if (seenIds.has(memory.id)) continue;
+					seenIds.add(memory.id);
+				}
+				allMemories.push(memory);
+			}
+		};
+		// Paginate until a short page: a single 10k-bounded read silently
+		// truncates a larger partition, and the media GC would then delete
+		// files referenced only by rows past the cap as "orphaned".
+		//
+		// Accepted race (wave-5 audit, W5-022): offset pagination is the only
+		// mechanism the IDatabaseAdapter contract guarantees — it has no
+		// unique-key cursor, and `createdAt` is optional and non-unique, so
+		// keyset pagination cannot be expressed through the interface. A
+		// `deleteMemory` racing the sweep shifts later pages up and can skip
+		// a row; media referenced only by that row is then collected after
+		// the grace window. The window is narrow (a delete must race the
+		// daily task) and the grace window protects fresh media, so this is
+		// documented rather than re-architected.
+		const readPartition = async (
+			tableName: string,
+			metadata?: Record<string, unknown>,
+		) => {
 			for (let offset = 0; ; offset += GET_ALL_MEMORIES_PAGE_SIZE) {
 				const memories = await this.adapter.getMemories({
 					agentId: this.agentId,
 					tableName,
 					limit: GET_ALL_MEMORIES_PAGE_SIZE,
 					offset,
+					...(metadata ? { metadata } : {}),
 				});
-				allMemories.push(...memories);
+				append(memories);
 				if (memories.length < GET_ALL_MEMORIES_PAGE_SIZE) break;
 			}
+		};
+
+		for (const tableName of tables) {
+			await readPartition(tableName);
+			if (tableName !== "document_fragments") continue;
+			// The SQL list read hides fragmentRole "source-segment" unless the
+			// caller asks for that role. Those rows are the full text of a large
+			// document. A media URL that exists only there is invisible to the
+			// GC sweep, and a wipe misses a source segment whose parent document
+			// is already gone (fragment deletion follows the parent id).
+			await readPartition(tableName, { fragmentRole: "source-segment" });
 		}
 
 		return allMemories;

@@ -34,34 +34,20 @@ import {
   ELIZA_DOMAIN_CONTRACTS,
   LANDING_AB_HOSTNAMES,
 } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
-import {
-  type BrowserSignInConfiguration,
-  browserReturnScript,
-  browserSignInStart,
-} from "./_browser-sign-in";
+import { isProtocolPath } from "./_native-auth-callback-config";
+
+export {
+  type NativeAuthCallback,
+  nativeBillingReturnPath,
+  selectNativeAuthCallback,
+} from "./_native-auth-callback-config";
+
 import { type PagesProxyEnv, proxyToApiWorker } from "./_proxy";
 
 interface MiddlewareContext {
   request: Request;
   env: PagesProxyEnv;
   next: (input?: Request) => Promise<Response>;
-}
-const OIDC_PROTOCOL_PATHS = new Set([
-  "/.well-known/openid-configuration",
-  "/.well-known/oidc/jwks.json",
-  // Android App Link verification fetches this from the link host itself and
-  // does not follow redirects, so it must be proxied here (never the SPA's
-  // index.html, which would fail verification with a 200 text/html body).
-  "/.well-known/assetlinks.json",
-]);
-function isProtocolPath(pathname: string): boolean {
-  return (
-    pathname === "/api" ||
-    pathname.startsWith("/api/") ||
-    pathname === "/steward" ||
-    pathname.startsWith("/steward/") ||
-    OIDC_PROTOCOL_PATHS.has(pathname)
-  );
 }
 /** Resolve browser-facing legacy aliases to their canonical host. */
 export function resolveCanonicalPageRedirect(
@@ -222,236 +208,12 @@ export const swapCspFrameAncestors = (
   }
   return directives.join("; ");
 };
-// ── Native sign-in callback fallback ─────────────────────────────────────────
-//
-// Applications supply exact HTTPS callbacks through protected Pages configuration.
-// Android verified App Links deliver success. This fallback never forwards codes;
-// an intent matches a package name, not a signing certificate.
-export interface NativeAuthCallback {
-  redirectUri: string;
-  androidPackage: string;
-  appName: string;
-  browserSignIn?: BrowserSignInConfiguration;
-}
-
-class NativeAuthCallbackConfigurationError extends Error {
-  override readonly name = "NativeAuthCallbackConfigurationError";
-  constructor() {
-    super("Invalid native auth callback configuration");
-  }
-}
-
-/** Request data selects a configured callback; it cannot define a destination. */
-export function selectNativeAuthCallback(
-  raw: unknown,
-  url: URL,
-  kind: "callback" | "browser-start" = "callback",
-): NativeAuthCallback | null {
-  if (raw === undefined || raw === "") return null;
-  let entries: unknown;
-  try {
-    entries = typeof raw === "string" ? JSON.parse(raw) : null;
-  } catch {
-    // error-policy:J3 Invalid operator configuration cannot define a return route.
-    throw new NativeAuthCallbackConfigurationError();
-  }
-  if (!Array.isArray(entries)) throw new NativeAuthCallbackConfigurationError();
-  const routes = new Set<string>();
-  const storageKeys = new Set<string>();
-  let selected: NativeAuthCallback | null = null;
-  for (const entry of entries) {
-    if (
-      !entry ||
-      typeof entry !== "object" ||
-      Array.isArray(entry) ||
-      Object.keys(entry).some(
-        (key) =>
-          ![
-            "redirectUri",
-            "androidPackage",
-            "appName",
-            "browserSignIn",
-          ].includes(key),
-      ) ||
-      typeof entry.redirectUri !== "string" ||
-      typeof entry.androidPackage !== "string" ||
-      !/^[a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)+$/.test(
-        entry.androidPackage,
-      ) ||
-      typeof entry.appName !== "string" ||
-      !entry.appName.trim()
-    ) {
-      throw new NativeAuthCallbackConfigurationError();
-    }
-    let callback: URL;
-    try {
-      callback = new URL(entry.redirectUri);
-    } catch {
-      // error-policy:J3 Do not reflect malformed operator input in the response.
-      throw new NativeAuthCallbackConfigurationError();
-    }
-    if (
-      callback.protocol !== "https:" ||
-      callback.username ||
-      callback.password ||
-      callback.search ||
-      callback.hash ||
-      callback.href !== entry.redirectUri ||
-      /[%;*\\]/.test(callback.pathname) ||
-      isProtocolPath(callback.pathname) ||
-      callback.pathname.startsWith(ASSETS_PREFIX) ||
-      routes.has(callback.href)
-    ) {
-      throw new NativeAuthCallbackConfigurationError();
-    }
-    routes.add(callback.href);
-    if (entry.browserSignIn !== undefined) {
-      const configuration = entry.browserSignIn;
-      if (
-        !configuration ||
-        typeof configuration !== "object" ||
-        Array.isArray(configuration) ||
-        Object.keys(configuration).some(
-          (key) =>
-            ![
-              "startPath",
-              "returnPath",
-              "storageKey",
-              "apiOrigin",
-              "tenant",
-            ].includes(key),
-        ) ||
-        typeof configuration.storageKey !== "string" ||
-        !/^[A-Za-z0-9:._-]{1,128}$/.test(configuration.storageKey) ||
-        typeof configuration.tenant !== "string" ||
-        !/^[A-Za-z0-9_-]{1,64}$/.test(configuration.tenant)
-      )
-        throw new NativeAuthCallbackConfigurationError();
-      for (const key of ["startPath", "returnPath"] as const) {
-        const value = configuration[key];
-        if (
-          typeof value !== "string" ||
-          !/^\/[A-Za-z0-9/_~.-]+$/.test(value) ||
-          value.startsWith("//") ||
-          new URL(value, callback.origin).pathname !== value ||
-          isProtocolPath(value) ||
-          value.startsWith(ASSETS_PREFIX)
-        )
-          throw new NativeAuthCallbackConfigurationError();
-      }
-      let api: URL;
-      try {
-        api = new URL(configuration.apiOrigin);
-      } catch {
-        // error-policy:J3 Invalid operator input cannot define an auth authority.
-        throw new NativeAuthCallbackConfigurationError();
-      }
-      const start = callback.origin + configuration.startPath;
-      const storageKey = `${callback.origin}:${configuration.storageKey}`;
-      if (
-        api.protocol !== "https:" ||
-        api.username ||
-        api.password ||
-        api.origin !== configuration.apiOrigin ||
-        routes.has(start) ||
-        storageKeys.has(storageKey)
-      )
-        throw new NativeAuthCallbackConfigurationError();
-      routes.add(start);
-      storageKeys.add(storageKey);
-    }
-    if (
-      url.protocol === "https:" &&
-      url.origin === callback.origin &&
-      url.pathname ===
-        (kind === "callback"
-          ? callback.pathname
-          : entry.browserSignIn?.startPath)
-    )
-      selected = entry;
-  }
-  return selected;
-}
-
-export const NATIVE_CALLBACK_SCRUB_SCRIPT =
-  '(function(){var R=/^[A-Za-z0-9_-]{43}$/,s=null;function f(t){t.split("&").forEach(function(p){var i=p.indexOf("=");if(s===null&&i>0&&p.slice(0,i)==="state"&&R.test(p.slice(i+1)))s=p.slice(i+1)})}f(location.hash.slice(1));f(location.search.slice(1));var a=document.getElementById("open");if(a&&s)a.href=a.href.replace("#Intent;","?error=app_link_unverified&state="+s+"#Intent;");if(location.hash||location.search)history.replaceState(null,"",location.pathname)})();';
-// sha256 of NATIVE_CALLBACK_SCRUB_SCRIPT; the test recomputes it.
-const NATIVE_CALLBACK_SCRIPT_HASH =
-  "sha256-fNxHkHlQFHRiRhxEEUudIprPl4u12pkFQlEahycnH88=";
-
-const escapeHtml = (value: string): string =>
-  value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-
-/**
- * Build the server-rendered `intent://` URL that brings the app forward. It
- * never carries a query: no `code`, `state` or `error` from the callback URL
- * is forwarded, whatever shape the request has. (The server cannot see the
- * fragment; the pinned page script may add only `error=app_link_unverified`
- * and a well-formed `state`, never a code.)
- */
-export function buildNativeSignInIntentUrl(
-  url: URL,
-  callback: NativeAuthCallback,
-): string {
-  return `intent://${url.host}${new URL(callback.redirectUri).pathname}#Intent;scheme=https;package=${callback.androidPackage};end`;
-}
-
-export function nativeSignInCallbackFallback(
-  url: URL,
-  callback: NativeAuthCallback,
-): Response {
-  const href = escapeHtml(buildNativeSignInIntentUrl(url, callback));
-  const appName = escapeHtml(callback.appName);
-  const browserSignIn = callback.browserSignIn;
-  const nonce = browserSignIn ? crypto.randomUUID() : null;
-  const scriptHashes = browserSignIn
-    ? `'${NATIVE_CALLBACK_SCRIPT_HASH}' 'nonce-${nonce}'`
-    : `'${NATIVE_CALLBACK_SCRIPT_HASH}'`;
-  const body = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex, nofollow">
-<meta name="referrer" content="no-referrer">
-<title>Return to ${appName}</title>
-<style>
-:root { color-scheme: light dark; font-family: system-ui, sans-serif; }
-body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; box-sizing: border-box; }
-main { max-width: 420px; text-align: center; line-height: 1.5; }
-a { display: inline-block; margin-top: 16px; padding: 14px 22px; border-radius: 10px; background: #111; color: #fff; font-weight: 600; text-decoration: none; }
-@media (prefers-color-scheme: dark) { a { background: #f4f4f4; color: #111; } }
-</style>
-</head>
-<body>
-<main>
-<h1>Sign-in did not finish</h1>
-<p>${appName} did not open automatically, so this sign-in was not completed. Return to ${appName} and start sign-in again.</p>
-<p>If this keeps happening, open Android Settings, then Apps, ${appName}, Open by default, and allow it to open its supported links.</p>
-<a id="open" href="${href}">Return to ${appName}</a>
-${browserSignIn ? `<script nonce="${nonce}">${browserReturnScript(callback.redirectUri, browserSignIn)}</script>` : ""}
-<script>${NATIVE_CALLBACK_SCRUB_SCRIPT}</script>
-</main>
-</body>
-</html>`;
-  return new Response(body, {
-    status: 200,
-    headers: {
-      "Cache-Control": "no-store",
-      "Content-Security-Policy": `default-src 'none'; script-src ${scriptHashes}; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
-      "Content-Type": "text/html; charset=utf-8",
-      "Referrer-Policy": "no-referrer",
-      "X-Content-Type-Options": "nosniff",
-      "X-Frame-Options": "DENY",
-      "X-Robots-Tag": "noindex, nofollow",
-    },
-  });
-}
+export {
+  buildNativeSignInIntentUrl,
+  NATIVE_CALLBACK_SCRUB_SCRIPT,
+  nativeBillingReturnFallback,
+  nativeSignInCallbackFallback,
+} from "@elizaos/cloud-shared/lib/auth/native-callback-fallback";
 
 const isEmbedPath = (pathname: string): boolean =>
   pathname === "/embed" || pathname.startsWith("/embed/");
@@ -469,34 +231,6 @@ export const onRequest = async (
   if (url.pathname.startsWith(ASSETS_PREFIX)) {
     return serveAsset(context);
   }
-  let callback: NativeAuthCallback | null;
-  let browserStart: NativeAuthCallback | null;
-  try {
-    callback = selectNativeAuthCallback(
-      context.env.ELIZA_NATIVE_AUTH_CALLBACKS_JSON,
-      url,
-    );
-    browserStart = selectNativeAuthCallback(
-      context.env.ELIZA_NATIVE_AUTH_CALLBACKS_JSON,
-      url,
-      "browser-start",
-    );
-  } catch (error) {
-    if (!(error instanceof NativeAuthCallbackConfigurationError)) throw error;
-    // error-policy:J3 Fail closed rather than serving the SPA on an unverified callback.
-    return new Response("Native auth callback configuration is invalid", {
-      status: 503,
-      headers: { "Cache-Control": "no-store" },
-    });
-  }
-  if (browserStart?.browserSignIn) {
-    return browserSignInStart(
-      context.request,
-      new URL(browserStart.redirectUri),
-      browserStart.browserSignIn,
-    );
-  }
-  if (callback) return nativeSignInCallbackFallback(url, callback);
   // A single lookup decides both that this is a crawl asset and what type it
   // must be served as, so the two can never drift apart.
   const crawlAssetContentType = CRAWL_ASSET_CONTENT_TYPES.get(url.pathname);
@@ -516,6 +250,25 @@ export const onRequest = async (
         "X-Content-Type-Options": "nosniff",
       },
     });
+  }
+  // Static root and files do not require native registration lookup.
+  if (
+    url.pathname !== "/" &&
+    !/\.[a-z0-9]+$/i.test(url.pathname) &&
+    !isEmbedPath(url.pathname)
+  ) {
+    // The API owns registration and all native/browser return configuration.
+    // Preserve the public URL as data; no callback URL is ever fetched directly.
+    const nativeRoute = new URL("/api/v1/app-auth/mobile/hosted-route", url);
+    nativeRoute.searchParams.set(
+      "url",
+      `${url.origin}${url.pathname}${url.search}`,
+    );
+    const nativeResponse = await proxyToApiWorker({
+      ...context,
+      request: new Request(nativeRoute, context.request),
+    });
+    if (nativeResponse.status !== 404) return nativeResponse;
   }
   const response = await context.next();
   if (url.pathname === SERVICE_WORKER_PATH) {

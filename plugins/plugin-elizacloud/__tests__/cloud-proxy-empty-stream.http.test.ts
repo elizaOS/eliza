@@ -100,3 +100,99 @@ describe("CloudRuntimeProxy empty stream handling", () => {
     expect(bridgeRequests).toBe(0);
   });
 });
+
+describe("CloudRuntimeProxy error frame handling", () => {
+  const servers = new Set<http.Server>();
+
+  afterEach(async () => {
+    await Promise.all(
+      [...servers].map((server) => new Promise<void>((resolve) => server.close(() => resolve())))
+    );
+    servers.clear();
+  });
+
+  // Frames written with the Cloud chatSseFrame format. The shared runtime and
+  // the sandbox bridge end a turn they cannot finish with a terminal error
+  // frame (bridge/active.ts, shared-runtime-chat.ts, stream/route.ts).
+  async function startCloud(streamBody: string) {
+    const requests = { stream: 0, bridge: 0 };
+    const server = http.createServer((request, response) => {
+      if (request.url?.endsWith("/stream")) {
+        requests.stream += 1;
+        response.writeHead(200, { "content-type": "text/event-stream" });
+        response.end(streamBody);
+        return;
+      }
+      if (request.url?.endsWith("/bridge")) {
+        requests.bridge += 1;
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({ result: { text: "second response" } }));
+        return;
+      }
+      response.writeHead(404).end();
+    });
+    servers.add(server);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      throw new Error("Test server did not bind a TCP port");
+    }
+    const client = new ElizaCloudClient(`http://127.0.0.1:${address.port}`, "test-key");
+    return { proxy: new CloudRuntimeProxy(client, "agent-123", "Agent"), requests };
+  }
+
+  // The cloud-mode CLI chat loop in packages/agent/src/runtime/eliza.ts.
+  async function runCloudCliTurn(proxy: CloudRuntimeProxy, shown: string[]): Promise<string> {
+    let responseText = "";
+    for await (const chunk of proxy.handleChatMessageStream("what is the answer?")) {
+      shown.push(chunk);
+      responseText += chunk;
+    }
+    if (!responseText) {
+      responseText = await proxy.handleChatMessage("what is the answer?");
+    }
+    return responseText;
+  }
+
+  it("rejects a turn whose stream ends in an error frame after partial text", async () => {
+    const { proxy, requests } = await startCloud(
+      'event: chunk\ndata: {"chunk":"The answer is","text":"The answer is","fullText":"The answer is","type":"token"}\n\n' +
+        'event: error\ndata: {"message":"Shared runtime stream failed","type":"error"}\n\n'
+    );
+    const shown: string[] = [];
+
+    await expect(runCloudCliTurn(proxy, shown)).rejects.toEqual(
+      expect.objectContaining<Partial<CloudBridgeError>>({
+        name: "CloudBridgeError",
+        message: "Shared runtime stream failed",
+      })
+    );
+    expect(shown).toEqual(["The answer is"]);
+    expect(requests).toEqual({ stream: 1, bridge: 0 });
+  });
+
+  it("reports the error frame message when the stream carried no text", async () => {
+    const { proxy, requests } = await startCloud(
+      'event: error\ndata: {"message":"Sandbox is not running or unreachable","type":"error"}\n\n'
+    );
+
+    await expect(runCloudCliTurn(proxy, [])).rejects.toEqual(
+      expect.objectContaining<Partial<CloudBridgeError>>({
+        name: "CloudBridgeError",
+        message: "Sandbox is not running or unreachable",
+      })
+    );
+    expect(requests).toEqual({ stream: 1, bridge: 0 });
+  });
+
+  it("names a stream failure when the error frame has no message", async () => {
+    const { proxy } = await startCloud('event: error\ndata: {"type":"error"}\n\n');
+
+    await expect(runCloudCliTurn(proxy, [])).rejects.toEqual(
+      expect.objectContaining<Partial<CloudBridgeError>>({
+        name: "CloudBridgeError",
+        message: "Cloud stream failed",
+      })
+    );
+  });
+});

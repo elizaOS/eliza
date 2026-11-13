@@ -7,7 +7,14 @@
     "packages/cloud/shared/src/lib/services/maps-request-policy.ts",
     "packages/cloud/shared/src/lib/services/plan-request-limiter.ts",
     "packages/scripts/lib/junit-summary.ts",
-    "packages/scripts/lib/test-output.ts"
+    "packages/scripts/lib/test-output.ts",
+    "packages/cloud/api/src/lib/maps-route.ts",
+    "packages/cloud/api/src/rate-limit-state.ts",
+    "packages/cloud/shared/src/lib/middleware/rate-limit-hono-cloudflare.ts",
+    "packages/cloud/shared/src/lib/middleware/cloudflare-rate-state.ts",
+    "packages/cloud/shared/src/lib/services/maps/google-provider.ts",
+    "packages/cloud/shared/src/lib/services/maps/contract.ts",
+    "packages/cloud/shared/src/lib/services/maps/provider-registry.ts"
   ],
   "conformance": "packages/cloud/quint/check-maps-request-buckets.mjs",
   "bounds": {
@@ -18,7 +25,8 @@
   "limitations": [
     "No proof of JavaScript floating-point rounding or arbitrary numeric limits.",
     "Credential ownership, subscription policy, allowance-window transitions, tombstone retention and cross-organization routing remain separate obligations.",
-    "The strict hook executes the real controller on Miniflare SQLite with a controlled fixture clock; this is scenario correspondence, not general TypeScript refinement."
+    "The strict hook executes the real controller on Miniflare SQLite with a controlled fixture clock; this is scenario correspondence, not general TypeScript refinement.",
+    "The composed tile-route scenario uses Hono, the production route and Google provider adapter, a Miniflare native global limiter, and real Maps/rate-state SQLite Durable Objects. Account authentication and the primary locked policy are explicit fixtures; the provider transport returns controlled bytes. It does not boot all application middleware or establish live authorization, deployed rate-limit behavior, or Google availability. The 67-request scenario is implementation evidence beyond this model's finite bounds, not exhaustive refinement."
   ],
   "cases": [
     {

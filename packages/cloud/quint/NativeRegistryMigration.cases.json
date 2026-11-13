@@ -1,0 +1,41 @@
+{
+  "sources": [
+    "packages/scripts/cloud/admin/migrate-native-app-auth.ts",
+    "packages/scripts/cloud/admin/migrate-native-app-auth.pglite.test.ts",
+    "packages/cloud/shared/src/db/migrations/0574_native_app_auth_client_registration.sql",
+    "packages/cloud/shared/src/db/migrations/0575_native_app_auth_import_identity.sql",
+    ".github/workflows/cloud-cf-release.yml",
+    "packages/cloud/scripts/staging-release-certification.test.ts",
+    "packages/cloud/quint/check-reviewed-cloud.mjs",
+    "packages/cloud/quint/reviewed-cloud-checks.json"
+  ],
+  "conformance": "packages/cloud/quint/check-reviewed-cloud.mjs",
+  "bounds": "One environment, one complete four-client source snapshot, empty or committed database, staged rows, and atomic receipt. Release admission has absent, unbound, bound, or invalid markers; boolean schema, identity, source availability and retained-row state. Retry and rollback preserve committed state; a bound marker permits later reviewed row deletion without source reads.",
+  "cases": [
+    {
+      "name": "native-registry-migration",
+      "main": "NativeRegistryMigration",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "maxSteps": 40,
+      "samples": 1000,
+      "temporal": []
+    },
+    {
+      "name": "native-registry-release",
+      "main": "NativeRegistryRelease",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "maxSteps": 40,
+      "samples": 1000,
+      "temporal": []
+    }
+  ],
+  "limitations": [
+    "Abstracts SQL row contents and provider/identity authenticity as validated input; actual parser, alias and database checks are covered by the linked PGlite importer test.",
+    "Atomic safety is modeled. Completion requires a valid stable source and a scheduled commit after stage; no liveness under provider failure is claimed.",
+    "Release admission assumes preceding canonical source and production certification succeeded. The separate staging-release-certification test checks actual workflow dependency ordering before Worker and Pages activation."
+  ]
+}

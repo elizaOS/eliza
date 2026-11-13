@@ -1,0 +1,45 @@
+{
+  "sources": [
+    "packages/cloud/api/v1/voice/speech/route.ts",
+    "packages/cloud/api/src/speech-relay-coordinator.ts",
+    "packages/cloud/api/src/speech-retirement-route.test.ts",
+    "packages/cloud/api/src/speech-retirement-coordinator.test.ts",
+    "packages/cloud/api/__tests__/voice-speech-mint.test.ts",
+    "packages/cloud/api/src/speech-retirement-state.ts",
+    "packages/cloud/shared/src/lib/voice-session/consent-nonce.ts",
+    "packages/cloud/api/__tests__/speech-relay-worker.test.ts",
+    "packages/cloud/api/test/fixtures/speech-relay-worker.ts",
+    "packages/host/src/voice/cloud-speech-relay-client.ts",
+    "packages/host/src/voice/cloud-speech-retirement-recovery.test.ts",
+    "packages/app/src/api/cloud-speech-recovery-journal.ts",
+    "packages/cloud/quint/check-speech-prepared-consent.mjs",
+    "packages/cloud/quint/speech-prepared-consent-conformance.json",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/scripts/lib/vitest-conformance.ts",
+    "packages/scripts/lib/test-output.ts",
+    "packages/cloud/api/src/lib/generative-route-auth.ts",
+    "packages/cloud/shared/src/lib/services/inference-credential-revocation.ts",
+    "packages/cloud/api/__tests__/voice-speech-rate-limit.pglite.test.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-speech-prepared-consent.mjs",
+  "bounds": {
+    "domain": "One new server-generated consent, one persisted prepared record, one user and organization, exact/mismatching nonce, original absolute expiry, retirement and restart. Admissions are bounded0..1; rejection records only the last outcome, not an unbounded counter. One armed expiry flag projects the persisted bootstrap alarm.",
+    "scope": "A UUIDv5 name selects the exact prepared Durable Object; it is not consent authority. Mint requires prepared phase, original nonce digest, matching user and organization, and the original unexpired preparation. Restart preserves the original record and expiry. New nonces have no legacy Redis entry; old random recovery IDs keep the existing Redis precondition.",
+    "assumptions": "HTTP authentication and a visible consent action precede preparation. Equality of nonce digest abstracts collision-resistant token comparison. The existing Durable Object storage transaction atomically checks and commits each phase change. Local filesystem journal operations and provider boundaries in conformance are controlled; real Workerd SQLite/socket behavior remains actual. Bootstrap record and expiry alarm commit in one SQLite storage transaction. A failed preparation retains neither record nor alarm. Armed abstracts an unexpired scheduled bootstrap alarm; expiry and retirement clear that abstraction.",
+    "limitations": "Partial consent-admission model, not a proof of UI consent, cryptographic derivation, authentication, policy propagation, credential-revocation timing, multiple sessions, lost storage acknowledgements, deployment latency or provider/billing effects. A stored preparation may mint once after process recreation only until its original expiry and for its original user/organization; restart never grants fresh consent. Provider admission/cleanup and unknown costs remain covered by their existing owners, not this finite model. Missing-record retirement is a conservative extra refusal state: the actual server returns404 without creating a record. Alarm execution, clock precision and general transaction refinement remain outside this projection.",
+    "progress": "No new liveness or wall-clock promise. Storage commit/acknowledgement is one atomic transition in this model; failures, waits and recovery scheduling remain outside it. Mandatory real implementation checks cover replay, retirement, expiry, client cancellation and owner changes at named boundaries.",
+    "credential": "One timed-out credential read can be rechecked once before rate limiting or consent preparation. A denial, second timeout or cancellation cannot prepare or admit a session."
+  },
+  "cases": [
+    {
+      "name": "prepared-single-use",
+      "main": "speech_prepared_consent",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 20,
+      "samples": 500
+    }
+  ]
+}

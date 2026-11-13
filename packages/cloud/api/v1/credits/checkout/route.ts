@@ -1,4 +1,4 @@
-import { findCheckoutSessionForOrder } from "@/api-app/checkout-reconciliation";
+import { findCheckoutSessionForOrder } from "../../../src/checkout-reconciliation";
 /**
  * POST /api/v1/credits/checkout
  * Create a Stripe checkout session for purchasing organization credits.

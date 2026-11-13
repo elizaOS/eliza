@@ -29,19 +29,19 @@
   ],
   "peerDependencies": {
     "@capacitor/core": "^8.5.2",
-    "pdfjs-dist": "^6.4.299"
+    "pdfjs-dist": "^6.5.438"
   },
   "scripts": {
     "build": "bun run build:js && bun run build:types",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "node --test --experimental-transform-types test/*.test.mjs",
+    "test": "bun test --timeout=120000 ./test/*.test.mjs",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo"
+    "clean": "bun ../../packages/scripts/rm-path-recursive.ts dist .turbo"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -55,7 +55,7 @@
   },
   "devDependencies": {
     "@capacitor/core": "^8.5.2",
-    "pdfjs-dist": "^6.4.299",
+    "pdfjs-dist": "^6.5.438",
     "@types/node": "^25.0.6",
     "@typescript/native": "npm:typescript@^7.0.2",
     "tsup": "^9.0.0",

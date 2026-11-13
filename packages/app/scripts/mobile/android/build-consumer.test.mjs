@@ -221,12 +221,28 @@ test("lint and androidTest switches and in-run prepare steps shape the one Gradl
     assert.throws(g.build, /Invalid Android admission command/);
     assert.equal(g.calls.length, 0);
   }
-  for (const patch of [{ lint: "false" }, { androidTest: 0 }]) {
+  for (const patch of [{ lint: "false" }, { androidTest: 0 }, { release: 1 }]) {
     const g = fixture(t);
     Object.assign(g.options, patch);
     assert.throws(g.build, /must be booleans/);
     assert.equal(g.calls.length, 0);
   }
+  const debug = fixture(t);
+  debug.options.release = false;
+  debug.options.variants = ["launcher"];
+  assert.throws(debug.build, /debug-only Android build cannot be archived/);
+  assert.equal(debug.calls.length, 0);
+  debug.options.archive = null;
+  const debugResult = debug.build();
+  assert.deepEqual(debug.calls[2].args, [
+    "--no-daemon",
+    ":app:assembleLauncherDebug",
+    ":app:assembleLauncherDebugAndroidTest",
+    ":app:lint",
+  ]);
+  assert.deepEqual(debugResult.files, [
+    path.join(debug.root, "artifacts/launcher-debug.apk"),
+  ]);
 });
 
 test("a prepare function that throws or is async stops the build before Gradle", (t) => {

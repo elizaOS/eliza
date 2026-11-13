@@ -39,7 +39,6 @@ export class WorldMetadataStorage extends BaseSecretStorage {
 
   private runtime: IAgentRuntime;
   private keyManager: KeyManager;
-  private worldCache: Map<string, World> = new Map();
 
   constructor(runtime: IAgentRuntime, keyManager: KeyManager) {
     super();
@@ -55,10 +54,10 @@ export class WorldMetadataStorage extends BaseSecretStorage {
     if (!context.worldId) {
       return false;
     }
-    await this.assertReadPermission(key, context);
+    const world = await this.getWorld(context.worldId);
+    this.assertReadPermission(key, context, world);
 
-    const secrets = await this.getWorldSecrets(context.worldId);
-    return key in secrets;
+    return key in this.getWorldSecrets(world);
   }
 
   async get(key: string, context: SecretContext): Promise<string | null> {
@@ -66,10 +65,10 @@ export class WorldMetadataStorage extends BaseSecretStorage {
       logger.warn("[WorldMetadataStorage] Cannot get secret without worldId");
       return null;
     }
-    await this.assertReadPermission(key, context);
+    const world = await this.getWorld(context.worldId);
+    this.assertReadPermission(key, context, world);
 
-    const secrets = await this.getWorldSecrets(context.worldId);
-    const stored = secrets[key];
+    const stored = this.getWorldSecrets(world)[key];
 
     if (stored === undefined || stored === null) {
       return null;
@@ -89,10 +88,7 @@ export class WorldMetadataStorage extends BaseSecretStorage {
       ) {
         if (
           context.requesterId &&
-          (await this.checkWritePermission(
-            context.worldId,
-            context.requesterId,
-          ))
+          this.checkWritePermission(world, context.requesterId)
         ) {
           await this.delete(key, context);
         }
@@ -122,9 +118,10 @@ export class WorldMetadataStorage extends BaseSecretStorage {
       throw new StorageError("Cannot set world secret without worldId");
     }
 
-    await this.assertWritePermission(key, "write", context);
-
+    // Authorize against the same read that is written back: the adapter
+    // refuses the write if the world changed in between.
     const world = await this.getWorld(context.worldId);
+    this.assertWritePermission(key, "write", context, world);
     if (!world) {
       throw new StorageError(`World not found: ${context.worldId}`);
     }
@@ -165,7 +162,6 @@ export class WorldMetadataStorage extends BaseSecretStorage {
     worldMeta.secrets = secrets;
 
     await this.runtime.updateWorld(world);
-    this.worldCache.set(context.worldId, world);
 
     logger.debug(
       `[WorldMetadataStorage] Set secret: ${key} for world: ${context.worldId}`,
@@ -178,9 +174,8 @@ export class WorldMetadataStorage extends BaseSecretStorage {
       return false;
     }
 
-    await this.assertWritePermission(key, "delete", context);
-
     const world = await this.getWorld(context.worldId);
+    this.assertWritePermission(key, "delete", context, world);
     if (!world) {
       return false;
     }
@@ -198,7 +193,6 @@ export class WorldMetadataStorage extends BaseSecretStorage {
     metadata.secrets = secrets;
 
     await this.runtime.updateWorld(world);
-    this.worldCache.set(context.worldId, world);
 
     logger.debug(
       `[WorldMetadataStorage] Deleted secret: ${key} from world: ${context.worldId}`,
@@ -210,9 +204,10 @@ export class WorldMetadataStorage extends BaseSecretStorage {
     if (!context.worldId) {
       return {};
     }
-    await this.assertReadPermission("*", context);
+    const world = await this.getWorld(context.worldId);
+    this.assertReadPermission("*", context, world);
 
-    const secrets = await this.getWorldSecrets(context.worldId);
+    const secrets = this.getWorldSecrets(world);
     const metadata: SecretMetadata = {};
 
     for (const [key, stored] of Object.entries(secrets)) {
@@ -249,10 +244,10 @@ export class WorldMetadataStorage extends BaseSecretStorage {
     if (!context.worldId) {
       return null;
     }
-    await this.assertReadPermission(key, context);
+    const world = await this.getWorld(context.worldId);
+    this.assertReadPermission(key, context, world);
 
-    const secrets = await this.getWorldSecrets(context.worldId);
-    const stored = secrets[key];
+    const stored = this.getWorldSecrets(world)[key];
 
     if (!stored) {
       return null;
@@ -278,9 +273,8 @@ export class WorldMetadataStorage extends BaseSecretStorage {
       return false;
     }
 
-    await this.assertWritePermission(key, "write", context);
-
     const world = await this.getWorld(context.worldId);
+    this.assertWritePermission(key, "write", context, world);
     if (!world) {
       return false;
     }
@@ -309,37 +303,23 @@ export class WorldMetadataStorage extends BaseSecretStorage {
 
     metadata.secrets = secrets;
     await this.runtime.updateWorld(world);
-    this.worldCache.set(context.worldId, world);
 
     return true;
   }
 
   /**
-   * Get a world from cache or database
+   * Read the world from the database on every operation. Roles, connectors
+   * and settings rewrite the same world and advance its metadata revision,
+   * so a kept copy would carry old roles and a revision the adapter refuses.
    */
   private async getWorld(worldId: string): Promise<World | null> {
-    // Check cache first
-    const cached = this.worldCache.get(worldId);
-    if (cached) {
-      return cached;
-    }
-
-    // Load from database
-    const world = await this.runtime.getWorld(worldId as UUID);
-    if (world) {
-      this.worldCache.set(worldId, world);
-    }
-
-    return world;
+    return this.runtime.getWorld(worldId as UUID);
   }
 
   /**
    * Get secrets object from world metadata
    */
-  private async getWorldSecrets(
-    worldId: string,
-  ): Promise<Record<string, StoredSecret>> {
-    const world = await this.getWorld(worldId);
+  private getWorldSecrets(world: World | null): Record<string, StoredSecret> {
     const metadata = world?.metadata as WorldMetadataWithSecrets | undefined;
     if (!metadata?.secrets) {
       return {};
@@ -350,11 +330,7 @@ export class WorldMetadataStorage extends BaseSecretStorage {
   /**
    * Check if a user has write permission in a world
    */
-  private async checkWritePermission(
-    worldId: string,
-    userId: string,
-  ): Promise<boolean> {
-    const world = await this.getWorld(worldId);
+  private checkWritePermission(world: World | null, userId: string): boolean {
     if (!world) {
       return false;
     }
@@ -374,42 +350,40 @@ export class WorldMetadataStorage extends BaseSecretStorage {
     return userRole === Role.OWNER || userRole === Role.ADMIN;
   }
 
-  private async assertReadPermission(
+  private assertReadPermission(
     key: string,
     context: SecretContext,
-  ): Promise<void> {
+    world: World | null,
+  ): void {
     if (!context.worldId || !context.requesterId) {
       throw new PermissionDeniedError(key, "read", context);
     }
 
-    if (await this.checkReadPermission(context.worldId, context.requesterId)) {
+    if (this.checkReadPermission(world, context.requesterId)) {
       return;
     }
 
     throw new PermissionDeniedError(key, "read", context);
   }
 
-  private async assertWritePermission(
+  private assertWritePermission(
     key: string,
     action: Extract<SecretPermissionType, "write" | "delete">,
     context: SecretContext,
-  ): Promise<void> {
+    world: World | null,
+  ): void {
     if (!context.worldId || !context.requesterId) {
       throw new PermissionDeniedError(key, action, context);
     }
 
-    if (await this.checkWritePermission(context.worldId, context.requesterId)) {
+    if (this.checkWritePermission(world, context.requesterId)) {
       return;
     }
 
     throw new PermissionDeniedError(key, action, context);
   }
 
-  private async checkReadPermission(
-    worldId: string,
-    userId: string,
-  ): Promise<boolean> {
-    const world = await this.getWorld(worldId);
+  private checkReadPermission(world: World | null, userId: string): boolean {
     if (!world) {
       return false;
     }
@@ -425,19 +399,5 @@ export class WorldMetadataStorage extends BaseSecretStorage {
     const roles = world.metadata?.roles as Record<string, Role> | undefined;
     const userRole = roles?.[userId];
     return Boolean(userRole && userRole !== Role.NONE);
-  }
-
-  /**
-   * Clear the world cache
-   */
-  clearCache(): void {
-    this.worldCache.clear();
-  }
-
-  /**
-   * Invalidate a specific world in the cache
-   */
-  invalidateWorld(worldId: string): void {
-    this.worldCache.delete(worldId);
   }
 }

@@ -1,0 +1,91 @@
+{
+  "sources": [
+    "packages/scripts/lib/release-candidate.ts",
+    "packages/scripts/lib/release-registry.ts",
+    "packages/scripts/lib/release-contract.ts",
+    "packages/scripts/lib/release-git.ts",
+    "packages/scripts/__tests__/release-candidate.test.ts",
+    "packages/scripts/__tests__/release-verdaccio.integration.test.ts",
+    "packages/scripts/__tests__/release-git.integration.test.ts",
+    "packages/scripts/quint/check-release-provenance.ts",
+    "packages/scripts/quint/release-provenance-conformance.json",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/scripts/lib/test-output.ts"
+  ],
+  "conformance": "packages/scripts/quint/check-release-provenance.ts",
+  "bounds": {
+    "domain": "One exact package identity and source commit from an already admitted release cohort, one temporary manifest write, pack, restoration attempt, candidate verification and registry inspection. Two finite modes cover required public provenance and the existing private missing-field fallback. Three registry values mean matching, undefined, or provided-but-wrong (including null and empty).",
+    "scope": "Packed name/version/gitHead must match selected identity before candidate admission and verification. Candidate admission waits for exact source-manifest restoration and source-snapshot checks. Every provided wrong source/publisher value is refused in both modes; public matching requires both values. Registry name/version and SHA-512 must also match.",
+    "assumptions": "Local normal operation with a reachable finally block. The exact selected source and cohort are already authenticated at entry. Caller owns the candidate lock and verified immutable archive until inspection. A successful filesystem acknowledgement means its requested bytes are written. Private fallback is used only within the existing verified-archive/authenticated-publisher path; this model does not prove authentication.",
+    "limitations": "Partial release model, not a complete release transaction or machine-checked refinement. One package, no dependency order, state-lock races, atomic Git refs, registry channel promotion, multi-package interrupted publish/resume, concurrent foreign filesystem writers, SIGKILL/process/power loss or failed-ack recovery. Failed write/restoration can leave modified source bytes and never admits a candidate; no automatic source recovery is promised. No public npm publication, provider credential acceptance or deployed source is established. The strict owning20 implementation cases additionally exercise actual local npm archives, local Verdaccio interruption/resume and temporary Git remotes outside these model bounds.",
+    "progress": "Under weak fairness of temporary-write, pack, restoration and final candidate-check completion, the selected pack attempt settles as admitted or rejected. Filesystem failures can cause explicit rejection. Without fairness the external pack process or filesystem work can remain pending forever."
+  },
+  "cases": [
+    {
+      "name": "public-complete-provenance",
+      "main": "PublicReleaseProvenance",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "AdmittedOnlyAfterRestore",
+        "VerifiedArchiveIdentity",
+        "ProvidedMismatchRejected",
+        "PublicNeedsBothFields",
+        "RegistryIdentityRequired",
+        "RegistryNeedsVerifiedCandidate"
+      ],
+      "temporal": ["FairPackSettles", "PackSettles"],
+      "temporalChecks": [
+        {
+          "property": "FairPackSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of temporary manifest writing, local npm pack, finally restoration and final candidate-check completion. No crash recovery, provider success or wall-clock bound is established."
+          ]
+        },
+        {
+          "property": "PackSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. An external pack or filesystem operation can remain pending forever."
+          ]
+        }
+      ],
+      "maxSteps": 24,
+      "samples": 1000
+    },
+    {
+      "name": "private-omitted-field-fallback",
+      "main": "PrivateReleaseProvenance",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "AdmittedOnlyAfterRestore",
+        "VerifiedArchiveIdentity",
+        "ProvidedMismatchRejected",
+        "PublicNeedsBothFields",
+        "RegistryIdentityRequired",
+        "RegistryNeedsVerifiedCandidate"
+      ],
+      "temporal": ["FairPackSettles", "PackSettles"],
+      "temporalChecks": [
+        {
+          "property": "FairPackSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of temporary manifest writing, local npm pack, finally restoration and final candidate-check completion. No crash recovery, provider success or wall-clock bound is established."
+          ]
+        },
+        {
+          "property": "PackSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. An external pack or filesystem operation can remain pending forever."
+          ]
+        }
+      ],
+      "maxSteps": 24,
+      "samples": 1000
+    }
+  ]
+}

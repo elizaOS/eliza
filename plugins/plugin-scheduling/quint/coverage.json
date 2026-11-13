@@ -24,5 +24,99 @@
       "plugins/plugin-scheduling/src/scheduled-task/runner-host-admission.integration.test.ts",
       "plugins/plugin-scheduling/src/scheduled-task/record-store.test.ts"
     ]
+  },
+  {
+    "id": "plugin-scheduling.ScheduledTaskPendingOccurrence",
+    "model": "plugins/plugin-scheduling/quint/ScheduledTaskPendingOccurrence.qnt",
+    "sources": [
+      "plugins/plugin-scheduling/src/scheduled-task/runner.ts",
+      "plugins/plugin-scheduling/src/scheduled-task/due.ts",
+      "plugins/plugin-scheduling/src/scheduled-task/next-fire-at.ts"
+    ],
+    "invariants": [
+      "SettledPendingNeverDispatched",
+      "DispatchOncePerOccurrence",
+      "UnsettledOccurrencesFire",
+      "DismissStopsDispatch",
+      "TypeOK"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One daily recurring task over three occurrences; the owner acts at most once between two ticks, on a scheduled or fired row.",
+      "The replay covers cron and during_window triggers with in-memory stores; interval triggers, applyWithResult and a snoozed row are separate tests in runner-pending-occurrence.test.ts.",
+      "Reopen, gate denials and the global pause keep their existing coverage; the SQL stores persist the same row fields.",
+      "Progress through the three occurrences requires weak fairness of each enabled tick and settlement of tick and owner-verb work. Paused clocks have an explicit no-fairness counterexample. No wall-clock bound or external delivery success is proved."
+    ],
+    "implementationTests": [
+      "plugins/plugin-scheduling/src/scheduled-task/runner-pending-occurrence.test.ts"
+    ]
+  },
+  {
+    "id": "plugin-scheduling.ScheduledTaskOwnerBinding",
+    "model": "plugins/plugin-scheduling/quint/ScheduledTaskOwnerBinding.qnt",
+    "sources": [
+      "plugins/plugin-scheduling/src/scheduled-task/runner-service.ts"
+    ],
+    "invariants": [
+      "NewOperationsUseOwner",
+      "OneDeliveryAcrossRebind",
+      "DeliveryHasClaim",
+      "TypeOK"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One deferred first-wins registration, one shared task and two callers.",
+      "Work already started retains its dispatcher; the shared store claim is not reset. Real SQL behavior is checked by the implementation case.",
+      "Bounded safety only. Completion requires fair execution of an accepted operation; network/provider liveness and hot unregistration are outside this model."
+    ],
+    "implementationTests": [
+      "plugins/plugin-scheduling/src/scheduled-task/sql-persistence.test.ts"
+    ]
+  },
+  {
+    "id": "plugin-scheduling.ScheduledDriverTeardown",
+    "model": "plugins/plugin-scheduling/quint/ScheduledDriverTeardown.qnt",
+    "sources": [
+      "plugins/plugin-scheduling/src/plugin.ts",
+      "plugins/plugin-scheduling/src/scheduled-task/standalone-tick.ts",
+      "packages/core/src/plugin-lifecycle.ts",
+      "plugins/plugin-sqlite/adapter.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One runtime, two worker generations, one deferred hook per generation and one canonical driver row. Real runtime and file-backed SQLite cases hold the first insert across unload, verify cleanup and fresh reload after acknowledged and unacknowledged commits, and resume an obsolete seed callback after reload.",
+      "Progress requires fair database and teardown settlement. A failed cleanup can retain the canonical row for later reconciliation. Running worker effects, multiple runtimes, legacy duplicate rows, consumer-host takeover and unbounded progress remain outside the model."
+    ],
+    "implementationTests": [
+      "plugins/plugin-scheduling/src/scheduled-task/record-startup.test.ts"
+    ]
+  },
+  {
+    "id": "plugin-scheduling.ScheduledTaskCompletionSettle",
+    "model": "plugins/plugin-scheduling/quint/ScheduledTaskCompletionSettle.qnt",
+    "sources": [
+      "plugins/plugin-scheduling/src/scheduled-task/runner.ts",
+      "plugins/plugin-personal-assistant/src/lifeops/scheduled-task/scheduler.ts",
+      "plugins/plugin-personal-assistant/src/lifeops/scheduled-task/inbound-reply-completion.ts"
+    ],
+    "invariants": [
+      "SettleAtMostOnce",
+      "OneWinner",
+      "ChildrenFollowWinner",
+      "CompletedRowSettledOnce",
+      "TerminalReadSawSettledRow",
+      "TypeOK"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two owner-reply scans, one fired task with a passing completion check and one pipeline.onComplete child.",
+      "A commit writes the row, the completed log row and the child in one step; partial failures inside settleTerminal keep their existing coverage.",
+      "Other verbs between a scan's read and its commit are covered by runner-completion-settle.test.ts (a snooze, no mutation policy) and runner-host-admission.integration.test.ts (an owner disable under the host policy); the SQL store's conditional write by the store tests, not by this model.",
+      "Scan progress requires weak fairness of each enabled read and commit and settlement of the owner and store calls. No wall-clock bound or permanent store failure recovery is proved; the no-fairness progress claim must have a temporal loop counterexample."
+    ],
+    "implementationTests": [
+      "plugins/plugin-scheduling/src/scheduled-task/runner-completion-settle.test.ts"
+    ]
   }
 ]

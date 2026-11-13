@@ -39,15 +39,11 @@ it("decodes the first authenticated native-client receipt without node_modules a
     [
       `export {asObjectRecord} from ${sourcePath("packages/core/src/utils/type-guards.ts")};`,
       `export {readViewInteractionClientId} from ${sourcePath("packages/core/src/views/view-interact-protocol.ts")};`,
-      `export {resolveEnvAlias} from ${sourcePath("packages/core/src/utils/env.ts")};`,
       `export {ElizaError} from ${sourcePath("packages/core/src/errors.ts")};`,
       `export {canonicalJsonString} from ${sourcePath("packages/core/src/canonical-json.ts")};`,
     ].join("\n"),
   );
-  await writeFile(
-    file("host-port.ts"),
-    `export {resolveAliasedEnvValue as resolveAppAliasedEnvValue} from ${sourcePath("packages/host/src/config/boot-config-store.ts")};`,
-  );
+  await writeFile(file("host-port.ts"), "export {};");
   await writeFile(
     file("views-port.ts"),
     `

@@ -91,7 +91,6 @@ export function buildSharedEnv(
     PLAYWRIGHT_TEST_AUTH_SECRET: PLAYWRIGHT_TEST_AUTH_SECRET,
     ELIZA_APP_JWT_SECRET:
       process.env.ELIZA_APP_JWT_SECRET ?? ELIZA_APP_TEST_JWT_SECRET,
-    NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH: "true",
     VITE_PLAYWRIGHT_TEST_AUTH: "true",
     // Stub the Cloudflare registrar/DNS so domain check/buy routes never hit
     // the real Cloudflare API (the registrar reads this via getCloudAwareEnv).

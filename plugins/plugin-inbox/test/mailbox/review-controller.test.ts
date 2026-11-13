@@ -3,8 +3,11 @@
  * synthetic provider: exact composer binding, single dispatch, unknown outcomes,
  * reviewed Undo, withdrawn grants and account changes. No account or network.
  */
-import { describe, expect, it } from "vitest";
+import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
+import { describe, expect, it, vi } from "vitest";
 import { sha256Hex } from "../../src/mailbox/digest.ts";
+import { inboxOperationKey } from "../../src/mailbox/operation-journal.ts";
 import {
   createMailReviewController,
   type MailReviewBinding,
@@ -215,6 +218,116 @@ describe("createMailReviewController", () => {
     expect(sent).toEqual(["draft-1"]);
   });
 
+  it("renders a retained attachment review without encoding its bytes and rechecks them on confirmation", async () => {
+    const f = fixture("succeeded", {}, { defer: () => {} });
+    const owner = JSON.stringify(["production", "user", "org"]);
+    const bytes = Buffer.alloc(5 * 1024 * 1024, "a");
+    const file = {
+      name: "fixture.txt",
+      mimeType: "text/plain",
+      dataBase64: bytes.toString("base64"),
+    };
+    const proposal = { ...email(), attachments: [file] };
+    const attachment = {
+      name: file.name,
+      mimeType: file.mimeType,
+      size: bytes.length,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+    };
+    const requestId = crypto.randomUUID();
+    const review = {
+      ...proposal,
+      from: "owner@example.invalid",
+      attachments: [attachment],
+    };
+    const slot = await inboxOperationKey(owner, "grant");
+    f.slots.set(
+      slot,
+      JSON.stringify({
+        version: 1,
+        owner,
+        grantId: "grant",
+        requestId,
+        proposal,
+        phase: "review",
+        review,
+        receipt: {
+          requestId,
+          kind: "send",
+          state: "prepared",
+          reviewDigest: await sha256Hex(JSON.stringify(review)),
+          providerResult: null,
+          rejectionCode: null,
+        },
+        composer: { draftId: "draft-1" },
+      }),
+    );
+    let composer = { draftId: "draft-1", proposal };
+    f.controller.setComposer(() => composer);
+    await f.controller.bind("grant");
+
+    const stringify = vi.spyOn(JSON, "stringify");
+    let confirm: () => void;
+    try {
+      const view = f.controller.render().provider;
+      confirm = view.confirm;
+      expect(view.canConfirm).toBe(true);
+      expect(view.attachments).toBe(
+        `${file.name} · ${file.mimeType} · ${bytes.length} bytes · SHA-256 ${attachment.sha256}`,
+      );
+      expect(f.controller.chips((label) => label)).toEqual([
+        "Mail review / receipt",
+      ]);
+      expect(
+        stringify.mock.calls.some(
+          ([value]) =>
+            Array.isArray(value) &&
+            value[6]?.[0]?.dataBase64 === file.dataBase64,
+        ),
+      ).toBe(false);
+    } finally {
+      stringify.mockRestore();
+    }
+
+    // Legacy property order still participates in the original exact JSON comparison.
+    composer = {
+      ...composer,
+      proposal: {
+        ...proposal,
+        attachments: [
+          {
+            mimeType: file.mimeType,
+            name: file.name,
+            dataBase64: file.dataBase64,
+          },
+        ],
+      },
+    };
+    expect(f.controller.render().provider.canConfirm).toBe(false);
+    expect(f.slots.has(slot)).toBe(true);
+
+    const retainedAttachment = { ...file };
+    composer = {
+      ...composer,
+      proposal: { ...proposal, attachments: [retainedAttachment] },
+    };
+    expect(f.controller.render().provider.canConfirm).toBe(true);
+    bytes[bytes.length - 1] = 0x62;
+    retainedAttachment.dataBase64 = bytes.toString("base64");
+    expect(composer.proposal.attachments[0]).toBe(retainedAttachment);
+    expect(f.controller.render().provider.canConfirm).toBe(false);
+    expect(
+      JSON.parse(f.slots.get(slot) as string).proposal.attachments[0]
+        .dataBase64,
+    ).toBe(file.dataBase64);
+    // A button left over from the matching render cannot dispatch the edited email.
+    confirm();
+    await settle();
+    expect(f.dispatched).toEqual([]);
+    expect(f.slots.has(slot)).toBe(false);
+    expect(f.toasts.at(-1)).toMatch(/edited after this review/);
+  });
+
   it("shows an unknown outcome as uncertain and never re-enables Send", async () => {
     const f = fixture("outcome-unknown");
     const composerEmail = { draftId: "d", proposal: email() };
@@ -230,6 +343,34 @@ describe("createMailReviewController", () => {
     view.confirm();
     await settle();
     expect(f.dispatched).toHaveLength(1);
+  });
+
+  it("lets the owner discard an attempted send that Gmail reports as not sent", async () => {
+    const f = fixture("prepared");
+    const composerEmail = { draftId: "d", proposal: email() };
+    f.controller.setComposer(() => composerEmail);
+    await f.controller.bind("grant");
+    await f.controller.prepare(email(), { draftId: "d" });
+    f.controller.render().provider.confirm();
+    await settle();
+    const view = f.controller.render().provider;
+    expect(view.status).toMatch(/A late request can still deliver it/);
+    expect(view.canConfirm).toBe(false);
+    expect(view.canClear).toBe(true);
+    expect(view.clearLabel).toBe("Discard this operation");
+    view.clear();
+    await settle();
+    expect(f.slots.size).toBe(0);
+    expect(f.controller.render().providerReview).toBe(false);
+    // The account can send again. The discarded request was dispatched one time.
+    f.setOutcome("succeeded");
+    await f.controller.prepare(email(), { draftId: "d" });
+    f.controller.render().provider.confirm();
+    await settle();
+    expect(f.dispatched).toHaveLength(2);
+    expect(f.controller.render().provider.status).toBe(
+      "Provider confirmed this operation.",
+    );
   });
 
   it("offers a reviewed Undo after a confirmed trash", async () => {

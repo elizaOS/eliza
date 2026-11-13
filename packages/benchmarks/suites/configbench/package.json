@@ -4,7 +4,15 @@
   "version": "2.0.0-beta.0",
   "type": "module",
   "description": "Configuration & Secrets Security Benchmark for @elizaos/plugin-assistant secrets and built-in plugin-manager",
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "server"
+      ]
+    }
+  },
   "scripts": {
+    "test": "node --conditions=eliza-source --import tsx --test src/handlers/eliza.test.ts",
     "bench": "bun run src/index.ts",
     "bench:eliza": "bun run src/index.ts --eliza",
     "bench:all": "bun run src/index.ts --eliza --all",
@@ -26,7 +34,7 @@
   "devDependencies": {
     "@types/node": "^25.0.3",
     "bun-types": "1.4.2",
-    "vitest": "5.0.5",
+    "vitest": "5.1.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3"
   }

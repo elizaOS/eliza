@@ -41,7 +41,6 @@ public final class UpdateActivity extends Activity {
                 case UpdateEngine.UpdateStatusConstants.FINALIZING:
                     stage = "Finishing installation"; break;
                 case UpdateEngine.UpdateStatusConstants.UPDATED_NEED_REBOOT:
-                    message = "Update ready. Your phone will restart when it is idle.";
                     busy = true; break;
                 default: break;
             }

@@ -1351,6 +1351,123 @@ async function replayRetiredConsumeRecovery(states) {
   }
 }
 
+async function replayTerminalSettlement(states) {
+  let editor = "draft";
+  let row = { version: 1, binding: "one", revision: "1", text: editor };
+  let revision = 1;
+  let completeWrite;
+  let host;
+  let releaseResult = "pending";
+  let commitResult = "none";
+  const controller = new DurableDraftController(
+    async () => ({
+      async read() {
+        return row;
+      },
+      async save(expected, text, _signal, write) {
+        if (completeWrite) await completeWrite.promise;
+        row = replaceDurableDraft(row, expected, "one", text, {
+          revision: () => String(++revision),
+          sending: write?.sending,
+        });
+        return row;
+      },
+    }),
+    () => editor,
+    (text, expected, current) =>
+      new Promise((resolve, reject) => {
+        host = {
+          apply() {
+            if (current() && editor === expected) editor = text;
+          },
+          resolve,
+          reject,
+        };
+      }),
+    () => {},
+  );
+  await controller.open("one");
+  await controller.hold("draft");
+  editor = "";
+  controller.edit(editor);
+  const releasing = controller.settle("not-dispatched");
+  void releasing.then(
+    () => {
+      releaseResult = "fulfilled";
+    },
+    () => {
+      releaseResult = "rejected";
+    },
+  );
+  assert(host, "Release must request a host update");
+
+  for (const [index, state] of states.entries()) {
+    if (index > 0 && state.event !== states[index - 1].event) {
+      switch (state.event) {
+        case "join":
+          assert.equal(controller.settle("not-dispatched"), releasing);
+          break;
+        case "apply":
+          host.apply();
+          break;
+        case "acknowledge":
+          host.resolve();
+          break;
+        case "reject":
+          host.reject(new Error("Host update rejected"));
+          break;
+        case "dispatch":
+        case "unknown": {
+          let resolve;
+          const promise = new Promise((done) => {
+            resolve = done;
+          });
+          completeWrite = { promise, resolve };
+          commitResult = "pending";
+          void controller
+            .settle(state.event === "dispatch" ? "dispatched" : "unknown")
+            .then(() => {
+              commitResult = "fulfilled";
+            });
+          break;
+        }
+        case "abandon":
+          controller.abandon();
+          break;
+        case "write":
+          completeWrite.resolve();
+          break;
+        default:
+          throw new Error(`Unsupported terminal event ${state.event}`);
+      }
+    }
+    await settleQueues();
+    assert.deepEqual(
+      {
+        editor,
+        saved: row.text,
+        revision: row.revision,
+        marked: row.sending === true,
+        held: controller.holding,
+        conflict: controller.state.conflict,
+        releaseResult,
+        commitResult,
+      },
+      {
+        editor: state.editor,
+        saved: state.saved,
+        revision: String(state.revision),
+        marked: state.revision === 2,
+        held: state.held,
+        conflict: state.releaseResult === "rejected",
+        releaseResult: state.releaseResult,
+        commitResult: state.commitResult,
+      },
+      `Terminal settlement state ${index} (${state.event})`,
+    );
+  }
+}
+
 const protocols = {
   DraftSendRecovery: replaySendRecovery,
   DraftMarkRace: replayMarkRace,
@@ -1362,6 +1479,7 @@ const protocols = {
   DraftConsumeHandoff: replayConsumeHandoff,
   DraftConsumeRetention: replayConsumeRetention,
   DraftRetiredConsumeRecovery: replayRetiredConsumeRecovery,
+  DraftTerminalSettlement: replayTerminalSettlement,
 };
 const requested = process.argv[2] && path.resolve(process.argv[2]);
 let steps = 0;
@@ -1382,6 +1500,7 @@ for (const [name, replay] of Object.entries(protocols)) {
     DraftConsumeRetention: 4,
     DraftRetiredConsumeRecovery: 8,
     DraftSendRecovery: 7,
+    DraftTerminalSettlement: 8,
   }[name];
   const result = spawnSync(
     process.execPath,

@@ -408,6 +408,12 @@ test("chat sheet: fast flick snaps open, slow sub-threshold drag stays closed, a
   expect(scrollAfter).toBe(scrollBefore);
 
   // Close with a downward flick on the grabber — back to the collapsed detent.
+  // The open flag commits before the release spring stops moving this handle.
+  // Measure its next real-input center only once the maintained rest probe is ready.
+  await expect(page.getByTestId("chat-glass-tier-probe")).toContainText(
+    "chat-glass-gate:o1s1d0",
+    { timeout: 5_000 },
+  );
   await mousePointerDrag(page, grabber, 0, 200, { steps: 5 });
   await expect(overlay).not.toHaveAttribute("data-open", "true", {
     timeout: 10_000,

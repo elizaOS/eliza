@@ -24,6 +24,27 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// The default pool and the credential helpers read through a runtime storage
+// policy, which resolves the vault master key. Inject one in-memory test key
+// for that, and write this file's fixtures through the same runtime policy.
+vi.mock("../vault/master-key.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../vault/master-key.js")>();
+  const { randomBytes } = await import("node:crypto");
+  const testKey = randomBytes(32);
+  return { ...actual, loadDefaultMasterKeySync: () => Buffer.from(testKey) };
+});
+vi.mock("../auth/account-storage.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../auth/account-storage.js")>();
+  return {
+    ...actual,
+    createIsolatedAccountStoragePolicy:
+      actual.createRuntimeAccountStoragePolicy,
+  };
+});
+
 import {
   createIsolatedAccountStoragePolicy,
   saveAccount,
@@ -155,6 +176,41 @@ describe("multi-account rotation E2E (#10696)", () => {
     // Two connected, two enabled, two healthy — the "more than one of each" proof.
     expect(claudeSub).toMatchObject({ total: 2, enabled: 2, healthy: 2 });
     expect(codexSub).toMatchObject({ total: 2, enabled: 2, healthy: 2 });
+  });
+
+  it("serves coding credentials from ELIZA_HOME when the state dir is elsewhere", async () => {
+    const stateDir = mkdtempSync(path.join(tmpdir(), "multi-acct-state-"));
+    try {
+      process.env.ELIZA_STATE_DIR = stateDir;
+      resetDefaultAccountPoolAfterCredentialReset();
+      writeAccount("anthropic-subscription", "claude-home", "sk-ant-oat-H");
+      writeAccount("openai-codex", "codex-home", "codex-tok-H", {
+        organizationId: "acct_home",
+        idToken: "id-H",
+      });
+      expect(
+        getDefaultAccountPool()
+          .list("anthropic-subscription")
+          .map((a) => a.id),
+      ).toEqual(["claude-home"]);
+      const bridge = getCodingAgentSelectorBridge();
+      const claude = await bridge?.select("claude", {
+        strategy: "priority",
+        providerId: "anthropic-subscription",
+      });
+      expect(claude?.envPatch.CLAUDE_CODE_OAUTH_TOKEN).toBe("sk-ant-oat-H");
+      const codex = await bridge?.select("codex", {
+        strategy: "priority",
+        providerId: "openai-codex",
+      });
+      expect(codex?.accountId).toBe("codex-home");
+      expect(readCodexAuth(codex?.envPatch.CODEX_HOME ?? "")).toMatchObject({
+        access_token: "codex-tok-H",
+        account_id: "acct_home",
+      });
+    } finally {
+      rmSync(stateDir, { recursive: true, force: true });
+    }
   });
 
   it("round-robin alternates across the two Claude accounts (distinct tokens each turn)", async () => {

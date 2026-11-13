@@ -50,6 +50,31 @@ function buildChatRequest(original: Request, body: ParsedResponsesRequest) {
   });
 }
 
+const RETRYABLE_GATEWAY_CODES = new Set([
+  "inference_admission_unavailable",
+  "billing_unavailable",
+  "rate_limit_unavailable",
+]);
+
+/** True for the canonical route's typed, retryable 503 refusals. */
+async function isRetryableGatewayRefusal(response: Response): Promise<boolean> {
+  if (response.status !== 503) return false;
+  try {
+    const body = (await response.clone().json()) as {
+      code?: unknown;
+      error?: { code?: unknown } | string;
+    };
+    const code =
+      typeof body.error === "object" && body.error !== null
+        ? body.error.code
+        : body.code;
+    return typeof code === "string" && RETRYABLE_GATEWAY_CODES.has(code);
+  } catch {
+    // error-policy:J3 an unreadable 5xx body is not a typed refusal.
+    return false;
+  }
+}
+
 function providerUnavailable(c: Context<AppEnv>, headers?: Headers) {
   const response = c.json(
     {
@@ -85,7 +110,13 @@ app.post("/", async (c) => {
     });
 
     if (!chatResponse.ok) {
-      if (chatResponse.status >= 500)
+      // A typed transient refusal (admission, billing or rate limiter warming)
+      // keeps its body and Retry-After so clients retry it; only an untyped
+      // 5xx is reported as provider unavailability.
+      if (
+        chatResponse.status >= 500 &&
+        !(await isRetryableGatewayRefusal(chatResponse))
+      )
         return providerUnavailable(c, chatResponse.headers);
       return chatResponse;
     }

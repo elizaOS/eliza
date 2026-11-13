@@ -3,6 +3,7 @@
  * generations. Private URLs never contain logical or provider object keys;
  * the durable receipt is resolved before exact-generation native access.
  */
+import { resolveCloudBlobHost } from "@elizaos/cloud-shared/lib/deployment/cloud-deployment";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import {
   normalizeStorageReadCapabilityHost,
@@ -32,10 +33,11 @@ function isPublicBlobKey(key: string): boolean {
 
 type BlobHostBindings = Pick<
   AppEnv["Bindings"],
-  "BLOB" | "R2_PUBLIC_HOST" | "STORAGE_READ_SIGNING_SECRETS"
+  | "BLOB"
+  | "R2_PUBLIC_HOST"
+  | "STORAGE_READ_SIGNING_SECRETS"
+  | "CLOUD_DEPLOYMENT_ID"
 >;
-
-const DEFAULT_BLOB_HOST = "blob.eliza.app";
 
 interface BlobObjectLike {
   body?: ReadableStream | null;
@@ -69,10 +71,7 @@ type ParsedRange =
   | { kind: "suffix"; length: number };
 
 function configuredBlobHost(env: BlobHostBindings): string {
-  const host = env.R2_PUBLIC_HOST;
-  return typeof host === "string" && host.trim()
-    ? host.trim().toLowerCase()
-    : DEFAULT_BLOB_HOST;
+  return resolveCloudBlobHost(env).toLowerCase();
 }
 
 function privateHeaders(): Headers {
