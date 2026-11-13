@@ -41,7 +41,7 @@
   },
   {
     "source": "packages/contracts/src/lifeops/health.ts",
-    "sha256": "ec97927ebcee31be5b97537aad3522c9b044ad7bcec9d0428514aadcfc9c02f1",
+    "sha256": "dbb735b42e774e2358d1dea2d041c88b6937af05ad23feb2016e2d36fa2b89b3",
     "reason": "Declares sleep, wake and activity observation payloads and filters. The capture integrations and health domain own observed events and persistence."
   },
   {
