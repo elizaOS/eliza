@@ -807,3 +807,10 @@ It does not repeat the DELETE or accept a 404 as success. Escalate the original 
 and repository ID to an operator; this release has no automatic evidence-import
 endpoint. Independent original provider evidence is required before an operator
 can reconcile that receipt. The app and its deletion fence remain retained.
+
+Before the database-only native App Auth runtime is released, run the protected
+Native App Auth Database Migration workflow for each environment. It imports
+the exact existing registrations, Android associations and deployed Pages
+callback configuration in one transaction. The follow-up verification compares
+the full imported snapshot. The old runtime remains in use until that preparation
+succeeds. This preparation adds storage; it does not enable database-backed auth.

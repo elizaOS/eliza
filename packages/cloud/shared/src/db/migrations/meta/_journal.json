@@ -3795,6 +3795,13 @@
       "when": 1796083200191,
       "tag": "0573_mobile_app_auth_renewal_lineage",
       "breakpoints": true
+    },
+    {
+      "idx": 542,
+      "version": "7",
+      "when": 1796083200192,
+      "tag": "0574_native_app_auth_client_registration",
+      "breakpoints": true
     }
   ]
 }

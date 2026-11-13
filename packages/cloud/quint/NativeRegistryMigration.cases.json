@@ -1,0 +1,29 @@
+{
+  "sources": [
+    "packages/scripts/cloud/admin/migrate-native-app-auth.ts",
+    "packages/scripts/cloud/admin/migrate-native-app-auth.pglite.test.ts",
+    "packages/cloud/shared/src/db/migrations/0574_native_app_auth_client_registration.sql",
+    "packages/cloud/quint/check-reviewed-cloud.mjs",
+    "packages/cloud/quint/reviewed-cloud-checks.json"
+  ],
+  "conformance": "packages/cloud/quint/check-reviewed-cloud.mjs",
+  "bounds": "One environment, one complete four-client source snapshot, empty or committed database, staged rows, and atomic receipt. Source validity and row conflicts vary independently; retry and rollback preserve committed state.",
+  "cases": [
+    {
+      "name": "native-registry-migration",
+      "main": "NativeRegistryMigration",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "safety"
+      ],
+      "maxSteps": 40,
+      "samples": 1000,
+      "temporal": []
+    }
+  ],
+  "limitations": [
+    "Abstracts SQL row contents and provider/identity authenticity as validated input; actual parser, alias and database checks are covered by the linked PGlite importer test.",
+    "Atomic safety is modeled. Completion requires a valid stable source and a scheduled commit after stage; no liveness under provider failure is claimed."
+  ]
+}
