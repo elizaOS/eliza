@@ -8,8 +8,7 @@
  * the provider isn't mounted — keeping authed cloud views able to gate on
  * `{ ready, authenticated, user }` without forcing the runtime to load.
  *
- * Test builds (`VITE_PLAYWRIGHT_TEST_AUTH` / `NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH`)
- * also honor the Playwright `eliza-test-auth` marker cookie so browser-driven
+ * Test builds (`VITE_PLAYWRIGHT_TEST_AUTH`, a build-time constant) also honor the Playwright `eliza-test-auth` marker cookie so browser-driven
  * suites can exercise authed surfaces against a mock stack.
  */
 import { Capacitor } from "@capacitor/core";
@@ -47,14 +46,7 @@ const PLAYWRIGHT_TEST_USER_EMAIL = "local-live-test-user@agent.local";
  * silently disables the Playwright test-auth bypass.
  */
 function isPlaywrightTestAuthEnabled(): boolean {
-  if (import.meta.env?.VITE_PLAYWRIGHT_TEST_AUTH === "true") return true;
-  if (
-    typeof process !== "undefined" &&
-    process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true"
-  ) {
-    return true;
-  }
-  return false;
+  return import.meta.env?.VITE_PLAYWRIGHT_TEST_AUTH === "true";
 }
 function hasCookie(name: string, value?: string): boolean {
   if (typeof document === "undefined") return false;

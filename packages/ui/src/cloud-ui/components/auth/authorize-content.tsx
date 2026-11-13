@@ -80,11 +80,7 @@ type AppAuthorizeAuthState = {
 };
 
 function isPlaywrightTestAuthEnabled(): boolean {
-  return (
-    import.meta.env.VITE_PLAYWRIGHT_TEST_AUTH === "true" ||
-    (typeof process !== "undefined" &&
-      process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true")
-  );
+  return import.meta.env.VITE_PLAYWRIGHT_TEST_AUTH === "true";
 }
 
 const TEST_AUTH_PROVIDERS: LoginProviders = {

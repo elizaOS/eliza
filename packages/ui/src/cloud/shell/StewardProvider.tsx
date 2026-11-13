@@ -49,14 +49,7 @@ export {
  * `undefined` in prod. Read each env var by its literal name below.
  */
 function isPlaywrightTestAuthEnabled(): boolean {
-  if (import.meta.env?.VITE_PLAYWRIGHT_TEST_AUTH === "true") return true;
-  if (
-    typeof process !== "undefined" &&
-    process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true"
-  ) {
-    return true;
-  }
-  return false;
+  return import.meta.env?.VITE_PLAYWRIGHT_TEST_AUTH === "true";
 }
 
 const StewardAuthRuntimeProvider = lazy(
