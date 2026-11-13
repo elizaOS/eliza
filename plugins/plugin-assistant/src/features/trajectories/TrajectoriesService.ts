@@ -430,6 +430,7 @@ export class TrajectoriesService extends Service {
     stepIdOrAgentId: string,
     options?: StartTrajectoryOptions,
   ): Promise<string> {
+    if (!this.isEnabled()) return randomUUID();
     const claimedAgentId = options?.agentId ?? stepIdOrAgentId;
     if (claimedAgentId !== this.runtime.agentId) {
       throw new ElizaError("Trajectory start names another agent", {
@@ -437,7 +438,6 @@ export class TrajectoriesService extends Service {
         context: { agentId: this.runtime.agentId },
       });
     }
-    if (!this.isEnabled()) return randomUUID();
     const stepId =
       typeof options?.agentId === "string"
         ? stepIdOrAgentId

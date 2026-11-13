@@ -15,7 +15,6 @@ import {
   ModelType,
   parseTrajectorySemanticStages,
   redactBasicEmails,
-  resolveTrajectoryGate,
   sanitizeTrajectoryJsonObject,
   type TrajectoryActionAttemptRecord as TrajectoryActionAttempt,
   type TrajectoryLlmCallRecord as TrajectoryLlmCall,
@@ -3567,18 +3566,6 @@ export function readOrchestratorTrajectoryContext(
   )
     return undefined;
   return candidate as OrchestratorTrajectoryContext;
-}
-/**
- * Resolves whether DB trajectory persistence is on by default. Delegates to the
- * single core gate resolver (trajectory-gate.ts) so this DB logger and the file
- * recorder can no longer disagree (#13775): the same SOC2 O-5 precedence — hard
- * opt-out → explicit `ELIZA_TRAJECTORY_LOGGING` → test off → prod opt-in → dev
- * on — governs both. The env param is retained so callers can probe a synthetic env.
- */
-export function shouldEnableTrajectoryLoggingByDefault(
-  env: NodeJS.ProcessEnv = process.env,
-): boolean {
-  return resolveTrajectoryGate(env).enabled;
 }
 /**
  * Coarse PII redaction applied to LLM prompts/responses before persistence
