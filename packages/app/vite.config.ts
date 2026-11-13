@@ -2011,6 +2011,14 @@ export default defineConfig(({ command, mode }) => ({
     "import.meta.env.VITE_ELIZA_SETTINGS_DEBUG": JSON.stringify(
       process.env.VITE_ELIZA_SETTINGS_DEBUG ?? "",
     ),
+    // The Playwright test sign-in is a build-time constant: unless a test
+    // build sets VITE_PLAYWRIGHT_TEST_AUTH=true, its code compiles out of the
+    // renderer bundle (an unset value would leave the inert path in place).
+    "import.meta.env.VITE_PLAYWRIGHT_TEST_AUTH": JSON.stringify(
+      loadEnv(mode, here, "VITE_").VITE_PLAYWRIGHT_TEST_AUTH === "true"
+        ? "true"
+        : "false",
+    ),
     "import.meta.env.VITE_ASSET_BASE_URL": JSON.stringify(
       process.env.VITE_ASSET_BASE_URL ?? process.env.ELIZA_ASSET_BASE_URL ?? "",
     ),

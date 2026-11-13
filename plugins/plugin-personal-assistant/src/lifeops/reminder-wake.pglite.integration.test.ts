@@ -790,10 +790,17 @@ it("a long SMS reminder whose second part Twilio rejects is not sent again", asy
     });
   });
   await new Promise<void>((resolve) => twilio.listen(0, "127.0.0.1", resolve));
-  vi.stubEnv(
-    "ELIZA_MOCK_TWILIO_BASE",
-    `http://127.0.0.1:${(twilio.address() as AddressInfo).port}`,
-  );
+  const twilioBase = `http://127.0.0.1:${(twilio.address() as AddressInfo).port}`;
+  const realFetch = globalThis.fetch;
+  vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = input instanceof Request ? input.url : String(input);
+    return url.startsWith("https://api.twilio.com/")
+      ? realFetch(
+          `${twilioBase}${url.slice("https://api.twilio.com".length)}`,
+          init,
+        )
+      : realFetch(input, init);
+  });
   vi.stubEnv("TWILIO_ACCOUNT_SID", "ACtest");
   vi.stubEnv("TWILIO_AUTH_TOKEN", "token");
   vi.stubEnv("TWILIO_PHONE_NUMBER", "+15550000000");
@@ -850,6 +857,7 @@ it("a long SMS reminder whose second part Twilio rejects is not sent again", asy
   } finally {
     model.mockRestore();
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
     await new Promise((resolve) => twilio.close(resolve));
     await f.cleanup();
   }
