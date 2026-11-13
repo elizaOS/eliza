@@ -131,7 +131,6 @@ export async function startConfidentialRuntime(
   const policy = createConfidentialHostPolicy(configuration.host);
   const admit = await createConfidentialLocalAdmission(env);
   if (
-    process.env.ELIZA_MOCK_OPENAI_BASE !== undefined ||
     process.env.ELIZA_STATE_DIR !== configuration.host.stateDirectory ||
     (process.env.ELIZA_TRAJECTORY_DIR !== undefined &&
       process.env.ELIZA_TRAJECTORY_DIR !==
