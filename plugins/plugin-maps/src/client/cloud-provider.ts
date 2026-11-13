@@ -629,11 +629,16 @@ export function createCloudMaps(
       const captured = captureRequest();
       // One server pause applies to every data request in this account, including tiles.
       // Coverage can still restore the existing map while those requests wait.
-      const withCooldown = async <T>(run: () => Promise<T>, signal: AbortSignal, metadata = false): Promise<T> => {
+      const withCooldown = async <T>(
+        run: () => Promise<T>,
+        signal: AbortSignal,
+        metadata = false,
+      ): Promise<T> => {
         if (attempt !== generation)
           throw new MapsFailure("cancelled", "Maps connection changed.");
         signal.throwIfAborted();
-        if (!metadata && cooldown && Date.now() < cooldown.until) throw cooldown.error;
+        if (!metadata && cooldown && Date.now() < cooldown.until)
+          throw cooldown.error;
         try {
           const value = await run();
           signal.throwIfAborted();
@@ -641,17 +646,36 @@ export function createCloudMaps(
             throw new MapsFailure("cancelled", "Maps connection changed.");
           return value;
         } catch (error) {
-          if (attempt === generation && !signal.aborted && (error as {status?: number})?.status === 429) {
-            const now = Date.now(), limit = serviceLimit(error, now);
-            const wait = limit?.retryAfterMs ?? (limit?.resetsAt != null ? limit.resetsAt - now : null);
-            if (wait != null && Number.isFinite(wait) && wait > 0 && wait <= MAX_PERIOD_RESET_MS)
-              cooldown = { until: Math.max(cooldown?.until ?? 0, now + wait), error };
+          if (
+            attempt === generation &&
+            !signal.aborted &&
+            (error as { status?: number })?.status === 429
+          ) {
+            const now = Date.now(),
+              limit = serviceLimit(error, now);
+            const wait =
+              limit?.retryAfterMs ??
+              (limit?.resetsAt != null ? limit.resetsAt - now : null);
+            if (
+              wait != null &&
+              Number.isFinite(wait) &&
+              wait > 0 &&
+              wait <= MAX_PERIOD_RESET_MS
+            )
+              cooldown = {
+                until: Math.max(cooldown?.until ?? 0, now + wait),
+                error,
+              };
           }
           throw error;
         }
       };
       const request: CloudMapsRequest = (route, signal, body) =>
-        withCooldown(() => captured(route, signal, body), signal, route === "capabilities");
+        withCooldown(
+          () => captured(route, signal, body),
+          signal,
+          route === "capabilities",
+        );
       const meta = await call(request, "capabilities", signal);
       const caps = meta.capabilities as Record<string, unknown> | undefined;
       const regions = meta.regions;
@@ -696,9 +720,11 @@ export function createCloudMaps(
       const sources = sourcesOf(meta.sources),
         disclosure = disclosureOf(meta.disclosure),
         tiles = caps.map === true ? tilesOf(meta.tiles) : undefined;
-      const tilesRequest = tiles && options.tileRequest ? options.tileRequest() : undefined;
+      const tilesRequest =
+        tiles && options.tileRequest ? options.tileRequest() : undefined;
       tileFetch = tilesRequest
-        ? (z, x, y, signal) => withCooldown(() => tilesRequest(z, x, y, signal), signal)
+        ? (z, x, y, signal) =>
+            withCooldown(() => tilesRequest(z, x, y, signal), signal)
         : undefined;
       coverage = Object.freeze({
         providerId: meta.providerId,

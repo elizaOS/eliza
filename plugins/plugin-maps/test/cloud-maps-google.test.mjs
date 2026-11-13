@@ -315,30 +315,55 @@ for (const capabilities of [
 // A tile refusal pauses later tile and data calls for the same Cloud account.
 {
   const originalNow = Date.now;
-  let clock = originalNow(), calls = 0, provider;
+  let clock = originalNow(),
+    calls = 0,
+    provider;
   Date.now = () => clock;
   const refusal = Object.assign(new Error("rate limited"), {
-    status: 429, data: { code: "rate_limited", retryAfterSeconds: 42 },
+    name: "CloudProtocolError",
+    code: "http",
+    status: 429,
+    data: { code: "rate_limited", retryAfterSeconds: 42 },
   });
   const maps = createCloudMaps(
-    () => async route => {
+    () => async (route) => {
       if (route === "capabilities") return coverage;
       calls++;
       return { places: [place] };
     },
-    (_config, value) => { provider = value; },
-    { tileRequest: () => async () => { calls++; if (calls === 1) throw refusal; return new ArrayBuffer(1); } },
+    (_config, value) => {
+      provider = value;
+    },
+    {
+      tileRequest: () => async () => {
+        calls++;
+        if (calls === 1) throw refusal;
+        return new ArrayBuffer(1);
+      },
+    },
   );
   try {
     await maps.initializeCloudMaps();
     const signal = new AbortController().signal;
     let map = maps.cloudMapsBasemap();
-    await assert.rejects(map.tile(2, 1, 1, signal), error => error.code === "rate-limited");
-    await assert.rejects(map.tile(2, 1, 2, signal), error => error.code === "rate-limited");
-    await assert.rejects(provider.search("Port", signal), error => error.code === "rate-limited");
+    await assert.rejects(
+      map.tile(2, 1, 1, signal),
+      (error) => error.code === "rate-limited",
+    );
+    await assert.rejects(
+      map.tile(2, 1, 2, signal),
+      (error) => error.code === "rate-limited",
+    );
+    await assert.rejects(
+      provider.search("Port", signal),
+      (error) => error.code === "rate-limited",
+    );
     assert.equal(calls, 1);
     await maps.initializeCloudMaps();
-    await assert.rejects(provider.search("Port", signal), error => error.code === "rate-limited");
+    await assert.rejects(
+      provider.search("Port", signal),
+      (error) => error.code === "rate-limited",
+    );
     assert.equal(calls, 1, "Reopening Maps must retain the server pause");
     clock += 42_001;
     map = maps.cloudMapsBasemap();
@@ -348,5 +373,7 @@ for (const capabilities of [
     await maps.initializeCloudMaps();
     await provider.search("Port", signal);
     assert.equal(calls, 3);
-  } finally { Date.now = originalNow; }
+  } finally {
+    Date.now = originalNow;
+  }
 }
