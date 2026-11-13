@@ -54,6 +54,8 @@ import {
 } from "./maps-request-admission";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
+/** Tiles are per-caller (authenticated) and change rarely. */
+const TILE_CACHE = "private, max-age=86400";
 
 export interface MapsRouteDependencies {
   authenticate(c: AppContext): Promise<MapsCaller>;
@@ -281,7 +283,10 @@ export function createMapsRoute(
   dependencies: MapsRouteDependencies = defaultMapsRouteDependencies,
 ): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
-  app.use("*", rateLimit(RateLimitPresets.STANDARD));
+  // A map needs many tile requests per gesture. Tiles retain the global ingress
+  // limiter, authentication and durable Maps allowance below, without consuming
+  // the shared 60-request API bucket used by interactive data operations.
+  if (operation !== "tiles") app.use("*", rateLimit(RateLimitPresets.STANDARD));
   const handler = async (c: AppContext) => {
     let user: MapsCaller;
     try {
@@ -494,7 +499,7 @@ export function createMapsRoute(
           status: 200,
           headers: {
             "Content-Type": image.contentType,
-            ...NO_STORE,
+            "Cache-Control": TILE_CACHE,
             Vary: "Accept",
           },
         });

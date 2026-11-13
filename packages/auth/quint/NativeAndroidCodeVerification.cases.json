@@ -6,7 +6,7 @@
     "packages/auth/android/test/ai/eliza/auth/cloud/CloudSignInChainTest.java.txt"
   ],
   "bounds": {
-    "domain": "One plugin instance and deployment. Two admitted code attempts and at most twelve valid verification calls. Email and phone verification can transition to TOTP, SMS or unsupported passkey MFA. Each code or factor step has the implementation's five-invalid-code cap. A verification request with no answer keeps the step and does not use the cap. One serial worker can still own a detached reply while the bridge admits a retry.",
+    "domain": "One plugin instance and deployment. Two admitted code attempts and at most twelve valid verification calls. Email and phone verification can transition to TOTP, SMS or unsupported passkey MFA. Each code or factor step has the implementation's five-invalid-code cap. One serial worker can still own a detached reply while the bridge admits a retry.",
     "assumptions": "Successful code delivery and valid code shape are inputs. The single worker serializes send completion after older verification work drains. The clock is projected to an expiry event. The native consent gate permits a grant handoff only for a current unexpired attempt. Replies from a canceled worker can drain without mutating the current bridge waiter. Terminal reply ownership is modeled at its protected transition. The bridge can enqueue replies to separate call objects out of order.",
     "limitations": "Code-send failure and cooldown, actual native authorization dialogs, native Google admission, browser callback storage, credential writes and receipts, Activity destruction and process recovery are separate. NativeAndroidAckRecovery covers startup receipt retry. The JVM harness runs the exact plugin methods with synthetic HTTPS, storage and lifecycle facades. It does not run Capacitor or Android device scheduling."
   },
@@ -33,7 +33,7 @@
           "property": "DetachedReplyPreservesNewWaiter",
           "expect": "holds",
           "assumptions": [
-            "No fairness. A detached wrong-code or no-answer result only resolves its original RPC."
+            "No fairness. A detached wrong-code result only resolves its original RPC."
           ]
         },
         {

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-maps",
-  "version": "2.0.5",
+  "version": "2.0.4",
   "type": "module",
   "description": "Provider-neutral place search, routing, saved places, sharing, and navigation handoffs for Eliza agents.",
   "main": "./dist/index.js",
@@ -81,7 +81,7 @@
     "tsup": "^9.0.0",
     "typescript": "^6.0.3",
     "vite": "^8.3.3",
-    "vitest": "^5.1.0",
+    "vitest": "^5.0.5",
     "@elizaos/testing": "workspace:*",
     "@capacitor/core": "^8.5.2",
     "maplibre-gl": "^6.16.0"

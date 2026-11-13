@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-form",
-  "version": "2.0.5",
+  "version": "2.0.4",
   "type": "module",
   "description": "Eliza plugin-form: conversational forms as guardrails for guided user journeys.",
   "main": "./dist/index.js",
@@ -68,7 +68,7 @@
     "tsup": "^9.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.1.0",
+    "vitest": "^5.0.5",
     "@elizaos/testing": "workspace:*"
   }
 }

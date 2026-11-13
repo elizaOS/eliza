@@ -24,7 +24,7 @@ permissions:
   actions: read
 jobs:
   plan:
-    if: ${{ contains(fromJSON('["refs/heads/develop","refs/heads/staging","refs/heads/main"]'), github.ref) && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.source_sha == github.sha && inputs.effect_digest != '')) }}
+    if: ${{ github.event_name == 'push' || (contains(fromJSON('["develop","staging","main"]'), github.ref_name) && inputs.source_sha == github.sha && inputs.effect_digest != '') }}
     name: Exact-input impact plan
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -41,7 +41,7 @@ jobs:
           EFFECT_DIGEST: ${{ inputs.effect_digest }}
         run: |
           set -euo pipefail
-          [[ "$GITHUB_REF" == refs/heads/develop || "$GITHUB_REF" == refs/heads/staging || "$GITHUB_REF" == refs/heads/main ]]
+          [[ "$GITHUB_REF_NAME" == develop || "$GITHUB_REF_NAME" == staging || "$GITHUB_REF_NAME" == main ]]
           [ "$SOURCE_SHA" = "$GITHUB_SHA" ]
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$EFFECT_DIGEST" =~ ^[0-9a-f]{64}$ ]]
@@ -186,7 +186,6 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: develop-full-manifest-${{ github.sha }}
-          overwrite: true
           path: |
             .develop-evidence/expected.json
             .develop-evidence/observed.json

@@ -13,12 +13,9 @@ import { workflowApprovalNoticeIdentity } from "./notice-routes.ts";
 import {
   isPhoneWorkflowLocalDay,
   isPhoneWorkflowTimeZone,
-  type PhoneCalendarRange,
-  type PhoneRelativeCalendarRange,
   type PhoneWorkflowSpec,
   phoneWorkflowLocalDay,
   phoneWorkflowLocalDayBounds,
-  resolvePhoneCalendarRange,
   SELECTED_REMINDERS_WINDOW,
   validatePhoneSelectedRemindersScope,
   validatePhoneWorkflowSpec,
@@ -308,32 +305,6 @@ export function workflowReminderDayIsCurrent(
   );
 }
 
-/**
- * True when a Calendar read is exactly the reviewed step range at `now`.
- * Anchored reviews pass the persisted run time and zero grace. Legacy reviews
- * can also match the previous local day during `graceMs` after midnight.
- */
-export function workflowCalendarReadMatches(
-  range: PhoneCalendarRange | PhoneRelativeCalendarRange,
-  read: Omit<WorkflowCalendarReadOperation, "type">,
-  now = Date.now(),
-  graceMs = 15 * 60_000,
-): boolean {
-  const values = (r: Omit<WorkflowCalendarReadOperation, "type">) =>
-    JSON.stringify([
-      r.calendarIds,
-      r.start,
-      r.end,
-      r.timeZone,
-      r.maximumEvents,
-    ]);
-  const matches = (at: number) =>
-    values(resolvePhoneCalendarRange(range, at)) === values(read);
-  return (
-    matches(now) || ("days" in range && graceMs !== 0 && matches(now - graceMs))
-  );
-}
-
 /** Revision input of one reminder row; both hosts hash exactly these values. */
 export function workflowReminderRevisionInput(
   row: Omit<WorkflowReminderRow, "revision">,
@@ -508,8 +479,6 @@ export interface WorkflowPhoneReview {
   status: string;
   finished: boolean;
   cancellationRequestedAt: string | null;
-  /** Canonical UTC run time for relative Calendar steps. Older runs lack it. */
-  calendarAnchorAt?: string;
 }
 export interface WorkflowPhoneReviewOptions {
   /** Host spec normalizer (defaults to the shared validator). */
@@ -557,9 +526,6 @@ export async function parseWorkflowPhoneReview(
     status: text(p.status, 100),
     finished: p.finished as boolean,
     cancellationRequestedAt: p.cancellationRequestedAt as string | null,
-    ...(p.calendarAnchorAt !== undefined
-      ? { calendarAnchorAt: utc(p.calendarAnchorAt) }
-      : {}),
   };
 }
 
@@ -607,24 +573,17 @@ export function assertWorkflowOperation(
       )
         fail();
       return;
-    case "read_calendar_range": {
-      const read = parseWorkflowRead(operation);
+    case "read_calendar_range":
       if (
-        read.type !== "read_calendar_range" ||
         step.kind !== "Read" ||
         step.operation !== "calendar_range" ||
-        !(review.calendarAnchorAt === undefined
-          ? workflowCalendarReadMatches(step.range, read, now)
-          : workflowCalendarReadMatches(
-              step.range,
-              read,
-              Date.parse(review.calendarAnchorAt),
-              0,
-            ))
+        !same(
+          parseWorkflowRead({ type: operation.type, ...step.range }),
+          parseWorkflowRead(operation),
+        )
       )
         fail();
       return;
-    }
     case "read_selected_reminders": {
       if (step.kind !== "Read" || step.operation !== "selected_reminders") {
         fail();

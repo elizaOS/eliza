@@ -384,8 +384,6 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   }
 
   afterEach(async () => {
-    restoreTrajectoryLogging?.();
-    restoreTrajectoryLogging = undefined;
     runtime.models.set(ModelType.TEXT_LARGE, [...initialTextModels]);
     unregisterScheduledTaskChannelDispatcher(runtime, "family_fence_test");
     if (restoreWorkspaceFence) {
@@ -414,7 +412,6 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   let syntheticSchedulerDispatches = 0;
   let restoreWorkspaceFence = false;
   let initialTextModels: ModelHandler[];
-  let restoreTrajectoryLogging: (() => void) | undefined;
 
   function registerFixtureDispatcher() {
     registerScheduledTaskChannelDispatcher(runtime, {
@@ -2167,15 +2164,13 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   });
 
   it("prepares cited proposals once, preserves owner decisions across service recreation, and never activates them implicitly", async () => {
+    runtime.setSetting("ELIZA_TRAJECTORY_LOGGING", "1");
     if (!runtime.getService("trajectories"))
       await runtime.registerService(TrajectoriesService);
     await runtime.getServiceLoadPromise("trajectories");
     const trajectories =
       runtime.getService<TrajectoriesService>("trajectories");
     if (!trajectories) throw new Error("Trajectory service unavailable");
-    const loggingWasEnabled = trajectories.isEnabled();
-    restoreTrajectoryLogging = () => trajectories.setEnabled(loggingWasEnabled);
-    trajectories.setEnabled(true);
     expect(trajectories.isEnabled()).toBe(true);
     const service = createAgreementKnowledgeService(runtime);
     const citation = "Each parent must share school notices within 24 hours.";

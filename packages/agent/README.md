@@ -7,12 +7,6 @@ repository root with `bun run start`; use `bun run dev` for the app and API toge
 Configure providers and connectors through the host configuration; never expose host
 secrets to ungranted agents.
 
-Stdio MCP configuration requires `ELIZA_TERMINAL_RUN_TOKEN` and a matching
-request credential, in addition to normal API authorization. The retired
-`ELIZA_ALLOW_UNAUTHENTICATED_STDIO_MCP` flag does not change that check. Dashboard
-HTML contains public connection settings, never a full API token from
-`ELIZA_FORCE_INJECT_TOKEN`. Use the host's existing authorization flow.
-
 Native hosts that rotate `ELIZA_HOST_CONTEXT_REVISION` can expose the latest
 owner chat's timing through the existing authenticated `GET /api/status`.
 `nativeInferenceTiming` contains fixed stage durations and a validated trace ID,
@@ -306,10 +300,7 @@ no task authority, task store, browser profile or Chromium-extension identity.
 Source-bundle consumers must include the gateway, channel, and task-id source modules.
 
 `native-host/account-state.mjs` preserves private credential-derived namespaces
-and configuration migration. Run credential scrubbing while no other process
-or task writes those files. Each file is replaced separately. A failed call
-keeps earlier rewrites. Resolve the error before retrying.
-`native-host/runtime-supervisor.mjs` serializes
+and configuration migration. `native-host/runtime-supervisor.mjs` serializes
 identity transitions and stops only the child returned by the host launcher.
 These are source entrypoints for explicit payload composition, not additional
 browser SDK or published dist exports. Production consumers must preserve their

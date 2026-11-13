@@ -279,9 +279,6 @@ export class WorkflowService extends Service {
       status: execution.status,
       finished: execution.finished,
       cancellationRequestedAt: execution.cancellationRequestedAt ?? null,
-      ...(execution.calendarAnchorAt === undefined
-        ? {}
-        : { calendarAnchorAt: execution.calendarAnchorAt }),
     };
   }
   /** Explicit chat request only; selection comes from already reviewed native sources. */

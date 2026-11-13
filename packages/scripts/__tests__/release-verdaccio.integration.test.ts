@@ -16,7 +16,6 @@ import {
   loadReleaseState,
 } from "../lib/release-candidate.ts";
 import {
-  classifyRegistryVersion,
   inspectRegistryChannel,
   inspectReleaseRegistry,
   publishReleaseCandidate,
@@ -98,7 +97,6 @@ function makeRepo(base: string) {
   writeJson(path.join(repoRoot, "packages/a/package.json"), {
     name: "@eliza-release-integration/a",
     ...common,
-    gitHead: "1".repeat(40),
     dependencies: { "@eliza-release-integration/b": "workspace:*" },
   });
   writeJson(path.join(repoRoot, "packages/b/package.json"), {
@@ -444,53 +442,7 @@ async function verifyChannelResume(channel: string) {
         `Verdaccio evidence metadata failed for ${packageRecord.name}: ${response.status}`,
       );
     }
-    const packageMetadata = await response.json();
-    const versionMetadata = packageMetadata.versions[packageRecord.version];
-    expect(versionMetadata.gitHead).toBe(fixture.sourceSha);
-    const identity = {
-      sourceSha: fixture.sourceSha,
-      publisher: "release-integration",
-    };
-    expect(() =>
-      classifyRegistryVersion(packageRecord, versionMetadata, identity),
-    ).toThrow("Registry provenance");
-    for (const conflicting of [
-      { ...versionMetadata, gitHead: "0".repeat(40) },
-      { ...versionMetadata, gitHead: null },
-      { ...versionMetadata, gitHead: "" },
-      { ...versionMetadata, _npmUser: { name: "other-publisher" } },
-      { ...versionMetadata, _npmUser: { name: null } },
-      { ...versionMetadata, _npmUser: { name: "" } },
-    ]) {
-      expect(() =>
-        classifyRegistryVersion(packageRecord, conflicting, {
-          ...identity,
-          requireRegistryProvenance: false,
-        }),
-      ).toThrow("Registry provenance");
-    }
-    const completeMetadata = {
-      ...versionMetadata,
-      _npmUser: { name: identity.publisher },
-    };
-    expect(
-      classifyRegistryVersion(packageRecord, completeMetadata, identity),
-    ).toMatchObject({ state: "matched", provenance: "registry-metadata" });
-    expect(() =>
-      classifyRegistryVersion(
-        packageRecord,
-        { ...completeMetadata, gitHead: undefined },
-        identity,
-      ),
-    ).toThrow("Registry provenance");
-    expect(() =>
-      classifyRegistryVersion(
-        packageRecord,
-        { ...versionMetadata, gitHead: undefined },
-        identity,
-      ),
-    ).toThrow("Registry provenance");
-    metadata[packageRecord.name] = packageMetadata;
+    metadata[packageRecord.name] = await response.json();
   }
   const promoted = await verifyPromotedReleaseCandidate({
     repoRoot: fixture.repoRoot,

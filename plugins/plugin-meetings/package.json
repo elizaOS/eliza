@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-meetings",
-  "version": "2.0.5",
+  "version": "2.0.4",
   "description": "Meeting transcription plugin for elizaOS agents \u2014 browser bots that join Google Meet / Microsoft Teams / Zoom as guests, capture per-speaker audio, transcribe through the runtime model layer, and land diarized transcripts in the Transcripts view and knowledge store",
   "type": "module",
   "main": "dist/index.js",
@@ -58,7 +58,7 @@
     "tsup": "9.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "5.1.0",
+    "vitest": "5.0.5",
     "@elizaos/testing": "workspace:*"
   },
   "publishConfig": {

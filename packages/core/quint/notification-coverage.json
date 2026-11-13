@@ -20,11 +20,11 @@
 		"status": "partial",
 		"limitations": [
 			"A single serial owner is explicit. Concurrent independent NotificationService instances writing the same agent cache need a separate cross-process ownership model.",
-			"Hydration begins with a valid version-2 snapshot. NotificationHydration checks legacy migration, coordinate rejection and repaired startup. NotificationGroupPolicy checks grouped replacement and retention, and its triage case checks all supported category defaults and explicit priority and expiry choices.",
+			"Hydration begins with a valid version-2 snapshot. Legacy migration and malformed coordinate rejection remain separately test-covered. NotificationGroupPolicy checks grouped replacement and retention. The full category-to-priority mapping remains outside these models.",
 			"The write-queue case projects rows to identity and read state. A separate payload case models producer and observer ownership for one nested payload through admission, persistence and restart.",
 			"Storage operations are atomic but their outcome may be ambiguous to the caller. Restart in this case assumes a successful read of the durable version-2 snapshot.",
 			"Ordinary synchronous list/getUnreadCount APIs can observe provisional in-memory work. The DurableFence invariant concerns the quiescent native and durable-read APIs.",
-			"Conformance executes 77 real SQLite/runtime tests. Named scenarios gate real API effects and do not establish exhaustive schedule equivalence."
+			"Conformance executes 70 real SQLite/runtime tests. Named scenarios gate real API effects and do not establish exhaustive schedule equivalence."
 		]
 	},
 	{
@@ -36,14 +36,10 @@
 			"packages/core/test/notification.test.ts",
 			"plugins/plugin-assistant/src/services/approval/store.ts"
 		],
-		"invariants": [
-			"SequenceTracksRetainedRow",
-			"PriorityMatchesProducer",
-			"ExpiryMatchesProducer"
-		],
+		"invariants": ["SequenceTracksRetainedRow"],
 		"status": "partial",
 		"limitations": [
-			"The grouped case uses one notification group, three appends and a finite wall clock. Multiple groups and arbitrary predicates are outside the checked domain. Triage covers all nine categories, four explicit priorities, default priority, expiry choices, clock corrections and read state.",
+			"One notification group, three appends and a finite wall clock. Multiple groups, arbitrary predicates and the full category-to-priority mapping are outside the checked domain.",
 			"The model assumes one successful serialized write. Ambiguous persistence and restart are covered separately by NotificationDurability. The real SQLite suite covers default and explicit expiry, grouped replacement, count overrides and exact approval projection."
 		]
 	},
@@ -77,46 +73,20 @@
 			"packages/core/src/services/notification.ts",
 			"packages/core/src/runtime.ts",
 			"packages/core/src/runtime/service-lifecycle.ts",
-			"packages/core/test/notification.test.ts",
-			"packages/core/src/plugin-lifecycle.ts",
-			"packages/core/src/logger.ts",
-			"packages/core/src/services/agent-event.ts"
+			"packages/core/test/notification.test.ts"
 		],
 		"invariants": [
 			"BusyRequestsJoin",
 			"BackoffBlocksAdmission",
 			"OnlyFailedServicesStart",
 			"BoundedCooldown",
-			"PhaseMatchesAvailability",
-			"CoolingCurrentEntryBacksOff",
-			"SuccessfulReceiptReleasesItsOwnMap"
+			"PhaseMatchesAvailability"
 		],
 		"status": "partial",
 		"limitations": [
-			"The numeric cooldown case covers elapsed seconds through the capped 30-second interval. A second ownership case covers two coordinator records during publication, class unload, replacement and delayed receipt delivery.",
-			"Actual log listeners, runtime ERROR_REPORTED observers and AgentEvent diagnostic subscribers may throw without discarding the current recovery entry or cooldown.",
-			"The registry generation and service teardown contracts remain in RuntimeLifecycle and ServiceLifecycle. Independent runtimes and cross-process recovery are outside this per-runtime model."
-		]
-	},
-	{
-		"id": "core-NotificationHydration",
-		"model": "packages/core/quint/NotificationHydration.qnt",
-		"sources": [
-			"packages/core/src/services/notification.ts",
-			"packages/core/src/types/notification.ts",
-			"packages/core/test/notification.test.ts",
-			"plugins/plugin-sqlite/record-codec.ts"
-		],
-		"invariants": [
-			"ReadyHasDurableCoordinates",
-			"MigrationPreservesInsertionOrder"
-		],
-		"status": "partial",
-		"limitations": [
-			"One startup owner with representative coordinate classes. Arbitrary row payload validation and the full space of runtime-specific JavaScript objects are outside this model.",
-			"The model covers empty and legacy migration, rejected and committed-but-unacknowledged migration writes, version-2 validation, and explicit repair. NotificationRecovery retains lifecycle registration and cooldown ownership.",
-			"SQLite conformance checks actual malformed primitive/container shapes, reserved-key refusal, ordered coordinates, historical gaps, empty watermarks, repair and restart.",
-			"Independent concurrent migrations and external cache mutation during active startup require a separate shared storage ownership model."
+			"Service replacement during recovery and concurrent runtimes require their separate lifecycle ownership models.",
+			"The model projects wall-clock changes away and uses elapsed seconds. The SQLite/runtime regression checks both wall-clock directions and the exact millisecond retry boundary, including repeated capped delays.",
+			"Exceptions from diagnostics and cross-process restart are outside this recovery projection."
 		]
 	}
 ]

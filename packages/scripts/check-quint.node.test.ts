@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   mkdirSync,
@@ -9,7 +9,6 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { createRequire } from "node:module";
 import path from "node:path";
 import { afterEach, test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -219,94 +218,6 @@ const checkedFiles = {
     cases: [{ ...modelCase, constants: { stateCount: 2 } }],
   }),
 };
-
-test("the shared runner rejects a failing scenario without the Test suffix", async () => {
-  const directory = fixture({
-    ...checkedFiles,
-    [`${example}.qnt`]: `module ScenarioLibrary {
-      const Seed: int
-      var state: int
-      action init = state' = Seed
-      action step = state' = Seed
-      val Safe = state == Seed
-      run failsWithoutSuffix = init.expect(state == Seed + 1)
-    }
-    module Example {
-      import ScenarioLibrary(Seed = 0).*
-    }`,
-  });
-  const packageFile = createRequire(import.meta.url).resolve(
-    "@informalsystems/quint/package.json",
-  );
-  const installed = JSON.parse(readFileSync(packageFile, "utf8"));
-  const cli = path.resolve(path.dirname(packageFile), installed.bin.quint);
-  const original = spawnSync(
-    process.execPath,
-    [
-      cli,
-      "test",
-      path.join(directory, `${example}.qnt`),
-      "--main",
-      "Example",
-      "--backend",
-      "typescript",
-    ],
-    { cwd: directory, encoding: "utf8" },
-  );
-  assert.ifError(original.error);
-  assert.equal(original.signal, null);
-  assert.equal(original.status, 0, original.stderr);
-  assert.doesNotMatch(original.stdout, /failsWithoutSuffix/);
-
-  const output = path.join(directory, "test-results/quint");
-  await assert.rejects(
-    main(["--simulate"], directory, output),
-    /Quint checks failed/,
-  );
-  const report = JSON.parse(
-    readFileSync(path.join(output, "simulation.json"), "utf8"),
-  );
-  assert.equal(report.completed, false);
-  const scenario = report.results.at(-1);
-  assert.equal(scenario.command[0], "test");
-  assert.equal(scenario.exitCode, 1);
-  assert.equal(scenario.matchedExpectation, false);
-  const failed = readFileSync(path.join(output, scenario.log), "utf8");
-  assert.match(failed, /failsWithoutSuffix/);
-  assert.match(failed, /1 failed/);
-  assert.doesNotMatch(failed, /Safe failed/);
-
-  writeFileSync(
-    path.join(directory, `${example}.qnt`),
-    `module ScenarioLibrary {
-    const Seed: int
-    var state: int
-    action init = state' = Seed
-    action step = state' = Seed
-    val Safe = state == Seed
-    // run ignoredComment = init.expect(false)
-    run importedWithoutSuffix = init.expect(state == Seed)
-  }
-  module Example {
-    import ScenarioLibrary(Seed = 0).*
-  }`,
-  );
-  await main(["--simulate"], directory, output);
-  const passing = JSON.parse(
-    readFileSync(path.join(output, "simulation.json"), "utf8"),
-  );
-  assert.equal(passing.completed, true);
-  const scenarios = passing.results.find(
-    (result: { command: string[] }) => result.command[0] === "test",
-  );
-  const passed = readFileSync(path.join(output, scenarios.log), "utf8");
-  assert.match(
-    passed,
-    /ok Example::ScenarioLibrary::importedWithoutSuffix passed/,
-  );
-  assert.match(passed, /1 passing/);
-  assert.doesNotMatch(passed, /ok init|ok step|ignoredComment|Safe/);
-});
 
 test("the shared runner records positive liveness and expected unfair schedules separately", async () => {
   const directory = fixture({

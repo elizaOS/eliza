@@ -94,20 +94,12 @@ final class ReminderStore {
   return new JSONObject().put("dueAt",dueAt).put("alertMinutes",minutes==JSONObject.NULL?JSONObject.NULL:lead);
  }
  private void arm(Context context, String id, long at) {
-  // This library never requests the privileged/user-granted exact-alarm capability. A host that
-  // already holds it gets on-time delivery; every other host keeps the inexact alarm.
+  // Inexact alarms deliberately avoid the privileged/user-granted exact-alarm capability.
   String occurrence=null;
   try { JSONObject record=read(context,id);if(noAlert(record)||deletionSuspended(record))return;if(record!=null)occurrence=record.optString("occurrenceId",null); }
   catch(JSONException error){throw new IllegalStateException("Reminder could not be read",error);}
   final String selectedOccurrence=occurrence;
-  effect(()->{
-   AlarmManager alarms=context.getSystemService(AlarmManager.class);long when=Math.max(at, System.currentTimeMillis() + 1000);PendingIntent due=pending(context,id,selectedOccurrence);
-   if(Build.VERSION.SDK_INT>=31&&alarms.canScheduleExactAlarms()){
-    try{alarms.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,when,due);return;}
-    catch(SecurityException revoked){/* The capability was withdrawn after the check; the inexact alarm below replaces it. */}
-   }
-   alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,when,due);
-  });
+  effect(()->context.getSystemService(AlarmManager.class).setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, Math.max(at, System.currentTimeMillis() + 1000), pending(context,id,selectedOccurrence)));
  }
  synchronized JSONObject schedule(Context context, String id, String title, String body, long at) throws JSONException {
   return schedule(context,id,title,body,at,null);
@@ -343,9 +335,9 @@ final class ReminderStore {
     .setData(Uri.parse(configuration.tapUriPrefix + token)).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
    PendingIntent tap = PendingIntent.getActivity(context, 0, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
    channel(context);
-   Notification publicVersion = new Notification.Builder(context, DUE_CHANNEL).setSmallIcon(configuration.smallIcon)
+   Notification publicVersion = new Notification.Builder(context, DUE_CHANNEL).setSmallIcon(android.R.drawable.ic_popup_reminder)
     .setContentTitle(configuration.publicTitle).build();
-   Notification.Builder builder = new Notification.Builder(context, DUE_CHANNEL).setSmallIcon(configuration.smallIcon)
+   Notification.Builder builder = new Notification.Builder(context, DUE_CHANNEL).setSmallIcon(android.R.drawable.ic_popup_reminder)
     .setContentTitle(value.getString("title")).setContentText(value.getString("body"))
     .setStyle(new Notification.BigTextStyle().bigText(value.getString("body")))
     .setVisibility(Notification.VISIBILITY_PRIVATE).setPublicVersion(publicVersion)

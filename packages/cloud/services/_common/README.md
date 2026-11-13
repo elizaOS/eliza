@@ -2,6 +2,7 @@
 
 Shared, import-light TypeScript utilities for Cloudflare Workers and the `packages/cloud/services/*` sidecars: connector protocol, retry, delivery, structured logging, and Kubernetes ServiceAccount helpers.
 
+
 Use `/transport` for Worker-safe fetch, retry and wire contracts, `/node` for
 Kubernetes and Node service helpers, and `/testing` for test-only controls.
 `/redis-ownership` provides owner-checked cleanup and Redis write receipt validation.

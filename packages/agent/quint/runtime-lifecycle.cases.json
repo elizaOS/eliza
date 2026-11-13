@@ -2,28 +2,11 @@
   "sources": [
     "packages/agent/src/runtime/boot-pipeline.ts",
     "packages/agent/src/runtime/deferred-boot-owner.ts",
-    "packages/agent/src/runtime/process-lifecycle.ts",
-    "packages/agent/src/runtime/eliza.ts",
-    "packages/agent/src/runtime/eliza-plugin.ts",
-    "packages/agent/src/runtime/memory-retention-service.ts",
-    "packages/agent/src/runtime/retention-task.ts",
-    "packages/core/src/runtime.ts",
-    "packages/core/src/runtime/retirement.ts",
-    "packages/core/src/runtime/service-lifecycle.ts",
-    "packages/core/src/services/task.ts",
-    "packages/core/src/services/task-scheduler.ts",
-    "packages/agent/test/hot-reload-shared-database.test.ts",
-    "packages/agent/src/runtime/restore-generation.boot.test.ts",
-    "packages/agent/src/api/agent-lifecycle-routes.ts",
-    "packages/agent/src/api/agent-admin-routes.ts",
-    "packages/agent/src/services/agent-backup-restore-v3-runtime-generation.ts",
-    "packages/core/src/runtime/room-handler-queue.ts",
-    "packages/agent/src/api/server.ts",
-    "packages/agent/src/api/runtime-replacement-ownership.ts"
+    "packages/agent/src/runtime/process-lifecycle.ts"
   ],
   "bounds": {
-    "domain": "Eight boot phases and two deferred task identities. Adapter retirement has one outgoing/replacement pair, shared or distinct adapters, one active write or none, and two stop callbacks. Restore replacement has three runtime identities, four build calls, one initially admitted owner and authority closure only between requests. Shared-query handoff has four initialization modes, three handles for one physical connection, one unrelated handle, two queries, at most two handoffs, and one final close. Shared callback retirement has one outgoing admitted write, one or two published replacements, and strict or fast final stop.",
-    "scope": "Finite ownership safety and conditional retirement/request progress. Real HTTP, file-backed SQLite retention, shared/distinct PGlite, and actual restored startEliza host tests exercise retirement, readback, stop/start, and authority failures. Detached scheduler queries retain each aliased handle; identical reuse keeps registrations, a live old handle transfers to its replacement, and unrelated schedulers stay attached. Shared callback adoption holds old cleanup through fast service caps and chained publication. The published API drains outgoing rooms before activation. Factory-internal failure cleanup, other activation failures, external host misuse, reopen and physical close failures, and signal hard-exit budgets remain outside the bound."
+    "domain": "Eight boot phases and two deferred task identities.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
   },
   "cases": [
     {
@@ -35,113 +18,6 @@
       "temporal": [],
       "maxSteps": 50,
       "samples": 1000
-    },
-    {
-      "name": "runtime_adapter_retirement",
-      "main": "runtime_adapter_retirement",
-      "init": "init",
-      "step": "step",
-      "invariants": ["safety"],
-      "temporal": ["RetirementCompletes", "RetirementWithoutFairness"],
-      "temporalChecks": [
-        {
-          "property": "RetirementCompletes",
-          "expect": "holds",
-          "assumptions": [
-            "Weak fairness of advance: accepted storage work eventually succeeds or fails, each original stop callback settles, the fast-stop continuation and strict-retirement continuation run, and host cleanup settles.",
-            "Escalation cleanup and adapter closure are abstracted as a settling host cleanup step. Callback failure produces a failed receipt after drain. This is not a wall-clock bound or a proof of process-signal exit."
-          ]
-        },
-        {
-          "property": "RetirementWithoutFairness",
-          "expect": "counterexample",
-          "assumptions": [
-            "No fairness is assumed. A callback whose accepted storage work never settles can retain the outgoing adapter indefinitely; the fast cap does not prove retirement."
-          ]
-        }
-      ],
-      "maxSteps": 50,
-      "samples": 1000
-    },
-    {
-      "name": "runtime_restore_replacement",
-      "main": "runtime_restore_replacement",
-      "init": "init",
-      "step": "step",
-      "invariants": ["safety"],
-      "temporal": ["RequestSettles", "RequestWithoutFairness"],
-      "temporalChecks": [
-        {
-          "property": "RequestSettles",
-          "expect": "holds",
-          "assumptions": [
-            "Weak fairness of advance: admitted owner work settles, retirement and adapter closure settle, and each replacement build eventually returns a runtime or fails. Failure is permitted and there is no guarantee of eventual successful boot.",
-            "This projection assumes settling host teardown and factory callbacks and no authority closure during a request. It proves no wall-clock bound, arbitrary startup resource cleanup or unbounded implementation refinement."
-          ]
-        },
-        {
-          "property": "RequestWithoutFairness",
-          "expect": "counterexample",
-          "assumptions": [
-            "No fairness is assumed. An admitted owner or a replacement factory can remain pending indefinitely; an in-process restore replacement cannot release its database at a fast exit cap."
-          ]
-        }
-      ],
-      "maxSteps": 70,
-      "samples": 1000
-    },
-    {
-      "name": "runtime_shared_query_handoff",
-      "main": "runtime_shared_query_handoff",
-      "init": "init",
-      "step": "step",
-      "invariants": ["safety"],
-      "temporal": ["DrainCompletes", "DrainWithoutFairness"],
-      "temporalChecks": [
-        {
-          "property": "DrainCompletes",
-          "expect": "holds",
-          "assumptions": [
-            "Weak fairness of each admitted query settling with real success or failure, each captured drain continuation, and final adapter closure. Handoffs happen synchronously after the host confirms common physical storage. Close is requested only after the bounded final handoff. No wall-clock deadline is proved."
-          ]
-        },
-        {
-          "property": "DrainWithoutFairness",
-          "expect": "counterexample",
-          "assumptions": [
-            "No fairness. A pending query can remain unsettled forever, so its shared physical connection must remain open."
-          ]
-        }
-      ],
-      "maxSteps": 40,
-      "samples": 1000
-    },
-    {
-      "name": "runtime_shared_callback_handoff",
-      "main": "runtime_shared_callback_handoff",
-      "init": "init",
-      "step": "step",
-      "invariants": ["safety"],
-      "temporal": ["CloseCompletes", "CloseWithoutFairness"],
-      "temporalChecks": [
-        {
-          "property": "CloseCompletes",
-          "expect": "holds",
-          "assumptions": [
-            "Weak fairness of the admitted write settling in success or failure, old stop continuations after the service cap, adopted cleanup settlement, final stop continuation and physical closure. The published API route has drained old rooms. The final adapter close itself is assumed to settle successfully; original cleanup failure remains observable."
-          ]
-        },
-        {
-          "property": "CloseWithoutFairness",
-          "expect": "counterexample",
-          "assumptions": [
-            "No fairness. An accepted old callback can remain pending forever, so even a fast final stop must keep its shared connection open."
-          ]
-        }
-      ],
-      "maxSteps": 40,
-      "samples": 1000
     }
-  ],
-  "conformance": "packages/agent/quint/check-lifecycle.ts"
+  ]
 }

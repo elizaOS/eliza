@@ -55,8 +55,7 @@ import org.json.JSONTokener;
  * The resulting `eliza_mobile_` key is written to the host's credential slot for the environment
  * after a durable acknowledgement receipt, so an interrupted ack resumes on the next start. Plugin
  * call results carry no secret. A key this sign-in replaces is revoked best effort after the new key
- * is stored and its acknowledgement was tried; an unconfirmed revocation is retried twice in memory,
- * never from storage.
+ * is active; an unconfirmed revocation is retried twice in memory, never from storage.
  *
  * Readiness: status() reports each method only after CloudSignInReadiness confirms Cloud is ready for
  * this app (cached). Returns follow the shared callback contract (CloudSignInFlow.parseCallback).
@@ -113,8 +112,6 @@ public abstract class CloudSignInPlugin extends Plugin {
  private final ExecutorService worker = Executors.newSingleThreadExecutor();
  /** Readiness probes run apart from sign-in work, so a slow probe never delays a sign-in step. */
  private final ExecutorService prober = Executors.newSingleThreadExecutor();
- /** Startup acknowledgement requests run apart from sign-in work, so a slow request never delays a sign-in step. */
- private final ExecutorService recovery = Executors.newSingleThreadExecutor();
  private final Handler main = new Handler(Looper.getMainLooper());
  private final Map<String, CloudSignInReadiness.Result> readiness = new HashMap<>();
  private final Map<String, List<PluginCall>> probing = new HashMap<>();
@@ -202,7 +199,6 @@ public abstract class CloudSignInPlugin extends Plugin {
   synchronized (lock) { if (attempt != null) attempt.cancel(); attempt = null; }
   worker.shutdownNow();
   prober.shutdownNow();
-  recovery.shutdownNow();
   super.handleOnDestroy();
  }
  private void run(Runnable task) {
@@ -680,6 +676,7 @@ public abstract class CloudSignInPlugin extends Plugin {
    if (attempt != null && previous == null) attempt.cancel();
    current = new Attempt(environment, false, requestId, () -> { throw new IllegalStateException("Code not sent"); });
    current.email = email; current.emailVerifier = CloudSignInFlow.newVerifier(); current.busy = true; attempt = current;
+   lastEmailSendAt = now;
   }
   run(() -> {
    try {
@@ -687,8 +684,7 @@ public abstract class CloudSignInPlugin extends Plugin {
     JSONObject data = sent.data.optJSONObject("data") != null ? sent.data.optJSONObject("data") : sent.data;
     long now = System.currentTimeMillis(), expiresAt = CloudEmailCode.expiresAt(data.opt("expiresAt"), now);
     long resendAt = CloudEmailCode.resendAt(data.opt("resendAt"), sent.retryAfter, now);
-    // The request left the phone, so the cooldown starts here. A send with no answer starts none.
-    synchronized (lock) { lastEmailSendAt = now; emailSendAllowedAt = Math.max(emailSendAllowedAt, resendAt); }
+    synchronized (lock) { emailSendAllowedAt = Math.max(emailSendAllowedAt, resendAt); }
     if (sent.status != 200 && sent.status != 202) throw new SignInFailure(CloudSignInFlow.failureForStatus("send", sent.status));
     synchronized (lock) {
      if (attempt != current || current.cancelled) throw new SignInFailure("cancelled");
@@ -723,12 +719,12 @@ public abstract class CloudSignInPlugin extends Plugin {
    if (attempt != null && previous == null) attempt.cancel();
    current = new Attempt(environment, false, requestId, () -> { throw new IllegalStateException("Code not sent"); });
    current.phone = phone; current.busy = true; attempt = current;
+   lastEmailSendAt = now;
   }
   run(() -> {
    try {
     requirePhoneAvailable(current);
     Response sent = post(current, CloudSmsCode.SEND_PATH, CloudSmsCode.sendBody(current.environment, phone), null);
-    synchronized (lock) { lastEmailSendAt = System.currentTimeMillis(); }
     if (sent.status != 200 && sent.status != 202) throw new SignInFailure(CloudSignInFlow.failureForStatus("send", sent.status));
     JSONObject data = sent.data.optJSONObject("data") != null ? sent.data.optJSONObject("data") : sent.data;
     long now = System.currentTimeMillis(), expiresAt = CloudEmailCode.expiresAt(data.opt("expiresAt"), now);
@@ -790,25 +786,21 @@ public abstract class CloudSignInPlugin extends Plugin {
    current.busy = true; current.waiting = call;
   }
   run(() -> {
-   boolean answered = false;
    try {
     Response verified = mfa
      ? post(current, "/steward/auth/mfa/" + current.mfaType + "/complete", new JSONObject().put("challengeId", current.mfaChallenge).put("code", code), null)
      : phone ? post(current, CloudSmsCode.VERIFY_PATH, CloudSmsCode.verifyBody(current.environment, current.phone, code), null)
      : post(current, CloudEmailCode.VERIFY_PATH, CloudEmailCode.verifyBody(config(), current.environment, current.email, code, current.emailVerifier), null);
-    answered = true;
     if (verified.status != 200) throw new SignInFailure(CloudSignInFlow.failureForStatus(mfa ? "mfa" : "verify", verified.status));
     JSONObject session = verified.data.optJSONObject("data") != null && !verified.data.has("token") ? verified.data.optJSONObject("data") : verified.data;
     completeOrRequireMfa(current, session);
    } catch (SignInFailure failure) {
-    boolean wrong = "invalid-code".equals(failure.code);
-    if (!wrong && (answered || "cancelled".equals(failure.code))) { end(current, failure.code, false); return; }
+    if (!"invalid-code".equals(failure.code)) { end(current, failure.code, false); return; }
     // A wrong code keeps the step for a retry, up to the per-attempt cap; then the attempt ends.
-    // A request with no answer also keeps the step. It is not counted: the code can still be correct.
     boolean exhausted;
     synchronized (lock) {
      if (attempt != current || current.waiting != call) return;
-     exhausted = wrong && ++current.failedVerifies >= CloudSignInFlow.MAX_VERIFY_ATTEMPTS;
+     exhausted = ++current.failedVerifies >= CloudSignInFlow.MAX_VERIFY_ATTEMPTS;
      if (!exhausted) {
       current.waiting = null;
       current.busy = false;
@@ -990,7 +982,7 @@ public abstract class CloudSignInPlugin extends Plugin {
     current.credentialGuard.run();
    });
    receipts.write(config().receiptSlot(environment), new JSONObject(proof.toString()).put("credentialId", credentialId).put("acknowledgeBy", acknowledgeBy).toString());
-   // The key this sign-in replaces, if any, is revoked after the acknowledgement of the new one was tried.
+   // The key this sign-in replaces, if any, is revoked after the new one is active (as CloudProtocol.login does).
    String previous = previousToken(receipts, config().credentialSlot(environment), secret);
    CloudCredentialSlots credentials = credentials(() -> { if (destroyed || current.cancelled) throw new IllegalStateException("Sign-in closed"); current.credentialGuard.run(); });
    JSONObject saved = new JSONObject().put("credentialId", UUID.randomUUID().toString()).put("token", secret).put("expiresAt", expiresAt).put("serverCredentialId", credentialId);
@@ -998,18 +990,17 @@ public abstract class CloudSignInPlugin extends Plugin {
    // Commit point: the key is stored. Cancelling now cannot unstore it; activation proceeds.
    boolean acknowledged = acknowledge(current, proof, credentialId, secret);
    if (acknowledged) try { receipts.remove(config().receiptSlot(environment)); } catch (Exception kept) { /* Retried on next start. */ }
+   if (!acknowledged) throw new SignInFailure("activation-pending");
    JSObject outcome = new JSObject().put("status", "authenticated").put("environment", environment.name).put("expiresAt", expiresAt)
     .put("attemptId", current.id).put("credentialId", saved.getString("credentialId"))
     .put("accountCreated", created instanceof Boolean ? created : JSONObject.NULL);
    if (current.requestId != null) outcome.put("requestId", current.requestId);
    if (previous != null) {
-    // The saved slot no longer holds the replaced key, so revoke it with or without the acknowledgement.
     // One short inline try so completion is not held up; an unconfirmed revocation is retried later.
     boolean revoked = CloudKeyRevocation.revoke(config(), environment, previous);
     if (!revoked) retryRevocation(current.credentialGuard, environment, previous, 0);
     outcome.put("previousSignIn", revoked ? "revoked" : "unconfirmed");
    }
-   if (!acknowledged) throw new SignInFailure("activation-pending");
    finish(current, outcome);
   } finally {
    // The Steward session is not needed past this point: revoke it, best effort, never stored.
@@ -1049,29 +1040,21 @@ public abstract class CloudSignInPlugin extends Plugin {
   }
   return false;
  }
- /** A key stored before an interrupted ack is activated on the next start, while Cloud allows it.
-  * The sign-in worker reads and removes the receipt. The requests run apart from it, so a slow
-  * request never delays a sign-in step, and a receipt that a newer sign-in wrote stays. */
+ /** A key stored before an interrupted ack is activated on the next start, while Cloud allows it. */
  private void resumeAcknowledgements() {
   for (CloudSignInEnvironment environment : config().environments()) {
    try {
     CloudCredentialSlots store = store();
-    String slot = config().receiptSlot(environment), raw = store.read(slot);
+    String raw = store.read(config().receiptSlot(environment));
     if (raw == null) continue;
     JSONObject receipt = new JSONObject(raw), proof = new JSONObject();
     for (String key : new String[]{"clientId", "environment", "redirectUri", "code", "state", "codeVerifier"}) proof.put(key, receipt.getString(key));
     String credentialId = receipt.getString("credentialId"), saved = store.read(config().credentialSlot(environment));
     JSONObject credential = saved == null ? null : new JSONObject(saved);
     boolean current = credential != null && credentialId.equals(credential.optString("serverCredentialId")) && environment.name.equals(proof.getString("environment"));
-    if (!current || receipt.getLong("acknowledgeBy") <= System.currentTimeMillis()) { store.remove(slot); continue; }
-    String token = credential.getString("token");
-    recovery.execute(() -> {
-     try {
-      if (acknowledge(null, proof, credentialId, token)) run(() -> {
-       try { if (raw.equals(store.read(slot))) store.remove(slot); } catch (Exception kept) { /* Retried on the next start. */ }
-      });
-     } catch (Exception unavailable) { /* Kept for the next start. */ }
-    });
+    boolean done = !current || receipt.getLong("acknowledgeBy") <= System.currentTimeMillis()
+     || acknowledge(null, proof, credentialId, credential.getString("token"));
+    if (done) store.remove(config().receiptSlot(environment));
    } catch (Exception unavailable) { /* Kept for the next start; a stale receipt expires with acknowledgeBy. */ }
   }
  }

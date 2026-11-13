@@ -4,7 +4,7 @@ A host-configured Android reminder engine, Capacitor bridge, and broadcast dispa
 
 ## Host integration
 
-Include this Android library and its `:capacitor-android` dependency. Extend `ReminderPlugin` with a public no-argument constructor supplying immutable `ReminderConfiguration` and a `SecureStringStore.Factory`. The optional last `smallIcon` argument is the host's monochrome status-bar drawable for due reminders; it is presentation only and not part of the configuration identity. Annotate the host subclass with its chosen Capacitor name and a `notifications` permission alias for POST_NOTIFICATIONS. Register it with the host bridge. A host subclass retaining other lifecycle behavior must call the superclass methods.
+Include this Android library and its `:capacitor-android` dependency. Extend `ReminderPlugin` with a public no-argument constructor supplying immutable `ReminderConfiguration` and a `SecureStringStore.Factory`. Annotate the host subclass with its chosen Capacitor name and a `notifications` permission alias for POST_NOTIFICATIONS. Register it with the host bridge. A host subclass retaining other lifecycle behavior must call the superclass methods.
 
 Extend `ReminderReceiver` and return the same configured `ReminderEngine` from `engine(Context)`. Keep the receiver non-exported and declare the required boot, package-replaced, time and timezone filters and RECEIVE_BOOT_COMPLETED permission in the host manifest. The configured Activity and receiver belong to the host application. Both resolve the engine through `ReminderEngine.get`, which reuses one instance per canonical envelope path.
 
@@ -18,7 +18,7 @@ Within one process, all transaction, cache, deferred-effect, tap and failed-writ
 
 ## Semantics
 
-Explicit null alert values persist tasks without scheduling an alarm. Reminder delivery is not an alarm-clock guarantee and every record reports `mode: "inexact"`. The library never requests the exact-alarm capability. On Android 12 and later, a host that already holds it (`USE_EXACT_ALARM`, or a granted `SCHEDULE_EXACT_ALARM`) gets `setExactAndAllowWhileIdle`; all other hosts keep the inexact `setAndAllowWhileIdle` alarm, and a withdrawn capability falls back to it on the next arm or restore. Operation IDs and approval bindings are durable: replay returns the original receipt and changed arguments are rejected. Unknown effects are not blindly replayed. Tapping a notification captures navigation only; it never completes a reminder or approves an agent action. Keep owner/agent authorization in the host before invoking operations.
+Explicit null alert values persist tasks without scheduling an alarm. Inexact reminder delivery is not an alarm-clock guarantee. Operation IDs and approval bindings are durable: replay returns the original receipt and changed arguments are rejected. Unknown effects are not blindly replayed. Tapping a notification captures navigation only; it never completes a reminder or approves an agent action. Keep owner/agent authorization in the host before invoking operations.
 
 The existing macOS package entrypoint is independent of this Android implementation. Real bridge/permission flows, failed-write and concurrent-instance tests, and lossless installed-app migration must be qualified before release. A Java or APK build is not device acceptance.
 

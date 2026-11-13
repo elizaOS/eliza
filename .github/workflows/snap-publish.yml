@@ -23,8 +23,9 @@ on:
         required: true
         type: string
     secrets:
-      # Missing credentials skip this optional store leg before checkout,
-      # setup, build, or upload. Present credentials still undergo validation.
+      # The callable contract remains optional so GitHub starts the job and the
+      # explicit preflight can report the missing environment credential. The
+      # canonical release still fails closed before any build or upload.
       SNAPCRAFT_STORE_CREDENTIALS:
         required: false
 
@@ -40,21 +41,7 @@ jobs:
       name: production-release
 
     steps:
-      - name: Check Snap Store credentials
-        id: credentials
-        env:
-          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
-        run: |
-          if [[ -z "$SNAPCRAFT_STORE_CREDENTIALS" ]]; then
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Skipping Snap Store release: SNAPCRAFT_STORE_CREDENTIALS is not configured."
-            echo "Snap Store release skipped: SNAPCRAFT_STORE_CREDENTIALS is not configured." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          echo "ready=true" >> "$GITHUB_OUTPUT"
-
-      - if: steps.credentials.outputs.ready == 'true'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ inputs.source_sha }}
           fetch-depth: 0
@@ -62,7 +49,6 @@ jobs:
           submodules: false
 
       - name: Bind Snap build to the finalized tag
-        if: steps.credentials.outputs.ready == 'true'
         env:
           EXPECTED_SHA: ${{ inputs.source_sha }}
           EXPECTED_TAG: ${{ inputs.tag }}
@@ -78,15 +64,22 @@ jobs:
           fi
 
       - name: Normalize runner root ownership for snapd
-        if: steps.credentials.outputs.ready == 'true'
         uses: ./.github/actions/normalize-snapd-root
 
+      - name: Check Snap Store credentials
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        run: |
+          if [[ -z "$SNAPCRAFT_STORE_CREDENTIALS" ]]; then
+            echo "::error::SNAPCRAFT_STORE_CREDENTIALS is required for the canonical store release."
+            exit 1
+          fi
+          echo "can_publish=true" >> "$GITHUB_OUTPUT"
+
       - name: Install snapcraft
-        if: steps.credentials.outputs.ready == 'true'
         run: sudo snap install snapcraft --classic
 
       - name: Update snap version
-        if: steps.credentials.outputs.ready == 'true'
         env:
           VERSION: ${{ inputs.version }}
         run: |
@@ -98,7 +91,6 @@ jobs:
           sed -i "s/^version: .*/version: \"${VERSION}\"/" packages/app/packaging/snap/snapcraft.yaml
 
       - name: Build snap
-        if: steps.credentials.outputs.ready == 'true'
         run: |
           cd packages/app/packaging/snap
           snapcraft --destructive-mode
@@ -108,13 +100,11 @@ jobs:
           ls -la "$SNAP_FILE"
 
       - name: Verify Snap Store credentials
-        if: steps.credentials.outputs.ready == 'true'
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
         run: snapcraft whoami
 
       - name: Publish to Snap Store
-        if: steps.credentials.outputs.ready == 'true'
         env:
           CHANNEL: ${{ inputs.channel }}
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
@@ -128,7 +118,6 @@ jobs:
           echo "Published snap to channel: $CHANNEL"
 
       - name: Upload snap artifact
-        if: steps.credentials.outputs.ready == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: eliza-snap-${{ inputs.version }}

@@ -40,7 +40,8 @@ jobs:
 
       - name: Install Linux desktop and Flatpak dependencies
         run: |
-          bash "$GITHUB_WORKSPACE/packages/scripts/github/install-apt-packages.sh" --no-install-recommends \
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
             flatpak \
             libayatana-appindicator3-1 \
             libgtk-3-0 \

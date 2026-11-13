@@ -1,16 +1,14 @@
 #!/usr/bin/env node
 /**
  * Read-only post-boot checks of a launcher image built with the common
- * least-privilege profile (Cuttlefish or Pixel 10a): the exact image, a system launcher
- * with the staged bytes as HOME (nonprivileged, or a priv-app granted exactly the
- * descriptor's reviewed privilegedPermissions), a remaining system recovery HOME,
+ * least-privilege profile (Cuttlefish or Pixel 10a): the exact image, a nonprivileged
+ * system launcher with the staged bytes as HOME, a remaining system recovery HOME,
  * the system Clock's alarm handlers, a WebView provider and, when staged, the
  * narrowly privileged Sense listener. No install, role change, alarm or runtime
  * request is made. A pass is image evidence for these facts only.
  *
  *   node verify-launcher-image.mjs --target cuttlefish|pixel10a --serial SERIAL --user N
  *     --descriptor LAUNCHER_JSON --fingerprint EXACT --apk-path /product/app/M/M.apk
- *     (/product/priv-app/M/M.apk with privilegedPermissions)
  *     --out NEW_REPORT [--listener] [--adb PATH]
  */
 import { execFileSync } from "node:child_process";
@@ -20,7 +18,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { verifyAospClockHandlers } from "./aosp-clock-handlers.mjs";
 import { verifyAospListener } from "./sense-listener.mjs";
-import { REVIEWED_PRIVILEGED_PERMISSIONS } from "./stage-launcher-overlay.ts";
 
 const PACKAGE = /^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$/;
 const requireThat = (value, message) => {
@@ -84,30 +81,11 @@ export function validateExpectation(expected) {
       !/[\r\n\0]/.test(expected.fingerprint),
     "Exact expected image fingerprint required",
   );
-  const placement =
-    /^\/(?:product|system|system_ext)\/(app|priv-app)\/[A-Za-z0-9_-]+\/[A-Za-z0-9_.-]+\.apk$/.exec(
+  requireThat(
+    /^\/(product|system|system_ext)\/app\/[A-Za-z0-9_-]+\/[A-Za-z0-9_.-]+\.apk$/.test(
       expected.apkPath ?? "",
-    );
-  requireThat(
-    placement && !expected.apkPath.split("/").includes(".."),
-    "Expected system APK path required",
-  );
-  requireThat(
-    expected.privilegedPermissions === undefined ||
-      (Array.isArray(expected.privilegedPermissions) &&
-        expected.privilegedPermissions.length > 0 &&
-        expected.privilegedPermissions.every((name) =>
-          REVIEWED_PRIVILEGED_PERMISSIONS.includes(name),
-        )),
-    "Expected privileged permissions must be the reviewed ones",
-  );
-  // priv-app placement exactly when the descriptor names privileged permissions.
-  requireThat(
-    (placement[1] === "priv-app") ===
-      (expected.privilegedPermissions !== undefined),
-    expected.privilegedPermissions
-      ? "Privileged permissions require a priv-app APK path"
-      : "Expected nonprivileged system APK path required",
+    ) && !expected.apkPath.split("/").includes(".."),
+    "Expected nonprivileged system APK path required",
   );
   requireThat(
     expected.homeActivity === undefined ||
@@ -229,25 +207,8 @@ export function verifyLauncherImage(
       shell("dumpsys", "webviewupdate"),
     );
   requireThat(webview, "Current WebView provider unavailable");
-  const privilegedPermissions = expected.privilegedPermissions ?? null;
-  if (privilegedPermissions) {
-    const dump = shell("dumpsys", "package", pkg);
-    requireThat(
-      /privateFlags=\[[^\]]*\bPRIVILEGED\b/.test(dump),
-      "The launcher is not a privileged app",
-    );
-    for (const name of privilegedPermissions)
-      requireThat(
-        new RegExp(`${name.replace(/\./g, "\\.")}: granted=true`).test(dump),
-        `${name} is not granted to the launcher`,
-      );
-  }
   const listener =
-    expected.listener === true
-      ? verifyAospListener(run, user, pkg, {
-          launcherPrivileged: privilegedPermissions !== null,
-        })
-      : null;
+    expected.listener === true ? verifyAospListener(run, user, pkg) : null;
   // Re-observe mutable provisioning state; RUNNING_UNLOCKED is a user lifecycle state,
   // not evidence that the keyguard is currently dismissed. These are sequential observations.
   const finalHome = components(
@@ -287,7 +248,6 @@ export function verifyLauncherImage(
     clock,
     webview: { packageName: webview[1], version: webview[2] },
     listener,
-    ...(privilegedPermissions ? { privilegedPermissions } : {}),
     runtimeExecutionVerified: false,
     physicalDeviceVerified: false,
     productionReleaseVerified: false,

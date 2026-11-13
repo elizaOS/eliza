@@ -86,47 +86,6 @@ describe("reminder creation journal", () => {
     expect(await journal.all()).toEqual({});
   });
 
-  it("lets the owner discard only a creation that no readback confirmed", async () => {
-    let rows: ReminderJournalRow[] = [];
-    const mem = memoryStore<Record<string, ReminderCreation>>();
-    const journal = createReminderCreationJournal({
-      store: mem.store,
-      list: async () => rows,
-    });
-    await journal.retain(creation());
-    await journal.retain(creation("r2"));
-    expect(await journal.discardUnconfirmed("r1")).toBe(true);
-    expect(await journal.reconcile()).toBe(1);
-    rows = [saved({ id: "r2" })];
-    expect(await journal.discardUnconfirmed("r2")).toBe(false);
-    expect((await journal.all()).r2.state).toBe("found");
-    expect(await journal.discardUnconfirmed("r1")).toBe(false);
-
-    // A stale absent read must not remove a creation confirmed by another
-    // readback before the discard continuation resumes.
-    let entered!: () => void, release!: (rows: ReminderJournalRow[]) => void;
-    const reading = new Promise<void>((resolve) => {
-      entered = resolve;
-    });
-    const delayed = new Promise<ReminderJournalRow[]>((resolve) => {
-      release = resolve;
-    });
-    const concurrent = createReminderCreationJournal({
-      store: mem.store,
-      list: () => {
-        entered();
-        return delayed;
-      },
-    });
-    await concurrent.retain(creation("r3"));
-    const discarding = concurrent.discardUnconfirmed("r3");
-    await reading;
-    expect(await concurrent.check("r3", [saved({ id: "r3" })])).toBe("found");
-    release([]);
-    expect(await discarding).toBe(false);
-    expect((await concurrent.all()).r3.state).toBe("found");
-  });
-
   it("refuses to overwrite a changed creation and to discard a different one", async () => {
     const mem = memoryStore<Record<string, ReminderCreation>>();
     const journal = createReminderCreationJournal({
@@ -273,19 +232,6 @@ describe("reminder action journal", () => {
     expect(await journal.reconcile()).toBe(1);
     await journal.discardUndispatched(action("reminder_cancel"));
     expect(await journal.all()).toEqual({});
-  });
-
-  it("lets the owner discard an action that no receipt confirmed", async () => {
-    const mem = memoryStore<Record<string, PendingReminderAction>>();
-    const journal = createReminderActionJournal({
-      store: mem.store,
-      receipt: async () => ({ status: "unknown" }),
-    });
-    await journal.retain(action("reminder_cancel"));
-    expect(await journal.reconcile()).toBe(1);
-    expect(await journal.discardUnconfirmed("op1")).toBe(true);
-    expect(await journal.reconcile()).toBe(0);
-    expect(await journal.discardUnconfirmed("op1")).toBe(false);
   });
 
   it("validates the saved store", () => {

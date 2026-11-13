@@ -67,10 +67,8 @@ final class Listener {
   return value;
  }
 
- /** The capture, recognition, main and binder threads all observe the lease. One observation completes before the next starts. */
- private static final Object leaseLock=new Object();
  /** Whether the lease permits capture now; latches {@link #indicatorLost} when it fails while capturing. */
- static boolean observeIndicatorLease(Context context,long now){synchronized(leaseLock){
+ static boolean observeIndicatorLease(Context context,long now){
   boolean held=microphoneHeld;
   long since=unsilencedSince;
   IndicatorLease.Loss loss=lease.verdict(now,leaseBoot(context),IndicatorLease.requiresAttribution(held&&since>=0,since,now),screenInteractive);
@@ -82,7 +80,7 @@ final class Listener {
   if(!asleep&&ListenerPolicy.latchesIndicatorLoss(held||paused,valid,loss.pause()))indicatorLost=true;
   indicatorPause=asleep&&!screenInteractive?ListenerPolicy.IndicatorPause.DISPLAY_OFF:IndicatorLease.pauseFor(loss);
   return valid;
- }}
+ }
 
  /** The listener's user (the primary user) is the one using the phone. Unknown counts as not. */
  private static boolean userForeground(UserManager users){
@@ -101,8 +99,7 @@ final class Listener {
   ListenerPolicy.State state=state(app);
   Intent service=new Intent().setComponent(SenseConfig.component(app,"ListeningService"));
   if(ListenerPolicy.foreground(state))app.startForegroundService(service);
-  // Android stops the process if a service is stopped from outside before a foreground start is delivered. The service stops itself.
-  else ListeningService.converge();
+  else app.stopService(service);
   ListenerNotifications.showStatus(app,state);
   try{TileService.requestListeningState(app,SenseConfig.component(app,"ListenerTileService"));}catch(RuntimeException unavailable){}
  }

@@ -8,34 +8,27 @@ import java.util.Set;
 
 /**
  * Generic policy for website links that belong to another app ({@code mailto:}, {@code tel:},
- * {@code sms:}, {@code smsto:}, {@code geo:}, {@code market:} and {@code intent:}).
+ * {@code market:} and {@code intent:}).
  *
  * <p>The host parses an {@code intent:} URI with the platform parser and passes its action, data
  * scheme and package here. When the decision is not {@link Handoff#REFUSE}, the host builds a
  * <em>fresh</em> implicit Intent of that kind: it never forwards the page's component, selector,
  * clip data, flags or extras, adds the browsable category for {@link Handoff#VIEW}, and refuses a
- * resolved target in its own package unless the link is a {@link #systemLink}. {@link Handoff#DIAL}
- * only opens the dialer; it never places a call. {@link Handoff#SEND_TO} only opens a compose
- * screen; it never sends. Pure JVM; no Android types.
+ * resolved target in its own package. {@link Handoff#DIAL} only opens the dialer; it never places a
+ * call. Pure JVM; no Android types.
  */
 public final class BrowserExternalLinkPolicy {
   public static final int MAX_LINK = 4096;
   public static final String ACTION_VIEW = "android.intent.action.VIEW";
   public static final Set<String> SCHEMES = Collections.unmodifiableSet(
-      new HashSet<>(Arrays.asList("mailto", "tel", "sms", "smsto", "geo", "intent", "market")));
-  /**
-   * Schemes with a fixed platform action that only shows a prefilled screen (compose, dial pad,
-   * map). The page chooses the address and nothing else, so the handler may be the host itself.
-   */
-  private static final Set<String> SYSTEM_SCHEMES = Collections.unmodifiableSet(
-      new HashSet<>(Arrays.asList("mailto", "tel", "sms", "smsto", "geo")));
+      new HashSet<>(Arrays.asList("mailto", "tel", "intent", "market")));
   /** Schemes an {@code intent:} link may never carry as data. */
   public static final Set<String> FORBIDDEN_DATA =
       Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
           "file", "content", "javascript", "data", "blob", "about", "intent", "android-app")));
 
   public enum Handoff {
-    /** {@code ACTION_SENDTO} with the {@code mailto:}, {@code sms:} or {@code smsto:} address. */
+    /** {@code ACTION_SENDTO} with the {@code mailto:} address. */
     SEND_TO,
     /** {@code ACTION_DIAL}: the dialer opens with the number; no call is placed. */
     DIAL,
@@ -61,16 +54,6 @@ public final class BrowserExternalLinkPolicy {
   /** Whether the browser hands this link to another app instead of loading it. */
   public static boolean external(String raw) {
     return SCHEMES.contains(scheme(raw));
-  }
-
-  /**
-   * Whether the link is a mail, phone, text or map link. Its handoff has a fixed action and never
-   * acts without the person (no call is placed, nothing is sent), so the host may hand it to
-   * Android even when the host's own dialer, messaging or map screen is the handler. An
-   * {@code intent:} or {@code market:} link is never a system link.
-   */
-  public static boolean systemLink(String raw) {
-    return SYSTEM_SCHEMES.contains(scheme(raw));
   }
 
   private static boolean clean(String raw) {
@@ -101,12 +84,9 @@ public final class BrowserExternalLinkPolicy {
       return Handoff.REFUSE;
     switch (scheme(raw)) {
       case "mailto":
-      case "sms":
-      case "smsto":
         return Handoff.SEND_TO;
       case "tel":
         return Handoff.DIAL;
-      case "geo":
       case "market":
         return Handoff.VIEW;
       case "intent":

@@ -13,8 +13,6 @@ export type FilesIdentity = string;
 export type FilesAgentOperation =
   | ({ type: "files_filter" } & FilesFilter)
   | { type: "files_open"; path: string }
-  /** The item at this position (1 is the first) in the filter results Files shows. */
-  | { type: "files_open"; shown: number }
   | { type: "files_share"; paths: string[] }
   | {
       type: "files_move";
@@ -91,16 +89,8 @@ export function validateFilesOperation(value: unknown): FilesAgentOperation {
       return { type: "files_filter", ...validateFilesFilter(filter) };
     }
     case "files_open":
-      allowed(["type", "path", "shown"]);
-      if (op.shown === undefined)
-        return { type: "files_open", path: agentPath(op.path) };
-      if (
-        op.path !== undefined ||
-        !Number.isSafeInteger(op.shown) ||
-        (op.shown as number) < 1
-      )
-        throw Error("Invalid shown item");
-      return { type: "files_open", shown: op.shown as number };
+      allowed(["type", "path"]);
+      return { type: "files_open", path: agentPath(op.path) };
     case "files_share":
       allowed(["type", "paths"]);
       return { type: "files_share", paths: paths(op.paths) };
@@ -166,10 +156,7 @@ export function describeFilesOperation(op: FilesAgentOperation): {
         description: filterLabel(filesFilterOf(op)),
       };
     case "files_open":
-      return {
-        title: "Open file",
-        description: "shown" in op ? `Shown item ${op.shown}` : place(op.path),
-      };
+      return { title: "Open file", description: place(op.path) };
     case "files_share":
       return {
         title: `Share ${count(op.paths.length)}`,
@@ -211,7 +198,5 @@ export type FilesAgentRunner = {
   run(
     op: FilesAgentOperation,
     signal: AbortSignal,
-    /** For direct actions only. Resolves after the host commits and renders Files. */
-    openFiles?: () => Promise<boolean>,
   ): Promise<{ status: "succeeded" | "failed"; summary: string }>;
 };

@@ -4,12 +4,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
-import {
-  type AgentRuntime,
-  ChannelType,
-  TaskService,
-  type UUID,
-} from "@elizaos/core";
+import type { AgentRuntime } from "@elizaos/core";
 import { type SQL, sql } from "drizzle-orm";
 import { afterEach, expect, it, vi } from "vitest";
 import * as apiServer from "../api/server.ts";
@@ -28,7 +23,6 @@ import {
   defaultAgentHostBridge,
   setAgentHostBridge,
 } from "./host-bridge";
-import { MemoryRetentionService } from "./memory-retention-service";
 
 /** Load-tolerant wall-clock test budget; no deadline here proves expiry. */
 const TEST_BUDGET_MS = 10 * 60_000;
@@ -202,8 +196,6 @@ it(
       "POSTGRES_URL",
       "DATABASE_URL",
       "SANDBOX_ROUTE_AGENT_ID",
-      "ELIZA_FAST_ROOM_DRAIN_TIMEOUT_MS",
-      "ELIZA_SHUTDOWN_SERVICE_STOP_TIMEOUT_MS",
     ])
       vi.stubEnv(key, undefined);
     vi.stubEnv("ELIZA_DISABLE_VAULT_PROFILE_RESOLVER", "1");
@@ -237,9 +229,6 @@ it(
     );
     let runtime: AgentRuntime | undefined;
     let runtimeForCleanup: AgentRuntime | undefined;
-    let releaseRetention: () => void = () => {};
-    let retentionRun: Promise<void> | undefined;
-    let heldRestart: Promise<Response> | undefined;
     const startServer = apiServer.startApiServer;
     const start = vi
       .spyOn(apiServer, "startApiServer")
@@ -272,8 +261,6 @@ it(
         onRuntimeCreated: (created) => {
           runtime = created;
           runtimeForCleanup = created;
-          Object.assign(created, { serverless: true });
-          created.setSetting("ELIZA_MEMORY_RETENTION_MAX_ROWS_PER_ROOM", "1");
         },
       });
       expect(started).toBe(runtime);
@@ -284,7 +271,7 @@ it(
       if (!started) throw new Error("Restored runtime did not start");
       const serverPort = server.port;
       const lifecycle = (
-        action: "restart" | "start" | "stop" | "pause" | "resume",
+        action: "restart" | "start" | "stop",
         authenticated = true,
       ) =>
         fetch(`http://127.0.0.1:${serverPort}/api/agent/${action}`, {
@@ -296,104 +283,9 @@ it(
           },
           body: "{}",
         });
-      const status = async () =>
-        (
-          await fetch(`http://127.0.0.1:${serverPort}/api/status`, {
-            headers: { Authorization: `Bearer ${token}` },
-          })
-        ).json();
       expect((await lifecycle("restart", false)).status).toBe(401);
       expect((await lifecycle("stop", false)).status).toBe(401);
-      const roomId = randomUUID() as UUID;
-      const worldId = randomUUID() as UUID;
-      const older = randomUUID() as UUID;
-      const newer = randomUUID() as UUID;
-      await started.createWorld({
-        id: worldId,
-        agentId: started.agentId,
-        name: "Restore retirement",
-      });
-      await started.createRoom({
-        id: roomId,
-        worldId,
-        agentId: started.agentId,
-        source: "test",
-        type: ChannelType.DM,
-      });
-      await started.createMemories(
-        [older, newer].map((id, index) => ({
-          tableName: "messages",
-          memory: {
-            id,
-            roomId,
-            entityId: started.agentId,
-            agentId: started.agentId,
-            createdAt: index + 1,
-            content: { text: `restored durable row ${index}` },
-          },
-        })),
-      );
-      await started.getServiceLoadPromise(MemoryRetentionService.serviceType);
-      const scheduler = (await started.getServiceLoadPromise(
-        TaskService.serviceType,
-      )) as TaskService;
-      const task = (await started.getTasks({ tags: ["queue"] })).find(
-        (item) => item.name === "HOST_MEMORY_RETENTION",
-      );
-      if (!task?.id)
-        throw new Error("Host did not register its real retention task");
-      await started.updateTask(task.id, {
-        metadata: { ...task.metadata, updatedAt: 0 },
-      });
-      let observeDelete!: () => void;
-      const deletionEntered = new Promise<void>((resolve) => {
-        observeDelete = resolve;
-      });
-      const deletionGate = new Promise<void>((resolve) => {
-        releaseRetention = resolve;
-      });
-      const deleteMemories = started.adapter.deleteMemories.bind(
-        started.adapter,
-      );
-      const pendingDeletion = vi
-        .spyOn(started.adapter, "deleteMemories")
-        .mockImplementation(async (ids) => {
-          observeDelete();
-          await deletionGate;
-          await deleteMemories(ids);
-        });
-      const initialClose = vi.spyOn(started.adapter, "close");
-      retentionRun = scheduler.runDueTasks();
-      void retentionRun.catch(() => undefined);
-      await deletionEntered;
-      heldRestart = lifecycle("restart");
-      // Exercise the actual restored-generation host onRestart closure. This
-      // real evaluator mutation also owns the room; hold it past both default
-      // 500 ms fast caps before checking that pre-disposal retains its adapter.
-      await vi.waitFor(
-        () =>
-          expect(started.roomHandlerQueue.isAcceptingAdmissions()).toBe(false),
-        { timeout: 10_000 },
-      );
-      await new Promise<void>((resolve) => setTimeout(resolve, 750));
-      expect(initialClose).not.toHaveBeenCalled();
-      expect(await status()).toMatchObject({ state: "restarting" });
-      expect(await (await lifecycle("start")).json()).toMatchObject({
-        status: { state: "restarting" },
-      });
-      for (const action of ["stop", "pause", "resume", "restart"] as const)
-        expect((await lifecycle(action)).status).toBe(409);
-      releaseRetention();
-      await retentionRun;
-      expect((await heldRestart).status).toBe(200);
-      expect(initialClose).toHaveBeenCalledOnce();
-      expect(runtimeForCleanup).toBeDefined();
-      expect(runtimeForCleanup).not.toBe(started);
-      expect(await runtimeForCleanup?.getMemoryById(older)).toBeNull();
-      expect(await runtimeForCleanup?.getMemoryById(newer)).not.toBeNull();
-      pendingDeletion.mockRestore();
-      initialClose.mockRestore();
-      const adapter = runtimeForCleanup?.adapter;
+      const adapter = started.adapter;
       if (!adapter) throw new Error("Runtime adapter was not initialized");
       const closeAdapter = vi.spyOn(adapter, "close");
       expect((await lifecycle("stop")).status).toBe(200);
@@ -410,32 +302,21 @@ it(
       expect(closeAdapter).toHaveBeenCalledOnce();
       expect(runtimeForCleanup).toBeDefined();
 
-      // The asynchronous activation callback publishes this replacement.
-      const recoveredRuntime = runtimeForCleanup as AgentRuntime | undefined;
-      if (!recoveredRuntime) throw new Error("Restarted runtime is missing");
-      const failedClose = vi.spyOn(recoveredRuntime.adapter, "close");
       await authority.close();
       const failedRestart = await lifecycle("restart");
       expect(failedRestart.status).toBe(500);
       expect(await failedRestart.json()).toMatchObject({
         error: expect.stringContaining("runtime failed to re-initialize"),
       });
-      expect(await status()).toMatchObject({ state: "error" });
-      expect(failedClose).toHaveBeenCalledOnce();
-      for (const action of ["pause", "resume"] as const)
-        expect((await lifecycle(action)).status).toBe(503);
       expect(registry).not.toHaveBeenCalled();
 
       expect((await lifecycle("stop")).status).toBe(200);
-      expect(failedClose).toHaveBeenCalledOnce();
       runtimeForCleanup = undefined;
       const failed = await lifecycle("start");
       expect(failed.status).toBe(500);
       expect(await failed.json()).toMatchObject({
         error: expect.stringContaining("runtime did not initialize"),
       });
-      expect(await status()).toMatchObject({ state: "error" });
-      expect(failedClose).toHaveBeenCalledOnce();
       expect(registry).not.toHaveBeenCalled();
       const db = new PGlite(committed.paths.database);
       try {
@@ -446,8 +327,6 @@ it(
         await db.close();
       }
     } finally {
-      releaseRetention();
-      await Promise.allSettled([retentionRun, heldRestart]);
       abort.abort();
       await server?.close();
       await shutdownRuntime(

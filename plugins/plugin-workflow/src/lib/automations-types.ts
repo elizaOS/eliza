@@ -1,7 +1,7 @@
 /** Types and projections for the `/api/automations` response. */
 
 import type { ConversationMetadata, ConversationScope, WorkbenchTask } from '@elizaos/contracts';
-import { hashStableJson, type Task } from '@elizaos/core';
+import type { Task } from '@elizaos/core';
 
 export function isAutomationConversationMetadata(
   metadata: ConversationMetadata | null | undefined
@@ -24,8 +24,6 @@ export type TriggerLastStatus = 'success' | 'error' | 'skipped';
 export type TriggerKind = 'workflow' | 'prompt';
 
 export interface TriggerSummary {
-  removedAt?: number;
-  revision?: string;
   id: string;
   taskId: string;
   displayName: string;
@@ -165,8 +163,6 @@ export function taskToTriggerSummary(task: Task): TriggerSummary | null {
     return {
       id: trigger.triggerId,
       taskId: task.id,
-      revision: hashStableJson(task),
-      ...(typeof metadata.removedAt === 'number' ? { removedAt: metadata.removedAt } : {}),
       displayName: trigger.displayName,
       instructions: trigger.instructions,
       triggerType: trigger.triggerType,

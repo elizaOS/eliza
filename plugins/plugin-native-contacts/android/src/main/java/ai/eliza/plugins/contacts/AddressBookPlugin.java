@@ -33,14 +33,12 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * The address book of the AOSP telephony profile: bounded same-profile reads through
- * {@link ContactsCatalog} while the phone is unlocked with the host in front; contact creation and
- * edits handed to the system Contacts editor, which owns the account choice and the save
- * ({@link #create}, {@link #edit}); and, for a host whose manifest holds WRITE_CONTACTS, the owner's
- * own saves and deletions from the host's screen through {@link ContactsEditor} ({@link #get},
- * {@link #save}, {@link #remove}), each bound to the version of the contact that was read.
+ * {@link ContactsCatalog} while the phone is unlocked with the host in front, and contact creation
+ * and edits handed to the system Contacts editor, which owns the account choice and the save. No
+ * contact is written from here.
  *
  * A host subclasses this under its own plugin name (declaring the {@code contacts} permission alias
- * for READ_CONTACTS, and for WRITE_CONTACTS too when it offers in-app saves) and decides {@link #admitted()} natively, from facts an ordinary install cannot
+ * for READ_CONTACTS) and decides {@link #admitted()} natively, from facts an ordinary install cannot
  * produce. Reads are cancelled and their results dropped on pause, resume, screen-off and permission
  * change. Edits recheck the selected contact's lookup key and revision first. The editor is always a
  * system app's exported activity, never a component, URI, account or payload from the renderer.
@@ -117,10 +115,6 @@ public abstract class AddressBookPlugin extends Plugin {
     return available() && unlocked() && getContext().checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED;
   }
 
-  private boolean writable() {
-    return getContext().checkSelfPermission(Manifest.permission.WRITE_CONTACTS) == PackageManager.PERMISSION_GRANTED;
-  }
-
   private boolean foreground() {
     return available() && unlocked() && getActivity() != null && !getActivity().isFinishing() && !getActivity().isDestroyed() && getActivity().hasWindowFocus();
   }
@@ -141,7 +135,6 @@ public abstract class AddressBookPlugin extends Plugin {
     JSObject out = new JSObject();
     out.put("available", available());
     out.put("readable", readable());
-    out.put("writable", readable() && writable());
     call.resolve(out);
   }
 
@@ -239,114 +232,6 @@ public abstract class AddressBookPlugin extends Plugin {
     } catch (RejectedExecutionException retired) {
       call.reject("Contacts closed");
     }
-  }
-
-  /** A contact read or write on the worker thread. */
-  private interface Work {
-    JSObject run(CancellationSignal cancel) throws Exception;
-  }
-
-  /**
-   * Runs {@code work} off the main thread. A read ({@code fenceResult}) is cancelled on pause,
-   * resume, screen-off and permission change and published only if nothing changed meanwhile. A
-   * write reports its outcome even then: it cannot be undone, and rejecting would claim nothing
-   * changed. Failures carry a code: unavailable, not-found, incomplete, invalid.
-   */
-  private void work(PluginCall call, boolean fenceResult, Work work) {
-    long ticket = generation.get();
-    CancellationSignal cancel = new CancellationSignal();
-    if (fenceResult) reads.add(cancel);
-    try {
-      worker.execute(() -> {
-        try {
-          if (!readable() || cancel.isCanceled() || (fenceResult && ticket != generation.get())) throw new SecurityException();
-          JSObject result = work.run(cancel);
-          android.app.Activity activity = getActivity();
-          if (activity == null) {
-            if (fenceResult) call.reject(closedMessage(), "unavailable");
-            else call.resolve(result);
-            return;
-          }
-          activity.runOnUiThread(() -> {
-            if (!fenceResult || (readable() && !cancel.isCanceled() && ticket == generation.get())) call.resolve(result);
-            else call.reject("Contacts access changed. Refresh after unlocking.", "unavailable");
-          });
-        } catch (ContactsEditor.NotFound gone) {
-          call.reject("This contact no longer exists. Refresh the list.", "not-found");
-        } catch (ContactsEditor.Incomplete partial) {
-          call.reject("This contact holds more than can be edited here. Open it in the system Contacts app.", "incomplete");
-        } catch (IllegalArgumentException invalid) {
-          call.reject("Invalid contact request", "invalid");
-        } catch (Exception unavailable) {
-          call.reject("Contacts could not be read. Check access and refresh.", "unavailable");
-        } finally {
-          reads.remove(cancel);
-        }
-      });
-    } catch (RejectedExecutionException retired) {
-      reads.remove(cancel);
-      call.reject("Contacts closed", "unavailable");
-    }
-  }
-
-  /** One contact for editing in the host's screen: typed numbers and addresses and the {@code version} a save or removal must name. */
-  @PluginMethod
-  public void get(PluginCall call) {
-    if (!readable()) {
-      call.reject("Contacts access is unavailable", "unavailable");
-      return;
-    }
-    String id = call.getString("id");
-    if (ContactsEditor.row(id) < 0) {
-      call.reject("Invalid contact request", "invalid");
-      return;
-    }
-    work(call, true, cancel -> new ContactsEditor(getContext()).get(id, cancel));
-  }
-
-  /** Whether an owner-driven write may start now; rejects with unavailable or permission-required when not. */
-  private boolean mayWrite(PluginCall call) {
-    if (!foreground() || !readable()) {
-      call.reject(unavailableMessage(), "unavailable");
-      return false;
-    }
-    if (!writable()) {
-      call.reject("Contacts write access is not granted", "permission-required");
-      return false;
-    }
-    return true;
-  }
-
-  /**
-   * Saves the owner's edit from the host's screen: a new contact without {@code id}, otherwise the
-   * contact read at {@code version}. See {@link ContactsEditor#save} for the answer.
-   */
-  @PluginMethod
-  public void save(PluginCall call) {
-    if (!mayWrite(call)) return;
-    String id = call.getString("id"), version = call.getString("version");
-    final ContactsEditor.Draft draft;
-    try {
-      if (call.getData().length() != (id == null ? 3 : 5) || (id != null && (ContactsEditor.row(id) < 0 || !ContactsEditor.versionShape(version))))
-        throw new IllegalArgumentException("Unknown or missing field");
-      draft = ContactsEditor.draft(call.getString("displayName"), call.getArray("phoneNumbers"), call.getArray("emailAddresses"));
-    } catch (IllegalArgumentException invalid) {
-      call.reject("Invalid contact", "invalid");
-      return;
-    }
-    work(call, false, cancel -> new ContactsEditor(getContext()).save(id, version, draft));
-  }
-
-  /** Deletes the contact the owner chose, read at {@code version}. See {@link ContactsEditor#remove} for the answer. */
-  @PluginMethod
-  public void remove(PluginCall call) {
-    if (!mayWrite(call)) return;
-    String id = call.getString("id"), version = call.getString("version");
-    if (ContactsEditor.row(id) < 0 || !ContactsEditor.versionShape(version)) {
-      call.reject("Invalid contact request", "invalid");
-      return;
-    }
-    work(call, false, cancel -> new ContactsEditor(getContext()).remove(id, version));
   }
 
   /** The first enabled, exported system activity other than this app that handles the intent; null when none. */

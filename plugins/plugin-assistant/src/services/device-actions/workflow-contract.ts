@@ -1,7 +1,6 @@
 import {
   calendarEventOverlapsRange,
   checkWorkflowReminderRows,
-  type PhoneRelativeCalendarRange,
   parseWorkflowReminderRead,
   type WorkflowReminderReadOperation,
   type WorkflowReminderRow,
@@ -82,15 +81,10 @@ export type WorkflowReadResult =
  * calendar membership/range and count before committing the canonical queue receipt.
  * Run/step/spec/owner/device are checked by trusted server dispatch, not request body claims.
  */
-/** A Calendar step range relative to the run. The bridge resolves it once, before review. */
-export type WorkflowRelativeCalendarRead = {
-  type: "read_calendar_range";
-} & PhoneRelativeCalendarRange;
 export interface WorkflowDeviceDispatch {
   binding: WorkflowDeviceBinding;
   target: WorkflowDeviceTarget;
   operation:
-    | WorkflowRelativeCalendarRead
     | WorkflowReadOperation
     | WorkflowPresentationOperation
     | { type: "create_note"; title: string; body: string };

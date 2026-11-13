@@ -30,8 +30,6 @@ export class WorkflowDeviceBridgeService extends Service {
     signal: AbortSignal,
   ): Promise<unknown> {
     const service = new DeviceActionService(this.runtime);
-    // The queue resolves relative Calendar reads from the locked run, so
-    // every poll and restart observes the same reviewed operation.
     const deadline = Date.now() + 10 * 60_000;
     while (Date.now() < deadline) {
       signal.throwIfAborted();

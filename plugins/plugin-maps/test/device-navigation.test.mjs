@@ -542,7 +542,7 @@ function screen(maps, options = {}) {
   });
   assert.deepEqual(maps.calls.at(-1), ["route", PALACE, PORT, "drive"]);
   assert.notEqual(phone.surface.guidance().routeId, before);
-  // A failed replan keeps guidance on the current route; the agent hears the typed reason.
+  // A failed replan ends guidance on the phone; the agent hears the typed reason.
   const failing = provider(),
     broken = screen(failing),
     brokenNav = new DeviceMapsNavigation(broken.surface, owner);
@@ -560,8 +560,7 @@ function screen(maps, options = {}) {
     );
   };
   await failsWith(brokenNav.reroute(), "MAPS_PROVIDER_NETWORK", /unreachable/);
-  assert.equal(broken.surface.guidance().rerouting, false);
-  assert.equal(broken.surface.guidance().placeName, "Port Hercule");
+  assert.equal(broken.surface.guidance(), null);
 }
 
 // While a new route is planned, the session is still active: no agent request takes it over, and arrival ends rerouting.

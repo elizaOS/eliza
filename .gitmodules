@@ -14,3 +14,8 @@
 	path = plugins/plugin-local-inference/native/llama.cpp
 	url = https://github.com/elizaOS/llama.cpp.git
 	branch = main
+
+[submodule "upstreams/electrobun"]
+	path = upstreams/electrobun
+	url = https://github.com/elizaOS/electrobun.git
+	branch = develop

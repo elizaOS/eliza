@@ -103,13 +103,10 @@ function stagedFixture(t, options = {}) {
     certificateSha256: "b".repeat(64),
     ...options,
   };
-  const overlay = renderOverlay(launcher);
-  fs.writeFileSync(path.join(output, "Android.bp"), overlay.blueprint);
-  if (overlay.privilegedPermissions)
-    fs.writeFileSync(
-      path.join(output, "privapp-permissions.xml"),
-      overlay.privilegedPermissions,
-    );
+  fs.writeFileSync(
+    path.join(output, "Android.bp"),
+    renderOverlay(launcher).blueprint,
+  );
   const admission = JSON.parse(
     fs.readFileSync(path.join(output, "admission.json"), "utf8"),
   );
@@ -254,89 +251,6 @@ for (const brand of ["example", "eliza"]) {
     );
   });
 }
-
-test("reviewed privileged permissions move the Pixel 10a launcher and its JNI to priv-app, and nothing else does", (t) => {
-  const product = JSON.parse(
-    fs.readFileSync(
-      new URL("../../android/products/pixel10a-eliza.json", import.meta.url),
-      "utf8",
-    ),
-  );
-  product.vendorDirectory = "example_phone";
-  product.productName = "example_stallion_phone";
-  product.model = "Example Pixel 10a";
-  product.brand = "Example";
-  product.launcher = {
-    moduleName: "ExamplePhone",
-    packageName: "org.example.phone",
-  };
-  delete product.pixelConfig;
-  const identity = { brand: "example", ...product.launcher };
-  const privilegedPermissions = [
-    "android.permission.READ_PRIVILEGED_PHONE_STATE",
-  ];
-  const f = stagedFixture(t, { ...identity, privilegedPermissions });
-  const directory = "/product/priv-app/ExamplePhone/lib/arm64/";
-  assert.ok(f.evidence.libraries.length > 0);
-  for (const library of f.evidence.libraries)
-    assert.ok(library.installPath.startsWith(directory), library.installPath);
-  assert.match(
-    fs.readFileSync(path.join(f.output, "Android.mk"), "utf8"),
-    /^LOCAL_PRIVILEGED_MODULE := true$/m,
-  );
-  const compose = (overrides = {}) =>
-    composePixel10aProduct({
-      ...f,
-      product,
-      nativeStagingEvidence: f.evidence,
-      ...overrides,
-    });
-  // The same staged bytes are refused for a descriptor that names no privileged permission.
-  const { privilegedPermissions: _reviewed, ...plain } = f.launcher;
-  assert.throws(() => compose({ launcher: plain }), /nonprivileged/);
-  // A privileged descriptor needs its exact allow-list and priv-app placement.
-  const allowlist = path.join(f.output, "privapp-permissions.xml");
-  const reviewed = fs.readFileSync(allowlist, "utf8");
-  fs.writeFileSync(
-    allowlist,
-    reviewed.replace(
-      "</privapp-permissions>",
-      '    <permission name="android.permission.INSTALL_PACKAGES"/>\n    </privapp-permissions>',
-    ),
-  );
-  assert.throws(() => compose(), /reviewed privileged permissions/);
-  fs.writeFileSync(allowlist, reviewed);
-  const unprivileged = stagedFixture(t, identity);
-  assert.throws(
-    () =>
-      composePixel10aProduct({
-        ...unprivileged,
-        launcher: f.launcher,
-        product,
-        nativeStagingEvidence: unprivileged.evidence,
-      }),
-    /reviewed privileged permissions/,
-  );
-  assert.equal(fs.existsSync(path.join(f.output, "stallion")), false);
-  assert.equal(compose().nativeLibrariesStaged, true);
-  const final = finalizeAndroidNative({
-    ...f,
-    moduleName: f.launcher.moduleName,
-  });
-  assert.deepEqual(final, f.evidence);
-  const blueprint = fs.readFileSync(path.join(f.output, "Android.bp"), "utf8");
-  assert.equal(blueprint.match(/privileged: true/g)?.length, 1);
-  assert.equal(
-    blueprint.match(/prebuilt_priv_app \{/g)?.length,
-    final.libraries.length,
-  );
-  assert.doesNotMatch(blueprint, /prebuilt_app_native/);
-  assert.match(blueprint, /name: "ExamplePhonePrivappPermissions"/);
-  assert.ok(
-    blueprint.includes('relative_install_path: "ExamplePhone/lib/arm64"'),
-  );
-  assert.equal(fs.existsSync(path.join(f.output, "Android.mk")), false);
-});
 
 test("Soong conversion refuses changed APK, library or launcher definitions before replacing the Makefile", (t) => {
   for (const changed of [

@@ -183,69 +183,17 @@ describe("InboxOperation", () => {
     expect(fixture.calls.dispatch).toBe(1);
   });
 
-  it.each(["dispatched", "outcome-unknown"] as const)(
-    "keeps an observed %s receipt when a later read returns prepared",
-    async (outcome) => {
-      const fixture = provider({ outcome });
-      const operation = journal(fixture);
-      const email = { draftId: "draft-1", proposal: send() };
-      const prepared = await operation.prepare(email.proposal, {
-        draftId: email.draftId,
-      });
-      const observed = await operation.confirm(email);
-      if (!prepared?.receipt || !observed?.receipt)
-        throw new Error("The fixture did not produce both exact receipts");
-      expect(observed.receipt.state).toBe(outcome);
-      await expect(operation.clear()).rejects.toThrow("Outcome is unresolved");
-
-      // The server reads from an older replica, then catches up. Neither a
-      // restart nor an older receipt may permit the same request to send again.
-      fixture.receipts.set(prepared.requestId, prepared.receipt);
-      const reloaded = journal(fixture);
-      expect(await reloaded.load()).toEqual(observed);
-      expect(await reloaded.refresh()).toEqual(observed);
-      await expect(reloaded.confirm(email)).rejects.toThrow(
-        "A fresh exact review is required",
-      );
-      await expect(reloaded.clear()).rejects.toThrow("Outcome is unresolved");
-      expect(fixture.calls.dispatch).toBe(1);
-
-      const settled = {
-        ...observed.receipt,
-        state: "succeeded" as const,
-        providerResult: { messageId: "sent-1" },
-      };
-      fixture.receipts.set(settled.requestId, settled);
-      expect((await reloaded.refresh())?.receipt).toEqual(settled);
-      expect(fixture.calls.dispatch).toBe(1);
-    },
-  );
-
-  it("discards an attempted operation only while the provider reports it as prepared", async () => {
-    const unsent = provider({ outcome: "prepared" });
-    const operation = journal(unsent);
+  it("keeps an unknown outcome uncertain and refuses to clear it", async () => {
+    const fixture = provider({ outcome: "outcome-unknown" });
+    const operation = journal(fixture);
     await operation.prepare(send(), { draftId: "draft-1" });
     const record = await operation.confirm({
       draftId: "draft-1",
       proposal: send(),
     });
-    expect(record?.phase).toBe("dispatching");
+    expect(record?.receipt?.state).toBe("outcome-unknown");
     await expect(operation.clear()).rejects.toThrow("Outcome is unresolved");
-    expect(await operation.abandon()).toBeNull();
-    expect(unsent.store.slots.size).toBe(0);
-    expect(unsent.calls.dispatch).toBe(1);
-
-    // The provider started this one, so the record stays with its receipt.
-    const lost = provider({ outcome: "lost" });
-    const uncertain = journal(lost);
-    await uncertain.prepare(send(), { draftId: "draft-1" });
-    await expect(
-      uncertain.confirm({ draftId: "draft-1", proposal: send() }),
-    ).rejects.toThrow("Failed to fetch");
-    const kept = await uncertain.abandon();
-    expect(kept?.phase).toBe("observed");
-    expect(kept?.receipt?.state).toBe("succeeded");
-    expect(lost.store.slots.size).toBe(1);
+    expect(fixture.calls.dispatch).toBe(1);
   });
 
   it("refuses a server review that changed recipients or attachments", async () => {
@@ -346,40 +294,4 @@ describe("InboxOperation", () => {
     expect(loaded?.receipt?.state).toBe("succeeded");
     expect(loaded?.source).toBeUndefined();
   });
-});
-
-it("retains an attempted operation when its owner retires during the discard receipt read", async () => {
-  const f = provider({ outcome: "prepared" });
-  let active = true;
-  const operation = journal(f, () => active);
-  await operation.prepare(send(), { draftId: "draft-1" });
-  await operation.confirm({ draftId: "draft-1", proposal: send() });
-  const entered = Promise.withResolvers<void>();
-  const release = Promise.withResolvers<void>();
-  const read = f.client.gmailOperation;
-  f.client.gmailOperation = async (grant, requestId) => {
-    entered.resolve();
-    await release.promise;
-    return read(grant, requestId);
-  };
-  const abandoning = operation.abandon();
-  const outcome = abandoning.catch((error: unknown) => error);
-  await entered.promise;
-  active = false;
-  release.resolve();
-  await expect(outcome).resolves.toMatchObject({ name: "AbortError" });
-  expect(f.store.slots.size).toBe(1);
-  expect(f.calls.dispatch).toBe(1);
-});
-
-it("retains an attempted operation when its discard write conflicts", async () => {
-  const f = provider({ outcome: "prepared" });
-  const operation = journal(f);
-  await operation.prepare(send(), { draftId: "draft-1" });
-  await operation.confirm({ draftId: "draft-1", proposal: send() });
-  f.store.compareExchange = async () => ({ status: "conflict" });
-  await expect(operation.abandon()).rejects.toThrow("Inbox operation changed");
-  expect(operation.snapshot()?.phase).toBe("dispatching");
-  expect(f.store.slots.size).toBe(1);
-  expect(f.calls.dispatch).toBe(1);
 });

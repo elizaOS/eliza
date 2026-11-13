@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { ElizaError, logger } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import { and, eq } from "drizzle-orm";
 import {
   hasTenantTransactionDatabase,
@@ -194,8 +194,7 @@ async function dispatchConfiguredWebhooks(
       ),
     );
 
-  // This request lease owns each sibling until its storage work settles.
-  const results = await Promise.allSettled(
+  await Promise.all(
     configs
       .filter((config) => {
         // Plugin-declared event (registry-valid, not a core configured type): a
@@ -226,16 +225,6 @@ async function dispatchConfiguredWebhooks(
         ),
       ),
   );
-  const failures = results.flatMap((result) =>
-    result.status === "rejected" ? [result.reason] : [],
-  );
-  if (failures.length > 0) {
-    throw new ElizaError("One or more webhook deliveries failed", {
-      code: "LOGIN_WEBHOOK_FANOUT_FAILED",
-      cause: new AggregateError(failures),
-      context: { failureCount: failures.length },
-    });
-  }
 }
 
 async function dispatchConfiguredWebhook(

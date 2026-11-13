@@ -1,18 +1,9 @@
 {
   "sources": [
     "packages/host/src/voice/cloud-speech-relay-client.ts",
-    "packages/host/src/voice/cloud-speech-relay-phase-deadline.test.ts",
-    "packages/host/quint/check-cloud-speech-consent-deadline.mjs",
-    "packages/scripts/lib/test-output.ts",
-    "packages/scripts/lib/vitest-conformance.ts",
-    "packages/scripts/run-with-deadline.ts"
+    "packages/host/src/voice/cloud-speech-relay-phase-deadline.test.ts"
   ],
-  "bounds": {
-    "domain": "One consent request, one owner cancellation,0..30 elapsed seconds, and at most one subsequent mint. Consent can complete beyond10seconds and before30seconds. Mint retains its separate existing10-second drain budget.",
-    "assumptions": "Tick abstracts eventual timer delivery. No fairness or progress property is claimed. Authentication, provider calls, storage and network behavior remain outside this finite phase projection.",
-    "conformance": "Mandatory strict hook executes all five existing actual host phase-deadline cases: real10.1-second cold consent, immediate Stop without mint, independent upgrade/ready budgets, abort with late callbacks, and ready timeout/late ready. Named results must pass without skips. Transport and credentials are controlled ports.",
-    "limitations": "This is not proof of real service latency, timer precision, live provider admission, billing, device microphone behavior, lost HTTP acknowledgements or whole-client refinement. AbortSignal cancellation is tested at the existing fetch/socket boundaries; a noncompliant external transport is not assumed to return promptly."
-  },
+  "bounds": "One consent request, one owner cancellation, and 0..30 elapsed seconds. Cold consent can complete after ten seconds. Mint allocation and its separate ten-second drain budget retain their existing tests. Timers require eventual delivery. This model does not prove real transport latency or timer precision.",
   "cases": [
     {
       "name": "consent-deadline",
@@ -24,6 +15,5 @@
       "maxSteps": 40,
       "samples": 500
     }
-  ],
-  "conformance": "packages/host/quint/check-cloud-speech-consent-deadline.mjs"
+  ]
 }

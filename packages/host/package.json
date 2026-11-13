@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/host",
-  "version": "2.0.5",
+  "version": "2.0.4",
   "description": "Shared application host configuration and explicit HTTP plugin lifecycle.",
   "type": "module",
   "license": "MIT",
@@ -212,7 +212,7 @@
     "@types/node": "^25.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.1.0"
+    "vitest": "^5.0.5"
   },
   "publishConfig": {
     "access": "public"

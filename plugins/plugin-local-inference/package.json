@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-local-inference",
-	"version": "2.0.5",
+	"version": "2.0.4",
 	"description": "Eliza-1 local provider plus HTTP routes for local model catalog, downloads, hardware detection, and chat commands.",
 	"type": "module",
 	"main": "dist/index.js",
@@ -128,7 +128,7 @@
 		"@elizaos/plugin-native-inference": "workspace:*",
 		"@huggingface/tokenizers": "0.1.3",
 		"phonemizer": "^1.2.1",
-		"ws": "^8.22.1",
+		"ws": "^8.21.3",
 		"yaml": "^2.9.1",
 		"@elizaos/auth": "workspace:*",
 		"zod": "^4.4.3",
@@ -139,12 +139,12 @@
 		"@elizaos/core": "workspace:*"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.6.6",
+		"@biomejs/biome": "2.6.3",
 		"@types/node": "24.12.2",
-		"@types/ws": "^8.18.2",
+		"@types/ws": "^8.18.1",
 		"@typescript/native": "npm:typescript@^7.0.2",
 		"typescript": "^6.0.3",
-		"vitest": "^5.1.0",
+		"vitest": "^5.0.5",
 		"@elizaos/testing": "workspace:*",
 		"@elizaos/plugin-sqlite": "workspace:*"
 	},

@@ -40,7 +40,6 @@ interface DynamicViewSessionManagerOptions {
 	canvas: DynamicViewCanvas;
 	now?: () => Date;
 	sessionIdFactory?: () => string;
-	/** Retained record target on open. Entries can exceed it until enough views close. */
 	maxSessionHistory?: number;
 	entrypointBaseDir?: string;
 	/**
@@ -296,11 +295,14 @@ export class DynamicViewSessionManager {
 	}
 
 	private pruneSessionHistory(): void {
-		for (const [sessionId, session] of this.sessions) {
-			if (this.sessions.size <= this.maxSessionHistory) return;
-			// A failed open can still own a canvas. Only an acknowledged close
-			// releases the session's ownership before history can discard it.
-			if (session.status === "closed") this.sessions.delete(sessionId);
+		if (this.sessions.size <= this.maxSessionHistory) return;
+		const closedSession = [...this.sessions.values()].find(
+			(session) => session.status === "closed",
+		);
+		const sessionToRemove =
+			closedSession ?? this.sessions.values().next().value;
+		if (sessionToRemove) {
+			this.sessions.delete(sessionToRemove.sessionId);
 		}
 	}
 }
