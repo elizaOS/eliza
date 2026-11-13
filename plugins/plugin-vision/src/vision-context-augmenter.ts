@@ -67,10 +67,12 @@ const DEFAULT_DESCRIBE_PROMPT = "Describe what is in this image.";
  * photo (vs a clean document) emits per-glyph noise — `|`, `=`, `—`, stray
  * single letters — that would pollute the prompt and waste tokens. Require at
  * least two alphanumeric characters so genuine words/labels survive and noise
- * is dropped. Pure — exported for tests.
+ * is dropped. Count Unicode letters and numbers, not ASCII only: a word in
+ * another script (e.g. Korean, Japanese, Arabic) carries signal even when it
+ * has no ASCII characters. Pure — exported for tests.
  */
 export function isMeaningfulOcrText(text: string): boolean {
-  return (text.match(/[A-Za-z0-9]/g)?.length ?? 0) >= 2;
+  return (text.match(/[\p{L}\p{N}]/gu)?.length ?? 0) >= 2;
 }
 
 /**

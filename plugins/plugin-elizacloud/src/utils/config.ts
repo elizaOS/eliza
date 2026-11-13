@@ -226,8 +226,9 @@ export function getEmbeddingApiKey(runtime: IAgentRuntime): string | undefined {
     return resolveCloudSdkAuthorityTuple(runtime, true).apiKey;
 }
 export function getSmallModel(runtime: IAgentRuntime): string {
-    return (getSetting(runtime, "ELIZAOS_CLOUD_SMALL_MODEL") ??
-        (getSetting(runtime, "SMALL_MODEL", DEFAULT_ELIZA_CLOUD_TEXT_MODEL) as string));
+    const configured = getSetting(runtime, "ELIZAOS_CLOUD_SMALL_MODEL");
+    return (configured?.trim() ? configured : undefined) ??
+        (getSetting(runtime, "SMALL_MODEL", DEFAULT_ELIZA_CLOUD_TEXT_MODEL) as string);
 }
 export function getNanoModel(runtime: IAgentRuntime): string {
     return (getSetting(runtime, "ELIZAOS_CLOUD_NANO_MODEL") ??
