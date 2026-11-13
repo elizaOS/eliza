@@ -114,7 +114,8 @@ describe("checkout diagnostic redaction", () => {
   test("keeps only fixed failure identifiers from the exact checkout request", () => {
     const details = {
       phase: "reconciliation",
-      name: "Error",
+      name: "SubscriptionCatalogError",
+      code: "SUBSCRIPTION_CATALOG_STRIPE_KEY_INVALID",
       message: "private-error",
       context: { id: "private-id" },
       cause: {
@@ -158,7 +159,8 @@ describe("checkout diagnostic redaction", () => {
         {
           kind: "checkout",
           phase: "reconciliation",
-          name: "Error",
+          name: "SubscriptionCatalogError",
+          code: "SUBSCRIPTION_CATALOG_STRIPE_KEY_INVALID",
           cause: {
             name: "DatabaseError",
             sqlstate: "23514",

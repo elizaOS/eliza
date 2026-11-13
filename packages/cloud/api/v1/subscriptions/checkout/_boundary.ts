@@ -23,6 +23,8 @@ const DIAGNOSTIC_NAMES = new Set([
   "ElizaError",
   "ZodError",
   "DrizzleQueryError",
+  "SubscriptionCatalogError",
+  "error",
   "DatabaseError",
   "PostgresError",
   "InferencePolicyFenceError",
@@ -41,6 +43,24 @@ const DIAGNOSTIC_CODES = new Set([
   "SUBSCRIPTION_BILLING_OPERATIONS_CONFLICT",
   "SUBSCRIPTION_RENEWAL_UNAVAILABLE",
   "ORGANIZATION_POLICY_UNAVAILABLE",
+  "SUBSCRIPTION_AUTHORITY_CONFLICT",
+  "SUBSCRIPTION_AUTHORITY_TENANT_NOT_FOUND",
+  "SUBSCRIPTION_ALLOWANCE_CONFLICT",
+  "SUBSCRIPTION_ALLOWANCE_NOT_FOUND",
+  "SUBSCRIPTION_ENTITLEMENT_CONFLICT",
+  "SUBSCRIPTION_ENTITLEMENT_SOURCE_NOT_FOUND",
+  "SUBSCRIPTION_ENTITLEMENT_TENANT_NOT_FOUND",
+  "PRIMARY_DATABASE_CLOCK_UNAVAILABLE",
+  "SUBSCRIPTION_ORGANIZATION_SOURCE_UNAVAILABLE",
+  "SUBSCRIPTION_CANCELLATION_REOBSERVE",
+  "SUBSCRIPTION_RENEWAL_AUTHORITY_CONFLICT",
+  "SUBSCRIPTION_RENEWAL_DETAILS_CONFLICT",
+  "SUBSCRIPTION_SETTLEMENT_DETAILS_CONFLICT",
+  "SUBSCRIPTION_CATALOG_REVISION_NOT_FOUND",
+  "SUBSCRIPTION_CATALOG_STRIPE_KEY_INVALID",
+  "SUBSCRIPTION_CATALOG_DEPLOYMENT_MODE_MISMATCH",
+  "SUBSCRIPTION_CATALOG_BINDING_INVALID",
+
   "ECONNRESET",
   "ECONNREFUSED",
   "ETIMEDOUT",
@@ -92,7 +112,9 @@ export function checkoutFailureDiagnostic(error: unknown) {
         : null;
     return {
       ...diagnosticError(error),
-      ...(cause && { cause: diagnosticError(cause) }),
+      ...(cause !== null && cause !== undefined
+        ? { cause: diagnosticError(cause) }
+        : {}),
     };
   } catch {
     return { name: "unknown" };
