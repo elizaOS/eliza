@@ -34,3 +34,53 @@ module CheckinSummary {
   val StoredDayMatches = writes == 0 or dateMatches
   val SingleWrite = writes >= 0 and writes <= 1
 }
+
+// One owner-scoped row after the database candidate read. Clock classes are
+// 0 absent, 1 before the window, 2 inside it and 3 invalid. Cache refreshes
+// never establish a Google edit. Date parsing and the forty-row window are
+// exercised by the existing real database conformance cases.
+module CalendarChangeClock {
+  type State = { google: bool, malformed: bool, primary: int, alternate: int,
+    created: int, cache: int, today: bool, projected: bool,
+    clock: int, included: bool, invalid: bool }
+  var s: State
+  action initialize(google: bool, malformed: bool, primary: int,
+    alternate: int, created: int, cache: int, today: bool): bool = s' = {
+      google: google, malformed: malformed, primary: primary, alternate: alternate,
+      created: created, cache: cache, today: today, projected: false,
+      clock: 0, included: false, invalid: false }
+  action init = {
+    nondet google = Bool.oneOf()
+    nondet malformed = Bool.oneOf()
+    nondet primary = Set(0, 1, 2, 3).oneOf()
+    nondet alternate = Set(0, 1, 2, 3).oneOf()
+    nondet created = Set(0, 1, 2, 3).oneOf()
+    nondet cache = Set(1, 2).oneOf()
+    nondet today = Bool.oneOf()
+    initialize(google, malformed, primary, alternate, created, cache, today)
+  }
+  val providerClock = if (s.primary != 0) s.primary
+    else if (s.alternate != 0) s.alternate else s.created
+  val expectedClock = if (not(s.google)) s.cache
+    else if (s.malformed or providerClock == 3) 0 else providerClock
+  action project = all { not(s.projected),
+    s' = s.with("projected", true).with("clock", expectedClock)
+      .with("included", s.today or expectedClock == 2)
+      .with("invalid", s.google and (s.malformed or providerClock == 3)) }
+  action step = any { project, all { s.projected, s' = s } }
+  val SourceClockSelected = not(s.projected) or s.clock == expectedClock
+  val UnknownIsNotAnEdit = not(s.projected) or s.clock != 0 or s.included == s.today
+  val RetainTodayOrRecent = not(s.projected) or s.included == (s.today or s.clock == 2)
+  val InvalidMetadataVisible = not(s.projected) or
+    s.invalid == (s.google and (s.malformed or providerClock == 3))
+  run refreshedOldGoogleIsNotNewTest = initialize(true, false, 1, 0, 0, 2, false)
+    .then(project).expect(not(s.included) and s.clock == 1)
+  run unknownGoogleTodayRemainsTest = initialize(true, false, 0, 0, 0, 2, true)
+    .then(project).expect(s.included and s.clock == 0 and not(s.invalid))
+  run invalidPrimaryDoesNotFallBackTest = initialize(true, false, 3, 2, 2, 2, false)
+    .then(project).expect(s.invalid and not(s.included) and s.clock == 0)
+  run providerCreationFallbackTest = initialize(true, false, 0, 0, 2, 1, false)
+    .then(project).expect(s.included and s.clock == 2)
+  run localEditUsesWriterClockTest = initialize(false, true, 0, 0, 0, 2, false)
+    .then(project).expect(s.included and s.clock == 2 and not(s.invalid))
+}
