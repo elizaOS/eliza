@@ -19,6 +19,9 @@ on:
         description: Plus entitlement duration (1 to 31 days)
         type: string
         default: "7"
+      repair_unredeemed_run_id:
+        description: Give one unused one-day test code its own campaign; does not mint
+        type: string
 
 permissions:
   contents: read
@@ -37,11 +40,17 @@ jobs:
         env:
           EXPECTED_COMMIT: ${{ inputs.expected_cloud_commit }}
           DURATION_DAYS: ${{ inputs.duration_days }}
+          REPAIR_RUN: ${{ inputs.repair_unredeemed_run_id }}
+          MINT: ${{ inputs.mint }}
         run: |
           set -euo pipefail
           [[ "$EXPECTED_COMMIT" =~ ^[a-f0-9]{40}$ && "$EXPECTED_COMMIT" == "$GITHUB_SHA" ]]
           [[ "$DURATION_DAYS" =~ ^[0-9]{1,2}$ ]]
           (( 10#$DURATION_DAYS >= 1 && 10#$DURATION_DAYS <= 31 ))
+          if [ -n "$REPAIR_RUN" ]; then
+            [[ "$REPAIR_RUN" =~ ^[1-9][0-9]{5,19}$ ]]
+            [ "$MINT" != 'true' ]
+          fi
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -60,12 +69,13 @@ jobs:
       - name: Build required linked runtime
         run: bun run build:core
 
-      - name: Check production identity and grant schema without reading grants
+      - name: Check production identity and apply the requested operation
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           ELIZA_OPERATOR_ENVIRONMENT: production
           DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}
           DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
+          ELIZA_PRODUCTION_TEST_GRANT_REPAIR_RUN: ${{ inputs.repair_unredeemed_run_id }}
         run: bun --conditions=eliza-source packages/cloud/scripts/admin/production-test-grant-admission.ts
 
       - name: Mint and seal one exclusive test grant
