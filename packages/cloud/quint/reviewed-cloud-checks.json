@@ -542,5 +542,19 @@
         "reads complete callback binding from the deployed staging branch across all deployment pages"
       ]
     }
+  ],
+  "StagingStripeBindings.qnt": [
+    {
+      "file": "packages/cloud/scripts/prepare-worker-secrets.test.ts",
+      "required": [
+        "staging preserves an entirely blank Stripe catalog and refuses each partial replacement",
+        "a full test catalog is checked before preparation and provider failure stops it",
+        "staging rejects live keys and malformed independent Stripe inputs without logging their values",
+        "production ignores staging Stripe input and never checks or rotates its catalog",
+        "full staging preparation with blank Stripe inputs preserves only the intended bindings",
+        "release catalog preflight verifies both exact plans without claiming the optional negative fixture",
+        "operator catalog preflight still rejects a known wrong price and release mode rejects provider drift"
+      ]
+    }
   ]
 }
