@@ -106,6 +106,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.6.6",
     "@capacitor/core": "8.4.0",
+    "@elizaos/testing": "workspace:*",
     "@elizaos/vitest-vite": "npm:vite@7.3.7",
     "@informalsystems/quint": "0.33.1",
     "@playwright/test": "^1.65.0",
