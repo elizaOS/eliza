@@ -1,0 +1,23 @@
+[
+  {
+    "id": "plugin-calendar.LinkedCalendarControl",
+    "model": "plugins/plugin-calendar/quint/LinkedCalendarControl.qnt",
+    "sources": [
+      "plugins/plugin-calendar/src/service/linked-calendar-control.ts",
+      "plugins/plugin-calendar/src/service/CalendarService.ts"
+    ],
+    "invariants": [
+      "DestinationOwnsDispatch",
+      "ExactOwnerIdentity",
+      "ReceiptRevisionCommitted"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One durable control row, two destination identities, two sequential dispatch tokens and one pause receipt. Reopen and stale review refusal are covered.",
+      "Provider outcome recovery and verified destination admission, mapping changes, other reviewed operations, and cross-owner persistence remain outside this proof."
+    ],
+    "implementationTests": [
+      "plugins/plugin-calendar/src/service/linked-calendar-control.test.ts"
+    ]
+  }
+]

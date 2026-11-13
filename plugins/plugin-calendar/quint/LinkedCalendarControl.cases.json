@@ -1,0 +1,87 @@
+{
+  "sources": [
+    "plugins/plugin-calendar/src/service/linked-calendar-control.ts",
+    "plugins/plugin-calendar/src/service/CalendarService.ts",
+    "plugins/plugin-calendar/src/service/migration.ts",
+    "plugins/plugin-calendar/src/service/linked-calendar-control.test.ts",
+    "plugins/plugin-calendar/src/internal/sql.ts",
+    "plugins/plugin-calendar/vitest.config.ts",
+    "plugins/plugin-calendar/quint/check-linked-calendar-control.mjs",
+    "packages/scripts/lib/test-output.ts",
+    "packages/scripts/lib/vitest-conformance.ts",
+    "packages/scripts/run-with-deadline.ts"
+  ],
+  "bounds": {
+    "domain": "One durable owner row, two destination identities, six control revision advances, two sequential dispatch tokens and one reviewed pause operation key. Checks use a current review, a representative mismatched revision and the original receipt revision where applicable. Reopen preserves the durable row and receipt. The pause key identifies one request by its expected revision. Changed operations and other request fields are outside the finite key domain.",
+    "implementation": "Existing real PGlite cases exercise CalendarService control receipt commit, rollback and replay, including a disk reopen and a competing pause/admission schedule. Repository checks cover exact-token settlement, paused-revision recovery, destination and revision checks, and preserved pending event operations. No provider call is admitted by the conformance selector.",
+    "limitations": "The model checks the control repository and one public pause receipt, not the service's full recovery readback or current response after a concurrent commit. Provider effects, active worker evidence, ownership outside this row, multiple pause keys, destination verification, mapping mutation, shared database concurrency, and wall-clock liveness remain outside the projection. The positive progress claim assumes eventual settlement with the current token. There is no automatic takeover."
+  },
+  "conformance": "plugins/plugin-calendar/quint/check-linked-calendar-control.mjs",
+  "cases": [
+    {
+      "name": "durable-linked-control-and-dispatch",
+      "main": "LinkedCalendarControl",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "DestinationOwnsDispatch",
+        "ExactOwnerIdentity",
+        "ReceiptRevisionCommitted"
+      ],
+      "temporal": [
+        "AdmissionRequiresCurrentControl",
+        "PausePreservesAdmittedOwner",
+        "OwnerReleasePreservesDestination",
+        "PauseReceiptCommitsOnce",
+        "FairDispatchSettles",
+        "DispatchSettles"
+      ],
+      "temporalChecks": [
+        {
+          "property": "AdmissionRequiresCurrentControl",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. Dispatch admission is atomic for one owner row and current revision and destination."
+          ]
+        },
+        {
+          "property": "PausePreservesAdmittedOwner",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. A new review cannot change the destination or retire admitted work unless exact paused recovery settles the owner."
+          ]
+        },
+        {
+          "property": "OwnerReleasePreservesDestination",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. A matching receipt releases the current token and never edits the reviewed destination."
+          ]
+        },
+        {
+          "property": "PauseReceiptCommitsOnce",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. The pause revision and receipt update commit together or roll back together."
+          ]
+        },
+        {
+          "property": "FairDispatchSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of the caller's matching settlement after a confirmed effect. Recovery may instead clear the exact current token on a paused revision. No automatic settlement or provider acceptance is assumed."
+          ]
+        },
+        {
+          "property": "DispatchSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. A caller can retain its current token indefinitely after admission."
+          ]
+        }
+      ],
+      "maxSteps": 24,
+      "samples": 500
+    }
+  ]
+}
