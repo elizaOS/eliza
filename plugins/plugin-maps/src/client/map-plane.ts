@@ -397,6 +397,13 @@ export class MapPlane {
     });
     this.map.on("error", (event) => {
       if (this.destroyed) return;
+      if (event.error?.name === "AbortError") return;
+      // A failed tile does not retire an already usable map. MapLibre keeps the
+      // other tiles and its normal loading lifecycle owns the replacement.
+      if (event.tile && this.styleReady) {
+        container.dataset.mapTileError = "true";
+        return;
+      }
       const message = String(event.error?.message || "");
       container.dataset.mapError = /worker/i.test(message)
         ? "worker-load"
