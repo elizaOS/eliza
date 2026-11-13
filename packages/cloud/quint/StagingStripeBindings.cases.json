@@ -1,0 +1,42 @@
+{
+  "sources": [
+    "packages/cloud/scripts/prepare-worker-secrets.sh",
+    "packages/cloud/scripts/prepare-worker-secrets.test.ts",
+    "packages/cloud/scripts/admin/preflight-subscription-catalog.ts",
+    ".github/workflows/cloud-cf-release.yml",
+    ".github/workflows/cloud-cf-deploy.yml",
+    "packages/cloud/quint/reviewed-cloud-checks.json"
+  ],
+  "conformance": "packages/cloud/quint/check-reviewed-cloud.mjs",
+  "bounds": {
+    "domain": "One immutable release input: staging or production; blank, partial, complete test or complete live catalog; provider validation success/failure; zero to two optional bindings; one atomic Worker submission.",
+    "conformance": "Existing preparation tests execute the real shell, queue and secret-file boundary with external CLIs isolated. The catalog tests execute real provider-object validation through read-only fixture responses.",
+    "gaps": "The model assumes immutable workflow inputs and an atomic named-binding Worker update. Cloudflare transport and secret persistence, real Stripe objects, webhook delivery and subscription entitlement require live qualification. Unknown submit outcomes do not imply rollback; read-only observation resolves the modeled outcome. No production billing change is admitted."
+  },
+  "cases": [
+    {
+      "name": "staging-catalog-publication",
+      "main": "StagingStripeBindings",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "ProductionPreserved",
+        "OnlyValidatedInput",
+        "AtomicPublication",
+        "RefusalPreserved"
+      ],
+      "temporal": ["FairCompletion"],
+      "temporalChecks": [
+        {
+          "property": "FairCompletion",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of preparation, provider submission and read-only outcome observation. Cancellation is permitted only before submission; provider success is not assumed."
+          ]
+        }
+      ],
+      "maxSteps": 12,
+      "samples": 1000
+    }
+  ]
+}
