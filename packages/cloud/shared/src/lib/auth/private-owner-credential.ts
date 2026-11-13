@@ -59,10 +59,15 @@ export async function requirePrivateOwnerCredential(args: {
     !row.mobileApp.approved
   )
     throw refuse();
-  if (row.mobileClient?.clientId && row.mobileClient.enabled) {
+  if (row.mobileClient?.clientId) {
+    if (!row.mobileClient.enabled) {
+      throw refuse();
+    }
+    const deploymentEnvironment = args.env?.ENVIRONMENT === "staging" ? "staging" : "production";
     if (
       row.mobileClient.appId !== grant.appId ||
       row.mobileClient.redirectUri !== grant.redirectUri ||
+      grant.environment !== deploymentEnvironment ||
       !Array.isArray(grant.scopes) ||
       grant.scopes.length !== 1 ||
       grant.scopes[0] !== "cloud:user"

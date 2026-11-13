@@ -27,6 +27,18 @@ export async function requireRegisteredMobileApp(
   const record =
     await mobileAppAuthClientsRepository.findRegisteredMobileClient(clientId);
   if (record) {
+    if (!record.client.enabled) {
+      throw new MobileAppAuthProtocolError(
+        "invalid_client",
+        "Unknown or disabled mobile App Auth client",
+      );
+    }
+    if (!record.app.is_active || !record.app.is_approved) {
+      throw new MobileAppAuthProtocolError(
+        "server_configuration_error",
+        "Configured mobile App Auth app is not active and approved",
+      );
+    }
     const environment =
       c.env?.ENVIRONMENT === "staging" ? "staging" : "production";
     const registration: MobileAppAuthRegistration = {
