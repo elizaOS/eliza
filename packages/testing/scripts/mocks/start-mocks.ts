@@ -295,10 +295,10 @@ export function mockEnvironmentSettings(
   if (envs.includes("anthropic")) {
     // Include the `/v1` prefix so the value is a drop-in for `ANTHROPIC_BASE_URL`
     // (the openai.json/anthropic.json routes live under `/v1/...`).
-    out.ANTHROPIC_BASE_URL = `${baseUrls.anthropic}/v1`;
+    out.ANTHROPIC_BASE_URL = `${baseUrls.anthropic.replace(/\/+$/, "")}/v1`;
   }
   if (envs.includes("openai")) {
-    out.OPENAI_BASE_URL = `${baseUrls.openai}/v1`;
+    out.OPENAI_BASE_URL = `${baseUrls.openai.replace(/\/+$/, "")}/v1`;
   }
   if (envs.includes("vision")) {
     out.ELIZA_MOCK_VISION_BASE = baseUrls.vision;
