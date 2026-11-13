@@ -5,10 +5,13 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import sharp from "sharp";
 import { describe, expect, it } from "vitest";
-import type {
-  OcrWithCoordsResult,
-  OcrWithCoordsService,
+import {
+  type OcrWithCoordsResult,
+  type OcrWithCoordsService,
+  RapidOcrCoordAdapter,
+  readPngDimensionsOrNull,
 } from "./ocr-with-coords.js";
 import {
   buildAugmentedPrompt,
@@ -157,6 +160,53 @@ describe("FusedVisionContextAugmenter", () => {
       basePrompt: once?.prompt,
     });
     expect(twice).toBeNull();
+  });
+
+  it("OCRs a JPEG input through the PNG-only coord adapter", async () => {
+    // RapidOcrCoordAdapter is the coord-OCR service on macOS and wherever no
+    // tesseract, Windows or PaddleOCR engine is found. It reads the tile size
+    // from the PNG header and rejects other formats, while camera frames and
+    // uploaded photos arrive as JPEG. Only the recognizer under it is faked.
+    const recognized: Buffer[] = [];
+    const adapter = new RapidOcrCoordAdapter({
+      extractText: async (buffer) => {
+        recognized.push(buffer);
+        return {
+          text: "EXIT 12",
+          fullText: "EXIT 12",
+          blocks: [
+            {
+              text: "EXIT 12",
+              confidence: 0.95,
+              bbox: { x: 10, y: 10, width: 80, height: 20 },
+            },
+          ],
+        };
+      },
+    });
+    const jpeg = await sharp({
+      create: {
+        width: 120,
+        height: 60,
+        channels: 3,
+        background: { r: 240, g: 240, b: 240 },
+      },
+    })
+      .jpeg()
+      .toBuffer();
+    const aug = new FusedVisionContextAugmenter({ getOcr: () => adapter });
+    const out = await aug.augmentImagePrompt({
+      image: {
+        kind: "dataUrl",
+        dataUrl: `data:image/jpeg;base64,${jpeg.toString("base64")}`,
+      },
+    });
+    expect(out?.fused.ocrText).toBe('"EXIT 12"');
+    expect(recognized).toHaveLength(1);
+    expect(readPngDimensionsOrNull(recognized[0])).toEqual({
+      width: 120,
+      height: 60,
+    });
   });
 
   it("decodes a data-URL image input", async () => {

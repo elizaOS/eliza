@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cloud-shared",
-  "version": "2.0.5",
+  "version": "2.0.6",
   "description": "Shared backend code for Eliza Cloud: billing, db schemas/repositories, services lib, types, and route resolution.",
   "type": "module",
   "files": [
@@ -830,7 +830,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.6",
-    "@cloudflare/workers-types": "^4.20260429.1",
+    "@cloudflare/workers-types": "^5.20261110.1",
     "@types/node": "^25.6.0",
     "@types/pg": "^8.23.1",
     "@types/ssh2": "^1.15.6",

@@ -8,7 +8,9 @@ import {
   RecoveryAdmissionError,
 } from "./exact-gmail-ledger-recovery";
 
-const migrations = await loadCanonicalMigrations();
+const currentMigrations = await loadCanonicalMigrations();
+// The recovery guard authenticates this exact historical source prefix.
+const migrations = currentMigrations.slice(0, 519);
 function observed() {
   const rows = migrations
     .slice(0, 370)
@@ -46,6 +48,9 @@ test("exact source and observed ledger yield147 missing SQL actions and two reta
   for (const row of rows) expect(JSON.stringify(plan)).not.toContain(row.hash);
 });
 test("source edits and any different ledger state fail closed with fixed errors", () => {
+  expect(() => admitExactGmailRecovery(currentMigrations, observed())).toThrow(
+    "source_mismatch",
+  );
   const edited = structuredClone(migrations);
   edited[370].statements.push("SELECT 'PRIVATE_SQL'");
   expect(() => admitExactGmailRecovery(edited, observed())).toThrow(

@@ -6,8 +6,9 @@ directly. Storage, authorization, identity merging and effects remain with their
 runtime or domain owners.
 
 From the repository root, run `bun run --cwd packages/contracts build` and
-`bun run --cwd packages/contracts typecheck`. Integration regressions remain in
-their domain owners.
+`bun run --cwd packages/contracts typecheck`. Run `bun run --cwd packages/contracts test`
+for the contract suites. Node with `tsx` runs the Node tests; the existing Vitest
+launcher runs browser request grounding. Integration regressions remain in their domain owners.
 
 Use `@elizaos/contracts` for browser-safe DTOs and validators. Node signing and verification contracts use `@elizaos/contracts/node`. Persisted backup versions and canonical bytes remain supported.
 

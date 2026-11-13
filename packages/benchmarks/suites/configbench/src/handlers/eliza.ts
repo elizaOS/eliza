@@ -257,17 +257,28 @@ function installConfigBenchRoutingEvaluator(rt: IAgentRuntime): void {
 }
 
 export function isTextEmbeddingSetupFailure(error: unknown): boolean {
-  const message = errorMessage(error);
+  if (typeof error !== "object" || error === null) return false;
+  const failure = error as {
+    code?: unknown;
+    modelType?: unknown;
+    reason?: unknown;
+    context?: { modelType?: unknown };
+  };
+  if (failure.code === "EMBEDDING_PROVIDER_UNAVAILABLE") return true;
+  if (failure.code === "MODEL_PROVIDER_PIN_UNAVAILABLE") {
+    return failure.context?.modelType === ModelType.TEXT_EMBEDDING;
+  }
   return (
-    /TEXT_EMBEDDING/i.test(message) ||
-    /\bembedding\b/i.test(message) ||
-    /LOCAL_INFERENCE_UNAVAILABLE/i.test(message) ||
-    /local-inference/i.test(message) ||
-    /\/embeddings\b/i.test(message)
+    failure.code === "LOCAL_INFERENCE_UNAVAILABLE" &&
+    failure.modelType === ModelType.TEXT_EMBEDDING &&
+    (failure.reason === "backend_unavailable" ||
+      failure.reason === "capability_unavailable")
   );
 }
 
-async function assertTextEmbeddingUsable(rt: IAgentRuntime): Promise<void> {
+export async function assertTextEmbeddingUsable(
+  rt: IAgentRuntime,
+): Promise<void> {
   if (!rt.getModel(ModelType.TEXT_EMBEDDING)) {
     throw setupIncompatible(
       "Eliza setup incompatible: no TEXT_EMBEDDING model is registered",
@@ -287,6 +298,10 @@ async function assertTextEmbeddingUsable(rt: IAgentRuntime): Promise<void> {
     }
   } catch (err) {
     if (isSetupIncompatibleError(err)) throw err;
+    // Only an unavailable embedding capability means this environment cannot host
+    // ConfigBench; an adapter/provider fault is a broken run, and reporting it
+    // as "setup incompatible" exits 4 ("not applicable") instead of 3 (failure).
+    if (!isTextEmbeddingSetupFailure(err)) throw err;
     throw setupIncompatible(
       `Eliza setup incompatible: TEXT_EMBEDDING probe failed: ${errorMessage(err)}`,
       { cause: err },

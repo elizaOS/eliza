@@ -963,6 +963,11 @@ jobs:
         env:
           PLAYWRIGHT_INSTALL_CWD: packages/ui
         run: packages/scripts/github/install-playwright-browsers.sh chromium
+      - name: Prepare benchmark process conformance
+        if: steps.changes.outputs.run == 'true'
+        uses: ./.github/actions/setup-benchmark-quint-python
+        with:
+          shard: ${{ matrix.shard }}
       - name: Verify Quint models and real transitions
         if: steps.changes.outputs.run == 'true'
         env:

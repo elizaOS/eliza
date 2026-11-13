@@ -1,0 +1,52 @@
+{
+  "sources": ["plugins/plugin-wallet/src/analytics/evm-balances.ts"],
+  "implementationTests": [
+    "plugins/plugin-wallet/src/analytics/evm-balances-erc20-errors.test.ts"
+  ],
+  "conformance": "plugins/plugin-wallet/quint/check-evm-balance-read.mjs",
+  "bounds": {
+    "tokens": 2,
+    "endpoints": 2,
+    "limitations": [
+      "Zero to two known token addresses and two RPC endpoints; balances abstract to zero, nonzero or invalid, with valid or invalid uint8 decimals.",
+      "Provider promises and their continuations must eventually settle for progress. No wall-clock latency bound is proven.",
+      "Price enrichment, Alchemy/Ankr paths, external provider correctness and caller cancellation are outside this direct-RPC model.",
+      "The real loopback implementation tests cover the modeled observations; this finite model and those cases are not a full TypeScript refinement proof."
+    ]
+  },
+  "cases": [
+    {
+      "name": "zero-to-two-tokens-two-endpoints",
+      "main": "EvmBalanceRead",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "BoundedEndpoints",
+        "CompleteSuccess",
+        "NoGuessedDecimals",
+        "ZeroSkipsMetadata",
+        "ErrorHasNoHoldings",
+        "FailedReadNeverPublished"
+      ],
+      "temporal": ["EventuallyReturns", "DeadlockFree"],
+      "temporalChecks": [
+        {
+          "property": "EventuallyReturns",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of progress: each admitted RPC read and continuation eventually settles, whether success, timeout or failure."
+          ]
+        },
+        {
+          "property": "DeadlockFree",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness assumption; completed executions may stutter."
+          ]
+        }
+      ],
+      "maxSteps": 40,
+      "samples": 1000
+    }
+  ]
+}

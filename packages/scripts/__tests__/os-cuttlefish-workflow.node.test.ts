@@ -85,7 +85,7 @@ test("guest binding refuses physical devices before invoking boot validation", (
   for (const name of [
     "Verify application-native kernels on Cuttlefish",
     "Prove full WAV to ASR to agent to TTS round trip",
-    "Exercise privileged Android instrumentation on Cuttlefish",
+    "Exercise image-contract instrumentation on Cuttlefish",
     "Verify assistant role, IME, and assist-key routing",
   ]) {
     assert.equal(

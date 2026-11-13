@@ -4,6 +4,7 @@
  */
 import assert from "node:assert/strict";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -391,9 +392,13 @@ test("explicit source conditions resolve published source entries instead of sta
         options,
         ts.sys,
       ).resolvedModule;
+      const sourcePath = path.join(packageDir, source);
+      const declarationPath = sourcePath.replace(/\.mjs$/, ".d.mts");
       assert.equal(
         resolved?.resolvedFileName,
-        path.join(packageDir, source),
+        declarationPath !== sourcePath && existsSync(declarationPath)
+          ? declarationPath
+          : sourcePath,
         specifier,
       );
     }

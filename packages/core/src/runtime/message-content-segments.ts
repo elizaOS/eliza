@@ -75,7 +75,11 @@ interface ReconstructedMessageContentPage {
 }
 
 const encoder = new TextEncoder();
-const decoder = new TextDecoder("utf-8", { fatal: true });
+// The default decoder drops a byte order mark at the start of each decoded
+// segment. That makes the segment text three bytes shorter than its recorded
+// byte range, so the read check rejects the segment as corrupt. Keep the
+// mark, as the document source segments do.
+const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 // elizaOS IDs are UUID-shaped but may be deterministically derived with a
 // non-RFC version nibble. They are valid database identities, but the `uuid`
 // package rejects them as v5 namespaces. Keep one RFC namespace and include
