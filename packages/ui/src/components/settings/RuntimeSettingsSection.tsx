@@ -21,8 +21,6 @@ import { AdvancedToggle } from "./AdvancedToggle";
 import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
-const STORE_LOCAL_DISABLED_DOCS_URL =
-  "https://github.com/eliza-ai/eliza/blob/develop/docs/desktop/build-variants.md";
 const MY_RUNTIMES_SECTION_ID = "my-runtimes";
 
 function openSettingsSection(sectionId: string): void {
@@ -105,18 +103,6 @@ export function RuntimeSettingsSection() {
           title={t("settings.runtime.sandboxGroupTitle", {
             defaultValue: "Sandbox build",
           })}
-          footer={
-            <a
-              href={STORE_LOCAL_DISABLED_DOCS_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="text-accent underline"
-            >
-              {t("settings.runtime.localDisabledStoreLink", {
-                defaultValue: "Why is local disabled?",
-              })}
-            </a>
-          }
         >
           <SettingsRow
             label={t("settings.runtime.sandboxNote", {
