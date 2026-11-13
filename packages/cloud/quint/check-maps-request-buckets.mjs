@@ -54,6 +54,8 @@ assert.deepEqual(
   names.sort(),
   [
     "tile routes retain durable admission, outcomes and global ingress through a 65-tile burst",
+    "credit-funded Maps keeps replay and rate protection without spending plan allowance",
+    "credit-funded Maps uses the shared rate bucket",
     "Maps retains both refill boundaries through a clock rollback",
     "Maps retry delay includes the retained future refill boundary",
     "Maps durable allowance is shared, atomic, separately counted, and never replays admission",
