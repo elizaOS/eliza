@@ -1,0 +1,60 @@
+{
+  "sources": [
+    "packages/benchmarks/orchestrator/locking.py",
+    "packages/benchmarks/orchestrator/tests/test_locking.py",
+    "packages/benchmarks/orchestrator/tests/test_cohort.py",
+    "packages/benchmarks/requirements-ci-constraints.txt",
+    "packages/benchmarks/quint/check-process-owner.mjs",
+    "packages/scripts/lib/test-output.ts",
+    "packages/scripts/run-with-deadline.ts"
+  ],
+  "bounds": {
+    "domain": "One resolved lock key under an output root, two threads in one process and one thread in a second process, one request per caller. One owning thread may refuse the same key and briefly hold a distinct uncontended key. The per-process mutex and the OS file lock settle separately.",
+    "conformance": "Existing Python tests use real threads, real subprocesses and actual advisory file locks. They check same-key nested refusal, release after a protected body throws, cross-process exclusion and the publication decorator's single-writer behavior.",
+    "limits": "No process crash, descriptor inheritance, lock-file replacement, changing path aliases, platform lock or filesystem I/O errors, cross-key cycles, unbounded waiters or Windows conformance. The lock models cooperating callers and does not prove publication durability, network-filesystem semantics or bounded waiting."
+  },
+  "conformance": "packages/benchmarks/quint/check-process-owner.mjs",
+  "cases": [
+    {
+      "name": "output-root-thread-and-process-exclusion",
+      "main": "BenchmarkOutputLock",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "OnePlatformOwner",
+        "OneLocalOwnerPerProcess",
+        "NestedKeyKeepsOuterOwner"
+      ],
+      "temporal": [
+        "RefusalPreservesOwners",
+        "FairWaitingSettles",
+        "WaitingSettles"
+      ],
+      "temporalChecks": [
+        {
+          "property": "RefusalPreservesOwners",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. Same-thread refusal changes no existing lock owner."
+          ]
+        },
+        {
+          "property": "FairWaitingSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of each caller's advance and nested-key release. Each owner eventually leaves its protected body, releases the OS lock and releases the process-local mutex. A protected body may throw. At most one request arrives per caller."
+          ]
+        },
+        {
+          "property": "WaitingSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. An owner may retain either lock indefinitely."
+          ]
+        }
+      ],
+      "maxSteps": 24,
+      "samples": 500
+    }
+  ]
+}

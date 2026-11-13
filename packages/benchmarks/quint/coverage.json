@@ -7,7 +7,9 @@
       "packages/benchmarks/orchestrator/tests/test_runner_deadlines.py",
       "packages/benchmarks/quint/check-process-owner.mjs"
     ],
-    "invariants": ["safety"],
+    "invariants": [
+      "safety"
+    ],
     "status": "partial",
     "limitations": [
       "One direct child, two output changes, four progress receipts, one monitor error and two termination-helper attempts. The maintained Python suite exercises actual local processes, temporary files, watchdogs, cancellation, SQLite run recording and unmodified full trajectory content.",
@@ -23,12 +25,32 @@
       "packages/benchmarks/tests/test_acceptance_process_groups.py",
       "packages/benchmarks/quint/check-acceptance-group-signal.mjs"
     ],
-    "invariants": ["safety"],
+    "invariants": [
+      "safety"
+    ],
     "status": "partial",
     "limitations": [
       "One already-owned POSIX group, one signal and one fresh inspection; only Darwin EPERM classification is modeled. Discovery, PID reuse, whole-tree reaping, Windows and non-Darwin semantics remain outside the projection.",
       "The real Darwin test retains a zombie descendant in a separate session, observes actual EPERM, completes TERM/KILL cleanup and leaves an unrelated child alive. Real live children exercise controlled denial and failed, timed-out, malformed or empty inspection. Non-Darwin conformance records the Darwin-specific test as skipped.",
       "Progress assumes eventual settlement of signal and inspection calls; it does not prove a wall-clock deadline."
+    ]
+  },
+  {
+    "id": "benchmarks.BenchmarkOutputLock",
+    "model": "packages/benchmarks/quint/BenchmarkOutputLock.qnt",
+    "sources": [
+      "packages/benchmarks/orchestrator/locking.py"
+    ],
+    "invariants": [
+      "OnePlatformOwner",
+      "OneLocalOwnerPerProcess",
+      "NestedKeyKeepsOuterOwner"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One normalized output-lock key, three callers and one uncontended nested key. Separate process-local and OS lock steps distinguish same-process waiters from independent processes.",
+      "Existing threaded and subprocess tests exercise real lock exclusion, protected-body failure, nested refusal and the publication decorator. This evidence uses the local POSIX filesystem.",
+      "Process crash, lock-file replacement, OS and filesystem errors, cross-key deadlocks, Windows and durable artifact publication remain outside this projection."
     ]
   }
 ]
