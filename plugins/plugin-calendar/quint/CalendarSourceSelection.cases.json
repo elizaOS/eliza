@@ -1,0 +1,66 @@
+{
+  "sources": [
+    "plugins/plugin-calendar/src/source-administration/adapter.ts",
+    "plugins/plugin-calendar/src/source-administration/adapter.test.ts",
+    "plugins/plugin-calendar/src/service/feed-preferences.ts",
+    "plugins/plugin-calendar/src/service/feed-preferences.test.ts",
+    "plugins/plugin-calendar/src/service/CalendarService.ts",
+    "plugins/plugin-calendar/src/service/migration.ts",
+    "plugins/plugin-calendar/src/service/schema.ts",
+    "plugins/plugin-calendar/src/internal/sql.ts",
+    "plugins/plugin-calendar/vitest.config.ts",
+    "plugins/plugin-calendar/quint/check-source-selection.mjs",
+    "packages/scripts/lib/test-output.ts",
+    "packages/scripts/lib/vitest-conformance.ts",
+    "packages/scripts/run-with-deadline.ts"
+  ],
+  "bounds": {
+    "domain": "One already-seeded owner-side selection row, one adjacent identity, two callers, and one refresh-and-retry by the first caller after rollback. The same model starts with either an ordinary source or an ICS source whose two durable rows agree. Catalog outcomes cover the exact source, a different account, and a health-only entry. Catalog admission, preference read and durable conditional write can interleave.",
+    "implementation": "The real administration adapter uses controlled local discovery and a service boundary that writes to real PGlite. The owning preference suite exercises actual concurrent writes, exact-source keys, no-op outcomes, and SQL rollback when a trigger aborts the second ICS update. Both existing suites execute in full and make no provider calls.",
+    "limitations": "A current no-op linearizes at the preference read. Atomicity refers to committed database state. The adapter and service catalog checks are one modeled observation. The model assumes correct table seeding and stable ICS source existence. It does not cover live catalog or provider behavior, authorization, source deletion, direct ICS CRUD, preference seeding and version-zero host-default alignment, arbitrary version ranges, crashes, or cancellation. The implementation suites include separate seed and catalog-health assertions beyond this model."
+  },
+  "conformance": "plugins/plugin-calendar/quint/check-source-selection.mjs",
+  "cases": [
+    {
+      "name": "calendar-source-selection-cas",
+      "main": "CalendarSourceSelection",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "ExactReceiptVersions",
+        "IcsRowsAgree",
+        "AdjacentSourceUnchanged"
+      ],
+      "temporal": [
+        "WritesNeedExactCurrentVersion",
+        "FairRequestsSettle",
+        "RequestsSettle"
+      ],
+      "temporalChecks": [
+        {
+          "property": "WritesNeedExactCurrentVersion",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. Only the exact selected row and its ICS companion can change on a matching conditional write."
+          ]
+        },
+        {
+          "property": "FairRequestsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of advancing each pending request through catalog observation, preference read and database settlement. A request can settle with a conflict, rejection or rollback. Refresh and retry require an explicit new submission."
+          ]
+        },
+        {
+          "property": "RequestsSettle",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. An outstanding catalog or database operation can wait indefinitely."
+          ]
+        }
+      ],
+      "maxSteps": 17,
+      "samples": 500
+    }
+  ]
+}

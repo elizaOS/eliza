@@ -1,0 +1,24 @@
+[
+  {
+    "id": "plugin-calendar.CalendarSourceSelection",
+    "model": "plugins/plugin-calendar/quint/CalendarSourceSelection.qnt",
+    "sources": [
+      "plugins/plugin-calendar/src/source-administration/adapter.ts",
+      "plugins/plugin-calendar/src/service/feed-preferences.ts"
+    ],
+    "invariants": [
+      "ExactReceiptVersions",
+      "IcsRowsAgree",
+      "AdjacentSourceUnchanged"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One exact already-seeded source and one adjacent identity, two callers and one explicit retry after rollback. Local PGlite exercises revision checks, no-op receipts, atomic ICS enablement and rollback.",
+      "Discovery transport, authorization, deletion, direct ICS CRUD, initial preference seeding, default alignment and cancellation are outside the model."
+    ],
+    "implementationTests": [
+      "plugins/plugin-calendar/src/source-administration/adapter.test.ts",
+      "plugins/plugin-calendar/src/service/feed-preferences.test.ts"
+    ]
+  }
+]
