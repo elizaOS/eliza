@@ -201,9 +201,14 @@ beforeAll(() => {
 				...parser.includes.map((include) => `-I${include}`),
 				fixture,
 				parser.source,
-				process.platform === "darwin"
-					? "-Wl,-undefined,dynamic_lookup"
-					: "-Wl,--unresolved-symbols=ignore-all",
+				...(process.platform === "darwin"
+					? ["-Wl,-undefined,dynamic_lookup"]
+					: [
+							// Default PIE executables give unused, unresolved sampler
+							// symbols invalid PLT relocations before main runs on Linux.
+							"-no-pie",
+							"-Wl,--unresolved-symbols=ignore-all",
+						]),
 				"-o",
 				output,
 			],
