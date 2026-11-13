@@ -71,6 +71,7 @@ function harness(
   preparation = false,
   turnTerminal: unknown = "missing",
   requireTurnTerminal = false,
+  renewal = false,
 ) {
   vi.useFakeTimers({
     toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
@@ -140,6 +141,9 @@ function harness(
               traceId: `ready-${mints}`,
               playbackCompletion,
               uiContext: !!getUiContext,
+              ...(renewal
+                ? { leaseExpiresAt: 1800000000000 + now + 60000 }
+                : {}),
             }),
           );
       } else this.sent.push(data);
@@ -201,6 +205,7 @@ function harness(
           releaseMint = resolve;
         });
       return Response.json({
+        ...(renewal ? { leaseRenewal: true } : {}),
         ...(preparation
           ? {
               rotationPreparation: "retire-before-open-v1",
@@ -337,6 +342,28 @@ function harness(
     },
   };
 }
+test("paid lease renewals preserve one microphone and socket across minute boundaries", async () => {
+  const h = harness(false, undefined, true, true, true, true);
+  await h.client.start();
+  await h.settle();
+  h.client.setMicrophoneMuted(true);
+  for (let window = 1; window <= 3; window++) {
+    await h.advance(50_000);
+    h.sockets[0].frame({
+      t: "lease_extended",
+      sessionId: "session-1",
+      expiresAt: 1800000000000 + 60000 + window * 50_000,
+    });
+    await h.settle();
+    expect(h.mints).toBe(1);
+    expect(h.sockets).toHaveLength(1);
+    expect(h.captures).toBe(1);
+    expect(h.client.state.phase).toBe("listening");
+  }
+  await h.client.stop();
+  expect(h.activeCaptures).toBe(0);
+  expect(h.errors).toEqual([]);
+});
 test("three Cloud budget idle rotations use fresh consent and one capture, with no transcript or paid TTS replay", async () => {
   const h = harness();
   await h.client.start();

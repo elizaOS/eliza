@@ -197,6 +197,7 @@ async function mint() {
     token: string;
     wsUrl: string;
     expiresAt: number;
+    leaseRenewal?: true;
   }>;
 }
 async function connect(
@@ -212,6 +213,7 @@ async function connect(
       t: "hello",
       turnTerminal: true,
       token,
+      ...(ticket.leaseRenewal ? { leaseRenewal: true } : {}),
       protocol: 1,
       uplinkCodec: "pcm16",
       downlinkCodec: "pcm16",
@@ -812,8 +814,68 @@ it("only Cloud speech advertises the shared60second budget so canonical idle rot
   vi.stubEnv("ELIZAOS_CLOUD_BASE_URL", "https://api-staging.eliza.app/api/v1");
   const cloud = await mint();
   expect(cloud.expiresAt - clock).toBe(60000);
+  expect(cloud.leaseRenewal).toBe(true);
   expect(sessions).toHaveLength(0);
   expect(cloud.token).not.toBe(direct.token);
+});
+
+it("a paid Cloud renewal updates the active host lease without reopening speech", async () => {
+  vi.stubEnv("ELIZA_SELF_HOSTED_VOICE_CLOUD_RELAY_ENABLED", "1");
+  vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "private-cloud-account");
+  vi.stubEnv("ELIZAOS_CLOUD_BASE_URL", "https://api-staging.eliza.app/api/v1");
+  let relayOptions:
+    | Parameters<
+        NonNullable<SelfHostedVoiceOptions["createCloudSpeechPorts"]>
+      >[0]
+    | undefined;
+  let opens = 0;
+  await host.close();
+  host = createSelfHostedVoice(state, {
+    ...hostOptions,
+    createCloudSpeechPorts: async (options) => {
+      relayOptions = options;
+      opens++;
+      return {
+        renewable: true,
+        sessionId: randomUUID(),
+        expiresAt: clock + 60000,
+        close: async () => {},
+        speechPorts: {
+          openStt: () => ({ sendAudioChunk() {}, close() {}, cancel() {} }),
+          tts: {
+            createStream() {
+              throw Error("No reply requested");
+            },
+            close() {},
+          },
+        },
+      };
+    },
+    buildSession: (config) => new VoiceSession({ ...config, now: () => clock }),
+  });
+  const ticket = await mint();
+  const { ws, frame } = await connect(ticket);
+  expect(frame.leaseExpiresAt).toBe(clock + 60000);
+  const relay = (() => {
+    if (!relayOptions) throw new Error("Cloud speech was not acquired");
+    return relayOptions;
+  })();
+  if (!relay.onLeaseExtended)
+    throw new Error("Cloud lease renewal was not negotiated");
+  const update = once(ws, "message");
+  relay.onLeaseExtended(clock + 110000);
+  expect(JSON.parse(String((await update)[0]))).toEqual({
+    t: "lease_extended",
+    sessionId: ticket.sessionId,
+    expiresAt: clock + 110000,
+  });
+  clock += 61000;
+  expect(() => relay.assertCurrent()).not.toThrow();
+  expect(opens).toBe(1);
+  const closed = once(ws, "close");
+  ws.send(JSON.stringify({ t: "bye" }));
+  await closed;
+  expect(() => relay.assertCurrent()).toThrow();
 });
 
 it("ReadAloud requires current owner auth, strict text and direct configuration before provider dispatch", async () => {

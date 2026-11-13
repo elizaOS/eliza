@@ -180,6 +180,9 @@ interface VoiceSessionBaseConfig {
   conversationId: string;
   /** Unix-seconds expiry of the bootstrap token; the session self-severs at exp. */
   tokenExpSeconds: number;
+  /** Only a host with acknowledged paid-window renewal may extend this lease. */
+  renewableLease?: true;
+  leaseExpiresAt?: number;
 
   /**
    * Opt in only when the client has proven echo cancellation. The safe default
@@ -383,6 +386,31 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private continuousHandoffEnabled = false;
   private turnTerminalSupported = false;
 
+  private armLeaseExpiry(): void {
+    if (this.expiryTimer) clearTimeout(this.expiryTimer);
+    this.expiryTimer = setTimeout(
+      () => {
+        if (!this.closed) this.teardown("expired");
+      },
+      Math.max(0, this.leaseExpiresAt - this.now()),
+    );
+  }
+
+  renewLease(expiresAt: number): void {
+    if (
+      this.closed ||
+      !this.config.renewableLease ||
+      !Number.isSafeInteger(expiresAt) ||
+      expiresAt <= this.leaseExpiresAt ||
+      expiresAt > this.leaseExpiresAt + 60_000 ||
+      this.now() >= this.leaseExpiresAt
+    )
+      throw new Error("Voice lease renewal is invalid");
+    this.leaseExpiresAt = expiresAt;
+    this.armLeaseExpiry();
+    this.send({ t: "lease_extended", sessionId: this.sessionId, expiresAt });
+  }
+
   setTurnTerminalSupport(supported: true): void {
     if (this.started || this.closed)
       throw new Error("Voice capability negotiation is closed");
@@ -424,6 +452,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private revocationPollFailures = 0;
   private revocationPollInFlight = false;
   private expiryTimer: ReturnType<typeof setTimeout> | null = null;
+  private leaseExpiresAt: number;
   private isRevoked: ((jti: string) => Promise<boolean>) | null = null;
 
   constructor(config: VoiceSessionConfig) {
@@ -485,6 +514,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       );
     }
     this.config = config;
+    this.leaseExpiresAt =
+      config.leaseExpiresAt ?? config.tokenExpSeconds * 1000;
     this.sessionId = config.sessionId;
     this.jti = config.jti;
     this.organizationId = config.organizationId;
@@ -595,18 +626,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       }, REVOCATION_POLL_MS);
     }
 
-    // Enforce the bootstrap token's expiry as a hard session ceiling: once the
-    // 120s token (and its sessionId->jti directory entry) would expire, a
-    // revoke could no longer resolve/observe the jti, so the socket must not
-    // outlive it. Self-sever at exp.
-    const nowSeconds = Math.floor(this.now() / 1000);
-    const msUntilExp = Math.max(
-      0,
-      (this.config.tokenExpSeconds - nowSeconds) * 1000,
-    );
-    this.expiryTimer = setTimeout(() => {
-      if (!this.closed) this.teardown("expired");
-    }, msUntilExp);
+    this.armLeaseExpiry();
 
     this.state = "listening";
     // Read immutable tenancy from cache while the user is beginning to speak.
@@ -664,6 +684,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       traceId: sessionTrace,
       uiContext: true,
       playbackCompletion: true,
+      ...(this.config.renewableLease
+        ? { leaseExpiresAt: this.leaseExpiresAt }
+        : {}),
       ...(this.turnTerminalSupported ? { turnTerminal: true as const } : {}),
     });
     if (this.config.openingPrompt?.trim()) {
