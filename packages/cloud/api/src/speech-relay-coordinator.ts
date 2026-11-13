@@ -1,7 +1,8 @@
 /** Speech-only Durable Object. The caller's agent, history and tools stay on its device. */
+
 import { createHash, timingSafeEqual } from "node:crypto";
+import { getCloudDeployment } from "@elizaos/cloud-shared/lib/deployment/cloud-deployment";
 import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
-import { createDurableVoiceUsageStore } from "@elizaos/cloud-shared/lib/services/voice-usage-meter";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { resolveVoiceUsageLimits } from "@elizaos/cloud-shared/lib/voice-session/config";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
@@ -108,7 +109,7 @@ export function preparedSpeechSessionIdForConsent(
   consentNonce: string,
 ): string {
   return uuidv5(
-    `https://api.eliza.app/voice/consent/${userId}/${consentNonce}`,
+    `${getCloudDeployment().speechConsentOrigin}/voice/consent/${userId}/${consentNonce}`,
     uuidv5.URL,
   );
 }
@@ -505,6 +506,7 @@ export class SpeechRelayCoordinator {
           "@elizaos/cloud-shared/lib/services/credits"
         );
         if (
+          this.stopped ||
           Date.now() >= ledger.expiresAt ||
           ledger.phase !== "minted" ||
           this.pendingSocket
@@ -595,7 +597,7 @@ export class SpeechRelayCoordinator {
               // a second socket can never reuse the consumed session capability.
               const task = this.open(ledger, {
                 reportTimings: hello.timings === true,
-                extendable: hello.extend === true && ledger.proofVersion !== 1,
+                extendable: hello.extend === true,
               });
               this.openingTask = task;
               void task.then(() => {
@@ -705,9 +707,9 @@ export class SpeechRelayCoordinator {
         if (!record) throw Error("Speech session missing");
         if (
           this.stopped ||
-          record.proofVersion === 1 ||
           record.sessionId !== ledger.sessionId ||
           record.expiresAt !== previousEnd ||
+          Date.now() >= record.expiresAt ||
           (record.phase !== "starting" && record.phase !== "active")
         )
           return record;
@@ -752,11 +754,15 @@ export class SpeechRelayCoordinator {
     this.openingOwner = openingOwner;
     try {
       phases.claimMs = elapsed(startedAt);
-      const [{ runWithDbCacheAsync }, { reserveSpeechRelayAdmission }] =
-        await Promise.all([
-          import("@elizaos/cloud-shared/db/client"),
-          import("./speech-relay-admission"),
-        ]);
+      const [
+        { runWithDbCacheAsync },
+        { createDurableVoiceUsageStore },
+        { reserveSpeechRelayAdmission },
+      ] = await Promise.all([
+        import("@elizaos/cloud-shared/db/client"),
+        import("@elizaos/cloud-shared/lib/services/voice-usage-meter"),
+        import("./speech-relay-admission"),
+      ]);
       this.current();
       await runWithCloudBindingsAsync(this.env as Record<string, unknown>, () =>
         runWithDbCacheAsync(async () => {
@@ -775,10 +781,7 @@ export class SpeechRelayCoordinator {
             void this.close();
           };
           const retire = () => retireSpeech();
-          const maxWindows =
-            ledger.proofVersion !== 1 && extendable
-              ? speechRelayMaxWindows(this.env)
-              : 1;
+          const maxWindows = extendable ? speechRelayMaxWindows(this.env) : 1;
           // The revocation fence and paid admission are independent round trips.
           // Start the fence now and join it before any provider opens, so a
           // provider still never starts without a live revocation subscription.
@@ -909,6 +912,7 @@ export class SpeechRelayCoordinator {
                                 record,
                                 kind,
                                 progress,
+                                budgetWindow,
                               );
                             }).then(() => {})
                         : undefined,
