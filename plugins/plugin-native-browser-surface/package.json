@@ -113,7 +113,7 @@
     "runtime": "both",
     "platformDetails": {
       "browser": "Not supported \u2014 a web host has no native child web surface; every method rejects as unavailable.",
-      "node": "Not supported on the desktop shell (desktop uses the Electrobun WebContentsView path); every method rejects as unavailable.",
+      "node": "Not supported; there is no Node or desktop implementation, so every method rejects as unavailable.",
       "ios": true,
       "android": true
     }

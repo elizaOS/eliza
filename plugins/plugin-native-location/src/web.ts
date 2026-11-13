@@ -1,5 +1,5 @@
 /**
- * Browser/Electrobun implementation of the location bridge, backed by
+ * Browser implementation of the location bridge, backed by
  * `navigator.geolocation`. Loaded lazily via index.ts's `web` factory; the
  * iOS/Android bridges implement the same `LocationPlugin` interface natively.
  */

@@ -81,7 +81,7 @@
     "runtime": "both",
     "platformDetails": {
       "browser": "Full support via MediaDevices API (camera preview, photo/video capture, permissions)",
-      "node": "Full support via Electrobun native modules with macOS/Windows/Linux camera access",
+      "node": "Not supported; there is no Node or desktop implementation.",
       "ios": true,
       "android": true
     }

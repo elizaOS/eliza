@@ -1,7 +1,6 @@
 # @elizaos/native-plugin-shared-types
 
-Shared TypeScript type contracts for elizaOS native plugin bridges (Capacitor and
-Electrobun).
+Shared TypeScript type contracts for elizaOS native (Capacitor) plugin bridges.
 
 Type-only bridge contracts exported directly from src/index.ts. No runtime
 configuration, separate build, or test runner is defined; validate consumers and run the

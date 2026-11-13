@@ -10,7 +10,7 @@
  *   can have unmetered cellular, or a metered Wi-Fi hotspot), so the
  *   metered flag is mandatory, not derived from connection type.
  * - iOS: `NWPathMonitor.path.isExpensive` — Apple's "treat as metered" flag.
- * - Desktop (Electron/Electrobun): WinRT `NetworkCostType`, NetworkManager
+ * - Desktop: WinRT `NetworkCostType`, NetworkManager
  *   dbus `ActiveConnection.Metered`, or macOS `NWPathMonitor` via the
  *   native bridge.
  * - Headless server / CLI: skip auto-update entirely; explicit

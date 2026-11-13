@@ -70,7 +70,7 @@ func emit(event: String, bundleId: String, appName: String, windowTitle: String?
 }
 
 // Emit a periodic HID idle sample so LifeOps can infer passive-media vs
-// away-from-keyboard without depending on the Electrobun desktop bridge.
+// away-from-keyboard without depending on a desktop app bridge.
 // CGEventSourceSecondsSinceLastEventType is session-bound; it reports the
 // idle time for the active console session which is exactly what we want
 // for the signed-in owner.

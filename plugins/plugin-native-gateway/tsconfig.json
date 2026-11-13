@@ -13,5 +13,5 @@
     "lib": ["ES2020", "DOM"]
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "electrobun"]
+  "exclude": ["node_modules", "dist"]
 }

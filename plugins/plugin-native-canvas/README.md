@@ -1,8 +1,8 @@
 # @elizaos/capacitor-canvas
 
 Capacitor plugin that provides a multi-layer 2D canvas, drawing primitives, web view
-embedding, and an A2UI bridge for elizaOS Eliza agents running on browser, node
-(Electrobun), iOS, and Android.
+embedding, and an A2UI bridge for elizaOS Eliza agents running on browser, iOS, and
+Android.
 
 See [bridge definitions](src/definitions.ts) for the native API. Native targets require their SDKs, registered bridge, and OS permissions.
 
