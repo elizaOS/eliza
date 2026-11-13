@@ -2,6 +2,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { configDefaults, defineConfig } from "vitest/config";
+import baseConfig from "../../packages/scripts/vitest/default.config.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -61,6 +62,7 @@ export default defineConfig({
         find: /^react-dom\/client$/,
         replacement: require.resolve("react-dom/client"),
       },
+      ...(Array.isArray(baseConfig.resolve?.alias) ? baseConfig.resolve.alias : []),
     ],
   },
   test: {
