@@ -1,4 +1,5 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import path from "node:path";
 import {
   clearPasswordManagerBackendCache,
   detectPasswordManagerBackend,
@@ -30,7 +31,9 @@ afterEach(async () => {
 it.skipIf(process.platform === "win32")(
   "switches into and out of the isolated CLI fixture despite cached detection",
   async () => {
-    directory = await mkdtemp(testOutputPath("benchmark-password-manager"));
+    const output = testOutputPath("benchmark-password-manager");
+    await mkdir(output, { recursive: true });
+    directory = await mkdtemp(path.join(output, "case-"));
     process.env.PATH = directory;
     clearPasswordManagerBackendCache();
     expect(await detectPasswordManagerBackend()).toBe("none");
