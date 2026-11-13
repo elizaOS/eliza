@@ -1,0 +1,59 @@
+{
+	"sources": [
+		"packages/core/src/runtime/active-prompt-traces.ts",
+		"packages/core/src/runtime.ts",
+		"packages/core/src/runtime/model-dispatch.ts",
+		"packages/core/src/runtime/state-composition.ts",
+		"plugins/plugin-assistant/src/runtime/structured-prompt/executor.ts",
+		"packages/core/test/active-prompt-traces.integration.test.ts"
+	],
+	"bounds": {
+		"domain": "Two runs, three unique trace IDs, one record per ID, and a three-tick wall clock with a two-tick TTL. Each active trace records whether it was enriched at least once.",
+		"limitations": "Every index change is synchronous. Explicit purge and the periodic purge on recording use the same sweep. The model abstracts the every-100-record counter, score values, wall-clock rollback, missing run IDs and persistence. Progress starts at an already-expired trace and requires the purge to run."
+	},
+	"conformance": "packages/core/quint/check-core-concurrency.mjs",
+	"cases": [
+		{
+			"name": "active-index",
+			"main": "ActivePromptTraces",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"IndexAgreesWithOwners",
+				"IndexKeepsInsertionOrder",
+				"LatestIsNewest",
+				"OnlyLiveTracesAreEnriched"
+			],
+			"temporal": [
+				"EnrichmentStaysInOneRun",
+				"StaleTracesRetire",
+				"UnfairStaleTracesRetire"
+			],
+			"temporalChecks": [
+				{
+					"property": "EnrichmentStaysInOneRun",
+					"expect": "holds",
+					"assumptions": [
+						"No fairness assumption. Newly enriched traces belong to one active run."
+					]
+				},
+				{
+					"property": "StaleTracesRetire",
+					"expect": "holds",
+					"assumptions": [
+						"Purge is weakly fair while expired traces remain. A direct trace or run removal can retire them sooner."
+					]
+				},
+				{
+					"property": "UnfairStaleTracesRetire",
+					"expect": "counterexample",
+					"assumptions": [
+						"No fairness assumption. An expired trace can remain resident when nobody requests a purge or removal."
+					]
+				}
+			],
+			"maxSteps": 20,
+			"samples": 500
+		}
+	]
+}

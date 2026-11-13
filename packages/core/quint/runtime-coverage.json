@@ -32,6 +32,27 @@
 		"implementationTests": ["packages/core/test/semaphore.test.ts"]
 	},
 	{
+		"id": "core.PipelineHookSnapshot",
+		"model": "packages/core/quint/PipelineHookSnapshot.qnt",
+		"sources": [
+			"packages/core/src/runtime/pipeline-hooks.ts",
+			"packages/core/src/runtime/model-policy.ts",
+			"packages/core/src/types/pipeline-hooks.ts",
+			"packages/core/src/runtime.ts"
+		],
+		"invariants": [
+			"StartsOnlyCaptured",
+			"GroupsWaitForCompletion",
+			"HonestSettlement"
+		],
+		"status": "modeled",
+		"limitations": [
+			"Two dispatches, one phase, five hook slots, one replacement and one removal. The phase-wide concurrent schedule and intentional local admission refusal have formal scenarios.",
+			"The conformance hook runs four real runtime tests. The overlapping dispatches check live replacement, removal, grouped order and an isolated diagnostic. Phase moves, shutdown, metrics and outer phase policies are outside the projection."
+		],
+		"implementationTests": ["packages/core/test/core-hooks.test.ts"]
+	},
+	{
 		"id": "core.SingleFlightMemo",
 		"model": "packages/core/quint/SingleFlightMemo.qnt",
 		"sources": [
@@ -77,6 +98,31 @@
 		],
 		"implementationTests": [
 			"packages/core/test/compose-state-provider-execution.test.ts"
+		]
+	},
+	{
+		"id": "core.ActivePromptTraces",
+		"model": "packages/core/quint/ActivePromptTraces.qnt",
+		"sources": [
+			"packages/core/src/runtime/active-prompt-traces.ts",
+			"packages/core/src/runtime.ts",
+			"packages/core/src/runtime/model-dispatch.ts",
+			"packages/core/src/runtime/state-composition.ts",
+			"plugins/plugin-assistant/src/runtime/structured-prompt/executor.ts"
+		],
+		"invariants": [
+			"IndexAgreesWithOwners",
+			"IndexKeepsInsertionOrder",
+			"LatestIsNewest",
+			"OnlyLiveTracesAreEnriched"
+		],
+		"status": "modeled",
+		"limitations": [
+			"Two runs, three unique trace IDs and a bounded clock. The model abstracts score values, periodic purge cadence, wall-clock rollback and durable trajectory storage.",
+			"The conformance fixture uses the real AgentRuntime API and a controlled wall clock to check run isolation, latest-trace selection, targeted and run-wide enrichment, exact expiry and removal."
+		],
+		"implementationTests": [
+			"packages/core/test/active-prompt-traces.integration.test.ts"
 		]
 	},
 	{
@@ -206,5 +252,30 @@
 		"implementationTests": [
 			"packages/core/test/pii-scrub.lazy-drain.pglite.test.ts"
 		]
+	},
+	{
+		"id": "ChannelTopicRetirement",
+		"model": "packages/core/quint/ChannelTopicRetirement.qnt",
+		"sources": [
+			"packages/core/src/services/channel-topics.ts",
+			"packages/core/src/plugin-lifecycle.ts",
+			"packages/core/src/runtime/data-mutations.ts",
+			"packages/core/src/runtime.ts"
+		],
+		"invariants": [
+			"RoomOrder",
+			"NoLateOriginalAdmission",
+			"RetirementJoinsOriginal",
+			"RetirementClearsLocal",
+			"RoomIsolation"
+		],
+		"status": "partial",
+		"limitations": [
+			"One original service, one sequential replacement, two rooms and four calls. Original room 0 has one optional cold reader or writer and a second writer. Original room 1 has one writer, and the replacement writes room 0.",
+			"Labels are distinct and below LRU capacity. Successful persistence replaces durable topics with the current local list. A failed write leaves local topics, so a later successful call can persist them. Failed hydration leaves the room cold.",
+			"The runtime suite uses real SQLite for plugin unload/reload, durable readback, persistence failure and recovery. Controlled I/O ports cover same-room ordering, independent rooms and pending stop.",
+			"Metadata mutations by unrelated writers, missing-room races, process crashes, unknown commits, duplicate labels, capacity eviction and simultaneous independent runtimes remain outside this finite projection."
+		],
+		"implementationTests": ["packages/core/test/channel-topics.test.ts"]
 	}
 ]
