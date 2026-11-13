@@ -71,8 +71,16 @@ assert.equal(
 );
 assert.equal(result.status, 0, `Calendar watch tests failed: ${log}`);
 
+const results = JSON.parse(readFileSync(report, "utf8"));
+// Vitest 5 labels tests excluded by its name filter `skipped`. The shared
+// verifier expects the same status under its older `pending` spelling.
+for (const suiteResult of results.testResults) {
+  for (const test of suiteResult.assertionResults) {
+    if (test.status === "skipped") test.status = "pending";
+  }
+}
 requireVitestConformance(
-  JSON.parse(readFileSync(report, "utf8")),
+  results,
   path.join(calendar, file),
   [...required, ...outsideProjection].map(reportName),
   outsideProjection.map(reportName),
