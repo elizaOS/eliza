@@ -268,7 +268,7 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     label: "Eliza Cloud managed Google",
     mode: "static-http",
     environment: "cloud-managed",
-    envVars: ["ELIZA_CLOUD_BASE_URL"],
+    envVars: ["ELIZAOS_CLOUD_BASE_URL"],
     surfaces: ["managed Google status", "managed Google account list"],
     knownGaps: [
       "No managed mutation routes, cloud auth failure matrix, billing limits, or account relink flows",

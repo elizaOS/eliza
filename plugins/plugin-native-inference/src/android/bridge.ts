@@ -43,7 +43,6 @@ import { startLocalAgentServer } from "./private-dispatch.ts";
 if (!process.env.ELIZA_PLATFORM?.trim()) {
   process.env.ELIZA_PLATFORM = "android";
 }
-process.env.ELIZA_MOBILE_PLATFORM ||= "android";
 process.env.ELIZA_ANDROID_LOCAL_BACKEND ||= "1";
 process.env.ELIZA_DISABLE_DIRECT_RUN ||= "1";
 process.env.ELIZA_HEADLESS ||= "1";

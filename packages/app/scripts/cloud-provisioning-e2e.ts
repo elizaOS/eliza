@@ -22,8 +22,7 @@ const has = (name) => process.argv.includes(name);
 const token =
   arg("--token") ??
   process.env.ELIZA_CLOUD_AUTH_TOKEN ??
-  process.env.ELIZAOS_CLOUD_API_KEY ??
-  process.env.ELIZACLOUD_API_KEY;
+  process.env.ELIZAOS_CLOUD_API_KEY;
 const cloudApiBase = (
   arg("--cloud-api-base") ??
   process.env.ELIZA_CLOUD_API_BASE ??
