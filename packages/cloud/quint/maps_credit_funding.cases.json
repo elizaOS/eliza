@@ -10,9 +10,9 @@
   ],
   "conformance": "packages/cloud/quint/check-maps-credit-funding.mjs",
   "bounds": {
-    "domain": "Three logical request IDs, three initial credit units, one or two unit prices, one account and mutable plan/credential standing.",
+    "domain": "Two logical request IDs, three initial credit units, one or two unit quotes, at most two provider calls per request, one account and mutable plan/credential standing.",
     "atomicity": "Admission and settlement rely on the existing authoritative organization billing owner. Maps replay receipts precede provider dispatch.",
-    "progress": "SettlesWhenObserved assumes each admitted request's terminal observation is weakly fair. Provider success and eventual observation are not guaranteed."
+    "progress": "Progress assumes weak fairness of provider observation and settlement. The no-fairness property is expected to produce a liveness counterexample."
   },
   "limitations": [
     "Unit prices abstract the published Google SKU prices; floating-point money arithmetic is covered by the existing billing engine, not this model.",
@@ -29,7 +29,8 @@
         "safety"
       ],
       "temporal": [
-        "SettlesWhenObserved"
+        "SettlesWhenObserved",
+        "NoFairnessSettles"
       ],
       "maxSteps": 40,
       "samples": 1000,
@@ -38,8 +39,15 @@
           "property": "SettlesWhenObserved",
           "expect": "holds",
           "assumptions": [
-            "For every admitted or dispatched request, a valid terminal observation is weakly fair through finish(key).",
-            "The existing billing owner completes settlement. Provider success and eventual arrival of a terminal observation are not assumed."
+            "A dispatched provider call eventually produces an accepted, rejected or lost-response observation under weak fairness of observe(key).",
+            "The existing billing owner eventually settles an eligible reservation under weak fairness of settle(key). No provider success is assumed."
+          ]
+        },
+        {
+          "property": "NoFairnessSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. A reserved or inflight request may remain unobserved indefinitely."
           ]
         }
       ]
