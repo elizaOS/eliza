@@ -56,13 +56,25 @@ const target = (
 function storage() {
   const slots = new Map<string, unknown>();
   let conflicts = 0;
+  let nextRead: Promise<void> | undefined;
   return {
     slots,
     conflict(count: number) {
       conflicts = count;
     },
+    holdRead() {
+      let release!: () => void;
+      nextRead = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return release;
+    },
     async read(slot: string) {
-      return structuredClone(slots.get(slot) ?? null);
+      const value = structuredClone(slots.get(slot) ?? null);
+      const held = nextRead;
+      nextRead = undefined;
+      if (held) await held;
+      return value;
     },
     async compareExchange(slot: string, expected: unknown, value: unknown) {
       if (
@@ -574,6 +586,90 @@ async function flush() {
 }
 
 describe("foreground scheduling", () => {
+  it("does not admit sync from a stopped registration's pending opt-in read", async () => {
+    const f = fixture();
+    await f.host.enable(await f.host.review());
+    const counter = passes(f.host);
+    const calls = f.remote.calls.length;
+    const releaseOld = f.settingsSlots.holdRead();
+    const stopped = f.host.start();
+    stopped.stop();
+
+    const releaseCurrent = f.settingsSlots.holdRead();
+    const current = f.host.start();
+    try {
+      stopped.stop();
+      releaseOld();
+      await flush();
+      expect(f.host.snapshot().running).toBe(false);
+      expect(counter.completed).toBe(0);
+      expect(f.remote.calls).toHaveLength(calls);
+
+      releaseCurrent();
+      await counter.until(1);
+      expect(f.remote.calls.length).toBeGreaterThan(calls);
+      expect(f.host.snapshot().status).toContain("Synced:");
+    } finally {
+      releaseCurrent();
+      current.stop();
+    }
+  });
+
+  it("retires a pending opt-in read when visibility leaves and returns", async () => {
+    const f = fixture();
+    await f.host.enable(await f.host.review());
+    const counter = passes(f.host);
+    const calls = f.remote.calls.length;
+    const releaseOld = f.settingsSlots.holdRead();
+    const foreground = f.host.start();
+    f.state.foreground = false;
+    foreground.visibilityChanged();
+
+    const releaseCurrent = f.settingsSlots.holdRead();
+    f.state.foreground = true;
+    foreground.visibilityChanged();
+    try {
+      releaseOld();
+      await flush();
+      expect(f.host.snapshot().running).toBe(false);
+      expect(counter.completed).toBe(0);
+      expect(f.remote.calls).toHaveLength(calls);
+
+      releaseCurrent();
+      await counter.until(1);
+      expect(f.remote.calls.length).toBeGreaterThan(calls);
+      expect(f.host.snapshot().status).toContain("Synced:");
+    } finally {
+      releaseCurrent();
+      foreground.stop();
+    }
+  });
+
+  it("does not publish a retired opt-in read failure over the new registration", async () => {
+    const f = fixture();
+    await f.host.enable(await f.host.review());
+    const config = f.saved();
+    f.settingsSlots.slots.set("settings", { damaged: true });
+    const releaseOld = f.settingsSlots.holdRead();
+    const stopped = f.host.start();
+    stopped.stop();
+    f.settingsSlots.slots.set("settings", config);
+
+    const counter = passes(f.host);
+    const current = f.host.start();
+    try {
+      await counter.until(1);
+      const completed = f.host.snapshot();
+      expect(completed.status).toContain("Synced:");
+      releaseOld();
+      await flush();
+      expect(f.host.snapshot()).toEqual(completed);
+    } finally {
+      releaseOld();
+      current.stop();
+    }
+  });
+
   it("debounces local edits, defers one during a pass and stops in the background", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const f = fixture();
