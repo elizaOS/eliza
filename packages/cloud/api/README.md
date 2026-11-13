@@ -163,8 +163,8 @@ bun run --cwd packages/cloud/api test   # tests
 Native clients are registered in `mobile_app_auth_clients`, linked to active,
 approved `apps` rows. Each record holds a client ID, exact HTTPS callback,
 enabled state and optional credential lifetime. The lifetime is an integer from
-one day to 90 days, with a 30-day default. Client IDs, app UUIDs and callbacks
-must be unique. Unknown and disabled clients fail closed. The global mobile-auth
+one day to 90 days, with a 30-day default. Client IDs must be unique. Aliases can share an app and callback when
+their hosted return policy agrees. Unknown and disabled clients fail closed. The global mobile-auth
 enable switch and environment binding still apply.
 
 Auth has separate configuration boundaries. A Cloud exchange callback is not
@@ -201,7 +201,13 @@ is the existing broad user/organization capability, not a narrower permission cl
 Native registration lives in `mobile_app_auth_clients`. It binds a unique client
 ID to an approved app, exact redirect URI, enabled state, credential lifetime,
 optional Android package and fingerprints, and optional browser sign-in paths.
-Only reviewed administrator or migration changes can write this table. Client
+Only reviewed administrator or migration changes can write this table.
+Before the first runtime cutover, run the protected Native App Auth Database
+Migration workflow for each environment. It imports the exact existing client,
+Android and deployed Pages configuration in one transaction, then verifies the
+complete import. An absent source, ambiguous app or conflicting row refuses the
+import. Keep the old runtime deployed until this succeeds. Later registrations
+and renames are reviewed database changes; normal releases have no registry gate. Client
 IDs are independent of Android package names. The API, Digital Asset Links and
 hosted fallback read the same rows, so changes take effect without a release.
 Unknown or disabled clients fail closed. No deployment secret stores client
