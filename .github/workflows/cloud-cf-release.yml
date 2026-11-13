@@ -891,6 +891,15 @@ jobs:
           # on the exact PostgreSQL session that performs the schema writes.
           bun run db:cloud:migrate
 
+      - name: Verify native registration database cutover
+        if: ${{ steps.source_guard.outputs.superseded != 'true' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.ELIZA_MOBILE_APP_AUTH_ENABLED) }}
+        env:
+          DATABASE_URL: ${{ env.MIGRATION_DATABASE_URL }}
+          ENVIRONMENT: ${{ inputs.target_environment }}
+          DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}
+          DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
+        run: bun --conditions=eliza-source packages/scripts/cloud/admin/migrate-native-app-auth.ts --verify
+
   # ---------------------------------------------------------------------------
   # API Worker
   # ---------------------------------------------------------------------------
