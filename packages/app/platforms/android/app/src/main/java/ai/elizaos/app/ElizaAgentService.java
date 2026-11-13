@@ -2831,7 +2831,6 @@ public class ElizaAgentService extends Service {
             } catch (IOException error) {
                 Log.w(TAG, "Voice bundle directory unavailable for live ASR", error);
             }
-            agentEnv.put("ELIZA_MOBILE_PLATFORM", "android");
             agentEnv.put("ELIZA_STARTUP_TRACE_ID", ElizaStartupTrace.currentId());
             agentEnv.put("ELIZA_RUNTIME_MODE", "local-yolo");
             agentEnv.put("AGENT_COMMAND", "android-bridge");

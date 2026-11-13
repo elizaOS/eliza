@@ -231,7 +231,6 @@ function getRuntimeMode(runtime: IAgentRuntime): string {
 	for (const key of [
 		"ELIZA_DEPLOYMENT_RUNTIME",
 		"ELIZA_RUNTIME_MODE",
-		"RUNTIME_MODE",
 	] as const) {
 		const fromSetting = normalizeRuntimeMode(runtime.getSetting(key));
 		if (fromSetting) return fromSetting;

@@ -520,7 +520,7 @@ describe("buildAospLoadModelArgs", () => {
 
     withEnv(
       {
-        ELIZA_MOBILE_PLATFORM: "android",
+        ELIZA_PLATFORM: "android",
         ELIZA_MTP: undefined,
         ELIZA_MTP_SERVER_SPAWN: undefined,
       },
@@ -572,7 +572,7 @@ describe("buildAospLoadModelArgs", () => {
 
     withEnv(
       {
-        ELIZA_MOBILE_PLATFORM: "android",
+        ELIZA_PLATFORM: "android",
         ELIZA_MTP: undefined,
         ELIZA_MTP_SERVER_SPAWN: undefined,
       },
@@ -611,7 +611,7 @@ describe("buildAospLoadModelArgs", () => {
 
     withEnv(
       {
-        ELIZA_MOBILE_PLATFORM: "android",
+        ELIZA_PLATFORM: "android",
         ELIZA_MTP: undefined,
         ELIZA_MTP_SERVER_SPAWN: undefined,
       },
@@ -639,7 +639,7 @@ describe("buildAospLoadModelArgs", () => {
 
     withEnv(
       {
-        ELIZA_MOBILE_PLATFORM: "android",
+        ELIZA_PLATFORM: "android",
         ELIZA_MTP: "1",
         ELIZA_MTP_SERVER_SPAWN: undefined,
       },
@@ -681,7 +681,7 @@ describe("buildAospLoadModelArgs", () => {
 
     withEnv(
       {
-        ELIZA_MOBILE_PLATFORM: "android",
+        ELIZA_PLATFORM: "android",
         ELIZA_MTP: "1",
         ELIZA_MTP_SERVER_SPAWN: undefined,
       },

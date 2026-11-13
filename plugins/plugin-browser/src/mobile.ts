@@ -70,12 +70,7 @@ export class BrowserService extends Service {
   private nativeTarget: NativeSocketBrowserTarget | null = null;
   static override async start(runtime: IAgentRuntime): Promise<BrowserService> {
     const service = new BrowserService(runtime);
-    if (
-      [
-        process.env.ELIZA_PLATFORM?.trim(),
-        process.env.ELIZA_MOBILE_PLATFORM,
-      ].includes("android")
-    ) {
+    if (process.env.ELIZA_PLATFORM?.trim() === "android") {
       service.nativeTarget = new NativeSocketBrowserTarget((error) => {
         if (isBrowserDispatchFailure(error) && error.kind === "UNAVAILABLE")
           logger.info(

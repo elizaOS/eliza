@@ -265,8 +265,6 @@ export async function buildWeb(platform) {
     ...(runtimeExecutionMode
       ? {
           ELIZA_RUNTIME_MODE: runtimeExecutionMode,
-          RUNTIME_MODE: runtimeExecutionMode,
-          LOCAL_RUNTIME_MODE: runtimeExecutionMode,
           VITE_ELIZA_RUNTIME_MODE: runtimeExecutionMode,
         }
       : {}),

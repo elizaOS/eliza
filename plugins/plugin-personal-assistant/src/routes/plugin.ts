@@ -243,17 +243,8 @@ function buildCloudProxyConfig(
     };
     return {
       cloud: {
-        apiKey: authorityValue(
-          "ELIZAOS_CLOUD_API_KEY",
-          "ELIZA_CLOUD_API_KEY",
-          "ELIZACLOUD_API_KEY",
-        ),
-        baseUrl: authorityValue(
-          "ELIZAOS_CLOUD_BASE_URL",
-          "ELIZA_CLOUD_BASE_URL",
-          "ELIZA_CLOUD_URL",
-          "ELIZAOS_CLOUD_URL",
-        ),
+        apiKey: authorityValue("ELIZAOS_CLOUD_API_KEY"),
+        baseUrl: authorityValue("ELIZAOS_CLOUD_BASE_URL"),
         serviceKey: authorityValue(
           "ELIZAOS_CLOUD_SERVICE_KEY",
           "ELIZA_CLOUD_SERVICE_KEY",

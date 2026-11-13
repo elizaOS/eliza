@@ -266,7 +266,7 @@ export function mockEnvironmentSettings(
   if (envs.includes("calendly"))
     out.ELIZA_MOCK_CALENDLY_BASE = baseUrls.calendly;
   if (envs.includes("cloud-managed"))
-    out.ELIZA_CLOUD_BASE_URL = baseUrls["cloud-managed"];
+    out.ELIZAOS_CLOUD_BASE_URL = baseUrls["cloud-managed"];
   if (envs.includes("browser-workspace")) {
     out.ELIZA_BROWSER_WORKSPACE_URL = baseUrls["browser-workspace"];
     out.ELIZA_BROWSER_WORKSPACE_TOKEN = MOCK_BROWSER_WORKSPACE_TOKEN;

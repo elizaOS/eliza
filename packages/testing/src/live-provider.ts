@@ -206,9 +206,7 @@ export function selectLiveProvider(
     };
   }
   const cloudApiKey =
-    process.env.ELIZAOS_CLOUD_API_KEY?.trim() ||
-    process.env.ELIZA_CLOUD_API_KEY?.trim() ||
-    loadConfiguredCloudApiKey();
+    process.env.ELIZAOS_CLOUD_API_KEY?.trim() || loadConfiguredCloudApiKey();
   if (cloudApiKey && (!preferredProvider || preferredProvider === "openai")) {
     const smallModel = process.env.OPENAI_SMALL_MODEL?.trim() || "gpt-5.4-mini";
     const largeModel =
@@ -251,7 +249,6 @@ export function availableProviderNames(): LiveProviderName[] {
   );
   if (
     process.env.ELIZAOS_CLOUD_API_KEY?.trim() ||
-    process.env.ELIZA_CLOUD_API_KEY?.trim() ||
     loadConfiguredCloudApiKey()
   ) {
     providers.add("openai");
