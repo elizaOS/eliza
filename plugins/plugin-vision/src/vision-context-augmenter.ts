@@ -204,17 +204,29 @@ function resolveImageBytes(image: AugmenterImageInput): Buffer | null {
  * The coord-OCR seam takes encoded PNG (`OcrWithCoordsInput.pngBytes`) and
  * `RapidOcrCoordAdapter` rejects any other format, but describe inputs are
  * usually JPEG (camera frames, photo uploads). Re-encode a non-PNG image as
- * PNG; bytes sharp cannot decode pass through for the OCR service to judge.
+ * PNG. When the image backend cannot load or cannot decode the bytes, throw
+ * with that failure so OCR is skipped for the real reason; non-PNG bytes are
+ * never sent to the seam.
  */
 async function toOcrPngBytes(bytes: Buffer): Promise<Uint8Array> {
   if (readPngDimensionsOrNull(bytes) !== null) return new Uint8Array(bytes);
+  let sharp: Awaited<ReturnType<typeof getSharp>>;
   try {
-    const sharp = await getSharp();
+    sharp = await getSharp();
+  } catch (err) {
+    throw new Error(
+      `image backend unavailable to convert the image to PNG: ${messageOf(err)}`,
+      { cause: err },
+    );
+  }
+  try {
     return new Uint8Array(
       await sharp(bytes, { limitInputPixels: 100_000_000 }).png().toBuffer(),
     );
-  } catch {
-    return new Uint8Array(bytes);
+  } catch (err) {
+    throw new Error(`image could not be converted to PNG: ${messageOf(err)}`, {
+      cause: err,
+    });
   }
 }
 
