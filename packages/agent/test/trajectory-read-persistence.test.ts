@@ -175,12 +175,6 @@ it("reads complete persisted calls with filters and failures on the trajectory s
     byModel: { fixture: 1 },
     bySource: { "read-acceptance": 1, "other-source": 1 },
   });
-  // Dedicated steps remain authoritative when the compatibility snapshot is stale.
-  await executeRawSql(
-    fixture.runtime,
-    `UPDATE trajectories SET steps_json = '[]' WHERE id = ${sqlQuote(trajectoryId)}`,
-  );
-  expect(await service.getStats()).toMatchObject({ byModel: { fixture: 1 } });
   const detail = await service.getTrajectoryDetail(trajectoryId);
   expect(
     detail?.steps
@@ -254,21 +248,13 @@ it("reads complete persisted calls with filters and failures on the trajectory s
        WHERE id = ${sqlQuote(stepId)}`,
     );
   }
-  // Exercise records that predate dedicated steps, with persisted wide counters.
-  await executeRawSql(
-    fixture.runtime,
-    `UPDATE trajectories SET steps_json = (SELECT jsonb_agg(payload::jsonb ORDER BY ordinal)
-      FROM trajectory_steps WHERE trajectory_id = ${sqlQuote(trajectoryId)}),
-      total_prompt_tokens = 1073741824 WHERE id = ${sqlQuote(trajectoryId)}`,
-  );
-  await executeRawSql(
-    fixture.runtime,
-    `DELETE FROM trajectory_steps WHERE trajectory_id = ${sqlQuote(trajectoryId)}`,
-  );
-  await executeRawSql(
-    fixture.runtime,
-    `UPDATE trajectories SET total_prompt_tokens = 1073741824 WHERE id = ${sqlQuote(otherId)}`,
-  );
+  // Exercise persisted counters wider than a 32-bit sum.
+  for (const id of [trajectoryId, otherId]) {
+    await executeRawSql(
+      fixture.runtime,
+      `UPDATE trajectories SET total_prompt_tokens = 1073741824 WHERE id = ${sqlQuote(id)}`,
+    );
+  }
   expect(await service.getStats()).toMatchObject({
     byModel: { fixture: 1 },
     totalPromptTokens: 2147483648,
@@ -317,18 +303,12 @@ it("exports every owned match beyond viewer and archive page sizes", async () =>
   await service.endTrajectory(templateId, "completed");
   await executeRawSql(
     fixture.runtime,
-    `UPDATE trajectories SET steps_json = (SELECT jsonb_agg(payload::jsonb ORDER BY ordinal)
-      FROM trajectory_steps WHERE trajectory_id = ${sqlQuote(templateId)}) WHERE id = ${sqlQuote(templateId)}`,
-  );
-
-  await executeRawSql(
-    fixture.runtime,
     `INSERT INTO trajectories
     (id, trajectory_id, agent_id, source, status, start_time, end_time, duration_ms,
-     steps_json, metrics_json, reward_components_json, metadata_json, created_at, updated_at)
+     metrics_json, reward_components_json, metadata_json, created_at, updated_at)
     SELECT 'archive-' || n, 'archive-' || n, agent_id,
       CASE WHEN n <= 501 THEN 'zip-pages' ELSE 'archive-pages' END,
-      status, start_time, end_time, duration_ms, steps_json, metrics_json,
+      status, start_time, end_time, duration_ms, metrics_json,
       reward_components_json, metadata_json, created_at, updated_at
     FROM trajectories CROSS JOIN generate_series(1, 10001) n
     WHERE id = ${sqlQuote(templateId)}`,

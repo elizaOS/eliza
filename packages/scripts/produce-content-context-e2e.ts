@@ -386,7 +386,7 @@ function validateDatabase(bytes, runId, commit) {
     "database artifact",
   );
   if (
-    report.schema !== "eliza.context-inspector-db-state/v1" ||
+    report.schema !== "eliza.context-inspector-db-state/v2" ||
     report.engine !== "pglite" ||
     report.adapter !== "PgliteDatabaseAdapter" ||
     report.source !== "context-inspector-e2e"
@@ -396,32 +396,14 @@ function validateDatabase(bytes, runId, commit) {
   assertIdentity(report, runId, commit, "database artifact", true);
   const counts = exactKeys(
     report.counts,
-    [
-      "trajectories",
-      "declaredSteps",
-      "indexedSteps",
-      "normalizedStepRows",
-      "llmCalls",
-      "materializedTrajectories",
-      "snapshotBytes",
-    ],
+    ["trajectories", "declaredSteps", "stepRows", "llmCalls", "stepBytes"],
     "database counts",
   );
-  for (const key of [
-    "trajectories",
-    "declaredSteps",
-    "indexedSteps",
-    "llmCalls",
-    "materializedTrajectories",
-  ]) {
+  for (const key of ["trajectories", "declaredSteps", "stepRows", "llmCalls"]) {
     if (counts[key] !== 21)
       throw new Error(`database count is invalid: ${key}`);
   }
-  if (
-    counts.normalizedStepRows !== 0 ||
-    !Number.isSafeInteger(counts.snapshotBytes) ||
-    counts.snapshotBytes <= 21_000
-  ) {
+  if (!Number.isSafeInteger(counts.stepBytes) || counts.stepBytes <= 21_000) {
     throw new Error(
       "database state does not prove the expected persisted rows",
     );
