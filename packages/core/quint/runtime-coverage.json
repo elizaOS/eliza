@@ -206,5 +206,30 @@
 		"implementationTests": [
 			"packages/core/test/pii-scrub.lazy-drain.pglite.test.ts"
 		]
+	},
+	{
+		"id": "PiiScrubSettlement",
+		"model": "packages/core/quint/PiiScrubSettlement.qnt",
+		"sources": [
+			"packages/core/src/services/pii-scrub.ts",
+			"packages/core/src/security/pii-scrub-markers.ts",
+			"packages/core/src/security/pii-pseudonym-map-store.ts",
+			"packages/core/src/utils/batch-queue.ts"
+		],
+		"invariants": [
+			"CompletionRequiresReceipt",
+			"ConfirmedAttemptCannotRetry",
+			"NoPrematureExhaustion",
+			"DeduplicationRequiresMarker"
+		],
+		"status": "partial",
+		"limitations": [
+			"One exact content/ruleset key, two requests and four attempts per request. A confirmed marker permits completion. Observer rejection leaves the marker and attempt settled.",
+			"Simultaneous marker misses can both scrub and commit. Concurrent pseudonym-map updates, marker retirement, unconfirmed commit, model correctness and durable job restart remain outside this projection.",
+			"Real runtime and PGlite tests use synthetic tier-0 content and controlled adapter/observer outcomes. Fair progress assumes each enabled operation settles, with no success or time guarantee. LazyPiiDrain separately covers startup and retirement."
+		],
+		"implementationTests": [
+			"packages/core/test/pii-scrub.lazy-drain.pglite.test.ts"
+		]
 	}
 ]
