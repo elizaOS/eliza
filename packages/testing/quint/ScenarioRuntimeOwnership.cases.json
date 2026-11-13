@@ -6,12 +6,13 @@
     "packages/testing/scenario-runner/src/stability-subprocess-adapter.ts",
     "packages/testing/scripts/mocks/start-mocks.ts",
     "packages/testing/scenario-runner/src/runtime-factory.live-isolation.test.ts",
-    "packages/testing/scenario-runner/src/runtime-lifecycle.test.ts"
+    "packages/testing/scenario-runner/src/runtime-lifecycle.test.ts",
+    "packages/testing/scenario-runner/src/utils.ts"
   ],
   "conformance": "packages/testing/quint/check-scenario-runtime-ownership.mjs",
   "bounds": {
     "domain": "One scenario runtime with one competing acquisition, one known mock origin per LLM setting, independently modeled original environment and selected provider, and success/failure cleanup.",
-    "limitations": "The model abstracts URLs and mock origins as identities; only known leased/mock endpoints are classified. The fetch-restoring assignment returns normally while other owned disposers may fail and quarantine the process. Original environment values are restored even when originally synthetic. Conformance uses actual process ownership plus real loopback HTTP, not a live LLM or a complete generated-schedule refinement."
+    "limitations": "The model abstracts URLs and mock origins as identities; only known leased/mock endpoints are classified. The fetch-restoring assignment returns normally while other owned disposers may fail and quarantine the process. Original environment values are restored even when originally synthetic. Conformance uses actual process ownership plus real loopback HTTP, not a live LLM or a complete generated-schedule refinement. Known loopback aliases compare by protocol and port; a different address on the same local port is refused as ambiguous."
   },
   "cases": [
     {
