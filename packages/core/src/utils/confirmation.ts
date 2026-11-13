@@ -101,6 +101,15 @@ const NEGATIVE_WORDS = new Set([
 	"取消",
 	"아니",
 	"아니요",
+	"아뇨",
+	"안",
+	"못",
+	"마",
+	"마요",
+	"마세요",
+	"말아",
+	"말아요",
+	"말고",
 ]);
 
 /**
@@ -113,11 +122,18 @@ const UNSPACED_NEGATIVE_WORDS = [...NEGATIVE_WORDS].filter((word) =>
 	UNSPACED_SCRIPT.test(word),
 );
 
+/**
+ * Korean joins an ending to its word stem ("취소할게요" is "취소" and
+ * "할게요"), so a Korean word that starts with one of these stems is a no.
+ */
+const KOREAN_NEGATIVE_STEMS = ["아니", "않", "취소", "그만"];
+
 function isNegativeWord(word: string): boolean {
 	return (
 		NEGATIVE_WORDS.has(word) ||
 		(UNSPACED_SCRIPT.test(word) &&
-			UNSPACED_NEGATIVE_WORDS.some((negative) => word.includes(negative)))
+			UNSPACED_NEGATIVE_WORDS.some((negative) => word.includes(negative))) ||
+		KOREAN_NEGATIVE_STEMS.some((stem) => word.startsWith(stem))
 	);
 }
 
