@@ -364,6 +364,62 @@ test("paid lease renewals preserve one microphone and socket across minute bound
   expect(h.activeCaptures).toBe(0);
   expect(h.errors).toEqual([]);
 });
+test("foreign, expanded and delayed renewal acknowledgements cannot replace the active deadline", async () => {
+  const h = harness(false, undefined, true, true, true, true);
+  await h.client.start();
+  await h.settle();
+  const socket = h.sockets[0];
+  socket.frame({
+    t: "lease_extended",
+    sessionId: "other-session",
+    expiresAt: 1800000100000,
+  });
+  socket.frame({
+    t: "lease_extended",
+    sessionId: "session-1",
+    expiresAt: 1800000120001,
+  });
+  await h.advance(50_000);
+  socket.frame({
+    t: "lease_extended",
+    sessionId: "session-1",
+    expiresAt: 1800000110000,
+  });
+  socket.frame({
+    t: "lease_extended",
+    sessionId: "session-1",
+    expiresAt: 1800000060000,
+  });
+  await h.advance(20_000);
+  expect(h.mints).toBe(1);
+  expect(h.captures).toBe(1);
+  expect(h.client.state.phase).toBe("listening");
+  await h.client.stop();
+  socket.frame({
+    t: "lease_extended",
+    sessionId: "session-1",
+    expiresAt: 1800000160000,
+  });
+  await h.advance(60_000);
+  expect(h.client.state.phase).toBe("idle");
+  expect(h.mints).toBe(1);
+  expect(h.activeCaptures).toBe(0);
+  expect(h.errors).toEqual([]);
+});
+test("an unnegotiated renewal frame cannot suppress normal Cloud rotation", async () => {
+  const h = harness();
+  await h.client.start();
+  await h.settle();
+  h.sockets[0].frame({
+    t: "lease_extended",
+    sessionId: "session-1",
+    expiresAt: 1800000110000,
+  });
+  await h.advance(50_000);
+  expect(h.mints).toBe(2);
+  expect(h.captures).toBe(1);
+  expect(h.maxCaptures).toBe(1);
+});
 test("three Cloud budget idle rotations use fresh consent and one capture, with no transcript or paid TTS replay", async () => {
   const h = harness();
   await h.client.start();

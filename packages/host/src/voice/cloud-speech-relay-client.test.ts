@@ -245,6 +245,28 @@ test("negotiated paid extensions retain the Cloud socket and notify the owning h
   expect(f.connections).toBe(1);
   await client.close();
 });
+test("an owner change fences a paid extension before its host callback", async () => {
+  const f = await fixture();
+  f.mode("renewable");
+  const extensions: number[] = [];
+  const client = await createCloudSpeechRelayPorts({
+    ...f.options,
+    onLeaseExtended: (deadline) => extensions.push(deadline),
+  });
+  const stt = client.speechPorts.openStt(() => {});
+  f.changeOwner();
+  f.send({
+    t: "extended",
+    expiresAt: new Date(Date.parse(f.expiry) + 50_000).toISOString(),
+  });
+  await until(() =>
+    f.diagnostics.some((event) => event.cause === "message_rejected"),
+  );
+  expect(extensions).toEqual([]);
+  expect(() => stt.sendAudioChunk(new Uint8Array(3200))).toThrow();
+  expect(f.pcm).toHaveLength(0);
+  await client.close();
+});
 test("server-only client uses account auth only for fixed HTTP routes, then canonical STT and one streamed Sonic context", async () => {
   const f = await fixture(),
     client = await createCloudSpeechRelayPorts(f.options),

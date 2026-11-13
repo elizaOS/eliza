@@ -876,6 +876,8 @@ it("a paid Cloud renewal updates the active host lease without reopening speech"
   ws.send(JSON.stringify({ t: "bye" }));
   await closed;
   expect(() => relay.assertCurrent()).toThrow();
+  expect(() => relay.onLeaseExtended?.(clock + 60000)).toThrow();
+  expect(opens).toBe(1);
 });
 
 it("ReadAloud requires current owner auth, strict text and direct configuration before provider dispatch", async () => {
