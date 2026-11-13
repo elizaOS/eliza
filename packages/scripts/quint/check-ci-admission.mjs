@@ -155,7 +155,7 @@ assert.equal(
   canonical.jobs["quint-result"].steps.find(
     (step) => step.name === "Verify complete disjoint model coverage",
   ).run,
-  "node packages/scripts/check-quint-shards.ts test-results/quint-canonical-manifests 4",
+  "bun packages/scripts/check-quint-shards.ts test-results/quint-canonical-manifests 4",
 );
 assert(canonical.jobs.required.needs.includes("quint-result"));
 const canonicalGate = canonical.jobs.required.steps.find(

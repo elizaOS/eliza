@@ -126,7 +126,7 @@ jobs:
       - name: Build core contract
         run: bun run build:core
       - name: Setup Java for Quint verification
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78
         with:
           distribution: temurin
           java-version: "21"

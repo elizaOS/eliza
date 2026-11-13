@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/contracts",
-  "version": "2.0.5",
+  "version": "2.0.6",
   "description": "Browser-safe shared domain contracts and validation for Eliza hosts, plugins and renderers.",
   "type": "module",
   "license": "MIT",
