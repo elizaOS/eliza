@@ -1,0 +1,2195 @@
+{
+  "modules": {
+    "bun.lock": [],
+    "package.json": [],
+    "packages/agent/native-host/private-runtime-launch.mjs": [
+      "preparePrivateRuntimeProfile",
+      "runtimeEnvironment",
+      "startPrivateRuntimeProcess",
+      "writePrivateRuntimeJson"
+    ],
+    "packages/agent/package.json": [],
+    "packages/agent/scripts/build-mobile-bundle.ts": [],
+    "packages/agent/scripts/mobile-bundle-dependencies.ts": [
+      "readMobileBundleDependencies"
+    ],
+    "packages/agent/scripts/mobile-wallet-connectors.ts": [],
+    "packages/agent/src/api/conversation-routes.ts": [],
+    "packages/agent/src/api/device-action-routes.ts": [],
+    "packages/agent/src/api/native-view-renderer.ts": [],
+    "packages/agent/src/api/pending-request-map.ts": [],
+    "packages/agent/src/api/server.ts": [],
+    "packages/agent/src/api/view-installations.ts": [],
+    "packages/agent/src/api/view-interaction-host.ts": [],
+    "packages/agent/src/api/views-routes.ts": [],
+    "packages/agent/src/runtime/build-character-config.ts": [],
+    "packages/agent/src/runtime/core-plugins.ts": [],
+    "packages/agent/src/runtime/eliza.ts": [],
+    "packages/agent/src/runtime/optional-plugin-imports.ts": [],
+    "packages/agent/src/runtime/runtime-settings.ts": [],
+    "packages/agent/src/runtime/sandbox-character.ts": [],
+    "packages/agent/src/triggers/runtime.ts": [],
+    "packages/agent/test/mobile-workspace-exports.test.ts": [],
+    "packages/app/app.config.ts": [],
+    "packages/app/package.json": [],
+    "packages/app/platforms/android/app/src/main/elizavoice-jni/CMakeLists.txt": [],
+    "packages/app/platforms/android/app/src/main/elizavoice-jni/elizavoice-jni.cpp": [],
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaAgentService.java": [],
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaVoiceNative.java": [],
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/IpcStartupRecovery.java": [],
+    "packages/app/platforms/android/sense/consumer.gradle": [],
+    "packages/app/platforms/android/sense/src/main/java/ai/eliza/sense": [],
+    "packages/app/scripts/aosp/compile-libllama-paths.ts": [],
+    "packages/app/scripts/aosp/compile-libllama.ts": [],
+    "packages/app/scripts/aosp/compile-shim.ts": [],
+    "packages/app/scripts/aosp/vulkan-source-contract.ts": [],
+    "packages/app/scripts/aosp/zig-toolchain.ts": [],
+    "packages/app/scripts/build-helpers/arm64-simd.ts": [],
+    "packages/app/scripts/build-helpers/elizavoice-build-flags.ts": [],
+    "packages/app/scripts/build-helpers/omnivoice-merged.ts": [],
+    "packages/app/scripts/build-helpers/verify-fused-symbols.ts": [],
+    "packages/app/scripts/lib/android-bun-artifacts.lock.json": [],
+    "packages/app/scripts/lib/android-fixture-observation.mjs": [
+      "androidFixtureObserver"
+    ],
+    "packages/app/scripts/lib/android-fixture-reboot.mjs": [
+      "rebootAndroidFixture"
+    ],
+    "packages/app/scripts/lib/android-manifest-facts.mjs": [
+      "manifestFacts",
+      "parseXmlTree"
+    ],
+    "packages/app/scripts/lib/android-runtime-packaging.ts": [],
+    "packages/app/scripts/lib/committed-source.mjs": [],
+    "packages/app/scripts/lib/device-lease.ts": [
+      "acquireDeviceLease",
+      "deviceLeaseStateDir"
+    ],
+    "packages/app/scripts/lib/immutable-workspace-source.mjs": [
+      "verifyCommittedWorkspace"
+    ],
+    "packages/app/scripts/lib/instrumentation-result.mjs": [
+      "requireInstrumentationInterruption",
+      "requireInstrumentationSuccess"
+    ],
+    "packages/app/scripts/lib/isolated-android-test.mjs": [
+      "runIsolatedAndroidTest"
+    ],
+    "packages/app/scripts/lib/isolated-android-user-test.mjs": [
+      "runIsolatedAndroidUserTest"
+    ],
+    "packages/app/scripts/lib/isolated-android-user.mjs": [
+      "withIsolatedAndroidUser"
+    ],
+    "packages/app/scripts/lib/repo-root.ts": [],
+    "packages/app/scripts/lib/stage-android-agent.ts": [],
+    "packages/app/scripts/mobile/android/build-consumer.mjs": [
+      "buildAndroidConsumer"
+    ],
+    "packages/app/scripts/mobile/android/consumer-host.mjs": [
+      "generateAndroidConsumerHost"
+    ],
+    "packages/app/scripts/mobile/android/consumer-host/app.gradle": [],
+    "packages/app/scripts/mobile/android/consumer-host/toolchain.json": [],
+    "packages/app/scripts/mobile/android/hosted-fixture/ci-emulator-diagnostics.mjs": [
+      "captureFixtureDisplayEvidence"
+    ],
+    "packages/app/scripts/mobile/android/hosted-fixture/ci-emulator-display.mjs": [
+      "assertFixtureIdentity",
+      "prepareFixtureDisplay",
+      "requireHostedFixtureEnvironment"
+    ],
+    "packages/app/scripts/mobile/android/hosted-fixture/webview-provider.mjs": [
+      "candidate",
+      "createHostedWebViewProvisioner"
+    ],
+    "packages/app/scripts/mobile/android/resident-host-sources.mjs": [
+      "RESIDENT_HOST_CLASSES",
+      "RESIDENT_NOTIFICATION_CLASSES",
+      "residentHelperKind",
+      "residentHostIdentity",
+      "rewriteResidentClass",
+      "stageResidentHostSources"
+    ],
+    "packages/app/scripts/mobile/android/templates": [],
+    "packages/app/scripts/mobile/artifact-inspection/apk-distribution.mjs": [
+      "apkArchiveFacts",
+      "apkDistributionProblems",
+      "extractApkWebPayload",
+      "parseApkSignerDigest",
+      "readApk",
+      "readApkEntries",
+      "readApkSignerDigest"
+    ],
+    "packages/app/scripts/mobile/context.ts": [],
+    "packages/app/scripts/mobile/toolchain.ts": [
+      "javaMajorVersion",
+      "resolveAndroidSdkRoot",
+      "resolveJavaHome"
+    ],
+    "packages/app/scripts/paradee-voice/build-native.ts": [],
+    "packages/app/scripts/paradee-voice/speech-pipeline/LocalSpeechEngineTest.java": [],
+    "packages/app/scripts/stage-desktop-fused-lib.ts": [],
+    "packages/app/scripts/stage-elizavoice-lib.ts": [],
+    "packages/app/src/api/auth-pairing-routes.ts": [],
+    "packages/app/src/api/route-auth-policy.ts": [],
+    "packages/app/src/api/standalone-asr-service.ts": [],
+    "packages/app/src/api/standalone-speech-routes.ts": [],
+    "packages/app/src/api/standalone-speech-service.ts": [],
+    "packages/app/src/runtime/dev-server.ts": [],
+    "packages/app/src/runtime/managed-google-agent/calendar-read-timing.ts": [
+      "createCalendarReadTiming"
+    ],
+    "packages/app/src/runtime/managed-google-agent/index.ts": [
+      "GoogleAgentAccess",
+      "NativeGoogleBinding",
+      "boundedServiceJson",
+      "createManagedGoogleAgentBroker",
+      "createManagedGoogleAgentHost",
+      "createNativeGoogleCloudPort",
+      "managedGoogleRequest",
+      "object",
+      "readGoogleAgentAccessFile",
+      "startManagedGoogleAgentHost",
+      "startNativeGoogleAgentHost"
+    ],
+    "packages/app/src/runtime/managed-google-agent/managed-google-agent-broker.ts": [
+      "createManagedGoogleAgentBroker"
+    ],
+    "packages/app/src/runtime/managed-google-agent/managed-google-agent-host.ts": [
+      "GoogleAgentRefusal"
+    ],
+    "packages/app/src/runtime/managed-google-agent/managed-google-calendar-read.ts": [
+      "parseManagedGoogleCalendarFeed",
+      "parseManagedGoogleCalendars"
+    ],
+    "packages/app/src/runtime/managed-google-agent/managed-google-failure-stage.ts": [
+      "managedGoogleFailureStage",
+      "managedGoogleTransportCodes"
+    ],
+    "packages/app/src/runtime/managed-google-agent/managed-google-route-policy.ts": [],
+    "packages/app/src/runtime/managed-google-agent/native-google-cloud-port.ts": [
+      "createNativeGoogleCloudPort"
+    ],
+    "packages/app/src/runtime/native-managed-google-host.ts": [],
+    "packages/app/src/runtime/native-runtime-profile.ts": [],
+    "packages/app/test/android/sense-fixtures/write-listener-apk.py": [],
+    "packages/app/test/android/sense.test.mjs": [],
+    "packages/app/test/helpers/real-runtime.ts": [],
+    "packages/auth/android/build.gradle": [],
+    "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudKeyRevocation.java": [],
+    "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInEnvironment.java": [],
+    "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java": [],
+    "packages/auth/android/test/ai/eliza/auth/cloud/CloudSignInContractTest.java": [],
+    "packages/auth/android/test/org/json/JSONObject.java": [],
+    "packages/auth/src/auth/cloud-resident-binding.ts": [
+      "CloudResidentBindingController",
+      "CloudResidentBindingError",
+      "ResidentAdmission",
+      "ResidentPlanAdmissionRecord",
+      "ResidentRebindQueue",
+      "parseResidentPlanAdmission",
+      "recentResidentPlanAdmission"
+    ],
+    "packages/auth/src/auth/native-cloud-sign-in.ts": [
+      "NativeCloudSignInAuthenticated",
+      "NativeCloudSignInCodeStarted",
+      "NativeCloudSignInError",
+      "NativeCloudSignInFailureCode",
+      "NativeCloudSignInGoogleMfaRequired",
+      "NativeCloudSignInGoogleOutcome",
+      "NativeCloudSignInMfaRequired",
+      "NativeCloudSignInPort",
+      "nativeCloudSignInFailureMessage",
+      "nativeSignInAuthenticated",
+      "nativeSignInCodeStarted",
+      "nativeSignInGoogleOutcome",
+      "nativeSignInReadiness",
+      "nativeSignInVerified",
+      "normalizeNativeSignInCode",
+      "validNativeSignInEmail",
+      "validNativeSignInPhone"
+    ],
+    "packages/auth/src/server/embedded.ts": [],
+    "packages/cloud/api/package.json": [],
+    "packages/cloud/deploy/src/cli.ts": [],
+    "packages/cloud/scripts/admin/dev/cloud-api-dev.ts": [],
+    "packages/cloud/sdk/native-host/subscription-grant.d.mts": [],
+    "packages/cloud/sdk/native-host/subscription-grant.mjs": [],
+    "packages/cloud/sdk/src/account-billing-snapshot.ts": [],
+    "packages/cloud/sdk/src/cloud-account-billing.ts": [
+      "CloudAccountBillingClient",
+      "CloudBillingError",
+      "CloudBillingRequest",
+      "CloudBillingResponse"
+    ],
+    "packages/cloud/sdk/src/subscription-entitlement.ts": [
+      "CHOOSE_PLAN_LABEL",
+      "ENTITLEMENT_TYPE",
+      "EntitlementError",
+      "EntitlementRefresher",
+      "EntitlementSource",
+      "FallbackPlan",
+      "MANAGE_PLAN_LABEL",
+      "OrganizationCreditBalance",
+      "PlanAdmission",
+      "PlanAllowance",
+      "PlanStatus",
+      "RedeemResult",
+      "ServiceLimit",
+      "SubscriptionCopy",
+      "SubscriptionDescription",
+      "SubscriptionRedeemError",
+      "SubscriptionSummary",
+      "SubscriptionView",
+      "allowanceText",
+      "checkEntitlement",
+      "clearEntitlementKeyCache",
+      "describeSubscription",
+      "isEntitlementSignInFailure",
+      "organizationCreditFromLimits",
+      "planAdmission",
+      "readServiceLimit",
+      "redeemFailureMessage",
+      "redeemSuccessMessage",
+      "retryDuration",
+      "serviceLimitMessage",
+      "serviceLimitNextChange",
+      "subscriptionSummary"
+    ],
+    "packages/cloud/shared/src/lib/auth/android-asset-links.ts": [],
+    "packages/contracts/src/browser-address-input.ts": [],
+    "packages/contracts/src/browser-request-grounding.ts": [
+      "authoredBrowserDestination",
+      "browserDestinationMatches"
+    ],
+    "packages/contracts/src/calendar-linked-sync.ts": [
+      "LinkedCalendarLocalPort",
+      "LinkedCalendarLocalSnapshot",
+      "LinkedCalendarProviderPort",
+      "LinkedCalendarReconciler",
+      "LinkedCalendarSemanticEvent",
+      "linkedCalendarSemanticDigest"
+    ],
+    "packages/contracts/src/calendar.ts": [
+      "CreateLifeOpsCalendarEventRequest",
+      "GetLifeOpsCalendarFeedRequest",
+      "LifeOpsCalendarEvent",
+      "LifeOpsCalendarEventUpdate",
+      "LifeOpsCalendarFeed",
+      "LifeOpsCalendarSummary",
+      "LifeOpsLinkedCalendarControl",
+      "LifeOpsLinkedCalendarEventView",
+      "LifeOpsNextCalendarEventContext",
+      "UpdateLifeOpsLinkedCalendarControlRequest",
+      "isCalendarReadFailureCode"
+    ],
+    "packages/contracts/src/client-turn-observation.ts": [
+      "ClientCalendarDayObservation",
+      "ClientTurnObservationSupport",
+      "parseClientCalendarDayObservation",
+      "parseClientTurnObservation",
+      "readClientTurnObservationPeerSupport"
+    ],
+    "packages/contracts/src/contracts/chat.ts": [],
+    "packages/contracts/src/contracts/remote-agent-pairing.ts": [
+      "normalizeRemoteAgentPairingInstanceId"
+    ],
+    "packages/contracts/src/contracts/theme.ts": [],
+    "packages/contracts/src/deletion-window.ts": [
+      "DeferredDeletionEntry",
+      "DeferredDeletionsBridge",
+      "DeletionDeadline",
+      "PendingDeletion",
+      "claimDeletion",
+      "deletionDeadline",
+      "deletionWindow",
+      "pendingDeletionNotices",
+      "reminderDeletionRefusal",
+      "rendererDeletionClock",
+      "undoConfirmed"
+    ],
+    "packages/contracts/src/device-action-execution.ts": [
+      "createDeviceActionExecution"
+    ],
+    "packages/contracts/src/device-reviews.ts": [
+      "CALENDAR_AVAILABILITY_CAPABILITY",
+      "CALENDAR_AVAILABILITY_MAX_CALENDARS",
+      "CalendarAvailabilityOperation",
+      "CalendarAvailabilityResult",
+      "DEVICE_REVIEW_TYPES",
+      "NamedTargetOperation",
+      "NotesSearchOperation",
+      "calendarAvailability",
+      "calendarEventOverlapsRange",
+      "resolveNamedTarget"
+    ],
+    "packages/contracts/src/iana-tlds.ts": [],
+    "packages/contracts/src/lifeops-connector-degradation.ts": [],
+    "packages/contracts/src/lifeops/connectors.ts": [],
+    "packages/contracts/src/lifeops/events.ts": [],
+    "packages/contracts/src/lifeops/gmail.ts": [],
+    "packages/contracts/src/lifeops/goals.ts": [],
+    "packages/contracts/src/lifeops/health.ts": [],
+    "packages/contracts/src/lifeops/inbox.ts": [],
+    "packages/contracts/src/lifeops/policy.ts": [],
+    "packages/contracts/src/lifeops/reminders.ts": [],
+    "packages/contracts/src/lifeops/scheduling.ts": [],
+    "packages/contracts/src/lifeops/telemetry.ts": [],
+    "packages/contracts/src/lifeops/workflows.ts": [],
+    "packages/contracts/src/mms-send.ts": ["MMS_MAX_ATTACHMENTS"],
+    "packages/contracts/src/native-address-book.ts": [
+      "ContactDetail",
+      "ContactDraft",
+      "contactDraftProblem",
+      "parseContactDetail",
+      "parseContactRemove",
+      "parseContactSave"
+    ],
+    "packages/contracts/src/native-notes-query.ts": [
+      "NativeNotesQueryOperation",
+      "NativeNotesReadReply",
+      "NativeNotesReadReplyHint",
+      "NativeNotesReadReplyOrigin",
+      "isNativeNotesQuery",
+      "validateNativeNotesReadReplyHint",
+      "validateNativeNotesReadReplyOrigin"
+    ],
+    "packages/contracts/src/native-telephony-session.ts": [
+      "createSmsSession",
+      "mmsProblemLabel",
+      "mmsReceiptLabel",
+      "smsReceiptLabel"
+    ],
+    "packages/contracts/src/native-telephony.ts": [
+      "MessageDirection",
+      "MessageStatus",
+      "MmsAttachmentDraft",
+      "MmsReview",
+      "MmsReviewProblem",
+      "MmsSendResult",
+      "PhoneInfo",
+      "PhoneLine",
+      "SMS_DIRECT_MAX_RECIPIENTS",
+      "SMS_MAX_RECIPIENTS",
+      "SMS_MAX_THREADS",
+      "SmsMessage",
+      "SmsReview",
+      "SmsReviewProblem",
+      "SmsSendResult",
+      "SmsSendState",
+      "SmsThread",
+      "TelephonyAccessKind",
+      "TelephonyCallLogEntry",
+      "TelephonyClient",
+      "TelephonyContactCard",
+      "TelephonyHandoffResult",
+      "TelephonyHandoffStatus",
+      "TelephonyNativePlugin",
+      "TelephonyPermissionState",
+      "TelephonyRole",
+      "TelephonyRoleState",
+      "TelephonyStatus",
+      "TelephonySubscription",
+      "TelephonyUnavailable",
+      "advanceSmsState",
+      "createTelephonyClient",
+      "detectTelephonyProfile",
+      "isIncompleteSmsRow",
+      "normalizePhoneNumber",
+      "parseContacts",
+      "parseHandoff",
+      "parseMessages",
+      "parseSmsJournal",
+      "parseSmsSendResult",
+      "parseTelephonyStatus",
+      "parseThreads",
+      "registerTelephonyProfile",
+      "reviewMms",
+      "reviewSms",
+      "smsBindingHash",
+      "smsBindingText",
+      "smsMayBeReviewedAgain",
+      "telephonyProfile"
+    ],
+    "packages/contracts/src/notice-routes.ts": [
+      "NoticeOwnerCoordinator",
+      "NoticeTapNotice",
+      "PendingNoticeTap",
+      "resolveNoticeTap",
+      "revalidateWorkflowApprovalNotice"
+    ],
+    "packages/contracts/src/phone-dial.ts": [
+      "CONTACT_LOOKUP_CAPABILITY",
+      "PHONE_DIAL_CAPABILITY",
+      "PhoneDialOperation",
+      "PhoneDialResult",
+      "contactLookupMatches",
+      "isPhoneDial",
+      "phoneDialCapabilityAvailable",
+      "phoneDialReceiptOutcome",
+      "phoneDialResultText",
+      "telephonyDeviceCapabilities",
+      "validatePhoneDial",
+      "validatePhoneDialResult"
+    ],
+    "packages/contracts/src/phone-workflow.ts": [
+      "PHONE_SCHEDULE_ADMISSION_WINDOW_MS",
+      "PhoneTimeTrigger",
+      "PhoneWorkflowCatalog",
+      "PhoneWorkflowSaveReceipt",
+      "PhoneWorkflowSpec",
+      "PhoneWorkflowTrigger",
+      "assertPhoneWorkflowCapabilities",
+      "parsePhoneWorkflowCatalog",
+      "phoneTriggerClockChangeNote",
+      "phoneWorkflowLocalDay",
+      "phoneWorkflowLocalDayBounds",
+      "validatePhoneWorkflowSpec",
+      "zoneOffsetMinutes"
+    ],
+    "packages/contracts/src/sms-send.ts": [
+      "SMS_SEND_CAPABILITY",
+      "SmsSendOperation",
+      "SmsSendResult",
+      "isSmsSend",
+      "smsBindingText",
+      "smsReceiptOutcome",
+      "validateSmsResult",
+      "validateSmsSend"
+    ],
+    "packages/contracts/src/stated-clock-time.ts": [],
+    "packages/contracts/src/telephony-actions.ts": [
+      "CONTACT_WRITE_CAPABILITY",
+      "MESSAGES_READ_CAPABILITY",
+      "PHONE_CALL_CAPABILITY",
+      "SMS_COMPOSE_CAPABILITY",
+      "TelephonyActionOperation",
+      "VOICEMAIL_DELETE_CAPABILITY",
+      "VOICEMAIL_READ_CAPABILITY",
+      "isTelephonyAction",
+      "telephonyActionCapabilities",
+      "validateTelephonyAction"
+    ],
+    "packages/contracts/src/workflow-approval-poster.ts": [
+      "createWorkflowApprovalPoster",
+      "definiteNoticeFailure"
+    ],
+    "packages/contracts/src/workflow-client.ts": [
+      "PhoneWorkflowSaveExpectation",
+      "RemoteWorkflow",
+      "WorkflowActivationRejected",
+      "WorkflowAdmissionRejected",
+      "WorkflowApproval",
+      "WorkflowApprovalReceipt",
+      "WorkflowClient",
+      "WorkflowHttpError",
+      "WorkflowLifecycleReceipt",
+      "WorkflowLifecycleRejected",
+      "WorkflowMetadataReceipt",
+      "WorkflowMetadataRejected",
+      "WorkflowRequest",
+      "WorkflowRun",
+      "WorkflowRunOccurrence",
+      "WorkflowRunReconciliation",
+      "WorkflowTypedRejected"
+    ],
+    "packages/contracts/src/workflow-device.ts": [
+      "SELECTED_REMINDERS_WINDOW",
+      "WorkflowDeviceBinding",
+      "WorkflowDeviceTarget",
+      "WorkflowPhoneReview",
+      "WorkflowReadOperation",
+      "WorkflowReadResult",
+      "WorkflowReminderReadOperation",
+      "WorkflowReminderRow",
+      "assertWorkflowOperation",
+      "parseWorkflowBinding",
+      "parseWorkflowPhoneReview",
+      "parseWorkflowRead",
+      "parseWorkflowReminderRead",
+      "validateWorkflowReadResult",
+      "workflowApprovalNotice",
+      "workflowBytes",
+      "workflowId",
+      "workflowObject",
+      "workflowReminderRevisionInput",
+      "workflowSha"
+    ],
+    "packages/contracts/src/workflow-intents.ts": [
+      "WorkflowIntentArchive",
+      "WorkflowIntentOwner",
+      "WorkflowIntentStore",
+      "emptyWorkflowIntentArchive",
+      "storageWorkflowIntentBackend",
+      "workflowIntentKey",
+      "workflowIntentOwnerPrefix"
+    ],
+    "packages/contracts/src/workflow-scope.ts": [
+      "WORKFLOW_OPERATION_LABELS",
+      "checkWorkflowScope",
+      "workflowScopeCategories"
+    ],
+    "packages/core/src/access-control/role-primitives.ts": [],
+    "packages/core/src/errors.ts": [],
+    "packages/core/src/events.ts": [
+      "NAVIGATE_VIEW_EVENT",
+      "NavigateViewDetail"
+    ],
+    "packages/core/src/i18n/language.ts": [],
+    "packages/core/src/index.ts": [],
+    "packages/core/src/logger.ts": [],
+    "packages/core/src/logging.ts": [],
+    "packages/core/src/messaging/interaction-serialize.ts": [],
+    "packages/core/src/plugin-lifecycle.ts": [],
+    "packages/core/src/read-memo.ts": ["SingleFlightMemo"],
+    "packages/core/src/runtime/embeddings.ts": [],
+    "packages/core/src/runtime/model-policy.ts": [],
+    "packages/core/src/runtime/room-handler-queue.ts": [],
+    "packages/core/src/runtime/single-flight-memo.ts": [],
+    "packages/core/src/runtime/system-prompt.ts": [],
+    "packages/core/src/runtime/turn-controller.ts": [],
+    "packages/core/src/schema-types.ts": [],
+    "packages/core/src/security/log-redaction.ts": [],
+    "packages/core/src/services/task.ts": ["TaskService"],
+    "packages/core/src/services/trigger-scheduling.ts": [],
+    "packages/core/src/speech.ts": [],
+    "packages/core/src/spoken-text.ts": [],
+    "packages/core/src/types/components.ts": [],
+    "packages/core/src/types/effects.ts": ["normalizeEffectReceipts"],
+    "packages/core/src/types/json.ts": [],
+    "packages/core/src/types/model.ts": [],
+    "packages/core/src/types/permissions.ts": [],
+    "packages/core/src/types/plugin.ts": [],
+    "packages/core/src/types/primitives.ts": [],
+    "packages/core/src/types/schema.ts": [],
+    "packages/core/src/types/surface-manifest.ts": [],
+    "packages/core/src/types/system-notice.ts": ["systemNoticeText"],
+    "packages/core/src/types/view-capability.ts": [],
+    "packages/core/src/types/view-kind.ts": [],
+    "packages/core/src/utils/errors.ts": [],
+    "packages/core/src/utils/reasoning-tags.ts": [],
+    "packages/core/src/utils/stage-directions.ts": [],
+    "packages/core/src/utils/string-boundaries.ts": [],
+    "packages/core/src/utils/type-guards.ts": [],
+    "packages/core/src/utils/uuid.ts": ["validateUuid"],
+    "packages/core/src/view-interaction.ts": ["ViewActionHandoff"],
+    "packages/core/src/views/completed-action-navigation.ts": [
+      "createCompletedActionNavigationState"
+    ],
+    "packages/core/src/views/view-action-handoff.ts": ["findViewActionHandoff"],
+    "packages/core/src/views/view-interact-protocol.ts": [
+      "parseViewInteractionClientId"
+    ],
+    "packages/host/native-host/provider-key-session.mjs": [
+      "createProviderKeySession"
+    ],
+    "packages/host/src/character-presets.characters.ts": [],
+    "packages/host/src/contracts/cloud-topology.ts": [],
+    "packages/host/src/contracts/service-routing.ts": [],
+    "packages/host/src/voice.ts": [],
+    "packages/host/src/voice/ui-context.ts": [],
+    "packages/os/android/aosp.lock.json": [],
+    "packages/os/android/devices/pixel10a": [],
+    "packages/os/android/patches/soong-app-native": [],
+    "packages/os/android/sense/config.xml": [],
+    "packages/os/android/sense/systemui/assist/manifest.json": [],
+    "packages/os/android/sense/systemui/chip/source": [],
+    "packages/os/android/signing/key-manifest.json": [],
+    "packages/os/android/sources/pixel10a-stallion.json": [],
+    "packages/os/browser/README.md": [],
+    "packages/os/browser/scripts/chromium-component.mjs": [],
+    "packages/os/scripts/__tests__/fixtures/aosp-releasetools": [],
+    "packages/os/scripts/__tests__/stage-launcher-overlay.node.test.ts": [],
+    "packages/os/scripts/android/aosp-clock-handlers.mjs": [
+      "clockActions",
+      "clockProductRequirement",
+      "verifyAospClockHandlers"
+    ],
+    "packages/os/scripts/android/aosp-ota-update.mjs": [
+      "main",
+      "parseArgs",
+      "releaseRecordProblems"
+    ],
+    "packages/os/scripts/android/aosp-release-record.mjs": [
+      "RECORD_KIND",
+      "compatibilityRecord",
+      "main",
+      "parseProperties"
+    ],
+    "packages/os/scripts/android/aosp-release-signing.mjs": [
+      "AVB_SIGNABLE_PARTITIONS",
+      "PKCS11_JAVA_ARGS",
+      "X509_KEYS",
+      "gitWorkTreeProblem",
+      "isWithin",
+      "parseSigningArgs",
+      "signRelease",
+      "signingCommands",
+      "signingMain"
+    ],
+    "packages/os/scripts/android/apk-release-record.mjs": [
+      "CLOUD_VOICE_CHECKS",
+      "DOMAIN_SCRIPT",
+      "apkReleaseBlockers",
+      "apkUpdateAdmission",
+      "cloudVoiceAdmission",
+      "compareDomains",
+      "inPlaceUpdateFailures",
+      "integrityQuery",
+      "parseDomainInventory",
+      "parseIntegrityExport",
+      "readbackInventory"
+    ],
+    "packages/os/scripts/android/cuttlefish-product.mjs": [
+      "CUTTLEFISH_TARGETS",
+      "cuttlefishProductProblems"
+    ],
+    "packages/os/scripts/android/generate-release-keys.ts": [
+      "encodeAvbPublicKey",
+      "loadKeyManifest"
+    ],
+    "packages/os/scripts/android/image-apk-admission.mjs": [
+      "aaptManifestTree",
+      "admitImageApk",
+      "manifestTreeIsDebuggable",
+      "readApkBuildFlags",
+      "reviewedSourceOverrides"
+    ],
+    "packages/os/scripts/android/image-capability.mjs": [
+      "IMAGE_FEATURE_VERSION",
+      "assertProvisioningResourceDefault",
+      "imageFeatureName",
+      "renderImageCapability",
+      "stagedImageFeature",
+      "writeImageCapability",
+      "writeImageProvisioningOverlay"
+    ],
+    "packages/os/scripts/android/launcher-provisioning.mjs": [
+      "manifestComponents",
+      "provisioningComponents",
+      "renderProvisioningOverlay"
+    ],
+    "packages/os/scripts/android/pixel10a-product.ts": [
+      "assertPixel10aSourceLayout",
+      "composePixel10aProduct",
+      "enforceLauncherLockScreenPolicy",
+      "renderSensePermissions"
+    ],
+    "packages/os/scripts/android/pixel10a-release.mjs": [
+      "channelDistributionProblems",
+      "channelSigningProblems",
+      "placeholderFields",
+      "releaseDescriptorProblems"
+    ],
+    "packages/os/scripts/android/secure-camera.mjs": [
+      "SECURE_CAMERA_CONTRACT",
+      "assertNoLockScreenSurface",
+      "loadSecureCameraContract",
+      "secureCameraActions",
+      "secureCameraComponent",
+      "secureCameraPackage",
+      "verifySecureCameraImage",
+      "verifySecureCameraSource",
+      "writeSecureCameraOverlay"
+    ],
+    "packages/os/scripts/android/sense-listener.mjs": [
+      "FORBIDDEN",
+      "INDICATOR_EXEMPT_ROLES",
+      "LISTENER_BUNDLE_MANIFEST",
+      "UNPRIVILEGED",
+      "VOICE_HOST_RECORD",
+      "apkPermissions",
+      "checkListenerDescriptor",
+      "checkListenerOverlay",
+      "checkListenerPermissions",
+      "checkListenerSpeechBundle",
+      "checkListenerSpeechNatives",
+      "listenerPackage",
+      "privappPermissions",
+      "stageSenseApk",
+      "verifyAospListener"
+    ],
+    "packages/os/scripts/android/sense-systemui.mjs": ["senseSystemuiPatch"],
+    "packages/os/scripts/android/sense.test.mjs": [],
+    "packages/os/scripts/android/soong-app-native.mjs": ["soongAppNativePatch"],
+    "packages/os/scripts/android/stage-android-native.py": [],
+    "packages/os/scripts/android/stage-launcher-overlay.ts": [],
+    "packages/os/scripts/android/system-updater-staging.mjs": [
+      "admitSystemUpdater"
+    ],
+    "packages/os/scripts/android/vendor-api.mjs": ["assertStockVendorApi"],
+    "packages/os/scripts/android/verify-device-source.mjs": [
+      "verifyDeviceSource"
+    ],
+    "packages/os/scripts/android/verify-launcher-image.mjs": [
+      "main",
+      "parseArgs",
+      "validateExpectation",
+      "verifiedBootProblem",
+      "verifyLauncherImage"
+    ],
+    "packages/os/scripts/android/verify-source-lock.ts": [
+      "loadProfile",
+      "verifyProfileSource"
+    ],
+    "packages/os/test/fixtures/sense-systemui": [],
+    "packages/scripts/build-private-workspace-packages.ts": [],
+    "packages/scripts/check-required-playwright-results.ts": [
+      "checkRequiredPlaywrightResults"
+    ],
+    "packages/scripts/ensure-workspace-symlinks.ts": [],
+    "packages/scripts/plugins/plugin-workflow/build-workflow-artifact.ts": [],
+    "packages/scripts/run-turbo.ts": [],
+    "packages/ui/src/accessibility/screen-focus.ts": [
+      "createScreenFocus",
+      "isExposed"
+    ],
+    "packages/ui/src/agent-surface/AgentSurfaceContext.hooks.ts": [],
+    "packages/ui/src/agent-surface/registry.ts": [],
+    "packages/ui/src/agent-surface/sensitive.ts": [],
+    "packages/ui/src/agent-surface/types.ts": [],
+    "packages/ui/src/agent-surface/useAgentElement.ts": [],
+    "packages/ui/src/android-cloud": [],
+    "packages/ui/src/api/api-error.ts": [],
+    "packages/ui/src/api/auth/csrf-cookie.ts": [],
+    "packages/ui/src/api/client-base.ts": [],
+    "packages/ui/src/api/conversation-turn-controller.ts": [
+      "StoppedUserTurn",
+      "findStoppedUserTurn"
+    ],
+    "packages/ui/src/api/transport.ts": ["SseEventFramer"],
+    "packages/ui/src/app-shell-pages.ts": [],
+    "packages/ui/src/components/chat/message-maps-parser.ts": [
+      "MapsCardPlace",
+      "MapsCardSpec",
+      "findMapsCardRegions"
+    ],
+    "packages/ui/src/components/composites/deferred-deletion-notice.tsx": [
+      "DeferredDeletionIdentity",
+      "DeferredDeletionNotice"
+    ],
+    "packages/ui/src/components/composites/page-panel/content-state.tsx": [],
+    "packages/ui/src/components/composites/page-panel/index.ts": [],
+    "packages/ui/src/components/composites/page-panel/page-panel-collapsible-section.tsx": [],
+    "packages/ui/src/components/composites/page-panel/page-panel-feature-empty.tsx": [],
+    "packages/ui/src/components/composites/page-panel/page-panel-header.tsx": [],
+    "packages/ui/src/components/composites/page-panel/page-panel-layout.tsx": [],
+    "packages/ui/src/components/composites/page-panel/page-panel-types.ts": [],
+    "packages/ui/src/components/pages/InstalledAppsLauncher.tsx": [],
+    "packages/ui/src/components/permissions/permission-walkthrough.ts": [
+      "PermissionStepBridge",
+      "PermissionStepState",
+      "WalkthroughChoice",
+      "WalkthroughMemory",
+      "WalkthroughProgress",
+      "WalkthroughStore",
+      "createPermissionStepFlow",
+      "locationAccess",
+      "photoLibraryAccess",
+      "showWalkthroughCompletion",
+      "walkthroughMemory",
+      "walkthroughProgress"
+    ],
+    "packages/ui/src/components/settings/cloud-subscription-summary.tsx": [
+      "useCloudSubscriptionSummary"
+    ],
+    "packages/ui/src/components/shell/ChatOverlay.tsx": [],
+    "packages/ui/src/components/shell/chat-overlay-motion.ts": [
+      "OVERLAY_EASE",
+      "clamp01"
+    ],
+    "packages/ui/src/components/shell/chat-panel-layout.ts": [
+      "resolveChatPanelLayout"
+    ],
+    "packages/ui/src/components/shell/dock-clearance.ts": [
+      "installDockClearance",
+      "visibleDocks"
+    ],
+    "packages/ui/src/components/shell/responsive-layout.ts": [
+      "DEFAULT_SURFACE_LAYOUT",
+      "SurfaceLayout",
+      "keyboardFreeHeight",
+      "raisesSoftKeyboard",
+      "sameSurfaceLayout",
+      "surfaceLayout"
+    ],
+    "packages/ui/src/components/shell/use-pull-gesture.ts": ["usePullGesture"],
+    "packages/ui/src/components/ui/badge.tsx": [],
+    "packages/ui/src/components/ui/button.tsx": [],
+    "packages/ui/src/components/ui/card.tsx": [],
+    "packages/ui/src/components/ui/empty-state.tsx": [],
+    "packages/ui/src/components/ui/skeleton-layouts.tsx": [],
+    "packages/ui/src/components/ui/skeleton.tsx": [],
+    "packages/ui/src/components/ui/spinner.tsx": [],
+    "packages/ui/src/config/theme.ts": [],
+    "packages/ui/src/gestures/constants.ts": [
+      "DEFAULT_PULL_DISTANCE",
+      "DEFAULT_PULL_VELOCITY",
+      "TAP_SLOP"
+    ],
+    "packages/ui/src/gestures/lost-capture.ts": [],
+    "packages/ui/src/gestures/recognizers.ts": [],
+    "packages/ui/src/gestures/useRafCoalescer.ts": [],
+    "packages/ui/src/i18n/locales/en.json": [],
+    "packages/ui/src/logger.ts": [],
+    "packages/ui/src/mobile-shell/InstalledAppsGridDrawer.tsx": [
+      "HOLD_MS",
+      "InstalledAppsGridDrawer",
+      "SLOP",
+      "appsDrawerEntries"
+    ],
+    "packages/ui/src/mobile-shell/MobileAllAppsDrawer.tsx": [],
+    "packages/ui/src/mobile-shell/MobileApplication.tsx": [],
+    "packages/ui/src/mobile-shell/MobileHomeScreen.tsx": [],
+    "packages/ui/src/mobile-shell/MobileViewHost.tsx": [],
+    "packages/ui/src/mobile-shell/application-catalog.ts": [],
+    "packages/ui/src/mobile-shell/core.ts": [
+      "MobileProductRegistration",
+      "MobileShellAppearance",
+      "createMobileViewRegistry",
+      "defineMobileProductRegistration",
+      "mobileShellThemeVariables",
+      "mobileShellViewPath",
+      "mobileShellViewPaths",
+      "navigateMobileShell",
+      "resolveMobileShellSwipe"
+    ],
+    "packages/ui/src/mobile-shell/eliza-product.ts": [],
+    "packages/ui/src/mobile-shell/feature-manifest.ts": [],
+    "packages/ui/src/mobile-shell/gestures.ts": [],
+    "packages/ui/src/mobile-shell/index.ts": [
+      "MobileHomeEntry",
+      "MobileHomeScreen",
+      "MobileHomeTile",
+      "createMobileShellLauncher",
+      "mobileShellIconUrl"
+    ],
+    "packages/ui/src/mobile-shell/mobile-launcher.ts": [],
+    "packages/ui/src/mobile-shell/navigation.ts": [],
+    "packages/ui/src/mobile-shell/photos-view.ts": [
+      "GRID_COLUMNS",
+      "PhotosFilter",
+      "albumOf",
+      "batches",
+      "changeBatches",
+      "daysLeft",
+      "dragRange",
+      "favoriteTarget",
+      "filterLabel",
+      "filterMatches",
+      "formatBytes",
+      "groupSections",
+      "insertRows",
+      "keepThumbnails",
+      "mergeWindow",
+      "newestFirst",
+      "patchRows",
+      "patchSelection",
+      "pinchColumns",
+      "readWindow",
+      "runBatches",
+      "sectionKey",
+      "shotAt",
+      "thumbnailPlan",
+      "viewerSurvives",
+      "viewerTitle",
+      "virtualGrid"
+    ],
+    "packages/ui/src/mobile-shell/product-registration.ts": [],
+    "packages/ui/src/mobile-shell/view-id-migration.ts": [],
+    "packages/ui/src/mobile-shell/view-ids.ts": [],
+    "packages/ui/src/mobile-shell/view-policy.ts": [],
+    "packages/ui/src/mobile-shell/view-registry.ts": [],
+    "packages/ui/src/overview/OverviewCards.tsx": [
+      "OverviewAgendaCard",
+      "OverviewAttentionCard",
+      "OverviewBriefCard"
+    ],
+    "packages/ui/src/overview/daily-overview.ts": [
+      "OverviewAgendaCardInput",
+      "OverviewAgendaCardModel",
+      "OverviewAgendaPresentation",
+      "OverviewAttentionSummary",
+      "OverviewBriefSummary",
+      "OverviewCalendarState",
+      "OverviewFormat",
+      "OverviewInboxCardInput",
+      "OverviewInboxCardModel",
+      "overviewAgendaEmptyTitle",
+      "overviewAgendaHeader",
+      "overviewAttendeeInitials",
+      "overviewBriefOutcome",
+      "overviewCalendarName",
+      "overviewCalendarState",
+      "overviewOverdueDueLabel",
+      "overviewReadIsStale",
+      "overviewWhenLabel",
+      "presentOverviewAgendaCard",
+      "presentOverviewAgendaFeed",
+      "presentOverviewAgendaNext",
+      "presentOverviewAgendaSource",
+      "presentOverviewAttention",
+      "presentOverviewBrief",
+      "presentOverviewBriefCard",
+      "presentOverviewCalendar",
+      "presentOverviewInboxCard",
+      "presentOverviewInboxStatus",
+      "presentOverviewWorkflowFreshness",
+      "selectOverviewAgenda"
+    ],
+    "packages/ui/src/platform/browser-document-store.ts": [
+      "BrowserDocumentConflict",
+      "BrowserDocumentStore"
+    ],
+    "packages/ui/src/registry-host.ts": [],
+    "packages/ui/src/state/app-update-gate.ts": [
+      "createAppUpdateScheduler",
+      "holdAppUpdateStartup",
+      "supportsAppUpdateStartup",
+      "waitForAppUpdateStartup",
+      "watchMountedAppUpdates"
+    ],
+    "packages/ui/src/state/durable-draft-controller.ts": [
+      "DurableDraftController"
+    ],
+    "packages/ui/src/state/durable-draft.ts": [
+      "DurableDraft",
+      "DurableDraftRawSlot",
+      "compareExchangeDraftStore",
+      "emptyDurableDraft",
+      "rawSlotDraftRecovery",
+      "transactionalDraftStore"
+    ],
+    "packages/ui/src/utils/automation-feed-filter.ts": [
+      "FEED_FILTERS",
+      "FeedFilter",
+      "passesFilter"
+    ],
+    "packages/ui/src/utils/cn.ts": [],
+    "packages/ui/src/utils/cron-format.ts": ["CRON_PRESETS", "formatSchedule"],
+    "packages/ui/src/utils/reminder-presentation.ts": [
+      "canSnoozeReminder",
+      "reminderDeliveryLabel",
+      "reminderDue"
+    ],
+    "packages/ui/src/view-primitives.ts": [],
+    "packages/ui/src/voice/audio-worklet-module-urls.ts": [],
+    "packages/ui/src/voice/batch-conversation.ts": [
+      "BatchVoiceConversation",
+      "BatchVoiceState"
+    ],
+    "packages/ui/src/voice/browser-audio-runtime.ts": [],
+    "packages/ui/src/voice/end-of-turn.ts": [],
+    "packages/ui/src/voice/pcm-wave.ts": [],
+    "packages/ui/src/voice/speech-segments.ts": [],
+    "packages/ui/src/voice/tts-playback-activity.ts": [
+      "markTtsPlaybackEnded",
+      "markTtsPlaybackStarted"
+    ],
+    "packages/ui/src/voice/voice-activity.ts": [],
+    "packages/ui/src/voice/voice-chat-playback.ts": ["toSpeakableText"],
+    "packages/ui/src/voice/voice-chat-types.ts": [],
+    "packages/ui/src/voice/voice-session-client-core.ts": [
+      "createVoiceSessionClient"
+    ],
+    "packages/ui/src/voice/voice-session-client.ts": [],
+    "packages/ui/src/voice/voice-session-fetch.ts": [],
+    "packages/ui/src/voice/voice-session-mic-capture.ts": [],
+    "packages/ui/src/voice/voice-session-ownership.ts": [],
+    "packages/ui/src/voice/voice-session-pcm.ts": [],
+    "packages/ui/src/voice/voice-session-playback.ts": [],
+    "packages/ui/src/voice/voice-session-protocol.ts": [],
+    "packages/ui/src/voice/voice-session-state.ts": [
+      "INITIAL_VOICE_SESSION_STATE",
+      "applyServerEvent",
+      "loopToListening"
+    ],
+    "packages/ui/src/voice/voice-session-status.ts": [],
+    "packages/ui/src/voice/worklets": [],
+    "packages/voice/src/browser-capture/recording-pcm.ts": [
+      "decodeRecordingPcm",
+      "encodePcm16Wav",
+      "recordingPcmWav"
+    ],
+    "packages/voice/src/cloud-speech-chunks.ts": [
+      "CLOUD_FIRST_SPEECH_CHARS",
+      "CLOUD_SPEECH_REQUEST_CHARS",
+      "planCloudSpeechChunks",
+      "speakCloudSpeechChunks"
+    ],
+    "packages/voice/src/live-voice-session.ts": [
+      "LIVE_ASR_PATH",
+      "LIVE_ASR_STATUS_PATH",
+      "LIVE_SAMPLE_RATE",
+      "LiveAudioFrame",
+      "LiveCaptureOpenOptions",
+      "LiveCaptureOpener",
+      "LiveCaptureStream",
+      "LiveDictation",
+      "LiveDictationClip",
+      "LiveFinal",
+      "LiveMode",
+      "LiveSegmentHandlers",
+      "LiveSegmentStream",
+      "LiveTranscriptEvent",
+      "LiveVadEdge",
+      "LiveVoiceLatency",
+      "LiveVoiceSession",
+      "LiveVoiceSessionOptions",
+      "LiveVoiceTransport",
+      "createLiveDictation",
+      "createLiveSegmentStream",
+      "createLiveVoiceSession",
+      "encodeLiveFrame",
+      "liveAssistantListener",
+      "parseLiveFinal",
+      "parseVoiceTranscriptEnvelope",
+      "webSocketAgentEvents"
+    ],
+    "packages/voice/src/native-cloud-speech.ts": [
+      "CloudStreamPort",
+      "createCloudStreamingSpeech"
+    ],
+    "packages/voice/src/native-live-voice.ts": [
+      "NativeLiveCapturePort",
+      "NativeResidentBinding",
+      "NativeVoiceTimingPort",
+      "createNativeLiveVoice",
+      "nativeVoiceStageSink",
+      "openNativeResidentCapture",
+      "readNativeVoiceTiming"
+    ],
+    "packages/voice/src/native-speech-request.ts": [
+      "createNativeSpeechRequests"
+    ],
+    "packages/voice/src/random-id.ts": [],
+    "packages/voice/src/realtime-voice-timing.ts": [
+      "RealtimeCancellationCause",
+      "createRealtimeVoiceTiming",
+      "sanitizeRealtimeTiming"
+    ],
+    "packages/voice/src/respond-gate.ts": [],
+    "packages/voice/src/turn.ts": [
+      "buildVoiceTurnSignal",
+      "shouldRespondToVoiceTurn"
+    ],
+    "packages/voice/src/voice-assistant-session.ts": [
+      "ASSISTANT_TIMING_DEFAULTS",
+      "AssistantAwaitingInput",
+      "AssistantCapture",
+      "AssistantClock",
+      "AssistantHeard",
+      "AssistantListenHandlers",
+      "AssistantPhase",
+      "AssistantPorts",
+      "AssistantReply",
+      "AssistantState",
+      "AssistantTextFrame",
+      "AssistantTiming",
+      "EndpointDecision",
+      "EndpointOutcome",
+      "EndpointRecord",
+      "EndpointResult",
+      "VoiceAssistantError",
+      "VoiceAssistantSession",
+      "splitSpokenSentences"
+    ],
+    "packages/voice/src/voice-endpoint-chain.ts": [
+      "CLEF_ENDPOINT_TIMEOUT_MS",
+      "ClefEndpointStage",
+      "ClefEndpointUnavailableReason",
+      "ClefTurnClient",
+      "EndpointPath",
+      "clefEndpointStageEnabled",
+      "createEndpointChain",
+      "readClefTurn"
+    ],
+    "packages/voice/src/voice-eot.ts": [],
+    "packages/voice/src/voice-turn-routes.ts": [
+      "END_OF_TURN_MAX_CHARS",
+      "END_OF_TURN_PATH",
+      "EndOfTurnUnavailableReason",
+      "HeardOutcome",
+      "HeardReport",
+      "HeardReporterPorts",
+      "ResidentRequest",
+      "createHeardReporter",
+      "heardPath",
+      "readEndOfTurn",
+      "residentEndpoint"
+    ],
+    "packages/voice/src/voice-turn-timing.ts": [
+      "NativeVoiceStageSink",
+      "VoiceTimingEndpoint",
+      "VoiceTimingLive",
+      "VoiceTimingMark",
+      "VoiceTimingPolicy",
+      "VoiceTimingRecord",
+      "createVoiceTurnTiming"
+    ],
+    "plugins/plugin-assistant/src/features/advanced-capabilities/experience/service.ts": [],
+    "plugins/plugin-assistant/src/services/device-actions/calendar-contract.ts": [
+      "CalendarFields",
+      "CalendarOperation",
+      "CalendarResult",
+      "calendarSource",
+      "calendarTarget",
+      "isCalendarOperation",
+      "validateCalendarOperation",
+      "validateCalendarResult"
+    ],
+    "plugins/plugin-assistant/src/services/device-actions/camera-contract.ts": [
+      "CAMERA_CAPTURE_CAPABILITY",
+      "CameraCaptureResult",
+      "isCameraCapture",
+      "validateCameraCaptureResult"
+    ],
+    "plugins/plugin-assistant/src/services/device-actions/client-coordinator.ts": [
+      "CAMERA_CONTEXT_NOTICE",
+      "ContextNotice",
+      "CurrentDeviceActionRequest",
+      "DeviceActionClientProfile",
+      "DeviceActionCoordinator",
+      "DeviceActionJournal",
+      "DeviceCredential",
+      "DeviceExecutor",
+      "DeviceJournalEntry",
+      "DeviceJournalIdentity",
+      "DeviceOperation",
+      "DeviceRecovery",
+      "ForegroundReviewExecutor",
+      "PendingReviewItem",
+      "ReviewableDeviceOperation",
+      "WorkflowNoticeRoute",
+      "WorkflowPresentationOperation",
+      "actionScope",
+      "deviceJournalContext",
+      "proposalContextNotice",
+      "publishCommittedDeviceChanges",
+      "validateDeviceOperation",
+      "validateReviewableDeviceOperation"
+    ],
+    "plugins/plugin-assistant/src/services/device-actions/clock-contract.ts": [
+      "CLOCK_CAPABILITY",
+      "ClockDay",
+      "ClockHandoffOperation",
+      "ClockHandoffResult",
+      "clockTimeZone"
+    ],
+    "plugins/plugin-assistant/src/services/device-actions/clock-handoff-history.ts": [
+      "ClockHandoffEnvelope",
+      "ClockHandoffHistoryStorage",
+      "ClockHandoffRecord",
+      "ClockHandoffSnapshot",
+      "createClockHandoffHistory"
+    ],
+    "plugins/plugin-assistant/src/services/device-actions/clock-handoff.ts": [
+      "CLOCK_DAY_NAMES",
+      "ClockHandoffRequest",
+      "ClockHandoffSetRequest",
+      "assertClockHandoffTimeZone",
+      "buildClockHandoffRequest",
+      "clockHandoffCapabilities",
+      "clockHandoffFormDays",
+      "clockHandoffReceipt",
+      "currentClockTimeZone",
+      "describeClockDays",
+      "describeClockHandoff",
+      "isClockHandoffOperation",
+      "validateClockHandoffDispatch",
+      "validateClockHandoffResult"
+    ],
+    "plugins/plugin-assistant/src/services/device-actions/clock-review-executor.ts": [
+      "ClockReviewBridge",
+      "createClockReviewExecutor"
+    ],
+    "plugins/plugin-assistant/src/services/device-actions/contract.ts": [],
+    "plugins/plugin-assistant/src/services/device-actions/device-record-presentation.ts": [
+      "formatDeviceRecordDateTime"
+    ],
+    "plugins/plugin-assistant/src/services/device-actions/files-browser-contract.ts": [
+      "FILES_CAPABILITY"
+    ],
+    "plugins/plugin-assistant/src/services/device-actions/foreground-review-contract.ts": [
+      "FOREGROUND_REVIEW_TYPES",
+      "ForegroundReviewOperation",
+      "ForegroundReviewResult",
+      "NamedTargetExactOperation",
+      "namedTargetValidators",
+      "selectedNotesRead",
+      "validateForegroundReviewOperation",
+      "validateForegroundReviewResult"
+    ],
+    "plugins/plugin-assistant/src/services/device-actions/maps-contract.ts": [],
+    "plugins/plugin-assistant/src/services/device-actions/notes-contract.ts": [
+      "NotesOperation",
+      "isNotesOperation"
+    ],
+    "plugins/plugin-assistant/src/services/device-actions/notes-organize-contract.ts": [],
+    "plugins/plugin-assistant/src/services/device-actions/notes-query-result.ts": [
+      "validateNotesQueryResult"
+    ],
+    "plugins/plugin-assistant/src/services/device-actions/phone-dial-contract.ts": [],
+    "plugins/plugin-assistant/src/services/device-actions/photo-library-contract.ts": [
+      "DESTRUCTIVE_LIBRARY_ACTIONS",
+      "LIBRARY_ID",
+      "LIBRARY_LIMITS",
+      "LibraryAction",
+      "LibraryAgentOperation",
+      "LibraryAgentResult",
+      "LibraryCatalog",
+      "LibraryChange",
+      "LibraryItem",
+      "LibraryReview",
+      "LibraryRevisions",
+      "LibraryScopeState",
+      "LibrarySelection",
+      "MODEL_REVISION",
+      "REVIEWED_LIBRARY_ACTIONS",
+      "describeLibraryOperation",
+      "isLibraryId",
+      "isLibraryOperation",
+      "libraryKindOf",
+      "modelItem",
+      "modelSearchResult",
+      "parseItem",
+      "parsePage",
+      "parseScope",
+      "parseValidation",
+      "prepareReview",
+      "reviewCurrent",
+      "reviewText",
+      "scopePresentation",
+      "validateLibraryOperation",
+      "validateLibraryResult"
+    ],
+    "plugins/plugin-assistant/src/services/device-actions/photos-view-contract.ts": [
+      "PHOTOS_FILTER_ALBUMS",
+      "PHOTOS_VIEW_CAPABILITY",
+      "PHOTOS_VIEW_DIRECT_TYPES",
+      "PHOTOS_VIEW_TYPES",
+      "PhotosViewOperation",
+      "PhotosViewResult",
+      "describePhotosViewOperation",
+      "isPhotosViewOperation",
+      "photosViewCapabilityAvailable",
+      "photosViewContextAllowed",
+      "validatePhotosViewOperation",
+      "validatePhotosViewResult"
+    ],
+    "plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts": [
+      "ReminderOperation",
+      "ReminderResult",
+      "ReminderSchedule",
+      "ReminderTarget",
+      "isReminderOperation",
+      "reminderFields",
+      "reminderTarget",
+      "reminderTiming",
+      "validateReminderOperation",
+      "validateReminderResult"
+    ],
+    "plugins/plugin-assistant/src/services/device-actions/reminder-create-contract.ts": [
+      "ReminderCreateOperation",
+      "ReminderCreateResult",
+      "isReminderCreate",
+      "validateReminderCreate",
+      "validateReminderCreateResult"
+    ],
+    "plugins/plugin-assistant/src/services/device-actions/reminder-journal.ts": [
+      "PendingReminderAction",
+      "PendingReminderActions",
+      "REMINDER_REFUSALS",
+      "ReminderCreation",
+      "ReminderCreationStore",
+      "ReminderJournalStore",
+      "ReminderRefusal",
+      "createReminderActionJournal",
+      "createReminderCreationJournal",
+      "isReminderRefusal",
+      "isUndatedReminder",
+      "overdueReminders",
+      "reminderDueAt",
+      "reminderRefusalMessage",
+      "reminderWallTime",
+      "reopenReminderSchedule",
+      "undatedTodos"
+    ],
+    "plugins/plugin-assistant/src/services/device-actions/sms-contract.ts": [],
+    "plugins/plugin-assistant/src/services/device-actions/telephony-actions-contract.ts": [
+      "ContactWriteOperation",
+      "ContactWriteResult",
+      "PhoneCallOperation",
+      "PhoneCallResult",
+      "SmsComposeOperation",
+      "SmsComposeResult",
+      "TelephonyActionOperation",
+      "TelephonyActionResult",
+      "smsComposeReceiptOutcome",
+      "telephonyActionReceiptOutcome",
+      "telephonyActionResultText"
+    ],
+    "plugins/plugin-assistant/src/services/device-actions/workflow-contract.ts": [],
+    "plugins/plugin-assistant/src/utils/html-entities.ts": [],
+    "plugins/plugin-browser/src/dispatch-types.ts": [
+      "BROWSER_DISPATCH_FAILURE_KINDS"
+    ],
+    "plugins/plugin-browser/src/native-client-command.ts": [
+      "parseNativeHistoryCommand"
+    ],
+    "plugins/plugin-calendar/src/api/calendar-api.ts": [
+      "CalendarApi",
+      "createCalendarApi"
+    ],
+    "plugins/plugin-calendar/src/api/client-calendar.ts": [],
+    "plugins/plugin-calendar/src/browser.ts": [],
+    "plugins/plugin-calendar/src/client/availability-review.ts": [
+      "AVAILABILITY_MAX_SOURCES",
+      "AvailabilityOutcome",
+      "AvailabilityProvider",
+      "AvailabilityReview",
+      "AvailabilitySelection",
+      "AvailabilitySource",
+      "SOURCE_LIST_ATTEMPTS",
+      "SOURCE_LIST_RETRY_MS",
+      "abortablePause",
+      "describeAvailabilityResult",
+      "executeCalendarAvailability",
+      "parseAvailabilityEvents",
+      "parseAvailabilitySources"
+    ],
+    "plugins/plugin-calendar/src/client/named-read.ts": [
+      "NamedCalendarReadProvider",
+      "executeNamedCalendarRead",
+      "namedCalendarReadTarget"
+    ],
+    "plugins/plugin-calendar/src/components/EventEditorDrawer.tsx": [],
+    "plugins/plugin-calendar/src/components/event-editor-command.ts": [
+      "calendarEditorCommand"
+    ],
+    "plugins/plugin-calendar/src/components/event-editor-policy.ts": [
+      "cancellationModeForEditorEvent",
+      "eventEditorMutability"
+    ],
+    "plugins/plugin-calendar/src/index.ts": [],
+    "plugins/plugin-calendar/src/internal/time.ts": [
+      "addDaysToLocalDate",
+      "buildUtcDateFromLocalParts",
+      "getZonedDateParts"
+    ],
+    "plugins/plugin-calendar/src/linked-sync/google-reader.ts": [
+      "GoogleCalendarEvent",
+      "GoogleCalendarFeed",
+      "GoogleCalendarRange",
+      "GoogleCalendarSummary"
+    ],
+    "plugins/plugin-calendar/src/linked-sync/google-sync-port.ts": [
+      "CalendarSyncClient",
+      "CalendarSyncRequest",
+      "CalendarSyncSelection",
+      "calendarSyncHttp",
+      "googleCalendarSyncPort",
+      "readGoogleCalendarSyncDestination"
+    ],
+    "plugins/plugin-calendar/src/linked-sync/linked-store.ts": [
+      "CalendarLinkStorage",
+      "CalendarLinkedStore",
+      "CalendarSyncBinding"
+    ],
+    "plugins/plugin-calendar/src/linked-sync/sync-controller.ts": [
+      "CalendarSyncReport",
+      "CalendarSyncReview"
+    ],
+    "plugins/plugin-calendar/src/linked-sync/sync-host.ts": [
+      "CalendarSyncDeviceGate",
+      "CalendarSyncSettings",
+      "CalendarSyncSettingsStore",
+      "CalendarSyncTarget",
+      "calendarSyncSettingsSlot",
+      "createCalendarSyncHost",
+      "readCalendarSyncSettings"
+    ],
+    "plugins/plugin-calendar/src/meetings/auto-join-settings.ts": [],
+    "plugins/plugin-calendar/src/meetings/auto-join-types.ts": [],
+    "plugins/plugin-calendar/src/mutations/managed.ts": [],
+    "plugins/plugin-calendar/src/service/managed-calendar-host.ts": [
+      "CalendarAgentWriteRefused",
+      "calendarAgentWrite"
+    ],
+    "plugins/plugin-calendar/src/service/managed-calendar-read.ts": [],
+    "plugins/plugin-files/src/browser/attachment.ts": [
+      "MailAttachment",
+      "reviewMailAttachment"
+    ],
+    "plugins/plugin-files/src/browser/file-archive.ts": ["fileArchive"],
+    "plugins/plugin-files/src/browser/files-agent-contract.ts": [
+      "FILES_DIRECT_TYPES",
+      "FilesAgentRunner",
+      "describeFilesOperation",
+      "filesContextAllowed",
+      "isFilesOperation",
+      "validateFilesOperation"
+    ],
+    "plugins/plugin-files/src/browser/files-browser-adapter.ts": [
+      "FilesStoragePort",
+      "installFilesBrowserAdapter"
+    ],
+    "plugins/plugin-files/src/browser/files.ts": ["createBrowserFiles"],
+    "plugins/plugin-files/src/browser/storage-model.ts": [
+      "CATEGORIES",
+      "DOCUMENT_MIME_TYPES",
+      "DOWNLOAD_FOLDER",
+      "baseName",
+      "breadcrumbs",
+      "filterLabel",
+      "filterMatches",
+      "formatFree",
+      "freeName",
+      "groupByFolder",
+      "inCategory",
+      "mimeFromName",
+      "sortEntries",
+      "trashDaysLeft",
+      "validPath",
+      "validateFilesFilter"
+    ],
+    "plugins/plugin-files/src/browser/storage-volume.ts": [
+      "BrowserStorageVolume"
+    ],
+    "plugins/plugin-files/src/documents/local-ocr.ts": [
+      "OcrProgress",
+      "recognizeLocalText"
+    ],
+    "plugins/plugin-files/src/documents/scan-correction.ts": [
+      "ScanCorners",
+      "correctScanPage",
+      "fullPageCorners"
+    ],
+    "plugins/plugin-files/src/documents/scan-draft.ts": [
+      "copyScanTextLayers",
+      "createScanDraftStore"
+    ],
+    "plugins/plugin-files/src/documents/scan-edges.ts": ["detectScanEdges"],
+    "plugins/plugin-files/src/documents/scan-event.ts": [
+      "ScanEventContext",
+      "ScanEventFields",
+      "ScanEventProposal",
+      "ScanEventRepeat",
+      "ScanEventSuggestion",
+      "reviewScanAllDayEvent",
+      "reviewScanEvent",
+      "suggestScanEvent",
+      "suggestScanEventDetails"
+    ],
+    "plugins/plugin-files/src/documents/scan-links.ts": ["scannedLinks"],
+    "plugins/plugin-files/src/documents/scan-pdf.ts": ["createScanPdf"],
+    "plugins/plugin-files/src/documents/scan-text-layer.ts": ["ScanTextLine"],
+    "plugins/plugin-files/src/documents/source-links.ts": [
+      "DocumentSourceLink",
+      "RecordingSourceLink",
+      "SummarySourceLink",
+      "WebSourceLink",
+      "documentSourceOf",
+      "recordingRevision",
+      "recordingSourceOf",
+      "retainedSourceReferences",
+      "summarySourceOf",
+      "webSourceOf"
+    ],
+    "plugins/plugin-inbox/src/actions/choice-markers.ts": [],
+    "plugins/plugin-inbox/src/components/mailbox/MailFolderPicker.tsx": [
+      "MailFolderPicker",
+      "dismissMailFolderMenu"
+    ],
+    "plugins/plugin-inbox/src/mailbox/attachments.ts": [
+      "OpaqueMailAttachment",
+      "OutgoingMailAttachment",
+      "attachmentBytes",
+      "checkOutgoingAttachments",
+      "outgoingAttachmentLimits",
+      "refusingAttachmentReviewer",
+      "reviewOpaqueAttachment"
+    ],
+    "plugins/plugin-inbox/src/mailbox/background-notices.ts": [
+      "MailBackgroundNative",
+      "MailBackgroundSelection",
+      "MailBackgroundStatus",
+      "MailNoticeTap",
+      "createMailBackground",
+      "mailBackgroundMessage"
+    ],
+    "plugins/plugin-inbox/src/mailbox/digest.ts": ["sha256Hex"],
+    "plugins/plugin-inbox/src/mailbox/drafts-controller.ts": [
+      "ComposePrefill",
+      "ForwardSource",
+      "LocalMailDraft",
+      "MailDraftsController",
+      "MailDraftsProvider",
+      "SuggestionTarget",
+      "createMailDraftsController"
+    ],
+    "plugins/plugin-inbox/src/mailbox/failures.ts": [
+      "AttachmentRefusedError",
+      "GmailDisconnectOutcome",
+      "GmailFailure",
+      "GmailFailureKind",
+      "attachmentReadFailure",
+      "attachmentRefused",
+      "classifyGmailFailure",
+      "disconnectGmailAccount",
+      "disconnectMessage"
+    ],
+    "plugins/plugin-inbox/src/mailbox/grants.ts": [
+      "GMAIL_MODIFY_CAPABILITIES",
+      "GMAIL_READ_CAPABILITY",
+      "GmailGrantRequest",
+      "GmailGrantStep",
+      "GmailGrantTier",
+      "gmailActionGrant",
+      "gmailCapabilitiesFor",
+      "gmailConsentCapabilities",
+      "gmailGrantChange",
+      "gmailGrantLabel",
+      "gmailGrantTier",
+      "gmailInboxAllows",
+      "gmailModifyIncomplete",
+      "gmailReadCacheKey",
+      "gmailReadable",
+      "googleAccountAccessLabel",
+      "requiredGmailCapability"
+    ],
+    "plugins/plugin-inbox/src/mailbox/links.ts": [
+      "linkTextMismatch",
+      "linkifyMailText",
+      "safeMailLink"
+    ],
+    "plugins/plugin-inbox/src/mailbox/mail-context.ts": [
+      "MailContextDestination",
+      "MailContextSource",
+      "ReviewedMailContext",
+      "reviewMailContext",
+      "validateMailContext"
+    ],
+    "plugins/plugin-inbox/src/mailbox/mailbox-list.ts": [
+      "InboxAttention",
+      "MAILBOX_CHANGED_NOTICE",
+      "MAILBOX_FOLDER_QUERY",
+      "MailBodyCache",
+      "MailboxFolder",
+      "MailboxListCache",
+      "SavedMailbox",
+      "inboxAttentionFor",
+      "mailboxListStatus",
+      "mergeMailboxPage",
+      "nextMailboxCursor",
+      "readSavedInboxSummary",
+      "readSavedMailbox"
+    ],
+    "plugins/plugin-inbox/src/mailbox/managed-gmail-client.ts": [
+      "ManagedGmailMailboxClient"
+    ],
+    "plugins/plugin-inbox/src/mailbox/operation-journal.ts": [
+      "ComposerEmail",
+      "InboxOperation",
+      "InboxOperationClient",
+      "InboxOperationDependencies",
+      "InboxOperationRecord",
+      "InboxOperationStore",
+      "ReviewBinding",
+      "composerContent",
+      "composerKind",
+      "inboxOperationKey",
+      "reviewBinding",
+      "reviewBindingRefusal"
+    ],
+    "plugins/plugin-inbox/src/mailbox/preview.ts": ["decodeMailPreview"],
+    "plugins/plugin-inbox/src/mailbox/read-ahead.ts": ["GmailReadAhead"],
+    "plugins/plugin-inbox/src/mailbox/read-state.ts": [
+      "MailReadStateGuard",
+      "mailReadStateMessage",
+      "setGmailReadState"
+    ],
+    "plugins/plugin-inbox/src/mailbox/retained-draft.ts": [
+      "InboxUnsaved",
+      "encodeInboxUnsaved",
+      "inboxUnsavedLimit",
+      "readInboxUnsaved"
+    ],
+    "plugins/plugin-inbox/src/mailbox/review-controller.ts": [
+      "MailReviewClient",
+      "MailReviewView",
+      "createMailReviewController"
+    ],
+    "plugins/plugin-inbox/src/mailbox/types.ts": [
+      "GmailAccount",
+      "GmailDraftContent",
+      "GmailDraftSummary",
+      "GmailInboxCapabilities",
+      "GmailInboxOperationKind",
+      "GmailInboxReceipt",
+      "GmailInboxReceiptState",
+      "GmailLink",
+      "GmailMailboxAction",
+      "GmailMessage",
+      "GmailReadResult",
+      "GmailSearchPage",
+      "GmailThreadPage",
+      "GoogleConnection"
+    ],
+    "plugins/plugin-inbox/src/mailbox/use-in-email.ts": [
+      "EmailTarget",
+      "USE_IN_EMAIL_ATTACHMENT_POLICY",
+      "describeEmailTarget",
+      "fitEmailTarget"
+    ],
+    "plugins/plugin-knowledge/tsconfig.build.json": [],
+    "plugins/plugin-local-inference/native/android/consumer.gradle": [],
+    "plugins/plugin-local-inference/native/android/inputs.json": [],
+    "plugins/plugin-local-inference/native/android/speech-bridge/src/main/java/ai/eliza/voice/CartesiaSpeech.java": [],
+    "plugins/plugin-local-inference/native/android/speech-bridge/src/main/java/ai/eliza/voice/LocalSpeechBridgePlugin.java": [],
+    "plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/LiveVoiceCapture.java": [],
+    "plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/LocalSpeechEngine.java": [],
+    "plugins/plugin-local-inference/native/llama.cpp": [],
+    "plugins/plugin-local-inference/src/services/router-handler.ts": [],
+    "plugins/plugin-maps/src/card.ts": [],
+    "plugins/plugin-maps/src/client/agent-context.ts": [
+      "clearMapsSelection",
+      "getMapsSelectedObject",
+      "publishMapsSelection",
+      "readMapsSelection",
+      "validateMapsSelectedObject"
+    ],
+    "plugins/plugin-maps/src/client/agent-navigation.ts": [
+      "AgentNavigationOptions",
+      "CloudInstallation",
+      "bindAgentNavigation",
+      "createMapsNavigationPort"
+    ],
+    "plugins/plugin-maps/src/client/approved-read.ts": ["isMapsOperation"],
+    "plugins/plugin-maps/src/client/background-navigation.ts": [
+      "BackgroundNavigation",
+      "NavigationBridge"
+    ],
+    "plugins/plugin-maps/src/client/cloud-provider.ts": [
+      "CloudMapsBasemap",
+      "CloudMapsCoverage",
+      "CloudMapsDisclosure",
+      "CloudMapsRequest",
+      "CloudMapsRoute",
+      "cloudMapsFailure",
+      "createCloudMaps",
+      "describeMapsDisclosure",
+      "insideCloudCoverage"
+    ],
+    "plugins/plugin-maps/src/client/cloud-session.ts": ["captureMapsSession"],
+    "plugins/plugin-maps/src/client/contracts.ts": [
+      "Coordinate",
+      "MapsFailure",
+      "MapsProvider",
+      "Place",
+      "ProviderConfig",
+      "Route",
+      "TravelMode",
+      "coordinate",
+      "failure"
+    ],
+    "plugins/plugin-maps/src/client/device-navigation.ts": [
+      "ActiveGuidance",
+      "AgentPlaceRef",
+      "DeviceMapsNavigation",
+      "DeviceNavigationFailure",
+      "DeviceNavigationMapsCode",
+      "MapsDeviceNavigation",
+      "MapsNavigationSurface",
+      "deviceNavigationFailure"
+    ],
+    "plugins/plugin-maps/src/client/guidance.ts": [
+      "MANEUVER_ICONS",
+      "atStep",
+      "guidanceDistance",
+      "guidanceDuration",
+      "guidanceView",
+      "maneuverIcon"
+    ],
+    "plugins/plugin-maps/src/client/location.ts": ["MapsLocation", "Position"],
+    "plugins/plugin-maps/src/client/map-plane.ts": [
+      "GlobalBasemap",
+      "MapBasemap",
+      "MapPlane"
+    ],
+    "plugins/plugin-maps/src/client/maps-screen.ts": [
+      "MapsScreenController",
+      "MapsScreenView"
+    ],
+    "plugins/plugin-maps/src/client/native-location.ts": [
+      "LocationBridge",
+      "NativeMapsLocation"
+    ],
+    "plugins/plugin-maps/src/client/navigation-fix.ts": ["usableNavigationFix"],
+    "plugins/plugin-maps/src/client/navigation-relay.ts": [
+      "withMapsNavigationRelay"
+    ],
+    "plugins/plugin-maps/src/client/navigation-voice.ts": ["NavigationVoice"],
+    "plugins/plugin-maps/src/client/regional-provider.ts": [
+      "RegionalOptions",
+      "createRegionalMaps"
+    ],
+    "plugins/plugin-maps/src/client/route-distance.ts": [
+      "distanceToRoute",
+      "routeProgress"
+    ],
+    "plugins/plugin-maps/src/client/runtime.ts": [
+      "configureMapsProvider",
+      "mapsConnection",
+      "onMapsConnectionChange"
+    ],
+    "plugins/plugin-maps/src/client/saved-places.ts": [
+      "SavedPlace",
+      "SavedPlaces"
+    ],
+    "plugins/plugin-maps/src/client/share.ts": [
+      "MapShare",
+      "placeShare",
+      "routeShare"
+    ],
+    "plugins/plugin-maps/src/client/state.ts": ["MapsController", "MapsState"],
+    "plugins/plugin-maps/src/cloud-adapter.ts": [],
+    "plugins/plugin-maps/src/navigation.ts": [],
+    "plugins/plugin-maps/src/service.ts": [],
+    "plugins/plugin-maps/test/navigation-client.test.mjs": [],
+    "plugins/plugin-native-action-journal/android/src/main/java/ai/eliza/plugins/actionjournal/deletion/DeferredDeletionCoordinator.java": [],
+    "plugins/plugin-native-action-journal/android/src/main/java/ai/eliza/plugins/actionjournal/deletion/DeletionDeadline.java": [],
+    "plugins/plugin-native-action-journal/test/native-host/DeferredDeletionTest.java": [],
+    "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/connection/CloudConnectionPolicy.java": [],
+    "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/connection/ConnectionTransport.java": [],
+    "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/connection/DelegationCallback.java": [],
+    "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/connection/OwnerRoutePolicy.java": [],
+    "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/connection/PendingRequests.java": [],
+    "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/connection/SecureSlotPolicy.java": [],
+    "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/CredentialIntentFence.java": [],
+    "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/CredentialRequestFence.java": [],
+    "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/CredentialShutdownLease.java": [],
+    "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/NativeProcessSupervisor.java": [],
+    "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/NativeProviderAdmission.java": [],
+    "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/NativeProviderSlot.java": [],
+    "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/NativeRuntimeEmbeddings.java": [],
+    "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/ResidentAttachment.java": [],
+    "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/updater/RuntimeUpdatePause.java": [],
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserHttpAuthAutofill.java": [],
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserLoginFields.java": [],
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserPageReading.java": [],
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserTabHostPlugin.java": [],
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/ChromiumBrowserIdentity.java": [],
+    "plugins/plugin-native-browser-surface/resources": [],
+    "plugins/plugin-native-browser-surface/scripts/control-channel.mjs": [],
+    "plugins/plugin-native-browser-surface/src/address-input.ts": [
+      "parseBrowserAddressInput"
+    ],
+    "plugins/plugin-native-browser-surface/src/browsing-session.ts": [
+      "DEFAULT_BROWSING_LIMITS",
+      "SavedBrowsing",
+      "browsingSnapshot",
+      "normalizeBrowsing",
+      "restoreBrowsing"
+    ],
+    "plugins/plugin-native-browser-surface/src/page-reading.ts": [
+      "READING_UNSUPPORTED_MESSAGE",
+      "createReadingSupport",
+      "pageQuestionExcerpt",
+      "sensitiveReadingText",
+      "sensitiveReadingUrl"
+    ],
+    "plugins/plugin-native-browser-surface/src/page-source.ts": [
+      "readPublicPageSource"
+    ],
+    "plugins/plugin-native-browser-surface/src/tab-host.ts": [
+      "BrowserFindResult",
+      "BrowserFullscreen",
+      "BrowserTabEvent",
+      "BrowserTabNotice",
+      "BrowserTabOpened",
+      "BrowserTabSession",
+      "BrowserTabState",
+      "newBrowserTabId"
+    ],
+    "plugins/plugin-native-browser-surface/test/native-host/policies.node.mjs": [],
+    "plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/CalendarConfiguration.java": [],
+    "plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/write/CalendarEventOptions.java": [],
+    "plugins/plugin-native-calendar/test/jvm/android/content/ContentValues.java": [],
+    "plugins/plugin-native-calendar/test/native-host/bridge-check.mjs": [],
+    "plugins/plugin-native-calendar/test/native-host/bridge-runtime/CalendarBridgeContract.java": [],
+    "plugins/plugin-native-calendar/test/native-host/bridge-runtime/android/content/ContentResolver.java": [],
+    "plugins/plugin-native-calendar/test/native-host/bridge-runtime/android/content/ContentUris.java": [],
+    "plugins/plugin-native-calendar/test/native-host/bridge-runtime/android/content/ContentValues.java": [],
+    "plugins/plugin-native-calendar/test/native-host/bridge-runtime/android/content/Context.java": [],
+    "plugins/plugin-native-calendar/test/native-host/bridge-runtime/android/content/Intent.java": [],
+    "plugins/plugin-native-calendar/test/native-host/bridge-runtime/android/content/SharedPreferences.java": [],
+    "plugins/plugin-native-calendar/test/native-host/bridge-runtime/android/content/pm/ActivityInfo.java": [],
+    "plugins/plugin-native-calendar/test/native-host/bridge-runtime/android/content/pm/PackageManager.java": [],
+    "plugins/plugin-native-calendar/test/native-host/bridge-runtime/android/content/pm/ResolveInfo.java": [],
+    "plugins/plugin-native-calendar/test/native-host/bridge-runtime/android/database/Cursor.java": [],
+    "plugins/plugin-native-calendar/test/native-host/bridge-runtime/android/net/Uri.java": [],
+    "plugins/plugin-native-calendar/test/native-host/bridge-runtime/androidx/appcompat/app/AppCompatActivity.java": [],
+    "plugins/plugin-native-calendar/test/native-host/bridge-runtime/com/getcapacitor/Plugin.java": [],
+    "plugins/plugin-native-calendar/test/native-host/bridge-runtime/com/getcapacitor/PluginCall.java": [],
+    "plugins/plugin-native-calendar/test/native-host/read-window/android/provider/CalendarContract.java": [],
+    "plugins/plugin-native-camera/android/src/main/AndroidManifest.xml": [],
+    "plugins/plugin-native-camera/android/src/main/java/ai/eliza/plugins/camera/CameraPlugin.kt": [],
+    "plugins/plugin-native-camera/src/definitions.ts": [],
+    "plugins/plugin-native-camera/src/host-ports.ts": [
+      "CameraAccessKind",
+      "CameraKeepOutcome",
+      "cameraAccessDenied",
+      "restartAfterResume"
+    ],
+    "plugins/plugin-native-camera/src/scan-document.ts": [
+      "SCAN_IMAGE_TYPES",
+      "SCAN_LIMITS",
+      "admitScanDimensions",
+      "admitScanImage",
+      "createScanCapture",
+      "createScanDocument"
+    ],
+    "plugins/plugin-native-camera/src/session.ts": ["createCameraSession"],
+    "plugins/plugin-native-contacts/android/src/main/java/ai/eliza/plugins/contacts/AddressBookPlugin.java": [],
+    "plugins/plugin-native-filesystem/android/src/main/java/ai/eliza/plugins/filesystem/browser/StorageCatalog.java": [],
+    "plugins/plugin-native-inference/src/android/event-subscription.ts": [],
+    "plugins/plugin-native-location/android": [],
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/OwnedAlbums.java": [],
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/OwnedMediaLibrary.java": [],
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/PhotosPlugin.java": [],
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/RecordingWindow.java": [],
+    "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/ImageCapability.java": [],
+    "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/TelephonyPlugin.java": [],
+    "plugins/plugin-native-network-policy/android": [],
+    "plugins/plugin-native-notifications/android/src/capacitor/java/ai/eliza/plugins/notifications/NotificationsHostPlugin.java": [],
+    "plugins/plugin-native-notifications/android/src/main/java/ai/eliza/plugins/notifications": [],
+    "plugins/plugin-native-passwords/android/src/main/java/ai/eliza/plugins/passwords/PasswordFormPolicy.java": [],
+    "plugins/plugin-native-passwords/src/bindings.ts": [
+      "filterEntries",
+      "normalizeWebsite"
+    ],
+    "plugins/plugin-native-passwords/src/client.ts": [
+      "PasswordsClient",
+      "createPasswordsClient",
+      "passwordsError"
+    ],
+    "plugins/plugin-native-passwords/src/definitions.ts": [
+      "ElizaPasswordsPlugin",
+      "PasswordBinding",
+      "PasswordEntrySummary",
+      "PasswordSaveInput",
+      "PasswordsStatus"
+    ],
+    "plugins/plugin-native-passwords/src/transfer.ts": [
+      "ElizaPasswordTransferPlugin",
+      "PasswordTransferClient",
+      "createTransferClient"
+    ],
+    "plugins/plugin-native-phone/android/src/main/java/ai/eliza/plugins/phone": [],
+    "plugins/plugin-native-reminders/android": [],
+    "plugins/plugin-native-reminders/src/android-definitions.ts": [],
+    "plugins/plugin-native-reminders/src/occurrence.ts": [
+      "completeReminderOccurrence",
+      "initialReminderDue",
+      "snoozeReminderOccurrence"
+    ],
+    "plugins/plugin-native-secure-store/android": [],
+    "plugins/plugin-native-secure-store/android-nativeonly/build.gradle": [],
+    "plugins/plugin-native-secure-store/android-nativeonly/src/main/java/ai/eliza/plugins/securestore/nativeonly/CredentialIntentFence.java": [],
+    "plugins/plugin-native-secure-store/android-nativeonly/src/main/java/ai/eliza/plugins/securestore/nativeonly/JsonCredentialSlots.java": [],
+    "plugins/plugin-native-system/android/build.gradle": [],
+    "plugins/plugin-native-system/android/src/main/java/ai/eliza/plugins/system/AssistantEntryTile.java": [],
+    "plugins/plugin-native-system/android/src/main/java/ai/eliza/plugins/system/SenseInvocation.java": [],
+    "plugins/plugin-native-system/android/src/main/java/ai/eliza/plugins/system/SenseListenerClient.java": [],
+    "plugins/plugin-native-system/android/src/main/java/ai/eliza/plugins/system/SystemFacts.java": [],
+    "plugins/plugin-native-system/android/src/main/java/ai/eliza/plugins/system/SystemPlugin.kt": [],
+    "plugins/plugin-native-system/android/src/main/java/ai/eliza/plugins/system/SystemSettingsPages.java": [],
+    "plugins/plugin-native-system/android/src/main/java/ai/eliza/plugins/system/SystemShade.java": [],
+    "plugins/plugin-native-system/android/src/main/java/ai/eliza/plugins/system/clock": [],
+    "plugins/plugin-native-system/android/src/main/java/ai/eliza/plugins/system/reset/DataReset.java": [],
+    "plugins/plugin-native-system/android/src/main/java/ai/eliza/plugins/system/reset/DataResetPlugin.java": [],
+    "plugins/plugin-native-system/src/client/launcher.ts": [
+      "FavoritesStore",
+      "InstalledApp",
+      "LauncherBridge",
+      "appKey",
+      "createSystemLauncherBridge"
+    ],
+    "plugins/plugin-native-system/src/client/shade.ts": [
+      "NotificationShadePort",
+      "PULL_SLOP",
+      "PullContext",
+      "PullStart",
+      "STATUS_BAND",
+      "ShadeSurface",
+      "defaultShadeFallbackCopy",
+      "emptyHomePullEligible",
+      "emptyHomeShadePull",
+      "installOverflowPull",
+      "overflowPullDecision",
+      "readPullStart",
+      "requestNotificationShade",
+      "shadeFallback",
+      "shadeSurface"
+    ],
+    "plugins/plugin-native-system/src/crash-log.ts": [
+      "CRASH_LOG_MAX_ENTRIES",
+      "CRASH_LOG_RETENTION_MS",
+      "CrashLogPort",
+      "NativeCrashEntry",
+      "RendererFailureKind",
+      "describeNativeCrashEntry",
+      "errorClassOf",
+      "sanitizeCrashEntry"
+    ],
+    "plugins/plugin-native-system/src/definitions.ts": [],
+    "plugins/plugin-native-system/src/index.ts": ["System"],
+    "plugins/plugin-native-system/src/reset.ts": [
+      "DataResetPlugin",
+      "reviewDataReset"
+    ],
+    "plugins/plugin-native-system/src/sense-bridge.ts": [
+      "AssistantInvocation",
+      "ListenerState",
+      "ListenerStatus",
+      "Sense",
+      "createSenseInvocationController",
+      "parseAssistantInvocation",
+      "parseInvocationUnlocked",
+      "parseListenerStatus",
+      "stopSenseListenerForChatOnly"
+    ],
+    "plugins/plugin-native-system/src/sense-web.ts": [],
+    "plugins/plugin-native-system/src/sense.ts": [
+      "stopSenseListenerForChatOnly"
+    ],
+    "plugins/plugin-native-system/src/settings.ts": [
+      "SYSTEM_TILE_SETTINGS_PAGES",
+      "SystemTileFacts",
+      "SystemTileKey",
+      "androidRoleLabel",
+      "broaderPageNotice",
+      "handoffGate",
+      "parseRoleStatuses",
+      "switchValue",
+      "tileAccessibleName",
+      "tileFactsFromSystemFacts",
+      "tileStateText"
+    ],
+    "plugins/plugin-notes/src/capabilities.ts": [],
+    "plugins/plugin-notes/src/client/note-dates.ts": ["stampNoteChanges"],
+    "plugins/plugin-notes/src/client/note-deleted-origins.ts": [
+      "NoteDeletionReceiptsPort",
+      "deletedNoteOrigins"
+    ],
+    "plugins/plugin-notes/src/client/note-documents.ts": [
+      "NoteDocumentsPort",
+      "createBrowserNoteDocuments"
+    ],
+    "plugins/plugin-notes/src/client/note-origin.ts": [
+      "NOTE_ORIGIN_LIMIT",
+      "NoteLink",
+      "NoteOrigin",
+      "NoteOriginIndex",
+      "NoteOriginKind",
+      "RecordNoteOrigin",
+      "addNoteOrigin",
+      "findNoteLink",
+      "findNoteOrigin",
+      "noteLinkOf",
+      "noteOriginFor",
+      "noteOriginIndex",
+      "noteOriginKey",
+      "noteOriginOf",
+      "noteOriginTitle",
+      "recordNoteOriginOf",
+      "recordNoteRevision",
+      "removeNoteOrigin",
+      "resolveNoteLink",
+      "resolveNoteOrigin"
+    ],
+    "plugins/plugin-notes/src/client/note-schedule-draft.ts": [
+      "NoteScheduleKind",
+      "noteScheduleDraft"
+    ],
+    "plugins/plugin-notes/src/client/note-share-text.ts": ["noteShareText"],
+    "plugins/plugin-notes/src/client/notes-api.ts": ["createNotesClient"],
+    "plugins/plugin-notes/src/client/notes-audio-store.ts": [
+      "NotesAudioRow",
+      "createNotesAudioStore",
+      "notesAudioMetadata"
+    ],
+    "plugins/plugin-notes/src/client/notes-contract.ts": [
+      "NotesOperation",
+      "NotesResult",
+      "NotesTarget",
+      "isNotesOperation",
+      "notesTarget",
+      "validateNotesOperation"
+    ],
+    "plugins/plugin-notes/src/client/notes-controller.ts": [
+      "NotesController",
+      "NotesControllerHooks",
+      "NotesPhase"
+    ],
+    "plugins/plugin-notes/src/client/notes-document-store.ts": [
+      "DocumentNotesStore",
+      "NotesDocumentConflict",
+      "NotesDocumentPort",
+      "NotesDocumentSnapshot"
+    ],
+    "plugins/plugin-notes/src/client/notes-draft.ts": [
+      "NotesDraft",
+      "NotesDraftReason",
+      "NotesDraftSaveInput",
+      "applyNotesDraft",
+      "createNotesDraftSlot",
+      "mergeNotesDrafts",
+      "notesDraftBase",
+      "notesDraftChanges",
+      "notesDraftConflicts",
+      "reconcileNotesEditor"
+    ],
+    "plugins/plugin-notes/src/client/notes-editor.ts": ["NotesEditor"],
+    "plugins/plugin-notes/src/client/notes-query.ts": ["queryLocalNotes"],
+    "plugins/plugin-notes/src/client/notes-recording-deletion.ts": [
+      "DeletionLease",
+      "NotesRecordingDeletion",
+      "NotesRecordingDeletions",
+      "PERMANENT_DELETION_LEASE_MS",
+      "PermanentDeletionEvidence",
+      "PermanentDeletionStep",
+      "createNotesDeletionClaims",
+      "createNotesDeletionLock",
+      "createNotesRecordingDeletionJournal",
+      "deletionLeaseDue",
+      "leasedDeletionRow",
+      "planInterruptedPermanentDeletion",
+      "sameDeletionRow"
+    ],
+    "plugins/plugin-notes/src/client/notes-recording-effects.ts": [
+      "NotesRecordingEffects",
+      "createNotesRecordingEffects"
+    ],
+    "plugins/plugin-notes/src/client/notes-recording-summary.ts": [
+      "proposedRecordingSummary"
+    ],
+    "plugins/plugin-notes/src/client/notes-secure-store.ts": [
+      "NotesOpenStage",
+      "NotesStorageFull",
+      "NotesVault",
+      "SecureNotesStore",
+      "capacityAwareNotesVault",
+      "isNotesStorageFull",
+      "readLegacyDailyNotes"
+    ],
+    "plugins/plugin-notes/src/client/notes-snapshot-state.ts": [],
+    "plugins/plugin-notes/src/client/notes-store.ts": [
+      "NoteRecord",
+      "NotesCommitUncertain",
+      "NotesStore",
+      "StoragePort"
+    ],
+    "plugins/plugin-notes/src/client/notes-trash-actions.ts": [
+      "NotesTrashCollection",
+      "createNotesTrashActions"
+    ],
+    "plugins/plugin-notes/src/client/notes-trash-maintenance.ts": [
+      "maintainNotesTrash"
+    ],
+    "plugins/plugin-notes/src/client/notes-trash-policy.ts": [
+      "NOTES_STORAGE_FULL_CODE",
+      "NOTES_TRASH_FULL_CODE",
+      "NotesTrashDocument",
+      "NotesTrashEntry",
+      "NotesTrashFull",
+      "NotesTrashPlan",
+      "createNotesTrashPolicy",
+      "isNotesTrashFull"
+    ],
+    "plugins/plugin-notes/src/client/notes-trash-schedule.ts": [
+      "scheduleNotesTrashMaintenance"
+    ],
+    "plugins/plugin-notes/src/client/notes-trash-store.ts": [
+      "NotesTrashStoragePort",
+      "compareExchangeNotesTrashPort",
+      "createNotesTrashStore"
+    ],
+    "plugins/plugin-notes/src/components/NotesSurface.tsx": [],
+    "plugins/plugin-notes/src/components/NotesWorkspace.tsx": [],
+    "plugins/plugin-notes/src/components/viewPrimitives.tsx": [],
+    "plugins/plugin-notes/src/note-authored.ts": ["authoredNoteText"],
+    "plugins/plugin-notes/src/note-format.ts": ["parseNoteFormat"],
+    "plugins/plugin-notes/src/note-id.ts": ["NOTE_ID_REGEXP"],
+    "plugins/plugin-notes/src/service.ts": [],
+    "plugins/plugin-notes/src/store.ts": [],
+    "plugins/plugin-notes/src/trash-retention.ts": [],
+    "plugins/plugin-notes/src/types.ts": [
+      "NoteJson",
+      "StickyNote",
+      "projectNoteForModel",
+      "reconstructNoteContent"
+    ],
+    "plugins/plugin-notes/src/validation.ts": [],
+    "plugins/plugin-notes/src/workspace.ts": [],
+    "plugins/plugin-notes/test": [],
+    "plugins/plugin-personal-assistant/src/lifeops": [],
+    "plugins/plugin-scheduling/package.json": [],
+    "plugins/plugin-scheduling/src": [],
+    "plugins/plugin-sql/src/base.ts": [],
+    "plugins/plugin-sql/src/database-utils": [],
+    "plugins/plugin-workflow/__tests__/integration/process-host-compiler.test.ts": [],
+    "plugins/plugin-workflow/__tests__/integration/process-host-controls.test.ts": [],
+    "plugins/plugin-workflow/__tests__/integration/workflow-process-host.test.ts": [],
+    "plugins/plugin-workflow/src/client/hosted-digests.ts": [
+      "DIGEST_SOURCE_MAX_HOURS",
+      "DigestCapabilities",
+      "DigestInbox",
+      "DigestLoop",
+      "DigestResult",
+      "DigestSource",
+      "DigestSpec",
+      "DigestStorage",
+      "DigestTemplate",
+      "HostedDigestProtocol",
+      "HostedLiveAccount",
+      "HostedLiveCalendar",
+      "HostedLiveSelection",
+      "HostedNativeSelection",
+      "HostedSourceRejected",
+      "MissedRunNow",
+      "RetainedBriefStore",
+      "RetainedDigestSummary",
+      "digestLoopState",
+      "digestRan",
+      "digestRenewals",
+      "digestStatusLabel",
+      "digestSummaryText",
+      "digestZoneNote",
+      "missedRunNowOffers",
+      "parseDigestResult"
+    ],
+    "plugins/plugin-workflow/src/index.ts": [],
+    "plugins/plugin-workflow/src/plugin-routes.ts": [],
+    "plugins/plugin-workflow/src/routes/workflow-routes.ts": [],
+    "plugins/plugin-workflow/src/services/hosted-digest-policy.ts": [
+      "DIGEST_MISSED_TEXT",
+      "DIGEST_PAUSED_TEXT",
+      "DIGEST_RUN_WINDOW_MS",
+      "digestOccurrenceMissed",
+      "digestSourceState"
+    ],
+    "plugins/plugin-workflow/src/services/hosted-digest.ts": [],
+    "plugins/plugin-workflow/src/services/workflow-source-check.ts": [],
+    "plugins/plugin-workflow/src/services/workflow-source-publication.ts": [
+      "publishAndroidWorkflowSource"
+    ],
+    "plugins/plugin-workflow/src/services/workflow-worker-lease-prelude.ts": [
+      "workerLeasePrelude"
+    ],
+    "plugins/tsconfig.build.shared.json": [],
+    "tsconfig.json": []
+  }
+}
