@@ -428,18 +428,6 @@ function applyCatalogDefaults(
 			hardware,
 		);
 		args.contextSize = fit?.contextSize ?? nativeContext;
-		// Headroom KV-precision upgrade: when the selector chose f16 (opt-in via
-		// ELIZA_PREFER_ACCURATE_KV_WHEN_HEADROOM) and the caller/catalog left KV at
-		// the default q8_0, raise both cache types to f16. Only ever upgrades, and
-		// only when f16 still affords the selected window (#8809 AC#4).
-		if (
-			fit?.kvQuant === "f16" &&
-			(args.cacheTypeK === undefined || args.cacheTypeK === "q8_0") &&
-			(args.cacheTypeV === undefined || args.cacheTypeV === "q8_0")
-		) {
-			args.cacheTypeK = "f16";
-			args.cacheTypeV = "f16";
-		}
 	}
 
 	// Catalog-declared GPU offload default — only apply when the caller
@@ -500,13 +488,6 @@ function installedWeightMb(
 	return 0;
 }
 
-/** ELIZA_PREFER_ACCURATE_KV_WHEN_HEADROOM=1 opts into the f16-KV-on-headroom path. */
-function preferAccurateKvWhenHeadroom(): boolean {
-	const v =
-		process.env.ELIZA_PREFER_ACCURATE_KV_WHEN_HEADROOM?.trim().toLowerCase();
-	return v === "1" || v === "true" || v === "yes";
-}
-
 function resolveRuntimeContextFit(
 	installed: InstalledModel,
 	catalog: CatalogModel | undefined,
@@ -524,7 +505,6 @@ function resolveRuntimeContextFit(
 			hostRamMbFromProbe(hardware) - ramHeadroomReserveMb(),
 		),
 		nativeContext,
-		preferAccurateKvWhenHeadroom: preferAccurateKvWhenHeadroom(),
 	});
 }
 

@@ -47,8 +47,6 @@ export {
   __loadAppRoutePluginFromSpecifierForTest,
   drainRuntimeHookContributors,
   getDeferAppRoutesEnabled,
-  getSkippedAppRoutePluginIds,
-  normalizeAppRoutePluginId,
 } from "./startup/app-contributors.js";
 export {
   createRuntimeBootResources,
