@@ -69,5 +69,28 @@
       "Existing real SQLite cases cover encrypted retention across reopen, exact reply checking, withdrawal, serialization and overflow. A controlled sender supplies replies. Fair progress assumes settlement of the admitted callback and its local continuation.",
       "Producer capture and cancellation, collector authority, database leases, timer policy, multiple handles, arbitrary storage faults and crash durability remain separate."
     ]
+  },
+  {
+    "id": "ResearchRotationRecovery",
+    "model": "packages/host/quint/ResearchRotationRecovery.qnt",
+    "sources": [
+      "packages/host/native-host/research-configuration.mjs",
+      "packages/host/native-host/research-configuration.test.mjs",
+      "packages/host/native-host/research-store.mjs",
+      "packages/host/native-host/database-lease.mjs",
+      "packages/host/quint/check-research-rotation-recovery.mjs"
+    ],
+    "invariants": [
+      "CommittedKeyRemainsAvailable",
+      "PublishedKeyMatchesDatabase",
+      "SuccessRequiresPublishedKey",
+      "InterruptedLeaseRemainsOwned"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One initialized private configuration and one offline rotation under the existing exclusive lease. Recovery files precede the SQLite commit. Successful publication precedes release. A committed key remains in the active or retained next file.",
+      "Real SQLite and child-process checks prove the after-commit, before-publication recovery path. The stale lock blocks reopen until confirmed exit and explicit removal. The retained new key reopens the actual data and audit.",
+      "Earlier crash boundaries, partial writes, arbitrary close/release failures, later rotation, operator authentication and power-loss durability remain outside this proof. Lease implementation internals are abstracted."
+    ]
   }
 ]
