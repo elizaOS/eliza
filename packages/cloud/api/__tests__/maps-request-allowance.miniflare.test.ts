@@ -23,7 +23,6 @@ describe("Maps shared allowance", () => {
       target: "browser",
       format: "esm",
       conditions: ["eliza-source"],
-      conditions: ["eliza-source"],
       plugins: [
         {
           name: "explicit-env-only",
