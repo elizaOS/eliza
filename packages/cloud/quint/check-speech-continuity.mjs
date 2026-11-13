@@ -20,6 +20,7 @@ const cases = [
     "src/voice/speech-relay-session.test.ts",
     [
       "closing while an extension is in flight settles every reservation exactly once",
+      "failed legacy unused settlement is retained without repeating its non-idempotent call",
     ],
   ],
   [
@@ -34,6 +35,11 @@ const cases = [
       ...["credit", "quota", "legacy"].map(
         (failure) => `failed late renewal ${failure} cleanup remains owned`,
       ),
+      "late unused stt settlement stays owned across retirement retry",
+      "late unused tts settlement stays owned across retirement retry",
+      "a lost unused-quota reply stays unknown and is never replayed",
+      "a nonzero unused settlement proof cannot confirm retirement",
+      "close retains a transient unused settlement for explicit retry with its zero target",
     ],
   ],
 ];

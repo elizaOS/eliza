@@ -1080,3 +1080,35 @@ for (const windows of [3, 10]) {
     }
   });
 }
+
+test("failed legacy unused settlement is retained without repeating its non-idempotent call", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(1_000);
+  let attempts = 0;
+  const f = renewing({ extend: async () => 0 });
+  const reserve = f.ports.reserveCredits;
+  let window = 0;
+  f.ports.reserveCredits = async (...args) => {
+    const reservation = await reserve(...args);
+    if (window++ === 0) return reservation;
+    return {
+      ...reservation,
+      settle: async () => {
+        attempts++;
+        throw Error("Legacy result unknown");
+      },
+    };
+  };
+  try {
+    const session = await f.open();
+    await vi.advanceTimersByTimeAsync(20);
+    await expect(session.close()).rejects.toThrow("cleanup was not confirmed");
+    await expect(session.retirement.retryRetirement()).rejects.toThrow(
+      "cleanup was not confirmed",
+    );
+    expect(attempts).toBe(1);
+    expect(f.order.filter((item) => item === "quota-release")).toHaveLength(1);
+  } finally {
+    vi.useRealTimers();
+  }
+});

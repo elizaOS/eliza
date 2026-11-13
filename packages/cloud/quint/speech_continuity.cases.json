@@ -16,7 +16,8 @@
   "bounds": {
     "assumptions": [
       "Three billing windows, one owner and one transport. Provider success and eventual settlement are not assumed.",
-      "A stopped renewal returns without granting its window. Failed credit settlement retains that window for idempotent retry. An additive quota refund with unknown acknowledgement is retained without replay; confirmed independent money remains separate."
+      "A stopped renewal returns without granting its window. Failed credit settlement retains that window for idempotent retry. An additive quota refund with unknown acknowledgement is retained without replay; confirmed independent money remains separate.",
+      "An ungranted-window settlement transition represents validated terminal actual-zero receipts with matching window and kind identities. Invalid receipts leave settlement ownership unresolved."
     ],
     "progress": "Safety only. providerStopRequested records issuing teardown, not provider completion or a wall-clock deadline. Live providers, deadlines and delivery are verified separately."
   },

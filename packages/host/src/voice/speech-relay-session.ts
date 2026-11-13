@@ -336,6 +336,23 @@ export async function createSpeechRelaySession(
       },
     };
   }
+  function recordSettlement(
+    index: number,
+    kind: "stt" | "tts",
+    outcome: SpeechSettlementOutcome["stt" | "tts"] | undefined,
+  ) {
+    if (
+      index >= windows &&
+      (outcome?.terminal !== true ||
+        outcome.state !== "actual" ||
+        outcome.amountUsd !== "0" ||
+        outcome.requestId !== `speech:${scope.cloudSessionId}:${kind}:${index}`)
+    )
+      throw Error("Unused speech reservation settlement is unconfirmed");
+    const accounting = windowAccounting.get(index) ?? {};
+    windowAccounting.set(index, accounting);
+    if (outcome) accounting[kind] = outcome;
+  }
   async function settleKind(
     index: number,
     reservation: SpeechRelayCreditReservation,
@@ -349,7 +366,7 @@ export async function createSpeechRelaySession(
     const fixed = settlementInputs.get(key) ?? details;
     settlementInputs.set(key, fixed);
     const result = await reservation.settle(fixed, [kind]);
-    if (result?.[kind]) accounting[kind] = result[kind];
+    recordSettlement(index, kind, result?.[kind]);
   }
   function settleOnce(
     reservation: SpeechRelayCreditReservation,
@@ -566,7 +583,8 @@ export async function createSpeechRelaySession(
                 reservation,
                 windowDetails(details, index),
               );
-              if (result) Object.assign(accounting, result);
+              for (const kind of ["stt", "tts"] as const)
+                recordSettlement(index, kind, result?.[kind]);
             } catch (error) {
               failures.push(error);
             }
@@ -754,8 +772,7 @@ export async function createSpeechRelaySession(
               "submitted_counter_provider_unconfirmed" as const,
           };
           settlementInputs.set(key, fixed);
-          const result = await reservation.settle(fixed, ["tts"]);
-          if (result?.tts) accounting.tts = result.tts;
+          await settleKind(index, reservation, fixed, "tts");
         }
       })();
       finalTtsAccounting = attempt;
