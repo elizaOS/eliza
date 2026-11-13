@@ -92,13 +92,14 @@ export async function withGuardedPaidProxyAdmission(
     };
 
     if (!executionCtx)
-      return dispatch({ mode: "compatibility", auth, requestId });
+      return await dispatch({ mode: "compatibility", auth, requestId });
 
     // A Worker caller authorized authoritatively (the combined auth cache is
     // not qualified) carries no admission snapshot. Durable admission then
     // takes the authoritative hold, policy and balance path itself, as the
     // inference and speech routes do, instead of refusing the request.
-    return dispatch({
+    // Keep the credential guard alive until dispatch has settled.
+    return await dispatch({
       mode: "combined",
       auth,
       requestId,
