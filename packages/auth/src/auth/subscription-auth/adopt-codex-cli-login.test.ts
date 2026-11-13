@@ -24,8 +24,9 @@ import path from "node:path";
 import { ElizaError } from "@elizaos/core/protocol";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  type AccountStoragePolicy,
   createIsolatedAccountStoragePolicy,
-  loadAccount,
+  loadAccount as loadAccountWithPolicy,
 } from "../account-storage.ts";
 import {
   type AdoptCodexOptions,
@@ -34,6 +35,7 @@ import {
 } from "./adopt-codex-cli-login.ts";
 
 let home: string;
+let storagePolicy: AccountStoragePolicy;
 const savedEnv: Record<string, string | undefined> = {};
 
 function adoptCodexCliLogin(
@@ -41,16 +43,15 @@ function adoptCodexCliLogin(
 ) {
   return adoptCodexCliLoginWithPolicy({
     ...options,
-    storagePolicy: createIsolatedAccountStoragePolicy(home),
+    storagePolicy,
   });
 }
 
-function loadTestAccount(accountId: string) {
-  return loadAccount(
-    "openai-codex",
-    accountId,
-    createIsolatedAccountStoragePolicy(home),
-  );
+function loadAccount(
+  provider: Parameters<typeof loadAccountWithPolicy>[0],
+  accountId: string,
+) {
+  return loadAccountWithPolicy(provider, accountId, storagePolicy);
 }
 
 function makeJwt(expSeconds: number): string {
@@ -99,6 +100,7 @@ function retiredFilesIn(dir: string): string[] {
 
 beforeEach(() => {
   home = mkdtempSync(path.join(tmpdir(), "adopt-codex-"));
+  storagePolicy = createIsolatedAccountStoragePolicy(home);
   for (const key of ["HOME", "ELIZA_HOME", "ELIZA_STATE_DIR", "CODEX_HOME"]) {
     savedEnv[key] = process.env[key];
   }
@@ -140,7 +142,7 @@ describe("success path", () => {
     const retired = JSON.parse(readFileSync(result.retiredTo, "utf-8")) as {
       tokens: { access_token: string; refresh_token: string };
     };
-    const account = await loadTestAccount("pool-a");
+    const account = await loadAccount("openai-codex", "pool-a");
     expect(account?.credentials.access).toBe(retired.tokens.access_token);
     expect(account?.credentials.refresh).toBe(retired.tokens.refresh_token);
     expect(account?.credentials.idToken).toBe("id.token.codex");
@@ -153,9 +155,9 @@ describe("success path", () => {
 
     await adoptCodexCliLogin();
 
-    expect((await loadTestAccount("default"))?.credentials.refresh).toBe(
-      "rt.default-home",
-    );
+    expect(
+      (await loadAccount("openai-codex", "default"))?.credentials.refresh,
+    ).toBe("rt.default-home");
   });
 
   it("repeated adoption preserves every retired artifact (no-clobber retirement)", async () => {
@@ -175,9 +177,9 @@ describe("success path", () => {
     expect(readFileSync(first.retiredTo, "utf-8")).toContain("refresh-first");
     expect(readFileSync(second.retiredTo, "utf-8")).toContain("refresh-second");
     // The pool holds the latest adoption.
-    expect((await loadTestAccount("pool-a"))?.credentials.refresh).toBe(
-      "refresh-second",
-    );
+    expect(
+      (await loadAccount("openai-codex", "pool-a"))?.credentials.refresh,
+    ).toBe("refresh-second");
   });
 });
 
@@ -248,7 +250,7 @@ describe("source validation", () => {
     );
     expect(lstatSync(link).isSymbolicLink()).toBe(true);
     expect(existsSync(real)).toBe(true);
-    expect(await loadTestAccount("default")).toBeNull();
+    expect(await loadAccount("openai-codex", "default")).toBeNull();
   });
 
   it("restores the source when it is not valid JSON", async () => {
@@ -295,7 +297,7 @@ describe("source validation", () => {
     // Full rollback: source back in place, nothing retired, nothing pooled.
     expect(existsSync(authPath)).toBe(true);
     expect(retiredFilesIn(codexHome)).toHaveLength(0);
-    expect(await loadTestAccount("default")).toBeNull();
+    expect(await loadAccount("openai-codex", "default")).toBeNull();
   });
 });
 
@@ -311,9 +313,9 @@ describe("pool collision", () => {
       "adopt_codex.account_exists",
     );
     expect(existsSync(authPath)).toBe(true);
-    expect((await loadTestAccount("pool-a"))?.credentials.refresh).toBe(
-      "refresh-1",
-    );
+    expect(
+      (await loadAccount("openai-codex", "pool-a"))?.credentials.refresh,
+    ).toBe("refresh-1");
   });
 });
 
@@ -331,7 +333,7 @@ describe("fault injection", () => {
       chmodSync(codexHome, 0o755);
     }
     expect(existsSync(authPath)).toBe(true);
-    expect(await loadTestAccount("default")).toBeNull();
+    expect(await loadAccount("openai-codex", "default")).toBeNull();
   });
 
   it("restores the source when the pool write fails", async () => {
@@ -473,7 +475,7 @@ describe("two-process concurrency", () => {
           originalBody,
         );
         expect(readFileSync(authPath, "utf-8")).toBe(refreshedBody);
-        expect(await loadTestAccount("race")).toBeNull();
+        expect(await loadAccount("openai-codex", "race")).toBeNull();
         expect(await writerDone).toBe(0);
       } finally {
         fs.renameSync = realRename;
