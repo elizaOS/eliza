@@ -28,6 +28,11 @@ const cases = [
     "src/voice/speech-retirement-session.test.ts",
     [
       "paid renewal retains one STT connection and settles each window once",
+      "a nonzero unused settlement proof cannot confirm retirement",
+      "close retries a transient unused settlement once and keeps its zero target",
+      "late unused stt settlement stays owned across retirement retry",
+      "late unused tts settlement stays owned across retirement retry",
+      "a lost unused-quota reply stays unknown and is never replayed",
       ...["quota", "admission", "extension"].map(
         (pending) =>
           `Stop requests provider teardown while renewal waits on ${pending}`,
@@ -35,11 +40,6 @@ const cases = [
       ...["credit", "quota", "legacy"].map(
         (failure) => `failed late renewal ${failure} cleanup remains owned`,
       ),
-      "late unused stt settlement stays owned across retirement retry",
-      "late unused tts settlement stays owned across retirement retry",
-      "a lost unused-quota reply stays unknown and is never replayed",
-      "a nonzero unused settlement proof cannot confirm retirement",
-      "close retains a transient unused settlement for explicit retry with its zero target",
     ],
   ],
 ];

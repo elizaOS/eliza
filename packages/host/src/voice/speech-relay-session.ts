@@ -488,14 +488,10 @@ export async function createSpeechRelaySession(
       // Stop providers before joining a slow renewal, then retain every returned
       // reservation until its settlement is acknowledged.
       await renewal?.catch((error) => failures.push(error));
-      const failedUngranted = new Set<SpeechRelayCreditReservation>();
       for (const [reservation, settlement] of ungrantedSettlements) {
-        try {
-          await settlement;
-        } catch (error) {
-          failures.push(error);
-          failedUngranted.add(reservation);
-        }
+        // The owner below retries failed per-kind cleanup using its frozen
+        // zero target. Generic reservations retain their original promise.
+        await settlement.catch(() => {});
         ungrantedSettlements.delete(reservation);
       }
       let renewalQuotaError: unknown,
@@ -534,7 +530,6 @@ export async function createSpeechRelaySession(
         // have carried any usage, so it is released whatever the drain outcome.
         const granted = windows;
         for (const [index, reservation] of reservations.entries()) {
-          if (failedUngranted.has(reservation)) continue;
           const share = (total: number, size: number) =>
             speechWindowShare(total, size, index, granted);
           try {
@@ -573,7 +568,6 @@ export async function createSpeechRelaySession(
         }
       } else if (credits) {
         for (const [index, reservation] of reservations.entries()) {
-          if (failedUngranted.has(reservation)) continue;
           const accounting = windowAccounting.get(index) ?? {};
           windowAccounting.set(index, accounting);
           if (!reservation.supportsPerKindSettlement) {
@@ -626,6 +620,10 @@ export async function createSpeechRelaySession(
             accounting.tts.requestId ===
               `speech:${scope.cloudSessionId}:tts${suffix}` &&
             accounting.stt.state === "actual" &&
+            (index < windows ||
+              (accounting.tts.state === "actual" &&
+                accounting.stt.amountUsd === "0" &&
+                accounting.tts.amountUsd === "0")) &&
             (accounting.tts.state === "actual" ||
               (accounting.tts.state === "conservative" &&
                 accounting.tts.basis ===

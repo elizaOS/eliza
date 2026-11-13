@@ -930,7 +930,7 @@ test("a nonzero unused settlement proof cannot confirm retirement", async () => 
   }
 });
 
-test("close retains a transient unused settlement for explicit retry with its zero target", async () => {
+test("close retries a transient unused settlement once and keeps its zero target", async () => {
   vi.useFakeTimers();
   vi.setSystemTime(1_000);
   const p = ports();
@@ -969,9 +969,7 @@ test("close retains a transient unused settlement for explicit retry with its ze
       p.value,
     );
     await vi.advanceTimersByTimeAsync(50_000);
-    await expect(session.close()).rejects.toThrow("cleanup was not confirmed");
-    expect(p.handle.evidence()?.moneyTerminal).not.toBe(true);
-    await p.handle.retryRetirement();
+    await session.close();
     expect(attempts).toEqual({ stt: 2, tts: 1 });
     expect(p.handle.evidence()).toMatchObject({
       moneyTerminal: true,

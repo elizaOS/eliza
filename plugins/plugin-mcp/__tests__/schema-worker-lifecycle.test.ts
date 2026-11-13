@@ -4,6 +4,14 @@ import { validateToolSelectionArgument } from "../src/utils/validation";
 const select = (value: unknown, schema: Record<string, unknown>) =>
   validateToolSelectionArgument({ toolArguments: value }, schema);
 
+const expectValid = async (value: unknown, schema: Record<string, unknown>) => {
+  const result = await select(value, schema);
+  expect(result, JSON.stringify(result)).toEqual({
+    success: true,
+    data: { toolArguments: value },
+  });
+};
+
 const shared = {
   $id: "https://fixture.invalid/worker-schema",
   type: "object",
@@ -24,31 +32,31 @@ describe("MCP isolated schema worker lifecycle", () => {
         ...(dialect ? { $schema: dialect } : {}),
         properties: { value: { type: "integer" } },
       };
-      expect(await select({ value: 0 }, schema)).toMatchObject({ success: true });
-      expect(await select({ value: "zero" }, schema)).toMatchObject({ success: false });
+      await expectValid({ value: 0 }, schema);
+      const invalid = await select({ value: "zero" }, schema);
+      expect(invalid, JSON.stringify(invalid)).toEqual({
+        success: false,
+        error: "Invalid arguments: value: must be integer",
+      });
     },
     10_000
   );
 
   it("isolates identical schema ids in successive workers", async () => {
-    expect(
-      await select(
-        { value: 0 },
-        {
-          ...shared,
-          properties: { value: { type: "integer" } },
-        }
-      )
-    ).toMatchObject({ success: true });
-    expect(
-      await select(
-        { value: "changed" },
-        {
-          ...shared,
-          properties: { value: { type: "string" } },
-        }
-      )
-    ).toMatchObject({ success: true });
+    await expectValid(
+      { value: 0 },
+      {
+        ...shared,
+        properties: { value: { type: "integer" } },
+      }
+    );
+    await expectValid(
+      { value: "changed" },
+      {
+        ...shared,
+        properties: { value: { type: "string" } },
+      }
+    );
   }, 10_000);
 
   it("retains the request deadline for expensive untrusted validation", async () => {
@@ -64,7 +72,7 @@ describe("MCP isolated schema worker lifecycle", () => {
           properties: { value: { type: "string", pattern: "^(a+)+$" } },
         }
       );
-      expect(result).toEqual({
+      expect(result, JSON.stringify(result)).toEqual({
         success: false,
         error: "Invalid arguments: MCP JSON schema validation exceeded 250ms",
       });
@@ -72,6 +80,6 @@ describe("MCP isolated schema worker lifecycle", () => {
     } finally {
       clearInterval(heartbeat);
     }
-    expect(await select({}, { type: "object" })).toMatchObject({ success: true });
+    await expectValid({}, { type: "object" });
   }, 10_000);
 });
