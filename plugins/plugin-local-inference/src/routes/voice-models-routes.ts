@@ -584,7 +584,11 @@ export async function handleVoiceModelsRoutes(
 		if (action === "pin") {
 			const body = await readCompatJsonBody(req, res);
 			if (!body) return true;
-			const pinned = body.pinned === true;
+			if (typeof body.pinned !== "boolean") {
+				sendJsonError(res, "pin requires pinned: true or false", 400);
+				return true;
+			}
+			const pinned = body.pinned;
 			const pins = await readPins();
 			if (pinned) pins.add(id);
 			else pins.delete(id);

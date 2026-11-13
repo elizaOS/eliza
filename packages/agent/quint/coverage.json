@@ -916,9 +916,7 @@
       "plugins/plugin-workflow/src/lib/automations-types.ts",
       "packages/agent/test/automations-owner-principal-http.test.ts"
     ],
-    "invariants": [
-      "Safety"
-    ],
+    "invariants": ["Safety"],
     "status": "partial",
     "limitations": [
       "No cross-process writer fence is proved. Task runtime ownership remains a host responsibility. Legacy direct database mutation and permanent DELETE are outside this recovery API model.",
