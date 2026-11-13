@@ -614,9 +614,18 @@ remain unchanged. This endpoint alone does not provide client streaming playback
 returns the provider, dataset revision, regions, travel modes and attribution.
 `POST geocode`, `reverse`, `places/search`, `places/details` and `routes` take
 the query or coordinates in the JSON body, so location data is not in URLs or
-logs. Each route needs an API key or session, an active or trialing plan
-(`403 subscription_required`) and the per-credential rate limit. The
-`admit` hook in `src/lib/maps-route.ts` applies the plan request buckets while
+logs. Each route needs an API key or session and either an active or trialing
+plan or sufficient purchased credits (`402 insufficient_credits`). Plans include
+Maps through their Maps allowance. Without a plan, Google requests reserve the
+published global API unit cost with no platform markup and settle the observed
+provider calls. Account-wide Google discounts and free caps require later invoice
+reconciliation. Known billable empty and not-found results retain their cost.
+Known authentication, quota and server refusals do not incur a charge.
+Unclassified provider responses settle conservatively at the reserved estimate.
+Metadata does not incur a charge. Duplicate request IDs do not
+start another provider call. An unknown provider outcome fixes the conservative
+settlement choice. A retry keeps that choice. The
+`admit` hook in `src/lib/maps-route.ts` applies the Maps request buckets while
 `ELIZA_CLOUD_PLAN_RATE_LIMITS` is set: `429 rate_limited` with `Retry-After`
 and `retryAfterSeconds` in the body. The buckets run after the plan read, so a
 refused Maps request still costs that database read.
@@ -675,19 +684,20 @@ traffic-aware drive is `400 invalid_request`. Search asks only for basic place
 fields (Text Search Pro); details adds website, phone and opening hours.
 
 `GET /api/v1/maps/tiles/{z}/{x}/{y}` returns one PNG roadmap tile
-(`Cache-Control: private, max-age=86400`) when the provider serves tiles;
+(`Cache-Control: no-store`) when the provider serves tiles;
 `capabilities.tiles` then gives the URL template, zoom range, tile size and
 the attribution a host must show on the map, and `capabilities.map` is `true`.
 `POST /api/v1/maps/tiles/viewport` with `{zoom, north, south, east, west}`
 returns `{providerId, copyright, maxZoom}`: the copyright for the visible area,
 which the host shows with the tiles (it is metadata like `capabilities`: it
-needs the subscription but no `Idempotency-Key` and consumes no allowance).
+needs Maps access but no `Idempotency-Key` and consumes no allowance).
 plugin-maps' `createCloudMaps(..., { tileRequest })` and `MapPlane` with a
 `cloud-raster` basemap draw these tiles. Cloud creates the Map Tiles
 session once per isolate, key, language and region, renews it an hour before
 it expires and once more if Google refuses it. Tiles use the same
-authentication, subscription and durable admission as every Maps operation:
-one request unit and a unique `Idempotency-Key` per tile, so size the
+authentication, funding and durable admission as every Maps operation:
+one request unit (included-plan allowance or Google unit cost from credits) and a
+unique `Idempotency-Key` per tile, so size the
 `ELIZA_CLOUD_MAPS_REQUEST_ALLOWANCES` plans for map browsing (a screen is
 roughly 12-20 tiles). Other providers answer `503 maps_not_configured`.
 

@@ -1,0 +1,54 @@
+{
+  "sources": [
+    "packages/cloud/api/src/lib/maps-request-admission.ts",
+    "packages/cloud/api/src/lib/maps-route.ts",
+    "packages/cloud/api/__tests__/maps-request-admission.test.ts",
+    "packages/cloud/quint/check-maps-credit-funding.mjs",
+    "packages/cloud/shared/src/lib/services/maps/google-provider.ts",
+    "packages/cloud/shared/src/lib/services/maps/contract.ts",
+    "packages/cloud/shared/src/lib/services/organization-inference-admission.ts",
+    "packages/cloud/api/__tests__/maps-google-provider.test.ts",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/scripts/lib/test-output.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-maps-credit-funding.mjs",
+  "bounds": {
+    "domain": "Two logical request IDs, three initial credit units, one or two unit quotes, at most two provider calls per request, one account and mutable plan/credential standing.",
+    "atomicity": "Admission and settlement rely on the existing authoritative organization billing owner. Maps replay receipts precede provider dispatch. The first provider call checks credential standing; subrequests within the same operation reuse its acknowledged dispatch promise.",
+    "progress": "Progress assumes weak fairness of provider observation and settlement. The no-fairness property is expected to produce a liveness counterexample."
+  },
+  "limitations": [
+    "Unit prices abstract the published Google SKU prices; floating-point money arithmetic is covered by the existing billing engine, not this model.",
+    "The model does not prove transport behavior or cross-process implementation refinement. Route orchestration and actual SQLite replay/rate tests are separate checks.",
+    "Google account-wide free caps and negotiated volume discounts require invoice reconciliation. The request quote uses the published unit rate without platform markup."
+  ],
+  "cases": [
+    {
+      "name": "maps-credit-funding",
+      "main": "maps_credit_funding",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["SettlesWhenObserved", "NoFairnessSettles"],
+      "maxSteps": 40,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "SettlesWhenObserved",
+          "expect": "holds",
+          "assumptions": [
+            "A dispatched provider call eventually produces an accepted, rejected or lost-response observation under weak fairness of observe(key).",
+            "The existing billing owner eventually settles an eligible reservation under weak fairness of settle(key). No provider success is assumed."
+          ]
+        },
+        {
+          "property": "NoFairnessSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. A reserved or inflight request may remain unobserved indefinitely."
+          ]
+        }
+      ]
+    }
+  ]
+}

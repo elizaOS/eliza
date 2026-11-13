@@ -21,7 +21,164 @@ const ENV = { ELIZA_MAPS_PROVIDER: "google", GOOGLE_MAPS_API_KEY: KEY };
 const CASINO = { latitude: 43.7397, longitude: 7.4276 };
 const PORT = { latitude: 43.7347, longitude: 7.4206 };
 const PLACE_ID = "ChIJMYU_e2_CzRIR_JzEOkx493Q";
-const NOW = 1_760_000_000_000;
+
+test("Google Maps credit quotes use the requested SKU without platform markup", () => {
+  const provider = mapsProviderFromEnv(ENV)!;
+  expect(provider.creditPrice!("search", {}).amountUsd).toBe(0.032);
+  expect(provider.creditPrice!("details", {}).amountUsd).toBe(0.02);
+  expect(provider.creditPrice!("geocode", {}).amountUsd).toBe(0.005);
+  expect(provider.creditPrice!("reverse", {}).amountUsd).toBe(0.005);
+  expect(
+    provider.creditPrice!("reverse", { preferPlace: true }).amountUsd,
+  ).toBe(0.037);
+  expect(provider.creditPrice!("tiles", {}).amountUsd).toBe(0.0006);
+  expect(provider.creditPrice!("routes", { mode: "drive" }).amountUsd).toBe(
+    0.01,
+  );
+  expect(provider.creditPrice!("routes", { mode: "walk" }).amountUsd).toBe(
+    0.005,
+  );
+  expect(provider.creditPrice!("coverage", {}).amountUsd).toBe(0);
+});
+
+test("billable response is observed before a failed response body is buffered", async () => {
+  let marked = false;
+  const prices: number[] = [];
+  const { provider } = google(() => {
+    expect(marked).toBe(true);
+    return new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.error(Error("Controlled body failure"));
+        },
+      }),
+      { status: 200 },
+    );
+  });
+  const observer = Object.assign(
+    (price: { amountUsd: number }) => {
+      prices.push(price.amountUsd);
+    },
+    {
+      beforeRequest: async () => {
+        marked = true;
+      },
+    },
+  );
+  await expect(
+    provider.search({ query: "test" }, undefined, observer),
+  ).rejects.toThrow();
+  expect(prices).toEqual([0.032]);
+});
+
+test("Google billing follows business results across HTTP status classes", async () => {
+  let responseStatus = 200;
+  let responseBody: object = {};
+  const server = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    fetch: () => Response.json(responseBody, { status: responseStatus }),
+  });
+  try {
+    const provider = mapsProviderFromEnv(ENV, (_input, init) =>
+      fetch(server.url, init),
+    )!;
+    for (const item of [
+      {
+        operation: "geocode",
+        status: 200,
+        business: "ZERO_RESULTS",
+        cost: 0.005,
+        rejected: 0,
+        failed: false,
+      },
+      {
+        operation: "geocode",
+        status: 404,
+        business: "ZERO_RESULTS",
+        cost: 0.005,
+        rejected: 0,
+        failed: false,
+      },
+      {
+        operation: "geocode",
+        status: 200,
+        business: "UNKNOWN_ERROR",
+        cost: null,
+        rejected: 1,
+        failed: true,
+      },
+      {
+        operation: "geocode",
+        status: 503,
+        business: "UNKNOWN_ERROR",
+        cost: null,
+        rejected: 1,
+        failed: true,
+      },
+      {
+        operation: "geocode",
+        status: 400,
+        business: "INVALID_REQUEST",
+        cost: null,
+        rejected: 0,
+        failed: true,
+      },
+      {
+        operation: "details",
+        status: 404,
+        business: "NOT_FOUND",
+        cost: 0.02,
+        rejected: 0,
+        failed: false,
+      },
+    ] as const) {
+      responseStatus = item.status;
+      responseBody =
+        item.operation === "details"
+          ? { error: { status: item.business } }
+          : { status: item.business, results: [] };
+      const prices: number[] = [];
+      let rejected = 0;
+      let dispatched = 0;
+      const observer = Object.assign(
+        (price: { amountUsd: number }) => prices.push(price.amountUsd),
+        {
+          beforeRequest: async () => {
+            dispatched++;
+          },
+          requestRejected: () => {
+            rejected++;
+          },
+        },
+      );
+      let failed = false;
+      try {
+        if (item.operation === "details")
+          expect(
+            await provider.details({ id: PLACE_ID }, undefined, observer),
+          ).toBeNull();
+        else
+          expect(
+            await provider.geocode(
+              { query: "No matching place" },
+              undefined,
+              observer,
+            ),
+          ).toEqual([]);
+      } catch (error) {
+        expect(error).toBeInstanceOf(MapsServiceError);
+        failed = true;
+      }
+      expect(failed).toBe(item.failed);
+      expect(prices).toEqual(item.cost === null ? [] : [item.cost]);
+      expect(rejected).toBe(item.rejected);
+      expect(dispatched).toBe(1);
+    }
+  } finally {
+    await server.stop(true);
+  }
+});
 
 interface Call {
   url: URL;
@@ -350,6 +507,7 @@ describe("Google Places and Geocoding", () => {
 
   test("map taps prefer the nearest named place and retain address lookup when none is nearby", async () => {
     let nearby = true;
+    const prices: number[] = [];
     const { calls, provider } = google((url) => {
       if (url.pathname.endsWith("places:searchNearby")) {
         return Response.json({
@@ -379,11 +537,15 @@ describe("Google Places and Geocoding", () => {
       });
     });
     expect(
-      await provider.reverse({
-        coordinate: CASINO,
-        preferPlace: true,
-        radiusMeters: 40,
-      }),
+      await provider.reverse(
+        {
+          coordinate: CASINO,
+          preferPlace: true,
+          radiusMeters: 40,
+        },
+        undefined,
+        (price) => prices.push(price.amountUsd),
+      ),
     ).toMatchObject({ id: PLACE_ID, name: "Starbucks", coordinate: CASINO });
     expect(calls).toHaveLength(1);
     expect(calls[0].url.href).toBe(
@@ -396,9 +558,14 @@ describe("Google Places and Geocoding", () => {
     });
     nearby = false;
     expect(
-      await provider.reverse({ coordinate: CASINO, preferPlace: true }),
+      await provider.reverse(
+        { coordinate: CASINO, preferPlace: true },
+        undefined,
+        (price) => prices.push(price.amountUsd),
+      ),
     ).toMatchObject({ id: PLACE_ID });
     expect(calls[2].url.pathname).toBe("/maps/api/geocode/json");
+    expect(prices).toEqual([0.032, 0.032, 0.005]);
   });
 
   test("finite nearby lookup outcomes match the real HTTP provider", async () => {
