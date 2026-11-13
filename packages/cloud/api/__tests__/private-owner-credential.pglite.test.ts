@@ -212,7 +212,6 @@ function env(): AppEnv["Bindings"] {
   return {
     ENVIRONMENT: "production",
     ELIZA_MOBILE_APP_AUTH_ENABLED: "true",
-    ELIZA_MOBILE_APP_AUTH_APP_ID: APP,
     SHARED_RUNTIME_CONVERSATIONS: {
       getByName() {
         namespaceCalls += 1;
@@ -253,7 +252,7 @@ async function mobile() {
     [APP, KEY],
   );
   await pg.query(
-    "INSERT INTO apps(id,is_active,is_approved) VALUES($1,true,true)",
+    "INSERT INTO apps(id,is_active,is_approved,app_url,allowed_origins) VALUES($1,true,true,'https://eliza.app','[\"https://eliza.app/auth/callback\"]'::jsonb)",
     [APP],
   );
   await pg.query(

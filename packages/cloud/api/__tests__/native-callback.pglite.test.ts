@@ -242,3 +242,60 @@ describe("hosted native callback and billing return routes", () => {
     expect(res.status).toBe(404);
   });
 });
+
+test("Pages uses the current database callback and browser-start registration", async () => {
+  const { onRequest } = await import("../../../app/functions/_middleware");
+  const clientId = "org.example.browser";
+  const browserApp = randomUUID();
+  const callback = "https://eliza.app/browser/auth/callback";
+  const browserSignIn = {
+    startPath: "/browser/auth/browser-start",
+    returnPath: "/__browser/return",
+    storageKey: "browser:pending",
+    apiOrigin: "https://api.eliza.app",
+    tenant: "elizacloud",
+  };
+  await dbWrite.execute(`INSERT INTO apps (id, name, app_url, allowed_origins, is_active, is_approved)
+    VALUES ('${browserApp}', 'Browser App', 'https://eliza.app', '["${callback}"]'::jsonb, true, true)`);
+  await dbWrite.execute(`INSERT INTO mobile_app_auth_clients (client_id, app_id, redirect_uri, android_package_name, enabled, browser_sign_in)
+    VALUES ('${clientId}', '${browserApp}', '${callback}', 'org.example.browser', true, '${JSON.stringify(browserSignIn)}'::jsonb)`);
+  const pages = (url: string, init?: RequestInit, enabled: unknown = "true") =>
+    onRequest({
+      request: new Request(url, init),
+      env: {
+        API_WORKER: {
+          fetch: async (request: Request) =>
+            app.fetch(request, {
+              ENVIRONMENT: "production",
+              ELIZA_MOBILE_APP_AUTH_ENABLED: enabled,
+            } as never),
+        },
+      },
+      next: async () => new Response("SPA"),
+    });
+  const response = await pages(`${callback}?code=private-code`);
+  expect(response.status).toBe(200);
+  expect(await response.text()).not.toContain("private-code");
+  const start = await pages("https://eliza.app/browser/auth/browser-start", {
+    method: "POST",
+    headers: { Origin: "http://127.0.0.1:5487" },
+    body: new URLSearchParams({
+      state: "a".repeat(43),
+      challenge: "b".repeat(43),
+    }),
+  });
+  expect(start.status).toBe(200);
+  expect(await start.text()).toContain("browser:pending");
+  const disabled = await pages(callback, undefined, null);
+  expect(disabled.status).toBe(503);
+  await dbWrite.execute(
+    `UPDATE mobile_app_auth_clients SET android_package_name = 'org.example.renamed' WHERE client_id = '${clientId}'`,
+  );
+  expect(await (await pages(callback)).text()).toContain(
+    "package=org.example.renamed",
+  );
+  await dbWrite.execute(
+    `UPDATE mobile_app_auth_clients SET enabled = false WHERE client_id = '${clientId}'`,
+  );
+  expect(await (await pages(callback)).text()).toBe("SPA");
+});

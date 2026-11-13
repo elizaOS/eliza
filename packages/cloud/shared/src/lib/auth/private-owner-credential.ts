@@ -5,7 +5,11 @@ import {
 } from "../../db/repositories/private-owner-credential";
 import type { Variables } from "../../types/cloud-worker-env";
 import { ForbiddenError } from "../api/cloud-worker-errors";
-import type { MobileAppAuthRuntimeEnv } from "../services/mobile-app-auth";
+import {
+  admitMobileAppAuthRegistration,
+  MobileAppAuthProtocolError,
+  type MobileAppAuthRuntimeEnv,
+} from "../services/mobile-app-auth";
 
 export async function requirePrivateOwnerCredential(args: {
   userId: string;
@@ -62,15 +66,36 @@ export async function requirePrivateOwnerCredential(args: {
   if (!row.mobileClient || !row.mobileClient.clientId || !row.mobileClient.enabled) {
     throw refuse();
   }
-  const deploymentEnvironment = args.env?.ENVIRONMENT === "staging" ? "staging" : "production";
-  if (
-    row.mobileClient.appId !== grant.appId ||
-    row.mobileClient.redirectUri !== grant.redirectUri ||
-    grant.environment !== deploymentEnvironment ||
-    !Array.isArray(grant.scopes) ||
-    grant.scopes.length !== 1 ||
-    grant.scopes[0] !== "cloud:user"
-  ) {
-    throw refuse();
+  let registration;
+  try {
+    registration = await admitMobileAppAuthRegistration(args.env, {
+      client: {
+        client_id: row.mobileClient.clientId,
+        app_id: row.mobileClient.appId,
+        redirect_uri: row.mobileClient.redirectUri,
+        enabled: row.mobileClient.enabled,
+        credential_ttl_seconds: row.mobileClient.credentialTtlSeconds,
+      },
+      app: {
+        id: row.mobileApp.id,
+        is_active: row.mobileApp.active,
+        is_approved: row.mobileApp.approved,
+        app_url: row.mobileApp.appUrl,
+        allowed_origins: row.mobileApp.allowedOrigins,
+      },
+    });
+  } catch (error) {
+    if (error instanceof MobileAppAuthProtocolError) throw refuse();
+    throw error;
   }
+  if (
+    registration.appId !== grant.appId ||
+    registration.clientId !== grant.clientId ||
+    registration.redirectUri !== grant.redirectUri ||
+    registration.environment !== grant.environment ||
+    !Array.isArray(grant.scopes) ||
+    grant.scopes.length !== registration.scopes.length ||
+    !registration.scopes.every((scope) => grant.scopes.includes(scope))
+  )
+    throw refuse();
 }

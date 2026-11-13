@@ -94,6 +94,7 @@
         "@elizaos/auth": "workspace:*",
         "@elizaos/capacitor-system": "workspace:*",
         "@elizaos/cloud-routing": "workspace:*",
+        "@elizaos/cloud-shared": "workspace:*",
         "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/host": "workspace:*",

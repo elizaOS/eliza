@@ -3,7 +3,8 @@
  * owns the caller's credential. That address comes only from the credential's
  * acknowledged grant and the current server registry.
  */
-import { afterEach, expect, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
+import { mobileAppAuthClientsRepository } from "../../db/repositories/mobile-app-auth-clients";
 import { mobileAppAuthGrantsRepository } from "../../db/repositories/mobile-app-auth-grants";
 import {
   MobileAppAuthProtocolError,
@@ -25,8 +26,6 @@ const ALPHA = {
 const ENV = {
   ENVIRONMENT: "production",
   ELIZA_MOBILE_APP_AUTH_ENABLED: "true",
-  ELIZA_MOBILE_APP_AUTH_APP_ID: "86000000-0000-4000-8000-0000000000ff",
-  ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: JSON.stringify([ALPHA]),
 };
 const CREDENTIAL = {
   id: "85000000-0000-4000-8000-000000000001",
@@ -54,11 +53,52 @@ function grant(overrides: Partial<Grant> | null = {}): void {
             client_id: ALPHA.clientId,
             environment: "production",
             redirect_uri: ALPHA.redirectUri,
+            scopes: ["cloud:user"],
             ...overrides,
           } as Grant),
     ),
   );
 }
+
+let clientOverride: Partial<typeof ALPHA> | null = {};
+beforeEach(() => {
+  clientOverride = {};
+  spies.push(
+    spyOn(mobileAppAuthClientsRepository, "findRegisteredMobileClient").mockImplementation(
+      async () => {
+        if (clientOverride === null) return null;
+        const client = { ...ALPHA, ...clientOverride };
+        return {
+          client: {
+            client_id: client.clientId,
+            app_id: client.appId,
+            redirect_uri: client.redirectUri,
+            enabled: client.enabled,
+            credential_ttl_seconds: null,
+            android_package_name: null,
+            callback_android_package: null,
+            android_relations: null,
+            android_cert_fingerprints: null,
+            browser_sign_in: null,
+            created_at: new Date(),
+            updated_at: new Date(),
+          },
+          app: {
+            id: client.appId,
+            app_url: "https://eliza.app",
+            allowed_origins: [client.redirectUri],
+            name: "Test",
+            description: null,
+            logo_url: null,
+            website_url: null,
+            is_active: true,
+            is_approved: true,
+          },
+        };
+      },
+    ),
+  );
+});
 
 async function refusal(env: Record<string, unknown> = ENV): Promise<string> {
   try {
@@ -114,20 +154,16 @@ test("a credential without a matching acknowledged grant has no client", async (
 
 test("a disabled, removed or re-pointed registration stops the credential's checkout", async () => {
   grant();
-  const registry = (entry: Record<string, unknown>) => ({
-    ...ENV,
-    ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: JSON.stringify([entry]),
-  });
-  expect(await refusal(registry({ ...ALPHA, enabled: false }))).toBe("invalid_client");
-  expect(await refusal({ ...ENV, ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: "[]" })).toBe(
-    "invalid_client",
-  );
-  expect(
-    await refusal(registry({ ...ALPHA, redirectUri: "https://eliza.app/other/auth/callback" })),
-  ).toBe("invalid_client");
-  expect(await refusal(registry({ ...ALPHA, appId: "86000000-0000-4000-8000-000000000003" }))).toBe(
-    "invalid_client",
-  );
+  for (const entry of [
+    null,
+    { enabled: false },
+    { redirectUri: "https://eliza.app/other/auth/callback" },
+    { appId: "86000000-0000-4000-8000-000000000003" },
+  ]) {
+    clientOverride = entry;
+    expect(await refusal()).toBe("invalid_client");
+  }
+  clientOverride = {};
   expect(await refusal({ ...ENV, ENVIRONMENT: "staging" })).toBe("invalid_client");
   expect(await refusal({ ...ENV, ELIZA_MOBILE_APP_AUTH_ENABLED: "false" })).toBe(
     "server_configuration_error",

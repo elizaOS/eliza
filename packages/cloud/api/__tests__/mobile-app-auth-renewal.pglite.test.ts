@@ -83,7 +83,6 @@ const { MOBILE_APP_AUTH_RENEW_CREDENTIAL_MAX } = await import(
 );
 
 let clock = T0;
-let registry: Record<string, unknown>[] = [CLIENT];
 let limiter: "disabled" | "redis" | "missing" = "disabled";
 const counters = new Map<string, number>();
 
@@ -130,8 +129,6 @@ function env(overrides: Record<string, unknown> = {}): AppEnv["Bindings"] {
     ENVIRONMENT: "production",
     NODE_ENV: "test",
     ELIZA_MOBILE_APP_AUTH_ENABLED: "true",
-    ELIZA_MOBILE_APP_AUTH_APP_ID: "44444444-4444-4444-8444-4444444444ff",
-    ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: JSON.stringify(registry),
     ...(limiter === "disabled" && { RATE_LIMIT_DISABLED: "true" }),
     ...overrides,
   } as unknown as AppEnv["Bindings"];
@@ -192,7 +189,10 @@ interface Held {
 
 /** Exchange a code for an inactive credential, as `mobile/token` does. */
 async function exchange(code: string, attempt: ReturnType<typeof pkce>) {
-  const registration = await resolveMobileAppAuthRegistration(env(), CLIENT.clientId);
+  const registration = await resolveMobileAppAuthRegistration(
+    env(),
+    CLIENT.clientId,
+  );
   const state = await mobileAppAuthGrantsRepository.findStateByCodeHash(
     sha256Hex(code),
   );
@@ -243,7 +243,10 @@ async function acknowledge(
   held: Held,
 ) {
   return await acknowledgeMobileAppAuthCredential({
-    registration: await resolveMobileAppAuthRegistration(env(), CLIENT.clientId),
+    registration: await resolveMobileAppAuthRegistration(
+      env(),
+      CLIENT.clientId,
+    ),
     binding: {
       clientId: CLIENT.clientId,
       environment: "production",
@@ -337,7 +340,10 @@ async function renewInto(from: Held): Promise<Held> {
 async function signIn(): Promise<Held> {
   const attempt = pkce();
   const issued = await issueMobileAppAuthCode({
-    registration: await resolveMobileAppAuthRegistration(env(), CLIENT.clientId),
+    registration: await resolveMobileAppAuthRegistration(
+      env(),
+      CLIENT.clientId,
+    ),
     userId: OWNER,
     organizationId: ORG,
     binding: attempt.binding,
@@ -431,7 +437,6 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   clock = T0;
-  registry = [CLIENT];
   limiter = "disabled";
   counters.clear();
   await pg.exec(
@@ -448,8 +453,12 @@ beforeEach(async () => {
     [OWNER, ORG],
   );
   await pg.query(
-    "INSERT INTO apps(id,is_active,is_approved) VALUES($1,true,true)",
-    [APP],
+    "INSERT INTO apps(id,is_active,is_approved,app_url,allowed_origins) VALUES($1,true,true,$2,$3)",
+    [
+      APP,
+      new URL(CLIENT.redirectUri).origin,
+      JSON.stringify([CLIENT.redirectUri]),
+    ],
   );
   await pg.query(
     `INSERT INTO mobile_app_auth_clients(client_id, app_id, redirect_uri, enabled, created_at, updated_at)

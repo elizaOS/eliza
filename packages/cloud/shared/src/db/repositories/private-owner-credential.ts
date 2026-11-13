@@ -67,12 +67,19 @@ export async function readPrivateOwnerApiKeyAuthority(args: {
         status: mobileAppAuthGrants.status,
         acknowledgedAt: mobileAppAuthGrants.acknowledged_at,
       },
-      mobileApp: { active: mobileApp.is_active, approved: mobileApp.is_approved },
+      mobileApp: {
+        id: mobileApp.id,
+        active: mobileApp.is_active,
+        approved: mobileApp.is_approved,
+        appUrl: mobileApp.app_url,
+        allowedOrigins: mobileApp.allowed_origins,
+      },
       mobileClient: {
         clientId: mobileClient.client_id,
         appId: mobileClient.app_id,
         redirectUri: mobileClient.redirect_uri,
         enabled: mobileClient.enabled,
+        credentialTtlSeconds: mobileClient.credential_ttl_seconds,
       },
     })
     .from(apiKeys)

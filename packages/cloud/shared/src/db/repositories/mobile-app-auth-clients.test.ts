@@ -188,7 +188,10 @@ describe("mobileAppAuthClientsRepository", () => {
 
   describe("listActiveAndroidAssetLinks", () => {
     test("merges fingerprints across multiple clients for the same package", async () => {
-      const statements = await mobileAppAuthClientsRepository.listActiveAndroidAssetLinks();
+      const statements = await mobileAppAuthClientsRepository.listActiveAndroidAssetLinks({
+        ENVIRONMENT: "production",
+        ELIZA_MOBILE_APP_AUTH_ENABLED: "true",
+      });
       expect(statements.length).toBe(2);
 
       const packages = statements.map((s) => s.target.package_name);
@@ -230,7 +233,7 @@ describe("mobileAppAuthClientsRepository", () => {
           authMethod: "api_key",
           apiKeyId: KEY_PROD_ID,
           apiKeyHash: SECRET_HASH,
-          env: { ENVIRONMENT: "production" },
+          env: { ENVIRONMENT: "production", ELIZA_MOBILE_APP_AUTH_ENABLED: "true" },
         }),
       ).resolves.toBeUndefined();
     });
@@ -243,7 +246,7 @@ describe("mobileAppAuthClientsRepository", () => {
           authMethod: "api_key",
           apiKeyId: KEY_STAGING_ID,
           apiKeyHash: SECRET_HASH,
-          env: { ENVIRONMENT: "production" },
+          env: { ENVIRONMENT: "production", ELIZA_MOBILE_APP_AUTH_ENABLED: "true" },
         }),
       ).rejects.toThrow();
     });
@@ -256,7 +259,7 @@ describe("mobileAppAuthClientsRepository", () => {
           authMethod: "api_key",
           apiKeyId: KEY_DISABLED_ID,
           apiKeyHash: SECRET_HASH,
-          env: { ENVIRONMENT: "production" },
+          env: { ENVIRONMENT: "production", ELIZA_MOBILE_APP_AUTH_ENABLED: "true" },
         }),
       ).rejects.toThrow();
     });

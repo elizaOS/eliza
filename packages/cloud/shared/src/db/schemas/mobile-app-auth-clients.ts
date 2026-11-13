@@ -17,6 +17,7 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { BrowserSignInConfiguration } from "../../lib/auth/browser-sign-in";
 import { apps } from "./apps";
 
 export const mobileAppAuthClients = pgTable(
@@ -29,7 +30,10 @@ export const mobileAppAuthClients = pgTable(
     redirect_uri: text("redirect_uri").notNull(),
     credential_ttl_seconds: integer("credential_ttl_seconds"),
     android_package_name: text("android_package_name"),
+    callback_android_package: text("callback_android_package"),
+    android_relations: jsonb("android_relations").$type<string[]>(),
     android_cert_fingerprints: jsonb("android_cert_fingerprints").$type<string[]>(),
+    browser_sign_in: jsonb("browser_sign_in").$type<BrowserSignInConfiguration>(),
     enabled: boolean("enabled").default(true).notNull(),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

@@ -6,10 +6,14 @@
     "packages/cloud/shared/src/lib/services/mobile-app-auth.ts",
     "packages/cloud/api/v1/app-auth/mobile/_registration.ts",
     "packages/cloud/quint/check-reviewed-cloud.mjs",
-    "packages/cloud/quint/reviewed-cloud-checks.json"
+    "packages/cloud/quint/reviewed-cloud-checks.json",
+    "packages/cloud/shared/src/lib/auth/private-owner-credential.ts",
+    "packages/cloud/api/src/bootstrap-app.ts",
+    "packages/app/functions/_middleware.ts",
+    "packages/cloud/api/__tests__/native-callback.pglite.test.ts"
   ],
   "conformance": "packages/cloud/quint/check-reviewed-cloud.mjs",
-  "bounds": "Database-backed mobile App Auth client registration; boolean presence in DB, enabled status, app active/approved authority, and redirect URI matching without environment fallback.",
+  "bounds": "Four entrypoints with eleven boolean policy dimensions: primary database availability, registration and app status, exact deployment configuration, callback/origin/TTL validity and credential grant binding. 10,000 traces of 40 steps.",
   "cases": [
     {
       "name": "client-registration-authority",
@@ -25,8 +29,7 @@
     }
   ],
   "limitations": [
-    "Covers database client registration resolution and authority checks. Low-level PKCE verifier hashing and cryptography are proven separately in repository tests.",
-    "Database presence is the sole authority; there is no environment fallback.",
-    "Disabled clients or unapproved apps in the database fail closed."
+    "PKCE exchange, renewal temporal limits and key cryptography retain separate lifecycle models.",
+    "The database policy model does not prove preservation of production registry data; deployment requires a reviewed import of existing registrations and signing certificates."
   ]
 }

@@ -737,7 +737,9 @@
     "./lib/network/gateway-delivery-receipt": "./src/lib/network/gateway-delivery-receipt.ts",
     "./db/repositories/app-pilot-redemptions": "./src/db/repositories/app-pilot-redemptions.ts",
     "./lib/services/agent-google-connector/calendar-sync-managed": "./src/lib/services/agent-google-connector/calendar-sync-managed.ts",
-    "./lib/services/agent-google-connector/calendar-sync-routes": "./src/lib/services/agent-google-connector/calendar-sync-routes.ts"
+    "./lib/services/agent-google-connector/calendar-sync-routes": "./src/lib/services/agent-google-connector/calendar-sync-routes.ts",
+    "./lib/auth/browser-sign-in": "./src/lib/auth/browser-sign-in.ts",
+    "./lib/auth/native-auth-callback-config": "./src/lib/auth/native-auth-callback-config.ts"
   },
   "scripts": {
     "build:linked-workspaces": "bun run --cwd ../../.. build:core",

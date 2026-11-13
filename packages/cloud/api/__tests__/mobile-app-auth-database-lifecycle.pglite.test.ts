@@ -14,7 +14,7 @@
  * 10. Database outage fail-closed error propagation
  */
 import { afterAll, beforeAll, beforeEach, expect, mock, test } from "bun:test";
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { PGlite } from "@electric-sql/pglite";
 import * as realDb from "@elizaos/cloud-shared/db/client";
 import { apiKeys } from "@elizaos/cloud-shared/db/schemas/api-keys";
@@ -174,7 +174,7 @@ beforeEach(async () => {
     [ORG_ID, "Acme Org"],
   );
   await pg.query(
-    "INSERT INTO users (id, organization_id, email, role, is_active, created_at, updated_at) VALUES ($1, $2, $3, $4, true, now(), now())",
+    "INSERT INTO users (id, organization_id, email, role, is_active, account_lifecycle_state, created_at, updated_at) VALUES ($1, $2, $3, $4, true, 'active', now(), now())",
     [USER_ID, ORG_ID, "developer@acme.portal", "owner"],
   );
   await pg.query(
@@ -233,7 +233,12 @@ test("E2E database-only client lifecycle: asset links -> signin -> exchange -> a
     env() as never,
   );
   expect(configRes.status).toBe(200);
-  const config = await configRes.json();
+  const config = (await configRes.json()) as {
+    success: boolean;
+    clientId: string;
+    redirectUri: string;
+    app: { name: string };
+  };
   expect(config.success).toBe(true);
   expect(config.clientId).toBe(DB_CLIENT_ID);
   expect(config.redirectUri).toBe(DB_REDIRECT_URI);
@@ -286,7 +291,15 @@ test("E2E database-only client lifecycle: asset links -> signin -> exchange -> a
     env() as never,
   );
   expect(tokenRes.status).toBe(200);
-  const tokenBody = await tokenRes.json();
+  const tokenBody = (await tokenRes.json()) as {
+    success: boolean;
+    acknowledgementRequired: boolean;
+    tokenType: string;
+    credentialId: string;
+    secret: string;
+    code: string;
+    status: string;
+  };
   expect(tokenBody.success).toBe(true);
   expect(tokenBody.acknowledgementRequired).toBe(true);
   expect(tokenBody.tokenType).toBe("Bearer");
@@ -315,7 +328,15 @@ test("E2E database-only client lifecycle: asset links -> signin -> exchange -> a
     env() as never,
   );
   expect(ackRes.status).toBe(200);
-  const ackBody = await ackRes.json();
+  const ackBody = (await ackRes.json()) as {
+    success: boolean;
+    acknowledgementRequired: boolean;
+    tokenType: string;
+    credentialId: string;
+    secret: string;
+    code: string;
+    status: string;
+  };
   expect(ackBody.success).toBe(true);
   expect(ackBody.status).toBe("acknowledged");
   expect(ackBody.credentialId).toBe(credentialId);
@@ -333,6 +354,51 @@ test("E2E database-only client lifecycle: asset links -> signin -> exchange -> a
   expect(registration.clientId).toBe(DB_CLIENT_ID);
   expect(registration.appId).toBe(APP_ID);
   expect(registration.redirectUri).toBe(DB_REDIRECT_URI);
+
+  // The same deployment admission contract gates registration, credential use,
+  // private data and renewal; malformed/unset configuration never defaults to production.
+  const { authorizeMobileAppAuthRenewal } = await import(
+    "@elizaos/cloud-shared/lib/services/mobile-app-auth"
+  );
+  const { requirePrivateOwnerCredential } = await import(
+    "@elizaos/cloud-shared/lib/auth/private-owner-credential"
+  );
+  for (const override of [
+    { ELIZA_MOBILE_APP_AUTH_ENABLED: undefined },
+    { ELIZA_MOBILE_APP_AUTH_ENABLED: "false" },
+    { ELIZA_MOBILE_APP_AUTH_ENABLED: "TRUE" },
+    { ENVIRONMENT: undefined },
+    { ENVIRONMENT: "development" },
+  ]) {
+    const rejectedEnv = { ...env(), ...override };
+    const rejectedConfig = await configApp.request(
+      `/?clientId=${DB_CLIENT_ID}&environment=production&redirectUri=${encodeURIComponent(DB_REDIRECT_URI)}`,
+      {},
+      rejectedEnv as never,
+    );
+    expect(rejectedConfig.status).toBe(503);
+    await expect(
+      resolveMobileCredentialRegistration(rejectedEnv, {
+        id: credentialId,
+        user_id: USER_ID,
+        organization_id: ORG_ID,
+        source_app_id: APP_ID,
+      }),
+    ).rejects.toThrow();
+    await expect(
+      authorizeMobileAppAuthRenewal({ env: rejectedEnv, secret }),
+    ).rejects.toThrow();
+    await expect(
+      requirePrivateOwnerCredential({
+        env: rejectedEnv,
+        authMethod: "api_key",
+        userId: USER_ID,
+        organizationId: ORG_ID,
+        apiKeyId: credentialId,
+        apiKeyHash: createHash("sha256").update(secret).digest("hex"),
+      }),
+    ).rejects.toThrow();
+  }
 
   // 7. Renewal HTTP Route: Caller presents active key to mint renewal code via public route
   const renewalVerifier = randomBytes(32).toString("base64url");
@@ -359,7 +425,15 @@ test("E2E database-only client lifecycle: asset links -> signin -> exchange -> a
     env() as never,
   );
   expect(renewRes.status).toBe(200);
-  const renewBody = await renewRes.json();
+  const renewBody = (await renewRes.json()) as {
+    success: boolean;
+    acknowledgementRequired: boolean;
+    tokenType: string;
+    credentialId: string;
+    secret: string;
+    code: string;
+    status: string;
+  };
   expect(renewBody.success).toBe(true);
   const renewalCode = renewBody.code;
   expect(renewalCode.startsWith("emac_")).toBe(true);
@@ -383,7 +457,15 @@ test("E2E database-only client lifecycle: asset links -> signin -> exchange -> a
     env() as never,
   );
   expect(renewTokenRes.status).toBe(200);
-  const renewTokenBody = await renewTokenRes.json();
+  const renewTokenBody = (await renewTokenRes.json()) as {
+    success: boolean;
+    acknowledgementRequired: boolean;
+    tokenType: string;
+    credentialId: string;
+    secret: string;
+    code: string;
+    status: string;
+  };
   expect(renewTokenBody.success).toBe(true);
   const renewedCredentialId = renewTokenBody.credentialId;
   const renewedSecret = renewTokenBody.secret;
@@ -410,7 +492,15 @@ test("E2E database-only client lifecycle: asset links -> signin -> exchange -> a
     env() as never,
   );
   expect(renewAckRes.status).toBe(200);
-  const renewAckBody = await renewAckRes.json();
+  const renewAckBody = (await renewAckRes.json()) as {
+    success: boolean;
+    acknowledgementRequired: boolean;
+    tokenType: string;
+    credentialId: string;
+    secret: string;
+    code: string;
+    status: string;
+  };
   expect(renewAckBody.success).toBe(true);
   expect(renewAckBody.status).toBe("acknowledged");
   expect(renewAckBody.credentialId).toBe(renewedCredentialId);

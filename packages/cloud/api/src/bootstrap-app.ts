@@ -1,3 +1,9 @@
+import { browserSignInStart } from "@elizaos/cloud-shared/lib/auth/browser-sign-in";
+import { selectNativeAuthCallback } from "@elizaos/cloud-shared/lib/auth/native-auth-callback-config";
+import {
+  admitMobileAppAuthRegistration,
+  MobileAppAuthProtocolError,
+} from "@elizaos/cloud-shared/lib/services/mobile-app-auth";
 /**
  * Full Hono application — imported asynchronously from `index.ts` so the Worker
  * does not evaluate hundreds of route modules during Cloudflare startup validation
@@ -21,7 +27,6 @@ import {
   mobileApiKeyIngressRateLimitKey,
 } from "@elizaos/cloud-shared/lib/auth/mobile-api-key";
 import {
-  type NativeAuthCallback,
   nativeBillingReturnFallback,
   nativeSignInCallbackFallback,
 } from "@elizaos/cloud-shared/lib/auth/native-callback-fallback";
@@ -549,46 +554,71 @@ export async function createApp(
     ),
   );
 
-  // Hosted native sign-in callback and billing return fallback pages (#39257).
-  // Registered after GLOBAL_RATE_LIMITER to bound unauthenticated lookup load,
-  // before authMiddleware so unauthenticated browser returns complete.
-  app.get("*", async (c, next) => {
-    const url = new URL(c.req.url);
-    const isAuthCallback = url.pathname.endsWith("/auth/callback");
-    const isBillingReturn = url.pathname.endsWith("/billing/return");
-    if (!isAuthCallback && !isBillingReturn) {
-      await next();
-      return;
-    }
-    const redirectUri = isAuthCallback
-      ? `${url.origin}${url.pathname}`
-      : `${url.origin}${url.pathname.slice(0, -"/billing/return".length)}/auth/callback`;
-
+  // A single database authority serves native callbacks and browser loopback launches.
+  // Every lookup is behind the global IP limiter, including ordinary Pages misses.
+  const hostedNativeRoute = async (
+    request: Request,
+    env: AppEnv["Bindings"],
+  ): Promise<Response> => {
+    const url = new URL(request.url);
+    if (url.protocol !== "https:" || url.username || url.password)
+      return new Response("Not Found", { status: 404 });
     try {
-      const record =
-        await mobileAppAuthClientsRepository.findByRedirectUri(redirectUri);
+      const record = await mobileAppAuthClientsRepository.findByHostedUrl(
+        `${url.origin}${url.pathname}`,
+      );
+      if (!record)
+        return new Response("Not Found", {
+          status: 404,
+          headers: { "Cache-Control": "no-store" },
+        });
+      await admitMobileAppAuthRegistration(env, record);
       if (
-        !record?.client.enabled ||
-        !record.app.is_active ||
-        !record.app.is_approved
-      ) {
-        return c.text("Not Found", 404);
-      }
-      if (!record.client.android_package_name) {
-        return c.text("Not Found", 404);
-      }
-      const callback: NativeAuthCallback = {
-        redirectUri: record.client.redirect_uri,
-        androidPackage: record.client.android_package_name,
-        appName: record.app.name,
-      };
-      if (isAuthCallback) {
-        return nativeSignInCallbackFallback(url, callback);
-      }
-      return nativeBillingReturnFallback(url, callback);
+        !record.client.callback_android_package &&
+        !record.client.android_package_name
+      )
+        return new Response("Not Found", { status: 404 });
+      const callback = selectNativeAuthCallback(
+        JSON.stringify([
+          {
+            redirectUri: record.client.redirect_uri,
+            androidPackage:
+              record.client.callback_android_package ??
+              record.client.android_package_name,
+            appName: record.app.name,
+            ...(record.client.browser_sign_in
+              ? { browserSignIn: record.client.browser_sign_in }
+              : {}),
+          },
+        ]),
+        url,
+        record.client.browser_sign_in?.startPath === url.pathname
+          ? "browser-start"
+          : url.pathname.endsWith("/billing/return")
+            ? "billing-return"
+            : "callback",
+      );
+      if (!callback) return new Response("Not Found", { status: 404 });
+      if (callback.browserSignIn?.startPath === url.pathname)
+        return browserSignInStart(
+          request,
+          new URL(callback.redirectUri),
+          callback.browserSignIn,
+        );
+      if (url.pathname.endsWith("/billing/return"))
+        return nativeBillingReturnFallback(url, callback);
+      return nativeSignInCallbackFallback(url, callback);
     } catch (error) {
+      if (
+        error instanceof MobileAppAuthProtocolError &&
+        error.protocolCode === "invalid_client"
+      )
+        return new Response("Not Found", {
+          status: 404,
+          headers: { "Cache-Control": "no-store" },
+        });
       logger.error(
-        "[bootstrap-app] Failed to resolve native callback from database:",
+        "[bootstrap-app] Native callback registration is unavailable",
         error,
       );
       return new Response("Native auth callback is unavailable", {
@@ -596,6 +626,23 @@ export async function createApp(
         headers: { "Cache-Control": "no-store" },
       });
     }
+  };
+  app.all("/api/v1/app-auth/mobile/hosted-route", async (c) => {
+    const publicUrl = c.req.query("url");
+    if (!publicUrl) return c.text("Not Found", 404);
+    let target: URL;
+    try {
+      target = new URL(publicUrl);
+    } catch {
+      return c.text("Not Found", 404);
+    }
+    return hostedNativeRoute(new Request(target, c.req.raw), c.env);
+  });
+  app.get("*", async (c, next) => {
+    const path = c.req.path;
+    if (!path.endsWith("/auth/callback") && !path.endsWith("/billing/return"))
+      return next();
+    return hostedNativeRoute(c.req.raw, c.env);
   });
 
   // A mobile secret bypasses positive auth caches so revocation is immediate.

@@ -39,6 +39,7 @@ beforeAll(async () => {
     CREATE TABLE apps (
       id uuid PRIMARY KEY,
       name text NOT NULL DEFAULT 'Eliza App',
+      description text, logo_url text, website_url text,
       slug text NOT NULL DEFAULT 'eliza',
       organization_id uuid NOT NULL REFERENCES organizations(id),
       app_url text NOT NULL DEFAULT 'https://eliza.app',
@@ -77,7 +78,11 @@ afterAll(async () => {
 
 describe("GET /.well-known/assetlinks.json with PGlite", () => {
   test("dynamically serves statements from database rows without env vars", async () => {
-    const response = await route.request("/", {}, {});
+    const response = await route.request(
+      "/",
+      {},
+      { ENVIRONMENT: "production", ELIZA_MOBILE_APP_AUTH_ENABLED: "true" },
+    );
     expect(response.status).toBe(200);
     expect(response.headers.get("Cache-Control")).toBe("public, max-age=3600");
 

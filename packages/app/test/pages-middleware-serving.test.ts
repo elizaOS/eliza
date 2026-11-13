@@ -13,7 +13,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildNativeSignInIntentUrl,
   NATIVE_CALLBACK_SCRUB_SCRIPT,
+  nativeBillingReturnFallback,
   nativeBillingReturnPath,
+  nativeSignInCallbackFallback,
   onRequest,
   resolveCanonicalPageRedirect,
   selectNativeAuthCallback,
@@ -30,7 +32,7 @@ const CALLBACK_CONFIG = ["eliza.app", "staging.eliza.app"].map((host) => ({
   appName: "Example Reader",
 }));
 const CALLBACK_ENV = {
-  ELIZA_NATIVE_AUTH_CALLBACKS_JSON: JSON.stringify(CALLBACK_CONFIG),
+  callbacks: JSON.stringify(CALLBACK_CONFIG),
 };
 const ORIGIN = "https://cloud.eliza.app";
 
@@ -76,8 +78,41 @@ const assetHit = () =>
 const run = (
   request: Request,
   next: (input?: Request) => Promise<Response>,
-  env: PagesProxyEnv = CALLBACK_ENV,
-): Promise<Response> => onRequest({ request, env, next });
+  env: PagesProxyEnv & { callbacks?: string } = CALLBACK_ENV,
+): Promise<Response> =>
+  onRequest({
+    request,
+    env: env.API_WORKER
+      ? env
+      : {
+          ...env,
+          API_WORKER: {
+            fetch: async (forwarded: Request) => {
+              const url = new URL(
+                new URL(forwarded.url).searchParams.get("url") ?? forwarded.url,
+              );
+              try {
+                const callback = selectNativeAuthCallback(env.callbacks, url);
+                if (callback)
+                  return nativeSignInCallbackFallback(url, callback);
+                const billing = selectNativeAuthCallback(
+                  env.callbacks,
+                  url,
+                  "billing-return",
+                );
+                if (billing) return nativeBillingReturnFallback(url, billing);
+                return new Response("Not Found", { status: 404 });
+              } catch {
+                return new Response(
+                  "Native auth callback configuration is invalid",
+                  { status: 503 },
+                );
+              }
+            },
+          },
+        },
+    next,
+  });
 
 describe("pages middleware /assets/* serving", () => {
   it("converts an asset miss (SPA fallback) into an uncacheable 404", async () => {
@@ -696,10 +731,7 @@ describe("native sign-in callback fallback", () => {
       appName: '<Notes & "Friends">',
     };
     const env = {
-      ELIZA_NATIVE_AUTH_CALLBACKS_JSON: JSON.stringify([
-        ...CALLBACK_CONFIG,
-        other,
-      ]),
+      callbacks: JSON.stringify([...CALLBACK_CONFIG, other]),
     };
     const response = await run(
       new Request(`${other.redirectUri}?package=attacker&code=secret`),
@@ -713,7 +745,7 @@ describe("native sign-in callback fallback", () => {
     expect(html).not.toContain("package=attacker");
     expect(
       selectNativeAuthCallback(
-        env.ELIZA_NATIVE_AUTH_CALLBACKS_JSON,
+        env.callbacks,
         new URL("https://eliza.app/notes/return"),
       ),
     ).toBeNull();
@@ -734,7 +766,7 @@ describe("native sign-in callback fallback", () => {
       const response = await run(
         new Request(CALLBACK),
         async () => spaFallback(),
-        { ELIZA_NATIVE_AUTH_CALLBACKS_JSON: JSON.stringify(entries) },
+        { callbacks: JSON.stringify(entries) },
       );
       expect(response.status).toBe(503);
     }
@@ -784,17 +816,14 @@ describe("native checkout return fallback", () => {
     ).toBeNull();
     expect(
       selectNativeAuthCallback(
-        CALLBACK_ENV.ELIZA_NATIVE_AUTH_CALLBACKS_JSON,
+        CALLBACK_ENV.callbacks,
         new URL(RETURN),
         "billing-return",
       )?.androidPackage,
     ).toBe("org.example.reader");
     // The sign-in callback and the checkout return never select each other.
     expect(
-      selectNativeAuthCallback(
-        CALLBACK_ENV.ELIZA_NATIVE_AUTH_CALLBACKS_JSON,
-        new URL(RETURN),
-      ),
+      selectNativeAuthCallback(CALLBACK_ENV.callbacks, new URL(RETURN)),
     ).toBeNull();
     expect(resolveCanonicalPageRedirect(`${RETURN}?result=cancel`)).toBeNull();
   });
@@ -826,7 +855,7 @@ describe("native checkout return fallback", () => {
       new Request(RETURN),
       async () => spaFallback(),
       {
-        ELIZA_NATIVE_AUTH_CALLBACKS_JSON: JSON.stringify([
+        callbacks: JSON.stringify([
           CALLBACK_CONFIG[0],
           { ...CALLBACK_CONFIG[0], redirectUri: RETURN },
         ]),
