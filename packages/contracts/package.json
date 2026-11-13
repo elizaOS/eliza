@@ -175,6 +175,7 @@
   },
   "scripts": {
     "build": "tsc6 --noCheck -p tsconfig.emit.json && bun ../scripts/rewrite-dist-relative-imports-node-esm.ts packages/contracts",
+    "test": "node --import tsx --test \"src/!(browser-request-grounding).test.ts\" && bun ../scripts/run-vitest.ts run src/browser-request-grounding.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint:check": "bunx @biomejs/biome check src",
     "lint": "bunx @biomejs/biome check --write src",

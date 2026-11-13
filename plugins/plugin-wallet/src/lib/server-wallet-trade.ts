@@ -4,9 +4,9 @@
  *
  * Exported from the `@elizaos/plugin-wallet` barrel for package consumers.
  */
-import crypto from "node:crypto";
 import type http from "node:http";
 import type { TradePermissionMode } from "@elizaos/contracts";
+import { tokenMatches } from "@elizaos/core";
 
 import type { WalletExportRequestBody } from "../contracts.js";
 import {
@@ -65,13 +65,6 @@ export function runWithCompatAuthContext<T>(
 ): T {
   mirrorCompatHeaders(req);
   return operation();
-}
-
-function tokenMatches(expected: string, provided: string): boolean {
-  const a = Buffer.from(expected, "utf8");
-  const b = Buffer.from(provided, "utf8");
-  if (a.length !== b.length) return false;
-  return crypto.timingSafeEqual(a, b);
 }
 
 function resolveBaseWalletExportRejection(

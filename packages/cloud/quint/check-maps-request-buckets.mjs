@@ -53,6 +53,7 @@ parser.write(xml).close();
 assert.deepEqual(
   names.sort(),
   [
+    "tile routes retain durable admission, outcomes and global ingress through a 65-tile burst",
     "Maps retains both refill boundaries through a clock rollback",
     "Maps retry delay includes the retained future refill boundary",
     "Maps durable allowance is shared, atomic, separately counted, and never replays admission",

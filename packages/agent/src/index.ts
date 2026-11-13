@@ -1,5 +1,7 @@
 /** Public agent host, runtime, transport, and service APIs. */
 
+// Preserve the public host export while Core owns the implementation.
+export { tokenMatches } from "@elizaos/core";
 export {
   connectAccountAction,
   messageWantsAccountConnect,
@@ -161,7 +163,6 @@ export {
   resolveTerminalRunClientId,
   resolveTerminalRunRejection,
   resolveWebSocketUpgradeRejection,
-  tokenMatches,
 } from "./api/server-helpers-auth.ts";
 export { isSafeResetStateDir } from "./api/server-helpers-config.ts";
 export {

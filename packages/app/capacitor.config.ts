@@ -145,8 +145,8 @@ function isFlagEnabled(value: string | undefined): boolean {
 /**
  * Android Cloud clients retain Keystore-backed credentials across sessions,
  * while Capacitor's default debug logging serializes native plugin results
- * into logcat. Suppress bridge payload logging for every Cloud-derived target,
- * including the SMS gateway, without disabling debug signing.
+ * into logcat. Suppress bridge payload logging for every Cloud-derived target
+ * without disabling debug signing.
  */
 export function resolveCapacitorLoggingBehavior(
   env: NodeJS.ProcessEnv = process.env,

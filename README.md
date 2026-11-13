@@ -51,6 +51,7 @@ bun run start       # run the standalone agent host (API only, no UI; use bun ru
 bun run build       # build the workspace with Turbo
 bun run verify      # dependency, type, lint, and audit gates
 bun run test:quint  # application state models and invariants
+bun run test:lemma  # verified TypeScript helpers (Dafny 4.11.0 required)
 bun run test        # repository end-to-end test lane
 bun run test:e2e    # end-to-end lane
 bun run cloud:mock  # local Eliza Cloud stack with mocks
@@ -69,6 +70,8 @@ could not be shown to pass on it, or must prove behavior on Node:
 - Vitest. `packages/scripts/run-vitest.ts` always starts Vitest on Node. Bun
   fails suites that Node passes (`fetch` of an uppercase `DATA:` URL,
   `http.Server.closeAllConnections`, child Node ESM probes).
+- LemmaScript checks use pinned LemmaScript 0.6.8 and Dafny 4.11.0. The
+  checked helpers and solver options are in `LemmaScript-files.txt`.
 - Quint conformance replays (`check-quint.ts` without `--inventory`), because
   they run Vitest.
 - `node --test` suites that use `module.stripTypeScriptTypes`, built-in module
@@ -94,7 +97,7 @@ could not be shown to pass on it, or must prove behavior on Node:
   Bun: the `packages/os/android` Makefile, AOSP and
   Pixel scripts in `packages/os/scripts/android`, `compile-libllama.ts` (patch
   step), the iOS xcframework and engine scripts (`build-xcframework.ts`,
-  `mobile/ios/engine.ts`), `paradee-voice/build-native.ts`, and the SMS gateway and Cloud gateway
+  `mobile/ios/engine.ts`), `paradee-voice/build-native.ts`, and the Cloud gateway
   maintenance scripts.
 
 ## Benchmark

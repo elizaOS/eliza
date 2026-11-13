@@ -18,7 +18,9 @@ import {
 } from "./task-sqlcipher.mjs";
 
 test("encrypted driver requires explicit absolute artifact, exact hash and independent ABI", (t) => {
-  const root = mkdtempSync(join(tmpdir(), "cipher-admission-"));
+  const root = mkdtempSync(
+    join(fs.realpathSync(tmpdir()), "cipher-admission-"),
+  );
   t.after(() => rmSync(root, { recursive: true }));
   const path = join(root, "addon.so");
   const bytes = Buffer.alloc(20);
@@ -46,7 +48,7 @@ test("encrypted driver requires explicit absolute artifact, exact hash and indep
 });
 
 test("failed native loads close descriptors and remove private snapshots", (t) => {
-  const root = mkdtempSync(join(tmpdir(), "cipher-failure-"));
+  const root = mkdtempSync(join(fs.realpathSync(tmpdir()), "cipher-failure-"));
   t.after(() => rmSync(root, { recursive: true }));
   const libraryPath = join(root, "broken.so");
   const bytes = Buffer.alloc(20);
@@ -54,7 +56,9 @@ test("failed native loads close descriptors and remove private snapshots", (t) =
   bytes.writeUInt16LE(62, 18);
   writeFileSync(libraryPath, bytes);
   const sha256 = createHash("sha256").update(bytes).digest("hex");
-  const descriptors = readdirSync("/proc/self/fd").length;
+  const descriptorsDirectory =
+    process.platform === "linux" ? "/proc/self/fd" : "/dev/fd";
+  const descriptors = readdirSync(descriptorsDirectory).length;
   const temporary = readdirSync(tmpdir()).filter((name) =>
     name.startsWith("task-cipher-addon-"),
   );
@@ -69,7 +73,7 @@ test("failed native loads close descriptors and remove private snapshots", (t) =
         }),
       { code: "TASK_STORAGE_UNAVAILABLE" },
     );
-  assert.equal(readdirSync("/proc/self/fd").length, descriptors);
+  assert.equal(readdirSync(descriptorsDirectory).length, descriptors);
   assert.deepEqual(
     readdirSync(tmpdir()).filter((name) =>
       name.startsWith("task-cipher-addon-"),
@@ -101,7 +105,7 @@ test("failed native loads close descriptors and remove private snapshots", (t) =
 });
 
 test("installed artifacts reject a different unprivileged owner before native loading", (t) => {
-  const root = mkdtempSync(join(tmpdir(), "cipher-owner-"));
+  const root = mkdtempSync(join(fs.realpathSync(tmpdir()), "cipher-owner-"));
   t.after(() => rmSync(root, { recursive: true }));
   const libraryPath = join(root, "addon.so");
   const bytes = Buffer.alloc(20);
@@ -149,7 +153,7 @@ test("installed artifacts reject a different unprivileged owner before native lo
 });
 
 test("Android-installed libraries admit only an installer-owned file the app cannot rewrite", (t) => {
-  const root = mkdtempSync(join(tmpdir(), "cipher-android-"));
+  const root = mkdtempSync(join(fs.realpathSync(tmpdir()), "cipher-android-"));
   t.after(() => rmSync(root, { recursive: true }));
   const libraryPath = join(root, "libeliza_task_sqlcipher.so");
   const bytes = Buffer.alloc(20);
@@ -219,7 +223,7 @@ test("Android-installed libraries admit only an installer-owned file the app can
 });
 
 test("provider reads every row through the guarded native queryAll", async (t) => {
-  const root = mkdtempSync(join(tmpdir(), "cipher-rows-"));
+  const root = mkdtempSync(join(fs.realpathSync(tmpdir()), "cipher-rows-"));
   t.after(() => rmSync(root, { recursive: true }));
   fs.chmodSync(root, 0o700);
   const libraryPath = join(root, "libeliza_task_sqlcipher.so");

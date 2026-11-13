@@ -6,6 +6,7 @@
  * residue fails.
  */
 
+import { ElizaError } from "../errors.js";
 import {
 	assembleContextPack,
 	entityResolverFromStore,
@@ -157,10 +158,8 @@ export class PiiScrubService extends Service {
 			return;
 		}
 
-		// Cheap pre-enqueue idempotency: if this exact content+ruleset is already
-		// scrubbed, do not even queue it. The drain re-checks under the hood so a
-		// race (two enqueues of the same content) still no-ops, but this avoids
-		// the queue churn for the common re-scrub case.
+		// Skip work when the exact content and ruleset already have a marker.
+		// The drain rechecks queued work, but simultaneous misses can both proceed.
 		if (await isScrubDone(this.runtime, content, payload.rulesetVersion)) {
 			this.runtime.logger.debug(
 				{ src: SRC, agentId: this.runtime.agentId, itemRef: payload.itemRef },
@@ -200,15 +199,13 @@ export class PiiScrubService extends Service {
 	}
 
 	/**
-	 * Process one item: idempotency skip -> seam escalation -> mark-done. Throws
-	 * on any failure so BatchQueue applies retry / `onExhausted`, and CRUCIALLY
-	 * does not write the done-marker on failure (the item is retried, never
-	 * silently marked scrubbed).
+	 * Process one item: idempotency skip, scrub, then confirm the done-marker.
+	 * Failures before confirmation remain with BatchQueue for retry or exhaustion.
+	 * Completion subscribers observe the confirmed result.
 	 */
 	private async scrubItem(item: PiiScrubQueueItem): Promise<void> {
-		// Idempotency re-check inside the drain: covers the race where the same
-		// content was enqueued twice before either drained. A hit means another
-		// drain already completed this exact content+ruleset - nothing to do.
+		// A marker written after admission or during a retry still settles the
+		// exact content and ruleset without another scrub.
 		if (await isScrubDone(this.runtime, item.content, item.rulesetVersion)) {
 			this.runtime.logger.debug(
 				{ src: SRC, agentId: this.runtime.agentId, itemRef: item.itemRef },
@@ -287,22 +284,37 @@ export class PiiScrubService extends Service {
 		// Success: write the content-addressed done-marker so a re-scrub of this
 		// exact content under this ruleset no-ops, and a crash-restart resumes
 		// past it with zero duplicate work.
-		await markScrubDone(this.runtime, item.content, {
+		const confirmed = await markScrubDone(this.runtime, item.content, {
 			rulesetVersion: item.rulesetVersion,
 			modelId,
 			tier0Only: !escalated,
 		});
-
-		await this.runtime.emitEvent(EventType.PII_SCRUB_COMPLETED, {
-			runtime: this.runtime,
-			content: item.content,
-			rulesetVersion: item.rulesetVersion,
-			jobId: item.jobId,
-			itemRef: item.itemRef,
-			tier0Only: !escalated,
-			modelId,
-			source: "piiScrubService",
-		});
+		if (!confirmed) {
+			throw new ElizaError("Scrub completion marker write was refused", {
+				code: "PII_SCRUB_MARKER_WRITE_REFUSED",
+			});
+		}
+		try {
+			await this.runtime.emitEvent(EventType.PII_SCRUB_COMPLETED, {
+				runtime: this.runtime,
+				content: item.content,
+				rulesetVersion: item.rulesetVersion,
+				jobId: item.jobId,
+				itemRef: item.itemRef,
+				tier0Only: !escalated,
+				modelId,
+				source: "piiScrubService",
+			});
+		} catch {
+			// error-policy:J7 completion observers cannot reverse the stored marker.
+			// Subscriber errors can contain scrub content. Report only the failure class.
+			this.runtime.reportError(
+				"PiiScrubService.notifyCompletion",
+				new ElizaError("A scrub completion observer failed", {
+					code: "PII_SCRUB_COMPLETION_OBSERVER_FAILED",
+				}),
+			);
+		}
 	}
 
 	/**

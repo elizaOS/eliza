@@ -39,6 +39,8 @@ const INTERNAL_URL = new URL("http://internal.local/api/calendar");
 const GRANT_ID = "connector-account:microsoft:microsoft-owner-account";
 const GUEST_BUSY_GRANT_ID = "gav_8dc3de879aa0484eb316dcc6f291ec79";
 const GUEST_UNKNOWN_GRANT_ID = "gav_c9d8865be7db425b97c5a063bbbc3a29";
+const GUEST_MIXED_BUSY_GRANT_ID = "gav_7f3a91c2d84e4b6a9c0d1e2f3a4b5c6d";
+const GUEST_MIXED_UNKNOWN_GRANT_ID = "gav_2b4d6f8a0c1e4938576a5b4c3d2e1f0a9";
 const TIME_MIN = "2026-08-01T00:00:00.000Z";
 const TIME_MAX = "2026-08-02T00:00:00.000Z";
 
@@ -141,7 +143,11 @@ function gate(): CalendarHostGate {
         calendarId:
           grantId === GUEST_BUSY_GRANT_ID
             ? "busy@example.test"
-            : "unknown@example.test",
+            : grantId === GUEST_MIXED_BUSY_GRANT_ID
+              ? "Busy@Example.Test"
+              : grantId === GUEST_MIXED_UNKNOWN_GRANT_ID
+                ? "Unknown@Example.Test"
+                : "unknown@example.test",
         purpose: CALENDAR_GUEST_AVAILABILITY_PURPOSE,
         consentRecordedAt: "2026-07-01T00:00:00.000Z",
         expiresAt: "2099-07-01T00:00:00.000Z",
@@ -178,6 +184,7 @@ let deltaInFlight = 0;
 let maxDeltaInFlight = 0;
 let deltaRequests: string[] = [];
 let creationPayloads: Array<Record<string, unknown>> = [];
+let schedulePayloads: Array<{ schedules: string[] }> = [];
 let extraFullSnapshotEvents: Array<Record<string, unknown>> = [];
 let token: string;
 
@@ -308,11 +315,12 @@ beforeAll(async () => {
       const payload = JSON.parse(await requestBody(request)) as {
         schedules: string[];
       };
+      schedulePayloads.push(payload);
       response.writeHead(200, { "content-type": "application/json" });
       response.end(
         JSON.stringify({
           value: payload.schedules.map((scheduleId) =>
-            scheduleId === "unknown@example.test"
+            scheduleId.toLowerCase() === "unknown@example.test"
               ? {
                   scheduleId,
                   error: { responseCode: "ErrorMailRecipientNotFound" },
@@ -448,6 +456,7 @@ beforeEach(async () => {
   maxDeltaInFlight = 0;
   deltaRequests = [];
   creationPayloads = [];
+  schedulePayloads = [];
   extraFullSnapshotEvents = [];
   token = "pglite-wire-token";
   vi.clearAllMocks();
@@ -685,6 +694,54 @@ describe("Microsoft Calendar service (Graph HTTP + real PGlite)", {
       },
     ]);
     expect(JSON.stringify(result)).not.toContain("busy@example.test");
+    expect(JSON.stringify(result)).not.toContain("Never disclose");
+    expect(JSON.stringify(result)).not.toContain("ErrorMailRecipientNotFound");
+  });
+
+  it("matches mixed-case guest calendar IDs through the authorization-bound free/busy path", async () => {
+    const result = await service.getCalendarFreeBusy(INTERNAL_URL, {
+      principalEntityId: SELF_ENTITY_ID,
+      guestAvailabilityGrantIds: [
+        GUEST_MIXED_BUSY_GRANT_ID,
+        GUEST_MIXED_UNKNOWN_GRANT_ID,
+      ],
+      timeMin: TIME_MIN,
+      timeMax: TIME_MAX,
+    });
+    // The service hands the raw grant calendar IDs to the port, and the
+    // port normalizes them (trim + lowercase) before the request; the local
+    // lookup key uses the same normalization, so mixed-case grants resolve.
+    expect(schedulePayloads).toHaveLength(1);
+    expect(schedulePayloads[0]?.schedules).toEqual([
+      "busy@example.test",
+      "unknown@example.test",
+    ]);
+    // Each grant resolves only its own schedule: the mixed-case busy grant
+    // finds its intervals, the mixed-case unknown grant stays unknown.
+    expect(result.sources).toEqual([
+      {
+        id: "guest-freebusy-1",
+        status: "fresh",
+        visibility: "busy_only",
+        events: [
+          {
+            id: "guest-freebusy-1-interval-1",
+            startISO: "2026-08-01T18:00:00.000Z",
+            endISO: "2026-08-01T18:30:00.000Z",
+            status: "busy",
+            kind: "guest_busy",
+          },
+        ],
+      },
+      {
+        id: "guest-freebusy-2",
+        status: "error",
+        visibility: "busy_only",
+        events: [],
+        error: "Guest availability source is unavailable.",
+      },
+    ]);
+    expect(JSON.stringify(result)).not.toContain("Busy@Example.Test");
     expect(JSON.stringify(result)).not.toContain("Never disclose");
     expect(JSON.stringify(result)).not.toContain("ErrorMailRecipientNotFound");
   });

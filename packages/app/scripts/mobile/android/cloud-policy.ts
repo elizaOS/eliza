@@ -101,10 +101,8 @@ export const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
   "ElizaQuickActionsWidgetProvider",
   "ElizaSmsReceiver",
   "ElizaMmsReceiver",
-  "ElizaSmsGatewayService",
   "ElizaRespondViaMessageService",
   "ElizaSmsComposeActivity",
-  "ElizaSmsReplyReviewActivity",
   "ElizaBootReceiver",
   "ElizaBrowserActivity",
   "ElizaContactsActivity",
@@ -187,19 +185,6 @@ export const ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS = [
 
 // Java sources removed from the merged sources tree so they don't
 // reference manifest-stripped classes and break compilation.
-/**
- * Helpers of the SMS components that are not manifest components: the reviewed
- * reply proposals, the gateway flow and this app's reviewed-send identity. Cloud
- * builds strip them with the SMS components; SMS gateway builds keep them.
- */
-export const ANDROID_SMS_REVIEWED_SEND_JAVA_FILES = [
-  "ElizaSmsGatewayFlow.java",
-  "ElizaSmsReplyProposals.java",
-  "ElizaSmsReviewedSend.java",
-];
-export const ANDROID_SMS_REVIEWED_SEND_NATIVE_PLUGIN =
-  "@elizaos/plugin-native-messages";
-
 export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "BatteryOptimizationPlugin.java",
   "BrowserNativeMessagingService.java",
@@ -255,12 +240,11 @@ export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "ElizaInCallService.java",
   "ElizaInCallActivity.java",
   "ElizaMmsReceiver.java",
-  "ElizaSmsGatewayService.java",
   "ElizaRespondViaMessageService.java",
   "ElizaSmsComposeActivity.java",
   "ElizaSmsReceiver.java",
-  ...ANDROID_SMS_REVIEWED_SEND_JAVA_FILES,
-  "ElizaSmsReplyReviewActivity.java",
+  // This app's reviewed-send identity, a helper of the SMS components.
+  "ElizaSmsReviewedSend.java",
 ];
 
 // Host-side JVM tests for source-stripped on-device runtime code must not be
@@ -280,6 +264,7 @@ export const ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES = [
   "ElizaDataResetStoresTest.java",
   "ElizaAgentEventSubscriptionTest.java",
   "ElizaAgentWatchdogPolicyInstrumentedTest.java",
+  "ElizaAgentWatchdogPolicyTest.java",
   "ElizaAssetExtractionPolicyTest.java",
   "ElizaAssistantSurfaceInstrumentedTest.java",
   "ElizaSmsReplyReviewTest.java",
@@ -288,6 +273,7 @@ export const ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES = [
   "NativeTranscriptReducerTest.java",
   "ResidentStopOwnershipInstrumentedTest.java",
   "ResidentStreamTransportInstrumentedTest.java",
+  "CopiedModelAssetsInstrumentedTest.java",
 ];
 
 export function isAndroidVpsSidecarBuild(env = process.env) {
@@ -876,66 +862,6 @@ export function createAndroidPlayManifestPolicy({
   };
 }
 
-export const ANDROID_SMS_GATEWAY_COMPONENTS = new Set([
-  "ElizaSmsReceiver",
-  "ElizaMmsReceiver",
-  "ElizaRespondViaMessageService",
-  "ElizaSmsComposeActivity",
-  "ElizaSmsGatewayService",
-  "ElizaSmsReplyReviewActivity",
-]);
-
-export const ANDROID_SMS_GATEWAY_PERMISSIONS = new Set([
-  "READ_SMS",
-  "SEND_SMS",
-  "RECEIVE_SMS",
-  "RECEIVE_MMS",
-  "RECEIVE_WAP_PUSH",
-]);
-
-export const ANDROID_SMS_GATEWAY_STRIPPED_COMPONENTS = [
-  ...ANDROID_CLOUD_STRIPPED_COMPONENTS.filter(
-    (component) => !ANDROID_SMS_GATEWAY_COMPONENTS.has(component),
-  ),
-  "ElizaReminderMessagingService",
-  "com.capacitorjs.plugins.pushnotifications.MessagingService",
-];
-
-export const ANDROID_SMS_GATEWAY_STRIPPED_PERMISSIONS =
-  ANDROID_CLOUD_STRIPPED_PERMISSIONS.filter(
-    (permission) => !ANDROID_SMS_GATEWAY_PERMISSIONS.has(permission),
-  );
-
-export const ANDROID_SMS_GATEWAY_STRIPPED_JAVA_FILES = [
-  ...ANDROID_CLOUD_STRIPPED_JAVA_FILES.filter(
-    (file) =>
-      !ANDROID_SMS_GATEWAY_COMPONENTS.has(file.replace(/\.java$/, "")) &&
-      !ANDROID_SMS_REVIEWED_SEND_JAVA_FILES.includes(file),
-  ),
-  "SafePushNotificationsPlugin.java",
-  "ElizaReminderMessagingService.java",
-];
-
-export const ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS = [
-  // The gateway keeps plugin-native-messages: its replies are sent only through
-  // that plugin's reviewed send (ReviewedSmsSend), after the owner's review.
-  ...ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS.filter(
-    ([pkg]) => pkg !== ANDROID_SMS_REVIEWED_SEND_NATIVE_PLUGIN,
-  ),
-  ["@capacitor/background-runner", "capacitor-background-runner"],
-  ["@capacitor/barcode-scanner", "capacitor-barcode-scanner"],
-  ["@capacitor/haptics", "capacitor-haptics"],
-  ["@capacitor/network", "capacitor-network"],
-  ["@capacitor/push-notifications", "capacitor-push-notifications"],
-  ["@capacitor/status-bar", "capacitor-status-bar"],
-  ["@elizaos/capacitor-camera", "elizaos-capacitor-camera"],
-  ["@elizaos/capacitor-canvas", "elizaos-capacitor-canvas"],
-  ["@elizaos/capacitor-gateway", "elizaos-capacitor-gateway"],
-  ["@elizaos/capacitor-location", "elizaos-capacitor-location"],
-  ["@elizaos/capacitor-swabble", "elizaos-capacitor-swabble"],
-  ["@elizaos/capacitor-talkmode", "elizaos-capacitor-talkmode"],
-];
-
 export function isCloudBannedNativeLibrary(fileName) {
   const normalized = fileName.toLowerCase();
   return (
@@ -986,45 +912,4 @@ export function findAndroidCloudPackagedRuntimeOffenders(entries) {
       (isNativeLibrary && isCloudBannedNativeLibrary(baseName))
     );
   });
-}
-
-export function assertAndroidSmsGatewayBadging(badging) {
-  for (const perm of ANDROID_SMS_GATEWAY_PERMISSIONS) {
-    if (
-      !badging.includes(`uses-permission: name='android.permission.${perm}'`)
-    ) {
-      throw new Error(
-        `[mobile-build] android-sms-gateway artifact is missing android.permission.${perm}`,
-      );
-    }
-  }
-}
-
-export function assertAndroidSmsGatewayArtifactManifest(manifestText) {
-  for (const component of ANDROID_SMS_GATEWAY_COMPONENTS) {
-    if (!manifestText.includes(`${APP.appId}.${component}`)) {
-      throw new Error(
-        `[mobile-build] android-sms-gateway artifact manifest is missing ${APP.appId}.${component}`,
-      );
-    }
-  }
-  for (const marker of [
-    "android.provider.Telephony.SMS_DELIVER",
-    "android.provider.Telephony.WAP_PUSH_DELIVER",
-    "android.intent.action.RESPOND_VIA_MESSAGE",
-    "android.intent.action.SENDTO",
-  ]) {
-    if (!manifestText.includes(marker)) {
-      throw new Error(
-        `[mobile-build] android-sms-gateway artifact manifest is missing ${marker}`,
-      );
-    }
-  }
-  for (const component of ANDROID_SMS_GATEWAY_STRIPPED_COMPONENTS) {
-    if (manifestText.includes(component)) {
-      throw new Error(
-        `[mobile-build] android-sms-gateway artifact manifest still references ${component}`,
-      );
-    }
-  }
 }

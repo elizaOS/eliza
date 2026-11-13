@@ -117,8 +117,6 @@ it("ships consumer build tools without private repository test dependencies", as
     );
     // An installed app must not carry repository deployment and CI entrypoints.
     for (const operator of [
-      "deploy-cloud-api-production-gateway.ts",
-      "continue-sms-gateway-work.ts",
       "sync-homepage-porkbun-dns.ts",
       "docker-ci-smoke.sh",
       "fix-workspace-deps.ts",

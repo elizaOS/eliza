@@ -8,7 +8,14 @@
     "packages/cloud/api/test/fixtures/maps-request-allowance-worker.ts",
     "packages/cloud/quint/check-maps-request-buckets.mjs",
     "packages/scripts/lib/junit-summary.ts",
-    "packages/scripts/lib/test-output.ts"
+    "packages/scripts/lib/test-output.ts",
+    "packages/cloud/api/src/lib/maps-route.ts",
+    "packages/cloud/api/src/rate-limit-state.ts",
+    "packages/cloud/shared/src/lib/middleware/rate-limit-hono-cloudflare.ts",
+    "packages/cloud/shared/src/lib/middleware/cloudflare-rate-state.ts",
+    "packages/cloud/shared/src/lib/services/maps/google-provider.ts",
+    "packages/cloud/shared/src/lib/services/maps/contract.ts",
+    "packages/cloud/shared/src/lib/services/maps/provider-registry.ts"
   ],
   "bounds": {
     "domain": "One initially empty organization Durable Object, two credential identities, three credential/request keys, two allowance windows, integer clock 0..3, and an allowance of two requests per window. Calls preserve one original operation/user binding or conflict with it.",
@@ -20,7 +27,8 @@
     "Paired bucket arithmetic is delegated to maps_request_buckets.qnt. The finite model treats that predicate as an independent admission condition.",
     "Configuration selection, policy freshness and bucket availability are abstract per-request guard inputs. The caller's primary SQL policy lock, real credential verification, authorization changes, organization routing, and provider dispatch are separate protocols.",
     "Historical receipts are retained for both windows. There is no modeled receipt purge or request-ID reuse. Outcome observation does not refund the allowance.",
-    "The fixed allowance omits live configuration changes, arbitrary time ranges and numeric limits. The model does not claim monetary accounting, backend migration, arbitrary crash scheduling, or general TypeScript refinement."
+    "The fixed allowance omits live configuration changes, arbitrary time ranges and numeric limits. The model does not claim monetary accounting, backend migration, arbitrary crash scheduling, or general TypeScript refinement.",
+    "The composed tile-route scenario uses Hono, the production route and Google provider adapter, a Miniflare native global limiter, and real Maps/rate-state SQLite Durable Objects. Account authentication and the primary locked policy are explicit fixtures; the provider transport returns controlled bytes. It does not boot all application middleware or establish live authorization, deployed rate-limit behavior, or Google availability. The 67-request scenario is implementation evidence beyond this model's finite bounds, not exhaustive refinement."
   ],
   "cases": [
     {

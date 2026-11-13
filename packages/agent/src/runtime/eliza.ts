@@ -5066,7 +5066,6 @@ export async function startEliza(
   // gate fails closed and high-value capabilities (remote plugin sync plus
   // model-key/signing consumers) are withheld. Boot still proceeds in a
   // degraded, secret-less mode — it never silently continues with secrets.
-  let teeBootGateResult: TeeBootGate | undefined;
   const runTeeBootGate = async (): Promise<void> => {
     let teeBootGate: TeeBootGate;
     try {
@@ -5100,68 +5099,6 @@ export async function startEliza(
     // reveal/bridge, remote plugin sync) can consult it via the shared
     // singleton. Inert when no TEE: the gate's `required` is false.
     setTeeBootGateState(teeBootGate);
-    teeBootGateResult = teeBootGate;
-  };
-  // TEE-gated remote signing (plan §4.3). Inert unless explicitly enabled:
-  // the host↔guest bridge can request a signature, but the key stays in the
-  // vault and every sign re-attests when the boot-gate policy requires TEE
-  // evidence. Fail-closed: when the boot gate blocks secrets, the service is
-  // not constructed at all.
-  const registerRemoteSigningIfEnabled = async (): Promise<void> => {
-    if (process.env.ELIZA_REMOTE_SIGNING_ENABLED !== "true") return;
-    if (teeBootGateBlocksSecrets()) {
-      logger.warn(
-        "[RemoteSigning] Skipping remote signing activation: TEE evidence is not trusted.",
-      );
-      return;
-    }
-    try {
-      const { sharedVault } = getAgentHostBridge();
-      const { VaultSignerBackend } = await import(
-        "../services/vault-signer-backend.ts"
-      );
-      const {
-        createTeeGatedRemoteSigningService,
-        RemoteSigningRuntimeService,
-      } = await import("../services/remote-signing-service.ts");
-      const signer = new VaultSignerBackend({
-        vault: sharedVault(),
-        agentId,
-        caller: "remote-signing:boot",
-      });
-      const teePolicy = teeBootGateResult?.policy;
-      // Re-attest each sign through the same registered provider the boot gate
-      // used. This path only runs once the gate has already enabled secrets, so
-      // a required policy implies a registered provider; if none is registered
-      // the re-attesting provider is simply absent (the gate would not have
-      // reached here under a required policy).
-      const signingEvidenceProvider = teePolicy?.required
-        ? resolveTeeEvidenceProvider({ env: protectedTeeEnvironment() })
-        : undefined;
-      const signing = createTeeGatedRemoteSigningService({
-        signer,
-        ...(teePolicy ? { teePolicy } : {}),
-        ...(signingEvidenceProvider
-          ? { evidenceProvider: signingEvidenceProvider }
-          : {}),
-      });
-      await runtime.registerService(RemoteSigningRuntimeService);
-      const svc = runtime.getService(
-        RemoteSigningRuntimeService.serviceType,
-      ) as InstanceType<typeof RemoteSigningRuntimeService> | null;
-      if (!svc) {
-        throw new Error("RemoteSigningRuntimeService did not register");
-      }
-      svc.attach(signing);
-      logger.info(
-        { attesting: teePolicy?.required === true },
-        "[RemoteSigning] TEE-gated remote signing service registered.",
-      );
-    } catch (err) {
-      logger.warn(
-        `[RemoteSigning] Remote signing activation failed: ${formatError(err)}`,
-      );
-    }
   };
   const syncRemoteCapabilityPluginsIfAvailable = async (): Promise<void> => {
     if (teeBootGateBlocksSecrets()) {
@@ -5810,7 +5747,6 @@ export async function startEliza(
     await runTeeBootGate();
     bootTimer.lap("deferred:tee-gate");
     abortSignal.throwIfAborted();
-    await registerRemoteSigningIfEnabled();
     await syncRemoteCapabilityPluginsIfAvailable();
     await applyPluginRoleGatingIfAvailable();
     // #12087 Item 19: now that every plugin's actions are registered, warn about

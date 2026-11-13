@@ -16,7 +16,6 @@ import { rmRecursive, walkFiles } from "../build-tools.ts";
 import { APP, androidDir } from "../context.ts";
 import { escapeRegExp } from "../escape.ts";
 import {
-  ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS,
   ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_QUERY_PACKAGES,
   ANDROID_CLOUD_STRIPPED_ASSET_DIRECTORIES,
   ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
@@ -24,10 +23,6 @@ import {
   ANDROID_CLOUD_STRIPPED_RESOURCE_FILES,
   ANDROID_CLOUD_STRIPPED_RESOURCE_VALUES,
   ANDROID_PLAY_DATA_EXTRACTION_RULES,
-  ANDROID_SMS_GATEWAY_STRIPPED_COMPONENTS,
-  ANDROID_SMS_GATEWAY_STRIPPED_JAVA_FILES,
-  ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS,
-  ANDROID_SMS_GATEWAY_STRIPPED_PERMISSIONS,
   applyAndroidPlayManifestHardening,
   isAndroidVpsSidecarBuild,
   isCloudBannedAsset,
@@ -109,6 +104,11 @@ import android.content.Context;
 
 /** This packaging excludes the resident service and its assets. No process is stopped here. */
 final class ElizaCredentialRetirement {
+    static final class RequestObservation {
+        boolean same(RequestObservation other) { return other != null; }
+        <T> T withCurrent(java.util.concurrent.Callable<T> effect) throws Exception { return effect.call(); }
+    }
+    static RequestObservation observeRequests() { return new RequestObservation(); }
     static long reserve() { return 0; }
     static void request(Context context, long request) { }
     static boolean stopped(Context context) { return true; }
@@ -572,101 +572,4 @@ export function stripAndroidForCloud({ env = process.env } = {}) {
   removeCloudNativeArtifacts();
   stripAndroidCloudNativePlugins(env);
   sanitizeAndroidCloudPackagedConfig();
-}
-
-export function stripAndroidForSmsGateway() {
-  const androidPackage = APP.appId;
-  const manifestPath = path.join(
-    androidDir,
-    "app",
-    "src",
-    "main",
-    "AndroidManifest.xml",
-  );
-  if (fs.existsSync(manifestPath)) {
-    let xml = fs.readFileSync(manifestPath, "utf8");
-    const original = xml;
-
-    for (const component of ANDROID_SMS_GATEWAY_STRIPPED_COMPONENTS) {
-      xml = removeApplicationComponentBlock(
-        xml,
-        `${androidPackage}.${component}`,
-      );
-      xml = removeApplicationComponentClassBlock(xml, component);
-    }
-
-    xml = removeAndroidPermissionRequests(
-      xml,
-      ANDROID_SMS_GATEWAY_STRIPPED_PERMISSIONS,
-    );
-    xml = ensureAndroidPermissionRemovalMarkers(
-      xml,
-      ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS.filter((permission) =>
-        ANDROID_SMS_GATEWAY_STRIPPED_PERMISSIONS.includes(permission),
-      ),
-    );
-    xml = applyAndroidCleartextPolicy(xml, { allowCleartext: false });
-
-    if (xml !== original) {
-      fs.writeFileSync(manifestPath, xml, "utf8");
-      console.log(
-        "[mobile-build] Stripped non-SMS local components and permissions from AndroidManifest.xml.",
-      );
-    }
-  }
-
-  const activeJavaRoot = path.join(
-    androidDir,
-    "app",
-    "src",
-    "main",
-    "java",
-    packageNameToPath(androidPackage),
-  );
-  const javaRoots = [
-    activeJavaRoot,
-    path.join(androidDir, "app", "src", "main", "java", "ai", "elizaos", "app"),
-  ];
-  let removedJavaCount = 0;
-  for (const root of javaRoots) {
-    if (!fs.existsSync(root)) continue;
-    for (const file of ANDROID_SMS_GATEWAY_STRIPPED_JAVA_FILES) {
-      const target = path.join(root, file);
-      if (fs.existsSync(target)) {
-        fs.rmSync(target);
-        removedJavaCount += 1;
-      }
-    }
-  }
-  if (removedJavaCount > 0) {
-    console.log(
-      `[mobile-build] Removed ${removedJavaCount} non-SMS Java source(s).`,
-    );
-  }
-  const removedJavaRootCount = removeInactiveAndroidJavaSourceRoots(
-    javaRoots,
-    activeJavaRoot,
-  );
-  if (removedJavaRootCount > 0) {
-    console.log(
-      `[mobile-build] Removed ${removedJavaRootCount} inactive Android Java source root(s).`,
-    );
-  }
-  rewriteCloudJavaSources(javaRoots, androidPackage, {
-    safePushNotifications: false,
-  });
-
-  const resRoot = path.join(androidDir, "app", "src", "main", "res");
-  for (const relPath of ANDROID_CLOUD_STRIPPED_RESOURCE_FILES) {
-    const target = path.join(resRoot, relPath);
-    if (fs.existsSync(target)) {
-      fs.rmSync(target);
-    }
-  }
-
-  removeCloudNativeArtifacts();
-  stripAndroidNativePlugins(
-    ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS,
-    "sms-gateway-disallowed",
-  );
 }
