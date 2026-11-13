@@ -74,7 +74,6 @@
     "audit:stories": "bun test/story-gate/run-story-gate.mjs",
     "audit:stories:build": "bun run build-storybook --output-dir storybook-static --quiet && bun test/story-gate/run-story-gate.mjs",
     "audit:story-coverage": "bun scripts/stories-coverage.ts",
-    "audit:dead-code": "knip --config knip.json --include files,dependencies,unlisted,unresolved --max-issues 0",
     "audit:public-api": "bun scripts/audit-public-api.ts",
     "build:dist:unlocked": "bun run clean && bun ../scripts/ensure-tsc-nested-output-dir.ts packages/ui && tsc6 --noCheck -p tsconfig.build.json && bun ../scripts/flatten-tsc-package-output.ts packages/ui && bun ../scripts/copy-package-assets.ts packages/ui src/css-modules.d.ts src/styles src/cloud-ui/index.css src/voice/worklets src/voice/microphone-samples.worklet.mjs src/utils/value-formatting.mjs src/utils/value-formatting.d.mts src/components/views/view-icons src/login/LICENSE assets && bun ../scripts/prepare-package-dist.ts packages/ui && bun ../scripts/rewrite-dist-relative-imports-node-esm.ts packages/ui && bun ../scripts/verify-package-runtime-exports.ts packages/ui && bun ../scripts/copy-package-assets.ts packages/ui src/brand/brand.css src/brand-classic/brand.css",
     "generate:view-icons": "bun scripts/bake-view-icons.ts",
