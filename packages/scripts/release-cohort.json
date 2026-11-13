@@ -37,7 +37,6 @@
     "@elizaos/host",
     "@elizaos/voice",
     "@elizaos/auth",
-    "@elizaos/electrobun",
     "@elizaos/macosreminders",
     "@elizaos/native-activity-tracker",
     "@elizaos/plugin-agent-orchestrator",

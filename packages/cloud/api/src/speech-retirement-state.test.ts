@@ -25,6 +25,67 @@ const actual = (value: SpeechLifecycleRecord, kind: "stt" | "tts") =>
     requestId: `speech:session:${kind}`,
     amountUsd: "0.01",
   });
+test("renewed windows must settle before retirement can be confirmed", () => {
+  let value = actual(actual(current(), "stt"), "tts");
+  value = recordSpeechSettlement(
+    value,
+    "stt",
+    {
+      state: "reserved",
+      requestId: "speech:session:stt:1",
+    },
+    1,
+  );
+  const finish = (record: SpeechLifecycleRecord) => {
+    const retiring = beginSpeechRetirement(record);
+    return completeSpeechRetirement(
+      retiring,
+      retiring.retirement!,
+      {
+        stt: "gracefully_drained",
+        tts: "transport_closed",
+        accounting: "settled_actual",
+        moneyTerminal: true,
+      },
+      100,
+    );
+  };
+  expect(finish(value).retirement?.proof?.state).toBe("unconfirmed");
+  value = recordSpeechSettlement(
+    value,
+    "stt",
+    {
+      state: "settled_actual",
+      requestId: "speech:session:stt:1",
+      amountUsd: "0.01",
+    },
+    1,
+  );
+  expect(finish(value).retirement?.proof?.state).toBe("confirmed");
+  expect(() =>
+    recordSpeechSettlement(
+      value,
+      "stt",
+      {
+        state: "settled_actual",
+        requestId: "speech:session:stt:1",
+        amountUsd: "0.02",
+      },
+      1,
+    ),
+  ).toThrow("outcome changed");
+  expect(() =>
+    recordSpeechSettlement(
+      value,
+      "tts",
+      {
+        state: "reserved",
+        requestId: "speech:session:tts:2",
+      },
+      1,
+    ),
+  ).toThrow("identity mismatch");
+});
 test.each(["starting", "retiring", "closed"] as const)(
   "duplicate initialization never resets %s",
   (phase) => {

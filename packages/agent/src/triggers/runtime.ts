@@ -298,18 +298,7 @@ export function triggersFeatureEnabled(runtime?: IAgentRuntime): boolean {
   return normalized !== "0" && normalized !== "false";
 }
 
-export function getTriggerLimit(runtime?: IAgentRuntime): number {
-  const runtimeSetting = runtime?.getSetting("ELIZA_TRIGGERS_MAX_ACTIVE");
-  if (typeof runtimeSetting === "number" && Number.isFinite(runtimeSetting)) {
-    return Math.max(1, Math.floor(runtimeSetting));
-  }
-  if (typeof runtimeSetting === "string" && /^\d+$/.test(runtimeSetting)) {
-    return Math.max(1, Number(runtimeSetting));
-  }
-  const env = process.env.ELIZA_TRIGGERS_MAX_ACTIVE;
-  if (env && /^\d+$/.test(env)) {
-    return Math.max(1, Number(env));
-  }
+export function getTriggerLimit(): number {
   return DEFAULT_MAX_ACTIVE_TRIGGERS;
 }
 

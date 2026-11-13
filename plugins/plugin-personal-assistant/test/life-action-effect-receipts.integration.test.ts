@@ -1108,6 +1108,12 @@ it.each([
   120000,
 );
 
+// Keep absolute-clock scenarios in the future so they test zone conversion,
+// not the production rejection of an already elapsed reminder.
+const reminderClockYear = new Date().getUTCFullYear() + 1;
+const reminderClockDate = `${reminderClockYear}-11-12`;
+const reminderClockDueAt = `${reminderClockYear}-11-13T03:20:00.000Z`;
+
 it("retains the supplied reminder clock after independent intent verification", async () => {
   const createPlan = {
     mode: "create",
@@ -1117,7 +1123,7 @@ it("retains the supplied reminder clock after independent intent verification", 
     title: "Verified local reminder clock",
     description: "check the release",
     cadenceKind: "once",
-    dueDate: "2026-11-12",
+    dueDate: reminderClockDate,
     timeOfDay: "19:20",
     timeZone: "America/Los_Angeles",
     multiStep: false,
@@ -1138,7 +1144,7 @@ it("retains the supplied reminder clock after independent intent verification", 
       confirmed: true,
       createPlan,
     },
-    "Remind me on November 12 at 7:20 PM local time to check the release in this app without alerts.",
+    `Remind me on November 12, ${reminderClockYear} at 7:20 PM local time to check the release in this app without alerts.`,
   );
   expect(created.result.success, JSON.stringify(created.result)).toBe(true);
   const id = receipt(created.result).resource.id;
@@ -1150,7 +1156,7 @@ it("retains the supplied reminder clock after independent intent verification", 
   expect(definition?.timezone).toBe("America/Los_Angeles");
   expect(definition?.cadence).toMatchObject({
     kind: "once",
-    dueAt: "2026-11-13T03:20:00.000Z",
+    dueAt: reminderClockDueAt,
   });
   expect(definition?.reminderPlanId).toBeNull();
   expect(definition?.metadata.nativeProjection).toBe("in_app_only");
@@ -1168,7 +1174,7 @@ it("uses the current client clock when a reminder plan needs extraction", async 
         title: "Current client reminder clock",
         description: null,
         cadenceKind: "once",
-        dueDate: "2026-11-12",
+        dueDate: reminderClockDate,
         timeOfDay: "19:20",
         timeZone: null,
         multiStep: false,
@@ -1181,7 +1187,7 @@ it("uses the current client clock when a reminder plan needs extraction", async 
       kind: "definition",
       confirmed: true,
     },
-    "Remind me on November 12 at 7:20 PM local time in this app without an alert.",
+    `Remind me on November 12, ${reminderClockYear} at 7:20 PM local time in this app without an alert.`,
     false,
     { uiTimeZone: "America/Los_Angeles" },
   );
@@ -1196,7 +1202,7 @@ it("uses the current client clock when a reminder plan needs extraction", async 
   expect(definition?.timezone).toBe("America/Los_Angeles");
   expect(definition?.cadence).toMatchObject({
     kind: "once",
-    dueAt: "2026-11-13T03:20:00.000Z",
+    dueAt: reminderClockDueAt,
   });
 });
 
@@ -1213,7 +1219,7 @@ it.each(["destination", "alert", "destination and alert"])(
       title: `Recovered reminder ${unresolved}`,
       description: null,
       cadenceKind: "once",
-      dueDate: "2026-11-12",
+      dueDate: reminderClockDate,
       timeOfDay: "19:20",
       timeZone: "America/Los_Angeles",
       multiStep: false,
@@ -1236,8 +1242,7 @@ it.each(["destination", "alert", "destination and alert"])(
         reason: "unsupported",
         message: "test native boundary",
       } as never);
-    const ownerText =
-      "Remind me on November 12 at 7:20 PM local time to check the release in this app with an alert.";
+    const ownerText = `Remind me on November 12, ${reminderClockYear} at 7:20 PM local time to check the release in this app with an alert.`;
     const created = await invoke(
       {
         action: "create",
@@ -1261,7 +1266,7 @@ it.each(["destination", "alert", "destination and alert"])(
     expect(definition?.timezone).toBe("America/Los_Angeles");
     expect(definition?.cadence).toMatchObject({
       kind: "once",
-      dueAt: "2026-11-13T03:20:00.000Z",
+      dueAt: reminderClockDueAt,
     });
     expect(native).not.toHaveBeenCalled();
   },

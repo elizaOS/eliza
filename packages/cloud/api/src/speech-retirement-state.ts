@@ -26,6 +26,10 @@ export interface RetirementState {
   openingClaim?: string;
   openingGeneration?: number;
   progress: { stt: SettlementProgress; tts: SettlementProgress };
+  windows?: Record<
+    number,
+    { stt: SettlementProgress; tts: SettlementProgress }
+  >;
   proof?: SpeechRetirementProof;
 }
 export interface SpeechLifecycleRecord {
@@ -144,16 +148,26 @@ export function recordSpeechSettlement<T extends SpeechLifecycleRecord>(
   record: T,
   kind: "stt" | "tts",
   progress: SettlementProgress,
+  window = 0,
 ): T {
   if (!record.retirement) return record;
   if (record.retirement.proof?.state === "confirmed")
     throw Error("Speech retirement is immutable");
+  if (!Number.isSafeInteger(window) || window < 0)
+    throw Error("Invalid speech settlement window");
   if (
     progress.state !== "not_reserved" &&
-    progress.requestId !== `speech:${record.sessionId}:${kind}`
+    progress.requestId !==
+      `speech:${record.sessionId}:${kind}${window ? `:${window}` : ""}`
   )
     throw Error("Speech settlement identity mismatch");
-  const previous = record.retirement.progress[kind];
+  const windowProgress = window
+    ? (record.retirement.windows?.[window] ?? {
+        stt: { state: "not_reserved" as const },
+        tts: { state: "not_reserved" as const },
+      })
+    : record.retirement.progress;
+  const previous = windowProgress[kind];
   if (
     previous.state === "settled_actual" ||
     previous.state === "settled_conservative"
@@ -172,7 +186,14 @@ export function recordSpeechSettlement<T extends SpeechLifecycleRecord>(
     ...record,
     retirement: {
       ...record.retirement,
-      progress: { ...record.retirement.progress, [kind]: progress },
+      ...(window
+        ? {
+            windows: {
+              ...record.retirement.windows,
+              [window]: { ...windowProgress, [kind]: progress },
+            },
+          }
+        : { progress: { ...windowProgress, [kind]: progress } }),
     },
   };
 }
@@ -211,27 +232,32 @@ export function completeSpeechRetirement<T extends SpeechLifecycleRecord>(
   )
     throw Error("Speech retirement generation changed");
   const base = { version: 1 as const, sessionId: record.sessionId };
-  const none = Object.values(state.progress).every(
-    (value) => value.state === "not_reserved",
-  );
-  const frozenTts = state.progress.tts;
-  const closedFrozenCounter =
-    frozenTts.state === "settled_conservative" &&
-    frozenTts.basis === "submitted_counter_provider_unconfirmed" &&
-    evidence?.tts === "transport_closed" &&
-    evidence.moneyTerminal === true;
-  const actual =
-    state.progress.stt.state === "settled_actual" &&
-    (frozenTts.state === "settled_actual" || closedFrozenCounter);
+  const windows = [state.progress, ...Object.values(state.windows ?? {})];
+  const none = windows
+    .flatMap(Object.values)
+    .every((value) => value.state === "not_reserved");
+  const actual = windows.every(({ stt, tts }, index) => {
+    const terminal = (progress: SettlementProgress) =>
+      (index > 0 && progress.state === "not_reserved") ||
+      progress.state === "settled_actual";
+    const closedFrozenCounter =
+      tts.state === "settled_conservative" &&
+      tts.basis === "submitted_counter_provider_unconfirmed" &&
+      evidence?.tts === "transport_closed" &&
+      evidence.moneyTerminal === true;
+    return terminal(stt) && (terminal(tts) || closedFrozenCounter);
+  });
   const liveOwner =
     liveOpening?.settled === true &&
     liveOpening.claim === state.openingClaim &&
     liveOpening.generation === state.openingGeneration;
-  const zeroReservations = Object.values(state.progress).every(
-    (value) =>
-      value.state === "not_reserved" ||
-      (value.state === "settled_actual" && value.amountUsd === "0"),
-  );
+  const zeroReservations = windows
+    .flatMap(Object.values)
+    .every(
+      (value) =>
+        value.state === "not_reserved" ||
+        (value.state === "settled_actual" && value.amountUsd === "0"),
+    );
   const noProviderDispatch =
     evidence?.stt === "not_dispatched" &&
     evidence.tts === "not_dispatched" &&
@@ -260,9 +286,9 @@ export function completeSpeechRetirement<T extends SpeechLifecycleRecord>(
     zeroReservations &&
     now >= state.initializedAt
   ) {
-    const settledAny = Object.values(state.progress).some(
-      (value) => value.state === "settled_actual",
-    );
+    const settledAny = windows
+      .flatMap(Object.values)
+      .some((value) => value.state === "settled_actual");
     proof = {
       ...base,
       state: "confirmed",

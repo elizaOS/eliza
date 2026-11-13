@@ -1,5 +1,7 @@
 /** Real Maps controller and SQLite Durable Object storage; credential authority is an explicit fixture. */
 import { MapsRequestAllowanceController } from "../../src/maps-request-allowance-controller";
+
+export { RateLimitState } from "../../src/rate-limit-state";
 export class MapsTestGate {
   private queue = Promise.resolve();
   constructor(

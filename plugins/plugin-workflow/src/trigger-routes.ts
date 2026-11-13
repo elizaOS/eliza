@@ -222,7 +222,7 @@ export interface TriggerRouteContext extends RouteRequestContext {
     options: TriggerExecutionOptions
   ) => Promise<TriggerExecutionResult>;
   getTriggerHealthSnapshot: (runtime: IAgentRuntime) => Promise<TriggerHealthSnapshot>;
-  getTriggerLimit: (runtime: IAgentRuntime) => number;
+  getTriggerLimit: () => number;
   listTriggerTasks: (runtime: IAgentRuntime) => Promise<Task[]>;
   readTriggerConfig: (task: Task) => TriggerConfig | null;
   readTriggerRuns: (task: Task) => CoreTriggerRunRecord[];
@@ -587,7 +587,7 @@ async function handleTriggerRoutesUnlocked(ctx: TriggerRouteContext): Promise<bo
     }
     const existingTasks = await listOwnedTriggerTasks(runtime);
     const activeCount = countActiveTriggers(existingTasks);
-    const limit = getTriggerLimit(runtime);
+    const limit = getTriggerLimit();
     if (activeCount >= limit) {
       error(res, `Active trigger limit reached (${limit})`, 429);
       return true;
@@ -948,7 +948,7 @@ async function handleTriggerRoutesUnlocked(ctx: TriggerRouteContext): Promise<bo
     // Enabling a saved trigger is bound by the same active-trigger limit as POST.
     if (!current.enabled && nextTrigger.enabled) {
       const activeCount = countActiveTriggers(await listOwnedTriggerTasks(runtime));
-      const limit = getTriggerLimit(runtime);
+      const limit = getTriggerLimit();
       if (activeCount >= limit) {
         error(res, `Active trigger limit reached (${limit})`, 429);
         return true;

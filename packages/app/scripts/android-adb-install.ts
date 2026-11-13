@@ -9,7 +9,12 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveApk, verifyInstalledApkHash } from "./lib/android-device.ts";
+import {
+  assertSystemApkSigningEnv,
+  resolveApk,
+  SYSTEM_APK_CANDIDATES,
+  verifyInstalledApkHash,
+} from "./lib/android-device.ts";
 import { assertAndroidApkRendererFresh } from "./lib/android-renderer-stamp.ts";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -133,7 +138,14 @@ if (!commandExists("adb")) {
 }
 
 if (shouldBuild) {
-  const build = run("bun", ["run", "build:android"], { stdio: "inherit" });
+  try {
+    assertSystemApkSigningEnv();
+  } catch (error) {
+    fail("Android signing inputs missing", error.message);
+  }
+  const build = run("bun", ["run", "build:android:system"], {
+    stdio: "inherit",
+  });
   if (build.status !== 0) {
     fail("Android build failed");
   }
@@ -169,7 +181,12 @@ if (!serial && onlineDevices.length !== 1) {
 
 let apkPath;
 try {
-  apkPath = resolveApk(apkArg);
+  // --build produces the signed android-system APK; otherwise the default is
+  // the android-cloud debug APK.
+  apkPath = resolveApk(
+    apkArg,
+    shouldBuild ? { candidates: SYSTEM_APK_CANDIDATES } : undefined,
+  );
 } catch (error) {
   fail("APK not found", error instanceof Error ? error.message : String(error));
 }

@@ -69,6 +69,7 @@ describe("Cloud credential composition", () => {
       );
       expect(sources).toContain("CredentialSlotMutation.replace");
       expect(sources).toContain("ElizaResidentCredentials.reserve()");
+      expect(sources).toContain("ElizaCredentialRetirement.observeRequests()");
       const retirement = fs.readFileSync(
         path.join(fixture, "ElizaCredentialRetirement.java"),
         "utf8",

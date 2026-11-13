@@ -998,10 +998,7 @@ describe("pinned bundletool provisioning", () => {
   });
 
   it("passes an absolute JavaScript runtime to Gradle for the AAB finalizer", () => {
-    const target = {
-      env: {},
-      includeSmsGatewayEnvDefaults: false,
-    };
+    const target = { env: {} };
     const defaults = createAndroidBuildEnv(target, {
       androidSdkRoot: "/android-sdk",
       env: { PATH: "/usr/bin" },

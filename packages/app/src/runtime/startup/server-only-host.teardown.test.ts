@@ -4,12 +4,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   closeRuntimeAdapter,
-  ensureTrajectoriesTable,
   reopenRuntimeAdapter,
   shutdownRuntime,
 } from "@elizaos/agent";
 import { AgentRuntime, Service } from "@elizaos/core";
 import { installHttpPluginLifecycle } from "@elizaos/host/protocol";
+import { ensureTrajectoriesTable } from "@elizaos/plugin-assistant";
 import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
 import { afterEach, expect, it, vi } from "vitest";
 import { hashPassword } from "../../api/auth/passwords.js";

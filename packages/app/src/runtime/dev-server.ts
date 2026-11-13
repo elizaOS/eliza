@@ -631,9 +631,8 @@ async function main() {
     state: "starting",
   });
   const apiReady = Date.now();
-  // WHY sync API vars only: under `dev:desktop`, dev-platform sets ELIZA_PORT to
-  // the **Vite** listen port for `/api/dev/stack` + static HTML hints, while
-  // ELIZA_API_PORT is the app API. Overwriting ELIZA_PORT here would
+  // WHY sync API vars only: ELIZA_PORT may name the **Vite** listen port for
+  // `/api/dev/stack` + static HTML hints, while ELIZA_API_PORT is the app API. Overwriting ELIZA_PORT here would
   // collapse UI vs API in observability JSON and confuse tools that read env.
   if (actualPort !== port) {
     logger.error(

@@ -1,30 +1,5 @@
 [
   {
-    "source": "packages/app/platforms/electrobun/src/dynamic-views/types.ts",
-    "sha256": "122166d5d559c4352b910d914af4758e1bc5f1885c2ac0d50566a39ff893423e",
-    "reason": "Declares dynamic view records and fixed placement and source labels. DynamicViewRegistry and DynamicViewSessionManager own registration and session changes."
-  },
-  {
-    "source": "packages/app/platforms/electrobun/src/launch/types.ts",
-    "sha256": "7167fc9f4974de53bd2fe14ee6ba958296b9c48ccc25986f20c4535ab4330945",
-    "reason": "Declares desktop launch state and event records. LaunchOrchestrator controls launch progress and LaunchStore persists its history."
-  },
-  {
-    "source": "packages/app/platforms/electrobun/src/rpc-schema.ts",
-    "sha256": "01398394ab2fe8bb180afb7ddd1295b2d0f99d0f82cc0a72ffb963b095190b03",
-    "reason": "Declares the desktop RPC request, result and event shapes. The RPC handler slices dispatch changes to runtime, settings, update and other desktop services."
-  },
-  {
-    "source": "packages/app/platforms/electrobun/src/trace/types.ts",
-    "sha256": "1782e574dc5227febca538e01ca239197608db74a41d8efc66f1ca7ed94e120c",
-    "reason": "Declares trace records and fixed status and event labels. TraceService changes the session state and TraceStore persists sessions and events."
-  },
-  {
-    "source": "packages/app/platforms/electrobun/src/voice/types.ts",
-    "sha256": "f801bd1ede83acf1d6fd12180bde64e2289df97c0ba70762ae2c85e928e8fdf2",
-    "reason": "Declares desktop voice records and fixed stage, status and test labels. VoiceService and its stream coordinator own turn and playback changes."
-  },
-  {
     "source": "packages/app/src/services/steward-sidecar/types.ts",
     "sha256": "362858658f59f68e0e214ae96ad6fc7216741c39c5bca5d8e755d9a5897d09bc",
     "reason": "Declares sidecar state and credential shapes and fixed default settings. The sidecar supervisor owns process and restart state, and wallet setup persists credentials."

@@ -174,10 +174,15 @@ function stripExcessiveStarDirections(input: string): string {
 }
 
 /** True when one peel pass consumes every star on the line, so the line holds
- * flat emphasis spans instead of nested layers the bounded peel must drop. */
+ * flat emphasis spans instead of nested layers the bounded peel must drop.
+ * Only a span whose text has no space next to its markers counts. Nested
+ * layers (`*a *b* c*`) also pair up across layers in one pass, but each such
+ * pair has a space inside a marker (`*a *`, `* c*`). */
 function starSpansSettleInOnePass(line: string, starCount: number): boolean {
 	let covered = 0;
 	for (const match of line.matchAll(STAR_SPAN_PATTERN)) {
+		const inner = match[1] ?? "";
+		if (inner.trim() !== inner) continue;
 		for (const char of match[0]) if (char === "*") covered += 1;
 	}
 	return covered === starCount;

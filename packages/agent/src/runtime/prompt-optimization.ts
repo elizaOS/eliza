@@ -24,6 +24,10 @@ import {
   normalizeTrajectoryLlmPurpose,
 } from "@elizaos/core";
 import type { ElizaConfig } from "@elizaos/host/protocol";
+import {
+  TrajectoriesService,
+  toOptionalNumber,
+} from "@elizaos/plugin-assistant";
 import { detectRuntimeModel } from "../api/agent-model.ts";
 import {
   type ModelTokenMetadata,
@@ -48,10 +52,6 @@ type CompactorMessage = {
   tags?: string[];
 };
 
-import {
-  isLegacyTrajectoryLogger,
-  toOptionalNumber,
-} from "./trajectory-internals.ts";
 import {
   applyActiveViewAwareness,
   capturedActiveViewSource,
@@ -122,11 +122,6 @@ type TrajectoryLoggerLike = {
     callId: string,
     patch: Record<string, unknown>,
   ) => void;
-};
-
-type RuntimeWithTrajectoryService = AgentRuntime & {
-  getService?: (serviceType: string) => unknown;
-  getServicesByType?: (serviceType: string) => unknown;
 };
 
 type RuntimeWithEmitEvent = AgentRuntime & {
@@ -202,59 +197,11 @@ function getActiveTrajectoryStepId(): string | null {
   return getSharedTrajectoryStepId();
 }
 
-function resolveTrajectoryLogger(
-  runtime: AgentRuntime,
-): TrajectoryLoggerLike | null {
-  const runtimeWithService = runtime as RuntimeWithTrajectoryService;
-  const candidates: TrajectoryLoggerLike[] = [];
-  const seen = new Set<unknown>();
-  const push = (candidate: unknown): void => {
-    if (!candidate || typeof candidate !== "object" || seen.has(candidate)) {
-      return;
-    }
-    seen.add(candidate);
-    candidates.push(candidate as TrajectoryLoggerLike);
-  };
-
-  if (typeof runtimeWithService.getServicesByType === "function") {
-    const byType = runtimeWithService.getServicesByType("trajectories");
-    if (Array.isArray(byType)) {
-      for (const candidate of byType) {
-        push(candidate);
-      }
-    } else {
-      push(byType);
-    }
-  }
-
-  if (typeof runtimeWithService.getService === "function") {
-    push(runtimeWithService.getService("trajectories"));
-  }
-
-  if (candidates.length === 0) return null;
-
-  let best: TrajectoryLoggerLike | null = null;
-  let bestScore = -1;
-  for (const candidate of candidates) {
-    let score = 0;
-    if (isLegacyTrajectoryLogger(candidate)) score += 100;
-    if (typeof candidate.logLlmCall === "function") score += 10;
-    if (typeof candidate.logProviderAccess === "function") score += 10;
-    if (typeof candidate.getLlmCallLogs === "function") score += 2;
-    if (typeof candidate.getProviderAccessLogs === "function") score += 2;
-    if (score > bestScore) {
-      best = candidate;
-      bestScore = score;
-    }
-  }
-
-  return best;
-}
-
 function ensureTrajectoryLoggerTracking(
   runtime: AgentRuntime,
 ): TrajectoryLoggerLike | null {
-  const trajectoryLogger = resolveTrajectoryLogger(runtime);
+  const trajectoryLogger: TrajectoryLoggerLike | null =
+    TrajectoriesService.resolveFromRuntime(runtime);
   if (!trajectoryLogger) {
     return trajectoryLogger;
   }

@@ -126,7 +126,8 @@ describe("Android Play account-deletion contract", () => {
     expect(users).toContain("deletePersonalOrganizationAtomically");
     expect(appCleanup).toContain("requireContainerTeardownCompletion");
     expect(publicPage).toContain("30-day recovery");
-    expect(publicPage).toContain("support@eliza.cloud");
+    expect(publicPage).toContain("branding.supportEmail?.trim()");
+    expect(publicPage).toContain("mailto:${encodeURIComponent(supportEmail)}");
     expect(publicPage).not.toContain("sign back in");
     expect(read("cloud/api/src/cron.ts")).toContain(
       '"/api/cron/process-account-deletions"',

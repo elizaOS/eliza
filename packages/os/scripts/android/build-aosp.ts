@@ -605,7 +605,6 @@ export function rebuildLauncherApk(brand, browserPin) {
     ELIZAOS_OS_REPO_ROOT: repoRoot,
     ELIZA_APP_ID: brand.packageName,
     ELIZA_AOSP_BUILD: "1",
-    ELIZA_GRADLE_AOSP_BUILD: "true",
   };
   const [cmd, ...rest] = brand.buildAndroidSystemCmd;
   run(cmd, rest, { cwd: elizaRoot, env });

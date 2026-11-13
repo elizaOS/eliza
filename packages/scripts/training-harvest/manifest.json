@@ -411,7 +411,6 @@
         "plugins/plugin-personal-assistant/test/memory-restart-chat.live.e2e.test.ts",
         "plugins/plugin-personal-assistant/test/reminder-review-job.real.e2e.test.ts",
         "plugins/plugin-personal-assistant/test/selfcontrol-chat.live.e2e.test.ts",
-        "plugins/plugin-personal-assistant/test/selfcontrol-desktop.live.e2e.test.ts",
         "plugins/plugin-personal-assistant/test/selfcontrol-dev.live.e2e.test.ts",
         "plugins/plugin-personal-assistant/test/undated-owner-todo.cerebras.live.e2e.test.ts",
         "plugins/plugin-sql/src/__tests__/integration/pglite-e2e.real.e2e.test.ts",
