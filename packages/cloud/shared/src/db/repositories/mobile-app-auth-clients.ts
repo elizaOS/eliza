@@ -6,7 +6,6 @@ import { ElizaError } from "@elizaos/core";
 import { and, eq, isNotNull, or, sql } from "drizzle-orm";
 import {
   type AndroidAssetLinkStatement,
-  type AndroidAssetLinksRelation,
   parseAndroidAssetLinksConfig,
 } from "../../lib/auth/android-asset-links";
 import { dbWrite } from "../client";
@@ -64,7 +63,7 @@ export const mobileAppAuthClientsRepository = {
 
   /**
    * List Digital Asset Links statements for all active, enabled Android clients.
-   * Merges fingerprints across multiple client registrations for the same package.
+   * Merges fingerprints only when package and complete relation sets agree.
    */
   async listActiveAndroidAssetLinks(
     env: import("../../lib/services/mobile-app-auth").MobileAppAuthRuntimeEnv,
@@ -95,8 +94,7 @@ export const mobileAppAuthClientsRepository = {
         ),
       );
     const { admitMobileAppAuthRegistration } = await import("../../lib/services/mobile-app-auth");
-    const packageFingerprints = new Map<string, Set<string>>();
-    const packageRelations = new Map<string, Set<AndroidAssetLinksRelation>>();
+    const associations = new Map<string, AndroidAssetLinkStatement>();
 
     for (const row of rows) {
       await admitMobileAppAuthRegistration(env, row);
@@ -119,30 +117,25 @@ export const mobileAppAuthClientsRepository = {
         throw new ElizaError("Invalid native Android association", {
           code: "MOBILE_APP_AUTH_ASSET_LINKS_CONFIGURATION",
         });
-      const existing = packageFingerprints.get(packageName) ?? new Set<string>();
-      for (const fp of fingerprints) {
-        if (typeof fp === "string" && fp.trim()) existing.add(fp);
+      const statement = parsed.statements[0]!;
+      const relations = [...statement.relation].sort();
+      const key = JSON.stringify([packageName, relations]);
+      const existing = associations.get(key);
+      if (existing) {
+        existing.target.sha256_cert_fingerprints = [
+          ...new Set([
+            ...existing.target.sha256_cert_fingerprints,
+            ...statement.target.sha256_cert_fingerprints,
+          ]),
+        ];
+      } else {
+        associations.set(key, {
+          relation: relations,
+          target: { ...statement.target },
+        });
       }
-      packageFingerprints.set(packageName, existing);
-      const relations = packageRelations.get(packageName) ?? new Set<AndroidAssetLinksRelation>();
-      for (const relation of parsed.statements[0]?.relation ?? []) relations.add(relation);
-      packageRelations.set(packageName, relations);
     }
-
-    const statements: AndroidAssetLinkStatement[] = [];
-    for (const [packageName, fingerprints] of packageFingerprints) {
-      if (fingerprints.size === 0) continue;
-      statements.push({
-        relation: [...(packageRelations.get(packageName) ?? [])],
-        target: {
-          namespace: "android_app",
-          package_name: packageName,
-          sha256_cert_fingerprints: Array.from(fingerprints),
-        },
-      });
-    }
-
-    return statements;
+    return [...associations.values()];
   },
 
   async findByHostedUrl(publicUrl: string): Promise<RegisteredMobileClientWithApp | null> {

@@ -4,19 +4,22 @@
 module MobileAppClientRegistration {
   type Policy = { databaseAvailable: bool, clientPresent: bool, clientEnabled: bool,
     appActive: bool, appApproved: bool, enabledExactly: bool, environmentValid: bool,
-    callbackValid: bool, exactCallbackAllowed: bool, ttlValid: bool, grantMatches: bool }
+    callbackValid: bool, exactCallbackAllowed: bool, ttlValid: bool, grantMatches: bool,
+    androidAssociationValid: bool }
   var policy: Policy
   var entrypoint: str
   var admitted: bool
-  pure val allowedPaths = Set("registration", "credential", "renewal", "callback")
+  pure val allowedPaths = Set("registration", "credential", "renewal", "callback", "assetlinks")
   pure val validPolicy = { databaseAvailable: true, clientPresent: true, clientEnabled: true,
     appActive: true, appApproved: true, enabledExactly: true, environmentValid: true,
-    callbackValid: true, exactCallbackAllowed: true, ttlValid: true, grantMatches: true }
+    callbackValid: true, exactCallbackAllowed: true, ttlValid: true, grantMatches: true,
+    androidAssociationValid: true }
   pure def permits(p: Policy, path: str): bool = all {
     p.databaseAvailable, p.clientPresent, p.clientEnabled, p.appActive, p.appApproved,
     p.enabledExactly, p.environmentValid, p.callbackValid, p.exactCallbackAllowed, p.ttlValid,
     path.in(allowedPaths),
-    (path == "credential" or path == "renewal") implies p.grantMatches
+    (path == "credential" or path == "renewal") implies p.grantMatches,
+    path == "assetlinks" implies p.androidAssociationValid
   }
   action init = all { policy' = validPolicy, entrypoint' = "registration", admitted' = false }
   action configure(p: Policy, path: str): bool = all {
@@ -38,6 +41,7 @@ module MobileAppClientRegistration {
     configure(policy.with("exactCallbackAllowed", not(policy.exactCallbackAllowed)), entrypoint),
     configure(policy.with("ttlValid", not(policy.ttlValid)), entrypoint),
     configure(policy.with("grantMatches", not(policy.grantMatches)), entrypoint),
+    configure(policy.with("androidAssociationValid", not(policy.androidAssociationValid)), entrypoint),
     { nondet path = allowedPaths.oneOf(); configure(policy, path) }
   }
 
@@ -51,4 +55,35 @@ module MobileAppClientRegistration {
   run unsetEnableRefusedTest = init.then(configure(validPolicy.with("enabledExactly", false), "renewal")).then(resolve).expect(not(admitted))
   run databaseOutageRefusedTest = init.then(configure(validPolicy.with("databaseAvailable", false), "registration")).then(resolve).expect(not(admitted))
   run originWithoutExactCallbackRefusedTest = init.then(configure(validPolicy.with("exactCallbackAllowed", false), "registration")).then(resolve).expect(not(admitted))
+  run invalidAndroidAssociationRefusedTest = init.then(configure(validPolicy.with("androidAssociationValid", false), "assetlinks")).then(resolve).expect(not(admitted))
+  run androidConfigDoesNotRevokeCredentialTest = init.then(configure(validPolicy.with("androidAssociationValid", false), "credential")).then(resolve).expect(admitted)
+}
+
+// Two signers for one package. A grant is encoded as signer*2+relation.
+// Publishing a statement must preserve these pairs instead of taking the
+// Cartesian product of the package's signers and relations.
+module AndroidAssociationPublication {
+  var firstRelations: Set[int]
+  var secondRelations: Set[int]
+  var published: Set[int]
+  var ready: bool
+  pure val relationSets = Set(Set(), Set(0), Set(1), Set(0, 1))
+  val authorized = firstRelations.union(secondRelations.map(relation => relation + 2))
+  action init = all { firstRelations' = Set(), secondRelations' = Set(), published' = Set(), ready' = false }
+  action configure(first: Set[int], second: Set[int]): bool = all {
+    firstRelations' = first, secondRelations' = second, published' = Set(), ready' = false
+  }
+  action publish = all {
+    firstRelations' = firstRelations, secondRelations' = secondRelations,
+    published' = authorized, ready' = true
+  }
+  action step = any {
+    { nondet first = relationSets.oneOf(); nondet second = relationSets.oneOf(); configure(first, second) },
+    publish
+  }
+  val safety = published.subseteq(authorized) and (ready implies published == authorized)
+  run distinctRelationsTest = init.then(configure(Set(0), Set(1))).then(publish).expect(published == Set(0, 3))
+  run sharedRelationsTest = init.then(configure(Set(0), Set(0))).then(publish).expect(published == Set(0, 2))
+  run disabledSignerTest = init.then(configure(Set(0), Set(1))).then(publish)
+    .then(configure(Set(), Set(1))).then(publish).expect(published == Set(3))
 }

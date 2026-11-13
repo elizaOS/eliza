@@ -167,6 +167,11 @@ one day to 90 days, with a 30-day default. Client IDs must be unique. Aliases ca
 their hosted return policy agrees. Unknown and disabled clients fail closed. The global mobile-auth
 enable switch and environment binding still apply.
 
+Disabling a registration stops native sign-in, renewal, private owner access
+and its hosted/Android publication. General API keys already issued remain
+subject to their existing revocation and expiry rules; disabling a client does
+not revoke every key previously issued to it.
+
 Auth has separate configuration boundaries. A Cloud exchange callback is not
 necessarily the browser callback used by Google:
 

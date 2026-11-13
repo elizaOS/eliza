@@ -187,6 +187,35 @@ describe("mobileAppAuthClientsRepository", () => {
   });
 
   describe("listActiveAndroidAssetLinks", () => {
+    test("preserves each signer's Android relations when registrations share a package", async () => {
+      await dbWrite.execute(
+        "UPDATE mobile_app_auth_clients SET android_relations='[\"delegate_permission/common.get_login_creds\"]'::jsonb WHERE client_id='ai.elizaos.app'",
+      );
+      try {
+        const statements = await mobileAppAuthClientsRepository.listActiveAndroidAssetLinks({
+          ENVIRONMENT: "production",
+          ELIZA_MOBILE_APP_AUTH_ENABLED: "true",
+        });
+        const samePackage = statements.filter(
+          (statement) => statement.target.package_name === "ai.elizaos.app",
+        );
+        expect(samePackage).toHaveLength(2);
+        expect(
+          samePackage.find((statement) =>
+            statement.relation.includes("delegate_permission/common.get_login_creds"),
+          )?.target.sha256_cert_fingerprints,
+        ).toEqual([FINGERPRINT_1]);
+        expect(
+          samePackage.find((statement) =>
+            statement.relation.includes("delegate_permission/common.handle_all_urls"),
+          )?.target.sha256_cert_fingerprints,
+        ).toEqual([FINGERPRINT_2]);
+      } finally {
+        await dbWrite.execute(
+          "UPDATE mobile_app_auth_clients SET android_relations=NULL WHERE client_id='ai.elizaos.app'",
+        );
+      }
+    });
     test("rejects enabled Android registrations with missing fingerprints", async () => {
       await dbWrite.execute(
         "UPDATE mobile_app_auth_clients SET android_cert_fingerprints=NULL WHERE client_id='ai.elizaos.app'",
