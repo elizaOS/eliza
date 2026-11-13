@@ -634,8 +634,8 @@ WINDOW_SCENARIOS = [
 
 # ─── TERMINAL_ACTION ────────────────────────────────────────────────────
 TERMINAL_SCENARIOS = [
-    {"op": "connect", "msg": "open a terminal session in ~/projects",
-     "args": {"action": "connect", "cwd": "~/projects"}},
+    {"op": "connect", "msg": "open a terminal session in ./projects",
+     "args": {"action": "connect", "cwd": "./projects"}},
     {"op": "connect", "msg": "spin up a shell in ~/work",
      "args": {"action": "connect", "cwd": "~/work"}},
     {"op": "execute", "msg": "run 'ls -la' in the terminal",
@@ -646,8 +646,8 @@ TERMINAL_SCENARIOS = [
      "args": {"action": "execute", "command": "npm install"}},
     {"op": "execute", "msg": "kick off 'bun run build'",
      "args": {"action": "execute", "command": "bun run build"}},
-    {"op": "execute", "msg": "run 'cargo test' in ~/rust-proj",
-     "args": {"action": "execute", "command": "cargo test", "cwd": "~/rust-proj"}},
+    {"op": "execute", "msg": "run 'cargo test' in ./rust-proj",
+     "args": {"action": "execute", "command": "cargo test", "cwd": "./rust-proj"}},
     {"op": "execute", "msg": "execute 'docker ps -a'",
      "args": {"action": "execute", "command": "docker ps -a"}},
     {"op": "execute", "msg": "run 'kubectl get pods -A' with a 60s timeout",
