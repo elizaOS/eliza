@@ -145,6 +145,27 @@ function safeError(value: Record<string, unknown>) {
   };
 }
 
+function typeErrorLocation(
+  value: Record<string, unknown>,
+): { line: number; column: number } | undefined {
+  if (
+    value.name !== "TypeError" ||
+    !value.location ||
+    typeof value.location !== "object"
+  )
+    return;
+  const { line, column } = value.location as Record<string, unknown>;
+  if (
+    typeof line === "number" &&
+    Number.isSafeInteger(line) &&
+    line > 0 &&
+    typeof column === "number" &&
+    Number.isSafeInteger(column) &&
+    column > 0
+  )
+    return { line, column };
+}
+
 /** Projects only our two fixed diagnostic markers from exact checkout POSTs. */
 export function checkoutTailSummary(raw: string, expectedUrl: string) {
   let requests = 0;
@@ -187,10 +208,12 @@ export function checkoutTailSummary(raw: string, expectedUrl: string) {
         continue;
       if (marker === "[SubscriptionCheckoutConfirm] Failed") {
         if (!checkoutPhases.has(details.phase)) continue;
+        const location = typeErrorLocation(details);
         failures.push({
           kind: "checkout",
           phase: details.phase,
           ...safeError(details),
+          ...(location ? { location } : {}),
           ...(details.cause &&
             typeof details.cause === "object" &&
             !Array.isArray(details.cause) && {
