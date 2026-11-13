@@ -117,8 +117,7 @@ type TrajectoryServiceLike = {
     }>;
   }>;
   getTrajectoryDetail(id: string): Promise<TrajectoryDetailLike | null>;
-  flushWriteQueue?: (trajectoryId: string) => Promise<void> | void;
-  writeQueues?: Map<string, unknown>;
+  flushWriteQueue?: (trajectoryId?: string) => Promise<void> | void;
 };
 
 function resolveTrajectoryService(
@@ -179,24 +178,11 @@ function modelCallBlob(call: TrajectoryLlmCallLike): string {
     .join("\n");
 }
 
-function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    "then" in value &&
-    typeof value.then === "function"
-  );
-}
-
 async function settleTrajectoryWrites(
   service: TrajectoryServiceLike,
 ): Promise<void> {
-  if (service.writeQueues instanceof Map && service.writeQueues.size > 0) {
-    await Promise.all(
-      [...service.writeQueues.values()]
-        .filter(isPromiseLike)
-        .map((pending) => Promise.resolve(pending)),
-    );
+  if (typeof service.flushWriteQueue === "function") {
+    await service.flushWriteQueue();
     return;
   }
   await new Promise((resolve) => setTimeout(resolve, 25));
@@ -213,10 +199,7 @@ async function flushListedTrajectoryWrites(
 }
 
 function supportsAsyncTrajectoryFlush(service: TrajectoryServiceLike): boolean {
-  return (
-    typeof service.flushWriteQueue === "function" ||
-    service.writeQueues instanceof Map
-  );
+  return typeof service.flushWriteQueue === "function";
 }
 
 async function sleep(ms: number): Promise<void> {

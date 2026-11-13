@@ -8,7 +8,6 @@ import { randomUUID } from "node:crypto";
 import {
   canonicalPromptForModelCall,
   composeToolDiagnosticRedactor,
-  logger as coreLogger,
   ElizaError,
   type IAgentRuntime,
   type JsonValue,
@@ -21,19 +20,15 @@ import {
   sanitizeTrajectoryJsonObject,
   type TrajectoryDetailRecord as Trajectory,
   type TrajectoryActionAttemptRecord as TrajectoryActionAttempt,
-  type TrajectoryExportResult,
   type TrajectoryListOptions,
   type TrajectoryListResult,
   type TrajectoryLlmCallRecord,
   type TrajectorySemanticStageRecord,
-  type TrajectorySkillInvocationRecord as TrajectorySkillInvocation,
   type TrajectoryStatus,
   type TrajectoryStepKind,
   timeInferenceSpan,
 } from "@elizaos/core";
-import { getDevTrajectoryExecutionOwnerId } from "./dev-trajectory-recovery.ts";
 import {
-  exportPersistedTrajectories,
   persistedTrajectoryToDetailRecord,
   type RuntimeTrajectoryExportOptions,
   trajectoryRowToListItem,
@@ -42,7 +37,6 @@ import {
   appendCompleteTrajectoryTextRecords,
   asRecord,
   type CompleteStepOptions,
-  capScriptForPersistence,
   computeBySource,
   createBaseTrajectory,
   enqueueStepWrite,
@@ -58,28 +52,21 @@ import {
   loadTrajectoryById,
   loadTrajectoryByStepId,
   mergeMetadata,
-  normalizeLlmCallPayload,
-  normalizeProviderAccessPayload,
   normalizeStatus,
   normalizeStepId,
-  normalizeTrajectoryMetadata,
   type PersistedLlmCall,
   type PersistedProviderAccess,
   type PersistedTrajectory,
   parsePersistedTrajectoryRow,
-  patchedLoggers,
   pushChatExchange,
   readOrchestratorTrajectoryContext,
   redactTrajectoryParams,
-  resolveTrajectoryLogger,
   type StartStepOptions,
   saveTrajectory,
-  shouldEnableTrajectoryLoggingByDefault,
   shouldRunObservationExtraction,
   shouldSuppressNoInputEmbeddingCall,
   sqlQuote,
   stepWriteQueues,
-  type TrajectoryLoggerLike,
   toOptionalNumber,
   toText,
   warnRuntime,
@@ -91,7 +78,7 @@ export type {
   StartStepOptions,
 } from "./trajectory-internals.ts";
 
-interface DatabaseTrajectoryStatistics {
+export interface DatabaseTrajectoryStatistics {
   totalTrajectories: number;
   totalLlmCalls: number;
   totalProviderAccesses: number;
@@ -134,7 +121,7 @@ async function readTrajectoryBreakdown(
   return Object.fromEntries(entries);
 }
 
-async function readDatabaseTrajectoryStatistics(
+export async function readDatabaseTrajectoryStatistics(
   runtime: IAgentRuntime,
 ): Promise<DatabaseTrajectoryStatistics> {
   requireTrajectoryDatabase(runtime);
@@ -171,20 +158,12 @@ async function readDatabaseTrajectoryStatistics(
       `SELECT status AS key, count(*) AS cnt FROM trajectories
          WHERE agent_id = ${sqlQuote(runtime.agentId)} GROUP BY status`,
     );
-    // Select dedicated records first. A stale compatibility snapshot must
-    // never hide calls or double-count a promoted trajectory.
     const byModel = await readTrajectoryBreakdown(
       runtime,
-      `WITH owned AS (
-          SELECT id, steps_json FROM trajectories
-          WHERE agent_id = ${sqlQuote(runtime.agentId)}
-        ), steps AS (
+      `WITH steps AS (
           SELECT s.payload::jsonb AS payload FROM trajectory_steps s
-          JOIN owned t ON t.id = s.trajectory_id
-          UNION ALL
-          SELECT legacy.payload FROM owned t
-          CROSS JOIN LATERAL jsonb_array_elements(t.steps_json::jsonb) legacy(payload)
-          WHERE NOT EXISTS (SELECT 1 FROM trajectory_steps s WHERE s.trajectory_id = t.id)
+          JOIN trajectories t ON t.id = s.trajectory_id
+          WHERE t.agent_id = ${sqlQuote(runtime.agentId)}
         )
         SELECT call->>'model' AS key, jsonb_typeof(call->'model') AS key_type, count(*) AS cnt
         FROM steps CROSS JOIN LATERAL
@@ -267,7 +246,7 @@ function trajectoryOperationError(
   });
 }
 
-type BridgeStepState = {
+export type BridgeStepState = {
   timestamp?: number;
   kind?: TrajectoryStepKind;
   parentStepId?: string;
@@ -294,6 +273,23 @@ const ownedTrajectoryStarts = new WeakMap<object, Map<string, string>>();
 const trajectoryBridgeStopPromises = new WeakMap<object, Promise<void>>();
 const MAX_CLOSED_TRAJECTORY_STEP_IDS = 10_000;
 
+const executionOwnerResolvers = new WeakMap<
+  object,
+  () => Promise<string | undefined>
+>();
+
+/**
+ * A supervised dev host registers the execution owner that tags every
+ * trajectory this runtime starts, so its successor can recover exactly those
+ * rows after the supervisor confirms this process exited.
+ */
+export function setTrajectoryExecutionOwnerResolver(
+  runtime: IAgentRuntime,
+  resolve: () => Promise<string | undefined>,
+): void {
+  executionOwnerResolvers.set(runtime as object, resolve);
+}
+
 function releaseOwnedTrajectoryStart(
   runtime: IAgentRuntime,
   trajectoryId: string,
@@ -308,9 +304,11 @@ function releaseOwnedTrajectoryStart(
 async function saveNewOwnedTrajectory(
   runtime: IAgentRuntime,
   trajectory: PersistedTrajectory,
-  options: { changedStepIds: string[]; updateLegacySnapshot?: boolean },
+  options: { changedStepIds: string[] },
 ): Promise<void> {
-  const executionOwnerId = await getDevTrajectoryExecutionOwnerId(runtime);
+  const executionOwnerId = await executionOwnerResolvers.get(
+    runtime as object,
+  )?.();
   const token = randomUUID();
   delete trajectory.metadata.runtimeExecutionOwnerId;
   trajectory.metadata = {
@@ -413,7 +411,7 @@ async function settleTrajectoryStart(
   });
 }
 
-function stopTrajectoryBridge(runtime: IAgentRuntime): Promise<void> {
+export function stopTrajectoryBridge(runtime: IAgentRuntime): Promise<void> {
   const key = runtime as object;
   stoppingTrajectoryBridges.add(key);
   const existing = trajectoryBridgeStopPromises.get(key);
@@ -498,7 +496,7 @@ function isClosedTrajectoryStep(
   return closedTrajectoryStepIds.get(runtime as object)?.has(stepId) === true;
 }
 
-function acceptsNewTrajectoryCapture(
+export function acceptsNewTrajectoryCapture(
   runtime: IAgentRuntime,
   enabled: boolean,
 ): boolean {
@@ -557,7 +555,7 @@ function reportLateTrajectoryCapture(
   });
 }
 
-function acceptsTrajectoryStepCapture(
+export function acceptsTrajectoryStepCapture(
   runtime: IAgentRuntime,
   enabled: boolean,
   stepId: string,
@@ -570,7 +568,7 @@ function acceptsTrajectoryStepCapture(
   return false;
 }
 
-function reportInvalidTrajectoryCapture(
+export function reportInvalidTrajectoryCapture(
   runtime: IAgentRuntime,
   captureType: "llm" | "provider" | "semanticStage",
   error: unknown,
@@ -630,7 +628,7 @@ function getTrajectoryBridgeState(
   return state;
 }
 
-function rememberTrajectoryStep(
+export function rememberTrajectoryStep(
   runtime: IAgentRuntime,
   trajectoryId: string,
   stepId: string,
@@ -643,7 +641,7 @@ function rememberTrajectoryStep(
   state.activeStepIdByTrajectoryId.set(trajectoryId, stepId);
 }
 
-function resolveBridgeTrajectoryId(
+export function resolveBridgeTrajectoryId(
   runtime: IAgentRuntime,
   stepIdOrTrajectoryId: string,
 ): string {
@@ -654,7 +652,16 @@ function resolveBridgeTrajectoryId(
   );
 }
 
-function releaseAllTrajectoryBridgeState(runtime: IAgentRuntime): void {
+export function activeTrajectoryStepId(
+  runtime: IAgentRuntime,
+  trajectoryId: string,
+): string | undefined {
+  return trajectoryBridgeStates
+    .get(runtime as object)
+    ?.activeStepIdByTrajectoryId.get(trajectoryId);
+}
+
+export function releaseAllTrajectoryBridgeState(runtime: IAgentRuntime): void {
   const state = trajectoryBridgeStates.get(runtime as object);
   if (state) {
     for (const stepId of state.trajectoryIdByStepId.keys()) {
@@ -664,7 +671,7 @@ function releaseAllTrajectoryBridgeState(runtime: IAgentRuntime): void {
   trajectoryBridgeStates.delete(runtime as object);
 }
 
-function releaseTrajectoryBridgeState(
+export function releaseTrajectoryBridgeState(
   runtime: IAgentRuntime,
   trajectoryId: string,
 ): void {
@@ -801,7 +808,7 @@ const pendingChildStepBatches = new WeakMap<
   >
 >();
 
-function startChildTrajectoryStep(
+export function startChildTrajectoryStep(
   runtime: IAgentRuntime,
   owner: object,
   trajectoryId: string,
@@ -954,8 +961,7 @@ function startChildTrajectoryStep(
           );
         }
         try {
-          // The loaded parent must still be active and at this revision. Updating
-          // it also avoids sending an unused full legacy snapshot in an upsert.
+          // The loaded parent must still be active and at this revision.
           await timeInferenceSpan(
             "trajectory:child-start-batch-persist",
             () =>
@@ -1086,7 +1092,7 @@ export function projectLlmCallDiagnostics(
   };
 }
 
-function completeTrajectoryAction(
+export function completeTrajectoryAction(
   runtime: IAgentRuntime,
   trajectoryId: string,
   stepId: string,
@@ -1160,7 +1166,7 @@ function completeTrajectoryAction(
   lastWritePromises.set(runtime as object, writePromise);
 }
 
-async function terminalizeBridgeTrajectory(
+export async function terminalizeBridgeTrajectory(
   runtime: IAgentRuntime,
   trajectoryId: string,
   status: TrajectoryStatus,
@@ -1263,7 +1269,7 @@ async function saveActiveTrajectoryCapture(
   }
 }
 
-async function appendLlmCall(
+export async function appendLlmCall(
   runtime: IAgentRuntime,
   trajectoryId: string,
   stepId: string,
@@ -1641,7 +1647,7 @@ function applyLlmCallPatch(
  * Enrich one recorded model call. The write queue runs the enrichment after
  * the capture that records the call.
  */
-function enqueueLlmCallPatch(
+export function enqueueLlmCallPatch(
   runtime: IAgentRuntime,
   stepId: string,
   callId: string,
@@ -1715,7 +1721,7 @@ const pendingProviderBatches = new WeakMap<
 >();
 
 /** Coalesce only adjacent, not-yet-started writes on the existing owner queue. */
-function enqueueProviderAccess(
+export function enqueueProviderAccess(
   runtime: IAgentRuntime,
   owner: object,
   trajectoryId: string,
@@ -1916,7 +1922,7 @@ async function appendProviderAccesses(
  * evaluation envelope, #17030) onto the bridge-owned step row. Idempotent per
  * `stageId` so retries after transport ambiguity never double-record.
  */
-async function appendSemanticStage(
+export async function appendSemanticStage(
   runtime: IAgentRuntime,
   trajectoryId: string,
   stepId: string,
@@ -2012,7 +2018,7 @@ async function appendSemanticStage(
  * null for a structurally absent payload; throws when a present payload is
  * malformed so the caller can report it as an invalid capture.
  */
-function normalizeSemanticStagePayload(
+export function normalizeSemanticStagePayload(
   args: unknown[],
 ): { stepId: string; semantic: TrajectorySemanticStageRecord } | null {
   const record = asRecord(args[0]);
@@ -2029,7 +2035,7 @@ function normalizeSemanticStagePayload(
 // writeStartedTrajectoryStep / writeCompletedTrajectoryStep
 // ---------------------------------------------------------------------------
 
-async function writeStartedTrajectoryStep({
+export async function writeStartedTrajectoryStep({
   runtime,
   stepId,
   source,
@@ -2167,6 +2173,18 @@ async function writeCompletedTrajectoryStep({
   }
 }
 
+/** Matches a trajectory whose step rows contain the lower-cased pattern. */
+function stepRowsMatch(quotedPattern: string): string {
+  return `EXISTS (
+          SELECT 1 FROM trajectory_steps s
+          WHERE s.trajectory_id = trajectories.id
+            AND (
+              LOWER(CAST(s.payload AS TEXT)) LIKE ${quotedPattern}
+              OR LOWER(COALESCE(s.script, '')) LIKE ${quotedPattern}
+            )
+        )`;
+}
+
 function buildTrajectoryWhereClauses(
   options: TrajectoryListOptions,
   agentId: string,
@@ -2192,7 +2210,7 @@ function buildTrajectoryWhereClauses(
     whereClauses.push(
       `(
         LOWER(COALESCE(CAST(metadata_json AS TEXT), CAST(metadata AS TEXT), '')) LIKE ${quotedPattern}
-        OR LOWER(COALESCE(CAST(steps_json AS TEXT), '')) LIKE ${quotedPattern}
+        OR ${stepRowsMatch(quotedPattern)}
       )`,
     );
   }
@@ -2229,7 +2247,7 @@ function buildTrajectoryWhereClauses(
         OR LOWER(COALESCE(scenario_id, '')) LIKE ${quotedPattern}
         OR LOWER(COALESCE(batch_id, '')) LIKE ${quotedPattern}
         OR LOWER(COALESCE(CAST(metadata_json AS TEXT), CAST(metadata AS TEXT), '')) LIKE ${quotedPattern}
-        OR LOWER(COALESCE(CAST(steps_json AS TEXT), '')) LIKE ${quotedPattern}
+        OR ${stepRowsMatch(quotedPattern)}
       )`,
     );
   }
@@ -2244,7 +2262,7 @@ function buildTrajectoryWhereClause(
   return whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
 }
 
-async function loadPersistedTrajectoriesForExport(
+export async function loadPersistedTrajectoriesForExport(
   runtime: IAgentRuntime,
   options: RuntimeTrajectoryExportOptions,
 ): Promise<PersistedTrajectory[]> {
@@ -2323,7 +2341,7 @@ async function loadPersistedTrajectoriesForExport(
 }
 
 /** Read contracts shared by the registered bridge and standalone host logger. */
-async function listDatabaseTrajectories(
+export async function listDatabaseTrajectories(
   runtime: IAgentRuntime,
   options: TrajectoryListOptions,
 ): Promise<TrajectoryListResult> {
@@ -2368,7 +2386,7 @@ async function listDatabaseTrajectories(
   }
 }
 
-async function getDatabaseTrajectoryDetail(
+export async function getDatabaseTrajectoryDetail(
   runtime: IAgentRuntime,
   trajectoryId: string,
 ): Promise<Trajectory | null> {
@@ -2390,522 +2408,6 @@ async function getDatabaseTrajectoryDetail(
 // ---------------------------------------------------------------------------
 // Public write API
 // ---------------------------------------------------------------------------
-
-type TrajectoryBridgeMethods = {
-  startTrajectory?: (
-    stepIdOrAgentId: string,
-    options?: {
-      agentId?: string;
-      roomId?: string;
-      entityId?: string;
-      source?: string;
-      metadata?: Record<string, unknown>;
-      scenarioId?: string;
-      traceId?: string;
-      episodeId?: string;
-      batchId?: string;
-      groupIndex?: number;
-    },
-  ) => Promise<string>;
-  startStep?: (trajectoryId: string, state?: BridgeStepState) => string;
-  getCurrentStepId?: (trajectoryId: string) => string | null;
-  completeStep?: (
-    trajectoryId: string,
-    actionOrStepId: string | Record<string, unknown>,
-    actionOrReward?: Record<string, unknown>,
-    rewardInfo?: Record<string, unknown>,
-  ) => void;
-  flushWriteQueue?: (trajectoryId?: string) => Promise<void>;
-  applyReward?: (params: TrajectoryRewardRequest) => Promise<boolean>;
-  endTrajectory?: (
-    stepIdOrTrajectoryId: string,
-    status?: string,
-    finalMetrics?: Record<string, unknown>,
-  ) => Promise<void>;
-  releaseTrajectoryOwnership?: (stepIdOrTrajectoryId: string) => void;
-  listTrajectories?: (
-    options?: TrajectoryListOptions,
-  ) => Promise<TrajectoryListResult>;
-  getTrajectoryDetail?: (trajectoryId: string) => Promise<Trajectory | null>;
-  getStats?: () => Promise<unknown>;
-  stop?: () => Promise<void>;
-  isEnabled?: () => boolean;
-  setEnabled?: (enabled: boolean) => void;
-  deleteTrajectories?: (trajectoryIds: string[]) => Promise<number>;
-  clearAllTrajectories?: () => Promise<number>;
-  exportTrajectories?: (
-    options: RuntimeTrajectoryExportOptions,
-  ) => Promise<TrajectoryExportResult>;
-};
-
-/** The registered trajectory service after the host bridge owns its methods. */
-export type BridgedTrajectoryLogger = Required<
-  TrajectoryBridgeMethods &
-    Pick<
-      TrajectoryLoggerLike,
-      "logLlmCall" | "updateLlmCall" | "logProviderAccess"
-    >
->;
-
-export async function installDatabaseTrajectoryLogger(
-  runtime: IAgentRuntime,
-): Promise<void> {
-  if (!hasRuntimeDb(runtime)) {
-    coreLogger.warn(
-      "[trajectory-persistence] installDatabaseTrajectoryLogger: no database adapter found on runtime",
-    );
-    return;
-  }
-
-  const logger = await resolveTrajectoryLogger(runtime);
-  if (!logger) {
-    coreLogger.warn(
-      "[trajectory-persistence] installDatabaseTrajectoryLogger: no logger found to patch",
-    );
-    return;
-  }
-
-  const loggerObject = logger as object;
-  if (patchedLoggers.has(loggerObject)) return;
-
-  const shouldEnableByDefault = shouldEnableTrajectoryLoggingByDefault();
-  const isEnabled =
-    typeof logger.isEnabled === "function"
-      ? logger.isEnabled()
-      : shouldEnableByDefault;
-  if (
-    typeof logger.setEnabled === "function" &&
-    isEnabled !== shouldEnableByDefault
-  ) {
-    try {
-      logger.setEnabled(shouldEnableByDefault);
-    } catch (error) {
-      // error-policy:J7 logger instrumentation must not kill the runtime loop,
-      // but the diagnostic failure remains observable.
-      warnRuntime(runtime, "Trajectory logger enablement failed", error);
-    }
-  }
-
-  let fallbackEnabled =
-    typeof logger.isEnabled === "function"
-      ? logger.isEnabled()
-      : shouldEnableByDefault;
-  const originalSetEnabled =
-    typeof logger.setEnabled === "function"
-      ? logger.setEnabled.bind(logger)
-      : undefined;
-  if (originalSetEnabled) {
-    logger.setEnabled = (enabled: boolean): void => {
-      originalSetEnabled(enabled);
-      fallbackEnabled = enabled;
-      if (!enabled) releaseAllTrajectoryBridgeState(runtime);
-    };
-  }
-  const bridgeIsEnabled = (): boolean =>
-    typeof logger.isEnabled === "function"
-      ? logger.isEnabled()
-      : fallbackEnabled;
-  const bridgeAcceptsCapture = (): boolean =>
-    acceptsNewTrajectoryCapture(runtime, bridgeIsEnabled());
-
-  if (Array.isArray(logger.llmCalls)) {
-    logger.llmCalls.splice(0, logger.llmCalls.length);
-  }
-  if (Array.isArray(logger.providerAccess)) {
-    logger.providerAccess.splice(0, logger.providerAccess.length);
-  }
-
-  // The bridge replaces lifecycle and read methods below, so capture must use
-  // the same owner. Forwarding into the original core writer would make one
-  // event mutate two incompatible step/reward shapes in the shared table.
-  logger.logLlmCall = (...args: unknown[]) => {
-    if (!bridgeAcceptsCapture()) return;
-    let normalized: ReturnType<typeof normalizeLlmCallPayload>;
-    try {
-      normalized = normalizeLlmCallPayload(args);
-    } catch (error) {
-      // error-policy:J7 malformed instrumentation cannot fail the agent loop.
-      reportInvalidTrajectoryCapture(runtime, "llm", error);
-      return;
-    }
-    if (!normalized) return;
-    if (
-      !acceptsTrajectoryStepCapture(
-        runtime,
-        bridgeIsEnabled(),
-        normalized.stepId,
-        "llm",
-        typeof normalized.params.purpose === "string"
-          ? normalized.params.purpose
-          : undefined,
-      )
-    )
-      return;
-    const trajectoryId = resolveBridgeTrajectoryId(runtime, normalized.stepId);
-
-    const writePromise = enqueueStepWrite(runtime, trajectoryId, async () => {
-      if (!bridgeIsEnabled()) return;
-      const tableReady = await ensureTrajectoriesTable(runtime);
-      if (!tableReady) return;
-      await appendLlmCall(
-        runtime,
-        trajectoryId,
-        normalized.stepId,
-        normalized.params,
-      );
-    });
-    const runtimeKey = runtime as object;
-    lastWritePromises.set(runtimeKey, writePromise);
-  };
-
-  logger.logProviderAccess = (...args: unknown[]) => {
-    if (!bridgeAcceptsCapture()) return;
-    let normalized: ReturnType<typeof normalizeProviderAccessPayload>;
-    try {
-      normalized = normalizeProviderAccessPayload(args);
-    } catch (error) {
-      // error-policy:J7 malformed instrumentation cannot fail the agent loop.
-      reportInvalidTrajectoryCapture(runtime, "provider", error);
-      return;
-    }
-    if (!normalized) return;
-    if (
-      !acceptsTrajectoryStepCapture(
-        runtime,
-        bridgeIsEnabled(),
-        normalized.stepId,
-        "provider",
-      )
-    )
-      return;
-    const trajectoryId = resolveBridgeTrajectoryId(runtime, normalized.stepId);
-
-    const writePromise = enqueueProviderAccess(
-      runtime,
-      logger,
-      trajectoryId,
-      normalized.stepId,
-      normalized.params,
-      bridgeIsEnabled,
-    );
-    const runtimeKey = runtime as object;
-    lastWritePromises.set(runtimeKey, writePromise);
-  };
-
-  (
-    logger as typeof logger & {
-      logSemanticStage?: (...args: unknown[]) => void;
-    }
-  ).logSemanticStage = (...args: unknown[]) => {
-    if (!bridgeAcceptsCapture()) return;
-    let normalized: ReturnType<typeof normalizeSemanticStagePayload>;
-    try {
-      normalized = normalizeSemanticStagePayload(args);
-    } catch (error) {
-      // error-policy:J7 malformed instrumentation cannot fail the agent loop.
-      reportInvalidTrajectoryCapture(runtime, "semanticStage", error);
-      return;
-    }
-    if (!normalized) return;
-    if (
-      !acceptsTrajectoryStepCapture(
-        runtime,
-        bridgeIsEnabled(),
-        normalized.stepId,
-        "semanticStage",
-      )
-    )
-      return;
-    const trajectoryId = resolveBridgeTrajectoryId(runtime, normalized.stepId);
-
-    const writePromise = enqueueStepWrite(runtime, trajectoryId, async () => {
-      if (!bridgeIsEnabled()) return;
-      const tableReady = await ensureTrajectoriesTable(runtime);
-      if (!tableReady) return;
-      await appendSemanticStage(
-        runtime,
-        trajectoryId,
-        normalized.stepId,
-        normalized.semantic,
-      );
-    });
-    const runtimeKey = runtime as object;
-    lastWritePromises.set(runtimeKey, writePromise);
-  };
-
-  logger.updateLlmCall = (stepId, callId, patch) =>
-    enqueueLlmCallPatch(runtime, stepId, callId, patch, bridgeIsEnabled);
-
-  logger.getLlmCallLogs = () => [];
-  logger.getProviderAccessLogs = () => [];
-
-  const loggerAny = logger as typeof logger & TrajectoryBridgeMethods;
-
-  const originalStop =
-    typeof loggerAny.stop === "function"
-      ? loggerAny.stop.bind(loggerAny)
-      : undefined;
-  loggerAny.stop = async (): Promise<void> => {
-    try {
-      await stopTrajectoryBridge(runtime);
-      await originalStop?.();
-    } finally {
-      releaseAllTrajectoryBridgeState(runtime);
-    }
-  };
-
-  loggerAny.startTrajectory = async (
-    stepIdOrAgentId: string,
-    options?: {
-      agentId?: string;
-      roomId?: string;
-      entityId?: string;
-      source?: string;
-      metadata?: Record<string, unknown>;
-      scenarioId?: string;
-      traceId?: string;
-      episodeId?: string;
-      batchId?: string;
-      groupIndex?: number;
-    },
-  ): Promise<string> => {
-    if (!bridgeAcceptsCapture()) return randomUUID();
-    const isLegacySignature = typeof options?.agentId === "string";
-    const stepId = isLegacySignature
-      ? stepIdOrAgentId
-      : `step-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const startMetadata = normalizeTrajectoryMetadata(
-      {
-        ...(options?.metadata ?? {}),
-        ...(options?.roomId !== undefined ? { roomId: options.roomId } : {}),
-        ...(options?.entityId !== undefined
-          ? { entityId: options.entityId }
-          : {}),
-        ...(options?.traceId !== undefined
-          ? {
-              correlation: {
-                traceId: options.traceId,
-                ...(options.roomId !== undefined
-                  ? { roomId: options.roomId }
-                  : {}),
-                ...(options.scenarioId !== undefined
-                  ? { runId: options.scenarioId }
-                  : {}),
-              },
-            }
-          : {}),
-      },
-      {
-        scenarioId: options?.scenarioId,
-        batchId: options?.batchId,
-      },
-    ).metadata;
-
-    const writePromise = enqueueStepWrite(runtime, stepId, async () => {
-      if (!bridgeIsEnabled()) return;
-      const tableReady = await ensureTrajectoriesTable(runtime);
-      if (!tableReady) return;
-
-      await writeStartedTrajectoryStep({
-        runtime,
-        stepId,
-        source: options?.source ?? "chat",
-        metadata: startMetadata,
-        traceId: options?.traceId,
-        episodeId: options?.episodeId,
-        groupIndex: options?.groupIndex,
-        createInitialStep: false,
-      });
-    });
-
-    const runtimeKey = runtime as object;
-    lastWritePromises.set(runtimeKey, writePromise);
-    rememberTrajectoryStep(runtime, stepId, stepId);
-
-    return stepId;
-  };
-
-  loggerAny.startStep = (
-    trajectoryId: string,
-    state: BridgeStepState = {},
-  ): string => {
-    if (!bridgeAcceptsCapture()) return randomUUID();
-    return startChildTrajectoryStep(
-      runtime,
-      logger,
-      trajectoryId,
-      state,
-      bridgeIsEnabled,
-    );
-  };
-
-  loggerAny.getCurrentStepId = (trajectoryId: string): string | null => {
-    if (!bridgeAcceptsCapture()) return null;
-    const ownerId = resolveBridgeTrajectoryId(runtime, trajectoryId);
-    return (
-      trajectoryBridgeStates
-        .get(runtime as object)
-        ?.activeStepIdByTrajectoryId.get(ownerId) ?? null
-    );
-  };
-
-  loggerAny.completeStep = (
-    trajectoryId: string,
-    actionOrStepId: string | Record<string, unknown>,
-    actionOrReward?: Record<string, unknown>,
-    rewardInfo?: Record<string, unknown>,
-  ): void => {
-    if (!bridgeAcceptsCapture()) return;
-    const explicitStepId =
-      typeof actionOrStepId === "string" ? actionOrStepId : undefined;
-    const action = explicitStepId ? actionOrReward : actionOrStepId;
-    const reward = explicitStepId ? rewardInfo : actionOrReward;
-    const ownerId = resolveBridgeTrajectoryId(runtime, trajectoryId);
-    const stepId =
-      explicitStepId ??
-      getTrajectoryBridgeState(runtime).activeStepIdByTrajectoryId.get(ownerId);
-    if (!stepId || !action) {
-      const error = new ElizaError("Trajectory action step is missing", {
-        code: "TRAJECTORY_ACTION_STEP_REQUIRED",
-        context: { trajectoryId: ownerId },
-      });
-      warnRuntime(
-        runtime,
-        "Trajectory action settlement did not identify an active child step",
-        error,
-      );
-      runtime.reportError("TrajectoryStorage.completeStep", error, {
-        trajectoryId: ownerId,
-        ...(stepId ? { stepId } : {}),
-        diagnosticOnly: true,
-      });
-      return;
-    }
-    try {
-      completeTrajectoryAction(
-        runtime,
-        ownerId,
-        stepId,
-        action,
-        reward,
-        bridgeIsEnabled,
-      );
-    } catch (error) {
-      // error-policy:J7 Action telemetry cannot rewrite an already-settled tool
-      // result, but malformed or unroutable settlement remains observable.
-      warnRuntime(runtime, "Trajectory action settlement failed", error);
-      runtime.reportError("TrajectoryStorage.completeStep", error, {
-        trajectoryId: ownerId,
-        stepId,
-        diagnosticOnly: true,
-      });
-    }
-  };
-
-  loggerAny.flushWriteQueue = async (trajectoryId?: string): Promise<void> => {
-    await flushTrajectoryWrites(runtime, trajectoryId);
-  };
-
-  loggerAny.endTrajectory = async (
-    stepIdOrTrajectoryId: string,
-    status = "completed",
-    finalMetrics?: Record<string, unknown>,
-  ): Promise<void> => {
-    if (!bridgeAcceptsCapture()) {
-      releaseTrajectoryBridgeState(
-        runtime,
-        resolveBridgeTrajectoryId(runtime, stepIdOrTrajectoryId),
-      );
-      return;
-    }
-    const trajectoryId = resolveBridgeTrajectoryId(
-      runtime,
-      stepIdOrTrajectoryId,
-    );
-    await terminalizeBridgeTrajectory(
-      runtime,
-      trajectoryId,
-      status as TrajectoryStatus,
-      finalMetrics,
-      bridgeIsEnabled,
-    );
-  };
-
-  loggerAny.releaseTrajectoryOwnership = (
-    stepIdOrTrajectoryId: string,
-  ): void => {
-    releaseTrajectoryBridgeState(
-      runtime,
-      resolveBridgeTrajectoryId(runtime, stepIdOrTrajectoryId),
-    );
-  };
-
-  // Add query methods for API endpoints
-  loggerAny.listTrajectories = (options: TrajectoryListOptions = {}) =>
-    listDatabaseTrajectories(runtime, options);
-  loggerAny.getTrajectoryDetail = (trajectoryId: string) =>
-    getDatabaseTrajectoryDetail(runtime, trajectoryId);
-
-  loggerAny.applyReward = (params: TrajectoryRewardRequest) =>
-    applyDatabaseTrajectoryReward(runtime, bridgeIsEnabled, params);
-
-  loggerAny.getStats = async (): Promise<unknown> => {
-    const { byStatus: _byStatus, ...stats } =
-      await readDatabaseTrajectoryStatistics(runtime);
-    return stats;
-  };
-
-  // Add methods required by the trajectory-routes duck-type check
-  const loggerForRoutes = loggerAny;
-
-  let _enabled = shouldEnableByDefault;
-
-  if (typeof loggerForRoutes.isEnabled !== "function") {
-    loggerForRoutes.isEnabled = () => _enabled;
-  }
-  if (typeof loggerForRoutes.setEnabled !== "function") {
-    loggerForRoutes.setEnabled = (enabled: boolean) => {
-      _enabled = enabled;
-    };
-  }
-
-  loggerForRoutes.deleteTrajectories = async (
-    trajectoryIds: string[],
-  ): Promise<number> => deletePersistedTrajectoryRows(runtime, trajectoryIds);
-
-  loggerForRoutes.clearAllTrajectories = async (): Promise<number> =>
-    clearPersistedTrajectoryRows(runtime);
-
-  loggerForRoutes.exportTrajectories = async (
-    options: RuntimeTrajectoryExportOptions,
-  ): Promise<TrajectoryExportResult> => {
-    const persistedTrajectories = await loadPersistedTrajectoriesForExport(
-      runtime,
-      options,
-    );
-    return exportPersistedTrajectories({
-      agentId: runtime.agentId,
-      persistedTrajectories,
-      options,
-    });
-  };
-
-  patchedLoggers.add(loggerObject);
-
-  void ensureTrajectoriesTable(runtime).catch((err) => {
-    const cause =
-      err instanceof Error && "cause" in err ? err.cause : undefined;
-    coreLogger.warn(
-      {
-        err,
-        cause: cause instanceof Error ? cause.message : String(cause),
-        src: "eliza",
-        subsystem: "trajectory-db",
-      },
-      "[trajectory] Trajectories table init failed",
-    );
-  });
-}
 
 export async function startTrajectoryStepInDatabase({
   runtime,
@@ -2938,167 +2440,7 @@ export async function startTrajectoryStepInDatabase({
   return true;
 }
 
-/**
- * Annotate an existing trajectory step with structural metadata (kind
- * discriminator, script, child step IDs, used skills). Safe to call for any
- * of the new trajectory step fields; passing `undefined` for a field leaves
- * the existing value alone, while passing an explicit value overwrites.
- */
-export async function annotateTrajectoryStep({
-  runtime,
-  stepId,
-  kind,
-  script,
-  childSteps,
-  appendChildSteps,
-  usedSkills,
-  appendSkillInvocations,
-  evaluatorName,
-}: {
-  runtime: IAgentRuntime;
-  stepId: string;
-  kind?: TrajectoryStepKind;
-  script?: string;
-  /** Replace child steps wholesale. */
-  childSteps?: string[];
-  /** Append the given child step IDs (deduped, order preserved). */
-  appendChildSteps?: string[];
-  usedSkills?: string[];
-  /**
-   * Append per-skill invocation records (W1-T5 / M13). Multiple invocations
-   * inside the same step accumulate; callers do not need to know prior
-   * state.
-   */
-  appendSkillInvocations?: TrajectorySkillInvocation[];
-  /**
-   * Name of the evaluator that owns this step. Set when `kind === "evaluator"`
-   * so reviewers can identify the responsible evaluator. Closes M14.
-   */
-  evaluatorName?: string;
-}): Promise<boolean> {
-  if (
-    !hasRuntimeDb(runtime) ||
-    stoppingTrajectoryBridges.has(runtime as object)
-  )
-    return false;
-  const normalizedStepId = normalizeStepId(stepId);
-  if (!normalizedStepId) return false;
-  const trajectoryId = resolveBridgeTrajectoryId(runtime, normalizedStepId);
-
-  await enqueueStepWrite(runtime, trajectoryId, async () => {
-    const tableReady = await ensureTrajectoriesTable(runtime);
-    if (!tableReady)
-      throw new ElizaError("Trajectory schema is unavailable", {
-        code: "TRAJECTORY_SCHEMA_UNAVAILABLE",
-      });
-    const now = Date.now();
-    const persisted = await loadTrajectoryById(runtime, trajectoryId);
-    if (!persisted && trajectoryId !== normalizedStepId) {
-      throw new ElizaError(
-        "Parent trajectory is unavailable for child annotation",
-        {
-          code: "TRAJECTORY_PARENT_NOT_FOUND",
-          context: { trajectoryId, stepId: normalizedStepId },
-        },
-      );
-    }
-    const trajectory =
-      persisted ?? createBaseTrajectory(trajectoryId, now, runtime.agentId);
-    const step = ensureStep(trajectory, normalizedStepId, now);
-
-    if (kind !== undefined) {
-      step.kind = kind;
-    }
-    if (evaluatorName !== undefined) {
-      step.evaluatorName = evaluatorName;
-    }
-    if (script !== undefined) {
-      const capped = capScriptForPersistence(script);
-      step.script = script;
-      if (capped.scriptHash !== undefined) {
-        step.scriptHash = capped.scriptHash;
-      } else {
-        step.scriptHash = undefined;
-      }
-    }
-    if (childSteps !== undefined) {
-      step.childSteps = [...childSteps];
-    }
-    if (appendChildSteps && appendChildSteps.length > 0) {
-      const seen = new Set<string>(step.childSteps ?? []);
-      const merged = step.childSteps ? [...step.childSteps] : [];
-      for (const child of appendChildSteps) {
-        const trimmed = typeof child === "string" ? child.trim() : "";
-        if (!trimmed || seen.has(trimmed)) continue;
-        seen.add(trimmed);
-        merged.push(trimmed);
-      }
-      step.childSteps = merged;
-    }
-    if (usedSkills !== undefined) {
-      step.usedSkills = [...usedSkills];
-    }
-    if (appendSkillInvocations && appendSkillInvocations.length > 0) {
-      const merged = step.skillInvocations ? [...step.skillInvocations] : [];
-      for (const invocation of appendSkillInvocations) {
-        merged.push(invocation);
-      }
-      step.skillInvocations = merged;
-    }
-
-    trajectory.endTime = Math.max(trajectory.endTime ?? now, now);
-    trajectory.updatedAt = new Date(now).toISOString();
-    const options = {
-      changedStepIds: [normalizedStepId],
-      updateLegacySnapshot: script !== undefined,
-    };
-    if (persisted) await saveTrajectory(runtime, trajectory, options);
-    else await saveNewOwnedTrajectory(runtime, trajectory, options);
-  });
-
-  return true;
-}
-
-export async function completeTrajectoryStepInDatabase({
-  runtime,
-  stepId,
-  status = "completed",
-  source,
-  metadata,
-}: CompleteStepOptions): Promise<boolean> {
-  if (
-    !hasRuntimeDb(runtime) ||
-    stoppingTrajectoryBridges.has(runtime as object)
-  )
-    return false;
-  const normalizedStepId = normalizeStepId(stepId);
-  if (!normalizedStepId) return false;
-  const trajectoryId = resolveBridgeTrajectoryId(runtime, normalizedStepId);
-
-  await enqueueStepWrite(runtime, trajectoryId, async () => {
-    const tableReady = await ensureTrajectoriesTable(runtime);
-    if (!tableReady)
-      throw new ElizaError("Trajectory schema is unavailable", {
-        code: "TRAJECTORY_SCHEMA_UNAVAILABLE",
-      });
-    const token = ownedTrajectoryStarts
-      .get(runtime as object)
-      ?.get(trajectoryId);
-    await writeCompletedTrajectoryStep({
-      runtime,
-      stepId: trajectoryId,
-      status,
-      source,
-      metadata,
-      createStepIfMissing: trajectoryId === normalizedStepId,
-    });
-    releaseOwnedTrajectoryStart(runtime, trajectoryId, token);
-  });
-
-  return true;
-}
-
-interface TrajectoryRewardRequest {
+export interface TrajectoryRewardRequest {
   trajectoryId: string;
   idempotencyKey: string;
   reward: number;
@@ -3106,7 +2448,7 @@ interface TrajectoryRewardRequest {
 }
 
 /** Serialize rewards with host captures, including the bridge's public entry point. */
-async function applyDatabaseTrajectoryReward(
+export async function applyDatabaseTrajectoryReward(
   runtime: IAgentRuntime,
   isEnabled: () => boolean,
   params: TrajectoryRewardRequest,

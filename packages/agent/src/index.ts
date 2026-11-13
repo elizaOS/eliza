@@ -408,30 +408,6 @@ export type {
   ToolCacheEntry,
   ToolOutput,
 } from "./runtime/tool-call-cache/types.ts";
-export * from "./runtime/trajectory-internals.ts";
-export * from "./runtime/trajectory-query.ts";
-export {
-  DEFAULT_GET_STEPS_LIMIT,
-  getSteps,
-  loadAllStepsForTrajectory,
-  MAX_GET_STEPS_LIMIT,
-  type TrajectoryStepsPage,
-} from "./runtime/trajectory-steps-reader.ts";
-export {
-  clearAllSteps,
-  deleteStepsForTrajectories,
-  replaceStepsForTrajectory,
-  upsertStep,
-} from "./runtime/trajectory-steps-writer.ts";
-export {
-  annotateTrajectoryStep,
-  clearPersistedTrajectoryRows,
-  completeTrajectoryStepInDatabase,
-  deletePersistedTrajectoryRows,
-  flushTrajectoryWrites,
-  installDatabaseTrajectoryLogger,
-  startTrajectoryStepInDatabase,
-} from "./runtime/trajectory-storage.ts";
 export * from "./runtime/version.ts";
 export {
   hasAdminAccess,
