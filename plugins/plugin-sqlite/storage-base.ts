@@ -32,32 +32,21 @@ const MAP_PAGE_ROWS = 256;
 /**
  * Persist the published name and any ancestors created for a new backup directory.
  *
- * Windows flushes only handles opened for writing, so directories are opened
- * "r+" there ("r" makes fsync fail with EPERM). An ancestor the user cannot
- * write, such as C:\Users or a drive root, refuses that handle with EPERM and
- * is skipped. The directory that holds the published name must still flush.
+ * Flush through the pre-existing ancestor of the first directory created for
+ * this backup. Directories above it contain no new entry from this operation.
+ * Windows requires writable handles for fsync; every required flush must pass.
  */
-function syncDirectoryChain(directory: string): void {
+function syncDirectoryChain(directory: string, existingAncestor: string): void {
   const windows = process.platform === "win32";
   let current = directory;
   for (;;) {
-    let fd: number | undefined;
+    const fd = openSync(current, windows ? "r+" : "r");
     try {
-      fd = openSync(current, windows ? "r+" : "r");
-    } catch (error) {
-      const unwritableAncestor =
-        windows &&
-        current !== directory &&
-        (error as NodeJS.ErrnoException).code === "EPERM";
-      if (!unwritableAncestor) throw error;
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
     }
-    if (fd !== undefined) {
-      try {
-        fsyncSync(fd);
-      } finally {
-        closeSync(fd);
-      }
-    }
+    if (current === existingAncestor) return;
     const parent = dirname(current);
     if (parent === current) return;
     current = parent;
@@ -516,7 +505,9 @@ export class SQLiteStorageBase implements IStorage {
         "Backup requires a new absolute path",
       );
     await this.exclusive(async () => {
-      mkdirSync(dirname(destination), { recursive: true, mode: 0o700 });
+      const parent = dirname(destination);
+      const firstCreated = mkdirSync(parent, { recursive: true, mode: 0o700 });
+      const existingAncestor = firstCreated ? dirname(firstCreated) : parent;
       // Some SQLite builds require a nonexistent VACUUM destination. A private
       // sibling directory protects the new file until exclusive publication.
       const staging = mkdtempSync(
@@ -535,7 +526,7 @@ export class SQLiteStorageBase implements IStorage {
           closeSync(snapshotFd);
         }
         linkSync(snapshot, destination);
-        syncDirectoryChain(dirname(destination));
+        syncDirectoryChain(parent, existingAncestor);
       } catch (cause) {
         // error-policy:J2 Unsupported publication or directory durability must not report a completed backup.
         throw this.failure(
