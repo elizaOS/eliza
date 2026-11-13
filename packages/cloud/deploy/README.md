@@ -5,7 +5,7 @@ login, speech and admission Workers, and Pages. Structure comes from upstream
 Wrangler files; product identity and resource IDs come from the deployment file.
 It never provisions resources, sets secrets, publishes packages or deploys.
 
-Private and unpublished, with no runtime dependencies. This workspace participates
+Public but not yet published, with no runtime dependencies. This workspace participates
 in repository tests, typechecking and linting. Run it with pinned Bun from a
 checkout, or from an install of packed packages for the API Worker.
 
@@ -127,11 +127,13 @@ their present runtime defaults: qualify the staging contract before deployment.
 Secret lists have not been compared with deployed Workers. Existing Wrangler
 files and release workflows remain authoritative.
 
-Publication remains a coordinated maintainer release: the five source packages
-are private and outside the release cohort. Before publishing, align their
-versions, add their paths to fixed versioning and their names to the release
-cohort, validate the public dependency graph, and run the pack check before and
-after publication. The full Cloud dependency install is large.
+The five source packages (`@elizaos/cloud-api`, `cloud-shared`,
+`cloud-services-common`, `plugin-network`, `cloud-deploy`) are public, in the
+release cohort, at the cohort version and under fixed versioning. None has been
+published: publication remains a coordinated maintainer release with the
+packages they depend on. Run the pack check on the release commit before
+publication and again from the registry after it. The full Cloud dependency
+install is large.
 
 Resource provisioning, database baselines/migrations, product Vite builds and
 branding, login container qualification, resource/account validation, live
