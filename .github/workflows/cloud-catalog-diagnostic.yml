@@ -11,6 +11,10 @@ on:
         description: Read the selected staging test checkout and validate its captured invoice
         type: boolean
         default: false
+      checkout_tail:
+        description: Observe safe checkout failure markers for five minutes on staging
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -34,13 +38,23 @@ jobs:
           bun-version: "1.4.2"
       - name: Install dependencies
         run: bun install --frozen-lockfile --ignore-scripts
+      - name: Require one diagnostic mode
+        if: ${{ inputs.checkout_readback && inputs.checkout_tail }}
+        run: exit 1
       - name: Read-only catalog diagnosis
-        if: ${{ !inputs.checkout_readback }}
+        if: ${{ !inputs.checkout_readback && !inputs.checkout_tail }}
         env:
           ELIZA_OPERATOR_ENVIRONMENT: ${{ inputs.target_environment }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: bun packages/scripts/cloud/admin/diagnose-subscription-catalog.ts
+      - name: Read-only staging checkout tail
+        if: ${{ inputs.checkout_tail }}
+        env:
+          ELIZA_OPERATOR_ENVIRONMENT: ${{ inputs.target_environment }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: bun packages/scripts/cloud/admin/diagnose-subscription-catalog.ts --checkout-tail
       - name: Read-only staging checkout diagnosis
         if: ${{ inputs.checkout_readback }}
         env:

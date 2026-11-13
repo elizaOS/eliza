@@ -44,7 +44,7 @@ const result = spawnSync(
   process.execPath,
   [
     path.join(root, "packages/scripts/run-with-deadline.ts"),
-    // Seventeen real PGlite cases each keep their existing 30s test timeout.
+    // Seventeen real PGlite cases each keep a finite 60s test timeout.
     // Allow that bounded suite plus cold workspace module collection to finish.
     "600000",
     "--",

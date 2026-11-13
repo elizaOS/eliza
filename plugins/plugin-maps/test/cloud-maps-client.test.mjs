@@ -560,6 +560,25 @@ console.log(
   };
   let active = first;
   const request = captureMapsSession(() => active);
+  const replacement = {
+    ...first,
+    client: {
+      mapsRequest: async () => {
+        calls++;
+        return { refreshed: true };
+      },
+    },
+  };
+  active = replacement;
+  assert.deepEqual(
+    await request("routes", new AbortController().signal, {
+      from: CASINO,
+      to: PORT,
+    }),
+    { refreshed: true },
+    "the same account can rebuild its client without losing Maps",
+  );
+  active = first;
   const pending = request("routes", new AbortController().signal, {
     from: CASINO,
     to: PORT,
@@ -571,7 +590,7 @@ console.log(
     request("routes", new AbortController().signal, { from: CASINO, to: PORT }),
     (error) => error.code === "unauthorized",
   );
-  assert.equal(calls, 1, "the new account received no retained coordinates");
+  assert.equal(calls, 2, "the new account received no retained coordinates");
 }
 
 assert.equal(
@@ -671,6 +690,24 @@ assert.match(
     1,
     "A retry hint never schedules another provider request",
   );
+  await assert.rejects(provider.search("Port", new AbortController().signal));
+  assert.equal(calls, 1, "The same pause blocks a second request");
+  await maps.initializeCloudMaps();
+  await assert.rejects(provider.search("Port", new AbortController().signal));
+  assert.equal(calls, 1, "Reopening retains the account pause");
+  const originalNow = Date.now;
+  const afterPause = Date.now() + 43000;
+  Date.now = () => afterPause;
+  try {
+    await assert.rejects(provider.search("Port", new AbortController().signal));
+    assert.equal(calls, 2, "Requests resume after the server pause expires");
+  } finally {
+    Date.now = originalNow;
+  }
+  maps.retireCloudMaps();
+  await maps.initializeCloudMaps();
+  await assert.rejects(provider.search("Port", new AbortController().signal));
+  assert.equal(calls, 3, "Retiring the account clears its pause");
 }
 
 assert.equal(
