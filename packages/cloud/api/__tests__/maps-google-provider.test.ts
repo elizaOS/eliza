@@ -80,9 +80,7 @@ test("Google billing follows business results across HTTP status classes", async
     fetch: () => Response.json(responseBody, { status: responseStatus }),
   });
   try {
-    const provider = mapsProviderFromEnv(ENV, (_input, init) =>
-      fetch(server.url, init),
-    )!;
+    const { provider } = google((_url, call) => fetch(server.url, call.init));
     for (const item of [
       {
         operation: "geocode",
