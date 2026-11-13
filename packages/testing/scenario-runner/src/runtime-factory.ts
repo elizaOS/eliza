@@ -935,11 +935,37 @@ export function restoreLlmBaseUrlsForLiveProvider(
   env: NodeJS.ProcessEnv = process.env,
 ): void {
   if (providerConfig.name === DETERMINISTIC_MODEL_PROVIDER_NAME) return;
+  const origin = (value: string | undefined) => {
+    if (!value) return undefined;
+    try {
+      return new URL(value).origin;
+    } catch {
+      return undefined;
+    }
+  };
+  const mockOrigins = new Set(
+    mockSettings.flatMap((settings) =>
+      LLM_MOCK_BASE_URL_SETTINGS.map((key) => origin(settings[key])).filter(
+        (value): value is string => value !== undefined,
+      ),
+    ),
+  );
+  // Provider selection can copy an already-installed mock URL into its own
+  // settings. Refuse that ambiguous live selection before changing the env;
+  // otherwise applying providerConfig.env later restores the mock again.
+  for (const key of LLM_MOCK_BASE_URL_SETTINGS) {
+    const configured = origin(providerConfig.env[key]);
+    if (configured !== undefined && mockOrigins.has(configured))
+      throw new ElizaError("Live model provider resolves to a mock endpoint", {
+        code: "SCENARIO_LIVE_MOCK_ENDPOINT",
+        context: { provider: providerConfig.name, setting: key },
+      });
+  }
   for (const key of LLM_MOCK_BASE_URL_SETTINGS) {
     const own = ownValues[key];
     const value =
       providerConfig.env[key] ??
-      (own !== undefined && !mockSettings.some((s) => s[key] === own)
+      (own !== undefined && !mockOrigins.has(origin(own) ?? "")
         ? own
         : undefined);
     if (value === undefined) delete env[key];
