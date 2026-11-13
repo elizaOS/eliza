@@ -895,8 +895,8 @@ function resolveCloudBaseUrl(runtime: IAgentRuntime): string {
 
 function resolveCloudApiKey(runtime: IAgentRuntime): string | undefined {
   if (resolveDevCloudEnvAuthority()) {
-    return (
-      normalizeString(resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_API_KEY"))
+    return normalizeString(
+      resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_API_KEY"),
     );
   }
   return (

@@ -69,7 +69,6 @@ function isStoreBuild(): boolean {
   return variant.trim().toLowerCase() === "store";
 }
 
-
 export function isAospTerminalRuntime(): boolean {
   return isAndroidRuntime() && isTruthyEnv(process.env.ELIZA_AOSP_BUILD);
 }

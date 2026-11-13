@@ -132,10 +132,7 @@ export function androidRuntimeEnvOverrideMismatches({
     ]);
   }
   if (policy.runtimeExecutionMode != null) {
-    for (const key of [
-      "ELIZA_RUNTIME_MODE",
-      "VITE_ELIZA_RUNTIME_MODE",
-    ]) {
+    for (const key of ["ELIZA_RUNTIME_MODE", "VITE_ELIZA_RUNTIME_MODE"]) {
       expectations.push([key, policy.runtimeExecutionMode]);
     }
   }

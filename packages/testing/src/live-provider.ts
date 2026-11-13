@@ -248,7 +248,8 @@ export function availableProviderNames(): LiveProviderName[] {
     ).map((def) => def.name),
   );
   if (
-    process.env.ELIZAOS_CLOUD_API_KEY?.trim() || loadConfiguredCloudApiKey()
+    process.env.ELIZAOS_CLOUD_API_KEY?.trim() ||
+    loadConfiguredCloudApiKey()
   ) {
     providers.add("openai");
   }
