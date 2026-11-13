@@ -1,0 +1,111 @@
+{
+  "sources": [
+    "packages/auth/src/accounts/account-pool-consumer-metering.ts",
+    "packages/auth/src/accounts/account-pool-consumer-metering.test.ts"
+  ],
+  "conformance": "packages/auth/quint/check-consumer-quota-settlement.mjs",
+  "bounds": {
+    "domain": "Two one-shot calls with verified synthetic consumer IDs. The first case shares one quota and UTC day. The second case has two consumers and can advance one UTC day. Reservation amounts are one and two units. The observed amount is zero, one or four units. A short bounded clock represents reservation expiry.",
+    "limitations": "The process queue and cross-process lock are one exclusive writer. The model separates reservation removal, JSONL append, totals publication and acknowledgement, with a failure outcome at each applicable step. A failed append has no new readable complete line. A failed totals publication leaves the log intact. Clock rollback, partial or unreadable rows, process death and exact lock recovery are outside this projection. It assumes one report per admission and excludes credentials and key lifecycle."
+  },
+  "cases": [
+    {
+      "name": "overlapping-one-consumer",
+      "main": "ConsumerQuotaSettlement",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "SingleLedgerWriter",
+        "ConfirmedReportHasBothWrites",
+        "AggregateRequiresLedger"
+      ],
+      "temporal": [
+        "AdmissionUsesOwnerAndDay",
+        "FailedWriteRetainsPublishedEvidence",
+        "ReportSettles",
+        "ReportSettlesWithoutFairness"
+      ],
+      "temporalChecks": [
+        {
+          "property": "AdmissionUsesOwnerAndDay",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness assumption. Each admitted positive reservation observes already-recorded usage and live reservations for its verified consumer and UTC day."
+          ]
+        },
+        {
+          "property": "FailedWriteRetainsPublishedEvidence",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness assumption. A later failure does not undo a published ledger row or aggregate."
+          ]
+        },
+        {
+          "property": "ReportSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Each queued report is weakly fair. A held operation eventually returns or throws and releases the abstract lock."
+          ]
+        },
+        {
+          "property": "ReportSettlesWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness assumption. A queued report can remain pending."
+          ]
+        }
+      ],
+      "maxSteps": 35,
+      "samples": 400
+    },
+    {
+      "name": "separate-consumers-and-days",
+      "main": "ConsumerQuotaSettlementAcrossDay",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "SingleLedgerWriter",
+        "ConfirmedReportHasBothWrites",
+        "AggregateRequiresLedger"
+      ],
+      "temporal": [
+        "AdmissionUsesOwnerAndDay",
+        "FailedWriteRetainsPublishedEvidence",
+        "ReportSettles",
+        "ReportSettlesWithoutFairness"
+      ],
+      "temporalChecks": [
+        {
+          "property": "AdmissionUsesOwnerAndDay",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness assumption. Each admitted positive reservation observes already-recorded usage and live reservations for its verified consumer and UTC day."
+          ]
+        },
+        {
+          "property": "FailedWriteRetainsPublishedEvidence",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness assumption. A later failure does not undo a published ledger row or aggregate."
+          ]
+        },
+        {
+          "property": "ReportSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Each queued report is weakly fair. A held operation eventually returns or throws and releases the abstract lock."
+          ]
+        },
+        {
+          "property": "ReportSettlesWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness assumption. A queued report can remain pending."
+          ]
+        }
+      ],
+      "maxSteps": 35,
+      "samples": 400
+    }
+  ]
+}

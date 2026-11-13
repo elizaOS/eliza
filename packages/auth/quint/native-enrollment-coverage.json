@@ -180,12 +180,20 @@
   },
   {
     "id": "auth.ConsumerQuotaSettlement",
-    "model": null,
+    "model": "packages/auth/quint/ConsumerQuotaSettlement.qnt",
     "sources": ["packages/auth/src/accounts/account-pool-consumer-metering.ts"],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": [
+      "SingleLedgerWriter",
+      "ConfirmedReportHasBothWrites",
+      "AggregateRequiresLedger"
+    ],
+    "status": "partial",
     "limitations": [
-      "Consumer key revocation, durable quota reservations, settlement, restart and cross-process file locking need source-specific models."
+      "Two requests, up to two verified consumer identities and two UTC days. The model separates reservation release, ledger append, totals publication and acknowledgement under one abstract writer lock.",
+      "Real temporary-directory cases check overlapping reservations, reset of the process-local queue and serial accounting. Process death, stale-lock ownership, duplicate settlement, partial unreadable writes and consumer key lifecycle remain outside this coverage."
+    ],
+    "implementationTests": [
+      "packages/auth/src/accounts/account-pool-consumer-metering.test.ts"
     ]
   },
   {

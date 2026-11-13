@@ -227,6 +227,68 @@ describe("consumer auth helper", () => {
 });
 
 describe("quota and totals", () => {
+  it("reconciles an overlapping reservation against its actual recorded usage", async () => {
+    const consumer = {
+      id: "quota-fixture",
+      label: "Quota fixture",
+      enabled: true,
+      dailyTokenQuota: 3,
+      keyPrefix: "",
+      createdAt: 0,
+      updatedAt: 0,
+    };
+    const [first, second] = await Promise.all([
+      admitAccountPoolConsumerRequest(consumer, 2),
+      admitAccountPoolConsumerRequest(consumer, 1),
+    ]);
+    if ("ok" in first || "ok" in second)
+      throw new Error("Could not reserve the two fixture requests");
+    await expect(
+      admitAccountPoolConsumerRequest(consumer, 1),
+    ).resolves.toMatchObject({
+      ok: false,
+      status: 429,
+    });
+
+    const receipt = await recordAccountPoolConsumerUsage({
+      consumerId: consumer.id,
+      consumerLabel: consumer.label,
+      model: null,
+      streaming: false,
+      status: 200,
+      latencyMs: 1,
+      usage: {
+        input_tokens: 1,
+        output_tokens: 0,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+      },
+      admission: first,
+    });
+    expect(receipt.totalTokens).toBe(1);
+    const records = await queryAccountPoolConsumerUsage({
+      consumerId: consumer.id,
+    });
+    expect(records.records).toEqual([receipt]);
+    const summary = await getAccountPoolConsumerUsageSummary();
+    expect(summary.byConsumer[consumer.id]).toMatchObject({
+      requests: 1,
+      tokens: 1,
+    });
+    await expect(
+      admitAccountPoolConsumerRequest(consumer, 2),
+    ).resolves.toMatchObject({
+      ok: false,
+      status: 429,
+    });
+    await expect(
+      admitAccountPoolConsumerRequest(consumer, 1),
+    ).resolves.toMatchObject({
+      consumerId: consumer.id,
+      reservedTokens: 1,
+    });
+  });
+
   it("fail-closes only explicit daily quotas with Anthropic-shaped 429", async () => {
     const created = createAccountPoolConsumerKey({
       label: "quota",
