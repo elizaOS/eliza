@@ -1,9 +1,10 @@
 /**
  * The Google Maps Platform provider: Places API (New), Geocoding API, Routes
  * API and Map Tiles API answer the provider-neutral Maps contract with a
- * server-held key. Every Google upstream is a mocked fetch.
+ * server-held key. Upstreams use controlled responses and a loopback HTTP lane.
  */
 import { beforeEach, describe, expect, test } from "bun:test";
+import { writeFile } from "node:fs/promises";
 import {
   type MapsProviderAdapter,
   MapsServiceError,
@@ -399,6 +400,154 @@ describe("Google Places and Geocoding", () => {
     ).toMatchObject({ id: PLACE_ID });
     expect(calls[2].url.pathname).toBe("/maps/api/geocode/json");
   });
+
+  test("finite nearby lookup outcomes match the real HTTP provider", async () => {
+    let nearby = "place";
+    let fallback = "address";
+    const wire: string[] = [];
+    const serverErrors: Error[] = [];
+    const results: object[] = [];
+    const server = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      error(error) {
+        serverErrors.push(error);
+        return new Response("fixture assertion failed", { status: 500 });
+      },
+      async fetch(request) {
+        const url = new URL(request.url);
+        wire.push(url.pathname);
+        if (url.pathname.endsWith("places:searchNearby")) {
+          expect(request.headers.get("x-goog-api-key")).toBe(KEY);
+          expect(await request.json()).toMatchObject({
+            rankPreference: "DISTANCE",
+            maxResultCount: 1,
+            locationRestriction: { circle: { center: CASINO, radius: 40 } },
+          });
+          if (nearby === "outage") return new Response("busy", { status: 503 });
+          if (nearby === "invalid") return Response.json({ places: [null] });
+          return Response.json({
+            places:
+              nearby === "empty"
+                ? []
+                : [
+                    {
+                      id: PLACE_ID,
+                      displayName: { text: "Starbucks" },
+                      formattedAddress: "Place du Casino, Monaco",
+                      location: CASINO,
+                    },
+                  ],
+          });
+        }
+        expect(url.pathname).toBe("/maps/api/geocode/json");
+        expect(url.searchParams.get("key")).toBe(KEY);
+        if (fallback === "outage") return new Response("busy", { status: 503 });
+        if (fallback === "invalid")
+          return Response.json({ status: "OK", results: [null] });
+        if (fallback === "empty")
+          return Response.json({ status: "ZERO_RESULTS", results: [] });
+        return Response.json({
+          status: "OK",
+          results: [
+            {
+              place_id: PLACE_ID,
+              formatted_address: "Place du Casino, Monaco",
+              geometry: {
+                location: { lat: CASINO.latitude, lng: CASINO.longitude },
+              },
+            },
+          ],
+        });
+      },
+    });
+    try {
+      for (const prefer of [false, true])
+        for (const cancelled of [false, true]) {
+          for (nearby of ["place", "empty", "invalid", "outage"]) {
+            for (fallback of ["address", "empty", "invalid", "outage"]) {
+              wire.length = 0;
+              const { provider } = google((url, call) =>
+                fetch(
+                  new URL(`${url.pathname}${url.search}`, server.url),
+                  call.init,
+                ),
+              );
+              const controller = new AbortController();
+              const cancellation = new Error("lookup cancelled");
+              if (cancelled) controller.abort(cancellation);
+              let observed: string;
+              try {
+                const place = await provider.reverse(
+                  {
+                    coordinate: CASINO,
+                    preferPlace: prefer,
+                    radiusMeters: 40,
+                  },
+                  controller.signal,
+                );
+                observed =
+                  place === null
+                    ? "empty"
+                    : place.name === "Starbucks"
+                      ? "place"
+                      : "address";
+              } catch (error) {
+                if (cancelled) {
+                  expect(error).toBe(cancellation);
+                  observed = "cancelled";
+                } else {
+                  expect(error).toBeInstanceOf(MapsServiceError);
+                  expect([
+                    "provider_unavailable",
+                    "provider_invalid_response",
+                  ]).toContain((error as MapsServiceError).code);
+                  observed =
+                    (error as MapsServiceError).code === "provider_unavailable"
+                      ? "outage"
+                      : "invalid";
+                }
+              }
+              const expected = cancelled
+                ? "cancelled"
+                : prefer && nearby !== "empty"
+                  ? nearby
+                  : fallback;
+              expect(observed).toBe(expected);
+              expect(serverErrors).toEqual([]);
+              const nearbyCalls = wire.filter((url) =>
+                url.endsWith("places:searchNearby"),
+              ).length;
+              const geocodeCalls = wire.filter((url) =>
+                url.endsWith("geocode/json"),
+              ).length;
+              expect(nearbyCalls).toBe(Number(!cancelled && prefer));
+              expect(geocodeCalls).toBe(
+                Number(!cancelled && (!prefer || nearby === "empty")),
+              );
+              results.push({
+                prefer,
+                cancelled,
+                nearby,
+                fallback,
+                observed,
+                nearbyCalls,
+                geocodeCalls,
+              });
+            }
+          }
+        }
+      expect(results).toHaveLength(64);
+      if (process.env.MAPS_PLACE_LOOKUP_EVIDENCE) {
+        await writeFile(
+          process.env.MAPS_PLACE_LOOKUP_EVIDENCE,
+          JSON.stringify(results),
+        );
+      }
+    } finally {
+      await server.stop(true);
+    }
+  }, 120_000);
 
   test("outages and malformed bodies are typed failures that never echo the key", async () => {
     const { provider } = google(() => new Response("busy", { status: 503 }));

@@ -1,4 +1,4 @@
-/** Check the Google provider and mounted HTTP tile route against the no-store projection. */
+/** Check the existing Google provider suite for each declared Maps projection. */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
@@ -8,25 +8,32 @@ import { parseJunitSummary } from "../../scripts/lib/junit-summary.ts";
 import { testOutputPath } from "../../scripts/lib/test-output.ts";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
-const output = testOutputPath("quint-maps-tile-cache");
+const lookup = path.basename(process.argv[2] ?? "") === "MapsPlaceLookup.qnt";
+const output = testOutputPath(
+  lookup ? "quint-maps-place-lookup" : "quint-maps-tile-cache",
+);
 await mkdir(output, { recursive: true });
 const directory = await mkdtemp(path.join(output, "run-"));
 const report = path.join(directory, "tests.xml");
+const outcomes = path.join(directory, "outcomes.json");
 const result = spawnSync(
   "bun",
   [
     "--conditions=eliza-source",
     "test",
     "packages/cloud/api/__tests__/maps-google-provider.test.ts",
-    "--test-name-pattern=Google Map Tiles",
+    `--test-name-pattern=${lookup ? "finite nearby lookup outcomes match the real HTTP provider" : "Google Map Tiles"}`,
     "--reporter=junit",
     `--reporter-outfile=${report}`,
   ],
   {
     cwd: root,
-    env: process.env,
+    env: {
+      ...process.env,
+      ...(lookup ? { MAPS_PLACE_LOOKUP_EVIDENCE: outcomes } : {}),
+    },
     encoding: "utf8",
-    timeout: 60_000,
+    timeout: lookup ? 180_000 : 60_000,
     maxBuffer: 8 * 1024 * 1024,
   },
 );
@@ -40,8 +47,35 @@ assert.equal(
   `Maps tile cache conformance failed: ${result.signal}`,
 );
 const summary = parseJunitSummary(await readFile(report, "utf8"));
-assert.equal(summary.tests - summary.skipped, 5);
+assert.equal(summary.tests - summary.skipped, lookup ? 1 : 5);
 assert.equal(summary.failures + summary.errors, 0);
+if (lookup) {
+  const rows = JSON.parse(await readFile(outcomes, "utf8"));
+  assert.equal(rows.length, 64);
+  assert.equal(
+    new Set(
+      rows.map(({ prefer, cancelled, nearby, fallback }) =>
+        JSON.stringify([prefer, cancelled, nearby, fallback]),
+      ),
+    ).size,
+    64,
+  );
+  for (const row of rows) {
+    assert.equal(
+      row.observed,
+      row.cancelled
+        ? "cancelled"
+        : row.prefer && row.nearby !== "empty"
+          ? row.nearby
+          : row.fallback,
+    );
+    assert.equal(row.nearbyCalls, Number(!row.cancelled && row.prefer));
+    assert.equal(
+      row.geocodeCalls,
+      Number(!row.cancelled && (!row.prefer || row.nearby === "empty")),
+    );
+  }
+}
 await writeFile(
   path.join(directory, "results.json"),
   `${JSON.stringify({ status: "passed", summary, report }, null, 2)}\n`,
