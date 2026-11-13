@@ -13,6 +13,7 @@ import {
 import { advanceOrganizationPolicyGeneration } from "../../db/repositories/organization-policy-generation";
 import type { RuntimeDurableObjectNamespace } from "../../types/cloud-worker-env";
 import { getCloudAwareEnv, getCloudBinding } from "../runtime/cloud-bindings";
+import { logger } from "../utils/logger";
 
 export class InferencePolicyFenceError extends Error {
   constructor(message: string) {
@@ -173,16 +174,39 @@ async function policyCall(
   const namespace = getCloudBinding<RuntimeDurableObjectNamespace>("INFERENCE_ADMISSION_GATES");
   if (!namespace)
     throw new InferencePolicyFenceError("Inference policy Durable Object binding is missing");
-  const response = await namespace.getByName(organizationId).fetch(
-    new Request(`https://inference-admission.internal${path}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    }),
-  );
-  if (!response.ok)
+  // Only standing-fence paths enter this diagnostic. No tenant, request body,
+  // response body, or transport error text is logged.
+  const diagnosticPath = [
+    "/policy-fence/begin",
+    "/policy-fence/commit",
+    "/policy-fence/abort",
+  ].includes(path);
+  const reportFailure = (phase: "transport" | "response" | "decode", httpStatus: number | null) => {
+    if (diagnosticPath) logger.error("[InferencePolicyCall] Failed", { phase, path, httpStatus });
+  };
+  let response: Response;
+  try {
+    response = await namespace.getByName(organizationId).fetch(
+      new Request(`https://inference-admission.internal${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    );
+  } catch (error) {
+    reportFailure("transport", null);
+    throw error;
+  }
+  if (!response.ok) {
+    reportFailure("response", response.status);
     throw new InferencePolicyFenceError("Inference policy publication was not acknowledged");
-  return response.json();
+  }
+  try {
+    return await response.json();
+  } catch (error) {
+    reportFailure("decode", response.status);
+    throw error;
+  }
 }
 
 interface MutationPermit {
