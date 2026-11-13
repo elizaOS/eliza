@@ -935,13 +935,39 @@ export function restoreLlmBaseUrlsForLiveProvider(
   env: NodeJS.ProcessEnv = process.env,
 ): void {
   if (providerConfig.name === DETERMINISTIC_MODEL_PROVIDER_NAME) return;
+  const isKnownMock = (value: string): boolean => {
+    let origin: string;
+    try {
+      origin = new URL(value).origin;
+    } catch {
+      return false;
+    }
+    return mockSettings.some((settings) =>
+      LLM_MOCK_BASE_URL_SETTINGS.some((key) => {
+        if (!settings[key]) return false;
+        try {
+          return new URL(settings[key]).origin === origin;
+        } catch {
+          return false;
+        }
+      }),
+    );
+  };
+  const restored: Array<[string, string | undefined]> = [];
   for (const key of LLM_MOCK_BASE_URL_SETTINGS) {
+    const selected = providerConfig.env[key];
+    if (selected !== undefined && isKnownMock(selected))
+      throw new ElizaError("Selected live provider uses a wire mock endpoint", {
+        code: "SCENARIO_LIVE_MOCK_ENDPOINT",
+        context: { provider: providerConfig.name, setting: key },
+      });
     const own = ownValues[key];
     const value =
-      providerConfig.env[key] ??
-      (own !== undefined && !mockSettings.some((s) => s[key] === own)
-        ? own
-        : undefined);
+      selected ?? (own !== undefined && !isKnownMock(own) ? own : undefined);
+    restored.push([key, value]);
+  }
+  // A refused provider leaves the caller's complete environment unchanged.
+  for (const [key, value] of restored) {
     if (value === undefined) delete env[key];
     else env[key] = value;
   }
