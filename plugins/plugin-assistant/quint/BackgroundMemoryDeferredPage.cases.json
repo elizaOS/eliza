@@ -1,0 +1,67 @@
+{
+  "sources": [
+    "plugins/plugin-assistant/src/services/evaluator.ts",
+    "plugins/plugin-assistant/src/services/evaluator-deferred-page.test.ts",
+    "plugins/plugin-assistant/quint/check-background-memory-deferred-page.ts"
+  ],
+  "bounds": {
+    "domain": "Two evidence pages. Each page is bought at most once. The job stays live while a page is still pending.",
+    "assumptions": [
+      "Weak fairness assumes an enabled success or non-retryable failure of the selected page eventually runs. No wall-clock deadline is proved. A retryable provider error, a changed evidence revision, and a third page are outside this instance.",
+      "The blocked page is the page that just stopped. The other page is different input. The implementation records that block on the task before the scheduler runs the job again.",
+      "The failed page stays uncommitted in the journal. A later job with a new evidence id may select it. This model does not include that later job."
+    ]
+  },
+  "limitations": [
+    "Two evidence pages. Each page is bought at most once. The job stays live while a page is still pending.",
+    "Weak fairness assumes an enabled success or non-retryable failure of the selected page eventually runs. No wall-clock deadline is proved. A retryable provider error, a changed evidence revision, and a third page are outside this instance.",
+    "The blocked page is the page that just stopped. The other page is different input. The implementation records that block on the task before the scheduler runs the job again.",
+    "The failed page stays uncommitted in the journal. A later job with a new evidence id may select it. This model does not include that later job."
+  ],
+  "cases": [
+    {
+      "name": "BackgroundMemoryDeferredPage",
+      "main": "BackgroundMemoryDeferredPage",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "AtMostOnePurchase",
+        "PendingPageKeepsTask",
+        "BlockedPageIsFailed"
+      ],
+      "temporal": [
+        "PagesSettle",
+        "TaskFinishes",
+        "TaskFinishesWithoutFairness"
+      ],
+      "temporalChecks": [
+        {
+          "property": "PagesSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness assumes an enabled success or non-retryable failure of the selected page eventually runs. No wall-clock deadline is proved. A retryable provider error, a changed evidence revision, and a third page are outside this instance."
+          ]
+        },
+        {
+          "property": "TaskFinishes",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness assumes an enabled success or non-retryable failure of the selected page eventually runs. No wall-clock deadline is proved. A retryable provider error, a changed evidence revision, and a third page are outside this instance."
+          ]
+        },
+        {
+          "property": "TaskFinishesWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. The job may stutter forever while a page is still pending. A temporal loop counterexample is required."
+          ]
+        }
+      ],
+      "maxSteps": 12,
+      "samples": 200,
+      "deadlock": false
+    }
+  ],
+  "conformance": "plugins/plugin-assistant/quint/check-background-memory-deferred-page.ts"
+}
