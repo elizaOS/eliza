@@ -89,7 +89,9 @@ An exact app/callback match is required for enabled clients. The transaction
 preserves disabled entries and aliases, refuses conflicts, and records an import
 receipt. The follow-up verification compares every imported field. Keep the old
 runtime deployed until both environment imports succeed; ordinary releases and
-later reviewed database changes do not use this workflow.
+later reviewed database changes do not use this workflow. Production import
+also requires the existing exact-source main Full manifest and tree-bound
+staging certification; the importer runs that canonical gate before writing.
 
 The protected **Cloud Catalog Diagnostic** workflow checks only the five Stripe
 catalog binding names. It then makes one unauthenticated plans request with a
