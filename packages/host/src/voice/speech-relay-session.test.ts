@@ -798,7 +798,9 @@ test("a reservation that lands after close is released, not leaked", async () =>
   await closing;
   expect(f.settled).toHaveLength(2);
   expect(f.settled).toContainEqual(UNGRANTED);
-  expect(f.settled).toContainEqual(expect.objectContaining({ dispatched: { stt: true, tts: false } }));
+  expect(f.settled).toContainEqual(
+    expect.objectContaining({ dispatched: { stt: true, tts: false } }),
+  );
   expect(f.extensions).toEqual([]);
   expect(f.order.filter((step) => step === "quota-release")).toHaveLength(1);
 });
