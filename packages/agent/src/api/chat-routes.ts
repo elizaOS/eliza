@@ -84,7 +84,9 @@ import {
 import {
   bindDeviceRequestedActionPolicy,
   persistInferenceTimingSummary,
+  resolveTrajectoryGrouping,
   shouldSkipResponseMemoryPersistence,
+  startTrajectoryStepInDatabase,
 } from "@elizaos/plugin-assistant";
 import { agentIdentityName } from "../runtime/build-character-config.ts";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
@@ -93,8 +95,6 @@ import {
   estimateTokenCount,
   withModelUsageCapture,
 } from "../runtime/prompt-optimization.ts";
-import { resolveTrajectoryGrouping } from "../runtime/trajectory-internals.ts";
-import { startTrajectoryStepInDatabase } from "../runtime/trajectory-storage.ts";
 import { syncCharacterIntoConfig } from "../services/character-persistence.ts";
 import {
   type ChatIdempotencyAdmission,

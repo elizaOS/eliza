@@ -59,6 +59,19 @@ const suites = new Map([
 		},
 	],
 	[
+		"AtomicJsonPublication.qnt",
+		{
+			file: "test/atomic-json-filesystem.test.ts",
+			tests: [
+				"readers observe complete snapshots across independent async and sync writer processes",
+				"same-target async writes retain invocation order while publication is pending",
+				"rename failures preserve the destination and later async writes remain usable",
+				"process termination before-rename retains the published snapshot and permits a fresh writer",
+				"process termination after-rename retains the published snapshot and permits a fresh writer",
+			],
+		},
+	],
+	[
 		"Semaphore.qnt",
 		{
 			file: "test/semaphore.test.ts",
