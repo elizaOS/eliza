@@ -969,13 +969,15 @@
     "invariants": [
       "RetriedDelayFollowsReply",
       "PendingRetainsPayload",
-      "DeliveredRetiresHold"
+      "DeliveredRetiresHold",
+      "SingleLease",
+      "CallbackNeedsDueMember"
     ],
     "status": "partial",
     "limitations": [
-      "One serial drainer, one held callback outcome and one retained retry. The next attempt cannot start before the saved delay, and one quiesced restart preserves the retry payload and score.",
-      "Real Workerd storage and gateway code check the delayed callback, a refused early poll and the eventual retried event. A controlled callback supplies the held and delivered outcomes.",
-      "Stale due snapshots from independent replicas, lease loss, repeated re-holds, hold expiry, unknown storage receipts and provider effects remain outside this projection."
+      "The serial retry case covers one held callback, a full delay, and recovery after one quiesced restart. The replica case covers two poll cutoffs, one re-held target and one earlier due member.",
+      "Real Workerd checks the delayed callback and a stale replica scan while another drainer re-holds the same member. A fresh bounded read must still contain the exact target before it can invoke a callback.",
+      "Lease loss, repeated re-holds, hold expiry, unknown storage receipts, provider effects and an unbounded earlier backlog remain outside these projections."
     ]
   },
   {
