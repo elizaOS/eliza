@@ -206,5 +206,30 @@
 		"implementationTests": [
 			"packages/core/test/pii-scrub.lazy-drain.pglite.test.ts"
 		]
+	},
+	{
+		"id": "ChannelTopicRetirement",
+		"model": "packages/core/quint/ChannelTopicRetirement.qnt",
+		"sources": [
+			"packages/core/src/services/channel-topics.ts",
+			"packages/core/src/plugin-lifecycle.ts",
+			"packages/core/src/runtime/data-mutations.ts",
+			"packages/core/src/runtime.ts"
+		],
+		"invariants": [
+			"RoomOrder",
+			"NoLateOriginalAdmission",
+			"RetirementJoinsOriginal",
+			"RetirementClearsLocal",
+			"RoomIsolation"
+		],
+		"status": "partial",
+		"limitations": [
+			"One original service, one sequential replacement, two rooms and four calls. Original room 0 has one optional cold reader or writer and a second writer. Original room 1 has one writer, and the replacement writes room 0.",
+			"Labels are distinct and below LRU capacity. Successful persistence replaces durable topics with the current local list. A failed write leaves local topics, so a later successful call can persist them. Failed hydration leaves the room cold.",
+			"The runtime suite uses real SQLite for plugin unload/reload, durable readback, persistence failure and recovery. Controlled I/O ports cover same-room ordering, independent rooms and pending stop.",
+			"Metadata mutations by unrelated writers, missing-room races, process crashes, unknown commits, duplicate labels, capacity eviction and simultaneous independent runtimes remain outside this finite projection."
+		],
+		"implementationTests": ["packages/core/test/channel-topics.test.ts"]
 	}
 ]
