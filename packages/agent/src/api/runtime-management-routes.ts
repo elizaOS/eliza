@@ -22,9 +22,7 @@ const PROPOSAL_TIMEOUT_MS = 5 * 60_000;
 const pending = new PendingRequestMap();
 const claims = new Map<string, { token: string | null; expiresAt: number }>();
 let defaultProposalStore: RuntimeManagementProposalStore | undefined;
-const READ_ONLY_OPERATIONS = new Set<RuntimeManagementRequest["op"]>([
-  "list",
-]);
+const READ_ONLY_OPERATIONS = new Set<RuntimeManagementRequest["op"]>(["list"]);
 
 export interface RuntimeManagementRouteContext {
   req: http.IncomingMessage;

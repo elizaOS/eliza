@@ -130,7 +130,6 @@ for (const name of [
   "Refresh",
   "Use runtime",
   "Claim pairing",
-  "Retry",
   "Revoke",
   "Remove",
   "Stop relay",
