@@ -81,55 +81,15 @@ Use `bun run release:candidate --help` for candidate, verification, and publicat
 
 The npm workflow skips app stores by default. Set `publish_stores` to `true` to also run configured store lanes after npm and GitHub finalization. A store lane skips its build and upload when required credentials or app identity settings are absent. Invalid credentials and failed builds or uploads still fail that lane.
 
-The protected **Mobile App Auth Registration Admin** workflow has a read-only
-`inventory` operation for Alpha Phone recovery. It reports only presence of the
-three known mobile-auth Worker secret bindings and aggregate registration counts
-for the fixed environment-specific Alpha callback. It does not require a registry
-value, so it can diagnose a missing registry. Production runs require `main`.
-The database connection must match both protected database identity hash variables;
-all registration queries run in the same read-only transaction. Existing `diagnose`
-and `repair` behavior is unchanged. A present Worker registry is not permission to
-replace it: preserve every existing client and Android certificate when repairing
-configuration. This inventory neither reveals nor changes those values.
-
-For a new platform-owned native client, use `plan-provision-publisher` with a
-fixed new `intended_app_id`, a fixed new `publisher_organization_id`, a public
-`display_name`, and the exact environment callback. The protected primary app's
-active operator authorizes creation; their personal organization and credentials
-are not copied. The new publisher organization has no login users, billing
-identity, balance, or user API key. Migration 0551 must be applied first. Its
-database guards prevent user membership, personal-deletion fencing, and implicit
-organization deletion. The old primary-owner provisioning operations are retired.
-
-Review the candidate, non-target, app-binding, and creation hashes. Run
-`provision-publisher` with those hashes and the same inputs while the original
-source registry is still installed. Only after the app and publisher verify may
-the operator install the sealed candidate in the normal GitHub environment secret
-and run `publish-registry`. Keep source secret changes exclusive during this
-sequence; GitHub secret updates have no compare-and-swap check. Never install a
-prospective candidate before provisioning: a concurrent release can publish it.
-
-For an existing native client in a personal organization, use
-`plan-isolate-publisher` and `isolate-publisher` with a fresh publisher organization
-UUID and the four reviewed hashes. The app UUID comes from the protected registry;
-an optional `intended_app_id` must match it. Only a registration with no hosted,
-monetized, or other app-owned resources can move. The operation preserves the app
-UUID and customer grants, detaches a revoked legacy app key without moving it,
-and leaves personal data and billing in their original organization. It does not
-change the registry. Run `verify-publisher` afterward with the same client and
-publisher inputs. Explicit product retirement is separate from personal account
-deletion.
-
-Legacy configured-organization `plan-provision` / `provision-registry` and
-registration repair remain available for their existing scope. Release validation
-retains legacy client compatibility and validates publisher constraints whenever
-the publisher marker is present.
-
-These operations use separate pinned GitHub environment encryption keys for
-production and staging. Production requires `main`; staging requires `staging`.
-Each environment still needs its protected registry, primary app, and database
-identity pins. Empty or malformed source registries fail closed; these operations
-do not initialize them or accept a caller-supplied encryption key.
+The protected **Native App Auth Database Migration** workflow performs the
+one-time preparation for database-owned native registrations. It reads the
+current protected registry and Android bindings, fetches the complete deployed
+Pages callback configuration, and verifies the database identity before writing.
+An exact app/callback match is required for enabled clients. The transaction
+preserves disabled entries and aliases, refuses conflicts, and records an import
+receipt. The follow-up verification compares every imported field. Keep the old
+runtime deployed until both environment imports succeed; ordinary releases and
+later reviewed database changes do not use this workflow.
 
 The protected **Cloud Catalog Diagnostic** workflow checks only the five Stripe
 catalog binding names. It then makes one unauthenticated plans request with a
@@ -140,9 +100,3 @@ and metrics are disabled. No provider configuration or payment is changed.
 Production requires `main`. A 503 without a captured code fails the diagnostic;
 it does not prove a missing binding. Compare binding presence and the captured
 code before repairing provider configuration.
-
-Its `compare-primary` operation selects only the protected primary app UUID and
-reports booleans for app approval, organization/owner validity, and whether the
-protected creation organization and owner match that existing app. It shares the
-inventory's database identity guard and read-only transaction. It does not select
-another organization, reveal identifiers, activate records, or change ownership.

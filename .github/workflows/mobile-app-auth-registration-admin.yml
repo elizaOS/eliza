@@ -1,223 +1,86 @@
-name: Mobile App Auth Registration Admin
+name: Native App Auth Database Migration
 
 on:
   workflow_dispatch:
     inputs:
       target_environment:
-        description: Protected GitHub Environment to inspect or repair
+        description: Protected environment whose existing native registrations to migrate
         required: true
         type: choice
         options:
           - staging
           - production
       operation:
-        description: Plans are read-only; provisioning creates a DB row; publishing changes one registry
+        description: Import existing registrations once, or verify the completed database registration
         required: true
+        default: verify
         type: choice
         options:
-          - diagnose
-          - inventory
-          - compare-primary
-          - compare-client
-          - plan-client
-          - plan-addition
-          - plan-provision
-          - plan-provision-publisher
-          - plan-isolate-publisher
-          - provision-registry
-          - provision-publisher
-          - isolate-publisher
-          - verify-publisher
-          - publish-registry
-          - repair
-      client:
-        description: First-party native client whose apps registration to inspect or repair
+          - verify
+          - import
+      callbacks_json:
+        description: Optional reviewed callback snapshot if reading the live Pages configuration fails
         required: false
-        default: ai.elizaos.app
-        type: string
-
-      intended_app_id:
-        description: Operator-selected app UUID; fresh fixed UUID for all provisioning operations
-        required: false
-        default: ""
-        type: string
-
-      publisher_organization_id:
-        description: Operator-selected memberless publisher UUID (publisher operations only)
-        required: false
-        default: ""
-        type: string
-
-      redirect_uri:
-        description: Exact HTTPS callback (platform provisioning requires this environment's /auth/PRODUCT/callback)
-        required: false
-        default: ""
-        type: string
-      expected_registry_sha256:
-        description: Candidate hash from the reviewed encrypted plan (publish-registry)
-        required: false
-        default: ""
-        type: string
-      expected_non_target_sha256:
-        description: Preserved non-target hash from the reviewed encrypted plan (publish-registry)
-        required: false
-        default: ""
-        type: string
-      expected_app_binding_sha256:
-        description: Validated app and owner binding hash from the reviewed plan (publish-registry)
-        required: false
-        default: ""
-        type: string
-      display_name:
-        description: Public product name for provisioning operations
-        required: false
-        default: ""
-        type: string
-      expected_creation_sha256:
-        description: Creation hash from the reviewed prospective plan (provision-registry or provision-primary)
-        required: false
-        default: ""
         type: string
 
 permissions:
   contents: read
 
 concurrency:
-  # Publication shares the caller's release lock in cloud-cf-deploy.yml.
-  group: ${{ (inputs.operation == 'publish-registry' || inputs.operation == 'provision-registry' || inputs.operation == 'provision-primary' || inputs.operation == 'provision-publisher' || inputs.operation == 'isolate-publisher') && format('cloud-cf-release-v6-{0}', inputs.target_environment) || format('mobile-app-auth-registration-{0}', inputs.target_environment) }}
+  # Do not import while a release can change the deployed registration source.
+  group: cloud-cf-release-v6-${{ inputs.target_environment }}
   cancel-in-progress: false
   queue: max
 
 jobs:
-  registration:
-    name: ${{ inputs.operation }} ${{ inputs.target_environment }} ${{ inputs.client }} registration
+  migrate:
+    name: ${{ inputs.operation }} ${{ inputs.target_environment }} native registrations
     runs-on: ubuntu-latest
     environment: ${{ inputs.target_environment }}
     timeout-minutes: 10
     steps:
-      - name: Mask private registration identities before runner environment output
-        run: |
-          python3 - <<'PY'
-          import json, os, re
-          with open(os.environ["GITHUB_EVENT_PATH"]) as event_file:
-              inputs = json.load(event_file).get("inputs", {})
-          for field in ("intended_app_id", "publisher_organization_id"):
-              value = inputs.get(field, "")
-              if value:
-                  if not re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", value):
-                      raise SystemExit("Invalid private registration identity")
-                  print("::add-mask::" + value)
-          PY
-      - name: Checkout exact admin source
+      - name: Checkout reviewed migration source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6.0.2
+        with:
+          persist-credentials: false
+
       - name: Set up Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6.1.0
         with:
-          node-version: "24"
+          node-version: "24.15.0"
+
       - name: Set up Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.1.2
         with:
           bun-version: "1.4.2"
+
       - name: Install dependencies
         run: bun install --frozen-lockfile --ignore-scripts
-      - name: Read-only mobile auth inventory, source-client comparison, or source plan
-        if: inputs.operation == 'inventory' || inputs.operation == 'compare-primary' || inputs.operation == 'compare-client' || inputs.operation == 'plan-client'
+
+      - name: Import or verify existing native registrations
         env:
+          OPERATION: ${{ inputs.operation }}
+          ENVIRONMENT: ${{ inputs.target_environment }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID: ${{ inputs.client }}
-          ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: ${{ secrets.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON }}
-          ELIZA_MOBILE_APP_AUTH_INVENTORY_OPERATION: ${{ inputs.operation }}
-          ELIZA_MOBILE_APP_AUTH_INTENDED_APP_ID: ${{ inputs.intended_app_id }}
-          ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_APP_ID }}
-          DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}
-          DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
-          ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID }}
-          ELIZA_MOBILE_APP_AUTH_OWNER_USER_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_OWNER_USER_ID }}
-          ELIZA_MOBILE_APP_AUTH_ENVIRONMENT: ${{ inputs.target_environment }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: bun packages/scripts/cloud/admin/inventory-mobile-app-auth.ts
-      - name: Diagnose or repair protected registration
-        if: inputs.operation == 'diagnose' || inputs.operation == 'repair'
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_APP_ID }}
-          ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID }}
-          ELIZA_MOBILE_APP_AUTH_OWNER_USER_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_OWNER_USER_ID }}
-          # Additional clients resolve their app UUID from the
-          # same registry the Worker reads, bound to this environment.
-          ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: ${{ secrets.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON }}
-          ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID: ${{ inputs.client }}
-          ELIZA_MOBILE_APP_AUTH_ENVIRONMENT: ${{ inputs.target_environment }}
-        run: bun packages/scripts/cloud/admin/repair-mobile-app-auth-registration.ts "${{ inputs.operation }}"
-      - name: Prepare encrypted registry addition or provisioning plan (no writes)
-        id: addition
-        if: inputs.operation == 'plan-addition' || inputs.operation == 'plan-provision' || inputs.operation == 'plan-provision-primary' || inputs.operation == 'plan-provision-publisher' || inputs.operation == 'plan-isolate-publisher'
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID: ${{ inputs.client }}
-          ELIZA_MOBILE_APP_AUTH_ADDITION_REDIRECT_URI: ${{ inputs.redirect_uri }}
-          ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: ${{ secrets.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON }}
-          ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_APP_ID }}
-          ELIZA_MOBILE_APP_AUTH_INTENDED_APP_ID: ${{ inputs.intended_app_id }}
-          ELIZA_MOBILE_APP_AUTH_PUBLISHER_ORGANIZATION_ID: ${{ inputs.publisher_organization_id }}
-          ELIZA_MOBILE_APP_AUTH_DISPLAY_NAME: ${{ inputs.display_name }}
-          ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID }}
-          ELIZA_MOBILE_APP_AUTH_OWNER_USER_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_OWNER_USER_ID }}
-          ELIZA_MOBILE_APP_AUTH_ENVIRONMENT: ${{ inputs.target_environment }}
-          DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}
-          DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
-        run: bun packages/scripts/cloud/admin/plan-mobile-client-addition.ts "${{ inputs.operation }}"
-      - name: Upload only the encrypted candidate and rollback
-        if: inputs.operation == 'plan-addition' || inputs.operation == 'plan-provision' || inputs.operation == 'plan-provision-primary' || inputs.operation == 'plan-provision-publisher' || inputs.operation == 'plan-isolate-publisher'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-        with:
-          name: mobile-client-addition-${{ inputs.target_environment }}
-          path: ${{ steps.addition.outputs.artifact_path }}
-          if-no-files-found: error
-          retention-days: 1
-      # Keep the normal source registry unchanged until this succeeds. A release
-      # may publish that source, so an unprovisioned candidate cannot be installed.
-      - name: Provision the reviewed platform registration only
-        if: inputs.operation == 'provision-registry' || inputs.operation == 'provision-primary' || inputs.operation == 'provision-publisher' || inputs.operation == 'isolate-publisher' || inputs.operation == 'verify-publisher'
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID: ${{ inputs.client }}
-          ELIZA_MOBILE_APP_AUTH_ADDITION_REDIRECT_URI: ${{ inputs.redirect_uri }}
-          ELIZA_MOBILE_APP_AUTH_DISPLAY_NAME: ${{ inputs.display_name }}
-          ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: ${{ secrets.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON }}
-          ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_APP_ID }}
-          ELIZA_MOBILE_APP_AUTH_INTENDED_APP_ID: ${{ inputs.intended_app_id }}
-          ELIZA_MOBILE_APP_AUTH_PUBLISHER_ORGANIZATION_ID: ${{ inputs.publisher_organization_id }}
-          ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID }}
-          ELIZA_MOBILE_APP_AUTH_OWNER_USER_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_OWNER_USER_ID }}
-          ELIZA_MOBILE_APP_AUTH_ENVIRONMENT: ${{ inputs.target_environment }}
-          ELIZA_MOBILE_APP_AUTH_EXPECTED_REGISTRY_SHA256: ${{ inputs.expected_registry_sha256 }}
-          ELIZA_MOBILE_APP_AUTH_EXPECTED_NON_TARGET_SHA256: ${{ inputs.expected_non_target_sha256 }}
-          ELIZA_MOBILE_APP_AUTH_EXPECTED_APP_BINDING_SHA256: ${{ inputs.expected_app_binding_sha256 }}
-          ELIZA_MOBILE_APP_AUTH_EXPECTED_CREATION_SHA256: ${{ inputs.expected_creation_sha256 }}
-          DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}
-          DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
-        run: bun packages/scripts/cloud/admin/plan-mobile-client-addition.ts "${{ inputs.operation }}"
-      # The operator applies the sealed candidate through GitHub's environment-secret
-      # API first. A fresh job reads it and refuses any hash or ownership mismatch.
-      - name: Publish the exact reviewed registry only
-        if: inputs.operation == 'publish-registry'
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID: ${{ inputs.client }}
-          ELIZA_MOBILE_APP_AUTH_ADDITION_REDIRECT_URI: ${{ inputs.redirect_uri }}
-          ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: ${{ secrets.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON }}
-          ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_APP_ID }}
-          ELIZA_MOBILE_APP_AUTH_INTENDED_APP_ID: ${{ inputs.intended_app_id }}
-          ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID }}
-          ELIZA_MOBILE_APP_AUTH_OWNER_USER_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_OWNER_USER_ID }}
-          ELIZA_MOBILE_APP_AUTH_ENVIRONMENT: ${{ inputs.target_environment }}
-          ELIZA_MOBILE_APP_AUTH_EXPECTED_REGISTRY_SHA256: ${{ inputs.expected_registry_sha256 }}
-          ELIZA_MOBILE_APP_AUTH_EXPECTED_NON_TARGET_SHA256: ${{ inputs.expected_non_target_sha256 }}
-          ELIZA_MOBILE_APP_AUTH_EXPECTED_APP_BINDING_SHA256: ${{ inputs.expected_app_binding_sha256 }}
           DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}
           DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: bun packages/scripts/cloud/admin/plan-mobile-client-addition.ts publish-registry
+          PAGES_PROJECT: eliza-app
+          # These old inputs are read only for the one-time database migration.
+          # Normal releases and runtime do not read them.
+          ELIZA_MOBILE_APP_AUTH_ENABLED: ${{ vars.ELIZA_MOBILE_APP_AUTH_ENABLED }}
+          ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_APP_ID }}
+          ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: ${{ secrets.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON }}
+          ELIZA_ANDROID_ASSET_LINKS_JSON: ${{ vars.ELIZA_ANDROID_ASSET_LINKS_JSON || secrets.ELIZA_ANDROID_ASSET_LINKS_JSON }}
+          ELIZA_NATIVE_AUTH_CALLBACKS_JSON: ${{ inputs.callbacks_json }}
+        run: |
+          set -euo pipefail
+          case "$OPERATION" in
+            import)
+              bun --conditions=eliza-source packages/scripts/cloud/admin/migrate-native-app-auth.ts
+              bun --conditions=eliza-source packages/scripts/cloud/admin/migrate-native-app-auth.ts --verify
+              ;;
+            verify) bun --conditions=eliza-source packages/scripts/cloud/admin/migrate-native-app-auth.ts --verify ;;
+            *) echo "::error::Unknown native registration migration operation"; exit 1 ;;
+          esac
