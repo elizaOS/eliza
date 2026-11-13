@@ -4,12 +4,51 @@
  */
 import { once } from "node:events";
 import http from "node:http";
-import { expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import type { EvmProviderKeyset } from "../read.ts";
 import { fetchResolvedEvmBalances } from "../read.ts";
 
 const ADDRESS = "0x1111111111111111111111111111111111111111";
 const TOKEN = "0x2222222222222222222222222222222222222222";
+
+// Prices are outside these balance/precision checks. Route only the two price
+// services to an empty local HTTP fixture so a public provider cannot decide
+// whether the real loopback JSON-RPC conformance test times out.
+const pricingServer = http.createServer((_req, res) => {
+  res.setHeader("Content-Type", "application/json");
+  res.end("[]");
+});
+const originalFetch = globalThis.fetch.bind(globalThis);
+beforeAll(async () => {
+  pricingServer.listen(0, "127.0.0.1");
+  await once(pricingServer, "listening");
+  const address = pricingServer.address();
+  if (!address || typeof address === "string") throw new Error("No price port");
+  const fixture = `http://127.0.0.1:${address.port}/prices`;
+  vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+    const url = new URL(
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url,
+    );
+    return originalFetch(
+      url.hostname === "api.dexscreener.com" ||
+        url.hostname === "api.dexpaprika.com"
+        ? fixture
+        : input,
+      init,
+    );
+  });
+});
+afterAll(async () => {
+  vi.restoreAllMocks();
+  pricingServer.closeAllConnections();
+  await new Promise<void>((resolve, reject) =>
+    pricingServer.close((error) => (error ? reject(error) : resolve())),
+  );
+});
 
 const keyset = (rpc: string): EvmProviderKeyset => ({
   alchemyKey: null,
