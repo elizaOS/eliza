@@ -94,6 +94,7 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/lib/ios-plist-url-scheme.ts",
   "scripts/lib/kill-process-tree.ts",
   "scripts/lib/live-stack-safe-diagnostics.ts",
+  "scripts/lib/macos-native-effects-dev.ts",
   "scripts/lib/mobile-build-decisions.ts",
   "scripts/lib/mobile-lane-stamp.ts",
   "scripts/lib/mobile-renderer-feature-env.ts",

@@ -590,6 +590,7 @@ packages/inference/verify/vulkan_dispatch_smoke
 # FFI stub libraries are compiled from ffi-stub.c for each test/build host.
 /packages/app/scripts/ffi-stub/libelizainference_stub.so
 /packages/app/scripts/ffi-stub/libelizainference_stub.dylib
+/packages/app/native/macos/libMacWindowEffects.dylib
 /packages/app/scripts/ffi-stub/libelizainference_stub.dll
 packages/training/vendor/
 

@@ -5,8 +5,8 @@
  *   - platform detection
  *   - osascript shellouts (used for AppleScript permission checks)
  *   - bundle identifier resolution and TCC.db reads
- *   - bun:ffi loader for the macOS permissions dylib named by
- *     `ELIZA_NATIVE_PERMISSIONS_DYLIB`
+ *   - bun:ffi loader for the macOS permissions dylib
+ *     (`libMacWindowEffects.dylib`, built under `packages/app/native/macos/`)
  *
  * The TCC.db read trick lets us answer `check()` without triggering an OS
  * dialog: TCC's authorization database is readable via sqlite3 for the
@@ -245,7 +245,8 @@ export function hasEmbeddedProvisioningEntitlement(
 /* --------------------------------------------------------------------------
  * FFI loader for the native permissions dylib.
  *
- * The Electrobun runtime ships `libMacWindowEffects.dylib` which exposes:
+ * `libMacWindowEffects.dylib` (built from
+ * `packages/app/native/macos/native-permissions.mm`) exposes:
  *   - checkAccessibilityPermission / requestAccessibilityPermission
  *   - checkScreenRecordingPermission / requestScreenRecordingPermission
  *   - checkMicrophonePermission / requestMicrophonePermission
@@ -254,8 +255,8 @@ export function hasEmbeddedProvisioningEntitlement(
  *   - EventKit/CNContactStore privacy probes for Reminders, Calendar,
  *     and Contacts
  *
- * Source runs resolve the worktree build while packaged Electrobun runs load
- * the copy sealed beside the application resources. Individual probers decide
+ * `ELIZA_NATIVE_PERMISSIONS_DYLIB` names it explicitly; source runs resolve the
+ * worktree build. Individual probers decide
  * whether an unavailable native bridge has a truthful fallback.
  * -------------------------------------------------------------------------- */
 
@@ -284,7 +285,12 @@ let nativeLib: NativePermissionsLib | null = null;
 let nativeLibResolved = false;
 
 const DYLIB_CANDIDATES = [
+  // Absolute env override
   process.env.ELIZA_NATIVE_PERMISSIONS_DYLIB ?? "",
+  // Source worktree layout — relative to this prober file
+  "../../../../../app/native/macos/libMacWindowEffects.dylib",
+  // Worktree layout — relative to the agent package
+  "../../../../app/native/macos/libMacWindowEffects.dylib",
 ].filter(Boolean);
 
 export async function getNativeDylib(): Promise<NativePermissionsLib | null> {

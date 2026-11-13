@@ -29,7 +29,10 @@ import path from "node:path";
 import { logger } from "@elizaos/core";
 import { formatPhoneNumber } from "./types.js";
 
-const NATIVE_DYLIB_CANDIDATES = [process.env.ELIZA_NATIVE_PERMISSIONS_DYLIB ?? ""].filter(Boolean);
+const NATIVE_DYLIB_CANDIDATES = [
+  process.env.ELIZA_NATIVE_PERMISSIONS_DYLIB ?? "",
+  "../../../packages/app/native/macos/libMacWindowEffects.dylib",
+].filter(Boolean);
 
 /**
  * A single resolved contact: the display name and one of the handles

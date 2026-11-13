@@ -14,5 +14,9 @@ export function appleRemindersMacosBridgeCandidates(args?: {
       label: "ELIZA_NATIVE_PERMISSIONS_DYLIB",
       path: args?.envDylibPath ?? "",
     },
+    {
+      label: "local Apple permissions bridge",
+      path: `../../../../packages/app/native/macos/${APPLE_REMINDERS_MACOS_BRIDGE_DYLIB_BASENAME}`,
+    },
   ].filter((candidate) => candidate.path.trim().length > 0);
 }
