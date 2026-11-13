@@ -346,8 +346,18 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
           async apply(target, receiver, args) {
             await observer.beforeRequest?.();
             const response: Response = await Reflect.apply(target, receiver, args);
-            if (response.status === 200 && price) observer(price);
-            else if (response.status !== 200) observer.requestRejected?.();
+            // Google bills successful no-result/unknown-place responses too.
+            // Authentication, quota and server errors are not billable; a 400
+            // can be billable or not, so leave an unclassified result unknown.
+            // https://developers.google.com/maps/reporting-and-monitoring/reporting
+            if ((response.status === 200 || response.status === 404) && price) observer(price);
+            else if (
+              response.status === 401 ||
+              response.status === 403 ||
+              response.status === 429 ||
+              response.status >= 500
+            )
+              observer.requestRejected?.();
             return response;
           },
         })
@@ -808,22 +818,24 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
       signal,
       reportPrice,
       undefined,
+      [200, 400, 404],
     );
-    if (response.status !== 200) throw invalidResponse(response.status);
     const json = (await responseJson(response)) as { status?: unknown; results?: unknown } | null;
     switch (json?.status) {
       case "OK":
+        if (response.status !== 200) throw invalidResponse(response.status);
         reportPrice?.(this.creditPrice("geocode", {}));
         break;
       case "ZERO_RESULTS":
+        if (response.status !== 200 && response.status !== 404)
+          throw invalidResponse(response.status);
         reportPrice?.(this.creditPrice("geocode", {}));
         return [];
       case "OVER_QUERY_LIMIT":
       case "OVER_DAILY_LIMIT":
       case "REQUEST_DENIED":
-        reportPrice?.requestRejected?.();
-        throw unavailable(json.status);
       case "UNKNOWN_ERROR":
+        reportPrice?.requestRejected?.();
         throw unavailable(json.status);
       default:
         throw invalidResponse(typeof json?.status === "string" ? json.status : undefined);
