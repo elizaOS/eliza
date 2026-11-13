@@ -1,4 +1,4 @@
-/** Exercises host trajectory writes, the bridged read surface and the viewer HTTP formatter against real PGlite. The loopback harness supplies transport only; authentication and live-model generation are outside this storage contract. */
+/** Exercises host trajectory writes, the trajectory service read surface and the viewer HTTP formatter against real PGlite. The loopback harness supplies transport only; authentication and live-model generation are outside this storage contract. */
 import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -12,17 +12,6 @@ import {
 } from "@elizaos/core";
 import { parseTrajectorySemanticStage } from "@elizaos/core/protocol";
 import {
-  TrajectoriesService,
-  trajectoriesPlugin,
-  tryHandleTrajectoryReadRoutes,
-} from "@elizaos/plugin-assistant";
-import { createTestRuntime } from "@elizaos/testing/runtime";
-import { afterAll, beforeAll, expect, it, onTestFinished, vi } from "vitest";
-import { proposeDeviceAction } from "../../../plugins/plugin-assistant/src/services/device-actions/action.ts";
-import { handleTrajectoryManagementRoutes } from "../src/api/trajectory-management-routes.ts";
-import { runtimeTrajectoriesEnabled } from "../src/runtime/native-runtime-features.ts";
-import { installPromptOptimizations } from "../src/runtime/prompt-optimization.ts";
-import {
   createBaseTrajectory,
   ensureStep,
   executeRawSql,
@@ -30,14 +19,18 @@ import {
   loadTrajectoryById,
   saveTrajectory,
   sqlQuote,
-} from "../src/runtime/trajectory-internals.ts";
-import {
-  type BridgedTrajectoryLogger,
-  installDatabaseTrajectoryLogger,
-} from "../src/runtime/trajectory-storage.ts";
+  type TrajectoriesService,
+  trajectoriesPlugin,
+  tryHandleTrajectoryReadRoutes,
+} from "@elizaos/plugin-assistant";
+import { createTestRuntime } from "@elizaos/testing/runtime";
+import { afterAll, beforeAll, expect, it, onTestFinished, vi } from "vitest";
+import { proposeDeviceAction } from "../../../plugins/plugin-assistant/src/services/device-actions/action.ts";
+import { handleTrajectoryManagementRoutes } from "../src/api/trajectory-management-routes.ts";
+import { installPromptOptimizations } from "../src/runtime/prompt-optimization.ts";
 
 let fixture: Awaited<ReturnType<typeof createTestRuntime>>;
-let bridge: BridgedTrajectoryLogger & TrajectoriesService;
+let service: TrajectoriesService;
 let server: Server;
 let origin: string;
 
@@ -52,9 +45,7 @@ beforeAll(async () => {
   const registered =
     fixture.runtime.getService<TrajectoriesService>("trajectories");
   if (!registered) throw new Error("Trajectory service did not start");
-  expect(runtimeTrajectoriesEnabled(fixture.runtime)).toBe(true);
-  await installDatabaseTrajectoryLogger(fixture.runtime);
-  bridge = registered as BridgedTrajectoryLogger & TrajectoriesService;
+  service = registered;
   server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     const method = req.method ?? "GET";
@@ -105,20 +96,20 @@ afterAll(async () => {
   vi.unstubAllEnvs();
 });
 
-it("reads complete persisted calls with filters and failures on the bridged logger", async () => {
-  expect(await bridge.getStats()).toMatchObject({
+it("reads complete persisted calls with filters and failures on the trajectory service", async () => {
+  expect(await service.getStats()).toMatchObject({
     totalTrajectories: 0,
     byModel: {},
     bySource: {},
   });
   const roomId = randomUUID();
   const prompt = `complete original request ${"x".repeat(180_000)} FINAL-REQUEST`;
-  const trajectoryId = await bridge.startTrajectory(fixture.runtime.agentId, {
+  const trajectoryId = await service.startTrajectory(fixture.runtime.agentId, {
     source: "read-acceptance",
     roomId,
   });
-  const stepId = bridge.startStep(trajectoryId, { kind: "llm" });
-  bridge.logLlmCall({
+  const stepId = service.startStep(trajectoryId, { kind: "llm" });
+  service.logLlmCall({
     stepId,
     model: "fixture",
     purpose: "action",
@@ -129,13 +120,13 @@ it("reads complete persisted calls with filters and failures on the bridged logg
     promptTokens: 7,
     completionTokens: 3,
   });
-  await bridge.flushWriteQueue(trajectoryId);
-  await bridge.endTrajectory(trajectoryId, "completed");
-  const otherId = await bridge.startTrajectory(fixture.runtime.agentId, {
+  await service.flushWriteQueue(trajectoryId);
+  await service.endTrajectory(trajectoryId, "completed");
+  const otherId = await service.startTrajectory(fixture.runtime.agentId, {
     source: "other-source",
     roomId: randomUUID(),
   });
-  await bridge.endTrajectory(otherId, "completed");
+  await service.endTrajectory(otherId, "completed");
 
   const foreignId = randomUUID();
   const stamp = sqlQuote(new Date().toISOString());
@@ -150,28 +141,28 @@ it("reads complete persisted calls with filters and failures on the bridged logg
      FROM trajectory_steps WHERE id = ${sqlQuote(stepId)}`,
   );
   await expect(
-    bridge.exportTrajectoriesZip({ trajectoryIds: [foreignId] }),
+    service.exportTrajectoriesZip({ trajectoryIds: [foreignId] }),
   ).rejects.toMatchObject({
     code: "TRAJECTORY_EXPORT_INCOMPLETE",
   });
   await expect(
-    bridge.exportTrajectoriesZip({ trajectoryIds: [randomUUID()] }),
+    service.exportTrajectoriesZip({ trajectoryIds: [randomUUID()] }),
   ).rejects.toMatchObject({
     code: "TRAJECTORY_EXPORT_INCOMPLETE",
   });
-  const filtered = await bridge.listTrajectories({
+  const filtered = await service.listTrajectories({
     source: "read-acceptance",
     roomId,
     status: "completed",
   });
   expect(filtered.total).toBe(1);
   expect(filtered.trajectories.map((row) => row.id)).toEqual([trajectoryId]);
-  const page = await bridge.listTrajectories({ limit: 1, offset: 1 });
+  const page = await service.listTrajectories({ limit: 1, offset: 1 });
   expect(page.total).toBe(2);
   expect(page.trajectories).toHaveLength(1);
-  expect(await bridge.getTrajectoryDetail(foreignId)).toBeNull();
-  expect(await bridge.getTrajectoryDetail(randomUUID())).toBeNull();
-  expect((await bridge.listTrajectories({ status: "completed" })).total).toBe(
+  expect(await service.getTrajectoryDetail(foreignId)).toBeNull();
+  expect(await service.getTrajectoryDetail(randomUUID())).toBeNull();
+  expect((await service.listTrajectories({ status: "completed" })).total).toBe(
     2,
   );
   const statsResponse = await fetch(`${origin}/api/trajectories/stats`);
@@ -189,8 +180,8 @@ it("reads complete persisted calls with filters and failures on the bridged logg
     fixture.runtime,
     `UPDATE trajectories SET steps_json = '[]' WHERE id = ${sqlQuote(trajectoryId)}`,
   );
-  expect(await bridge.getStats()).toMatchObject({ byModel: { fixture: 1 } });
-  const detail = await bridge.getTrajectoryDetail(trajectoryId);
+  expect(await service.getStats()).toMatchObject({ byModel: { fixture: 1 } });
+  const detail = await service.getTrajectoryDetail(trajectoryId);
   expect(
     detail?.steps
       ?.flatMap((step) => step.llmCalls ?? [])
@@ -210,7 +201,10 @@ it("reads complete persisted calls with filters and failures on the bridged logg
     component: "acceptance",
   };
   expect(
-    await Promise.all([bridge.applyReward(reward), bridge.applyReward(reward)]),
+    await Promise.all([
+      service.applyReward(reward),
+      service.applyReward(reward),
+    ]),
   ).toEqual([true, true]);
   expect(
     extractRequiredRows(
@@ -220,20 +214,20 @@ it("reads complete persisted calls with filters and failures on the bridged logg
       ),
     ),
   ).toMatchObject([{ total_reward: 5 }]);
-  bridge.setEnabled(false);
+  service.setEnabled(false);
   try {
     expect(
-      await bridge.applyReward({
+      await service.applyReward({
         ...reward,
         idempotencyKey: "disabled-reward",
       }),
     ).toBe(false);
   } finally {
-    bridge.setEnabled(true);
+    service.setEnabled(true);
   }
-  expect(await bridge.applyReward({ ...reward, trajectoryId: foreignId })).toBe(
-    false,
-  );
+  expect(
+    await service.applyReward({ ...reward, trajectoryId: foreignId }),
+  ).toBe(false);
   expect(
     extractRequiredRows(
       await executeRawSql(
@@ -249,7 +243,7 @@ it("reads complete persisted calls with filters and failures on the bridged logg
      WHERE id = ${sqlQuote(stepId)}`,
   );
   try {
-    await expect(bridge.getStats()).rejects.toMatchObject({
+    await expect(service.getStats()).rejects.toMatchObject({
       code: "TRAJECTORY_STORAGE_OPERATION_FAILED",
     });
     expect((await fetch(`${origin}/api/trajectories/stats`)).status).toBe(500);
@@ -275,11 +269,11 @@ it("reads complete persisted calls with filters and failures on the bridged logg
     fixture.runtime,
     `UPDATE trajectories SET total_prompt_tokens = 1073741824 WHERE id = ${sqlQuote(otherId)}`,
   );
-  expect(await bridge.getStats()).toMatchObject({
+  expect(await service.getStats()).toMatchObject({
     byModel: { fixture: 1 },
     totalPromptTokens: 2147483648,
   });
-  expect((await bridge.listTrajectories({ status: "completed" })).total).toBe(
+  expect((await service.listTrajectories({ status: "completed" })).total).toBe(
     2,
   );
 
@@ -288,10 +282,10 @@ it("reads complete persisted calls with filters and failures on the bridged logg
     "ALTER TABLE trajectories RENAME TO trajectories_unavailable",
   );
   try {
-    await expect(bridge.getStats()).rejects.toMatchObject({
+    await expect(service.getStats()).rejects.toMatchObject({
       code: "TRAJECTORY_STORAGE_OPERATION_FAILED",
     });
-    await expect(bridge.listTrajectories({})).rejects.toMatchObject({
+    await expect(service.listTrajectories({})).rejects.toMatchObject({
       code: "TRAJECTORY_STORAGE_OPERATION_FAILED",
     });
     expect((await fetch(`${origin}/api/trajectories`)).status).toBe(500);
@@ -302,15 +296,15 @@ it("reads complete persisted calls with filters and failures on the bridged logg
       "ALTER TABLE trajectories_unavailable RENAME TO trajectories",
     );
   }
-  expect((await bridge.listTrajectories({})).total).toBe(2);
+  expect((await service.listTrajectories({})).total).toBe(2);
 }, 120_000);
 
 it("exports every owned match beyond viewer and archive page sizes", async () => {
-  const templateId = await bridge.startTrajectory(fixture.runtime.agentId, {
+  const templateId = await service.startTrajectory(fixture.runtime.agentId, {
     source: "export-template",
   });
-  const templateStep = bridge.startStep(templateId, { kind: "llm" });
-  bridge.logLlmCall({
+  const templateStep = service.startStep(templateId, { kind: "llm" });
+  service.logLlmCall({
     stepId: templateStep,
     model: "export-fixture",
     purpose: "action",
@@ -319,8 +313,8 @@ it("exports every owned match beyond viewer and archive page sizes", async () =>
     userPrompt: "original request",
     response: "original response",
   });
-  await bridge.flushWriteQueue(templateId);
-  await bridge.endTrajectory(templateId, "completed");
+  await service.flushWriteQueue(templateId);
+  await service.endTrajectory(templateId, "completed");
   await executeRawSql(
     fixture.runtime,
     `UPDATE trajectories SET steps_json = (SELECT jsonb_agg(payload::jsonb ORDER BY ordinal)
@@ -339,7 +333,7 @@ it("exports every owned match beyond viewer and archive page sizes", async () =>
     FROM trajectories CROSS JOIN generate_series(1, 10001) n
     WHERE id = ${sqlQuote(templateId)}`,
   );
-  const zip = await bridge.exportTrajectoriesZip({ source: "zip-pages" });
+  const zip = await service.exportTrajectoriesZip({ source: "zip-pages" });
   expect(
     zip.entries.filter((entry) => entry.name.endsWith("/trajectory.json")),
   ).toHaveLength(501);
@@ -352,21 +346,7 @@ it("exports every owned match beyond viewer and archive page sizes", async () =>
     new Set(parsedManifest.trajectories.map((entry) => entry.trajectoryId))
       .size,
   ).toBe(501);
-  const independent = new TrajectoriesService(fixture.runtime);
-  await independent.initialize();
-  try {
-    const nativeZip = await independent.exportTrajectoriesZip({
-      source: "zip-pages",
-    });
-    expect(
-      nativeZip.entries.filter((entry) =>
-        entry.name.endsWith("/trajectory.json"),
-      ),
-    ).toHaveLength(501);
-  } finally {
-    await independent.stop();
-  }
-  const archive = await bridge.exportTrajectories({ format: "json" });
+  const archive = await service.exportTrajectories({ format: "json" });
   if (typeof archive.data !== "string")
     throw new Error("JSON export did not return text");
   const rows = JSON.parse(archive.data) as { trajectoryId: string }[];
@@ -596,12 +576,12 @@ it("retains the parent revision conflict before any child can be written", async
 });
 
 it("persists and reads complete planner stages with the canonical native proposal schema", async () => {
-  const trajectoryId = await bridge.startTrajectory(fixture.runtime.agentId, {
+  const trajectoryId = await service.startTrajectory(fixture.runtime.agentId, {
     source: "semantic-schema-acceptance",
     roomId: randomUUID(),
   });
-  const stepId = bridge.startStep(trajectoryId, { kind: "llm" });
-  await bridge.flushWriteQueue(trajectoryId);
+  const stepId = service.startStep(trajectoryId, { kind: "llm" });
+  await service.flushWriteQueue(trajectoryId);
   const schema = actionToTool(proposeDeviceAction).function.parameters;
   const messages = [
     {
@@ -612,7 +592,7 @@ it("persists and reads complete planner stages with the canonical native proposa
   const providerOptions = {
     eliza: { plannerActionSchemas: { PROPOSE_DEVICE_ACTION: schema } },
   };
-  bridge.logSemanticStage({
+  service.logSemanticStage({
     stepId,
     stage: {
       stageId: "native-schema-planner",
@@ -628,8 +608,8 @@ it("persists and reads complete planner stages with the canonical native proposa
       },
     },
   });
-  await bridge.flushWriteQueue(trajectoryId);
-  const detail = await bridge.getTrajectoryDetail(trajectoryId);
+  await service.flushWriteQueue(trajectoryId);
+  const detail = await service.getTrajectoryDetail(trajectoryId);
   const semantic = detail?.steps?.flatMap((step) => step.semanticStages ?? []);
   expect(semantic).toHaveLength(1);
   expect(semantic?.[0].payload.model).toMatchObject({
@@ -713,12 +693,12 @@ it("records every planner, evaluator and concurrent provider model call with its
       "ledger-fixture",
     );
   }
-  const trajectoryId = await bridge.startTrajectory(fixture.runtime.agentId, {
+  const trajectoryId = await service.startTrajectory(fixture.runtime.agentId, {
     source: "model-call-ledger",
     roomId: randomUUID(),
   });
-  const stepId = bridge.startStep(trajectoryId, { kind: "llm" });
-  await bridge.flushWriteQueue(trajectoryId);
+  const stepId = service.startStep(trajectoryId, { kind: "llm" });
+  await service.flushWriteQueue(trajectoryId);
   const prompts = [
     "first planner request",
     "second planner request, a little longer",
@@ -733,7 +713,7 @@ it("records every planner, evaluator and concurrent provider model call with its
     async () => {
       for (const prompt of prompts.slice(0, 2)) {
         // As in a real turn, a queued provider capture delays the call's write.
-        bridge.logProviderAccess({
+        service.logProviderAccess({
           stepId,
           providerName: "LEDGER_PROVIDER",
           purpose: "compose",
@@ -770,9 +750,9 @@ it("records every planner, evaluator and concurrent provider model call with its
       ]);
     },
   );
-  await bridge.flushWriteQueue(trajectoryId);
+  await service.flushWriteQueue(trajectoryId);
   const calls = (
-    await bridge.getTrajectoryDetail(trajectoryId)
+    await service.getTrajectoryDetail(trajectoryId)
   )?.steps?.flatMap((step) => step.llmCalls ?? []);
   expect(
     calls?.map((call) => [
@@ -794,18 +774,18 @@ it("records every planner, evaluator and concurrent provider model call with its
       },
     });
   }
-  await bridge.endTrajectory(trajectoryId, "completed");
+  await service.endTrajectory(trajectoryId, "completed");
 });
 
 it("redacts the text that a model-call update fills in as it redacts a call record", async () => {
-  const trajectoryId = await bridge.startTrajectory(fixture.runtime.agentId, {
+  const trajectoryId = await service.startTrajectory(fixture.runtime.agentId, {
     source: "model-call-update-redaction",
     roomId: randomUUID(),
   });
-  const stepId = bridge.startStep(trajectoryId, { kind: "llm" });
+  const stepId = service.startStep(trajectoryId, { kind: "llm" });
   const callId = randomUUID();
   const privateText = "write to ada@example.com, card 4111111111111111";
-  bridge.logLlmCall({
+  service.logLlmCall({
     stepId,
     callId,
     model: "fixture",
@@ -815,7 +795,7 @@ it("redacts the text that a model-call update fills in as it redacts a call reco
     userPrompt: "",
     response: "",
   });
-  bridge.updateLlmCall(stepId, callId, {
+  service.updateLlmCall(stepId, callId, {
     userPrompt: privateText,
     response: privateText,
     providerMetadata: {
@@ -823,9 +803,9 @@ it("redacts the text that a model-call update fills in as it redacts a call reco
       accessToken: "fixture-private-credential",
     },
   });
-  await bridge.flushWriteQueue(trajectoryId);
+  await service.flushWriteQueue(trajectoryId);
   const [call] =
-    (await bridge.getTrajectoryDetail(trajectoryId))?.steps?.flatMap(
+    (await service.getTrajectoryDetail(trajectoryId))?.steps?.flatMap(
       (step) => step.llmCalls ?? [],
     ) ?? [];
   expect([call?.systemPrompt, call?.userPrompt, call?.response]).toEqual(
@@ -835,7 +815,7 @@ it("redacts the text that a model-call update fills in as it redacts a call reco
     promptOptimization: { budgetTokens: 1000, outputReserveTokens: 100 },
     accessToken: "[REDACTED]",
   });
-  await bridge.endTrajectory(trajectoryId, "completed");
+  await service.endTrajectory(trajectoryId, "completed");
 });
 
 it("serves the viewer's config, export and delete requests from the registered service", async () => {
@@ -852,28 +832,28 @@ it("serves the viewer's config, export and delete requests from the registered s
 
   const config = await send("GET", "/api/trajectories/config");
   expect(config.status).toBe(200);
-  expect(await config.json()).toEqual({ enabled: bridge.isEnabled() });
+  expect(await config.json()).toEqual({ enabled: service.isEnabled() });
   const disabled = await send("PUT", "/api/trajectories/config", {
     enabled: false,
   });
   expect(await disabled.json()).toEqual({ enabled: false });
-  expect(bridge.isEnabled()).toBe(false);
+  expect(service.isEnabled()).toBe(false);
   const enabled = await send("PUT", "/api/trajectories/config", {
     enabled: true,
   });
   expect(await enabled.json()).toEqual({ enabled: true });
-  expect(bridge.isEnabled()).toBe(true);
+  expect(service.isEnabled()).toBe(true);
   expect(
     (await send("PUT", "/api/trajectories/config", { enabled: "yes" })).status,
   ).toBe(400);
 
   const source = `management-${randomUUID()}`;
   const record = async (): Promise<string> => {
-    const id = await bridge.startTrajectory(fixture.runtime.agentId, {
+    const id = await service.startTrajectory(fixture.runtime.agentId, {
       source,
     });
-    bridge.logLlmCall({
-      stepId: bridge.startStep(id, { kind: "llm" }),
+    service.logLlmCall({
+      stepId: service.startStep(id, { kind: "llm" }),
       model: "fixture",
       purpose: "action",
       actionType: "runtime.useModel",
@@ -883,8 +863,8 @@ it("serves the viewer's config, export and delete requests from the registered s
       promptTokens: 1,
       completionTokens: 1,
     });
-    await bridge.flushWriteQueue(id);
-    await bridge.endTrajectory(id, "completed");
+    await service.flushWriteQueue(id);
+    await service.endTrajectory(id, "completed");
     return id;
   };
   const kept = await record();
@@ -925,6 +905,6 @@ it("serves the viewer's config, export and delete requests from the registered s
   });
   expect(deleted.status).toBe(200);
   expect(await deleted.json()).toEqual({ deleted: 1 });
-  const remaining = await bridge.listTrajectories({ source });
+  const remaining = await service.listTrajectories({ source });
   expect(remaining.trajectories.map((row) => row.id)).toEqual([kept]);
 }, 120_000);

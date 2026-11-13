@@ -27,8 +27,8 @@ import {
   timeInferenceSpan,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import { composePrompt } from "@elizaos/plugin-assistant/text/template-rendering";
-import { observationExtractionTemplate } from "./observation-prompt.js";
+import { composePrompt } from "../../../text/template-rendering.ts";
+import { observationExtractionTemplate } from "./observation-prompt.ts";
 
 export { asRecord };
 // ---------------------------------------------------------------------------
@@ -39,23 +39,6 @@ export type RuntimeDb = {
   transaction?: <T>(work: (tx: RuntimeDb) => Promise<T>) => Promise<T>;
 };
 export type RawSqlExecutor = (sqlText: string) => Promise<unknown>;
-export type TrajectoryLoggerLike = {
-  listTrajectories?: unknown;
-  getTrajectoryDetail?: unknown;
-  isEnabled?: () => boolean;
-  setEnabled?: (enabled: boolean) => void;
-  logLlmCall?: (params: Record<string, unknown>) => void;
-  updateLlmCall?: (
-    stepId: string,
-    callId: string,
-    patch: Record<string, unknown>,
-  ) => void;
-  logProviderAccess?: (params: Record<string, unknown>) => void;
-  getLlmCallLogs?: () => readonly unknown[];
-  getProviderAccessLogs?: () => readonly unknown[];
-  llmCalls?: unknown[];
-  providerAccess?: unknown[];
-};
 type OrchestratorTrajectoryContext = {
   source: "orchestrator";
   decisionType: string;
@@ -176,7 +159,6 @@ export type CompleteStepOptions = {
 // Module-level state
 // ---------------------------------------------------------------------------
 export const initializedRuntimes = new WeakSet<object>();
-export const patchedLoggers = new WeakSet<object>();
 export const stepWriteQueues = new WeakMap<
   object,
   Map<string, Promise<void>>
@@ -985,13 +967,10 @@ async function initializeTrajectoriesTable(
         archetype TEXT
       )`,
     );
-    // Best-effort forward migration for grouping columns.
-    await addColumnIfMissing(runtime, "trajectories", "scenario_id", "TEXT");
     await executeRawSql(
       runtime,
       `CREATE INDEX IF NOT EXISTS idx_trajectories_scenario_id ON trajectories(scenario_id)`,
     );
-    await addColumnIfMissing(runtime, "trajectories", "batch_id", "TEXT");
     await executeRawSql(
       runtime,
       `CREATE INDEX IF NOT EXISTS idx_trajectories_batch_id ON trajectories(batch_id)`,
@@ -1837,49 +1816,6 @@ export function shouldSuppressNoInputEmbeddingCall(
   const response = toText(params.response, "");
   if (!response.trim()) return true;
   return isNumericVectorString(response);
-}
-export function isLegacyTrajectoryLogger(
-  logger: TrajectoryLoggerLike,
-): boolean {
-  return (
-    typeof logger.listTrajectories === "function" &&
-    typeof logger.getTrajectoryDetail === "function"
-  );
-}
-export async function resolveTrajectoryLogger(
-  runtime: IAgentRuntime,
-): Promise<TrajectoryLoggerLike | null> {
-  const candidates: TrajectoryLoggerLike[] = [];
-  const seen = new Set<unknown>();
-  const push = (candidate: unknown): void => {
-    if (!candidate || typeof candidate !== "object" || seen.has(candidate))
-      return;
-    seen.add(candidate);
-    candidates.push(candidate as TrajectoryLoggerLike);
-  };
-  const byType = runtime.getServicesByType("trajectories");
-  if (Array.isArray(byType)) {
-    for (const item of byType) push(item);
-  } else {
-    push(byType);
-  }
-  push(runtime.getService("trajectories"));
-  if (candidates.length === 0) return null;
-  let best: TrajectoryLoggerLike | null = null;
-  let bestScore = -1;
-  for (const candidate of candidates) {
-    let score = 0;
-    if (isLegacyTrajectoryLogger(candidate)) score += 100;
-    if (typeof candidate.logLlmCall === "function") score += 10;
-    if (typeof candidate.logProviderAccess === "function") score += 10;
-    if (typeof candidate.getLlmCallLogs === "function") score += 2;
-    if (typeof candidate.getProviderAccessLogs === "function") score += 2;
-    if (score > bestScore) {
-      best = candidate;
-      bestScore = score;
-    }
-  }
-  return best;
 }
 // ---------------------------------------------------------------------------
 // Trajectory data helpers
