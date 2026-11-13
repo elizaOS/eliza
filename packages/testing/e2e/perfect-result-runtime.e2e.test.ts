@@ -247,6 +247,12 @@ test.each([false, true])(
           args: { content },
           input,
           contextIds: ["notes"],
+          stage1Fields: {
+            notesRequestEffect: {
+              classification: "mutation_requested",
+              operations: ["create"],
+            },
+          },
           messageToUser: "Saved your note.",
         }),
       ],
