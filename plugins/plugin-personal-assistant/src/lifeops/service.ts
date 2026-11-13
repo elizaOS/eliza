@@ -163,6 +163,7 @@ import type {
   EmailUnsubscribeResult,
   EmailUnsubscribeScanRequest,
 } from "@elizaos/plugin-inbox";
+import { managedGmailReadFetcher } from "@elizaos/plugin-inbox";
 import { loadLifeOpsAppState } from "./app-state.js";
 import type { DefinitionCreationContext } from "./definition-creation-identity.js";
 import { BrowserDomain } from "./domains/browser-service.js";
@@ -2656,6 +2657,7 @@ export class LifeOpsService extends LifeOpsServiceBase {
   readonly inboxDomain = new InboxDomain({
     runtime: this.runtime,
     cache: this.repository,
+    managedGmailRead: managedGmailReadFetcher(),
     sources: {
       getGoogleConnectorStatus: (...args) =>
         this.getGoogleConnectorStatus(...args),
