@@ -4,6 +4,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { dbWrite } from "../client";
 import { apiKeys } from "../schemas/api-keys";
 import { apps } from "../schemas/apps";
+import { mobileAppAuthClients } from "../schemas/mobile-app-auth-clients";
 import { mobileAppAuthGrants } from "../schemas/mobile-app-auth-grants";
 import { organizations } from "../schemas/organizations";
 import { users } from "../schemas/users";
@@ -43,6 +44,7 @@ export async function readPrivateOwnerApiKeyAuthority(args: {
   organizationId: string;
 }) {
   const mobileApp = alias(apps, "private_owner_mobile_app");
+  const mobileClient = alias(mobileAppAuthClients, "private_owner_mobile_client");
   return dbWrite
     .select({
       key: {
@@ -66,6 +68,12 @@ export async function readPrivateOwnerApiKeyAuthority(args: {
         acknowledgedAt: mobileAppAuthGrants.acknowledged_at,
       },
       mobileApp: { active: mobileApp.is_active, approved: mobileApp.is_approved },
+      mobileClient: {
+        clientId: mobileClient.client_id,
+        appId: mobileClient.app_id,
+        redirectUri: mobileClient.redirect_uri,
+        enabled: mobileClient.enabled,
+      },
     })
     .from(apiKeys)
     .innerJoin(users, eq(users.id, apiKeys.user_id))
@@ -73,6 +81,7 @@ export async function readPrivateOwnerApiKeyAuthority(args: {
     .leftJoin(apps, eq(apps.api_key_id, apiKeys.id))
     .leftJoin(mobileAppAuthGrants, eq(mobileAppAuthGrants.credential_id, apiKeys.id))
     .leftJoin(mobileApp, eq(mobileApp.id, mobileAppAuthGrants.app_id))
+    .leftJoin(mobileClient, eq(mobileClient.client_id, mobileAppAuthGrants.client_id))
     .where(
       and(
         eq(apiKeys.id, args.apiKeyId),

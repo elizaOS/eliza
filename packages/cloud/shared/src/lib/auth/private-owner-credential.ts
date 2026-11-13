@@ -59,6 +59,18 @@ export async function requirePrivateOwnerCredential(args: {
     !row.mobileApp.approved
   )
     throw refuse();
+  if (row.mobileClient?.clientId && row.mobileClient.enabled) {
+    if (
+      row.mobileClient.appId !== grant.appId ||
+      row.mobileClient.redirectUri !== grant.redirectUri ||
+      !Array.isArray(grant.scopes) ||
+      grant.scopes.length !== 1 ||
+      grant.scopes[0] !== "cloud:user"
+    ) {
+      throw refuse();
+    }
+    return;
+  }
   const { resolveMobileAppAuthRegistration, MobileAppAuthProtocolError } = await import(
     "../services/mobile-app-auth"
   );
