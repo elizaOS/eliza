@@ -384,6 +384,46 @@ describe("Maps shared allowance", () => {
     ])
       expect(await read(`maps:usage:key:maps-key:${id}`)).toBeNull();
   }, 60_000);
+  test("credit-funded Maps keeps replay and rate protection without spending plan allowance", async () => {
+    const gate = "credit-funded";
+    const credit = (id: string) => {
+      const value = mapsRequest(id, "default");
+      value.policy.subscriptionFunded = false;
+      return value;
+    };
+    for (let index = 0; index < 5; index++)
+      expect(
+        (await post("/maps/admit", credit(`credit-${index}`), gate)).status,
+      ).toBe(200);
+    expect((await post("/maps/admit", credit("credit-0"), gate)).status).toBe(
+      409,
+    );
+    for (let index = 0; index < 3; index++)
+      expect(
+        (await post("/maps/admit", mapsRequest(`included-${index}`), gate))
+          .status,
+      ).toBe(200);
+    expect(
+      (await post("/maps/admit", mapsRequest("included-over"), gate)).status,
+    ).toBe(429);
+  });
+  test("credit-funded Maps uses the shared rate bucket", async () => {
+    const gate = "credit-rate";
+    const now = Date.parse("2027-01-01T00:02:00Z");
+    const first = mapsRequest("first", "burst_test");
+    first.policy.subscriptionFunded = false;
+    expect((await post("/maps/admit", first, gate, now)).status).toBe(200);
+    expect(
+      (
+        await post(
+          "/maps/admit",
+          mapsRequest("second", "burst_test"),
+          gate,
+          now,
+        )
+      ).status,
+    ).toBe(429);
+  });
   test("Maps retains both refill boundaries through a clock rollback", async () => {
     const now = Date.parse("2027-01-01T00:02:00Z");
     for (const plan of ["clock_burst", "clock_sustained"]) {
