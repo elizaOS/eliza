@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app",
-  "version": "2.0.5",
+  "version": "2.0.6",
   "type": "module",
   "scripts": {
     "build:browser-consumer": "bun scripts/build-browser-consumer.ts",
