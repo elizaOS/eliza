@@ -164,7 +164,7 @@ const STEWARD_TENANT_ID = configuredStewardTenantId(DEFAULT_STEWARD_TENANT_ID);
  */
 // A build-time constant, so production bundles drop every test sign-in branch.
 const PLAYWRIGHT_TEST_AUTH_BUILD =
-  import.meta.env.VITE_PLAYWRIGHT_TEST_AUTH === "true";
+  import.meta.env?.VITE_PLAYWRIGHT_TEST_AUTH === "true";
 function readLocalDedicatedTestApiKey(): string | null {
   const fromVite = import.meta.env.VITE_LOCAL_DEDICATED_TEST_API_KEY;
   if (typeof fromVite === "string" && fromVite.trim()) return fromVite.trim();
