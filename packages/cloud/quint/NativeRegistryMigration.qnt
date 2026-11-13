@@ -40,3 +40,65 @@ module NativeRegistryMigration {
   run rollbackPreservesPriorImportTest = init.then(begin(true, false)).then(stage).then(commit)
     .then(begin(true, true)).then(rollback).expect(storedRows == 4 and receiptRows == 4)
 }
+
+// Release admission is independent of the retained historical client count.
+// A reviewed deletion after cutover must not re-import the legacy registry.
+module NativeRegistryRelease {
+  var marker: str
+  var rowsPresent: bool
+  var sourceAvailable: bool
+  var schemaValid: bool
+  var identityValid: bool
+  var admitted: bool
+  var sourceRead: bool
+  action init = all {
+    marker' = "absent", rowsPresent' = false, sourceAvailable' = true,
+    schemaValid' = true, identityValid' = true, admitted' = false, sourceRead' = false
+  }
+  action configure(schema: bool, identity: bool, source: bool): bool = all {
+    schemaValid' = schema, identityValid' = identity, sourceAvailable' = source,
+    marker' = marker, rowsPresent' = rowsPresent, admitted' = false, sourceRead' = false
+  }
+  action legacyImport = all {
+    marker == "absent", schemaValid, identityValid, sourceAvailable,
+    marker' = "unbound", rowsPresent' = true, admitted' = false, sourceRead' = true,
+    schemaValid' = schemaValid, identityValid' = identityValid, sourceAvailable' = sourceAvailable
+  }
+  action importForRelease = all {
+    marker == "absent", schemaValid, identityValid, sourceAvailable,
+    marker' = "bound", rowsPresent' = true, admitted' = true, sourceRead' = true,
+    schemaValid' = schemaValid, identityValid' = identityValid, sourceAvailable' = sourceAvailable
+  }
+  action adoptPreparation = all {
+    marker == "unbound", rowsPresent, schemaValid, identityValid,
+    marker' = "bound", rowsPresent' = rowsPresent, admitted' = true, sourceRead' = false,
+    schemaValid' = schemaValid, identityValid' = identityValid, sourceAvailable' = sourceAvailable
+  }
+  action resumeRelease = all {
+    marker == "bound", schemaValid, identityValid,
+    marker' = marker, rowsPresent' = rowsPresent, admitted' = true, sourceRead' = false,
+    schemaValid' = schemaValid, identityValid' = identityValid, sourceAvailable' = sourceAvailable
+  }
+  action reviewedDeletion = all {
+    marker == "bound", marker' = marker, rowsPresent' = false, admitted' = false, sourceRead' = false,
+    schemaValid' = schemaValid, identityValid' = identityValid, sourceAvailable' = sourceAvailable
+  }
+  action corruptMarker = all {
+    marker != "absent", marker' = "invalid", rowsPresent' = rowsPresent, admitted' = false, sourceRead' = false,
+    schemaValid' = schemaValid, identityValid' = identityValid, sourceAvailable' = sourceAvailable
+  }
+  action step = any {
+    { nondet schema = Bool.oneOf(); nondet identity = Bool.oneOf(); nondet source = Bool.oneOf(); configure(schema, identity, source) },
+    legacyImport, importForRelease, adoptPreparation, resumeRelease, reviewedDeletion, corruptMarker
+  }
+  val safety = (admitted implies (marker == "bound" and schemaValid and identityValid)) and
+    (sourceRead implies sourceAvailable)
+  run initialImportTest = init.then(importForRelease).expect(admitted and rowsPresent)
+  run adoptPreparationTest = init.then(legacyImport).then(adoptPreparation).expect(admitted and not(sourceRead))
+  run deleteAfterCutoverTest = init.then(importForRelease).then(reviewedDeletion)
+    .then(configure(true, true, false)).then(resumeRelease).expect(admitted and not(rowsPresent) and not(sourceRead))
+  run absentSourceRefusedTest = init.then(configure(true, true, false)).expect(not(admitted))
+  run invalidSchemaRefusedTest = init.then(importForRelease).then(configure(false, true, true)).expect(not(admitted))
+  run wrongIdentityRefusedTest = init.then(importForRelease).then(configure(true, false, true)).expect(not(admitted))
+  run invalidMarkerRefusedTest = init.then(importForRelease).then(corruptMarker).expect(not(admitted))
+}

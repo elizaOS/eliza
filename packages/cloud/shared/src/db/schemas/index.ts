@@ -127,6 +127,7 @@ export * from "./job-execution-leases";
 export * from "./jobs";
 export * from "./llm-trajectories";
 export * from "./managed-domains";
+export * from "./mobile-app-auth-clients";
 export * from "./mobile-app-auth-grants";
 export * from "./model-pricing";
 export * from "./moderation-violations";

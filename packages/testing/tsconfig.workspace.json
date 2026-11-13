@@ -12,6 +12,10 @@
       "@elizaos/plugin-personal-assistant/*": [
         "../../plugins/plugin-personal-assistant/src/*"
       ],
+      "@elizaos/plugin-reminders": [
+        "../../plugins/plugin-reminders/src/index.ts"
+      ],
+      "@elizaos/plugin-goals": ["../../plugins/plugin-goals/src/index.ts"],
       "@elizaos/plugin-native-phone/*": [
         "../../plugins/plugin-native-phone/src/*"
       ],

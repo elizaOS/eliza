@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { runInNewContext } from "node:vm";
 import {
+  nativeSignInCallbackFallback,
   onRequest,
   selectNativeAuthCallback,
 } from "../../app/functions/_middleware";
+import { browserSignInStart } from "../shared/src/lib/auth/browser-sign-in";
 
 const state = "a".repeat(43),
   challenge = "b".repeat(43);
@@ -31,15 +33,37 @@ for (const [web, api, tenant] of [
       apiOrigin: api,
       tenant,
     };
+    const registration = JSON.stringify([
+      {
+        redirectUri,
+        androidPackage: "org.example.sample",
+        appName: "Sample App",
+        browserSignIn,
+      },
+    ]);
     const env = {
-      ELIZA_NATIVE_AUTH_CALLBACKS_JSON: JSON.stringify([
-        {
-          redirectUri,
-          androidPackage: "org.example.sample",
-          appName: "Sample App",
-          browserSignIn,
+      API_WORKER: {
+        fetch: async (forwarded: Request) => {
+          const url = new URL(
+            new URL(forwarded.url).searchParams.get("url") ?? forwarded.url,
+          );
+          const start = selectNativeAuthCallback(
+            registration,
+            url,
+            "browser-start",
+          );
+          if (start?.browserSignIn)
+            return browserSignInStart(
+              new Request(url, forwarded),
+              new URL(start.redirectUri),
+              start.browserSignIn,
+            );
+          const callback = selectNativeAuthCallback(registration, url);
+          return callback
+            ? nativeSignInCallbackFallback(url, callback)
+            : new Response("Not Found", { status: 404 });
         },
-      ]),
+      },
     };
     const send = (path: string, init?: RequestInit) =>
       onRequest({
@@ -166,7 +190,7 @@ for (const [web, api, tenant] of [
         env: {},
         next: async () => new Response("Unexpected route", { status: 404 }),
       });
-      expect(response.status).toBe(404);
+      expect(response.status).toBe(503);
     });
   });
 }
@@ -196,7 +220,19 @@ test("independent consumers register distinct routes and storage without a packa
     ).toEqual(entry);
     const response = await onRequest({
       request: new Request(entry.redirectUri),
-      env: { ELIZA_NATIVE_AUTH_CALLBACKS_JSON: raw },
+      env: {
+        API_WORKER: {
+          fetch: async (request: Request) => {
+            const url = new URL(
+              new URL(request.url).searchParams.get("url") ?? request.url,
+            );
+            const callback = selectNativeAuthCallback(raw, url);
+            return callback
+              ? nativeSignInCallbackFallback(url, callback)
+              : new Response("Not Found", { status: 404 });
+          },
+        },
+      },
       next: async () => new Response("Unexpected route", { status: 404 }),
     });
     expect(response.status).toBe(200);

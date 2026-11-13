@@ -23,6 +23,7 @@ import crypto from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import { decryptApiKey, encryptApiKey } from "../../db/crypto/api-keys";
 import { buildMobileAppAuthCredentialProvenance } from "../../db/mobile-app-auth-credential-policy";
+import { mobileAppAuthClientsRepository } from "../../db/repositories/mobile-app-auth-clients";
 import {
   type MobileAppAuthCleanupCursor,
   type MobileAppAuthGrantBinding,
@@ -34,7 +35,10 @@ import type { ApiKey, NewApiKey } from "../../db/schemas/api-keys";
 import type { MobileAppAuthEnvironment } from "../../db/schemas/mobile-app-auth-grants";
 import { logger } from "../utils/logger";
 import { apiKeysService, isMobileApiKeySecret } from "./api-keys";
-import { selectRegisteredMobileClient } from "./mobile-client-registry";
+import {
+  MOBILE_CLIENT_MAX_CREDENTIAL_TTL_SECONDS,
+  MOBILE_CLIENT_MIN_CREDENTIAL_TTL_SECONDS,
+} from "./mobile-client-registry";
 import { MOBILE_CHECKOUT_RETURN_SUFFIX } from "./subscription-checkout-contract";
 
 export const MOBILE_APP_AUTH_CLIENT_ID = "ai.elizaos.app";
@@ -45,7 +49,6 @@ export const MOBILE_APP_AUTH_CODE_TTL_SECONDS = 5 * 60;
 export const MOBILE_APP_AUTH_CREDENTIAL_TTL_SECONDS = 30 * 24 * 60 * 60;
 /** A sign-in can be renewed for this long; after it the owner signs in again. */
 export const MOBILE_APP_AUTH_RENEWAL_CAP_SECONDS = 180 * 24 * 60 * 60;
-export const MOBILE_APP_AUTH_APP_ID_ENV = "ELIZA_MOBILE_APP_AUTH_APP_ID";
 export const MOBILE_APP_AUTH_ENABLED_ENV = "ELIZA_MOBILE_APP_AUTH_ENABLED";
 export const MOBILE_APP_AUTH_CLEANUP_BATCH_SIZE = 250;
 export const MOBILE_APP_AUTH_CLEANUP_MAX_BATCHES = 8;
@@ -99,9 +102,7 @@ export interface MobileAppAuthRegistration {
 
 export interface MobileAppAuthRuntimeEnv {
   ENVIRONMENT?: unknown;
-  ELIZA_MOBILE_APP_AUTH_APP_ID?: unknown;
   ELIZA_MOBILE_APP_AUTH_ENABLED?: unknown;
-  ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON?: unknown;
 }
 
 export interface MobileAppAuthClientBinding {
@@ -153,65 +154,85 @@ function requireEnvironment(value: unknown): MobileAppAuthEnvironment {
   return value;
 }
 
-export function resolveMobileAppAuthRegistration(
+/** One admission policy for every native client entry point, using primary database state. */
+export async function admitMobileAppAuthRegistration(
   env: MobileAppAuthRuntimeEnv,
-  clientId: string = MOBILE_APP_AUTH_CLIENT_ID,
-): MobileAppAuthRegistration {
+  record: {
+    client: {
+      client_id: string;
+      app_id: string;
+      redirect_uri: string;
+      enabled: boolean;
+      credential_ttl_seconds: number | null;
+    };
+    app: {
+      id: string;
+      is_active: boolean;
+      is_approved: boolean;
+      app_url: string;
+      allowed_origins: string[];
+    };
+  } | null,
+): Promise<MobileAppAuthRegistration> {
   const environment = requireEnvironment(env.ENVIRONMENT);
-  if (env.ELIZA_MOBILE_APP_AUTH_ENABLED === "false") {
-    return invalid(
-      "server_configuration_error",
-      "Mobile App Auth is disabled for this environment",
-    );
-  }
   if (env.ELIZA_MOBILE_APP_AUTH_ENABLED !== "true") {
     return invalid(
       "server_configuration_error",
-      `${MOBILE_APP_AUTH_ENABLED_ENV} must be exactly true or false`,
+      `${MOBILE_APP_AUTH_ENABLED_ENV} must be exactly true`,
     );
   }
-  if (clientId !== MOBILE_APP_AUTH_CLIENT_ID) {
-    const selected = selectRegisteredMobileClient(
-      env.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON,
-      clientId,
-      {
-        clientId: MOBILE_APP_AUTH_CLIENT_ID,
-        appId: env.ELIZA_MOBILE_APP_AUTH_APP_ID,
-        redirectUri: MOBILE_APP_AUTH_REDIRECT_URI,
-      },
-    );
-    if (!selected.ok)
-      return invalid(
-        selected.code,
-        selected.code === "invalid_client"
-          ? "Unknown or disabled mobile App Auth client"
-          : "Invalid server mobile client registry",
-      );
-    const { credentialTtlSeconds, ...registration } = selected.registration;
-    return {
-      ...registration,
-      environment,
-      scopes: MOBILE_APP_AUTH_SCOPES,
-      credentialTtlSeconds: credentialTtlSeconds ?? MOBILE_APP_AUTH_CREDENTIAL_TTL_SECONDS,
-    };
+  if (!record || !record.client.enabled || !record.app.is_active || !record.app.is_approved) {
+    return invalid("invalid_client", "Unknown or disabled mobile App Auth client");
+  }
+  const { client, app } = record;
+  const ttl = client.credential_ttl_seconds ?? MOBILE_APP_AUTH_CREDENTIAL_TTL_SECONDS;
+  let callback: URL;
+  try {
+    callback = new URL(client.redirect_uri);
+  } catch {
+    return invalid("server_configuration_error", "Invalid registered mobile callback");
   }
   if (
-    typeof env.ELIZA_MOBILE_APP_AUTH_APP_ID !== "string" ||
-    !UUID_RE.test(env.ELIZA_MOBILE_APP_AUTH_APP_ID)
-  ) {
+    client.app_id !== app.id ||
+    !UUID_RE.test(app.id) ||
+    !/^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9_-]*)+$/.test(client.client_id) ||
+    client.client_id.length > 200 ||
+    callback.protocol !== "https:" ||
+    callback.username ||
+    callback.password ||
+    callback.search ||
+    callback.hash ||
+    callback.href !== client.redirect_uri ||
+    client.redirect_uri.includes("*") ||
+    !Number.isInteger(ttl) ||
+    ttl < MOBILE_CLIENT_MIN_CREDENTIAL_TTL_SECONDS ||
+    ttl > MOBILE_CLIENT_MAX_CREDENTIAL_TTL_SECONDS
+  )
+    return invalid("server_configuration_error", "Invalid mobile App Auth registration");
+  if (!Array.isArray(app.allowed_origins) || !app.allowed_origins.includes(client.redirect_uri)) {
     return invalid(
       "server_configuration_error",
-      `${MOBILE_APP_AUTH_APP_ID_ENV} must be a registered app UUID`,
+      "Configured mobile App Auth app does not allow the registered redirect",
     );
   }
   return {
-    appId: env.ELIZA_MOBILE_APP_AUTH_APP_ID,
-    clientId: MOBILE_APP_AUTH_CLIENT_ID,
+    appId: app.id,
+    clientId: client.client_id,
     environment,
-    redirectUri: MOBILE_APP_AUTH_REDIRECT_URI,
+    redirectUri: client.redirect_uri,
     scopes: MOBILE_APP_AUTH_SCOPES,
-    credentialTtlSeconds: MOBILE_APP_AUTH_CREDENTIAL_TTL_SECONDS,
+    credentialTtlSeconds: ttl,
   };
+}
+
+export async function resolveMobileAppAuthRegistration(
+  env: MobileAppAuthRuntimeEnv,
+  clientId: string = MOBILE_APP_AUTH_CLIENT_ID,
+): Promise<MobileAppAuthRegistration> {
+  return admitMobileAppAuthRegistration(
+    env,
+    await mobileAppAuthClientsRepository.findRegisteredMobileClient(clientId),
+  );
 }
 
 const MOBILE_AUTH_CALLBACK_SUFFIX = "/auth/callback";
@@ -259,11 +280,14 @@ export async function resolveMobileCredentialRegistration(
   ) {
     return invalid("invalid_client", "Mobile credential has no acknowledged authorization");
   }
-  const registration = resolveMobileAppAuthRegistration(env, grant.client_id);
+  const registration = await resolveMobileAppAuthRegistration(env, grant.client_id);
   if (
     registration.appId !== grant.app_id ||
     registration.environment !== grant.environment ||
-    registration.redirectUri !== grant.redirect_uri
+    registration.redirectUri !== grant.redirect_uri ||
+    !Array.isArray(grant.scopes) ||
+    grant.scopes.length !== registration.scopes.length ||
+    !registration.scopes.every((scope) => grant.scopes.includes(scope))
   ) {
     return invalid("invalid_client", "Mobile credential registration has changed");
   }
@@ -456,19 +480,20 @@ function refuseRenewal(refusal: MobileAppAuthRenewalRefusal, message: string): n
   throw new MobileAppAuthRenewalError(refusal, message);
 }
 
-function renewalRegistration(
+async function renewalRegistration(
   env: MobileAppAuthRuntimeEnv,
   authority: MobileAppAuthRenewalAuthority,
-): MobileAppAuthRegistration {
+): Promise<MobileAppAuthRegistration> {
   const { grant, app } = authority;
   let registration: MobileAppAuthRegistration;
   try {
-    registration = resolveMobileAppAuthRegistration(env, grant.client_id);
+    registration = await resolveMobileAppAuthRegistration(env, grant.client_id);
   } catch (error) {
-    // error-policy:J1 an unknown or disabled client is a refusal of this
-    // credential; any other configuration failure stays a server outage.
     if (error instanceof MobileAppAuthProtocolError && error.protocolCode === "invalid_client") {
-      return refuseRenewal("client_unavailable", "Mobile client is no longer registered");
+      return refuseRenewal(
+        "client_unavailable",
+        "Mobile client is no longer registered or enabled",
+      );
     }
     throw error;
   }
@@ -476,6 +501,9 @@ function renewalRegistration(
     registration.appId !== grant.app_id ||
     registration.environment !== grant.environment ||
     registration.redirectUri !== grant.redirect_uri ||
+    !Array.isArray(grant.scopes) ||
+    grant.scopes.length !== registration.scopes.length ||
+    !registration.scopes.every((scope) => grant.scopes.includes(scope)) ||
     !app?.isActive ||
     !app.isApproved
   ) {
@@ -520,7 +548,7 @@ export async function authorizeMobileAppAuthRenewal(input: {
   ) {
     return refuseRenewal("credential_invalid", "Invalid or expired mobile credential");
   }
-  const registration = renewalRegistration(input.env, authority);
+  const registration = await renewalRegistration(input.env, authority);
   if (
     !owner.isActive ||
     owner.organizationId !== credential.organization_id ||

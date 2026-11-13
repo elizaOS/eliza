@@ -493,6 +493,39 @@ describe("Cloud CF workflow staging certification gate", () => {
     expect(validate).toContain("Certified staging policy bytes admitted");
   });
 
+  test("imports native registrations after certified schema migration and before runtime activation", () => {
+    const release = parse(releaseWorkflow);
+    const migrate = release.jobs["migrate-db"];
+    const schema = migrate.steps.findIndex(
+      (step) => step.name === "Run migrations",
+    );
+    const prepare = migrate.steps.findIndex(
+      (step) =>
+        step.name ===
+        "Complete one-time native registration import before activation",
+    );
+    expect(prepare).toBeGreaterThan(schema);
+    expect(migrate.environment).toBe(`\${{ inputs.target_environment }}`);
+    expect(migrate.steps[schema].run).toContain(
+      "production-effect-certification.ts main-validation",
+    );
+    expect(migrate.steps[prepare].if).toBe(migrate.steps[schema].if);
+    expect(migrate.steps[prepare].run).toContain(
+      "migrate-native-app-auth.ts --release",
+    );
+    expect(
+      migrate.steps[prepare].env.ELIZA_NATIVE_AUTH_CALLBACKS_JSON,
+    ).toBeUndefined();
+    expect(release.jobs["deploy-api"].needs).toContain("migrate-db");
+    expect(release.jobs["deploy-api"].if).toContain(
+      "needs.migrate-db.result == 'success'",
+    );
+    expect(release.jobs["deploy-app"].needs).toContain("deploy-api");
+    expect(release.jobs["deploy-app"].if).toContain(
+      "needs.deploy-api.result == 'success'",
+    );
+  });
+
   test("rechecks the trusted policy and all authorities inside the mutation job", () => {
     const caller = jobBlock(workflow, "release");
     const migrate = jobBlock(releaseWorkflow, "migrate-db");

@@ -3,7 +3,9 @@ import { PGlite } from "@electric-sql/pglite";
 import {
   type MigrationDatabase,
   migrateNativeRegistry,
+  nativeRegistryReleaseReady,
   nativeRegistrySnapshot,
+  prepareNativeRegistryRelease,
   verifyNativeRegistryMigration,
 } from "./migrate-native-app-auth.ts";
 
@@ -12,6 +14,10 @@ const alpha = "22222222-2222-4222-8222-222222222222";
 const retired = "33333333-3333-4333-8333-333333333333";
 const callback = "https://eliza.app/alphaphone/auth/callback";
 const fingerprint = Array(32).fill("AA").join(":");
+const identity = {
+  clusterSha256: "a".repeat(64),
+  authoritySha256: "b".repeat(64),
+};
 const source = {
   primaryAppId: primary,
   clients: JSON.stringify([
@@ -232,7 +238,7 @@ test("Pages failures report only request stage and numeric provider codes", asyn
       token: "not-logged-token",
       project: "eliza-app",
       environment: "staging",
-      fetchImpl: (async () =>
+      fetchImpl: (async (_input: string | URL | Request) =>
         Response.json(
           {
             success: false,
@@ -245,3 +251,117 @@ test("Pages failures report only request stage and numeric provider codes", asyn
     "Native client migration refused: pages_project_http_400_codes_10000",
   );
 });
+
+test("release adopts a complete preparation import once and permits later reviewed deletion without legacy source", async () => {
+  const { pg, database } = await fixture();
+  try {
+    await migrateNativeRegistry(database, source, "staging");
+    const unavailable = async () => {
+      throw new Error("legacy source must not be read");
+    };
+    expect(
+      await prepareNativeRegistryRelease(
+        database,
+        "staging",
+        identity,
+        unavailable,
+      ),
+    ).toEqual({ status: "already_imported" });
+    await pg.exec("DELETE FROM mobile_app_auth_clients");
+    expect(
+      await prepareNativeRegistryRelease(
+        database,
+        "staging",
+        identity,
+        unavailable,
+      ),
+    ).toEqual({ status: "already_imported" });
+    expect(
+      (
+        await pg.query(
+          "SELECT count(*)::int AS count FROM mobile_app_auth_clients",
+        )
+      ).rows,
+    ).toEqual([{ count: 0 }]);
+  } finally {
+    await pg.close();
+  }
+}, 30_000);
+
+test("release imports an absent marker from the complete source and fails closed when first source is unavailable", async () => {
+  const { pg, database } = await fixture();
+  try {
+    await migrateNativeRegistry(database, source, "staging");
+    await pg.exec(
+      "DELETE FROM mobile_app_auth_registry_migrations; DELETE FROM mobile_app_auth_clients;",
+    );
+    await expect(
+      prepareNativeRegistryRelease(database, "staging", identity, async () => {
+        throw new Error("source unavailable");
+      }),
+    ).rejects.toThrow("source unavailable");
+    expect(
+      await nativeRegistryReleaseReady(database, "staging", identity),
+    ).toBe(false);
+    expect(
+      await prepareNativeRegistryRelease(
+        database,
+        "staging",
+        identity,
+        async () => source,
+      ),
+    ).toMatchObject({ status: "verified", clients: 4 });
+    expect(
+      await nativeRegistryReleaseReady(database, "staging", identity),
+    ).toBe(true);
+  } finally {
+    await pg.close();
+  }
+}, 30_000);
+
+test("release refuses a conflicting identity, unsupported marker version, or incompatible schema", async () => {
+  const { pg, database } = await fixture();
+  try {
+    await migrateNativeRegistry(database, source, "production", identity);
+    await expect(
+      nativeRegistryReleaseReady(database, "production", {
+        ...identity,
+        clusterSha256: "c".repeat(64),
+      }),
+    ).rejects.toThrow("migration_identity_conflict");
+    await pg.exec(
+      "UPDATE mobile_app_auth_registry_migrations SET import_version=2",
+    );
+    await expect(
+      nativeRegistryReleaseReady(database, "production", identity),
+    ).rejects.toThrow("migration_marker_invalid");
+    await pg.exec(
+      "UPDATE mobile_app_auth_registry_migrations SET import_version=1; ALTER TABLE mobile_app_auth_clients DROP COLUMN browser_sign_in",
+    );
+    await expect(
+      nativeRegistryReleaseReady(database, "production", identity),
+    ).rejects.toThrow("migration_schema_mismatch");
+  } finally {
+    await pg.close();
+  }
+}, 30_000);
+
+test("release refuses to bind a preparation marker after imported rows changed", async () => {
+  const { pg, database } = await fixture();
+  try {
+    await migrateNativeRegistry(database, source, "staging");
+    await pg.exec("UPDATE mobile_app_auth_clients SET enabled=false");
+    await expect(
+      nativeRegistryReleaseReady(database, "staging", identity),
+    ).rejects.toThrow("imported_registration_changed");
+    expect(
+      (
+        await pg.query(
+          "SELECT cluster_sha256 FROM mobile_app_auth_registry_migrations",
+        )
+      ).rows,
+    ).toEqual([{ cluster_sha256: null }]);
+  } finally {
+    await pg.close();
+  }
+}, 30_000);
