@@ -1468,7 +1468,7 @@ async function collectCalendarChangeSection(
       .slice(0, 40);
     const metadataError =
       invalidMetadata > 0
-        ? `${invalidMetadata} Calendar records have invalid source metadata or timestamps; their edit times are unavailable.`
+        ? `${summarizeCount(invalidMetadata, "Calendar record")} ${invalidMetadata === 1 ? "has" : "have"} invalid source metadata or timestamps; edit times are unavailable.`
         : null;
     if (metadataError) {
       runtime.reportError(
