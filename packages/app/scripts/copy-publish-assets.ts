@@ -16,7 +16,6 @@ const packageDirectory = path.resolve(
 const repositoryRoot = path.resolve(packageDirectory, "../..");
 
 export const PUBLISH_ASSET_PATHS = Object.freeze([
-  "src/styles",
   // Consumer entrypoints and their shared dependencies are explicit: adding a
   // repository script must not silently expand the installed package.
   "scripts/README.md",

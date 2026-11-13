@@ -64,7 +64,7 @@ it("publishes the relative dependency closure of every shipped script module", (
 it("ships consumer build tools without private repository test dependencies", async () => {
   const fixture = mkdtempSync(path.join(tmpdir(), "app-payload-"));
   try {
-    for (const root of ["src/styles", "scripts", "platforms"]) {
+    for (const root of ["scripts", "platforms"]) {
       mkdirSync(path.dirname(path.join(fixture, root)), { recursive: true });
       cpSync(path.join(packageRoot, root), path.join(fixture, root), {
         recursive: true,
