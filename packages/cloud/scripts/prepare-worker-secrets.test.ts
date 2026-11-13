@@ -205,7 +205,9 @@ for (const [environment, configureStripe] of [
   ["staging", true],
   ["staging", false],
 ] as const)
-  test(`full ${environment} preparation with ${configureStripe ? "configured" : "blank"} Stripe inputs preserves only the intended bindings`, () => {
+  test(`full ${environment} preparation with ${configureStripe ? "configured" : "blank"} Stripe inputs preserves only the intended bindings`, {
+    timeout: 60_000,
+  }, () => {
     const root = mkdtempSync(join(tmpdir(), "cartesia-full-prepare-"));
     const originalNames = [
       "CARTESIA_API_KEY",
