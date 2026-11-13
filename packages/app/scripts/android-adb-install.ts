@@ -10,6 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  assertSystemApkSigningEnv,
   resolveApk,
   SYSTEM_APK_CANDIDATES,
   verifyInstalledApkHash,
@@ -137,6 +138,11 @@ if (!commandExists("adb")) {
 }
 
 if (shouldBuild) {
+  try {
+    assertSystemApkSigningEnv();
+  } catch (error) {
+    fail("Android signing inputs missing", error.message);
+  }
   const build = run("bun", ["run", "build:android:system"], {
     stdio: "inherit",
   });

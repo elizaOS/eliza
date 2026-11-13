@@ -194,6 +194,14 @@ export async function runAndroidBuild(
     target,
     { settingsGradle: readAndroidSettingsGradle() },
   );
+  if (target.gradle.finalTask === ":app:assembleRelease") {
+    // Signed and unsigned outputs share this directory; clear it so the
+    // audited, staged and installed APK are all this build's.
+    fs.rmSync(path.join(androidDir, "app/build/outputs/apk/release"), {
+      recursive: true,
+      force: true,
+    });
+  }
   await run("./gradlew", metadataArgs, {
     cwd: androidDir,
     env: buildEnv,

@@ -64,6 +64,27 @@ export const SYSTEM_APK_CANDIDATES = [
   ),
   path.join(appDir, "android/app/build/outputs/apk/release/app-release.apk"),
 ];
+const SYSTEM_APK_SIGNING_ENV = [
+  "ELIZAOS_KEYSTORE_PATH",
+  "ELIZAOS_KEYSTORE_PASSWORD",
+  "ELIZAOS_KEY_ALIAS",
+  "ELIZAOS_KEY_PASSWORD",
+];
+
+/**
+ * Throws before a `build:android:system` run that could only produce an
+ * unsigned, uninstallable APK, so a local lane fails at once instead of after
+ * the full build.
+ */
+export function assertSystemApkSigningEnv(env = process.env) {
+  const missing = SYSTEM_APK_SIGNING_ENV.filter((name) => !env[name]?.trim());
+  if (missing.length === 0) return;
+  throw new Error(
+    `build:android:system installs only when signed; missing ${missing.join(", ")}. A throwaway key:\n` +
+      `  keytool -genkeypair -keystore /tmp/eliza-e2e.jks -storepass android -alias androiddebugkey -keypass android -dname "CN=Eliza E2E" -keyalg RSA -keysize 2048 -validity 1 -noprompt\n` +
+      `  export ELIZAOS_KEYSTORE_PATH=/tmp/eliza-e2e.jks ELIZAOS_KEYSTORE_PASSWORD=android ELIZAOS_KEY_ALIAS=androiddebugkey ELIZAOS_KEY_PASSWORD=android`,
+  );
+}
 const DEFAULT_RENDERER_DIST = path.join(appDir, "web-dist");
 
 // ---------------------------------------------------------------------------

@@ -21,6 +21,7 @@ import {
   androidApkNeedsBuild,
   androidDistNeedsBuild,
   androidInstallDecision,
+  assertSystemApkSigningEnv,
   ensureEmulatorBooted,
   listDevices,
   prepareAndroidE2eDevice,
@@ -269,6 +270,7 @@ function currentHeadCommit() {
 // probes use. Its release build installs only when signed: set
 // ELIZAOS_KEYSTORE_PATH and the related ELIZAOS_KEY* variables.
 function buildAndroidApk(bundle) {
+  assertSystemApkSigningEnv();
   log("building WebView-debuggable APK via build:android:system…");
   run(bundle, "build Android APK", "bun", ["run", "build:android:system"], {
     ELIZA_MOBILE_REPO_ROOT: elizaRoot,

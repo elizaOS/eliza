@@ -13,6 +13,7 @@ import {
   captureAndroidScreenshot,
 } from "../../app/scripts/lib/android-capture.ts";
 import {
+  assertSystemApkSigningEnv,
   ensureEmulatorBooted,
   ensureEmulatorPermissive,
   installApk,
@@ -113,6 +114,7 @@ async function ensureApk(logSink) {
     }
   }
 
+  assertSystemApkSigningEnv();
   await runCommandWithLog(
     "bun",
     ["run", "--cwd", "packages/app", "build:android:system"],
