@@ -1,6 +1,6 @@
 // @vitest-environment node
 /** Real browser capture -> app host -> production relay, with explicit zero-price provider ports. */
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -122,7 +122,42 @@ const facts = { captures: 0, sockets: 0, activeTracks: 0, mints: 0, errors: [], 
 const status = document.getElementById('status');
 const display = () => { status.textContent = JSON.stringify(facts, null, 2); };
 const send = (url, init = {}) => fetch(url, { ...init, headers: { ...init.headers, Authorization: 'Bearer controlled-owner-session' } });
+// Record the actual playback graph. The provider tone remains explicitly synthetic.
+const audioReady = Promise.withResolvers();
+function capturedPlaybackContext() {
+  const context = new AudioContext({ sampleRate: 16000 });
+  const destination = context.destination;
+  const tap = context.createMediaStreamDestination();
+  const output = context.createGain();
+  output.connect(destination);
+  output.connect(tap);
+  const chunks = [];
+  const recorder = new MediaRecorder(tap.stream, { mimeType: 'audio/webm;codecs=opus' });
+  recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
+  recorder.onerror = (event) => audioReady.reject(event.error);
+  recorder.onstop = async () => {
+    try {
+      const bytes = new Uint8Array(await new Blob(chunks, { type: recorder.mimeType }).arrayBuffer());
+      facts.outputAudioBytes = bytes.length;
+      display();
+      audioReady.resolve(Array.from(bytes));
+    } catch (error) { audioReady.reject(error); }
+  };
+  facts.outputAudioStartedAt = Date.now();
+  recorder.start(1000);
+  Object.defineProperty(context, 'destination', { value: output });
+  const close = context.close.bind(context);
+  let closing;
+  context.close = () => closing ??= (async () => {
+    if (recorder.state !== 'inactive') recorder.stop();
+    await audioReady.promise;
+    for (const track of tap.stream.getTracks()) track.stop();
+    await close();
+  })();
+  return context;
+}
 const client = createVoiceSessionClient({ agentId: ${JSON.stringify(agentId)}, conversationId: ${JSON.stringify(conversationId)}, fetch: send, requireTurnTerminal: true,
+  createPlaybackAudioContext: capturedPlaybackContext,
   getConsentNonce: async () => (await (await send('/api/v1/voice/session/consent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json()).consentNonce,
   getUserMedia: async (constraints) => { const stream = await navigator.mediaDevices.getUserMedia(constraints); facts.captures++; for (const track of stream.getTracks()) { facts.activeTracks++; track.addEventListener('ended', () => { facts.activeTracks--; display(); }); const stop = track.stop.bind(track); track.stop = () => { if (track.readyState !== 'ended') facts.activeTracks--; stop(); display(); }; } display(); return stream; },
   webSocketFactory: (url) => { facts.sockets++; display(); return new WebSocket(url); },
@@ -134,7 +169,7 @@ const client = createVoiceSessionClient({ agentId: ${JSON.stringify(agentId)}, c
 });
 document.getElementById('start').onclick = async () => { await client.start(); display(); };
 document.getElementById('stop').onclick = async () => { await client.stop(); display(); };
-window.voiceEvidence = { snapshot: () => ({ ...facts }), stop: () => client.stop() }; display();`;
+window.voiceEvidence = { snapshot: () => ({ ...facts }), stop: () => client.stop(), audio: () => audioReady.promise }; display();`;
   const bundle = await build({
     stdin: { contents: entry, resolveDir: root, loader: "ts" },
     bundle: true,
@@ -299,8 +334,21 @@ window.voiceEvidence = { snapshot: () => ({ ...facts }), stop: () => client.stop
     expect(replies).toBeGreaterThanOrEqual(2);
     expect(relay.errors).toEqual([]);
     expect(browserErrors).toEqual([]);
+    const recordedAudio = Buffer.from(
+      await page.evaluate("window.voiceEvidence.audio()"),
+    );
+    expect(recordedAudio.byteLength).toBeGreaterThan(1000);
+    const audioPath = path.join(output, "synthetic-playback.webm");
+    await writeFile(audioPath, recordedAudio);
     const evidence = {
       video: await page.video()?.path(),
+      audio: {
+        path: audioPath,
+        bytes: recordedAudio.byteLength,
+        sha256: createHash("sha256").update(recordedAudio).digest("hex"),
+        source: "captured browser playback graph; synthetic provider tone",
+        startedAt: live.outputAudioStartedAt,
+      },
       scope:
         "controlled browser/host/relay; synthetic STT/TTS; zero price; no live service or physical-device qualification",
       live,
