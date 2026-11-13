@@ -1,0 +1,44 @@
+{
+	"sources": [
+		"packages/core/src/utils/confirmation.ts",
+		"packages/core/test/confirmation-reply-model.test.ts",
+		"packages/core/test/confirmation.test.ts",
+		"packages/core/quint/check-confirmation-reply.mjs"
+	],
+	"conformance": "packages/core/quint/check-confirmation-reply.mjs",
+	"bounds": "One destructive-action prompt in one of the seven languages whose yes and no words the classifier lists: English, Spanish, French, German and Korean, which put a space between words, and Chinese and Japanese, which do not. Each reply has one to three words drawn from the language's yes word, its word for \"not\" and an ordinary word; a comma follows the first word, and in Chinese and Japanese the other words run together with no space. The conformance script replays every generated reply sequence through requireConfirmation on an initialized runtime and requires all 273 one-reply cases (39 per language). Questions, thanks, politeness fillers, emoji, other no words (never, cancel, wait) and other languages are covered by test/confirmation.test.ts, not by this model. Under weak fairness of a settling reply the prompt is eventually confirmed or cancelled. Explicit stuttering lets the user stay silent or keep answering unclearly, so the same claim without fairness must fail. No reply-time bound is proved.",
+	"cases": [
+		{
+			"name": "first-replies-in-seven-languages",
+			"main": "ConfirmationReply",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"NoWordCancels",
+				"NoWordNeverConfirms",
+				"PlainYesConfirms",
+				"UnclearReplyAsksAgain",
+				"TypeOK"
+			],
+			"temporal": ["ReplySettles", "ReplySettlesWithoutFairness"],
+			"maxSteps": 3,
+			"samples": 12000,
+			"temporalChecks": [
+				{
+					"property": "ReplySettles",
+					"expect": "holds",
+					"assumptions": [
+						"Every continuously enabled settling reply (one with a no word or one that opens with a yes) eventually arrives (weak fairness). This checks that such a reply confirms or cancels the prompt, not how long the user takes to answer."
+					]
+				},
+				{
+					"property": "ReplySettlesWithoutFairness",
+					"expect": "counterexample",
+					"assumptions": [
+						"No reply fairness is assumed. The user may stay silent or keep answering unclearly forever, so a temporal loop counterexample is required."
+					]
+				}
+			]
+		}
+	]
+}
