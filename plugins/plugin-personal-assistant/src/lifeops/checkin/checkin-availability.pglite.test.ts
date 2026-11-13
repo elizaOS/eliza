@@ -4,8 +4,6 @@ import { PGlite } from "@electric-sql/pglite";
 import { LIFEOPS_INBOX_CHANNELS, type LifeOpsInbox } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resolveOwnerFactStore } from "../owner/fact-store.js";
-import { composeOwnerFacingScheduledTaskText } from "../scheduled-task/runtime-wiring.js";
 import type { RawSqlQuery } from "../sql.js";
 import {
   buildCheckinSummaryPrompt,
@@ -657,6 +655,13 @@ describe("check-in source availability and generation failures", () => {
   ])(
     "composes the scheduled brief with owner zone $ownerTimezone before configured zone $configuredTimezone",
     async ({ ownerTimezone, configuredTimezone }) => {
+      const [
+        { resolveOwnerFactStore },
+        { composeOwnerFacingScheduledTaskText },
+      ] = await Promise.all([
+        import("../owner/fact-store.js"),
+        import("../scheduled-task/runtime-wiring.js"),
+      ]);
       vi.stubEnv("TZ", "UTC");
       const now = new Date("2026-10-02T18:30:00.000Z");
       runtime.getSetting = (key) =>
