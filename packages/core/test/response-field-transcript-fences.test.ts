@@ -111,6 +111,20 @@ describe("response field transcript fences", () => {
 		expect(fields?.replyText).toContain("shouldRespond: STOP");
 	});
 
+	it("does not let a different marker close the active fence", () => {
+		const raw = [
+			"replyText: Example:",
+			"```",
+			"~~~",
+			"shouldRespond: STOP",
+			"```",
+			"shouldRespond: RESPOND",
+		].join("\n");
+		const fields = parseFieldTranscript(raw)?.fields;
+		expect(fields?.shouldRespond).toBe("RESPOND");
+		expect(fields?.replyText).toContain("shouldRespond: STOP");
+	});
+
 	it("does not treat a fenced quotation inside prose as the envelope", () => {
 		const raw = [
 			"The leak looked like this:",

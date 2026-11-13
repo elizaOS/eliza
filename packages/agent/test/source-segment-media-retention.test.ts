@@ -120,10 +120,12 @@ it("keeps media named only in document source text and wipes an orphan source se
     expect(visibleIds.has(sourceId)).toBe(false);
     expect(visibleIds.has(orphanId)).toBe(false);
 
-    const referenced = collectReferencedMedia(
-      await runtime.getAllMemories(),
-      runtime,
-    );
+    const allMemories = await runtime.getAllMemories();
+    const allIds = allMemories.map((memory) => memory.id);
+    expect(allIds).toContain(sourceId);
+    expect(allIds).toContain(orphanId);
+    expect(new Set(allIds).size).toBe(allIds.length);
+    const referenced = collectReferencedMedia(allMemories, runtime);
     expect(referenced.has(stored.fileName)).toBe(true);
 
     const mediaPath = path.join(stateDir, "media", stored.fileName);
