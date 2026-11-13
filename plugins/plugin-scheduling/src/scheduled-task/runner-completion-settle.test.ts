@@ -50,7 +50,15 @@ const modelCases: ModelCase[] = process.env.ELIZA_COMPLETION_SETTLE_MODEL_CASES
   ? JSON.parse(
       readFileSync(process.env.ELIZA_COMPLETION_SETTLE_MODEL_CASES, "utf8"),
     )
-  : [
+  : // The six interleavings `check-completion-settle.mjs` generates, so a
+    // plain vitest run replays both winners too.
+    [
+      {
+        order: ["r1", "c1", "r2"],
+        phase: { "1": "completed", "2": "terminal" },
+        children: 1,
+        completedLogs: 1,
+      },
       {
         order: ["r1", "r2", "c1", "c2"],
         phase: { "1": "completed", "2": "raced" },
@@ -58,8 +66,26 @@ const modelCases: ModelCase[] = process.env.ELIZA_COMPLETION_SETTLE_MODEL_CASES
         completedLogs: 1,
       },
       {
-        order: ["r1", "c1", "r2"],
-        phase: { "1": "completed", "2": "terminal" },
+        order: ["r1", "r2", "c2", "c1"],
+        phase: { "1": "raced", "2": "completed" },
+        children: 1,
+        completedLogs: 1,
+      },
+      {
+        order: ["r2", "c2", "r1"],
+        phase: { "1": "terminal", "2": "completed" },
+        children: 1,
+        completedLogs: 1,
+      },
+      {
+        order: ["r2", "r1", "c1", "c2"],
+        phase: { "1": "completed", "2": "raced" },
+        children: 1,
+        completedLogs: 1,
+      },
+      {
+        order: ["r2", "r1", "c2", "c1"],
+        phase: { "1": "raced", "2": "completed" },
         children: 1,
         completedLogs: 1,
       },
@@ -170,7 +196,14 @@ function makeHarness() {
     park = null;
   }
 
-  return { runner, scheduleFiredCheckin, settlement, armPark, disarmPark };
+  return {
+    runner,
+    store,
+    scheduleFiredCheckin,
+    settlement,
+    armPark,
+    disarmPark,
+  };
 }
 
 async function outcome(
@@ -223,6 +256,33 @@ describe("owner-reply completion settlement", () => {
       status: "completed",
       children: 1,
       completedLogs: 1,
+    });
+  });
+
+  it("fails a completion closed when the owner snoozes the task between its read and its commit", async () => {
+    const h = makeHarness();
+    const task = await h.scheduleFiredCheckin();
+    const held = h.armPark();
+    const completing = outcome(
+      h.runner.evaluateCompletion(task.taskId, {
+        repliedAtIso: REPLIED_AT_ISO,
+      }),
+    );
+    await held.entered.promise;
+    h.disarmPark();
+    const snoozed = await h.runner.apply(task.taskId, "snooze", {
+      minutes: 30,
+    });
+    held.release.release();
+
+    expect(await completing).toBe("raced");
+    // Snooze re-arms the task; the delayed completion must not overwrite it.
+    expect(snoozed.state.status).toBe("scheduled");
+    expect(await h.store.get(task.taskId)).toEqual(snoozed);
+    expect(await h.settlement(task.taskId)).toEqual({
+      status: "scheduled",
+      children: 0,
+      completedLogs: 0,
     });
   });
 

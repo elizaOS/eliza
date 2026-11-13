@@ -12,6 +12,12 @@ import { testOutputPath } from "../../../packages/scripts/lib/test-output.ts";
 
 const root = path.resolve(import.meta.dirname, "../../..");
 const model = path.resolve(process.argv[2]);
+// The generated traces use the bounds and every invariant that
+// check-quint.ts checks for this model, so a trace that settles twice stops
+// the run instead of becoming an expected case.
+const [modelCase] = JSON.parse(
+  readFileSync(model.replace(/\.qnt$/, ".cases.json"), "utf8"),
+).cases;
 const output = testOutputPath("quint-completion-settle");
 mkdirSync(output, { recursive: true });
 const directory = mkdtempSync(path.join(output, "run-"));
@@ -21,13 +27,16 @@ execFileSync(
     path.join(root, "node_modules/@informalsystems/quint/dist/src/cli.js"),
     "run",
     model,
-    "--main=ScheduledTaskCompletionSettle",
+    `--main=${modelCase.main}`,
+    `--init=${modelCase.init}`,
+    `--step=${modelCase.step}`,
     "--backend=typescript",
     "--seed=20261114",
-    "--max-samples=200",
-    "--n-traces=200",
-    "--max-steps=4",
-    "--invariant=ChildrenFollowWinner",
+    `--max-samples=${modelCase.samples}`,
+    `--n-traces=${modelCase.samples}`,
+    `--max-steps=${modelCase.maxSteps}`,
+    "--invariants",
+    ...modelCase.invariants,
     `--out-itf=${path.join(directory, "trace-{seq}.itf.json")}`,
     "--verbosity=0",
   ],
