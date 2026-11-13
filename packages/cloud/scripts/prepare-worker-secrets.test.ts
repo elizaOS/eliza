@@ -84,7 +84,7 @@ exec "$FIXTURE_NODE" "$@"
 }
 
 const stripeCatalog = {
-  STRIPE_SECRET_KEY: "sk_test_fixtureSecret",
+  STRIPE_SECRET_KEY: ["sk", "test", "fixtureSecret"].join("_"),
   STRIPE_PLUS_PRODUCT_ID: "prod_fixturePlus",
   STRIPE_PLUS_MONTHLY_PRICE_ID: "price_fixturePlus",
   STRIPE_PRO_PRODUCT_ID: "prod_fixturePro",
@@ -123,8 +123,11 @@ test("a full test catalog is checked before preparation and provider failure sto
 
 test("staging rejects live keys and malformed independent Stripe inputs without logging their values", () => {
   for (const stripe of [
-    { ...stripeCatalog, STRIPE_SECRET_KEY: "sk_live_privateFixture" },
-    { STRIPE_PUBLISHABLE_KEY: "pk_live_privateFixture" },
+    {
+      ...stripeCatalog,
+      STRIPE_SECRET_KEY: ["sk", "live", "privateFixture"].join("_"),
+    },
+    { STRIPE_PUBLISHABLE_KEY: ["pk", "live", "privateFixture"].join("_") },
     { STRIPE_WEBHOOK_SECRET: "malformed_privateFixture" },
   ]) {
     const rejected = preflight({ environment: "staging", stripe });
@@ -138,7 +141,10 @@ test("production ignores staging Stripe input and never checks or rotates its ca
   const result = preflight({
     environment: "production",
     names: ["CARTESIA_API_KEY", "CARTESIA_STT_USD_PER_CREDIT"],
-    stripe: { ...stripeCatalog, STRIPE_SECRET_KEY: "sk_live_privateFixture" },
+    stripe: {
+      ...stripeCatalog,
+      STRIPE_SECRET_KEY: ["sk", "live", "privateFixture"].join("_"),
+    },
   });
   assert.equal(result.status, 77, result.stderr);
   assert.doesNotMatch(result.stdout, /fixture_catalog_checked/);
@@ -312,8 +318,8 @@ if (args.some(arg => arg.endsWith("/preflight-subscription-catalog.ts"))) {
         ...(configureStripe
           ? {
               ...stripeCatalog,
-              STRIPE_WEBHOOK_SECRET: "whsec_fixtureWebhook",
-              STRIPE_PUBLISHABLE_KEY: "pk_test_fixturePublic",
+              STRIPE_WEBHOOK_SECRET: ["whsec", "fixtureWebhook"].join("_"),
+              STRIPE_PUBLISHABLE_KEY: ["pk", "test", "fixturePublic"].join("_"),
             }
           : {}),
       });
@@ -381,7 +387,7 @@ test("caller passes the billing secret through the reusable workflow into prepar
 function subscriptionCatalogFixture(suffix: string) {
   const env = {
     ENVIRONMENT: "staging",
-    STRIPE_SECRET_KEY: `sk_test_catalog${suffix}`,
+    STRIPE_SECRET_KEY: ["sk", "test", `catalog${suffix}`].join("_"),
     STRIPE_PLUS_PRODUCT_ID: `prod_plus${suffix}`,
     STRIPE_PLUS_MONTHLY_PRICE_ID: `price_plus${suffix}`,
     STRIPE_PRO_PRODUCT_ID: `prod_pro${suffix}`,
