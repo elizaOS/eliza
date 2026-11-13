@@ -183,7 +183,11 @@
         },
         {
           "classname": "",
-          "name": "production reports no phases; a single-window deployment offers no renewal"
+          "name": "production logs bootstrap phases while preserving the public response"
+        },
+        {
+          "classname": "",
+          "name": "production traces the prepared recovery request without exposing identifiers"
         },
         {
           "classname": "",
