@@ -2,6 +2,7 @@
   "sources": [
     "packages/auth/src/accounts/account-pool.ts",
     "packages/auth/src/accounts/account-selection.ts",
+    "packages/auth/src/accounts/coding-account-bridge.ts",
     "packages/auth/src/accounts/multi-account-rotation.test.ts"
   ],
   "conformance": "packages/auth/quint/check-account-pool-priority.mjs",
@@ -11,7 +12,8 @@
       "Two providers and three accounts, with the same visible id in both providers. Three cold priority calls, at most one pending call, a singleton or absent allowlist and exclusion, and a stable inventory order. Preview supports the allowlist and no exclusion.",
       "The completion clock has values0..2. A known cooldown and an optional subscription expiry use time1. An unknown cooldown and parked health remain unavailable. Enabled flags and health snapshots stay fixed while a call waits.",
       "At most one priority update per account in the primary provider and one recorded-use change. Last-use values represent ordinal recency. These updates occur between calls. The source-linked AccountPoolHealth model covers expiry write guards and generation-aware metadata effects.",
-      "Session affinity, alternate ranking strategies, concurrent metadata writers during the expiry await, failed expiry writes, account replacement, arbitrary lists and credential resolution are outside this case."
+      "Two logical storage roots model the pool's captured policy and an independently changing ambient state directory. Credential lookup records only its store identity. The linked real encrypted-store test checks Claude token injection and Codex materialization; token refresh and credential failure are covered by the separate health and broker models.",
+      "Session affinity, alternate ranking strategies, concurrent metadata writers during the expiry await, failed expiry writes, account replacement, arbitrary lists and complete credential resolution are outside this case."
     ]
   },
   "cases": [
@@ -25,7 +27,8 @@
         "PickStaysInRequestedProviderAndIds",
         "PickRespectsCompletionClock",
         "PriorityThenPersistedAgeOrdersPicks",
-        "NoPickExactlyWhenNoEligibleAccount"
+        "NoPickExactlyWhenNoEligibleAccount",
+        "CredentialResolutionUsesPoolStore"
       ],
       "temporal": ["PriorityCallsSettle"],
       "temporalChecks": [

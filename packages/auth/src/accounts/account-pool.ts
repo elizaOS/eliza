@@ -1443,7 +1443,7 @@ export function getDefaultAccountPool(): AccountPool {
         deleteAccountMeta(providerId, accountId, storagePolicy),
     });
     installAnthropicBridge(cachedDefaultPool);
-    installCodingAgentSelectorBridge(cachedDefaultPool);
+    installCodingAgentSelectorBridge(cachedDefaultPool, storagePolicy);
   }
   return cachedDefaultPool;
 }
