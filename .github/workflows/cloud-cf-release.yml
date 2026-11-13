@@ -1735,9 +1735,14 @@ jobs:
             trap restore_legacy_onboarding_secrets ERR
             delete_legacy_onboarding_secret ELIZA_ONBOARDING_LOGIN_APP_URL
             delete_legacy_onboarding_secret ELIZA_APP_ONBOARDING_LOGIN_APP_URL
-            # keep_vars retains these after their removal from wrangler.toml. Nothing
-            # reads them, and the Worker needs room below 350 text bindings.
-            for name in FORCE_REDIS_EVENTS NEXT_PUBLIC_NETWORK DATABASE_REGION; do
+            # keep_vars retains retired configuration. These names have no runtime
+            # consumers; remove only their versioned plain-text bindings so active
+            # settings and Stripe credentials stay within the 350-binding limit.
+            for name in FORCE_REDIS_EVENTS NEXT_PUBLIC_NETWORK DATABASE_REGION \
+              INFERENCE_AUTH_CACHE_ENABLED INFERENCE_BILLING_LEDGER \
+              INFERENCE_DEFERRED_ADMISSION INFERENCE_HOT_PATH_CACHES \
+              INFERENCE_OPTIMISTIC_BILLING INFERENCE_SNAPSHOT_ADMISSION_ENABLED \
+              INFERENCE_STRONG_REVOCATION_ENABLED; do
               recheck_canonical_source
               bun "$CHECKOUT_DIR/packages/cloud/scripts/ensure-worker-secret-absent.ts" \
                 --versions --plain-text "$name" --env staging
