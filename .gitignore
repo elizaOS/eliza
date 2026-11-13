@@ -976,7 +976,6 @@ railway.json
 # archive (upload died outright at ~1GB — staging run 31877865041).
 .dockerignore
 !packages/app/deploy/.dockerignore
-packages/ui/src/components/shell/__e2e__/output-fused-wake-integration/
 
 # widget scroll + tap-target certification evidence (#14380)
 packages/ui/src/testing/__e2e__/output-widget-cert/
