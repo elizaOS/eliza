@@ -880,7 +880,14 @@ export class BirdeyeService extends Service {
       `${this.birdeyeUrl("v1/wallet/tx_list")}?wallet=${publicKey}&limit=100`,
       birdeyeFetchOptions,
     );
-    const resp = (await res.json()) as WalletTransactionHistoryResponse;
+    const resp = (await res.json()) as WalletTransactionHistoryResponse & {
+      message?: string;
+    };
+    if (!res.ok || !resp.success || !resp.data) {
+      throw new Error(
+        `Birdeye wallet transaction history failed (${res.status})${resp.message ? `: ${resp.message}` : ""}`,
+      );
+    }
     const data = resp.data[chain] || [];
     if (data) {
       this.setCacheTimed(key, data, tsInMs);
