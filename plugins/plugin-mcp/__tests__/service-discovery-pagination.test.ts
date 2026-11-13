@@ -23,7 +23,10 @@ const fixture = fileURLToPath(new URL("./fixtures/paginated-server.mjs", import.
 const lists = ["tools", "resources", "resourceTemplates"] as const;
 
 afterEach(async () => {
-  for (const runtime of runtimes.splice(0)) await runtime.stop();
+  for (const runtime of runtimes.splice(0)) {
+    await runtime.stop();
+    await runtime.close();
+  }
 });
 
 async function start(mode: string, failingList = "", peer = fixture) {
@@ -34,9 +37,10 @@ async function start(mode: string, failingList = "", peer = fixture) {
       settings: {
         mcp: {
           servers: {
-            pages: { type: "stdio", command: "node", args: [peer, mode, failingList] },
+            // Use the package's pinned runtime for these real SDK peers.
+            pages: { type: "stdio", command: "bun", args: [peer, mode, failingList] },
             ...(mode === "endless"
-              ? { healthy: { type: "stdio", command: "node", args: [fixture, "single"] } }
+              ? { healthy: { type: "stdio", command: "bun", args: [fixture, "single"] } }
               : {}),
           },
         },
