@@ -2,7 +2,7 @@
   "schema": "gpt55_harvest_manifest",
   "schemaVersion": 1,
   "generatedAt": "2026-09-24T01:08:35.716Z",
-  "repoRoot": "/Users/shawwalters/v3",
+  "repoRoot": ".",
   "goal": "Run every elizaOS scenario+benchmark+e2e through the configured API model, harvest correct eliza_native_v1 trajectories, GEPA-repair failures, fine-tune on Nebius.",
   "provider": {
     "mechanism": "API provider selected by packages/testing/src/live-provider.ts",
