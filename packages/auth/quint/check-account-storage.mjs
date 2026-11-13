@@ -11,6 +11,9 @@ import { requireVitestConformance } from "../../scripts/lib/vitest-conformance.t
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const testFile = "packages/auth/src/auth/account-storage-subprocess.test.ts";
 const requiredTests = [
+  "account storage subprocess ownership refuses a missing runtime vault key even under test process signals",
+  "account storage subprocess ownership keeps runtime credentials readable after bun test signals and process restart",
+  "account storage subprocess ownership keeps runtime credentials readable after node-test test signals and process restart",
   "account storage subprocess ownership uses explicit isolated authority under bun",
   "account storage subprocess ownership uses explicit isolated authority under node-test",
   "account storage subprocess ownership does not let an inherited global bypass authorize a symlink root",
@@ -43,6 +46,7 @@ const sources = [
   "packages/auth/src/auth/account-storage.ts",
   testFile,
   "packages/auth/test/fixtures/storage-ownership-probe.ts",
+  "packages/auth/test/fixtures/account-storage-subprocess-probe.ts",
   "packages/auth/quint/AccountStorageLock.qnt",
   "packages/auth/quint/AccountStorageReset.qnt",
   "packages/scripts/lib/vitest-conformance.ts",
@@ -92,6 +96,7 @@ const evidence = {
   tests,
   report: resultPath,
   limitations: [
+    "Runtime vault selection and persistence are exercised by real Bun/Node subprocesses; the finite ownership graph does not prove cryptography or the key loader.",
     "Controlled process schedules, not every TLC interleaving.",
     "Power-loss and arbitrary kernel I/O failures are not simulated exhaustively.",
     "Interrupted reset remains an unknown outcome; host callback recovery is caller-owned.",

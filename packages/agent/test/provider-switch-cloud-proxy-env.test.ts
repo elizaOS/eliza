@@ -34,8 +34,6 @@ const proxyEnvKeys = [
   "ELIZA_BRAIN_PROVIDER",
   "CEREBRAS_API_KEY",
   "EVOLINK_API_KEY",
-  "ELIZA_MOCK_OPENAI_BASE",
-  "ELIZA_MOCK_ANTHROPIC_BASE",
 ] as const;
 
 beforeEach(async () => {
