@@ -7,7 +7,7 @@
  * fault never surfaces. A malformed entry can never match, so raising it once
  * nothing matched changes no accepted redirect.
  */
-import { afterAll, beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, spyOn, test } from "bun:test";
 import type { createPGLiteDb } from "../db/pglite.ts";
 
 let database: Awaited<ReturnType<typeof createPGLiteDb>>;
@@ -46,6 +46,8 @@ test("reports an unparseable allowlist entry instead of a policy denial", async 
     delete process.env[key];
   }
 
+  const { logger } = await import("@elizaos/core");
+  const warnings = spyOn(logger, "warn");
   try {
     const { assertAllowedOAuthRedirectUri, OAuthRedirectAllowlistEntryError } =
       await import("../api/services/auth-lifecycle");
@@ -70,6 +72,16 @@ test("reports an unparseable allowlist entry instead of a policy denial", async 
     expect((thrown as Error).message).not.toContain(
       "redirect_uri is not allowed for this tenant",
     );
+    expect(JSON.stringify(thrown)).not.toContain(
+      "app.example.org/other/callback",
+    );
+    expect(JSON.stringify(warnings.mock.calls)).not.toContain(
+      "app.example.org/other/callback",
+    );
+    expect(warnings).toHaveBeenCalledWith(
+      { code: "OAUTH_REDIRECT_ALLOWLIST_ENTRY_INVALID" },
+      "OAuth redirect_uri allowlist contains an unparseable entry",
+    );
 
     // A parseable allowlist that simply does not list the URL keeps the
     // policy-denial error, and an empty allowlist keeps its own message.
@@ -84,6 +96,7 @@ test("reports an unparseable allowlist entry instead of a policy denial", async 
       assertAllowedOAuthRedirectUri("https://evil.example.org/cb"),
     ).rejects.toThrow("allowlist is not configured");
   } finally {
+    warnings.mockRestore();
     for (const key of ENV_KEYS) {
       const value = previous.get(key);
       if (value === undefined) delete process.env[key];
