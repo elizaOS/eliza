@@ -486,6 +486,7 @@ export function useRealtimeVoiceSession(
     // A newer lifecycle may start while an old AudioContext close is pending.
     // Only the generation that initiated this teardown may clear UI state.
     if (sessionGenRef.current === stoppedGeneration) {
+      setError((previous) => (previous?.kind === "release" ? null : previous));
       setActive(false);
       setConnecting(false);
       setAgentSpeaking(false);

@@ -332,6 +332,7 @@ test("the real hook retains failed Stop across retry and starts only after relea
     await f.view.result.current.voice.stop();
   });
   expect(f.captures).toBe(0);
+  expect(f.view.result.current.voice.error).toBeNull();
   await act(async () => {
     started = f.view.result.current.voice.start();
     await flush();
