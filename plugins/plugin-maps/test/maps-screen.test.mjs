@@ -158,15 +158,22 @@ function fixture(options = {}) {
       ? { status: "unconfigured" }
       : config(options.modes, !!options.alternatives),
   };
+  let connectionListener;
   const host = {
     connection: () => ({
       config: connection.config,
       provider:
         connection.config.status === "configured" ? provider : undefined,
     }),
-    onConnectionChange: () => () => {},
+    onConnectionChange: (listener) => {
+      connectionListener = listener;
+      return () => {
+        connectionListener = undefined;
+      };
+    },
     initialize: async () => {
       calls.initialized++;
+      await options.initialize?.();
     },
     diagnostics: () => ({ configured: true, error: "" }),
     coverage: () => options.coverage,
@@ -246,6 +253,10 @@ function fixture(options = {}) {
     },
     stops: () => stopped,
     emitDevice: (value) => deviceFixListener?.(value),
+    activate: () => {
+      connection.config = config(options.modes, !!options.alternatives);
+      connectionListener?.();
+    },
     setDeviceFix: (value) => {
       deviceFix = value;
     },
@@ -1421,4 +1432,95 @@ test("an unsupported provider phone remains visible without a fabricated Call ta
   } finally {
     f.screen.dispose();
   }
+});
+
+test("an early search continues once the first provider becomes available", async () => {
+  const f = fixture({ unconfigured: true });
+  f.screen.setQuery("Destination");
+  f.screen.submit();
+  await settle();
+  assert.equal(f.calls.searches.length, 0);
+  f.activate();
+  await settle();
+  assert.deepEqual(f.calls.searches, ["Destination"]);
+  assert.equal(f.screen.view().results[0].name, "Destination");
+  f.screen.dispose();
+});
+
+test("editing the automatic origin fences a late device location", async () => {
+  const f = fixture();
+  f.screen.setQuery("Destination");
+  f.screen.submit();
+  await settle();
+  f.screen.choose("place:fixture:destination");
+  await settle();
+  f.screen.openDirections();
+  await settle();
+  f.screen.setOriginText("43.71, 7.40");
+  f.screen.planOrigin();
+  await settle();
+  f.emitDevice({
+    coordinate: ORIGIN,
+    accuracyMeters: 5,
+    timestamp: Date.now(),
+    precision: "precise",
+  });
+  await settle();
+  assert.deepEqual(f.screen.view().map.route.from, {
+    latitude: 43.71,
+    longitude: 7.4,
+  });
+  f.screen.dispose();
+});
+
+test("a query changed during initial provider discovery does not resume the old search", async () => {
+  const f = fixture({ unconfigured: true });
+  f.screen.setQuery("Destination");
+  f.screen.submit();
+  await settle();
+  f.activate();
+  f.screen.setQuery("Replacement");
+  await settle();
+  assert.deepEqual(f.calls.searches, []);
+  f.screen.dispose();
+});
+
+test("leaving during initial provider discovery does not resume the pending search", async () => {
+  const options = { unconfigured: true, inactive: false };
+  const f = fixture(options);
+  f.screen.setQuery("Destination");
+  f.screen.submit();
+  await settle();
+  f.activate();
+  options.inactive = true;
+  f.screen.leaveView();
+  await settle();
+  assert.deepEqual(f.calls.searches, []);
+  f.screen.dispose();
+});
+
+test("initial provider discovery never submits text that the user only typed", async () => {
+  const f = fixture({ unconfigured: true });
+  f.screen.setQuery("Destination");
+  await settle();
+  f.activate();
+  await settle();
+  assert.deepEqual(f.calls.searches, []);
+  f.screen.dispose();
+});
+
+test("a rejected discovery reports its failure without resuming a search", async () => {
+  const pending = Promise.withResolvers();
+  const f = fixture({ unconfigured: true, initialize: () => pending.promise });
+  f.screen.setQuery("Destination");
+  f.screen.submit();
+  f.activate();
+  pending.reject(new Error("Provider discovery failed"));
+  await settle();
+  assert.deepEqual(f.calls.searches, []);
+  assert.equal(
+    f.screen.view().status.text,
+    "Maps could not complete this request.",
+  );
+  f.screen.dispose();
 });

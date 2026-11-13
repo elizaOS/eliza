@@ -64,6 +64,32 @@
       "temporal": [],
       "maxSteps": 12,
       "samples": 500
+    },
+    {
+      "name": "initial-provider-search",
+      "main": "MapsInitialSearch",
+      "init": "init",
+      "step": "step",
+      "invariants": ["CurrentVisibleSearchOnly"],
+      "temporal": ["FairContinuationSettles", "ContinuationSettles"],
+      "temporalChecks": [
+        {
+          "property": "FairContinuationSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Initial discovery settles and the deferred local continuation is weakly fair. A changed query or hidden view cancels the old intent; no provider availability or result success is promised."
+          ]
+        },
+        {
+          "property": "ContinuationSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "Without initialization/continuation fairness a queued search may remain pending."
+          ]
+        }
+      ],
+      "maxSteps": 12,
+      "samples": 100
     }
   ]
 }
