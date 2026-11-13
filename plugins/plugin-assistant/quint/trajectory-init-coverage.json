@@ -3,7 +3,8 @@
     "id": "DeferredTrajectoryInit",
     "model": "plugins/plugin-assistant/quint/DeferredTrajectoryInit.qnt",
     "sources": [
-      "plugins/plugin-assistant/src/features/trajectories/TrajectoriesService.ts"
+      "plugins/plugin-assistant/src/features/trajectories/TrajectoriesService.ts",
+      "plugins/plugin-assistant/src/features/trajectories/store/trajectory-internals.ts"
     ],
     "invariants": [
       "TypeOK",
@@ -21,6 +22,24 @@
     ],
     "implementationTests": [
       "plugins/plugin-assistant/src/features/trajectories/TrajectoriesService.test.ts"
+    ]
+  },
+  {
+    "id": "LegacyTrajectoryMigration",
+    "model": "plugins/plugin-assistant/quint/LegacyTrajectoryMigration.qnt",
+    "sources": [
+      "plugins/plugin-assistant/src/features/trajectories/store/trajectory-internals.ts",
+      "plugins/plugin-assistant/src/features/trajectories/store/trajectory-storage.ts",
+      "plugins/plugin-assistant/src/features/trajectories/TrajectoriesService.ts"
+    ],
+    "invariants": ["CompleteReads", "AtomicRows"],
+    "status": "partial",
+    "limitations": [
+      "One retained two-step snapshot, one transactional migration, one rollback and retry. Complete normalized rows take precedence after publication.",
+      "Real PGlite regression checks complete prompts, metadata and export; no arbitrary SQL-engine or crash theorem is claimed."
+    ],
+    "implementationTests": [
+      "plugins/plugin-assistant/src/features/trajectories/legacy-trajectory-migration.pglite.test.ts"
     ]
   }
 ]

@@ -10,7 +10,7 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
-import { logger as Logger } from "@elizaos/core";
+import { firstHeaderValue, logger as Logger } from "@elizaos/core";
 import { authStoreForHost } from "../services/auth-store";
 import {
   appendAuditEvent,
@@ -19,7 +19,6 @@ import {
   serializeSessionCookie,
   verifyBootstrapToken,
 } from "./auth/index";
-import { extractHeaderValue } from "./auth.ts";
 import {
   type CompatRuntimeState,
   readCompatJsonBody,
@@ -100,7 +99,7 @@ export async function handleAuthBootstrapRoutes(
     return true;
   }
 
-  const userAgent = extractHeaderValue(req.headers["user-agent"]);
+  const userAgent = firstHeaderValue(req.headers["user-agent"]);
   const result = await verifyBootstrapToken(token, { authStore: store });
 
   if (result.ok === false) {

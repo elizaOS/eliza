@@ -7,7 +7,7 @@ import type {
   WalletExportRejection,
   WalletExportRequestBody,
 } from "@elizaos/contracts";
-import { tokenMatches } from "./server-helpers-auth.ts";
+import { tokenMatches } from "@elizaos/core";
 
 export type { WalletExportRejection };
 

@@ -15,7 +15,6 @@ import {
   ModelType,
   parseTrajectorySemanticStages,
   redactBasicEmails,
-  resolveTrajectoryGate,
   sanitizeTrajectoryJsonObject,
   type TrajectoryActionAttemptRecord as TrajectoryActionAttempt,
   type TrajectoryLlmCallRecord as TrajectoryLlmCall,
@@ -27,8 +26,8 @@ import {
   timeInferenceSpan,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import { composePrompt } from "@elizaos/plugin-assistant/text/template-rendering";
-import { observationExtractionTemplate } from "./observation-prompt.js";
+import { composePrompt } from "../../../text/template-rendering.ts";
+import { observationExtractionTemplate } from "./observation-prompt.ts";
 
 export { asRecord };
 // ---------------------------------------------------------------------------
@@ -39,23 +38,6 @@ export type RuntimeDb = {
   transaction?: <T>(work: (tx: RuntimeDb) => Promise<T>) => Promise<T>;
 };
 export type RawSqlExecutor = (sqlText: string) => Promise<unknown>;
-export type TrajectoryLoggerLike = {
-  listTrajectories?: unknown;
-  getTrajectoryDetail?: unknown;
-  isEnabled?: () => boolean;
-  setEnabled?: (enabled: boolean) => void;
-  logLlmCall?: (params: Record<string, unknown>) => void;
-  updateLlmCall?: (
-    stepId: string,
-    callId: string,
-    patch: Record<string, unknown>,
-  ) => void;
-  logProviderAccess?: (params: Record<string, unknown>) => void;
-  getLlmCallLogs?: () => readonly unknown[];
-  getProviderAccessLogs?: () => readonly unknown[];
-  llmCalls?: unknown[];
-  providerAccess?: unknown[];
-};
 type OrchestratorTrajectoryContext = {
   source: "orchestrator";
   decisionType: string;
@@ -176,7 +158,6 @@ export type CompleteStepOptions = {
 // Module-level state
 // ---------------------------------------------------------------------------
 export const initializedRuntimes = new WeakSet<object>();
-export const patchedLoggers = new WeakSet<object>();
 export const stepWriteQueues = new WeakMap<
   object,
   Map<string, Promise<void>>
@@ -985,13 +966,10 @@ async function initializeTrajectoriesTable(
         archetype TEXT
       )`,
     );
-    // Best-effort forward migration for grouping columns.
-    await addColumnIfMissing(runtime, "trajectories", "scenario_id", "TEXT");
     await executeRawSql(
       runtime,
       `CREATE INDEX IF NOT EXISTS idx_trajectories_scenario_id ON trajectories(scenario_id)`,
     );
-    await addColumnIfMissing(runtime, "trajectories", "batch_id", "TEXT");
     await executeRawSql(
       runtime,
       `CREATE INDEX IF NOT EXISTS idx_trajectories_batch_id ON trajectories(batch_id)`,
@@ -1837,49 +1815,6 @@ export function shouldSuppressNoInputEmbeddingCall(
   const response = toText(params.response, "");
   if (!response.trim()) return true;
   return isNumericVectorString(response);
-}
-export function isLegacyTrajectoryLogger(
-  logger: TrajectoryLoggerLike,
-): boolean {
-  return (
-    typeof logger.listTrajectories === "function" &&
-    typeof logger.getTrajectoryDetail === "function"
-  );
-}
-export async function resolveTrajectoryLogger(
-  runtime: IAgentRuntime,
-): Promise<TrajectoryLoggerLike | null> {
-  const candidates: TrajectoryLoggerLike[] = [];
-  const seen = new Set<unknown>();
-  const push = (candidate: unknown): void => {
-    if (!candidate || typeof candidate !== "object" || seen.has(candidate))
-      return;
-    seen.add(candidate);
-    candidates.push(candidate as TrajectoryLoggerLike);
-  };
-  const byType = runtime.getServicesByType("trajectories");
-  if (Array.isArray(byType)) {
-    for (const item of byType) push(item);
-  } else {
-    push(byType);
-  }
-  push(runtime.getService("trajectories"));
-  if (candidates.length === 0) return null;
-  let best: TrajectoryLoggerLike | null = null;
-  let bestScore = -1;
-  for (const candidate of candidates) {
-    let score = 0;
-    if (isLegacyTrajectoryLogger(candidate)) score += 100;
-    if (typeof candidate.logLlmCall === "function") score += 10;
-    if (typeof candidate.logProviderAccess === "function") score += 10;
-    if (typeof candidate.getLlmCallLogs === "function") score += 2;
-    if (typeof candidate.getProviderAccessLogs === "function") score += 2;
-    if (score > bestScore) {
-      best = candidate;
-      bestScore = score;
-    }
-  }
-  return best;
 }
 // ---------------------------------------------------------------------------
 // Trajectory data helpers
@@ -3380,7 +3315,6 @@ export async function saveTrajectory(
   trajectory: PersistedTrajectory,
   options: {
     changedStepIds?: readonly string[];
-    updateLegacySnapshot?: boolean;
     requireActiveExisting?: boolean;
     expectedUpdatedAt?: string;
     createOnly?: boolean;
@@ -3439,26 +3373,6 @@ export async function saveTrajectory(
   const boundedSteps = trajectory.steps.map((step) =>
     normalizeStepForPersistence(trajectory.id, step),
   );
-  // Conditional captures update dedicated step rows. Keep their validation
-  // above, but build the complete compatibility snapshot only if it is written.
-  // Otherwise every small child update serializes all prior model payloads.
-  let serializedLegacySteps: string | undefined;
-  const serializeLegacySteps = (): string => {
-    if (serializedLegacySteps !== undefined) return serializedLegacySteps;
-    const legacySteps = boundedSteps.map((step) => {
-      if (typeof step.script !== "string") return step;
-      const capped = capScriptForPersistence(step.script);
-      return {
-        ...step,
-        script: capped.script,
-        ...(capped.scriptHash !== undefined
-          ? { scriptHash: capped.scriptHash }
-          : {}),
-      };
-    });
-    serializedLegacySteps = sqlQuote(JSON.stringify(legacySteps));
-    return serializedLegacySteps;
-  };
   const boundedMetadata = sanitizeTrajectoryJsonObject(trajectory.metadata);
   if (!boundedMetadata) {
     throw new ElizaError("Trajectory metadata could not be normalized", {
@@ -3496,14 +3410,6 @@ export async function saveTrajectory(
   const stepsToPersist = replaceAllSteps
     ? boundedSteps
     : boundedSteps.filter((step) => changedStepIds.has(step.stepId));
-  const updateLegacyStepsSql =
-    replaceAllSteps || options.updateLegacySnapshot
-      ? "steps_json = EXCLUDED.steps_json,"
-      : "";
-  const updateLegacyStepsValueSql =
-    replaceAllSteps || options.updateLegacySnapshot
-      ? `steps_json = ${serializeLegacySteps()},`
-      : "";
   // Current schema (Core TrajectoriesService): metrics_json / metadata_json /
   // reward_components_json. Prefer this so active/completed metrics are always
   // valid for strict Core readers that share the table.
@@ -3528,7 +3434,6 @@ export async function saveTrajectory(
       episode_id,
       batch_id,
       group_index,
-      steps_json,
       metadata_json,
       metrics_json,
       reward_components_json,
@@ -3555,7 +3460,6 @@ export async function saveTrajectory(
       ${trajectory.episodeId ? sqlQuote(trajectory.episodeId) : "NULL"},
       ${trajectory.batchId ? sqlQuote(trajectory.batchId) : "NULL"},
       ${sqlNumber(trajectory.groupIndex)},
-      ${serializeLegacySteps()},
       ${serializedMetadata},
       ${serializedMetrics},
       ${serializedRewardComponents},
@@ -3585,7 +3489,6 @@ export async function saveTrajectory(
       episode_id = EXCLUDED.episode_id,
       batch_id = EXCLUDED.batch_id,
       group_index = EXCLUDED.group_index,
-      ${updateLegacyStepsSql}
       metadata_json = EXCLUDED.metadata_json,
       metrics_json = EXCLUDED.metrics_json,
       reward_components_json = EXCLUDED.reward_components_json,
@@ -3610,7 +3513,6 @@ export async function saveTrajectory(
       episode_id = ${trajectory.episodeId ? sqlQuote(trajectory.episodeId) : "NULL"},
       batch_id = ${trajectory.batchId ? sqlQuote(trajectory.batchId) : "NULL"},
       group_index = ${sqlNumber(trajectory.groupIndex)},
-      ${updateLegacyStepsValueSql}
       metadata_json = ${serializedMetadata},
       metrics_json = ${serializedMetrics},
       reward_components_json = ${serializedRewardComponents},
@@ -3863,18 +3765,6 @@ export function readOrchestratorTrajectoryContext(
   )
     return undefined;
   return candidate as OrchestratorTrajectoryContext;
-}
-/**
- * Resolves whether DB trajectory persistence is on by default. Delegates to the
- * single core gate resolver (trajectory-gate.ts) so this DB logger and the file
- * recorder can no longer disagree (#13775): the same SOC2 O-5 precedence — hard
- * opt-out → explicit `ELIZA_TRAJECTORY_LOGGING` → test off → prod opt-in → dev
- * on — governs both. The env param is retained so callers can probe a synthetic env.
- */
-export function shouldEnableTrajectoryLoggingByDefault(
-  env: NodeJS.ProcessEnv = process.env,
-): boolean {
-  return resolveTrajectoryGate(env).enabled;
 }
 /**
  * Coarse PII redaction applied to LLM prompts/responses before persistence

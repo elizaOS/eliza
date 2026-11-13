@@ -199,10 +199,7 @@ import {
   resolvePreferredProviderPluginName,
   resolvePrimaryModel,
 } from "./model-resolution.ts";
-import {
-  runtimeDocumentsEnabled,
-  runtimeTrajectoriesEnabled,
-} from "./native-runtime-features.ts";
+import { runtimeDocumentsEnabled } from "./native-runtime-features.ts";
 import {
   isVaultRef,
   resolveConfigEnvForProcess,
@@ -261,8 +258,6 @@ import {
   resolveSandboxRouteAgentId,
 } from "./sandbox-character.ts";
 import { shouldRegisterSubAgentCredentialsPlugin } from "./sub-agent-credentials-runtime-policy.ts";
-import { shouldEnableTrajectoryLoggingByDefault } from "./trajectory-internals.ts";
-import { installDatabaseTrajectoryLogger } from "./trajectory-storage.ts";
 import { validateViewActionMap } from "./view-action-affinity.ts";
 
 // Single-flight desktop vault boot hydration: the OS-keychain wallet/steward
@@ -1806,16 +1801,6 @@ export async function disposeReplacedRuntime(
     await retire();
   }
 }
-interface TrajectoryLoggerControl {
-  isEnabled?: () => boolean;
-  setEnabled?: (enabled: boolean) => void;
-}
-type TrajectoryLoggerRegistrationStatus =
-  | "pending"
-  | "registering"
-  | "registered"
-  | "failed"
-  | "unknown";
 /** Subset of AutonomyService used to enable the autonomy loop. */
 interface AutonomyServiceLike {
   enableAutonomy(): Promise<void>;
@@ -1842,87 +1827,6 @@ async function startAndRegisterAutonomyService(
   runtime.services.set(AUTONOMY_SERVICE_TYPE as never, [service as never]);
   return service as AutonomyServiceLike;
 }
-type TrajectoryLoggerRuntimeLike = {
-  getServicesByType?: (serviceType: string) => unknown;
-  getService?: (serviceType: string) => unknown;
-  getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
-  getServiceRegistrationStatus?: (
-    serviceType: string,
-  ) => TrajectoryLoggerRegistrationStatus;
-};
-async function waitForTrajectoriesService(
-  runtime: AgentRuntime,
-  context: string,
-  abortSignal?: AbortSignal,
-): Promise<void> {
-  if (!runtimeTrajectoriesEnabled(runtime)) {
-    return;
-  }
-  const runtimeLike = runtime as TrajectoryLoggerRuntimeLike;
-  // Check if already available
-  if (typeof runtimeLike.getService === "function") {
-    const existing = runtimeLike.getService("trajectories");
-    if (existing) return;
-  }
-  const registrationStatus =
-    typeof runtimeLike.getServiceRegistrationStatus === "function"
-      ? runtimeLike.getServiceRegistrationStatus("trajectories")
-      : "unknown";
-  if (
-    registrationStatus !== "pending" &&
-    registrationStatus !== "registering"
-  ) {
-    return;
-  }
-  if (typeof runtimeLike.getServiceLoadPromise !== "function") return;
-  try {
-    await awaitOwnedPromise(
-      runtimeLike.getServiceLoadPromise("trajectories"),
-      abortSignal,
-    );
-  } catch (err) {
-    if (abortSignal?.aborted) throw err;
-    // error-policy:J4 trajectory persistence is optional, but a failed service
-    // remains visible instead of silently disabling runtime telemetry.
-    runtime.reportError("eliza.trajectoryServiceReadiness", err, { context });
-    logger.debug(
-      `[eliza] trajectories registration failed while waiting (${context}): ${formatError(err)}`,
-    );
-  }
-}
-function ensureTrajectoryLoggerEnabled(
-  runtime: AgentRuntime,
-  context: string,
-): void {
-  if (!runtimeTrajectoriesEnabled(runtime)) {
-    logger.info(`[eliza] Native trajectories disabled (${context})`);
-    return;
-  }
-  const trajectoryLogger = runtime.getService("trajectories") as
-    | TrajectoryLoggerControl
-    | null
-    | undefined;
-  if (!trajectoryLogger) {
-    logger.warn(
-      `[eliza] trajectories service unavailable (${context}); trajectory capture disabled`,
-    );
-    return;
-  }
-  const isEnabled =
-    typeof trajectoryLogger.isEnabled === "function"
-      ? trajectoryLogger.isEnabled()
-      : shouldEnableTrajectoryLoggingByDefault();
-  const shouldEnable = shouldEnableTrajectoryLoggingByDefault();
-  if (
-    isEnabled !== shouldEnable &&
-    typeof trajectoryLogger.setEnabled === "function"
-  ) {
-    trajectoryLogger.setEnabled(shouldEnable);
-    logger.info(
-      `[eliza] trajectories defaulted ${shouldEnable ? "on" : "off"} (${context})`,
-    );
-  }
-}
 async function installPromptOptimizationLayer(
   runtime: AgentRuntime,
   context: string,
@@ -1936,33 +1840,6 @@ async function installPromptOptimizationLayer(
   } catch (err) {
     logger.warn(
       `[eliza] Failed to install prompt optimizations (${context}): ${err instanceof Error ? err.message : err}`,
-    );
-  }
-}
-/**
- * The service-dependent half of trajectory-capture prep: wait for
- * the async "trajectories" service registration, default its enabled state,
- * and bridge it to the SQL trajectory_steps tables that the viewer +
- * collection read. Without the bridge the core service captures LLM calls
- * only into its own trajectory_step_index store, while the viewer reads SQL
- * trajectory_steps. It starts in the background and is joined by the
- * deferred wave instead of blocking runtime readiness; capture of an LLM call
- * that lands before this settles may be lost, which is the accepted latency
- * tradeoff.
- */
-async function wireTrajectoryCaptureService(
-  runtime: AgentRuntime,
-  context: string,
-  abortSignal?: AbortSignal,
-): Promise<void> {
-  await waitForTrajectoriesService(runtime, context, abortSignal);
-  abortSignal?.throwIfAborted();
-  ensureTrajectoryLoggerEnabled(runtime, context);
-  try {
-    await installDatabaseTrajectoryLogger(runtime);
-  } catch (err) {
-    logger.warn(
-      `[eliza] Failed to install database trajectory logger (${context}): ${err instanceof Error ? err.message : err}`,
     );
   }
 }
@@ -5143,9 +5020,6 @@ export async function startEliza(
       );
     }
   };
-  // Background trajectory-capture wiring started by initializeCoreRuntime and
-  // joined by the deferred wave (see wireTrajectoryCaptureService).
-  let trajectoryCaptureWiring: Promise<void> = Promise.resolve();
   const initializeCoreRuntime = async (): Promise<void> => {
     assertPersistentDatabaseRequired(runtime);
     await runtime.initialize();
@@ -5184,17 +5058,6 @@ export async function startEliza(
       "runtime.initialize()",
       config,
     );
-    // The trajectories-service wait + db-logger install start in
-    // the background immediately — so capture goes live at the same absolute
-    // moment it used to — but no longer block the readiness gate. The deferred
-    // wave joins this promise so a wiring failure is surfaced there. An LLM
-    // call that lands in the short pre-wired window may miss trajectory_steps
-    // capture; boot itself makes no LLM calls in that window.
-    trajectoryCaptureWiring = wireTrajectoryCaptureService(
-      runtime,
-      "runtime.initialize()",
-      opts?.abortSignal,
-    );
   };
   // One-time TEE boot gate (plan §4.1 / agent A4). Inert when no TEE policy is
   // configured: `evaluateTeeBootGate` returns secretsEnabled:true and normal/
@@ -5203,7 +5066,6 @@ export async function startEliza(
   // gate fails closed and high-value capabilities (remote plugin sync plus
   // model-key/signing consumers) are withheld. Boot still proceeds in a
   // degraded, secret-less mode — it never silently continues with secrets.
-  let teeBootGateResult: TeeBootGate | undefined;
   const runTeeBootGate = async (): Promise<void> => {
     let teeBootGate: TeeBootGate;
     try {
@@ -5237,68 +5099,6 @@ export async function startEliza(
     // reveal/bridge, remote plugin sync) can consult it via the shared
     // singleton. Inert when no TEE: the gate's `required` is false.
     setTeeBootGateState(teeBootGate);
-    teeBootGateResult = teeBootGate;
-  };
-  // TEE-gated remote signing (plan §4.3). Inert unless explicitly enabled:
-  // the host↔guest bridge can request a signature, but the key stays in the
-  // vault and every sign re-attests when the boot-gate policy requires TEE
-  // evidence. Fail-closed: when the boot gate blocks secrets, the service is
-  // not constructed at all.
-  const registerRemoteSigningIfEnabled = async (): Promise<void> => {
-    if (process.env.ELIZA_REMOTE_SIGNING_ENABLED !== "true") return;
-    if (teeBootGateBlocksSecrets()) {
-      logger.warn(
-        "[RemoteSigning] Skipping remote signing activation: TEE evidence is not trusted.",
-      );
-      return;
-    }
-    try {
-      const { sharedVault } = getAgentHostBridge();
-      const { VaultSignerBackend } = await import(
-        "../services/vault-signer-backend.ts"
-      );
-      const {
-        createTeeGatedRemoteSigningService,
-        RemoteSigningRuntimeService,
-      } = await import("../services/remote-signing-service.ts");
-      const signer = new VaultSignerBackend({
-        vault: sharedVault(),
-        agentId,
-        caller: "remote-signing:boot",
-      });
-      const teePolicy = teeBootGateResult?.policy;
-      // Re-attest each sign through the same registered provider the boot gate
-      // used. This path only runs once the gate has already enabled secrets, so
-      // a required policy implies a registered provider; if none is registered
-      // the re-attesting provider is simply absent (the gate would not have
-      // reached here under a required policy).
-      const signingEvidenceProvider = teePolicy?.required
-        ? resolveTeeEvidenceProvider({ env: protectedTeeEnvironment() })
-        : undefined;
-      const signing = createTeeGatedRemoteSigningService({
-        signer,
-        ...(teePolicy ? { teePolicy } : {}),
-        ...(signingEvidenceProvider
-          ? { evidenceProvider: signingEvidenceProvider }
-          : {}),
-      });
-      await runtime.registerService(RemoteSigningRuntimeService);
-      const svc = runtime.getService(
-        RemoteSigningRuntimeService.serviceType,
-      ) as InstanceType<typeof RemoteSigningRuntimeService> | null;
-      if (!svc) {
-        throw new Error("RemoteSigningRuntimeService did not register");
-      }
-      svc.attach(signing);
-      logger.info(
-        { attesting: teePolicy?.required === true },
-        "[RemoteSigning] TEE-gated remote signing service registered.",
-      );
-    } catch (err) {
-      logger.warn(
-        `[RemoteSigning] Remote signing activation failed: ${formatError(err)}`,
-      );
-    }
   };
   const syncRemoteCapabilityPluginsIfAvailable = async (): Promise<void> => {
     if (teeBootGateBlocksSecrets()) {
@@ -5884,12 +5684,6 @@ export async function startEliza(
     await ensureVaultBootHydration();
     abortSignal.throwIfAborted();
     bootTimer.lap("deferred:vault-hydration");
-    // Join the background trajectory-capture wiring started inside
-    // initializeCoreRuntime so a wiring failure surfaces here instead of
-    // vanishing into an unobserved promise.
-    await awaitOwnedPromise(trajectoryCaptureWiring, abortSignal);
-    abortSignal.throwIfAborted();
-    bootTimer.lap("deferred:trajectory-wiring");
     // Join the boot-time network lookups (Discord App ID, cloud GitHub token)
     // before resolving the deferred plugin set — the Discord connector and the
     // GitHub/git plugins live in this deferred wave. The cloud GitHub token is
@@ -5953,7 +5747,6 @@ export async function startEliza(
     await runTeeBootGate();
     bootTimer.lap("deferred:tee-gate");
     abortSignal.throwIfAborted();
-    await registerRemoteSigningIfEnabled();
     await syncRemoteCapabilityPluginsIfAvailable();
     await applyPluginRoleGatingIfAvailable();
     // #12087 Item 19: now that every plugin's actions are registered, warn about

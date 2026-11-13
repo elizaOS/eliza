@@ -47,13 +47,6 @@ export interface RealTestRuntimeOptions {
   pgliteDir?: string;
   /** Remove PGLite dir on cleanup. Defaults to true when dir is auto-created. */
   removePgliteDirOnCleanup?: boolean;
-  /**
-   * Host-injected trajectory-write flush (the agent's `flushTrajectoryWrites`),
-   * awaited during cleanup before the runtime stops. Injected for the same
-   * ownership boundary; when omitted, cleanup relies on
-   * draining the trajectories service's own write queues.
-   */
-  flushTrajectoryWrites?: (runtime: AgentRuntime) => Promise<void>;
 }
 
 export interface RealTestRuntimeResult {
@@ -114,7 +107,6 @@ export async function createRealTestRuntime(
     characterName: options.characterName,
     pgliteDir: options.pgliteDir,
     removePgliteDirOnCleanup: options.removePgliteDirOnCleanup,
-    flushTrajectoryWrites: options.flushTrajectoryWrites,
     embeddingDimensions: 384,
     settings: providerConfig?.env,
     plugins: [...plugins, ...(options.plugins ?? [])],

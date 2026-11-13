@@ -6,7 +6,12 @@ import path from "node:path";
 import { testOutputPath } from "../lib/test-output.ts";
 
 const root = path.resolve(import.meta.dirname, "../../..");
-const model = path.basename(process.argv[2] ?? "");
+const modelPath = path.resolve(root, process.argv[2] ?? "");
+const model = path.basename(modelPath);
+const modelOwner = path.relative(
+  root,
+  path.resolve(path.dirname(modelPath), ".."),
+);
 const suites = {
   "McpArgumentAdmission.qnt": {
     cwd: "packages/cloud/shared",
@@ -18,6 +23,15 @@ const suites = {
       "blocks invalid constraints before dispatch and preserves valid arguments",
       "blocks an optional null over a real MCP transport and forwards an allowed null",
     ].map((name) => `MCP dynamic action parameter boundary ${name}`),
+  },
+  "LegacyTrajectoryMigration.qnt": {
+    cwd: modelOwner,
+    file: "src/features/trajectories/legacy-trajectory-migration.pglite.test.ts",
+    match: "preserves complete legacy steps",
+    names: [
+      "preserves complete legacy steps when the canonical row store first opens",
+      "preserves complete legacy steps through a failed migration and retry",
+    ],
   },
   "TurnCancellation.qnt": {
     cwd: "packages/core",
@@ -36,7 +50,7 @@ const suites = {
     ].map((name) => `AgentRuntime.useModel cancellation ${name}`),
   },
   "BackupPublication.qnt": {
-    cwd: "plugins/plugin-sqlite",
+    cwd: modelOwner,
     file: "adapter.test.ts",
     match: "restores a standalone backup",
     names: [

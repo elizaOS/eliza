@@ -9,6 +9,7 @@
     "packages/core/vitest.config.ts",
     "packages/agent/src/api/server-helpers-mcp.ts",
     "packages/agent/src/api/server-helpers-auth.ts",
+    "packages/core/src/security/request-token.ts",
     "packages/agent/src/api/static-file-server.ts",
     "packages/agent/src/api/inline-script-serialization.ts",
     "packages/agent/src/api/config-routes.ts",
