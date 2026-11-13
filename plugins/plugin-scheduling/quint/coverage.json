@@ -26,6 +26,32 @@
     ]
   },
   {
+    "id": "plugin-scheduling.ScheduledTaskPendingOccurrence",
+    "model": "plugins/plugin-scheduling/quint/ScheduledTaskPendingOccurrence.qnt",
+    "sources": [
+      "plugins/plugin-scheduling/src/scheduled-task/runner.ts",
+      "plugins/plugin-scheduling/src/scheduled-task/due.ts",
+      "plugins/plugin-scheduling/src/scheduled-task/next-fire-at.ts"
+    ],
+    "invariants": [
+      "SettledPendingNeverDispatched",
+      "DispatchOncePerOccurrence",
+      "UnsettledOccurrencesFire",
+      "DismissStopsDispatch",
+      "TypeOK"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One daily recurring task over three occurrences; the owner acts at most once between two ticks, on a scheduled or fired row.",
+      "The replay covers cron and during_window triggers with in-memory stores; interval triggers, applyWithResult and a snoozed row are separate tests in runner-pending-occurrence.test.ts.",
+      "Reopen, gate denials and the global pause keep their existing coverage; the SQL stores persist the same row fields.",
+      "Progress through the three occurrences requires weak fairness of each enabled tick and settlement of tick and owner-verb work. Paused clocks have an explicit no-fairness counterexample. No wall-clock bound or external delivery success is proved."
+    ],
+    "implementationTests": [
+      "plugins/plugin-scheduling/src/scheduled-task/runner-pending-occurrence.test.ts"
+    ]
+  },
+  {
     "id": "plugin-scheduling.ScheduledTaskOwnerBinding",
     "model": "plugins/plugin-scheduling/quint/ScheduledTaskOwnerBinding.qnt",
     "sources": [
