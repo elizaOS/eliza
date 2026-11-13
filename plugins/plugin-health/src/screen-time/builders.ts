@@ -12,7 +12,7 @@ import type {
   LifeOpsScreenTimeTargetBucket,
   LifeOpsScreenTimeVisibleBuckets,
   LifeOpsSocialHabitSummary,
-} from "../contracts/lifeops.js";
+} from "@elizaos/contracts";
 import { classifyScreenTimeTarget } from "./social-taxonomy.js";
 
 export interface ScreenTimeAggregateRow {
