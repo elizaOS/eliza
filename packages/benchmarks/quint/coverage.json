@@ -14,5 +14,21 @@
       "Real local observation failures cover the initial read and a later poll. Successful cleanup confirms the child is reaped and unrelated children remain alive. A controlled cleanup refusal retains both errors and the unconfirmed child outcome.",
       "Progress assumes fair settlement of pending OS and receipt operations. Descendant groups, Windows behavior, provider execution, result publication, arbitrary filesystem errors and durable process-crash recovery remain open."
     ]
+  },
+  {
+    "id": "benchmarks.BenchmarkOutputLock",
+    "model": "packages/benchmarks/quint/BenchmarkOutputLock.qnt",
+    "sources": ["packages/benchmarks/orchestrator/locking.py"],
+    "invariants": [
+      "OnePlatformOwner",
+      "OneLocalOwnerPerProcess",
+      "NestedKeyKeepsOuterOwner"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One normalized output-lock key, three callers and one uncontended nested key. Separate process-local and OS lock steps distinguish same-process waiters from independent processes.",
+      "Existing threaded and subprocess tests exercise real lock exclusion, protected-body failure, nested refusal and the publication decorator. This evidence uses the local POSIX filesystem.",
+      "Process crash, lock-file replacement, OS and filesystem errors, cross-key deadlocks, Windows and durable artifact publication remain outside this projection."
+    ]
   }
 ]
