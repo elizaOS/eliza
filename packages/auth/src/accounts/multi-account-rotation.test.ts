@@ -178,6 +178,22 @@ describe("multi-account rotation E2E (#10696)", () => {
     expect(codexSub).toMatchObject({ total: 2, enabled: 2, healthy: 2 });
   });
 
+  it("lists accounts under ELIZA_HOME when the state dir is elsewhere", async () => {
+    const stateDir = mkdtempSync(path.join(tmpdir(), "multi-acct-state-"));
+    try {
+      process.env.ELIZA_STATE_DIR = stateDir;
+      resetDefaultAccountPoolAfterCredentialReset();
+      writeAccount("anthropic-subscription", "claude-home", "sk-ant-oat-H");
+      expect(
+        getDefaultAccountPool()
+          .list("anthropic-subscription")
+          .map((a) => a.id),
+      ).toEqual(["claude-home"]);
+    } finally {
+      rmSync(stateDir, { recursive: true, force: true });
+    }
+  });
+
   it("round-robin alternates across the two Claude accounts (distinct tokens each turn)", async () => {
     writeAccount("anthropic-subscription", "a", "sk-ant-oat-A", {
       createdAt: 1_000,

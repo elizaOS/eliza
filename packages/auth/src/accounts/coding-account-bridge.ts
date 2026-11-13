@@ -584,8 +584,8 @@ async function reconcileCodexTokensLocked(
  */
 export async function adoptRotatedCodexTokens(
   accountId: string,
+  storagePolicy: AccountStoragePolicy = accountStoragePolicy(),
 ): Promise<boolean> {
-  const storagePolicy = accountStoragePolicy();
   return accountRefreshMutex.acquire(`openai-codex:${accountId}`, async () => {
     const reconciled = await reconcileCodexTokensLocked(
       accountId,

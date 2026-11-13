@@ -1293,7 +1293,7 @@ function loadAllAccounts(
   const meta = readMetaStore(storagePolicy);
   const out: Record<string, LinkedAccountConfig> = {};
   for (const provider of ACCOUNT_CREDENTIAL_PROVIDER_IDS) {
-    const records = listProviderAccounts(provider);
+    const records = listProviderAccounts(provider, storagePolicy);
     let priorityCounter = 0;
     const sorted = [...records].sort((a, b) => {
       const aTime = Number.isFinite(a.createdAt) ? a.createdAt : 0;
@@ -1686,7 +1686,8 @@ export async function applyAccountPoolApiCredentials(
   });
   await applyDirectProviderCredentialsToEnv(opts.activeBackend, {
     pool: getDefaultAccountPool(),
-    listAccounts: (providerId) => listProviderAccounts(providerId),
+    listAccounts: (providerId) =>
+      listProviderAccounts(providerId, defaultRuntimeStoragePolicy()),
     getToken: (providerId, accountId) =>
       getAccountAccessToken(providerId, accountId, {
         storagePolicy: defaultRuntimeStoragePolicy(),
@@ -1825,6 +1826,7 @@ export async function sweepAccountPoolKeepAlive(
   deps: AccountPoolKeepAliveDeps = {},
 ): Promise<AccountPoolKeepAliveResult> {
   const pool = getDefaultAccountPool();
+  const storagePolicy = defaultRuntimeStoragePolicy();
   const keepAliveDeps = resolveKeepAliveDeps(deps);
   const result: AccountPoolKeepAliveResult = {
     checked: 0,
@@ -1833,7 +1835,7 @@ export async function sweepAccountPoolKeepAlive(
   };
   for (const providerId of ACCOUNT_CREDENTIAL_PROVIDER_IDS) {
     await pool.sweepExpired(providerId);
-    for (const record of listProviderAccounts(providerId)) {
+    for (const record of listProviderAccounts(providerId, storagePolicy)) {
       result.checked += 1;
       const pooled = pool.get(record.id, providerId);
       if (pooled?.enabled === false || pooled?.health === "expired") continue;
@@ -1863,10 +1865,10 @@ export async function sweepAccountPoolKeepAlive(
       // refresh below burns on the consumed token and this sweep marks a
       // perfectly recoverable account needs-reauth.
       if (providerId === "openai-codex") {
-        await adoptRotatedCodexTokens(record.id);
+        await adoptRotatedCodexTokens(record.id, storagePolicy);
       }
       const outcome = await getAccountAccessToken(providerId, record.id, {
-        storagePolicy: defaultRuntimeStoragePolicy(),
+        storagePolicy,
         outcome: true,
       });
       const receipt = getAccessTokenCredentialReceipt(outcome);
