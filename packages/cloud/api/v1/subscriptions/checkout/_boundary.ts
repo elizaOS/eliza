@@ -14,6 +14,91 @@ const NON_RETRYABLE_REASONS = new Set([
   "previous_checkout_completed",
 ]);
 
+const DIAGNOSTIC_NAMES = new Set([
+  "Error",
+  "TypeError",
+  "RangeError",
+  "SyntaxError",
+  "ApiError",
+  "ElizaError",
+  "ZodError",
+  "DrizzleQueryError",
+  "DatabaseError",
+  "PostgresError",
+  "InferencePolicyFenceError",
+  "UnmanagedWriteTransactionError",
+  "MobileAppAuthProtocolError",
+  "StripeAPIError",
+  "StripeConnectionError",
+  "StripeAuthenticationError",
+  "StripePermissionError",
+  "StripeRateLimitError",
+  "StripeInvalidRequestError",
+]);
+const DIAGNOSTIC_CODES = new Set([
+  "SUBSCRIPTION_CHECKOUT_UNAVAILABLE",
+  "SUBSCRIPTION_CHECKOUT_REJECTED",
+  "SUBSCRIPTION_BILLING_OPERATIONS_CONFLICT",
+  "SUBSCRIPTION_RENEWAL_UNAVAILABLE",
+  "ORGANIZATION_POLICY_UNAVAILABLE",
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "ETIMEDOUT",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_SOCKET",
+]);
+// These names belong to the existing checkout publication schema. Never copy
+// arbitrary constraint names, SQL, messages, or provider context into the tail.
+const DIAGNOSTIC_CONSTRAINTS = new Set([
+  "billing_subscriptions_app_shape",
+  "billing_subscription_revisions_app_shape",
+  "organization_entitlements_plan_state_check",
+  "billing_subscription_commands_status_shape_check",
+  "subscription_allowance_periods_invoice_id_check",
+  "subscription_allowance_periods_no_overlap",
+]);
+
+function diagnosticError(error: unknown) {
+  if (!error || typeof error !== "object") return { name: "unknown" };
+  const value = error as {
+    name?: unknown;
+    code?: unknown;
+    constraint?: unknown;
+  };
+  const name =
+    typeof value.name === "string" && DIAGNOSTIC_NAMES.has(value.name)
+      ? value.name
+      : "unknown";
+  const code = typeof value.code === "string" ? value.code : "";
+  return {
+    name,
+    ...(DIAGNOSTIC_CODES.has(code) && { code }),
+    ...(/^[0-9A-Z]{5}$/.test(code) && { sqlstate: code }),
+    ...(typeof value.constraint === "string" &&
+      DIAGNOSTIC_CONSTRAINTS.has(value.constraint) && {
+        constraint: value.constraint,
+      }),
+  };
+}
+
+/** Only finite diagnostic identifiers from the error and its direct driver cause. */
+export function checkoutFailureDiagnostic(error: unknown) {
+  try {
+    const cause =
+      error && typeof error === "object" && "cause" in error
+        ? error.cause
+        : null;
+    return {
+      ...diagnosticError(error),
+      ...(cause && { cause: diagnosticError(cause) }),
+    };
+  } catch {
+    return { name: "unknown" };
+  }
+}
+
 function reasonOf(error: unknown): string | null {
   if (!(error instanceof Error) || !("context" in error)) return null;
   const context = error.context;
