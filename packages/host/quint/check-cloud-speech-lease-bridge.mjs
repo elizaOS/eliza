@@ -5,7 +5,6 @@ import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { testOutputPath } from "../../scripts/lib/test-output.ts";
-import { requireVitestConformance } from "../../scripts/lib/vitest-conformance.ts";
 
 const root = path.resolve(import.meta.dirname, "../../..");
 const model = "packages/host/quint/CloudSpeechLeaseBridge.qnt";
@@ -102,14 +101,50 @@ for (const suite of suites) {
     `${suite.owner} conformance failed; see ${directory}`,
   );
   const result = JSON.parse(readFileSync(report, "utf8"));
-  for (const [file, names] of Object.entries(suite.tests))
-    identities.push(
-      ...requireVitestConformance(
-        result,
-        path.join(root, "packages", suite.owner, file),
-        names,
-      ),
+  assert.equal(result.success, true, "Implementation suite failed");
+  assert.equal(result.numFailedTests, 0);
+  assert.equal(result.numFailedTestSuites, 0);
+  assert.equal(result.numPendingTests, 0, "Conformance cannot skip tests");
+  assert.equal(result.numTodoTests, 0);
+  assert.equal(result.testResults.length, Object.keys(suite.tests).length);
+  let observed = 0;
+  for (const [file, names] of Object.entries(suite.tests)) {
+    const expectedFile = path.join(root, "packages", suite.owner, file);
+    const matching = result.testResults.filter(
+      (row) => path.resolve(row.name) === expectedFile,
     );
+    assert.equal(
+      matching.length,
+      1,
+      `Missing or repeated conformance file: ${file}`,
+    );
+    const row = matching[0];
+    assert.equal(row.status, "passed", file);
+    const actualNames = row.assertionResults.map((test) => test.fullName);
+    assert.equal(
+      new Set(actualNames).size,
+      actualNames.length,
+      `Repeated test in ${file}`,
+    );
+    for (const name of names)
+      assert(actualNames.includes(name), `Missing contract check: ${name}`);
+    for (const test of row.assertionResults) {
+      assert.equal(test.status, "passed", test.fullName);
+      assert.deepEqual(test.failureMessages, [], test.fullName);
+      identities.push({ file, name: test.fullName, status: test.status });
+      observed++;
+    }
+  }
+  assert.equal(
+    result.numTotalTests,
+    observed,
+    "Report test count does not match assertions",
+  );
+  assert.equal(
+    result.numPassedTests,
+    observed,
+    "Not all implementation checks passed",
+  );
 }
 const sources = Object.fromEntries(
   [...new Set([model, manifest, ...cases.sources])].map((file) => [

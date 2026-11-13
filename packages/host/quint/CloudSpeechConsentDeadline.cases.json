@@ -10,7 +10,7 @@
   "bounds": {
     "domain": "At most two consent attempts, one owner cancellation,0..30 elapsed seconds, and one bounded connection-reset retry and at most one subsequent mint. Consent can complete beyond10seconds and before30seconds. Mint retains its separate existing10-second drain budget.",
     "assumptions": "Tick abstracts eventual timer delivery. No fairness or progress property is claimed. Authentication, provider calls, storage and network behavior remain outside this finite phase projection.",
-    "conformance": "Mandatory strict hook executes all eight actual host phase-deadline cases: real10.1-second cold consent, immediate Stop without mint, independent upgrade/ready budgets, abort with late callbacks, and ready timeout/late ready. Named results must pass without skips. One reset retries once before mint; a second reset or Stop during the retry prevents mint. Transport and credentials are controlled ports.",
+    "conformance": "Mandatory strict hook executes all nine actual host phase-deadline cases: real10.1-second cold consent, immediate Stop without mint, independent upgrade/ready budgets, abort with late callbacks, and ready timeout/late ready. Named results must pass without skips. One reset retries once before mint; a second reset or Stop during the retry prevents mint. Transport and credentials are controlled ports.",
     "limitations": "This is not proof of real service latency, timer precision, live provider admission, billing, device microphone behavior, lost HTTP acknowledgements or whole-client refinement. AbortSignal cancellation is tested at the existing fetch/socket boundaries; a noncompliant external transport is not assumed to return promptly."
   },
   "cases": [

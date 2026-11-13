@@ -16,6 +16,7 @@ const cases = JSON.parse(
 const file =
   "packages/host/src/voice/cloud-speech-relay-phase-deadline.test.ts";
 const required = [
+  "a cold six-second upgrade reaches ready without renewing its session",
   "consent retries one connection reset before its single paid admission",
   "repeated consent resets stop before any paid admission",
   "Stop cancels the consent reset delay before another request",
