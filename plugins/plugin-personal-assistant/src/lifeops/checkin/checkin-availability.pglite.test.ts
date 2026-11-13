@@ -1,11 +1,13 @@
 /** Exercises missing collectors, failed generation, and report persistence against real PGlite. No provider request is made. */
 import { readFileSync } from "node:fs";
+import { createServer } from "node:http";
 import { PGlite } from "@electric-sql/pglite";
 import { LIFEOPS_INBOX_CHANNELS, type LifeOpsInbox } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveOwnerFactStore } from "../owner/fact-store.js";
 import { composeOwnerFacingScheduledTaskText } from "../scheduled-task/runtime-wiring.js";
+import { LifeOpsService } from "../service.js";
 import type { RawSqlQuery } from "../sql.js";
 import {
   buildCheckinSummaryPrompt,
@@ -37,6 +39,7 @@ describe("check-in source availability and generation failures", () => {
       character: { name: "Brief fixture" },
       getSetting: () => undefined,
       getService: () => null,
+      reportError: () => {},
       getCache: async (key: string) =>
         (
           await db.query<{ payload: unknown }>(
@@ -72,6 +75,63 @@ describe("check-in source availability and generation failures", () => {
   afterEach(async () => {
     await db.close();
     vi.unstubAllEnvs();
+  });
+
+  it("includes the current managed Gmail mailbox through the canonical Inbox service", async () => {
+    const token = "a".repeat(64);
+    const server = createServer((request, response) => {
+      expect(request.headers.authorization).toBe(`Bearer ${token}`);
+      response.setHeader("Content-Type", "application/json");
+      response.end(
+        JSON.stringify({
+          items: [
+            {
+              id: `alpha-gmail:${"b".repeat(64)}:one`,
+              platform: "gmail",
+              channel: "Inbox",
+              senderName: "Managed sender",
+              snippet: "Existing owner mailbox",
+              threadTopic: "Managed morning mail",
+              receivedAt: "2026-11-12T12:00:00.000Z",
+              unread: true,
+            },
+          ],
+        }),
+      );
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("Missing test listener");
+    vi.stubEnv(
+      "ELIZA_MANAGED_GMAIL_READ_BROKER",
+      `http://127.0.0.1:${address.port}/__alpha-owner-gmail`,
+    );
+    vi.stubEnv("ELIZA_API_TOKEN", token);
+    try {
+      const service = new LifeOpsService(runtime);
+      const report = await new CheckinService(runtime, {
+        sources: {
+          getGoogleConnectorAccounts: async () => [],
+          getInbox: (request) =>
+            service.getInbox({ ...request, channels: ["gmail"] }),
+        },
+      }).runMorningCheckin({
+        now: new Date("2026-11-12T12:30:00.000Z"),
+        timezone: "America/Los_Angeles",
+      });
+      expect(prompts.join("\n")).toContain("Managed morning mail");
+      expect(
+        report.briefingSections.find((section) => section.key === "inbox")
+          ?.error,
+      ).toBeNull();
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
   });
 
   it("includes ordinary Gmail through the Inbox when triage is not available", async () => {
