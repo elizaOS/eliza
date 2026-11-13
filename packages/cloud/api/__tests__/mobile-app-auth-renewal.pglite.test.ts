@@ -714,6 +714,15 @@ test("a disabled, removed or re-registered client is refused with 401", async ()
      VALUES($1, $2, $3, true, now(), now())`,
     [CLIENT.clientId, APP, "https://eliza.app/other/auth/callback"],
   );
+  // The new callback is a valid reviewed registration, but the existing
+  // credential still belongs to its original callback and must be refused.
+  await pg.query("UPDATE apps SET allowed_origins=$1::jsonb WHERE id=$2", [
+    JSON.stringify([
+      CLIENT.redirectUri,
+      "https://eliza.app/other/auth/callback",
+    ]),
+    APP,
+  ]);
   await refused();
   await pg.query(
     "UPDATE mobile_app_auth_clients SET app_id=$1, redirect_uri=$2 WHERE client_id=$3",

@@ -33,10 +33,8 @@ import {
 } from "../../db/repositories/mobile-app-auth-grants";
 import type { ApiKey, NewApiKey } from "../../db/schemas/api-keys";
 import type { MobileAppAuthEnvironment } from "../../db/schemas/mobile-app-auth-grants";
-import { isAllowedOrigin } from "../security/origin-validation";
 import { logger } from "../utils/logger";
 import { apiKeysService, isMobileApiKeySecret } from "./api-keys";
-import { appsService } from "./apps";
 import {
   MOBILE_CLIENT_MAX_CREDENTIAL_TTL_SECONDS,
   MOBILE_CLIENT_MIN_CREDENTIAL_TTL_SECONDS,
@@ -211,11 +209,7 @@ export async function admitMobileAppAuthRegistration(
     ttl > MOBILE_CLIENT_MAX_CREDENTIAL_TTL_SECONDS
   )
     return invalid("server_configuration_error", "Invalid mobile App Auth registration");
-  const configuredOrigins = [app.app_url, ...(app.allowed_origins ?? [])];
-  if (
-    !isAllowedOrigin(configuredOrigins, client.redirect_uri) &&
-    !isAllowedOrigin(await appsService.getAllowedOrigins(app), client.redirect_uri)
-  ) {
+  if (!app.allowed_origins?.includes(client.redirect_uri)) {
     return invalid(
       "server_configuration_error",
       "Configured mobile App Auth app does not allow the registered redirect",

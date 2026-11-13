@@ -102,7 +102,10 @@ export const mobileAppAuthClientsRepository = {
       await admitMobileAppAuthRegistration(env, row);
       const packageName = row.client.android_package_name;
       const fingerprints = row.client.android_cert_fingerprints;
-      if (!packageName || !Array.isArray(fingerprints) || fingerprints.length === 0) continue;
+      if (!packageName || !Array.isArray(fingerprints) || fingerprints.length === 0)
+        throw new ElizaError("Missing native Android association fingerprints", {
+          code: "MOBILE_APP_AUTH_ASSET_LINKS_CONFIGURATION",
+        });
       const parsed = parseAndroidAssetLinksConfig(
         JSON.stringify([
           {

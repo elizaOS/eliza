@@ -13,16 +13,14 @@
     "packages/cloud/api/__tests__/native-callback.pglite.test.ts"
   ],
   "conformance": "packages/cloud/quint/check-reviewed-cloud.mjs",
-  "bounds": "Four entrypoints with eleven boolean policy dimensions: primary database availability, registration and app status, exact deployment configuration, callback/origin/TTL validity and credential grant binding. 10,000 traces of 40 steps.",
+  "bounds": "Four entrypoints with eleven boolean policy dimensions: primary database availability, registration and app status, exact deployment configuration, callback syntax, exact allowed callback, TTL and credential grant binding. Complete finite graph enumeration; one authority fact changes per step.",
   "cases": [
     {
       "name": "client-registration-authority",
       "main": "MobileAppClientRegistration",
       "init": "init",
       "step": "step",
-      "invariants": [
-        "safety"
-      ],
+      "invariants": ["safety"],
       "maxSteps": 40,
       "samples": 1000,
       "temporal": []

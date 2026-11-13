@@ -4,17 +4,17 @@
 module MobileAppClientRegistration {
   type Policy = { databaseAvailable: bool, clientPresent: bool, clientEnabled: bool,
     appActive: bool, appApproved: bool, enabledExactly: bool, environmentValid: bool,
-    callbackValid: bool, originAllowed: bool, ttlValid: bool, grantMatches: bool }
+    callbackValid: bool, exactCallbackAllowed: bool, ttlValid: bool, grantMatches: bool }
   var policy: Policy
   var entrypoint: str
   var admitted: bool
   pure val allowedPaths = Set("registration", "credential", "renewal", "callback")
   pure val validPolicy = { databaseAvailable: true, clientPresent: true, clientEnabled: true,
     appActive: true, appApproved: true, enabledExactly: true, environmentValid: true,
-    callbackValid: true, originAllowed: true, ttlValid: true, grantMatches: true }
+    callbackValid: true, exactCallbackAllowed: true, ttlValid: true, grantMatches: true }
   pure def permits(p: Policy, path: str): bool = all {
     p.databaseAvailable, p.clientPresent, p.clientEnabled, p.appActive, p.appApproved,
-    p.enabledExactly, p.environmentValid, p.callbackValid, p.originAllowed, p.ttlValid,
+    p.enabledExactly, p.environmentValid, p.callbackValid, p.exactCallbackAllowed, p.ttlValid,
     path.in(allowedPaths),
     (path == "credential" or path == "renewal") implies p.grantMatches
   }
@@ -35,7 +35,7 @@ module MobileAppClientRegistration {
     configure(policy.with("enabledExactly", not(policy.enabledExactly)), entrypoint),
     configure(policy.with("environmentValid", not(policy.environmentValid)), entrypoint),
     configure(policy.with("callbackValid", not(policy.callbackValid)), entrypoint),
-    configure(policy.with("originAllowed", not(policy.originAllowed)), entrypoint),
+    configure(policy.with("exactCallbackAllowed", not(policy.exactCallbackAllowed)), entrypoint),
     configure(policy.with("ttlValid", not(policy.ttlValid)), entrypoint),
     configure(policy.with("grantMatches", not(policy.grantMatches)), entrypoint),
     { nondet path = allowedPaths.oneOf(); configure(policy, path) }
@@ -50,4 +50,5 @@ module MobileAppClientRegistration {
   run invalidEnvironmentRefusedTest = init.then(configure(validPolicy.with("environmentValid", false), "callback")).then(resolve).expect(not(admitted))
   run unsetEnableRefusedTest = init.then(configure(validPolicy.with("enabledExactly", false), "renewal")).then(resolve).expect(not(admitted))
   run databaseOutageRefusedTest = init.then(configure(validPolicy.with("databaseAvailable", false), "registration")).then(resolve).expect(not(admitted))
+  run originWithoutExactCallbackRefusedTest = init.then(configure(validPolicy.with("exactCallbackAllowed", false), "registration")).then(resolve).expect(not(admitted))
 }

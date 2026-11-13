@@ -3,20 +3,30 @@
     "packages/scripts/cloud/admin/migrate-native-app-auth.ts",
     "packages/scripts/cloud/admin/migrate-native-app-auth.pglite.test.ts",
     "packages/cloud/shared/src/db/migrations/0574_native_app_auth_client_registration.sql",
+    "packages/cloud/shared/src/db/migrations/0575_native_app_auth_import_identity.sql",
+    ".github/workflows/cloud-cf-release.yml",
     "packages/cloud/quint/check-reviewed-cloud.mjs",
     "packages/cloud/quint/reviewed-cloud-checks.json"
   ],
   "conformance": "packages/cloud/quint/check-reviewed-cloud.mjs",
-  "bounds": "One environment, one complete four-client source snapshot, empty or committed database, staged rows, and atomic receipt. Source validity and row conflicts vary independently; retry and rollback preserve committed state.",
+  "bounds": "One environment, one complete four-client source snapshot, empty or committed database, staged rows, and atomic receipt. Release admission has absent, unbound, bound, or invalid markers; boolean schema, identity, source availability and retained-row state. Retry and rollback preserve committed state; a bound marker permits later reviewed row deletion without source reads.",
   "cases": [
     {
       "name": "native-registry-migration",
       "main": "NativeRegistryMigration",
       "init": "init",
       "step": "step",
-      "invariants": [
-        "safety"
-      ],
+      "invariants": ["safety"],
+      "maxSteps": 40,
+      "samples": 1000,
+      "temporal": []
+    },
+    {
+      "name": "native-registry-release",
+      "main": "NativeRegistryRelease",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
       "maxSteps": 40,
       "samples": 1000,
       "temporal": []

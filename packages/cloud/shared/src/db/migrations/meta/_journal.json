@@ -3802,6 +3802,13 @@
       "when": 1796083200192,
       "tag": "0574_native_app_auth_client_registration",
       "breakpoints": true
+    },
+    {
+      "idx": 543,
+      "version": "7",
+      "when": 1796083200193,
+      "tag": "0575_native_app_auth_import_identity",
+      "breakpoints": true
     }
   ]
 }

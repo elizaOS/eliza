@@ -207,7 +207,11 @@ Migration workflow for each environment. It imports the exact existing client,
 Android and deployed Pages configuration in one transaction, then verifies the
 complete import. An absent source, ambiguous app or conflicting row refuses the
 import. Keep the old runtime deployed until this succeeds. Later registrations
-and renames are reviewed database changes; normal releases have no registry gate. Client
+and renames are reviewed database changes. The first database-only release runs
+the import before activation if no completion marker exists. Later releases
+validate only the marker's environment, schema version and database identity;
+they do not require the original client rows or legacy inputs. Remove this
+temporary import phase after both environments complete cutover. Client
 IDs are independent of Android package names. The API, Digital Asset Links and
 hosted fallback read the same rows, so changes take effect without a release.
 Unknown or disabled clients fail closed. No deployment secret stores client

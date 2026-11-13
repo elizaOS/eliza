@@ -118,7 +118,7 @@ beforeAll(async () => {
   await dbWrite.execute(`
     INSERT INTO apps (id, organization_id, app_url, allowed_origins, is_active, is_approved)
     VALUES
-      ('${APP_ACTIVE_ID}', '${ORG_ID}', 'https://eliza.app', '["https://eliza.app/auth/callback"]'::jsonb, true, true),
+      ('${APP_ACTIVE_ID}', '${ORG_ID}', 'https://eliza.app', '["https://eliza.app/auth/callback","https://eliza.app/second/callback","https://eliza.app/secondary/callback"]'::jsonb, true, true),
       ('${APP_INACTIVE_ID}', '${ORG_ID}', 'https://inactive.app', '["https://inactive.app/auth/callback"]'::jsonb, false, true),
       ('${APP_UNAPPROVED_ID}', '${ORG_ID}', 'https://unapproved.app', '["https://unapproved.app/auth/callback"]'::jsonb, true, false)
   `);
@@ -187,6 +187,23 @@ describe("mobileAppAuthClientsRepository", () => {
   });
 
   describe("listActiveAndroidAssetLinks", () => {
+    test("rejects enabled Android registrations with missing fingerprints", async () => {
+      await dbWrite.execute(
+        "UPDATE mobile_app_auth_clients SET android_cert_fingerprints=NULL WHERE client_id='ai.elizaos.app'",
+      );
+      try {
+        await expect(
+          mobileAppAuthClientsRepository.listActiveAndroidAssetLinks({
+            ENVIRONMENT: "production",
+            ELIZA_MOBILE_APP_AUTH_ENABLED: "true",
+          }),
+        ).rejects.toThrow("Missing native Android association fingerprints");
+      } finally {
+        await dbWrite.execute(
+          `UPDATE mobile_app_auth_clients SET android_cert_fingerprints='["${FINGERPRINT_1}"]'::jsonb WHERE client_id='ai.elizaos.app'`,
+        );
+      }
+    });
     test("merges fingerprints across multiple clients for the same package", async () => {
       const statements = await mobileAppAuthClientsRepository.listActiveAndroidAssetLinks({
         ENVIRONMENT: "production",
@@ -205,6 +222,40 @@ describe("mobileAppAuthClientsRepository", () => {
       expect(elizaStatement?.target.sha256_cert_fingerprints).toContain(FINGERPRINT_2);
       expect(elizaStatement?.target.sha256_cert_fingerprints.length).toBe(2);
     });
+  });
+
+  test("requires the exact callback in app allowed_origins, not an origin or wildcard", async () => {
+    const { resolveMobileAppAuthRegistration } = await import("../../lib/services/mobile-app-auth");
+    const env = { ENVIRONMENT: "production", ELIZA_MOBILE_APP_AUTH_ENABLED: "true" };
+    const original = [
+      "https://eliza.app/auth/callback",
+      "https://eliza.app/second/callback",
+      "https://eliza.app/secondary/callback",
+    ];
+    try {
+      for (const allowed of [
+        ["https://eliza.app"],
+        ["https://*.app/auth/callback"],
+        ["https://eliza.app/other"],
+      ]) {
+        await dbWrite.execute(
+          `UPDATE apps SET allowed_origins='${JSON.stringify(allowed)}'::jsonb WHERE id='${APP_ACTIVE_ID}'`,
+        );
+        await expect(resolveMobileAppAuthRegistration(env, "ai.elizaos.app")).rejects.toThrow(
+          "does not allow the registered redirect",
+        );
+      }
+      await dbWrite.execute(
+        `UPDATE apps SET allowed_origins='${JSON.stringify(original)}'::jsonb WHERE id='${APP_ACTIVE_ID}'`,
+      );
+      expect((await resolveMobileAppAuthRegistration(env, "ai.elizaos.app")).redirectUri).toBe(
+        original[0],
+      );
+    } finally {
+      await dbWrite.execute(
+        `UPDATE apps SET allowed_origins='${JSON.stringify(original)}'::jsonb WHERE id='${APP_ACTIVE_ID}'`,
+      );
+    }
   });
 
   describe("findByRedirectUri", () => {
