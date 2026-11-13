@@ -47,6 +47,8 @@ const sources = [
   testFile,
   "packages/auth/test/fixtures/storage-ownership-probe.ts",
   "packages/auth/test/fixtures/account-storage-subprocess-probe.ts",
+  "packages/auth/src/vault/master-key.ts",
+  "packages/auth/quint/AccountStorageKeyOwnership.qnt",
   "packages/auth/quint/AccountStorageLock.qnt",
   "packages/auth/quint/AccountStorageReset.qnt",
   "packages/scripts/lib/vitest-conformance.ts",
@@ -96,7 +98,6 @@ const evidence = {
   tests,
   report: resultPath,
   limitations: [
-    "Runtime vault selection and persistence are exercised by real Bun/Node subprocesses; the finite ownership graph does not prove cryptography or the key loader.",
     "Controlled process schedules, not every TLC interleaving.",
     "Power-loss and arbitrary kernel I/O failures are not simulated exhaustively.",
     "Interrupted reset remains an unknown outcome; host callback recovery is caller-owned.",

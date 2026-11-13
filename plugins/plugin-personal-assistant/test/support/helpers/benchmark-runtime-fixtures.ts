@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { Capacitor } from "@capacitor/core";
 import type { AgentRuntime } from "@elizaos/core";
+import { clearPasswordManagerBackendCache } from "@elizaos/plugin-browser/password-manager-bridge";
 import { FakeSubscriptionComputerUseService } from "./subscription-computer-use-fixture.ts";
 
 const MOCK_SCREENSHOT_BASE64 =
@@ -163,10 +164,14 @@ else { const chunks = []; process.stdin.on("data", (chunk) => chunks.push(chunk)
   for (const name of ["pbcopy", "pbpaste", "xclip", "wl-copy", "wl-paste"]) {
     fs.writeFileSync(path.join(binDir, name), clipboard, { mode: 0o700 });
   }
+  clearPasswordManagerBackendCache();
   return {
     binDir,
     clipboardFile,
-    cleanup: () => fs.rmSync(binDir, { recursive: true, force: true }),
+    cleanup: () => {
+      clearPasswordManagerBackendCache();
+      fs.rmSync(binDir, { recursive: true, force: true });
+    },
   };
 }
 

@@ -2,7 +2,6 @@
   "sources": [
     "packages/auth/src/auth/account-storage.ts",
     "packages/auth/src/auth/account-storage-subprocess.test.ts",
-    "packages/auth/test/fixtures/account-storage-subprocess-probe.ts",
     "packages/auth/test/fixtures/storage-ownership-probe.ts"
   ],
   "conformance": "packages/auth/quint/check-account-storage.mjs",

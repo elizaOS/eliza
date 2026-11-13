@@ -9,6 +9,7 @@ import {
   parseSyntheticWorldConfiguration,
   withoutLlmMockBaseUrls,
 } from "./synthetic-world-settings.ts";
+import { isLoopbackUrl } from "./utils.ts";
 /**
  * Build a real AgentRuntime for scenario execution. Uses PGLite for storage
  * (no SQL mocks) and registers either the first available live LLM provider
@@ -935,39 +936,43 @@ export function restoreLlmBaseUrlsForLiveProvider(
   env: NodeJS.ProcessEnv = process.env,
 ): void {
   if (providerConfig.name === DETERMINISTIC_MODEL_PROVIDER_NAME) return;
-  const isKnownMock = (value: string): boolean => {
-    let origin: string;
+  const origin = (value: string | undefined) => {
+    if (!value) return undefined;
     try {
-      origin = new URL(value).origin;
+      const parsed = new URL(value);
+      // localhost, IPv4 and IPv6 loopback can reach the same local fixture.
+      return isLoopbackUrl(value)
+        ? `${parsed.protocol}//loopback:${parsed.port}`
+        : parsed.origin;
     } catch {
-      return false;
+      return undefined;
     }
-    return mockSettings.some((settings) =>
-      LLM_MOCK_BASE_URL_SETTINGS.some((key) => {
-        if (!settings[key]) return false;
-        try {
-          return new URL(settings[key]).origin === origin;
-        } catch {
-          return false;
-        }
-      }),
-    );
   };
-  const restored: Array<[string, string | undefined]> = [];
+  const mockOrigins = new Set(
+    mockSettings.flatMap((settings) =>
+      LLM_MOCK_BASE_URL_SETTINGS.map((key) => origin(settings[key])).filter(
+        (value): value is string => value !== undefined,
+      ),
+    ),
+  );
+  // Provider selection can copy an already-installed mock URL into its own
+  // settings. Refuse that ambiguous live selection before changing the env;
+  // otherwise applying providerConfig.env later restores the mock again.
   for (const key of LLM_MOCK_BASE_URL_SETTINGS) {
-    const selected = providerConfig.env[key];
-    if (selected !== undefined && isKnownMock(selected))
-      throw new ElizaError("Selected live provider uses a wire mock endpoint", {
+    const configured = origin(providerConfig.env[key]);
+    if (configured !== undefined && mockOrigins.has(configured))
+      throw new ElizaError("Live model provider resolves to a mock endpoint", {
         code: "SCENARIO_LIVE_MOCK_ENDPOINT",
         context: { provider: providerConfig.name, setting: key },
       });
+  }
+  for (const key of LLM_MOCK_BASE_URL_SETTINGS) {
     const own = ownValues[key];
     const value =
-      selected ?? (own !== undefined && !isKnownMock(own) ? own : undefined);
-    restored.push([key, value]);
-  }
-  // A refused provider leaves the caller's complete environment unchanged.
-  for (const [key, value] of restored) {
+      providerConfig.env[key] ??
+      (own !== undefined && !mockOrigins.has(origin(own) ?? "")
+        ? own
+        : undefined);
     if (value === undefined) delete env[key];
     else env[key] = value;
   }

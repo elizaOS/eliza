@@ -7,9 +7,9 @@
     "packages/testing/scripts/mocks/start-mocks.ts",
     "plugins/plugin-openai/utils/config.ts",
     "plugins/plugin-anthropic/utils/config.ts",
-    "packages/testing/quint/check-scenario-provider-isolation.mjs"
+    "packages/testing/quint/check-scenario-runtime-ownership.mjs"
   ],
-  "conformance": "packages/testing/quint/check-scenario-provider-isolation.mjs",
+  "conformance": "packages/testing/quint/check-scenario-runtime-ownership.mjs",
   "bounds": {
     "domain": "One environment-restoration call with two LLM settings, a live or deterministic provider, and absent/known-mock/live endpoint classes.",
     "assumptions": "Endpoint classification abstracts the URL parser and the supplied registered mock settings. Refusal preserves the function-entry environment; earlier factory environment writes are outside this atomic call.",

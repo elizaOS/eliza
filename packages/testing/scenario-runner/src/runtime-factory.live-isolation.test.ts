@@ -86,6 +86,25 @@ describe("live provider isolation from LLM mocks", () => {
     expect(settings.ELIZA_SYNTHETIC_WORLD_LEASED).toBe("1");
   });
 
+  it("refuses loopback aliases of known mock servers", () => {
+    for (const alias of ["localhost", "[::1]"]) {
+      const value = `http://${alias}:41001/v1`;
+      expect(() =>
+        restoreLlmBaseUrlsForLiveProvider(
+          { name: "openai", env: { OPENAI_BASE_URL: value } },
+          {},
+          [world.settings],
+          {},
+        ),
+      ).toThrowError(
+        expect.objectContaining({ code: "SCENARIO_LIVE_MOCK_ENDPOINT" }),
+      );
+      const env: NodeJS.ProcessEnv = { OPENAI_BASE_URL: value };
+      restoreLlmBaseUrlsForLiveProvider(live, env, [world.settings], env);
+      expect(env.OPENAI_BASE_URL).toBeUndefined();
+    }
+  });
+
   it("restores the process's own base URL, drops a mock one, and lets the provider win", () => {
     const env: NodeJS.ProcessEnv = {
       OPENAI_BASE_URL: world.settings.OPENAI_BASE_URL,
