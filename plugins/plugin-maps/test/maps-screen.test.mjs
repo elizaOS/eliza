@@ -166,7 +166,12 @@ function fixture(options = {}) {
       provider:
         connection.config.status === "configured" ? provider : undefined,
     }),
-    onConnectionChange: (listener) => {connectionListener=listener;return () => {connectionListener=undefined;};},
+    onConnectionChange: (listener) => {
+      connectionListener = listener;
+      return () => {
+        connectionListener = undefined;
+      };
+    },
     initialize: async () => {
       calls.initialized++;
     },
@@ -248,7 +253,10 @@ function fixture(options = {}) {
     },
     stops: () => stopped,
     emitDevice: (value) => deviceFixListener?.(value),
-    activate: () => {connection.config=config(options.modes, !!options.alternatives);connectionListener?.();},
+    activate: () => {
+      connection.config = config(options.modes, !!options.alternatives);
+      connectionListener?.();
+    },
     setDeviceFix: (value) => {
       deviceFix = value;
     },
@@ -1178,29 +1186,42 @@ test("a GPS origin displays My location and keeps the exact route point internal
 });
 
 test("an early search continues once the first provider becomes available", async () => {
-  const f = fixture({unconfigured:true});
-  f.screen.setQuery("Destination");f.screen.submit();await settle();
-  assert.equal(f.calls.searches.length,0);
-  f.activate();await settle();
-  assert.deepEqual(f.calls.searches,["Destination"]);
-  assert.equal(f.screen.view().results[0].name,"Destination");
+  const f = fixture({ unconfigured: true });
+  f.screen.setQuery("Destination");
+  f.screen.submit();
+  await settle();
+  assert.equal(f.calls.searches.length, 0);
+  f.activate();
+  await settle();
+  assert.deepEqual(f.calls.searches, ["Destination"]);
+  assert.equal(f.screen.view().results[0].name, "Destination");
   f.screen.dispose();
 });
 
 test("directions use an allowed device location and swapping reverses the endpoints", async () => {
- const f=fixture();
- f.setDeviceFix({coordinate:ORIGIN,accuracyMeters:5,timestamp:Date.now(),precision:"precise"});
- f.screen.setQuery("Destination");f.screen.submit();await settle();
- f.screen.choose("place:fixture:destination");await settle();
- f.screen.openDirections(true);await settle();
- assert.equal(f.screen.view().directions?.routeReady,true);
- assert.equal(f.screen.view().directions?.originText,"My location");
- f.screen.swapDirections();await settle();
- assert.equal(f.screen.view().directions?.name,"My location");
- assert.equal(f.screen.view().directions?.originText,"Destination");
- assert.deepEqual(f.calls.routes.at(-1).from,END);
- assert.deepEqual(f.screen.view().map.route.to,ORIGIN);
- f.screen.dispose();
+  const f = fixture();
+  f.setDeviceFix({
+    coordinate: ORIGIN,
+    accuracyMeters: 5,
+    timestamp: Date.now(),
+    precision: "precise",
+  });
+  f.screen.setQuery("Destination");
+  f.screen.submit();
+  await settle();
+  f.screen.choose("place:fixture:destination");
+  await settle();
+  f.screen.openDirections(true);
+  await settle();
+  assert.equal(f.screen.view().directions?.routeReady, true);
+  assert.equal(f.screen.view().directions?.originText, "My location");
+  f.screen.swapDirections();
+  await settle();
+  assert.equal(f.screen.view().directions?.name, "My location");
+  assert.equal(f.screen.view().directions?.originText, "Destination");
+  assert.deepEqual(f.calls.routes.at(-1).from, END);
+  assert.deepEqual(f.screen.view().map.route.to, ORIGIN);
+  f.screen.dispose();
 });
 
 test("editing the automatic origin fences a late device location", async () => {

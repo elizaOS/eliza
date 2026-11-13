@@ -171,8 +171,16 @@ export class MapPlane {
       canvasContextAttributes: {
         preserveDrawingBuffer: options.preserveDrawingBuffer ?? false,
       },
-      center: options.initialCenter ? [options.initialCenter.longitude, options.initialCenter.latitude] : worldwide ? [0, 20] : [(w + e) / 2, (s + n) / 2],
-      zoom: options.initialCenter ? Math.min(14, raster?.maxZoom ?? 18) : worldwide ? Math.max(2, raster?.minZoom ?? 0) : 14,
+      center: options.initialCenter
+        ? [options.initialCenter.longitude, options.initialCenter.latitude]
+        : worldwide
+          ? [0, 20]
+          : [(w + e) / 2, (s + n) / 2],
+      zoom: options.initialCenter
+        ? Math.min(14, raster?.maxZoom ?? 18)
+        : worldwide
+          ? Math.max(2, raster?.minZoom ?? 0)
+          : 14,
       minZoom: worldwide ? (raster?.minZoom ?? 0) : 11,
       maxZoom: raster ? Math.min(raster.maxZoom, 20) : 18,
       maxBounds: worldwide
@@ -370,7 +378,11 @@ export class MapPlane {
       throw error;
     }
     this.map.on("click", (event) => {
-      if (!options.onPoint || (event.originalEvent.target as Element)?.closest?.(".maplibregl-marker")) return;
+      if (
+        !options.onPoint ||
+        (event.originalEvent.target as Element)?.closest?.(".maplibregl-marker")
+      )
+        return;
       clearTimeout(this.pointTimer);
       const point = { latitude: event.lngLat.lat, longitude: event.lngLat.lng };
       this.pointTimer = setTimeout(() => {

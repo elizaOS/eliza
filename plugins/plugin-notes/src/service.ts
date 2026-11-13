@@ -11,8 +11,8 @@ import { reconstructNoteContent } from "./types.js";
 
 import { createHash, randomUUID } from "node:crypto";
 import type { CalendarNoteSourceReference } from "@elizaos/contracts";
-import type { NotesAudioReceipt } from "./client/notes-audio-store.js";
 import { ElizaError, type IAgentRuntime, logger, Service } from "@elizaos/core";
+import type { NotesAudioReceipt } from "./client/notes-audio-store.js";
 import { type EncryptedNotesDocumentPort, NotesStore } from "./store.js";
 import type {
   NotesDocument,

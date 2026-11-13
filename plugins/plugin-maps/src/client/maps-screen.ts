@@ -348,7 +348,14 @@ export class MapsScreenController {
         const query = this.searching ? this.query.trim() : "";
         if (query) {
           void Promise.resolve(this.initialization).then(() => {
-            if (!this.disposed && this.host.active() && this.searching && this.query.trim() === query && this.state?.search.phase === "idle") this.submit();
+            if (
+              !this.disposed &&
+              this.host.active() &&
+              this.searching &&
+              this.query.trim() === query &&
+              this.state?.search.phase === "idle"
+            )
+              this.submit();
           });
         }
       } else this.release(false);
@@ -966,10 +973,21 @@ export class MapsScreenController {
     this.invalidate();
     if (useCurrentLocation && this.directions) {
       const previousOriginText = this.originText;
-      void this.host.locationGranted().then(granted => {
-        if (!granted || this.disposed || !this.host.active() || !this.directions || this.selected !== item || this.originText !== previousOriginText) return;
+      void this.host.locationGranted().then((granted) => {
+        if (
+          !granted ||
+          this.disposed ||
+          !this.host.active() ||
+          !this.directions ||
+          this.selected !== item ||
+          this.originText !== previousOriginText
+        )
+          return;
         const fix = this.state?.position.value;
-        if (!fix) { this.locate(); return; }
+        if (!fix) {
+          this.locate();
+          return;
+        }
         this.originText = coordLabel(fix.coordinate);
         this.message = "";
         const controller = this.ensure();
@@ -982,9 +1000,24 @@ export class MapsScreenController {
 
   /** Reverse the selected endpoints without starting navigation. */
   swapDirections(): void {
-    const state = this.state, destination = this.selected;
-    if (this.disposed || !this.host.active() || !this.directions || this.navigating || !destination || !state?.origin || state.selection.phase !== "ready" || state.provider.status !== "configured") return;
-    const next: MapsScreenSelection = {label: state.originLabel || "Starting point", coordinate: state.origin, origin: "manual"};
+    const state = this.state,
+      destination = this.selected;
+    if (
+      this.disposed ||
+      !this.host.active() ||
+      !this.directions ||
+      this.navigating ||
+      !destination ||
+      !state?.origin ||
+      state.selection.phase !== "ready" ||
+      state.provider.status !== "configured"
+    )
+      return;
+    const next: MapsScreenSelection = {
+      label: state.originLabel || "Starting point",
+      coordinate: state.origin,
+      origin: "manual",
+    };
     const controller = this.ensure();
     ++this.searchIntent;
     this.selected = next;

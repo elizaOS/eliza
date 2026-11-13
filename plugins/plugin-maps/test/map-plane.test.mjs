@@ -124,7 +124,8 @@ function fixture(basemap, effects = {}) {
     }
   }
   const box = {
-    setTimeout, clearTimeout,
+    setTimeout,
+    clearTimeout,
     crypto: webcrypto,
     document: { createElement: element },
     MapLibre: ControlledMap,
@@ -902,28 +903,36 @@ test("map point selection waits for a single tap and cancels zoom or retired ges
   );
   const plane = f.plane;
   const map = f.map;
-  const event = { lngLat: { lat: 10, lng: 20 }, originalEvent: { target: { closest: () => null } } };
+  const event = {
+    lngLat: { lat: 10, lng: 20 },
+    originalEvent: { target: { closest: () => null } },
+  };
   map.events.click(event);
   map.events.dblclick();
-  await new Promise(resolve => setTimeout(resolve, 280));
+  await new Promise((resolve) => setTimeout(resolve, 280));
   assert.equal(points.length, 0);
   map.events.click(event);
-  await new Promise(resolve => setTimeout(resolve, 280));
+  await new Promise((resolve) => setTimeout(resolve, 280));
   assert.equal(points.length, 1);
   assert.equal(points[0].latitude, 10);
   assert.equal(points[0].longitude, 20);
   map.events.click(event);
   plane.destroy();
-  await new Promise(resolve => setTimeout(resolve, 280));
+  await new Promise((resolve) => setTimeout(resolve, 280));
   assert.equal(points.length, 1);
   f.plane.destroy();
 });
 
 test("an authorized initial location avoids a world-view camera", () => {
- const f=fixture({kind:"global",styleUrl:"https://tiles.example/style.json",attribution:"Fixture"});
- const plane=f.create({initialCenter:{latitude:37,longitude:-121}});
- const map=f.maps.at(-1);
- assert.deepEqual([...map.options.center],[-121,37]);
- assert.equal(map.options.zoom,14);
- plane.destroy();f.plane.destroy();
+  const f = fixture({
+    kind: "global",
+    styleUrl: "https://tiles.example/style.json",
+    attribution: "Fixture",
+  });
+  const plane = f.create({ initialCenter: { latitude: 37, longitude: -121 } });
+  const map = f.maps.at(-1);
+  assert.deepEqual([...map.options.center], [-121, 37]);
+  assert.equal(map.options.zoom, 14);
+  plane.destroy();
+  f.plane.destroy();
 });

@@ -269,11 +269,9 @@ export class MapsController {
     const request = new AbortController();
     this.detailRequest = request;
     try {
-      const result = await reverse(
-        coordinate(point),
-        request.signal,
-        { radiusMeters },
-      );
+      const result = await reverse(coordinate(point), request.signal, {
+        radiusMeters,
+      });
       if (
         request.signal.aborted ||
         !this.active ||
