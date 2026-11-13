@@ -139,6 +139,14 @@ export async function createRecord(zoneId: string, input: DnsRecordInput): Promi
   return fromCf(cf);
 }
 
+/**
+ * Cloudflare serves `GET /zones/:id/dns_records` one page at a time. It returns
+ * at most `per_page` records (100 is the documented maximum), so the listing
+ * must follow `page` until a short page arrives; a single request reports a
+ * partial zone as the whole zone.
+ */
+const DNS_RECORDS_PAGE_SIZE = 100;
+
 export async function listRecords(zoneId: string): Promise<DnsRecord[]> {
   const cfg = config();
   ensureConfigured(cfg);
@@ -146,11 +154,30 @@ export async function listRecords(zoneId: string): Promise<DnsRecord[]> {
     logger.info("[Cloudflare DNS:STUB] listRecords", { zoneId });
     return [];
   }
-  const cf = await cloudflareApiRequest<CfDnsRecord[]>(
-    `/zones/${zoneId}/dns_records?per_page=200`,
-    cfg.apiToken,
-  );
-  return cf.map(fromCf);
+  const records: DnsRecord[] = [];
+  const seen = new Set<string>();
+  for (let page = 1; ; page += 1) {
+    const batch = await cloudflareApiRequest<CfDnsRecord[]>(
+      `/zones/${zoneId}/dns_records?per_page=${DNS_RECORDS_PAGE_SIZE}&page=${page}`,
+      cfg.apiToken,
+    );
+    if (!Array.isArray(batch)) {
+      throw new Error(`Cloudflare DNS listing for zone ${zoneId} did not return a record list`);
+    }
+    let added = 0;
+    for (const row of batch) {
+      // A record can move between pages while the listing runs; the id keeps
+      // the result a set even then.
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+      records.push(fromCf(row));
+      added += 1;
+    }
+    if (batch.length < DNS_RECORDS_PAGE_SIZE) return records;
+    if (added === 0) {
+      throw new Error(`Cloudflare DNS listing for zone ${zoneId} repeated page ${page}`);
+    }
+  }
 }
 
 export async function getRecord(zoneId: string, recordId: string): Promise<DnsRecord> {
