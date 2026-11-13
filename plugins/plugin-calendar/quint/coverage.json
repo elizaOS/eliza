@@ -1,0 +1,37 @@
+[
+  {
+    "id": "plugin-calendar.CalendarSyncForeground",
+    "model": "plugins/plugin-calendar/quint/CalendarSyncForeground.qnt",
+    "sources": ["plugins/plugin-calendar/src/linked-sync/sync-host.ts"],
+    "invariants": ["ReadHasOneOutcome", "RetiredRunningPassIsCancelled"],
+    "status": "partial",
+    "limitations": [
+      "One host with one settings read per generation and one Stop or visibility interruption. Local test ports verify the host's admission, cancellation, stale error suppression and fresh resume.",
+      "Independent host instances, provider write/recovery, device pause failures, settings persistence races, debounce timing, and owner replacement are outside this state projection."
+    ],
+    "implementationTests": [
+      "plugins/plugin-calendar/test/linked-sync/sync-host.test.ts"
+    ]
+  },
+  {
+    "id": "plugin-calendar.CalendarWatchSyncSettlement",
+    "model": "plugins/plugin-calendar/quint/CalendarWatchSyncSettlement.qnt",
+    "sources": [
+      "plugins/plugin-calendar/src/google-watch/lifecycle.ts",
+      "plugins/plugin-calendar/src/google-watch/repository.ts"
+    ],
+    "invariants": [
+      "ExactAttemptAccounting",
+      "ErrorRequiresCurrentFailure",
+      "StoppedClearsPending"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One durable pending cursor, one failing worker, one successful replacement, and one stop. Callback return can be refused if its owner has changed.",
+      "Webhook admission and resource binding, multiple channels, provider writes, renewal, restarts, and durable retry pacing are outside this model."
+    ],
+    "implementationTests": [
+      "plugins/plugin-calendar/test/google-calendar-watch.pglite.test.ts"
+    ]
+  }
+]

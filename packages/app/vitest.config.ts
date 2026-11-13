@@ -7,10 +7,14 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 import baseConfig from "../../packages/scripts/vitest/default.config";
 import { compoundVitestEvidence } from "../scripts/lib/compound-test-evidence.ts";
+import { discoverScriptTestLanes } from "./scripts/lib/script-test-lanes.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+const scriptTestLanes = discoverScriptTestLanes(here);
 
 const unitExcludes = [
+  ...scriptTestLanes["node:test"],
+  ...scriptTestLanes["bun:test"],
   "dist/**",
   "**/node_modules/**",
   "**/*.live.test.{ts,tsx}",

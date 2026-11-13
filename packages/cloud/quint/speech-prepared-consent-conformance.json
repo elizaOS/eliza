@@ -350,6 +350,50 @@
         {
           "classname": "Worker speech rate limit without an admission snapshot",
           "name": "speech consent retries one credential deadline before any preparation (allowed=false)"
+        },
+        {
+          "classname": "Worker speech rate limit without an admission snapshot",
+          "name": "a cold projection hydrates inside the first STT, TTS and relay bootstrap request"
+        },
+        {
+          "classname": "Worker speech rate limit without an admission snapshot",
+          "name": "a cold projection whose cache write fails is still served from the primary fill"
+        },
+        {
+          "classname": "Worker speech rate limit without an admission snapshot",
+          "name": "production flags: an app's key keeps its app scope, so another app's route refuses it"
+        },
+        {
+          "classname": "Worker speech rate limit without an admission snapshot",
+          "name": "STT and TTS take one Durable Object decision and no Redis round trip"
+        },
+        {
+          "classname": "Worker speech rate limit without an admission snapshot",
+          "name": "a request over the key's cap is refused before provider work"
+        },
+        {
+          "classname": "Worker speech rate limit without an admission snapshot",
+          "name": "an inactive or deleted key is refused before any limiter work"
+        },
+        {
+          "classname": "Worker speech rate limit without an admission snapshot",
+          "name": "a key row owned by another organization fails closed"
+        },
+        {
+          "classname": "Worker speech rate limit without an admission snapshot",
+          "name": "each organization is counted only in its own window"
+        },
+        {
+          "classname": "Worker speech rate limit without an admission snapshot",
+          "name": "an unreachable limiter refuses the request"
+        },
+        {
+          "classname": "Personal-agent media in the organization's strict window",
+          "name": "Worker turn media and the speech routes count in one window"
+        },
+        {
+          "classname": "Personal-agent media in the organization's strict window",
+          "name": "media without an execution context keeps the Redis window"
         }
       ]
     }

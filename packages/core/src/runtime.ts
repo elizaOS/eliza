@@ -3687,11 +3687,17 @@ export class AgentRuntime implements IAgentRuntime {
 			// Each handler starts in its own async frame so a handler that throws
 			// synchronously rejects like an async one instead of aborting the map
 			// before its siblings (registered by later plugins) have been invoked.
-			await Promise.all(
-				eventHandlers.map(async (handler) =>
-					handler(payload as EventPayloadMap[keyof EventPayloadMap]),
-				),
+			const pending = eventHandlers.map(async (handler) =>
+				handler(payload as EventPayloadMap[keyof EventPayloadMap]),
 			);
+			try {
+				await Promise.all(pending);
+			} catch (error) {
+				// A rejecting handler does not retire its siblings. Keep the event
+				// owner until they settle, then propagate the original failure.
+				await Promise.allSettled(pending);
+				throw error;
+			}
 		}
 	}
 

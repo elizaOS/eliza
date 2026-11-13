@@ -32,6 +32,7 @@ const required = [
   "processDueScheduledTasks \u2014 production wiring retires a resolved approval's scheduled follow-up before dispatch or escalation",
   "processDueScheduledTasks \u2014 production wiring retires a resolved approval's fired follow-up before dispatch or escalation",
   "processDueScheduledTasks \u2014 production wiring fires a due one-shot reminder via the real runner wired through LifeOpsRepository",
+  "processDueScheduledTasks \u2014 production wiring resolves owner-local cron timezone priority -1/-1/1/0",
   "processDueScheduledTasks \u2014 production wiring fires owner-local cron after travel changes the zone despite a future home-zone index",
   "processDueScheduledTasks \u2014 production wiring reconciles a stale bound fire after restart by replaying its provider receipt",
   "processDueScheduledTasks \u2014 production wiring respectsGlobalPause via the real GlobalPauseStore: paused tasks skip, then fire after clear()",

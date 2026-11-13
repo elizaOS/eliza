@@ -57,6 +57,9 @@ unclear or you cannot find the approved plan, ask maintainers before you start.
   functions and clean up as you go. Use existing work. Add a script only when it
   does something no existing script does. Add a type or code only when the
   approved task needs it. Explain why existing code cannot meet that need.
+  Alpha imports the files in `packages/scripts/alphaphone-imports.manifest.json`
+  by path: do not move, delete or drop a listed export until Alpha no longer
+  uses it, then update the manifest.
 - **Change the existing code.** Do not patch over legacy behavior or add a new
   version beside the old one. Do not add a flag to introduce a change: change
   the underlying code to be the new thing. Add a conditional path only for a
