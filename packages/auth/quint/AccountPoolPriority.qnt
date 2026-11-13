@@ -2,9 +2,9 @@
 // completion clock, then ranks by priority and persisted last-used time.
 // Provider2 shares visible account id 1 with provider1.
 module AccountPoolPriority {
-  val accountKeys = Set(1, 2, 3)
-  val ids = Set(0, 1, 2)
-  val firstHealth = Set("ok", "cooling", "unknown-cooldown", "parked")
+  pure val accountKeys = Set(1, 2, 3)
+  pure val ids = Set(0, 1, 2)
+  pure val firstHealth = Set("ok", "cooling", "unknown-cooldown", "parked")
   type Account = { enabled: bool, health: str, until: int, ends: int, priority: int, lastUsed: int }
   type Query = { provider: int, allow: int, excluded: int }
   type State = {
@@ -12,11 +12,11 @@ module AccountPoolPriority {
     calls: int, priorityWrites: Set[int], recorded: bool, violations: Set[str],
     poolRoot: int, ambientRoot: int, credentialRoot: int,
   }
-  val defaults = { enabled: true, health: "ok", until: 0, ends: 3, priority: 0, lastUsed: 0 }
-  val defaultQuery = { provider: 1, allow: 0, excluded: 0 }
+  pure val defaults = { enabled: true, health: "ok", until: 0, ends: 3, priority: 0, lastUsed: 0 }
+  pure val defaultQuery = { provider: 1, allow: 0, excluded: 0 }
   var s: State
 
-  action startWithRoots(health: str, expires: bool, peerEnabled: bool, ambientRoot: int): bool = s' = {
+  pure def initialState(health: str, expires: bool, peerEnabled: bool, ambientRoot: int): State = {
     accounts: Map(
       1 -> { ...defaults, health: health, until: 1 },
       2 -> { ...defaults, enabled: peerEnabled, priority: 1, ends: if (expires) 1 else 3 },
@@ -25,6 +25,8 @@ module AccountPoolPriority {
     priorityWrites: Set(), recorded: false, violations: Set(),
     poolRoot: 1, ambientRoot: ambientRoot, credentialRoot: 0,
   }
+  action startWithRoots(health: str, expires: bool, peerEnabled: bool, ambientRoot: int): bool =
+    s' = initialState(health, expires, peerEnabled, ambientRoot)
   action start(health: str, expires: bool, peerEnabled: bool): bool =
     startWithRoots(health, expires, peerEnabled, 1)
   action init = {
@@ -32,7 +34,7 @@ module AccountPoolPriority {
     nondet expires = Set(true, false).oneOf()
     nondet peerEnabled = Set(true, false).oneOf()
     nondet ambientRoot = Set(1, 2).oneOf()
-    startWithRoots(health, expires, peerEnabled, ambientRoot)
+    s' = initialState(health, expires, peerEnabled, ambientRoot)
   }
 
   pure def providerOf(key: int): int = if (key == 3) 2 else 1

@@ -14,6 +14,7 @@ const cases = new Map([
   [
     "src/runtime-factory.live-isolation.test.ts",
     [
+      "live provider isolation from LLM mocks joins /v1 to a world origin without a double slash",
       "live provider isolation from LLM mocks refuses a selected live provider whose OPENAI_BASE_URL still names its mock",
       "live provider isolation from LLM mocks refuses a selected live provider whose ANTHROPIC_BASE_URL still names its mock",
       "live provider isolation from LLM mocks refuses a selected live provider whose OPENAI_BASE_URL names the other LLM mock",
