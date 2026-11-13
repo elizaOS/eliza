@@ -1,6 +1,11 @@
 /** Real route/admission orchestration with explicit authority and provider boundaries; no live effects. */
 import { beforeEach, expect, mock, test } from "bun:test";
-import type { MapsPriceObserver } from "@elizaos/cloud-shared/lib/services/maps/contract";
+import type {
+  MapsOperation,
+  MapsPriceObserver,
+  MapsProviderAdapter,
+} from "@elizaos/cloud-shared/lib/services/maps/contract";
+import { mapsProviderFromEnv } from "@elizaos/cloud-shared/lib/services/maps/provider-registry";
 
 let locked = false,
   admitted = 0,
@@ -165,8 +170,11 @@ beforeEach(() => {
   signal = new AbortController();
   response = async () => Response.json({ admitted: true });
 });
-function app() {
-  return createMapsRoute("search", {
+function app(
+  operation: MapsOperation = "search",
+  provider?: MapsProviderAdapter,
+) {
+  return createMapsRoute(operation, {
     authenticate: authenticateMapsCaller,
     admitRequest: admitMapsRequest,
     entitlement: async () => {
@@ -176,6 +184,7 @@ function app() {
       throw Error("isolate limiter path");
     },
     provider: () =>
+      provider ??
       ({
         creditPrice: () => ({
           amountUsd: quotedAmount,
@@ -209,12 +218,16 @@ function app() {
           if (cancelAfterSuccess) signal.abort();
           return [];
         },
-      }) as never,
+      } as never),
   });
 }
 let ip = 0;
-function call(body: unknown = { query: "test" }, key = "request") {
-  return app().request(
+function call(
+  body: unknown = { query: "test" },
+  key = "request",
+  route = app(),
+) {
+  return route.request(
     "/",
     {
       method: "POST",
@@ -271,6 +284,120 @@ test("credit-funded Maps reserves and settles provider cost without a plan", asy
   expect(providerMarks).toBe(1);
   expect(settlements).toEqual([0.032]);
   expect(dispatched).toBe(1);
+});
+test("Google billing statuses settle observed costs through the real route", async () => {
+  status = "none";
+  const cases = [
+    {
+      operation: "geocode",
+      http: 200,
+      providerStatus: "ZERO_RESULTS",
+      expectedStatus: 200,
+      cost: 0.005,
+    },
+    {
+      operation: "geocode",
+      http: 404,
+      providerStatus: "ZERO_RESULTS",
+      expectedStatus: 200,
+      cost: 0.005,
+    },
+    {
+      operation: "geocode",
+      http: 200,
+      providerStatus: "UNKNOWN_ERROR",
+      expectedStatus: 503,
+      cost: 0,
+    },
+    {
+      operation: "geocode",
+      http: 503,
+      providerStatus: "UNKNOWN_ERROR",
+      expectedStatus: 503,
+      cost: 0,
+    },
+    {
+      operation: "details",
+      http: 404,
+      providerStatus: "NOT_FOUND",
+      expectedStatus: 200,
+      cost: 0.02,
+    },
+    {
+      operation: "reverse",
+      http: 200,
+      providerStatus: "UNKNOWN_ERROR",
+      expectedStatus: 503,
+      cost: 0.032,
+    },
+  ] as const;
+  let current: (typeof cases)[number] = cases[0];
+  const server = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    fetch(request) {
+      if (new URL(request.url).pathname.endsWith("places:searchNearby"))
+        return Response.json({ places: [] });
+      return Response.json(
+        { status: current.providerStatus, results: [] },
+        { status: current.http },
+      );
+    },
+  });
+  const receipts: object[] = [];
+  try {
+    const provider = mapsProviderFromEnv(
+      {
+        ELIZA_MAPS_PROVIDER: "google",
+        GOOGLE_MAPS_API_KEY: "maps-billing-fixture-key",
+      },
+      ((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = new URL(String(input));
+        return fetch(new URL(`${url.pathname}${url.search}`, server.url), init);
+      }) as typeof fetch,
+    )!;
+    for (current of cases) {
+      const body =
+        current.operation === "details"
+          ? { id: "ChIJMYU_e2_CzRIR_JzEOkx493Q" }
+          : current.operation === "reverse"
+            ? {
+                coordinate: { latitude: 43.7397, longitude: 7.4276 },
+                preferPlace: true,
+              }
+            : { query: "No matching place" };
+      quotedAmount = provider.creditPrice!(current.operation, body).amountUsd;
+      settlements = [];
+      providerMarks = usage = 0;
+      const result = await call(
+        body,
+        `billing-status-${receipts.length}`,
+        app(current.operation, provider),
+      );
+      receipts.push({
+        operation: current.operation,
+        http: current.http,
+        providerStatus: current.providerStatus,
+        status: result.status,
+        settlements: [...settlements],
+        providerMarks,
+        usage,
+      });
+    }
+    expect(receipts).toEqual(
+      cases.map((entry) => ({
+        operation: entry.operation,
+        http: entry.http,
+        providerStatus: entry.providerStatus,
+        status: entry.expectedStatus,
+        settlements: [entry.cost],
+        providerMarks: 1,
+        usage: 1,
+      })),
+    );
+  } finally {
+    await server.stop(true);
+  }
 });
 test("a credit reservation refusal never dispatches the provider", async () => {
   status = "none";
