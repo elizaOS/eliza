@@ -32,6 +32,27 @@
 		"implementationTests": ["packages/core/test/semaphore.test.ts"]
 	},
 	{
+		"id": "core.PipelineHookSnapshot",
+		"model": "packages/core/quint/PipelineHookSnapshot.qnt",
+		"sources": [
+			"packages/core/src/runtime/pipeline-hooks.ts",
+			"packages/core/src/runtime/model-policy.ts",
+			"packages/core/src/types/pipeline-hooks.ts",
+			"packages/core/src/runtime.ts"
+		],
+		"invariants": [
+			"StartsOnlyCaptured",
+			"GroupsWaitForCompletion",
+			"HonestSettlement"
+		],
+		"status": "modeled",
+		"limitations": [
+			"Two dispatches, one phase, five hook slots, one replacement and one removal. The phase-wide concurrent schedule and intentional local admission refusal have formal scenarios.",
+			"The conformance hook runs four real runtime tests. The overlapping dispatches check live replacement, removal, grouped order and an isolated diagnostic. Phase moves, shutdown, metrics and outer phase policies are outside the projection."
+		],
+		"implementationTests": ["packages/core/test/core-hooks.test.ts"]
+	},
+	{
 		"id": "core.SingleFlightMemo",
 		"model": "packages/core/quint/SingleFlightMemo.qnt",
 		"sources": [

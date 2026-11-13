@@ -122,6 +122,18 @@ const suites = new Map([
 		},
 	],
 	[
+		"PipelineHookSnapshot.qnt",
+		{
+			file: "test/core-hooks.test.ts",
+			tests: [
+				"registers both message-path security hooks through plugin init",
+				"registers through the real boot path into plugin bookkeeping",
+				"does not replay the incoming-message warning when the stored turn is rendered as history",
+				"keeps admitted handlers when the next pipeline dispatch sees replacements and removals",
+			].map((title) => `core security hooks plugin (#12091 item 23) ${title}`),
+		},
+	],
+	[
 		"SingleFlightMemo.qnt",
 		{
 			file: "test/read-memo-runtime.test.ts",
