@@ -34,6 +34,7 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/audit-ios-cloud-artifact.ts",
   "scripts/build-consumer-task-runtime.mjs",
   "scripts/build-helpers/arm64-simd.ts",
+  "scripts/build-helpers/elizavoice-build-flags.ts",
   "scripts/build-helpers/omnivoice-merged.ts",
   "scripts/build-helpers/verify-fused-symbols.ts",
   "scripts/build-llama-cpp-mtp.ts",
