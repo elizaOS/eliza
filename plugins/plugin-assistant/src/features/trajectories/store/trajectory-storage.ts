@@ -158,20 +158,12 @@ export async function readDatabaseTrajectoryStatistics(
       `SELECT status AS key, count(*) AS cnt FROM trajectories
          WHERE agent_id = ${sqlQuote(runtime.agentId)} GROUP BY status`,
     );
-    // Select dedicated records first. A stale compatibility snapshot must
-    // never hide calls or double-count a promoted trajectory.
     const byModel = await readTrajectoryBreakdown(
       runtime,
-      `WITH owned AS (
-          SELECT id, steps_json FROM trajectories
-          WHERE agent_id = ${sqlQuote(runtime.agentId)}
-        ), steps AS (
+      `WITH steps AS (
           SELECT s.payload::jsonb AS payload FROM trajectory_steps s
-          JOIN owned t ON t.id = s.trajectory_id
-          UNION ALL
-          SELECT legacy.payload FROM owned t
-          CROSS JOIN LATERAL jsonb_array_elements(t.steps_json::jsonb) legacy(payload)
-          WHERE NOT EXISTS (SELECT 1 FROM trajectory_steps s WHERE s.trajectory_id = t.id)
+          JOIN trajectories t ON t.id = s.trajectory_id
+          WHERE t.agent_id = ${sqlQuote(runtime.agentId)}
         )
         SELECT call->>'model' AS key, jsonb_typeof(call->'model') AS key_type, count(*) AS cnt
         FROM steps CROSS JOIN LATERAL

@@ -24,15 +24,6 @@ const suites = {
       "blocks an optional null over a real MCP transport and forwards an allowed null",
     ].map((name) => `MCP dynamic action parameter boundary ${name}`),
   },
-  "LegacyTrajectoryMigration.qnt": {
-    cwd: modelOwner,
-    file: "src/features/trajectories/legacy-trajectory-migration.pglite.test.ts",
-    match: "preserves complete legacy steps",
-    names: [
-      "preserves complete legacy steps when the canonical row store first opens",
-      "preserves complete legacy steps through a failed migration and retry",
-    ],
-  },
   "TurnCancellation.qnt": {
     cwd: "packages/core",
     file: "test/use-model-cancellation.test.ts",
