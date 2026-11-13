@@ -764,9 +764,13 @@ test("closing while an extension is in flight settles every reservation exactly 
         }),
     }),
     session = await f.open();
+  await session.control({ t: "tts", id: "active-phrase", text: "hello" });
   await until(() => f.order.filter((step) => step === "credits").length === 2);
   await tick();
   const closing = session.close();
+  await tick();
+  expect(f.order).toContain("stt-cancel");
+  expect(f.order).toContain("tts-cancel");
   accept(0);
   await closing;
   // The renewal was never granted: its reservation carries no usage.
@@ -794,6 +798,8 @@ test("a reservation that lands after close is released, not leaked", async () =>
   const session = await f.open();
   await until(() => calls === 2);
   const closing = session.close();
+  await tick();
+  expect(f.order).toContain("stt-cancel");
   admit();
   await closing;
   expect(f.settled).toHaveLength(2);
