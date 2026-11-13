@@ -205,6 +205,7 @@ async function dispatch(
   provider: MapsProviderAdapter,
   c: AppContext,
   body: unknown,
+  completion?: MapsCompletion,
 ): Promise<Record<string, unknown>> {
   const signal = c.req.raw.signal;
   const { providerId, attribution } = provider.coverage();
@@ -218,6 +219,7 @@ async function dispatch(
         places: await provider.geocode(
           parsed(mapsTextSearchRequestSchema, body),
           signal,
+          completion?.recordProviderPrice,
         ),
       };
     case "search":
@@ -227,6 +229,7 @@ async function dispatch(
         places: await provider.search(
           parsed(mapsTextSearchRequestSchema, body),
           signal,
+          completion?.recordProviderPrice,
         ),
       };
     case "reverse":
@@ -236,6 +239,7 @@ async function dispatch(
         place: await provider.reverse(
           parsed(mapsReverseRequestSchema, body),
           signal,
+          completion?.recordProviderPrice,
         ),
       };
     case "details":
@@ -245,6 +249,7 @@ async function dispatch(
         place: await provider.details(
           parsed(mapsPlaceDetailsRequestSchema, body),
           signal,
+          completion?.recordProviderPrice,
         ),
       };
     case "routes":
@@ -253,7 +258,11 @@ async function dispatch(
         attribution,
         // Every provider's geometry is bounded here, before the response.
         routes: (
-          await provider.routes(parsed(mapsRoutesRequestSchema, body), signal)
+          await provider.routes(
+            parsed(mapsRoutesRequestSchema, body),
+            signal,
+            completion?.recordProviderPrice,
+          )
         ).map((route) => ({
           ...route,
           geometry: simplifyRouteGeometry(route.geometry, route.steps),
@@ -340,7 +349,7 @@ export function createMapsRoute(
           ? undefined
           : await readBody(c);
       if (operation !== "coverage" && operation !== "tiles")
-        parsed<unknown>(
+        body = parsed<unknown>(
           operation === "search" || operation === "geocode"
             ? mapsTextSearchRequestSchema
             : operation === "reverse"
@@ -359,7 +368,9 @@ export function createMapsRoute(
     let completion: MapsCompletion | undefined;
     if (dependencies.admitRequest) {
       try {
-        completion = await dependencies.admitRequest(c, user, operation);
+        completion = await dependencies.admitRequest(c, user, operation, () =>
+          provider.creditPrice?.(operation, body),
+        );
       } catch (error) {
         if (error instanceof ApiError || error instanceof MapsAdmissionError) {
           const retryAfterSeconds = error.details?.retryAfterSeconds;
@@ -376,7 +387,7 @@ export function createMapsRoute(
               code: error.code,
               ...(retry !== undefined ? { retryAfterSeconds: retry } : {}),
             },
-            error.status as 400 | 403 | 408 | 409 | 429 | 503,
+            error.status as 400 | 402 | 403 | 408 | 409 | 429 | 503,
             {
               ...NO_STORE,
               ...(retry !== undefined ? { "Retry-After": String(retry) } : {}),
@@ -458,7 +469,12 @@ export function createMapsRoute(
       if (operation === "tiles") {
         const tileFor = provider.tile;
         if (!tileFor || !tile) throw new Error("Tile provider disappeared");
-        result = await tileFor.call(provider, tile, c.req.raw.signal);
+        result = await tileFor.call(
+          provider,
+          tile,
+          c.req.raw.signal,
+          completion?.recordProviderPrice,
+        );
         if (c.req.header("accept") === "application/json") {
           const image = result as MapsTile;
           if (
@@ -480,7 +496,7 @@ export function createMapsRoute(
             data: Buffer.from(image.body).toString("base64"),
           };
         }
-      } else result = await dispatch(operation, provider, c, body);
+      } else result = await dispatch(operation, provider, c, body, completion);
       if (c.req.raw.signal.aborted) {
         await record("cancelled");
         return c.json(
