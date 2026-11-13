@@ -2,13 +2,8 @@
   {
     "id": "plugin-calendar.CalendarSyncForeground",
     "model": "plugins/plugin-calendar/quint/CalendarSyncForeground.qnt",
-    "sources": [
-      "plugins/plugin-calendar/src/linked-sync/sync-host.ts"
-    ],
-    "invariants": [
-      "ReadHasOneOutcome",
-      "RetiredRunningPassIsCancelled"
-    ],
+    "sources": ["plugins/plugin-calendar/src/linked-sync/sync-host.ts"],
+    "invariants": ["ReadHasOneOutcome", "RetiredRunningPassIsCancelled"],
     "status": "partial",
     "limitations": [
       "One host with one settings read per generation and one Stop or visibility interruption. Local test ports verify the host's admission, cancellation, stale error suppression and fresh resume.",
