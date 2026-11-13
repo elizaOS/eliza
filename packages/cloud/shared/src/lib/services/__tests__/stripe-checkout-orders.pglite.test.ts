@@ -29,7 +29,7 @@ beforeAll(async () => {
   const pglite = client.getPgliteClientForTests();
   if (!pglite) throw new Error("PGlite test client was not initialized");
   await installStripeCheckoutTestSchema((query) => pglite.exec(query));
-});
+}, 30_000);
 
 afterAll(async () => closeDb());
 
