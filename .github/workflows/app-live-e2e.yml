@@ -23,7 +23,8 @@ jobs:
       - name: Probe both supported reviewer providers
         run: |
           node --input-type=module <<'NODE'
-          import { preflightReviewer } from './packages/scripts/ai-qa/reviewer-preflight.ts';
+          process.argv[1] = 'reviewer-provider-probe';
+          const { preflightReviewer } = await import('./packages/scripts/ai-qa/reviewer-preflight.ts');
           const results = [];
           for (const backend of ['openai', 'anthropic']) {
             const result = await preflightReviewer({ backend });
@@ -40,5 +41,30 @@ jobs:
             },
             supportedReviewerBackends: ['openai', 'anthropic'],
           }));
+          if (!results.some(result => result.ok)) {
+            const model = 'openai/gpt-5-mini';
+            const endpoint = 'https://openrouter.ai/api/v1/chat/completions';
+            const probe = await preflightReviewer({ backend: 'openai', apiKey: process.env.OPENROUTER_API_KEY, endpoint, model });
+            const record = { backend: 'openrouter-openai-compatible', model, ok: probe.ok, classification: probe.classification, httpStatus: /^HTTP (\d+):/.exec(probe.detail)?.[1] ?? null };
+            console.log(JSON.stringify(record));
+            if (probe.ok) {
+              const { readFile } = await import('node:fs/promises');
+              const png = (await readFile('packages/ui/assets/favicons/apple-touch-icon.png')).toString('base64');
+              const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json', authorization: `Bearer ${process.env.OPENROUTER_API_KEY}` },
+                body: JSON.stringify({ model, max_completion_tokens: 512, reasoning_effort: 'minimal', response_format: { type: 'json_object' }, messages: [{ role: 'user', content: [{ type: 'text', text: 'Return JSON with key description that describes this image in one sentence.' }, { type: 'image_url', image_url: { url: `data:image/png;base64,${png}` } }] }] }),
+                signal: AbortSignal.timeout(60000),
+              });
+              let validDescription = false;
+              if (response.ok) {
+                const body = await response.json();
+                try { validDescription = typeof JSON.parse(body.choices?.[0]?.message?.content ?? '').description === 'string'; } catch {}
+              }
+              record.ok = response.ok && validDescription;
+              console.log(JSON.stringify({ backend: record.backend, model, imageHttpStatus: response.status, imageVerdictReceived: validDescription }));
+            }
+            results.push(record);
+          }
           process.exitCode = results.some(result => result.ok) ? 0 : 2;
           NODE
