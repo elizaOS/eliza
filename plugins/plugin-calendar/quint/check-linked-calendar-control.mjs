@@ -26,6 +26,12 @@ const required = [
   "serializes a pause racing admission across independent repository instances",
   "allows only one concurrent review and rejects a stale resume",
   "preserves pending create, update and delete records when pausing and reviewing a replacement",
+  "retains the local event and provider identity without scheduling another provider write",
+  "rolls back a retain-local decision when its receipt cannot commit",
+  "refuses retain-local with an unresolved provider dispatch or stale event review",
+  "rebinds under pause and preserves the old mapping in a durable replay receipt",
+  "does not replace a link while a provider dispatch is unresolved",
+  "rolls back both mapping and control revision if receipt persistence fails, then retries",
 ];
 const reportNames = new Set(required.map((name) => `${suite} ${name}`));
 const selector = required.map((name) => RegExp.escape(`${suite} > ${name}`));

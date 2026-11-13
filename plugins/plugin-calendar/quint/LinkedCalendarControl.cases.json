@@ -1,6 +1,7 @@
 {
   "sources": [
     "plugins/plugin-calendar/src/service/linked-calendar-control.ts",
+    "plugins/plugin-calendar/src/service/linked-calendar-sync.ts",
     "plugins/plugin-calendar/src/service/CalendarService.ts",
     "plugins/plugin-calendar/src/service/migration.ts",
     "plugins/plugin-calendar/src/service/linked-calendar-control.test.ts",
@@ -12,9 +13,9 @@
     "packages/scripts/run-with-deadline.ts"
   ],
   "bounds": {
-    "domain": "One durable owner row, two destination identities, six control revision advances, two sequential dispatch tokens and one reviewed pause operation key. Checks use a current review, a representative mismatched revision and the original receipt revision where applicable. Reopen preserves the durable row and receipt. The pause key identifies one request by its expected revision. Changed operations and other request fields are outside the finite key domain.",
-    "implementation": "Existing real PGlite cases exercise CalendarService control receipt commit, rollback and replay, including a disk reopen and a competing pause/admission schedule. Repository checks cover exact-token settlement, paused-revision recovery, destination and revision checks, and preserved pending event operations. No provider call is admitted by the conformance selector.",
-    "limitations": "The model checks the control repository and one public pause receipt, not the service's full recovery readback or current response after a concurrent commit. Provider effects, active worker evidence, ownership outside this row, multiple pause keys, destination verification, mapping mutation, shared database concurrency, and wall-clock liveness remain outside the projection. The positive progress claim assumes eventual settlement with the current token. There is no automatic takeover."
+    "domain": "One durable owner row, two destinations, six control revision advances and two sequential dispatch tokens. Checks use a current review, a representative mismatched revision and the original receipt revision where applicable. One projection checks a reviewed pause key. The other adds one existing clean mapping and one reviewed mapping key, with exact event review and eligibility as one input. Reopen preserves the durable row and receipt.",
+    "implementation": "Existing real PGlite cases exercise pause receipt commit, rollback and replay, disk reopen, and competing pause and dispatch admission. Repository cases check token settlement, paused recovery and retained pending event operations. Additional PGlite cases cover rebind, retain-local, occupied dispatch refusal, stale event review, transaction rollback and operation-key replay. The conformance selector admits no provider calls.",
+    "limitations": "The control case bounds the pause key to its expected revision. The mapping case holds the local event and original provider snapshot fixed. It abstracts opaque event identity, revision, timestamp and eligible state checks to a matching review. It models only one mapping edit and replay, with a fresh handoff key and a durable post-edit snapshot. Provider readback and writes, cross-owner storage, multiple receipt keys, subsequent mapping or event mutations, shared database concurrency, and elapsed-time progress remain outside the projections. Matching settlement is required for progress. There is no automatic takeover."
   },
   "conformance": "plugins/plugin-calendar/quint/check-linked-calendar-control.mjs",
   "cases": [
@@ -77,6 +78,57 @@
           "expect": "counterexample",
           "assumptions": [
             "No fairness. A caller can retain its current token indefinitely after admission."
+          ]
+        }
+      ],
+      "maxSteps": 24,
+      "samples": 500
+    },
+    {
+      "name": "paused-linked-mapping-and-receipt",
+      "main": "LinkedCalendarMapping",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "DestinationOwnsDispatch",
+        "ExactOwnerIdentity",
+        "MappingHasDurableReceipt",
+        "RetainLocalPreservesProviderIdentity",
+        "RebindStagesFreshCreate"
+      ],
+      "temporal": [
+        "MappingCommitRequiresDrainedPause",
+        "MappingReplayAndRollbackPreserveRows",
+        "FairDispatchSettles",
+        "DispatchSettles"
+      ],
+      "temporalChecks": [
+        {
+          "property": "MappingCommitRequiresDrainedPause",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. The control revision, changed mapping and durable receipt publish atomically under the same locked control row."
+          ]
+        },
+        {
+          "property": "MappingReplayAndRollbackPreserveRows",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. Failed receipt persistence rolls the whole transaction back. Reopen and replay observe durable state without a new edit."
+          ]
+        },
+        {
+          "property": "FairDispatchSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of the caller's matching settlement after a confirmed effect. Recovery may clear the matching token on the current paused revision. The mapping edit never releases an owner."
+          ]
+        },
+        {
+          "property": "DispatchSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. A retained dispatch can remain unresolved and block a mapping edit."
           ]
         }
       ],

@@ -4,17 +4,21 @@
     "model": "plugins/plugin-calendar/quint/LinkedCalendarControl.qnt",
     "sources": [
       "plugins/plugin-calendar/src/service/linked-calendar-control.ts",
+      "plugins/plugin-calendar/src/service/linked-calendar-sync.ts",
       "plugins/plugin-calendar/src/service/CalendarService.ts"
     ],
     "invariants": [
       "DestinationOwnsDispatch",
       "ExactOwnerIdentity",
-      "ReceiptRevisionCommitted"
+      "ReceiptRevisionCommitted",
+      "MappingHasDurableReceipt",
+      "RetainLocalPreservesProviderIdentity",
+      "RebindStagesFreshCreate"
     ],
     "status": "partial",
     "limitations": [
-      "One durable control row, two destination identities, two sequential dispatch tokens and one pause receipt. Reopen and stale review refusal are covered.",
-      "Provider outcome recovery and verified destination admission, mapping changes, other reviewed operations, and cross-owner persistence remain outside this proof."
+      "One durable control row, two destinations, two dispatch tokens and one pause receipt. The second projection shares this control state and checks one paused mapping edit and its exact receipt.",
+      "Provider outcome readback and verified destination admission, future event and mapping changes, multi-key and cross-owner persistence remain outside this proof."
     ],
     "implementationTests": [
       "plugins/plugin-calendar/src/service/linked-calendar-control.test.ts"
