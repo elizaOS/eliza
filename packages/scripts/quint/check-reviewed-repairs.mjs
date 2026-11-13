@@ -6,10 +6,15 @@ import path from "node:path";
 import { testOutputPath } from "../lib/test-output.ts";
 
 const root = path.resolve(import.meta.dirname, "../../..");
-const model = path.basename(process.argv[2] ?? "");
+const modelPath = path.resolve(root, process.argv[2] ?? "");
+const model = path.basename(modelPath);
+const modelOwner = path.relative(
+  root,
+  path.resolve(path.dirname(modelPath), ".."),
+);
 const suites = {
   "LegacyTrajectoryMigration.qnt": {
-    cwd: "plugins/plugin-assistant",
+    cwd: modelOwner,
     file: "src/features/trajectories/legacy-trajectory-migration.pglite.test.ts",
     match: "preserves complete legacy steps",
     names: [
@@ -28,7 +33,7 @@ const suites = {
     ].map((name) => `AgentRuntime.useModel cancellation ${name}`),
   },
   "BackupPublication.qnt": {
-    cwd: "plugins/plugin-sqlite",
+    cwd: modelOwner,
     file: "adapter.test.ts",
     match: "restores a standalone backup",
     names: [
