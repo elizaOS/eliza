@@ -396,6 +396,11 @@ export {
 	type ProcessingRequest,
 	type ProcessingScope,
 } from "./security/processing-policy.js";
+export {
+	firstHeaderValue,
+	getProvidedApiToken,
+	tokenMatches,
+} from "./security/request-token.js";
 export * from "./security/secret-swap";
 export {
 	attestAuthenticatedApiDeliveryAudience,

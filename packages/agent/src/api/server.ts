@@ -30,6 +30,7 @@ import {
   resolveOwnerEntityIdOrDefault,
   resolveStateDir,
   ServiceType,
+  tokenMatches,
   type UUID,
 } from "@elizaos/core";
 import {
@@ -288,7 +289,6 @@ import {
   resolveTerminalRunClientId,
   resolveTerminalRunRejection,
   resolveWebSocketUpgradeRejection,
-  tokenMatches,
   tryAcquirePendingWebSocket,
   WS_AUTH_GRACE_TIMEOUT_MS,
 } from "./server-helpers-auth.ts";

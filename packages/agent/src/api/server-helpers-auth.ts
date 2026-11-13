@@ -9,6 +9,7 @@ import {
   isWildcardBindHost,
   logger,
   stripOptionalHostPort,
+  tokenMatches,
 } from "@elizaos/core";
 import {
   isNullOriginAllowed,
@@ -212,22 +213,6 @@ export function applyCors(
 // ---------------------------------------------------------------------------
 // Auth token
 // ---------------------------------------------------------------------------
-/**
- * Timing-safe token equality for every agent API credential comparison. Both
- * values are padded to one length so the comparison time does not reveal the
- * expected token's length.
- */
-export function tokenMatches(expected: string, provided: string): boolean {
-  const a = Buffer.from(expected, "utf8");
-  const b = Buffer.from(provided, "utf8");
-  const length = Math.max(a.length, b.length);
-  const paddedA = Buffer.alloc(length);
-  const paddedB = Buffer.alloc(length);
-  a.copy(paddedA);
-  b.copy(paddedB);
-  const contentMatches = crypto.timingSafeEqual(paddedA, paddedB);
-  return a.length === b.length && contentMatches;
-}
 export function getConfiguredApiToken(): string | undefined {
   // Deliberately NOT resolveSelfApiCredential: this helper backs isAuthorized,
   // isWebSocketAuthorized, resolveWebSocketUpgradeRejection, pairingEnabled,
