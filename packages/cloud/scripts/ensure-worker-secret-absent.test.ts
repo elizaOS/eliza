@@ -93,6 +93,35 @@ test("plain-text retirement refuses a same-name secret without deleting it", asy
   expect(deletions).toBe(0);
 });
 
+test("legacy secret retirement preserves the configured plain-text onboarding URL", async () => {
+  let deletions = 0;
+  const result = await ensureWorkerSecretAbsent({
+    name: "ELIZA_ONBOARDING_LOGIN_APP_URL",
+    versioned: true,
+    attempts: 1,
+    run: async (args: string[]) => {
+      if (args[1] === "list")
+        return JSON.stringify([{ id: "version", number: 1 }]);
+      if (args[1] === "view")
+        return JSON.stringify({
+          resources: {
+            bindings: [
+              {
+                name: "ELIZA_ONBOARDING_LOGIN_APP_URL",
+                type: "plain_text",
+                text: "https://staging.example",
+              },
+            ],
+          },
+        });
+      deletions++;
+      return "";
+    },
+  });
+  expect(result).toBe("already-absent");
+  expect(deletions).toBe(0);
+});
+
 test("retirement does not report success if the name remains under a different type", async () => {
   let deleted = false;
   await expect(
