@@ -2624,18 +2624,10 @@ function applyCloudConfigToEnvResolved(config: ElizaConfig): void {
 /** @internal Exported for testing. */
 export function applyX402ConfigToEnv(config: ElizaConfig): void {
   const x402 = (config as Record<string, unknown>).x402 as
-    | {
-        enabled?: boolean;
-        apiKey?: string;
-        baseUrl?: string;
-      }
+    | { enabled?: boolean }
     | undefined;
   if (!x402?.enabled) return;
   if (!process.env.X402_ENABLED) process.env.X402_ENABLED = "true";
-  if (x402.apiKey && !process.env.X402_API_KEY)
-    process.env.X402_API_KEY = x402.apiKey;
-  if (x402.baseUrl && !process.env.X402_BASE_URL)
-    process.env.X402_BASE_URL = x402.baseUrl;
 }
 function resolveDefaultPgliteDataDir(config: ElizaConfig): string {
   const workspaceDir =
