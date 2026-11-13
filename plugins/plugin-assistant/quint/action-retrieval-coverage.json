@@ -1,0 +1,20 @@
+[
+  {
+    "id": "PromotedFamilyHints",
+    "model": "plugins/plugin-assistant/quint/PromotedFamilyHints.qnt",
+    "sources": ["plugins/plugin-assistant/src/runtime/action-retrieval.ts"],
+    "invariants": [
+      "TypeOK",
+      "HintsStayInAuthorizedCatalog",
+      "FamilyContract",
+      "PreciseOperationWins",
+      "ForeignClaimCannotStealUmbrella"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two authorized promoted children and one optional unrelated claimant in one frozen catalog. Existing real catalog tests cover the Calendar and Ledger families.",
+      "The model covers explicit hint priority and alias ambiguity. It does not prove arbitrary token normalization, ranking, registration mutation, planner authorization or tool execution.",
+      "Progress requires weak fairness of the synchronous retrieval action; the model records the expected stuttering counterexample without fairness."
+    ]
+  }
+]
