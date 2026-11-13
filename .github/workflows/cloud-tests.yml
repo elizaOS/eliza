@@ -116,7 +116,7 @@ jobs:
       - uses: ./.github/actions/cloud-setup-test-env
       - name: Setup Java for Quint verification
         if: ${{ !inputs.source_checks_in_canonical_ci }}
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78
         with:
           distribution: temurin
           java-version: "21"
