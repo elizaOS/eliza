@@ -829,3 +829,42 @@ assert.equal(
     "PASS Cloud Maps device provider: sources and location disclosure",
   );
 }
+
+// Existing servers keep their original reverse body; named-place lookup is advertised.
+for (const placeLookup of [false, true]) {
+  const calls = [];
+  let provider;
+  const maps = createCloudMaps(
+    () => async (path, _signal, body) => {
+      if (path === "capabilities")
+        return {
+          ...coverage,
+          capabilities: { ...coverage.capabilities, placeLookup },
+        };
+      calls.push({ path, body });
+      return { place };
+    },
+    (_config, next) => {
+      provider = next;
+    },
+  );
+  await maps.initializeCloudMaps();
+  assert.equal(
+    (
+      await provider.reverse(PORT, new AbortController().signal, {
+        radiusMeters: 40,
+      })
+    ).id,
+    place.id,
+  );
+  assert.deepEqual(calls, [
+    {
+      path: "reverse",
+      body: {
+        coordinate: PORT,
+        ...(placeLookup ? { preferPlace: true, radiusMeters: 40 } : {}),
+      },
+    },
+  ]);
+  maps.retireCloudMaps();
+}

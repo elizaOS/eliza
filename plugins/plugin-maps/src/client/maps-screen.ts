@@ -44,6 +44,7 @@ export type MapsScreenSelection = {
   providerPlaceId?: string;
   origin: "manual" | "location" | "saved" | "provider";
   editingName?: boolean;
+  resolving?: boolean;
 };
 
 /** Region coverage of the connected provider. */
@@ -202,6 +203,7 @@ export interface MapsScreenView {
     hours?: string;
     website?: string;
     canDirections: boolean;
+    loading: boolean;
     saved: boolean;
     editingName: boolean;
   };
@@ -748,12 +750,34 @@ export class MapsScreenController {
     this.host.discardHandoff?.();
     ++this.searchIntent;
     this.query = "";
-    this.selected = { label: "Selected location", coordinate: coordinate(point), origin: "manual" };
+    const selected: MapsScreenSelection = {
+      label: "Selected location",
+      coordinate: coordinate(point),
+      origin: "manual",
+      resolving: true,
+    };
+    this.selected = selected;
     this.searching = false;
     this.directions = false;
     this.originMode = false;
     this.message = "";
+    const pending = this.ensure().lookupPoint(selected.coordinate);
     this.invalidate();
+    void pending
+      .then((place) => {
+        if (this.disposed || !this.host.active() || this.selected !== selected)
+          return;
+        if (place) this.showPlace(place);
+      })
+      .catch((error) => {
+        if (!this.disposed && this.host.active() && this.selected === selected)
+          this.message = failure(error).message;
+      })
+      .finally(() => {
+        if (this.selected !== selected) return;
+        selected.resolving = false;
+        if (!this.disposed && this.host.active()) this.invalidate();
+      });
   }
 
   /** A map pin tap. */
@@ -768,13 +792,14 @@ export class MapsScreenController {
   closePlace(): void {
     this.selected = undefined;
     this.message = "";
+    void this.controller?.search("");
     this.invalidate();
   }
 
   /** Save or remove the selected place on this device. */
   toggleSaved(): void {
     const selected = this.selected;
-    if (!selected) return;
+    if (!selected || selected.resolving) return;
     try {
       const existing = this.savedFor(selected);
       if (existing) {
@@ -798,20 +823,20 @@ export class MapsScreenController {
   }
 
   startRename(): void {
-    if (!this.selected) return;
+    if (!this.selected || this.selected.resolving) return;
     this.selected.editingName = true;
     this.invalidate();
   }
 
   rename(text: string): void {
-    if (!this.selected) return;
+    if (!this.selected || this.selected.resolving) return;
     this.selected.label = text.slice(0, 300);
     this.invalidate();
   }
 
   applyName(): void {
     const selected = this.selected;
-    if (!selected) return;
+    if (!selected || selected.resolving) return;
     const existing = this.savedFor(selected);
     try {
       if (existing) this.ensure().renameSaved(existing.id, selected.label);
@@ -848,7 +873,7 @@ export class MapsScreenController {
 
   sharePlace(): void {
     const item = this.selected;
-    if (!item) return;
+    if (!item || item.resolving) return;
     this.share(
       placeShare(item.label, item.coordinate),
       () => !this.disposed && this.host.active() && this.selected === item,
@@ -913,7 +938,7 @@ export class MapsScreenController {
   openDirections(useCurrentLocation = false): void {
     const item = this.selected;
     const snapshot = this.state;
-    if (!item || !snapshot) return;
+    if (!item || item.resolving || !snapshot) return;
     if (snapshot.provider.status === "unconfigured") {
       this.message =
         this.host.diagnostics().message ||
@@ -966,11 +991,29 @@ export class MapsScreenController {
     this.originMode = false;
     this.originText = destination.label;
     this.message = "";
-    void controller.select({providerId:state.provider.providerId,id:"manual-origin",name:next.label,coordinate:next.coordinate,attribution:"User-selected location",fetchedAt:this.now()},false).then(() => {
-      if (this.disposed || !this.host.active() || !this.directions || this.selected !== next) return;
-      controller.setOrigin(destination.coordinate, destination.label);
-      void controller.planRoute();
-    });
+    void controller
+      .select(
+        {
+          providerId: state.provider.providerId,
+          id: "manual-origin",
+          name: next.label,
+          coordinate: next.coordinate,
+          attribution: "User-selected location",
+          fetchedAt: this.now(),
+        },
+        false,
+      )
+      .then(() => {
+        if (
+          this.disposed ||
+          !this.host.active() ||
+          !this.directions ||
+          this.selected !== next
+        )
+          return;
+        controller.setOrigin(destination.coordinate, destination.label);
+        void controller.planRoute();
+      });
     this.invalidate();
   }
 
@@ -1510,7 +1553,8 @@ export class MapsScreenController {
       view.place = {
         origin: selected.origin,
         ...(selected.providerId ? { providerId: selected.providerId } : {}),
-        name: selected.label,
+        name: selected.resolving ? "Loading place…" : selected.label,
+        loading: !!selected.resolving,
         meta:
           (selected.origin === "saved"
             ? "Saved on this device"
@@ -1522,7 +1566,8 @@ export class MapsScreenController {
         address: detail?.address || "",
         ...(detail?.openingHours ? { hours: detail.openingHours } : {}),
         ...(detail?.website ? { website: detail.website } : {}),
-        canDirections: controller.capabilities().modes.length > 0,
+        canDirections:
+          !selected.resolving && controller.capabilities().modes.length > 0,
         saved: !!existing,
         editingName: !!selected.editingName,
       };

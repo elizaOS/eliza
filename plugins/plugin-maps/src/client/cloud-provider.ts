@@ -508,6 +508,7 @@ export function createCloudMaps(
       readonly connectionId: string,
       private readonly send: CloudMapsRequest,
       private readonly alternatives: boolean,
+      private readonly placeLookup: boolean,
     ) {}
     private places(value: unknown): readonly Place[] {
       if (!Array.isArray(value) || value.length > 100)
@@ -541,6 +542,26 @@ export function createCloudMaps(
       if (!boundedText(id, 512)) return null;
       const result = (await call(this.send, "places/details", signal, { id }))
         .place;
+      return result === null ? null : place(result, this.providerId);
+    }
+    async reverse(
+      point: Coordinate,
+      signal: AbortSignal,
+      options: Readonly<{ radiusMeters?: number }> = {},
+    ): Promise<Place | null> {
+      const result = (
+        await call(this.send, "reverse", signal, {
+          coordinate: coordinate(point),
+          ...(this.placeLookup
+            ? {
+                preferPlace: true,
+                ...(options.radiusMeters === undefined
+                  ? {}
+                  : { radiusMeters: options.radiusMeters }),
+              }
+            : {}),
+        })
+      ).place;
       return result === null ? null : place(result, this.providerId);
     }
     private async fetchRoutes(
@@ -704,6 +725,7 @@ export function createCloudMaps(
           meta.connectionId,
           request,
           alternatives,
+          caps.placeLookup === true,
         ),
       );
       installed = true;

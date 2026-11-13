@@ -459,8 +459,7 @@ export class MapPlane {
       };
       const updateVisibility = () => {
         if (this.destroyed) return;
-        if (attributed && covers(attributed.view, viewport()))
-          show(attributed.text);
+        if (attributed) show(attributed.text);
         else hide();
       };
       hide();
@@ -472,7 +471,12 @@ export class MapPlane {
           return;
         }
         pending?.abort();
-        hide();
+        // Keep rendered tiles and the last received attribution visible during refresh.
+        if (attributed) show(attributed.text);
+        else hide();
+        container.dataset.mapCopyrightState = attributed
+          ? "refreshing"
+          : "loading";
         const controller = new AbortController();
         pending = controller;
         // One viewport of margin keeps GPS follow animations inside already attributed imagery.
@@ -493,14 +497,17 @@ export class MapPlane {
               return;
             }
             attributed = { view: requested, text };
+            container.dataset.mapCopyrightState = "ready";
             show(text);
           },
           () => {
             if (this.destroyed || controller.signal.aborted) return;
-            if (attributed && covers(attributed.view, viewport())) {
+            if (attributed) {
+              container.dataset.mapCopyrightState = "stale";
               show(attributed.text);
               return;
             }
+            container.dataset.mapCopyrightState = "unavailable";
             if (!container.dataset.mapError)
               container.dataset.mapError = "copyright";
             onError();
@@ -510,7 +517,12 @@ export class MapPlane {
       this.map.on("move", updateVisibility);
       this.map.on("moveend", refresh);
       this.refreshCopyright = refresh;
-      this.disposeCopyright = () => pending?.abort();
+      this.disposeCopyright = () => {
+        pending?.abort();
+        delete container.dataset.mapCopyright;
+        delete container.dataset.mapCopyrightState;
+        delete container.dataset.mapReady;
+      };
     }
     this.map.on("load", () => {
       if (this.destroyed) return;

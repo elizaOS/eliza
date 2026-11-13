@@ -254,6 +254,43 @@ export class MapsController {
         });
     }
   }
+  async lookupPoint(
+    point: Coordinate,
+    radiusMeters = 60,
+  ): Promise<Place | null | undefined> {
+    this.searchRequest?.abort();
+    this.detailRequest?.abort();
+    this.invalidateRoute();
+    this.update({ query: "", search: idle([]), selection: idle(null) });
+    if (this.config.status !== "configured") return null;
+    const provider = this.admitted();
+    const reverse = provider.reverse?.bind(provider);
+    if (!reverse) return null;
+    const request = new AbortController();
+    this.detailRequest = request;
+    try {
+      const result = await reverse(
+        coordinate(point),
+        request.signal,
+        { radiusMeters },
+      );
+      if (
+        request.signal.aborted ||
+        !this.active ||
+        this.detailRequest !== request
+      )
+        return undefined;
+      return result ? place(result, provider.providerId) : null;
+    } catch (error) {
+      if (
+        request.signal.aborted ||
+        !this.active ||
+        this.detailRequest !== request
+      )
+        return undefined;
+      throw error;
+    }
+  }
   select(candidate: Place, resolveDetails = true): Promise<void> {
     this.detailRequest?.abort();
     this.invalidateRoute();

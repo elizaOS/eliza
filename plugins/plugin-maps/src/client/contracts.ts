@@ -175,6 +175,12 @@ export interface MapsProvider {
     options?: Readonly<{ near?: Coordinate }>,
   ): Promise<readonly Place[]>;
   detail(id: string, signal: AbortSignal): Promise<Place | null>;
+  /** Resolve a map tap to a nearby named place, when the provider supports it. */
+  reverse?(
+    point: Coordinate,
+    signal: AbortSignal,
+    options?: Readonly<{ radiusMeters?: number }>,
+  ): Promise<Place | null>;
   route(
     from: Coordinate,
     to: Coordinate,

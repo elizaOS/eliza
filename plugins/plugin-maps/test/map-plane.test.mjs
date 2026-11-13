@@ -814,16 +814,17 @@ test("a Cloud raster basemap draws Cloud tiles through its own protocol and repo
   assert.equal(views.length, 1);
   map.bounds = { north: 44, south: 43.9, east: 7.6, west: 7.55 };
   map.events.move();
-  assert.equal(map.canvas.style.visibility, "hidden");
-  assert.equal(f.container.dataset.mapCopyright, undefined);
-  assert.equal(f.container.dataset.mapReady, undefined);
-  assert.equal(copyrights.at(-1), "");
+  assert.equal(map.canvas.style.visibility, undefined);
+  assert.equal(f.container.dataset.mapCopyright, "Map data ©2026 Google");
+  assert.equal(f.container.dataset.mapReady, "true");
+  assert.equal(copyrights.at(-1), "Map data ©2026 Google");
   failCopyright = true;
   map.events.moveend();
   await new Promise((resolve) => setTimeout(resolve, 0));
-  assert.equal(map.canvas.style.visibility, "hidden");
-  assert.equal(f.container.dataset.mapError, "copyright");
-  assert.equal(f.errors, 1);
+  assert.equal(map.canvas.style.visibility, undefined);
+  assert.equal(f.container.dataset.mapError, undefined);
+  assert.equal(f.container.dataset.mapCopyrightState, "stale");
+  assert.equal(f.errors, 0);
   failCopyright = false;
   map.events.moveend();
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -889,10 +890,16 @@ test("Cloud copyright replies retire on movement and map disposal", async () => 
   assert.equal(f.errors, 0);
 });
 
-
 test("map point selection waits for a single tap and cancels zoom or retired gestures", async () => {
   const points = [];
-  const f = fixture({ kind: "global", styleUrl: "https://tiles.example/style.json", attribution: "Example" }, { onPoint: (point) => points.push(point) });
+  const f = fixture(
+    {
+      kind: "global",
+      styleUrl: "https://tiles.example/style.json",
+      attribution: "Example",
+    },
+    { onPoint: (point) => points.push(point) },
+  );
   const plane = f.plane;
   const map = f.map;
   const event = { lngLat: { lat: 10, lng: 20 }, originalEvent: { target: { closest: () => null } } };
@@ -911,7 +918,6 @@ test("map point selection waits for a single tap and cancels zoom or retired ges
   assert.equal(points.length, 1);
   f.plane.destroy();
 });
-
 
 test("an authorized initial location avoids a world-view camera", () => {
  const f=fixture({kind:"global",styleUrl:"https://tiles.example/style.json",attribution:"Fixture"});

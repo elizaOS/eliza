@@ -6,8 +6,8 @@
   ],
   "bounds": {
     "domain": "One mounted map, at most two moves outside attributed bounds and three copyright requests; success, failure, late replies and disposal may interleave.",
-    "atomicity": "Moves within attributed bounds retain imagery without a request. Moves outside those bounds invalidate imagery. Each matching callback publish synchronously in one JavaScript turn. Abort fences stale results even when the provider still resolves them.",
-    "progress": "No fairness or availability assumption. Imagery may stay hidden while metadata is unavailable; a later current success restores it."
+    "atomicity": "The first successful attribution admits imagery. Pan and zoom retain the last received attribution while one current metadata request refreshes it. Late or aborted responses cannot replace a newer result.",
+    "progress": "No provider availability assumption. A failed initial read keeps imagery unavailable; a failed refresh retains the last received attribution and map."
   },
   "limitations": [
     "Does not model real MapLibre animation events, Google data completeness, browser paint ordering or physical device behavior.",

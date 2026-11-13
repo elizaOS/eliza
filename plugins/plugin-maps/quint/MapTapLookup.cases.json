@@ -1,0 +1,31 @@
+{
+  "sources": [
+    "plugins/plugin-maps/src/client/maps-screen.ts",
+    "plugins/plugin-maps/src/client/state.ts",
+    "plugins/plugin-maps/src/client/cloud-provider.ts",
+    "plugins/plugin-maps/test/maps-screen.test.mjs",
+    "plugins/plugin-maps/test/cloud-maps-client.test.mjs",
+    "plugins/plugin-maps/quint/check-map-tap-lookup.mjs"
+  ],
+  "bounds": {
+    "domain": "One map, up to three point lookups with current, superseded, closed and disposed replies.",
+    "atomicity": "Only the current selected point may accept a lookup. Pending lookups disable route and save actions.",
+    "progress": "No provider availability assumption. Current success or failure finishes the pending lookup."
+  },
+  "limitations": [
+    "Controlled provider replies do not prove real Google results or physical gestures."
+  ],
+  "cases": [
+    {
+      "name": "map-tap-lookup",
+      "main": "MapTapLookup",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 30,
+      "samples": 100
+    }
+  ],
+  "conformance": "plugins/plugin-maps/quint/check-map-tap-lookup.mjs"
+}

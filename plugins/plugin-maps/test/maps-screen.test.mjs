@@ -70,6 +70,7 @@ function fixture(options = {}) {
   const provider = {
     providerId: "fixture",
     connectionId: "conn_fixture_123456789",
+    ...(options.reverse ? { reverse: options.reverse } : {}),
     async search(query) {
       calls.searches.push(query);
       return query === "nothing" ? [] : [destination];
@@ -1176,7 +1177,6 @@ test("a GPS origin displays My location and keeps the exact route point internal
   assert.equal(f.screen.view().directions?.originText, "Destination");
 });
 
-
 test("an early search continues once the first provider becomes available", async () => {
   const f = fixture({unconfigured:true});
   f.screen.setQuery("Destination");f.screen.submit();await settle();
@@ -1186,7 +1186,6 @@ test("an early search continues once the first provider becomes available", asyn
   assert.equal(f.screen.view().results[0].name,"Destination");
   f.screen.dispose();
 });
-
 
 test("directions use an allowed device location and swapping reverses the endpoints", async () => {
  const f=fixture();
@@ -1204,13 +1203,71 @@ test("directions use an allowed device location and swapping reverses the endpoi
  f.screen.dispose();
 });
 
-
 test("editing the automatic origin fences a late device location", async () => {
- const f=fixture();
- f.screen.setQuery("Destination");f.screen.submit();await settle();
- f.screen.choose("place:fixture:destination");await settle();f.screen.openDirections(true);await settle();
- f.screen.setOriginText("43.71, 7.40");f.screen.planOrigin();await settle();
- f.emitDevice({coordinate:ORIGIN,accuracyMeters:5,timestamp:Date.now(),precision:"precise"});await settle();
- assert.deepEqual(f.screen.view().map.route.from,{latitude:43.71,longitude:7.40});
- f.screen.dispose();
+  const f = fixture();
+  f.screen.setQuery("Destination");
+  f.screen.submit();
+  await settle();
+  f.screen.choose("place:fixture:destination");
+  await settle();
+  f.screen.openDirections(true);
+  await settle();
+  f.screen.setOriginText("43.71, 7.40");
+  f.screen.planOrigin();
+  await settle();
+  f.emitDevice({
+    coordinate: ORIGIN,
+    accuracyMeters: 5,
+    timestamp: Date.now(),
+    precision: "precise",
+  });
+  await settle();
+  assert.deepEqual(f.screen.view().map.route.from, {
+    latitude: 43.71,
+    longitude: 7.4,
+  });
+  f.screen.dispose();
+});
+
+test("map taps resolve a named place before saving or routing", async () => {
+  let resolve;
+  const f = fixture({
+    reverse: () =>
+      new Promise((done) => {
+        resolve = done;
+      }),
+  });
+  f.screen.selectPoint(END);
+  assert.equal(f.screen.view().place.loading, true);
+  f.screen.toggleSaved();
+  f.screen.openDirections();
+  assert.equal(f.screen.view().saved.length, 0);
+  assert.equal(f.screen.view().mode, "place");
+  resolve(f.destination);
+  await settle();
+  assert.equal(f.screen.view().place.name, "Destination");
+  assert.equal(f.screen.view().place.loading, false);
+  assert.equal(f.screen.view().place.origin, "provider");
+  f.screen.dispose();
+});
+
+test("a newer map tap or closed card rejects a late place lookup", async () => {
+  const pending = [];
+  const f = fixture({
+    reverse: (point, signal) =>
+      new Promise((resolve) => pending.push({ point, signal, resolve })),
+  });
+  f.screen.selectPoint(END);
+  f.screen.selectPoint(OFF_ROUTE);
+  assert.equal(pending[0].signal.aborted, true);
+  pending[0].resolve(f.destination);
+  await settle();
+  assert.equal(f.screen.view().place.loading, true);
+  f.screen.closePlace();
+  assert.equal(pending[1].signal.aborted, true);
+  pending[1].resolve(f.destination);
+  await settle();
+  assert.equal(f.screen.view().place, undefined);
+  assert.equal(f.screen.view().saved.length, 0);
+  f.screen.dispose();
 });
