@@ -24,8 +24,14 @@ describe("MCP isolated schema worker lifecycle", () => {
         ...(dialect ? { $schema: dialect } : {}),
         properties: { value: { type: "integer" } },
       };
-      expect(await select({ value: 0 }, schema)).toMatchObject({ success: true });
-      expect(await select({ value: "zero" }, schema)).toMatchObject({ success: false });
+      expect(await select({ value: 0 }, schema)).toEqual({
+        success: true,
+        data: { toolArguments: { value: 0 } },
+      });
+      expect(await select({ value: "zero" }, schema)).toEqual({
+        success: false,
+        error: "Invalid arguments: value: must be integer",
+      });
     },
     10_000
   );
@@ -39,7 +45,7 @@ describe("MCP isolated schema worker lifecycle", () => {
           properties: { value: { type: "integer" } },
         }
       )
-    ).toMatchObject({ success: true });
+    ).toEqual({ success: true, data: { toolArguments: { value: 0 } } });
     expect(
       await select(
         { value: "changed" },
@@ -48,7 +54,7 @@ describe("MCP isolated schema worker lifecycle", () => {
           properties: { value: { type: "string" } },
         }
       )
-    ).toMatchObject({ success: true });
+    ).toEqual({ success: true, data: { toolArguments: { value: "changed" } } });
   }, 10_000);
 
   it("retains the request deadline for expensive untrusted validation", async () => {
@@ -72,6 +78,9 @@ describe("MCP isolated schema worker lifecycle", () => {
     } finally {
       clearInterval(heartbeat);
     }
-    expect(await select({}, { type: "object" })).toMatchObject({ success: true });
+    expect(await select({}, { type: "object" })).toEqual({
+      success: true,
+      data: { toolArguments: {} },
+    });
   }, 10_000);
 });
