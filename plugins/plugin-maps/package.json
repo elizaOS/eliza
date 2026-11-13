@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-maps",
-  "version": "2.0.5",
+  "version": "2.0.6",
   "type": "module",
   "description": "Provider-neutral place search, routing, saved places, sharing, and navigation handoffs for Eliza agents.",
   "main": "./dist/index.js",
