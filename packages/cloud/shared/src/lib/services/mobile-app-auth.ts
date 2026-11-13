@@ -102,7 +102,6 @@ export interface MobileAppAuthRuntimeEnv {
   ENVIRONMENT?: unknown;
   ELIZA_MOBILE_APP_AUTH_APP_ID?: unknown;
   ELIZA_MOBILE_APP_AUTH_ENABLED?: unknown;
-  ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON?: unknown;
 }
 
 export interface MobileAppAuthClientBinding {
@@ -251,6 +250,12 @@ export async function resolveMobileCredentialRegistration(
   env: MobileAppAuthRuntimeEnv,
   credential: Pick<ApiKey, "id" | "user_id" | "organization_id" | "source_app_id">,
 ): Promise<MobileAppAuthRegistration> {
+  if (env.ELIZA_MOBILE_APP_AUTH_ENABLED === "false") {
+    return invalid(
+      "server_configuration_error",
+      "Mobile App Auth is disabled for this environment",
+    );
+  }
   const grant = await mobileAppAuthGrantsRepository.findAcknowledgedByCredentialId(credential.id);
   if (
     !grant ||
@@ -262,23 +267,24 @@ export async function resolveMobileCredentialRegistration(
   }
   let registration: MobileAppAuthRegistration;
   const dbClient = await mobileAppAuthClientsRepository.findRegisteredMobileClient(grant.client_id);
-  if (dbClient) {
-    if (!dbClient.client.enabled || !dbClient.app.is_active || !dbClient.app.is_approved) {
-      return invalid("invalid_client", "Mobile client is disabled or unapproved");
-    }
-    const environment = requireEnvironment(env.ENVIRONMENT);
-    registration = {
-      appId: dbClient.app.id,
-      clientId: dbClient.client.client_id,
-      environment,
-      redirectUri: dbClient.client.redirect_uri,
-      scopes: MOBILE_APP_AUTH_SCOPES,
-      credentialTtlSeconds:
-        dbClient.client.credential_ttl_seconds ?? MOBILE_APP_AUTH_CREDENTIAL_TTL_SECONDS,
-    };
-  } else {
-    registration = resolveMobileAppAuthRegistration(env, grant.client_id);
+  if (
+    !dbClient ||
+    !dbClient.client.enabled ||
+    !dbClient.app.is_active ||
+    !dbClient.app.is_approved
+  ) {
+    return invalid("invalid_client", "Mobile client is disabled or unapproved");
   }
+  const environment = requireEnvironment(env.ENVIRONMENT);
+  registration = {
+    appId: dbClient.app.id,
+    clientId: dbClient.client.client_id,
+    environment,
+    redirectUri: dbClient.client.redirect_uri,
+    scopes: MOBILE_APP_AUTH_SCOPES,
+    credentialTtlSeconds:
+      dbClient.client.credential_ttl_seconds ?? MOBILE_APP_AUTH_CREDENTIAL_TTL_SECONDS,
+  };
   if (
     registration.appId !== grant.app_id ||
     registration.environment !== grant.environment ||
@@ -479,38 +485,33 @@ async function renewalRegistration(
   env: MobileAppAuthRuntimeEnv,
   authority: MobileAppAuthRenewalAuthority,
 ): Promise<MobileAppAuthRegistration> {
+  if (env.ELIZA_MOBILE_APP_AUTH_ENABLED === "false") {
+    throw new MobileAppAuthProtocolError(
+      "server_configuration_error",
+      "Mobile App Auth is disabled for this environment",
+    );
+  }
   const { grant, app } = authority;
   let registration: MobileAppAuthRegistration;
   const dbClient = await mobileAppAuthClientsRepository.findRegisteredMobileClient(grant.client_id);
-  if (dbClient) {
-    if (!dbClient.client.enabled || !dbClient.app.is_active || !dbClient.app.is_approved) {
-      return refuseRenewal(
-        "client_unavailable",
-        "Mobile client is no longer registered or enabled",
-      );
-    }
-    const environment = requireEnvironment(env.ENVIRONMENT);
-    registration = {
-      appId: dbClient.app.id,
-      clientId: dbClient.client.client_id,
-      environment,
-      redirectUri: dbClient.client.redirect_uri,
-      scopes: MOBILE_APP_AUTH_SCOPES,
-      credentialTtlSeconds:
-        dbClient.client.credential_ttl_seconds ?? MOBILE_APP_AUTH_CREDENTIAL_TTL_SECONDS,
-    };
-  } else {
-    try {
-      registration = resolveMobileAppAuthRegistration(env, grant.client_id);
-    } catch (error) {
-      // error-policy:J1 an unknown or disabled client is a refusal of this
-      // credential; any other configuration failure stays a server outage.
-      if (error instanceof MobileAppAuthProtocolError && error.protocolCode === "invalid_client") {
-        return refuseRenewal("client_unavailable", "Mobile client is no longer registered");
-      }
-      throw error;
-    }
+  if (
+    !dbClient ||
+    !dbClient.client.enabled ||
+    !dbClient.app.is_active ||
+    !dbClient.app.is_approved
+  ) {
+    return refuseRenewal("client_unavailable", "Mobile client is no longer registered or enabled");
   }
+  const environment = requireEnvironment(env.ENVIRONMENT);
+  registration = {
+    appId: dbClient.app.id,
+    clientId: dbClient.client.client_id,
+    environment,
+    redirectUri: dbClient.client.redirect_uri,
+    scopes: MOBILE_APP_AUTH_SCOPES,
+    credentialTtlSeconds:
+      dbClient.client.credential_ttl_seconds ?? MOBILE_APP_AUTH_CREDENTIAL_TTL_SECONDS,
+  };
   if (
     registration.appId !== grant.app_id ||
     registration.environment !== grant.environment ||

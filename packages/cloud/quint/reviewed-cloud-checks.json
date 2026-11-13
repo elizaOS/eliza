@@ -523,5 +523,14 @@
         "the account snapshot reports the grant's free-through date and current allowance"
       ]
     }
+  ],
+  "MobileAppClientRegistration.qnt": [
+    {
+      "file": "packages/cloud/api/__tests__/mobile-app-auth-database-lifecycle.pglite.test.ts",
+      "required": [
+        "E2E database-only client lifecycle: asset links -> signin -> exchange -> ack -> verify -> renew -> revoke",
+        "Database outage fails closed: rethrows error rather than silently serving stale env fallback"
+      ]
+    }
   ]
 }

@@ -19,29 +19,28 @@ const RELEASE = Array.from({ length: 32 }, (_, index) =>
 ).join(":");
 const DEBUG = Array.from({ length: 32 }, () => "AB").join(":");
 
-async function fetchDocument(config: unknown) {
-  const response = await route.request(
-    "/",
-    {},
-    config === undefined ? {} : { ELIZA_ANDROID_ASSET_LINKS_JSON: config },
-  );
-  return { response, body: (await response.json()) as unknown };
-}
-
 describe("GET /.well-known/assetlinks.json", () => {
-  test("serves configured statements as direct, cacheable JSON", async () => {
-    const { response, body } = await fetchDocument(
-      JSON.stringify([
-        {
+  test("serves database statements as direct, cacheable JSON", async () => {
+    spy?.mockRestore();
+    spy = spyOn(
+      mobileAppAuthClientsRepository,
+      "listActiveAndroidAssetLinks",
+    ).mockResolvedValue([
+      {
+        relation: ["delegate_permission/common.handle_all_urls"],
+        target: {
+          namespace: "android_app",
           package_name: "ai.alphacompute.alphaphone",
           sha256_cert_fingerprints: [RELEASE, DEBUG],
         },
-      ]),
-    );
+      },
+    ]);
+    const response = await route.request("/", {}, {});
     expect(response.status).toBe(200);
     expect(response.headers.get("Content-Type")).toContain("application/json");
     expect(response.headers.get("Cache-Control")).toBe("public, max-age=3600");
     expect(response.headers.get("Location")).toBeNull();
+    const body = await response.json();
     expect(body).toEqual([
       {
         relation: ["delegate_permission/common.handle_all_urls"],
@@ -54,70 +53,26 @@ describe("GET /.well-known/assetlinks.json", () => {
     ]);
   });
 
-  test("covers Eliza's Android app (ai.elizaos.app) beside another app", async () => {
-    const { response, body } = await fetchDocument(
-      JSON.stringify([
-        {
-          package_name: "ai.alphacompute.alphaphone",
-          sha256_cert_fingerprints: [RELEASE],
-        },
-        {
-          package_name: "ai.elizaos.app",
-          sha256_cert_fingerprints: [DEBUG],
-          relations: [
-            "delegate_permission/common.handle_all_urls",
-            "delegate_permission/common.get_login_creds",
-          ],
-        },
-      ]),
-    );
+  test("returns empty list when no clients are registered", async () => {
+    spy?.mockRestore();
+    spy = spyOn(
+      mobileAppAuthClientsRepository,
+      "listActiveAndroidAssetLinks",
+    ).mockResolvedValue([]);
+    const response = await route.request("/", {}, {});
     expect(response.status).toBe(200);
-    expect(body).toEqual([
-      {
-        relation: ["delegate_permission/common.handle_all_urls"],
-        target: {
-          namespace: "android_app",
-          package_name: "ai.alphacompute.alphaphone",
-          sha256_cert_fingerprints: [RELEASE],
-        },
-      },
-      {
-        relation: [
-          "delegate_permission/common.handle_all_urls",
-          "delegate_permission/common.get_login_creds",
-        ],
-        target: {
-          namespace: "android_app",
-          package_name: "ai.elizaos.app",
-          sha256_cert_fingerprints: [DEBUG],
-        },
-      },
-    ]);
-  });
-
-  test("an unconfigured environment publishes an empty list", async () => {
-    const { response, body } = await fetchDocument(undefined);
-    expect(response.status).toBe(200);
+    const body = await response.json();
     expect(body).toEqual([]);
   });
 
-  test("malformed configuration fails the whole document closed", async () => {
-    for (const config of [
-      "not json",
-      "{}",
-      JSON.stringify([
-        {
-          package_name: "ai.alphacompute.alphaphone",
-          sha256_cert_fingerprints: [RELEASE],
-        },
-        // One bad entry must not leave a partial list behind.
-        { package_name: "bad", sha256_cert_fingerprints: [RELEASE] },
-      ]),
-    ]) {
-      const { response, body } = await fetchDocument(config);
-      expect(response.status).toBe(200);
-      expect(body).toEqual([]);
-    }
+  test("database outage fails closed (500)", async () => {
+    spy?.mockRestore();
+    spy = spyOn(
+      mobileAppAuthClientsRepository,
+      "listActiveAndroidAssetLinks",
+    ).mockRejectedValue(new Error("Connection refused"));
+    const response = await route.request("/", {}, {});
+    expect(response.status).toBe(500);
   });
 });
 
