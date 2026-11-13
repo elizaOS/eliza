@@ -17,6 +17,13 @@ const directory = mkdtempSync(path.join(output, "run-"));
 const cases = [
   [
     "host",
+    "src/voice/speech-relay-session.test.ts",
+    [
+      "closing while an extension is in flight settles every reservation exactly once",
+    ],
+  ],
+  [
+    "host",
     "src/voice/speech-retirement-session.test.ts",
     [
       "paid renewal retains one STT connection and settles each window once",
@@ -30,8 +37,8 @@ const cases = [
     ],
   ],
 ];
-for (const [owner, file, names] of cases) {
-  const report = path.join(directory, `${owner}.json`);
+for (const [index, [owner, file, names]] of cases.entries()) {
+  const report = path.join(directory, `${owner}-${index}.json`);
   const pattern = names
     .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
     .join("|");
@@ -55,7 +62,7 @@ for (const [owner, file, names] of cases) {
     },
   );
   writeFileSync(
-    path.join(directory, `${owner}.log`),
+    path.join(directory, `${owner}-${index}.log`),
     `${result.stdout ?? ""}\n${result.stderr ?? ""}`,
   );
   if (result.error) throw result.error;

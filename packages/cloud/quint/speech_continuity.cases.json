@@ -6,6 +6,9 @@
     "packages/cloud/api/src/speech-retirement-route.test.ts",
     "packages/cloud/api/v1/voice/speech/route.ts",
     "packages/host/src/voice/speech-relay-session.ts",
+    "packages/host/src/voice/speech-window-share.ts",
+    "packages/host/src/voice/speech-window-share.dfy",
+    "packages/host/src/voice/speech-window-share.dfy.gen",
     "packages/host/src/voice/speech-relay-session.test.ts",
     "packages/host/src/voice/speech-retirement-session.test.ts",
     "packages/cloud/quint/check-speech-continuity.mjs"
@@ -18,7 +21,8 @@
     "progress": "Safety only. providerStopRequested records issuing teardown, not provider completion or a wall-clock deadline. Live providers, deadlines and delivery are verified separately."
   },
   "limitations": [
-    "Three-window safety abstraction. Controlled real-relay tests replay Stop during quota, admission and extension waits, zero-settlement failure/retry, and one-shot quota uncertainty. The model aggregates per-kind credit receipts by window and does not establish physical provider closure, timing, browser, native client or live-provider qualification."
+    "Three-window safety abstraction. Controlled real-relay tests replay Stop during quota, admission and extension waits, zero-settlement failure/retry, and one-shot quota uncertainty. The model aggregates per-kind credit receipts by window and does not establish physical provider closure, timing, browser, native client or live-provider qualification.",
+    "The separate LemmaScript proof covers usage-share bounds and conservation for finite safe integer counters with safe index multiplication. It does not prove asynchronous lifecycle behavior or caller compliance with those arithmetic assumptions."
   ],
   "cases": [
     {
