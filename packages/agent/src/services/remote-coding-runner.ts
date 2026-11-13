@@ -479,7 +479,6 @@ class ElizaCloudCodingContainerFactory implements RemoteRunnerFactory {
             environmentVars: {
               HOST: "0.0.0.0",
               ELIZA_REMOTE_RUNNER_HTTP_TOKEN: remoteToken,
-              REMOTE_RUNNER_HTTP_TOKEN: remoteToken,
               ELIZA_CODING_WORKSPACE: config.workdir,
               ELIZA_SANDBOX_AGENT_RUNNERS: config.agentRunners.join(","),
               ...config.envs,
@@ -1801,12 +1800,7 @@ function cloudContainerImage(
   provider: RemoteRunnerProvider,
 ): string | undefined {
   if (provider !== "eliza-cloud") return undefined;
-  return (
-    readSetting(runtime, "ELIZA_CLOUD_SANDBOX_IMAGE") ??
-    readSetting(runtime, "ELIZA_CLOUD_CODING_REMOTE_RUNNER_IMAGE") ??
-    readSetting(runtime, "ELIZA_CODING_REMOTE_RUNNER_IMAGE") ??
-    readSetting(runtime, "ELIZA_CLOUD_REMOTE_RUNNER_IMAGE")
-  );
+  return readSetting(runtime, "ELIZA_CLOUD_SANDBOX_IMAGE");
 }
 
 function remoteHttpToken(
