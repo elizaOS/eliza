@@ -25,8 +25,11 @@ public class SensePlugin extends Plugin {
         client().releaseInvocationBridge(bridgeGeneration);
         super.handleOnDestroy();
     }
-    private static JSObject statusReply(Bundle result) {
+    private JSObject statusReply(Bundle result) {
         JSObject out = new JSObject(); out.put("available", result != null);
+        if (result == null && client().installation() == SenseListenerClient.Installation.ABSENT) {
+            out.put("reason", "not-installed");
+        }
         if (result != null) {
             out.put("state", result.getString("state", "OFF")); out.put("label", result.getString("label", ""));
             out.put("consented", result.getBoolean("consented", false)); out.put("listening", result.getBoolean("listening", false));
@@ -53,13 +56,18 @@ public class SensePlugin extends Plugin {
         }
     }
 
-    private static JSObject stopReply(Bundle result, boolean turnOff) {
-        if (result == null || !result.getBoolean("saved", false)
+    private static JSObject unconfirmedStop() {
+        JSObject out = new JSObject(); out.put("available", false); return out;
+    }
+
+    private JSObject stopReply(Bundle result, boolean turnOff) {
+        if (result == null) return statusReply(null);
+        if (!result.getBoolean("saved", false)
                 || result.getBoolean("listening", true) || result.getBoolean("microphoneOpen", true)) {
-            return statusReply(null);
+            return unconfirmedStop();
         }
         String state = result.getString("state");
-        if (state == null || !(turnOff ? "OFF".equals(state) : pauseState(state))) return statusReply(null);
+        if (state == null || !(turnOff ? "OFF".equals(state) : pauseState(state))) return unconfirmedStop();
         JSObject out = statusReply(result);
         out.put("saved", true);
         return out;
