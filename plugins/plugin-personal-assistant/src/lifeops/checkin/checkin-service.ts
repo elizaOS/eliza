@@ -1421,7 +1421,6 @@ async function collectCalendarChangeSection(
           AND side = 'owner'
           AND (
             ${today}
-            OR provider = 'google'
             OR updated_at >= ${sqlQuote(sinceIso)}
           )`,
     );
@@ -1431,10 +1430,17 @@ async function collectCalendarChangeSection(
     // A Google refresh changes the cache clock, not the provider's edit clock.
     // Parse metadata in the existing decoder and never cast untrusted timestamp
     // text in SQL. Unknown provider revisions remain unknown, even after sync.
+    let invalidMetadata = 0;
     const rows = sourceRows
       .map((row) => {
         if (row.provider !== "google") return row;
-        const metadata = parseJsonRecord(row.metadata_json);
+        let metadata: Record<string, unknown>;
+        try {
+          metadata = parseJsonRecord(row.metadata_json);
+        } catch {
+          invalidMetadata += 1;
+          return { ...row, updated_at: null };
+        }
         const source = [
           metadata.updatedAt,
           metadata.updated,
@@ -1459,6 +1465,19 @@ async function collectCalendarChangeSection(
       // Keep the existing briefing window, after validating and ranking source
       // clocks so stale or malformed cache rows cannot crowd out real changes.
       .slice(0, 40);
+    const metadataError =
+      invalidMetadata > 0
+        ? `${invalidMetadata} Calendar records have unreadable source metadata; their edit times are unavailable.`
+        : null;
+    if (metadataError) {
+      runtime.reportError(
+        "CheckinService.calendarSourceClock",
+        new ElizaError(metadataError, {
+          code: "CALENDAR_SOURCE_METADATA_INVALID",
+        }),
+        { invalidRecords: invalidMetadata },
+      );
+    }
     const todayCount = rows.filter((row) => toBoolean(row.is_today)).length;
     const changedCount = rows.filter(
       (row) => (parseMs(toText(row.updated_at)) ?? 0) >= Date.parse(sinceIso),
@@ -1505,7 +1524,8 @@ async function collectCalendarChangeSection(
       title: "Calendar and schedule changes",
       summary: `${summarizeCount(todayCount, "event")} on today's calendar; ${summarizeCount(changedCount, "calendar item")} added or updated in the last 24h.`,
       items,
-      error: null,
+      error: metadataError,
+      ...(metadataError ? { coverage: "partial" as const } : {}),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

@@ -37,6 +37,7 @@ describe("check-in source availability and generation failures", () => {
       character: { name: "Brief fixture" },
       getSetting: () => undefined,
       getService: () => null,
+      reportError: vi.fn(),
       getCache: async (key: string) =>
         (
           await db.query<{ payload: unknown }>(
@@ -261,6 +262,52 @@ describe("check-in source availability and generation failures", () => {
         "SELECT * FROM app_calendar.life_calendar_events ORDER BY id",
       ),
     ).toEqual(before);
+  });
+
+  it("keeps valid Calendar rows when another cached row has unreadable metadata", async () => {
+    await db.exec(`CREATE SCHEMA app_calendar;
+      CREATE TABLE app_calendar.life_calendar_events (
+        id text, agent_id text, side text, title text, start_at text, end_at text,
+        status text, html_link text, updated_at text, is_all_day boolean,
+        provider text, metadata_json text
+      );
+      INSERT INTO app_calendar.life_calendar_events VALUES
+        ('valid', 'checkin-availability', 'owner', 'Valid edit',
+         '2026-12-01T18:00:00.000Z', '2026-12-01T19:00:00.000Z', 'confirmed', null,
+         '2026-11-12T15:00:00.000Z', false, 'google', '{"updatedAt":"2026-11-12T15:00:00.000Z"}'),
+        ('bad-old', 'checkin-availability', 'owner', 'Old broken metadata',
+         '2026-12-01T18:00:00.000Z', '2026-12-01T19:00:00.000Z', 'confirmed', null,
+         '2025-01-01T15:00:00.000Z', false, 'google', '{'),
+        ('bad-current', 'checkin-availability', 'owner', 'Current broken metadata',
+         '2026-12-01T18:00:00.000Z', '2026-12-01T19:00:00.000Z', 'confirmed', null,
+         '2026-11-12T15:00:00.000Z', false, 'google', '{'),
+        ('bad-today', 'checkin-availability', 'owner', 'Today with unknown revision',
+         '2026-11-12T18:00:00.000Z', '2026-11-12T19:00:00.000Z', 'confirmed', null,
+         '2025-01-01T15:00:00.000Z', false, 'google', '[]'),
+        ('foreign', 'another-owner', 'owner', 'Private other owner',
+         '2026-11-12T18:00:00.000Z', '2026-11-12T19:00:00.000Z', 'confirmed', null,
+         '2026-11-12T15:00:00.000Z', false, 'google', '{');`);
+    const report = await new CheckinService(runtime).runMorningCheckin({
+      now: new Date("2026-11-12T16:00:00.000Z"),
+      timezone: "America/Los_Angeles",
+    });
+    const section = report.briefingSections.find(
+      (item) => item.key === "calendar_changes",
+    );
+    expect(section?.items.map((item) => item.title).sort()).toEqual([
+      "Today with unknown revision",
+      "Valid edit",
+    ]);
+    expect(section?.coverage).toBe("partial");
+    expect(section?.error).toContain(
+      "2 Calendar records have unreadable source metadata",
+    );
+    expect(section?.summary).toContain("1 calendar item added or updated");
+    expect(runtime.reportError).toHaveBeenCalledWith(
+      "CheckinService.calendarSourceClock",
+      expect.objectContaining({ code: "CALENDAR_SOURCE_METADATA_INVALID" }),
+      { invalidRecords: 2 },
+    );
   });
 
   it("binds Calendar source identity and times before rendering one owner-local agenda entry", async () => {
