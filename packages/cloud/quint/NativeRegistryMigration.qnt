@@ -23,17 +23,21 @@ module NativeRegistryMigration {
   action rollback = all { phase == "running", storedRows' = storedRows,
     receiptRows' = receiptRows, stagedRows' = 0, phase' = "idle",
     validSource' = validSource, conflict' = conflict }
+  action discoverConflict = all { phase == "running", stagedRows == 4, conflict' = true,
+    storedRows' = storedRows, stagedRows' = stagedRows, receiptRows' = receiptRows, phase' = phase, validSource' = validSource }
   action step = any {
     { nondet valid = Bool.oneOf(); nondet conflicting = Bool.oneOf(); begin(valid, conflicting) },
-    stage, commit, rollback
+    stage, discoverConflict, commit, rollback
   }
   val atomic = storedRows.in(Set(0, 4)) and receiptRows == storedRows
   val bounded = stagedRows.in(Set(0, 4))
   val safety = atomic and bounded
   run importAndRetryTest = init.then(begin(true, false)).then(stage).then(commit)
     .then(begin(true, false)).then(stage).then(commit).expect(storedRows == 4 and receiptRows == 4)
+  run partialFailureRollsBackTest = init.then(begin(true, false)).then(stage).then(discoverConflict).then(rollback).expect(storedRows == 0 and receiptRows == 0)
   run conflictDoesNotPublishTest = init.then(begin(true, true)).then(rollback).expect(storedRows == 0 and receiptRows == 0)
   run invalidSourceDoesNotPublishTest = init.then(begin(false, false)).then(rollback).expect(storedRows == 0 and receiptRows == 0)
   run rollbackPreservesPriorImportTest = init.then(begin(true, false)).then(stage).then(commit)
     .then(begin(true, true)).then(rollback).expect(storedRows == 4 and receiptRows == 4)
 }
+
