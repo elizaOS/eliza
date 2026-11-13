@@ -6,7 +6,7 @@
  * staging.eliza.app so Android's App Link verifier gets JSON from the link host
  * instead of the SPA's index.html. The document is public by construction and
  * served dynamically from admitted database registrations.
- * Always a direct 200: Android's verifier does not follow redirects.
+ * Successful responses are direct 200s: Android's verifier does not follow redirects.
  */
 
 import { mobileAppAuthClientsRepository } from "@elizaos/cloud-shared/db/repositories/mobile-app-auth-clients";

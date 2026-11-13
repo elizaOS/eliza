@@ -59,8 +59,8 @@ beforeAll(async () => {
 
   await database.execute(`INSERT INTO organizations (id) VALUES ('${ORG_ID}')`);
   await database.execute(`
-    INSERT INTO apps (id, organization_id, app_url, is_active, is_approved)
-    VALUES ('${APP_ID}', '${ORG_ID}', 'https://eliza.app', true, true)
+    INSERT INTO apps (id, organization_id, app_url, allowed_origins, is_active, is_approved)
+    VALUES ('${APP_ID}', '${ORG_ID}', 'https://eliza.app', '["https://eliza.app/auth/callback"]'::jsonb, true, true)
   `);
   await database.execute(`
     INSERT INTO mobile_app_auth_clients (
@@ -73,6 +73,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  mock.module("@elizaos/cloud-shared/db/client", () => originalDb);
   await pg.close();
 });
 
@@ -84,7 +85,7 @@ describe("GET /.well-known/assetlinks.json with PGlite", () => {
       { ENVIRONMENT: "production", ELIZA_MOBILE_APP_AUTH_ENABLED: "true" },
     );
     expect(response.status).toBe(200);
-    expect(response.headers.get("Cache-Control")).toBe("public, max-age=3600");
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
 
     const statements = await response.json();
     expect(statements).toEqual([
@@ -97,5 +98,29 @@ describe("GET /.well-known/assetlinks.json with PGlite", () => {
         },
       },
     ]);
+    await database.execute(
+      "UPDATE mobile_app_auth_clients SET android_package_name='org.example.renamed'",
+    );
+    const renamed = await route.request(
+      "/",
+      {},
+      {
+        ENVIRONMENT: "production",
+        ELIZA_MOBILE_APP_AUTH_ENABLED: "true",
+      },
+    );
+    expect((await renamed.json())[0]?.target.package_name).toBe(
+      "org.example.renamed",
+    );
+    await database.execute("UPDATE mobile_app_auth_clients SET enabled=false");
+    const disabled = await route.request(
+      "/",
+      {},
+      {
+        ENVIRONMENT: "production",
+        ELIZA_MOBILE_APP_AUTH_ENABLED: "true",
+      },
+    );
+    expect(await disabled.json()).toEqual([]);
   });
 });
