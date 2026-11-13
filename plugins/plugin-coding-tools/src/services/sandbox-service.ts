@@ -13,6 +13,7 @@ import {
   Service,
 } from "@elizaos/core";
 import {
+  expandHome,
   isAbsolutePath,
   isBlockedPath,
   isUncPath,
@@ -247,13 +248,6 @@ function parseList(s: string): string[] {
     .split(",")
     .map((p) => p.trim())
     .filter((p) => p.length > 0);
-}
-
-function expandHome(p: string): string {
-  if (p === "~" || p === "$HOME") return homedir();
-  if (p.startsWith("~/")) return path.join(homedir(), p.slice(2));
-  if (p.startsWith("$HOME/")) return path.join(homedir(), p.slice(6));
-  return p;
 }
 
 function defaultBlockedPaths(): string[] {

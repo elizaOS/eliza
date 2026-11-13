@@ -80,3 +80,26 @@ it("drops a planner 0 filter when only the envelope subject carries a 0", async 
   const output = await dispatchList(message, { scopedToEntityId: "0" });
   expect(output.success).toBe(true);
 });
+
+it("drops a planner 0 filter when only the attached context carries a 0", async () => {
+  const message: Memory = {
+    id: crypto.randomUUID() as UUID,
+    entityId: owner,
+    agentId: fixture.runtime.agentId,
+    roomId: room,
+    worldId: world,
+    content: {
+      text: [
+        "Answer the user request using the contextual documents below as the source of truth when they contain the answer.",
+        "<contextual_documents>",
+        '<source title="release">Release 2.0 notes</source>',
+        "</contextual_documents>",
+        "<user_request>",
+        "list my documents",
+        "</user_request>",
+      ].join("\n"),
+    },
+  };
+  const output = await dispatchList(message, { scopedToEntityId: "0" });
+  expect(output.success).toBe(true);
+});

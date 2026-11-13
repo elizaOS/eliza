@@ -1145,12 +1145,13 @@ function parseOAuthRedirectUri(redirectUri: string): URL {
  * it lets the operator see the real fault instead of a policy denial.
  */
 export class OAuthRedirectAllowlistEntryError extends ElizaError {
+  override readonly name = "OAuthRedirectAllowlistEntryError";
+
   constructor() {
     super(
       "OAuth redirect_uri allowlist contains an entry that is not a valid absolute URL",
       { code: "OAUTH_REDIRECT_ALLOWLIST_ENTRY_INVALID" },
     );
-    this.name = "OAuthRedirectAllowlistEntryError";
   }
 }
 

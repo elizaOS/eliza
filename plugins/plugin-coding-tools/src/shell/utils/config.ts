@@ -5,10 +5,10 @@
  * directories or numeric settings fail service startup with typed errors.
  */
 import fs from "node:fs";
-import { homedir } from "node:os";
 import path from "node:path";
 import { ElizaError, logger } from "@elizaos/core";
 import { z } from "zod";
+import { expandHome } from "../../lib/path-utils.js";
 import type { ShellConfig } from "../types";
 
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
@@ -111,22 +111,6 @@ export const DEFAULT_FORBIDDEN_COMMANDS: readonly string[] = [
   "shred",
   ":(){:|:&};:",
 ] as const;
-
-/**
- * Expand a home-relative configured directory.
- *
- * The sibling path lists in `services/sandbox-service.ts`
- * (`CODING_TOOLS_ALLOWED_ROOTS`, `CODING_TOOLS_BLOCKED_PATHS`) accept both `~`
- * and `$HOME`. A literal token here resolves against the process cwd instead,
- * so a directory that exists is reported as missing and the shell tool never
- * starts.
- */
-function expandHome(value: string): string {
-  if (value === "~" || value === "$HOME") return homedir();
-  if (value.startsWith("~/")) return path.join(homedir(), value.slice(2));
-  if (value.startsWith("$HOME/")) return path.join(homedir(), value.slice(6));
-  return value;
-}
 
 export function loadShellConfig(): ShellConfig {
   const allowedDirectory = expandHome(
