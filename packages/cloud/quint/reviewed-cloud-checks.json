@@ -532,6 +532,78 @@
       ]
     }
   ],
+  "MobileAppClientRegistration.qnt": [
+    {
+      "file": "packages/cloud/shared/src/db/repositories/mobile-app-auth-clients.test.ts",
+      "required": [
+        "returns registration and app for active enabled client",
+        "returns row with enabled=false for disabled client",
+        "returns null for non-existent client",
+        "requires the exact callback in app allowed_origins, not an origin or wildcard",
+        "rejects enabled Android registrations with missing fingerprints",
+        "preserves each signer's Android relations when registrations share a package",
+        "merges fingerprints across multiple clients for the same package",
+        "finds client by exact redirect URI",
+        "returns null for unknown redirect URI",
+        "admits matching production grant on production environment",
+        "refuses staging grant on production environment",
+        "refuses disabled DB client immediately without fallback"
+      ]
+    },
+    {
+      "file": "packages/cloud/api/__tests__/mobile-app-auth-database-lifecycle.pglite.test.ts",
+      "required": [
+        "E2E database-only client lifecycle: asset links -> signin -> exchange -> ack -> verify -> renew -> revoke",
+        "Database outage fails closed: rethrows error rather than silently serving stale env fallback"
+      ]
+    },
+    {
+      "file": "packages/cloud/api/__tests__/native-callback.pglite.test.ts",
+      "required": [
+        "serves fallback HTML for database-registered client without any environment variable",
+        "immediately reflects client or app renaming without server deployment",
+        "serves native billing return fallback page with session parameters",
+        "returns 404 for un-registered redirect URI",
+        "returns 404 when client is disabled in database",
+        "returns 404 when parent app is unapproved",
+        "Pages uses the current database callback and browser-start registration",
+        "installed client aliases share one current callback policy and refuse conflicting policies",
+        "root asset links is limited before database registration lookup"
+      ]
+    }
+  ],
+  "NativeRegistryMigration.qnt": [
+    {
+      "file": "packages/scripts/cloud/admin/migrate-native-app-auth.pglite.test.ts",
+      "required": [
+        "imports exact protected registrations, alias assets, browser returns and disabled apps atomically",
+        "refuses ambiguous callback ownership before publishing any imported data",
+        "rejects partial source associations and refuses to overwrite changed registrations",
+        "reads complete callback binding from the deployed staging branch across all deployment pages",
+        "Pages failures report only request stage and numeric provider codes",
+        "release adopts a complete preparation import once and permits later reviewed deletion without legacy source",
+        "release imports an absent marker from the complete source and fails closed when first source is unavailable",
+        "release refuses a conflicting identity, unsupported marker version, or incompatible schema",
+        "release refuses to bind a preparation marker after imported rows changed"
+      ]
+    }
+  ],
+  "MobileClientCompatibility.qnt": [
+    {
+      "file": "packages/cloud/api/__tests__/native-callback.pglite.test.ts",
+      "required": [
+        "serves fallback HTML for database-registered client without any environment variable",
+        "immediately reflects client or app renaming without server deployment",
+        "serves native billing return fallback page with session parameters",
+        "returns 404 for un-registered redirect URI",
+        "returns 404 when client is disabled in database",
+        "returns 404 when parent app is unapproved",
+        "Pages uses the current database callback and browser-start registration",
+        "installed client aliases share one current callback policy and refuse conflicting policies",
+        "root asset links is limited before database registration lookup"
+      ]
+    }
+  ],
   "StagingStripeBindings.qnt": [
     {
       "file": "packages/cloud/scripts/prepare-worker-secrets.test.ts",
@@ -552,18 +624,6 @@
         "staging only requires batch billing when Cartesia is explicitly selected",
         "staging preserves an entirely blank Stripe catalog and refuses each partial replacement",
         "staging rejects live keys and malformed independent Stripe inputs without logging their values"
-      ]
-    }
-  ],
-  "NativeRegistryMigration.qnt": [
-    {
-      "file": "packages/scripts/cloud/admin/migrate-native-app-auth.pglite.test.ts",
-      "required": [
-        "imports exact protected registrations, alias assets, browser returns and disabled apps atomically",
-        "refuses ambiguous callback ownership before publishing any imported data",
-        "rejects partial source associations and refuses to overwrite changed registrations",
-        "reads complete callback binding from the deployed staging branch across all deployment pages",
-        "Pages failures report only request stage and numeric provider codes"
       ]
     }
   ]

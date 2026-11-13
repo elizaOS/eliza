@@ -3,8 +3,6 @@ import {
   MOBILE_APP_AUTH_CLIENT_ID,
   MOBILE_APP_AUTH_CREDENTIAL_TTL_SECONDS,
   MOBILE_APP_AUTH_REDIRECT_URI,
-  MobileAppAuthProtocolError,
-  resolveMobileAppAuthRegistration,
 } from "./mobile-app-auth";
 import {
   MOBILE_CLIENT_MAX_CREDENTIAL_TTL_SECONDS,
@@ -25,48 +23,38 @@ const reserved = {
   appId: PRIMARY_APP,
   redirectUri: MOBILE_APP_AUTH_REDIRECT_URI,
 };
-const env = (clients: unknown[]) => ({
-  ENVIRONMENT: "production",
-  ELIZA_MOBILE_APP_AUTH_ENABLED: "true",
-  ELIZA_MOBILE_APP_AUTH_APP_ID: PRIMARY_APP,
-  ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: JSON.stringify(clients),
-});
 
 describe("mobile client registry credential lifetime", () => {
-  test.each([PRIMARY_APP, undefined])(
-    "a registered client may request 90-day credentials with primary app %s",
-    (primaryApp) => {
-      const configuration = {
-        ...env([{ ...ALPHA, credentialTtlSeconds: NINETY_DAYS }]),
-        ELIZA_MOBILE_APP_AUTH_APP_ID: primaryApp,
-      };
-      const registration = resolveMobileAppAuthRegistration(configuration, ALPHA.clientId);
-      expect(registration).toEqual({
+  test("a registered client may request 90-day credentials", () => {
+    const selected = selectRegisteredMobileClient(
+      JSON.stringify([{ ...ALPHA, credentialTtlSeconds: NINETY_DAYS }]),
+      ALPHA.clientId,
+      reserved,
+    );
+    expect(selected).toEqual({
+      ok: true,
+      registration: {
         clientId: ALPHA.clientId,
         appId: ALPHA_APP,
         redirectUri: ALPHA.redirectUri,
         enabled: true,
-        environment: "production",
-        scopes: ["cloud:user"],
         credentialTtlSeconds: NINETY_DAYS,
-      } as never);
-      expect(MOBILE_CLIENT_MAX_CREDENTIAL_TTL_SECONDS).toBe(NINETY_DAYS);
-      if (primaryApp === undefined) {
-        expect(() => resolveMobileAppAuthRegistration(configuration)).toThrow(
-          "ELIZA_MOBILE_APP_AUTH_APP_ID must be a registered app UUID",
-        );
-      }
-    },
-  );
+      },
+    });
+    expect(MOBILE_CLIENT_MAX_CREDENTIAL_TTL_SECONDS).toBe(NINETY_DAYS);
+  });
 
-  test("clients without an explicit lifetime keep the 30-day default", () => {
-    expect(
-      resolveMobileAppAuthRegistration(env([ALPHA]), ALPHA.clientId).credentialTtlSeconds,
-    ).toBe(MOBILE_APP_AUTH_CREDENTIAL_TTL_SECONDS);
-    expect(MOBILE_APP_AUTH_CREDENTIAL_TTL_SECONDS).toBe(30 * 24 * 60 * 60);
-    expect(resolveMobileAppAuthRegistration(env([ALPHA])).credentialTtlSeconds).toBe(
-      MOBILE_APP_AUTH_CREDENTIAL_TTL_SECONDS,
+  test("clients without an explicit lifetime keep credentialTtlSeconds undefined (defaults to 30 days)", () => {
+    const selected = selectRegisteredMobileClient(
+      JSON.stringify([ALPHA]),
+      ALPHA.clientId,
+      reserved,
     );
+    expect(selected.ok).toBe(true);
+    if (selected.ok) {
+      expect(selected.registration.credentialTtlSeconds).toBeUndefined();
+    }
+    expect(MOBILE_APP_AUTH_CREDENTIAL_TTL_SECONDS).toBe(30 * 24 * 60 * 60);
   });
 
   test.each([
@@ -98,9 +86,13 @@ describe("mobile client registry credential lifetime", () => {
   });
 
   test("a disabled or unknown client is invalid_client, never the default", () => {
-    expect(() =>
-      resolveMobileAppAuthRegistration(env([{ ...ALPHA, enabled: false }]), ALPHA.clientId),
-    ).toThrow(MobileAppAuthProtocolError);
+    expect(
+      selectRegisteredMobileClient(
+        JSON.stringify([{ ...ALPHA, enabled: false }]),
+        ALPHA.clientId,
+        reserved,
+      ),
+    ).toEqual({ ok: false, code: "invalid_client" });
     expect(
       selectRegisteredMobileClient(JSON.stringify([ALPHA]), "ai.example.other", reserved),
     ).toEqual({ ok: false, code: "invalid_client" });
@@ -125,12 +117,22 @@ describe("mobile client registry credential lifetime", () => {
 
 test("an installed compatibility client resolves its own name with the same owner binding and scope", () => {
   const alias = { ...ALPHA, clientId: "org.example.legacy", aliasOf: ALPHA.clientId };
-  const resolved = resolveMobileAppAuthRegistration(env([ALPHA, alias]), alias.clientId);
-  expect(resolved.clientId).toBe(alias.clientId);
-  expect(resolved.appId).toBe(ALPHA.appId);
-  expect(resolved.redirectUri).toBe(ALPHA.redirectUri);
-  expect(resolved.scopes).toEqual(["cloud:user"]);
-  expect(() =>
-    resolveMobileAppAuthRegistration(env([{ ...ALPHA, enabled: false }, alias]), alias.clientId),
-  ).toThrow();
+  const selected = selectRegisteredMobileClient(
+    JSON.stringify([ALPHA, alias]),
+    alias.clientId,
+    reserved,
+  );
+  expect(selected.ok).toBe(true);
+  if (selected.ok) {
+    expect(selected.registration.clientId).toBe(alias.clientId);
+    expect(selected.registration.appId).toBe(ALPHA.appId);
+    expect(selected.registration.redirectUri).toBe(ALPHA.redirectUri);
+  }
+  expect(
+    selectRegisteredMobileClient(
+      JSON.stringify([{ ...ALPHA, enabled: false }, alias]),
+      alias.clientId,
+      reserved,
+    ),
+  ).toEqual({ ok: false, code: "server_configuration_error" });
 });

@@ -87,9 +87,14 @@ current protected registry and Android bindings, fetches the complete deployed
 Pages callback configuration, and verifies the database identity before writing.
 An exact app/callback match is required for enabled clients. The transaction
 preserves disabled entries and aliases, refuses conflicts, and records an import
-receipt. The follow-up verification compares every imported field. Keep the old
-runtime deployed until both environment imports succeed; ordinary releases and
-later reviewed database changes do not use this workflow. Production import
+receipt. The follow-up verification compares every imported field. The first
+database-only release completes the import after schema migration and before
+Worker or Pages activation. A completed, versioned, identity-bound marker skips
+all legacy inputs on later releases; it does not require historical rows to remain.
+Preparation markers receive an exact readback before they are bound once. Remove
+the temporary release import phase and legacy environment bindings after both
+environments complete cutover. Later reviewed database changes do not use the
+manual workflow. Production import
 also requires the existing exact-source main Full manifest and tree-bound
 staging certification; the importer runs that canonical gate before writing.
 

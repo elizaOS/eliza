@@ -446,77 +446,6 @@ describe("components in the deployment file", () => {
       ),
     ).toContain(expected);
   });
-
-  test("native callbacks may only name this environment's own origins", () => {
-    const callback = (c: Record<string, Table>) =>
-      (c.web.nativeAuthCallbacks as Table[])[0];
-    const cases: [(c: Record<string, Table>) => void, string][] = [
-      [
-        (c) =>
-          Object.assign(callback(c), {
-            redirectUri: "https://cloud.other.org/example/auth/callback",
-          }),
-        "redirectUri: must be on this environment's web or app origin",
-      ],
-      // Staging's origin is not production's.
-      [
-        (c) =>
-          Object.assign(callback(c), {
-            redirectUri:
-              "https://cloud-staging.example.org/example/auth/callback",
-          }),
-        "redirectUri: must be on this environment's web or app origin",
-      ],
-      [
-        (c) =>
-          Object.assign(callback(c), {
-            redirectUri: "https://cloud.example.org/api/callback",
-          }),
-        "redirectUri: has an invalid value",
-      ],
-      [
-        (c) =>
-          Object.assign(callback(c), {
-            redirectUri: "https://cloud.example.org/cb?next=/",
-          }),
-        "redirectUri: has an invalid value",
-      ],
-      [
-        (c) => Object.assign(callback(c), { androidPackage: "product" }),
-        "androidPackage: has an invalid value",
-      ],
-      [
-        (c) =>
-          Object.assign(callback(c).browserSignIn as Table, {
-            apiOrigin: "https://api-staging.example.org",
-          }),
-        "browserSignIn.apiOrigin: must be this environment's api origin",
-      ],
-      [
-        (c) =>
-          Object.assign(callback(c).browserSignIn as Table, {
-            startPath: "/steward/start",
-          }),
-        "browserSignIn.startPath: has an invalid value",
-      ],
-      [
-        (c) =>
-          Object.assign(callback(c).browserSignIn as Table, { returnTo: "/" }),
-        "browserSignIn.returnTo: is not a known field",
-      ],
-      [
-        (c) =>
-          (c.web.nativeAuthCallbacks as Table[]).push({
-            ...callback(c),
-            browserSignIn: undefined,
-          }),
-        "redirectUri: repeats a callback route",
-      ],
-    ];
-    for (const [change, expected] of cases) {
-      expect(problemsOf(productWith(change))).toContain(expected);
-    }
-  });
 });
 
 describe("product component render", () => {
@@ -663,7 +592,7 @@ describe("product component render", () => {
     }
   });
 
-  test("the Pages project is given the deployment's identity and callbacks", () => {
+  test("the Pages project uses the deployment identity without a callback registry", () => {
     const env = (exampleProduct().environments as Table).production as Table;
     const origins = env.origins as Record<string, string>;
     const { config, secretsText } = render(exampleProduct(), "web");
@@ -677,18 +606,10 @@ describe("product component render", () => {
       NEXT_PUBLIC_STEWARD_TENANT_ID: env.tenantId,
       VITE_ENVIRONMENT: "production",
     });
-    expect(JSON.parse(vars.ELIZA_NATIVE_AUTH_CALLBACKS_JSON)).toEqual(
-      (env.components as Record<string, Table>).web.nativeAuthCallbacks,
-    );
     expect(
       secretsText.split("\n").filter((line) => line && !line.startsWith("#")),
     ).toEqual([]);
-    // No callbacks, no variable: the middleware treats unset as none.
-    const none = render(
-      productWith((c) => delete c.web.nativeAuthCallbacks),
-      "web",
-    ).config.vars as Table;
-    expect("ELIZA_NATIVE_AUTH_CALLBACKS_JSON" in none).toBe(false);
+    expect("ELIZA_NATIVE_AUTH_CALLBACKS_JSON" in vars).toBe(false);
   });
 
   test("every path resolves from the product directory", () => {
@@ -1006,73 +927,4 @@ describe("check", () => {
       rmSync(tree, { recursive: true, force: true });
     }
   });
-});
-
-describe("native callback serving validation", () => {
-  const rejected: [string, (callbacks: Table[], env: Table) => void][] = [
-    [
-      "protocol callback",
-      (c) => {
-        c[0].redirectUri =
-          "https://cloud.example.org/.well-known/assetlinks.json";
-      },
-    ],
-    [
-      "normalized browser path",
-      (c) => {
-        (c[0].browserSignIn as Table).startPath = "/example/../start";
-      },
-    ],
-    [
-      "protocol browser return",
-      (c) => {
-        (c[0].browserSignIn as Table).returnPath =
-          "/.well-known/oidc/jwks.json";
-      },
-    ],
-    [
-      "HTTP loopback browser API",
-      (c, env) => {
-        (env.origins as Table).api = "http://127.0.0.1:8787";
-        (c[0].browserSignIn as Table).apiOrigin = "http://127.0.0.1:8787";
-      },
-    ],
-    [
-      "same-origin storage key",
-      (c) => {
-        c.push({
-          ...c[0],
-          redirectUri: "https://cloud.example.org/second/auth/callback",
-          browserSignIn: {
-            ...(c[0].browserSignIn as Table),
-            startPath: "/second/auth/browser-start",
-          },
-        });
-      },
-    ],
-    [
-      "derived billing return callback",
-      (c) => {
-        c.push({
-          redirectUri: "https://cloud.example.org/example/billing/return",
-          androidPackage: "org.example.other",
-          appName: "Other",
-        });
-      },
-    ],
-    [
-      "derived billing return browser start",
-      (c) => {
-        (c[0].browserSignIn as Table).startPath = "/example/billing/return";
-      },
-    ],
-  ];
-  for (const [name, change] of rejected) {
-    test(`rejects ${name} before rendering an unusable Pages config`, () => {
-      const input = productWith((components, env) => {
-        change(components.web.nativeAuthCallbacks as Table[], env);
-      });
-      expect(problemsOf(input)).toContain("components.web.nativeAuthCallbacks");
-    });
-  }
 });

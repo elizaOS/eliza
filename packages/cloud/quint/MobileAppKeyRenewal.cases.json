@@ -9,7 +9,8 @@
     "packages/cloud/shared/src/db/schemas/mobile-app-auth-grants.ts",
     "packages/cloud/shared/src/db/migrations/0572_mobile_app_auth_session_start.sql",
     "packages/cloud/shared/src/db/migrations/0573_mobile_app_auth_renewal_lineage.sql",
-    "packages/cloud/api/__tests__/mobile-app-auth-renewal.pglite.test.ts"
+    "packages/cloud/api/__tests__/mobile-app-auth-renewal.pglite.test.ts",
+    "packages/cloud/shared/src/db/repositories/mobile-app-auth-clients.ts"
   ],
   "conformance": "packages/cloud/quint/check-mobile-key-renewal.mjs",
   "bounds": "One sign-in at clock 0, three credential identities, two renewal requests, clock 0..6, cap 4, credential lifetime 3 and code lifetime 1. A third renewal and a second sign-in are outside the instance, so a revocation that ends the sign-in is every credential of the instance.",

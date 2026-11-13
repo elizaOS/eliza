@@ -26,6 +26,10 @@ export interface NativeRegistrySource {
   assetLinks?: string;
   callbacks?: string;
 }
+export interface NativeRegistryIdentity {
+  clusterSha256: string;
+  authoritySha256: string;
+}
 function refuse(invariant: string): never {
   throw new Error(`Native client migration refused: ${invariant}`);
 }
@@ -138,15 +142,20 @@ export async function migrateNativeRegistry(
   database: MigrationDatabase,
   source: NativeRegistrySource,
   environment: "staging" | "production",
+  identity?: NativeRegistryIdentity,
 ) {
+  if (identity) validateIdentity(identity);
   const snapshot = nativeRegistrySnapshot(source);
   await database.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
   try {
     await database.query("SELECT pg_advisory_xact_lock(39257)");
-    {
+    for (const migration of [
+      "0574_native_app_auth_client_registration.sql",
+      "0575_native_app_auth_import_identity.sql",
+    ]) {
       const sql = await readFile(
         new URL(
-          "../../../cloud/shared/src/db/migrations/0574_native_app_auth_client_registration.sql",
+          `../../../cloud/shared/src/db/migrations/${migration}`,
           import.meta.url,
         ),
         "utf8",
@@ -232,12 +241,136 @@ export async function migrateNativeRegistry(
         JSON.stringify(snapshot.map((record) => record.client_id)),
       ],
     );
+    if (identity) await bindMigrationIdentity(database, environment, identity);
     await database.query("COMMIT");
     return { clients: snapshot.length, digest };
   } catch (error) {
     await database.query("ROLLBACK");
     throw error;
   }
+}
+
+function validateIdentity(identity: NativeRegistryIdentity) {
+  if (
+    !/^[0-9a-f]{64}$/.test(identity.clusterSha256) ||
+    !/^[0-9a-f]{64}$/.test(identity.authoritySha256)
+  )
+    refuse("migration_identity_invalid");
+}
+
+async function bindMigrationIdentity(
+  database: MigrationDatabase,
+  environment: "staging" | "production",
+  identity: NativeRegistryIdentity,
+) {
+  const result = await database.query(
+    `UPDATE mobile_app_auth_registry_migrations SET cluster_sha256=$2, authority_sha256=$3
+     WHERE environment=$1 AND import_version=1 AND schema_version=574
+     AND (cluster_sha256 IS NULL OR cluster_sha256=$2)
+     AND (authority_sha256 IS NULL OR authority_sha256=$3)
+     RETURNING environment`,
+    [environment, identity.clusterSha256, identity.authoritySha256],
+  );
+  if (result.rows.length !== 1) refuse("migration_identity_conflict");
+}
+
+/** The release cutover trusts only an identity-bound, versioned completion marker.
+ * It never requires the original clients to remain after that cutover. */
+export async function nativeRegistryReleaseReady(
+  database: MigrationDatabase,
+  environment: "staging" | "production",
+  identity: NativeRegistryIdentity,
+): Promise<boolean> {
+  validateIdentity(identity);
+  const columns = await database.query(
+    `SELECT column_name, data_type, is_nullable FROM information_schema.columns
+     WHERE table_schema='public' AND table_name='mobile_app_auth_clients'`,
+  );
+  const required: Record<string, [string, string]> = {
+    client_id: ["text", "NO"],
+    app_id: ["uuid", "NO"],
+    redirect_uri: ["text", "NO"],
+    credential_ttl_seconds: ["integer", "YES"],
+    android_package_name: ["text", "YES"],
+    callback_android_package: ["text", "YES"],
+    android_relations: ["jsonb", "YES"],
+    android_cert_fingerprints: ["jsonb", "YES"],
+    browser_sign_in: ["jsonb", "YES"],
+    enabled: ["boolean", "NO"],
+  };
+  if (
+    Object.entries(required).some(
+      ([name, [type, nullable]]) =>
+        !columns.rows.some(
+          (column) =>
+            column.column_name === name &&
+            column.data_type === type &&
+            column.is_nullable === nullable,
+        ),
+    )
+  )
+    refuse("migration_schema_mismatch");
+  const result = await database.query(
+    "SELECT environment,import_version,schema_version,cluster_sha256,authority_sha256,source_digest,client_count,client_ids,completed_at FROM mobile_app_auth_registry_migrations WHERE environment=$1",
+    [environment],
+  );
+  if (!result.rows.length) return false;
+  const row = result.rows[0];
+  if (
+    result.rows.length !== 1 ||
+    !row ||
+    row.environment !== environment ||
+    row.import_version !== 1 ||
+    row.schema_version !== 574 ||
+    typeof row.source_digest !== "string" ||
+    !/^[0-9a-f]{64}$/.test(row.source_digest) ||
+    !Number.isInteger(row.client_count) ||
+    Number(row.client_count) < 1 ||
+    !Array.isArray(row.client_ids) ||
+    row.client_ids.length !== row.client_count ||
+    new Set(row.client_ids).size !== row.client_ids.length ||
+    row.client_ids.some((id) => typeof id !== "string" || !id) ||
+    !row.completed_at
+  )
+    refuse("migration_marker_invalid");
+  if (row.cluster_sha256 === null && row.authority_sha256 === null) {
+    // Preparation imports predate the identity columns. Bind them once only
+    // after exact readback, under the same serialization lock as the importer.
+    await database.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
+    try {
+      await database.query("SELECT pg_advisory_xact_lock(39257)");
+      await verifyNativeRegistryMigration(database, environment);
+      await bindMigrationIdentity(database, environment, identity);
+      await database.query("COMMIT");
+    } catch (error) {
+      await database.query("ROLLBACK");
+      throw error;
+    }
+  } else if (
+    row.cluster_sha256 !== identity.clusterSha256 ||
+    row.authority_sha256 !== identity.authoritySha256
+  )
+    refuse("migration_identity_conflict");
+  return true;
+}
+
+/** Called only between canonical schema migration and runtime activation. */
+export async function prepareNativeRegistryRelease(
+  database: MigrationDatabase,
+  environment: "staging" | "production",
+  identity: NativeRegistryIdentity,
+  readSource: () => Promise<NativeRegistrySource>,
+) {
+  if (await nativeRegistryReleaseReady(database, environment, identity))
+    return { status: "already_imported" as const };
+  const result = await migrateNativeRegistry(
+    database,
+    await readSource(),
+    environment,
+    identity,
+  );
+  await verifyNativeRegistryMigration(database, environment);
+  return { status: "verified" as const, ...result };
 }
 
 export async function verifyNativeRegistryMigration(
@@ -429,15 +562,23 @@ if (import.meta.main) {
       DATABASE_IDENTITY_ENVIRONMENT: environment,
     });
     await runDatabaseIdentityPreflight(identity, database);
-    const callbacks = process.argv.includes("--verify")
-      ? undefined
-      : process.env.ELIZA_NATIVE_AUTH_CALLBACKS_JSON?.trim() ||
+    const verifiedIdentity = {
+      clusterSha256: identity.expectedClusterSha256 ?? "",
+      authoritySha256: identity.expectedAuthoritySha256 ?? "",
+    };
+    const readSource = async (): Promise<NativeRegistrySource> => ({
+      primaryAppId: process.env.ELIZA_MOBILE_APP_AUTH_APP_ID,
+      clients: process.env.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON,
+      assetLinks: process.env.ELIZA_ANDROID_ASSET_LINKS_JSON,
+      callbacks:
+        process.env.ELIZA_NATIVE_AUTH_CALLBACKS_JSON?.trim() ||
         (await readDeployedNativeCallbacks({
           accountId: process.env.CLOUDFLARE_ACCOUNT_ID ?? "",
           token: process.env.CLOUDFLARE_API_TOKEN ?? "",
           project: process.env.PAGES_PROJECT ?? "eliza-app",
           environment,
-        }));
+        })),
+    });
     // Reuse the canonical production effect gate immediately before BEGIN.
     // The gate verifies exact main source and tree-bound staging evidence; a
     // branch name or database identity alone cannot authorize this mutation.
@@ -458,16 +599,19 @@ if (import.meta.main) {
     }
     const result = process.argv.includes("--verify")
       ? await verifyNativeRegistryMigration(database, environment)
-      : await migrateNativeRegistry(
-          database,
-          {
-            primaryAppId: process.env.ELIZA_MOBILE_APP_AUTH_APP_ID,
-            clients: process.env.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON,
-            assetLinks: process.env.ELIZA_ANDROID_ASSET_LINKS_JSON,
-            callbacks,
-          },
-          environment,
-        );
+      : process.argv.includes("--release")
+        ? await prepareNativeRegistryRelease(
+            database,
+            environment,
+            verifiedIdentity,
+            readSource,
+          )
+        : await migrateNativeRegistry(
+            database,
+            await readSource(),
+            environment,
+            verifiedIdentity,
+          );
     console.log(JSON.stringify({ status: "verified", ...result }));
   } catch (error) {
     console.error(

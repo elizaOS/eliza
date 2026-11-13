@@ -160,29 +160,28 @@ bun run --cwd packages/cloud/api test   # tests
 
 ## Independent native App Auth clients
 
-`ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON` optionally registers additional native clients.
-It is a server-owned JSON array of `{clientId, appId, redirectUri, enabled,
-credentialTtlSeconds?}` records. `credentialTtlSeconds` sets the lifetime of the
-client's `eliza_mobile_` credential: an integer from one day to 90 days, 30 days
-when absent.
-Client IDs, app UUIDs and canonical HTTPS return URLs must be unique, including
-against the existing `ai.elizaos.app` registration. Unknown and disabled clients
-fail closed; malformed additional configuration does not change the legacy client.
-The global mobile-auth enable switch and environment binding still apply.
-An explicitly registered client does not require the legacy primary app UUID.
-`ELIZA_MOBILE_APP_AUTH_APP_ID` remains required for `ai.elizaos.app`; omitting it
-does not register or enable that legacy client.
+Native clients are registered in `mobile_app_auth_clients`, linked to active,
+approved `apps` rows. Each record holds a client ID, exact HTTPS callback,
+enabled state and optional credential lifetime. The lifetime is an integer from
+one day to 90 days, with a 30-day default. Client IDs must be unique. Aliases can share an app and callback when
+their hosted return policy agrees. Unknown and disabled clients fail closed. The global mobile-auth
+enable switch and environment binding still apply.
+
+Disabling a registration stops native sign-in, renewal, private owner access
+and its hosted/Android publication. General API keys already issued remain
+subject to their existing revocation and expiry rules; disabling a client does
+not revoke every key previously issued to it.
 
 Auth has separate configuration boundaries. A Cloud exchange callback is not
 necessarily the browser callback used by Google:
 
 | Channel                   | Server-owned configuration                                                       | Consumer responsibility                                               |
 | ------------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| Cloud credential exchange | `ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON` and an approved `apps` row                  | Client ID, environment and exact exchange callback                    |
+| Cloud credential exchange | `mobile_app_auth_clients` and an approved `apps` row                             | Client ID, environment and exact exchange callback                    |
 | Google sign-in            | Steward tenant/app redirect registration and `STEWARD_OAUTH_APP_ERROR_REDIRECTS` | PKCE, state, optional Steward `authClientId`, browser return handling |
 | Gmail connector consent   | `APP_OAUTH_RETURN_URLS`                                                          | App nonce and authenticated connection readback                       |
-| Android verified links    | `ELIZA_ANDROID_ASSET_LINKS_JSON`                                                 | Package, signing certificate and manifest URL filters                 |
-| Hosted fallback           | Pages `ELIZA_NATIVE_AUTH_CALLBACKS_JSON`                                         | Public callback URL, package and display name                         |
+| Android verified links    | Database registration package and certificate fingerprints                       | Package, signing certificate and manifest URL filters                 |
+| Hosted fallback           | The same database registration and Cloud callback resolver                       | Public callback URL, package and display name                         |
 
 Request parameters can select these registrations; they cannot register a new
 callback. App IDs in Cloud and client IDs in Steward belong to different stores
@@ -191,40 +190,37 @@ these shared mechanisms.
 
 New platform clients use a dedicated, memberless publisher organization and an
 active, approved app with an exact allowed callback and no live generated app
-API key. The protected registration workflow authorizes provisioning; a login
-user does not own the publisher. Database guards prevent user membership and
-personal-account deletion from disabling or deleting that publisher. Existing
-registration-only apps can be moved with the workflow's reviewed publisher
-isolation operation while preserving their app UUID and customer grants. A
-historical creator is only optional audit metadata. Each customer's consent and
+API key. Reviewed database changes authorize registration; a login user does not
+own the publisher. Database guards prevent user membership and personal-account
+deletion from disabling or deleting that publisher. A historical creator is
+only optional audit metadata. Each customer's consent and
 credential remain bound to that customer's user and organization. Use separate
 registrations in staging and production. Validate the public
 `/api/v1/app-auth/mobile/config` response for that client/environment/return URL
-before shipping. The admin preflight allows an `app_url` homepage path on the
-registered HTTPS origin, while `allowed_origins` must contain the sole exact
-registered callback. The app UUID and server secrets must not be included in the
+before shipping. The app can use an `app_url` homepage path on the registered HTTPS origin;
+`allowed_origins` must contain the exact registered callback. The app UUID and server secrets must not be included in the
 native configuration. Retain the existing S256 grant, inactive exchange, durable
 receipt acknowledgment, self-revocation and account recovery contracts. `cloud:user`
 is the existing broad user/organization capability, not a narrower permission claim.
 
-The release workflow publishes the registry from the protected
-`ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON` environment secret. The
-`Mobile App Auth Registration Admin` workflow diagnoses or repairs a client's
-`apps` row: enter any enabled `clientId` from the selected environment's registry.
-The app UUID and exact callback come only from that protected registry. The admin
-uses the Worker's validator, including uniqueness against the primary client and
-validation of every registry entry. No application names or callback paths are
-compiled into the admin. New rows get a neutral display name;
-existing rows retain their branding. Use separate environment registries. The
-registry's callback is authoritative; the admin does not infer an environment
-from a hostname. Review each environment's registry before repair.
-Set `ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID` to select the same client for the
-standalone verifier. With the protected environment variables present, run
-`bun packages/scripts/cloud/admin/verify-mobile-app-auth-registration.ts
---skip-database --verify-live` to check its public metadata without a database read.
-Omitting the selector checks the primary client. Release gates use `--all-clients`
-to check the primary client and every enabled additional client, both in the
-database before deployment and through public metadata after deployment.
+Native registration lives in `mobile_app_auth_clients`. It binds a unique client
+ID to an approved app, exact redirect URI, enabled state, credential lifetime,
+optional Android package and fingerprints, and optional browser sign-in paths.
+Only reviewed administrator or migration changes can write this table.
+Before the first runtime cutover, run the protected Native App Auth Database
+Migration workflow for each environment. It imports the exact existing client,
+Android and deployed Pages configuration in one transaction, then verifies the
+complete import. An absent source, ambiguous app or conflicting row refuses the
+import. Keep the old runtime deployed until this succeeds. Later registrations
+and renames are reviewed database changes. The first database-only release runs
+the import before activation if no completion marker exists. Later releases
+validate only the marker's environment, schema version and database identity;
+they do not require the original client rows or legacy inputs. Remove this
+temporary import phase after both environments complete cutover. Client
+IDs are independent of Android package names. The API, Digital Asset Links and
+hosted fallback read the same rows, so changes take effect without a release.
+Unknown or disabled clients fail closed. No deployment secret stores client
+registration, and the app-creator API cannot create this authority.
 
 ### App-owned managed Google returns
 
@@ -378,63 +374,30 @@ Native email sign-in is a six-digit code typed into the app:
   spelling of the code-only email under the same limits. Without it, that
   endpoint keeps sending the web magic link plus code.
 
-Operator configuration per environment:
+Operator registration per environment:
 
-- `ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON` (GitHub Environment secret on `staging` /
-  `production`) registers each app's client ID, app UUID and exact callback. Leave `credentialTtlSeconds` unset (30-day default) while the
-  device's `eliza_mobile_` key remains readable by the app renderer. Then run the
-  admin workflow's repair for that client.
-- `ELIZA_ANDROID_ASSET_LINKS_JSON` is a GitHub **variable** (`vars.`), defined on
-  the `staging` / `production` GitHub Environment or at repository level. The
-  release workflow publishes it to the Worker as a Worker secret. It is a JSON
-  array of `{package_name, sha256_cert_fingerprints[], relations?}` served at
-  `/.well-known/assetlinks.json` on the API host and, through the Pages proxy, on
-  `eliza.app` and `staging.eliza.app`. Malformed values publish `[]`. Without
-  the release signer's fingerprint, App Link verification fails on every phone:
-  do not promote native sign-in to production until it is set and
-  `adb shell pm get-app-links <application-package>` shows the host as
-  `verified`.
-- The Steward tenant `elizacloud` must list the callback in its
-  `allowedRedirectUrls`. `/auth/oauth/:provider/authorize` receives an explicit
-  `tenant_id`, so `STEWARD_OAUTH_ALLOWED_REDIRECTS` does not apply to it.
-- Steward (`packages/auth`) deploys separately from `cloud-cf-deploy`. The
-  Google `prompt=select_account` passthrough, `mfa=exchange` and
-  `/email/code/send` reach a device only after that deployment.
+- Use a reviewed database change to register the client and exact callback. The
+  app must retain that callback in `allowed_origins`. Keep the default 30-day
+  credential lifetime while its key remains readable by the app renderer.
+- Store the Android package and release signing fingerprints on that same
+  registration. The API and Pages proxy serve the resulting Digital Asset Links.
+  Verify `adb shell pm get-app-links <application-package>` reports the host as
+  `verified` before qualifying device sign-in.
+- The Steward tenant must list its browser callback in `allowedRedirectUrls`.
+  An explicit `tenant_id` means `STEWARD_OAUTH_ALLOWED_REDIRECTS` does not apply.
+  Steward deploys separately from the Cloud API.
+- Optional browser sign-in configuration belongs to the same database record.
+  It retains the exact initiating loopback return, storage key, API origin and
+  tenant. Separate clients must use distinct browser paths and storage keys.
 
-For a callback hosted by Eliza Pages, set `ELIZA_NATIVE_AUTH_CALLBACKS_JSON`
-in the protected Pages production/preview environment before deploying this change.
-This is a separate Pages binding, not an API Worker secret. It is a JSON array:
-
-```json
-[
-  {
-    "redirectUri": "https://eliza.app/example/return",
-    "androidPackage": "org.example.reader",
-    "appName": "Example Reader"
-  }
-]
-```
-
-Entries contain only public routing and display data, never app UUIDs or secrets.
-Each exact origin/path selects one package and escaped display name. Staging needs
-its own exact URLs; an entry on one host does not authorize it on another. Unknown
-routes keep ordinary site behavior, and malformed or duplicate configuration fails
-closed. Apps hosting their own callbacks need no Pages entry. The callback used
-only for Cloud's API-to-API mobile code exchange needs no browser page at all.
-
-When Android does not intercept a configured callback, Pages serves a no-store
-fallback. It never forwards a code: package-name intents do not verify the signer.
-The control opens the configured app with no parameters, or only
-`error=app_link_unverified` and a well-formed state. A hash-pinned script clears
-query and fragment from history. Success still requires a verified App Link.
-
-Migration: copy every currently supported callback, package and display name into
-the deployment's Pages binding before rollout. Retain legacy URLs as configuration
-until installed clients migrate. Update Steward tenant/app redirect allowlists,
-`STEWARD_OAUTH_APP_ERROR_REDIRECTS`, Android manifests and asset links separately.
-Adding an app requires protected configuration and app registration, not a new
-upstream product branch. Verify the public metadata, both callback hosts and real
-Android link delivery before declaring live sign-in accepted.
+For a Cloud-hosted callback, Pages resolves the matching database registration
+through its API service binding. Unknown routes keep ordinary site behavior.
+When Android does not intercept a registered callback, the no-store fallback
+never forwards a code: package-name intents do not verify the signer. The
+control opens the app with no parameters, or only `error=app_link_unverified`
+and a well-formed state. The page clears query and fragment from history.
+Success still requires a verified App Link. Validate public metadata, callback
+hosts and real device link delivery before declaring live sign-in accepted.
 
 Remaining Cloud-hosted pages a native sign-in can still reach: this fallback
 page, and Steward's OAuth error page inside the Custom Tab for non-MFA failures

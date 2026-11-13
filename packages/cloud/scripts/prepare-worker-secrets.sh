@@ -535,20 +535,10 @@ for name in \
   LOCAL_EMBEDDINGS_API_KEY \
   CLOUD_PUBLIC_SERVICE_NAME \
   CLOUD_PUBLIC_SERVICE_TERMS_JSON \
-  CLOUD_PUBLIC_SERVICE_PRIVACY_JSON \
-  ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON \
-  ELIZA_ANDROID_ASSET_LINKS_JSON
+  CLOUD_PUBLIC_SERVICE_PRIVACY_JSON
 do
   queue_secret "$name"
 done
-
-if [ "$ELIZA_MOBILE_APP_AUTH_ENABLED" = "true" ]; then
-  if ! has_nonblank_value "$ELIZA_MOBILE_APP_AUTH_APP_ID"; then
-    echo "::error::Enabled mobile App Auth requires the protected ELIZA_MOBILE_APP_AUTH_APP_ID secret"
-    exit 1
-  fi
-  queue_secret ELIZA_MOBILE_APP_AUTH_APP_ID || exit 1
-fi
 
 # Routing toggles: presence changes code paths, so unset must delete.
 # A failed removal must fail the step. Configured toggle values join

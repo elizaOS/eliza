@@ -459,7 +459,6 @@ function renderWeb(options: CheckoutRenderOptions): RenderedConfig {
     );
   }
 
-  const callbacks = web.nativeAuthCallbacks ?? [];
   const config: Table = {
     name: web.projectName,
     pages_build_output_dir: rebase(
@@ -476,9 +475,6 @@ function renderWeb(options: CheckoutRenderOptions): RenderedConfig {
       VITE_STEWARD_TENANT_ID: env.tenantId,
       NEXT_PUBLIC_STEWARD_TENANT_ID: env.tenantId,
       VITE_ENVIRONMENT: environment,
-      ...(callbacks.length > 0
-        ? { ELIZA_NATIVE_AUTH_CALLBACKS_JSON: JSON.stringify(callbacks) }
-        : {}),
       ...(web.vars ?? {}),
     },
     // Pages reaches the API through this binding only; it is always this
