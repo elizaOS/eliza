@@ -1,0 +1,33 @@
+name: Set up benchmark process conformance
+description: Prepare the pinned local Python test tools on the owning Quint shard.
+inputs:
+  shard:
+    description: One-based Quint shard index in the four-shard workflow.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Select benchmark process prerequisite
+      id: selection
+      shell: bash
+      env:
+        QUINT_SHARD: ${{ inputs.shard }}
+      run: |
+        bun -e '
+          import { quintShardForFile } from "./packages/scripts/lib/quint-shards.ts";
+          const selected = quintShardForFile("packages/benchmarks/quint/BenchmarkProcessOwner.qnt", 4) === Number(process.env.QUINT_SHARD);
+          console.log(`needed=${selected}`);
+        ' >> "$GITHUB_OUTPUT"
+    - name: Setup Python for benchmark process conformance
+      if: steps.selection.outputs.needed == 'true'
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: "3.12"
+    - name: Prepare benchmark process conformance tests
+      if: steps.selection.outputs.needed == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        python -m venv "$RUNNER_TEMP/benchmark-quint-python"
+        "$RUNNER_TEMP/benchmark-quint-python/bin/python" -m pip install --constraint packages/benchmarks/requirements-ci-constraints.txt pytest
+        echo "BENCHMARK_TEST_PYTHON=$RUNNER_TEMP/benchmark-quint-python/bin/python" >> "$GITHUB_ENV"

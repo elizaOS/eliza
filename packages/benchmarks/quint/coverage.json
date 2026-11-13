@@ -1,0 +1,18 @@
+[
+  {
+    "id": "benchmarks.BenchmarkProcessOwner",
+    "model": "packages/benchmarks/quint/BenchmarkProcessOwner.qnt",
+    "sources": [
+      "packages/benchmarks/orchestrator/runner.py",
+      "packages/benchmarks/orchestrator/tests/test_runner_deadlines.py",
+      "packages/benchmarks/quint/check-process-owner.mjs"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One direct child, two output changes, four progress receipts, one monitor error and two termination-helper attempts. The maintained Python suite exercises actual local processes, temporary files, watchdogs, cancellation, SQLite run recording and unmodified full trajectory content.",
+      "Real local observation failures cover the initial read and a later poll. Successful cleanup confirms the child is reaped and unrelated children remain alive. A controlled cleanup refusal retains both errors and the unconfirmed child outcome.",
+      "Progress assumes fair settlement of pending OS and receipt operations. Descendant groups, Windows behavior, provider execution, result publication, arbitrary filesystem errors and durable process-crash recovery remain open."
+    ]
+  }
+]

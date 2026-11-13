@@ -157,6 +157,10 @@ jobs:
         env:
           PLAYWRIGHT_INSTALL_CWD: packages/ui
         run: packages/scripts/github/install-playwright-browsers.sh chromium
+      - name: Prepare benchmark process conformance
+        uses: ./.github/actions/setup-benchmark-quint-python
+        with:
+          shard: ${{ matrix.shard }}
       - name: Quint application state models
         env:
           INFERENCE_POLICY_TEST_POSTGRES_URL: postgresql://qa_quint@127.0.0.1:5432/quint_protocol
