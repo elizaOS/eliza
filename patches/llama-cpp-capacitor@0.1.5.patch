@@ -83,7 +83,7 @@ diff --git a/android/build.gradle b/android/build.gradle
 diff --git a/android/src/main/CMakeLists.txt b/android/src/main/CMakeLists.txt
 --- a/android/src/main/CMakeLists.txt
 +++ b/android/src/main/CMakeLists.txt
-@@ -1,131 +1,147 @@
+@@ -1,131 +1,143 @@
 -cmake_minimum_required(VERSION 3.10)
 +cmake_minimum_required(VERSION 3.22)
  
@@ -117,10 +117,6 @@ diff --git a/android/src/main/CMakeLists.txt b/android/src/main/CMakeLists.txt
 +    )
 +    message(STATUS "Building Eliza MTP JNI smoke library for Android ${ANDROID_ABI}")
 +    return()
-+endif()
-+
-+if(NOT DEFINED ELIZA_REPO_ROOT)
-+    message(FATAL_ERROR "ELIZA_REPO_ROOT is required for the Eliza MTP Android JNI bridge")
 +endif()
 +
 +if(NOT DEFINED ELIZA_REPO_ROOT)

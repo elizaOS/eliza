@@ -216,7 +216,12 @@ function ensureCmakeMtpContract(pkgDir) {
   const cmakePath = join(pkgDir, "android", "src", "main", "CMakeLists.txt");
   if (!existsSync(cmakePath)) return false;
   const current = readFileSync(cmakePath, "utf8");
+  const repoRootGuard =
+    "if(NOT DEFINED ELIZA_REPO_ROOT)\n" +
+    '    message(FATAL_ERROR "ELIZA_REPO_ROOT is required for the Eliza MTP Android JNI bridge")\n' +
+    "endif()\n";
   let next = current
+    .replace(`${repoRootGuard}\n${repoRootGuard}`, repoRootGuard)
     .replace(
       /\$\{ELIZA_REPO_ROOT\}\/packages\/native-plugins\/llama\/android\/eliza-mtp-jni\.cpp/g,
       "$" +

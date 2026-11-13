@@ -97,6 +97,10 @@ endif()
 if(NOT DEFINED ELIZA_REPO_ROOT)
     message(FATAL_ERROR "ELIZA_REPO_ROOT is required for the Eliza MTP Android JNI bridge")
 endif()
+
+if(NOT DEFINED ELIZA_REPO_ROOT)
+    message(FATAL_ERROR "ELIZA_REPO_ROOT is required for the Eliza MTP Android JNI bridge")
+endif()
 # Per-ABI MTP lib dirs are passed by android/build.gradle. Only the
 # entry for the currently-building ABI is required; the other can be empty.
 # riscv64 is CPU-only today (no ggml-vulkan.so produced yet).
