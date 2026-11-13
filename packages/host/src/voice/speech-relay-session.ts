@@ -289,6 +289,53 @@ export async function createSpeechRelaySession(
   let retirementEvidence: SpeechRetirementEvidence | undefined;
   let confirmedSttDrain: CartesiaInkDrainReceipt | undefined;
   let quotaRelease: Promise<void> | undefined;
+  const ungrantedCleanups = new Map<
+    SpeechRelayCreditReservation,
+    {
+      window: number;
+      completed: Set<"stt" | "tts">;
+      legacyAttempt?: Promise<void>;
+    }
+  >();
+  const renewalQuotaReleases: Array<{
+    attempt: Promise<void>;
+    released: boolean;
+  }> = [];
+  async function settleUngranted(reservation: SpeechRelayCreditReservation) {
+    let cleanup = ungrantedCleanups.get(reservation);
+    if (!cleanup) {
+      cleanup = { window: windows, completed: new Set() };
+      ungrantedCleanups.set(reservation, cleanup);
+    }
+    if (reservation.supportsPerKindSettlement) {
+      for (const kind of ["stt", "tts"] as const) {
+        if (cleanup.completed.has(kind)) continue;
+        const result = await reservation.settle(UNGRANTED_SETTLEMENT, [kind]);
+        const proof = result?.[kind];
+        if (
+          proof?.terminal !== true ||
+          proof.state !== "actual" ||
+          proof.amountUsd !== "0" ||
+          proof.requestId !==
+            `speech:${scope.cloudSessionId}:${kind}:${cleanup.window}`
+        ) {
+          throw Error("Unused speech reservation settlement is unconfirmed");
+        }
+        cleanup.completed.add(kind);
+      }
+    } else {
+      // A legacy settlement is not an advertised idempotent per-kind operation.
+      cleanup.legacyAttempt ??= Promise.resolve().then(async () => {
+        await reservation.settle(UNGRANTED_SETTLEMENT);
+      });
+      await cleanup.legacyAttempt;
+      if (requireRetirementProof)
+        throw Error(
+          "Unused speech reservation has no per-kind settlement proof",
+        );
+    }
+    ungrantedCleanups.delete(reservation);
+  }
   const completedAccounting: Partial<SpeechSettlementOutcome> = {};
   const windowAccounting = new Map<number, Partial<SpeechSettlementOutcome>>([
     [0, completedAccounting],
@@ -425,6 +472,13 @@ export async function createSpeechRelaySession(
       // Stop provider transports before joining slow renewal admission.
       // Its late reservation must still settle before retirement completes.
       await renewal?.catch(() => {});
+      for (const reservation of ungrantedCleanups.keys()) {
+        try {
+          await settleUngranted(reservation);
+        } catch (error) {
+          failures.push(error);
+        }
+      }
       const details = {
         pcmBytes,
         ttsCharacters: ttsStopped === "not_dispatched" ? 0 : ttsCharacters,
@@ -531,6 +585,7 @@ export async function createSpeechRelaySession(
       }
       const canonicalActualMoney =
         requireRetirementProof &&
+        ungrantedCleanups.size === 0 &&
         reservations.length >= windows &&
         reservations.every((_, index) => {
           const accounting = windowAccounting.get(index);
@@ -610,6 +665,11 @@ export async function createSpeechRelaySession(
         // Keep quota possibly consumed and never repeat the additive release.
         // It cannot replace independent provider or canonical money evidence.
         if (!providerTerminal || !moneyTerminal) failures.push(error);
+      }
+      if (renewalQuotaReleases.length && retirementEvidence) {
+        if (renewalQuotaReleases.some((release) => !release.released))
+          retirementEvidence.quotaRelease = "unknown";
+        else if (!quotaRelease) retirementEvidence.quotaRelease = "released";
       }
       if (failures.length)
         throw new AggregateError(
@@ -784,9 +844,16 @@ export async function createSpeechRelaySession(
         if (index >= windows) held = reservations.splice(index, 1)[0];
       }
     } finally {
-      if (held) await held.settle(UNGRANTED_SETTLEMENT).catch(() => undefined);
-      if (recorded)
-        await ports.usageStore.release(scope, 1).catch(() => undefined);
+      if (held) await settleUngranted(held).catch(() => undefined);
+      if (recorded) {
+        const release = { released: false, attempt: Promise.resolve() };
+        release.attempt = Promise.resolve().then(async () => {
+          await ports.usageStore.release(scope, 1);
+          release.released = true;
+        });
+        renewalQuotaReleases.push(release);
+        await release.attempt.catch(() => undefined);
+      }
     }
   }
   ports.registerRetirement?.(retirement);
