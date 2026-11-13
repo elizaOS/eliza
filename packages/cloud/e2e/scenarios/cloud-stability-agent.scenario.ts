@@ -43,6 +43,22 @@ const reminderArgs = {
     },
   },
 };
+const reminderCreatePlan = {
+  mode: "create",
+  multiStep: false,
+  requestKind: "reminder",
+  nativeProjection: "in_app_only",
+  notificationMode: "default",
+  title: reminderArgs.title,
+  description: null,
+  cadenceKind: "once",
+  dueDate: "2099-01-02",
+  dueInDays: null,
+  dueWeekday: null,
+  dueInMinutes: null,
+  timeOfDay: "09:00",
+  timeZone: "UTC",
+};
 const plannerToolNames = [
   `${ownerRemindersAction.name}_CREATE`,
   "OWNER_GOALS",
@@ -402,22 +418,7 @@ const definition = scenario({
               name: "OWNER_REMINDERS_CREATE",
               arguments: {
                 ...reminderArgs,
-                createPlan: {
-                  mode: "create",
-                  multiStep: false,
-                  requestKind: "reminder",
-                  nativeProjection: "in_app_only",
-                  notificationMode: "default",
-                  title: reminderArgs.title,
-                  description: null,
-                  cadenceKind: "once",
-                  dueDate: "2099-01-02",
-                  dueInDays: null,
-                  dueWeekday: null,
-                  dueInMinutes: null,
-                  timeOfDay: "09:00",
-                  timeZone: "UTC",
-                },
+                createPlan: reminderCreatePlan,
               },
             },
           ],
@@ -426,6 +427,19 @@ const definition = scenario({
           messageToUser: "I prepared the reminder preview.",
           completed: true,
         },
+        cardinality: 1,
+      },
+      {
+        name: "cloud-reminder-create-plan-review",
+        match: {
+          modelType: "TEXT_LARGE",
+          input: {
+            pattern:
+              "^Plan the next step for a LifeOps create_definition request\\.[\\s\\S]*User request: Preview a reminder for 9 AM UTC on January 2, 2099 to review the synthetic Cloud inbox\\. Do not save it until I confirm\\.",
+          },
+          toolNames: [],
+        },
+        response: { json: reminderCreatePlan },
         cardinality: 1,
       },
       {
