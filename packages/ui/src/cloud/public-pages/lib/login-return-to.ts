@@ -63,6 +63,22 @@ export function storePendingOAuthReturnTo(searchParams: {
   safeSet(window.localStorage, stored);
 }
 
+/** Reads the existing return hint for presentation without consuming its navigation authority. */
+export function peekPendingOAuthReturnTo(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    for (const storage of [window.sessionStorage, window.localStorage]) {
+      const value = parseStoredReturnTo(
+        storage.getItem(PENDING_OAUTH_RETURN_TO_KEY),
+      );
+      if (value) return value;
+    }
+  } catch {
+    /* The login flow remains usable when storage is unavailable. */
+  }
+  return null;
+}
+
 export function consumePendingOAuthReturnTo(): string | null {
   if (typeof window === "undefined") return null;
   const sessionReturnTo = safeConsume(window.sessionStorage);

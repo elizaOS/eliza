@@ -271,6 +271,7 @@ export default defineConfig({
       jsdom: { url: "http://localhost/" },
     },
     include: [
+      "src/cloud/public-pages/pages/login/steward-login-section.phone-login.test.tsx",
       "src/**/__e2e__/**/*.test.{ts,tsx}",
       "test/cloud/network-site-handoff.test.ts",
       "src/voice/voice-session-cloud-budget-rotation.test.ts",

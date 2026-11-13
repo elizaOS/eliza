@@ -224,10 +224,14 @@ function LoginDestinationProbe() {
   );
 }
 
-function renderSection(initialEntry = "/login", phoneOnly = false) {
+function renderSection(
+  initialEntry = "/login",
+  phoneOnly = false,
+  alpha = false,
+) {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
-      <StewardLoginSection phoneOnly={phoneOnly} />
+      <StewardLoginSection phoneOnly={phoneOnly} alpha={alpha} />
       <LoginDestinationProbe />
     </MemoryRouter>,
   );
@@ -299,6 +303,41 @@ describe("StewardLoginSection phone login", () => {
     vi.clearAllMocks();
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it("Alpha offers only Google, email and phone from the shared provider flow", async () => {
+    authSpies.getProviders.mockResolvedValue({
+      passkey: true,
+      email: true,
+      sms: true,
+      siwe: true,
+      siws: true,
+      google: true,
+      discord: true,
+      github: true,
+      twitter: true,
+      oauth: ["google", "discord", "github", "twitter"],
+    });
+    renderSection(
+      "/login?returnTo=%2Fcloud%2Fbilling%3Fapp%3Dalpha",
+      false,
+      true,
+    );
+    await screen.findByRole("button", { name: "Google" });
+    expect(
+      screen.getByRole("button", { name: "Continue with email" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Text me a code" })).toBeTruthy();
+    for (const name of [
+      "Discord",
+      "GitHub",
+      "X",
+      "Passkey",
+      "Use an existing passkey",
+      "Continue with a wallet",
+    ]) {
+      expect(screen.queryByRole("button", { name, exact: true })).toBeNull();
+    }
   });
 
   it("offers only phone sign-in on the Network entry without restoring another identity", async () => {

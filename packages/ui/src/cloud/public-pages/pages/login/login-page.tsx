@@ -26,7 +26,12 @@ import {
 } from "../../../cloud-auth-complete-signal";
 import { useDocumentTitle } from "../../../lib/use-document-title";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
+import {
+  peekPendingOAuthReturnTo,
+  resolveLoginReturnTo,
+} from "../../lib/login-return-to";
 import { LoginOptionsSkeleton } from "./login-section-skeleton";
+import "../../../../styles/alpha-login.css";
 
 const StewardLoginSection = lazy(() => import("./steward-login-section"));
 const LoopbackCloudLoginSection = lazy(
@@ -47,12 +52,16 @@ function StewardLoginSectionFallback() {
 export function LoginBackground({
   children,
   plain = false,
+  alpha = false,
 }: {
   children: React.ReactNode;
   plain?: boolean;
+  alpha?: boolean;
 }) {
   return (
-    <div className="theme-cloud relative isolate h-[100dvh] min-h-0 overflow-hidden bg-bg text-txt">
+    <div
+      className={`theme-cloud ${alpha ? "alpha-hosted-login" : ""} relative isolate h-[100dvh] min-h-0 overflow-hidden bg-bg text-txt`}
+    >
       {/* SAFE-AREA FILL (installed iOS PWA): the `bg-bg` fill is a `fixed
           inset-0` underlay, NOT a `min-h-[100dvh]` slab. On the installed
           standalone PWA the body is non-fixed (base.css / styles.css lockdown),
@@ -117,13 +126,27 @@ function PublicLoginPage(): React.JSX.Element {
   const branding = useBranding();
   const t = useCloudT();
   const [searchParams] = useSearchParams();
+  const [alpha] = useState(() => {
+    const returnTo = resolveLoginReturnTo(
+      searchParams,
+      peekPendingOAuthReturnTo(),
+    );
+    return (
+      searchParams.get("app") === "alpha" ||
+      new URL(returnTo, "https://alpha.invalid").searchParams.get("app") ===
+        "alpha"
+    );
+  });
+  const [ready, setReady] = useState(false);
   const handoffSessionId = sessionIdFromLoginReturnTo(
     searchParams.get("returnTo"),
   );
   const [handoffComplete, setHandoffComplete] = useState(false);
 
   useDocumentTitle(
-    t("cloud.login.metaTitle", { defaultValue: "Sign In | {{appName}}" }),
+    alpha
+      ? "Sign in | Alpha"
+      : t("cloud.login.metaTitle", { defaultValue: "Sign In | {{appName}}" }),
   );
 
   useEffect(() => {
@@ -143,7 +166,7 @@ function PublicLoginPage(): React.JSX.Element {
   if (handoffComplete) {
     const canClose = isCloudAuthHandoffSurface();
     return (
-      <LoginBackground>
+      <LoginBackground alpha={alpha} plain={alpha}>
         <div className="space-y-6 text-center">
           <CheckCircle2 className="mx-auto size-10 text-status-success" />
           <div className="space-y-1.5">
@@ -184,10 +207,26 @@ function PublicLoginPage(): React.JSX.Element {
   }
 
   return (
-    <LoginBackground>
-      <main className="space-y-7">
+    <LoginBackground alpha={alpha} plain={alpha}>
+      <main
+        className="space-y-7"
+        data-alpha-ready={alpha ? ready : undefined}
+        aria-busy={alpha && !ready}
+        inert={alpha && !ready}
+      >
         <div className="space-y-3 text-center">
-          {branding.logoUrl ? (
+          {alpha ? (
+            <img
+              src={
+                new URL(
+                  "../../../../../assets/logos/alpha-phone-mark.svg",
+                  import.meta.url,
+                ).href
+              }
+              alt="Alpha"
+              className="alpha-sign-in-mark mx-auto h-16 w-16"
+            />
+          ) : branding.logoUrl ? (
             <img
               src={branding.logoUrl}
               alt={branding.appName}
@@ -201,11 +240,13 @@ function PublicLoginPage(): React.JSX.Element {
           )}
           <div className="space-y-1.5">
             <h1 className="font-sans text-2xl font-semibold tracking-tight text-txt-strong">
-              {t("cloud.login.signIn", {
-                defaultValue: "Sign in",
-              })}
+              {alpha
+                ? "Sign in to Alpha"
+                : t("cloud.login.signIn", {
+                    defaultValue: "Sign in",
+                  })}
             </h1>
-            <p className="text-sm text-muted">
+            <p className="text-sm text-muted" hidden={alpha}>
               {t("cloud.login.tagline", {
                 defaultValue: "Build and run agents from anywhere.",
               })}
@@ -216,7 +257,7 @@ function PublicLoginPage(): React.JSX.Element {
           {isLoopbackStagingStewardDevelopment() ? (
             <LoopbackCloudLoginSection />
           ) : (
-            <StewardLoginSection />
+            <StewardLoginSection alpha={alpha} onReady={setReady} />
           )}
         </Suspense>
         <p className="border-t border-border pt-5 text-center text-xs leading-relaxed text-muted">

@@ -621,8 +621,12 @@ function loadStewardProvidersWithTimeout(auth: {
 
 export default function StewardLoginSection({
   phoneOnly = false,
+  alpha = false,
+  onReady,
 }: {
   phoneOnly?: boolean;
+  alpha?: boolean;
+  onReady?: (ready: boolean) => void;
 }) {
   const PLAYWRIGHT_TEST_AUTH_ENABLED = PLAYWRIGHT_TEST_AUTH_BUILD && !phoneOnly;
   const LOCAL_DEDICATED_TEST_API_KEY = PLAYWRIGHT_TEST_AUTH_ENABLED
@@ -799,19 +803,39 @@ export default function StewardLoginSection({
     () =>
       providers === null
         ? []
-        : STEWARD_OAUTH_PROVIDERS.filter((provider) =>
-            isStewardOAuthProviderEnabled(providers, provider),
+        : STEWARD_OAUTH_PROVIDERS.filter(
+            (provider) =>
+              isStewardOAuthProviderEnabled(providers, provider) &&
+              (!alpha || provider === "google"),
           ),
-    [providers],
+    [providers, alpha],
   );
+  useEffect(() => {
+    onReady?.(
+      (providersLoaded && sessionRecoveryComplete) ||
+        !!providerDiscoveryError ||
+        !!accountSwitchError ||
+        !!callbackError,
+    );
+  }, [
+    onReady,
+    providersLoaded,
+    sessionRecoveryComplete,
+    providerDiscoveryError,
+    accountSwitchError,
+    callbackError,
+  ]);
   const hasIdentityProviders =
-    enabledOAuthProviders.length > 0 || providers?.telegram === true;
+    enabledOAuthProviders.length > 0 ||
+    (!alpha && providers?.telegram === true);
   const emailEnabled = providers !== null && providers.email !== false;
   const showWallets =
+    !alpha &&
     walletProvidersConfirmed &&
     providers !== null &&
     hasAnyWalletProvider(providers);
   const showPasskey =
+    !alpha &&
     providers !== null &&
     providers.passkey !== false &&
     passkeyCapability?.usable === true;
@@ -1006,7 +1030,7 @@ export default function StewardLoginSection({
   }, []);
 
   useEffect(() => {
-    if (phoneOnly || PLAYWRIGHT_TEST_AUTH_ENABLED) return;
+    if (alpha || phoneOnly || PLAYWRIGHT_TEST_AUTH_ENABLED) return;
 
     let cancelled = false;
     resolveWebPasskeyCapability().then((capability) => {
@@ -1016,7 +1040,7 @@ export default function StewardLoginSection({
     return () => {
       cancelled = true;
     };
-  }, [phoneOnly, PLAYWRIGHT_TEST_AUTH_ENABLED]);
+  }, [alpha, phoneOnly, PLAYWRIGHT_TEST_AUTH_ENABLED]);
 
   useEffect(() => {
     if (phoneOnly) {
@@ -2998,7 +3022,11 @@ export default function StewardLoginSection({
             className="hosted-signin-focus-emphasis flex-1"
           >
             {loading === "email" ? <Spinner /> : <EmailIcon />}{" "}
-            {t("cloud.login.button.magicLink", { defaultValue: "Magic Link" })}
+            {alpha
+              ? "Continue with email"
+              : t("cloud.login.button.magicLink", {
+                  defaultValue: "Magic Link",
+                })}
           </Button>
         )}
       </div>
@@ -3017,7 +3045,8 @@ export default function StewardLoginSection({
         </Button>
       )}
 
-      {!showPasskey &&
+      {!alpha &&
+      !showPasskey &&
       providers.passkey !== false &&
       passkeyCapability === null ? (
         <p className="text-center text-xs text-muted" role="status">
@@ -3028,7 +3057,7 @@ export default function StewardLoginSection({
         </p>
       ) : null}
 
-      {showPasskeyRecovery && (
+      {!alpha && showPasskeyRecovery && (
         <section
           aria-labelledby="passkey-recovery-title"
           className="space-y-3 rounded-md border border-border-strong bg-accent-subtle p-4 text-left"
@@ -3104,7 +3133,7 @@ export default function StewardLoginSection({
                 : ` ${stewardOAuthProviderLabel(provider)}`}
             </Button>
           ))}
-          {providers.telegram && (
+          {!alpha && providers.telegram && (
             <Button
               ref={telegramIntentButtonRef}
               variant="outlineMuted"
@@ -3158,7 +3187,7 @@ export default function StewardLoginSection({
         </fieldset>
       )}
 
-      {providers.telegram && telegramIntent && (
+      {!alpha && providers.telegram && telegramIntent && (
         <fieldset
           id="steward-telegram-login-widget"
           ref={telegramRegionRef}
