@@ -140,6 +140,11 @@ function safeError(value: Record<string, unknown>) {
       errorCodes.has(value.code) && { code: value.code }),
     ...(typeof value.sqlstate === "string" &&
       /^[0-9A-Z]{5}$/.test(value.sqlstate) && { sqlstate: value.sqlstate }),
+    ...(value.name === "TypeError" &&
+      (value.serialization === "bigint" ||
+        value.serialization === "circular") && {
+        serialization: value.serialization,
+      }),
     ...(typeof value.constraint === "string" &&
       constraints.has(value.constraint) && { constraint: value.constraint }),
   };
