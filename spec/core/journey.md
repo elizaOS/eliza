@@ -128,6 +128,13 @@ Stopping closes future admission. An already admitted action retains its
 original settlement path, and its pending transport cannot disappear from
 the drain accounting. The host can cancel a pre-action turn and then drain.
 
+Discovered by the proof: an active turn follows successful initialization.
+Preparation and inference carry no prior action outcome or receipt into the
+action phase.
+An in-flight reply remains in the replying phase of its admitted turn until
+acknowledgement. These facts exclude an initialization completion that
+drops a live turn and a retirement that strands an in-flight reply.
+
 ```quint
 pure def canRequestStop(j: Journey): bool = R::canRequestStop(j.kernel, false)
 pure def requestStop(j: Journey): Journey = { ...j, kernel: R::requestStop(j.kernel, false) }
@@ -138,6 +145,9 @@ pure def confirmRetirement(j: Journey): Journey = { ...j, kernel: R::confirmQuie
 pure def canCloseAdapter(j: Journey): bool = R::canCloseAdapter(j.kernel)
 pure def closeAdapter(j: Journey): Journey = { ...j, kernel: R::closeAdapter(j.kernel) }
 pure def alwaysTurnAccounting(j: Journey): bool = j.kernel.activeTurns == (if (j.phase == Preparing or j.phase == Inferring or j.phase == Acting or j.phase == Replying or j.phase == Completed) 1 else 0)
+pure def alwaysActiveTurnAfterInitialization(j: Journey): bool = j.kernel.activeTurns > 0 implies j.kernel.initPhase == R::Ready
+pure def alwaysBeforeSettlementHasNoActionOutcome(j: Journey): bool = (j.phase == Preparing or j.phase == Inferring or j.phase == Acting) implies j.actionFailure == NoActionFailure and not(j.reply.handlerSettled) and not(j.reply.confirmsApplied)
+pure def alwaysReplyInFlightBelongsToTurn(j: Journey): bool = j.reply.inFlight implies j.phase == Replying
 pure def alwaysRuntimeRules(j: Journey): bool = R::alwaysInitializationHonest(j.kernel) and R::alwaysWorkCounts(j.kernel) and R::alwaysStopPreparesOnce(j.kernel) and R::alwaysStrictSuccessHasNoPendingWork(j.kernel) and R::alwaysCloseRespectsWork(j.kernel) and R::alwaysRuntimeDeadlockFree(j.kernel)
 pure def alwaysPreservedContext(j: Journey): bool = C::alwaysMandatoryEvidenceIsComplete(j.prompt) and C::alwaysVisibleSourcesAreExactOriginals(j.prompt) and C::alwaysFullModeContainsAllSources(j.prompt) and C::alwaysSourceIdentityIsValid(j.prompt) and C::alwaysSelectedHistoryKeepsOrder(j.prompt) and C::alwaysRestorationIsExact(j.prompt)
 pure def alwaysRequestContextMatches(j: Journey): bool = j.model.phase != M::Unconfigured implies j.model.evidence.sourceIds == j.prompt.visible.listMap(source => source.id) and j.model.evidence.sourceTexts == j.prompt.visible.listMap(source => source.text) and j.model.evidence.sourceAuthors == j.prompt.visible.listMap(source => source.author) and j.model.evidence.mandatory == j.prompt.renderedMandatory
