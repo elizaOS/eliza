@@ -10,7 +10,6 @@ import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
 import {
   type AccountStoragePolicy,
   createIsolatedAccountStoragePolicy,
-  createRuntimeAccountStoragePolicy,
   deleteAccount,
   loadAccount,
   resetAccountCredentialStorage,
@@ -45,14 +44,6 @@ let holdResponses = false;
 let heldResponses: ServerResponse[] = [];
 let requestWaiters: Array<{ count: number; resolve: () => void }> = [];
 const originalStateDir = process.env.ELIZA_STATE_DIR;
-const vaultKeyEnv = ["ELIZA_VAULT_DISABLE_KEYCHAIN", "ELIZA_VAULT_PASSPHRASE"];
-const originalVaultKeyEnv = vaultKeyEnv.map((key) => process.env[key]);
-/** Calls without a policy read through the runtime vault key; give them a passphrase key. */
-function useRuntimeVaultKey(): void {
-  process.env.ELIZA_VAULT_DISABLE_KEYCHAIN = "1";
-  process.env.ELIZA_VAULT_PASSPHRASE = "credential-refresh-outcome-passphrase";
-  policy = createRuntimeAccountStoragePolicy(directory);
-}
 function waitForRequests(count: number): Promise<void> {
   if (requests >= count) return Promise.resolve();
   return new Promise((resolve) => requestWaiters.push({ count, resolve }));
@@ -190,11 +181,6 @@ afterEach(() => {
   for (const response of heldResponses) response.destroy();
   if (originalStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
   else process.env.ELIZA_STATE_DIR = originalStateDir;
-  vaultKeyEnv.forEach((key, index) => {
-    const value = originalVaultKeyEnv[index];
-    if (value === undefined) delete process.env[key];
-    else process.env[key] = value;
-  });
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
@@ -270,7 +256,6 @@ for (const provider of ["openai-codex", "anthropic-subscription"] as const) {
 }
 
 it("requires a storage policy before spending an expired OAuth grant", async () => {
-  useRuntimeVaultKey();
   storeExpired("openai-codex");
   await expect(
     getAccessToken("openai-codex", "account", { outcome: true }),
@@ -750,7 +735,6 @@ it("does not fabricate persistence when a rotated grant fails before file public
 });
 
 it("returns a fresh legacy token without requiring mutation authority", async () => {
-  useRuntimeVaultKey();
   const original = storeExpired("openai-codex");
   saveAccount(
     {

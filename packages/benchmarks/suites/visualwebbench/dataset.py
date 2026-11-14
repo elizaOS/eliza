@@ -157,8 +157,6 @@ class VisualWebBenchDataset:
                     continue
                 task = self._parse_task(json.loads(line))
                 if task and task.task_type in self.task_types:
-                    if task.image_path and not Path(task.image_path).is_absolute():
-                        task = replace(task, image_path=str((path.parent / task.image_path).resolve()))
                     self.tasks.append(task)
 
     # ----- Hugging Face (real dataset) -------------------------------------

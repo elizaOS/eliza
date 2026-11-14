@@ -12,7 +12,6 @@ import type {
   SpeechRetirementEvidence,
   SpeechSettlementOutcome,
 } from "./speech-relay-wire";
-import { speechWindowShare } from "./speech-window-share";
 import { UplinkReframer } from "./uplink-reframer";
 import {
   checkVoiceByteRate,
@@ -283,10 +282,6 @@ export async function createSpeechRelaySession(
     SpeechRelayCreditReservation,
     Promise<void | Partial<SpeechSettlementOutcome>>
   >();
-  const ungrantedSettlements = new Map<
-    SpeechRelayCreditReservation,
-    ReturnType<SpeechRelayCreditReservation["settle"]>
-  >();
   let preparation: Promise<void> | undefined;
   let renewal: Promise<void> | undefined;
   let closeFailed = false;
@@ -294,7 +289,53 @@ export async function createSpeechRelaySession(
   let retirementEvidence: SpeechRetirementEvidence | undefined;
   let confirmedSttDrain: CartesiaInkDrainReceipt | undefined;
   let quotaRelease: Promise<void> | undefined;
-  let renewalQuotaRelease: Promise<void> | undefined;
+  const ungrantedCleanups = new Map<
+    SpeechRelayCreditReservation,
+    {
+      window: number;
+      completed: Set<"stt" | "tts">;
+      legacyAttempt?: Promise<void>;
+    }
+  >();
+  const renewalQuotaReleases: Array<{
+    attempt: Promise<void>;
+    released: boolean;
+  }> = [];
+  async function settleUngranted(reservation: SpeechRelayCreditReservation) {
+    let cleanup = ungrantedCleanups.get(reservation);
+    if (!cleanup) {
+      cleanup = { window: windows, completed: new Set() };
+      ungrantedCleanups.set(reservation, cleanup);
+    }
+    if (reservation.supportsPerKindSettlement) {
+      for (const kind of ["stt", "tts"] as const) {
+        if (cleanup.completed.has(kind)) continue;
+        const result = await reservation.settle(UNGRANTED_SETTLEMENT, [kind]);
+        const proof = result?.[kind];
+        if (
+          proof?.terminal !== true ||
+          proof.state !== "actual" ||
+          proof.amountUsd !== "0" ||
+          proof.requestId !==
+            `speech:${scope.cloudSessionId}:${kind}:${cleanup.window}`
+        ) {
+          throw Error("Unused speech reservation settlement is unconfirmed");
+        }
+        cleanup.completed.add(kind);
+      }
+    } else {
+      // A legacy settlement is not an advertised idempotent per-kind operation.
+      cleanup.legacyAttempt ??= Promise.resolve().then(async () => {
+        await reservation.settle(UNGRANTED_SETTLEMENT);
+      });
+      await cleanup.legacyAttempt;
+      if (requireRetirementProof)
+        throw Error(
+          "Unused speech reservation has no per-kind settlement proof",
+        );
+    }
+    ungrantedCleanups.delete(reservation);
+  }
   const completedAccounting: Partial<SpeechSettlementOutcome> = {};
   const windowAccounting = new Map<number, Partial<SpeechSettlementOutcome>>([
     [0, completedAccounting],
@@ -303,6 +344,9 @@ export async function createSpeechRelaySession(
     | Parameters<SpeechRelayCreditReservation["settle"]>[0]
     | undefined;
   let finalTtsAccounting: Promise<void> | undefined;
+  let legacySettlement:
+    | Promise<void | Partial<SpeechSettlementOutcome>>
+    | undefined;
   const settlementInputs = new Map<
     string,
     Parameters<SpeechRelayCreditReservation["settle"]>[0]
@@ -316,7 +360,9 @@ export async function createSpeechRelaySession(
       (SPEECH_RELAY_BUDGET.pcmBytesPerSecond * SPEECH_RELAY_BUDGET.durationMs) /
       1000;
     const share = (total: number, size: number) =>
-      speechWindowShare(total, size, index, windows);
+      index === windows - 1
+        ? Math.max(0, total - index * size)
+        : Math.min(size, Math.max(0, total - index * size));
     return {
       ...details,
       pcmBytes: share(details.pcmBytes, pcmWindow),
@@ -335,68 +381,6 @@ export async function createSpeechRelaySession(
               0),
       },
     };
-  }
-  function recordSettlement(
-    index: number,
-    kind: "stt" | "tts",
-    outcome: SpeechSettlementOutcome["stt" | "tts"] | undefined,
-  ) {
-    if (
-      index >= windows &&
-      (outcome?.terminal !== true ||
-        outcome.state !== "actual" ||
-        outcome.amountUsd !== "0" ||
-        outcome.requestId !== `speech:${scope.cloudSessionId}:${kind}:${index}`)
-    )
-      throw Error("Unused speech reservation settlement is unconfirmed");
-    const accounting = windowAccounting.get(index) ?? {};
-    windowAccounting.set(index, accounting);
-    if (outcome) accounting[kind] = outcome;
-  }
-  async function settleKind(
-    index: number,
-    reservation: SpeechRelayCreditReservation,
-    details: Parameters<SpeechRelayCreditReservation["settle"]>[0],
-    kind: "stt" | "tts",
-  ) {
-    const accounting = windowAccounting.get(index) ?? {};
-    windowAccounting.set(index, accounting);
-    if (accounting[kind]) return;
-    const key = `${index}:${kind}`;
-    const fixed = settlementInputs.get(key) ?? details;
-    settlementInputs.set(key, fixed);
-    const result = await reservation.settle(fixed, [kind]);
-    recordSettlement(index, kind, result?.[kind]);
-  }
-  function settleOnce(
-    reservation: SpeechRelayCreditReservation,
-    details: Parameters<SpeechRelayCreditReservation["settle"]>[0],
-  ) {
-    let settlement = legacySettlements.get(reservation);
-    if (!settlement) {
-      settlement = Promise.resolve().then(() => reservation.settle(details));
-      legacySettlements.set(reservation, settlement);
-    }
-    return settlement;
-  }
-  async function settleUngranted(
-    index: number,
-    reservation: SpeechRelayCreditReservation,
-  ) {
-    if (!requireRetirementProof || !reservation.supportsPerKindSettlement)
-      return settleOnce(reservation, UNGRANTED_SETTLEMENT);
-    const failures: unknown[] = [];
-    for (const kind of ["stt", "tts"] as const)
-      try {
-        await settleKind(index, reservation, UNGRANTED_SETTLEMENT, kind);
-      } catch (error) {
-        failures.push(error);
-      }
-    if (failures.length)
-      throw new AggregateError(
-        failures,
-        "Unused speech renewal was not settled",
-      );
   }
   const streams = new Map<string, ReturnType<SpeechRelayPorts["openTts"]>>(),
     usedIds = new Set<string>(),
@@ -485,24 +469,16 @@ export async function createSpeechRelaySession(
         ttsStopped === "unknown"
       )
         failures.push(Error("TTS transport retirement remains unconfirmed"));
-      // Stop providers before joining a slow renewal, then retain every returned
-      // reservation until its settlement is acknowledged.
-      await renewal?.catch((error) => failures.push(error));
-      for (const [reservation, settlement] of ungrantedSettlements) {
-        // The owner below retries failed per-kind cleanup using its frozen
-        // zero target. Generic reservations retain their original promise.
-        await settlement.catch(() => {});
-        ungrantedSettlements.delete(reservation);
-      }
-      let renewalQuotaError: unknown,
-        renewalQuotaFailed = false;
-      if (renewalQuotaRelease)
+      // Stop provider transports before joining slow renewal admission.
+      // Its late reservation must still settle before retirement completes.
+      await renewal?.catch(() => {});
+      for (const reservation of ungrantedCleanups.keys()) {
         try {
-          await renewalQuotaRelease;
+          await settleUngranted(reservation);
         } catch (error) {
-          renewalQuotaFailed = true;
-          renewalQuotaError = error;
+          failures.push(error);
         }
+      }
       const details = {
         pcmBytes,
         ttsCharacters: ttsStopped === "not_dispatched" ? 0 : ttsCharacters,
@@ -531,7 +507,9 @@ export async function createSpeechRelaySession(
         const granted = windows;
         for (const [index, reservation] of reservations.entries()) {
           const share = (total: number, size: number) =>
-            speechWindowShare(total, size, index, granted);
+            index === granted - 1
+              ? Math.max(0, total - index * size)
+              : Math.min(size, Math.max(0, total - index * size));
           try {
             let settlement = legacySettlements.get(reservation);
             if (!settlement) {
@@ -566,24 +544,23 @@ export async function createSpeechRelaySession(
             failures.push(error);
           }
         }
+      } else if (credits && !credits.supportsPerKindSettlement) {
+        // Existing generic consumers accept one complete receipt, not a hidden
+        // per-kind protocol. Keep one immutable attempt and no invented proof.
+        try {
+          const reservation = credits;
+          legacySettlement ??= Promise.resolve().then(() =>
+            reservation.settle(details),
+          );
+          const result = await legacySettlement;
+          if (result) Object.assign(completedAccounting, result);
+        } catch (error) {
+          failures.push(error);
+        }
       } else if (credits) {
         for (const [index, reservation] of reservations.entries()) {
           const accounting = windowAccounting.get(index) ?? {};
           windowAccounting.set(index, accounting);
-          if (!reservation.supportsPerKindSettlement) {
-            // Generic consumers retain one immutable full-receipt attempt.
-            try {
-              const result = await settleOnce(
-                reservation,
-                windowDetails(details, index),
-              );
-              for (const kind of ["stt", "tts"] as const)
-                recordSettlement(index, kind, result?.[kind]);
-            } catch (error) {
-              failures.push(error);
-            }
-            continue;
-          }
           for (const kind of ["stt", "tts"] as const) {
             if (
               accounting[kind] ||
@@ -594,12 +571,12 @@ export async function createSpeechRelaySession(
               continue;
             try {
               // Freeze each window independently before the first settlement attempt.
-              await settleKind(
-                index,
-                reservation,
-                windowDetails(details, index),
-                kind,
-              );
+              const key = `${index}:${kind}`;
+              const fixed =
+                settlementInputs.get(key) ?? windowDetails(details, index);
+              settlementInputs.set(key, fixed);
+              const result = await reservation.settle(fixed, [kind]);
+              if (result?.[kind]) accounting[kind] = result[kind];
             } catch (error) {
               failures.push(error);
             }
@@ -608,6 +585,7 @@ export async function createSpeechRelaySession(
       }
       const canonicalActualMoney =
         requireRetirementProof &&
+        ungrantedCleanups.size === 0 &&
         reservations.length >= windows &&
         reservations.every((_, index) => {
           const accounting = windowAccounting.get(index);
@@ -620,10 +598,6 @@ export async function createSpeechRelaySession(
             accounting.tts.requestId ===
               `speech:${scope.cloudSessionId}:tts${suffix}` &&
             accounting.stt.state === "actual" &&
-            (index < windows ||
-              (accounting.tts.state === "actual" &&
-                accounting.stt.amountUsd === "0" &&
-                accounting.tts.amountUsd === "0")) &&
             (accounting.tts.state === "actual" ||
               (accounting.tts.state === "conservative" &&
                 accounting.tts.basis ===
@@ -650,14 +624,7 @@ export async function createSpeechRelaySession(
       const canonicalMoneyTerminal =
         canonicalActualMoney || neverDispatchedMoneyTerminal;
       retirementEvidence = {
-        ...(quotaRelease || renewalQuotaRelease
-          ? {
-              quotaRelease:
-                renewalQuotaRelease && !renewalQuotaFailed
-                  ? ("released" as const)
-                  : ("unknown" as const),
-            }
-          : {}),
+        ...(quotaRelease ? { quotaRelease: "unknown" as const } : {}),
         stt: !dispatched.stt
           ? "not_dispatched"
           : sttDrained
@@ -676,13 +643,6 @@ export async function createSpeechRelaySession(
             : "unknown",
         ...(canonicalMoneyTerminal ? { moneyTerminal: true as const } : {}),
       };
-      if (
-        renewalQuotaFailed &&
-        (retirementEvidence.stt === "unknown" ||
-          retirementEvidence.tts === "unknown" ||
-          !canonicalMoneyTerminal)
-      )
-        failures.push(renewalQuotaError);
       // Once provider work might have started, retain the admitted quota. A failed
       // transport is not proof of zero billable work; credit settlement owns reconciliation.
       try {
@@ -705,6 +665,11 @@ export async function createSpeechRelaySession(
         // Keep quota possibly consumed and never repeat the additive release.
         // It cannot replace independent provider or canonical money evidence.
         if (!providerTerminal || !moneyTerminal) failures.push(error);
+      }
+      if (renewalQuotaReleases.length && retirementEvidence) {
+        if (renewalQuotaReleases.some((release) => !release.released))
+          retirementEvidence.quotaRelease = "unknown";
+        else if (!quotaRelease) retirementEvidence.quotaRelease = "released";
       }
       if (failures.length)
         throw new AggregateError(
@@ -759,7 +724,6 @@ export async function createSpeechRelaySession(
       const details = lastSettlementDetails;
       const attempt = (async () => {
         for (const [index, reservation] of reservations.entries()) {
-          if (!reservation.supportsPerKindSettlement) continue;
           const accounting = windowAccounting.get(index) ?? {};
           windowAccounting.set(index, accounting);
           if (accounting.tts) continue;
@@ -770,7 +734,8 @@ export async function createSpeechRelaySession(
               "submitted_counter_provider_unconfirmed" as const,
           };
           settlementInputs.set(key, fixed);
-          await settleKind(index, reservation, fixed, "tts");
+          const result = await reservation.settle(fixed, ["tts"]);
+          if (result?.tts) accounting.tts = result.tts;
         }
       })();
       finalTtsAccounting = attempt;
@@ -879,22 +844,15 @@ export async function createSpeechRelaySession(
         if (index >= windows) held = reservations.splice(index, 1)[0];
       }
     } finally {
-      if (held) {
-        const index = reservations.push(held) - 1;
-        if (!closed) {
-          const settlement = settleUngranted(index, held);
-          ungrantedSettlements.set(held, settlement);
-          // Close observes this exact attempt; only an explicit per-kind retry
-          // may repeat failed credit settlement.
-          await settlement.catch(() => {});
-        }
-      }
+      if (held) await settleUngranted(held).catch(() => undefined);
       if (recorded) {
-        // The additive quota refund cannot be replayed after a lost response.
-        renewalQuotaRelease ??= Promise.resolve().then(() =>
-          ports.usageStore.release(scope, 1),
-        );
-        await renewalQuotaRelease.catch(() => {});
+        const release = { released: false, attempt: Promise.resolve() };
+        release.attempt = Promise.resolve().then(async () => {
+          await ports.usageStore.release(scope, 1);
+          release.released = true;
+        });
+        renewalQuotaReleases.push(release);
+        await release.attempt.catch(() => undefined);
       }
     }
   }

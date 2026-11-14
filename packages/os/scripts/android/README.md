@@ -13,8 +13,8 @@ it never applies patches or changes the source tree.
 
 Pixel products keep the factory vendor partition. `vendor-api.mjs` checks that
 the lunch release configuration's `RELEASE_BOARD_API_LEVEL` and the generated
-vendor VINTF sepolicy version both equal the locked `vendorApiLevel` (the
-`pixel10a` profile in `android/aosp.lock.json`);
+vendor VINTF sepolicy version both equal the locked `vendorApiLevel` (grizzly's
+lock and the `pixel10a` profile in `android/aosp.lock.json`);
 `stage-pixel10a-product.ts` refuses a mismatch instead of rewriting VINTF.
 Every brand's Pixel 10a composition also declares its launcher's versioned
 `<package>.aosp_image` system feature in the product partition
@@ -83,7 +83,7 @@ admission checks build evidence, not installed native-channel behavior.
 The owned package starts a new profile; retain the upstream app for
 rollback and select the new profile explicitly rather than copying profile grants.
 
-Use `bun packages/os/scripts/android/sim.ts --aosp-root /path/to/aosp`
+Use `node packages/os/scripts/android/sim.ts --aosp-root /path/to/aosp`
 from the repository root to launch and validate Cuttlefish. It shares the image
 builder's GPU configuration and `OUT_DIR`/`OUT_DIR_COMMON_BASE` resolution, and writes evidence to `test-results/os-aosp-sim/`.
 An existing instance must be stopped explicitly before launching another;

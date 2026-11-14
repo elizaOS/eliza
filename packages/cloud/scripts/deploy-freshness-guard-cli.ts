@@ -4,7 +4,7 @@
  * CLI wrapper for the cloud deploy freshness guard (#14083).
  *
  * Usage (in a deploy job, BEFORE the wrangler deploy step):
- *   bun packages/cloud/scripts/deploy-freshness-guard-cli.ts \
+ *   node packages/cloud/scripts/deploy-freshness-guard-cli.ts \
  *     --run-sha "$GITHUB_SHA" \
  *     --served-url "https://staging.eliza.app" \
  *     [--served-path "/api/health"] \

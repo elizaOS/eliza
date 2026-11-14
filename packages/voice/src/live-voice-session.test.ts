@@ -4,7 +4,6 @@ import {
   createLiveSegmentStream,
   createLiveVoiceSession,
   encodeLiveFrame,
-  LIVE_MAX_UNPOSTED_FRAMES,
   type LiveAudioFrame,
   type LiveCaptureOpenOptions,
   type LiveCaptureStream,
@@ -531,46 +530,6 @@ describe("live segment stream", () => {
     pending.shift()?.();
     await flush();
     expect(results).toEqual([null, null]);
-  });
-
-  it("stops with one TRANSPORT failure when the agent does not take the audio", async () => {
-    const posts: Body[] = [];
-    const segments: (string | null)[] = [];
-    const fatal: string[] = [];
-    let answer: ((value: unknown) => void) | undefined;
-    const stream = createLiveSegmentStream({
-      transport: {
-        // The agent stalls until after the stream has overflowed.
-        post: (body: Record<string, unknown>) => {
-          posts.push(body as Body);
-          return new Promise((resolve) => {
-            answer = resolve;
-          });
-        },
-      },
-      onSegment: (text) => segments.push(text),
-      onFatal: (code) => fatal.push(code),
-    });
-    const batch = Array.from({ length: 32 }, (_, index) => small(index));
-    void stream.accept(batch, [{ type: "speech-start", timestampMs: 1 }]);
-    await flush();
-    void stream.accept(batch, [{ type: "speech-end", timestampMs: 2 }]);
-    for (let index = 0; index < LIVE_MAX_UNPOSTED_FRAMES / 32; index++)
-      void stream.accept(batch, []);
-    await flush();
-    expect(fatal).toEqual(["TRANSPORT"]);
-    expect(segments).toEqual([null]);
-    expect(stream.speaking()).toBe(false);
-    expect(posts).toHaveLength(1);
-    // A provider that ignores abort can answer late. It cannot revive the stream,
-    // post its queued frames or manufacture a transcript after the explicit failure.
-    answer?.({ final: { turnId: "late", text: "late text", mode: "stream" } });
-    await flush();
-    await stream.accept(batch, [{ type: "speech-start", timestampMs: 3 }]);
-    await stream.close();
-    expect(posts).toHaveLength(1);
-    expect(fatal).toEqual(["TRANSPORT"]);
-    expect(segments).toEqual([null]);
   });
 });
 

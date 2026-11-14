@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/macosreminders",
-  "version": "2.0.6",
+  "version": "2.0.4",
   "description": "macOS Apple Reminders native bridge policy helpers for Eliza runtimes.",
   "type": "module",
   "main": "./dist/index.js",
@@ -50,20 +50,20 @@
   ],
   "scripts": {
     "build": "tsc6 --noCheck -p tsconfig.json",
-    "clean": "bun ../../packages/scripts/rm-path-recursive.ts dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
     "prepublishOnly": "bun run build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "test:android-package": "bun test/packed-consumer/check.mjs",
-    "test": "bun test --timeout=120000 ./test/*.test.mjs"
+    "test:android-package": "node test/packed-consumer/check.mjs",
+    "test": "node --test --experimental-transform-types test/*.test.mjs"
   },
   "devDependencies": {
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.1.0",
+    "vitest": "^5.0.5",
     "@capacitor/core": "^8.3.1"
   },
   "author": "elizaOS",

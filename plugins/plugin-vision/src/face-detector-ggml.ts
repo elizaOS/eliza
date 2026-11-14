@@ -12,6 +12,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
+import { resolveAliasedEnvValue } from "@elizaos/host/protocol";
 import { getSharp } from "./image/sharp-compat";
 import type { BoundingBox } from "./types";
 
@@ -63,7 +64,8 @@ function defaultLibraryPath(): string {
 
 function defaultModelDir(): string {
   const stateDir =
-    process.env.ELIZA_STATE_DIR?.trim() || path.join(os.homedir(), ".eliza");
+    resolveAliasedEnvValue("ELIZA_STATE_DIR") ??
+    path.join(os.homedir(), ".eliza");
   return path.join(stateDir, "models", "face-cpp");
 }
 

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "src/styles.ts!",
+    "src/styles/theme.css!",
+    "src/**/*.{stories,test,spec}.{ts,tsx}",
+    "src/**/__e2e__/**/*.{ts,tsx,mjs}",
+    "src/cloud/handoff/__integration__/**/*.mts",
+    "test/**/*.{ts,tsx,mjs}",
+    "stories/**/*.{ts,tsx,mjs}",
+    ".storybook/**/*.{ts,tsx}",
+    "scripts/*.ts",
+    ".storybook/fixtures/**/*.js",
+    "src/brand/brand.css",
+    "src/brand-classic/brand.css",
+    "src/cloud-ui/index.css",
+    "src/utils/browser-tab-kit-types.ts"
+  ],
+  "paths": {
+    "@ui-src/*": ["src/*"]
+  },
+  "project": [
+    "src/**/*.{ts,tsx,mts,mjs}",
+    "src/**/*.{css,mdx}",
+    "test/**/*.{ts,tsx,mts,mjs}",
+    "stories/**/*.{ts,tsx,mts,mjs}",
+    "stories/**/*.{css,mdx}",
+    ".storybook/**/*.{css,mdx}",
+    "*.config.{ts,mts,mjs}",
+    "scripts/**/*.ts"
+  ],
+  "ignoreDependencies": ["@metamask/connect-evm", "pixelmatch"],
+  "vitest": false,
+  "ignoreUnresolved": ["/storybook-fixtures/ready-view.js"]
+}

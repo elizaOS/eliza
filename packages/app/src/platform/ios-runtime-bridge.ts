@@ -441,6 +441,7 @@ export async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
         ],
         env: {
           ELIZA_PLATFORM: "ios",
+          ELIZA_MOBILE_PLATFORM: "ios",
           ELIZA_IOS_LOCAL_BACKEND: "1",
           ELIZA_IOS_BUN_STARTUP_TIMEOUT_MS: "300000",
           ELIZA_IOS_FULL_BUN_SMOKE: "1",

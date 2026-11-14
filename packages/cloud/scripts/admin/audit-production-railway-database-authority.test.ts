@@ -68,12 +68,15 @@ test("pending tags use the validated canonical ledger and remain a failed readin
     canonicalMigrations: migrations,
   });
   expect(report.verdict).toBe("fail");
-  const pendingTags = migrations
-    .slice(-2)
-    .map((migration) => migration.entry.tag);
   expect(report.pendingMigrationTags).toEqual({
-    canonical: pendingTags,
-    protected: pendingTags,
+    canonical: [
+      "0547_subscription_grant_calendar_terms",
+      "0548_agent_provisioning_deferred_backfill",
+    ],
+    protected: [
+      "0547_subscription_grant_calendar_terms",
+      "0548_agent_provisioning_deferred_backfill",
+    ],
   });
   expect(report.migrationLedger).toEqual({
     canonical: "pending",

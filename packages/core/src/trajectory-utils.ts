@@ -495,7 +495,7 @@ type TrajectoryLoggerLike = {
 	}) => Promise<boolean>;
 	logLlmCall?: (params: { stepId: string } & TrajectoryLlmCallDetails) => void;
 	/**
-	 * Optional. When implemented, lets a caller
+	 * Optional. When implemented (DatabaseTrajectoryLogger does), lets a caller
 	 * extend an existing step row with the new schema fields (kind, script,
 	 * childSteps, usedSkills) without depending directly on @elizaos/agent.
 	 */

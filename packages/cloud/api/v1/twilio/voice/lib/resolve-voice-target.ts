@@ -6,7 +6,7 @@
 import { elizaAppUserService } from "@elizaos/cloud-shared/lib/services/eliza-app/user-service";
 import { personalSharedAgent } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
 import type { SharedRuntimeAgent } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-agent";
-import { resolvePersonalDeliveryProjection } from "../../../../src/personal-delivery-projection";
+import { resolvePersonalDeliveryProjection } from "@/api-app/personal-delivery-projection";
 
 export interface TwilioVoiceTarget {
   agent: SharedRuntimeAgent;

@@ -132,9 +132,10 @@ export function formatApiDevSettingsBannerText(
     },
     {
       setting: "Dev hooks",
-      effective: "/api/dev/stack, /api/dev/console-log",
+      effective:
+        "/api/dev/stack, /api/dev/console-log, /api/dev/cursor-screenshot",
       source: "derived — dev server",
-      change: `GET http://127.0.0.1:${actualPort}/api/dev/stack etc.`,
+      change: `GET http://127.0.0.1:${actualPort}/api/dev/stack etc.; docs/apps/desktop-local-development.md`,
     },
   ];
   return prependDevSubsystemFigletHeading(

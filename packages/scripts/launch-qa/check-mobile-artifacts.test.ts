@@ -103,7 +103,7 @@ async function makeRepo() {
     JSON.stringify({
       scripts: {
         "build:android:system":
-          "bun ../../packages/app/scripts/run-mobile-build.ts android-system",
+          "node ../../packages/app/scripts/run-mobile-build.ts android-system",
       },
     }),
   );

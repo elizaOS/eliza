@@ -50,17 +50,6 @@ const SCHEMA_WORKER_SOURCE = `
   const Ajv2020Import = require(workerData.ajv2020ModulePath);
   const Ajv2020 = Ajv2020Import.default ?? Ajv2020Import;
 
-  // Initialize only trusted dialect machinery within the startup deadline.
-  // Ajv compiles its fixed meta-schemas lazily on the first compile call.
-  const options = {
-    allErrors: true,
-    validateFormats: false,
-    strictSchema: false,
-  };
-  const legacy = new AjvLegacy(options);
-  const modern = new Ajv2020(options);
-  legacy.compile({});
-  modern.compile({});
   parentPort.postMessage({ ready: true });
   parentPort.once("message", ({ schemaJson, dataJson }) => {
     try {
@@ -74,13 +63,13 @@ const SCHEMA_WORKER_SOURCE = `
         ? schema.$schema.replace(/#$/, "").replace(/^https?:/, "") : schema.$schema;
       // MCP defaults to 2020-12. Keep draft-07 only when it is declared.
       // Each request still has its own bounded worker and Ajv instance.
-      let ajv = modern;
+      let Ajv = Ajv2020;
       let registeredSchemaUri = "https://json-schema.org/draft/2020-12/schema";
       if (dialect !== undefined && dialect !== "//json-schema.org/draft/2020-12/schema") {
         if (dialect !== "//json-schema.org/draft-07/schema") {
           throw new Error("Unsupported MCP JSON Schema dialect: " + String(schema.$schema));
         }
-        ajv = legacy;
+        Ajv = AjvLegacy;
         registeredSchemaUri = "http://json-schema.org/draft-07/schema#";
       }
       // Each Ajv registers its meta-schema under one URI only, and it refuses a
@@ -91,14 +80,19 @@ const SCHEMA_WORKER_SOURCE = `
       // refuses the whole schema ("unknown format"), so every call fails.
       // Unknown keywords ("discriminator", vendor "x-*" keys) are ignored per
       // JSON Schema; strict mode refused to compile such a tool schema at all.
+      const options = {
+        allErrors: true,
+        validateFormats: false,
+        strictSchema: false,
+      };
       let validate;
       try {
-        validate = ajv.compile(schema);
+        validate = new Ajv(options).compile(schema);
       } catch (error) {
         // error-policy:J3 undeclared legacy schemas keep their original constraints.
         // Only compilation can fall back; failed argument validation never does.
         if (dialect !== undefined) throw error;
-        validate = legacy.compile(schema);
+        validate = new AjvLegacy(options).compile(schema);
       }
       const valid = validate(data);
       parentPort.postMessage({ success: Boolean(valid), errors: validate.errors ?? [] });

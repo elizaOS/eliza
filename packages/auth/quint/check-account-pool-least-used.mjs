@@ -18,12 +18,10 @@ if (!process.versions.bun) {
 }
 
 process.env.NODE_ENV = "test";
-process.env.ELIZA_VAULT_DISABLE_KEYCHAIN = "1";
-process.env.ELIZA_VAULT_PASSPHRASE = "Quint least-used synthetic fixture";
 
 const { getDefaultAccountPool, resetDefaultAccountPoolAfterCredentialReset } =
   await import("../src/accounts/account-pool.ts");
-const { createRuntimeAccountStoragePolicy, saveAccount } = await import(
+const { createIsolatedAccountStoragePolicy, saveAccount } = await import(
   "../src/auth/account-storage.ts"
 );
 const { testOutputPath } = await import("../../scripts/lib/test-output.ts");
@@ -43,7 +41,7 @@ async function scenario(name, work) {
   time = 1_900_000_000_000;
   Date.now = () => time;
   try {
-    const policy = createRuntimeAccountStoragePolicy(root);
+    const policy = createIsolatedAccountStoragePolicy(root);
     for (const providerId of [provider, other]) {
       for (const [index, id] of ["first", "second"].entries()) {
         saveAccount(

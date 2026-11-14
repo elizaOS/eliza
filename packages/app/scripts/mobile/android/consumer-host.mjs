@@ -23,6 +23,7 @@ const ANDROID_ABIS = Object.freeze([
   "armeabi-v7a",
   "x86",
   "x86_64",
+  "riscv64",
 ]);
 /** The release-signing inputs a profile names: environment variable names, never values. */
 const RELEASE_SIGNING_KEYS = Object.freeze([

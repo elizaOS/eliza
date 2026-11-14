@@ -5,7 +5,7 @@
  * brand files are always fresh in the served static tree.
  *
  * Usage:
- *   bun packages/ui/scripts/sync-to-public.ts <consumer-public-dir> [flags]
+ *   node packages/ui/scripts/sync-to-public.ts <consumer-public-dir> [flags]
  *
  * Per-category flags (each consumer opts in only to what its source references):
  *   --logos             (default) sync brand/logos/

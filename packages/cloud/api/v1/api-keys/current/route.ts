@@ -2,29 +2,14 @@
  * Revokes only the credential proven by the secret in this request.
  * The presented mobile-prefixed secret and authenticated database row must
  * agree on one exact identity; a response-loss retry can recover only that
- * credential's durable tombstone. The key may be sent in `Authorization:
- * Bearer`, in `X-API-Key`, or in both when they are the same key.
- *
- * A mobile key that revokes itself is signing out, and every key of its
- * sign-in ends with it, renewed successors included. The exception is the
- * last step of a renewal: the old key names the key it was renewed into in
- * `X-Renewed-Credential-Id` (the `credentialId` the token exchange returned),
- * and when that is its acknowledged successor only the old key ends. A request
- * without the header is treated as that last step only within two minutes of
- * the successor's acknowledgement. A holder of the old key that cannot name
- * the successor does not hold it, so its sign-out also ends a successor that
- * somebody else obtained with a copy of the key.
+ * credential's durable tombstone.
  */
 
-import {
-  readPresentedApiKey,
-  requireApiKeyCredential,
-} from "@elizaos/cloud-shared/auth";
+import { requireApiKeyCredential } from "@elizaos/cloud-shared/auth";
 import {
   ApiError,
   AuthenticationError,
   failureResponse,
-  ValidationError,
 } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
@@ -40,31 +25,19 @@ import type {
   AppEnv,
 } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { createTransactionalAudit } from "../../../src/services/audit-transactional";
+import { createTransactionalAudit } from "@/api-app/services/audit-transactional";
 
 const app = new Hono<AppEnv>();
 app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
-/** The presented key, or null when none or two different ones were sent. */
 function readSinglePresentedApiKey(c: AppContext): string | null {
-  const presented = readPresentedApiKey(c);
-  return presented === "conflict" ? null : presented;
-}
-
-const RENEWED_CREDENTIAL_HEADER = "X-Renewed-Credential-Id";
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** The successor a renewal's last step names, or null when none was sent. */
-function readRenewedCredentialId(c: AppContext): string | null {
-  const value = c.req.header(RENEWED_CREDENTIAL_HEADER);
-  if (value === undefined) return null;
-  if (!UUID_RE.test(value)) {
-    throw ValidationError(
-      `${RENEWED_CREDENTIAL_HEADER} must be a credential id`,
-    );
-  }
-  return value.toLowerCase();
+  const headerKey =
+    (c.req.header("X-API-Key") ?? c.req.header("x-api-key"))?.trim() || null;
+  const authorization = c.req.header("authorization")?.trim() ?? null;
+  const bearerKey =
+    authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() || null;
+  if (headerKey && bearerKey) return null;
+  return headerKey ?? bearerKey;
 }
 
 type SelfRevocationResult = NonNullable<
@@ -98,7 +71,6 @@ function selfRevocationAudit(c: AppContext) {
 
 app.delete("/", async (c) => {
   try {
-    const renewedCredentialId = readRenewedCredentialId(c);
     const standardSecret = readSinglePresentedApiKey(c);
     if (standardSecret && /^eliza_[0-9a-f]{64}$/.test(standardSecret)) {
       const selfAudit = selfRevocationAudit(c);
@@ -130,7 +102,6 @@ app.delete("/", async (c) => {
             ? await apiKeysService.revokePresentedMobileCredential(
                 presented,
                 selfAudit.write,
-                renewedCredentialId,
               )
             : null;
         if (result) {
@@ -157,7 +128,6 @@ app.delete("/", async (c) => {
     const result = await apiKeysService.revokeExactMobileCredential(
       credential,
       selfAudit.write,
-      renewedCredentialId,
     );
     await selfAudit.audit.publish();
     return c.json({ success: true, ...result.receipt });

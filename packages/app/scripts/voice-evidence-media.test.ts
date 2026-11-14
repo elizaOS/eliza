@@ -19,6 +19,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   assertLiveMatrixReport,
   correlateAudioWindow,
+  finalizeDesktopVoiceEvidence,
   finalizeWebVoiceEvidence,
   findMediaTools,
   inspectAudibleMp4,
@@ -808,6 +809,388 @@ describeWithMedia("web voice media evidence", () => {
     const file = path.join(root, "video-only.mp4");
     video(file, tools);
     expect(() => inspectAudibleMp4(file, tools)).toThrow(/no audio stream/);
+  }, 30_000);
+});
+
+describeWithMedia("packaged desktop voice media evidence", () => {
+  test("requires real mic mode and separate audible speaker loopback", () => {
+    const tools = resolveMediaTools();
+    const fixtureTime = Date.now();
+    const root = fixtureRoot();
+    const report = path.join(root, "desktop-report.json");
+    writeJson(report, {
+      revision: currentHead(),
+      sessionId: "voice-session-123456",
+      capturedAt: new Date(fixtureTime).toISOString(),
+      packagedRevision: currentHead(),
+      rendererBuildId: "renderer-build-1",
+      report: {
+        overall: "pass",
+        platform: "desktop",
+        mode: "mic-capture",
+        startedAt: new Date(fixtureTime - 1_000).toISOString(),
+        finishedAt: new Date(fixtureTime).toISOString(),
+        ttsRoute: "/api/tts/local-inference",
+        sendBackend: "local-inference:eliza-1",
+        stages: [
+          {
+            stage: "asr",
+            status: "pass",
+            detail: {
+              captureStartedAt: new Date(fixtureTime - 1_000).toISOString(),
+              captureFinishedAt: new Date(fixtureTime).toISOString(),
+              referenceStartedAt: new Date(fixtureTime - 900).toISOString(),
+              referenceFinishedAt: new Date(fixtureTime - 200).toISOString(),
+              inputDeviceId: "browser-mic-id",
+              inputDeviceLabel: "USB test microphone",
+            },
+          },
+          {
+            stage: "send",
+            status: "pass",
+            detail: {
+              conversationId: "desktop-conversation-1",
+              userMessageId: "desktop-user-message-1",
+            },
+          },
+          {
+            stage: "tts",
+            status: "pass",
+            detail: {
+              playbackStartedAt: new Date(fixtureTime - 900).toISOString(),
+              playbackFinishedAt: new Date(fixtureTime - 100).toISOString(),
+              outputDeviceId: "browser-speaker-id",
+              played: true,
+              outputObserved: true,
+            },
+          },
+        ],
+      },
+    });
+    const trajectory = path.join(root, "desktop-trajectory.json");
+    writeJson(trajectory, {
+      trajectory: {
+        id: "desktop-trajectory-1",
+        metadata: {
+          conversationId: "desktop-conversation-1",
+          messageId: "desktop-user-message-1",
+        },
+      },
+      llmCalls: [{ model: "eliza-1", response: "It is noon." }],
+    });
+    const backendLog = path.join(root, "desktop-backend.log");
+    fs.writeFileSync(backendLog, "[voice] local ASR and TTS complete\n");
+    const screenRecording = path.join(root, "desktop-screen.mp4");
+    const microphoneAudio = path.join(root, "desktop-mic.wav");
+    const speakerLoopbackAudio = path.join(root, "desktop-speaker.wav");
+    const captureProvenance = path.join(
+      root,
+      "desktop-capture-provenance.json",
+    );
+    const microphonePayload = path.join(root, "app-input.wav");
+    const ttsPayload = path.join(root, "returned-tts.wav");
+    const referencePayload = path.join(root, "known-reference.wav");
+    video(screenRecording, tools, 3);
+    audio(microphoneAudio, tools, 440, 3);
+    const microphoneCanary = "PHYSICAL_MIC_CANARY_private-ambient-speech";
+    fs.appendFileSync(microphoneAudio, microphoneCanary);
+    audio(speakerLoopbackAudio, tools, 440, 3);
+    audio(microphonePayload, tools, 440, 3);
+    audio(ttsPayload, tools, 440, 3);
+    audio(referencePayload, tools, 440, 3);
+    const mediaMetadataCanary = "MEDIA_METADATA_CANARY_desktop-private";
+    for (const file of [
+      speakerLoopbackAudio,
+      microphonePayload,
+      ttsPayload,
+      referencePayload,
+    ]) {
+      fs.appendFileSync(file, mediaMetadataCanary);
+    }
+    writeJson(captureProvenance, {
+      kind: "physical-hardware",
+      revision: currentHead(),
+      sessionId: "voice-session-123456",
+      microphone: {
+        kind: "physical-microphone",
+        device: "USB test microphone",
+        enumeratedLabel: "USB test microphone",
+        classification: "operator-selected-enumerated-nonvirtual-endpoint",
+        classifier: "eliza-voice-physical-microphone-v2",
+        platform: "darwin",
+      },
+      speakerLoopback: {
+        kind: "system-output-loopback",
+        device: "BlackHole 2ch",
+      },
+      browserDevices: {
+        microphone: "browser-mic-id",
+        speaker: "browser-speaker-id",
+      },
+      captures: Object.fromEntries(
+        [
+          ["screen", screenRecording],
+          ["microphone", microphoneAudio],
+          ["speakerLoopback", speakerLoopbackAudio],
+          ["backend", backendLog],
+        ].map(([name, file], index) => [
+          name,
+          {
+            startedAt: new Date(fixtureTime - 2_000 + index * 50).toISOString(),
+            finishedAt: new Date(fixtureTime + 2_000).toISOString(),
+            sha256: crypto
+              .createHash("sha256")
+              .update(fs.readFileSync(file))
+              .digest("hex"),
+            ...(name === "backend"
+              ? { source: backendLog, startOffset: 0, endOffset: 32 }
+              : {}),
+          },
+        ]),
+      ),
+    });
+    const fixture = {
+      report,
+      trajectory,
+      backendLog,
+      screenRecording,
+      microphoneAudio,
+      speakerLoopbackAudio,
+      captureProvenance,
+      microphonePayload,
+      ttsPayload,
+      referencePayload,
+      outDir: path.join(root, "desktop-final"),
+      tools,
+    };
+    const result = finalizeDesktopVoiceEvidence(fixture);
+    expect(result.manifest.artifacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "privacy-safe-black-video-plus-projected-loopback-tone",
+        }),
+        expect.objectContaining({
+          role: "privacy-safe-projected-speaker-loopback-duration-tone",
+        }),
+        expect.objectContaining({
+          role: "privacy-safe-correlation-proof",
+        }),
+      ]),
+    );
+    expect(result.manifest.proof).toEqual(
+      expect.objectContaining({
+        modelResponsePresent: true,
+        trajectoryMatched: true,
+        physicalMicrophoneClassified: true,
+        backendEvidencePresent: true,
+        publicAudioProjectedFromDurationOnly: true,
+        privateAudioPublished: false,
+      }),
+    );
+    const artifactRoles = result.manifest.artifacts.map(({ role }) => role);
+    expect(artifactRoles).not.toEqual(
+      expect.arrayContaining([
+        "packaged-desktop-report",
+        "live-llm-trajectory",
+        "backend-log",
+        "physical-hardware-capture-provenance",
+        "physical-microphone",
+        "app-synthetic-microphone-signal",
+      ]),
+    );
+    expect(allEvidenceBytes(fixture.outDir).includes(microphoneCanary)).toBe(
+      false,
+    );
+    expect(allEvidenceBytes(fixture.outDir).includes(mediaMetadataCanary)).toBe(
+      false,
+    );
+    const serialized = textualEvidence(fixture.outDir);
+    for (const canary of [
+      "It is noon.",
+      "desktop-trajectory-1",
+      "desktop-conversation-1",
+      "desktop-user-message-1",
+      "[voice] local ASR and TTS complete",
+    ]) {
+      expect(serialized).not.toContain(canary);
+    }
+    const projectedFrequencyHz =
+      result.manifest.media.acousticProjection.frequencyHz;
+    expect(
+      spectralMagnitude(decodedAudioSamples(speakerLoopbackAudio, tools), 440),
+    ).toBeGreaterThan(0.01);
+    for (const artifact of result.manifest.artifacts.filter(
+      ({ role }) =>
+        role.includes("projected") &&
+        (role.includes("tone") || role.includes("video")),
+    )) {
+      expectOnlyProjectedTone(
+        path.join(fixture.outDir, artifact.path),
+        tools,
+        projectedFrequencyHz,
+        [440],
+      );
+    }
+    for (const artifact of result.manifest.artifacts.filter(({ role }) =>
+      role.includes("video"),
+    )) {
+      expectBlackVideo(path.join(fixture.outDir, artifact.path), tools);
+    }
+    const durationProjectionHashes = result.manifest.artifacts
+      .filter(({ role }) => role.endsWith("duration-tone"))
+      .map(({ sha256 }) => sha256);
+    expect(new Set(durationProjectionHashes).size).toBe(1);
+    expectManifestIntegrity(fixture.outDir, result);
+    expect(evidenceStagingSiblings(fixture.outDir)).toEqual([]);
+    // Rejection cases need a fresh destination to reach provenance validation.
+    fixture.outDir = path.join(root, "desktop-invalid-report");
+    const validReport = fs.readFileSync(report, "utf8");
+    fixture.outDir = path.join(root, "desktop-rejected-revision");
+    const abbreviatedRevision = JSON.parse(validReport);
+    abbreviatedRevision.packagedRevision = currentHead().slice(0, 10);
+    writeJson(report, abbreviatedRevision);
+    expect(() => finalizeDesktopVoiceEvidence(fixture)).toThrow(
+      /running-renderer build stamp for HEAD/,
+    );
+    fs.writeFileSync(report, validReport);
+    const substringBrowserDevice = JSON.parse(validReport);
+    substringBrowserDevice.report.stages.find(
+      (stage) => stage.stage === "asr",
+    ).detail.inputDeviceLabel = "Fake USB test microphone";
+    writeJson(report, substringBrowserDevice);
+    expect(() => finalizeDesktopVoiceEvidence(fixture)).toThrow(
+      /physical microphone and system-output loopback capture/,
+    );
+    fs.writeFileSync(report, validReport);
+    const punctuationEquivalentDevice = JSON.parse(validReport);
+    punctuationEquivalentDevice.report.stages.find(
+      (stage) => stage.stage === "asr",
+    ).detail.inputDeviceLabel = "microphone, USB TEST";
+    writeJson(report, punctuationEquivalentDevice);
+    fixture.outDir = path.join(root, "desktop-final-punctuation");
+    expect(() => finalizeDesktopVoiceEvidence(fixture)).not.toThrow();
+    fixture.outDir = path.join(root, "desktop-invalid-device");
+    fs.writeFileSync(report, validReport);
+    fixture.outDir = path.join(root, "desktop-rejected-device");
+    const genericCollisionDevice = JSON.parse(validReport);
+    genericCollisionDevice.report.stages.find(
+      (stage) => stage.stage === "asr",
+    ).detail.inputDeviceLabel = "USB audio device";
+    writeJson(report, genericCollisionDevice);
+    expect(() => finalizeDesktopVoiceEvidence(fixture)).toThrow(
+      /physical microphone and system-output loopback capture/,
+    );
+    fs.writeFileSync(report, validReport);
+    const virtualBrowserDevice = JSON.parse(validReport);
+    virtualBrowserDevice.report.stages.find(
+      (stage) => stage.stage === "asr",
+    ).detail.inputDeviceLabel = "BlackHole USB test microphone";
+    writeJson(report, virtualBrowserDevice);
+    expect(() => finalizeDesktopVoiceEvidence(fixture)).toThrow(
+      /physical microphone and system-output loopback capture/,
+    );
+    fs.writeFileSync(report, validReport);
+    const validProvenance = fs.readFileSync(captureProvenance, "utf8");
+    const virtualEndpoint = JSON.parse(validProvenance);
+    virtualEndpoint.microphone.enumeratedLabel =
+      "BlackHole USB test microphone";
+    writeJson(captureProvenance, virtualEndpoint);
+    expect(() => finalizeDesktopVoiceEvidence(fixture)).toThrow(
+      /physical microphone and system-output loopback capture/,
+    );
+    fs.writeFileSync(captureProvenance, validProvenance);
+    const wrongDevice = JSON.parse(validProvenance);
+    wrongDevice.microphone.enumeratedLabel = "Unrelated webcam microphone";
+    writeJson(captureProvenance, wrongDevice);
+    expect(() => finalizeDesktopVoiceEvidence(fixture)).toThrow(
+      /physical microphone and system-output loopback capture/,
+    );
+    fs.writeFileSync(captureProvenance, validProvenance);
+    const unboundBackend = JSON.parse(validProvenance);
+    unboundBackend.captures.backend.endOffset =
+      unboundBackend.captures.backend.startOffset;
+    writeJson(captureProvenance, unboundBackend);
+    expect(() => finalizeDesktopVoiceEvidence(fixture)).toThrow(
+      /session-bounded log delta/,
+    );
+    fs.writeFileSync(captureProvenance, validProvenance);
+    fs.unlinkSync(speakerLoopbackAudio);
+    expect(() => finalizeDesktopVoiceEvidence(fixture)).toThrow(
+      /Missing speaker loopback capture/,
+    );
+    audio(speakerLoopbackAudio, tools, 440, 3);
+    const unsynchronized = JSON.parse(
+      fs.readFileSync(captureProvenance, "utf8"),
+    );
+    unsynchronized.captures.speakerLoopback.sha256 = crypto
+      .createHash("sha256")
+      .update(fs.readFileSync(speakerLoopbackAudio))
+      .digest("hex");
+    const unsynchronizedSpeakerStart = new Date(
+      Date.parse(unsynchronized.captures.screen.startedAt) + 500,
+    ).toISOString();
+    unsynchronized.captures.speakerLoopback.startedAt =
+      unsynchronizedSpeakerStart;
+    const enclosingReport = JSON.parse(validReport);
+    enclosingReport.report.startedAt = new Date(
+      Date.parse(unsynchronizedSpeakerStart) + 100,
+    ).toISOString();
+    writeJson(report, enclosingReport);
+    writeJson(captureProvenance, unsynchronized);
+    expect(() => finalizeDesktopVoiceEvidence(fixture)).toThrow(
+      /did not start within 250ms/,
+    );
+    writeJson(captureProvenance, {
+      kind: "hosted-virtual-loopback",
+      revision: currentHead(),
+    });
+    expect(() => finalizeDesktopVoiceEvidence(fixture)).toThrow(
+      /synchronized, session-bound.*physical microphone and system-output loopback capture/,
+    );
+  }, 30_000);
+
+  test("refuses wav-direct as packaged real-microphone evidence", () => {
+    const tools = resolveMediaTools();
+    const root = fixtureRoot();
+    const report = path.join(root, "desktop-report.json");
+    writeJson(report, {
+      revision: currentHead(),
+      sessionId: "voice-session-123456",
+      capturedAt: new Date().toISOString(),
+      packagedRevision: currentHead(),
+      rendererBuildId: "renderer-build-1",
+      report: {
+        overall: "pass",
+        platform: "desktop",
+        mode: "wav-direct",
+        startedAt: new Date().toISOString(),
+        finishedAt: new Date().toISOString(),
+        ttsRoute: "/api/tts/local-inference",
+        sendBackend: "local-inference:eliza-1",
+        stages: [
+          { stage: "asr", status: "pass" },
+          {
+            stage: "send",
+            status: "pass",
+            detail: { conversationId: "desktop-conversation-1" },
+          },
+          { stage: "tts", status: "pass" },
+        ],
+      },
+    });
+    expect(() =>
+      finalizeDesktopVoiceEvidence({
+        report,
+        trajectory: report,
+        backendLog: report,
+        screenRecording: report,
+        microphoneAudio: report,
+        speakerLoopbackAudio: report,
+        captureProvenance: report,
+        outDir: path.join(root, "out"),
+        tools,
+      }),
+    ).toThrow(/not a local real-mic pass/);
   }, 30_000);
 });
 

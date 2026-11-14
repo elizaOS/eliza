@@ -14,7 +14,7 @@
  * maximum timer delay (`2^31 - 1` ms). Larger values would clamp to 1 ms and
  * kill the child immediately.
  *
- * usage: bun packages/scripts/run-with-deadline.ts <deadline-ms> -- <command> [args...]
+ * usage: node packages/scripts/run-with-deadline.ts <deadline-ms> -- <command> [args...]
  */
 import { spawn } from "node:child_process";
 import { uptime } from "node:os";
@@ -74,7 +74,7 @@ export function parseArgs(argv: string[]) {
   const deadlineRaw = argv[0] ?? "";
   if (argv[1] !== "--" || argv.length < 3) {
     throw new Error(
-      "usage: bun packages/scripts/run-with-deadline.ts <deadline-ms> -- <command> [args...]",
+      "usage: node packages/scripts/run-with-deadline.ts <deadline-ms> -- <command> [args...]",
     );
   }
   const deadlineMs = parseDeadlineMs(deadlineRaw);
@@ -95,7 +95,7 @@ export function runWithDeadline(
     console.error(
       error instanceof Error
         ? error.message
-        : "usage: bun packages/scripts/run-with-deadline.ts <deadline-ms> -- <command> [args...]",
+        : "usage: node packages/scripts/run-with-deadline.ts <deadline-ms> -- <command> [args...]",
     );
     process.exit(2);
   }

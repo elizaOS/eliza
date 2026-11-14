@@ -38,7 +38,14 @@ function matrixSessionId() {
 }
 
 const DIMENSIONS = {
-  platform: ["web", "linux", "macos", "ios", "android"],
+  platform: [
+    "web",
+    "linux",
+    "macos-electrobun",
+    "windows-electrobun",
+    "ios",
+    "android",
+  ],
   transcriptionState: ["off", "on"],
   chimeIn: ["should-respond", "should-not-respond"],
   wakewordContext: [
@@ -251,6 +258,48 @@ const CELLS = [
     probe: "linuxFused",
   },
   {
+    id: "macos.electrobun.live-roundtrip",
+    title:
+      "macOS Electrobun live mic -> ASR -> agent -> Kokoro -> speaker loop",
+    platform: "macos-electrobun",
+    dimensions: {
+      transcriptionState: "off",
+      chimeIn: "should-respond",
+      wakewordContext: "idle-wake",
+      noiseRejection: "quiet",
+      voices: "owner",
+    },
+    class: "desktop-live-voice",
+    command: ["bun", "run", "--cwd", "packages/app", "test:desktop:voice"],
+    env: { ELIZA_VOICE_DESKTOP_SELFTEST: "1" },
+    evidence: [
+      "$ELIZA_VOICE_MATRIX_OUT/macos.electrobun.live-roundtrip",
+      "test-results/app",
+    ],
+    probe: "macosElectrobun",
+  },
+  {
+    id: "windows.electrobun.live-roundtrip",
+    title:
+      "Windows Electrobun live mic -> ASR -> agent -> Kokoro -> speaker loop",
+    platform: "windows-electrobun",
+    dimensions: {
+      transcriptionState: "off",
+      chimeIn: "should-respond",
+      wakewordContext: "idle-wake",
+      noiseRejection: "quiet",
+      voices: "owner",
+    },
+    class: "desktop-live-voice",
+    command: ["bun", "run", "--cwd", "packages/app", "test:desktop:voice"],
+    env: { ELIZA_VOICE_DESKTOP_SELFTEST: "1" },
+    evidence: [
+      "$ELIZA_VOICE_MATRIX_OUT/windows.electrobun.live-roundtrip",
+      "test-results/app",
+    ],
+    probe: "windowsElectrobun",
+  },
+  {
     id: "ios.sim-or-device.voice-roundtrip",
     title: "iOS simulator/device voice self-test and capture evidence",
     platform: "ios",
@@ -407,7 +456,7 @@ const CELLS = [
     id: "stt.stage-b.apple-sfspeech",
     title:
       "Stage-B STT Apple arm: real on-device SFSpeechRecognizer latency/WER over synthesised speech (quiet + 10dB noise)",
-    platform: "macos",
+    platform: "macos-electrobun",
     dimensions: {
       transcriptionState: "on",
       chimeIn: "should-respond",
@@ -468,6 +517,46 @@ function parseArgs(argv) {
 function commandExists(name) {
   const cmd = process.platform === "win32" ? "where" : "which";
   return spawnSync(cmd, [name], { stdio: "ignore" }).status === 0;
+}
+
+function findFiles(root, predicate, found = []) {
+  if (!fs.existsSync(root)) return found;
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    const fullPath = path.join(root, entry.name);
+    if (entry.isDirectory()) findFiles(fullPath, predicate, found);
+    else if (entry.isFile() && predicate(fullPath)) found.push(fullPath);
+  }
+  return found;
+}
+
+function hasPackagedDesktopLauncher(platform) {
+  const explicit = process.env.ELIZA_TEST_PACKAGED_LAUNCHER_PATH?.trim();
+  if (explicit) return fs.existsSync(explicit);
+  const roots = [
+    path.join(REPO_ROOT, "packages/app/platforms/electrobun/build"),
+    path.join(REPO_ROOT, "packages/app/platforms/electrobun/artifacts"),
+  ];
+  if (platform === "darwin") {
+    return roots.some(
+      (root) =>
+        findFiles(root, (fullPath) =>
+          fullPath.endsWith(
+            `${path.sep}Contents${path.sep}MacOS${path.sep}launcher`,
+          ),
+        ).length > 0,
+    );
+  }
+  if (platform === "win32") {
+    return roots.some(
+      (root) =>
+        findFiles(
+          root,
+          (fullPath) =>
+            path.basename(fullPath).toLowerCase() === "launcher.exe",
+        ).length > 0,
+    );
+  }
+  return false;
 }
 
 function oneLine(text) {
@@ -717,6 +806,84 @@ function probeCell(cell) {
         available: true,
         reason: `openWakeWord report configured: ${process.env.ELIZA_VOICE_OPENWAKEWORD_REPORT}`,
       };
+    case "macosElectrobun":
+      if (process.platform !== "darwin")
+        return {
+          available: false,
+          reason: `requires macOS runner; current=${process.platform}`,
+        };
+      if (process.env.ELIZA_VOICE_MACOS_ELECTROBUN_READY !== "1") {
+        return {
+          available: false,
+          reason:
+            "set ELIZA_VOICE_MACOS_ELECTROBUN_READY=1 on a macOS Electrobun voice runner with loopback mic/audio capture",
+        };
+      }
+      if (!process.env.ELIZA_VOICE_DESKTOP_API_BASE?.trim()) {
+        return {
+          available: false,
+          reason:
+            "ELIZA_VOICE_DESKTOP_API_BASE is not set to a real app API base",
+        };
+      }
+      if (!hasPackagedDesktopLauncher("darwin")) {
+        return {
+          available: false,
+          reason:
+            "packaged macOS Electrobun launcher is missing; build/redeploy the latest desktop app before capture",
+        };
+      }
+      if (!process.env.ELIZA_VOICE_CAPTURE_SESSION_ID?.trim()) {
+        return {
+          available: false,
+          reason:
+            "ELIZA_VOICE_CAPTURE_SESSION_ID is required for synchronized hardware capture",
+        };
+      }
+      return {
+        available: true,
+        reason:
+          "macOS Electrobun voice runner enabled with packaged launcher and API base",
+      };
+    case "windowsElectrobun":
+      if (process.platform !== "win32")
+        return {
+          available: false,
+          reason: `requires Windows runner; current=${process.platform}`,
+        };
+      if (process.env.ELIZA_VOICE_WINDOWS_ELECTROBUN_READY !== "1") {
+        return {
+          available: false,
+          reason:
+            "set ELIZA_VOICE_WINDOWS_ELECTROBUN_READY=1 on a Windows Electrobun voice runner with loopback mic/audio capture",
+        };
+      }
+      if (!process.env.ELIZA_VOICE_DESKTOP_API_BASE?.trim()) {
+        return {
+          available: false,
+          reason:
+            "ELIZA_VOICE_DESKTOP_API_BASE is not set to a real app API base",
+        };
+      }
+      if (!hasPackagedDesktopLauncher("win32")) {
+        return {
+          available: false,
+          reason:
+            "packaged Windows Electrobun launcher is missing; build/redeploy the latest desktop app before capture",
+        };
+      }
+      if (!process.env.ELIZA_VOICE_CAPTURE_SESSION_ID?.trim()) {
+        return {
+          available: false,
+          reason:
+            "ELIZA_VOICE_CAPTURE_SESSION_ID is required for synchronized hardware capture",
+        };
+      }
+      return {
+        available: true,
+        reason:
+          "Windows Electrobun voice runner enabled with packaged launcher and API base",
+      };
     case "ios":
       if (process.platform !== "darwin")
         return {
@@ -788,7 +955,7 @@ function probeCell(cell) {
       if (!fs.existsSync(androidDir)) {
         return {
           available: false,
-          reason: `${path.relative(REPO_ROOT, androidDir)} is not generated; run packages/app cap:sync:android or build:android:system first`,
+          reason: `${path.relative(REPO_ROOT, androidDir)} is not generated; run packages/app cap:sync:android or build:android first`,
         };
       }
       const gradlew = path.join(
@@ -879,6 +1046,8 @@ const AVAILABLE_PROBE_CODES = {
   webLiveCloudflare: "WEB_LIVE_READY",
   linuxFused: "LINUX_FUSED_READY",
   openWakeWord: "OPENWAKEWORD_REPORT_READY",
+  macosElectrobun: "MACOS_ELECTROBUN_READY",
+  windowsElectrobun: "WINDOWS_ELECTROBUN_READY",
   ios: "IOS_DEVICE_READY",
   swiftPackage: "SWIFT_TOOLCHAIN_READY",
   android: "ANDROID_DEVICE_READY",
@@ -892,6 +1061,8 @@ const UNAVAILABLE_PROBE_CODES = {
   webLiveCloudflare: "WEB_LIVE_UNAVAILABLE",
   linuxFused: "LINUX_FUSED_UNAVAILABLE",
   openWakeWord: "OPENWAKEWORD_REPORT_UNAVAILABLE",
+  macosElectrobun: "MACOS_ELECTROBUN_UNAVAILABLE",
+  windowsElectrobun: "WINDOWS_ELECTROBUN_UNAVAILABLE",
   ios: "IOS_DEVICE_UNAVAILABLE",
   swiftPackage: "SWIFT_TOOLCHAIN_UNAVAILABLE",
   android: "ANDROID_DEVICE_UNAVAILABLE",

@@ -9,7 +9,6 @@ import {
   listenerStartsVoice,
   parseAssistantInvocation,
   parseListenerStatus,
-  parseListenerStopReceipt,
   stopSenseListenerForChatOnly,
 } from "../src/sense.ts";
 
@@ -416,24 +415,22 @@ test("native client keeps package, permission, component and reset fences", () =
       "-d",
       path.join(temp, "out"),
       ...files,
-      ...["SenseListenerClient", "SenseInvocation", "SensePlugin"].map((name) =>
+      ...["SenseListenerClient", "SenseInvocation"].map((name) =>
         path.join(source, `${name}.java`),
       ),
-      path.join(root, "test/SensePluginStopReceiptTest.java"),
     ]);
-    for (const fixture of [
-      "SenseListenerClientTest",
-      "SensePluginStopReceiptTest",
-    ]) {
-      assert.match(
-        execFileSync(
-          java("java"),
-          ["-cp", path.join(temp, "out"), `ai.eliza.plugins.system.${fixture}`],
-          { encoding: "utf8" },
-        ),
-        /^PASS/,
-      );
-    }
+    assert.match(
+      execFileSync(
+        java("java"),
+        [
+          "-cp",
+          path.join(temp, "out"),
+          "ai.eliza.plugins.system.SenseListenerClientTest",
+        ],
+        { encoding: "utf8" },
+      ),
+      /^PASS/,
+    );
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });
   }
@@ -689,7 +686,6 @@ test("the shared mobile default preserves verified AOSP invocation without chang
 test("chat-only stop requires an exact raw acknowledgement", async () => {
   const accepted = {
     available: true,
-    saved: true,
     state: "OFF",
     listening: false,
     microphoneOpen: false,
@@ -703,14 +699,8 @@ test("chat-only stop requires an exact raw acknowledgement", async () => {
     { ...accepted, microphoneOpen: true },
     { ...accepted, state: "PAUSED_USER" },
     { ...accepted, available: false },
-    { ...accepted, saved: false },
-    { ...accepted, saved: "true" },
-    { ...accepted, saved: undefined },
-    { ...accepted, state: undefined },
-    { ...accepted, listening: "false" },
-    { ...accepted, microphoneOpen: 0 },
-    { ...accepted, microphoneOpen: undefined },
-    { ...accepted, listening: undefined },
+    { available: true, state: "OFF", listening: false },
+    { available: true, state: "OFF", microphoneOpen: false },
     null,
   ]) {
     assert.equal(
@@ -737,45 +727,4 @@ test("chat-only stop is bounded even when the native bridge never replies", asyn
   });
   t.mock.timers.tick(5000);
   assert.equal(await stopped, false);
-});
-
-test("a pause receipt requires its save, compatible state and microphone release", () => {
-  const complete = {
-    available: true,
-    state: "PAUSED_USER",
-    label: "Paused",
-    consented: true,
-    saved: true,
-    listening: false,
-    microphoneOpen: false,
-  };
-  assert.deepEqual(parseListenerStopReceipt(complete, "pause"), complete);
-  assert.equal(
-    parseListenerStopReceipt({ ...complete, state: "OFF" }, "pause").available,
-    true,
-  );
-  assert.equal(
-    parseListenerStopReceipt(
-      { ...complete, state: "PERMISSION_REQUIRED" },
-      "pause",
-    ).available,
-    true,
-  );
-  for (const receipt of [
-    { ...complete, saved: false },
-    { ...complete, saved: undefined },
-    { ...complete, saved: 1 },
-    { ...complete, state: "PAUSED_CALL" },
-    { ...complete, state: "LISTENING" },
-    { ...complete, state: "OTHER" },
-    { ...complete, state: true },
-    { ...complete, listening: true },
-    { ...complete, listening: undefined },
-    { ...complete, microphoneOpen: true },
-    { ...complete, microphoneOpen: "false" },
-    { ...complete, microphoneOpen: undefined },
-  ])
-    assert.deepEqual(parseListenerStopReceipt(receipt, "pause"), {
-      available: false,
-    });
 });

@@ -19,7 +19,7 @@
  * document-level leak — what a user actually sees — comes from an un-contained
  * wide descendant, which is what BUGGY reproduces.
  *
- * Run: bun scripts/mvp-visual-verify/overflow-invariant-demo.ts
+ * Run: node scripts/mvp-visual-verify/overflow-invariant-demo.ts
  */
 
 import { chromium } from "playwright";

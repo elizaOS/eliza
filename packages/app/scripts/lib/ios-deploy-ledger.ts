@@ -39,11 +39,15 @@ import path from "node:path";
  *   1. `ELIZA_DEVICES_STATUS_DIR` — the device-status lane's explicit override
  *      (the reader honored this before consolidation; kept so a caller can pin
  *      both ends of the ledger at one dir for a test or a scoped run).
- *   2. `ELIZA_STATE_DIR` — the state override.
- *   3. `$XDG_STATE_HOME/<namespace>` — XDG base-dir, absolute or home-relative.
- *   4. `~/.local/state/<namespace>` — the default.
- * The canonical TypeScript resolver cannot be imported from a plain build
- * script, so the XDG precedence is reproduced here and kept in lockstep with it.
+ *   2. `MILADY_STATE_DIR` — the repo-wide branded state prefix
+ *      (`packages/core/src/utils/state-dir.ts` and every alias-aware reader
+ *      honor it first; the device deploy lane inherits it).
+ *   3. `ELIZA_STATE_DIR` — the unbranded state override.
+ *   4. `$XDG_STATE_HOME/<namespace>` — XDG base-dir, absolute or home-relative.
+ *   5. `~/.local/state/<namespace>` — the default.
+ * This is the superset of the two resolvers that previously disagreed; the
+ * canonical TypeScript resolver cannot be imported from a plain build script, so
+ * the branded/XDG precedence is reproduced here and kept in lockstep with it.
  *
  * @param {{ env?: Record<string, string | undefined>, homedir?: () => string }} [options]
  * @returns {string}
@@ -53,7 +57,9 @@ export function resolveLedgerStateDir({
   homedir = os.homedir,
 } = {}) {
   const explicit = (
-    env.ELIZA_DEVICES_STATUS_DIR ?? env.ELIZA_STATE_DIR
+    env.ELIZA_DEVICES_STATUS_DIR ??
+    env.MILADY_STATE_DIR ??
+    env.ELIZA_STATE_DIR
   )?.trim();
   if (explicit) return path.resolve(explicit);
   const namespace = env.ELIZA_NAMESPACE?.trim() || "eliza";

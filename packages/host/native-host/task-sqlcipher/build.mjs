@@ -29,7 +29,7 @@ if (
   !["linux-x64", "x86_64-linux-musl", "aarch64-linux-musl"].includes(target)
 )
   throw new Error(
-    "Usage: bun build.mjs OUTPUT NODE_24_15_0_INCLUDE [linux-x64|x86_64-linux-musl|aarch64-linux-musl] /absolute/compiler",
+    "Usage: node build.mjs OUTPUT NODE_24_15_0_INCLUDE [linux-x64|x86_64-linux-musl|aarch64-linux-musl] /absolute/compiler",
   );
 // An absolute `zig` binary is a complete cross toolchain for the musl targets: the build
 // writes `zig cc -target`, `zig ar` and `zig ranlib` drivers for it.

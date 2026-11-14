@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-notes",
-  "version": "2.0.6",
+  "version": "2.0.4",
   "type": "module",
   "description": "Cloud Notes view with durable agent-driven CRUD.",
   "main": "./dist/index.js",
@@ -47,11 +47,11 @@
     "test": "bun run test:client && vitest run --config vitest.config.ts",
     "preview:notes": "bunx --bun vite --config vite.config.preview.ts",
     "build": "bun run build:js && bun run build:views && bun run build:types",
-    "clean": "bun ../../packages/scripts/rm-path-recursive.ts dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "vite build --config vite.config.views.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json",
-    "test:client": "bun test --timeout=120000 ./test/*.test.mjs"
+    "test:client": "node --test --experimental-transform-types test/*.test.mjs"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
@@ -73,7 +73,7 @@
     "tsup": "^9.0.0",
     "typescript": "^6.0.3",
     "vite": "^8.3.3",
-    "vitest": "^5.1.0",
+    "vitest": "^5.0.5",
     "@elizaos/testing": "workspace:*"
   },
   "publishConfig": {

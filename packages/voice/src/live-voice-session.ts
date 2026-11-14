@@ -39,11 +39,6 @@ export const LIVE_ASR_STATUS_PATH = "/api/asr/local-inference/live/status";
 export const LIVE_SAMPLE_RATE = 16000;
 const MAX_TEXT = 16000;
 const MAX_FRAMES_PER_POST = 64;
-/**
- * Most frames a segment stream holds while they wait for their post: about 30 s of the capture's
- * 32 ms frames. More means the agent does not keep up, and the stream fails as `TRANSPORT`.
- */
-export const LIVE_MAX_UNPOSTED_FRAMES = 960;
 
 export type LiveAudioFrame = {
   pcm16: string;
@@ -531,10 +526,6 @@ export interface LiveSegmentHandlers {
  *
  * Interim text (`onInterim`) needs a transport with an event stream (`subscribe`). A request-only
  * transport delivers finals only; nothing is synthesized in place of a partial.
- *
- * Posts go one at a time. When more than `LIVE_MAX_UNPOSTED_FRAMES` frames wait for a post, the
- * stream stops: it drops the waiting audio, gives null for each outstanding segment and calls
- * `onFatal("TRANSPORT")` once.
  */
 export function createLiveSegmentStream(
   input: {
@@ -548,13 +539,6 @@ export function createLiveSegmentStream(
   let finished = false;
   let discarded = false;
   let expected = 0;
-  let unposted = 0;
-  const fatal = (code: "LIVE_ASR_UNAVAILABLE" | "TRANSPORT") => {
-    const outstanding = expected;
-    expected = 0;
-    for (let index = 0; index < outstanding; index++) input.onSegment(null);
-    input.onFatal?.(code);
-  };
   const session = createLiveVoiceSession({
     transport: input.transport,
     ...(input.roomId ? { roomId: input.roomId } : {}),
@@ -577,7 +561,10 @@ export function createLiveSegmentStream(
         }
         return;
       }
-      fatal(code);
+      const outstanding = expected;
+      expected = 0;
+      for (let index = 0; index < outstanding; index++) input.onSegment(null);
+      input.onFatal?.(code);
     },
   });
   const closeSegment = (at: number) => {
@@ -610,18 +597,7 @@ export function createLiveSegmentStream(
         } else if (closeSegment(edge.timestampMs)) edges.push(edge);
       }
       if (!kept.length && !edges.length) return Promise.resolve();
-      if (unposted + kept.length > LIVE_MAX_UNPOSTED_FRAMES) {
-        // The agent does not keep up. Drop the waiting audio and stop.
-        finished = true;
-        open = false;
-        session.dispose();
-        fatal("TRANSPORT");
-        return Promise.resolve();
-      }
-      unposted += kept.length;
-      return session.push(kept, edges).finally(() => {
-        unposted -= kept.length;
-      });
+      return session.push(kept, edges);
     },
     /** The user stopped at `at` (epoch ms, the frames' clock). Later audio is never forwarded. */
     cutoff(at: number) {
@@ -672,11 +648,6 @@ export interface LiveCaptureOpenOptions {
   signal: AbortSignal;
   /** Platform echo cancellation for full-duplex use (the assistant listens while it speaks). */
   echoCancel: boolean;
-  /**
-   * Silence that closes a VAD segment, when the host's gate can set it. A short value turns a
-   * pause into a segment end early (for speculative turns); the host clamps it.
-   */
-  endHangoverMs?: number;
   /** An automatic reopen after a busy hold: refused, never prompted, after a call, pause or permission loss. */
   reopen?: true;
   roomId?: string;
@@ -702,7 +673,6 @@ export function liveAssistantListener(
     roomId?: string;
     onInterim?: (text: string) => void;
     onLatency?: (latency: LiveVoiceLatency) => void;
-    endHangoverMs?: number;
   } = {},
 ) {
   return async (
@@ -711,9 +681,6 @@ export function liveAssistantListener(
     const capture = await open({
       signal: handlers.signal,
       echoCancel: true,
-      ...(options.endHangoverMs !== undefined
-        ? { endHangoverMs: options.endHangoverMs }
-        : {}),
       ...(handlers.reopen ? { reopen: true } : {}),
       ...(options.roomId ? { roomId: options.roomId } : {}),
       onSpeechStart: handlers.onSpeechStart,

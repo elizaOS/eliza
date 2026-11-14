@@ -277,8 +277,7 @@ describe("AndroidNativeCloudSignInView", () => {
     port.startGoogle = vi.fn(() => new Promise(() => {}));
     vi.mocked(port.resumeMfa!).mockResolvedValue({ active: true });
     const { onAuthenticated } = renderView(port);
-    // Completed, incomplete, MFA and the readiness change.
-    await waitFor(() => expect(port.addListener).toHaveBeenCalledTimes(4));
+    await waitFor(() => expect(port.addListener).toHaveBeenCalledTimes(3));
     fireEvent.click(await screen.findByTestId("native-cloud-sign-in-google"));
     await waitFor(() => expect(port.startGoogle).toHaveBeenCalledOnce());
     await act(async () => port.emit("signInMfaRequired", {
@@ -375,8 +374,7 @@ describe("AndroidNativeCloudSignInView", () => {
   it("ignores an unscoped native restart announcement on a fresh interactive request", async () => {
     const port = mockPort();
     const { onAuthenticated } = renderView(port);
-    // Completed, incomplete, MFA and the readiness change.
-    await waitFor(() => expect(port.addListener).toHaveBeenCalledTimes(4));
+    await waitFor(() => expect(port.addListener).toHaveBeenCalledTimes(3));
     act(() => port.emit("signInIncomplete", { code: "app-link-unverified" }));
     expect(
       (await screen.findByTestId("native-cloud-sign-in-error")).textContent,

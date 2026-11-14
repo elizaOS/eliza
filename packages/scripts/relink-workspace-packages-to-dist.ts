@@ -24,7 +24,7 @@ const packageNames = process.argv.slice(2);
 
 if (packageNames.length === 0) {
   console.error(
-    "usage: bun packages/scripts/relink-workspace-packages-to-dist.ts <package-name> [package-name...]",
+    "usage: node packages/scripts/relink-workspace-packages-to-dist.ts <package-name> [package-name...]",
   );
   process.exit(1);
 }

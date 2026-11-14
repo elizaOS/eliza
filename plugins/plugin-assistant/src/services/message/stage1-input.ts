@@ -243,17 +243,16 @@ export function renderMessageHandlerModelInput(
     (segment) => !isCurrentTurnMessage(segment),
   );
   // The authored catalog and Task text are the same on every turn of a room,
-  // so they lead the user message and extend the cached prompt prefix. Past
-  // effects still precede the current-turn boundary that establishes the
-  // request. Providers that are not cache-stable (the clock among them)
-  // change between turns, so they follow the transcript, directly before the
-  // current message: the transcript an earlier turn sent stays in the prefix.
+  // so they lead the user message ahead of the clock, providers and history
+  // and extend the cached prompt prefix. Past effects still precede the
+  // current-turn boundary that establishes the request.
   const orderedDynamicSegments = [
     ...(catalogInstructions
       ? [{ content: catalogInstructions, stable: false }]
       : []),
     { id: "runtime-task", content: taskInstructions, stable: false },
     ...compactHistoricalReceiptSegments(historicalNavigationSegments),
+    ...dynamicProviderSegments,
     ...(options?.contextCatalog?.loaded
       ? [
           {
@@ -281,7 +280,6 @@ export function renderMessageHandlerModelInput(
       ].join("\n\n"),
       stable: false,
     },
-    ...dynamicProviderSegments,
     ...currentMessages,
     ...(options?.responseHandlerContext?.trim()
       ? [

@@ -2,8 +2,11 @@
  * Window-global handshake between the BrowserWorkspaceView React component
  * (which owns the live <electrobun-webview> tag refs) and the Electrobun
  * preload bridge (which holds the Electroview RPC handlers that bun calls
- * into for evaluate/snapshot on a tab), through the
- * `window.__ELIZA_BROWSER_TABS_REGISTRY__` key.
+ * into for evaluate/snapshot on a tab).
+ *
+ * Mirror of the type declared in
+ * platforms/electrobun/src/bridge/browser-tabs-renderer-registry.ts — both
+ * read/write the same `window.__ELIZA_BROWSER_TABS_REGISTRY__` key.
  */
 
 export type BrowserTabsRendererImpl = {

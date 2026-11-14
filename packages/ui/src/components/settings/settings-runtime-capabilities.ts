@@ -5,21 +5,26 @@
  * consumes the same set for detached-window behavior. Tests may inject probes
  * without forging user agents, viewport sizes, or native globals.
  */
+import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import {
   resolveWindowShellRoute,
   type WindowShellRoute,
 } from "../../platform/window-shell";
 
-export type SettingsRuntimeCapability = "detached-settings-shell";
+export type SettingsRuntimeCapability =
+  | "desktop-bridge"
+  | "detached-settings-shell";
 
 export type SettingsRuntimeCapabilities =
   ReadonlySet<SettingsRuntimeCapability>;
 
 export interface SettingsRuntimeCapabilityProbes {
+  hasDesktopBridge: () => boolean;
   readWindowShellRoute: () => WindowShellRoute;
 }
 
 const DEFAULT_PROBES: SettingsRuntimeCapabilityProbes = {
+  hasDesktopBridge: isElectrobunRuntime,
   readWindowShellRoute: resolveWindowShellRoute,
 };
 
@@ -28,6 +33,7 @@ export function resolveSettingsRuntimeCapabilities(
   probes: SettingsRuntimeCapabilityProbes = DEFAULT_PROBES,
 ): SettingsRuntimeCapabilities {
   const capabilities = new Set<SettingsRuntimeCapability>();
+  if (probes.hasDesktopBridge()) capabilities.add("desktop-bridge");
   if (probes.readWindowShellRoute().mode === "settings") {
     capabilities.add("detached-settings-shell");
   }

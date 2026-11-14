@@ -212,7 +212,7 @@ beforeAll(async () => {
   ]) {
     await applyMigration(migration);
   }
-}, 120_000);
+});
 beforeEach(async () => {
   await database.delete(remoteCommandEnvelopes);
   await database.delete(remoteSessions);

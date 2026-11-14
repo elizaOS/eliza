@@ -15,8 +15,8 @@
  * between concurrent bun processes.
  *
  * Usage:
- *   bun test/run-unit-isolated.mjs            # every unit test file in this package
- *   bun test/run-unit-isolated.mjs <substr>   # only files whose path matches
+ *   node test/run-unit-isolated.mjs            # every unit test file in this package
+ *   node test/run-unit-isolated.mjs <substr>   # only files whose path matches
  */
 import path from "node:path";
 import { fileURLToPath } from "node:url";

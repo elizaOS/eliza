@@ -172,6 +172,7 @@ function createHarness(overrides: Record<string, unknown> = {}) {
     APP_VRM_ASSETS: [],
     APP_STYLE_PRESETS: [],
     APP_CHARACTER_CATALOG: {},
+    APP_ENV_ALIASES: [],
     CodingAgentSettingsSection: () => null,
     CodingAgentControlChip: () => null,
     AppBlockerSettingsCard: () => null,

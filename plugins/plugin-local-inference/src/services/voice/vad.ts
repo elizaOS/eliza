@@ -231,6 +231,11 @@ export class GgmlSileroVad {
 	}
 }
 
+/** @deprecated Use `GgmlSileroVad`. Kept as an alias while callers migrate
+ *  off the legacy ONNX-era name. */
+export const NativeSileroVad = GgmlSileroVad;
+export type NativeSileroVad = GgmlSileroVad;
+
 // ---------------------------------------------------------------------------
 // Tier 1: cheap always-on RMS energy gate.
 // ---------------------------------------------------------------------------
@@ -342,7 +347,7 @@ export interface VadDetectorConfig {
 	/** Consecutive ms of speech-prob below `offsetThreshold` before the
 	 *  segment is considered *paused* (kick speculative response). Default
 	 *  100 ms (lowered from 220ms; further reduction gated on semantic EOT
-	 *  classifier V2). */
+	 *  classifier V2). Override via `ELIZA_PAUSE_HANGOVER_MS`. */
 	pauseHangoverMs?: number;
 	/**
 	 * V1 — "fast endpoint" pause hangover, used when `fastEndpointEnabled`
@@ -588,7 +593,9 @@ export class VadDetector {
 		this.offsetThreshold =
 			config.offsetThreshold ?? Math.max(0.1, this.onsetThreshold - 0.15);
 		// Lowered from 220ms; further reduction gated on semantic EOT classifier (V2).
-		this.pauseHangoverMs = config.pauseHangoverMs ?? 100;
+		// Override via ELIZA_PAUSE_HANGOVER_MS env var.
+		this.pauseHangoverMs =
+			config.pauseHangoverMs ?? readPauseHangoverMsEnv() ?? 100;
 		this.fastPauseHangoverMs = config.fastPauseHangoverMs ?? 100;
 		this.fastEndpointEnabled = config.fastEndpointEnabled ?? false;
 		this.endHangoverMs = Math.max(
@@ -868,4 +875,15 @@ export async function createVadDetector(
 ): Promise<VadDetector> {
 	const { vad } = await resolveVadProvider(opts);
 	return new VadDetector(vad, opts.config);
+}
+
+/**
+ * Read `ELIZA_PAUSE_HANGOVER_MS` from the environment. Returns a positive
+ * integer when the variable is set and valid, otherwise `undefined`.
+ */
+function readPauseHangoverMsEnv(): number | undefined {
+	const raw = process.env.ELIZA_PAUSE_HANGOVER_MS?.trim();
+	if (!raw) return undefined;
+	const value = Number.parseInt(raw, 10);
+	return Number.isFinite(value) && value > 0 ? value : undefined;
 }

@@ -38,7 +38,6 @@ import { jobs } from "../../db/schemas/jobs";
 import { organizations } from "../../db/schemas/organizations";
 import { personalDedicatedFallbacks } from "../../db/schemas/personal-dedicated-fallbacks";
 import { users } from "../../db/schemas/users";
-import { getCloudDeployment } from "../deployment/cloud-deployment";
 import { logger } from "../utils/logger";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -106,7 +105,7 @@ function errorMessage(error: unknown): string {
 async function defaultSendNotice(notice: AgentRetentionNotice): Promise<boolean> {
   const { emailService } = await import("./email");
   const { getCloudAwareEnv } = await import("../runtime/cloud-bindings");
-  const appUrl = getCloudAwareEnv().NEXT_PUBLIC_APP_URL || getCloudDeployment().appOrigin;
+  const appUrl = getCloudAwareEnv().NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
   const format = (date: Date) =>
     date.toLocaleString("en-US", {
       year: "numeric",

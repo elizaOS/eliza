@@ -40,8 +40,6 @@ export default {
       key: string;
       value: string;
       delay?: number;
-      rehold?: boolean;
-      now?: number;
       token?: string;
       ex?: number;
       nx?: boolean;
@@ -62,7 +60,6 @@ export default {
         handleWebhookIngress(new Request(address, init), settings),
     );
     let result: unknown;
-    let settledAt: number | undefined;
     switch (input.action) {
       case "get":
         result = await store.get(input.key);
@@ -77,12 +74,7 @@ export default {
         result = await store.del(input.key);
         break;
       case "due":
-        result = await store.zrangebyscore(
-          HOLD_INDEX_KEY,
-          0,
-          input.now ?? Date.now(),
-          100,
-        );
+        result = await store.zrangebyscore(HOLD_INDEX_KEY, 0, Date.now(), 100);
         break;
       case "hold":
         result = await holdWebhookForCutover(
@@ -103,7 +95,7 @@ export default {
             code: "personal_cutover_in_progress",
           },
           { code: "personal_cutover_in_progress", retryAfterSeconds: 1 },
-          input.now ?? Date.now() - 2000,
+          Date.now() - 2000,
           input.token
             ? { key: HOLD_LEASE_PREFIX + input.key, token: input.token }
             : undefined,
@@ -130,13 +122,6 @@ export default {
               await new Promise((resolve) =>
                 setTimeout(resolve, input.delay ?? 0),
               );
-              settledAt = Date.now();
-              if (input.rehold) {
-                return {
-                  kind: "held",
-                  signal: { code: held.code, retryAfterSeconds: 1 },
-                };
-              }
               await store.set(held.dedupKey, "delivered", { ex: 60 });
               return { kind: "delivered" };
             },
@@ -144,16 +129,12 @@ export default {
               await store.set(held.dedupKey, "expired", { ex: 60 });
             },
           },
-          {
-            // The re-hold case uses the normal lease. The other case tests renewal.
-            leaseSeconds: input.rehold ? undefined : 1,
-            now: input.now,
-          },
+          { leaseSeconds: 1 },
         );
         break;
       default:
         return new Response("Invalid fixture action", { status: 400 });
     }
-    return Response.json({ result, deliveries, settledAt });
+    return Response.json({ result, deliveries });
   },
 };

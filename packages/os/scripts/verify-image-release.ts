@@ -19,7 +19,7 @@ import { validateAgainstSchema } from "./json-schema-lite.ts";
 import { parseArgs } from "./os-release-lib.ts";
 import { loadReleaseKeyPolicy } from "./release-key-policy.ts";
 
-const architectures = ["x86_64", "arm64"];
+const architectures = ["x86_64", "arm64", "riscv64"];
 
 function sameFileState(left, right) {
   return (

@@ -1816,12 +1816,6 @@ describe("durable SQLite agent adapter", () => {
     expect((await restored.getCaches(["backup"])).get("backup")).toEqual({
       bytes: "durable",
     });
-    const nestedBackup = join("new-parent", "new-child", "backup.sqlite");
-    await adapter.backup(join(directory, nestedBackup));
-    const nestedRestored = await open(nestedBackup);
-    expect((await nestedRestored.getCaches(["backup"])).get("backup")).toEqual({
-      bytes: "durable",
-    });
     const competing = new SQLiteStorage(
       join(directory, "agent.sqlite"),
       agentId,

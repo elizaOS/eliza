@@ -114,8 +114,7 @@ export class ChannelTopicsService extends Service {
 		this.topicsByRoom.clear();
 		this.hydrated.clear();
 		this.roomQueues.clear();
-		// A later plugin registration creates a new instance. Retained references
-		// to this instance must stay closed after its room queues drain.
+		this.stopping = false;
 	}
 
 	private enqueueRoomOperation<T>(
@@ -124,7 +123,7 @@ export class ChannelTopicsService extends Service {
 	): Promise<T> {
 		if (this.stopping) {
 			return Promise.reject(
-				new ElizaError("Channel topic service has stopped admission", {
+				new ElizaError("Channel topic service is stopping", {
 					code: "CHANNEL_TOPICS_STOPPING",
 					context: { roomId },
 					severity: "ephemeral",

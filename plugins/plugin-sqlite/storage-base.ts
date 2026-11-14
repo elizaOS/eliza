@@ -29,24 +29,16 @@ type Owner = { active: boolean; child?: Promise<void> };
 /** Records decoded per page by mapAll. */
 const MAP_PAGE_ROWS = 256;
 
-/**
- * Persist the published name and any ancestors created for a new backup directory.
- *
- * Flush through the pre-existing ancestor of the first directory created for
- * this backup. Directories above it contain no new entry from this operation.
- * Windows requires writable handles for fsync; every required flush must pass.
- */
-function syncDirectoryChain(directory: string, existingAncestor: string): void {
-  const windows = process.platform === "win32";
+/** Persist the published name and any ancestors created for a new backup directory. */
+function syncDirectoryChain(directory: string): void {
   let current = directory;
   for (;;) {
-    const fd = openSync(current, windows ? "r+" : "r");
+    const fd = openSync(current, "r");
     try {
       fsyncSync(fd);
     } finally {
       closeSync(fd);
     }
-    if (current === existingAncestor) return;
     const parent = dirname(current);
     if (parent === current) return;
     current = parent;
@@ -505,9 +497,7 @@ export class SQLiteStorageBase implements IStorage {
         "Backup requires a new absolute path",
       );
     await this.exclusive(async () => {
-      const parent = dirname(destination);
-      const firstCreated = mkdirSync(parent, { recursive: true, mode: 0o700 });
-      const existingAncestor = firstCreated ? dirname(firstCreated) : parent;
+      mkdirSync(dirname(destination), { recursive: true, mode: 0o700 });
       // Some SQLite builds require a nonexistent VACUUM destination. A private
       // sibling directory protects the new file until exclusive publication.
       const staging = mkdtempSync(
@@ -518,15 +508,14 @@ export class SQLiteStorageBase implements IStorage {
         const snapshot = join(staging, "snapshot.sqlite");
         this.connection().prepare("VACUUM INTO ?").run(snapshot);
         chmodSync(snapshot, 0o600);
-        // Windows flushes only handles opened for writing; "r" fails with EPERM.
-        const snapshotFd = openSync(snapshot, "r+");
+        const snapshotFd = openSync(snapshot, "r");
         try {
           fsyncSync(snapshotFd);
         } finally {
           closeSync(snapshotFd);
         }
         linkSync(snapshot, destination);
-        syncDirectoryChain(parent, existingAncestor);
+        syncDirectoryChain(dirname(destination));
       } catch (cause) {
         // error-policy:J2 Unsupported publication or directory durability must not report a completed backup.
         throw this.failure(

@@ -74,7 +74,7 @@ public abstract class CalendarPlugin extends Plugin {
  @PluginMethod public void readWorkflowRange(PluginCall c){
   if(!workflowReadAllowed()){status(c,"permission-required");return;}if(!workflowForeground()){c.reject("Workflow calendar read requires the foreground phone");return;}
   try{
-   org.json.JSONArray events=ai.eliza.plugins.calendar.read.SelectedCalendarReader.readWorkflowRange(getContext().getContentResolver(),c.getArray("calendarIds"),c.getString("start"),c.getString("end"),c.getInt("maximumEvents"),c.getString("timeZone"));
+   org.json.JSONArray events=ai.eliza.plugins.calendar.read.SelectedCalendarReader.read(getContext().getContentResolver(),c.getArray("calendarIds"),c.getString("start"),c.getString("end"),c.getInt("maximumEvents"));
    if(!workflowReadAllowed()||!workflowForeground())throw new IllegalStateException();JSObject value=new JSObject();value.put("status","ready");value.put("events",events);c.resolve(value);
   }catch(Exception unavailable){c.reject("Calendar read was not completed within the approved scope. Nothing was uploaded.");}
  }

@@ -136,7 +136,10 @@ export function restoreAndroidManifestFromPlatformTemplateIfMissing() {
   return true;
 }
 
-export function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
+export function overlayAndroid({
+  includeAospRoleLaunchers = false,
+  includeHomeRole = includeAospRoleLaunchers,
+} = {}) {
   assertSharedTreeOnlyForEliza("overlay Java sources");
   const templateJavaRoot = path.join(
     platformsDir,
@@ -356,7 +359,7 @@ export function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
       '    <uses-feature android:name="android.hardware.telephony" android:required="false" />',
     );
     const withElizaOsActivityFilters = ensureElizaOsActivityFilters(xml, {
-      enabled: includeAospRoleLaunchers,
+      enabled: includeHomeRole,
     });
     if (withElizaOsActivityFilters !== xml) {
       xml = withElizaOsActivityFilters;
@@ -431,8 +434,10 @@ export function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
       "ElizaNotificationListenerService",
       "ElizaSmsReceiver",
       "ElizaMmsReceiver",
+      "ElizaSmsGatewayService",
       "ElizaRespondViaMessageService",
       "ElizaSmsComposeActivity",
+      "ElizaSmsReplyReviewActivity",
       "ElizaBootReceiver",
       "ElizaBrowserActivity",
       "ElizaContactsActivity",
@@ -460,8 +465,10 @@ export function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
       "ElizaNotificationListenerService",
       "ElizaSmsReceiver",
       "ElizaMmsReceiver",
+      "ElizaSmsGatewayService",
       "ElizaRespondViaMessageService",
       "ElizaSmsComposeActivity",
+      "ElizaSmsReplyReviewActivity",
       "ElizaBootReceiver",
       "ElizaBrowserActivity",
       "ElizaContactsActivity",
@@ -475,6 +482,7 @@ export function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
       "ElizaMmsReceiver",
       "ElizaRespondViaMessageService",
       "ElizaSmsComposeActivity",
+      "ElizaSmsReplyReviewActivity",
       "ElizaBootReceiver",
     ]) {
       const nextXml = removeApplicationComponentClassBlock(xml, component);
@@ -668,6 +676,14 @@ export function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
     );
     xml = appendMissingApplicationBlock(
       xml,
+      `${androidPackage}.ElizaSmsGatewayService`,
+      `
+        <service
+            android:name="${androidPackage}.ElizaSmsGatewayService"
+            android:exported="false" />`,
+    );
+    xml = appendMissingApplicationBlock(
+      xml,
       `${androidPackage}.ElizaRespondViaMessageService`,
       `
         <service
@@ -682,6 +698,18 @@ export function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
                 <data android:scheme="mmsto" />
             </intent-filter>
         </service>`,
+    );
+    // Owner review of a Cloud-drafted SMS reply: not exported, opened from the app's own notice.
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.ElizaSmsReplyReviewActivity`,
+      `
+        <activity
+            android:name="${androidPackage}.ElizaSmsReplyReviewActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:theme="@style/AppTheme.NoActionBar" />`,
     );
     xml = appendMissingApplicationBlock(
       xml,
@@ -966,8 +994,10 @@ export function sanitizeAndroidManifestWhenPlatformTemplatesMissing() {
     "ElizaInCallActivity",
     "ElizaSmsReceiver",
     "ElizaMmsReceiver",
+    "ElizaSmsGatewayService",
     "ElizaRespondViaMessageService",
     "ElizaSmsComposeActivity",
+    "ElizaSmsReplyReviewActivity",
     "ElizaBootReceiver",
     "ElizaBrowserActivity",
     "ElizaContactsActivity",

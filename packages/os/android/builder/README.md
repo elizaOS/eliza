@@ -21,7 +21,9 @@ Android images. Every cloud script prints a dry run by default and acts only wit
 
 ## Sizing against the repository preflight
 
-The builder preflight refuses a host unless it is
+`assertBuilderCapacity` in
+[`scripts/android/build-grizzly-bundle.ts`](../../scripts/android/build-grizzly-bundle.ts)
+(checked for both the source and output filesystems) refuses a host unless it is
 Linux x86_64 with at least 32 physical cores (unique `CORE,SOCKET` rows of
 `lscpu -p`), 128 GiB RAM, 1500 GB (10^12-based) total disk and 600 GiB free.
 
@@ -33,8 +35,9 @@ Linux x86_64 with at least 32 physical cores (unique `CORE,SOCKET` rows of
 | Hetzner AX162-R | 48 | 256 GB | 2 × 1.92 TB NVMe | Yes |
 
 `builder.sh` refuses `DATA_DISK_SIZE_GB` below 1500. The cloud-init installs
-`/usr/local/sbin/aosp-builder-preflight`, which enforces those thresholds, and
-logs to `/var/log/aosp-builder-preflight.log`.
+`/usr/local/sbin/aosp-builder-preflight`, a shell copy of the same thresholds, and
+logs to `/var/log/aosp-builder-preflight.log`. Keep both in sync when the
+TypeScript preflight changes.
 
 Indicative us-central1 prices (2026-10): `c3d-highcpu-90` ~$0.82/h spot, Hyperdisk
 1500 GiB ~$100–150/month while it exists, snapshots ~$0.05/GB-month, Cloud NAT
@@ -115,7 +118,7 @@ workspaces at it with `--reference /aosp/mirror`.
 
 `make -C packages/os/android bootstrap` (`scripts/android/bootstrap-aosp.ts`)
 remains the canonical checkout for builds: it also materializes external projects
-that are not in the AOSP manifest.
+that are not in the AOSP manifest (for example the Pixel 11 Pro adevtool projects).
 `sync-aosp.sh` is for preparing builder hosts, mirrors and snapshots with only
 bash, git, `repo` and jq or python3. It enforces, before fetching, an HTTPS
 `manifest.url`, 40-hex `tagObject`/`commit`, and that `git ls-remote` still shows
@@ -124,7 +127,7 @@ the locked tag object and peeled commit; after `repo init`, that
 commit (or, in mirror mode, tag and commit in the bare repository) and every
 `requiredSourceFiles` path. Projects outside the AOSP manifest therefore fail
 closed in `sync-aosp.sh`. Check a finished checkout with
-`bun packages/os/scripts/android/verify-source-lock.ts --profile NAME --aosp-root DIR`.
+`node packages/os/scripts/android/verify-source-lock.ts --profile NAME --aosp-root DIR`.
 
 ## Evidence levels
 

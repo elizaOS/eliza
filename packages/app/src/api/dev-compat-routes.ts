@@ -1,7 +1,7 @@
 /**
  * Loopback-only dev observability route surface mounted under /api/dev/*.
  * handleDevCompatRoutes dispatches GET probes (stack, route-catalog,
- * console-log, voice/inference/device-resource metrics,
+ * cursor-screenshot, console-log, voice/inference/device-resource metrics,
  * boot-history, route-timings), gating each on a loopback origin plus route
  * authorization and short-circuiting to 404 when NODE_ENV is production. Returns
  * true once it owns a request, false to let the caller keep dispatching.
@@ -11,6 +11,8 @@ import {
   INFERENCE_TRACE_ID_PATTERN,
   type InferenceTurnSummary,
   type Log,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import { parseCanonicalInteger } from "@elizaos/core/protocol";
 import { ensureRouteAuthorized } from "./auth.ts";
@@ -37,6 +39,9 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 }
 function finiteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+export function formatScreenshotErrorDetail(text: string): string {
+  return truncateWellFormed(toWellFormedUnicode(text), 200);
 }
 function parseInferenceTimingLog(log: Log): InferenceTurnSummary | null {
   const body = asRecord(log.body);
@@ -142,6 +147,7 @@ function parseInferenceTimingLog(log: Log): InferenceTurnSummary | null {
  *
  * - `GET /api/dev/stack`
  * - `GET /api/dev/route-catalog`
+ * - `GET /api/dev/cursor-screenshot`
  * - `GET /api/dev/console-log`
  * - `GET /api/dev/voice-latency`
  * - `GET /api/dev/inference-timing`
@@ -197,6 +203,75 @@ export async function handleDevCompatRoutes(
     sendJsonResponse(res, 200, buildRouteCatalog());
     return true;
   }
+  // ── GET /api/dev/cursor-screenshot ──────────────────────────────────
+  if (method === "GET" && url.pathname === "/api/dev/cursor-screenshot") {
+    if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) {
+      sendJsonErrorResponse(res, 403, "loopback only");
+      return true;
+    }
+    if (!(await ensureRouteAuthorized(req, res, state))) {
+      return true;
+    }
+    const upstream = process.env.ELIZA_ELECTROBUN_SCREENSHOT_URL?.trim();
+    if (!upstream) {
+      sendJsonResponse(res, 404, {
+        error: "desktop screenshot server not enabled",
+        hint: "Desktop dev enables the screenshot server by default; use dev-platform or set ELIZA_ELECTROBUN_SCREENSHOT_URL. Disable with ELIZA_DESKTOP_SCREENSHOT_SERVER=0.",
+      });
+      return true;
+    }
+    // SSRF guard: reject non-loopback upstream URLs to prevent env-injection SSRF.
+    try {
+      const upstreamUrl = new URL(upstream);
+      const h = upstreamUrl.hostname.toLowerCase();
+      if (
+        h !== "127.0.0.1" &&
+        h !== "localhost" &&
+        h !== "[::1]" &&
+        h !== "::1"
+      ) {
+        sendJsonErrorResponse(res, 403, "screenshot upstream must be loopback");
+        return true;
+      }
+    } catch {
+      sendJsonErrorResponse(res, 400, "invalid screenshot upstream URL");
+      return true;
+    }
+    const token = process.env.ELIZA_SCREENSHOT_SERVER_TOKEN?.trim() ?? "";
+    const base = upstream.replace(/\/$/, "");
+    const target = `${base}/cursor-screenshot.png`;
+    try {
+      const r = await fetch(target, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        redirect: "error",
+      });
+      if (!r.ok) {
+        const text = await r.text().catch(() => "");
+        sendJsonResponse(
+          res,
+          r.status === 401 || r.status === 403 ? r.status : 502,
+          {
+            error: "upstream screenshot failed",
+            status: r.status,
+            detail: formatScreenshotErrorDetail(text),
+          },
+        );
+        return true;
+      }
+      const buf = Buffer.from(await r.arrayBuffer());
+      res.writeHead(200, {
+        "Content-Type": "image/png",
+        "Cache-Control": "no-store",
+      });
+      res.end(buf);
+      return true;
+    } catch (_err) {
+      sendJsonResponse(res, 502, {
+        error: "screenshot proxy error",
+      });
+      return true;
+    }
+  }
   // ── GET /api/dev/console-log ────────────────────────────────────────
   if (method === "GET" && url.pathname === "/api/dev/console-log") {
     if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) {
@@ -209,8 +284,8 @@ export async function handleDevCompatRoutes(
     const logPath = process.env.ELIZA_DESKTOP_DEV_LOG_PATH?.trim();
     if (!logPath || !isAllowedDevConsoleLogPath(logPath)) {
       sendJsonResponse(res, 404, {
-        error: "dev console log not configured",
-        hint: "Set ELIZA_DESKTOP_DEV_LOG_PATH to a desktop-dev-console.log file under the state directory.",
+        error: "desktop dev log not configured",
+        hint: "Run via dev-platform (dev:desktop); disable file with ELIZA_DESKTOP_DEV_LOG=0.",
       });
       return true;
     }

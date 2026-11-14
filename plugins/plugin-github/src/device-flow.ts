@@ -2,7 +2,8 @@
  * GitHub OAuth device-flow state for the guided GitHub connection step
  * (Settings → Coding Agents → GitHub).
  *
- * Port of the #15749 lifeops-dashboard primitive into the plugin route surface,
+ * Port of the #15749 lifeops-dashboard primitive
+ * (`packages/scripts/lifeops/github-device-login.ts`) into the plugin route surface,
  * with one addition: every flow is bound to the agent that started it
  * (`agentKey`), so on a multi-agent host one agent's runtime can never poll —
  * and therefore never receive the token of — a flow another agent started.

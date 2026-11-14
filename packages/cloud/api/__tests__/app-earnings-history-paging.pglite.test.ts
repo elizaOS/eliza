@@ -46,9 +46,6 @@ const { apps, appDeploymentStatusEnum, appReviewStatusEnum } = await import(
 const { appEarningsTransactions } = await import(
   "@elizaos/cloud-shared/db/schemas"
 );
-const { jobs, apiKeys, generations, usageRecords } = await import(
-  "@elizaos/cloud-shared/db/schemas"
-);
 const { Hono } = await import("hono");
 const { default: historyRoute } = await import(
   "../v1/apps/[id]/earnings/history/route.ts"
@@ -81,10 +78,6 @@ beforeAll(async () => {
       organizations,
       users,
       apps,
-      jobs,
-      apiKeys,
-      generations,
-      usageRecords,
       appEarningsTransactions,
     } as never,
     dbWrite as never,

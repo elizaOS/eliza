@@ -367,3 +367,68 @@ export async function consumeOAuthSuccessProof(
 
   return { ok: true, payload };
 }
+
+/**
+ * @deprecated Prefer {@link consumeOAuthSuccessProof}. HMAC-only check without
+ * session binding or one-time consume — retained for narrow unit tests of the
+ * signature codec only.
+ */
+export function verifyOAuthSuccessProof(
+  proof: string | null | undefined,
+): ConsumeOAuthSuccessProofResult {
+  const secret = resolveProofSecret();
+  if (!secret) return { ok: false, reason: "missing_secret" };
+  if (typeof proof !== "string" || !proof.trim()) {
+    return { ok: false, reason: "malformed" };
+  }
+  const trimmed = proof.trim();
+  if (trimmed.length > MAX_PROOF_CHARS) {
+    return { ok: false, reason: "malformed" };
+  }
+  const parts = trimmed.split(".");
+  if (parts.length !== 2) return { ok: false, reason: "malformed" };
+  const [payloadB64, signature] = parts;
+  if (!payloadB64 || !signature) return { ok: false, reason: "malformed" };
+  const expected = sign(secret, payloadB64);
+  if (!safeEqual(expected, signature)) {
+    return { ok: false, reason: "bad_signature" };
+  }
+  try {
+    const raw = JSON.parse(
+      b64urlDecode(payloadB64).toString("utf8"),
+    ) as Partial<OAuthSuccessProofPayload>;
+    if (
+      typeof raw.platform !== "string" ||
+      !raw.platform.trim() ||
+      typeof raw.organizationId !== "string" ||
+      !raw.organizationId.trim() ||
+      typeof raw.userId !== "string" ||
+      !raw.userId.trim() ||
+      typeof raw.exp !== "number" ||
+      !Number.isFinite(raw.exp) ||
+      typeof raw.nonce !== "string" ||
+      !raw.nonce.trim()
+    ) {
+      return { ok: false, reason: "malformed" };
+    }
+    if (raw.exp < Date.now()) return { ok: false, reason: "expired" };
+    const connectionId =
+      typeof raw.connectionId === "string" && raw.connectionId.trim()
+        ? raw.connectionId.trim()
+        : null;
+    return {
+      ok: true,
+      payload: {
+        platform: raw.platform.trim().toLowerCase(),
+        connectionId,
+        organizationId: raw.organizationId.trim(),
+        userId: raw.userId.trim(),
+        exp: raw.exp,
+        nonce: raw.nonce.trim(),
+      },
+    };
+  } catch {
+    // error-policy:J3 malformed proof payload is an explicit invalid result.
+    return { ok: false, reason: "malformed" };
+  }
+}

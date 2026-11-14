@@ -40,8 +40,6 @@ export interface GenerativeRouteCaller {
   admissionSnapshot?: InferenceAdmissionSnapshot;
   /** Verified identity metadata; deferred callers must consume it at the paid admission boundary. */
   credential?: InferenceCredentialCheck;
-  /** Repair this caller's cached funding standing after settlement. */
-  refreshAuthEntry?: () => void;
   appScopeId: string | null;
 }
 
@@ -227,7 +225,6 @@ export function getGenerativeOperationContext(
     requestId: c.get("requestId") ?? c.get("traceId") ?? crypto.randomUUID(),
     admissionSnapshot: caller.admissionSnapshot,
     credential: caller.credential,
-    refreshAuthEntry: caller.refreshAuthEntry,
     ...options,
     executionCtx: getGenerativeExecutionContext(c),
   };
@@ -345,9 +342,6 @@ export async function admitFlatGenerativeOperation(params: {
   idempotencyKey?: string;
   admissionSnapshot?: InferenceAdmissionSnapshot;
   credential?: InferenceCredentialCheck;
-  refreshAuthEntry?: () => void;
-  /** Join the lease and dispatch for an operation that outlives the request. */
-  commitLeaseAtDispatch?: boolean;
   /** Use only when the caller must invoke the returned dispatch marker. */
   atomicProviderBoundary?: boolean;
 }): Promise<OrganizationInferenceAdmission> {
@@ -403,9 +397,7 @@ export async function admitFlatGenerativeOperation(params: {
       flatCost: params.cost,
       admissionSnapshot: params.admissionSnapshot,
       ...(params.credential ? { credential: params.credential } : {}),
-      refreshAuthEntry: params.refreshAuthEntry,
       atomicProviderBoundary: params.atomicProviderBoundary === true,
-      commitLeaseAtDispatch: params.commitLeaseAtDispatch === true,
     });
   } catch (error) {
     if (
@@ -675,7 +667,6 @@ export async function requireGenerativeRouteCaller(
       authSource: "combined_cache",
       admissionSnapshot: resolution.ctx.admission,
       credential: resolution.credential,
-      refreshAuthEntry: resolution.refreshEntry,
       appScopeId:
         "appScopeId" in resolution.ctx ? resolution.ctx.appScopeId : null,
     };

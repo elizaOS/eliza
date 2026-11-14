@@ -9,7 +9,7 @@ import { testOutputPath } from "../../../scripts/lib/test-output.ts";
  * missing measurements.
  *
  * Example:
- *   bun suites/mobile-resource/lab-artifacts.mjs \
+ *   node suites/mobile-resource/lab-artifacts.mjs \
  *     --input=test-results/evidence/12072-lab \
  *     --out=suites/mobile-resource/results/lab \
  *     --fail-on-gaps

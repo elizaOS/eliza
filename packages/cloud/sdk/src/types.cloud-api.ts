@@ -307,19 +307,14 @@ export interface SubscriptionCheckoutRequest {
    * `hosted` (default): redirect this browser to Stripe Checkout.
    * `embedded`: mount Stripe Embedded Checkout in the app (card only, never redirects).
    * `shared`: a hosted link for someone else to pay without signing in.
-   * `mobile`: a hosted page opened by a first-party native app that authenticates
-   * with its own `eliza_mobile_` key. Required for, and only accepted from, such a
-   * key; the page returns to the app's registered `/billing/return` address.
    * Switching plan or presentation closes the organization's previous unpaid checkout.
    */
-  presentation?: "hosted" | "embedded" | "shared" | "mobile";
+  presentation?: "hosted" | "embedded" | "shared";
 }
 
 /**
  * `open`: redirect to `checkoutUrl` (https://checkout.stripe.com only), or for
- * `presentation: "embedded"` mount `clientSecret` with `publishableKey`. A
- * `mobile` checkout opens `checkoutUrl` in the system browser and confirms with
- * `sessionId` when the app resumes on its billing return.
+ * `presentation: "embedded"` mount `clientSecret` with `publishableKey`.
  * `completed`: the payment is captured and its subscription is still live.
  * `expired`: the checkout expired or was replaced; mint a new idempotency key.
  * `stale_intent`: the key already bought a subscription that has ended; mint a new key.
@@ -351,15 +346,6 @@ export type SubscriptionCheckoutResult =
       expiresAt: string;
     }
   | {
-      status: "open";
-      presentation: "mobile";
-      commandId: string;
-      checkoutUrl: string;
-      /** Pass to `confirmSubscriptionCheckout` when the app resumes. */
-      sessionId: string;
-      expiresAt: string;
-    }
-  | {
       status: "completed" | "expired" | "stale_intent";
       commandId: string;
       checkoutUrl: null;
@@ -368,86 +354,10 @@ export type SubscriptionCheckoutResponse =
   ApiSuccessEnvelope<SubscriptionCheckoutResult>;
 /** A single-use Stripe Customer Portal URL (https://billing.stripe.com only). */
 export type SubscriptionPortalResponse = ApiSuccessEnvelope<{ url: string }>;
-/** The organization's plan as Cloud serves it right after a confirmed checkout. */
-export interface SubscriptionCheckoutEntitlementDto {
-  plan: {
-    id: string;
-    name: string;
-    status: "active" | "trialing" | "past_due" | "canceled" | "none";
-  };
-  /** What currently serves the plan: a paid subscription, a grant code, or nothing. */
-  source: "subscription" | "grant" | "none";
-  /** End of the current effective window (ISO 8601), when one is known. */
-  effectiveUntil: string | null;
-}
-/**
- * `data` is the settled subscription. `entitlement` sits beside it and is null
- * when the subscription committed but its plan summary could not be read; read
- * the entitlement route then, the purchase itself did not fail.
- */
 export type SubscriptionCheckoutConfirmationResponse = ApiSuccessEnvelope<{
   subscriptionId: string | null;
   replayed: boolean;
-}> & { entitlement: SubscriptionCheckoutEntitlementDto | null };
-
-/**
- * Body of `POST /api/v1/app-auth/mobile/renew`: a fresh PKCE binding for the
- * native client the presented `eliza_mobile_` key was issued to, under the
- * same field rules as the `mobile_pkce` sign-in approval.
- */
-export interface MobileCredentialRenewalRequest {
-  clientId: string;
-  environment: "staging" | "production";
-  redirectUri: string;
-  state: string;
-  codeChallenge: string;
-  codeChallengeMethod: "S256";
-  deviceName?: string;
-}
-/**
- * An authorization code of the same shape the sign-in approval returns. Exchange
- * it on `/api/v1/app-auth/mobile/token`, acknowledge the new key on
- * `/api/v1/app-auth/mobile/ack`, then revoke the old key with
- * `DELETE /api/v1/api-keys/current`, sending the new key's `credentialId` in
- * `X-Renewed-Credential-Id`. Without that header the request is a sign-out
- * that also ends the new key, unless it arrives within two minutes of the
- * acknowledgement. After the acknowledgement use only the new key: renewing
- * again with the old one ends the whole sign-in.
- */
-export interface MobileCredentialRenewalResponse {
-  success: true;
-  code: string;
-  codeType: "mobile_app_auth_code";
-  /** ISO 8601 deadline for the exchange and the acknowledgement. */
-  expiresAt: string;
-  expiresIn: number;
-}
-/**
- * `code` of a refused renewal, by HTTP status:
- *  - 400 `validation_error`: malformed body or binding;
- *  - 401 `authentication_required`: the key is invalid, expired, revoked or already
- *    renewed, or its client was disabled or registered differently. Sign in again;
- *  - 403 `access_denied`: the owner is inactive or the key left the owner's organization;
- *  - 409 `renewal_window_closed`: the sign-in reached its absolute cap (180 days), or
- *    the key already lives until that cap. Sign in again when it expires;
- *  - 429 `rate_limit_exceeded` and 503 `service_unavailable`: retry later.
- */
-export type MobileCredentialRenewalRefusalCode =
-  | "validation_error"
-  | "authentication_required"
-  | "access_denied"
-  | "renewal_window_closed"
-  | "rate_limit_exceeded"
-  | "service_unavailable";
-/**
- * `code` of a request whose session is valid but whose account could not be
- * prepared on first sign-in: 503 `account_not_ready` is retryable (see
- * `retryAfterSeconds`), 409 `identity_conflict` is not. Neither means the
- * session was revoked.
- */
-export type AccountProvisioningFailureCode =
-  | "account_not_ready"
-  | "identity_conflict";
+}>;
 
 export type AgentSandboxStatus =
   | "pending"

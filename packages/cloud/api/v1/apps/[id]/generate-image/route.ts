@@ -6,7 +6,7 @@ import {
 } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { handleGenerateImagePOST } from "../../../generate-image/route";
+import { handleGenerateImagePOST } from "@/api/v1/generate-image/route";
 
 const app = new Hono<AppEnv>();
 

@@ -603,7 +603,7 @@ describe("HealthDomain sync after a disconnect", () => {
     for (const key of HEALTH_ENV_KEYS) {
       delete process.env[key];
     }
-    vi.unstubAllGlobals();
+    delete process.env.ELIZA_MOCK_STRAVA_BASE;
     if (oauthDir) fs.rmSync(oauthDir, { recursive: true, force: true });
     oauthDir = null;
     await new Promise<void>((resolve) =>
@@ -645,18 +645,7 @@ describe("HealthDomain sync after a disconnect", () => {
     );
     const address = server.address();
     if (!address || typeof address === "string") throw new Error("no port");
-    // Send the connector's Strava API calls to the loopback server.
-    const stravaApi = "https://www.strava.com/api/v3";
-    const realFetch = globalThis.fetch;
-    vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = input instanceof Request ? input.url : String(input);
-      return url.startsWith(stravaApi)
-        ? realFetch(
-            `http://127.0.0.1:${address.port}${url.slice(stravaApi.length)}`,
-            init,
-          )
-        : realFetch(input, init);
-    });
+    process.env.ELIZA_MOCK_STRAVA_BASE = `http://127.0.0.1:${address.port}`;
 
     let stored: LifeOpsConnectorGrant | null = grant;
     const repository = {

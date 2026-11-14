@@ -1,7 +1,14 @@
-/** iMessage account id normalization and default account selection. */
+/**
+ * Static iMessage account policy compatibility tests; stateful pairing is
+ * intentionally excluded because the live service owns that handshake.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { normalizeAccountId, resolveDefaultIMessageAccountId } from "./accounts";
+import {
+  isIMessageUserAllowed,
+  normalizeAccountId,
+  resolveDefaultIMessageAccountId,
+} from "./accounts";
 
 describe("iMessage canonical account authoring facade", () => {
   it("preserves lowercase normalization and shared default selection", () => {
@@ -12,5 +19,37 @@ describe("iMessage canonical account authoring facade", () => {
       },
     } as unknown as IAgentRuntime;
     expect(resolveDefaultIMessageAccountId(runtime)).toBe("alpha");
+  });
+});
+
+describe("isIMessageUserAllowed", () => {
+  it("fails closed for the stateful pairing policy", () => {
+    expect(
+      isIMessageUserAllowed({
+        identifier: "+14155550123",
+        accountConfig: { dmPolicy: "pairing" },
+        isGroup: false,
+      })
+    ).toBe(false);
+  });
+
+  it("preserves static open and allowlist evaluation", () => {
+    expect(
+      isIMessageUserAllowed({
+        identifier: "+14155550123",
+        accountConfig: { dmPolicy: "open" },
+        isGroup: false,
+      })
+    ).toBe(true);
+    expect(
+      isIMessageUserAllowed({
+        identifier: "+14155550123",
+        accountConfig: {
+          dmPolicy: "allowlist",
+          allowFrom: ["+14155550123"],
+        },
+        isGroup: false,
+      })
+    ).toBe(true);
   });
 });

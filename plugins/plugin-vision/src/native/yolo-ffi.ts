@@ -10,6 +10,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
+import { resolveAliasedEnvValue } from "@elizaos/host/protocol";
 
 const MODULE_TAG = "[yolo-ffi]";
 
@@ -39,7 +40,8 @@ function defaultLibraryPath(): string {
 
 export function defaultYoloWeightsPath(): string {
   const stateDir =
-    process.env.ELIZA_STATE_DIR?.trim() || path.join(os.homedir(), ".eliza");
+    resolveAliasedEnvValue("ELIZA_STATE_DIR") ??
+    path.join(os.homedir(), ".eliza");
   return (
     process.env.ELIZA_YOLO_GGUF ??
     path.join(stateDir, "models", "vision", "yolov8n.gguf")

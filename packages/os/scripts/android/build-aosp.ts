@@ -27,12 +27,14 @@ import { resolveElizaSourceRoot } from "../eliza-source.ts";
 import {
   aospLockPath,
   assertExtractedVendorTree,
+  assertGeneratedVendorTree,
   assertPinnedAospCheckout,
   loadAospLock,
   verifyProprietaryArchive,
 } from "./bootstrap-aosp.ts";
 import { loadBrandFromArgv } from "./brand-config.ts";
 import { LAUNCHER_DIRECTORY, stageImageLauncher } from "./image-launcher.ts";
+import { provisionCuttlefishE1 } from "./provision-cuttlefish-e1.ts";
 import { withSisoCompatibility } from "./siso-env.ts";
 import {
   admitBrowserVendor,
@@ -418,7 +420,7 @@ export function parseSubArgs(argv) {
       i += 1;
     } else if (arg === "-h" || arg === "--help") {
       console.log(
-        "Usage: bun scripts/android/build-aosp.ts [--brand-config <PATH>] --aosp-root <AOSP_ROOT> [--source-vendor <VENDOR_DIR>] [--vendor-archive <FACTORY_ARCHIVE>] [--jobs <N>] [--skip-build] [--allow-development-browser] [--rebuild-launcher-apk] [--launcher-apk <SIGNED_APK> (--launcher-descriptor <REVIEWED_JSON> | --development-launcher) [--source-commit <COMMIT>] [--aapt <PATH>] [--apksigner <PATH>]] [--launch] [--boot-validate]",
+        "Usage: node scripts/android/build-aosp.ts [--brand-config <PATH>] --aosp-root <AOSP_ROOT> [--source-vendor <VENDOR_DIR>] [--vendor-archive <FACTORY_ARCHIVE>] [--jobs <N>] [--skip-build] [--allow-development-browser] [--rebuild-launcher-apk] [--launcher-apk <SIGNED_APK> (--launcher-descriptor <REVIEWED_JSON> | --development-launcher) [--source-commit <COMMIT>] [--aapt <PATH>] [--apksigner <PATH>]] [--launch] [--boot-validate]",
       );
       process.exit(0);
     } else if (arg.startsWith("-")) {
@@ -468,7 +470,8 @@ export function assertBuildHost({
       `${brand.distroName} AOSP builds require a Linux x86_64 builder.`,
     );
   }
-  if (launch && !fs.existsSync(kvmPath)) {
+  const usesRiscvTcg = brand.productName.includes("riscv64");
+  if (launch && !usesRiscvTcg && !fs.existsSync(kvmPath)) {
     throw new Error(`${brand.distroName} Cuttlefish launch requires /dev/kvm.`);
   }
 }
@@ -543,7 +546,7 @@ const CUTTLEFISH_GPU_MODES = new Set([
   "none",
 ]);
 
-export function resolveCuttlefishGpuMode(env = process.env) {
+export function resolveCuttlefishGpuMode(brand, env = process.env) {
   const configured = env.ELIZA_CUTTLEFISH_GPU_MODE?.trim();
   if (configured) {
     if (!CUTTLEFISH_GPU_MODES.has(configured)) {
@@ -553,11 +556,13 @@ export function resolveCuttlefishGpuMode(env = process.env) {
     }
     return configured;
   }
-  return "gfxstream";
+  return brand.productName.includes("riscv64")
+    ? "guest_swiftshader"
+    : "gfxstream";
 }
 
 export function cuttlefishLaunchCommand(brand, env = process.env) {
-  const gpuMode = resolveCuttlefishGpuMode(env);
+  const gpuMode = resolveCuttlefishGpuMode(brand, env);
   const rendererFeatures = env.ELIZA_CUTTLEFISH_GPU_RENDERER_FEATURES?.trim();
   if (
     rendererFeatures &&
@@ -591,7 +596,7 @@ function launchCuttlefish(aospRoot, brand) {
 /**
  * Re-build the image APK with brand AOSP env flags so it picks up
  * BuildConfig.AOSP_BUILD=true and the agent bundle is produced with
- * ELIZA_AOSP_BUILD=1. The output under vendor/<brand>/apps is unsigned:
+ * <BRAND>_AOSP_BUILD=1. The output under vendor/<brand>/apps is unsigned:
  * sign it, then stage it with stageLauncherApk (image-launcher.ts). It is
  * installed as a nonprivileged product launcher, never a priv-app.
  */
@@ -603,8 +608,9 @@ export function rebuildLauncherApk(brand, browserPin) {
       ? bindBrowserCertificate(process.env, browserPin)
       : process.env),
     ELIZAOS_OS_REPO_ROOT: repoRoot,
-    ELIZA_APP_ID: brand.packageName,
-    ELIZA_AOSP_BUILD: "1",
+    [`${brand.envPrefix}_APP_ID`]: brand.packageName,
+    [`${brand.envPrefix}_AOSP_BUILD`]: "1",
+    [`${brand.envPrefix}_GRADLE_AOSP_BUILD`]: "true",
   };
   const [cmd, ...rest] = brand.buildAndroidSystemCmd;
   run(cmd, rest, { cwd: elizaRoot, env });
@@ -704,6 +710,12 @@ export async function main(argv = process.argv.slice(2)) {
     aospRoot: args.aospRoot,
     archivePath,
   });
+  if (brand.aospDeviceOverlay) {
+    provisionCuttlefishE1({
+      aospRoot: args.aospRoot,
+      lockPath: path.resolve(repoRoot, brand.aospDeviceOverlay),
+    });
+  }
   if (lock?.proprietaryArchive) {
     if (!archivePath) {
       throw new Error(
@@ -712,6 +724,16 @@ export async function main(argv = process.argv.slice(2)) {
     }
     await verifyProprietaryArchive(lock, archivePath);
     assertExtractedVendorTree(args.aospRoot, lock);
+  }
+  if (lock?.generatedVendor) {
+    assertGeneratedVendorTree(args.aospRoot, lock);
+    // Fail closed when the generated tree was prepared under different
+    // ELIZAOS_GRIZZLY_* settings than this build is running with — otherwise
+    // renderer/probe "A/B images" silently build from the wrong tree.
+    const { assertPreparedTreeMatchesEnv } = await import(
+      "./prepare-grizzly.ts"
+    );
+    assertPreparedTreeMatchesEnv(args.aospRoot);
   }
 
   const brandConfigArgs = ["--brand-config", brand.brandConfigPath];

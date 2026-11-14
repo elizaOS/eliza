@@ -27,7 +27,7 @@
  * Skips only when credentials are absent. Configured-provider failures exit 1.
  *
  * Run:
- *   bun packages/scripts/provider-smokes/real-service-voice-e2e.ts
+ *   node packages/scripts/provider-smokes/real-service-voice-e2e.ts
  *   [--out <dir>]   # also write question.mp3 / reply.mp3 there
  */
 

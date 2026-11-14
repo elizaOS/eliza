@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
@@ -9,7 +8,6 @@ import {
   rmSync,
   statSync,
   symlinkSync,
-  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -154,87 +152,4 @@ test("failed database rotation retains both recovery keys and releases its lease
     before.encryptionKey,
   );
   assert.equal(existsSync(`${before.databasePath}.lock`), false);
-});
-
-test("interrupted config publication retains the committed key and stale lease", (t) => {
-  const f = fixture(t);
-  const { configPath: path } = initializeResearchConfiguration(f.options);
-  const { config, store, close } = openConfiguredResearchStore({
-    path,
-    openStore,
-  });
-  store.dataset(actor, {
-    expectedRevision: 0,
-    data: { study: "fixture", participants: [], tasks: [], coverage: [] },
-  });
-  close();
-  const configurationModule = new URL(
-    "./research-configuration.mjs",
-    import.meta.url,
-  ).href;
-  const storeModule = new URL("./research-store.mjs", import.meta.url).href;
-  const child = spawnSync(
-    process.execPath,
-    [
-      "--input-type=module",
-      "-e",
-      `
-      const [configurationModule, storeModule, path] = process.argv.slice(1);
-      const { rotateResearchConfiguration } = await import(configurationModule);
-      const { openResearchStore } = await import(storeModule);
-      rotateResearchConfiguration({
-        path,
-        actor: { name: "fixture_operator", role: "admin" },
-        openStore(options) {
-          const store = openResearchStore({
-            ...options,
-            measurementPolicy: { validateDataset() {}, report: (data) => data },
-          });
-          return {
-            rotateKey: store.rotateKey,
-            close() {
-              store.close();
-              process.exit(73);
-            },
-          };
-        },
-      });
-    `,
-      configurationModule,
-      storeModule,
-      path,
-    ],
-    { encoding: "utf8", timeout: 10000 },
-  );
-  assert.ifError(child.error);
-  assert.equal(child.signal, null);
-  assert.equal(child.status, 73, child.stderr);
-
-  const lock = `${config.databasePath}.lock`;
-  const previous = `${path}.rotation-previous`;
-  const next = `${path}.rotation-next`;
-  assert.throws(() => openConfiguredResearchStore({ path: next, openStore }), {
-    code: "EEXIST",
-  });
-  assert.equal(readFileSync(path, "utf8"), readFileSync(previous, "utf8"));
-  assert.equal(statSync(next).mode & 0o777, 0o600);
-
-  // The fixture process is confirmed gone. Recovery does not steal a live lease.
-  unlinkSync(lock);
-  for (const old of [path, previous]) {
-    assert.throws(() => openConfiguredResearchStore({ path: old, openStore }));
-    assert.equal(existsSync(lock), false);
-  }
-  const recovered = openConfiguredResearchStore({ path: next, openStore });
-  try {
-    assert.equal(recovered.store.report(actor).revision, 1);
-    assert.ok(
-      recovered.store
-        .audit(actor)
-        .some((entry) => entry.action === "rotate-storage-key"),
-    );
-  } finally {
-    recovered.close();
-  }
-  assert.equal(existsSync(lock), false);
 });

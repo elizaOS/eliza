@@ -79,47 +79,4 @@ public class ReminderQuestionTest {
   engine.schedule("plain","Synthetic reminder","Owned fixture",System.currentTimeMillis()+100,null,null);String occurrence=engine.read("plain").getString("occurrenceId");while(System.currentTimeMillis()<engine.read("plain").getLong("at"))Thread.sleep(1);engine.dispatch(new Intent(config.remindAction).putExtra(config.idExtra,"plain").putExtra(config.occurrenceExtra,occurrence));
   for(android.service.notification.StatusBarNotification notice:context.getSystemService(NotificationManager.class).getActiveNotifications())if(config.notificationTag("plain").equals(notice.getTag())){assertEquals(2,notice.getNotification().actions.length);context.getSystemService(NotificationManager.class).cancel(notice.getTag(),0);return;}fail("Reminder missing");
  }
- /** Android 12 and later: only a host that already holds the exact-alarm capability is armed exactly. */
- @Test @Config(sdk=31,manifest=Config.NONE) public void heldExactAlarmCapabilityArmsOnTimeAndOtherHostsStayInexact()throws Exception{
-  Context context=RuntimeEnvironment.getApplication();org.robolectric.shadows.ShadowAlarmManager alarms=org.robolectric.Shadows.shadowOf(context.getSystemService(AlarmManager.class));
-  try{
-   for(boolean held:new boolean[]{false,true}){
-    org.robolectric.shadows.ShadowAlarmManager.setCanScheduleExactAlarms(held);
-    String name="exact"+UUID.randomUUID().toString().replace("-","");ReminderEngine engine=ReminderEngine.get(context,configuration(name,false),c->new Memory(name));
-    long at=System.currentTimeMillis()+3_600_000+(held?1000:0);engine.schedule("reminder","Synthetic reminder","Owned fixture",at,null,null);
-    assertEquals("The record makes no alarm-clock promise","inexact",engine.read("reminder").getString("mode"));
-    org.robolectric.shadows.ShadowAlarmManager.ScheduledAlarm armed=null;for(org.robolectric.shadows.ShadowAlarmManager.ScheduledAlarm alarm:alarms.getScheduledAlarms())if(alarm.getTriggerAtMs()==at)armed=alarm;
-    assertNotNull(armed);assertTrue(armed.isAllowWhileIdle());
-    assertEquals(held?org.robolectric.shadows.ShadowAlarmManager.WINDOW_EXACT:org.robolectric.shadows.ShadowAlarmManager.WINDOW_HEURISTIC,armed.getWindowLengthMs());
-   }
-  }finally{org.robolectric.shadows.ShadowAlarmManager.setCanScheduleExactAlarms(false);}
- }
- @Test public void dueReminderUsesTheHostIconAndKeepsThePlatformGlyphWithoutOne()throws Exception{
-  Context context=RuntimeEnvironment.getApplication();
-  for(int icon:new int[]{0,android.R.drawable.ic_dialog_info}){
-   String name="icon"+UUID.randomUUID().toString().replace("-","");ReminderConfiguration plain=configuration(name,false);
-   ReminderConfiguration config=new ReminderConfiguration(plain.envelopeName,plain.legacyName,plain.tapSlot,plain.channelId,plain.channelName,plain.channelDescription,plain.publicTitle,plain.remindAction,plain.decisionAction,plain.openAction,plain.alarmUriPrefix,plain.decisionUriPrefix,plain.tapUriPrefix,plain.idExtra,plain.occurrenceExtra,plain.decisionExtra,plain.notificationTagPrefix,plain.receiverClass,plain.activityClass,null,icon);
-   assertEquals("The icon is presentation, not installed identity",plain.fingerprint(),config.fingerprint());
-   ReminderEngine engine=ReminderEngine.get(context,config,c->new Memory(name));
-   engine.schedule("reminder","Synthetic reminder","Owned fixture",System.currentTimeMillis()+3_600_000,null,null);deliver(context,engine,config,"reminder");
-   Notification notice=null;for(android.service.notification.StatusBarNotification posted:context.getSystemService(NotificationManager.class).getActiveNotifications())if(config.notificationTag("reminder").equals(posted.getTag()))notice=posted.getNotification();
-   assertNotNull(notice);int expected=icon!=0?icon:android.R.drawable.ic_popup_reminder;
-   assertEquals(expected,notice.getSmallIcon().getResId());assertEquals(expected,notice.publicVersion.getSmallIcon().getResId());
-  }
- }
- @org.robolectric.annotation.Implements(AlarmManager.class)
- public static class WithdrawnExactAlarm extends org.robolectric.shadows.ShadowAlarmManager {
-  static int attempted;
-  @org.robolectric.annotation.Implementation protected boolean canScheduleExactAlarms(){return true;}
-  @org.robolectric.annotation.Implementation protected void setExactAndAllowWhileIdle(int type,long trigger,PendingIntent operation){attempted++;throw new SecurityException("Controlled capability withdrawal after check");}
- }
- @Test @Config(sdk=31,manifest=Config.NONE,shadows=WithdrawnExactAlarm.class) public void withdrawnExactAlarmCapabilityFallsBackWithoutLosingTheReminder()throws Exception{
-  Context context=RuntimeEnvironment.getApplication();String name="withdrawn"+UUID.randomUUID().toString().replace("-","");
-  WithdrawnExactAlarm.attempted=0;ReminderEngine engine=ReminderEngine.get(context,configuration(name,false),c->new Memory(name));
-  long at=System.currentTimeMillis()+3_600_000;engine.schedule("reminder","Synthetic reminder","Owned fixture",at,null,null);
-  assertEquals(1,WithdrawnExactAlarm.attempted);assertEquals("inexact",engine.read("reminder").getString("mode"));
-  org.robolectric.shadows.ShadowAlarmManager.ScheduledAlarm scheduled=null;
-  for(org.robolectric.shadows.ShadowAlarmManager.ScheduledAlarm alarm:org.robolectric.Shadows.shadowOf(context.getSystemService(AlarmManager.class)).getScheduledAlarms())if(alarm.getTriggerAtMs()==at)scheduled=alarm;
-  assertNotNull(scheduled);assertTrue(scheduled.isAllowWhileIdle());assertEquals(org.robolectric.shadows.ShadowAlarmManager.WINDOW_HEURISTIC,scheduled.getWindowLengthMs());
- }
 }

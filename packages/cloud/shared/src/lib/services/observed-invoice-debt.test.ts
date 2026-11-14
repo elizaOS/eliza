@@ -118,9 +118,7 @@ async function run(options: {
     port: address.port,
     protocol: "http",
     maxNetworkRetries: 0,
-    // The absolute recovery budget must expire before Stripe's per-request
-    // timeout, including when the deadline fixture uses more setup margin.
-    timeout: Math.max(1000, (options.deadlineMs ?? 0) + 1000),
+    timeout: 1000,
     httpClient: Stripe.createFetchHttpClient(
       createStripeRecoveryFetch(Date.now() + (options.deadlineMs ?? 5000)),
     ),
@@ -327,7 +325,7 @@ test("a failed sibling waits for all outstanding reads before returning", async 
 test("one absolute deadline bounds stalled original reads and prevents later capture reads", async () => {
   const started = Date.now();
   await run({
-    deadlineMs: 2000,
+    deadlineMs: 300,
     transform: (path, _count, body) =>
       path === "/v1/invoices/in_a" ? new Promise<never>(() => {}) : body,
     check: async (pending, requests) => {
@@ -336,7 +334,7 @@ test("one absolute deadline bounds stalled original reads and prevents later cap
       });
       expect(requests.filter((r) => r.path === "/v1/invoices/in_a")).toHaveLength(1);
       expect(requests.filter((r) => r.path === "/v1/charges/ch_collect")).toHaveLength(2);
-      expect(Date.now() - started).toBeLessThan(5000);
+      expect(Date.now() - started).toBeLessThan(1500);
     },
   });
 });

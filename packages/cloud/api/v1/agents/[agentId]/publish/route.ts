@@ -17,14 +17,13 @@ import {
   NotFoundError,
   ValidationError,
 } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
-import { getCloudDeployment } from "@elizaos/cloud-shared/lib/deployment/cloud-deployment";
 import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
 import { CreatorMonetizationRetiredError } from "@elizaos/cloud-shared/lib/services/creator-monetization-retirement";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { assertOrgMembership } from "../../../../src/middleware/org-membership";
+import { assertOrgMembership } from "@/api-app/middleware/org-membership";
 
 const app = new Hono<AppEnv>();
 
@@ -94,7 +93,7 @@ app.post("/", async (c) => {
       userId: user.id,
     });
 
-    const baseUrl = c.env.NEXT_PUBLIC_APP_URL || getCloudDeployment().appOrigin;
+    const baseUrl = c.env.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
 
     if (agent.is_public) {
       return c.json({

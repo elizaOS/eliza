@@ -169,7 +169,6 @@ if [[ ( "${PROFILE}" == "local-cerebras" || "${PROFILE}" == "local-eliza1" ) && 
   fi
   PYTHONPATH="${ROOT_DIR}/suites/voiceagentbench:${ROOT_DIR}/suites/lifeops-bench:${PYTHONPATH:-}" python3 - "${GENERATED_DIR}" "${GENERATED_DATASET}" <<'PY'
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -200,7 +199,7 @@ manifest.write_text(
             "samples": [
                 {
                     "id": task.task_id,
-                    "audioPath": os.path.relpath(audio_path, manifest.parent),
+                    "audioPath": str(audio_path),
                     "expectedText": expected_text,
                 }
             ],

@@ -49,10 +49,6 @@ export interface TriggerTaskMetadata {
 		| TriggerRunRecord[];
 }
 export interface TriggerSummary {
-	/** Present while the saved automation is in Recently deleted. */
-	removedAt?: number;
-	/** Digest of the complete saved task for conditional mutations. */
-	revision?: string;
 	id: UUID;
 	taskId: UUID;
 	displayName: string;

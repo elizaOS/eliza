@@ -7,7 +7,6 @@ import {
   nativeSignInCodeStarted,
   nativeSignInGoogleOutcome,
   nativeSignInReadiness,
-  nativeSignInReadinessChanged,
   nativeSignInVerified,
   normalizeNativeSignInCode,
   validNativeSignInEmail,
@@ -174,11 +173,7 @@ export class NativeCloudSignInController<E extends string> {
     void this.refreshReadiness(refreshNegative);
     if (!this.port.addListener) return;
     const listen = (
-      event:
-        | "signInCompleted"
-        | "signInIncomplete"
-        | "signInMfaRequired"
-        | "signInReadinessChanged",
+      event: "signInCompleted" | "signInIncomplete" | "signInMfaRequired",
       callback: (value: unknown) => void,
     ) => {
       void this.port
@@ -204,18 +199,6 @@ export class NativeCloudSignInController<E extends string> {
     });
     listen("signInIncomplete", (value) => {
       this.reportIncomplete(value);
-    });
-    // `status()` answers from the native cache at once and measures a method that was not ready
-    // behind that answer. The measured change arrives here, so the chooser shows it without a retry.
-    listen("signInReadinessChanged", (value) => {
-      const change = nativeSignInReadinessChanged(
-        value,
-        this.owner.environment,
-      );
-      if (!change || this.snapshot.step.kind !== "methods") return;
-      // The measurement is newer than any lookup still on its way, which would answer from the cache.
-      ++this.probe;
-      this.publish({ readiness: change.readiness });
     });
   }
 

@@ -1,4 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 import { createStdioBridge } from "../shared/stdio-bridge.ts";
 import {
   type AndroidCoreRouteDeps,
@@ -58,7 +59,7 @@ export function startLocalAgentServer(
             : undefined,
           expectedToken:
             env === process.env
-              ? process.env.ELIZA_API_TOKEN?.trim()
+              ? readAliasedEnv("ELIZA_API_TOKEN")
               : env.ELIZA_API_TOKEN,
           ephemeralStreams: coreRoutes?.ephemeralAgentEventStreams,
         }),

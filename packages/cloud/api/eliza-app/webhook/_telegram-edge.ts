@@ -48,7 +48,7 @@ import {
   isPersonalTelegramDeliveryEpoch1CompatEnabled,
   PERSONAL_TELEGRAM_DELIVERY_EPOCH,
   PERSONAL_TELEGRAM_DELIVERY_PATH,
-} from "../../src/personal-telegram-delivery";
+} from "@/api-app/personal-telegram-delivery";
 
 const MAX_ATTEMPTS = 3;
 const VOICE_MAX_ATTEMPTS = 2;

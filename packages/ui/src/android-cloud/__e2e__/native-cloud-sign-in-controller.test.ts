@@ -48,39 +48,6 @@ describe("shared native sign-in owner", () => {
     f.controller.dispose();
   });
 
-  it("shows a method the native side measured behind its cached answer, without a retry", async () => {
-    const listeners = new Map<string, (value: unknown) => void>();
-    const f = fixture({
-      // The cached answer: Google was not ready when it was last measured.
-      status: async () => ({ inApp: true, methodsKnown: true, email: true, google: false, phone: false }),
-      addListener: async (event, receive) => { listeners.set(event, receive); return { remove: async () => { listeners.delete(event); } }; },
-    });
-    f.controller.start();
-    await vi.waitFor(() => expect(f.controller.getSnapshot().readiness).toMatchObject({ email: true, google: false }));
-    const changed = listeners.get("signInReadinessChanged");
-    expect(changed).toBeTypeOf("function");
-    // Another deployment's event and a malformed one change nothing.
-    changed?.({ environment: "staging", inApp: true, methodsKnown: true, email: true, google: true, phone: false });
-    changed?.({ environment: "production", inApp: true, methodsKnown: true, email: true, google: "yes", phone: false });
-    expect(f.controller.getSnapshot().readiness).toMatchObject({ google: false });
-    changed?.({ environment: "production", active: false, inApp: true, methodsKnown: true, email: true, google: true, phone: false });
-    expect(f.controller.getSnapshot().readiness).toMatchObject({ email: true, google: true });
-    // A lookup that is still on its way answers from the older cache: the measurement wins.
-    let late!: (value: unknown) => void;
-    f.port.status = () => new Promise(resolve => { late = resolve; });
-    const lookup = f.controller.refreshReadiness();
-    changed?.({ environment: "production", inApp: true, methodsKnown: true, email: true, google: true, phone: true });
-    late({ inApp: true, methodsKnown: true, email: true, google: false, phone: false });
-    await lookup;
-    expect(f.controller.getSnapshot().readiness).toMatchObject({ google: true, phone: true });
-    // A code step is not a chooser: the event does not touch it.
-    await f.controller.startEmail("owner@example.invalid");
-    const during = f.controller.getSnapshot().readiness;
-    changed?.({ environment: "production", inApp: true, methodsKnown: true, email: true, google: false, phone: false });
-    expect(f.controller.getSnapshot().readiness).toBe(during);
-    f.controller.dispose();
-  });
-
   it("cancels a held native call promptly and ignores its late success", async () => {
     let answer!: (value: unknown) => void;
     const f = fixture({ startGoogle: () => new Promise(resolve => { answer = resolve; }) });

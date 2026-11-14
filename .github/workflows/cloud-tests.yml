@@ -116,7 +116,7 @@ jobs:
       - uses: ./.github/actions/cloud-setup-test-env
       - name: Setup Java for Quint verification
         if: ${{ !inputs.source_checks_in_canonical_ci }}
-        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
         with:
           distribution: temurin
           java-version: "21"
@@ -195,6 +195,7 @@ jobs:
         run: >-
           bun test --config=/dev/null --isolate
           packages/cloud/scripts/admin/migrate-with-diagnostics.postgres.test.ts
+          packages/cloud/scripts/admin/production-ledger-recovery-20261023.postgres.test.ts
       - name: Run generic app subscription PostgreSQL contracts
         env:
           APP_BILLING_TEST_POSTGRES_URL: postgresql://postgres@127.0.0.1:5432/postgres
@@ -349,7 +350,7 @@ jobs:
             packages/cloud/api/src/speech-retirement-coordinator.test.ts \
             packages/cloud/api/src/speech-retirement-composition.test.ts \
             packages/cloud/api/__tests__/speech-relay-worker.test.ts; do
-            bun test "./$test_file" 2>&1 | tee -a test-results/cloud-startup/speech-tests.log
+            bun test "$test_file" 2>&1 | tee -a test-results/cloud-startup/speech-tests.log
           done
       - name: Profile local Worker startup
         working-directory: packages/cloud/api

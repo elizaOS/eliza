@@ -183,8 +183,9 @@ export function isWorkspacePluginSourceFallbackAllowed(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
   if (env.ELIZA_DISABLE_WORKSPACE_PLUGIN_OVERRIDES === "1") return false;
-  if (env.NODE_ENV === "production")
-    return env.ELIZA_ALLOW_WORKSPACE_PLUGIN_SRC === "1";
+  const isProduction =
+    env.NODE_ENV === "production" || env.ELIZA_BUILD_VARIANT === "production";
+  if (isProduction) return env.ELIZA_ALLOW_WORKSPACE_PLUGIN_SRC === "1";
   return true;
 }
 

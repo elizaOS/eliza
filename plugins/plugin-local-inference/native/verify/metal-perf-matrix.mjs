@@ -10,7 +10,7 @@
  * attention on, all layers on GPU), and emits a markdown table + JSON report.
  *
  * Usage:
- *   bun metal-perf-matrix.mjs [--bench <llama-bench>] [--models-dir <dir>]
+ *   node metal-perf-matrix.mjs [--bench <llama-bench>] [--models-dir <dir>]
  *                              [--depths 0,4096,16000] [--out <dir>] [--json]
  *
  * Resolution (first hit wins):

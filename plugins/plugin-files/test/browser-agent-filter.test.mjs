@@ -2,127 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { installFilesBrowserAdapter } from "../src/browser/files-browser-adapter.ts";
 
-test("a cold file open waits for Files to render and survives its first reload", async (t) => {
-  const previousDocument = globalThis.document;
-  globalThis.document = new EventTarget();
-  t.after(() => {
-    globalThis.document = previousDocument;
-  });
-  const view = { render: () => ({}) };
-  let active = false;
-  const api = { isActive: () => active, set() {}, toast() {} };
-  const reload = Promise.withResolvers();
-  const select = Promise.withResolvers();
-  const committed = Promise.withResolvers();
-  const accepted = [];
-  const forgotten = [];
-  const ready = { status: "ready", access: "granted" };
-  let reads = 0;
-  const runner = installFilesBrowserAdapter(
-    view,
-    async (_module, file) => accepted.push(file.selectionId),
-    () => {},
-    {
-      storage: {
-        storageState: async () => (++reads === 1 ? reload.promise : ready),
-        storageCategory: async () => ({ status: "ready", count: 0 }),
-        storageTrashList: async () => ({ status: "ready", items: [] }),
-        storageWatch: async () => ({ status: "ready" }),
-        storageUnwatch: async () => ({}),
-        storageSelect: async () => select.promise,
-        addListener: async () => ({ remove: async () => {} }),
-      },
-      createInlineModal: () => ({ ref() {} }),
-      menuFocus: () => null,
-      forgetSelected: async (id) => forgotten.push(id),
-    },
-  );
-  const open = async () => {
-    await committed.promise;
-    active = true;
-    view.render({}, api);
-    return true;
-  };
-  const op = { type: "files_open", path: "Download/statement.pdf" };
-  const outcome = runner.run(op, new AbortController().signal, open);
-  assert.equal(reads, 0, "do not read storage before the committed view");
-  committed.resolve();
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(reads, 2, "agent admission has an independent storage read");
-  select.resolve({ status: "selected", selectionId: "statement" });
-  assert.equal((await outcome).status, "succeeded");
-  assert.deepEqual(accepted, ["statement"]);
-  assert.deepEqual(forgotten, []);
-  reload.resolve(ready);
-  await new Promise((resolve) => setImmediate(resolve));
-  view.onLeave();
-});
-
-for (const phase of ["selection", "preview"])
-  test(`an agent file open retired during ${phase} cannot report a current preview`, async (t) => {
-    const previousDocument = globalThis.document;
-    globalThis.document = new EventTarget();
-    t.after(() => {
-      globalThis.document = previousDocument;
-    });
-    const view = { render: () => ({}) };
-    const selection = Promise.withResolvers();
-    const selecting = Promise.withResolvers();
-    const preview = Promise.withResolvers();
-    const previewStarted = Promise.withResolvers();
-    const accepted = [];
-    const forgotten = [];
-    const runner = installFilesBrowserAdapter(
-      view,
-      async (_module, file) => {
-        accepted.push(file.selectionId);
-        previewStarted.resolve();
-        await preview.promise;
-      },
-      () => {},
-      {
-        storage: {
-          storageState: async () => ({ status: "ready", access: "granted" }),
-          storageCategory: async () => ({ status: "ready", count: 0 }),
-          storageTrashList: async () => ({ status: "ready", items: [] }),
-          storageWatch: async () => ({ status: "ready" }),
-          storageUnwatch: async () => ({}),
-          storageSelect: async () => {
-            selecting.resolve();
-            return selection.promise;
-          },
-          addListener: async () => ({ remove: async () => {} }),
-        },
-        createInlineModal: () => ({ ref() {} }),
-        menuFocus: () => null,
-        forgetSelected: async (id) => forgotten.push(id),
-      },
-    );
-    view.render({}, { isActive: () => true, set() {}, toast() {} });
-    await new Promise((resolve) => setImmediate(resolve));
-    const controller = new AbortController();
-    const outcome = runner.run(
-      { type: "files_open", path: "Download/statement.pdf" },
-      controller.signal,
-    );
-    await selecting.promise;
-    if (phase === "selection") controller.abort();
-    selection.resolve({ status: "selected", selectionId: "late-statement" });
-    if (phase === "preview") {
-      await previewStarted.promise;
-      controller.abort();
-      preview.resolve();
-    }
-    assert.equal((await outcome).status, "failed");
-    assert.deepEqual(accepted, phase === "preview" ? ["late-statement"] : []);
-    // Once accepted, the host owns preview cleanup and the shared runner does not release twice.
-    assert.deepEqual(
-      forgotten,
-      phase === "selection" ? ["late-statement"] : [],
-    );
-    view.onLeave();
-  });
-
 test("a read-only filter retains its results during Files activation", async (t) => {
   const previousDocument = globalThis.document;
   globalThis.document = new EventTarget();
@@ -164,12 +43,7 @@ test("a read-only filter retains its results during Files activation", async (t)
         storageTrashList: async () => ({ status: "ready", items: [] }),
         storageWatch: async () => watched.resolve(),
         storageQuery() {
-          if (++queries > 1)
-            return Promise.resolve({
-              status: "ready",
-              entries: [],
-              truncated: false,
-            });
+          if (++queries > 1) return Promise.resolve({ status: "ready" });
           queryStarted.resolve();
           return query.promise;
         },
@@ -203,7 +77,6 @@ test("a read-only filter retains its results during Files activation", async (t)
 
   query.resolve({
     status: "ready",
-    truncated: false,
     entries: [
       {
         name: "bank statement.pdf",

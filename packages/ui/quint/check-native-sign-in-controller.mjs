@@ -13,7 +13,6 @@ const controllerNames = [
   "shared native sign-in owner rejects late readiness after owner changes",
   "shared native sign-in owner rejects late readiness after operation changes",
   "shared native sign-in owner rejects late readiness after method changes",
-  "shared native sign-in owner shows a method the native side measured behind its cached answer, without a retry",
   "shared native sign-in owner cancels a held native call promptly and ignores its late success",
   "shared native sign-in owner requires acknowledged native retirement before dispatching another method",
   "shared native sign-in owner retries account activation from the same authenticated outcome without another sign-in",

@@ -1,9 +1,10 @@
 /**
- * Candidate-path policy for locating the macOS EventKit dylib that agent
- * hosts — not this Capacitor plugin — load to reach Apple Calendar. The
- * dylib is named by `ELIZA_NATIVE_PERMISSIONS_DYLIB` or found in a source
- * checkout under `packages/app/native/macos/`. Host plugins try candidates in
- * order and use the first path that exists.
+ * Candidate-path policy for locating the Electrobun EventKit dylib that
+ * macOS desktop hosts — not this Capacitor plugin — load to reach Apple
+ * Calendar. Host plugins try candidates in order (env override, packaged,
+ * local dev build) and use the first path that exists; the candidate list
+ * and expected dylib basename are owned here so host code and packaging
+ * stay in sync.
  */
 export interface AppleCalendarMacosBridgeCandidate {
   label: string;
@@ -22,12 +23,20 @@ export function appleCalendarMacosBridgeCandidates(args?: {
       path: args?.envDylibPath ?? "",
     },
     {
+      label: "packaged Apple permissions bridge",
+      path: `../../../../../../../${APPLE_CALENDAR_MACOS_BRIDGE_DYLIB_BASENAME}`,
+    },
+    {
+      label: "packaged Apple permissions bridge",
+      path: `../../../../../../${APPLE_CALENDAR_MACOS_BRIDGE_DYLIB_BASENAME}`,
+    },
+    {
       label: "local Apple permissions bridge",
-      path: `../../../packages/app/native/macos/${APPLE_CALENDAR_MACOS_BRIDGE_DYLIB_BASENAME}`,
+      path: `../../../packages/app/platforms/electrobun/src/${APPLE_CALENDAR_MACOS_BRIDGE_DYLIB_BASENAME}`,
     },
     {
       label: "nested local Apple permissions bridge",
-      path: `../../../../packages/app/native/macos/${APPLE_CALENDAR_MACOS_BRIDGE_DYLIB_BASENAME}`,
+      path: `../../../../packages/app/platforms/electrobun/src/${APPLE_CALENDAR_MACOS_BRIDGE_DYLIB_BASENAME}`,
     },
   ].filter((candidate) => candidate.path.trim().length > 0);
 }

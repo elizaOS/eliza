@@ -1,4 +1,4 @@
-/** The stock vendor API contract of the Pixel 10a (stallion) product. */
+/** The stock vendor API contract shared by the Pixel 10a (stallion) and Pixel 11 Pro (grizzly) products. */
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";

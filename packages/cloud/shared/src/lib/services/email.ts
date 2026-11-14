@@ -7,7 +7,6 @@ import sgMail from "@sendgrid/mail";
 import type { Transporter } from "nodemailer";
 import nodemailer from "nodemailer";
 import type SMTPTransport from "nodemailer/lib/smtp-transport";
-import { getCloudDeployment } from "../deployment/cloud-deployment";
 import { getEmailMessages, interpolateMessage } from "../email/messages";
 import type {
   AgentRetentionDeletionNoticeEmailData,
@@ -100,7 +99,8 @@ export class EmailService {
   private initialize(): void {
     if (this.initialized) return;
 
-    this.fromEmail = getCloudDeployment().mailFrom;
+    this.fromEmail =
+      process.env.SENDGRID_FROM_EMAIL || process.env.SMTP_FROM || "noreply@eliza.app";
 
     if (process.env.SMTP_HOST && process.env.SMTP_PASSWORD) {
       logger.info("[EmailService] Using SMTP configuration");

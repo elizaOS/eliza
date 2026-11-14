@@ -381,7 +381,7 @@ function sanitizeForRecord(
 		return value.toString();
 	}
 	if (value instanceof Date) {
-		return value.toJSON();
+		return value.toISOString();
 	}
 	if (value instanceof Error) {
 		return {

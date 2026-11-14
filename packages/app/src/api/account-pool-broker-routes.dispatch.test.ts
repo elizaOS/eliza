@@ -24,7 +24,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { resetDefaultAccountPoolAfterCredentialReset } from "@elizaos/auth/accounts";
 import {
-  createRuntimeAccountStoragePolicy,
+  createIsolatedAccountStoragePolicy,
   saveAccount,
 } from "@elizaos/auth/auth";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -50,8 +50,6 @@ const ENV_KEYS = [
   "ELIZA_ACCOUNT_POOL_BROKER_ENABLED",
   "ELIZA_ACCOUNT_POOL_BROKER_SECRET",
   "ELIZA_ACCOUNT_POOL_BROKER_LEASE_TTL_MS",
-  "ELIZA_VAULT_DISABLE_KEYCHAIN",
-  "ELIZA_VAULT_PASSPHRASE",
 ] as const;
 
 beforeEach(() => {
@@ -59,10 +57,6 @@ beforeEach(() => {
   home = mkdtempSync(path.join(tmpdir(), "account-pool-broker-dispatch-"));
   process.env.ELIZA_HOME = home;
   process.env.ELIZA_STATE_DIR = home;
-  // The runtime credential store reads the vault master key; inject a passphrase key.
-  process.env.ELIZA_VAULT_DISABLE_KEYCHAIN = "1";
-  process.env.ELIZA_VAULT_PASSPHRASE =
-    "account-pool-broker-dispatch-passphrase";
   process.env.ELIZA_ACCOUNT_POOL_BROKER_ENABLED = "1";
   process.env.ELIZA_ACCOUNT_POOL_BROKER_SECRET = SECRET;
   delete process.env.ELIZA_ACCOUNT_POOL_BROKER_LEASE_TTL_MS;
@@ -154,7 +148,7 @@ describe("account-pool broker routes through the real compat dispatcher", () => 
         createdAt: Date.now(),
         updatedAt: Date.now(),
       },
-      createRuntimeAccountStoragePolicy(home),
+      createIsolatedAccountStoragePolicy(home),
     );
 
     const cap = captureRes();

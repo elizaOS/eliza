@@ -28,7 +28,7 @@
  *      ELIZA_IOS_BOOT_TRACE_PATH or --boot-trace-path.
  *
  * Usage:
- *   bun scripts/ios-device-logs.ts [--device <id>] [--duration <sec>]
+ *   node scripts/ios-device-logs.ts [--device <id>] [--duration <sec>]
  *     [--output <file>] [--no-console] [--pull-boot-trace]
  *     [--boot-trace-path <container-relative>] [--bundle-id <id>]
  */
@@ -216,7 +216,7 @@ async function main() {
   });
   if (args.help) {
     console.log(
-      "Usage: bun scripts/ios-device-logs.ts [--device <id>] [--duration <sec>] [--output <file>] [--no-console] [--pull-boot-trace] [--boot-trace-path <path>] [--bundle-id <id>]",
+      "Usage: node scripts/ios-device-logs.ts [--device <id>] [--duration <sec>] [--output <file>] [--no-console] [--pull-boot-trace] [--boot-trace-path <path>] [--bundle-id <id>]",
     );
     return;
   }

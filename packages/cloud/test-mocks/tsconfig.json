@@ -1,8 +1,5 @@
 {
-  "extends": [
-    "../../../tsconfig.json",
-    "../../testing/tsconfig.workspace.json"
-  ],
+  "extends": "../../../tsconfig.json",
   "compilerOptions": {
     "composite": false,
     "incremental": false,

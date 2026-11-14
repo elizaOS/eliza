@@ -86,9 +86,8 @@ export function installProcessSignalHandlers(options: {
       },
     );
   };
-  // Keep both signal handlers installed until the drain selects the exit status.
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
   return () => {
     process.off("SIGINT", shutdown);
     process.off("SIGTERM", shutdown);

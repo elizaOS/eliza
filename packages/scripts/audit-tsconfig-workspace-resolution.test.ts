@@ -4,7 +4,6 @@
  */
 import assert from "node:assert/strict";
 import {
-  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -59,7 +58,7 @@ test("discovers implicit, explicit, compact, and multiple typecheck projects", (
   assert.deepEqual(
     discoverTypecheckProjects(
       packageDir,
-      "bun prepare.mjs && tsc --noEmit -p tsconfig.typecheck.json && tsc -p./src/tsconfig.json --noEmit",
+      "node prepare.mjs && tsc --noEmit -p tsconfig.typecheck.json && tsc -p./src/tsconfig.json --noEmit",
     ),
     [
       path.join(packageDir, "tsconfig.typecheck.json"),
@@ -392,13 +391,9 @@ test("explicit source conditions resolve published source entries instead of sta
         options,
         ts.sys,
       ).resolvedModule;
-      const sourcePath = path.join(packageDir, source);
-      const declarationPath = sourcePath.replace(/\.mjs$/, ".d.mts");
       assert.equal(
         resolved?.resolvedFileName,
-        declarationPath !== sourcePath && existsSync(declarationPath)
-          ? declarationPath
-          : sourcePath,
+        path.join(packageDir, source),
         specifier,
       );
     }

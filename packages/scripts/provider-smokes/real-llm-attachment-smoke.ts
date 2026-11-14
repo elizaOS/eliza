@@ -11,7 +11,7 @@
  * Skips only when no provider is configured. Text and vision must both pass;
  * authentication, transport and capability failures exit 1.
  *
- * Run: `bun packages/scripts/provider-smokes/real-llm-attachment-smoke.ts`
+ * Run: `node packages/scripts/provider-smokes/real-llm-attachment-smoke.ts`
  * (reads OPENAI_API_KEY / ANTHROPIC_API_KEY / XAI_API_KEY / CEREBRAS_API_KEY
  * from the env).
  */

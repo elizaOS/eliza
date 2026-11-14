@@ -177,7 +177,7 @@ export function checkListenerSpeechBundle(entries, voiceHost, readEntry) {
   const names = new Set(entries);
   if (!names.has(LISTENER_BUNDLE_MANIFEST))
     throw new Error(
-      `The listener APK has no ${LISTENER_BUNDLE_MANIFEST}: build it after the voice outputs are staged (bun scripts/android-stage-voice-models.mjs), or it can never listen`,
+      `The listener APK has no ${LISTENER_BUNDLE_MANIFEST}: build it after the voice outputs are staged (node scripts/android-stage-voice-models.mjs), or it can never listen`,
     );
   if (readEntry) {
     let paths;
@@ -536,12 +536,7 @@ const privilegedFlag = /privateFlags=\[[^\]]*\bPRIVILEGED\b/;
  * consent or press keys. The visible indicator, press-and-hold invocation, lock-screen controls,
  * call/echo behaviour and battery remain device/user acceptance and are never established here.
  */
-export function verifyAospListener(
-  run,
-  user,
-  appId,
-  { launcherPrivileged = false } = {},
-) {
+export function verifyAospListener(run, user, appId) {
   if (!/^(0|[1-9]\d*)$/.test(user || ""))
     throw Error("Explicit Android user required");
   const pkg = listenerPackage(appId);
@@ -573,16 +568,8 @@ export function verifyAospListener(
   for (const name of FORBIDDEN)
     if (new RegExp(`${name.replace(/\./g, "\\.")}\\b`).test(dump))
       throw Error(`The listener has ${name}`);
-  // The main app is privileged only when its reviewed descriptor names privileged permissions.
-  if (
-    privilegedFlag.test(run("shell", "dumpsys", "package", appId)) !==
-    launcherPrivileged
-  )
-    throw Error(
-      launcherPrivileged
-        ? `${appId} is not a privileged app`
-        : `${appId} must stay nonprivileged`,
-    );
+  if (privilegedFlag.test(run("shell", "dumpsys", "package", appId)))
+    throw Error(`${appId} must stay nonprivileged`);
   if (
     run("shell", "getprop", "ro.hotword.detection_service_required").trim() !==
     "true"

@@ -1,0 +1,864 @@
+/**
+ * Release preflight for the server-owned first-party mobile App Auth client.
+ * It proves the environment UUID resolves to a least-privilege app row before
+ * deployment and can also verify the canonical public metadata endpoint after
+ * the Worker is live. Database credentials are accepted only through env.
+ */
+import pg from "pg";
+import {
+  parseRegisteredMobileClients,
+  selectRegisteredMobileClient,
+} from "../../../cloud/shared/src/lib/services/mobile-client-registry.ts";
+
+const { Client } = pg;
+
+export const MOBILE_APP_AUTH_CLIENT_ID = "ai.elizaos.app";
+export const MOBILE_APP_AUTH_REDIRECT_URI = "https://eliza.app/auth/callback";
+export const MOBILE_APP_AUTH_REDIRECT_ORIGIN = "https://eliza.app";
+export const MOBILE_APP_AUTH_SCOPE = "cloud:user";
+export const MOBILE_APP_AUTH_CONFIG_MAX_BYTES = 16_384;
+/**
+ * One server-owned native client whose `apps` row this tooling verifies and
+ * repairs. The primary Eliza app is fixed; additional clients come from the protected
+ * environment registry. Applications own their identities and exact callbacks.
+ */
+export interface MobileAppAuthRegistrationTarget {
+  clientId: string;
+  redirectUri: string;
+  redirectOrigin: string;
+  appName: string;
+  appDescription: string;
+  slugPrefix: string;
+}
+
+export const PRIMARY_MOBILE_APP_AUTH_TARGET: MobileAppAuthRegistrationTarget =
+  Object.freeze({
+    clientId: MOBILE_APP_AUTH_CLIENT_ID,
+    redirectUri: MOBILE_APP_AUTH_REDIRECT_URI,
+    redirectOrigin: MOBILE_APP_AUTH_REDIRECT_ORIGIN,
+    appName: "Eliza Mobile",
+    appDescription: "First-party Eliza mobile authentication client",
+    slugPrefix: "eliza-mobile-auth",
+  });
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+class MobileAppAuthPreflightError extends Error {
+  override readonly name = "MobileAppAuthPreflightError";
+}
+
+export type MobileAppAuthDeploymentEnvironment = "staging" | "production";
+export type MobileAppAuthFetch = (
+  input: RequestInfo | URL,
+  init?: RequestInit,
+) => Promise<Response>;
+
+export interface MobileAppAuthRegistrationRow {
+  id: string;
+  app_url: string;
+  allowed_origins: unknown;
+  is_active: boolean;
+  is_approved: boolean;
+  organization_exists: boolean;
+  organization_is_active: boolean;
+  publisher_registered?: boolean;
+  publisher_member_count?: number;
+  creator_exists: boolean;
+  creator_is_active: boolean;
+  creator_matches_organization: boolean;
+  creator_role: string | null;
+  has_api_key_id: boolean;
+  api_key_row_absent: boolean;
+  api_key_row_revoked: boolean;
+  api_key_ownership_matches: boolean;
+  matching_active_approved_registration_count: number;
+}
+
+export type MobileAppAuthRegistrationQuery = (
+  text: string,
+  values: [appId: string, redirectUri: string],
+) => Promise<{ rows: MobileAppAuthRegistrationRow[] }>;
+
+const MOBILE_APP_AUTH_REGISTRATION_QUERY = `
+WITH matching_registrations AS MATERIALIZED (
+  SELECT duplicate.id
+    FROM apps AS duplicate
+   WHERE duplicate.is_active = TRUE
+     AND duplicate.is_approved = TRUE
+     AND duplicate.allowed_origins @> jsonb_build_array($2::text)
+   LIMIT 2
+)
+SELECT app.id::text,
+       app.app_url,
+       app.allowed_origins,
+       app.is_active,
+       app.is_approved,
+       organization.id IS NOT NULL AS organization_exists,
+       COALESCE(organization.is_active, FALSE) AS organization_is_active,
+       publisher.organization_id IS NOT NULL AS publisher_registered,
+       (SELECT count(*)::integer FROM users member WHERE member.organization_id = app.organization_id) AS publisher_member_count,
+       creator.id IS NOT NULL AS creator_exists,
+       COALESCE(creator.is_active AND creator.deleted_at IS NULL, FALSE) AS creator_is_active,
+       COALESCE(creator.organization_id = app.organization_id, FALSE) AS creator_matches_organization,
+       creator.role AS creator_role,
+       app.api_key_id IS NOT NULL AS has_api_key_id,
+       generated_key.id IS NULL AS api_key_row_absent,
+       COALESCE(NOT generated_key.is_active AND generated_key.deleted_at IS NOT NULL, FALSE)
+         AS api_key_row_revoked,
+       COALESCE(generated_key.organization_id = app.organization_id, FALSE)
+         AS api_key_ownership_matches,
+       (SELECT count(*)::integer FROM matching_registrations)
+         AS matching_active_approved_registration_count
+  FROM apps AS app
+  LEFT JOIN organizations AS organization ON organization.id = app.organization_id
+  LEFT JOIN native_app_publishers AS publisher ON publisher.organization_id = app.organization_id
+  LEFT JOIN users AS creator ON creator.id = app.created_by_user_id
+  LEFT JOIN api_keys AS generated_key ON generated_key.id = app.api_key_id
+ WHERE app.id = $1::uuid
+ LIMIT 1`;
+
+interface MobileAppAuthConfigPayload {
+  success: true;
+  clientId: string;
+  environment: MobileAppAuthDeploymentEnvironment;
+  redirectUri: string;
+  codeChallengeMethod: "S256";
+  scopes: [typeof MOBILE_APP_AUTH_SCOPE];
+  app: {
+    name: string;
+    description: string | null;
+    logoUrl: string | null;
+    websiteUrl: string | null;
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isBoundedString(value: unknown, maxLength: number): value is string {
+  return typeof value === "string" && value.length <= maxLength;
+}
+
+function isBoundedNullableString(
+  value: unknown,
+  maxLength: number,
+): value is string | null {
+  return value === null || isBoundedString(value, maxLength);
+}
+
+function fail(message: string): never {
+  throw new MobileAppAuthPreflightError(message);
+}
+
+function readEnvironmentVariable(name: string): string | undefined {
+  return process.env[name];
+}
+
+export function requireMobileAppAuthAppId(value: unknown): string {
+  if (typeof value !== "string" || !UUID_PATTERN.test(value)) {
+    return fail(
+      "ELIZA_MOBILE_APP_AUTH_APP_ID must be a registered app UUID in the selected GitHub Environment",
+    );
+  }
+  return value;
+}
+
+export function requireMobileAppAuthEnabled(value: unknown): boolean {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return fail(
+    "ELIZA_MOBILE_APP_AUTH_ENABLED must be exactly true or false in the selected GitHub Environment",
+  );
+}
+
+/** Resolve any enabled client from the same protected registry the Worker reads. */
+export function resolveMobileAppAuthRegistrationTarget(
+  clientId: unknown,
+  environment: unknown,
+  registry?: unknown,
+  primaryAppId?: unknown,
+): MobileAppAuthRegistrationTarget {
+  if (
+    clientId === undefined ||
+    clientId === "" ||
+    clientId === MOBILE_APP_AUTH_CLIENT_ID
+  ) {
+    return PRIMARY_MOBILE_APP_AUTH_TARGET;
+  }
+  requireMobileAppAuthEnvironment(environment);
+  if (typeof clientId !== "string")
+    fail("The target client ID must be a string");
+  const entry = requireRegisteredMobileClient(registry, clientId, primaryAppId);
+  return Object.freeze({
+    clientId: entry.clientId,
+    redirectUri: entry.redirectUri,
+    redirectOrigin: new URL(entry.redirectUri).origin,
+    appName: "Native App",
+    appDescription: "Registered native sign-in client",
+    slugPrefix: "mobile-auth",
+  });
+}
+
+function requireRegisteredMobileClient(
+  raw: unknown,
+  clientId: string,
+  primaryAppId: unknown,
+) {
+  const selected = selectRegisteredMobileClient(raw, clientId, {
+    clientId: MOBILE_APP_AUTH_CLIENT_ID,
+    appId: requireMobileAppAuthAppId(primaryAppId),
+    redirectUri: MOBILE_APP_AUTH_REDIRECT_URI,
+  });
+  if (!selected.ok) {
+    fail(
+      selected.code === "invalid_client"
+        ? "Unknown or disabled mobile App Auth client"
+        : "Invalid server mobile client registry",
+    );
+  }
+  return selected.registration;
+}
+
+/** Verify the complete registry, including collisions with the primary app. */
+export function requireRegisteredMobileClientAppId(
+  raw: unknown,
+  target: MobileAppAuthRegistrationTarget,
+  primaryAppId: unknown,
+): string {
+  const entry = requireRegisteredMobileClient(
+    raw,
+    target.clientId,
+    primaryAppId,
+  );
+  if (entry.redirectUri !== target.redirectUri) {
+    fail(
+      "The target client registry entry must use exactly the selected callback",
+    );
+  }
+  return entry.appId;
+}
+
+/** Resolve the same requested client and app UUID for every admin operation. */
+export function resolveMobileAppAuthRegistrationSelection(
+  clientId: unknown,
+  environment: unknown,
+  registry: unknown,
+  primaryAppId: unknown,
+): { target: MobileAppAuthRegistrationTarget; appId: string } {
+  const target = resolveMobileAppAuthRegistrationTarget(
+    clientId,
+    environment,
+    registry,
+    primaryAppId,
+  );
+  const appId =
+    target === PRIMARY_MOBILE_APP_AUTH_TARGET
+      ? requireMobileAppAuthAppId(primaryAppId)
+      : requireRegisteredMobileClientAppId(registry, target, primaryAppId);
+  return { target, appId };
+}
+
+export function requireMobileAppAuthEnvironment(
+  value: unknown,
+): MobileAppAuthDeploymentEnvironment {
+  if (value !== "staging" && value !== "production") {
+    return fail(
+      "ELIZA_MOBILE_APP_AUTH_ENVIRONMENT must be exactly staging or production",
+    );
+  }
+  return value;
+}
+
+function requireFirstPartyHttpsUrl(
+  value: unknown,
+  field: string,
+  expectedOrigin: string,
+): void {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    fail(`${field} must be a non-empty HTTPS URL`);
+  }
+  if (value.includes("*")) {
+    fail(`${field} must not contain a wildcard`);
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    // error-policy:J3 database registration URLs are untrusted operator input.
+    fail(`${field} must be a valid HTTPS URL`);
+  }
+  if (
+    parsed.protocol !== "https:" ||
+    parsed.username.length > 0 ||
+    parsed.password.length > 0
+  ) {
+    fail(`${field} must be an HTTPS URL without embedded credentials`);
+  }
+  if (parsed.origin !== expectedOrigin) {
+    fail(`${field} must use the exact ${expectedOrigin} origin`);
+  }
+}
+
+function requireExactFirstPartyHttpsUrl(
+  value: unknown,
+  field: string,
+  expected: string,
+  expectedOrigin: string,
+): void {
+  requireFirstPartyHttpsUrl(value, field, expectedOrigin);
+  if (value !== expected) fail(`${field} must be exactly ${expected}`);
+}
+
+export function validateMobileAppAuthRegistrationRow(
+  row: MobileAppAuthRegistrationRow | undefined,
+  expectedAppId: string,
+  target: MobileAppAuthRegistrationTarget = PRIMARY_MOBILE_APP_AUTH_TARGET,
+  options: { requirePublisher?: boolean } = {},
+): void {
+  if (!row) {
+    fail(
+      "ELIZA_MOBILE_APP_AUTH_APP_ID does not resolve to an apps registration",
+    );
+  }
+  if (row.id !== expectedAppId) {
+    fail(
+      "The mobile App Auth registration did not match the configured app UUID",
+    );
+  }
+  if (row.is_active !== true || row.is_approved !== true) {
+    fail("The mobile App Auth registration must be active and approved");
+  }
+
+  // app_url is app metadata, not the registered return URL. Apps may use a
+  // homepage path on the same HTTPS origin; callback authority stays literal.
+  requireFirstPartyHttpsUrl(row.app_url, "apps.app_url", target.redirectOrigin);
+  if (!Array.isArray(row.allowed_origins)) {
+    fail("apps.allowed_origins must be a JSON array");
+  }
+  if (row.allowed_origins.length !== 1) {
+    fail(
+      "apps.allowed_origins must contain only the first-party mobile callback",
+    );
+  }
+  requireExactFirstPartyHttpsUrl(
+    row.allowed_origins[0],
+    "apps.allowed_origins[0]",
+    target.redirectUri,
+    target.redirectOrigin,
+  );
+
+  if (!row.organization_exists || !row.organization_is_active) {
+    fail(
+      "The mobile App Auth registration organization must exist and be active",
+    );
+  }
+  if (
+    (options.requirePublisher || row.publisher_registered) &&
+    (!row.publisher_registered || row.publisher_member_count !== 0)
+  ) {
+    fail(
+      "The mobile App Auth registration requires a memberless native app publisher",
+    );
+  }
+  // The organization owns the registration. Its creator is audit metadata:
+  // leaving that organization or deleting that user cannot disable the product.
+  if (!row.has_api_key_id && !row.publisher_registered) {
+    fail(
+      "The mobile App Auth registration must retain its generated key reference",
+    );
+  }
+  if (
+    !row.api_key_row_absent &&
+    (!row.api_key_row_revoked || !row.api_key_ownership_matches)
+  ) {
+    fail(
+      "The mobile App Auth registration generated key must be absent or revoked for the same organization",
+    );
+  }
+  if (row.matching_active_approved_registration_count !== 1) {
+    fail(
+      "Exactly one active and approved app may claim the first-party mobile callback",
+    );
+  }
+}
+
+export async function queryMobileAppAuthRegistration(
+  query: MobileAppAuthRegistrationQuery,
+  appId: string,
+  target: MobileAppAuthRegistrationTarget = PRIMARY_MOBILE_APP_AUTH_TARGET,
+): Promise<MobileAppAuthRegistrationRow | undefined> {
+  const result = await query(MOBILE_APP_AUTH_REGISTRATION_QUERY, [
+    appId,
+    target.redirectUri,
+  ]);
+  return result.rows[0];
+}
+
+export function mobileAppAuthConfigUrl(
+  environment: MobileAppAuthDeploymentEnvironment,
+  target: MobileAppAuthRegistrationTarget = PRIMARY_MOBILE_APP_AUTH_TARGET,
+): URL {
+  // `wrangler.toml`'s `[env.production]`/`[env.staging]` route tables route
+  // the legacy `elizacloud.ai` API hosts only to emit a deterministic 308 to
+  // the canonical `eliza.app` zone — `redirect: "manual"` in
+  // verifyLiveMobileAppAuthConfig means probing a legacy host would observe
+  // that redirect (not the config payload) and fail before ever exercising
+  // the endpoint. Probe the canonical host directly.
+  const apiOrigin =
+    environment === "production"
+      ? "https://api.eliza.app"
+      : "https://api-staging.eliza.app";
+  const url = new URL("/api/v1/app-auth/mobile/config", apiOrigin);
+  url.searchParams.set("clientId", target.clientId);
+  url.searchParams.set("environment", environment);
+  url.searchParams.set("redirectUri", target.redirectUri);
+  return url;
+}
+
+export function validateMobileAppAuthConfigPayload(
+  value: unknown,
+  environment: MobileAppAuthDeploymentEnvironment,
+  target: MobileAppAuthRegistrationTarget = PRIMARY_MOBILE_APP_AUTH_TARGET,
+): asserts value is MobileAppAuthConfigPayload {
+  if (!isRecord(value)) {
+    fail("The public mobile App Auth config response must be a JSON object");
+  }
+  const expectedTopLevelKeys = new Set([
+    "success",
+    "clientId",
+    "environment",
+    "redirectUri",
+    "codeChallengeMethod",
+    "scopes",
+    "app",
+  ]);
+  if (
+    Object.keys(value).some((key) => !expectedTopLevelKeys.has(key)) ||
+    value.success !== true ||
+    value.clientId !== target.clientId ||
+    value.environment !== environment ||
+    value.redirectUri !== target.redirectUri ||
+    value.codeChallengeMethod !== "S256" ||
+    !Array.isArray(value.scopes) ||
+    value.scopes.length !== 1 ||
+    value.scopes[0] !== MOBILE_APP_AUTH_SCOPE
+  ) {
+    fail(
+      "The public mobile App Auth config response is not the release contract",
+    );
+  }
+  if (!isRecord(value.app)) {
+    fail("The public mobile App Auth config response is missing app metadata");
+  }
+  const expectedAppKeys = new Set([
+    "name",
+    "description",
+    "logoUrl",
+    "websiteUrl",
+  ]);
+  if (
+    Object.keys(value.app).some((key) => !expectedAppKeys.has(key)) ||
+    !isBoundedString(value.app.name, 120) ||
+    value.app.name.trim().length === 0 ||
+    !isBoundedNullableString(value.app.description, 1_000) ||
+    !isBoundedNullableString(value.app.logoUrl, 2_048) ||
+    !isBoundedNullableString(value.app.websiteUrl, 2_048)
+  ) {
+    fail("The public mobile App Auth config response has invalid app metadata");
+  }
+}
+
+export function validateDisabledMobileAppAuthConfigPayload(
+  value: unknown,
+): void {
+  const expectedKeys = new Set([
+    "success",
+    "error",
+    "errorDescription",
+    "retryable",
+  ]);
+  if (
+    !isRecord(value) ||
+    Object.keys(value).some((key) => !expectedKeys.has(key)) ||
+    value.success !== false ||
+    value.error !== "server_configuration_error" ||
+    value.errorDescription !==
+      "Mobile App Auth is disabled for this environment" ||
+    value.retryable !== false
+  ) {
+    fail(
+      "The disabled mobile App Auth config response is not the release contract",
+    );
+  }
+}
+
+async function readBoundedJsonResponse(response: Response): Promise<unknown> {
+  const contentLength = response.headers.get("content-length");
+  if (contentLength !== null) {
+    if (!/^\d+$/.test(contentLength)) {
+      fail(
+        "The public mobile App Auth config response has an invalid Content-Length",
+      );
+    }
+    if (Number(contentLength) > MOBILE_APP_AUTH_CONFIG_MAX_BYTES) {
+      fail("The public mobile App Auth config response exceeds the size limit");
+    }
+  }
+  if (!response.body) {
+    fail("The public mobile App Auth config response body is missing");
+  }
+
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  const reader = response.body.getReader();
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    totalBytes += value.byteLength;
+    if (totalBytes > MOBILE_APP_AUTH_CONFIG_MAX_BYTES) {
+      await reader.cancel();
+      fail("The public mobile App Auth config response exceeds the size limit");
+    }
+    chunks.push(value);
+  }
+
+  const body = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(body);
+  } catch {
+    // error-policy:J3 the deployment probe treats non-UTF-8 bytes as invalid input.
+    return fail(
+      "The public mobile App Auth config response is not valid UTF-8",
+    );
+  }
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    // error-policy:J3 the deployment probe reports malformed JSON without fabricating data.
+    return fail("The public mobile App Auth config response is not valid JSON");
+  }
+}
+
+export async function verifyLiveMobileAppAuthConfig(
+  environment: MobileAppAuthDeploymentEnvironment,
+  fetchImpl: MobileAppAuthFetch = fetch,
+  enabled = true,
+  target: MobileAppAuthRegistrationTarget = PRIMARY_MOBILE_APP_AUTH_TARGET,
+): Promise<void> {
+  const url = mobileAppAuthConfigUrl(environment, target);
+  const response = await fetchImpl(url, {
+    headers: { Accept: "application/json" },
+    redirect: "manual",
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (response.url !== url.toString()) {
+    fail("The public mobile App Auth config endpoint changed the final URL");
+  }
+  const expectedStatus = enabled ? 200 : 503;
+  if (response.status !== expectedStatus) {
+    fail(
+      `The public mobile App Auth config endpoint returned HTTP ${response.status}`,
+    );
+  }
+  if (response.headers.get("content-type") !== "application/json") {
+    fail(
+      "The public mobile App Auth config endpoint must return exactly application/json",
+    );
+  }
+  if (response.headers.get("cache-control") !== "no-store") {
+    fail(
+      "The public mobile App Auth config endpoint must return exactly Cache-Control: no-store",
+    );
+  }
+  const payload = await readBoundedJsonResponse(response);
+  if (enabled) {
+    validateMobileAppAuthConfigPayload(payload, environment, target);
+  } else {
+    validateDisabledMobileAppAuthConfigPayload(payload);
+  }
+}
+
+/**
+ * Keep this release script runnable directly with Node. Importing the Cloud
+ * workspace's source-only db/client module here makes Node traverse its
+ * extensionless TypeScript imports and fails before PostgreSQL is contacted.
+ * This small copy preserves the same fail-closed TLS contract without pulling
+ * the Worker database runtime into the deployment preflight.
+ */
+export function mobileAppAuthDatabaseConnection(databaseUrl: string): {
+  url: string;
+  ssl: { rejectUnauthorized: boolean } | undefined;
+} {
+  let parsed: URL;
+  try {
+    parsed = new URL(databaseUrl);
+  } catch {
+    fail("DATABASE_URL must be a valid PostgreSQL URL");
+  }
+  if (parsed.protocol !== "postgres:" && parsed.protocol !== "postgresql:") {
+    fail("DATABASE_URL must use the postgres or postgresql scheme");
+  }
+  const isLocal =
+    parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost";
+  if (isLocal) return { url: databaseUrl, ssl: undefined };
+
+  const sslmode = parsed.searchParams.get("sslmode");
+  if (sslmode === "disable" || sslmode === "allow") {
+    fail("Remote DATABASE_URL must require TLS");
+  }
+  const skipVerify =
+    process.env.DATABASE_SSL_NO_VERIFY === "true" || sslmode === "no-verify";
+  if (!sslmode) {
+    parsed.searchParams.set("sslmode", skipVerify ? "no-verify" : "require");
+  }
+  return {
+    url: parsed.toString(),
+    ssl: { rejectUnauthorized: !skipVerify },
+  };
+}
+
+async function closeDatabaseClient(client: pg.Client): Promise<void> {
+  try {
+    await client.end();
+  } catch (error) {
+    // error-policy:J2 database teardown failures remain redacted at the CLI boundary.
+    throw new Error("Mobile App Auth database connection cleanup failed", {
+      cause: error,
+    });
+  }
+}
+
+export async function verifyDatabaseMobileAppAuthRegistration(
+  databaseUrl: string,
+  appId: string,
+  target: MobileAppAuthRegistrationTarget = PRIMARY_MOBILE_APP_AUTH_TARGET,
+): Promise<void> {
+  let client: pg.Client | undefined;
+  let row: MobileAppAuthRegistrationRow | undefined;
+
+  try {
+    const { url, ssl } = mobileAppAuthDatabaseConnection(databaseUrl);
+    const connectedClient = new Client({
+      connectionString: url,
+      ...(ssl ? { ssl } : {}),
+    });
+    client = connectedClient;
+    await connectedClient.connect();
+    row = await queryMobileAppAuthRegistration(
+      async (text, values) =>
+        await connectedClient.query<MobileAppAuthRegistrationRow>(text, values),
+      appId,
+      target,
+    );
+  } catch (error) {
+    // error-policy:J2 hide connection material while retaining the database cause.
+    throw new Error("Mobile App Auth database registration preflight failed", {
+      cause: error,
+    });
+  } finally {
+    if (client) {
+      await closeDatabaseClient(client);
+    }
+  }
+  validateMobileAppAuthRegistrationRow(row, appId, target);
+}
+
+/** The complete declared release surface; disabled entries are not live clients. */
+export function resolveMobileAppAuthReleaseRegistrations(
+  primaryAppId: unknown,
+  registry: unknown,
+  environment: unknown,
+): Array<{ appId: string; target: MobileAppAuthRegistrationTarget }> {
+  requireMobileAppAuthEnvironment(environment);
+  const primary = requireMobileAppAuthAppId(primaryAppId);
+  const parsed = parseRegisteredMobileClients(
+    registry === undefined || registry === "" ? "[]" : registry,
+    {
+      clientId: MOBILE_APP_AUTH_CLIENT_ID,
+      appId: primary,
+      redirectUri: MOBILE_APP_AUTH_REDIRECT_URI,
+    },
+  );
+  if (!parsed.ok) fail("Invalid server mobile client registry");
+  return [
+    { appId: primary, target: PRIMARY_MOBILE_APP_AUTH_TARGET },
+    ...parsed.registrations
+      .filter((entry) => entry.enabled)
+      .map((entry) =>
+        resolveMobileAppAuthRegistrationSelection(
+          entry.clientId,
+          environment,
+          registry,
+          primary,
+        ),
+      ),
+  ];
+}
+
+/** Release gates check every client from the same protected source that is deployed.
+ * These ports let the existing database and HTTP fixture tests exercise the whole
+ * gate. No registration, UUID, or registry contents are logged. */
+export async function verifyMobileAppAuthReleaseRegistrations(
+  input: {
+    primaryAppId: unknown;
+    registry: unknown;
+    environment: unknown;
+    databaseUrl?: string;
+    verifyLive?: boolean;
+  },
+  ports: {
+    database?: typeof verifyDatabaseMobileAppAuthRegistration;
+    fetch?: MobileAppAuthFetch;
+  } = {},
+): Promise<void> {
+  const environment = requireMobileAppAuthEnvironment(input.environment);
+  const registrations = resolveMobileAppAuthReleaseRegistrations(
+    input.primaryAppId,
+    input.registry,
+    environment,
+  );
+  for (const { appId, target } of registrations) {
+    if (input.databaseUrl !== undefined)
+      await (ports.database ?? verifyDatabaseMobileAppAuthRegistration)(
+        input.databaseUrl,
+        appId,
+        target,
+      );
+    if (input.verifyLive)
+      await verifyLiveMobileAppAuthConfig(
+        environment,
+        ports.fetch ?? fetch,
+        true,
+        target,
+      );
+  }
+}
+
+interface CliOptions {
+  skipDatabase: boolean;
+  verifyLive: boolean;
+  allClients: boolean;
+}
+
+function parseOptions(args: string[]): CliOptions {
+  const options: CliOptions = {
+    skipDatabase: false,
+    verifyLive: false,
+    allClients: false,
+  };
+  for (const arg of args) {
+    if (arg === "--skip-database") {
+      options.skipDatabase = true;
+    } else if (arg === "--verify-live") {
+      options.verifyLive = true;
+    } else if (arg === "--all-clients") {
+      options.allClients = true;
+    } else {
+      return fail(`Unknown argument: ${arg}`);
+    }
+  }
+  if (options.skipDatabase && !options.verifyLive) {
+    return fail("--skip-database is valid only with --verify-live");
+  }
+  return options;
+}
+
+async function main(): Promise<void> {
+  const options = parseOptions(process.argv.slice(2));
+  const enabled = requireMobileAppAuthEnabled(
+    readEnvironmentVariable("ELIZA_MOBILE_APP_AUTH_ENABLED"),
+  );
+  const primaryAppId = readEnvironmentVariable("ELIZA_MOBILE_APP_AUTH_APP_ID");
+  const registry = readEnvironmentVariable(
+    "ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON",
+  );
+  const clientId = readEnvironmentVariable(
+    "ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID",
+  );
+  const environment = readEnvironmentVariable(
+    "ELIZA_MOBILE_APP_AUTH_ENVIRONMENT",
+  );
+  if (options.allClients && clientId && clientId !== MOBILE_APP_AUTH_CLIENT_ID)
+    fail("--all-clients cannot select one target client");
+  if (enabled && options.allClients) {
+    const databaseUrl = options.skipDatabase
+      ? undefined
+      : readEnvironmentVariable("DATABASE_URL");
+    if (!options.skipDatabase && !databaseUrl)
+      fail("DATABASE_URL is required for the mobile App Auth preflight");
+    await verifyMobileAppAuthReleaseRegistrations({
+      primaryAppId,
+      registry,
+      environment,
+      databaseUrl,
+      verifyLive: options.verifyLive,
+    });
+    console.log(
+      "[MobileAppAuthPreflight] All enabled mobile registrations are valid.",
+    );
+    return;
+  }
+  const selection =
+    enabled && !options.skipDatabase
+      ? resolveMobileAppAuthRegistrationSelection(
+          clientId,
+          environment,
+          registry,
+          primaryAppId,
+        )
+      : undefined;
+  const target =
+    selection?.target ??
+    resolveMobileAppAuthRegistrationTarget(
+      clientId,
+      environment,
+      registry,
+      primaryAppId,
+    );
+  const appId = selection?.appId;
+
+  if (enabled && !options.skipDatabase) {
+    if (!appId) {
+      fail("Enabled mobile App Auth preflight lost its registration UUID");
+    }
+    const databaseUrl = readEnvironmentVariable("DATABASE_URL");
+    if (!databaseUrl) {
+      fail("DATABASE_URL is required for the mobile App Auth preflight");
+    }
+    await verifyDatabaseMobileAppAuthRegistration(databaseUrl, appId, target);
+    console.log("[MobileAppAuthPreflight] Database registration is valid.");
+  } else if (!enabled) {
+    console.log(
+      "[MobileAppAuthPreflight] Mobile App Auth is explicitly disabled.",
+    );
+  }
+
+  if (options.verifyLive) {
+    const environment = requireMobileAppAuthEnvironment(
+      readEnvironmentVariable("ELIZA_MOBILE_APP_AUTH_ENVIRONMENT"),
+    );
+    await verifyLiveMobileAppAuthConfig(environment, fetch, enabled, target);
+    console.log(
+      `[MobileAppAuthPreflight] ${environment} public config is valid.`,
+    );
+  }
+}
+
+if (import.meta.main) {
+  main().catch((error: unknown) => {
+    // error-policy:J1 CLI boundary reports a redacted failure and exits non-zero.
+    const message =
+      error instanceof Error ? error.message : "Unknown preflight failure";
+    console.error(`[MobileAppAuthPreflight] ${message}`);
+    process.exitCode = 1;
+  });
+}

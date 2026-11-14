@@ -14,7 +14,7 @@ bun run --cwd plugins/plugin-native-filesystem test   # tests
 Android/AOSP Bun service E2E (after the app's `android-native-agent.ts` lane stages the runtime):
 
 ```bash
-bun packages/app/scripts/android-native-filesystem.ts --serial emulator-5554 --runtime-dir test-results/android-native-agent/stage/app/src/main/assets/agent/x86_64
+node packages/app/scripts/android-native-filesystem.ts --serial emulator-5554 --runtime-dir test-results/android-native-agent/stage/app/src/main/assets/agent/x86_64
 ```
 
 This uses the production service on a stock x86_64 emulator and verifies Unicode

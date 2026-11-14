@@ -51,8 +51,6 @@ export interface NativeLiveCapturePort {
   startLiveCapture(input: {
     captureId: string;
     echoCancel: boolean;
-    /** Silence (ms) that closes a VAD segment; the bridge clamps it and older bridges ignore it. */
-    endHangoverMs?: number;
     /** An automatic reopen: refused, never prompted, after a call, pause or permission loss. */
     reopen?: true;
     nativeAsr?: true;
@@ -356,9 +354,6 @@ export async function openNativeResidentCapture(
     const result = await port.startLiveCapture({
       captureId,
       echoCancel: input.echoCancel,
-      ...(input.endHangoverMs !== undefined
-        ? { endHangoverMs: input.endHangoverMs }
-        : {}),
       ...(input.reopen ? { reopen: true } : {}),
       nativeAsr: true,
       ownerId: input.ownerId,
@@ -511,9 +506,6 @@ export async function openNativeSegmentCapture(
     const result = await port.startLiveCapture({
       captureId,
       echoCancel: input.echoCancel,
-      ...(input.endHangoverMs !== undefined
-        ? { endHangoverMs: input.endHangoverMs }
-        : {}),
       ...(input.reopen ? { reopen: true } : {}),
     });
     if (result?.captureId !== captureId || result.sampleRate !== 16000)
@@ -639,7 +631,6 @@ export function createNativeLiveVoice(options: NativeLiveVoiceOptions) {
         roomId?: string;
         onInterim?: (text: string) => void;
         onLatency?: (latency: LiveVoiceLatency) => void;
-        endHangoverMs?: number;
       } = {},
     ) {
       return liveAssistantListener(open, listen);

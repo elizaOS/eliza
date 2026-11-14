@@ -168,7 +168,8 @@ function resolveCloudToken(options: VisionCloudFallbackOptions): string | null {
 	return (
 		options.token?.trim() ||
 		options.apiKey?.trim() ||
-		process.env.ELIZAOS_CLOUD_API_KEY?.trim() ||
+		process.env.ELIZA_CLOUD_TOKEN?.trim() ||
+		process.env.ELIZA_CLOUD_API_KEY?.trim() ||
 		null
 	);
 }
@@ -183,7 +184,7 @@ function resolveCloudBaseUrl(options: VisionCloudFallbackOptions): string {
 	}
 	return (
 		options.baseUrl?.trim() ||
-		process.env.ELIZAOS_CLOUD_BASE_URL?.trim().replace(/\/api\/v1\/?$/, "") ||
+		process.env.ELIZA_CLOUD_BASE_URL?.trim() ||
 		"https://api.eliza.app"
 	).replace(/\/+$/, "");
 }

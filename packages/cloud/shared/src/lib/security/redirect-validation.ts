@@ -1,6 +1,18 @@
 // Defines cloud shared redirect validation behavior for backend service consumers.
-import { getCloudDeployment } from "../deployment/cloud-deployment";
 import { isAllowedOrigin } from "./origin-validation";
+
+const DEFAULT_PLATFORM_REDIRECT_ORIGINS = [
+  "http://localhost:3000",
+  "http://localhost:3001",
+  "http://127.0.0.1:3000",
+  "http://127.0.0.1:3001",
+  "https://eliza.ai",
+  "https://www.eliza.ai",
+  "https://eliza.app",
+  "https://cloud.eliza.app",
+  "https://staging.eliza.app",
+  "https://cloud-staging.eliza.app",
+];
 
 /**
  * Wildcard loopback origins, safe to include alongside any production allowlist.
@@ -26,9 +38,10 @@ function hasEmbeddedCredentials(url: URL): boolean {
   return url.username.length > 0 || url.password.length > 0;
 }
 
-/** Redirect origins of the Cloud deployment; a product deployment lists only its own. */
 export function getDefaultPlatformRedirectOrigins(): string[] {
-  return [...getCloudDeployment().platformRedirectOrigins];
+  return [process.env.NEXT_PUBLIC_APP_URL?.trim(), ...DEFAULT_PLATFORM_REDIRECT_ORIGINS].filter(
+    (value): value is string => !!value,
+  );
 }
 
 function pathAfterBrowserNormalization(value: string): string {

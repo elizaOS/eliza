@@ -252,7 +252,6 @@ export function taskCreatePlanGuidance(nativeTool = false): string {
       : `  Fill at most ONE of dueDate/dueInDays/dueWeekday/dueInMinutes. Leave all four ${unknownField} for recurring tasks, and when the request has a time expression you cannot resolve into any of these forms.`,
     '- multiStep: true when the user asks to be reminded about MORE THAN ONE distinct task or milestone in this request (e.g. "set reminders for outline, rough draft, and final proofread"), false when it is a single task ("remind me to pay the electric bill on the 28th")',
     "Use recent conversation only to resolve short follow-ups. Do not emit requestKind='alarm' or requestKind='reminder' unless the current request or recent conversation explicitly supports it.",
-    "A Calendar event or time block does not itself authorize a reminder. A negated or quoted mention of reminders is not a reminder request. For a Calendar event with no requested reminder, return mode=respond and requestKind=null so the Calendar action can handle it.",
     "If the user has not actually specified the todo/habit yet, choose mode='respond' and ask a concise clarifying question instead of inventing a task.",
   ].join("\n");
 }

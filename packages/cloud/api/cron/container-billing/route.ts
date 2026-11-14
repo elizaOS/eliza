@@ -23,7 +23,6 @@ import {
   CONTAINER_PRICING,
   calculateDailyContainerCost,
 } from "@elizaos/cloud-shared/lib/constants/pricing";
-import { getCloudDeployment } from "@elizaos/cloud-shared/lib/deployment/cloud-deployment";
 import { computeContainerBillingPlan } from "@elizaos/cloud-shared/lib/services/container-billing-policy";
 import {
   enqueueContainerStopOnce,
@@ -383,7 +382,7 @@ async function handleContainerBilling(c: AppContext): Promise<Response> {
   const startTime = Date.now();
   try {
     requireCronSecret(c);
-    const appUrl = c.env.NEXT_PUBLIC_APP_URL || getCloudDeployment().appOrigin;
+    const appUrl = c.env.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
     // One timestamp for the whole run: the due-gate, the period, and the
     // row-lock idempotency guard must all agree on "now".
     const runNow = new Date();

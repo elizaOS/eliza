@@ -15,7 +15,7 @@ import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import { processStripeEvent } from "../../src/queue/stripe-event";
+import { processStripeEvent } from "@/api-queue/stripe-event";
 
 const app = new Hono<AppEnv>();
 

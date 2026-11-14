@@ -12,9 +12,9 @@
  * not worth the complexity of preserving VRM extension integrity.
  *
  * Usage:
- *   bun scripts/process-vrms.ts
- *   bun scripts/process-vrms.ts --placeholders-only # only fix previews/backgrounds
- *   bun scripts/process-vrms.ts --dry-run
+ *   node scripts/process-vrms.ts
+ *   node scripts/process-vrms.ts --placeholders-only # only fix previews/backgrounds
+ *   node scripts/process-vrms.ts --dry-run
  */
 import {
   cpSync,

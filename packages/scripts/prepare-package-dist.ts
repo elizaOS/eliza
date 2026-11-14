@@ -338,7 +338,7 @@ function main(argv = process.argv.slice(2)) {
   const [packageDirectory, ...restArgs] = argv;
   if (!packageDirectory) {
     throw new TypeError(
-      "usage: bun packages/scripts/prepare-package-dist.ts <package-dir> [--compiled-prefix=path] [--asset-prefix=path]",
+      "usage: node packages/scripts/prepare-package-dist.ts <package-dir> [--compiled-prefix=path] [--asset-prefix=path]",
     );
   }
   const options = Object.fromEntries(

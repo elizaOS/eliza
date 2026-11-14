@@ -630,18 +630,6 @@ test("a lifetime grant publishes no expiry and retains revocation", async () => 
     reason: "test revocation",
   });
   expect((await policyAt(org)).authority.source).toBe("legacy");
-  // A structurally valid lifetime cache stamp is not fresh admission authority.
-  expect(isOrganizationPolicyStamp(policy.authority)).toBe(true);
-  const { withOrganizationPolicyAdmission } = await import(
-    "../../lib/services/organization-policy-admission"
-  );
-  let admitted = false;
-  await expect(
-    withOrganizationPolicyAdmission(org, policy.authority, async () => {
-      admitted = true;
-    }),
-  ).rejects.toMatchObject({ code: "ORGANIZATION_POLICY_STALE" });
-  expect(admitted).toBe(false);
   expect(await grants.subscriptionGrantsRepository.replenishLifetimeAllowances()).toBe(0);
 });
 

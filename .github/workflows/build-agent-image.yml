@@ -20,7 +20,7 @@ on:
           - canonical
           - demo
       source_sha:
-        description: Exact staging or main SHA supplied by the effect reconciler
+        description: Exact develop SHA supplied by the effect reconciler
         required: false
         default: ""
         type: string
@@ -69,7 +69,7 @@ jobs:
           SOURCE_SHA: ${{ inputs.source_sha }}
         run: |
           set -euo pipefail
-          [[ "$GITHUB_REF_NAME" == staging || "$GITHUB_REF_NAME" == main ]] || { echo "::error::Image publication requires a canonical branch"; exit 1; }
+          [[ "$GITHUB_REF_NAME" == develop || "$GITHUB_REF_NAME" == staging || "$GITHUB_REF_NAME" == main ]] || { echo "::error::Image publication requires a canonical branch"; exit 1; }
           [ "$GITHUB_SHA" = "$SOURCE_SHA" ] || { echo "::error::Workflow source differs from image source"; exit 1; }
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Invalid reconciled source SHA"; exit 1; }
           [[ "$EFFECT_DIGEST" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::Invalid reconciled effect digest"; exit 1; }
@@ -118,7 +118,7 @@ jobs:
         # Used by docker-ci-smoke's boot-KPI budget parser after the image is
         # built. Keep it explicit so the real boot gate reports the committed
         # budget instead of falling back to its baked-in default.
-        run: bash packages/scripts/github/install-apt-packages.sh --no-install-recommends jq
+        run: sudo apt-get install -y --no-install-recommends jq
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
@@ -170,7 +170,7 @@ jobs:
         env:
           NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
         run: |
-          bun packages/app/scripts/ensure-type-package-aliases.ts
+          node packages/app/scripts/ensure-type-package-aliases.ts
 
       - name: Build Docker workspace artifacts
         # Let Turbo derive the build order and reuse task cache instead of
@@ -182,8 +182,8 @@ jobs:
           NODE_ENV: production
           NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
         run: |
-          bun packages/scripts/run-turbo.ts run build:dist --filter=@elizaos/app --concurrency=8
-          bun packages/scripts/run-turbo.ts run build --concurrency=8 \
+          node packages/scripts/run-turbo.ts run build:dist --filter=@elizaos/app --concurrency=8
+          node packages/scripts/run-turbo.ts run build --concurrency=8 \
             --filter=@elizaos/agent \
             --filter=@elizaos/plugin-sql \
             --filter=@elizaos/plugin-video \
@@ -221,7 +221,7 @@ jobs:
           shopt -s nullglob
           for dist in plugins/*/dist; do
             pkg="$(dirname "$dist")"
-            bun packages/scripts/rewrite-dist-relative-imports-node-esm.ts "$pkg" || true
+            node packages/scripts/rewrite-dist-relative-imports-node-esm.ts "$pkg" || true
           done
 
       - name: Prepare CI dockerignore
@@ -295,13 +295,13 @@ jobs:
           images: ${{ steps.image.outputs.metadata_name }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-          # staging build → :staging + :sha-<short>
-          # main build    → :stable + :latest + :sha-<short>
-          # Keeping :latest on main avoids breaking the four code sites that
+          # develop push  → :develop + :sha-<short>
+          # main push     → :stable + :latest + :sha-<short>
+# Keeping :latest on main avoids breaking the four code sites that
           # still hardcode it (containers-env fallback, sandbox-provider
           # fallback, two test fixtures) until they migrate to :stable.
           tags: |
-            type=raw,value=staging,enable=${{ github.ref == 'refs/heads/staging' }}
+            type=raw,value=develop,enable=${{ github.ref == 'refs/heads/develop' }}
             type=raw,value=stable,enable=${{ github.ref == 'refs/heads/main' }}
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
             type=sha,prefix=sha-,format=short
@@ -330,7 +330,7 @@ jobs:
           # cache kept as a read-only fallback. The GHA backend shares one
           # repo-wide 10GB budget with every other workflow; this image's
           # mode=max cache is multi-GB per run, so it was evicted before the
-          # next build — recent runs show ZERO cached layers while
+          # next develop push — recent runs show ZERO cached layers while
           # still spending 4+ min per run exporting a cache nothing ever
           # read (which is also why cache-to no longer writes to gha). The
           # ghcr :buildcache ref persists indefinitely and dedupes by blob
@@ -386,11 +386,6 @@ jobs:
             exit 1
           }
 
-      - name: Restore source Docker ignore after local image verification
-        # The verified image is already loaded. Undo only this workflow's
-        # owned build-context copy so source admission still checks every byte.
-        run: git restore --source=HEAD -- .dockerignore
-
       - name: Push exact verified image
         id: push
         env:
@@ -424,7 +419,7 @@ jobs:
               exit 1
             fi
             if [ "$GITHUB_REF_NAME" = main ]; then
-              bun packages/cloud/scripts/production-effect-certification.ts "$GITHUB_SHA"
+              node packages/cloud/scripts/production-effect-certification.ts "$GITHUB_SHA"
             fi
             docker push "$tag"
           done <<< "$TAGS"
@@ -538,7 +533,7 @@ jobs:
         # after bounded propagation retries instead of trusting the historical
         # unsupported package-visibility request.
         run: |
-          bun packages/scripts/verify-ghcr-anonymous-manifest.ts \
+          node packages/scripts/verify-ghcr-anonymous-manifest.ts \
             --repository "$GHCR_REPOSITORY" \
             --digest "$EXPECTED_DIGEST" \
             --image-id "$EXPECTED_IMAGE_ID"
@@ -550,7 +545,7 @@ jobs:
           EXPECTED_IMAGE_ID: ${{ steps.push.outputs.image_id }}
           GHCR_REPOSITORY: elizaos/eliza-demo
         run: |
-          bun packages/scripts/verify-ghcr-anonymous-manifest.ts \
+          node packages/scripts/verify-ghcr-anonymous-manifest.ts \
             --repository "$GHCR_REPOSITORY" \
             --digest "$EXPECTED_DIGEST" \
             --image-id "$EXPECTED_IMAGE_ID"

@@ -70,6 +70,11 @@ function readPersisted(): TutorialState {
       // the conductor re-seeds the current step turn on mount.
       return state;
     }
+    // Older installs recorded only this flag. Keep their completed tour quiet;
+    // a current persisted restart takes precedence and legacy bytes stay intact.
+    if (localStorage.getItem("eliza:tutorial-completed") === "1") {
+      return { ...IDLE_STATE, status: "completed" };
+    }
   } catch (err) {
     // error-policy:J4 storage unavailable (private mode / SSR) or corrupt JSON
     // — the tutorial degrades to fresh in-memory state instead of crashing app

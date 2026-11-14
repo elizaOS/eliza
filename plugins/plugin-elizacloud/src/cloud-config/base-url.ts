@@ -2,6 +2,7 @@
  * Pure URL normalizer for Eliza Cloud site/API base URLs. No host-layer deps.
  */
 
+import { readAliasedEnv } from "@elizaos/host/protocol";
 import {
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,
@@ -26,7 +27,7 @@ const STAGING_CLOUD_SITE_URL = ELIZA_DOMAIN_CONTRACTS.staging.cloudAppOrigin;
  * whatever cloud they were configured for.
  */
 export function isDevCloudTarget(): boolean {
-  return process.env.ELIZA_DEV_SOURCE?.trim() === "1";
+  return readAliasedEnv("ELIZA_DEV_SOURCE") === "1";
 }
 
 /**
@@ -121,7 +122,7 @@ export function normalizeCloudSiteUrl(rawUrl?: string): string {
   const devCloudAuthority = resolveDevCloudEnvAuthority();
   const envOverride = devCloudAuthority
     ? resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_BASE_URL")
-    : process.env.ELIZAOS_CLOUD_BASE_URL?.trim();
+    : readAliasedEnv("ELIZAOS_CLOUD_BASE_URL");
   const candidate = envOverride || rawUrl?.trim() || defaultCloudSiteUrl();
 
   try {

@@ -30,8 +30,6 @@ import {
   resolveOwnerEntityIdOrDefault,
   resolveStateDir,
   ServiceType,
-  tokenMatches,
-  type UUID,
 } from "@elizaos/core";
 import {
   readJsonBody as parseJsonBody,
@@ -48,6 +46,7 @@ import {
   isMobilePlatform,
   type ReadJsonBodyOptions,
   type Route,
+  readAliasedEnv,
   resolveApiBindHost,
   resolveDesktopApiPort,
   resolveServerOnlyPort,
@@ -137,7 +136,6 @@ import {
   registerProactiveInteractionDecider,
 } from "../services/proactive-interaction-decider.ts";
 import { ProactiveInteractionGate } from "../services/proactive-interaction-gate.ts";
-import { withTriggerTaskActivity } from "../triggers/activity.ts";
 import {
   executeTriggerTask,
   getTriggerHealthSnapshot,
@@ -289,6 +287,7 @@ import {
   resolveTerminalRunClientId,
   resolveTerminalRunRejection,
   resolveWebSocketUpgradeRejection,
+  tokenMatches,
   tryAcquirePendingWebSocket,
   WS_AUTH_GRACE_TIMEOUT_MS,
 } from "./server-helpers-auth.ts";
@@ -1309,7 +1308,7 @@ async function applyRuntimeRestart(
   if (state.runtimeStopPromise) {
     return false;
   }
-  if (state.agentState === "starting" || state.agentState === "restarting") {
+  if (state.agentState === "restarting") {
     return false;
   }
   const previousState = state.agentState;
@@ -2308,14 +2307,6 @@ async function handleRequestForViewClient(
       json,
       error,
       executeTriggerTask,
-      serializeTaskMutation: (
-        runtime: IAgentRuntime,
-        taskId: UUID,
-        operation: () => Promise<boolean>,
-      ) =>
-        withTriggerTaskActivity(runtime, taskId, operation, {
-          rejectIfBusy: true,
-        }),
       getTriggerHealthSnapshot,
       getTriggerLimit,
       listTriggerTasks,
@@ -3666,7 +3657,7 @@ export async function startApiServer(opts?: {
   // of 2138, so this change is transparent for non-desktop users.
   const port =
     opts?.port ??
-    (process.env.ELIZA_API_PORT?.trim()
+    (readAliasedEnv("ELIZA_API_PORT")
       ? resolveDesktopApiPort(process.env)
       : resolveServerOnlyPort(process.env));
   const host = resolveApiBindHost(process.env);

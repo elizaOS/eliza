@@ -550,7 +550,7 @@ jobs:
             exit 1
           }
           if [ "$DEPLOY_BRANCH" = main ]; then
-            bun packages/cloud/scripts/production-effect-certification.ts "$DEPLOY_SHA"
+            node packages/cloud/scripts/production-effect-certification.ts "$DEPLOY_SHA"
           fi
           bun run db:cloud:migrate
 
@@ -574,7 +574,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ needs.determine-env.outputs.deployment_sha }}
-        run: bun packages/cloud/scripts/production-effect-certification.ts "$SOURCE_SHA"
+        run: node packages/cloud/scripts/production-effect-certification.ts "$SOURCE_SHA"
 
       - name: Ensure host prereqs (Node 24, swap, bunx symlink)
         if: steps.deploy_config.outputs.configured == 'true'

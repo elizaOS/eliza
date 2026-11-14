@@ -4,12 +4,6 @@
  * require an explicit selector or complete low-level endpoint configuration.
  */
 
-import {
-  DEV_CLOUD_CREDENTIAL_ENV_KEYS,
-  DEV_CLOUD_ENDPOINT_OVERRIDE_ENV_KEYS,
-  DEV_CLOUD_STEWARD_OPERATIONAL_ENV_KEYS,
-} from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
-
 const TARGET_FLAG = "--cloud-target";
 const TARGET_ENV = "ELIZA_DEV_CLOUD_TARGET";
 const ENV_AUTHORITY_KEY = "ELIZA_DEV_CLOUD_ENV_AUTHORITY";
@@ -30,6 +24,82 @@ const TARGET_CONFIG = Object.freeze({
     stewardTenantId: "elizacloud",
   }),
 });
+
+const CLOUD_ACTIVATION_KEYS = Object.freeze([
+  "ELIZA_DEV_CLOUD_API_KEY",
+  "ELIZAOS_CLOUD_API_KEY",
+  "ELIZAOS_CLOUD_SERVICE_KEY",
+  "ELIZAOS_CLOUD_EMBEDDING_API_KEY",
+  "ELIZAOS_CLOUD_ENABLED",
+  "ELIZAOS_CLOUD_USE_INFERENCE",
+  "ELIZAOS_CLOUD_USE_TTS",
+  "ELIZAOS_CLOUD_USE_STT",
+  "ELIZAOS_CLOUD_USE_MEDIA",
+  "ELIZAOS_CLOUD_USE_EMBEDDINGS",
+  "ELIZAOS_CLOUD_USE_RPC",
+  "ELIZA_CLOUD_API_KEY",
+  "ELIZA_CLOUD_SERVICE_KEY",
+  "ELIZA_CLOUD_SERVICE_TOKEN",
+  "ELIZA_CLOUD_SESSION_TOKEN",
+  "ELIZA_CLOUD_TOKEN",
+  "ELIZACLOUD_API_KEY",
+  "ELIZACLOUD_TOKEN",
+  "ELIZA_CLOUD_AUTH_TOKEN",
+  "ELIZA_CLOUD_SANDBOX_TOKEN",
+  "ELIZA_CLOUD_PROVISIONED",
+  "ELIZA_CLOUD_AGENT_ID",
+  "WAIFU_ELIZA_CLOUD_AGENT_ID",
+  "ELIZAOS_CLOUD_AGENT_ID",
+]);
+
+// Operational Steward credentials can query, create, sign with, or trade from
+// wallets. The safe default and offline targets clear every such value;
+// explicit targets retain only launch-supplied identity/auth while stamping
+// the selected target's exact URL and tenant.
+const STEWARD_OPERATIONAL_KEYS = Object.freeze([
+  "STEWARD_API_URL",
+  "STEWARD_TENANT_ID",
+  "STEWARD_AGENT_ID",
+  "ELIZA_STEWARD_AGENT_ID",
+  "STEWARD_API_KEY",
+  "STEWARD_AGENT_TOKEN",
+  "STEWARD_TRADE_SESSION_ID",
+  "STEWARD_HYPERLIQUID_TRADE_SESSION_ID",
+  "STEWARD_POLYMARKET_TRADE_SESSION_ID",
+]);
+
+// Alternative endpoint families are read ahead of the canonical base by
+// embedding and remote-runner clients. Hosted targets clear them and stamp the
+// exact canonical tuple; only a complete self-hosted tuple may retain them.
+const CLOUD_ENDPOINT_OVERRIDE_KEYS = Object.freeze([
+  "ELIZAOS_CLOUD_BROWSER_BASE_URL",
+  "ELIZAOS_CLOUD_BROWSER_EMBEDDING_URL",
+  "ELIZAOS_CLOUD_EMBEDDING_URL",
+  "ELIZAOS_CLOUD_API_BASE_URL",
+  "ELIZAOS_CLOUD_REQUEST_BASE_URL",
+  "ELIZAOS_CLOUD_URL",
+  "ELIZA_CLOUD_API_BASE_URL",
+  "ELIZA_CLOUD_API_BASE",
+  "ELIZA_CLOUD_API_URL",
+  "ELIZA_CLOUD_BASE",
+  "ELIZA_CLOUD_BASE_URL",
+  "ELIZA_CLOUD_LOCAL_API_URL",
+  "ELIZA_CLOUD_LOCAL_APP_URL",
+  "ELIZA_CLOUD_OPENAI_BASE_URL",
+  "ELIZA_CLOUD_PUBLIC_URL",
+  "ELIZA_CLOUD_ROUTE_BASE",
+  "ELIZA_CLOUD_URL",
+  "ELIZA_CLOUD_WEB_URL",
+  "ELIZA_CLOUD_WRITE_BASE_URL",
+  "ELIZACLOUD_API_BASE_URL",
+  "ELIZACLOUD_API_URL",
+  "ELIZACLOUD_DEFAULT_URL",
+  "ELIZA_CLOUD_SANDBOX_API_BASE_URL",
+  "ELIZA_CLOUD_SANDBOX_BASE_URL",
+  "ELIZA_CLOUD_SANDBOX_ACCESS_URL",
+  "ELIZA_CLOUD_REMOTE_RUNNER_URL",
+  "ELIZA_CLOUD_RUNNER_URL",
+]);
 
 const CANONICAL_PRODUCTION_HOSTS = new Set([
   "eliza.app",
@@ -77,15 +147,20 @@ function selectedCanonicalCloudApiKey(
     usableCloudCredential(env, "ELIZAOS_CLOUD_API_KEY") ??
     (includeStagingSpecific
       ? usableCloudCredential(env, "ELIZA_DEV_CLOUD_API_KEY")
-      : undefined)
+      : undefined) ??
+    usableCloudCredential(env, "ELIZA_CLOUD_API_KEY") ??
+    usableCloudCredential(env, "ELIZACLOUD_API_KEY")
   );
 }
 
 function promoteCanonicalCloudApiKey(env, options) {
   const selected = selectedCanonicalCloudApiKey(env, options);
   if (selected) env.ELIZAOS_CLOUD_API_KEY = selected;
-  // Leave one credential: the staging-specific key must not reach children.
+  // Downstream legacy consumers use different precedence orders. Leave one
+  // canonical credential so they cannot select a conflicting inherited alias.
   env.ELIZA_DEV_CLOUD_API_KEY = "";
+  env.ELIZA_CLOUD_API_KEY = "";
+  env.ELIZACLOUD_API_KEY = "";
 }
 
 function hasSecureStewardApiUrl(value) {
@@ -116,7 +191,7 @@ function enforceCoherentOperationalStewardTuple(env) {
       (!apiKey || tenantId),
   );
   if (!complete) {
-    for (const key of DEV_CLOUD_STEWARD_OPERATIONAL_ENV_KEYS) env[key] = "";
+    for (const key of STEWARD_OPERATIONAL_KEYS) env[key] = "";
   }
 }
 
@@ -296,7 +371,7 @@ function buildDevCloudPlan(env, resolution) {
   if (selfHosted) {
     if (!selectedCanonicalCloudApiKey(env, { includeStagingSpecific: true })) {
       throw new Error(
-        "Self-hosted local development requires ELIZAOS_CLOUD_API_KEY. The immutable launcher target cannot acquire or replace its server credential through the local agent proxy.",
+        "Self-hosted local development requires ELIZAOS_CLOUD_API_KEY (or a supported legacy alias). The immutable launcher target cannot acquire or replace its server credential through the local agent proxy.",
       );
     }
     const runtimeMode = configuredValue(env, "VITE_ELIZA_DESKTOP_RUNTIME_MODE");
@@ -331,7 +406,7 @@ function buildDevCloudPlan(env, resolution) {
     !selectedCanonicalCloudApiKey(env)
   ) {
     throw new Error(
-      "Production local development requires ELIZAOS_CLOUD_API_KEY. Production intentionally rejects loopback browser authentication, so the credential must be supplied at launch.",
+      "Production local development requires ELIZAOS_CLOUD_API_KEY (or a supported legacy alias). Production intentionally rejects loopback browser authentication, so the credential must be supplied at launch.",
     );
   }
   return { effectiveTarget: resolution.target, selfHosted: false };
@@ -367,9 +442,9 @@ export function applyDevCloudTarget(env, resolution) {
     // on staging instead of letting blank renderer values fall back to prod.
     const staging = TARGET_CONFIG.staging;
     nextEnv.ELIZAOS_CLOUD_BASE_URL = staging.cloudApiBase;
-    for (const key of DEV_CLOUD_CREDENTIAL_ENV_KEYS) nextEnv[key] = "";
-    for (const key of DEV_CLOUD_STEWARD_OPERATIONAL_ENV_KEYS) nextEnv[key] = "";
-    for (const key of DEV_CLOUD_ENDPOINT_OVERRIDE_ENV_KEYS) nextEnv[key] = "";
+    for (const key of CLOUD_ACTIVATION_KEYS) nextEnv[key] = "";
+    for (const key of STEWARD_OPERATIONAL_KEYS) nextEnv[key] = "";
+    for (const key of CLOUD_ENDPOINT_OVERRIDE_KEYS) nextEnv[key] = "";
     nextEnv.VITE_ELIZA_CLOUD_BASE = staging.cloudAppBase;
     nextEnv.VITE_STEWARD_API_URL = staging.stewardApiUrl;
     nextEnv.VITE_STEWARD_TENANT_ID = staging.stewardTenantId;
@@ -390,7 +465,7 @@ export function applyDevCloudTarget(env, resolution) {
   // A named hosted target is an exact environment tuple, not a loose hostname
   // classification. Overwrite inherited paths and standalone Steward values so
   // local auth, API, wallet, and renderer surfaces cannot silently diverge.
-  for (const key of DEV_CLOUD_ENDPOINT_OVERRIDE_ENV_KEYS) nextEnv[key] = "";
+  for (const key of CLOUD_ENDPOINT_OVERRIDE_KEYS) nextEnv[key] = "";
   nextEnv.ELIZAOS_CLOUD_BASE_URL = config.cloudApiBase;
   nextEnv.VITE_ELIZA_CLOUD_BASE = config.cloudAppBase;
   nextEnv.VITE_STEWARD_API_URL = config.stewardApiUrl;
@@ -403,8 +478,8 @@ export function applyDevCloudTarget(env, resolution) {
   // staging server credential must use the target-specific
   // ELIZA_DEV_CLOUD_API_KEY; keyless hosted-session login remains supported.
   if (resolution.target === "staging") {
-    for (const key of DEV_CLOUD_CREDENTIAL_ENV_KEYS) nextEnv[key] = "";
-    for (const key of DEV_CLOUD_STEWARD_OPERATIONAL_ENV_KEYS) nextEnv[key] = "";
+    for (const key of CLOUD_ACTIVATION_KEYS) nextEnv[key] = "";
+    for (const key of STEWARD_OPERATIONAL_KEYS) nextEnv[key] = "";
     if (explicitStagingApiKey) {
       nextEnv.ELIZAOS_CLOUD_API_KEY = explicitStagingApiKey;
     }

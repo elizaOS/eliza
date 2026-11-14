@@ -180,60 +180,27 @@ def test_coding_workspace_and_reasoning_are_explicit(tmp_path):
 
 @pytest.mark.skipif(__import__("os").name != "posix", reason="POSIX process-group cleanup")
 @pytest.mark.parametrize("leader_exits", [False, True])
-def test_timeout_stops_pipe_holding_process_group_and_preserves_output(tmp_path, monkeypatch, leader_exits):
+def test_timeout_stops_pipe_holding_process_group_and_preserves_output(tmp_path, leader_exits):
     import os
-    import signal
     import subprocess
     import sys
     import time
-    from codex_adapter import client
+    from codex_adapter.client import _run_codex_process
 
-    # Start both real interpreters before measuring timeout cleanup. Otherwise
-    # a busy host can expire the deadline before there is output to preserve.
-    parent_ready = tmp_path / "parent.ready"
-    child_ready = tmp_path / "child.ready"
-    child_script = (
-        "import time; from pathlib import Path; "
-        "print('descendant-ready', flush=True); "
-        f"Path({str(child_ready)!r}).write_text('ready'); time.sleep(30)"
-    )
+    # Both variants leave a real descendant holding the captured pipes. Killing
+    # only the parent would block output collection for thirty seconds.
     script = (
-        "import subprocess,sys,time; from pathlib import Path; "
-        f"subprocess.Popen([sys.executable,'-c',{child_script!r}]); "
+        "import subprocess,sys,time; "
+        "subprocess.Popen([sys.executable,'-c',"
+        "\"import time; print('descendant-ready', flush=True); time.sleep(30)\"]); "
         "print('parent-ready', flush=True); print('diagnostic',file=sys.stderr,flush=True); "
-        f"Path({str(parent_ready)!r}).write_text('ready'); "
         + ("sys.exit(0)" if leader_exits else "time.sleep(30)")
     )
-    command = [sys.executable, "-c", script]
-    original_popen = subprocess.Popen
-    started = None
-
-    def spawn_ready(*args, **kwargs):
-        nonlocal started
-        process = original_popen(*args, **kwargs)
-        if args[0] != command:
-            return process
-        try:
-            deadline = time.monotonic() + 30
-            while not (parent_ready.exists() and child_ready.exists()):
-                if time.monotonic() >= deadline:
-                    raise AssertionError("process fixture did not become ready")
-                time.sleep(0.01)
-        except BaseException:
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            process.communicate()
-            raise
-        started = time.monotonic()
-        return process
-
-    monkeypatch.setattr(client.subprocess, "Popen", spawn_ready)
+    started = time.monotonic()
     with pytest.raises(subprocess.TimeoutExpired) as exc:
-        client._run_codex_process(command, input="", env=dict(os.environ),
-                                  cwd=tmp_path, timeout=1)
-    assert started is not None and time.monotonic() - started < 10
+        _run_codex_process([sys.executable, "-c", script], input="", env=dict(os.environ),
+                           cwd=tmp_path, timeout=1)
+    assert time.monotonic() - started < 10
     assert "parent-ready" in exc.value.output
     assert "descendant-ready" in exc.value.output
     assert "diagnostic" in exc.value.stderr

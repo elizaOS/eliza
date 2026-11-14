@@ -9,7 +9,6 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -67,18 +66,11 @@ describe("workspace production emit", () => {
         throw new Error(`Cannot parse ${workspace} build configuration`);
       expect(config.errors).toEqual([]);
       const emitted: string[] = [];
-      const outputRoot = path.join(root, "dist");
-      const host = ts.createCompilerHost(config.options);
-      const fileExists = host.fileExists;
-      // The production build clears its own dist before resolving self imports.
-      // Model that clean input graph without deleting other suites' artifacts.
-      host.fileExists = (file) =>
-        fileExists(file) &&
-        !realpathSync(file).startsWith(`${outputRoot}${path.sep}`);
-      const program = ts.createProgram(config.fileNames, config.options, host);
+      const program = ts.createProgram(config.fileNames, config.options);
       const result = program.emit(undefined, (file) =>
         emitted.push(path.resolve(file)),
       );
+      const outputRoot = path.join(root, "dist");
       if (result.emitSkipped) {
         // Declaration-only compilation deliberately skips imported JSON assets.
         // A skipped TypeScript module would still leave a broken distribution.

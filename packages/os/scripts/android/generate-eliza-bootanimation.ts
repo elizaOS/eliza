@@ -179,5 +179,5 @@ console.log(
   `Rendered ${whitelabel ? "white-label" : "elizaOS"} boot splash into ${BOOTANIM_DIR} (${INTRO_FRAMES} intro frames + idle loop)`,
 );
 console.log(
-  `Pack it with: bun scripts/android/build-bootanimation.ts --frames ${BOOTANIM_DIR} --out ${BOOTANIM_DIR}/bootanimation.zip`,
+  `Pack it with: node scripts/android/build-bootanimation.ts --frames ${BOOTANIM_DIR} --out ${BOOTANIM_DIR}/bootanimation.zip`,
 );

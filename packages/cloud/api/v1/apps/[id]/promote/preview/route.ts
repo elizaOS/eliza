@@ -11,7 +11,7 @@ import {
   type GenerativeRouteCaller,
   getGenerativeOperationContext,
   requireGenerativeRouteCaller,
-} from "../../../../../src/lib/generative-route-auth";
+} from "@/api-app/lib/generative-route-auth";
 
 /**
  * Promotion Preview API

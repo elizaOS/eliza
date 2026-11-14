@@ -10,8 +10,8 @@
  *   frontend   run unless --no-frontend
  *   statesync  run only when --statesync is passed (needs a live server)
  *
- *   bun suites/loadperf/run-all.mjs
- *   bun suites/loadperf/run-all.mjs --no-boot --no-frontend
+ *   node suites/loadperf/run-all.mjs
+ *   node suites/loadperf/run-all.mjs --no-boot --no-frontend
  *   LOADPERF_BASE_URL=http://127.0.0.1:31337 node ... run-all.mjs --statesync
  *
  * Exit: non-zero if any KPI that actually ran (not skipped) reported a budget

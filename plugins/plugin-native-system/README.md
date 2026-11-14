@@ -15,7 +15,7 @@ bun run --cwd plugins/plugin-native-system build  # build
 
 ## Android device verification
 
-From the repository root, run `bun packages/app/scripts/android-native-plugins.ts --serial <emulator> --plugin plugin-native-system --system-controls` on an isolated stock emulator without the user app. This verifies real brightness and music-volume changes, clamping, permission denial/revocation, and restoration against Android settings and AudioManager. A second instrumentation process verifies recovery of persisted original settings after the first process exits with changes outstanding. Reports include bridge receipts and native observations. Home/SMS/assistant role flows and physical-device behavior require separate coverage.
+From the repository root, run `node packages/app/scripts/android-native-plugins.ts --serial <emulator> --plugin plugin-native-system --system-controls` on an isolated stock emulator without the user app. This verifies real brightness and music-volume changes, clamping, permission denial/revocation, and restoration against Android settings and AudioManager. A second instrumentation process verifies recovery of persisted original settings after the first process exits with changes outstanding. Reports include bridge receipts and native observations. Home/SMS/assistant role flows and physical-device behavior require separate coverage.
 
 The installed-app hosted lane (`ELIZA_ANDROID_BACKEND=host node
 packages/app/scripts/android-e2e.ts --serial <emulator> --build --skip-local-chat
@@ -109,10 +109,6 @@ cannot enable or resume capture. The native `SenseListenerClient` verifies the
 listener package, matching signer and control permission. Settings metadata is
 read only from that admitted APK; the target must be an enabled exported
 activity in the same package and UID. Hosts may keep a legacy bridge-name alias.
-
-Pause and Turn off return a successful receipt only after the companion confirms
-the save and reports both listening and microphone capture stopped. A missing or
-inconsistent acknowledgement leaves the action unconfirmed. Status is for display.
 
 `createSenseInvocationController` binds an opaque digest of the current
 authenticated owner/agent/session tuple before consuming native invocations.
@@ -287,9 +283,9 @@ A host builds one `DataReset` with its installed identities and shares it:
   it revokes each registered environment's saved key on an interrupted daemon
   worker, capped at 8 seconds.
 - The same-signer image listener (`SenseListenerClient.resetForData()`) must
-  confirm durable consent revocation and microphone release before reset. Until
-  the listener confirms both, the pending marker and app data are kept. An
-  absent listener allows the reset to proceed.
+  acknowledge first. An installed listener that does not durably acknowledge
+  consent revocation keeps the marker and all app data; an absent listener is
+  safe to reset.
 - The failure record keeps the last failed attempt's outcome, so the recovery
   screen explains what actually happened (Android refused the clear, or the
   listener did not acknowledge) rather than guessing from the listener's

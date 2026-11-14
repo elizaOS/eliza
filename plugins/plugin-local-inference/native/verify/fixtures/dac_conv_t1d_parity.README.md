@@ -83,7 +83,7 @@ cmake -B /tmp/llama-baseline/build -S /tmp/llama-baseline \
 cmake --build /tmp/llama-baseline/build --target omnivoice-codec -j
 
 # 2. Capture the baseline against a locally cached OmniVoice GGUF.
-bun plugins/plugin-local-inference/native/verify/gen_dac_parity_fixture.mjs \
+node plugins/plugin-local-inference/native/verify/gen_dac_parity_fixture.mjs \
   --omnivoice-codec /tmp/llama-baseline/build/bin/omnivoice-codec \
   --codec-gguf "$HOME/.eliza/local-inference/models/eliza-1-2b.bundle/tts/omnivoice-tokenizer-0.8b.gguf" \
   --baseline-build-sha "$(git -C /tmp/llama-baseline rev-parse HEAD)" \

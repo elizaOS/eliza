@@ -1,7 +1,0 @@
-[
-  {
-    "source": "packages/app/src/services/steward-sidecar/types.ts",
-    "sha256": "362858658f59f68e0e214ae96ad6fc7216741c39c5bca5d8e755d9a5897d09bc",
-    "reason": "Declares sidecar state and credential shapes and fixed default settings. The sidecar supervisor owns process and restart state, and wallet setup persists credentials."
-  }
-]

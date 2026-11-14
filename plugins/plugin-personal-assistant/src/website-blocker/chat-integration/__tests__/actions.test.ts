@@ -259,7 +259,6 @@ describe("WEBSITE_BLOCK list_active / release subactions", () => {
       { ruleId: harshId, reason: "done" },
       {
         ...EMPTY_MESSAGE,
-        id: "00000000-0000-0000-0000-00000000fffe" as UUID,
         content: { text: "yes" },
       } as Memory,
     );
@@ -272,7 +271,6 @@ describe("WEBSITE_BLOCK list_active / release subactions", () => {
       { ruleId: normalId, reason: "done" },
       {
         ...EMPTY_MESSAGE,
-        id: "00000000-0000-0000-0000-00000000fffd" as UUID,
         content: { text: "yes" },
       } as Memory,
     );

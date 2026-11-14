@@ -57,6 +57,7 @@ beforeAll(async () => {
     "ELIZA_PROVIDER",
     "OPENAI_BASE_URL",
     "CEREBRAS_BASE_URL",
+    "ELIZA_MOCK_OPENAI_BASE",
     "ELIZA_BRAIN_PROVIDER",
     "ELIZA_CLOUD_PROVISIONED",
   ])

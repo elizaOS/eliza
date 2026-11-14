@@ -69,6 +69,17 @@ export const androidDir = androidUsesAppDir
   ? path.join(appDir, "android")
   : path.join(appCoreRoot, "platforms", "android");
 
+export const localArtifactsDir = path.join(
+  elizaRepoRoot,
+  ".eliza-local",
+  "artifacts",
+);
+
+export const androidSmsGatewayDebugApkArtifact = path.join(
+  localArtifactsDir,
+  "eliza-android-sms-gateway-debug.apk",
+);
+
 // AOSP system APK staging path. Brand-aware: forks declare their vendor
 // dir + APK name in `app.config.ts > aosp:`. When that block is present
 // (Eliza, etc.), stage to `<repoRoot>/os/android/vendor/<vendorDir>/

@@ -1,8 +1,8 @@
 # OSWorld runners
 
-Python entry point for the Eliza desktop benchmark run.
+Python and shell entry points for model-specific desktop benchmark runs.
 Install the suite's Python dependencies, provider credentials, and required VM
-backend. Run it from `packages/benchmarks/suites/OSWorld` so local imports
+backend. Run scripts from `packages/benchmarks/suites/OSWorld` so local imports
 and task paths resolve correctly.
 
 No separate build is required. Inspect the Eliza runner's options with:

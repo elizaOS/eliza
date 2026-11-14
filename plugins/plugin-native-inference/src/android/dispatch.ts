@@ -25,6 +25,7 @@ import {
   ServiceType,
 } from "@elizaos/core";
 import type { RouteHandlerResult } from "@elizaos/host/protocol";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 import type { StdioBridgeStreamSink } from "../shared/stdio-bridge.ts";
 /** In-process route dispatcher (from `@elizaos/agent`). */
 export type AndroidDispatchRoute = (args: {
@@ -199,8 +200,8 @@ function parseAndroidWakeBody(body: unknown): {
 function androidRequestAuthorization(
   headers: Record<string, string>,
 ): AndroidBufferedResponse | null {
-  if (process.env.ELIZA_REQUIRE_LOCAL_AUTH?.trim() !== "1") return null;
-  const expected = process.env.ELIZA_API_TOKEN?.trim();
+  if (readAliasedEnv("ELIZA_REQUIRE_LOCAL_AUTH") !== "1") return null;
+  const expected = readAliasedEnv("ELIZA_API_TOKEN")?.trim();
   const authorization = headerValue(headers, "authorization");
   const presented = authorization?.toLowerCase().startsWith("bearer ")
     ? authorization.slice(7).trim()
@@ -217,7 +218,7 @@ async function directAndroidWakeRoute(
   body: unknown,
 ): Promise<AndroidBufferedResponse | null> {
   if (method !== "POST" || pathname !== "/api/internal/wake") return null;
-  const expected = process.env.ELIZA_API_TOKEN?.trim();
+  const expected = readAliasedEnv("ELIZA_API_TOKEN")?.trim();
   const authorization = headerValue(headers, "authorization");
   const presented = authorization?.toLowerCase().startsWith("bearer ")
     ? authorization.slice(7).trim()

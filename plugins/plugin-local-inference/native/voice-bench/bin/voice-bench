@@ -123,7 +123,7 @@ async function gpuSubcommand(argv: string[]): Promise<void> {
     bundle: args.bundle ?? null,
     note: configFile
       ? undefined
-      : "GPU detected but no exact-match profile.",
+      : "GPU detected but no exact-match profile. Run gpu-autotune.selectGpuConfig() from app for VRAM-bucket fallback.",
   };
   process.stdout.write(`${JSON.stringify(out, null, 2)}\n`);
 }

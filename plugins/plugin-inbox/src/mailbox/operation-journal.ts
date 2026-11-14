@@ -62,10 +62,8 @@ export interface InboxOperationRecord {
 export const composerKind = (kind: unknown): boolean =>
   kind === "send" || kind === "draft-create" || kind === "draft-replace";
 
-const encodeComposerContent = (
-  proposal: Bag,
-  omitAttachments: boolean,
-): string =>
+/** Everything the person reviews in a composer proposal, as one comparable text. */
+export const composerContent = (proposal: Bag): string =>
   JSON.stringify(
     [
       "mode",
@@ -77,65 +75,8 @@ const encodeComposerContent = (
       "attachments",
       "forwardAttachments",
       "replyMessageId",
-    ].map((field) =>
-      omitAttachments && field === "attachments"
-        ? null
-        : (proposal[field] ?? null),
-    ),
+    ].map((field) => proposal[field] ?? null),
   );
-
-/** Everything the person reviews in a composer proposal, as one comparable text. */
-export const composerContent = (proposal: Bag): string =>
-  encodeComposerContent(proposal, false);
-
-const attachmentFields = ["name", "mimeType", "dataBase64"] as const;
-
-/** Admits only the plain, dense attachment lists created by the composer. */
-function composerAttachments(
-  value: unknown,
-): value is OutgoingMailAttachment[] {
-  if (
-    !Array.isArray(value) ||
-    Object.getPrototypeOf(value) !== Array.prototype ||
-    value.length === 0 ||
-    value.length > outgoingAttachmentLimits.maximumFiles ||
-    Object.getOwnPropertyNames(value).length !== value.length + 1
-  )
-    return false;
-  for (let index = 0; index < value.length; index++) {
-    const file = Object.getOwnPropertyDescriptor(value, index)?.value;
-    if (!file || Object.getPrototypeOf(file) !== Object.prototype) return false;
-    const fields = Object.getOwnPropertyNames(file);
-    if (
-      fields.length !== attachmentFields.length ||
-      !attachmentFields.every((key, index) => {
-        const field = Object.getOwnPropertyDescriptor(file, key);
-        return (
-          fields[index] === key &&
-          field?.enumerable &&
-          typeof field.value === "string"
-        );
-      })
-    )
-      return false;
-  }
-  return true;
-}
-
-function sameComposerContentForRender(reviewed: Bag, current: Bag): boolean {
-  const left = reviewed.attachments,
-    right = current.attachments;
-  if (!composerAttachments(left) || !composerAttachments(right))
-    return composerContent(reviewed) === composerContent(current);
-  return (
-    left.length === right.length &&
-    encodeComposerContent(reviewed, true) ===
-      encodeComposerContent(current, true) &&
-    left.every((file, index) =>
-      attachmentFields.every((field) => file[field] === right[index][field]),
-    )
-  );
-}
 
 export interface ComposerEmail {
   draftId: string;
@@ -150,10 +91,9 @@ export interface ComposerEmail {
  */
 export type ReviewBinding = "bound" | "edited" | "other" | "absent";
 
-function compareReviewBinding(
+export function reviewBinding(
   record: Pick<InboxOperationRecord, "proposal" | "composer">,
   current: ComposerEmail | null,
-  matches: (reviewed: Bag, current: Bag) => boolean,
 ): ReviewBinding {
   if (!current) return "absent";
   if (
@@ -162,27 +102,9 @@ function compareReviewBinding(
     record.composer.draftId !== current.draftId
   )
     return "other";
-  return matches(record.proposal, current.proposal) ? "bound" : "edited";
-}
-
-export function reviewBinding(
-  record: Pick<InboxOperationRecord, "proposal" | "composer">,
-  current: ComposerEmail | null,
-): ReviewBinding {
-  return compareReviewBinding(
-    record,
-    current,
-    (reviewed, proposal) =>
-      composerContent(reviewed) === composerContent(proposal),
-  );
-}
-
-/** Display-only comparison avoids encoding each attachment twice on every render. */
-export function renderReviewBinding(
-  record: Pick<InboxOperationRecord, "proposal" | "composer">,
-  current: ComposerEmail | null,
-): ReviewBinding {
-  return compareReviewBinding(record, current, sameComposerContentForRender);
+  return composerContent(record.proposal) === composerContent(current.proposal)
+    ? "bound"
+    : "edited";
 }
 
 export const reviewBindingRefusal: Record<
@@ -329,36 +251,11 @@ export class InboxOperation {
     this.deps = deps;
   }
 
-  /**
-   * The copy that snapshot() returned for this record and this
-   * unconfirmedSource value. A view reads the snapshot on each render, and the
-   * record can hold attachments, so the copy is made one time for each change.
-   */
-  private view: {
-    record: InboxOperationRecord;
-    unconfirmedSource: boolean;
-    value: InboxOperationRecord;
-  } | null = null;
-
-  /** A copy of the saved record. Callers share it and must not change it. */
   snapshot(): InboxOperationRecord | null {
-    if (!this.record) {
-      this.view = null;
-      return null;
-    }
-    if (
-      this.view?.record !== this.record ||
-      this.view.unconfirmedSource !== this.unconfirmedSource
-    ) {
-      const value = copy(this.record);
-      if (this.unconfirmedSource) delete value.source;
-      this.view = {
-        record: this.record,
-        unconfirmedSource: this.unconfirmedSource,
-        value,
-      };
-    }
-    return this.view.value;
+    if (!this.record) return null;
+    const value = copy(this.record);
+    if (this.unconfirmedSource) delete value.source;
+    return value;
   }
 
   stop(): void {
@@ -693,12 +590,7 @@ export class InboxOperation {
       throw new Error(
         "Gmail answered for a different request, so nothing was confirmed. Check the saved receipt before trying again; do not send this message again.",
       );
-    // A stale prepared response cannot replace the durable dispatch or observed receipt.
-    if (
-      receipt.state === "prepared" &&
-      (record.phase === "dispatching" || record.phase === "observed")
-    )
-      return;
+    // A prepared response after an attempted dispatch remains uncertain locally; never re-enable Send.
     await this.save({
       ...record,
       receipt: copy(receipt),
@@ -727,29 +619,6 @@ export class InboxOperation {
       // A held cleanup proceeds once the provider, asked again, reports the same send as the saved receipt.
       if (this.unconfirmedSource && prior && sameSend(prior, receipt))
         this.unconfirmedSource = false;
-      return this.snapshot();
-    });
-  }
-
-  /**
-   * The owner discards an operation that was attempted. The provider is asked
-   * again. The record is removed only when the provider still reports the
-   * operation as prepared, which means that the provider did not start it. A
-   * request that is late can still arrive, so the caller must warn the owner
-   * first. All other answers are saved and the record stays.
-   */
-  async abandon(): Promise<InboxOperationRecord | null> {
-    return this.exclusive(async () => {
-      if (this.record?.phase !== "dispatching")
-        throw new Error("No attempted operation to discard");
-      const receipt = await this.deps.client.gmailOperation(
-        this.record.grantId,
-        this.record.requestId,
-        this.controller.signal,
-      );
-      this.check();
-      await this.observe(receipt);
-      if (receipt.state === "prepared") await this.save(null);
       return this.snapshot();
     });
   }

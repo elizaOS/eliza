@@ -24,9 +24,8 @@ import path from "node:path";
 import { ElizaError } from "@elizaos/core/protocol";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  type AccountStoragePolicy,
   createIsolatedAccountStoragePolicy,
-  loadAccount as loadAccountWithPolicy,
+  loadAccount,
 } from "../account-storage.ts";
 import {
   type AdoptCodexOptions,
@@ -35,7 +34,6 @@ import {
 } from "./adopt-codex-cli-login.ts";
 
 let home: string;
-let storagePolicy: AccountStoragePolicy;
 const savedEnv: Record<string, string | undefined> = {};
 
 function adoptCodexCliLogin(
@@ -43,15 +41,8 @@ function adoptCodexCliLogin(
 ) {
   return adoptCodexCliLoginWithPolicy({
     ...options,
-    storagePolicy,
+    storagePolicy: createIsolatedAccountStoragePolicy(home),
   });
-}
-
-function loadAccount(
-  provider: Parameters<typeof loadAccountWithPolicy>[0],
-  accountId: string,
-) {
-  return loadAccountWithPolicy(provider, accountId, storagePolicy);
 }
 
 function makeJwt(expSeconds: number): string {
@@ -100,7 +91,6 @@ function retiredFilesIn(dir: string): string[] {
 
 beforeEach(() => {
   home = mkdtempSync(path.join(tmpdir(), "adopt-codex-"));
-  storagePolicy = createIsolatedAccountStoragePolicy(home);
   for (const key of ["HOME", "ELIZA_HOME", "ELIZA_STATE_DIR", "CODEX_HOME"]) {
     savedEnv[key] = process.env[key];
   }

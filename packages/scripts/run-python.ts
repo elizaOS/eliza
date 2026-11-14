@@ -4,8 +4,8 @@
 // Tries each in turn so package.json scripts don't have to.
 //
 // Usage:
-//   bun packages/scripts/run-python.ts -m pytest path/to/tests -v
-//   bun packages/scripts/run-python.ts script.py arg1 arg2
+//   node packages/scripts/run-python.ts -m pytest path/to/tests -v
+//   node packages/scripts/run-python.ts script.py arg1 arg2
 
 import { spawnSync } from "node:child_process";
 
@@ -16,7 +16,7 @@ const candidates =
 
 const args = process.argv.slice(2);
 if (args.length === 0) {
-  console.error("Usage: bun packages/scripts/run-python.ts <args...>");
+  console.error("Usage: node packages/scripts/run-python.ts <args...>");
   process.exit(2);
 }
 

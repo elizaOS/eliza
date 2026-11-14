@@ -16,8 +16,9 @@
  *      registry has no entry for the requested provider — failing loud
  *      instead of silently returning a default endpoint.
  *
- * The test runs entirely in-process with no network: `fetch` is driven
- * through an injected test function.
+ * The test runs entirely in-process with no network: the mock-base env
+ * (`ELIZA_MOCK_HEALTH_BASE`) shadows the real apiBaseUrl during fetch
+ * verification, so we drive `fetch` through an injected test function.
  */
 
 import { setAcmeClientTestEnv } from "@elizaos/testing/fixtures";

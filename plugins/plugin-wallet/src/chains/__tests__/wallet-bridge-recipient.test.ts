@@ -64,17 +64,9 @@ function createRuntime(): IAgentRuntime {
   return runtime as unknown as IAgentRuntime;
 }
 
-// A confirmation turn is a later user message, so it must carry a different
-// id than the request: core treats a reply with the request's id as still
-// waiting, not as a reply.
-const CONFIRMATION_MESSAGE_ID = "00000000-0000-0000-0000-000000000005";
-
-function message(
-  text: string,
-  id = "00000000-0000-0000-0000-000000000001",
-): Memory {
+function message(text: string): Memory {
   return {
-    id,
+    id: "00000000-0000-0000-0000-000000000001",
     entityId: "00000000-0000-0000-0000-000000000002",
     agentId: "00000000-0000-0000-0000-000000000003",
     roomId: "00000000-0000-0000-0000-000000000004",
@@ -255,7 +247,7 @@ describe("wallet bridge recipient guard", () => {
 
     const second = await walletRouterAction.handler(
       runtime,
-      message("yes", CONFIRMATION_MESSAGE_ID),
+      message("yes"),
       undefined,
       { parameters: bridgeParams } as HandlerOptions,
       callback,

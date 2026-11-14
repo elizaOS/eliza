@@ -18,7 +18,6 @@ import {
   resolveAdb,
   resolveApk,
   resolveSerial,
-  SYSTEM_APK_CANDIDATES,
 } from "../../scripts/lib/android-device.ts";
 import { parsePort } from "../../scripts/lib/host-agent.ts";
 
@@ -90,12 +89,7 @@ export default async function globalSetup() {
   console.log(`[android-e2e] device serial=${serial}`);
 
   if (!isInstalled(adb, serial)) {
-    // Agent lanes (local, and host via its cleartext route) need the signed
-    // android-system APK; only the cloud onboarding lane runs android-cloud.
-    const apk = resolveApk(
-      process.env.ELIZA_ANDROID_APK,
-      PLAY_CLOUD_ONBOARDING ? undefined : { candidates: SYSTEM_APK_CANDIDATES },
-    );
+    const apk = resolveApk(process.env.ELIZA_ANDROID_APK);
     console.log(`[android-e2e] installing ${apk}`);
     execFileSync(adb, ["-s", serial, "install", "-r", "-d", apk], {
       stdio: "inherit",

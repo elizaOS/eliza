@@ -1,0 +1,17 @@
+{
+  "schema": "elizaos.asr_benchmark_registry.v1",
+  "benchmarks": [
+    {
+      "id": "voice-code-bench",
+      "source_url": "https://huggingface.co/datasets/besimple-ai/voice-code-bench",
+      "dataset_revision": "af309592118b83fdf9b0ad896b564a142657aac8",
+      "license": "mit",
+      "split": "test",
+      "row_count": 300,
+      "runner": "packages/training/scripts/asr/voice_code_bench_run.py",
+      "providers": ["elevenlabs"],
+      "raw_audio_policy": "cache-outside-git",
+      "output_schema": "elizaos.voice_code_bench_report.v1"
+    }
+  ]
+}

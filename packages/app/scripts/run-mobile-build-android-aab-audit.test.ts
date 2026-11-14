@@ -31,9 +31,11 @@ import {
   runCheckedBundletool,
 } from "./lib/android-cloud-artifact-audit.ts";
 import {
+  assertAndroidArtifactOmitsLp3ManifestMarkers,
   assertAndroidArtifactRetainsBackgroundRunnerJniBridge,
   assertAndroidArtifactShipsWebPayload,
   assertAndroidArtifactSnapshotUnchanged,
+  auditAndroidArtifactDexLp3Policy,
   auditAndroidCloudArtifact,
   createAndroidBuildEnv,
   dumpAndroidArtifactBadging,
@@ -503,7 +505,7 @@ describeRealAab("real multi-module bundletool regression", () => {
     );
   });
 
-  it("rejects a relocated service and its privileged binding in a real feature manifest", () => {
+  it("rejects a relocated non-LP3 service and its privileged binding in a real feature manifest", () => {
     const temporaryDir = fs.mkdtempSync(
       path.join(os.tmpdir(), "eliza-real-aab-manifest-policy-"),
     );
@@ -531,7 +533,7 @@ describeRealAab("real multi-module bundletool regression", () => {
     }
   });
 
-  it("rejects a relocated class in a real feature DEX", () => {
+  it("rejects a relocated non-LP3 class in a real feature DEX", () => {
     const temporaryDir = fs.mkdtempSync(
       path.join(os.tmpdir(), "eliza-real-aab-relocated-dex-"),
     );
@@ -573,7 +575,7 @@ describeRealAab("real multi-module bundletool regression", () => {
           const dexEntry = "java/dex/classes.dex";
           entries[dexEntry] = Buffer.concat([
             Buffer.from(entries[dexEntry]),
-            Buffer.from(ANDROID_PLAY_FORBIDDEN_DEX_MARKERS[0], "utf8"),
+            Buffer.from("lp3_color_policy", "utf8"),
           ]);
         },
       );
@@ -581,7 +583,7 @@ describeRealAab("real multi-module bundletool regression", () => {
       expect(() =>
         inspectAndroidAppBundle(realAabInspectionOptions(artifact, archive)),
       ).toThrow(
-        `java/dex/classes.dex contains forbidden Play local-runtime marker: ${ANDROID_PLAY_FORBIDDEN_DEX_MARKERS[0]}`,
+        "java/dex/classes.dex contains forbidden LP3 marker: lp3_color_policy",
       );
     } finally {
       fs.rmSync(temporaryDir, { force: true, recursive: true });
@@ -977,9 +979,7 @@ describe("pinned bundletool provisioning", () => {
     expect(ANDROID_APP_GRADLE).toContain(
       "auditOutput.standardError.asText.get()",
     );
-    expect(ANDROID_APP_GRADLE).toContain(
-      "'android-cloud',\n                '--audit',",
-    );
+    expect(ANDROID_APP_GRADLE).toContain("'android-cloud-audit'");
     // npm-packages / white-label layouts resolve the audit CLI through the
     // orchestrator-provided override; the repo-root walk stays as the
     // source-checkout fallback. Both paths hard-fail on a missing script.
@@ -998,7 +998,10 @@ describe("pinned bundletool provisioning", () => {
   });
 
   it("passes an absolute JavaScript runtime to Gradle for the AAB finalizer", () => {
-    const target = { env: {} };
+    const target = {
+      env: {},
+      includeSmsGatewayEnvDefaults: false,
+    };
     const defaults = createAndroidBuildEnv(target, {
       androidSdkRoot: "/android-sdk",
       env: { PATH: "/usr/bin" },
@@ -1530,7 +1533,10 @@ describe("Android Cloud outer audit boundary", () => {
     try {
       const artifact = writeSyntheticCloudAab(temporaryDir, {
         extraEntries: {
-          "base/assets/classes.dex": Buffer.from("smuggled dex", "utf8"),
+          "base/assets/classes.dex": Buffer.from(
+            "ai.elizaos.app.action.ENABLE_LP3_COLOR_POLICY",
+            "utf8",
+          ),
         },
       });
 
@@ -1662,6 +1668,31 @@ describe("Android APK audit regression contract", () => {
     ]);
   });
 
+  it("keeps scanning APK DEX and rejects private LP3 markers", () => {
+    const readEntryBuffers = vi.fn(() => [
+      Buffer.from("ai.elizaos.app.action.ENABLE_LP3_COLOR_POLICY", "utf8"),
+    ]);
+
+    expect(() =>
+      auditAndroidArtifactDexLp3Policy(
+        "/artifacts/app-debug.apk",
+        ["classes.dex"],
+        JAVA_HOME,
+        {
+          debug: true,
+          expectedPresent: false,
+        },
+        { readEntryBuffers },
+      ),
+    ).toThrow("artifact DEX still contains LP3 policy markers");
+    expect(readEntryBuffers).toHaveBeenCalledWith(
+      "/artifacts/app-debug.apk",
+      ["classes.dex"],
+      JAVA_HOME,
+      { label: "LP3 policy DEX audit" },
+    );
+  });
+
   it("requires the Background Runner class resolved through JNI", () => {
     const readEntryBuffers = vi
       .fn()
@@ -1700,6 +1731,40 @@ describe("Android APK audit regression contract", () => {
       JAVA_HOME,
       { label: "Background Runner JNI DEX audit" },
     );
+  });
+
+  it("keeps ordinary AOSP shared permissions while rejecting its LP3-only delta", () => {
+    const sharedPermissions = [
+      "android.permission.RECEIVE_BOOT_COMPLETED",
+      "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
+    ].join("\n");
+    const options = {
+      label: "ordinary AOSP",
+      permissions: ["WRITE_SECURE_SETTINGS"],
+    };
+
+    expect(() =>
+      assertAndroidArtifactOmitsLp3ManifestMarkers(sharedPermissions, options),
+    ).not.toThrow();
+    expect(() =>
+      assertAndroidArtifactOmitsLp3ManifestMarkers(
+        `${sharedPermissions}\nandroid.permission.WRITE_SECURE_SETTINGS`,
+        options,
+      ),
+    ).toThrow("ordinary AOSP artifact manifest still contains LP3");
+  });
+
+  it.each([
+    "ai.elizaos.app.Lp3ColorPolicyService",
+    "ai.elizaos.app.action.SYNC_LP3_COLOR_POLICY",
+    "lp3_color_policy",
+  ])("rejects the AOSP manifest LP3 marker %s", (marker) => {
+    expect(() =>
+      assertAndroidArtifactOmitsLp3ManifestMarkers(marker, {
+        label: "ordinary AOSP",
+        permissions: ["WRITE_SECURE_SETTINGS"],
+      }),
+    ).toThrow(marker);
   });
 });
 
@@ -1966,9 +2031,29 @@ describe("inspectAndroidAppBundle", () => {
       "forbidden component",
     ],
     [
-      "relocated stripped component",
+      "relocated non-LP3 stripped component",
       '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application><service android:name="com.feature.ElizaAgentService"/></application></manifest>',
       "forbidden component",
+    ],
+    [
+      "relocated private LP3 component",
+      '<manifest xmlns:a="http://schemas.android.com/apk/res/android"><application><service a:name="com.attacker.Lp3ColorPolicyService"/></application></manifest>',
+      "forbidden LP3 component",
+    ],
+    [
+      "relocated private LP3 initializer",
+      '<manifest xmlns:a="http://schemas.android.com/apk/res/android"><application><provider a:name="com.attacker.Lp3ColorPolicyInitializer"/></application></manifest>',
+      "forbidden LP3 component",
+    ],
+    [
+      "private LP3 action",
+      '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application><receiver android:name="ai.elizaos.app.SafeReceiver"><intent-filter><action android:name="ai.elizaos.app.action.ENABLE_LP3_COLOR_POLICY"/></intent-filter></receiver></application></manifest>',
+      "forbidden LP3 action",
+    ],
+    [
+      "private LP3 preference marker",
+      '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application><meta-data android:name="lp3_color_policy" android:value="true"/></application></manifest>',
+      "forbidden LP3 policy marker",
     ],
   ])("rejects a %s in any module manifest", (_name, manifest, message) => {
     const harness = successfulToolHarness(
@@ -2032,6 +2117,36 @@ describe("inspectAndroidAppBundle", () => {
     ).not.toThrow();
   });
 
+  it("rejects an LP3 marker found only in a feature module DEX", () => {
+    const harness = successfulToolHarness(
+      new Map([
+        ["base", CLEAN_MANIFEST],
+        ["feature", CLEAN_MANIFEST],
+      ]),
+    );
+    const readDexEntries = (dexEntries) =>
+      dexEntries.map((entry) =>
+        Buffer.from(
+          entry.startsWith("feature/")
+            ? "dex strings lp3_color_policy"
+            : "clean base dex",
+          "utf8",
+        ),
+      );
+
+    expect(() =>
+      inspectAndroidAppBundle(
+        inspectOptions({
+          entries: MULTI_MODULE_ENTRIES,
+          readDexEntries,
+        }),
+        harness.deps,
+      ),
+    ).toThrow(
+      "feature/dex/classes2.dex contains forbidden LP3 marker: lp3_color_policy",
+    );
+  });
+
   it.each(ANDROID_PLAY_FORBIDDEN_DEX_MARKERS)(
     "rejects Play local-runtime marker %s in any module DEX",
     (forbiddenMarker) => {
@@ -2065,13 +2180,13 @@ describe("inspectAndroidAppBundle", () => {
     },
   );
 
-  it("rejects a Play local-runtime marker in a dex smuggled outside a module dex dir", () => {
+  it("rejects an LP3 marker in a dex smuggled outside a module dex dir", () => {
     const harness = successfulToolHarness();
     const readDexEntries = (dexEntries) =>
       dexEntries.map((entry) =>
         Buffer.from(
           entry === "base/assets/classes.dex"
-            ? ANDROID_PLAY_FORBIDDEN_DEX_MARKERS[0]
+            ? "ai.elizaos.app.action.ENABLE_LP3_COLOR_POLICY"
             : "clean base dex",
           "utf8",
         ),
@@ -2086,12 +2201,12 @@ describe("inspectAndroidAppBundle", () => {
         harness.deps,
       ),
     ).toThrow(
-      `base/assets/classes.dex contains forbidden Play local-runtime marker: ${ANDROID_PLAY_FORBIDDEN_DEX_MARKERS[0]}`,
+      "base/assets/classes.dex contains forbidden LP3 marker: ai.elizaos.app.action.ENABLE_LP3_COLOR_POLICY",
     );
   });
 
   it.each(["feature/dex/classes2.dex", "base/assets/classes.dex"])(
-    "rejects a relocated stripped class in %s",
+    "rejects a relocated non-LP3 stripped class in %s",
     (offendingEntry) => {
       const entries = offendingEntry.startsWith("feature/")
         ? MULTI_MODULE_ENTRIES
@@ -2140,6 +2255,66 @@ describe("inspectAndroidAppBundle", () => {
     expect(() =>
       inspectAndroidAppBundle(inspectOptions({ readDexEntries }), harness.deps),
     ).not.toThrow();
+  });
+
+  it("rejects LP3 class descriptors even when the caller omits LP3 strip entries", () => {
+    const harness = successfulToolHarness();
+    const readDexEntries = () => [
+      Buffer.from("Lai/elizaos/app/Lp3ColorPolicyService;", "utf8"),
+    ];
+
+    expect(() =>
+      inspectAndroidAppBundle(
+        inspectOptions({
+          readDexEntries,
+          strippedComponents: [],
+          strippedPermissions: [],
+        }),
+        harness.deps,
+      ),
+    ).toThrow(
+      "base/dex/classes.dex contains forbidden stripped component class: Lp3ColorPolicyService",
+    );
+  });
+
+  it("rejects private LP3 class descriptors relocated to another package", () => {
+    const harness = successfulToolHarness();
+    const readDexEntries = () => [
+      Buffer.from("Lcom/attacker/Lp3ColorPolicyService;", "utf8"),
+    ];
+
+    expect(() =>
+      inspectAndroidAppBundle(
+        inspectOptions({
+          readDexEntries,
+          strippedComponents: [],
+          strippedPermissions: [],
+        }),
+        harness.deps,
+      ),
+    ).toThrow(
+      "base/dex/classes.dex contains forbidden stripped component class: Lp3ColorPolicyService",
+    );
+  });
+
+  it("rejects a relocated LP3 initializer descriptor", () => {
+    const harness = successfulToolHarness();
+    const readDexEntries = () => [
+      Buffer.from("Lcom/attacker/Lp3ColorPolicyInitializer;", "utf8"),
+    ];
+
+    expect(() =>
+      inspectAndroidAppBundle(
+        inspectOptions({
+          readDexEntries,
+          strippedComponents: [],
+          strippedPermissions: [],
+        }),
+        harness.deps,
+      ),
+    ).toThrow(
+      "base/dex/classes.dex contains forbidden stripped component class: Lp3ColorPolicyInitializer",
+    );
   });
 
   it("fails when bundletool rejects a malformed bundle", () => {

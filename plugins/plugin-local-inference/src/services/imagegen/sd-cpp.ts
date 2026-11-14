@@ -68,6 +68,19 @@
  *     submit ...`; staple. Drop into releases.elizaos.ai/sd-cpp/<version>/
  *     darwin-{arm64,x86_64}/sd. macOS Apple Silicon prefers `mflux` over
  *     sd-cpp (see `mflux.ts`), but sd-cpp Metal is the fallback.
+ *   Linux riscv64 (CPU): unavailable as a shipped binary. Cross-compile via
+ *     `zig cc --target=riscv64-linux-musl` (same toolchain
+ *     packages/app/scripts/aosp/compile-libllama.ts uses).
+ *     There is no Node/host build script for sd-cpp in this repo — sd-cpp
+ *     is a child-process backend wrapping a precompiled `sd` binary
+ *     fetched from releases.elizaos.ai. Wiring riscv64 is a CDN-side
+ *     artifact addition (drop a `releases.elizaos.ai/sd-cpp/<version>/
+ *     linux-riscv64-cpu/sd` build); no build-matrix entry needs to land
+ *     here. Until then, the riscv64 binary-resolution attempt simply
+ *     surfaces the same `ImageGenBackendUnavailableError("sd-cpp", ...)`
+ *     it surfaces today on any host where the bundle installer did not
+ *     stage `sd` — i.e. image-gen is silently disabled on riscv64
+ *     (acceptable: the eliza-1 phone tier does not require image-gen).
  */
 
 import { execFile, spawn } from "node:child_process";

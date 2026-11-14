@@ -139,8 +139,8 @@ export function compareVulkanDispatchLogs(leftText, rightText) {
 function usage() {
   return [
     "Usage:",
-    "  bun packages/app/scripts/kernel-patches/vulkan-dispatch-log.ts <log>",
-    "  bun packages/app/scripts/kernel-patches/vulkan-dispatch-log.ts <baseline.log> <candidate.log>",
+    "  node packages/app/scripts/kernel-patches/vulkan-dispatch-log.ts <log>",
+    "  node packages/app/scripts/kernel-patches/vulkan-dispatch-log.ts <baseline.log> <candidate.log>",
   ].join("\n");
 }
 

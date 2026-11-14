@@ -12,7 +12,7 @@ const [command, ...args] = process.argv.slice(2);
 
 if (!command) {
   console.error(
-    "Usage: bun packages/scripts/with-test-runtime.ts <command> [...args]",
+    "Usage: node packages/scripts/with-test-runtime.ts <command> [...args]",
   );
   process.exit(1);
 }

@@ -4,25 +4,21 @@
  */
 import { ElizaError } from "@elizaos/core";
 
-import { getCloudDeployment, resolveCloudBlobHost } from "./deployment/cloud-deployment";
 import { safeFetch } from "./security/safe-fetch";
 import { getRuntimeR2Bucket, runtimeR2BucketConfigured } from "./storage/r2-runtime-binding";
 
+const DEFAULT_R2_PUBLIC_HOST = "blob.eliza.app";
+
 function getR2PublicHost(): string {
-  const deployment = getCloudDeployment();
-  return resolveCloudBlobHost({
-    R2_PUBLIC_HOST: deployment.blobHost,
-    CLOUD_DEPLOYMENT_ID: deployment.id,
-  });
+  const host = process.env.R2_PUBLIC_HOST;
+  return typeof host === "string" && host.length > 0 ? host : DEFAULT_R2_PUBLIC_HOST;
 }
 
 /**
  * Trusted blob storage hosts for URL validation.
  * Used to prevent SSRF attacks by ensuring URLs point to our storage.
  */
-export function getTrustedBlobHosts(): readonly string[] {
-  return [getR2PublicHost()];
-}
+export const TRUSTED_BLOB_HOSTS: readonly string[] = [getR2PublicHost()];
 
 /**
  * Validates that a URL points to a trusted blob storage host.
@@ -34,10 +30,10 @@ export function getTrustedBlobHosts(): readonly string[] {
 export function isValidBlobUrl(url: string): boolean {
   try {
     const parsedUrl = new URL(url);
-    if (parsedUrl.protocol !== "https:" || parsedUrl.username || parsedUrl.password) {
+    if (parsedUrl.protocol !== "https:") {
       return false;
     }
-    return getTrustedBlobHosts().some((host) => parsedUrl.host === host);
+    return TRUSTED_BLOB_HOSTS.some((host) => parsedUrl.hostname === host);
   } catch {
     return false;
   }
@@ -78,7 +74,7 @@ function toArrayBuffer(content: Buffer | string): ArrayBuffer {
 
 /**
  * Uploads a file to R2 storage via the runtime binding. R2 objects are public
- * via the Cloud deployment's public blob host (R2_PUBLIC_HOST).
+ * via the bucket's public host (R2_PUBLIC_HOST, default "blob.eliza.app").
  *
  * @param content - File content as Buffer or string.
  * @param options - Upload options including filename and metadata.
@@ -96,7 +92,6 @@ export async function uploadToBlob(
   if (!bucket) {
     throw new Error("R2 bucket binding is not configured for this runtime");
   }
-  const publicHost = getR2PublicHost();
 
   const { filename, contentType, folder = "media", userId } = options;
 
@@ -113,7 +108,7 @@ export async function uploadToBlob(
   });
 
   const size = Buffer.isBuffer(content) ? content.length : Buffer.byteLength(content);
-  const url = `https://${publicHost}/${pathname}`;
+  const url = `https://${getR2PublicHost()}/${pathname}`;
 
   return {
     url,

@@ -2,21 +2,7 @@
 import { randomUUID } from "node:crypto";
 import { realpath, stat } from "node:fs/promises";
 import { resolve } from "node:path";
-import {
-  asObjectRecord as asRecord,
-  ElizaError,
-  type IAgentRuntime,
-} from "@elizaos/core";
-import {
-  ensureTrajectoriesTable,
-  executeRawSql,
-  extractRequiredRows,
-  parsePersistedMetadata,
-  setTrajectoryExecutionOwnerResolver,
-  settleExitedTrajectoryForDevRecovery,
-  sqlQuote,
-  TrajectoriesService,
-} from "@elizaos/plugin-assistant";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import {
   type DevTrajectoryRecoveryOwner,
   type DevTrajectoryRecoveryStorageScope,
@@ -25,6 +11,15 @@ import {
   sameDevTrajectoryRecoveryOwner,
   sameDevTrajectoryRecoveryScope,
 } from "./dev-trajectory-recovery-protocol.ts";
+import {
+  asRecord,
+  ensureTrajectoriesTable,
+  executeRawSql,
+  extractRequiredRows,
+  parsePersistedMetadata,
+  resolveTrajectoryLogger,
+  sqlQuote,
+} from "./trajectory-internals.ts";
 
 export interface DevTrajectoryRecoveryRegistration {
   owner: DevTrajectoryRecoveryOwner;
@@ -129,8 +124,8 @@ async function assertScope(
   return owner;
 }
 
-/** Store admission gate; ordinary unsupervised runtimes stay unchanged. */
-async function getDevTrajectoryExecutionOwnerId(
+/** Internal bridge admission gate; ordinary unsupervised runtimes stay unchanged. */
+export async function getDevTrajectoryExecutionOwnerId(
   runtime: IAgentRuntime,
 ): Promise<string | undefined> {
   const state = executionStates.get(runtime as object);
@@ -165,9 +160,6 @@ export function prepareDevTrajectoryRecovery(
     preparation: Promise.resolve("unsupported-storage"),
   };
   executionStates.set(runtime as object, state);
-  setTrajectoryExecutionOwnerResolver(runtime, () =>
-    getDevTrajectoryExecutionOwnerId(runtime),
-  );
   state.preparation = prepare(runtime, state, transport);
   return state.preparation;
 }
@@ -207,14 +199,20 @@ async function prepare(
     ...owner,
     storageScope: Object.freeze(owner.storageScope),
   });
-  if (
-    !TrajectoriesService.resolveFromRuntime(runtime) ||
-    !(await ensureTrajectoriesTable(runtime))
-  ) {
+  const logger = await resolveTrajectoryLogger(runtime);
+  if (!(await ensureTrajectoriesTable(runtime)) || !logger) {
     throw recoveryError(
-      "Dev trajectory recovery requires the database trajectory service",
+      "Dev trajectory recovery requires the database trajectory logger",
     );
   }
+  // Dynamic import keeps the normal storage -> admission dependency acyclic.
+  const {
+    installDatabaseTrajectoryLogger,
+    DatabaseTrajectoryLogger,
+    settleExitedTrajectoryForDevRecovery,
+  } = await import("./trajectory-storage.ts");
+  if (!(logger instanceof DatabaseTrajectoryLogger))
+    await installDatabaseTrajectoryLogger(runtime);
   const result = await transport.registerOwner({
     ...owner,
     storageScope: { ...owner.storageScope },

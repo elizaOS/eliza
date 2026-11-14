@@ -18,7 +18,7 @@ import { getRequestIp } from "@elizaos/cloud-shared/lib/middleware/rate-limit-ho
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import type { Context } from "hono";
-import type { AuditAction } from "../services/audit";
+import type { AuditAction } from "@/api-app/services/audit";
 import { getAuditDispatcher } from "../services/audit-dispatcher-singleton";
 
 export interface ActorContext {

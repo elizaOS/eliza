@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-discord",
-	"version": "2.0.6",
+	"version": "2.0.4",
 	"description": "",
 	"type": "module",
 	"main": "dist/index.js",
@@ -31,7 +31,7 @@
 		"build": "bun run build.ts",
 		"build:ts": "bun run build.ts",
 		"dev": "bun --hot build.ts",
-		"clean": "bun ../../packages/scripts/rm-path-recursive.ts dist .turbo && bun ../../packages/scripts/clean-stray-dts.ts",
+		"clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo && node ../../packages/scripts/clean-stray-dts.ts",
 		"test": "vitest run",
 		"test:real-runtime": "vitest run --config ./vitest.real-runtime.config.ts",
 		"typecheck": "tsc --noEmit -p tsconfig.json",
@@ -73,12 +73,12 @@
 		"zod": "^4.6.5"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.6.6",
+		"@biomejs/biome": "2.6.3",
 		"@types/fluent-ffmpeg": "^2.1.28",
 		"@types/node": "^25.0.3",
 		"@typescript/native": "npm:typescript@^7.0.2",
 		"typescript": "^6.0.3",
-		"vitest": "^5.1.0",
+		"vitest": "^5.0.5",
 		"@elizaos/testing": "workspace:*"
 	},
 	"peerDependencies": {

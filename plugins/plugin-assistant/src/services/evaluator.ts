@@ -84,37 +84,6 @@ type PreparedEntry = {
   progress?: EvaluatorProgressSnapshot;
   inputBinding?: string;
 };
-interface MemoryJobResult extends EvaluatorRunResult {
-  /** Pages whose same input cannot succeed on another model call. */
-  nonRetryableEvidenceIds: readonly string[];
-}
-function nonRetryableEvidenceIds(
-  entries: readonly PreparedEntry[],
-  retryable: boolean | undefined,
-): string[] {
-  if (retryable !== false) return [];
-  const ids: string[] = [];
-  for (const entry of entries) {
-    if (
-      entry.progress?.pendingOutput !== undefined ||
-      entry.resolvedOutput !== undefined
-    )
-      continue;
-    const id = entry.progress?.evidenceId;
-    if (typeof id === "string" && id.length > 0) ids.push(id);
-  }
-  return ids;
-}
-function readBlockedEvidenceIds(task: Task): ReadonlySet<string> {
-  const raw = task.metadata?.nonRetryableEvidenceIds;
-  if (!Array.isArray(raw)) return new Set();
-  const ids: string[] = [];
-  for (const id of raw) {
-    if (typeof id !== "string" || id.length === 0) return new Set();
-    ids.push(id);
-  }
-  return new Set(ids);
-}
 function extractionOptions(
   snapshot: EvaluatorProgressSnapshot,
   runtime: IAgentRuntime,
@@ -891,10 +860,6 @@ export class EvaluatorService extends BaseService {
               baseInterval: 1000,
               maxFailures: 5,
               ...task.metadata,
-              // A cancelled row can be recreated for the same message while
-              // its previous model call is still running. Fence that old run
-              // from retaining evidence or deleting the replacement task.
-              reconciliationRevision: uuidv4(),
             },
           });
       }
@@ -1153,7 +1118,6 @@ export class EvaluatorService extends BaseService {
                 )
                   responses.push(response);
               }
-            const blocked = readBlockedEvidenceIds(task);
             const result = await this.runSelected(
               this.runtime.evaluators.filter((entry) =>
                 this.isBackground(entry),
@@ -1174,45 +1138,13 @@ export class EvaluatorService extends BaseService {
                 responses,
               },
               true,
-              blocked,
             );
-            // A page that cannot succeed is not bought again by this job.
-            // Other admitted pages are different input and still run. The
-            // failed page stays in the journal until a later job sees new
-            // evidence. Deleting the job here would drop those other pages.
-            const allNonRetryableErrors =
-              result.errors.length &&
-              result.errors.every((entry) => entry.retryable === false);
-            const newlyBlocked = result.nonRetryableEvidenceIds.filter(
-              (id) => !blocked.has(id),
-            );
-            // An independent retryable failure must not re-buy a page that
-            // already exhausted its output. Keep that block through backoff.
+            // Retrying input that cannot succeed only re-buys the same failure.
+            // The evidence stays pending; a later job retries it once it changes.
             if (
-              newlyBlocked.length > 0 &&
-              (result.hasMoreEvidence || !allNonRetryableErrors)
+              result.errors.length &&
+              result.errors.every((entry) => entry.retryable === false)
             ) {
-              if (
-                !(await this.retainBlockedEvidence(task, [
-                  ...blocked,
-                  ...newlyBlocked,
-                ]))
-              )
-                return this.finishBackgroundTask(task);
-              if (allNonRetryableErrors) {
-                this.runtime.logger.warn(
-                  {
-                    src: "service:evaluator",
-                    taskId: task.id,
-                    errors: result.errors,
-                    blockedEvidenceIds: [...blocked, ...newlyBlocked],
-                  },
-                  "Background memory page stopped: deferred evidence remains",
-                );
-                return undefined;
-              }
-            }
-            if (allNonRetryableErrors) {
               this.runtime.logger.warn(
                 {
                   src: "service:evaluator",
@@ -1262,32 +1194,6 @@ export class EvaluatorService extends BaseService {
         )
           await this.runtime.deleteTask(task.id as UUID);
         return { preserveTask: true };
-      },
-    );
-  }
-  /** Remember pages this job must not buy again. A changed revision owns the
-   * task, so this leaves that revision's metadata untouched. */
-  private async retainBlockedEvidence(
-    task: Task,
-    ids: readonly string[],
-  ): Promise<boolean> {
-    return this.runtime.roomHandlerQueue.withLease(
-      task.roomId as UUID,
-      async () => {
-        const current = await this.runtime.getTask(task.id as UUID);
-        if (
-          !current ||
-          current.metadata?.reconciliationRevision !==
-            task.metadata?.reconciliationRevision
-        )
-          return false;
-        await this.runtime.updateTask(task.id as UUID, {
-          metadata: {
-            ...current.metadata,
-            nonRetryableEvidenceIds: [...ids],
-          },
-        });
-        return true;
       },
     );
   }
@@ -1793,10 +1699,9 @@ export class EvaluatorService extends BaseService {
     activeEvaluators?: string[];
     processedEvaluators?: string[];
     errors?: EvaluatorRunResult["errors"];
-  }): MemoryJobResult {
+  }): EvaluatorRunResult {
     return {
       skipped: true,
-      nonRetryableEvidenceIds: [],
       activeEvaluators: params?.activeEvaluators ?? [],
       processedEvaluators: params?.processedEvaluators ?? [],
       results: [],
@@ -1809,13 +1714,9 @@ export class EvaluatorService extends BaseService {
     error: string;
     retryAt?: number;
     retryable?: boolean;
-    hasMoreEvidence?: boolean;
-    nonRetryableEvidenceIds?: readonly string[];
-  }): MemoryJobResult {
+  }): EvaluatorRunResult {
     return {
       skipped: false,
-      hasMoreEvidence: params.hasMoreEvidence,
-      nonRetryableEvidenceIds: params.nonRetryableEvidenceIds ?? [],
       activeEvaluators: params.preparedEntries.map(
         ({ evaluator }) => evaluator.name,
       ),
@@ -1850,8 +1751,7 @@ export class EvaluatorService extends BaseService {
     state: State | undefined,
     options: EvaluatorRunOptions,
     background = false,
-    blockedEvidenceIds: ReadonlySet<string> = new Set(),
-  ): Promise<MemoryJobResult> {
+  ): Promise<EvaluatorRunResult> {
     const candidates = this.sortEvaluators(selected);
     const incremental =
       options.phase === "post_turn"
@@ -1878,7 +1778,6 @@ export class EvaluatorService extends BaseService {
         undefined,
         background,
         true,
-        blockedEvidenceIds,
       );
       if (regular.length === 0) return scopedResult;
       const regularResult = await this.runSelected(
@@ -1887,15 +1786,10 @@ export class EvaluatorService extends BaseService {
         state,
         options,
         background,
-        blockedEvidenceIds,
       );
       return {
         skipped: scopedResult.skipped && regularResult.skipped,
         hasMoreEvidence: regularResult.hasMoreEvidence,
-        nonRetryableEvidenceIds: [
-          ...scopedResult.nonRetryableEvidenceIds,
-          ...regularResult.nonRetryableEvidenceIds,
-        ],
         activeEvaluators: [
           ...scopedResult.activeEvaluators,
           ...regularResult.activeEvaluators,
@@ -1916,8 +1810,6 @@ export class EvaluatorService extends BaseService {
         options,
         undefined,
         background,
-        false,
-        blockedEvidenceIds,
       );
     const { progress, progressErrors } = await this.inRoom(
       message,
@@ -2005,8 +1897,6 @@ export class EvaluatorService extends BaseService {
         options,
         progress,
         background,
-        false,
-        blockedEvidenceIds,
       ),
     ];
     const incrementalNames = new Set(incremental.map((entry) => entry.name));
@@ -2023,9 +1913,6 @@ export class EvaluatorService extends BaseService {
           result.processedEvaluators.some(
             (name) => (progress.get(name)?.remainingSourceCount ?? 0) > 0,
           ),
-      ),
-      nonRetryableEvidenceIds: results.flatMap(
-        (result) => result.nonRetryableEvidenceIds,
       ),
       activeEvaluators: results.flatMap((result) => result.activeEvaluators),
       processedEvaluators: results.flatMap(
@@ -2046,8 +1933,7 @@ export class EvaluatorService extends BaseService {
     progress?: Map<string, EvaluatorProgressSnapshot>,
     background = false,
     currentMessageOnly = false,
-    blockedEvidenceIds: ReadonlySet<string> = new Set(),
-  ): Promise<MemoryJobResult> {
+  ): Promise<EvaluatorRunResult> {
     setTrajectoryPurpose("evaluation");
     const preparation = await this.inRoom(message, background, async () => {
       const context: EvaluatorRunContext = {
@@ -2115,12 +2001,8 @@ export class EvaluatorService extends BaseService {
       );
       let hasDeferredEvidence = false;
       if (background && progress) {
-        const eligible = preparedEntries.filter((entry) => {
-          const id = entry.progress?.evidenceId;
-          return typeof id !== "string" || !blockedEvidenceIds.has(id);
-        });
         const admission = selectSharedEvidencePages(
-          eligible,
+          preparedEntries,
           (entry) =>
             entry.progress?.pendingOutput !== undefined ||
             entry.resolvedOutput !== undefined
@@ -2379,11 +2261,6 @@ ${JSON.stringify(references.map(evaluatorEvidenceRecord))}`
         error: error ?? "Evaluator model returned no output",
         retryAt,
         retryable,
-        hasMoreEvidence: hasDeferredEvidence,
-        nonRetryableEvidenceIds: nonRetryableEvidenceIds(
-          preparedEntries,
-          retryable,
-        ),
       });
     }
     if (!output)
@@ -2461,10 +2338,6 @@ ${JSON.stringify(references.map(evaluatorEvidenceRecord))}`
     return {
       skipped: false,
       hasMoreEvidence: hasDeferredEvidence,
-      nonRetryableEvidenceIds: nonRetryableEvidenceIds(
-        preparedEntries,
-        retryable,
-      ),
       activeEvaluators: preparedEntries.map(({ evaluator }) => evaluator.name),
       processedEvaluators,
       results,

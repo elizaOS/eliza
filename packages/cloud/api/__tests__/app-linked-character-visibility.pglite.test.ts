@@ -51,9 +51,6 @@ const { charactersService } = await import(
   "@elizaos/cloud-shared/lib/services/characters"
 );
 const { eq } = await import("drizzle-orm");
-const { jobs, apiKeys, generations, usageRecords } = await import(
-  "@elizaos/cloud-shared/db/schemas"
-);
 const { Hono } = await import("hono");
 const { default: appCharactersRoute } = await import(
   "../v1/apps/[id]/characters/route.ts"
@@ -72,10 +69,6 @@ beforeAll(async () => {
       users,
       userCharacters,
       apps,
-      jobs,
-      apiKeys,
-      generations,
-      usageRecords,
     } as never,
     dbWrite as never,
   );

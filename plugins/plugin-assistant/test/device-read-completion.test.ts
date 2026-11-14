@@ -68,7 +68,7 @@ async function createTable(
 async function fixture(
   options: { selected?: boolean; hostRevision?: string | null } = {},
 ) {
-  vi.stubEnv("ELIZA_TRAJECTORY_LOGGING", "0");
+  vi.stubEnv("ELIZA_TRAJECTORY_RECORDING", "0");
   const pg = new PGlite();
   await createTable(pg, approvalRequestTable, true);
   await createTable(pg, approvalDispatchControlTable);

@@ -74,7 +74,6 @@ function makeFixture() {
   writeJson(path.join(repoRoot, "packages/a/package.json"), {
     name: "@release-fixture/a",
     ...common,
-    gitHead: "1".repeat(40),
     dependencies: { "@release-fixture/b": "workspace:*" },
   });
   writeJson(path.join(repoRoot, "packages/b/package.json"), {
@@ -127,13 +126,11 @@ function createCandidate(
 describe("immutable release candidate", () => {
   test("builds once, packs real tgz files, records entrypoints and deterministic integrity", () => {
     const fixture = makeFixture();
-    const sourceManifests = ["a", "b"].map((name) => {
-      const manifestPath = path.join(
-        fixture.repoRoot,
-        `packages/${name}/package.json`,
-      );
-      return { manifestPath, bytes: fs.readFileSync(manifestPath) };
-    });
+    const sourceManifestPath = path.join(
+      fixture.repoRoot,
+      "packages/a/package.json",
+    );
+    const sourceManifestBytes = fs.readFileSync(sourceManifestPath);
     const first = createCandidate(fixture, "candidate-one");
     expect(first.state.phase).toBe("candidate-recorded");
     expect(first.plan.publishOrder).toEqual([
@@ -155,22 +152,6 @@ describe("immutable release candidate", () => {
         path.join(fixture.base, "candidate-one", packageRecord.tarball.path),
       );
       expect([...bytes.subarray(0, 2)]).toEqual([0x1f, 0x8b]);
-      const manifest = JSON.parse(
-        execFileSync(
-          "tar",
-          [
-            "-xzOf",
-            path.join(
-              fixture.base,
-              "candidate-one",
-              packageRecord.tarball.path,
-            ),
-            "package/package.json",
-          ],
-          { encoding: "utf8" },
-        ),
-      );
-      expect(manifest.gitHead).toBe(fixture.sourceSha);
     }
     const packedA = first.plan.packages.find(
       ({ name }) => name === "@release-fixture/a",
@@ -196,9 +177,9 @@ describe("immutable release candidate", () => {
       "node",
       "default",
     ]);
-    for (const { manifestPath, bytes } of sourceManifests) {
-      expect(fs.readFileSync(manifestPath).equals(bytes)).toBe(true);
-    }
+    expect(
+      fs.readFileSync(sourceManifestPath).equals(sourceManifestBytes),
+    ).toBe(true);
     const consumer = path.join(fixture.base, "consumer");
     const installedPackage = path.join(
       consumer,

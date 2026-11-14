@@ -141,5 +141,13 @@ export class SessionPool<TSession extends PoolSession> {
 	}
 }
 
-/** Default session-pool size. */
-export const DEFAULT_POOL_SIZE = 8;
+/**
+ * Resolve the pool size from env, with a sane default. Bound by 1..64.
+ */
+export function resolveDefaultPoolSize(envValue?: string | null): number {
+	const raw = (envValue ?? "").trim();
+	if (!raw) return 8;
+	const parsed = Number.parseInt(raw, 10);
+	if (!Number.isFinite(parsed) || parsed <= 0) return 8;
+	return Math.min(64, Math.max(1, parsed));
+}

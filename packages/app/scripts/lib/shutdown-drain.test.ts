@@ -303,7 +303,7 @@ describe.skipIf(process.platform === "win32")(
 
       const warn = vi.fn();
       const result = await drainSpawnedChildren({
-        children: [{ name: "app", child }],
+        children: [{ name: "electrobun", child }],
         drainWindowMs: 300,
         killGraceMs: 2_000,
         signalTree: signalSpawnedProcessGroup,
@@ -312,7 +312,7 @@ describe.skipIf(process.platform === "win32")(
         warn,
       });
 
-      expect(result).toEqual({ timedOut: true, killed: ["app"] });
+      expect(result).toEqual({ timedOut: true, killed: ["electrobun"] });
       expect(warn).toHaveBeenCalledOnce();
       expect(isAlive(descendantPid)).toBe(false);
     }, 15_000);
@@ -342,5 +342,58 @@ describe("dev-ui supervisor wiring", () => {
     expect(devUiSource).toContain(
       "process.exit(exitCode === 0 ? 1 : exitCode);",
     );
+  });
+});
+
+describe("dev-platform supervisor wiring", () => {
+  const devPlatformSource = readFileSync(
+    path.join(libDir, "..", "dev-platform.ts"),
+    "utf8",
+  );
+
+  it("routes shutdownDesktopDev through the bounded drain", () => {
+    expect(devPlatformSource).toContain("drainSpawnedChildren({");
+    expect(devPlatformSource).toContain(
+      "drainWindowMs: SHUTDOWN_DRAIN_WINDOW_MS,",
+    );
+    expect(devPlatformSource).toContain(
+      "signalTree: signalSpawnedProcessGroup,",
+    );
+    expect(devPlatformSource).toContain(
+      "isTargetAlive: isSpawnedProcessGroupAlive,",
+    );
+  });
+
+  it("owns the exact LaunchServices fallback through shutdown", () => {
+    expect(devPlatformSource).toContain('["-W", canonicalAppPath]');
+    expect(devPlatformSource).toContain(
+      "inspectMacApplicationsAtPath(canonicalAppPath)",
+    );
+    expect(devPlatformSource).toContain("claimMacApplicationAtPath(");
+    expect(devPlatformSource).toContain("stopMacApplication(authority)");
+    expect(devPlatformSource).toContain(
+      "launchServicesOwnershipPromise = (async () =>",
+    );
+    expect(devPlatformSource).toContain("launchServicesOwnershipPromise.then(");
+    expect(devPlatformSource).toContain(
+      "if (scheduledOpen || shuttingDown) return;",
+    );
+    expect(devPlatformSource).toContain("if (shuttingDown) return null;");
+    expect(devPlatformSource).not.toContain("opener.unref()");
+  });
+
+  it("no longer SIGKILLs surviving children on a fixed fuse", () => {
+    expect(devPlatformSource).not.toContain("}, 1500).unref();");
+  });
+
+  it("names tracked children for loud escalation logs", () => {
+    // pushChild is generic (called with "vite" and "electrobun"): the stored
+    // name must be the caller's argument, never a hard-coded literal, or a
+    // Vite straggler is misreported as Electrobun (#18708 review, @w1kke).
+    expect(devPlatformSource).toContain("childNames.set(child, name);");
+    expect(devPlatformSource).not.toContain(
+      'childNames.set(child, "electrobun");',
+    );
+    expect(devPlatformSource).toContain('childNames.set(child, "api");');
   });
 });

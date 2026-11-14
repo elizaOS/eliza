@@ -31,6 +31,16 @@ on:
         required: false
         default: false
         type: boolean
+      run_macos_electrobun:
+        description: "Attempt the macOS Electrobun live-voice matrix lane"
+        required: false
+        default: false
+        type: boolean
+      run_windows_electrobun:
+        description: "Attempt the Windows Electrobun live-voice matrix lane"
+        required: false
+        default: false
+        type: boolean
       run_ios:
         description: "Attempt the iOS simulator/device live-voice matrix lane"
         required: false
@@ -99,7 +109,7 @@ jobs:
       - name: Emit matrix probe report
         run: |
           set -euo pipefail
-          bun packages/app/scripts/voice/voice-matrix.ts --out "$RUNNER_TEMP/voice-platform-matrix"
+          node packages/app/scripts/voice/voice-matrix.ts --out "$RUNNER_TEMP/voice-platform-matrix"
 
       - name: Upload matrix probe report
         if: always()
@@ -240,7 +250,7 @@ jobs:
           ELIZA_VOICE_LIVE_CLOUDFLARE: ""
         run: |
           set -euo pipefail
-          bun packages/app/scripts/voice/voice-matrix.ts \
+          node packages/app/scripts/voice/voice-matrix.ts \
             --platform web.live.cloudflare-roundtrip \
             --out "$RUNNER_TEMP/voice-web-live-ungated"
 
@@ -249,7 +259,7 @@ jobs:
           ELIZA_VOICE_LIVE_CLOUDFLARE: ""
         run: |
           set -euo pipefail
-          bun packages/app/scripts/voice/voice-matrix.ts \
+          node packages/app/scripts/voice/voice-matrix.ts \
             --run \
             --require-green \
             --platform web.failure-paths \
@@ -278,7 +288,7 @@ jobs:
           ELIZA_UI_SMOKE_BACKEND_LOG_PATH: ${{ runner.temp }}/voice-web-live/private-backend.log
         run: |
           set -euo pipefail
-          bun packages/app/scripts/voice/voice-matrix.ts \
+          node packages/app/scripts/voice/voice-matrix.ts \
             --run \
             --require-green \
             --platform web.live.cloudflare-roundtrip \
@@ -638,7 +648,7 @@ jobs:
           set -euo pipefail
           PRIVATE_LOG=$(mktemp "$RUNNER_TEMP/voice-paradee-phonon.XXXXXX")
           trap 'rm -f "$PRIVATE_LOG"' EXIT
-          if ! (cd packages/app && bun ../scripts/run-vitest.ts run --config vitest.host.config.ts \
+          if ! (cd packages/app && node ../scripts/run-vitest.ts run --config vitest.host.config.ts \
             src/api/standalone-asr-service.test.ts -t "standalone speech on libelizainference" --reporter=verbose) \
             > "$PRIVATE_LOG" 2>&1; then
             echo "phase=paradee-phonon status=failed code=PARADEE_PHONON_FAILED" >&2
@@ -666,6 +676,175 @@ jobs:
         with:
           name: voice-real-acoustic-matrix
           path: ${{ runner.temp }}/voice-real-proof
+          if-no-files-found: error
+
+  voice-macos-electrobun-matrix:
+    name: macOS Electrobun live-voice matrix
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_macos_electrobun) || vars.ELIZA_VOICE_MACOS_ELECTROBUN_READY == '1' }}
+    # Physical microphone and speaker-loopback acceptance cannot run on a
+    # GitHub-hosted VM. The ready gate is meaningful only on the owner-operated
+    # hardware runner named by this label set. Device variables use ffmpeg's
+    # avfoundation indices (`ffmpeg -f avfoundation -list_devices true -i ""`).
+    runs-on: ${{ fromJSON(vars.ELIZA_VOICE_MACOS_RUNNER_LABELS || '["self-hosted","macOS","ARM64","eliza","voice-hardware"]') }}
+    timeout-minutes: 90
+    env:
+      ELIZA_VOICE_MACOS_ELECTROBUN_READY: ${{ vars.ELIZA_VOICE_MACOS_ELECTROBUN_READY }}
+      ELIZA_TEST_PACKAGED_LAUNCHER_PATH: ${{ vars.ELIZA_VOICE_MACOS_PACKAGED_LAUNCHER_PATH }}
+      ELIZA_VOICE_DESKTOP_API_BASE: ${{ vars.ELIZA_VOICE_DESKTOP_API_BASE }}
+      ELIZA_VOICE_HARDWARE_SCREEN_DEVICE: ${{ vars.ELIZA_VOICE_MACOS_SCREEN_DEVICE }}
+      ELIZA_VOICE_HARDWARE_MIC_DEVICE: ${{ vars.ELIZA_VOICE_MACOS_MIC_DEVICE }}
+      ELIZA_VOICE_HARDWARE_SPEAKER_LOOPBACK_DEVICE: ${{ vars.ELIZA_VOICE_MACOS_SPEAKER_LOOPBACK_DEVICE }}
+      ELIZA_VOICE_BROWSER_MIC_DEVICE_ID: ${{ vars.ELIZA_VOICE_MACOS_BROWSER_MIC_DEVICE_ID }}
+      ELIZA_VOICE_BROWSER_SPEAKER_DEVICE_ID: ${{ vars.ELIZA_VOICE_MACOS_BROWSER_SPEAKER_DEVICE_ID }}
+      ELIZA_VOICE_DESKTOP_BACKEND_LOG: ${{ vars.ELIZA_VOICE_MACOS_BACKEND_LOG }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: recursive
+          show-progress: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          setup-python: "true"
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+          install-protoc: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Run macOS Electrobun matrix inside synchronized hardware capture
+        run: |
+          set -euo pipefail
+          PRIVATE_LOG=$(mktemp "$RUNNER_TEMP/voice-macos-capture.XXXXXX")
+          trap 'rm -f "$PRIVATE_LOG"' EXIT
+          if bun run --cwd packages/app voice:evidence:desktop:capture -- \
+            --platform darwin \
+            --out "$RUNNER_TEMP/voice-macos-hardware-capture" \
+            -- node packages/app/scripts/voice/voice-matrix.ts --run --require-green --platform macos-electrobun --out "$RUNNER_TEMP/voice-macos-electrobun-matrix" \
+            > "$PRIVATE_LOG" 2>&1; then
+            echo "phase=macos-capture status=passed code=DESKTOP_CAPTURE_PASSED"
+          else
+            echo "phase=macos-capture status=failed code=DESKTOP_CAPTURE_FAILED" >&2
+            exit 1
+          fi
+
+      - name: Finalize real macOS microphone and speaker evidence
+        env:
+          ELIZA_VOICE_EVIDENCE_REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          CELL="$RUNNER_TEMP/voice-macos-electrobun-matrix/macos.electrobun.live-roundtrip"
+          bun run --cwd packages/app voice:evidence -- desktop \
+            --report "$CELL/voice-desktop-selftest-darwin.json" \
+            --trajectory "$CELL/voice-desktop-selftest-darwin-trajectory.json" \
+            --backend "$RUNNER_TEMP/voice-macos-hardware-capture/backend-session.log" \
+            --screen "$RUNNER_TEMP/voice-macos-hardware-capture/screen.mp4" \
+            --mic "$RUNNER_TEMP/voice-macos-hardware-capture/microphone.wav" \
+            --speaker "$RUNNER_TEMP/voice-macos-hardware-capture/speaker-loopback.wav" \
+            --microphone-payload "$CELL/voice-desktop-selftest-darwin-input.wav" \
+            --reference-payload "$CELL/voice-desktop-selftest-darwin-reference.wav" \
+            --tts-payload "$CELL/voice-desktop-selftest-darwin-tts.audio" \
+            --capture-provenance "$RUNNER_TEMP/voice-macos-hardware-capture/capture-provenance.json" \
+            --out "$RUNNER_TEMP/voice-macos-electrobun-final"
+
+      - name: Upload macOS Electrobun matrix
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: voice-macos-electrobun-matrix
+          path: ${{ runner.temp }}/voice-macos-electrobun-final
+          if-no-files-found: error
+
+  voice-windows-electrobun-matrix:
+    name: Windows Electrobun live-voice matrix
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_windows_electrobun) || vars.ELIZA_VOICE_WINDOWS_ELECTROBUN_READY == '1' }}
+    # Windows device variables are exact dshow audio names from
+    # `ffmpeg -list_devices true -f dshow -i dummy`.
+    runs-on: ${{ fromJSON(vars.ELIZA_VOICE_WINDOWS_RUNNER_LABELS || '["self-hosted","Windows","X64","eliza","voice-hardware"]') }}
+    timeout-minutes: 90
+    env:
+      ELIZA_VOICE_WINDOWS_ELECTROBUN_READY: ${{ vars.ELIZA_VOICE_WINDOWS_ELECTROBUN_READY }}
+      ELIZA_TEST_PACKAGED_LAUNCHER_PATH: ${{ vars.ELIZA_VOICE_WINDOWS_PACKAGED_LAUNCHER_PATH }}
+      ELIZA_VOICE_DESKTOP_API_BASE: ${{ vars.ELIZA_VOICE_DESKTOP_API_BASE }}
+      ELIZA_VOICE_HARDWARE_MIC_DEVICE: ${{ vars.ELIZA_VOICE_WINDOWS_MIC_DEVICE }}
+      ELIZA_VOICE_HARDWARE_SPEAKER_LOOPBACK_DEVICE: ${{ vars.ELIZA_VOICE_WINDOWS_SPEAKER_LOOPBACK_DEVICE }}
+      ELIZA_VOICE_BROWSER_MIC_DEVICE_ID: ${{ vars.ELIZA_VOICE_WINDOWS_BROWSER_MIC_DEVICE_ID }}
+      ELIZA_VOICE_BROWSER_SPEAKER_DEVICE_ID: ${{ vars.ELIZA_VOICE_WINDOWS_BROWSER_SPEAKER_DEVICE_ID }}
+      ELIZA_VOICE_DESKTOP_BACKEND_LOG: ${{ vars.ELIZA_VOICE_WINDOWS_BACKEND_LOG }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: recursive
+          show-progress: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          setup-python: "true"
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+          install-protoc: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Run Windows Electrobun matrix inside synchronized hardware capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          PRIVATE_LOG=$(mktemp "$RUNNER_TEMP/voice-windows-capture.XXXXXX")
+          trap 'rm -f "$PRIVATE_LOG"' EXIT
+          if bun run --cwd packages/app voice:evidence:desktop:capture -- \
+            --platform win32 \
+            --out "$RUNNER_TEMP/voice-windows-hardware-capture" \
+            -- node packages/app/scripts/voice/voice-matrix.ts --run --require-green --platform windows-electrobun --out "$RUNNER_TEMP/voice-windows-electrobun-matrix" \
+            > "$PRIVATE_LOG" 2>&1; then
+            echo "phase=windows-capture status=passed code=DESKTOP_CAPTURE_PASSED"
+          else
+            echo "phase=windows-capture status=failed code=DESKTOP_CAPTURE_FAILED" >&2
+            exit 1
+          fi
+
+      - name: Finalize real Windows microphone and speaker evidence
+        shell: bash
+        env:
+          ELIZA_VOICE_EVIDENCE_REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          CELL="$RUNNER_TEMP/voice-windows-electrobun-matrix/windows.electrobun.live-roundtrip"
+          bun run --cwd packages/app voice:evidence -- desktop \
+            --report "$CELL/voice-desktop-selftest-win32.json" \
+            --trajectory "$CELL/voice-desktop-selftest-win32-trajectory.json" \
+            --backend "$RUNNER_TEMP/voice-windows-hardware-capture/backend-session.log" \
+            --screen "$RUNNER_TEMP/voice-windows-hardware-capture/screen.mp4" \
+            --mic "$RUNNER_TEMP/voice-windows-hardware-capture/microphone.wav" \
+            --speaker "$RUNNER_TEMP/voice-windows-hardware-capture/speaker-loopback.wav" \
+            --microphone-payload "$CELL/voice-desktop-selftest-win32-input.wav" \
+            --reference-payload "$CELL/voice-desktop-selftest-win32-reference.wav" \
+            --tts-payload "$CELL/voice-desktop-selftest-win32-tts.audio" \
+            --capture-provenance "$RUNNER_TEMP/voice-windows-hardware-capture/capture-provenance.json" \
+            --out "$RUNNER_TEMP/voice-windows-electrobun-final"
+
+      - name: Upload Windows Electrobun matrix
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: voice-windows-electrobun-matrix
+          path: ${{ runner.temp }}/voice-windows-electrobun-final
           if-no-files-found: error
 
   voice-ios-matrix:
@@ -703,7 +882,7 @@ jobs:
       - name: Run iOS matrix
         run: |
           set -euo pipefail
-          bun packages/app/scripts/voice/voice-matrix.ts --run --require-green --platform ios --out "$RUNNER_TEMP/voice-ios-matrix"
+          node packages/app/scripts/voice/voice-matrix.ts --run --require-green --platform ios --out "$RUNNER_TEMP/voice-ios-matrix"
 
       - name: Upload iOS matrix
         if: always()
@@ -755,7 +934,7 @@ jobs:
       - name: Run Android matrix
         run: |
           set -euo pipefail
-          bun packages/app/scripts/voice/voice-matrix.ts --run --require-green --platform android --out "$RUNNER_TEMP/voice-android-matrix"
+          node packages/app/scripts/voice/voice-matrix.ts --run --require-green --platform android --out "$RUNNER_TEMP/voice-android-matrix"
 
       - name: Upload Android matrix
         if: always()

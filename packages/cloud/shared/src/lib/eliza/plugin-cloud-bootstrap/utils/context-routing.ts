@@ -184,10 +184,7 @@ export function parseContextRoutingMetadata(raw: unknown): ContextRoutingDecisio
   const contexts = parseContextList(value.contexts);
   const primaryContext = normalizeContext(value.primaryContext) ?? contexts[0];
   const secondaryContextSet = new Set<AgentContext>();
-  // Use every listed context except the primary one. The primary context is
-  // not always the first listed context, so slice(1) would drop a listed
-  // context and hide its actions from the planner.
-  for (const context of [...parseContextList(value.secondaryContexts), ...contexts]) {
+  for (const context of [...parseContextList(value.secondaryContexts), ...contexts.slice(1)]) {
     if (context !== primaryContext) {
       secondaryContextSet.add(context);
     }

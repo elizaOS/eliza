@@ -6,7 +6,21 @@
  * fields used by API clients and asset helpers.
  */
 
+import { resolveEnvAlias } from "@elizaos/core/protocol";
 import type { BrandingConfig } from "./branding.js";
+
+export function getBootConfigEnvAliases() {
+  return getBootConfig().envAliases;
+}
+
+export function resolveAliasedEnvValue(
+  key: string,
+  aliases = getBootConfigEnvAliases(),
+  env: Record<string, string | undefined> | null = globalThis.process?.env ??
+    {},
+): string | undefined {
+  return resolveEnvAlias(key, aliases, env);
+}
 
 export interface BundledVrmAsset {
   title: string;
@@ -70,6 +84,7 @@ export interface AppBootConfig {
    */
   autoUpgradeSharedToDedicated?: boolean;
   characterCatalog?: CharacterCatalogData;
+  envAliases?: readonly (readonly [string, string])[];
   clientMiddleware?: ClientMiddleware;
   [key: string]: unknown;
 }
@@ -91,6 +106,14 @@ type GlobalConfigSlot = Record<PropertyKey, unknown>;
 
 function getGlobalSlot(): GlobalConfigSlot {
   return globalThis as GlobalConfigSlot;
+}
+
+/** Read host state without initializing a store or browser mirror. */
+export function peekBootConfig(): AppBootConfig | undefined {
+  const existing = getGlobalSlot()[BOOT_CONFIG_STORE_KEY];
+  return existing && typeof existing === "object" && "current" in existing
+    ? (existing as BootConfigStore).current
+    : undefined;
 }
 
 function getBootConfigStore(): BootConfigStore {

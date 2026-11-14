@@ -109,8 +109,7 @@ public final class SenseListenerClient {
 
     /**
      * Absent is safe to reset, and so is a package of that name from another signer: it cannot be
-     * the companion that holds this app's consent. A same-signer listener must acknowledge
-     * durable consent revocation and microphone release.
+     * the companion that holds this app's consent. A same-signer listener must acknowledge.
      */
     public boolean resetForData() {
         invocation().reset();
@@ -125,7 +124,7 @@ public final class SenseListenerClient {
         if (signer != PackageManager.SIGNATURE_MATCH) return true;
         Bundle result = control("reset");
         return result != null && result.getBoolean("saved", false) && !result.getBoolean("consented", true)
-                && !result.getBoolean("listening", true) && !result.getBoolean("microphoneOpen", true);
+                && !result.getBoolean("listening", true);
     }
 
     /** Only a typed, exported activity inside the admitted package may be opened. */

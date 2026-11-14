@@ -133,23 +133,16 @@ test("mismatched content never replaces a staged browser", (t) => {
   );
 });
 
-test("an unverified architecture cannot inherit the x86 browser", (t) => {
+test("an unqualified architecture cannot inherit the x86 browser", (t) => {
   const options = fixture(t);
   assert.throws(
     () =>
       stageBrowserApps({
         ...options,
-        arch: "arm64",
+        arch: "riscv64",
         allowDevelopmentBrowser: true,
       }),
-    /No verified chromium artifact for arm64/,
-  );
-  assert.equal(
-    fs.readFileSync(
-      path.join(options.vendorDir, "apps/Chromium/Chromium.apk"),
-      "utf8",
-    ),
-    "previous staged browser",
+    /No verified chromium artifact/,
   );
 });
 

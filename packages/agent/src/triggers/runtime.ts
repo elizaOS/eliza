@@ -30,7 +30,6 @@ import type {
 import {
   ElizaError,
   formatError,
-  hashStableJson,
   inspectSendHandlerResult,
   isMissedScheduledOccurrence,
   MESSAGE_SOURCE_CLIENT_CHAT,
@@ -43,7 +42,6 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
-import { withTriggerTaskActivity } from "./activity.ts";
 import {
   buildTriggerMetadata,
   DISABLED_TRIGGER_INTERVAL_MS,
@@ -298,7 +296,18 @@ export function triggersFeatureEnabled(runtime?: IAgentRuntime): boolean {
   return normalized !== "0" && normalized !== "false";
 }
 
-export function getTriggerLimit(): number {
+export function getTriggerLimit(runtime?: IAgentRuntime): number {
+  const runtimeSetting = runtime?.getSetting("ELIZA_TRIGGERS_MAX_ACTIVE");
+  if (typeof runtimeSetting === "number" && Number.isFinite(runtimeSetting)) {
+    return Math.max(1, Math.floor(runtimeSetting));
+  }
+  if (typeof runtimeSetting === "string" && /^\d+$/.test(runtimeSetting)) {
+    return Math.max(1, Number(runtimeSetting));
+  }
+  const env = process.env.ELIZA_TRIGGERS_MAX_ACTIVE;
+  if (env && /^\d+$/.test(env)) {
+    return Math.max(1, Number(env));
+  }
   return DEFAULT_MAX_ACTIVE_TRIGGERS;
 }
 
@@ -715,22 +724,6 @@ async function dispatchPrompt(
 }
 
 export async function executeTriggerTask(
-  runtime: IAgentRuntime,
-  task: Task,
-  options: TriggerExecutionOptions,
-): Promise<TriggerExecutionResult> {
-  if (!task.id) return { status: "skipped", taskDeleted: false };
-  const taskId = task.id;
-  return withTriggerTaskActivity(runtime, taskId, async () => {
-    const current = await runtime.getTask(taskId);
-    if (!current || typeof current.metadata?.removedAt === "number") {
-      return { status: "skipped", taskDeleted: false };
-    }
-    return executeCurrentTriggerTask(runtime, current, options);
-  });
-}
-
-async function executeCurrentTriggerTask(
   runtime: IAgentRuntime,
   task: Task,
   options: TriggerExecutionOptions,
@@ -1574,7 +1567,6 @@ export function taskToTriggerSummary(task: Task): TriggerSummary | null {
     return {
       id: trigger.triggerId,
       taskId: task.id,
-      revision: hashStableJson(task),
       displayName: trigger.displayName,
       instructions: trigger.instructions,
       triggerType: trigger.triggerType,
@@ -1595,9 +1587,6 @@ export function taskToTriggerSummary(task: Task): TriggerSummary | null {
       lastError: trigger.lastError,
       updatedAt: metadata.updatedAt,
       updateInterval: metadata.updateInterval,
-      ...(typeof metadata.removedAt === "number"
-        ? { removedAt: metadata.removedAt }
-        : {}),
       kind: trigger.kind,
       workflowId: trigger.kind === "workflow" ? trigger.workflowId : undefined,
       workflowName:

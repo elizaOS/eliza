@@ -26,7 +26,7 @@ import { artifactSignaturePayload } from "../contracts/index.ts";
 import { parseArgs } from "./os-release-lib.ts";
 import { canonicalBase64, loadReleaseKeyPolicy } from "./release-key-policy.ts";
 
-const architectures = ["x86_64", "arm64"];
+const architectures = ["x86_64", "arm64", "riscv64"];
 const privateKeyEnvironment =
   "ELIZAOS_RELEASE_ED25519_PRIVATE_KEY_PKCS8_BASE64";
 

@@ -365,6 +365,19 @@ function plannerDefaultMaxTokens(
 }
 
 /**
+ * Optional coding-mode domain-call ceiling: the max number of tool calls a
+ * coding build may make before the loop terminates. Overridable via
+ * `ELIZA_CODING_MAX_TOOL_CALLS`; a set-but-malformed value throws.
+ */
+export function resolveCodingMaxToolCalls(): number {
+  return resolvePositivePlannerInt(
+    "ELIZA_CODING_MAX_TOOL_CALLS",
+    process.env.ELIZA_CODING_MAX_TOOL_CALLS,
+    Number.POSITIVE_INFINITY,
+  );
+}
+
+/**
  * Coding-mode required-tool miss budget (default 8): how many times a coding
  * build may answer with a terminal REPLY instead of acting before the loop
  * gives up. Overridable via `ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES`; a
@@ -927,6 +940,7 @@ async function runPlannerLoopIterations(
   const redactDiagnosticText = composeToolDiagnosticRedactor(params.runtime);
   // Explicit operator ceilings override the shared progress-based defaults.
   const codingMode = params.codingMode === true;
+  const codingMaxToolCalls = resolveCodingMaxToolCalls();
   // Weak coding models (e.g. Cerebras glm-4.7) sometimes answer a trivial build
   // with a terminal REPLY ("Creating the app now…") instead of calling FILE.
   // The action-first gate below re-prompts that, but the chat default of 3
@@ -939,8 +953,7 @@ async function runPlannerLoopIterations(
     return codingMode
       ? {
           ...merged,
-          // Coding builds have no domain-call ceiling unless the caller sets one.
-          maxToolCalls: params.config?.maxToolCalls ?? Number.POSITIVE_INFINITY,
+          maxToolCalls: params.config?.maxToolCalls ?? codingMaxToolCalls,
           maxRequiredToolMisses: Math.max(
             merged.maxRequiredToolMisses,
             codingMaxRequiredToolMisses,

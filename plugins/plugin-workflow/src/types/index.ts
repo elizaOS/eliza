@@ -166,8 +166,6 @@ export interface WorkflowExecution {
   status: WorkflowExecutionStatus;
   finished: boolean;
   startedAt: string;
-  /** Server-owned time for Calendar day ranges, independent of caller input. */
-  calendarAnchorAt?: string;
   stoppedAt?: string | null;
   input: Record<string, unknown>;
   output?: unknown;

@@ -1,5 +1,5 @@
 /**
- * Real-process regression for the two platform capture CLI entrypoints.
+ * Real-process regression for the five platform capture CLI entrypoints.
  * Each child receives malformed --duration input and must reject it before
  * probing a platform, device, display, or capture tool; no lifecycle is mocked.
  */
@@ -8,7 +8,13 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-const SCRIPTS = ["capture-android-emu.ts", "capture-ios-sim.ts"];
+const SCRIPTS = [
+  "capture-android-emu.ts",
+  "capture-ios-sim.ts",
+  "capture-macos-desktop.ts",
+  "capture-windows-desktop.ts",
+  "capture-linux-desktop.ts",
+];
 
 for (const script of SCRIPTS) {
   test(`${script} rejects malformed duration before platform setup`, () => {

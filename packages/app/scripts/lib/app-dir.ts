@@ -1,10 +1,11 @@
 /**
- * Resolves the main app directory across repo layouts
+ * Resolves the main app and Electrobun platform directories across repo layouts
  * (flat elizaOS monorepo vs a consumer repo that nests it as eliza/) so build
  * scripts target the right app package regardless of the host fork.
  */
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 function hasPackageJson(dir) {
   return fs.existsSync(path.join(dir, "package.json"));
@@ -55,4 +56,20 @@ export function resolveMainAppDir(repoRoot, appName = "app") {
 
 export function relativeAppDir(repoRoot, appDir) {
   return path.relative(repoRoot, appDir).replaceAll(path.sep, "/");
+}
+
+export function resolveElectrobunDir(repoRoot) {
+  const candidates = [
+    path.join(repoRoot, "packages", "app", "platforms", "electrobun"),
+    path.join(repoRoot, "eliza", "packages", "app", "platforms", "electrobun"),
+    fileURLToPath(new URL("../../platforms/electrobun/", import.meta.url)),
+  ];
+  const match = candidates.find((candidate) =>
+    fs.existsSync(path.join(candidate, "electrobun.config.ts")),
+  );
+  if (!match)
+    throw new Error(
+      `Electrobun platform not found. Checked: ${candidates.join(", ")}`,
+    );
+  return match;
 }

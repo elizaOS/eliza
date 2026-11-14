@@ -396,13 +396,6 @@ async function seedMobileExchange() {
       // No enrolled mutation is needed for this isolated lease test.
       await control.query("TRUNCATE inference_policy_authorities CASCADE");
       const admitted = await run(() => deletion.appDeletionOperations.admit(input()), zone, false);
-      if (!admitted) throw new Error("No original root");
-      expect(admitted.revokedKeys).toEqual([]);
-      await run(
-        () => deletion.appDeletionOperations.confirmRevocations(admitted.job.id, organizationId),
-        zone,
-        false,
-      );
       const defaultId = randomUUID();
       await run(
         () =>
@@ -489,12 +482,6 @@ async function seedMobileExchange() {
     await control.query("TRUNCATE inference_policy_authorities CASCADE");
     const admitted = await run(() => deletion.appDeletionOperations.admit(input()), "UTC", false);
     if (!admitted) throw new Error("No original root");
-    expect(admitted.revokedKeys).toEqual([]);
-    await run(
-      () => deletion.appDeletionOperations.confirmRevocations(admitted.job.id, organizationId),
-      "UTC",
-      false,
-    );
     const owner = randomUUID();
     const repository = (await import("../../../db/repositories/jobs")).jobsRepository;
     const [job] = await run(
@@ -528,7 +515,7 @@ async function seedMobileExchange() {
       },
     ]);
     await control.query(
-      "UPDATE jobs SET data=data || jsonb_build_object('frontendCleanupPlan',$2::jsonb), result=COALESCE(result, '{}'::jsonb) || $3::jsonb WHERE id=$1",
+      "UPDATE jobs SET data=data || jsonb_build_object('frontendCleanupPlan',$2::jsonb), result=$3 WHERE id=$1",
       [
         job.id,
         JSON.stringify(plan),

@@ -7,7 +7,7 @@
  * footprint, and joins metrics already measured by local eval/bench reports.
  *
  * Usage:
- *   bun packages/inference/verify/eliza1_memory_inventory.mjs \
+ *   node packages/inference/verify/eliza1_memory_inventory.mjs \
  *     ~/.eliza/local-inference/models/eliza-1-*.bundle
  */
 
@@ -67,7 +67,7 @@ function parseArgs(argv) {
     else if (a === "--help" || a === "-h") {
       console.log(
         [
-          "Usage: bun eliza1_memory_inventory.mjs [bundle ...]",
+          "Usage: node eliza1_memory_inventory.mjs [bundle ...]",
           "  --report-json PATH  default packages/inference/reports/porting/2026-05-12/eliza1-local-bundle-memory-inventory.json",
           "  --report-md PATH    default packages/inference/reports/porting/2026-05-12/eliza1-local-bundle-memory-inventory.md",
           "  --bench-json PATH   default packages/inference/verify/bench_results/eliza1_memory_inventory_2026-05-12.json",

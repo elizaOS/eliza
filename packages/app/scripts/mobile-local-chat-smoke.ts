@@ -381,7 +381,7 @@ const IOS_SMOKE_STATE_KEYS = [
 ];
 
 function printHelp() {
-  console.log(`Usage: bun packages/app/scripts/mobile-local-chat-smoke.ts [options]
+  console.log(`Usage: node packages/app/scripts/mobile-local-chat-smoke.ts [options]
 
 Options:
   --platform ios|android|both       Simulator platform to launch (default: ios)

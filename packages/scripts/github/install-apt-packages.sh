@@ -49,14 +49,9 @@ fi
 
 attempt=1
 while true; do
-  # A late startup writer can restore an older source snapshot. Reassert the
-  # archive for each retry and again before install uses the downloaded indexes.
-  bash "$(dirname "${BASH_SOURCE[0]}")/configure-hosted-apt.sh"
-  if sudo apt-get "${apt_sources[@]}" update; then
-    bash "$(dirname "${BASH_SOURCE[0]}")/configure-hosted-apt.sh"
-    if sudo apt-get "${apt_sources[@]}" install -y -o DPkg::Lock::Timeout="$APT_LOCK_TIMEOUT_SECONDS" "$@"; then
-      exit 0
-    fi
+  if sudo apt-get "${apt_sources[@]}" update \
+    && sudo apt-get "${apt_sources[@]}" install -y -o DPkg::Lock::Timeout="$APT_LOCK_TIMEOUT_SECONDS" "$@"; then
+    exit 0
   fi
   if [ "$attempt" -ge "$INSTALL_ATTEMPTS" ]; then
     echo "::error::apt package install failed after ${INSTALL_ATTEMPTS} attempts: $*"

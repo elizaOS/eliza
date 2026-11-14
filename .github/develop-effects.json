@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "ledgerVersion": "2026-09-06.three-branch-v1",
+  "effects": [
+    {
+      "id": "agent-image",
+      "workflow": "build-agent-image.yml",
+      "surfaces": ["canonical", "cloud"],
+      "shaInput": "source_sha",
+      "inputs": {
+        "publication_target": "canonical"
+      }
+    }
+  ],
+  "promotion": {
+    "id": "staging-promotion",
+    "sourceBranch": "develop",
+    "targetBranch": "staging"
+  },
+  "sourceBranch": "develop"
+}

@@ -51,6 +51,14 @@ export interface TestRuntimeOptions {
    * Defaults to true only when this helper created the directory.
    */
   removePgliteDirOnCleanup?: boolean;
+  /**
+   * Host-injected trajectory-write flush (the agent's `flushTrajectoryWrites`),
+   * awaited during cleanup before the runtime stops. Injected so this core
+   * `./testing` export never imports `@elizaos/agent` src (a reverse dependency
+   * edge that silently degrades outside the monorepo checkout). When omitted,
+   * cleanup relies on draining the trajectories service's own write queues.
+   */
+  flushTrajectoryWrites?: (runtime: AgentRuntime) => Promise<void>;
 }
 
 export interface TestRuntimeResult {
@@ -62,7 +70,7 @@ export interface TestRuntimeResult {
 }
 
 type TrajectoryWriteService = {
-  flushWriteQueue?: () => Promise<void>;
+  writeQueues?: Map<string, Promise<void>>;
 };
 
 type RuntimePluginModule = {
@@ -72,9 +80,31 @@ type RuntimePluginModule = {
 
 async function flushPendingTrajectoryWrites(
   runtime: AgentRuntime,
+  flushTrajectoryWrites?: (runtime: AgentRuntime) => Promise<void>,
 ): Promise<void> {
-  for (const service of runtime.getServicesByType("trajectories")) {
-    await (service as TrajectoryWriteService).flushWriteQueue?.();
+  if (flushTrajectoryWrites) {
+    await flushTrajectoryWrites(runtime);
+  }
+
+  for (;;) {
+    const pending = runtime
+      .getServicesByType("trajectories")
+      .flatMap((service) => {
+        const writeQueues = (service as TrajectoryWriteService).writeQueues;
+        return writeQueues instanceof Map
+          ? Array.from(writeQueues.values())
+          : [];
+      });
+    if (pending.length === 0) {
+      return;
+    }
+    const outcomes = await Promise.allSettled(pending);
+    const failures = outcomes
+      .filter((outcome) => outcome.status === "rejected")
+      .map((outcome) => outcome.reason);
+    if (failures.length)
+      throw new AggregateError(failures, "Trajectory writes failed");
+    await new Promise((resolve) => setTimeout(resolve, 0));
   }
 }
 
@@ -112,9 +142,11 @@ export async function createTestRuntime(
       if (runtime) {
         const owned = runtime;
         for (const drain of [
-          () => flushPendingTrajectoryWrites(owned),
+          () =>
+            flushPendingTrajectoryWrites(owned, options?.flushTrajectoryWrites),
           () => owned.stop(),
-          () => flushPendingTrajectoryWrites(owned),
+          () =>
+            flushPendingTrajectoryWrites(owned, options?.flushTrajectoryWrites),
           () => owned.close(),
         ]) {
           try {

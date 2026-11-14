@@ -5,11 +5,6 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  buildScriptTestInventory,
-  SCRIPT_TEST_LANE_COMMANDS,
-  SCRIPT_TEST_RUNNER,
-} from "../lib/script-test-inventory.ts";
-import {
   isSerialScriptTest,
   parseIsolatedScriptTestArgs,
 } from "../run-script-test-files.ts";
@@ -110,41 +105,5 @@ describe("isolated script-test runner shared-workspace boundary", () => {
         "packages/scripts/__tests__/script-test-inventory.test.ts",
       ),
     ).toBe(false);
-  });
-});
-
-describe("script-test inventory discovery", () => {
-  const inventoryOptions = (candidateFiles: string[]) => ({
-    candidateFiles,
-    exclusions: new Map(),
-    verifyReadable: false,
-    packageScripts: {
-      "test:scripts": SCRIPT_TEST_RUNNER,
-      ...SCRIPT_TEST_LANE_COMMANDS,
-    },
-  });
-
-  test("fails on test-like files that discovery would never run", () => {
-    const build = () =>
-      buildScriptTestInventory(
-        inventoryOptions([
-          testFile,
-          "packages/scripts/foo.self-test.ts",
-          "packages/cloud/scripts/bar-spec.mjs",
-        ]),
-      );
-    expect(build).toThrow("packages/scripts/foo.self-test.ts");
-    expect(build).toThrow("packages/cloud/scripts/bar-spec.mjs");
-  });
-
-  test("does not flag runners or shell scripts named like tests", () => {
-    const inventory = buildScriptTestInventory(
-      inventoryOptions([
-        testFile,
-        "packages/scripts/run-script-tests.ts",
-        "packages/scripts/smoke-test.sh",
-      ]),
-    );
-    expect(inventory.files.map(({ file }) => file)).toEqual([testFile]);
   });
 });

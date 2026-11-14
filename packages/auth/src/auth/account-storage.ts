@@ -770,15 +770,26 @@ function accountAad(
 }
 
 /**
- * Isolated-test policies never touch the real vault master key: each isolated
- * auth root gets its own ephemeral in-process key, so a test cannot decrypt
- * (or corrupt) developer credentials. Runtime policies always use the vault
- * master key, so a production process can never switch to an ephemeral key.
+ * Test processes and isolated-test policies never touch the real vault master
+ * key: each isolated auth root gets its own ephemeral in-process key, so a
+ * test cannot decrypt (or corrupt) developer credentials even if pointed at a
+ * real state directory by mistake.
  */
 const testKeys = new Map<string, Buffer>();
 
+function isTestProcess(): boolean {
+  const argv = process.argv.join(" ").toLowerCase();
+  return (
+    process.env.NODE_ENV === "test" ||
+    process.env.VITEST === "true" ||
+    process.env.BUN_ENV === "test" ||
+    argv.includes("vitest") ||
+    argv.includes("bun test")
+  );
+}
+
 function masterKey(policy: AccountStoragePolicy): Buffer {
-  if (policy.owner !== "isolated-test") {
+  if (policy.owner !== "isolated-test" && !isTestProcess()) {
     return loadDefaultMasterKeySync();
   }
   const root = path.resolve(policy.authRoot);

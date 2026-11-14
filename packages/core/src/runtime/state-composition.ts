@@ -11,7 +11,7 @@ import {
 } from "../security/trusted-delivery-audience.js";
 import {
 	getStreamingContext,
-	getStreamingContextManager,
+	runWithStreamingContext,
 	runWithSuppressedModelStream,
 } from "../streaming-context";
 import { getTrajectoryContext } from "../trajectory-context";
@@ -279,10 +279,7 @@ export class ProviderStateComposer {
 					const workController = new AbortController();
 					const promise = runProviderExecution(
 						() =>
-							// This existing execution owner replaces the caller's signal.
-							// Normal nested scopes compose signals; shared work must retain
-							// its own controller while keeping the caller's policy and hooks.
-							getStreamingContextManager().run(
+							runWithStreamingContext(
 								{
 									// A caller without its own streaming context contributes
 									// no chunk consumer, so the scope stays cancellation-only

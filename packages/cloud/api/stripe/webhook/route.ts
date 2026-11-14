@@ -19,7 +19,7 @@ import type {
 import type { StripeEventMessage } from "@elizaos/cloud-shared/types/stripe-queue-message";
 import { Hono } from "hono";
 import type Stripe from "stripe";
-import { getAuditDispatcher } from "../../src/services/audit-dispatcher-singleton";
+import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
 
 /**
  * Maximum age (seconds) the Stripe `t=` timestamp may be relative to

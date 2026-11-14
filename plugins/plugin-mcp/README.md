@@ -9,15 +9,6 @@ dialects are rejected within the existing isolated validation worker.
 If an undeclared schema cannot compile as 2020-12, the same bounded worker
 tries draft-07 to support legacy tuple schemas. A failed argument validation
 never triggers this fallback. Declared schemas always use their stated dialect.
-Trusted compiler setup uses the worker's two-second startup budget. Parsing,
-compiling and validating each untrusted request retain a separate 250 ms budget.
-
-Runtime action conversion preserves inline primitive `const`/`enum` values,
-including null and mixed types. Pinned object/array values and unsupported pinned constraints fail
-registration with `MCP_PINNED_SCHEMA_UNSUPPORTED`; empty finite value sets fail
-with `MCP_PINNED_SCHEMA_UNSATISFIABLE`. The original schema stays attached to the
-action; this converter does not expand schema references. Cloud dynamic actions
-reject parameter validation errors before calling the MCP server.
 
 Argument-generation retries retain the selected tool, complete input schema,
 conversation context and argument response format, with the latest validation

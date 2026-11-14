@@ -32,7 +32,7 @@
  * The GGUFs are built from these sources by the byte-reproducible converters;
  * they are not uploaded to elizaos/eliza-1, and the gate does not ask for that.
  *
- *   bun packages/scripts/verify-voice-product-release.ts [--offline]
+ *   node packages/scripts/verify-voice-product-release.ts [--offline]
  *     [--require-fork-pins] [--github-annotations]
  */
 

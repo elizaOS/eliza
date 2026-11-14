@@ -26,7 +26,6 @@ import {
   disposeStandaloneTick,
   ensureStandaloneTickTask,
   registerStandaloneTickWorker,
-  STANDALONE_TICK_TASK_NAME,
 } from "./scheduled-task/standalone-tick.js";
 export const SCHEDULED_TASK_RUNNER_REGISTRATION_TIMEOUT =
   "SCHEDULED_TASK_RUNNER_REGISTRATION_TIMEOUT";
@@ -251,9 +250,7 @@ export const schedulingPlugin: Plugin = {
     },
   ],
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
-    const tickWorker = registerStandaloneTickWorker(runtime);
-    const ownsTick = () =>
-      runtime.getTaskWorker(STANDALONE_TICK_TASK_NAME) === tickWorker;
+    registerStandaloneTickWorker(runtime);
     // Seed registered default-task packs through the runner boot hook: the
     // hook fires with the live service instance the moment
     // ScheduledTaskRunnerService.start constructs it, so seeding structurally
@@ -264,7 +261,6 @@ export const schedulingPlugin: Plugin = {
     registerScheduledTaskRunnerBootHook(runtime, async (service) => {
       try {
         await runtime.initPromise;
-        if (!ownsTick()) return;
         // Register the built-in fallback pack only when no consumer host has
         // injected deps (e.g. a stock mobile boot without
         // @elizaos/plugin-personal-assistant). When a host is present it owns
@@ -290,7 +286,7 @@ export const schedulingPlugin: Plugin = {
         // rows sat `scheduled` forever (sol-dev cutover QA 2026-08-11).
         // The worker defers per-invocation when a consumer host's deps are
         // registered. Core TaskService remains the only wall clock.
-        if (ownsTick()) await ensureStandaloneTickTask(runtime);
+        await ensureStandaloneTickTask(runtime);
       } catch (error) {
         // error-policy:J7 boot seeding is diagnostic work relative to the
         // runner service: report it so boot health observers see the failure

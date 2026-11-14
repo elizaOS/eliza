@@ -2,8 +2,115 @@
 
 export function cloudSafeMainActivityJava(
   androidPackage,
-  { safePushNotifications = true } = {},
+  {
+    launcherKiosk = false,
+    immersiveNavigation = false,
+    safePushNotifications = true,
+  } = {},
 ) {
+  const launcherImports = launcherKiosk
+    ? `import android.app.admin.DevicePolicyManager;
+import android.util.Log;
+import android.view.KeyEvent;
+
+import androidx.activity.OnBackPressedCallback;
+`
+    : "";
+  const navigationInsetsImport = immersiveNavigation
+    ? "import androidx.core.view.WindowInsetsCompat;\n"
+    : "";
+  const launcherConstants = launcherKiosk
+    ? '    private static final String TAG = "ElizaMainActivity";\n'
+    : "";
+  const launcherSetup = launcherKiosk
+    ? `
+        // The launcher owns the device surface. Lifecycle-bound Back callbacks
+        // are added on every start in registration order and the last one
+        // wins, so this one, registered after super.onCreate, runs instead of
+        // the Capacitor App plugin's. That plugin would minimize the launcher
+        // task or walk WebView history back. Give
+        // the page only its back intent, so an open sheet closes, and
+        // otherwise stay on the launcher root.
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                getBridge().eval(
+                    "window.dispatchEvent(new CustomEvent('eliza:back-intent', { detail: { handled: false } }))",
+                    null);
+            }
+        });
+`
+    : "";
+  const launcherMethods = launcherKiosk
+    ? `
+    private void enterManagedLockTaskIfPermitted() {
+        DevicePolicyManager policy = getSystemService(DevicePolicyManager.class);
+        if (policy == null || !policy.isLockTaskPermitted(getPackageName())) {
+            return;
+        }
+        try {
+            startLockTask();
+        } catch (IllegalArgumentException | IllegalStateException | SecurityException e) {
+            Log.w(TAG, "Unable to enter managed launcher lock-task mode", e);
+        }
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        keepScreenAwake();
+        // Only a managed-device owner may contain the launcher task; Android's
+        // unmanaged screen-pinning mode stays off.
+        enterManagedLockTaskIfPermitted();
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        // Keep hardware keyboards and accessibility navigation from moving the
+        // launcher WebView forward through browser history.
+        if (event.getKeyCode() == KeyEvent.KEYCODE_FORWARD
+                || event.getKeyCode() == KeyEvent.KEYCODE_NAVIGATE_NEXT) {
+            return true;
+        }
+        return super.dispatchKeyEvent(event);
+    }
+`
+    : "";
+  const resumeHandler = launcherKiosk
+    ? ""
+    : `
+    @Override
+    public void onResume() {
+        super.onResume();
+        keepScreenAwake();
+    }
+`;
+  const navigationBarPolicy = immersiveNavigation
+    ? `            systemBars.hide(WindowInsetsCompat.Type.navigationBars());
+            systemBars.setSystemBarsBehavior(
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);`
+    : "            systemBars.setAppearanceLightNavigationBars(false);";
+  const focusHandler = `
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (!hasFocus) return;
+        keepScreenAwake();
+${
+  immersiveNavigation
+    ? `
+        WindowInsetsControllerCompat controller =
+            WindowCompat.getInsetsController(
+                getWindow(), getWindow().getDecorView());
+        if (controller != null) {
+            controller.hide(WindowInsetsCompat.Type.navigationBars());
+            controller.setSystemBarsBehavior(
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+        }
+`
+    : ""
+}    }
+`;
   const safePushRegistration = safePushNotifications
     ? `
         // Appended after discovery, before the first bridge JS/header export.
@@ -19,7 +126,8 @@ import android.view.WindowManager;
 
 import androidx.core.splashscreen.SplashScreen;
 import androidx.core.view.WindowCompat;
-import androidx.core.view.WindowInsetsControllerCompat;
+${navigationInsetsImport}import androidx.core.view.WindowInsetsControllerCompat;
+${launcherImports}
 
 import ai.eliza.plugins.browsersurface.ElizaBridgeActivity;
 
@@ -28,6 +136,7 @@ import ${androidPackage}.BuildConfig;
 // ElizaBridgeActivity owns the shared WebView lifecycle: no mixed content,
 // renderer-death recovery and the stopped-page pause.
 public class MainActivity extends ElizaBridgeActivity {
+${launcherConstants}
     private Intent initialDeepLinkIntent;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -57,14 +166,17 @@ ${safePushRegistration}
         super.onCreate(savedInstanceState);
         keepScreenAwake();
 
-        // Draw the canonical Cloud renderer behind transparent system bars.
+${launcherSetup}
+        // Draw the canonical Cloud renderer behind transparent system bars. The
+        // launcher variant hides only the navigation bar; a swipe can reveal
+        // it transiently; ordinary Cloud builds keep both bars visible.
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         WindowInsetsControllerCompat systemBars =
             WindowCompat.getInsetsController(
                 getWindow(), getWindow().getDecorView());
         if (systemBars != null) {
             systemBars.setAppearanceLightStatusBars(false);
-            systemBars.setAppearanceLightNavigationBars(false);
+${navigationBarPolicy}
         }
     }
 
@@ -74,19 +186,9 @@ ${safePushRegistration}
         initialDeepLinkIntent = null;
         super.onNewIntent(intent);
     }
-
-    @Override
-    public void onResume() {
-        super.onResume();
-        keepScreenAwake();
-    }
-
-    @Override
-    public void onWindowFocusChanged(boolean hasFocus) {
-        super.onWindowFocusChanged(hasFocus);
-        if (!hasFocus) return;
-        keepScreenAwake();
-    }
+${launcherMethods}
+${resumeHandler}
+${focusHandler}
 
     private void keepScreenAwake() {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);

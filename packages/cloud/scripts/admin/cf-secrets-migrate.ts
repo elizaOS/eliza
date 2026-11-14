@@ -11,11 +11,11 @@
  *   - comment / blank lines (handled by dotenv)
  *
  * Usage:
- *   bun packages/cloud/scripts/admin/cf-secrets-migrate.ts                       # uses .env.production
- *   bun packages/cloud/scripts/admin/cf-secrets-migrate.ts ./.env.staging        # explicit file
- *   bun packages/cloud/scripts/admin/cf-secrets-migrate.ts --env staging         # passes --env to wrangler
- *   bun packages/cloud/scripts/admin/cf-secrets-migrate.ts --env production --dry-run
- *   bun packages/cloud/scripts/admin/cf-secrets-migrate.ts --only KEY1,KEY2      # only push these keys
+ *   node packages/cloud/scripts/admin/cf-secrets-migrate.ts                       # uses .env.production
+ *   node packages/cloud/scripts/admin/cf-secrets-migrate.ts ./.env.staging        # explicit file
+ *   node packages/cloud/scripts/admin/cf-secrets-migrate.ts --env staging         # passes --env to wrangler
+ *   node packages/cloud/scripts/admin/cf-secrets-migrate.ts --env production --dry-run
+ *   node packages/cloud/scripts/admin/cf-secrets-migrate.ts --only KEY1,KEY2      # only push these keys
  *
  * Re-runnable: wrangler will overwrite existing secrets in place.
  */

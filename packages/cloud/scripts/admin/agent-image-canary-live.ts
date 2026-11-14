@@ -1955,7 +1955,7 @@ if (import.meta.main) {
     workflowEnv("AGENT_IMAGE_CANARY_EVIDENCE_PATH") ||
     "reports/agent-image-canary.json";
   const evidence = await runAgentImageCanary({
-    apiKey: workflowEnv("ELIZAOS_CLOUD_API_KEY"),
+    apiKey: workflowEnv("ELIZACLOUD_API_KEY"),
     mode: workflowEnv("AGENT_IMAGE_CANARY_MODE"),
     requestId: workflowEnv("AGENT_IMAGE_CANARY_REQUEST_ID"),
     expectedDeployCommit: workflowEnv(

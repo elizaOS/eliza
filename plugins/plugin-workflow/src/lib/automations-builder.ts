@@ -584,9 +584,7 @@ export async function buildAutomationListResponse(
       isTriggerTaskOwnedBy(task, ownerEntityId, localOwnerEntityId, runtime.agentId)
     )
     .map((task) => taskToTriggerSummary(task))
-    .filter(
-      (trigger): trigger is TriggerSummary => trigger !== null && trigger.removedAt === undefined
-    );
+    .filter((trigger): trigger is TriggerSummary => trigger !== null);
   const triggerTaskIds = new Set(triggerItems.map((trigger) => trigger.taskId));
   const taskItems = tasks
     .filter((task) => !triggerTaskIds.has(task.id))

@@ -21,6 +21,27 @@ export const ANDROID_BUNDLETOOL_SHA256 =
   "a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29";
 export const ANDROID_BUNDLETOOL_URL = `https://github.com/google/bundletool/releases/download/${ANDROID_BUNDLETOOL_VERSION}/bundletool-all-${ANDROID_BUNDLETOOL_VERSION}.jar`;
 
+export const ANDROID_LP3_PRIVATE_ACTIONS = Object.freeze([
+  "ai.elizaos.app.action.ENABLE_LP3_COLOR_POLICY",
+  "ai.elizaos.app.action.DISABLE_LP3_COLOR_POLICY",
+  "ai.elizaos.app.action.SYNC_LP3_COLOR_POLICY",
+]);
+
+export const ANDROID_LP3_POLICY_CLASSES = Object.freeze([
+  "Lp3ColorPolicy",
+  "Lp3ColorPolicyInitializer",
+  "Lp3ColorPolicyService",
+  "Lp3ColorPolicyBootReceiver",
+]);
+
+export const ANDROID_LP3_POLICY_PERMISSIONS = Object.freeze([
+  "android.permission.WRITE_SECURE_SETTINGS",
+  "android.permission.RECEIVE_BOOT_COMPLETED",
+  "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
+]);
+
+export const ANDROID_LP3_POLICY_MARKERS = Object.freeze(["lp3_color_policy"]);
+
 // Product-specific local-runtime and sideload implementation markers that must
 // never survive R8 into the Google Play Cloud artifact. Keep this list narrow:
 // generic strings such as "localhost" occur legitimately in AndroidX/vendor
@@ -828,6 +849,20 @@ export function assertAndroidPlayManifestPolicyEvidence(evidence, policy) {
   }
 }
 
+function collectManifestPolicyFinding(
+  findings,
+  moduleName,
+  manifestText,
+  marker,
+  description,
+) {
+  if (manifestText.includes(marker)) {
+    findings.push(
+      `android-cloud AAB module ${moduleName} contains forbidden ${description}: ${marker}`,
+    );
+  }
+}
+
 /**
  * Applies Cloud strip policy to decoded manifests from every bundle module.
  */
@@ -850,9 +885,10 @@ export function assertAabManifestPolicy({
   const forbiddenComponentClasses = uniqueSorted(
     strippedComponents.map(androidClassBasename),
   );
-  const forbiddenPermissions = uniqueSorted(
-    strippedPermissions.map(qualifyPermission),
-  );
+  const forbiddenPermissions = uniqueSorted([
+    ...strippedPermissions.map(qualifyPermission),
+    ...ANDROID_LP3_POLICY_PERMISSIONS,
+  ]);
   const baseManifest = manifests.get("base");
   if (typeof baseManifest !== "string" || baseManifest.trim() === "") {
     throw androidAabAuditError(
@@ -930,6 +966,31 @@ export function assertAabManifestPolicy({
           `android-cloud AAB module ${moduleName} contains forbidden component: ${component}`,
         );
       }
+      const privateClass = ANDROID_LP3_POLICY_CLASSES.find((className) =>
+        matchesAndroidClassBasename(component, className),
+      );
+      if (!forbiddenClass && privateClass) {
+        findings.push(
+          `android-cloud AAB module ${moduleName} contains forbidden LP3 component: ${component}`,
+        );
+      }
+    }
+    const manifestActions = androidAttributeValues(["action"], "name");
+    for (const action of ANDROID_LP3_PRIVATE_ACTIONS) {
+      if (manifestActions.includes(action)) {
+        findings.push(
+          `android-cloud AAB module ${moduleName} contains forbidden LP3 action: ${action}`,
+        );
+      }
+    }
+    for (const marker of ANDROID_LP3_POLICY_MARKERS) {
+      collectManifestPolicyFinding(
+        findings,
+        moduleName,
+        manifestText,
+        marker,
+        "LP3 policy marker",
+      );
     }
   }
   if (findings.length > 0) {
@@ -1014,9 +1075,9 @@ function normalizeDexBuffers(dexEntries, dexBuffers) {
 }
 
 /**
- * Scans every DEX payload for stripped repo-owned classes and
- * sideload/local-runtime implementation markers, including features that a
- * universal APK can omit.
+ * Scans every DEX payload for stripped repo-owned classes, private LP3
+ * control-plane markers, and sideload/local-runtime implementation markers,
+ * including features that a universal APK can omit.
  */
 export function assertAabDexPolicy({
   appId,
@@ -1029,12 +1090,21 @@ export function assertAabDexPolicy({
   requireStringArray(strippedComponents, "stripped Android components");
   const buffers = normalizeDexBuffers(dexEntries, dexBuffers);
   const forbiddenClasses = uniqueSorted(
-    strippedComponents.map(androidClassBasename),
+    [...strippedComponents, ...ANDROID_LP3_POLICY_CLASSES].map(
+      androidClassBasename,
+    ),
   );
   const forbiddenClassDescriptors = forbiddenClasses.flatMap((className) => [
     { className, marker: Buffer.from(`/${className};`, "utf8") },
     { className, marker: Buffer.from(`L${className};`, "utf8") },
   ]);
+  const forbiddenLp3Markers = uniqueSorted([
+    ...ANDROID_LP3_PRIVATE_ACTIONS,
+    ...ANDROID_LP3_POLICY_MARKERS,
+  ]).map((marker) => ({
+    marker,
+    payload: Buffer.from(marker, "utf8"),
+  }));
   const forbiddenPlayMarkers = ANDROID_PLAY_FORBIDDEN_DEX_MARKERS.map(
     (marker) => ({ marker, payload: Buffer.from(marker, "utf8") }),
   );
@@ -1044,6 +1114,13 @@ export function assertAabDexPolicy({
       if (buffers[index].includes(marker)) {
         throw androidAabAuditError(
           `[mobile-build] android-cloud AAB DEX ${dexEntries[index]} contains forbidden stripped component class: ${className}`,
+        );
+      }
+    }
+    for (const { marker, payload } of forbiddenLp3Markers) {
+      if (buffers[index].includes(payload)) {
+        throw androidAabAuditError(
+          `[mobile-build] android-cloud AAB DEX ${dexEntries[index]} contains forbidden LP3 marker: ${marker}`,
         );
       }
     }

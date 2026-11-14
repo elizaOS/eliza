@@ -70,6 +70,10 @@ export default defineConfig({
       // the app-unit config (apps/app/vitest.config.ts) which provides the
       // correct @elizaos/app alias resolution. Running both in parallel
       // causes file-system race conditions on shared test fixtures.
+      // Keep the standalone-safe Electrobun tests in the default unit suite.
+      // native/agent.test.ts requires the full desktop runtime, so it runs only
+      // via the package-owned desktop contract command during release review;
+      // routine CI does not duplicate that platform-specific lane.
       "src/**/*.test.{ts,tsx}",
       "scripts/**/*.test.{ts,tsx}",
       "apps/chrome-extension/**/*.test.ts",

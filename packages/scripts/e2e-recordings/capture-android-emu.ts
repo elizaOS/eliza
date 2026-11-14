@@ -13,7 +13,6 @@ import {
   captureAndroidScreenshot,
 } from "../../app/scripts/lib/android-capture.ts";
 import {
-  assertSystemApkSigningEnv,
   ensureEmulatorBooted,
   ensureEmulatorPermissive,
   installApk,
@@ -22,7 +21,6 @@ import {
   resolveAdb,
   resolveApk,
   resolveEmulator,
-  SYSTEM_APK_CANDIDATES,
 } from "../../app/scripts/lib/android-device.ts";
 import {
   argValue,
@@ -98,12 +96,10 @@ async function selectOrBootEmulator(adb, log) {
   });
 }
 
-async function ensureApk(logSink) {
+async function ensureDebugApk(logSink) {
   try {
-    const apk = resolveApk(process.env.ELIZA_ANDROID_APK, {
-      candidates: SYSTEM_APK_CANDIDATES,
-    });
-    logSink.log(`using APK ${apk}`);
+    const apk = resolveApk(process.env.ELIZA_ANDROID_APK);
+    logSink.log(`using debug APK ${apk}`);
     return apk;
   } catch (error) {
     if (
@@ -114,24 +110,22 @@ async function ensureApk(logSink) {
     }
   }
 
-  assertSystemApkSigningEnv();
   await runCommandWithLog(
     "bun",
-    ["run", "--cwd", "packages/app", "build:android:system"],
+    ["run", "--cwd", "packages/app", "build:android"],
     {
       cwd: REPO_ROOT,
       env: {
         ELIZA_MOBILE_REPO_ROOT: REPO_ROOT,
         ELIZA_WEBVIEW_DEBUG: "1",
+        ELIZA_BUN_RISCV64_OPTIONAL: "1",
       },
       logSink,
-      label: "bun run --cwd packages/app build:android:system",
+      label: "bun run --cwd packages/app build:android",
     },
   );
-  const apk = resolveApk(process.env.ELIZA_ANDROID_APK, {
-    candidates: SYSTEM_APK_CANDIDATES,
-  });
-  logSink.log(`using APK ${apk}`);
+  const apk = resolveApk(process.env.ELIZA_ANDROID_APK);
+  logSink.log(`using debug APK ${apk}`);
   return apk;
 }
 
@@ -169,8 +163,8 @@ async function main() {
     const serial = await selectOrBootEmulator(adb, logSink.log);
     process.env.ANDROID_SERIAL = serial;
     await ensureEmulatorPermissive(adb, serial, { log: logSink.log });
-    const apk = await ensureApk(logSink);
-    logSink.log(`installing APK on ${serial}: ${apk}`);
+    const apk = await ensureDebugApk(logSink);
+    logSink.log(`installing debug APK on ${serial}: ${apk}`);
     installApk(adb, serial, apk);
 
     hostAgent = await startDeviceE2EHostAgent({

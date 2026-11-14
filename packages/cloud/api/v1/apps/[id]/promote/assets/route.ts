@@ -28,7 +28,7 @@ import {
   asGenerativeCacheApiError,
   getGenerativeOperationContext,
   requireGenerativeRouteCaller,
-} from "../../../../../src/lib/generative-route-auth";
+} from "@/api-app/lib/generative-route-auth";
 
 const GenerateAssetsSchema = z.object({
   sizes: z

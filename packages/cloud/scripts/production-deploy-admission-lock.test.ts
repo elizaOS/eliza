@@ -316,9 +316,6 @@ args=(--env "$DEPLOY_ENVIRONMENT" --var "ELIZA_DEPLOY_COMMIT:$GITHUB_SHA")
 recheck_canonical_source() { printf 'guard\n'; }
 bun() {
   case "$1" in
-    *speech-host-cutover-admission.mjs)
-      printf 'recheck-speech-cutover\n' >&2
-      [ "$FAILURE" != speech-cutover ] || return 28 ;;
     *reconcile-steward-email-callback-config.ts) printf 'reconcile\n' ;;
     *admission-worker/verify-staging-contract.ts)
       printf 'validate\n'
@@ -336,6 +333,9 @@ bun() {
 }
 node() {
   case "$1" in
+    *speech-host-cutover-admission.mjs)
+      printf 'recheck-speech-cutover\n' >&2
+      [ "$FAILURE" != speech-cutover ] || return 28 ;;
     *verify-worker-secret-binding-names.ts)
       shift
       printf 'speech-secrets %s\n' "$*" >&2

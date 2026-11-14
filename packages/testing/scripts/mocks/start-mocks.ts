@@ -255,6 +255,9 @@ export function mockEnvironmentSettings(
     out.ELIZA_MOCK_GOOGLE_BASE = baseUrls.google;
     out.ELIZA_BLOCK_REAL_GMAIL_WRITES = "1";
   }
+  if (envs.includes("twilio")) {
+    out.ELIZA_MOCK_TWILIO_BASE = baseUrls.twilio;
+  }
   if (envs.includes("whatsapp"))
     out.ELIZA_MOCK_WHATSAPP_BASE = baseUrls.whatsapp;
   if (envs.includes("x-twitter")) {
@@ -263,7 +266,7 @@ export function mockEnvironmentSettings(
   if (envs.includes("calendly"))
     out.ELIZA_MOCK_CALENDLY_BASE = baseUrls.calendly;
   if (envs.includes("cloud-managed"))
-    out.ELIZAOS_CLOUD_BASE_URL = baseUrls["cloud-managed"];
+    out.ELIZA_CLOUD_BASE_URL = baseUrls["cloud-managed"];
   if (envs.includes("browser-workspace")) {
     out.ELIZA_BROWSER_WORKSPACE_URL = baseUrls["browser-workspace"];
     out.ELIZA_BROWSER_WORKSPACE_TOKEN = MOCK_BROWSER_WORKSPACE_TOKEN;
@@ -295,10 +298,10 @@ export function mockEnvironmentSettings(
   if (envs.includes("anthropic")) {
     // Include the `/v1` prefix so the value is a drop-in for `ANTHROPIC_BASE_URL`
     // (the openai.json/anthropic.json routes live under `/v1/...`).
-    out.ANTHROPIC_BASE_URL = `${baseUrls.anthropic}/v1`;
+    out.ELIZA_MOCK_ANTHROPIC_BASE = `${baseUrls.anthropic}/v1`;
   }
   if (envs.includes("openai")) {
-    out.OPENAI_BASE_URL = `${baseUrls.openai}/v1`;
+    out.ELIZA_MOCK_OPENAI_BASE = `${baseUrls.openai}/v1`;
   }
   if (envs.includes("vision")) {
     out.ELIZA_MOCK_VISION_BASE = baseUrls.vision;
@@ -319,28 +322,6 @@ export function mockEnvironmentSettings(
     if (envs.includes(service)) out[setting] = baseUrls[service];
   }
   return out;
-}
-
-const TWILIO_API_ORIGIN = "https://api.twilio.com";
-
-/**
- * Sends Twilio REST calls made in this process to the Twilio mock; the Twilio
- * client has no base-URL setting. Returns the function that restores fetch.
- */
-export function redirectTwilioFetch(mockBase: string): () => void {
-  const realFetch = globalThis.fetch;
-  const base = mockBase.replace(/\/+$/, "");
-  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
-    const url = input instanceof Request ? input.url : String(input);
-    if (!url.startsWith(`${TWILIO_API_ORIGIN}/`)) return realFetch(input, init);
-    const target = `${base}${url.slice(TWILIO_API_ORIGIN.length)}`;
-    return input instanceof Request
-      ? realFetch(new Request(target, input), init)
-      : realFetch(target, init);
-  }) as typeof fetch;
-  return () => {
-    globalThis.fetch = realFetch;
-  };
 }
 
 function escapeRegex(value: string): string {

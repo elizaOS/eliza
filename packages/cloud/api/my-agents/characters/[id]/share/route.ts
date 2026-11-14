@@ -18,7 +18,6 @@ import {
 } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { cache } from "@elizaos/cloud-shared/lib/cache/client";
 import { CacheKeys } from "@elizaos/cloud-shared/lib/cache/keys";
-import { getCloudDeployment } from "@elizaos/cloud-shared/lib/deployment/cloud-deployment";
 import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
 import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
@@ -39,7 +38,7 @@ app.get("/", async (c) => {
       return c.json({ success: false, error: "Character not found" }, 404);
     }
 
-    const baseUrl = c.env.NEXT_PUBLIC_APP_URL || getCloudDeployment().appOrigin;
+    const baseUrl = c.env.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
     return c.json({
       success: true,
       data: {
@@ -100,10 +99,6 @@ app.put("/", async (c) => {
     }
 
     const { isPublic } = validation.data;
-    // Publishing needs a usable URL; making a character private does not.
-    const baseUrl = isPublic
-      ? c.env.NEXT_PUBLIC_APP_URL || getCloudDeployment().appOrigin
-      : null;
     logger.info("[Share API] Toggling character share status:", {
       characterId: id,
       userId: user.id,
@@ -125,6 +120,7 @@ app.put("/", async (c) => {
       cache.delPattern(CacheKeys.discovery.pattern()),
     ]);
 
+    const baseUrl = c.env.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
     return c.json({
       success: true,
       data: {

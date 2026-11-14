@@ -44,7 +44,7 @@
         "channel": { "enum": ["stable", "beta", "nightly"] },
         "sequence": { "type": "integer", "minimum": 1 },
         "expires": { "type": "string", "format": "date-time" },
-        "architecture": { "enum": ["x86_64", "arm64"] },
+        "architecture": { "enum": ["x86_64", "arm64", "riscv64"] },
         "url": {
           "type": "string",
           "format": "uri",

@@ -26,7 +26,7 @@ import { z } from "zod";
 import {
   scheduleReplacedAvatarCleanup,
   swapUserAvatar,
-} from "../../_lib/user-avatar";
+} from "@/api/_lib/user-avatar";
 
 const updateUserSchema = z.object({
   name: z.string().min(1).max(100).optional(),

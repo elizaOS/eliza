@@ -667,6 +667,9 @@ export * from "./integration.ts";
 // ==========================================
 export * from "./reward-service.ts";
 export type {
+  TrajectoryListItem,
+  TrajectoryListOptions,
+  TrajectoryListResult,
   TrajectoryStats,
   TrajectoryZipEntry,
   TrajectoryZipExportOptions,

@@ -102,18 +102,8 @@ export interface Bindings {
    * while it is absent or false, subject to the primary database control.
    */
   AUTO_TOP_UP_DURABLE_ENABLED?: string;
-  /**
-   * Cloud deployment identity (see lib/deployment/cloud-deployment.ts). Unset
-   * or "eliza" is the eliza.app deployment. Any other id is a product Cloud
-   * whose origins, tenant, hosts, sender and billing page must all be set.
-   */
-  CLOUD_DEPLOYMENT_ID?: string;
-  /** Public site origin of a product Cloud. */
-  CLOUD_WEB_ORIGIN?: string;
-  /** Optional comma-separated extra first-party web origins of a product Cloud. */
-  CLOUD_FIRST_PARTY_ORIGINS?: string;
-  /** Billing page of a product Cloud, returned when credits run out. */
-  CLOUD_BILLING_URL?: string;
+  /** Registered active and approved `apps.id` for the native Cloud client. */
+  ELIZA_MOBILE_APP_AUTH_APP_ID?: string;
   /** Public deployment name and plain-text Terms/Privacy documents; never a secret. */
   CLOUD_PUBLIC_SERVICE_JSON?: string;
   /** Split deployment-owned public text; each binding fits the Worker limit. */
@@ -122,6 +112,14 @@ export interface Bindings {
   CLOUD_PUBLIC_SERVICE_PRIVACY_JSON?: string;
   /** Global mobile app-auth lifecycle kill switch; only "true" enables it. */
   ELIZA_MOBILE_APP_AUTH_ENABLED?: string;
+  /** Server-owned registrations for independently branded native clients. */
+  ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON?: string;
+  /**
+   * Digital Asset Links statements served at `/.well-known/assetlinks.json`:
+   * a JSON array of `{ package_name, sha256_cert_fingerprints[], relations? }`.
+   * Malformed config is served as `[]`.
+   */
+  ELIZA_ANDROID_ASSET_LINKS_JSON?: string;
 
   // ---- Database (Railway Postgres via the Hyperdrive binding in cloud, PGlite locally) ----
   DATABASE_URL: string;
@@ -724,13 +722,6 @@ export interface Variables {
    * server-side only, so retries of one sign-in get the same answer.
    */
   stewardAccountCreated?: true;
-  /**
-   * Why a verified Steward session could not be resolved to a Cloud account
-   * during first-sign-in provisioning. `requireUser` reports `unavailable` as
-   * a retryable `account_not_ready` 503 and `conflict` as an
-   * `identity_conflict` 409; an unclassified failure sets nothing and stays 401.
-   */
-  stewardAccountSyncFailure?: "conflict" | "unavailable";
 }
 
 export type AppEnv = {

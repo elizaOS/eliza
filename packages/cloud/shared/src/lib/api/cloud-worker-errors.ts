@@ -20,9 +20,7 @@ export type ApiErrorCode =
   | "validation_error"
   | "insufficient_credits"
   | "session_not_ready"
-  | "account_not_ready"
   | "identity_conflict"
-  | "renewal_window_closed"
   | "agent_quota_exceeded"
   | "agent_image_not_allowed"
   | "agent_image_not_digest_pinned"
@@ -147,27 +145,10 @@ function isInfrastructureError(error: Error): boolean {
   );
 }
 
-/**
- * Names of the funding refusals that are not `ApiError`s. The billing
- * services raise their own `InsufficientCreditsError` and its subclasses
- * (an exhausted plan allowance, a billing hold), each with its own name, so
- * name-based mappers must accept all of them to answer 402.
- */
-const INSUFFICIENT_FUNDS_ERROR_NAMES: ReadonlySet<string> = new Set([
-  "InsufficientCreditsError",
-  "AllowanceExhaustedError",
-  "BillingHoldActiveError",
-]);
-
-/** True for a funding refusal identified by its error name. */
-export function isInsufficientFundsErrorName(name: string): boolean {
-  return INSUFFICIENT_FUNDS_ERROR_NAMES.has(name);
-}
-
 function inferStatusFromLegacyError(error: Error): number {
   if (isInfrastructureError(error)) return 500;
   const message = error.message.toLowerCase();
-  if (isInsufficientFundsErrorName(error.name)) return 402;
+  if (error.name === "InsufficientCreditsError") return 402;
   if (error.name === "AuthenticationError" || error.name === "UnauthorizedError") return 401;
   if (error.name === "ForbiddenError" || error.name === "AccessDeniedError") return 403;
   if (error.name === "NotFoundError") return 404;

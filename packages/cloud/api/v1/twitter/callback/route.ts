@@ -1,7 +1,6 @@
 /** Completes X OAuth callbacks and projects only verified identities as connected. */
 
 import { cache } from "@elizaos/cloud-shared/lib/cache/client";
-import { getCloudDeployment } from "@elizaos/cloud-shared/lib/deployment/cloud-deployment";
 import {
   getDefaultPlatformRedirectOrigins,
   LOOPBACK_REDIRECT_ORIGINS,
@@ -36,7 +35,7 @@ app.get("/", async (c) => {
   const baseUrl =
     c.env?.NEXT_PUBLIC_APP_URL ||
     process.env.NEXT_PUBLIC_APP_URL ||
-    getCloudDeployment().appOrigin;
+    "https://cloud.eliza.app";
   const defaultRedirectPath = "/cloud/connectors";
   const allowedAbsoluteOrigins = [
     ...getDefaultPlatformRedirectOrigins(),

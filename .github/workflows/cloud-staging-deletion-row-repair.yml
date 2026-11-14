@@ -1,0 +1,107 @@
+name: Cloud staging deletion row repair
+
+# Owner-approved, staging-only retirement of the single legacy agent row that
+# blocks migration 0398 (AGENT_DELETION_BILLING_PROVENANCE_UNRESOLVED). The
+# default dry-run lists the guarded row IDs and lifecycle fields read-only.
+# Apply sets deleted_at on exactly the named row in one transaction, only if the
+# guard reports that one row in the approved failing state, and only on the
+# database whose identity matches the pinned staging receipts. See
+# packages/cloud/scripts/README.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_cloud_commit:
+        description: Exact 40-character staging commit to run
+        required: true
+        type: string
+      mode:
+        description: dry-run lists the guarded row; apply retires it
+        required: true
+        default: dry-run
+        type: choice
+        options:
+          - dry-run
+          - apply
+      agent_id:
+        description: Agent UUID reported by the dry-run (required for apply)
+        required: false
+        default: ""
+        type: string
+      reason:
+        description: Recorded reason for apply (20-500 characters)
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  admission:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Reject untrusted source
+        env:
+          EXPECTED_COMMIT: ${{ inputs.expected_cloud_commit }}
+          CHECKED_OUT_COMMIT: ${{ github.sha }}
+          SOURCE_REF: ${{ github.ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$SOURCE_REF" != "refs/heads/staging" ]]; then
+            echo "::error::the staging deletion row repair requires the trusted staging source"
+            exit 1
+          fi
+          if [[ ! "$EXPECTED_COMMIT" =~ ^[0-9a-f]{40}$ ]] || [[ "$EXPECTED_COMMIT" != "$CHECKED_OUT_COMMIT" ]]; then
+            echo "::error::the staging deletion row repair requires the exact checked-out commit"
+            exit 1
+          fi
+
+  repair:
+    needs: admission
+    if: needs.admission.result == 'success' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: staging
+    concurrency:
+      group: cloud-staging-deletion-row-repair
+      cancel-in-progress: false
+    steps:
+      - name: Checkout exact workflow commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          submodules: false
+          persist-credentials: false
+
+      - name: Setup Bun workspace
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: 1.4.2
+          setup-python: "false"
+          install-protoc: "false"
+          install-native-deps: "false"
+          run-postinstall: "false"
+
+      - name: Build required linked runtime
+        run: bun run build:core
+
+      - name: Repair the guarded row
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ELIZA_OPERATOR_ENVIRONMENT: staging
+          REPAIR_MODE: ${{ inputs.mode }}
+          REPAIR_AGENT_ID: ${{ inputs.agent_id }}
+          REPAIR_REASON: ${{ inputs.reason }}
+        run: bun run packages/cloud/scripts/admin/staging-deletion-row-repair.ts
+
+      - name: Retain repair receipt
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: staging-deletion-row-repair-${{ inputs.mode }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/cloud-staging-repair/deletion-row-repair.json
+          if-no-files-found: ignore
+          retention-days: 90

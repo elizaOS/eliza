@@ -23,7 +23,7 @@ import {
   integrationHealth,
   plannerVisibleFeatures,
   resolveIntegrationAvailability,
-} from "../../src/lib/mcp/integration-catalog";
+} from "@/api-app/lib/mcp/integration-catalog";
 
 // SECURITY FIX: Validate query parameters to prevent DoS attacks
 // Whitelist allowed values and enforce length limits

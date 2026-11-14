@@ -14,9 +14,16 @@ import { useContext, useEffect, useState } from "react";
 import { decodeJwtPayload } from "../../lib/jwt";
 import { LocalStewardAuthContext } from "../../shell/StewardProvider";
 
-// A build-time constant, so production bundles drop every test sign-in branch.
-const PLAYWRIGHT_TEST_AUTH_ENABLED =
-  import.meta.env?.VITE_PLAYWRIGHT_TEST_AUTH === "true";
+function isPlaywrightTestAuthEnabled(): boolean {
+  if (import.meta.env?.VITE_PLAYWRIGHT_TEST_AUTH === "true") return true;
+  if (
+    typeof process !== "undefined" &&
+    process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true"
+  ) {
+    return true;
+  }
+  return false;
+}
 
 function tokenIsLive(token: string): boolean {
   const payload = decodeJwtPayload(token);
@@ -66,7 +73,7 @@ export function useJoinSessionAuth(): JoinSessionAuthState {
   const authenticated =
     (providerAuth?.isAuthenticated ?? false) || storageAuthed;
   const ready =
-    !(providerAuth?.isLoading ?? false) || PLAYWRIGHT_TEST_AUTH_ENABLED;
+    !(providerAuth?.isLoading ?? false) || isPlaywrightTestAuthEnabled();
 
   return { ready, authenticated };
 }

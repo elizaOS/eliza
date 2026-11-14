@@ -12,7 +12,7 @@
  * No per-test contact-sheet.html files are linked or generated.
  *
  * Usage:
- *   bun packages/scripts/e2e-recordings/generate-viewer.ts
+ *   node packages/scripts/e2e-recordings/generate-viewer.ts
  */
 
 import fs from "node:fs";

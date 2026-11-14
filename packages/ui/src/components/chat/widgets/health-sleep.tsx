@@ -28,9 +28,11 @@ const WINDOW_DAYS = 14;
 // Wire shapes — mirror the JSON HealthView fetches from the read-only sleep
 // routes (plugins/plugin-health/src/routes/sleep.ts) and parses in
 // plugins/plugin-health/src/components/health/HealthView.tsx. The canonical
-// contract types live in @elizaos/contracts (lifeops/health.ts):
-//   LifeOpsSleepHistoryEpisode, LifeOpsSleepHistoryResponse,
-//   LifeOpsRegularityClass, LifeOpsSleepRegularityResponse.
+// contract types live in plugins/plugin-health/src/contracts/lifeops.ts:
+//   LifeOpsSleepHistoryEpisode   (lifeops.ts:3715)
+//   LifeOpsSleepHistoryResponse  (lifeops.ts:3733)
+//   LifeOpsRegularityClass       (lifeops.ts:1629)
+//   LifeOpsSleepRegularityResponse (lifeops.ts:3745)
 // The @elizaos/ui package does not depend on @elizaos/plugin-health, so only
 // the subset of fields this glanceable widget renders is re-declared here.
 // ---------------------------------------------------------------------------

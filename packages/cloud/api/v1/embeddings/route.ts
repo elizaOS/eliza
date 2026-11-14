@@ -1,4 +1,3 @@
-import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 /**
  * POST /api/v1/embeddings
  *
@@ -47,6 +46,8 @@ import {
   appInferenceDeveloperScope,
 } from "@elizaos/cloud-shared/lib/services/app-subscription-inference-admission";
 import type { CreditReservation } from "@elizaos/cloud-shared/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { wakeInferenceAdmissionGate } from "@elizaos/cloud-shared/lib/services/inference-admission-gate";
 import { inferenceRateLimitConfig } from "@elizaos/cloud-shared/lib/services/inference-admission-snapshot";
 import { requireInferenceApiKeyWithOrg } from "@elizaos/cloud-shared/lib/services/inference-api-key-auth";
 import type { InferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
@@ -59,7 +60,6 @@ import {
   assertInferenceCredentialActive,
   type InferenceCredentialCheck,
 } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
-import { inferenceFundingRefusal } from "@elizaos/cloud-shared/lib/services/inference-funding-refusal";
 import { isPassthroughEmbeddingsEnabled } from "@elizaos/cloud-shared/lib/services/inference-passthrough";
 import { isKnownUnacceptedProviderError } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
 import {
@@ -81,7 +81,7 @@ import { Hono } from "hono";
 import {
   resolveInferenceAuthStandingDenial,
   resolveInferenceCredentialAdmissionDenial,
-} from "../../src/lib/generative-route-auth";
+} from "@/api-app/lib/generative-route-auth";
 
 interface EmbeddingsRequest {
   input: string | string[];
@@ -118,7 +118,6 @@ app.post("/", async (c) => {
   let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
   let apiKeyRateLimit: number | undefined;
   let admissionCredential: InferenceCredentialCheck | undefined;
-  let refreshAuthEntry: (() => void) | undefined;
   let providerRequestId: string | undefined;
   let providerModel: string | undefined;
   try {
@@ -228,7 +227,6 @@ app.post("/", async (c) => {
           ? resolution.ctx.apiKeyRateLimit
           : undefined;
       admissionCredential = resolution.credential;
-      refreshAuthEntry = resolution.refreshEntry;
     } else {
       if (executionCtx) {
         return c.json(
@@ -267,6 +265,9 @@ app.post("/", async (c) => {
     }
 
     const tAuth = performance.now();
+    // Dispatch reaches the billing gate after the rate decision; wake it now.
+    if (executionCtx && user.organization_id)
+      wakeInferenceAdmissionGate(user.organization_id, executionCtx);
     const orgRateLimitPromise = user.organization_id
       ? enforceOrgRateLimit(user.organization_id, "embeddings", {
           cacheOnly: Boolean(executionCtx),
@@ -473,7 +474,6 @@ app.post("/", async (c) => {
           affiliateCode,
           executionCtx,
           admissionSnapshot,
-          refreshAuthEntry,
           credential: credentialGuard.credentialForAdmission(),
           atomicProviderBoundary: Boolean(executionCtx),
         });
@@ -503,7 +503,16 @@ app.post("/", async (c) => {
         );
       }
       if (error instanceof InsufficientCreditsError) {
-        return c.json({ error: inferenceFundingRefusal(error) }, 402);
+        return c.json(
+          {
+            error: {
+              message: `Insufficient credits. Required: $${error.required.toFixed(4)}`,
+              type: "insufficient_quota",
+              code: "insufficient_balance",
+            },
+          },
+          402,
+        );
       }
       if (error instanceof InferenceAdmissionUnavailableError) {
         logger.error(
@@ -850,7 +859,16 @@ app.post("/", async (c) => {
     }
 
     if (error instanceof InsufficientCreditsError) {
-      return c.json({ error: inferenceFundingRefusal(error) }, 402);
+      return c.json(
+        {
+          error: {
+            message: `Insufficient credits. Required: $${error.required.toFixed(4)}`,
+            type: "insufficient_quota",
+            code: "insufficient_balance",
+          },
+        },
+        402,
+      );
     }
     if (error instanceof InferenceAdmissionUnavailableError) {
       logger.error("[Embeddings] provider-boundary admission failed closed", {

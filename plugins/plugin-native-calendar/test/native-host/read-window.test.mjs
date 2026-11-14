@@ -22,72 +22,55 @@ const json =
         .map((name) => join(cache, hash, name)),
     )[0]);
 
-function readThroughJvm(main, sources) {
+test("shared Calendar range preserves complete reads and reports an explicit host bound", {
+  skip: !json && "Pinned JVM JSON dependency unavailable",
+}, () => {
   const temporary = mkdtempSync(join(tmpdir(), "shared-calendar-window-"));
   const binary = (name) =>
     process.env.JAVA_HOME ? join(process.env.JAVA_HOME, "bin", name) : name;
   try {
     execFileSync(
       binary("javac"),
-      ["--release", "11", "-cp", json, "-d", temporary, ...sources],
+      [
+        "--release",
+        "11",
+        "-cp",
+        json,
+        "-d",
+        temporary,
+        join(
+          source,
+          "android/src/main/java/ai/eliza/plugins/calendar/CalendarConfiguration.java",
+        ),
+        join(
+          source,
+          "android/src/main/java/ai/eliza/plugins/calendar/read/CalendarReadAccess.java",
+        ),
+        ...[
+          "content/ContentResolver.java",
+          "content/ContentUris.java",
+          "database/Cursor.java",
+        ].map((name) => join(plugin, "test/jvm/android", name)),
+        ...[
+          "content/Intent.java",
+          "net/Uri.java",
+          "provider/CalendarContract.java",
+        ].map((name) => join(tests, "read-window/android", name)),
+        join(tests, "read-window/CalendarReadWindowTest.java"),
+      ],
       { timeout: 60000, stdio: "pipe" },
     );
-    return execFileSync(
+    const output = execFileSync(
       binary("java"),
-      ["-cp", `${temporary}:${json}`, `ai.eliza.plugins.calendar.read.${main}`],
+      [
+        "-cp",
+        `${temporary}:${json}`,
+        "ai.eliza.plugins.calendar.read.CalendarReadWindowTest",
+      ],
       { encoding: "utf8", timeout: 30000 },
     );
+    assert.match(output, /^PASS shared Calendar window:/);
   } finally {
     rmSync(temporary, { recursive: true, force: true });
   }
-}
-
-const javaSource = join(
-  source,
-  "android/src/main/java/ai/eliza/plugins/calendar",
-);
-const stubs = join(plugin, "test/jvm/android");
-const dependencies = [
-  "content/ContentResolver.java",
-  "content/ContentUris.java",
-  "database/Cursor.java",
-];
-const options = { skip: !json && "Pinned JVM JSON dependency unavailable" };
-
-test(
-  "shared Calendar range preserves complete reads and reports an explicit host bound",
-  options,
-  () => {
-    const output = readThroughJvm("CalendarReadWindowTest", [
-      join(javaSource, "CalendarConfiguration.java"),
-      join(javaSource, "read/CalendarReadAccess.java"),
-      ...dependencies.map((name) => join(stubs, name)),
-      ...[
-        "content/Intent.java",
-        "net/Uri.java",
-        "provider/CalendarContract.java",
-      ].map((name) => join(tests, "read-window/android", name)),
-      join(tests, "read-window/CalendarReadWindowTest.java"),
-    ]);
-    assert.match(output, /^PASS shared Calendar window:/);
-  },
-);
-
-test(
-  "selected workflow Calendar reads preserve timed bounds and the reviewed civil days",
-  options,
-  () => {
-    const output = readThroughJvm("SelectedCalendarReaderTest", [
-      join(javaSource, "read/CalendarSourceIdentity.java"),
-      join(javaSource, "read/SelectedCalendarReader.java"),
-      ...dependencies.map((name) => join(stubs, name)),
-      ...[
-        "content/ContentValues.java",
-        "net/Uri.java",
-        "provider/CalendarContract.java",
-      ].map((name) => join(stubs, name)),
-      join(plugin, "test/jvm/SelectedCalendarReaderTest.java"),
-    ]);
-    assert.match(output, /^PASS selected Calendar reader:/);
-  },
-);
+});

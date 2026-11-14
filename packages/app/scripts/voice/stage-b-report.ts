@@ -29,7 +29,7 @@ export const REQUIRED_STAGE_B_BACKENDS = [
   {
     backend: "fused-asr",
     label: "Fused ASR",
-    platforms: new Set(["linux", "macos"]),
+    platforms: new Set(["linux", "macos", "macos-electrobun"]),
     requiresBattery: false,
   },
 ];

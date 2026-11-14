@@ -7,8 +7,8 @@ import {
 } from "@elizaos/cloud-shared/lib/middleware/cors-apps";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { getGenerativeExecutionContext } from "../../../../src/lib/generative-route-auth";
-import { handleChatCompletionsPOST } from "../../../chat/completions/route";
+import { handleChatCompletionsPOST } from "@/api/v1/chat/completions/route";
+import { getGenerativeExecutionContext } from "@/api-app/lib/generative-route-auth";
 
 const honoRouter = new Hono<AppEnv>();
 

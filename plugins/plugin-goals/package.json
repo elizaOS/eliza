@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-goals",
-  "version": "2.0.6",
+  "version": "2.0.4",
   "type": "module",
   "description": "Life direction plugin: owner-set long-horizon goals with per-goal check-ins, and the goals list view.",
   "main": "./dist/index.js",
@@ -10,10 +10,10 @@
     "test": "bunx vitest run --config ./vitest.config.ts",
     "test:real-runtime": "bunx vitest run --config ./vitest.real-runtime.config.ts",
     "build": "bun run build:js && bun run build:views && bun run build:types",
-    "clean": "bun ../../packages/scripts/rm-path-recursive.ts dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "vite build --config vite.config.views.ts",
-    "build:types": "tsc6 --noCheck -p tsconfig.build.json && bun ../../packages/scripts/rewrite-dist-relative-imports-node-esm.ts",
+    "build:types": "tsc6 --noCheck -p tsconfig.build.json && node ../../packages/scripts/rewrite-dist-relative-imports-node-esm.ts",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format ."
@@ -55,7 +55,7 @@
     "react-dom": "^19.3.1"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.6",
+    "@biomejs/biome": "2.6.3",
     "@types/node": "^25.0.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -64,7 +64,7 @@
     "tsup": "^9.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.1.0",
+    "vitest": "^5.0.5",
     "vite": "^8.3.3",
     "@elizaos/testing": "workspace:*"
   },

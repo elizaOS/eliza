@@ -32,7 +32,7 @@ const TEXT_VOICE_ONLY_TIERS = new Set(TEXT_VOICE_ONLY_TIER_LIST);
 
 function usage() {
   return [
-    "Usage: bun plugins/plugin-local-inference/native/verify/eliza1_vision_smoke.mjs --bundle-dir <path> [options]",
+    "Usage: node plugins/plugin-local-inference/native/verify/eliza1_vision_smoke.mjs --bundle-dir <path> [options]",
     "",
     "Options:",
     "  --bundle-dir <path>       Eliza-1 bundle directory to inspect",

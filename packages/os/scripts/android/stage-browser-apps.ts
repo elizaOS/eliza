@@ -71,7 +71,7 @@ export function readBrowserAppPins(vendorDir) {
         !Array.isArray(app.architectures) ||
         app.architectures.length === 0 ||
         !app.architectures.every((arch) =>
-          ["x86_64", "arm64"].includes(arch),
+          ["x86_64", "arm64", "riscv64"].includes(arch),
         ) ||
         !["stable", "development"].includes(app.channel)
       ) {
@@ -221,7 +221,7 @@ export function admitBrowserVendor(
     return null;
   }
   const inferred = brand.productName?.match(
-    /(?:^|_)(x86_64|arm64)(?:_|$)/,
+    /(?:^|_)(x86_64|arm64|riscv64)(?:_|$)/,
   )?.[1];
   if (brand.architecture && inferred && brand.architecture !== inferred)
     throw new Error("Explicit architecture conflicts with the AOSP product.");
@@ -284,6 +284,7 @@ function verifyApk(file, pin, { apksigner, aapt }) {
   const expectedAbis = {
     arm64: "arm64-v8a",
     x86_64: "x86_64",
+    riscv64: "riscv64",
   };
   if (
     (pin.architectures ?? []).some((arch) => !abis.includes(expectedAbis[arch]))
@@ -330,7 +331,7 @@ export function stageBrowserApps({
   aapt = "aapt",
 }) {
   const pins = readBrowserAppPins(vendorDir);
-  if (!["x86_64", "arm64"].includes(arch))
+  if (!["x86_64", "arm64", "riscv64"].includes(arch))
     throw new Error("An explicit supported APK architecture is required.");
   const selected = Object.fromEntries(
     Object.keys(applications).map((name) => [

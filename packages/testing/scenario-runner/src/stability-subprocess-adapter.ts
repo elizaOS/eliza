@@ -1,7 +1,4 @@
-import {
-  syntheticWorldSettings,
-  withoutLlmMockBaseUrls,
-} from "./synthetic-world-settings.ts";
+import { syntheticWorldSettings } from "./synthetic-world-settings.ts";
 /**
  * Executes stability attempts in independent OS process groups while one
  * leased synthetic-control session owns the exact mock manifest per attempt.
@@ -561,13 +558,7 @@ export class ScenarioStabilitySubprocessAdapter
     const worldSettings: Record<string, string> = {};
     const endpoints = session.seedData?.endpoints;
     if (endpoints !== undefined) {
-      const settings = syntheticWorldSettings(endpoints);
-      Object.assign(
-        worldSettings,
-        this.options.modelMode.kind === "real-llm"
-          ? withoutLlmMockBaseUrls(settings)
-          : settings,
-      );
+      Object.assign(worldSettings, syntheticWorldSettings(endpoints));
       for (const [name, value] of Object.entries(worldSettings)) {
         const declared =
           this.options.mockServiceUrls?.[name] ?? this.options.env?.[name];

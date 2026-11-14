@@ -115,7 +115,7 @@ public abstract class PhotosPlugin extends PermittedPhotosPlugin {
     submitRead(call, () -> {
       try {
         return edits.preview(call.getString("sessionId"), call.getInt("rotation", 0),
-            crop(call), call.getString("filter", "none"));
+            call.getBoolean("crop", false), call.getString("filter", "none"));
       } catch (Exception e) {
         call.reject(e.getMessage() == null ? "Preview unavailable" : e.getMessage());
         return null;
@@ -135,7 +135,7 @@ public abstract class PhotosPlugin extends PermittedPhotosPlugin {
       try {
         String token = call.getString("sessionId");
         int rotation = call.getInt("rotation", 0);
-        PhotoCrop crop = crop(call);
+        boolean crop = call.getBoolean("crop", false);
         String filter = call.getString("filter", "none");
         if (!replace) {
           call.resolve(edits.save(token, rotation, crop, filter));
@@ -160,22 +160,7 @@ public abstract class PhotosPlugin extends PermittedPhotosPlugin {
     });
   }
 
-  /**
-   * The crop an edit request names: {@code cropRect: {x, y, width, height}} (fractions of the
-   * rotated photo) keeps that rectangle; otherwise {@code crop: true} keeps the fixed centered crop.
-   */
-  private static PhotoCrop crop(PluginCall call) {
-    JSObject rect = call.getObject("cropRect", null);
-    if (rect == null && !call.getData().has("cropRect"))
-      return PhotoCrop.of(Boolean.TRUE.equals(call.getBoolean("crop", false)));
-    if (rect == null || !(rect.opt("x") instanceof Number) || !(rect.opt("y") instanceof Number)
-        || !(rect.opt("width") instanceof Number) || !(rect.opt("height") instanceof Number))
-      throw new IllegalArgumentException("Choose a crop area inside the photo");
-    return PhotoCrop.rect(rect.optDouble("x", Double.NaN), rect.optDouble("y", Double.NaN),
-        rect.optDouble("width", Double.NaN), rect.optDouble("height", Double.NaN));
-  }
-
-  private JSObject replaceEdit(String token, int rotation, PhotoCrop crop, String filter)
+  private JSObject replaceEdit(String token, int rotation, boolean crop, String filter)
       throws Exception {
     JSObject receipt = edits.replace(token, rotation, crop, filter);
     // A replaced original has new bytes: open pages and read tickets of the old ones end here.

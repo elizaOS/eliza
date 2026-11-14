@@ -959,9 +959,7 @@ function isFrontendAliasBackendPath(url: URL): boolean {
     url.pathname === "/.well-known/openid-configuration" ||
     url.pathname === "/.well-known/oidc/jwks.json" ||
     // Android App Link verification for native sign-in redirects on this host.
-    url.pathname === "/.well-known/assetlinks.json" ||
-    url.pathname.endsWith("/auth/callback") ||
-    url.pathname.endsWith("/billing/return")
+    url.pathname === "/.well-known/assetlinks.json"
   );
 }
 export function getFrontendAliasApiProxyTarget(url: URL): URL | null {

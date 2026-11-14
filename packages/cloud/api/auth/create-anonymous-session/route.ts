@@ -22,7 +22,7 @@ import {
   MAX_ANONYMOUS_EXPIRY_DAYS,
   MAX_ANONYMOUS_MESSAGE_LIMIT,
   parseAnonymousPositiveIntEnv,
-} from "../anonymous-session-config";
+} from "@/api/auth/anonymous-session-config";
 
 const ANON_SESSION_COOKIE = "eliza-anon-session";
 

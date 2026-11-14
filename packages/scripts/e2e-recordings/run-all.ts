@@ -7,7 +7,7 @@
  * contact sheets, the viewer index, and an optional local evidence dashboard.
  *
  * Usage:
- *   bun packages/scripts/e2e-recordings/run-all.ts
+ *   node packages/scripts/e2e-recordings/run-all.ts
  *
  * Options:
  *   --packages=<comma-list>   Run only the named packages (e.g. --packages=homepage,app)

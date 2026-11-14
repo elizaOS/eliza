@@ -113,7 +113,7 @@ function parseArgs(argv) {
 function printUsage() {
 	console.log(
 		[
-			"Usage: bun plugins/plugin-local-inference/native/verify/voice_profile_emotion_status.mjs [options]",
+			"Usage: node plugins/plugin-local-inference/native/verify/voice_profile_emotion_status.mjs [options]",
 			"",
 			"  --tier TIER       Eliza-1 tier slug, default 2b.",
 			"  --bundle PATH     Installed bundle root.",

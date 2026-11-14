@@ -5,7 +5,7 @@
 // Brand-agnostic: every path comes from --frames / --out CLI flags.
 //
 // Usage:
-//   bun scripts/android/build-bootanimation.ts \
+//   node scripts/android/build-bootanimation.ts \
 //     --frames android/vendor/<brand>/bootanimation \
 //     --out android/vendor/<brand>/bootanimation/bootanimation.zip
 //
@@ -22,7 +22,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const USAGE =
-  "Usage: bun scripts/android/build-bootanimation.ts [--frames <DIR>] [--out <ZIP>] [--check]";
+  "Usage: node scripts/android/build-bootanimation.ts [--frames <DIR>] [--out <ZIP>] [--check]";
 
 export function parseArgs(argv) {
   const args = {

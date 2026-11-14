@@ -17,7 +17,6 @@ import type {
 import {
   CHANNEL_TOPICS_LRU_CAPACITY,
   describeUserReference,
-  extractUserText,
   userReferenceLogView as queryLogView,
   type TopicSearchHit,
   unwrapUserMessageText,
@@ -40,9 +39,7 @@ function getTopicsService(
 /**
  * Pull the search query from explicit params, else the message text — unwrapped,
  * because on hardened connectors content.text is core's external-content
- * security envelope, not the user's words. The document-augmentation envelope
- * is removed too: chat augmentation wraps the request in a preamble and
- * `<user_request>` tags, and its prose tokens matched unrelated rooms.
+ * security envelope, not the user's words.
  */
 function resolveQuery(
   message: Memory,
@@ -50,7 +47,7 @@ function resolveQuery(
 ): string {
   const param = options?.parameters?.query;
   if (typeof param === "string" && param.trim()) return param.trim();
-  return extractUserText(unwrapUserMessageText(message));
+  return unwrapUserMessageText(message);
 }
 
 // Blob-safe rendering rationale lives in utils/reference-echo.ts.

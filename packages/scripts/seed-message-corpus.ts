@@ -19,9 +19,9 @@
  * silently selecting the default.
  *
  * Usage:
- *   bun packages/scripts/seed-message-corpus.ts
- *   bun packages/scripts/seed-message-corpus.ts --conversations=24 --messages=60 --span-months=18
- *   bun packages/scripts/seed-message-corpus.ts --api-port=31337 --seed=99
+ *   node packages/scripts/seed-message-corpus.ts
+ *   node packages/scripts/seed-message-corpus.ts --conversations=24 --messages=60 --span-months=18
+ *   node packages/scripts/seed-message-corpus.ts --api-port=31337 --seed=99
  */
 import path from "node:path";
 import process from "node:process";
@@ -152,7 +152,7 @@ function printHelp() {
     `Seed a running agent with ~1 year of backdated messages for search demos.
 
 Usage:
-  bun packages/scripts/seed-message-corpus.ts [flags]
+  node packages/scripts/seed-message-corpus.ts [flags]
 
 Flags:
   --api-port=N        Agent API TCP port 1-65535 (default ${DEFAULT_API_PORT}; env ELIZA_API_PORT)

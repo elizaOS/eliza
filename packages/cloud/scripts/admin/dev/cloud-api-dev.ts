@@ -60,8 +60,6 @@ function bunExecutable() {
   return process.platform === "win32" ? "bun.exe" : "bun";
 }
 
-// Wrangler stays on Node.js: under Bun 1.4.2, `wrangler dev --local` (4.116.0)
-// logs "Ready" and then never answers a request, even for a one-line Worker.
 function isRealNodeExecutable(candidate) {
   if (!candidate || !existsSync(candidate)) return false;
   const result = spawnSync(

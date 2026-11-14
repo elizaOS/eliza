@@ -22,7 +22,7 @@ import {
   asGenerativeCacheApiError,
   getGenerativeExecutionContext,
   requireGenerativeRouteCaller,
-} from "../../src/lib/generative-route-auth";
+} from "@/api-app/lib/generative-route-auth";
 
 const app = new Hono<AppEnv>();
 

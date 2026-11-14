@@ -5,6 +5,9 @@ an agent through the Cloud API, probe its bridge, and clean up the test server.
 They are manually invoked diagnostics. No repository workflow schedules this
 suite or its reaper, and no workflow concurrency group protects manual runs.
 
+Managed-agent staging certification is available through the protected
+[staging launch gate](../../../../../.github/workflows/staging-launch-gate.yml).
+
 ## Operator responsibility
 
 Provisioning creates a billable server. Use a separate test-only Hetzner

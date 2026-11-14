@@ -12,7 +12,7 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { readViewInteractionClientId } from "@elizaos/core/protocol";
-import { LinkifyIt } from "linkify-it";
+import LinkifyIt from "linkify-it";
 import {
   BROWSER_SERVICE_TYPE,
   type BrowserService,
@@ -180,9 +180,6 @@ const browserMessageLinks = new LinkifyIt({
   fuzzyLink: false,
   fuzzyEmail: false,
   fuzzyIP: false,
-  urlAuth: true,
-  // Linkify v6 adds a 10,000-character default. Keep complete destinations.
-  maxLength: Number.MAX_SAFE_INTEGER,
 });
 
 function extractFirstUrl(value: string): string | null {

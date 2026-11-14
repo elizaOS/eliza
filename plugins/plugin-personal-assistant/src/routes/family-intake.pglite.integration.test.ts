@@ -60,12 +60,12 @@ it("selects a canonical source, extracts private proposals and preserves review/
     plugins: [createDocumentsPlugin({ enableActions: false }), model],
   });
   const runtime = host.runtime;
+  runtime.setSetting("ELIZA_TRAJECTORY_LOGGING", "1");
   if (!runtime.getService("trajectories"))
     await runtime.registerService(TrajectoriesService);
   await runtime.getServiceLoadPromise("trajectories");
   const trajectories = runtime.getService<TrajectoriesService>("trajectories");
   if (!trajectories) throw new Error("Trajectory service unavailable");
-  const loggingWasEnabled = trajectories.isEnabled();
   const owner = resolveOwnerEntityIdOrDefault(runtime);
   const documents = runtime.getService<DocumentService>(
     DocumentService.serviceType,
@@ -88,7 +88,6 @@ it("selects a canonical source, extracts private proposals and preserves review/
     }
   });
   try {
-    trajectories.setEnabled(true);
     const database = runtime.adapter.db;
     if (!database) throw new Error("Runtime auth database unavailable");
     const auth = new AuthStore(
@@ -602,7 +601,6 @@ it("selects a canonical source, extracts private proposals and preserves review/
       ).toEqual(selectedLiteral);
     }
   } finally {
-    trajectories.setEnabled(loggingWasEnabled);
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await host.cleanup();
   }

@@ -64,7 +64,6 @@ export type ProxyCombinedAdmission =
       admissionSnapshot?: InferenceAdmissionSnapshot;
       executionCtx: { waitUntil(promise: Promise<unknown>): void };
       credential?: InferenceCredentialCheck;
-      refreshAuthEntry?: () => void;
       credentialForAdmission?: () => InferenceCredentialCheck | undefined;
     })
   | (ProxyResolvedAuth & {
@@ -281,7 +280,6 @@ export function createHandler(
           },
           executionCtx: combinedAdmission.executionCtx,
           admissionSnapshot: combinedAdmission.admissionSnapshot,
-          refreshAuthEntry: combinedAdmission.refreshAuthEntry,
           ...(() => {
             const credential = combinedAdmission.credentialForAdmission
               ? combinedAdmission.credentialForAdmission()

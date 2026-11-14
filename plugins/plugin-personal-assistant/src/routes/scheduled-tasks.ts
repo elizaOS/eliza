@@ -18,13 +18,10 @@ import type { ScheduledTaskRunnerHandle } from "@elizaos/plugin-scheduling";
 import { getChannelRegistry } from "../lifeops/channels/registry.js";
 import { getConnectorRegistry } from "../lifeops/connectors/registry.js";
 import {
-  ALL_FEATURE_KEYS,
-  BASE_FEATURE_DEFAULTS,
-} from "../lifeops/feature-flags.types.js";
-import {
   getBlockerRegistry,
   getEventKindRegistry,
   getFamilyRegistry,
+  getFeatureFlagRegistry,
   getWorkflowStepRegistry,
 } from "../lifeops/registries/index.js";
 import { getSendPolicyRegistry } from "../lifeops/send-policy/registry.js";
@@ -122,6 +119,7 @@ function composeDevRegistriesView(
   const workflowStepRegistry = runtime
     ? getWorkflowStepRegistry(runtime)
     : null;
+  const featureFlagRegistry = runtime ? getFeatureFlagRegistry(runtime) : null;
 
   return {
     gates: runnerView.gates,
@@ -181,14 +179,14 @@ function composeDevRegistriesView(
           provider: s.describe.provider,
         }))
       : [],
-    featureFlags: runtime
-      ? ALL_FEATURE_KEYS.map((key) => ({
-          key,
-          label: BASE_FEATURE_DEFAULTS[key].label,
-          description: BASE_FEATURE_DEFAULTS[key].description,
-          defaultEnabled: BASE_FEATURE_DEFAULTS[key].enabled,
-          namespace: "core",
-          builtin: true,
+    featureFlags: featureFlagRegistry
+      ? featureFlagRegistry.list().map((f) => ({
+          key: f.key,
+          label: f.label,
+          description: f.description,
+          defaultEnabled: f.defaultEnabled,
+          namespace: f.namespace ?? null,
+          builtin: featureFlagRegistry.isBuiltin(f.key),
         }))
       : [],
   };

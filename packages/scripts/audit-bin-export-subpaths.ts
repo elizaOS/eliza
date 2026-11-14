@@ -13,9 +13,9 @@
 // own contracts).
 //
 // Usage:
-//   bun packages/scripts/audit-bin-export-subpaths.ts           # report
-//   bun packages/scripts/audit-bin-export-subpaths.ts --check    # exit 1 on violation
-//   bun packages/scripts/audit-bin-export-subpaths.ts --json     # machine-readable
+//   node packages/scripts/audit-bin-export-subpaths.ts           # report
+//   node packages/scripts/audit-bin-export-subpaths.ts --check    # exit 1 on violation
+//   node packages/scripts/audit-bin-export-subpaths.ts --json     # machine-readable
 
 import fs from "node:fs";
 import path from "node:path";

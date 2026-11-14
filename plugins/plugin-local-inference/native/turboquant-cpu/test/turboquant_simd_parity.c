@@ -2,6 +2,17 @@
  *
  * For every host build we always exercise the scalar reference round
  * trip across the canonical block lengths {32, 64, 128, 256, 512, 1024}.
+ * If the library was built with a SIMD lane (today: RVV on riscv64),
+ * the test additionally cross-checks:
+ *   - encode-ref decode-SIMD  bit-equal-ish to encode-ref decode-ref
+ *   - encode-SIMD decode-ref  bit-equal-ish to encode-ref decode-ref
+ *   - encode-SIMD decode-SIMD bit-equal-ish to encode-ref decode-ref
+ *
+ * "Bit-equal-ish": the codebook indices must match exactly (encoding
+ * is deterministic), and the decoded floats must match the scalar
+ * reference to within a small ε. The only fp-order drift comes from
+ * the Hadamard reduction; ε <= 1e-4 absolute is the published bound.
+ *
  * Exits non-zero on any mismatch.
  */
 
@@ -27,6 +38,25 @@ static float rand_normal(void) {
     return u * sqrtf(-2.0f * logf(s) / s);
 }
 
+#if defined(TBQ_HAVE_RVV) && TBQ_HAVE_RVV
+static int compare_blocks_tbq3(const tbq_block_tbq3_0 * a, const tbq_block_tbq3_0 * b) {
+    if (a->d != b->d) return 1;
+    return memcmp(a->qs, b->qs, sizeof(a->qs));
+}
+static int compare_blocks_tbq4(const tbq_block_tbq4_0 * a, const tbq_block_tbq4_0 * b) {
+    if (a->d != b->d) return 1;
+    return memcmp(a->qs, b->qs, sizeof(a->qs));
+}
+
+static float max_abs_err(const float * a, const float * b, int n) {
+    float m = 0.0f;
+    for (int i = 0; i < n; ++i) {
+        float d = fabsf(a[i] - b[i]);
+        if (d > m) m = d;
+    }
+    return m;
+}
+#endif
 
 static const int kLens[] = { 32, 64, 128, 256, 512, 1024 };
 static const int kNumLens = (int)(sizeof(kLens) / sizeof(kLens[0]));
@@ -102,6 +132,95 @@ static int test_tbq4_scalar_roundtrip(void) {
     return rc;
 }
 
+#if defined(TBQ_HAVE_RVV) && TBQ_HAVE_RVV
+/* Encoded-block parity: SIMD encode must produce the same 14 / 18-byte
+ * block as the scalar reference (deterministic codebook indices). */
+static int test_tbq3_encode_parity(void) {
+    int rc = 0;
+    float src[MAX_LEN];
+    tbq_block_tbq3_0 b_ref[MAX_LEN / 32];
+    tbq_block_tbq3_0 b_sim[MAX_LEN / 32];
+    for (int i = 0; i < kNumLens; ++i) {
+        const int n = kLens[i];
+        for (int j = 0; j < n; ++j) src[j] = rand_normal();
+        const int nb = n / 32;
+        for (int b = 0; b < nb; ++b) {
+            tbq_quantize_tbq3_block_ref(&src[b * 32], &b_ref[b]);
+            tbq_quantize_tbq3_block_rvv(&src[b * 32], &b_sim[b]);
+            if (compare_blocks_tbq3(&b_ref[b], &b_sim[b]) != 0) {
+                fprintf(stderr, "[simd_parity] tbq3 encode-parity mismatch n=%d block=%d\n", n, b);
+                rc = 1;
+            }
+        }
+    }
+    return rc;
+}
+static int test_tbq4_encode_parity(void) {
+    int rc = 0;
+    float src[MAX_LEN];
+    tbq_block_tbq4_0 b_ref[MAX_LEN / 32];
+    tbq_block_tbq4_0 b_sim[MAX_LEN / 32];
+    for (int i = 0; i < kNumLens; ++i) {
+        const int n = kLens[i];
+        for (int j = 0; j < n; ++j) src[j] = rand_normal();
+        const int nb = n / 32;
+        for (int b = 0; b < nb; ++b) {
+            tbq_quantize_tbq4_block_ref(&src[b * 32], &b_ref[b]);
+            tbq_quantize_tbq4_block_rvv(&src[b * 32], &b_sim[b]);
+            if (compare_blocks_tbq4(&b_ref[b], &b_sim[b]) != 0) {
+                fprintf(stderr, "[simd_parity] tbq4 encode-parity mismatch n=%d block=%d\n", n, b);
+                rc = 1;
+            }
+        }
+    }
+    return rc;
+}
+
+/* Decode parity: SIMD decode and scalar decode of the same block must
+ * agree within ε (Hadamard fp reduction order can drift by ~1e-6). */
+static int test_tbq3_decode_parity(void) {
+    int rc = 0;
+    float src[MAX_LEN], out_ref[MAX_LEN], out_sim[MAX_LEN];
+    tbq_block_tbq3_0 blocks[MAX_LEN / 32];
+    for (int i = 0; i < kNumLens; ++i) {
+        const int n = kLens[i];
+        for (int j = 0; j < n; ++j) src[j] = rand_normal();
+        const int nb = n / 32;
+        for (int b = 0; b < nb; ++b) {
+            tbq_quantize_tbq3_block_ref(&src[b * 32], &blocks[b]);
+            tbq_decode_tbq3_block_ref(&blocks[b], &out_ref[b * 32]);
+            tbq_decode_tbq3_block_rvv(&blocks[b], &out_sim[b * 32]);
+        }
+        float err = max_abs_err(out_ref, out_sim, n);
+        if (!(err < 1e-4f)) {
+            fprintf(stderr, "[simd_parity] tbq3 decode-parity n=%d max-abs-err=%g\n", n, (double)err);
+            rc = 1;
+        }
+    }
+    return rc;
+}
+static int test_tbq4_decode_parity(void) {
+    int rc = 0;
+    float src[MAX_LEN], out_ref[MAX_LEN], out_sim[MAX_LEN];
+    tbq_block_tbq4_0 blocks[MAX_LEN / 32];
+    for (int i = 0; i < kNumLens; ++i) {
+        const int n = kLens[i];
+        for (int j = 0; j < n; ++j) src[j] = rand_normal();
+        const int nb = n / 32;
+        for (int b = 0; b < nb; ++b) {
+            tbq_quantize_tbq4_block_ref(&src[b * 32], &blocks[b]);
+            tbq_decode_tbq4_block_ref(&blocks[b], &out_ref[b * 32]);
+            tbq_decode_tbq4_block_rvv(&blocks[b], &out_sim[b * 32]);
+        }
+        float err = max_abs_err(out_ref, out_sim, n);
+        if (!(err < 1e-4f)) {
+            fprintf(stderr, "[simd_parity] tbq4 decode-parity n=%d max-abs-err=%g\n", n, (double)err);
+            rc = 1;
+        }
+    }
+    return rc;
+}
+#endif
 
 int main(void) {
     int rc = 0;
@@ -111,7 +230,15 @@ int main(void) {
     rc |= test_tbq3_scalar_roundtrip();
     rc |= test_tbq4_scalar_roundtrip();
 
+#if defined(TBQ_HAVE_RVV) && TBQ_HAVE_RVV
+    fprintf(stdout, "[simd_parity] RVV symbols linked - running cross-parity\n");
+    rc |= test_tbq3_encode_parity();
+    rc |= test_tbq4_encode_parity();
+    rc |= test_tbq3_decode_parity();
+    rc |= test_tbq4_decode_parity();
+#else
     fprintf(stdout, "[simd_parity] no SIMD lane linked on this build - ref-only checks\n");
+#endif
 
     if (rc) {
         fprintf(stderr, "[simd_parity] FAIL\n");

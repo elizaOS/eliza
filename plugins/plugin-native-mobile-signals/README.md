@@ -15,7 +15,7 @@ bun run --cwd plugins/plugin-native-mobile-signals build  # build
 
 Build the package before running `bun run validate:ios-screen-time`; the command uses the bundled validator shipped to consumers.
 
-For Android, run `bun packages/app/scripts/android-native-plugins.ts --serial
+For Android, run `node packages/app/scripts/android-native-plugins.ts --serial
 <emulator> --plugin plugin-native-mobile-signals` from the repository root. The
 isolated test APK verifies real screen sleep/wake events through a Capacitor
 WebView listener, duplicate starts, stop/restart, listener removal, and battery

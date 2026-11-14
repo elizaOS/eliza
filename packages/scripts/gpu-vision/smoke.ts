@@ -18,8 +18,8 @@
  * needed) → serve → smoke → stop.
  *
  * Usage:
- *   bun packages/scripts/gpu-vision/smoke.ts [--url http://127.0.0.1:PORT] [--vlm]
- *   bun packages/scripts/gpu-vision/smoke.ts --start [--vlm] [--with-vlm]
+ *   node packages/scripts/gpu-vision/smoke.ts [--url http://127.0.0.1:PORT] [--vlm]
+ *   node packages/scripts/gpu-vision/smoke.ts --start [--vlm] [--with-vlm]
  */
 
 import { spawnSync } from "node:child_process";
@@ -91,7 +91,7 @@ async function resolveBaseUrl(flags, setKey) {
   if (envPort !== undefined) return `http://127.0.0.1:${envPort}`;
   throw new Error(
     "[gpu-vision] no running server found. Pass --url, set ELIZA_GPU_VISION_PORT, " +
-      "or start one: bun packages/scripts/gpu-vision/serve.ts" +
+      "or start one: node packages/scripts/gpu-vision/serve.ts" +
       (setKey === "vlm" ? " --vlm" : ""),
   );
 }

@@ -526,7 +526,7 @@ export function runScriptTests(options = {}) {
 
 function printUsage() {
   process.stdout.write(
-    "Usage: bun packages/scripts/run-script-tests.ts [--inventory] [--report <path>] [--junit <path>]\n",
+    "Usage: node packages/scripts/run-script-tests.ts [--inventory] [--report <path>] [--junit <path>]\n",
   );
 }
 

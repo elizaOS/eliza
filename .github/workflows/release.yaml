@@ -28,11 +28,6 @@ on:
         description: Exact npm username represented by NPM_TOKEN
         required: true
         type: string
-      publish_stores:
-        description: Also publish configured app stores after the npm release
-        required: false
-        type: boolean
-        default: false
       candidate_run_id:
         description: Prior workflow run whose immutable candidate should be resumed
         required: false
@@ -213,7 +208,7 @@ jobs:
       - name: Validate explicit release identity
         id: release_inputs
         run: >-
-          bun packages/scripts/release-candidate.ts inputs
+          node packages/scripts/release-candidate.ts inputs
           --repository "${{ github.repository }}"
           --source-ref "${{ inputs.source_ref }}"
           --source-sha "${{ inputs.source_sha }}"
@@ -233,7 +228,7 @@ jobs:
 
       - name: Bind source ref and repository
         run: >-
-          bun packages/scripts/release-candidate.ts source
+          node packages/scripts/release-candidate.ts source
           --repository "${{ steps.release_inputs.outputs.repository }}"
           --source-ref "${{ steps.release_inputs.outputs.source_ref }}"
           --source-sha "${{ steps.release_inputs.outputs.source_sha }}"
@@ -306,7 +301,7 @@ jobs:
       - name: Rebind source immediately before pack
         if: inputs.candidate_run_id == 0
         run: >-
-          bun packages/scripts/release-candidate.ts source
+          node packages/scripts/release-candidate.ts source
           --repository "${{ steps.release_inputs.outputs.repository }}"
           --source-ref "${{ steps.release_inputs.outputs.source_ref }}"
           --source-sha "${{ steps.release_inputs.outputs.source_sha }}"
@@ -322,7 +317,7 @@ jobs:
           NODE_OPTIONS: "--max-old-space-size=8192"
           RUN_TURBO_CONCURRENCY: "3"
         run: >-
-          bun packages/scripts/release-candidate.ts candidate
+          node packages/scripts/release-candidate.ts candidate
           --cohort packages/scripts/release-cohort.json
           --candidate "${{ runner.temp }}/release-candidate"
           --version "${{ steps.release_inputs.outputs.version }}"
@@ -340,7 +335,7 @@ jobs:
       - name: Rebind source after pack
         if: inputs.candidate_run_id == 0
         run: >-
-          bun packages/scripts/release-candidate.ts source
+          node packages/scripts/release-candidate.ts source
           --repository "${{ steps.release_inputs.outputs.repository }}"
           --source-ref "${{ steps.release_inputs.outputs.source_ref }}"
           --source-sha "${{ steps.release_inputs.outputs.source_sha }}"
@@ -353,7 +348,7 @@ jobs:
       - name: Verify immutable candidate bytes
         id: candidate_verify
         run: >-
-          bun packages/scripts/release-candidate.ts verify
+          node packages/scripts/release-candidate.ts verify
           --candidate "${{ runner.temp }}/release-candidate"
           --repository "${{ steps.release_inputs.outputs.repository }}"
           --source-ref "${{ steps.release_inputs.outputs.source_ref }}"
@@ -417,7 +412,7 @@ jobs:
 
       - name: Verify downloaded candidate
         run: >-
-          bun packages/scripts/release-candidate.ts verify
+          node packages/scripts/release-candidate.ts verify
           --repo-root "${{ github.workspace }}/release-source"
           --candidate "${{ runner.temp }}/release-candidate"
           --repository "${{ needs.candidate.outputs.repository }}"
@@ -436,7 +431,7 @@ jobs:
         run: |
           printf '%s\n' '//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}' > "$NPM_CONFIG_USERCONFIG"
           chmod 600 "$NPM_CONFIG_USERCONFIG"
-          bun packages/scripts/release-candidate.ts publish \
+          node packages/scripts/release-candidate.ts publish \
             --repo-root "${{ github.workspace }}/release-source" \
             --candidate "${{ runner.temp }}/release-candidate" \
             --repository "${{ needs.candidate.outputs.repository }}" \
@@ -515,7 +510,7 @@ jobs:
 
       - name: Reverify every npm version and public channel
         run: >-
-          bun packages/scripts/release-candidate.ts verify-promoted
+          node packages/scripts/release-candidate.ts verify-promoted
           --repo-root "${{ github.workspace }}/release-source"
           --candidate "${{ runner.temp }}/release-candidate"
           --repository "${{ needs.candidate.outputs.repository }}"
@@ -530,7 +525,7 @@ jobs:
 
       - name: Push only the exact planned Git tag
         run: >-
-          bun packages/scripts/release-candidate.ts push-tag
+          node packages/scripts/release-candidate.ts push-tag
           --repo-root "${{ github.workspace }}/release-source"
           --candidate "${{ runner.temp }}/release-candidate"
           --remote origin
@@ -548,7 +543,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: >-
-          bun packages/scripts/release-candidate.ts publish-release
+          node packages/scripts/release-candidate.ts publish-release
           --repo-root "${{ github.workspace }}/release-source"
           --candidate "${{ runner.temp }}/release-candidate"
           --repository "${{ github.repository }}"
@@ -596,9 +591,21 @@ jobs:
             echo "- Registry cohort: verified before Git/GitHub finalization"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  publish-snap:
+    name: Publish Snap Store release
+    needs: finalize
+    permissions:
+      contents: read
+    uses: ./.github/workflows/snap-publish.yml
+    with:
+      source_sha: ${{ needs.finalize.outputs.source_sha }}
+      version: ${{ needs.finalize.outputs.version }}
+      tag: ${{ format('v{0}', needs.finalize.outputs.version) }}
+      channel: ${{ needs.finalize.outputs.channel == 'latest' && 'stable' || 'beta' }}
+    secrets: inherit
+
   publish-mobile-stores:
     name: Publish Google Play and Apple App Store releases
-    if: inputs.publish_stores
     needs: finalize
     permissions:
       contents: read
@@ -609,3 +616,19 @@ jobs:
       tag: ${{ format('v{0}', needs.finalize.outputs.version) }}
       channel: ${{ needs.finalize.outputs.channel }}
     secrets: inherit
+
+  publish-microsoft-store:
+    name: Publish Microsoft Store release
+    needs: finalize
+    permissions:
+      contents: read
+    uses: ./.github/workflows/store-windows-publish.yml
+    with:
+      source_sha: ${{ needs.finalize.outputs.source_sha }}
+      version: ${{ needs.finalize.outputs.version }}
+      tag: ${{ format('v{0}', needs.finalize.outputs.version) }}
+      channel: ${{ needs.finalize.outputs.channel }}
+    secrets:
+      MICROSOFT_STORE_TENANT_ID: ${{ secrets.MICROSOFT_STORE_TENANT_ID }}
+      MICROSOFT_STORE_CLIENT_ID: ${{ secrets.MICROSOFT_STORE_CLIENT_ID }}
+      MICROSOFT_STORE_CLIENT_SECRET: ${{ secrets.MICROSOFT_STORE_CLIENT_SECRET }}

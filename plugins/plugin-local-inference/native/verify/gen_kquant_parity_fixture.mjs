@@ -28,7 +28,7 @@
  * }
  *
  * Usage:
- *   bun gen_kquant_parity_fixture.mjs \
+ *   node gen_kquant_parity_fixture.mjs \
  *     --gguf-dir <dir-with-eliza-1-<size>-{F16,Q3_K_M,Q4_K_M,Q5_K_M,Q6_K}.gguf> \
  *     --prompt "The capital of France is" \
  *     --out-dir plugins/plugin-local-inference/native/verify/fixtures/

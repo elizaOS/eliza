@@ -248,42 +248,21 @@ def test_outer_timeout_terminates_separately_sessioned_grandchild(
         "start_new_session=True)\n"
         "time.sleep(30)\n"
     )
-    command = [sys.executable, "-c", parent_script]
-    original_popen = subprocess.Popen
-    unrelated = original_popen(
+    unrelated = subprocess.Popen(
         [sys.executable, "-c", "import time; time.sleep(30)"],
         start_new_session=True,
     )
-    started = None
-
-    def spawn_ready(*args, **kwargs):
-        nonlocal started
-        process = original_popen(*args, **kwargs)
-        if args[0] != command:
-            return process
-        # The assertion is about terminating an existing independent session,
-        # not whether two interpreters can start within half a second.
-        deadline = time.monotonic() + 30
-        while not grandchild_pid_path.exists():
-            if time.monotonic() >= deadline:
-                process.kill()
-                process.wait()
-                raise AssertionError("grandchild fixture did not become ready")
-            time.sleep(0.01)
-        started = time.monotonic()
-        return process
-
-    monkeypatch.setattr(gate.subprocess, "Popen", spawn_ready)
     monkeypatch.setattr(gate, "PROCESS_TERMINATION_GRACE_S", 0.1)
     try:
         returncode, _stdout, stderr = gate._run_subprocess_with_timeout(
-            command,
+            [sys.executable, "-c", parent_script],
             cwd=str(tmp_path),
             timeout_s=0.5,
         )
-        assert started is not None and time.monotonic() - started < 10
         assert returncode == -1
         assert "timed out after 0.5s" in stderr
+        assert grandchild_pid_path.exists()
+
         grandchild_pid = int(grandchild_pid_path.read_text())
         deadline = time.monotonic() + 2
         while time.monotonic() < deadline:

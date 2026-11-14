@@ -2,12 +2,11 @@
 	"sources": [
 		"packages/core/src/runtime/provider-execution.ts",
 		"packages/core/src/runtime/state-composition.ts",
-		"packages/core/src/streaming-context.ts",
 		"packages/core/test/compose-state-provider-execution.test.ts"
 	],
 	"bounds": {
 		"domain": "One provider key, three one-shot callers and up to three executions. Two callers have cancellation signals. The second case allows a one-off caller. Promise settlement and cleanup are separate.",
-		"limitations": "The real state-composition suite checks coalescing, isolation, cancellation, eviction, shutdown and provider failures, including nested model work using the shared execution controller rather than its creator's signal. Provider payloads, cache keys and provider streaming and tracing are outside the finite execution model."
+		"limitations": "The real state-composition suite checks coalescing, isolation, cancellation, eviction, shutdown and provider failures. Provider payloads, cache keys and provider streaming and tracing are outside the finite execution model."
 	},
 	"conformance": "packages/core/quint/check-core-concurrency.mjs",
 	"stateRepresentation": "The source variables form one typed record. Every action updates that record atomically and retains all other fields.",

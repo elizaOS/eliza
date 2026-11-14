@@ -58,7 +58,7 @@ function parseLatestWorkerVersion(output) {
   );
 }
 
-function parseWorkerVersionBindingNames(output, bindingType?) {
+function parseWorkerVersionBindingNames(output, bindingType) {
   const parsed = JSON.parse(output);
   const bindings = parsed?.resources?.bindings;
   if (!Array.isArray(bindings)) {
@@ -66,9 +66,7 @@ function parseWorkerVersionBindingNames(output, bindingType?) {
   }
   return parseWorkerSecretNames(
     JSON.stringify(
-      bindingType
-        ? bindings.filter((binding) => binding?.type === bindingType)
-        : bindings,
+      bindings.filter((binding) => binding?.type === bindingType),
     ),
   );
 }
@@ -137,24 +135,10 @@ export async function ensureWorkerSecretAbsent({
     const latest = parseLatestWorkerVersion(
       await run(["versions", "list", ...validatedArgs, "--json"]),
     );
-    const output = await run([
-      "versions",
-      "view",
-      latest.id,
-      ...validatedArgs,
-      "--json",
-    ]);
-    const expectedType = parseWorkerVersionBindingNames(output, bindingType);
-    // Secret retirement must preserve a same-name configured plain-text value.
-    // The legacy onboarding URL cleanup relies on this distinction.
-    if (bindingType !== "plain_text") return expectedType;
-    const allTypes = parseWorkerVersionBindingNames(output);
-    if (allTypes.has(name) && !expectedType.has(name)) {
-      throw new Error("Worker binding has an unexpected type");
-    }
-    // Absence is checked across every type so a changed or duplicate binding
-    // cannot be mistaken for a successful removal of the requested type.
-    return allTypes;
+    return parseWorkerVersionBindingNames(
+      await run(["versions", "view", latest.id, ...validatedArgs, "--json"]),
+      bindingType,
+    );
   };
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {

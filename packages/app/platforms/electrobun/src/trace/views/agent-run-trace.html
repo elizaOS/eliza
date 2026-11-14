@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent Run Trace</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+        background: #101318;
+        color: #e6edf3;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        grid-template-rows: auto auto 1fr;
+      }
+
+      header {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+        padding: 12px;
+        border-bottom: 1px solid #2b323d;
+        background: #151a21;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 15px;
+        line-height: 1.25;
+      }
+
+      .status {
+        justify-self: end;
+        min-width: 86px;
+        border: 1px solid #3d4858;
+        border-radius: 999px;
+        padding: 3px 10px;
+        text-align: center;
+        font-size: 12px;
+        color: #dbeafe;
+        background: #1d2837;
+      }
+
+      .summary {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 1px;
+        background: #2b323d;
+        border-bottom: 1px solid #2b323d;
+      }
+
+      .summary div {
+        background: #151a21;
+        padding: 8px 10px;
+        min-width: 0;
+      }
+
+      .summary span {
+        display: block;
+        font-size: 11px;
+        color: #94a3b8;
+      }
+
+      .summary strong {
+        display: block;
+        margin-top: 2px;
+        font-size: 13px;
+        overflow-wrap: anywhere;
+      }
+
+      main {
+        overflow: auto;
+      }
+
+      ol {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+
+      li {
+        display: grid;
+        grid-template-columns: 86px 1fr;
+        gap: 10px;
+        padding: 10px 12px;
+        border-bottom: 1px solid #232a34;
+      }
+
+      time {
+        color: #94a3b8;
+        font-size: 11px;
+        white-space: nowrap;
+      }
+
+      .event-title {
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+        min-width: 0;
+      }
+
+      .kind {
+        font-size: 12px;
+        color: #c7d2fe;
+        overflow-wrap: anywhere;
+      }
+
+      .label {
+        font-size: 12px;
+        color: #f8fafc;
+        overflow-wrap: anywhere;
+      }
+
+      .text {
+        margin-top: 4px;
+        color: #cbd5e1;
+        font-size: 12px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+
+      details {
+        margin-top: 6px;
+      }
+
+      summary {
+        cursor: pointer;
+        color: #93c5fd;
+        font-size: 12px;
+      }
+
+      pre {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        max-height: 240px;
+        overflow: auto;
+        margin: 6px 0 0;
+        padding: 8px;
+        border: 1px solid #2b323d;
+        border-radius: 6px;
+        background: #0b0f14;
+        color: #d1d5db;
+        font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        line-height: 1.45;
+      }
+
+      .empty {
+        padding: 24px;
+        color: #94a3b8;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1 id="title">Agent Run Trace</h1>
+      <div id="status" class="status">running</div>
+    </header>
+    <section class="summary">
+      <div><span>Events</span><strong id="event-count">0</strong></div>
+      <div><span>Tools</span><strong id="tool-count">0</strong></div>
+      <div><span>Models</span><strong id="model-count">0</strong></div>
+      <div><span>Capabilities</span><strong id="capability-count">0</strong></div>
+    </section>
+    <main>
+      <div id="empty" class="empty">Waiting for trace events.</div>
+      <ol id="events"></ol>
+    </main>
+    <script>
+      const title = document.getElementById("title");
+      const status = document.getElementById("status");
+      const eventCount = document.getElementById("event-count");
+      const toolCount = document.getElementById("tool-count");
+      const modelCount = document.getElementById("model-count");
+      const capabilityCount = document.getElementById("capability-count");
+      const empty = document.getElementById("empty");
+      const events = document.getElementById("events");
+      const state = {
+        session: null,
+        events: [],
+      };
+
+      function setText(element, value) {
+        element.textContent = value == null ? "" : String(value);
+      }
+
+      function formatTime(value) {
+        if (!value) return "";
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return value;
+        return date.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        });
+      }
+
+      function renderSummary() {
+        const session = state.session || {};
+        setText(title, session.title || "Agent Run Trace");
+        setText(status, session.status || "running");
+        setText(eventCount, state.events.length);
+        setText(
+          toolCount,
+          state.events.filter((event) => event.kind === "tool.started").length,
+        );
+        setText(
+          modelCount,
+          state.events.filter((event) => event.kind === "model.request.started")
+            .length,
+        );
+        setText(
+          capabilityCount,
+          state.events.filter(
+            (event) => event.kind === "capability.invoke.started",
+          ).length,
+        );
+      }
+
+      function renderEvents() {
+        empty.style.display = state.events.length === 0 ? "block" : "none";
+        events.replaceChildren(
+          ...state.events.map((event) => {
+            const item = document.createElement("li");
+            const time = document.createElement("time");
+            const content = document.createElement("div");
+            const heading = document.createElement("div");
+            const kind = document.createElement("strong");
+            const label = document.createElement("span");
+            const text = document.createElement("div");
+            time.textContent = formatTime(event.timestamp);
+            heading.className = "event-title";
+            kind.className = "kind";
+            label.className = "label";
+            kind.textContent = event.kind;
+            label.textContent = event.title || event.toolName || event.modelId || "";
+            heading.append(kind, label);
+            content.append(heading);
+            if (event.text) {
+              text.className = "text";
+              text.textContent = event.text;
+              content.append(text);
+            }
+            if (event.payload || event.raw || event.timing) {
+              const details = document.createElement("details");
+              const summary = document.createElement("summary");
+              const pre = document.createElement("pre");
+              summary.textContent = "Payload";
+              pre.textContent = JSON.stringify(
+                {
+                  timing: event.timing || null,
+                  payload: event.payload || null,
+                  raw: event.raw || null,
+                },
+                null,
+                2,
+              );
+              details.append(summary, pre);
+              content.append(details);
+            }
+            item.append(time, content);
+            return item;
+          }),
+        );
+      }
+
+      function applySession(payload) {
+        if (payload.session) state.session = payload.session;
+        if (Array.isArray(payload.events)) {
+          state.events = payload.events;
+        }
+        renderSummary();
+        renderEvents();
+      }
+
+      function applyTraceEvent(payload) {
+        if (payload.session) state.session = payload.session;
+        if (payload.event) state.events.push(payload.event);
+        renderSummary();
+        renderEvents();
+      }
+
+      window.elizaDesktopUI = {
+        push(payload) {
+          if (payload?.type === "dynamic-view.session.opened") {
+            applySession(payload.initialState || {});
+            return;
+          }
+          if (payload?.type === "dynamic-view.event") {
+            applyTraceEvent(payload.payload || {});
+          }
+        },
+        reset() {
+          state.events = [];
+          renderSummary();
+          renderEvents();
+        },
+      };
+
+      renderSummary();
+      renderEvents();
+    </script>
+  </body>
+</html>

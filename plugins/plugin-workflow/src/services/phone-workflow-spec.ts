@@ -25,8 +25,8 @@ export type {
   PhoneWorkflowTrigger,
 };
 export { PHONE_SCHEDULE_ADMISSION_WINDOW_MS };
-/** Revision 6 adds relative Calendar ranges. New proposals require device protocol 5. */
-export const PHONE_CATALOG_REVISION = 'phone-workflow-catalog-6';
+/** Revision 5 offers the selected-reminders read (workflow device protocol 3). */
+export const PHONE_CATALOG_REVISION = 'phone-workflow-catalog-5';
 export const PHONE_COMPILER_REVISION = 'phone-workflow-compiler-4';
 export const PHONE_SPEC_KEY = 'elizaPhoneWorkflowSpec';
 export const PHONE_COMPILER_KEY = 'elizaPhoneCompilerRevision';

@@ -64,6 +64,7 @@ beforeEach(() => {
   vi.stubEnv("OPENAI_BASE_URL", baseURL);
   vi.stubEnv("OPENAI_API_KEY", "fixture-key");
   vi.stubEnv("CEREBRAS_API_KEY", undefined);
+  vi.stubEnv("ELIZA_MOCK_OPENAI_BASE", undefined);
 });
 afterEach(() => vi.unstubAllEnvs());
 function runtime(): IAgentRuntime {

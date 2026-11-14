@@ -75,7 +75,7 @@ jobs:
       - uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: \${{ env.BUN_VERSION }}
-      - run: bun packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
+      - run: node packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: bun-runtime-inventory
@@ -536,14 +536,15 @@ jobs:
     expect(arg?.value).toBe(`${CANONICAL}-alpine`);
   });
 
-  test("leaves a non-oven ARG default alone (local build override)", () => {
-    // A locally built tag passed via --build-arg declares no oven/bun
+  test("leaves a non-oven ARG default alone (local RISC-V build override)", () => {
+    // riscv64 has no upstream oven/bun image, so these Dockerfiles document a
+    // locally built tag passed via --build-arg. It declares no oven/bun
     // runtime and must not be forced onto the canonical pin.
     const inventory = inventoryOf(
       buildRepo({
         files: {
           "services/gw/Dockerfile": [
-            "ARG BUN_BASE=local/bun:dev",
+            "ARG BUN_BASE=local/bun-riscv64:dev",
             // biome-ignore lint/suspicious/noTemplateCurlyInString: Dockerfile ARG interpolation, not a JS template
             "FROM ${BUN_BASE} AS base",
             "",
@@ -585,7 +586,7 @@ jobs:
       buildRepo({
         overrides: {
           "pr-validation.yml": gateStub().replace(
-            /\s+- run: bun packages\/scripts\/ci-bun-version-contract\.ts --inventory[^\n]+/,
+            /\s+- run: node packages\/scripts\/ci-bun-version-contract\.ts --inventory[^\n]+/,
             "",
           ),
         },

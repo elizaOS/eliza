@@ -109,8 +109,8 @@ const REVIEWED_SETUP_BUN_SHAS = new Set([
 const FLOATING_ALLOWLIST = [];
 
 // Deliberately excluded surfaces, inventoried so the exclusion is visible
-// rather than silent. The embedded entry is the Android Bun binary
-// shipping boundary #17044 scopes out (its version is proven on-device,
+// rather than silent. The embedded entries are the Android/RISC-V Bun binary
+// shipping boundary #17044 scopes out (their versions are proven on-device,
 // not by text equality); the advisory entry is developer-machine guidance,
 // not a repository runtime selector.
 const EXCLUDED_SURFACES = [
@@ -119,6 +119,11 @@ const EXCLUDED_SURFACES = [
     classification: "contract-self-excluded",
     reason:
       "negative test fixtures intentionally contain rejected install commands",
+  },
+  {
+    prefix: "packages/app/scripts/bun-riscv64/",
+    classification: "embedded-boundary-excluded",
+    reason: "custom RISC-V Bun build with its own device-proof record",
   },
   {
     prefix: "packages/app/scripts/lib/stage-android-agent.ts",
@@ -148,9 +153,9 @@ const EXCLUDED_SURFACES = [
 // canonical literal with indirection (#19183).
 const GATE_WORKFLOWS = ["ci.yml", "pr-validation.yml", "cloud-cf-release.yml"];
 
-// Both the promotion suite and PR Validation must execute the contract and
+// Both the post-merge suite and PR Validation must execute the contract and
 // publish an exact-head inventory. Keeping the PR authority here prevents a
-// runtime drift from merging before ci.yml runs on staging.
+// runtime drift from merging before ci.yml runs on develop.
 const CONTRACT_ENFORCEMENT_WORKFLOWS = new Set(["ci.yml", "pr-validation.yml"]);
 
 // A concrete pin: a plain semver, optionally with a prerelease/build suffix.
@@ -1066,12 +1071,12 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT, overrides = {}) {
     }
     if (CONTRACT_ENFORCEMENT_WORKFLOWS.has(name)) {
       if (
-        !/bun packages\/scripts\/ci-bun-version-contract\.ts\s+--inventory\s+["']?\$RUNNER_TEMP\/bun-runtime-inventory\.json/.test(
+        !/node packages\/scripts\/ci-bun-version-contract\.ts\s+--inventory\s+["']?\$RUNNER_TEMP\/bun-runtime-inventory\.json/.test(
           text,
         )
       ) {
         violate(
-          `${rel}: required lane does not execute the Bun contract with an exact-head inventory. Run \`bun packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"\`.`,
+          `${rel}: required lane does not execute the Bun contract with an exact-head inventory. Run \`node packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"\`.`,
         );
       }
       if (

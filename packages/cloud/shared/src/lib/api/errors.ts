@@ -5,11 +5,7 @@
  * error responses and proper HTTP status codes.
  */
 
-import {
-  type ApiErrorCode,
-  ApiError as CanonicalApiError,
-  isInsufficientFundsErrorName,
-} from "./cloud-worker-errors";
+import { type ApiErrorCode, ApiError as CanonicalApiError } from "./cloud-worker-errors";
 
 // Avoid framework-specific response helpers in the Worker bundle; use native `Response.json`.
 type JsonResponse = Response;
@@ -156,7 +152,7 @@ export function getErrorStatusCode(error: unknown): number {
     const message = error.message.toLowerCase();
 
     // Check error name first (more reliable than message)
-    if (isInsufficientFundsErrorName(error.name)) {
+    if (error.name === "InsufficientCreditsError") {
       return 402;
     }
     if (error.name === "AuthenticationError" || error.name === "UnauthorizedError") {

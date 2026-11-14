@@ -160,7 +160,7 @@ static inline void tbq4_set(uint8_t * qs, int idx, uint8_t code) {
  * Exposed as `_ref` variants. The public no-suffix entry points
  * (`tbq_quantize_tbq3_block` / `tbq_decode_tbq3_block`, ...) live in
  * tbq_dispatch.c and trampoline through a function pointer table to
- * the best available SIMD impl (ref today; NEON / AVX2 later).
+ * the best available SIMD impl (ref / RVV today; NEON / AVX2 later).
  */
 
 void tbq_quantize_tbq3_block_ref(const float src[32], tbq_block_tbq3_0 * dst) {

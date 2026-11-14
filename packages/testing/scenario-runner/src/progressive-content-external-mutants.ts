@@ -5,6 +5,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 import {
   deleteShellOutputArtifact,
   persistShellOutputByteArtifact,
@@ -36,7 +37,7 @@ function reexternalizedArtifactExecutor(): ProgressiveContentExternalMutantExecu
       const stateDir = await fs.mkdtemp(
         path.join(os.tmpdir(), "progressive-mutant-artifact-"),
       );
-      const previousStateDir = process.env.ELIZA_STATE_DIR;
+      const previousStateDir = readAliasedEnv("ELIZA_STATE_DIR");
       const previousTtl = process.env.SHELL_JOB_TTL_MS;
       process.env[STATE_DIR_ENV_KEY] = stateDir;
       process.env.SHELL_JOB_TTL_MS = "60000";

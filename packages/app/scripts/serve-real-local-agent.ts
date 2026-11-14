@@ -216,7 +216,6 @@ const contextInspectorEvidenceSeedRoute: Route = {
         modelType: "TEXT_LARGE",
         provider: "private-provider-account",
         purpose: "context-inspector-e2e-budget",
-        actionType: "runtime.useModel",
         prompt: `TOP SECRET E2E BODY ${index}`,
         response: "private response",
         promptTokens: 300 + index,
@@ -242,13 +241,15 @@ const contextInspectorEvidenceSeedRoute: Route = {
 
 type ContextInspectorDatabaseStateRow = {
   llmCallCount: number | string;
+  materializedTrajectoryCount: number | string;
+  snapshotBytes: number | string;
   stepCount: number | string;
   trajectoryCount: number | string;
 };
 
 type ContextInspectorStepStateRow = {
-  stepRowCount: number | string;
-  stepBytes: number | string;
+  indexedStepCount: number | string;
+  normalizedStepCount: number | string;
 };
 
 function parseDatabaseCount(value: number | string, field: string): number {
@@ -308,19 +309,28 @@ const contextInspectorEvidenceDatabaseStateRoute: Route = {
         `SELECT
          count(*)::int AS "trajectoryCount",
          COALESCE(sum(step_count), 0)::int AS "stepCount",
-         COALESCE(sum(llm_call_count), 0)::int AS "llmCallCount"
+         COALESCE(sum(llm_call_count), 0)::int AS "llmCallCount",
+         count(*) FILTER (WHERE steps_json <> '[]')::int
+           AS "materializedTrajectoryCount",
+         COALESCE(sum(pg_column_size(steps_json)), 0)::int AS "snapshotBytes"
        FROM trajectories
        WHERE agent_id = $1 AND source = $2`,
         [ctx.runtime.agentId, "context-inspector-e2e"],
       );
     const stepResult = await connection.query<ContextInspectorStepStateRow>(
       `SELECT
-         count(*)::int AS "stepRowCount",
-         COALESCE(sum(pg_column_size(step.payload)), 0)::int AS "stepBytes"
-       FROM trajectory_steps AS step
-       INNER JOIN trajectories AS trajectory
-         ON trajectory.id = step.trajectory_id
-       WHERE trajectory.agent_id = $1 AND trajectory.source = $2`,
+         (SELECT count(*)::int
+          FROM trajectory_step_index AS step_index
+          INNER JOIN trajectories AS indexed_trajectory
+            ON indexed_trajectory.id = step_index.trajectory_id
+          WHERE indexed_trajectory.agent_id = $1
+            AND indexed_trajectory.source = $2) AS "indexedStepCount",
+         (SELECT count(*)::int
+          FROM trajectory_steps AS step
+          INNER JOIN trajectories AS normalized_trajectory
+            ON normalized_trajectory.id = step.trajectory_id
+          WHERE normalized_trajectory.agent_id = $1
+            AND normalized_trajectory.source = $2) AS "normalizedStepCount"`,
       [ctx.runtime.agentId, "context-inspector-e2e"],
     );
     const trajectory = trajectoryResult.rows[0];
@@ -332,7 +342,7 @@ const contextInspectorEvidenceDatabaseStateRoute: Route = {
     }
 
     return json(200, {
-      schema: "eliza.context-inspector-db-state/v2",
+      schema: "eliza.context-inspector-db-state/v1",
       runId: process.env.ELIZA_UI_SMOKE_RUN_ID?.trim() || null,
       sourceSha: process.env.GITHUB_SHA?.trim() || null,
       engine: "pglite",
@@ -344,9 +354,23 @@ const contextInspectorEvidenceDatabaseStateRoute: Route = {
           "trajectoryCount",
         ),
         declaredSteps: parseDatabaseCount(trajectory.stepCount, "stepCount"),
-        stepRows: parseDatabaseCount(step.stepRowCount, "stepRowCount"),
+        indexedSteps: parseDatabaseCount(
+          step.indexedStepCount,
+          "indexedStepCount",
+        ),
+        normalizedStepRows: parseDatabaseCount(
+          step.normalizedStepCount,
+          "normalizedStepCount",
+        ),
         llmCalls: parseDatabaseCount(trajectory.llmCallCount, "llmCallCount"),
-        stepBytes: parseDatabaseCount(step.stepBytes, "stepBytes"),
+        materializedTrajectories: parseDatabaseCount(
+          trajectory.materializedTrajectoryCount,
+          "materializedTrajectoryCount",
+        ),
+        snapshotBytes: parseDatabaseCount(
+          trajectory.snapshotBytes,
+          "snapshotBytes",
+        ),
       },
     });
   },

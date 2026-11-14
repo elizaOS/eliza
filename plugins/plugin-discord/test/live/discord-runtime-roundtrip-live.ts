@@ -150,6 +150,7 @@ function resolveDiscordApplicationId(config: ElizaConfig): string {
 function resolveCloudApiKey(config: ElizaConfig): string {
 	return (
 		process.env.ELIZAOS_CLOUD_API_KEY?.trim() ||
+		process.env.ELIZA_CLOUD_API_KEY?.trim() ||
 		config.cloud?.apiKey?.trim() ||
 		""
 	);

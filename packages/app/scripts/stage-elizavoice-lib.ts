@@ -9,7 +9,7 @@
  * their shared backends and requires host shader tooling supplied by the
  * documented ELIZA_* overrides. Every library is 16 KiB page aligned.
  *
- *   bun packages/app/scripts/stage-elizavoice-lib.ts --abi arm64-v8a|x86_64 \
+ *   node packages/app/scripts/stage-elizavoice-lib.ts --abi arm64-v8a|x86_64 \
  *     [--variant cpu|vulkan] [--out <dir>] [--espeak-dir <dir>] [--ffi-exports-only]
  *
  * --espeak-dir holds the eSpeak NG build (reused when it matches the pin in

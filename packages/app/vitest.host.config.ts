@@ -36,6 +36,7 @@ export default defineConfig({
       "src/utils/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "src/cli/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "src/permissions/**/*.{test,spec}.?(c|m)[jt]s?(x)",
+      "src/styles/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "src/diagnostics/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "src/registry/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "src/api/**/*.{test,spec}.?(c|m)[jt]s?(x)",
@@ -43,6 +44,7 @@ export default defineConfig({
       "test/runtime/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "test/stubs/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "test/dev-stack/**/*.{test,spec}.?(c|m)[jt]s?(x)",
+      "test/electrobun/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "test/app/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "test/browser-extension/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "test/live-agent/**/*.{test,spec}.?(c|m)[jt]s?(x)",
@@ -82,6 +84,7 @@ export default defineConfig({
       "**/*.real.test.{ts,tsx}",
       "**/*.real.e2e.test.{ts,tsx}",
       "{src,test,__tests__}/**/*.spec.{ts,tsx}",
+      "platforms/electrobun/**",
       ...(process.platform === "win32"
         ? [
             // These suites fail ONLY on the GitHub-hosted windows-ci runner with

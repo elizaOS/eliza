@@ -83,7 +83,7 @@ function parseArgs(argv) {
     else if (a === "--json") args.json = true;
     else if (a === "--help" || a === "-h") {
       console.log(
-        "Usage: bun bargein_latency_harness.mjs [--bundle DIR] [--tier TIER] [--backend cpu|metal|vulkan|cuda] [--bin-dir DIR] [--e2e-report PATH] [--report PATH] [--json]",
+        "Usage: node bargein_latency_harness.mjs [--bundle DIR] [--tier TIER] [--backend cpu|metal|vulkan|cuda] [--bin-dir DIR] [--e2e-report PATH] [--report PATH] [--json]",
       );
       process.exit(0);
     } else {

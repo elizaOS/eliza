@@ -39,7 +39,7 @@
  * fold it in alongside the mobile-rss reports.
  *
  * Usage:
- *   bun plugins/plugin-local-inference/native/verify/desktop_memory_inventory.mjs \
+ *   node plugins/plugin-local-inference/native/verify/desktop_memory_inventory.mjs \
  *     [bundle ...] [--report PATH] [--json] [--touch-bytes N]
  */
 
@@ -98,7 +98,7 @@ function parseArgs(argv) {
     else if (a === "--help" || a === "-h") {
       console.log(
         [
-          "Usage: bun desktop_memory_inventory.mjs [bundle ...]",
+          "Usage: node desktop_memory_inventory.mjs [bundle ...]",
           "  --report PATH      output JSON (default reports/desktop-rss/desktop-memory-<ts>.json)",
           "  --json             print the report to stdout",
           "  --touch-stride N   bytes between page-touch reads (default 4096)",

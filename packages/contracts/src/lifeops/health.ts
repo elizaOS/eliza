@@ -438,18 +438,10 @@ export interface LifeOpsAwakeProbability {
   computedAt: string;
 }
 
-export type LifeOpsSleepHealthProvider =
-  | "apple_health"
-  | "oura"
-  | "merged"
-  | null;
-
 export interface LifeOpsSleepCycleEvidence {
   startAt: string;
   endAt: string | null;
   source: LifeOpsSleepCycleEvidenceSource;
-  /** Provider provenance for `source === "health"` windows. */
-  healthProvider?: LifeOpsSleepHealthProvider;
   confidence: number;
 }
 

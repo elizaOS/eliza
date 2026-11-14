@@ -225,32 +225,9 @@ export function isCloudSttAvailable(runtime: IAgentRuntime): boolean {
 export function getEmbeddingApiKey(runtime: IAgentRuntime): string | undefined {
     return resolveCloudSdkAuthorityTuple(runtime, true).apiKey;
 }
-/**
- * Resolve one link of the small-model fallback chain.
- *
- * Returns undefined when the link is absent so the next link applies. A
- * blank value is absent too — except when the sealed launcher explicitly
- * set it: `getSetting` keeps an explicit sealed blank raw (its "" sentinel
- * means absent only when the frozen launch tuple never set the key), and
- * that blank must reach the prepared guard so it rejects the request
- * instead of silently substituting a default. An explicit nonblank value
- * always wins, trimmed.
- */
-function resolveSmallModelLink(runtime: IAgentRuntime, key: string): string | undefined {
-    const value = getSetting(runtime, key);
-    if (value === undefined) return undefined;
-    const trimmed = value.trim();
-    if (trimmed) return trimmed;
-    const snapshot = isCloudAuthorityKey(key) ? captureDevCloudEnvAuthoritySnapshot(process.env) : null;
-    if (snapshot && snapshot.values[key.toUpperCase()] !== undefined) return value;
-    return undefined;
-}
 export function getSmallModel(runtime: IAgentRuntime): string {
-    return (
-        resolveSmallModelLink(runtime, "ELIZAOS_CLOUD_SMALL_MODEL") ??
-        resolveSmallModelLink(runtime, "SMALL_MODEL") ??
-        DEFAULT_ELIZA_CLOUD_TEXT_MODEL
-    );
+    return (getSetting(runtime, "ELIZAOS_CLOUD_SMALL_MODEL") ??
+        (getSetting(runtime, "SMALL_MODEL", DEFAULT_ELIZA_CLOUD_TEXT_MODEL) as string));
 }
 export function getNanoModel(runtime: IAgentRuntime): string {
     return (getSetting(runtime, "ELIZAOS_CLOUD_NANO_MODEL") ??

@@ -16,7 +16,7 @@
  *
  * Run via the repo's tsx runner (real module resolution — vitest's aliasing
  * stubs out plugin handlers and breaks runtime.start):
- *   bun packages/app/scripts/run-node-tsx.ts \
+ *   node packages/app/scripts/run-node-tsx.ts \
  *     packages/app/scripts/check-real-local-reset.ts
  *
  * Exit 0 = all assertions passed; exit 1 = a failure (with the reason logged).

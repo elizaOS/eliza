@@ -550,13 +550,7 @@ export class GoogleCalendarWatchRepository {
     state?: Extract<GoogleCalendarWatchState, "error" | "revoked">;
     error: { code: string; message: string; retryable: boolean };
     nextRetryAt?: string | null;
-    syncLeaseToken?: string;
   }): Promise<void> {
-    const syncOwner =
-      args.syncLeaseToken === undefined
-        ? ""
-        : `AND sync_lease_token = ${sqlQuote(args.syncLeaseToken)}
-         AND state IN ('creating', 'active')`;
     await executeRawSql(
       this.runtime,
       `UPDATE app_calendar.google_calendar_watch_channels
@@ -570,8 +564,7 @@ export class GoogleCalendarWatchRepository {
               last_error_retryable = ${sqlBoolean(args.error.retryable)},
               updated_at = ${sqlQuote(args.failedAt)}
         WHERE agent_id = ${sqlQuote(args.agentId)}
-          AND channel_id = ${sqlQuote(args.channelId)}
-          ${syncOwner}`,
+          AND channel_id = ${sqlQuote(args.channelId)}`,
     );
   }
 

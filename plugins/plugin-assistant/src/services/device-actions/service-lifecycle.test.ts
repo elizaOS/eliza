@@ -118,18 +118,13 @@ async function fixture(capabilities?: string[]) {
     if (!attemptId) throw Error("Expected an execution claim");
     return { id: proposal.id, digest, attemptId };
   };
-  /** A phone turn invoking the registered action with this key. */
+  /** A direct-request turn invoking the registered action with this key. */
   const request = async (
     operationKey: string,
     times = 1,
     between?: () => Promise<void>,
-    mode: "direct-browser" | "reviewed-draft" = "direct-browser",
   ) => {
     const room = randomUUID() as UUID;
-    const direct = mode === "direct-browser";
-    const operation = direct
-      ? { type: "browser_navigate", url: "https://example.com/dashboard" }
-      : { type: "sms_reply_selected", body: "On my way" };
     return withDeviceActionTurn(
       runtime,
       credential,
@@ -144,9 +139,7 @@ async function fixture(capabilities?: string[]) {
           roomId: room,
           createdAt: Date.now(),
           content: {
-            text: direct
-              ? "open example.com/dashboard"
-              : "Draft a reply to this conversation",
+            text: "open example.com/dashboard",
             source: "client_chat",
             role: "user",
             chatIdempotency: {
@@ -155,9 +148,7 @@ async function fixture(capabilities?: string[]) {
               clientMessageId: nonce,
               fingerprint: "e".repeat(64),
             },
-            ...(direct
-              ? { metadata: { agentActionMode: "direct-request-v1" } }
-              : {}),
+            metadata: { agentActionMode: "direct-request-v1" },
           },
         };
         await pg.query("INSERT INTO original_memories VALUES($1,$2)", [
@@ -184,7 +175,10 @@ async function fixture(capabilities?: string[]) {
           results.push(
             await proposeDeviceAction.handler?.(runtime, original, undefined, {
               parameters: {
-                operation,
+                operation: {
+                  type: "browser_navigate",
+                  url: "https://example.com/dashboard",
+                },
                 operationKey,
                 reason: "Owner asked to open it",
               },
@@ -310,33 +304,6 @@ it("binds a direct request's operation key to that request", async () => {
   }
 });
 
-it("binds a reviewed SMS draft to its durable user message without direct-request mode", async () => {
-  const f = await fixture(["sms.compose.v1"]);
-  try {
-    const [result] = await f.request(
-      randomUUID(),
-      1,
-      undefined,
-      "reviewed-draft",
-    );
-    expect(result).toMatchObject({ success: true });
-    const [original] = (
-      await f.pg.query<{ id: string }>("SELECT id FROM original_memories")
-    ).rows;
-    const [proposal] = await f.service.list(f.credential);
-    expect(proposal).toMatchObject({
-      id: result.data?.proposalId,
-      state: "pending",
-      payload: {
-        requestMessageId: original.id,
-        operation: { type: "sms_reply_selected", body: "On my way" },
-      },
-    });
-  } finally {
-    await f.pg.close();
-  }
-});
-
 it("settles a cancelled or denied SMS as not sent, with no review", async () => {
   const f = await fixture(["sms.send.v1"]);
   try {
@@ -384,16 +351,6 @@ it.each([
     "dial",
     ["phone.dial.v1"],
     { type: "phone_dial", target: { kind: "number", number: "+15555550123" } },
-  ],
-  [
-    "call",
-    ["phone.call.v1"],
-    { type: "phone_call", target: { kind: "number", number: "+15555550123" } },
-  ],
-  [
-    "contact SMS",
-    ["sms.compose.v1"],
-    { type: "sms_compose", query: "Ada", body: "Running late" },
   ],
   ["clock", ["clock.handoff.v1"], { type: "clock_handoff", action: "show" }],
   [

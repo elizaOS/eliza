@@ -13,7 +13,7 @@ import { execFileSync, execSync } from "node:child_process";
  *    env defaults).
  *
  * Run automatically via the `postinstall` hook, or manually:
- *   bun scripts/link-browser-server.ts
+ *   node scripts/link-browser-server.ts
  */
 import {
   copyFileSync,

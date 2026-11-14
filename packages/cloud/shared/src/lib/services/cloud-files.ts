@@ -116,7 +116,6 @@ export class CloudFilesService {
       `${objectId}-${sha256.slice(0, 16)}${extension}`,
     ].join("/");
 
-    const storageUrl = publicUrlForR2Key(env, key);
     const sizeBytes = BigInt(bytes.byteLength);
     const reserved = await this.quotaRepository.tryReserveBytes(input.organizationId, sizeBytes);
     if (reserved === null) {
@@ -147,7 +146,7 @@ export class CloudFilesService {
         size_bytes: sizeBytes,
         sha256,
         storage_key: key,
-        storage_url: storageUrl,
+        storage_url: publicUrlForR2Key(env, key),
         metadata: input.metadata ?? {},
       });
     } catch (error) {

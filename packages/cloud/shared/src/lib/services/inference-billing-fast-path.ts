@@ -199,8 +199,6 @@ export async function debitInferenceCost(
   options: {
     preserveBalanceHintDuringFencedHandoff?: boolean;
     inferenceBalanceFence?: InferenceBalanceFence;
-    /** Set on the one follow-up debit that collects the remaining balance. */
-    collectingRemainder?: boolean;
   } = {},
 ): Promise<InferenceDebitCollectionOutcome> {
   if (options.preserveBalanceHintDuringFencedHandoff && !options.inferenceBalanceFence) {
@@ -342,46 +340,8 @@ export async function debitInferenceCost(
     };
   }
 
-  // The balance cannot go negative, so the whole-amount debit was refused.
-  // The provider has already been paid for: collect what the organization
-  // still holds under the same request identity. That leaves a zero balance,
-  // so the next admission refuses instead of repeating an unpaid call.
-  if (
-    result.reason === "insufficient_balance" &&
-    result.newBalance > 0 &&
-    result.newBalance < amountUsd &&
-    !options.collectingRemainder
-  ) {
-    const remainder = await debitInferenceCost(ctx, result.newBalance, source, {
-      ...options,
-      collectingRemainder: true,
-    });
-    if (remainder.status === "collected") {
-      logger.error("[InferenceBilling] inference charge collected in part", {
-        organizationId: ctx.organizationId,
-        userId: ctx.userId,
-        requestId: ctx.requestId,
-        amountUsd,
-        collectedAmountUsd: remainder.collectedAmountUsd,
-        source,
-      });
-      void apiKeysService.invalidateInferenceContextForUser(ctx.userId).catch((error) => {
-        // error-policy:J5 the settling request rewrites its own auth entry;
-        // evicting the user's other keys is a best-effort acceleration.
-        logger.error("[InferenceBilling] failed to invalidate user inference auth context", {
-          organizationId: ctx.organizationId,
-          userId: ctx.userId,
-          requestId: ctx.requestId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      });
-      return { ...remainder, attemptedAmountUsd: amountUsd };
-    }
-    return { ...remainder, attemptedAmountUsd: amountUsd };
-  }
-
-  // Uncollected: nothing is left to collect. Record it and force the org off
-  // the fast path until it tops up.
+  // Uncollected: balance can't go negative, so the debit was refused. Record
+  // it and force the org off the fast path until it tops up.
   logger.error("[InferenceBilling] uncollected inference charge", {
     organizationId: ctx.organizationId,
     userId: ctx.userId,

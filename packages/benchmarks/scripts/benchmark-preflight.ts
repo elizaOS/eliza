@@ -114,7 +114,7 @@ function resolveSafeVenvPath(workspace, venvDir) {
 
 function printHelp() {
   console.log(`Usage:
-  bun packages/benchmarks/scripts/benchmark-preflight.ts --workspace <path> [options]
+  node packages/benchmarks/scripts/benchmark-preflight.ts --workspace <path> [options]
 
 Options:
   --mode <cold|warm>      cold resets venv before install (default: cold)

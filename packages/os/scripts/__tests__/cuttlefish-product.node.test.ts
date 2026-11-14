@@ -40,6 +40,7 @@ function fixture(t) {
     aospDeviceTreePaths: [
       "device/google/cuttlefish/vsoc_x86_64_only/phone/aosp_cf.mk",
     ],
+    envPrefix: "ELIZA",
     propertyPrefix: "example",
     vendorDir: "vendor/example",
     initRcName: "init.example.rc",

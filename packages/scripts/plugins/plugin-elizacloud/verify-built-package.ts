@@ -6,7 +6,6 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { requireRealNode } from "../../lib/test-runtime.ts";
 
 const packageDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -42,7 +41,7 @@ const probe = `
 export function verifyBuiltPackage({
   spawn = spawnSync,
   environment = process.env,
-  executable = requireRealNode(path.resolve(packageDir, "../..")),
+  executable = process.execPath,
 } = {}) {
   const env = { ...environment };
   delete env.NODE_OPTIONS;

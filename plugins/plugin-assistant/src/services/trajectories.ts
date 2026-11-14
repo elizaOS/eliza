@@ -1,7 +1,6 @@
 /**
  * Services-layer barrel for the trajectory subsystem: re-exports the
- * TrajectoriesService, its row store's host entry points, its read routes,
- * and the export/type modules, and
+ * TrajectoriesService, its read routes, and the export/type modules, and
  * defines the public `TrajectoryProviderAccess`/`TrajectoryLlmCall` shapes —
  * the recorder records widened with their resolved step/run identifiers — that
  * external consumers depend on instead of reaching into runtime/.
@@ -52,27 +51,6 @@ export {
   type TrajectoryUsageTotalsRecord,
 } from "@elizaos/core";
 export { tryHandleTrajectoryReadRoutes } from "../features/trajectories/read-routes";
-export {
-  createBaseTrajectory,
-  ensureStep,
-  ensureTrajectoriesTable,
-  executeRawSql,
-  extractRequiredRows,
-  extractRows,
-  loadTrajectoryById,
-  type PersistedTrajectory,
-  parsePersistedMetadata,
-  resolveTrajectoryGrouping,
-  saveTrajectory,
-  sqlQuote,
-  toOptionalNumber,
-} from "../features/trajectories/store/trajectory-internals.ts";
-export { loadPersistedTrajectoryRows } from "../features/trajectories/store/trajectory-query.ts";
-export {
-  setTrajectoryExecutionOwnerResolver,
-  settleExitedTrajectoryForDevRecovery,
-  startTrajectoryStepInDatabase,
-} from "../features/trajectories/store/trajectory-storage.ts";
 export { TrajectoriesService } from "../features/trajectories/TrajectoriesService";
 export * from "./trajectory-export.ts";
 

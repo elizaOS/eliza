@@ -4,7 +4,7 @@
  * (default: android/signing/key-manifest.json; products pass --manifest with
  * their own application keys added).
  *
- *   bun packages/os/scripts/android/generate-release-keys.ts \
+ *   node packages/os/scripts/android/generate-release-keys.ts \
  *     --output /media/CEREMONY/keys --passphrase-file /dev/shm/ceremony/pass \
  *     --organization "Example Inc" [--manifest FILE] [--only a,b]
  *

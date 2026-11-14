@@ -46,7 +46,7 @@ import {
   getGenerativeExecutionContext,
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
-} from "../../src/lib/generative-route-auth";
+} from "@/api-app/lib/generative-route-auth";
 
 const DEFAULT_SFX_MODEL = "elevenlabs/sound_effects_v1";
 const MAX_PROMPT_LENGTH = 500;

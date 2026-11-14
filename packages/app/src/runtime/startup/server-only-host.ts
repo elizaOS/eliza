@@ -12,6 +12,7 @@ import {
   logger,
 } from "@elizaos/core";
 import {
+  readAliasedEnv,
   resolveApiExposePort,
   resolveDesktopApiPort,
   resolveServerOnlyPort,
@@ -138,7 +139,9 @@ export async function startServerOnlyHost({
   // renderer's hardcoded API base; honor it when present. CLI/server-only
   // mode (no ELIZA_API_PORT) keeps the legacy `resolveServerOnlyPort`
   // default (2138) so this change is transparent for non-desktop users.
-  const apiPort = process.env.ELIZA_API_PORT?.trim()
+  // The presence check is alias-aware so a branded `MILADY_API_PORT` also
+  // selects the desktop port without relying on the process.env mirror.
+  const apiPort = readAliasedEnv("ELIZA_API_PORT")
     ? resolveDesktopApiPort(process.env)
     : resolveServerOnlyPort(process.env);
   let actualApiPort: number;

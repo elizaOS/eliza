@@ -6,7 +6,6 @@
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import { cache } from "@elizaos/cloud-shared/lib/cache/client";
-import { getCloudDeployment } from "@elizaos/cloud-shared/lib/deployment/cloud-deployment";
 import {
   getDefaultPlatformRedirectOrigins,
   LOOPBACK_REDIRECT_ORIGINS,
@@ -87,7 +86,7 @@ app.post("/", async (c) => {
     const baseUrl =
       c.env?.NEXT_PUBLIC_APP_URL ||
       process.env.NEXT_PUBLIC_APP_URL ||
-      getCloudDeployment().appOrigin;
+      "https://cloud.eliza.app";
     const defaultRedirectPath = "/cloud/connectors";
     const { target: safeRedirectTarget, rejected } =
       resolveOAuthSuccessRedirectUrl({

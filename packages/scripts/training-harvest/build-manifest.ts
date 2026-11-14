@@ -17,11 +17,11 @@ import { fileURLToPath } from "node:url";
  *   benchmark  — moved to https://github.com/elizaOS/benchmarks; the stub
  *                family entry records the move.
  *   e2e        — *.live.e2e.test.ts / *.real.e2e.test.ts vitest lanes that drive
- *                a real runtime. Trajectory capture requires ELIZA_TRAJECTORY_LOGGING
+ *                a real runtime. Trajectory capture requires ELIZA_SAVE_TRAJECTORIES
  *                + ELIZA_TRAJECTORY_DIR then native-export conversion (see notes).
  *
  * Usage:
- *   bun packages/scripts/training-harvest/build-manifest.ts [--out <path>]
+ *   node packages/scripts/training-harvest/build-manifest.ts [--out <path>]
  */
 import {
   discoverScenarios,
@@ -166,9 +166,9 @@ function e2eFamily() {
     emitsTrajectory: "wiring-needed",
     trajectoryFormat: "eliza_native_v1 (after wiring)",
     runInvocationTemplate:
-      "ELIZA_TRAJECTORY_LOGGING=1 ELIZA_TRAJECTORY_DIR=<dir> bun --conditions eliza-source vitest run <testFile>",
+      "ELIZA_SAVE_TRAJECTORIES=1 ELIZA_TRAJECTORY_DIR=<dir> bun --conditions eliza-source vitest run <testFile>",
     trajectoryWiring:
-      "These vitest lanes drive a real AgentRuntime via createScenarioRuntime/real-runtime helpers. The runtime's JsonFileTrajectoryRecorder writes RecordedTrajectory JSON when ELIZA_TRAJECTORY_LOGGING=1 + ELIZA_TRAJECTORY_DIR are set. Convert with scenario-runner native-export. Verdict = vitest pass/fail per file (coarser than per-scenario).",
+      "These vitest lanes drive a real AgentRuntime via createScenarioRuntime/real-runtime helpers. The runtime's JsonFileTrajectoryRecorder writes RecordedTrajectory JSON when ELIZA_SAVE_TRAJECTORIES=1 + ELIZA_TRAJECTORY_DIR are set. Convert with scenario-runner native-export. Verdict = vitest pass/fail per file (coarser than per-scenario).",
     providerSeam:
       "API-backed provider selected by packages/app/test/helpers/live-provider.ts.",
     liveLaneCount: live.length,
@@ -185,7 +185,7 @@ const manifest = {
   schema: "gpt55_harvest_manifest",
   schemaVersion: 1,
   generatedAt: new Date().toISOString(),
-  repoRoot: ".",
+  repoRoot: REPO_ROOT,
   goal: "Run every elizaOS scenario+benchmark+e2e through the configured API model, harvest correct eliza_native_v1 trajectories, GEPA-repair failures, fine-tune on Nebius.",
   provider: {
     mechanism: "API provider selected by packages/testing/src/live-provider.ts",

@@ -7,6 +7,9 @@ import { type Service, toWellFormedUnicode } from "@elizaos/core";
 /** Google Chat's maximum message size, measured as UTF-8 bytes. */
 export const MAX_GOOGLE_CHAT_MESSAGE_BYTES = 32_000;
 
+/** @deprecated Use {@link MAX_GOOGLE_CHAT_MESSAGE_BYTES}; this value is a byte budget. */
+export const MAX_GOOGLE_CHAT_MESSAGE_LENGTH = MAX_GOOGLE_CHAT_MESSAGE_BYTES;
+
 /** Google Chat service name */
 export const GOOGLE_CHAT_SERVICE_NAME = "google-chat";
 

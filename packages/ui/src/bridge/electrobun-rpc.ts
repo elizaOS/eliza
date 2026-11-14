@@ -4,6 +4,8 @@
  * web renderer and the native host.
  */
 
+import type { ExistingElizaInstallInfo } from "@elizaos/contracts";
+
 export type ElectrobunRequestHandler = (params?: unknown) => Promise<unknown>;
 
 export type ElectrobunMessageListener = (payload: unknown) => void;
@@ -211,6 +213,15 @@ export interface WorkspaceFolderPickResult {
   bookmark: string | null;
 }
 
+export interface StateDirMigrationResult {
+  ok: boolean;
+  migrated: boolean;
+  fromPath: string;
+  toPath: string;
+  error?: string;
+  skippedReason?: "same-path" | "source-missing" | "source-not-directory";
+}
+
 export interface WorkspaceFolderBookmarkResolveResult {
   ok: boolean;
   path: string;
@@ -227,6 +238,13 @@ export async function scanProviderCredentials(): Promise<DetectedProvider[]> {
     params: { context: "first-run" },
   });
   return result?.providers ?? [];
+}
+
+export async function inspectExistingElizaInstall(): Promise<ExistingElizaInstallInfo | null> {
+  return invokeDesktopBridgeRequest<ExistingElizaInstallInfo>({
+    rpcMethod: "agentInspectExistingInstall",
+    ipcChannel: "agent:inspectExistingInstall",
+  });
 }
 
 export async function pickDesktopWorkspaceFolder(options?: {
@@ -313,6 +331,16 @@ export async function desktopShowItemInFolder(path: string): Promise<void> {
     rpcMethod: "desktopShowItemInFolder",
     ipcChannel: "desktop:showItemInFolder",
     params: { path },
+  });
+}
+
+export async function migrateDesktopStateDir(
+  fromPath: string,
+): Promise<StateDirMigrationResult | null> {
+  return invokeDesktopBridgeRequest<StateDirMigrationResult>({
+    rpcMethod: "agentMigrateStateDir",
+    ipcChannel: "agent:migrateStateDir",
+    params: { fromPath },
   });
 }
 

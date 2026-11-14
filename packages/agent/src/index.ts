@@ -1,7 +1,5 @@
 /** Public agent host, runtime, transport, and service APIs. */
 
-// Preserve the public host export while Core owns the implementation.
-export { tokenMatches } from "@elizaos/core";
 export {
   connectAccountAction,
   messageWantsAccountConnect,
@@ -163,6 +161,7 @@ export {
   resolveTerminalRunClientId,
   resolveTerminalRunRejection,
   resolveWebSocketUpgradeRejection,
+  tokenMatches,
 } from "./api/server-helpers-auth.ts";
 export { isSafeResetStateDir } from "./api/server-helpers-config.ts";
 export {
@@ -409,6 +408,33 @@ export type {
   ToolCacheEntry,
   ToolOutput,
 } from "./runtime/tool-call-cache/types.ts";
+export * from "./runtime/trajectory-internals.ts";
+export * from "./runtime/trajectory-query.ts";
+export {
+  DEFAULT_GET_STEPS_LIMIT,
+  getSteps,
+  loadAllStepsForTrajectory,
+  MAX_GET_STEPS_LIMIT,
+  type TrajectoryStepsPage,
+} from "./runtime/trajectory-steps-reader.ts";
+export {
+  clearAllSteps,
+  deleteStepsForTrajectories,
+  replaceStepsForTrajectory,
+  upsertStep,
+} from "./runtime/trajectory-steps-writer.ts";
+export {
+  annotateTrajectoryStep,
+  clearPersistedTrajectoryRows,
+  completeTrajectoryStepInDatabase,
+  createDatabaseTrajectoryLogger,
+  DatabaseTrajectoryLogger,
+  deletePersistedTrajectoryRows,
+  flushTrajectoryWrites,
+  installDatabaseTrajectoryLogger,
+  pruneOldTrajectories,
+  startTrajectoryStepInDatabase,
+} from "./runtime/trajectory-storage.ts";
 export * from "./runtime/version.ts";
 export {
   hasAdminAccess,

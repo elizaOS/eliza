@@ -75,7 +75,7 @@ export function javaMajorVersion(javaHome) {
   return null;
 }
 
-// Auto-select a JDK >= 21 so a plain Android build "just works" with no
+// Auto-select a JDK >= 21 so a plain `build:android` "just works" with no
 // JAVA_HOME juggling. JAVA_HOME is honored ONLY when it actually is >= 21;
 // otherwise we fall through to the well-known JDK 21 install paths and finally
 // scan /usr/lib/jvm. (AGP 9 + the Android toolchain require 21.)

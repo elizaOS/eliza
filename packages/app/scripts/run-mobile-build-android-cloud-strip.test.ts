@@ -69,7 +69,6 @@ describe("Cloud credential composition", () => {
       );
       expect(sources).toContain("CredentialSlotMutation.replace");
       expect(sources).toContain("ElizaResidentCredentials.reserve()");
-      expect(sources).toContain("ElizaCredentialRetirement.observeRequests()");
       const retirement = fs.readFileSync(
         path.join(fixture, "ElizaCredentialRetirement.java"),
         "utf8",
@@ -152,9 +151,11 @@ describe("Android cloud WebView visibility", () => {
     return source.slice(start, source.indexOf("\n    }\n", start));
   };
 
-  it("extends the shared bridge activity", () => {
-    {
-      const source = cloudSafeMainActivityJava("ai.elizaos.app");
+  it("extends the shared bridge activity in both variants", () => {
+    for (const launcherKiosk of [false, true]) {
+      const source = cloudSafeMainActivityJava("ai.elizaos.app", {
+        launcherKiosk,
+      });
       expect(source).toContain(
         "import ai.eliza.plugins.browsersurface.ElizaBridgeActivity;",
       );
@@ -225,8 +226,10 @@ describe("Android cloud WebView visibility", () => {
   });
 
   it("registers the native Cloud sign-in host and never reloads the WebView on an auth callback", () => {
-    {
-      const source = cloudSafeMainActivityJava("ai.elizaos.app");
+    for (const launcherKiosk of [false, true]) {
+      const source = cloudSafeMainActivityJava("ai.elizaos.app", {
+        launcherKiosk,
+      });
       const positions = [
         "protected void onCreate(",
         "registerPlugin(ElizaCloudSignInPlugin.class);",
@@ -239,6 +242,29 @@ describe("Android cloud WebView visibility", () => {
         /isCloudAuthCallback|restoreBundledRendererAfterAuthCallback|loadUrl\(/,
       );
     }
+  });
+
+  it("gives the launcher page only its back intent, never minimize or WebView history", () => {
+    const source = cloudSafeMainActivityJava("ai.elizaos.app", {
+      launcherKiosk: true,
+    });
+    // Registered after super.onCreate, so it is added after the Capacitor App
+    // plugin's callback on each start and runs instead of it.
+    const onCreate = source.indexOf("super.onCreate(savedInstanceState)");
+    const callback = source.indexOf("new OnBackPressedCallback(true)");
+    expect(onCreate).toBeGreaterThan(-1);
+    expect(callback).toBeGreaterThan(onCreate);
+    const handler = source.slice(
+      source.indexOf("public void handleOnBackPressed()", callback),
+      source.indexOf("});", callback),
+    );
+    // The value of ELIZA_BACK_INTENT_EVENT in packages/ui/src/events.
+    expect(handler).toContain(
+      "window.dispatchEvent(new CustomEvent('eliza:back-intent', { detail: { handled: false } }))",
+    );
+    expect(handler).not.toMatch(
+      /moveTaskToBack|goBack|history|finish|onBackPressed\(/,
+    );
   });
 });
 

@@ -145,8 +145,6 @@ async function fixture(
         },
       }),
       getSetting: () => undefined,
-      getService: () => null,
-      getServicesByType: () => [],
       getEntityById: async () => null,
       emitEvent: async () => undefined,
       reportError: vi.fn(),

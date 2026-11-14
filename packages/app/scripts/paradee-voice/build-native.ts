@@ -19,11 +19,11 @@
  * are byte-reproducible and must match paradee-voice/inputs.json, which must
  * match the fork pins.
  *
- *   bun packages/app/scripts/paradee-voice/build-native.ts --workspace <dir> \
+ *   node packages/app/scripts/paradee-voice/build-native.ts --workspace <dir> \
  *     [--out <native dir>] [--abi arm64-v8a] [--abi x86_64] \
  *     [--model-cache <dir>] [--python <python with torch>] [--ffi-exports-only] [--languages en|en,es]
  *
- *   bun packages/app/scripts/paradee-voice/build-native.ts --models-only \
+ *   node packages/app/scripts/paradee-voice/build-native.ts --models-only \
  *     --workspace <dir> --out <bundle dir> [--model-cache <dir>] [--python ...]
  *
  * --models-only builds just the pinned model files into <bundle dir> (no NDK,

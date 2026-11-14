@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://elizaos.ai/schemas/linux-desktop-artifact-manifest.v1.json",
+  "title": "elizaOS Linux desktop artifact manifest",
+  "description": "Cross-repository contract for signed desktop artifacts produced by elizaOS/eliza and consumed by the mkosi image.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "sourceCommit",
+    "version",
+    "architecture",
+    "shell",
+    "archive",
+    "sha256",
+    "signature",
+    "manifestSignature",
+    "entrypoints",
+    "capabilities"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "sourceCommit": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"
+    },
+    "architecture": { "enum": ["x86_64", "arm64", "riscv64"] },
+    "shell": { "const": "gtk-webkit" },
+    "archive": { "type": "string", "pattern": "^[A-Za-z0-9._-]+\\.tar\\.zst$" },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "signature": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]+\\.sig$",
+      "description": "Detached Ed25519 signature over the exact archive bytes. The file is adjacent to this manifest."
+    },
+    "manifestSignature": {
+      "const": "desktop-artifact-manifest.json.sig",
+      "description": "Detached Ed25519 signature over the exact bytes of desktop-artifact-manifest.json, stored adjacent to it."
+    },
+    "entrypoints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["desktop", "agent", "doctor"],
+      "properties": {
+        "desktop": { "type": "string", "pattern": "^bin/[A-Za-z0-9._-]+$" },
+        "agent": { "type": "string", "pattern": "^bin/[A-Za-z0-9._-]+$" },
+        "doctor": { "type": "string", "pattern": "^bin/[A-Za-z0-9._-]+$" }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tray",
+        "overlay",
+        "wayland",
+        "cloudAuth",
+        "computerUse",
+        "remoteControl"
+      ],
+      "properties": {
+        "tray": { "const": true },
+        "overlay": { "const": true },
+        "wayland": { "const": true },
+        "cloudAuth": { "const": true },
+        "computerUse": { "const": true },
+        "remoteControl": { "const": true }
+      }
+    }
+  }
+}

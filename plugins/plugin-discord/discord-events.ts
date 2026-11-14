@@ -176,35 +176,6 @@ function parseEventListenerConfig(
 }
 
 /**
- * Emit a Discord event without letting a listener failure escape as an
- * unhandled rejection. `runtime.emitEvent` runs every registered listener and
- * rejects when one of them throws; discord.js ignores the promise our handler
- * returns, so that rejection reaches the process and Node exits the agent.
- * Report the failure the same way the mute-gate and message-edit handlers below
- * do, and keep the emission fire-and-forget so it cannot delay the listener.
- */
-type EmitEventArgs = Parameters<
-	DiscordServiceInternals["runtime"]["emitEvent"]
->;
-
-function emitServiceEvent(
-	service: DiscordServiceInternals,
-	...args: EmitEventArgs
-): void {
-	const [event] = args;
-	const reportFailure = (error: unknown) =>
-		service.runtime.reportError("discord:emit-event", error, {
-			event: Array.isArray(event) ? event.join(",") : String(event),
-		});
-	try {
-		const emitted = service.runtime.emitEvent(...args);
-		if (emitted) void emitted.catch(reportFailure);
-	} catch (error) {
-		reportFailure(error);
-	}
-}
-
-/**
  * Wire up all Discord.js event listeners on `service.client`.
  *
  * Returns the created debouncers so the caller can store them on the service
@@ -525,8 +496,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				source: "discord",
 				accountId,
 			};
-			emitServiceEvent(
-				service,
+			service.runtime.emitEvent(
 				DiscordEventTypes.LISTEN_CHANNEL_MESSAGE,
 				listenPayload,
 			);
@@ -558,8 +528,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				source: "discord",
 				accountId,
 			};
-			emitServiceEvent(
-				service,
+			service.runtime.emitEvent(
 				DiscordEventTypes.NOT_IN_CHANNELS_MESSAGE,
 				notInChannelsPayload,
 			);
@@ -1090,8 +1059,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 						targetName = user?.tag ?? "Unknown";
 					}
 
-					emitServiceEvent(
-						service,
+					service.runtime.emitEvent(
 						DiscordEventTypes.CHANNEL_PERMISSIONS_CHANGED,
 						{
 							runtime: service.runtime,
@@ -1144,7 +1112,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 					return;
 				}
 
-				emitServiceEvent(service, DiscordEventTypes.ROLE_PERMISSIONS_CHANGED, {
+				service.runtime.emitEvent(DiscordEventTypes.ROLE_PERMISSIONS_CHANGED, {
 					runtime: service.runtime,
 					source: "discord",
 					guild: { id: newRole.guild.id, name: newRole.guild.name },
@@ -1204,7 +1172,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 					return;
 				}
 
-				emitServiceEvent(service, DiscordEventTypes.MEMBER_ROLES_CHANGED, {
+				service.runtime.emitEvent(DiscordEventTypes.MEMBER_ROLES_CHANGED, {
 					runtime: service.runtime,
 					source: "discord",
 					guild: { id: newMember.guild.id, name: newMember.guild.name },
@@ -1252,7 +1220,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 					return;
 				}
 
-				emitServiceEvent(service, DiscordEventTypes.ROLE_CREATED, {
+				service.runtime.emitEvent(DiscordEventTypes.ROLE_CREATED, {
 					runtime: service.runtime,
 					source: "discord",
 					guild: { id: role.guild.id, name: role.guild.name },
@@ -1294,7 +1262,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 					return;
 				}
 
-				emitServiceEvent(service, DiscordEventTypes.ROLE_DELETED, {
+				service.runtime.emitEvent(DiscordEventTypes.ROLE_DELETED, {
 					runtime: service.runtime,
 					source: "discord",
 					guild: { id: role.guild.id, name: role.guild.name },

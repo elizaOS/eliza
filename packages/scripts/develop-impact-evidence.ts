@@ -1003,18 +1003,6 @@ function loadExpected(filePath) {
   return expected;
 }
 
-/** Recomputes source-bound validation inputs without depending on a prior branch tip. */
-export function currentValidationManifest(repoRoot, headSha) {
-  return computeExpectedManifest({
-    baseSha: "0".repeat(40),
-    changedPaths: [],
-    graph: readGraph(repoRoot),
-    headSha,
-    tracked: trackedInventory(repoRoot),
-    workspaces: workspaceInventory(repoRoot),
-  });
-}
-
 function planCommand(args) {
   const repoRoot = path.resolve(args.repo ?? DEFAULT_REPO_ROOT);
   const graph = readGraph(repoRoot, args.graph ?? DEFAULT_GRAPH_PATH);

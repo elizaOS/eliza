@@ -28,7 +28,6 @@ import {
   CORS_ALLOW_HEADERS,
   CORS_ALLOW_METHODS,
 } from "@elizaos/cloud-shared/lib/cors-constants";
-import { getCloudDeployment } from "@elizaos/cloud-shared/lib/deployment/cloud-deployment";
 import { assertSafeOutboundUrl } from "@elizaos/cloud-shared/lib/security/outbound-url";
 import { safeFetch } from "@elizaos/cloud-shared/lib/security/safe-fetch";
 import { affiliatesService } from "@elizaos/cloud-shared/lib/services/affiliates";
@@ -48,7 +47,7 @@ import {
   asGenerativeCacheApiError,
   getGenerativeExecutionContext,
   requireGenerativeRouteCaller,
-} from "../../../src/lib/generative-route-auth";
+} from "@/api-app/lib/generative-route-auth";
 import {
   createMcpProxyHopDeadline,
   isMcpProxyHopDeadline,
@@ -252,7 +251,7 @@ app.get("/", async (c) => {
     return c.json({ error: "MCP not found" }, 404);
   }
 
-  const baseUrl = c.env.NEXT_PUBLIC_APP_URL ?? getCloudDeployment().appOrigin;
+  const baseUrl = c.env.NEXT_PUBLIC_APP_URL ?? "https://cloud.eliza.app";
   const apiMcp = userMcpsService.toApiMcp(mcp);
 
   return c.json({

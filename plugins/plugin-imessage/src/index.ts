@@ -29,6 +29,7 @@ export {
   type IMessageGroupConfig,
   type IMessageMultiAccountConfig,
   isIMessageMentionRequired,
+  isIMessageUserAllowed,
   isMultiAccountEnabled,
   listEnabledIMessageAccounts,
   listIMessageAccountIds,

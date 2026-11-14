@@ -20,6 +20,8 @@ import {
   ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES,
   ANDROID_PLAY_ALLOWED_PERMISSIONS,
   ANDROID_PLAY_DATA_EXTRACTION_RULES,
+  ANDROID_SMS_GATEWAY_STRIPPED_JAVA_FILES,
+  ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS,
   androidPlayManifestEvidenceFromAapt,
   applyAndroidCloudSplashTheme,
   applyAndroidGeneratedBuildTargetProperties,
@@ -29,6 +31,7 @@ import {
   findAndroidCloudPackagedRuntimeOffenders,
   findAndroidPlayIndexHtmlFindings,
   findAndroidPlayTextAssetFindings,
+  resolveAndroidCloudCapacitorConfigPolicy,
   sanitizeAndroidCloudCapacitorConfig,
 } from "./run-mobile-build.ts";
 
@@ -186,23 +189,56 @@ describe("Android Play manifest policy", () => {
     expect(sanitized.loggingBehavior).toBe("none");
   });
 
-  it("suppresses Cloud logging and WebView inspection", () => {
-    const sanitized = sanitizeAndroidCloudCapacitorConfig({
-      loggingBehavior: "debug",
-      android: { webContentsDebuggingEnabled: true },
-    });
+  it("preserves Cloud logging suppression and launcher-only WebView inspection", () => {
+    const sanitized = sanitizeAndroidCloudCapacitorConfig(
+      {
+        loggingBehavior: "debug",
+        android: { webContentsDebuggingEnabled: false },
+      },
+      { launcherKiosk: true, webViewDebugging: true },
+    );
 
     expect(sanitized.loggingBehavior).toBe("none");
-    expect(sanitized.android.webContentsDebuggingEnabled).toBe(false);
+    expect(sanitized.android.webContentsDebuggingEnabled).toBe(true);
+  });
+
+  it("removes the SafePush source when SMS builds remove its native dependency", () => {
+    expect(ANDROID_SMS_GATEWAY_STRIPPED_JAVA_FILES).toContain(
+      "SafePushNotificationsPlugin.java",
+    );
+    expect(
+      ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS.map(([pkg]) => pkg),
+    ).toContain("@capacitor/push-notifications");
   });
 
   it("packages no WebView navigation allowance: Cloud sign-in is native", () => {
+    expect(resolveAndroidCloudCapacitorConfigPolicy({})).toEqual({
+      launcherKiosk: false,
+      webViewDebugging: false,
+    });
+    expect(
+      resolveAndroidCloudCapacitorConfigPolicy({
+        ELIZA_ANDROID_LAUNCHER_BUILD: "1",
+        ELIZA_WEBVIEW_DEBUG: "1",
+      }),
+    ).toEqual({
+      launcherKiosk: true,
+      webViewDebugging: true,
+    });
+    const launcher = sanitizeAndroidCloudCapacitorConfig(
+      {
+        plugins: {},
+        android: {},
+        server: { allowNavigation: ["cloud.eliza.app"] },
+      },
+      { launcherKiosk: true },
+    );
     const play = sanitizeAndroidCloudCapacitorConfig({
       plugins: {},
       android: {},
-      server: { allowNavigation: ["cloud.eliza.app"] },
     });
 
+    expect(launcher.server).toEqual({ androidScheme: "https" });
     expect(play.server).toEqual({ androidScheme: "https" });
   });
 

@@ -5,9 +5,9 @@
  * `results/view-bundle-size/latest.json` and writes a consolidated dashboard
  * under `results/summary/`. Mirrors the memperf/loadperf orchestrators.
  *
- *   bun suites/view-bundle-size/run-all.mjs
- *   bun suites/view-bundle-size/run-all.mjs --json
- *   bun suites/view-bundle-size/run-all.mjs --no-build   # measure an existing build
+ *   node suites/view-bundle-size/run-all.mjs
+ *   node suites/view-bundle-size/run-all.mjs --json
+ *   node suites/view-bundle-size/run-all.mjs --no-build   # measure an existing build
  *
  * Exit codes mirror the harness:
  *   0  all budgets pass

@@ -59,7 +59,7 @@ test('the catalog offers the selected-reminders read only with the device bridge
       | undefined;
   expect(find(true)).toMatchObject({ available: true, requiredDeviceProtocol: 3 });
   expect(find(false)?.available).toBe(false);
-  expect(PHONE_CATALOG_REVISION).toBe('phone-workflow-catalog-6');
+  expect(PHONE_CATALOG_REVISION).toBe('phone-workflow-catalog-5');
   expect(PHONE_COMPILER_REVISION).toBe('phone-workflow-compiler-4');
 });
 

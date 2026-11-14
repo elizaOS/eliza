@@ -13,7 +13,7 @@
  * reads that file as the source of truth instead of probing the network.
  *
  * Deterministic and offline: every assertion is a pure read of repository files.
- * Runs under node:test; excluded
+ * Runs under node:test (see mas-smoke.test.ts for the same pattern); excluded
  * from vitest in packages/app/vitest.config.ts.
  */
 

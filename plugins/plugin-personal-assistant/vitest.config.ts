@@ -168,15 +168,8 @@ const aiEntry = assistantPackageRequire.resolve("ai");
 const fsExtraEntry = lifeopsPackageRequire.resolve("fs-extra");
 const handlebarsEntry = corePackageRequire.resolve("handlebars");
 const mammothEntry = assistantPackageRequire.resolve("mammoth");
-const markdownItManifest = corePackageRequire.resolve(
-  "markdown-it/package.json",
-);
-const { module: markdownItModule } = corePackageRequire(markdownItManifest) as {
-  module: string;
-};
-const markdownItEntry = path.resolve(
-  path.dirname(markdownItManifest),
-  markdownItModule,
+const markdownItRoot = path.dirname(
+  corePackageRequire.resolve("markdown-it/package.json"),
 );
 const telegramSessionsEntry = path.join(
   elizaRoot,
@@ -357,7 +350,7 @@ export default defineConfig({
       { find: /^mammoth$/, replacement: mammothEntry },
       {
         find: /^markdown-it$/,
-        replacement: markdownItEntry,
+        replacement: path.join(markdownItRoot, "index.mjs"),
       },
       {
         find: new RegExp(`^${escapedAgentSourceRoot}/(.+)\\.js$`),

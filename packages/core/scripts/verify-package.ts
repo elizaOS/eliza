@@ -15,12 +15,9 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { requireRealNode } from "../../scripts/lib/test-runtime.ts";
 
 const core = fileURLToPath(new URL("..", import.meta.url));
 const repository = path.resolve(core, "../..");
-// The package declares `engines.node`; the packed consumer must pass on Node.
-const node = requireRealNode(repository);
 const temporary = mkdtempSync(path.join(tmpdir(), "eliza-core-consumer-"));
 const env = {
 	...process.env,
@@ -210,17 +207,17 @@ try {
 		],
 		consumer,
 	);
-	process.stdout.write(run(node, ["verify.ts"], consumer));
+	process.stdout.write(run(process.execPath, ["verify.ts"], consumer));
 	copyFileSync(
 		new URL("./fixtures/redaction.ts", import.meta.url),
 		path.join(consumer, "redaction.ts"),
 	);
-	process.stdout.write(run(node, ["redaction.ts"], consumer));
+	process.stdout.write(run(process.execPath, ["redaction.ts"], consumer));
 	copyFileSync(
 		new URL("./fixtures/verify-process-guards.mjs", import.meta.url),
 		path.join(consumer, "verify-process-guards.mjs"),
 	);
-	const guarded = spawnSync(node, ["verify-process-guards.mjs"], {
+	const guarded = spawnSync(process.execPath, ["verify-process-guards.mjs"], {
 		cwd: consumer,
 		env,
 		encoding: "utf8",

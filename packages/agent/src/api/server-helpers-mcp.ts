@@ -4,6 +4,7 @@
 
 import type http from "node:http";
 import { validateMcpServerConfig } from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 
 import { hasBlockedObjectKeyDeep } from "./blocked-object-keys.ts";
 
@@ -57,8 +58,9 @@ export function mcpServersIncludeStdio(
 }
 
 /**
- * Stdio MCP config writes can reach child_process.spawn, so they require
- * ELIZA_TERMINAL_RUN_TOKEN.
+ * Stdio MCP config writes can reach child_process.spawn. By default require
+ * ELIZA_TERMINAL_RUN_TOKEN; set ELIZA_ALLOW_UNAUTHENTICATED_STDIO_MCP=1 only
+ * for intentional local dev (legacy compat passthrough).
  */
 export function resolveMcpTerminalAuthorizationRejection(
   req: Pick<http.IncomingMessage, "headers">,
@@ -69,12 +71,17 @@ export function resolveMcpTerminalAuthorizationRejection(
     return null;
   }
 
-  const expected = process.env.ELIZA_TERMINAL_RUN_TOKEN?.trim();
+  if (process.env.ELIZA_ALLOW_UNAUTHENTICATED_STDIO_MCP === "1") {
+    return resolveTerminalRunRejection(req as http.IncomingMessage, body);
+  }
+
+  const expected = readAliasedEnv("ELIZA_TERMINAL_RUN_TOKEN");
   if (!expected) {
     return {
       status: 403,
       reason:
-        "Stdio MCP server configuration requires ELIZA_TERMINAL_RUN_TOKEN.",
+        "Stdio MCP server configuration requires ELIZA_TERMINAL_RUN_TOKEN. " +
+        "Set ELIZA_ALLOW_UNAUTHENTICATED_STDIO_MCP=1 only for intentional local development.",
     };
   }
 

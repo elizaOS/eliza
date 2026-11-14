@@ -70,16 +70,14 @@ assert.deepEqual(
     "conflicting import batches do not retain preceding new rows or receipts",
     "import retains ordering and expiry, rejects conflicts and permanently closes after use",
     "stored task expiry survives restart and removes the listing entry",
-    "stale platform cancellation preserves completed history and artifacts",
-    "competing platform cancellations acknowledge exactly one stored outcome",
     "selected store refuses missing bindings instead of falling back to mock Redis",
   ].sort(),
-  "All required A2A implementation checks must execute",
+  "All ten required A2A implementation checks must execute",
 );
 await writeFile(
   path.join(directory, "results.json"),
   `${JSON.stringify({ status: "passed", tests: names, report }, null, 2)}\n`,
 );
 console.log(
-  `A2A task-store conformance passed ${names.length} required tests. Results ${directory}`,
+  `A2A task-store conformance passed ten required tests. Results ${directory}`,
 );

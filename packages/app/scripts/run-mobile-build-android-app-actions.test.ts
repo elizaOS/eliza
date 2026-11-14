@@ -313,7 +313,7 @@ android {
     );
     assert.match(
       gradle,
-      /bun packages\/app\/scripts\/stage-elizavoice-lib\.ts --abi/,
+      /node packages\/app\/scripts\/stage-elizavoice-lib\.ts --abi/,
       label,
     );
     assert.doesNotMatch(gradle, /compile-libllama\.ts --target/, label);

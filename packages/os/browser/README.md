@@ -119,7 +119,7 @@ by itself; the page executor still checks document, snapshot and target policy.
 Run `bun run --cwd packages/os test:browser` for protocol tests. CI runs this
 lane in the OS verification job (`.github/workflows/os.yml`: `verify:portable`
 runs `test`, which ends with `test:browser`) whenever a change touches
-`packages/os`. That job runs for staging and main pushes (`develop-full.yml` calls
+`packages/os`. That job runs for develop pushes (`develop-full.yml` calls
 `ci.yml`), not in pull request validation. The Chromium scripts
 (`test:browser:page`, `test:browser:guidance`, `test:browser:task-guidance`, `scripts/test-protected-fill.mjs` and
 `scripts/test-page-guard.mjs`) need a browser and are run by hand.
@@ -142,6 +142,7 @@ bun run --cwd packages/os test:browser:page
 
 These tests do not exercise the installed native-message path.
 
+
 Owned Chromium component builds can preserve the extension ID without the old
 CRX private key. `scripts/chromium-component.mjs` supports only the revision and
 source hashes in `scripts/chromium/upstream.json`. It emits a deterministic overlay,
@@ -151,7 +152,7 @@ has compiled or passed release-device tests.
 After building the extension, generate the overlay outside the checkout:
 
 ```sh
-bun packages/os/browser/scripts/chromium-component.mjs \
+node packages/os/browser/scripts/chromium-component.mjs \
   --source /absolute/chromium/src \
   --extension /absolute/eliza/packages/os/browser/dist/android \
   --out /absolute/new-overlay-directory --platform android \
@@ -178,15 +179,17 @@ fixtures retain their upstream license in `scripts/chromium/LICENSE.chromium`.
 
 This is an internal OS component, not a standalone workspace or installable
 product. The OS package builds it against the locked
-`@elizaos/plugin-browser/native-wire` dependency. Signed AOSP provisioning lives
-in `../scripts/android/prepare-chromium-browser.ts`. Preserve its existing
+`@elizaos/plugin-browser/native-wire` dependency. Linux assembly and signed AOSP
+provisioning live in `../scripts/linux/assemble-browser-payload.py` and
+`../scripts/android/prepare-chromium-browser.ts`. Preserve those existing
 signed-artifact and certificate checks when changing the component.
 
-No image installs the Linux relay. To qualify a Linux Chromium build that has it
-installed by hand, set `ELIZA_BROWSER_EXECUTABLE` to that executable and run `node --conditions=eliza-source
+For installed Linux acceptance, set `ELIZA_BROWSER_EXECUTABLE` to the OS-built
+Chromium executable and run `node --conditions=eliza-source
 packages/os/browser/scripts/test-native-browser.mjs`. The test uses the embedded
 component and installed `/usr/libexec/elizaos-browser-native-host` relay without
 unpacked-extension or allowlist-bypass flags.
+
 
 The `pageGuidance` isolated-world renderer uses existing snapshot target identity
 for a single ring and dismissible label without changing provider element styles.
@@ -286,7 +289,7 @@ is installed during an authorized snapshot, so activity before that snapshot or
 lost before storage acknowledgment is not covered. Product consumers must treat
 attempts as uncertain and reconcile observed provider status. They must not infer
 payment success or human intent solely from a form event. Run
-`bun packages/os/browser/scripts/test-manual-activity.mjs` for Chromium event
+`node packages/os/browser/scripts/test-manual-activity.mjs` for Chromium event
 semantics using a simulated message transport; installed transport/device
 qualification and product consumption remain separate gates.
 
@@ -346,6 +349,7 @@ reload, until the host restores it. Snapshot references in `keepClear` name
 controls the label must not cover. Manual-activity events from a form with a
 password, code or user-name field carry `credential: true`.
 
+
 Android component generation accepts `--embed-host` only as an explicit build
 option. It adds `knownActivityEmbeddingCerts` to the intent dispatcher target, standard Custom Tab and main
 tabbed activities, plus the dispatcher alias (Android 15 does not inherit its
@@ -377,7 +381,7 @@ Eliza OS owns Android Chromium compilation as well as source preparation. On a
 provisioned Linux Chromium/depot_tools host, run:
 
 ```sh
-bun packages/os/scripts/android/build-chromium-browser.ts \
+node packages/os/scripts/android/build-chromium-browser.ts \
   --source /absolute/chromium/src --extension /absolute/product/extension \
   --out /absolute/new-overlay --build /absolute/chromium/src/out/Owned \
   --args-file /absolute/reviewed-args.gn --jobs 8 \
@@ -538,7 +542,7 @@ licenses for the bundled domain parser and Unicode decoder.
 
 Run `test:browser:protection:advisory` for the real Chromium extension flow,
 keyboard-accessible controls, account reset, offline visits and narrow layout.
-`bun browser/protection/test-advisory.mjs --baseline` captures the disabled
+`node browser/protection/test-advisory.mjs --baseline` captures the disabled
 baseline. Run `bun --conditions=eliza-source browser/protection/test-advisory.mjs --native`
 from `packages/os` to exercise the same flow through the actual Linux native host
 and socket target, including disconnect reset. These controlled pages do not

@@ -18,6 +18,7 @@ import {
   isWildcardBindHost,
   stripOptionalHostPort,
 } from "@elizaos/core/protocol";
+import { getBootConfigEnvAliases } from "./config/boot-config-store.js";
 
 const DEFAULT_API_BIND_HOST = "127.0.0.1";
 export const DEFAULT_SERVER_ONLY_PORT = 2138;
@@ -116,8 +117,20 @@ function resolveEnvEntry(
   env: RuntimeEnvRecord,
   key: string,
 ): { key: string; value: string } | null {
-  const value = presentEnvValue(env[key]);
-  return value === undefined ? null : { key, value };
+  const direct = presentEnvValue(env[key]);
+  if (direct !== undefined) return { key, value: direct };
+
+  const aliases = getBootConfigEnvAliases();
+  if (!aliases) return null;
+
+  for (const [brandKey, elizaKey] of aliases) {
+    const partner =
+      key === brandKey ? elizaKey : key === elizaKey ? brandKey : null;
+    if (!partner) continue;
+    const value = presentEnvValue(env[partner]);
+    if (value !== undefined) return { key: partner, value };
+  }
+  return null;
 }
 
 function resolveEnvValue(
@@ -468,7 +481,7 @@ export function isIosMobile(
   return resolvePlatform(env) === "ios";
 }
 
-/** Resolve the normalized platform from the environment. */
+/** Resolve the normalized platform through canonical and branded env aliases. */
 export function resolvePlatform(
   env: RuntimeEnvRecord = globalThis.process?.env ?? {},
 ): string | undefined {

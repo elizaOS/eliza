@@ -8,7 +8,7 @@
  * Tags map to the continuous-publication workflow at
  * .github/workflows/build-agent-image.yml:
  *   :stable  — head of main
- *   :staging — head of staging
+ *   :develop — head of develop
  *   :latest  — alias of :stable for legacy hardcoded callers
  */
 
@@ -75,8 +75,8 @@ const FLAVOR_ELIZA_STABLE: AgentFlavor = {
 const FLAVOR_ELIZA_DEVELOP: AgentFlavor = {
   id: "eliza-develop",
   name: "Eliza Agent (Develop)",
-  description: "Latest staging build. Use for testing new features before they hit stable.",
-  dockerImage: "ghcr.io/elizaos/eliza:staging",
+  description: "Latest develop build. Use for testing new features before they hit stable.",
+  dockerImage: "ghcr.io/elizaos/eliza:develop",
 };
 
 const FLAVOR_CUSTOM: AgentFlavor = {
