@@ -763,9 +763,10 @@ class ElizaSurfaceManagerPlugin : Plugin() {
     }
 
     /**
-     * Ends what the page waits on, unanswered, once it navigated, was hidden or closed: dialogs
-     * cancel, fullscreen ends, a file input gets no files, site permissions are denied (the host
-     * hears `sitePermissionWithdrawn`) and the download waiting for `saveDownload` is dropped.
+     * Ends what the page waits on, unanswered, once it navigated, was hidden or closed, and before
+     * the host's own navigation ([loadForHost]): dialogs cancel, fullscreen ends, a file input gets
+     * no files, site permissions are denied (the host hears `sitePermissionWithdrawn`) and the
+     * download waiting for `saveDownload` is dropped.
      * A paused page keeps its file input and permission requests, since the system picker or
      * Android's runtime permission dialog for a grant may be what covers it.
      */
@@ -776,6 +777,18 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         closed.file?.callback?.onReceiveValue(null)
         closed.permissions.values.forEach { it.answer(emptySet()) }
         sitePermissionsWithdrawn(id, surface, closed.permissions.keys)
+    }
+
+    /**
+     * Starts a load the host asked for (`navigate`, `reloadSurface`, `goBack`, `goForward`) after
+     * ending what the page holds: a held dialog blocks the page, so WebView could not start the
+     * load and no `pageStarted` would follow. A held leave-page dialog is cancelled like the
+     * others; the load then runs the page's `beforeunload` again, which may hold a new one.
+     */
+    private fun loadForHost(id: String, surface: Surface, load: () -> Unit) {
+        surface.historyObservation = null
+        closeRequests(id, surface)
+        load()
     }
 
     /** Tells the host its prompts for these site permission requests have nothing left to answer. */
@@ -1625,10 +1638,11 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 ?: return@runOnUiThread
             // A sign-in page that refuses WebViews is reported instead of showing its error page.
             if (BrowserPageHandoffs.identityProvider(url) == null) {
-                surface.historyObservation = null
-                surface.securityBlocked = null
-                surface.gate.approve(url)
-                surface.webView.loadUrl(url)
+                loadForHost(id, surface) {
+                    surface.securityBlocked = null
+                    surface.gate.approve(url)
+                    surface.webView.loadUrl(url)
+                }
             } else {
                 handOff(id, surface, url, true)
             }
@@ -1646,9 +1660,10 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             val identity = requireActiveIdentity(call, "reloadSurface") ?: return@runOnUiThread
             val surface = ownedSurface(call, id, identity, "reloadSurface")
                 ?: return@runOnUiThread
-            surface.historyObservation = null
-            surface.securityBlocked = null
-            surface.webView.reload()
+            loadForHost(id, surface) {
+                surface.securityBlocked = null
+                surface.webView.reload()
+            }
             call.resolve()
         }
     }
@@ -1684,9 +1699,10 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             val identity = requireActiveIdentity(call, "goBack") ?: return@runOnUiThread
             val surface = ownedSurface(call, id, identity, "goBack") ?: return@runOnUiThread
             if (surface.webView.canGoBack()) {
-                surface.historyObservation = null
-                approveHistoryStep(surface, -1)
-                surface.webView.goBack()
+                loadForHost(id, surface) {
+                    approveHistoryStep(surface, -1)
+                    surface.webView.goBack()
+                }
             }
             call.resolve()
         }
@@ -1911,7 +1927,10 @@ class ElizaSurfaceManagerPlugin : Plugin() {
      * still at the requesting origin. A request the page withdrew, or that navigating, hiding or closing
      * ended while Android asked, was already denied; it resolves `ended` and is never granted. A camera
      * or microphone grant lets this page play media without a gesture, as Chrome does while a page
-     * captures; the next page start restores the gesture requirement.
+     * captures; the next page start (WebView's `onPageStarted`) restores the gesture requirement.
+     * Blink fixes the requirement into each media element when it is created, so only elements
+     * the page creates after the grant play on their own; the setting changes before the page hears
+     * the grant, so elements made in its `getUserMedia` handler are among them.
      */
     private fun finishSitePermission(ask: AndroidPermissionAsk, grant: Boolean = true) {
         val surface = ask.surface
@@ -1924,10 +1943,10 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             androidAnswered = ask.androidAnswered,
         )
         val granted = outcome == "granted"
-        held?.answer(if (granted) held.kinds.toSet() else emptySet())
         if (held != null && granted && BrowserSurfaceRequests.capturesMedia(held.kinds)) {
             surface.webView.settings.mediaPlaybackRequiresUserGesture = false
         }
+        held?.answer(if (granted) held.kinds.toSet() else emptySet())
         ask.call.resolve(JSObject().apply {
             put("granted", granted)
             put("outcome", outcome)
@@ -2142,9 +2161,10 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             val identity = requireActiveIdentity(call, "goForward") ?: return@runOnUiThread
             val surface = ownedSurface(call, id, identity, "goForward") ?: return@runOnUiThread
             if (surface.webView.canGoForward()) {
-                surface.historyObservation = null
-                approveHistoryStep(surface, 1)
-                surface.webView.goForward()
+                loadForHost(id, surface) {
+                    approveHistoryStep(surface, 1)
+                    surface.webView.goForward()
+                }
             }
             call.resolve()
         }

@@ -156,19 +156,30 @@ What the code does, one surface at a time:
   `granted` (the page has every kind), `denied` (`grant: false`), `android-refused`
   (Android's dialog was shown and a permission is still missing) or `ended` (the page
   withdrew the request, navigating, hiding or closing ended it while Android asked, the
-  page left the requesting origin, or Android could not ask: no dialog could open, or it
-  returned no answer because another permission request was already showing). Only
+  page left the requesting origin, or Android could not ask: no dialog could open, or
+  Android returned no answer, e.g. another request was showing). Only
   `granted` gives the page anything. It is answered once: a second answer, even while
   Android's dialog is up, rejects `SITE_PERMISSION_CLOSED`.
 - **Autoplay while capturing.** As Chrome lets a page that captures play media, a granted
   camera or microphone request lets that surface's current page play audio and video
-  without a gesture (`mediaPlaybackRequiresUserGesture` off); the next `pageStarted`
-  turns the gesture requirement back on. A location grant changes nothing.
+  without a gesture (`mediaPlaybackRequiresUserGesture` off, set before the page hears the
+  grant); the next page start (WebView's `onPageStarted`) turns the gesture requirement
+  back on. A location grant changes nothing. WebView's Blink fixes the requirement into
+  each `<video>` and `<audio>` element when it is created, so only elements the page
+  creates after the grant play on their own: a preview element already in the page (for
+  example a static `<video autoplay>`) stays paused until a tap plays it.
 - **External links.** `openExternalLink` takes the pending link first, so it is used once
   whatever happens. When no app other than this one resolves the Intent, or the app is gone
   by launch, it rejects `EXTERNAL_APP_UNAVAILABLE` (Android refusing the launch rejects
   `EXTERNAL_LINK_DENIED`; an unparsable link `EXTERNAL_LINK_INVALID`). It resolves
   `{ status: "dispatched" }` once Android started the other app.
+- **The host's own navigation.** `navigate`, `reloadSurface`, `goBack` and `goForward`
+  first end what the page holds, as navigating does (dialogs cancelled, fullscreen,
+  file input, site permissions with `sitePermissionWithdrawn`, held download), then load:
+  a held dialog blocks the page, so WebView could not start the load and no `pageStarted`
+  would follow. A held leave-page dialog is cancelled too; the load then runs the page's
+  `beforeunload` again, which may hold a new leave-page dialog, as Chrome asks before a
+  browser navigation.
 - **Leaving the page (`beforeunload`).** A page's leave-page check reaches the plugin as
   `onJsBeforeUnload` and is a dialog like the others, `kind: "beforeunload"`.
   `answerDialog({ accept: true })` leaves the page; `accept: false` keeps the page and
@@ -194,7 +205,7 @@ resumes it. iOS rejects both methods with `UNSUPPORTED`.
 Isolated surfaces get a fresh storage profile that is cleared when the surface closes
 and deleted once Android releases it. `createSurface({ ..., profileKey })` instead
 selects one persistent profile per owner and key (for example a signed-in account), so
-website sign-ins survive. `purgeProfiles({ profileKey })` removes it at once and closes
+website sign-ins survive. `purgeProfiles({ profileKey })` removes it and closes
 its surfaces (`surfaceClosed`); `purgeProfiles({ idleMs })` removes keyed profiles idle
 for that long. `purgeProfiles({ all: true })` removes every surface profile of any owner
 and closes their surfaces. `profileKey` and `all` resolve only once WebView reports the
