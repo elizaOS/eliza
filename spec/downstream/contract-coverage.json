@@ -890,8 +890,8 @@
         "renderer-source"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobileCapture.md",
-      "coverage": "related-contract"
+      "relatedSpec": "spec/downstream/grace/speechPlayback.md",
+      "coverage": "direct-contract"
     },
     {
       "source": "packages/ui/src/voice/recorded-transcription-controller.ts",
@@ -911,8 +911,8 @@
         "renderer-source"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobileCapture.md",
-      "coverage": "related-contract"
+      "relatedSpec": "spec/downstream/grace/speechPlayback.md",
+      "coverage": "direct-contract"
     },
     {
       "source": "packages/ui/src/voice/speech-segments.ts",
