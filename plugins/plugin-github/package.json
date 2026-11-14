@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-github",
-  "version": "2.0.4",
+  "version": "2.0.6",
   "description": "GitHub integration plugin for elizaOS agents \u2014 PRs, issues, notifications via the GitHub REST API",
   "type": "module",
   "main": "dist/index.js",
@@ -28,7 +28,7 @@
     "build": "tsup src/index.ts src/register-routes.ts src/github-credentials.ts --format esm --dts --clean",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo",
+    "clean": "bun ../../packages/scripts/rm-path-recursive.ts dist .turbo",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
@@ -47,7 +47,7 @@
     "tsup": "9.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "5.0.5"
+    "vitest": "5.1.0"
   },
   "publishConfig": {
     "access": "public"

@@ -40,7 +40,7 @@ const defaultDeps: DiscordSendDmDeps = {
 };
 
 function isCloudPaired(runtime: IAgentRuntime): boolean {
-	const apiKey = runtime.getSetting?.("ELIZA_CLOUD_API_KEY");
+	const apiKey = runtime.getSetting?.("ELIZAOS_CLOUD_API_KEY");
 	return typeof apiKey === "string" && apiKey.trim().length > 0;
 }
 

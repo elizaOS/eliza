@@ -15,6 +15,40 @@ is_truthy() {
   esac
 }
 
+# Stage one complete test catalog, or preserve the existing catalog in full.
+# A partial source must not rotate a key against preserved prices from another account.
+if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
+  stripe_catalog_names=(STRIPE_SECRET_KEY STRIPE_PLUS_PRODUCT_ID STRIPE_PLUS_MONTHLY_PRICE_ID STRIPE_PRO_PRODUCT_ID STRIPE_PRO_MONTHLY_PRICE_ID)
+  stripe_configured=0
+  for name in "${stripe_catalog_names[@]}"; do
+    if has_nonblank_value "${!name:-}"; then
+      stripe_configured=$((stripe_configured + 1))
+    fi
+  done
+  if [ "$stripe_configured" -gt 0 ] && [ "$stripe_configured" -ne "${#stripe_catalog_names[@]}" ]; then
+    echo "::error::Staging Stripe configuration requires the test key and all four approved product/price bindings together"
+    exit 1
+  fi
+  if [ "$stripe_configured" -gt 0 ]; then
+    if [[ ! "${STRIPE_SECRET_KEY:-}" =~ ^(sk|rk)_test_[A-Za-z0-9]+$ ]]; then
+      echo "::error::Staging Stripe requires a test-mode secret key"
+      exit 1
+    fi
+    ENVIRONMENT=staging NODE_ENV=test bun --conditions=eliza-source \
+      "$CHECKOUT_DIR/packages/cloud/scripts/admin/preflight-subscription-catalog.ts" --catalog-only
+  fi
+  if has_nonblank_value "${STRIPE_PUBLISHABLE_KEY:-}" && \
+     [[ ! "$STRIPE_PUBLISHABLE_KEY" =~ ^pk_test_[A-Za-z0-9]+$ ]]; then
+    echo "::error::Staging Stripe requires a test-mode publishable key"
+    exit 1
+  fi
+  if has_nonblank_value "${STRIPE_WEBHOOK_SECRET:-}" && \
+     [[ ! "$STRIPE_WEBHOOK_SECRET" =~ ^whsec_[A-Za-z0-9]+$ ]]; then
+    echo "::error::Staging Stripe webhook signing secret has an invalid format"
+    exit 1
+  fi
+fi
+
 # Construct the staging fallback only when the source key is real.
 # Never publish the invalid-but-nonempty string "Bearer ".
 if [ "$DEPLOY_ENVIRONMENT" = "staging" ] && \
@@ -77,7 +111,7 @@ fi
 # Value-safe validation: exact UUID allowlists, dedicated signing
 # key/kid, and the code/runtime version are all required before the
 # first QA-related Worker secret is touched.
-node ../scripts/validate-staging-session-cutover.ts
+bun ../scripts/validate-staging-session-cutover.ts
 
 # Fish is a separate, default-off promotion within realtime voice.
 # Refuse to advertise it unless its own credentials and the exact
@@ -136,6 +170,11 @@ queue_secret() {
   local name="$1"
   local value="${!name:-}"
   case "$name" in
+    STRIPE_SECRET_KEY|STRIPE_PLUS_PRODUCT_ID|STRIPE_PLUS_MONTHLY_PRICE_ID|STRIPE_PRO_PRODUCT_ID|STRIPE_PRO_MONTHLY_PRICE_ID|STRIPE_WEBHOOK_SECRET|STRIPE_PUBLISHABLE_KEY)
+      if [ "$DEPLOY_ENVIRONMENT" != "staging" ]; then
+        return 0
+      fi
+      ;;
     CARTESIA_API_KEY)
       if ! is_truthy "$VOICE_REALTIME_WS_ENABLED" && \
          [ "${VOICE_BATCH_STT_PROVIDER,,}" != "cartesia" ]; then
@@ -478,6 +517,13 @@ for name in \
   ELIZA_ENTITLEMENT_NEXT_PUBLIC_KEY \
   ELIZA_ENTITLEMENT_NEXT_KEY_ID \
   ELIZA_SUBSCRIPTION_GRANT_CODE_PEPPER \
+  STRIPE_SECRET_KEY \
+  STRIPE_PLUS_PRODUCT_ID \
+  STRIPE_PLUS_MONTHLY_PRICE_ID \
+  STRIPE_PRO_PRODUCT_ID \
+  STRIPE_PRO_MONTHLY_PRICE_ID \
+  STRIPE_WEBHOOK_SECRET \
+  STRIPE_PUBLISHABLE_KEY \
   OIDC_CLIENTS \
   GATEWAY_INTERNAL_SECRET \
   ELIZA_APP_WEBHOOK_GATEWAY_SECRET \
@@ -489,20 +535,10 @@ for name in \
   LOCAL_EMBEDDINGS_API_KEY \
   CLOUD_PUBLIC_SERVICE_NAME \
   CLOUD_PUBLIC_SERVICE_TERMS_JSON \
-  CLOUD_PUBLIC_SERVICE_PRIVACY_JSON \
-  ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON \
-  ELIZA_ANDROID_ASSET_LINKS_JSON
+  CLOUD_PUBLIC_SERVICE_PRIVACY_JSON
 do
   queue_secret "$name"
 done
-
-if [ "$ELIZA_MOBILE_APP_AUTH_ENABLED" = "true" ]; then
-  if ! has_nonblank_value "$ELIZA_MOBILE_APP_AUTH_APP_ID"; then
-    echo "::error::Enabled mobile App Auth requires the protected ELIZA_MOBILE_APP_AUTH_APP_ID secret"
-    exit 1
-  fi
-  queue_secret ELIZA_MOBILE_APP_AUTH_APP_ID || exit 1
-fi
 
 # Routing toggles: presence changes code paths, so unset must delete.
 # A failed removal must fail the step. Configured toggle values join
@@ -556,4 +592,9 @@ worker_secrets_file="$(node \
   "$CHECKOUT_DIR/packages/cloud/scripts/worker-secrets-file.ts" \
   create "$RUNNER_TEMP" "${worker_secret_names[@]}")"
 echo "secrets_file=$worker_secrets_file" >> "$GITHUB_OUTPUT"
+stripe_binding_names=()
+for name in "${worker_secret_names[@]}"; do
+  case "$name" in STRIPE_*) stripe_binding_names+=("$name") ;; esac
+done
+echo "stripe_binding_names=${stripe_binding_names[*]}" >> "$GITHUB_OUTPUT"
 echo "Prepared ${#worker_secret_names[@]} configured Worker bindings for the atomic deploy; values were not printed."

@@ -1,13 +1,13 @@
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 /** Implements the OpenAI-compatible chat-completions boundary and its streaming accounting. */
 
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
-import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import {
   resolveInferenceAuthStandingDenial,
   resolveInferenceCredentialAdmissionDenial,
-} from "@/api-app/lib/generative-route-auth";
+} from "../../../src/lib/generative-route-auth";
 import { type ChatCompletionTool, convertTools } from "./tools";
 
 /**
@@ -25,8 +25,6 @@ import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import { createPreflightResponse } from "@elizaos/cloud-shared/lib/middleware/cors-apps";
 import {
   enforceOrgRateLimit,
-  type InferenceRatePolicyProof,
-  inferenceRatePolicyProof,
   OrgRateLimitCacheNotReadyError,
 } from "@elizaos/cloud-shared/lib/middleware/rate-limit";
 import {
@@ -102,7 +100,6 @@ import type {
   CreditReconciliationResult,
   CreditReservation,
 } from "@elizaos/cloud-shared/lib/services/credits";
-import { wakeInferenceAdmissionGate } from "@elizaos/cloud-shared/lib/services/inference-admission-gate";
 import { inferenceRateLimitConfig } from "@elizaos/cloud-shared/lib/services/inference-admission-snapshot";
 import type { InferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
 import {
@@ -112,12 +109,11 @@ import {
 import { InferenceBillingUnavailableError } from "@elizaos/cloud-shared/lib/services/inference-billing-fast-path";
 import {
   assertInferenceCredentialActive,
-  hasInferenceRevocationBoundary,
   type InferenceCredentialCheck,
   InferenceCredentialRevokedError,
   inferenceCredentialRevocationReason,
 } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
-import { isFundedBudgetAdmissionEnabled } from "@elizaos/cloud-shared/lib/services/inference-funded-budget-admission";
+import { inferenceFundingRefusal } from "@elizaos/cloud-shared/lib/services/inference-funding-refusal";
 import {
   createPassthroughStreamMeter,
   isPassthroughStreamingEnabled,
@@ -127,10 +123,6 @@ import {
   isKnownUnacceptedProviderError,
   isKnownUnacceptedProviderStatus,
 } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
-import {
-  getCachedGatewayModelById,
-  getGatewayModelByIdCacheOnly,
-} from "@elizaos/cloud-shared/lib/services/model-catalog";
 import {
   nativeApplicationInferenceErrorResponse,
   prepareNativeApplicationInference,
@@ -163,7 +155,11 @@ import {
   firstNumber,
   modelNotAvailableMessage,
   summarizeFinishedStepUsage,
-} from "@/api-app/lib/inference-usage";
+} from "../../../src/lib/inference-usage";
+import {
+  ClientClosedBeforeDispatchError,
+  joinProviderBoundary,
+} from "./provider-boundary";
 import {
   type CallerLlmPurpose,
   getSafeCallerLlmPurpose,
@@ -400,17 +396,6 @@ function combineProviderOptions(
     }
   }
   return hasProviderOptions ? { ...merged, providerOptions } : merged;
-}
-
-/** Preserves the caller's explicit output ceiling without inventing one. */
-function computeEffectiveMaxTokens(
-  requestMaxTokens: number | undefined,
-  _cotBudget: number | null,
-  _model: string,
-  _supportedParameters?: readonly string[],
-  _reasoningEffort?: ReasoningEffort,
-): number | undefined {
-  return requestMaxTokens;
 }
 
 // ============================================================================
@@ -1231,30 +1216,6 @@ interface ChatCompletionsHandlerOptions {
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
 }
 
-type ConcurrentPromiseOutcome<T> =
-  | { kind: "fulfilled"; value: T }
-  | { kind: "rejected"; error: unknown };
-
-/**
- * Installs a rejection handler at task creation time while retaining the
- * original failure for the point where route precedence permits observing it.
- * This matters when a faster validation or rate-limit denial returns before
- * another overlapped task settles.
- */
-function observeConcurrentPromise<T>(
-  promise: Promise<T>,
-): Promise<ConcurrentPromiseOutcome<T>> {
-  return promise.then(
-    (value) => ({ kind: "fulfilled", value }),
-    (error: unknown) => ({ kind: "rejected", error }),
-  );
-}
-
-function unwrapConcurrentPromise<T>(outcome: ConcurrentPromiseOutcome<T>): T {
-  if (outcome.kind === "rejected") throw outcome.error;
-  return outcome.value;
-}
-
 export async function handleChatCompletionsPOST(
   req: Request,
   options: ChatCompletionsHandlerOptions = {},
@@ -1343,21 +1304,18 @@ export async function handleChatCompletionsPOST(
     let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
     let cachedApiKeyRateLimit: number | undefined;
     let admissionCredential: InferenceCredentialCheck | undefined;
-    let ratePolicyProof: InferenceRatePolicyProof | undefined;
+    let refreshAuthEntry: (() => void) | undefined;
     let appScopeId: string | null = null;
     await using credentialGuard = deferredCredentialAdmissionGuard({
       organizationId: () => user?.organization_id,
       credential: () => admissionCredential,
     });
-
-    const deferStrongCredentialCheck =
-      requestIsValid &&
-      Boolean(options.executionCtx) &&
-      hasInferenceRevocationBoundary();
+    // Cached identity avoids primary reads; durable fences and funding
+    // admission still decide before the provider can run.
     const resolution = await resolveInferenceAuthContext(req, {
       traceId,
       executionCtx: options.executionCtx,
-      deferStrongCredentialCheck,
+      deferStrongCredentialCheck: Boolean(options.executionCtx),
       onTelemetry: (telemetry) => {
         authTelemetry = telemetry;
       },
@@ -1416,14 +1374,10 @@ export async function handleChatCompletionsPOST(
       };
       apiKey = resolution.ctx.apiKeyId ? { id: resolution.ctx.apiKeyId } : null;
       admissionSnapshot = resolution.ctx.admission;
+      refreshAuthEntry = resolution.refreshEntry;
       cachedApiKeyRateLimit =
         "apiKeyRateLimit" in resolution.ctx
           ? resolution.ctx.apiKeyRateLimit
-          : undefined;
-      // Only an API-key context carries a key cap read with its policy epoch.
-      ratePolicyProof =
-        "keyHash" in resolution.ctx
-          ? inferenceRatePolicyProof(resolution.ctx)
           : undefined;
       const resolvedCredential = resolution.credential;
       admissionCredential =
@@ -1469,71 +1423,6 @@ export async function handleChatCompletionsPOST(
     // cache-only dependency decisions vs admission) so production telemetry
     // catches any regression before a provider invocation.
     const tAuth = performance.now();
-    let fundedBudgetRateReceipt: string | undefined;
-    const fundedBudget =
-      options.executionCtx &&
-      isFundedBudgetAdmissionEnabled() &&
-      admissionSnapshot?.fundedBudget?.enabled &&
-      admissionSnapshot.fundedBudget.organizationId === user.organization_id &&
-      admissionCredential?.kind === "api_key" &&
-      Number.isSafeInteger(admissionCredential.rateLimit) &&
-      (admissionCredential.rateLimit ?? 0) > 0 &&
-      admissionCredential.expiresAt !== undefined
-        ? {
-            policy: admissionSnapshot.fundedBudget,
-            credential: admissionCredential,
-            requestId,
-            onReceipt: (receipt: string) => {
-              fundedBudgetRateReceipt = receipt;
-            },
-          }
-        : undefined;
-
-    // 1b. Per-org tier rate limit. Start the authoritative decision now, then
-    // overlap it with the independent cache-only preparation below. We still
-    // inspect and return this result first, preserving the existing denial
-    // precedence without serializing an unrelated Durable Object round trip
-    // ahead of every dependency read. The billing gate wakes at the same time
-    // so dispatch does not pay its activation in series after idle.
-    if (options.executionCtx && user.organization_id)
-      wakeInferenceAdmissionGate(user.organization_id, options.executionCtx);
-    const orgRateLimitPromise = observeConcurrentPromise(
-      user.organization_id && !options.skipOrgRateLimit
-        ? enforceOrgRateLimit(user.organization_id, "completions", {
-            cacheOnly: Boolean(options.executionCtx),
-            executionCtx: options.executionCtx,
-            config: inferenceRateLimitConfig(admissionSnapshot, "completions"),
-            admissionSnapshot,
-            apiKeyId: apiKey?.id,
-            apiKeyRateLimit: cachedApiKeyRateLimit,
-            userId: user.id,
-            fundedBudget,
-            ratePolicy: ratePolicyProof,
-          })
-        : Promise.resolve(null),
-    );
-    const resolveOrgRateLimit = async (): Promise<Response | null> => {
-      const outcome = await orgRateLimitPromise;
-      try {
-        return unwrapConcurrentPromise(outcome);
-      } catch (error) {
-        if (error instanceof OrgRateLimitCacheNotReadyError) {
-          return addCorsHeaders(
-            Response.json(
-              {
-                error: {
-                  message: "Rate limiter is unavailable. Retry shortly.",
-                  type: "service_unavailable",
-                  code: "rate_limit_unavailable",
-                },
-              },
-              { status: 503, headers: { "Retry-After": "1" } },
-            ),
-          );
-        }
-        throw error;
-      }
-    };
     const captureEarlyPreforwardTiming = (): void => {
       if (preforwardTiming) return;
       const stoppedAt = performance.now();
@@ -1546,16 +1435,49 @@ export async function handleChatCompletionsPOST(
       });
     };
 
+    // 1b. Per-org tier rate limit. The cached policy avoids primary reads;
+    // the shared Durable Object enforces the tier RPM and per-key cap.
+    let orgRateLimited: Response | null = null;
+    if (user.organization_id && !options.skipOrgRateLimit) {
+      try {
+        orgRateLimited = await enforceOrgRateLimit(
+          user.organization_id,
+          "completions",
+          {
+            cacheOnly: Boolean(options.executionCtx),
+            executionCtx: options.executionCtx,
+            config: inferenceRateLimitConfig(admissionSnapshot, "completions"),
+            admissionSnapshot,
+            apiKeyId: apiKey?.id,
+            apiKeyRateLimit: cachedApiKeyRateLimit,
+            userId: user.id,
+          },
+        );
+      } catch (error) {
+        if (!(error instanceof OrgRateLimitCacheNotReadyError)) throw error;
+        orgRateLimited = Response.json(
+          {
+            error: {
+              message: "Rate limiter is unavailable. Retry shortly.",
+              type: "service_unavailable",
+              code: "rate_limit_unavailable",
+            },
+          },
+          { status: 503, headers: { "Retry-After": "1" } },
+        );
+      }
+    }
+    if (orgRateLimited) {
+      captureEarlyPreforwardTiming();
+      return attachPreforwardTelemetry(addCorsHeaders(orgRateLimited));
+    }
     if (
       !request?.model ||
       !Array.isArray(request.messages) ||
       !request.messages.length
     ) {
-      const orgRateLimited = await resolveOrgRateLimit();
       captureEarlyPreforwardTiming();
-      return attachPreforwardTelemetry(
-        orgRateLimited ?? invalidRequestResponse!,
-      );
+      return attachPreforwardTelemetry(invalidRequestResponse!);
     }
 
     // 2. Prepare app monetization lookup
@@ -1635,18 +1557,6 @@ export async function handleChatCompletionsPOST(
       cotBudget != null
         ? mergeAnthropicCotProviderOptions(model, process.env, cotBudget)
         : {};
-    // Authoritative reasoning detection: many reasoning models (kimi-k2.6,
-    // glm-5.1, deepseek-v4-pro, ...) do not carry a "think"/"reasoning" id but
-    // do advertise a reasoning parameter in the catalog. Workers consume fresh
-    // or stale cached metadata and hydrate misses off-path; a cold optional
-    // catalog uses the same name-pattern fallback as non-Worker tools.
-    // #9899: skip the reasoning-detection catalog read when id name-pattern
-    // detection ALREADY classifies this as a reasoning model. The catalog can
-    // only ADD reasoning, never remove it (modelUsesReasoningTokens ORs the two
-    // signals), so for a name-pattern match the catalog cannot change
-    // computeEffectiveMaxTokens — the read is pure latency. Default now (the
-    // hot-path cache is no longer flag-gated); pinned to the name-pattern set.
-    const skipCatalogLookup = modelUsesReasoningTokens(model) && !fundedBudget;
     const monetizedAppPromise = requestedAppId
       ? (options.requiredAppId
           ? appsService.getById(requestedAppId, {
@@ -1666,57 +1576,12 @@ export async function handleChatCompletionsPOST(
       requirePooledCredential: !platformCredentialConfigured,
       executionCtx: options.executionCtx,
     });
-    const modelCatalogPromise = skipCatalogLookup
-      ? Promise.resolve({
-          kind: "ready" as const,
-          model: null,
-          stale: false,
-        })
-      : options.executionCtx
-        ? getGatewayModelByIdCacheOnly(model, {
-            executionCtx: options.executionCtx,
-          })
-        : getCachedGatewayModelById(model)
-            .then((catalogModel) => ({
-              kind: "ready" as const,
-              model: catalogModel,
-              stale: false,
-            }))
-            // error-policy:J4 non-Worker tools retain the explicit
-            // name-pattern fallback when optional catalog metadata fails.
-            .catch((error) => {
-              logger.warn(
-                "[Chat Completions] reasoning-detection catalog lookup failed; using name patterns",
-                {
-                  model,
-                  error: error instanceof Error ? error.message : String(error),
-                },
-              );
-              return {
-                kind: "ready" as const,
-                model: null,
-                stale: false,
-              };
-            });
-    // Promise.all attaches a rejection observer to every input immediately and
-    // remains fail-fast. Wrapping the aggregate records that failure until the
-    // rate-limit verdict has been applied, including 429 and early-return paths.
-    const dependencyResolutionsPromise = observeConcurrentPromise(
-      Promise.all([
-        monetizedAppPromise,
-        pooledCredentialPromise,
-        modelCatalogPromise,
-      ]),
-    );
+    const dependencyResolutionsPromise = Promise.all([
+      monetizedAppPromise,
+      pooledCredentialPromise,
+    ]);
 
-    const orgRateLimited = await resolveOrgRateLimit();
-    if (orgRateLimited) {
-      captureEarlyPreforwardTiming();
-      return attachPreforwardTelemetry(orgRateLimited);
-    }
-
-    const [resolvedApp, pooledCredential, modelCatalogResolution] =
-      unwrapConcurrentPromise(await dependencyResolutionsPromise);
+    const [resolvedApp, pooledCredential] = await dependencyResolutionsPromise;
     monetizedApp = resolvedApp;
     if (
       options.requiredAppId &&
@@ -1741,11 +1606,6 @@ export async function handleChatCompletionsPOST(
     }
     appId = monetizedApp?.id ?? null;
     useAppCredits = Boolean(monetizedApp);
-    const modelSupportedParameters =
-      modelCatalogResolution.kind === "ready"
-        ? modelCatalogResolution.model?.supported_parameters
-        : undefined;
-
     if (!pooledCredential && !platformCredentialConfigured) {
       return addCorsHeaders(
         Response.json(
@@ -1764,43 +1624,7 @@ export async function handleChatCompletionsPOST(
     const billingSource = pooledCredential
       ? "gateway"
       : (resolveAiProviderSource(model) ?? "gateway");
-    const effectiveMaxTokens = computeEffectiveMaxTokens(
-      request.max_tokens,
-      cotBudget,
-      model,
-      modelSupportedParameters,
-      reasoningEffort,
-    );
-    // This provider-owned catalog describes the accepted Cerebras request
-    // ceiling. It bounds all prompt tokens, including hidden serialization;
-    // the character-based estimate remains an estimate, never escrow authority.
-    const catalogModel =
-      modelCatalogResolution.kind === "ready"
-        ? modelCatalogResolution.model
-        : null;
-    const contextLimit =
-      catalogModel?.context_length ?? catalogModel?.context_window;
-    const hasBudgetTokenBounds = Boolean(
-      fundedBudget &&
-        !pooledCredential &&
-        provider.startsWith("cerebras") &&
-        catalogModel?.owned_by === "cerebras" &&
-        Number.isSafeInteger(contextLimit) &&
-        (contextLimit ?? 0) > 0 &&
-        !request.webSearchEnabled &&
-        !request.tools?.length,
-    );
-    const maximumInputTokens = hasBudgetTokenBounds ? contextLimit : undefined;
-    const catalogOutputLimit = catalogModel?.max_tokens ?? contextLimit;
-    const maximumOutputTokens =
-      hasBudgetTokenBounds &&
-      Number.isSafeInteger(catalogOutputLimit) &&
-      (catalogOutputLimit ?? 0) > 0
-        ? Math.min(
-            effectiveMaxTokens ?? catalogOutputLimit!,
-            catalogOutputLimit!,
-          )
-        : undefined;
+    const effectiveMaxTokens = request.max_tokens;
     const webSearchEnabled = request.webSearchEnabled === true;
     const webSearchActive = isAnthropicWebSearchEnabled(
       provider,
@@ -1884,10 +1708,13 @@ export async function handleChatCompletionsPOST(
           useMonetizedAppBilling,
         })
       ) {
-        if (admissionCredential) {
+        // This lane uses the team's provider credential and creates no
+        // organization charge, but still rechecks durable caller standing.
+        const pooledCredentialProof = credentialGuard.credentialForAdmission();
+        if (pooledCredentialProof) {
           await assertInferenceCredentialActive(
             user.organization_id,
-            admissionCredential,
+            pooledCredentialProof,
           );
         }
         settleReservation = async () => null;
@@ -1987,15 +1814,13 @@ export async function handleChatCompletionsPOST(
           },
           estimatedInputTokens: admissionInputTokens,
           estimatedOutputTokens,
-          maximumInputTokens,
-          maximumOutputTokens,
-          fundedBudgetRateReceipt,
           apiKeyId: apiKey?.id ?? null,
           affiliateCode,
           executionCtx: options.executionCtx,
           admissionSnapshot,
           credential: credentialGuard.credentialForAdmission(),
-          atomicProviderBoundary: Boolean(options.executionCtx),
+          atomicProviderBoundary: true,
+          refreshAuthEntry,
         });
         settleReservation = admission.settle;
         settleUnknown = admission.settleUnknown;
@@ -2075,18 +1900,11 @@ export async function handleChatCompletionsPOST(
         // A plan subscriber (paid or grant) has spent its period allowance and
         // credit: name that state and when the allowance resets. Status and
         // type stay 402 / insufficient_quota for existing OpenAI-style clients.
-        // The Worker never reads Postgres to word a refusal: the cached
-        // admission snapshot names the plan state and its period end.
-        const exhaustion = useMonetizedAppBilling
-          ? null
-          : options.executionCtx
-            ? admissionSnapshot?.subscriptionFunded
-              ? {
-                  resetsAt: admissionSnapshot.authority.effectiveUntil
-                    ? new Date(admissionSnapshot.authority.effectiveUntil)
-                    : null,
-                }
-              : null
+        // The Worker never reads Postgres to word a refusal: the admission
+        // decision names the plan state and the end of its period.
+        const exhaustion =
+          useMonetizedAppBilling || options.executionCtx
+            ? null
             : await import(
                 "@elizaos/cloud-shared/lib/services/subscription-entitlement-token"
               )
@@ -2107,11 +1925,7 @@ export async function handleChatCompletionsPOST(
                       resetsAt: exhaustion.resetsAt.toISOString(),
                     }),
                   }
-                : {
-                    message: `Insufficient ${creditKind}. Required: $${error.required.toFixed(4)}`,
-                    type: "insufficient_quota",
-                    code: "insufficient_credits",
-                  },
+                : inferenceFundingRefusal(error, { creditKind }),
             },
             { status: 402 },
           ),
@@ -2204,6 +2018,16 @@ export async function handleChatCompletionsPOST(
       );
     }
     const tAfterReserve = performance.now();
+
+    // The provider boundary. An organization-funded request was admitted from
+    // its cached auth entry and commits its durable admission here; an
+    // app-funded request does the same. A client that already left never reaches the
+    // provider. A refusal is thrown to the catch below, which settles the
+    // reservation at zero because the provider was not invoked.
+    markProviderDispatched = joinProviderBoundary({
+      signal: req.signal,
+      commit: markProviderDispatched,
+    });
 
     // 7. Keep all instruction messages in their original transcript positions.
     // Selecting one system message and filtering the rest silently loses context.
@@ -2330,6 +2154,22 @@ export async function handleChatCompletionsPOST(
         await settleReservation?.(0);
       }
     });
+    if (error instanceof ClientClosedBeforeDispatchError) {
+      return attachPreforwardTelemetry(
+        addCorsHeaders(
+          Response.json(
+            {
+              error: {
+                message: error.message,
+                type: "api_error",
+                code: "client_closed_request",
+              },
+            },
+            { status: 499 },
+          ),
+        ),
+      );
+    }
     const appFundingFailure = appInferenceErrorResponse(error);
     if (appFundingFailure) return addCorsHeaders(appFundingFailure);
     const credentialDenial = resolveInferenceCredentialAdmissionDenial(error, {
@@ -2457,6 +2297,7 @@ export async function handleChatCompletionsPOST(
             error: {
               message: errorMessage,
               type: errorType,
+              ...(isInsufficientCredits && { code: "insufficient_credits" }),
             },
           },
           { status },
@@ -4148,7 +3989,6 @@ export const __nativeToolingTestHooks = {
   mapResponseFormat,
   mapToolChoice,
   convertTools,
-  computeEffectiveMaxTokens,
   validateCerebrasReasoningEffort,
   buildReasoningEffortProviderOptions,
   isEmptyButBilled,

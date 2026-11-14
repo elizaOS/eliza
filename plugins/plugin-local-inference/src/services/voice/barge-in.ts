@@ -27,7 +27,7 @@
  *                        Silero VAD let through).
  *
  * Legacy API (still used by `VoiceScheduler` and `EngineVoiceBridge`):
- *   `attach({onCancel})`, `onMicActive()`, `cancelSignal()`, `reset()` — a
+ *   `attach({onCancel})`, `onMicActive()`, `reset()` — a
  *   thin "everything cancelled" path. `onMicActive()` is now equivalent to
  *   `hardStop("manual")`.
  *
@@ -57,10 +57,6 @@ interface VadEventSource {
 
 export interface BargeInListener {
 	onCancel(): void;
-}
-
-export interface CancelSignal {
-	cancelled: boolean;
 }
 
 // --- New: cancel token --------------------------------------------------------
@@ -125,9 +121,6 @@ export class BargeInController implements WordsDetectedSink {
 	private readonly signalListeners = new Set<BargeInSignalListener>();
 	private readonly wordsGraceMs: number;
 	private interruptGate: BargeInInterruptGate | null;
-
-	/** Legacy single-shot cancel flag, reset by `reset()`. */
-	private signal: CancelSignal = { cancelled: false };
 
 	/** True while the agent's TTS is playing. The turn controller / scheduler
 	 *  flips this via `setAgentSpeaking()`. Barge-in logic only acts while
@@ -315,8 +308,6 @@ export class BargeInController implements WordsDetectedSink {
 			this.activeToken = makeCancelToken(null);
 		}
 		tripToken(this.activeToken, reason);
-		// Legacy cancel flag + listeners.
-		this.signal.cancelled = true;
 		for (const l of this.listeners) l.onCancel();
 		this.emitSignal({
 			type: "hard-stop",
@@ -337,11 +328,6 @@ export class BargeInController implements WordsDetectedSink {
 
 	// --- Legacy API (VoiceScheduler / EngineVoiceBridge) ------------------------
 
-	/** @deprecated Use `currentCancelToken()`; kept for `VoiceScheduler`. */
-	cancelSignal(): CancelSignal {
-		return this.signal;
-	}
-
 	attach(listener: BargeInListener): () => void {
 		this.listeners.add(listener);
 		return () => this.listeners.delete(listener);
@@ -356,7 +342,6 @@ export class BargeInController implements WordsDetectedSink {
 		this.clearWordConfirm();
 		this.awaitingWordConfirm = false;
 		this.activeToken = null;
-		this.signal = { cancelled: false };
 	}
 
 	// --- internals --------------------------------------------------------------

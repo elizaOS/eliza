@@ -332,7 +332,7 @@ export class RemoteSigningService {
 }
 
 export interface TeeGatedRemoteSigningConfig {
-  /** Inner signer that actually holds/uses the key (e.g. VaultSignerBackend). */
+  /** Inner signer that actually holds/uses the key. */
   signer: SignerBackend;
   /**
    * TEE evidence policy resolved at boot (`TeeBootGate.policy`). When the

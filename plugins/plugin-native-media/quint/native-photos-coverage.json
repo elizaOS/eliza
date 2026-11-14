@@ -1,0 +1,28 @@
+[
+  {
+    "id": "NativePhotosPublicationAndSelection",
+    "model": "plugins/plugin-native-media/quint/NativePhotosOwnership.qnt",
+    "sources": [
+      "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/PermittedMediaCatalog.java",
+      "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/PermittedPhotosPlugin.java",
+      "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/PhotosPlugin.java",
+      "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/PermittedMediaReview.java"
+    ],
+    "invariants": [
+      "TicketRetainedAtPublication",
+      "CallbackRequiresPublication",
+      "QueueOwnership",
+      "CapturedSelectionOwnsEveryOutcome",
+      "OnePendingReview",
+      "WorkerKeepsCapturedRequest",
+      "ResumedCallbacksAreDelivered"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two reads with epochs 0 through 3, two native reviews over at most two items from three identities, revisions 0 and 1, and FIFO worker/main callbacks.",
+      "Exact production Java fragments execute on a JVM with controlled queue, lifecycle, permission and catalog ports. The proof includes copied selections, pending-review admission, captured resume continuations, stale-item refusal, partial outcomes and closure. Android/MediaStore and physical devices are outside this conformance.",
+      "No production first-party host registration or invocation was found outside the module consumer fixture. Multiple volumes, native consent delivery, real media bytes, query-fence deadlines, Replace callbacks, restart and unbounded concurrency/epochs remain separate.",
+      "Progress assumes fair worker/main callbacks, a native decision and lifecycle settlement. Without these assumptions an admitted request may remain unresolved."
+    ]
+  }
+]

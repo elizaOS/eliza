@@ -52,8 +52,6 @@ describe("local development Cloud target", () => {
       "ELIZAOS_CLOUD_USE_MEDIA",
       "ELIZAOS_CLOUD_USE_EMBEDDINGS",
       "ELIZAOS_CLOUD_USE_RPC",
-      "ELIZA_CLOUD_API_KEY",
-      "ELIZACLOUD_API_KEY",
       "ELIZA_CLOUD_PROVISIONED",
       "ELIZA_CLOUD_AGENT_ID",
       "WAIFU_ELIZA_CLOUD_AGENT_ID",
@@ -144,8 +142,6 @@ describe("local development Cloud target", () => {
       ELIZAOS_CLOUD_USE_MEDIA: "true",
       ELIZAOS_CLOUD_USE_EMBEDDINGS: "true",
       ELIZAOS_CLOUD_USE_RPC: "true",
-      ELIZA_CLOUD_API_KEY: "legacy-key",
-      ELIZACLOUD_API_KEY: "older-key",
       ELIZA_CLOUD_PROVISIONED: "1",
       ELIZA_CLOUD_AGENT_ID: "prod-agent-id",
       WAIFU_ELIZA_CLOUD_AGENT_ID: "prod-agent-id-legacy",
@@ -173,8 +169,6 @@ describe("local development Cloud target", () => {
       "ELIZAOS_CLOUD_USE_MEDIA",
       "ELIZAOS_CLOUD_USE_EMBEDDINGS",
       "ELIZAOS_CLOUD_USE_RPC",
-      "ELIZA_CLOUD_API_KEY",
-      "ELIZACLOUD_API_KEY",
       "ELIZA_CLOUD_PROVISIONED",
       "ELIZA_CLOUD_AGENT_ID",
       "WAIFU_ELIZA_CLOUD_AGENT_ID",
@@ -192,13 +186,7 @@ describe("local development Cloud target", () => {
       ELIZAOS_CLOUD_ENABLED: "true",
       ELIZA_CLOUD_PROVISIONED: "1",
     });
-    for (const key of [
-      "ELIZA_DEV_CLOUD_API_KEY",
-      "ELIZA_CLOUD_API_KEY",
-      "ELIZACLOUD_API_KEY",
-    ]) {
-      expect(explicitProduction.env[key]).toBe("");
-    }
+    expect(explicitProduction.env.ELIZA_DEV_CLOUD_API_KEY).toBe("");
   });
 
   it("promotes only the staging-specific explicit credential", () => {
@@ -220,30 +208,13 @@ describe("local development Cloud target", () => {
     ).toThrow(/production.*requires ELIZAOS_CLOUD_API_KEY/i);
   });
 
-  it("ignores the staging-specific credential when selecting a production alias", () => {
-    const configured = configureDevCloudEnvironment([], {
-      ELIZA_DEV_CLOUD_TARGET: "production",
-      ELIZA_DEV_CLOUD_API_KEY: "staging-only-key",
-      ELIZA_CLOUD_API_KEY: "production-legacy-key",
-    });
-
-    expect(configured.env.ELIZAOS_CLOUD_API_KEY).toBe("production-legacy-key");
-    expect(configured.env.ELIZA_DEV_CLOUD_API_KEY).toBe("");
-    expect(configured.env.ELIZA_CLOUD_API_KEY).toBe("");
-  });
-
-  it.each([
-    ["ELIZAOS_CLOUD_API_KEY", "generic-key"],
-    ["ELIZA_CLOUD_API_KEY", "legacy-alias-key"],
-    ["ELIZACLOUD_API_KEY", "oldest-alias-key"],
-  ])("scrubs ambient %s from explicit staging", (key, value) => {
+  it("scrubs ambient ELIZAOS_CLOUD_API_KEY from explicit staging", () => {
     const configured = configureDevCloudEnvironment([], {
       ELIZA_DEV_CLOUD_TARGET: "staging",
-      [key]: value,
+      ELIZAOS_CLOUD_API_KEY: "generic-key",
     });
 
     expect(configured.env.ELIZAOS_CLOUD_API_KEY).toBe("");
-    expect(configured.env[key]).toBe("");
   });
 
   it.each(["[REDACTED]", "vault://dev/cloud-key"])(
@@ -258,23 +229,10 @@ describe("local development Cloud target", () => {
     },
   );
 
-  it("skips a canonical placeholder and promotes the next usable legacy alias", () => {
-    const configured = configureDevCloudEnvironment([], {
-      ELIZA_DEV_CLOUD_TARGET: "production",
-      ELIZAOS_CLOUD_API_KEY: "[REDACTED]",
-      ELIZA_CLOUD_API_KEY: "usable-legacy-key",
-    });
-
-    expect(configured.env.ELIZAOS_CLOUD_API_KEY).toBe("usable-legacy-key");
-    expect(configured.env.ELIZA_CLOUD_API_KEY).toBe("");
-  });
-
   it("replaces same-environment wrong paths and standalone hosted overrides", () => {
     const configured = configureDevCloudEnvironment([], {
       ELIZA_DEV_CLOUD_TARGET: "staging",
       ELIZAOS_CLOUD_BASE_URL: "https://api-staging.eliza.app/wrong-path",
-      ELIZAOS_CLOUD_BROWSER_BASE_URL:
-        "https://api.eliza.app/production-browser-escape",
       ELIZAOS_CLOUD_EMBEDDING_URL:
         "https://api.eliza.app/production-embedding-escape",
       ELIZA_CLOUD_REMOTE_RUNNER_URL:
@@ -291,7 +249,6 @@ describe("local development Cloud target", () => {
       ELIZA_DEV_CLOUD_ENV_AUTHORITY: "staging-explicit",
     });
     for (const key of [
-      "ELIZAOS_CLOUD_BROWSER_BASE_URL",
       "ELIZAOS_CLOUD_EMBEDDING_URL",
       "ELIZA_CLOUD_REMOTE_RUNNER_URL",
       "ELIZA_CLOUD_URL",
@@ -334,8 +291,6 @@ describe("local development Cloud target", () => {
       ELIZA_DEV_CLOUD_API_KEY: "promoted-key-must-not-reach-local-agent",
       ELIZAOS_CLOUD_API_KEY: "production-key-must-not-reach-local-agent",
       ELIZAOS_CLOUD_ENABLED: "true",
-      ELIZA_CLOUD_API_KEY: "legacy-key-must-not-reach-local-agent",
-      ELIZACLOUD_API_KEY: "older-key-must-not-reach-local-agent",
       ELIZA_CLOUD_PROVISIONED: "1",
       ELIZA_CLOUD_AGENT_ID: "prod-agent-id-must-not-reach-local-agent",
       WAIFU_ELIZA_CLOUD_AGENT_ID:
@@ -367,8 +322,6 @@ describe("local development Cloud target", () => {
       "ELIZAOS_CLOUD_USE_MEDIA",
       "ELIZAOS_CLOUD_USE_EMBEDDINGS",
       "ELIZAOS_CLOUD_USE_RPC",
-      "ELIZA_CLOUD_API_KEY",
-      "ELIZACLOUD_API_KEY",
       "ELIZA_CLOUD_PROVISIONED",
       "ELIZA_CLOUD_AGENT_ID",
       "WAIFU_ELIZA_CLOUD_AGENT_ID",
@@ -617,10 +570,6 @@ describe("local development entrypoint contract", () => {
     path.join(repoRoot, "packages/app/scripts/dev-shared.ts"),
     "utf8",
   );
-  const desktopDevSource = readFileSync(
-    path.join(repoRoot, "packages/app/scripts/dev-platform.ts"),
-    "utf8",
-  );
 
   it("routes ordinary root development through the Cloud-configured orchestrator", () => {
     expect(rootPackage.scripts.dev).toContain("dev-ui.ts");
@@ -651,14 +600,5 @@ describe("local development entrypoint contract", () => {
         "assertRendererOnlyDevCloudTargetSupported(devCloud",
       ),
     ).toBeLessThan(sharedDevSource.indexOf("reservePortsForWorktree("));
-  });
-
-  it("routes native desktop development through the same target helper", () => {
-    expect(rootPackage.scripts["dev:desktop"]).toContain("dev-platform.ts");
-    expect(rootPackage.scripts["dev:desktop:watch"]).toContain(
-      "dev-platform.ts",
-    );
-    expect(desktopDevSource).toContain("configureDevCloudEnvironment");
-    expect(desktopDevSource).toContain("devCloud.passthroughArgs");
   });
 });

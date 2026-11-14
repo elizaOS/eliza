@@ -1,0 +1,34 @@
+[
+  {
+    "id": "benchmarks.BenchmarkProcessOwner",
+    "model": "packages/benchmarks/quint/BenchmarkProcessOwner.qnt",
+    "sources": [
+      "packages/benchmarks/orchestrator/runner.py",
+      "packages/benchmarks/orchestrator/tests/test_runner_deadlines.py",
+      "packages/benchmarks/quint/check-process-owner.mjs"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One direct child, two output changes, four progress receipts, one monitor error and two termination-helper attempts. The maintained Python suite exercises actual local processes, temporary files, watchdogs, cancellation, SQLite run recording and unmodified full trajectory content.",
+      "Real local observation failures cover the initial read and a later poll. Successful cleanup confirms the child is reaped and unrelated children remain alive. A controlled cleanup refusal retains both errors and the unconfirmed child outcome.",
+      "Progress assumes fair settlement of pending OS and receipt operations. Descendant groups, Windows behavior, provider execution, result publication, arbitrary filesystem errors and durable process-crash recovery remain open."
+    ]
+  },
+  {
+    "id": "benchmarks.AcceptanceGroupSignal",
+    "model": "packages/benchmarks/quint/AcceptanceGroupSignal.qnt",
+    "sources": [
+      "packages/benchmarks/scripts/acceptance_gate.py",
+      "packages/benchmarks/tests/test_acceptance_process_groups.py",
+      "packages/benchmarks/quint/check-acceptance-group-signal.mjs"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One already-owned POSIX group, one signal and one fresh inspection; only Darwin EPERM classification is modeled. Discovery, PID reuse, whole-tree reaping, Windows and non-Darwin semantics remain outside the projection.",
+      "The real Darwin test retains a zombie descendant in a separate session, observes actual EPERM, completes TERM/KILL cleanup and leaves an unrelated child alive. Real live children exercise controlled denial and failed, timed-out, malformed or empty inspection. Non-Darwin conformance records the Darwin-specific test as skipped.",
+      "Progress assumes eventual settlement of signal and inspection calls; it does not prove a wall-clock deadline."
+    ]
+  }
+]

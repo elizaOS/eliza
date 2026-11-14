@@ -110,7 +110,7 @@
       "packages/cloud/scripts/pages-browser-sign-in.test.ts",
       "packages/app/functions/_native-auth-callback-config.ts",
       ".github/workflows/cloud-cf-release.yml",
-      "packages/cloud/scripts/pages-native-auth-callbacks.test.ts"
+      "packages/cloud/api/__tests__/native-callback.pglite.test.ts"
     ],
     "invariants": [
       "TypeOK",

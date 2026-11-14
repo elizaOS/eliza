@@ -3,6 +3,27 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+
+// The default pool and the credential helpers read through a runtime storage
+// policy, which resolves the vault master key. Inject one in-memory test key
+// for that, and write this file's fixtures through the same runtime policy.
+vi.mock("../vault/master-key.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../vault/master-key.js")>();
+  const { randomBytes } = await import("node:crypto");
+  const testKey = randomBytes(32);
+  return { ...actual, loadDefaultMasterKeySync: () => Buffer.from(testKey) };
+});
+vi.mock("../auth/account-storage.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../auth/account-storage.js")>();
+  return {
+    ...actual,
+    createIsolatedAccountStoragePolicy:
+      actual.createRuntimeAccountStoragePolicy,
+  };
+});
+
 import {
   createIsolatedAccountStoragePolicy,
   deleteAccount,

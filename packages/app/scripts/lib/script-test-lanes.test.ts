@@ -27,6 +27,19 @@ test("new nested tests join their runner and embedded imports do not change owne
       "bun:test": ["scripts/nested/b.spec.ts"],
       vitest: ["scripts/c.test.mjs"],
     });
+    mkdirSync(path.join(root, "test/android"), { recursive: true });
+    writeFileSync(
+      path.join(root, "test/android/native.test.mjs"),
+      'import test from "node:test";',
+    );
+    writeFileSync(
+      path.join(root, "test/android/device.android.spec.ts"),
+      'import { test } from "@playwright/test";',
+    );
+    assert.deepEqual(discoverScriptTestLanes(root)["node:test"], [
+      "scripts/a.test.ts",
+      "test/android/native.test.mjs",
+    ]);
     writeFileSync(
       path.join(root, "scripts/unknown.test.ts"),
       "export const missingRunner = true;",

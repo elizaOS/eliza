@@ -26,7 +26,13 @@ change keeps it closed. The turn is sent only after that close fulfilled; a clos
 the conversation, with nothing reopened, and so does a Mute close that fails before a turn
 waits on it, at once and also with nothing to send (Unmute never reopens over it). The host
 bounds `close()`: one that never settles keeps the turn unsent until Stop.
+If a pending reopen returns after Stop, the Stop promise waits for that capture's cancellation
+to settle.
 `interruptSpeech()` cuts a playing reply, and only fully played sentences count as heard.
+Optional `openMic` keeps an echo-cancelled full-duplex capture open through ordinary replies;
+resumed speech can replace an unheard speculative turn and interrupt playback. Owner-input
+review still closes capture through the separately approved reply. Optional `pipelineSpeech`
+requires a host that queues sentences in order and settles each at its playback end.
 Generation fencing drops late endpoint, reply and playback callbacks, so a submitted turn is
 never resent. Mute,
 stop, binding changes and owner-input pauses are handled; approvals are never given by voice.
@@ -43,7 +49,9 @@ when the transport carries the agent event stream, and delivers each turn's fina
 response or the event). `createLiveSegmentStream` maps one continuous capture onto it: one result
 per closed VAD segment (null when the segment produced no transcript), stop reconciliation
 (`cutoff` drops audio stamped after the stop, `close` ends the open segment at it) and `cancel`
-(discard). Its handlers are the `listen` port of `VoiceAssistantSession`.
+(discard). Its handlers are the `listen` port of `VoiceAssistantSession`. Posts go one at a time;
+when more than `LIVE_MAX_UNPOSTED_FRAMES` frames wait for a post, the stream stops with one
+`TRANSPORT` failure.
 When the host opens the capture and its ASR route itself (for example a native plugin that runs
 VAD in the app process and routes segments to the owner's agent), it supplies a
 `LiveCaptureOpener`: `liveAssistantListener` turns it into the assistant's echo-cancelled `listen`
@@ -131,6 +139,8 @@ observation cannot shorten a phase. `sendEntry` is the send boundary for an `aut
 enums only, and a host-installed native stage sink links conversation turns to a native monotonic
 collector by a random id. Records never hold text, account, agent or conversation identifiers.
 The host names the storage key and export format so installed records keep their identity.
+A mark does no storage work: changed records go to storage in one deferred write, and
+`records()` and `exportJson()` write them first.
 Vitest covers ordering, validation, review boundaries and sink failures with a fake clock; this
 is not device latency evidence.
 
@@ -149,7 +159,7 @@ Browser consumers can qualify the recorder and PCM conversion in headless Chromi
 
 ```sh
 bun run --cwd packages/voice build
-node packages/voice/test/consumer.mjs
+bun packages/voice/test/consumer.mjs
 ```
 
 It uses real MediaRecorder and Web Audio, never opens a physical microphone and makes no

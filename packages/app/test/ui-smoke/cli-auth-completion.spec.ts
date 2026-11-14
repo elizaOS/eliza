@@ -21,9 +21,7 @@ const PROVIDERS = {
   oauth: [],
 };
 
-const TEST_AUTH_ENABLED =
-  process.env.VITE_PLAYWRIGHT_TEST_AUTH === "true" ||
-  process.env.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true";
+const TEST_AUTH_ENABLED = process.env.VITE_PLAYWRIGHT_TEST_AUTH === "true";
 
 async function installManagedOriginProxy(
   context: BrowserContext,

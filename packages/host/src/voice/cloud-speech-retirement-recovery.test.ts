@@ -238,7 +238,7 @@ test("restart uses its journal to retire the exact prior session before a new mi
   const origin = "https://api.eliza.app";
   const conversation = "conversation";
   const previous = crypto.randomUUID();
-  const prepared = crypto.randomUUID();
+  const prepared = "55555555-5555-5555-8555-555555555555";
   const events: string[] = [];
   const journal = cloudSpeechRecoveryJournal(root, owner, origin, conversation);
   try {
@@ -338,7 +338,7 @@ test.each(["admit", "cancel", "owner-change", "retirement-unknown", "expired"])(
   "successor consent prewarms without provider admission: %s",
   async (outcome) => {
     const previous = crypto.randomUUID();
-    const prepared = crypto.randomUUID();
+    const prepared = "55555555-5555-5555-8555-555555555555";
     const pending = new Set([previous]);
     const events: string[] = [];
     const controller = new AbortController();

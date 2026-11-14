@@ -2,14 +2,10 @@
 import type http from "node:http";
 import { BlockList, isIP } from "node:net";
 import { isLoopbackBindHost } from "./bind-host.js";
+import { firstHeaderValue } from "./request-token.js";
 export interface LocalRequestTrustPolicy {
 	localAuthRequired: boolean;
 	cloudProvisioned: boolean;
-}
-function firstHeaderValue(value: string | string[] | undefined): string | null {
-	if (typeof value === "string") return value;
-	if (Array.isArray(value) && typeof value[0] === "string") return value[0];
-	return null;
 }
 
 const CLIENT_IP_PROXY_HEADERS = new Set([

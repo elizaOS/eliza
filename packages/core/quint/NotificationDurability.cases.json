@@ -9,11 +9,11 @@
 	"fairness": "AdmittedOperationSettles assumes weak fairness for each enabled local mutation, persistence acknowledgement, reconciliation read and observational broadcast. AdmittedPayloadPersists assumes weak fairness for materialization and a successful write. Permanent non-settling host/storage operations are excluded from progress.",
 	"limitations": [
 		"A single serial owner is explicit. Concurrent independent NotificationService instances writing the same agent cache need a separate cross-process ownership model.",
-		"Hydration begins with a valid version-2 snapshot. Legacy migration and malformed coordinate rejection remain separately test-covered. NotificationGroupPolicy checks grouped replacement and retention. The full category-to-priority mapping remains outside these models.",
+		"Hydration begins with a valid version-2 snapshot. NotificationHydration checks legacy migration, coordinate rejection and repaired startup. NotificationGroupPolicy checks grouped replacement and retention, and its triage case checks all supported category defaults and explicit priority and expiry choices.",
 		"The write-queue case projects title/body/data content to identity plus a read mark. The payload case represents complete nested JSON by a distinguishable value and checks its ownership independently of write ambiguity. The real SQLite case covers writes, live events, grouped callbacks, list APIs and restart.",
 		"Storage operations are atomic but their outcome may be ambiguous to the caller. Restart in this case assumes a successful read of the durable version-2 snapshot.",
 		"Ordinary synchronous list/getUnreadCount APIs can observe provisional in-memory work. The DurableFence invariant concerns the quiescent native and durable-read APIs.",
-		"Conformance executes 70 real SQLite/runtime tests. Named scenarios gate real API effects and do not establish exhaustive schedule equivalence."
+		"Conformance executes 75 real SQLite/runtime tests. Named scenarios gate real API effects and do not establish exhaustive schedule equivalence."
 	],
 	"cases": [
 		{

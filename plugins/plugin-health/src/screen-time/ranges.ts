@@ -2,7 +2,7 @@
  * Screen-time range helpers: label formatting, current and prior window
  * computation, and history-day enumeration for a given range key.
  */
-import type { LifeOpsScreenTimeRangeKey } from "../contracts/lifeops.js";
+import type { LifeOpsScreenTimeRangeKey } from "@elizaos/contracts";
 import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,

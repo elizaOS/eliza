@@ -1,0 +1,131 @@
+{
+  "sources": [
+    "plugins/plugin-notes/src/routes.ts",
+    "plugins/plugin-notes/src/service.ts",
+    "plugins/plugin-notes/src/store.ts",
+    "plugins/plugin-notes/src/trash-retention.ts",
+    "plugins/plugin-notes/src/types.ts",
+    "plugins/plugin-notes/src/validation.ts",
+    "plugins/plugin-notes/src/request-effect-gate.ts",
+    "plugins/plugin-notes/src/interact.ts",
+    "plugins/plugin-notes/vitest.config.ts",
+    "packages/agent/src/api/server.ts",
+    "packages/agent/src/api/server-helpers-auth.ts",
+    "packages/agent/src/api/loopback-trust.ts",
+    "packages/agent/src/api/hono-mount.ts",
+    "packages/agent/src/api/hono-adapter.ts",
+    "packages/agent/src/api/dispatch-route.ts",
+    "packages/host/src/api/http-plugin.ts",
+    "packages/core/src/runtime.ts",
+    "packages/core/src/settings.ts",
+    "packages/testing/src/runtime.ts",
+    "packages/testing/src/pglite-runtime.ts",
+    "packages/agent/vitest.config.ts",
+    "packages/agent/test/setup.ts",
+    "plugins/plugin-notes/quint/check-canonical-trash.mjs",
+    "plugins/plugin-notes/quint/canonical-trash-conformance.json",
+    "packages/scripts/lib/test-output.ts",
+    "packages/scripts/lib/vitest-conformance.ts",
+    "packages/scripts/run-with-deadline.ts",
+    "plugins/plugin-notes/src/__tests__/backend.test.ts",
+    "plugins/plugin-notes/src/__tests__/revision-conflict.test.ts",
+    "plugins/plugin-notes/src/__tests__/trash-retention.test.ts",
+    "packages/agent/test/notes-trash-owner-http.test.ts"
+  ],
+  "conformance": "plugins/plugin-notes/quint/check-canonical-trash.mjs",
+  "bounds": {
+    "domain": "One canonical note, optional recording, one additional retained reference, one reviewed deletion,0..7 clock/revision values, and one shared Store readiness state. A separate projection has one queued erase or acknowledgement, one stale review and one cancellation. Publication and acknowledgement are distinct; their outcomes include definite CAS conflict and unknown commit/readback.",
+    "ordering": "A successful serialized document commit publishes the note erase and its receipt together. An ambiguous encrypted acknowledgement fences every shared handle until quiescent authoritative reopen. Source tests use exact milliseconds; the base model uses three abstract days. Progress applies only while the explicit finite revision budget remains.",
+    "conformance": "Mandatory four separate Node/Vitest processes require all87 exact named cases with zero skips:63 existing domain/revision cases,21 serialized Store/file/direct-route cases and3 actual owner/gateway HTTP/runtime-factory cases. Tests cover pre-dispatch abort, cancelled host verification, lost CAS acknowledgement, readback exception/mismatch, shared-handle fencing, already-committed cancellation, cold recovery without write replay, current collection review, the opt-in setting and independent recording proof.",
+    "limits": "Finite source-linked policy and store projections, not whole-implementation refinement. Native recording bytes/erase, actual at-rest encryption of the controlled document port, installed Alpha adoption/UI, background cleanup scheduling, physical devices and arbitrary filesystem/power failure are unproved. Native verification is a trusted controlled port. The queued projection has one caller, not arbitrary overlapping generations. Definite CAS conflict does not refresh an out-of-band writer cache; authoritative reopen is required. Source readback mismatch fences exposure; arbitrary hostile external document rewrites and uncooperative ports are outside the projection."
+  },
+  "cases": [
+    {
+      "name": "canonical-notes-trash",
+      "main": "CanonicalNotesTrash",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [
+        "FairExpiry",
+        "ExpirySettles",
+        "FairReceipt",
+        "ReceiptSettles",
+        "FairRecovery",
+        "RecoverySettles"
+      ],
+      "temporalChecks": [
+        {
+          "property": "FairExpiry",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of a successful sweep once expiry is due, readable, unshared and within the finite revision budget. Source invokes maintenance at startup or owner reads; no background timer or wall-clock bound is assumed."
+          ]
+        },
+        {
+          "property": "ExpirySettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. Require a TLC loop where the enabled maintenance, receipt acknowledgement, authoritative reopen or queued-call completion is never invoked."
+          ]
+        },
+        {
+          "property": "FairReceipt",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of the exact owner acknowledgement after independent native proof is already available, while storage is readable and revision budget remains. Native proof arrival is not assumed."
+          ]
+        },
+        {
+          "property": "ReceiptSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. Require a TLC loop where the enabled maintenance, receipt acknowledgement, authoritative reopen or queued-call completion is never invoked."
+          ]
+        },
+        {
+          "property": "FairRecovery",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of a successful authoritative reopen after all old handles close. Provider/read success and quiescence are explicit assumptions; there is no automatic write retry."
+          ]
+        },
+        {
+          "property": "RecoverySettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. Require a TLC loop where the enabled maintenance, receipt acknowledgement, authoritative reopen or queued-call completion is never invoked."
+          ]
+        }
+      ],
+      "maxSteps": 30,
+      "samples": 500
+    },
+    {
+      "name": "queued-commit-and-cancellation",
+      "main": "NotesTrashCommitLifecycle",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["FairCallSettlement", "CallSettles"],
+      "temporalChecks": [
+        {
+          "property": "FairCallSettlement",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of the next serialized-store or trusted-verification completion. Each modeled callback returns success, conflict or unknown. A cancelled pre-dispatch caller settles without a write; cancellation after dispatched CAS cannot undo publication. No provider, native erase or real I/O responsiveness is proved."
+          ]
+        },
+        {
+          "property": "CallSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. Require a TLC loop where the enabled maintenance, receipt acknowledgement, authoritative reopen or queued-call completion is never invoked."
+          ]
+        }
+      ],
+      "maxSteps": 25,
+      "samples": 500
+    }
+  ]
+}

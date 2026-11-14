@@ -50,16 +50,28 @@
       "packages/os/android/system-updater/host/ai/eliza/systemupdater/UpdateActivity.java",
       "packages/os/android/system-updater/src/ai/eliza/systemupdater/EngineInstaller.java",
       "packages/os/android/system-updater/src/ai/eliza/systemupdater/JournalStore.java",
+      "packages/os/android/system-updater/src/ai/eliza/systemupdater/UpdateJournal.java",
       "packages/os/android/system-updater/src/ai/eliza/systemupdater/UpdateChannel.java",
       "packages/os/android/system-updater/src/ai/eliza/systemupdater/PackageVerifier.java",
+      "packages/os/android/system-updater/test/ai/eliza/systemupdater/StorageReplay.java",
+      "packages/os/android/system-updater/test/ai/eliza/systemupdater/HeldVerificationReplay.java",
+      "packages/os/quint/check-system-update.mjs",
       "packages/os/android/system-updater/sepolicy/eliza_system_updater.te",
       "packages/os/android/system-updater/sepolicy/seapp_contexts",
       "packages/os/android/system-updater/AndroidManifest.xml"
     ],
-    "invariants": ["NoUnverifiedApply", "NoReplay", "UnknownNeverActive"],
+    "invariants": [
+      "NoUnverifiedApply",
+      "NoReplay",
+      "UnknownNeverActive",
+      "OfferHoldKeepsApplied"
+    ],
     "status": "partial",
     "limitations": [
-      "Finite phase model, one candidate and binary eligibility; native adapter conformance is not established by source links.",
+      "One candidate, binary eligibility and space availability. The host replay checks the actual space guard and failure transition with real private files and controlled Android and journal-storage ports.",
+      "The held verification replay checks the exact verifier, reboot admission and engine observation using real files and controlled Android ports, a fixture trust store and supplied headroom.",
+      "The replay compares the status for an absent, different or unreadable offer before and after verification. Each case keeps the held journal and files and preserves its original retry behavior.",
+      "Progress requires enough storage to become and stay available, a valid package, matching offer reads, continued eligibility and fair jobs and callbacks.",
       "Android resource/permission/SELinux admission, download interruptions, storage crashes, real signature checks and physical update/reboot/recovery remain qualification gates."
     ]
   },
@@ -75,6 +87,23 @@
     "limitations": [
       "One explicit optional product, fixed updater source and an atomic outer staging directory. Pixel product tests exercise real file copies, recorded hashes, inactive configuration and collision refusal.",
       "Package compilation, enabled enrollment, signing, Android installation and interrupted publication remain separate gates."
+    ]
+  },
+  {
+    "id": "os.SystemUpdateDownload",
+    "model": "packages/os/quint/SystemUpdateDownload.qnt",
+    "sources": [
+      "packages/os/android/system-updater/src/ai/eliza/systemupdater/UpdateChannel.java",
+      "packages/os/android/system-updater/test/ai/eliza/systemupdater/DownloadReplay.java",
+      "packages/os/quint/check-system-update.mjs"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One known-unapplied candidate, six retained-byte classes and at most two HTTP requests. The serial host and real FileLock own each settled source call.",
+      "The source checker executes actual UpdateChannel download calls with owned HTTPS, real random-access files and actual range responses. Android discovery/signature checks, JobScheduler, engine apply and reboot are not established.",
+      "File-lock contention and interrupted-process recovery have selected model scenarios; source download conformance covers corrupt full/oversized partial reset, corrupt prefix refetch, valid range resume and verified complete reuse.",
+      "Progress assumes the same candidate, available lock/storage, successful IO and exact HTTP bytes under fair retry calls. No deadline, Android power-loss or eventual installed-update theorem is claimed."
     ]
   }
 ]

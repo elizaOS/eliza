@@ -1,12 +1,13 @@
 /**
- * Renderer contract of the AOSP telephony profile: roles, SIMs, Contacts, SMS/MMS reads and reviewed
- * native sends, served by a host subclass of the native `TelephonyPlugin`
+ * Renderer contract of the AOSP telephony profile: roles, SIMs, Contacts, SMS/MMS reads, reviewed
+ * native sends, owner-placed calls and the phone's stored voicemail, served by a host subclass of the native `TelephonyPlugin`
  * (`@elizaos/plugin-native-messages`). A host registers that plugin only when its native admission
  * proves the install is the product's AOSP image; elsewhere this client refuses every call before
  * anything reaches native code.
  *
  * Text messaging has no account or OAuth grant: identity is the device's own subscriptions and the
- * user's Android default dialer and SMS roles. A handoff never reports a call or a send. A native
+ * user's Android default dialer and SMS roles. A handoff never reports a call or a send, and a placed
+ * call reports only that Android accepted the request, never that it connected. A native
  * send returns the shared `sms.send.v1` result (`./sms-send.ts`): `submitted` proves only that Android
  * accepted the request, `sent` requires every sent callback, `delivered` every delivery report, and a
  * repeated operation ID reads its record and never sends again.
@@ -153,6 +154,124 @@ export interface TelephonyCallLogEntry {
 }
 /** The largest recent-calls page a host returns in one read. */
 export const TELEPHONY_CALL_LOG_MAX = 50;
+/**
+ * What became of a request to place a call. `placed`: Android's Telecom accepted the request, which
+ * says nothing about ringing, connecting or being answered. `emergency-handoff`: the number is an
+ * emergency number (or could not be classified), so nothing was placed and the dial screen is open
+ * with it. `busy`: a call is already ringing or in progress; nothing was placed.
+ */
+export type PlaceCallStatus =
+  | "placed"
+  | "emergency-handoff"
+  | "busy"
+  | "unavailable"
+  | "failed";
+export interface PlaceCallResult {
+  status: PlaceCallStatus;
+  message: string;
+}
+/** What the phone's voicemail sources report for the default calling account. `unsupported`: no
+ * source serves it, which is different from having no voicemail. */
+export type VoicemailCarrierState = "ready" | "unconfigured" | "unsupported";
+export interface VoicemailStatus {
+  /** Whether this app may read voicemail (it is the default phone app). */
+  access: boolean;
+  /** Null exactly when there is no access: an unread state is never presented as `unsupported`. */
+  state: VoicemailCarrierState | null;
+}
+/** One stored voicemail from the host's bounded, foreground-only read. */
+export interface VoicemailEntry {
+  id: string;
+  /** Digits with an optional leading +, or "" for a withheld or unknown caller. */
+  number: string;
+  cachedName: string | null;
+  /** Epoch milliseconds. */
+  date: number;
+  durationSeconds: number;
+  /** Not yet marked heard. */
+  isNew: boolean;
+  /** The audio is on the phone; otherwise `fetchVoicemailAudio` asks its source to download it. */
+  hasAudio: boolean;
+  /** The carrier's own transcript when it stored one of at most 4000 characters; otherwise null. */
+  carrierTranscript: string | null;
+}
+export interface VoicemailList {
+  state: VoicemailCarrierState;
+  /** Newest first. Always empty when `state` is `unsupported`. */
+  voicemails: VoicemailEntry[];
+}
+/** `fetching` proves only that the voicemail's source was asked to download the audio. */
+export type VoicemailFetchStatus = "ready" | "fetching" | "failed";
+/** The stored audio exactly as the source saved it (often AMR or 3GPP). */
+export interface VoicemailAudio {
+  id: string;
+  mimeType: string;
+  /** Decoded byte length of `data`. */
+  size: number;
+  /** Base64. */
+  data: string;
+}
+/** The voicemail decoded on the phone to 16 kHz mono 16-bit PCM in a WAV file, for transcription. */
+export interface VoicemailPcm {
+  mimeType: "audio/wav";
+  sampleRateHz: 16000;
+  durationSeconds: number;
+  /** Base64 of the whole WAV file. */
+  data: string;
+}
+/** The largest voicemail list a host returns in one read. */
+export const VOICEMAIL_MAX = 50;
+/** The largest stored audio `voicemailAudio` returns; a larger one is refused (`too-large`). */
+export const VOICEMAIL_AUDIO_MAX_BYTES = 8 * 1024 * 1024;
+/** The longest audio `voicemailPcm` decodes; a longer one is refused (`too-long`). */
+export const VOICEMAIL_PCM_MAX_SECONDS = 300;
+/** The largest WAV file `voicemailPcm` returns. */
+export const VOICEMAIL_PCM_MAX_BYTES = 10 * 1024 * 1024;
+export type PhoneNetworkType =
+  | "none"
+  | "2g"
+  | "3g"
+  | "4g"
+  | "5g"
+  | "wifi-calling"
+  | "unknown";
+/** One active SIM line of the owner's phone. A null field was not readable; it is not a value. */
+export interface PhoneLine {
+  subscriptionId: number;
+  /** 0-based SIM slot. */
+  slot: number;
+  displayName: string;
+  carrierName: string;
+  /** The line's own number: digits with an optional leading +. Null when unknown or not readable. */
+  number: string | null;
+  /** Two lower-case letters. */
+  countryIso: string | null;
+  networkType: PhoneNetworkType;
+  roaming: boolean | null;
+  /** 0 to 4. */
+  signalLevel: number | null;
+  /** An eSIM. */
+  embedded: boolean;
+  /** Null without device-identifier access. */
+  iccid: string | null;
+  /** The slot's IMEI. Null without device-identifier access or on a slot that has none. */
+  imei: string | null;
+}
+/** The phone's SIM lines from the host's bounded, foreground-only read, for a Settings page. */
+export interface PhoneInfo {
+  access: {
+    /** False: the SIM list was not read, and `lines` is empty. That is not "no SIM". */
+    phoneState: boolean;
+    /** False: every `number` is null. */
+    phoneNumbers: boolean;
+    /** False: every `iccid` and `imei` is null. Android grants this only to privileged apps. */
+    deviceIdentifiers: boolean;
+  };
+  /** At most 4, ordered by slot. */
+  lines: PhoneLine[];
+}
+/** The most SIM lines `phoneInfo` returns. */
+export const PHONE_INFO_MAX_LINES = 4;
 /** The native bridge surface of a host's `TelephonyPlugin` subclass. Results are untrusted until parsed. */
 export interface TelephonyNativePlugin {
   imageCapability(): Promise<unknown>;
@@ -167,6 +286,22 @@ export interface TelephonyNativePlugin {
     number?: string;
   }): Promise<unknown>;
   dial(options: { number: string }): Promise<unknown>;
+  /** Asks Telecom for a call. Needs the dialer role and CALL_PHONE; rejects with code
+   * `role-required` or `permission-required` without them. */
+  placeCall?(options: { number: string }): Promise<unknown>;
+  /** The owner's SIM lines, numbers and device identifiers, each only as far as Android allows. */
+  phoneInfo?(): Promise<unknown>;
+  voicemailStatus?(): Promise<unknown>;
+  listVoicemail?(options: { limit: number }): Promise<unknown>;
+  /** Rejects with code `not-found` when the voicemail is gone. */
+  fetchVoicemailAudio?(options: { id: string }): Promise<unknown>;
+  /** Rejects with code `not-found`, `not-ready` (audio not downloaded) or `too-large`. */
+  voicemailAudio?(options: { id: string }): Promise<unknown>;
+  /** Rejects with code `not-found`, `not-ready`, `too-long`, `too-large` or `undecodable`. */
+  voicemailPcm?(options: { id: string }): Promise<unknown>;
+  markVoicemailHeard?(options: { id: string }): Promise<unknown>;
+  deleteVoicemail?(options: { id: string }): Promise<unknown>;
+  observeVoicemail?(options: { enabled: boolean }): Promise<unknown>;
   composeSms(options: { recipients: string[]; body: string }): Promise<unknown>;
   listThreads(options: {
     limit: number;
@@ -203,7 +338,11 @@ export interface TelephonyNativePlugin {
   smsSendHistory(): Promise<unknown>;
   smsSendResult(options: { operationId: string }): Promise<unknown>;
   addListener?(
-    event: "messagesChanged" | "smsSendUpdated" | "mmsSendUpdated",
+    event:
+      | "messagesChanged"
+      | "smsSendUpdated"
+      | "mmsSendUpdated"
+      | "voicemailChanged",
     listener: (data: unknown) => void,
   ): Promise<{ remove(): Promise<void> | void }>;
 }
@@ -469,6 +608,322 @@ export function parseHandoff(
     handler: nullableText(data.handler, "handoff handler"),
     message: text(data.message, "handoff message", 1024),
   };
+}
+
+/** Refuses a result that carries a field the contract does not name, or lacks one it does. */
+const exact = (
+  data: Record<string, unknown>,
+  keys: readonly string[],
+  what: string,
+) => {
+  const present = Object.keys(data);
+  if (
+    present.length !== keys.length ||
+    !keys.every((key) => Object.hasOwn(data, key))
+  )
+    throw invalid(what);
+};
+const PLACE_CALL: readonly PlaceCallStatus[] = [
+  "placed",
+  "emergency-handoff",
+  "busy",
+  "unavailable",
+  "failed",
+];
+/** Parses a place-call result. Nothing in it can say a call connected. */
+export function parsePlaceCall(value: unknown): PlaceCallResult {
+  const data = object(value, "call request");
+  exact(data, ["status", "message"], "call request");
+  if (!PLACE_CALL.includes(data.status as PlaceCallStatus))
+    throw invalid("call request");
+  return {
+    status: data.status as PlaceCallStatus,
+    message: text(data.message, "call request message", 1024),
+  };
+}
+
+const VOICEMAIL_STATES: readonly VoicemailCarrierState[] = [
+  "ready",
+  "unconfigured",
+  "unsupported",
+];
+const VOICEMAIL_ID = /^[1-9]\d{0,17}$/;
+const voicemailState = (value: unknown): VoicemailCarrierState => {
+  if (!VOICEMAIL_STATES.includes(value as VoicemailCarrierState))
+    throw invalid("voicemail state");
+  return value as VoicemailCarrierState;
+};
+/** Parses the voicemail status. A state without access, or access without a state, is refused. */
+export function parseVoicemailStatus(value: unknown): VoicemailStatus {
+  const data = object(value, "voicemail status");
+  exact(data, ["access", "state"], "voicemail status");
+  const access = bool(data.access, "voicemail access");
+  if (!access) {
+    if (data.state !== null) throw invalid("voicemail state");
+    return { access, state: null };
+  }
+  return { access, state: voicemailState(data.state) };
+}
+const VOICEMAIL_FIELDS = [
+  "id",
+  "number",
+  "cachedName",
+  "date",
+  "durationSeconds",
+  "isNew",
+  "hasAudio",
+  "carrierTranscript",
+] as const;
+/** Parses a voicemail list. A longer list than requested, a repeated ID, rows out of order, an
+ * unknown field, or any row under an `unsupported` state is refused. */
+export function parseVoicemailList(
+  value: unknown,
+  limit: number,
+): VoicemailList {
+  const data = object(value, "voicemail list");
+  exact(data, ["state", "voicemails"], "voicemail list");
+  const state = voicemailState(data.state);
+  if (
+    !Array.isArray(data.voicemails) ||
+    data.voicemails.length > limit ||
+    (state === "unsupported" && data.voicemails.length > 0)
+  )
+    throw invalid("voicemail list");
+  const seen = new Set<string>();
+  let previous = Number.POSITIVE_INFINITY;
+  const voicemails = data.voicemails.map((row): VoicemailEntry => {
+    const v = object(row, "voicemail");
+    exact(v, VOICEMAIL_FIELDS, "voicemail");
+    const id = text(v.id, "voicemail id", 18);
+    if (!VOICEMAIL_ID.test(id) || seen.has(id)) throw invalid("voicemail id");
+    seen.add(id);
+    const number = text(v.number, "voicemail number", 21);
+    if (number !== "" && !/^\+?[0-9]{2,20}$/.test(number))
+      throw invalid("voicemail number");
+    if (
+      !Number.isSafeInteger(v.date) ||
+      (v.date as number) <= 0 ||
+      (v.date as number) > previous ||
+      !Number.isSafeInteger(v.durationSeconds) ||
+      (v.durationSeconds as number) < 0
+    )
+      throw invalid("voicemail");
+    previous = v.date as number;
+    const transcript =
+      v.carrierTranscript === null
+        ? null
+        : text(v.carrierTranscript, "voicemail transcript", 4000);
+    if (transcript !== null && !transcript.trim())
+      throw invalid("voicemail transcript");
+    return {
+      id,
+      number,
+      cachedName: v.cachedName === null ? null : text(v.cachedName, "caller"),
+      date: v.date as number,
+      durationSeconds: v.durationSeconds as number,
+      isNew: bool(v.isNew, "voicemail"),
+      hasAudio: bool(v.hasAudio, "voicemail"),
+      carrierTranscript: transcript,
+    };
+  });
+  return { state, voicemails };
+}
+const VOICEMAIL_FETCH: readonly VoicemailFetchStatus[] = [
+  "ready",
+  "fetching",
+  "failed",
+];
+export function parseVoicemailFetch(value: unknown): VoicemailFetchStatus {
+  const data = object(value, "voicemail fetch");
+  exact(data, ["status"], "voicemail fetch");
+  if (!VOICEMAIL_FETCH.includes(data.status as VoicemailFetchStatus))
+    throw invalid("voicemail fetch");
+  return data.status as VoicemailFetchStatus;
+}
+/** The decoded byte length of canonical padded base64 of at most `maxBytes`; anything else is refused. */
+function base64Bytes(value: unknown, maxBytes: number, what: string): number {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length % 4 !== 0 ||
+    value.length > Math.ceil(maxBytes / 3) * 4 ||
+    !/^[A-Za-z0-9+/]*={0,2}$/.test(value)
+  )
+    throw invalid(what);
+  const padding = value.endsWith("==") ? 2 : value.endsWith("=") ? 1 : 0;
+  const bytes = (value.length / 4) * 3 - padding;
+  if (bytes < 1 || bytes > maxBytes) throw invalid(what);
+  return bytes;
+}
+/** Parses stored voicemail audio: the requested voicemail, an audio type, and exactly `size` bytes
+ * within the bound. */
+export function parseVoicemailAudio(
+  value: unknown,
+  id: string,
+): VoicemailAudio {
+  const data = object(value, "voicemail audio");
+  exact(data, ["id", "mimeType", "size", "data"], "voicemail audio");
+  const mimeType = text(data.mimeType, "voicemail audio type", 70);
+  if (
+    data.id !== id ||
+    !/^audio\/[A-Za-z0-9][A-Za-z0-9.+-]{0,63}$/.test(mimeType) ||
+    base64Bytes(data.data, VOICEMAIL_AUDIO_MAX_BYTES, "voicemail audio") !==
+      data.size
+  )
+    throw invalid("voicemail audio");
+  return { id, mimeType, size: data.size as number, data: data.data as string };
+}
+/** Parses decoded voicemail PCM: a 16 kHz mono WAV whose byte length matches its stated duration,
+ * within the five-minute and size bounds. The WAV header itself is the transcriber's to read. */
+export function parseVoicemailPcm(value: unknown): VoicemailPcm {
+  const data = object(value, "voicemail PCM");
+  exact(
+    data,
+    ["mimeType", "sampleRateHz", "durationSeconds", "data"],
+    "voicemail PCM",
+  );
+  const bytes = base64Bytes(
+    data.data,
+    VOICEMAIL_PCM_MAX_BYTES,
+    "voicemail PCM",
+  );
+  const samples = (bytes - 44) / 2;
+  const duration = data.durationSeconds;
+  if (
+    data.mimeType !== "audio/wav" ||
+    data.sampleRateHz !== 16000 ||
+    !Number.isSafeInteger(samples) ||
+    samples < 1 ||
+    typeof duration !== "number" ||
+    !Number.isFinite(duration) ||
+    duration <= 0 ||
+    duration > VOICEMAIL_PCM_MAX_SECONDS ||
+    Math.abs(duration - samples / 16000) > 0.001
+  )
+    throw invalid("voicemail PCM");
+  return {
+    mimeType: "audio/wav",
+    sampleRateHz: 16000,
+    durationSeconds: duration,
+    data: data.data as string,
+  };
+}
+function parseVoicemailWrite<S extends string>(
+  value: unknown,
+  done: S,
+): S | "not-found" {
+  const data = object(value, "voicemail change");
+  exact(data, ["status"], "voicemail change");
+  if (data.status !== done && data.status !== "not-found")
+    throw invalid("voicemail change");
+  return data.status as S | "not-found";
+}
+
+const PHONE_NETWORK_TYPES: readonly PhoneNetworkType[] = [
+  "none",
+  "2g",
+  "3g",
+  "4g",
+  "5g",
+  "wifi-calling",
+  "unknown",
+];
+const PHONE_LINE_FIELDS = [
+  "subscriptionId",
+  "slot",
+  "displayName",
+  "carrierName",
+  "number",
+  "countryIso",
+  "networkType",
+  "roaming",
+  "signalLevel",
+  "embedded",
+  "iccid",
+  "imei",
+] as const;
+/** A nullable string of one shape; a present value that does not match is refused. */
+const shaped = (value: unknown, shape: RegExp, what: string) => {
+  if (value === null) return null;
+  if (typeof value !== "string" || !shape.test(value)) throw invalid(what);
+  return value;
+};
+/**
+ * Parses the phone's SIM lines. Refused: an unknown or missing field, more than 4 lines, a repeated
+ * subscription, lines out of slot order, lines without phone-state access, a number without
+ * phone-number access, and an ICCID or IMEI without device-identifier access.
+ */
+export function parsePhoneInfo(value: unknown): PhoneInfo {
+  const data = object(value, "phone information");
+  exact(data, ["access", "lines"], "phone information");
+  const granted = object(data.access, "phone access");
+  exact(
+    granted,
+    ["phoneState", "phoneNumbers", "deviceIdentifiers"],
+    "phone access",
+  );
+  const access = {
+    phoneState: bool(granted.phoneState, "phone access"),
+    phoneNumbers: bool(granted.phoneNumbers, "phone access"),
+    deviceIdentifiers: bool(granted.deviceIdentifiers, "phone access"),
+  };
+  if (
+    !Array.isArray(data.lines) ||
+    data.lines.length > PHONE_INFO_MAX_LINES ||
+    (!access.phoneState && data.lines.length > 0)
+  )
+    throw invalid("phone lines");
+  const seen = new Set<number>();
+  let previousSlot = 0;
+  const lines = data.lines.map((row): PhoneLine => {
+    const l = object(row, "phone line");
+    exact(l, PHONE_LINE_FIELDS, "phone line");
+    const subscriptionId = count(l.subscriptionId, "phone line subscription");
+    const slot = count(l.slot, "phone line slot");
+    if (seen.has(subscriptionId) || slot < previousSlot)
+      throw invalid("phone line");
+    seen.add(subscriptionId);
+    previousSlot = slot;
+    const number = shaped(
+      l.number,
+      /^(\+[0-9]{1,31}|[0-9]{1,32})$/,
+      "phone line number",
+    );
+    const iccid = shaped(
+      l.iccid,
+      /^([0-9]{1,21}F?|[0-9]{22})$/,
+      "phone line ICCID",
+    );
+    const imei = shaped(l.imei, /^[0-9]{14,16}$/, "phone line IMEI");
+    if (number !== null && !access.phoneNumbers)
+      throw invalid("phone line number");
+    if ((iccid !== null || imei !== null) && !access.deviceIdentifiers)
+      throw invalid("phone line identifier");
+    if (!PHONE_NETWORK_TYPES.includes(l.networkType as PhoneNetworkType))
+      throw invalid("phone line network");
+    if (
+      l.signalLevel !== null &&
+      (!Number.isSafeInteger(l.signalLevel) ||
+        (l.signalLevel as number) < 0 ||
+        (l.signalLevel as number) > 4)
+    )
+      throw invalid("phone line signal");
+    return {
+      subscriptionId,
+      slot,
+      displayName: text(l.displayName, "phone line name", 64),
+      carrierName: text(l.carrierName, "phone line carrier", 64),
+      number,
+      countryIso: shaped(l.countryIso, /^[a-z]{2}$/, "phone line country"),
+      networkType: l.networkType as PhoneNetworkType,
+      roaming: l.roaming === null ? null : bool(l.roaming, "phone line"),
+      signalLevel: l.signalLevel as number | null,
+      embedded: bool(l.embedded, "phone line"),
+      iccid,
+      imei,
+    };
+  });
+  return { access, lines };
 }
 
 /** A dialable number: digits with an optional leading +, and the separators people type. Letters,
@@ -1020,6 +1475,17 @@ export function smsSendMayRetryAutomatically(_: SmsSendResult): false {
   return false;
 }
 
+const VOICEMAIL_METHODS = [
+  "voicemailStatus",
+  "listVoicemail",
+  "fetchVoicemailAudio",
+  "voicemailAudio",
+  "voicemailPcm",
+  "markVoicemailHeard",
+  "deleteVoicemail",
+  "observeVoicemail",
+] as const;
+type VoicemailMethod = (typeof VOICEMAIL_METHODS)[number];
 /** The renderer client. Without the admitted profile every method rejects without reaching native code. */
 export function createTelephonyClient(
   plugin: TelephonyNativePlugin | null,
@@ -1030,6 +1496,21 @@ export function createTelephonyClient(
     if (!admitted || !plugin)
       throw new TelephonyUnavailable(options.unavailableMessage);
     return plugin;
+  };
+  /** The bridge of a host whose native side has every voicemail method; older hosts have none. */
+  const voicemail = () => {
+    const bridge = native();
+    if (!VOICEMAIL_METHODS.every((method) => bridge[method]))
+      throw new TelephonyUnavailable(
+        "Voicemail is not available in this install.",
+      );
+    return bridge as TelephonyNativePlugin &
+      Required<Pick<TelephonyNativePlugin, VoicemailMethod>>;
+  };
+  const voicemailId = (id: string) => {
+    if (typeof id !== "string" || !VOICEMAIL_ID.test(id))
+      throw new RangeError("Invalid voicemail");
+    return id;
   };
   return {
     available: admitted && !!plugin,
@@ -1089,6 +1570,101 @@ export function createTelephonyClient(
       const normalized = normalizePhoneNumber(number);
       if (!normalized) throw new RangeError("Not a dialable phone number");
       return parseHandoff(await bridge.dial({ number: normalized }), "dialer");
+    },
+    /**
+     * Places a call the owner asked for, through Android's Telecom, while this app is the default
+     * phone app. `placed` means only that Android accepted the request. An emergency number is never
+     * placed here: the dial screen opens with it (`emergency-handoff`). Rejects with code
+     * `role-required` or `permission-required` when this app may not place calls.
+     */
+    async placeCall(number: string) {
+      const bridge = native();
+      const normalized = normalizePhoneNumber(number);
+      if (!normalized) throw new RangeError("Not a dialable phone number");
+      if (!bridge.placeCall)
+        throw new TelephonyUnavailable(
+          "Placing calls is not available in this install.",
+        );
+      return parsePlaceCall(await bridge.placeCall({ number: normalized }));
+    },
+    /** The phone's SIM lines for a Settings page, read only while the host is unlocked and in
+     * front. `access` says which parts Android let the host read; a part it refused is null. */
+    async phoneInfo() {
+      const bridge = native();
+      if (!bridge.phoneInfo)
+        throw new TelephonyUnavailable(
+          "Phone information is not available in this install.",
+        );
+      return parsePhoneInfo(await bridge.phoneInfo());
+    },
+    /** Whether this app may read voicemail and what the phone's voicemail sources report. */
+    async voicemailStatus() {
+      return parseVoicemailStatus(await voicemail().voicemailStatus());
+    },
+    /** Stored voicemails, newest first, with the carrier state they were read under. An
+     * unsupported carrier is an empty list with `state: "unsupported"`, never an error. */
+    async listVoicemail(limit = 25) {
+      const bridge = voicemail();
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > VOICEMAIL_MAX)
+        throw new RangeError("Voicemail limit must be 1 to 50");
+      return parseVoicemailList(await bridge.listVoicemail({ limit }), limit);
+    },
+    /** `ready` when the audio is on the phone; otherwise asks its source to download it. */
+    async fetchVoicemailAudio(id: string) {
+      const bridge = voicemail();
+      return parseVoicemailFetch(
+        await bridge.fetchVoicemailAudio({ id: voicemailId(id) }),
+      );
+    },
+    /** The stored audio bytes for playback, at most 8 MiB. */
+    async voicemailAudio(id: string) {
+      const bridge = voicemail();
+      return parseVoicemailAudio(
+        await bridge.voicemailAudio({ id: voicemailId(id) }),
+        id,
+      );
+    },
+    /** The voicemail decoded on the phone to a 16 kHz mono PCM16 WAV for on-device transcription;
+     * audio over five minutes is refused. */
+    async voicemailPcm(id: string) {
+      const bridge = voicemail();
+      return parseVoicemailPcm(
+        await bridge.voicemailPcm({ id: voicemailId(id) }),
+      );
+    },
+    async markVoicemailHeard(id: string) {
+      const bridge = voicemail();
+      return parseVoicemailWrite(
+        await bridge.markVoicemailHeard({ id: voicemailId(id) }),
+        "marked",
+      );
+    },
+    /** Deletes one voicemail the owner chose from the phone's store. */
+    async deleteVoicemail(id: string) {
+      const bridge = voicemail();
+      return parseVoicemailWrite(
+        await bridge.deleteVoicemail({ id: voicemailId(id) }),
+        "deleted",
+      );
+    },
+    /** Change notices carry no voicemail content; read the list again. Returns the stop function. */
+    async observeVoicemail(onChange: () => void) {
+      const bridge = voicemail();
+      if (!bridge.addListener)
+        throw new TelephonyUnavailable(options.unavailableMessage);
+      const handle = await bridge.addListener("voicemailChanged", () =>
+        onChange(),
+      );
+      try {
+        await bridge.observeVoicemail({ enabled: true });
+      } catch (error) {
+        await handle.remove();
+        throw error;
+      }
+      return async () => {
+        await handle.remove();
+        await bridge.observeVoicemail({ enabled: false });
+      };
     },
     /** Opens the user's SMS app with the reviewed recipients and text. Sending happens there. */
     async composeSms(review: SmsReview) {

@@ -8,10 +8,14 @@
  */
 import { createServer, type Server } from "node:http";
 import { type AddressInfo, createServer as createNetServer } from "node:net";
+import { networkInterfaces } from "node:os";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { fetchRemoteMedia, MediaFetchError } from "../src/media/fetch.ts";
 import { fetchWithSsrfGuard } from "../src/network/fetch-guard.ts";
-import { nodePinnedFetch } from "../src/network/node-pinned-fetch.ts";
+import {
+	createValidatedLookup,
+	nodePinnedFetch,
+} from "../src/network/node-pinned-fetch.ts";
 import {
 	createPinnedLookup,
 	type LookupFn,
@@ -371,3 +375,41 @@ describe("pinned fetch against out-of-range upstream status codes", () => {
 		expect(await response.text()).toBe("ok");
 	});
 });
+
+const hasIpv6Loopback = Object.values(networkInterfaces()).some((entries) =>
+	entries?.some((entry) => entry.family === "IPv6" && entry.address === "::1"),
+);
+
+describe.skipIf(!hasIpv6Loopback)(
+	"pinned fetch to an IPv6 literal host",
+	() => {
+		let server: Server;
+		let port: number;
+
+		beforeAll(async () => {
+			server = createServer((req, res) => res.end(`ok ${req.headers.host}`));
+			await new Promise<void>((resolve) => server.listen(0, "::1", resolve));
+			port = (server.address() as AddressInfo).port;
+		});
+
+		afterAll(async () => {
+			await new Promise<void>((resolve) => server.close(() => resolve()));
+		});
+
+		it("delivers to the address with the validated lookup the auth webhook dispatcher passes", async () => {
+			// The dispatcher screens IP literals itself and passes
+			// createValidatedLookup for hostnames; Node skips the lookup for a literal.
+			const response = await nodePinnedFetch({
+				url: new URL(`http://[::1]:${port}/hook`),
+				init: { method: "POST", body: "{}" },
+				// Same cast as auth's fetchPinnedResponse.
+				lookup: createValidatedLookup(() => {}) as Parameters<
+					typeof nodePinnedFetch
+				>[0]["lookup"],
+				addresses: [],
+			});
+			expect(response.status).toBe(200);
+			expect(await response.text()).toBe(`ok [::1]:${port}`);
+		});
+	},
+);

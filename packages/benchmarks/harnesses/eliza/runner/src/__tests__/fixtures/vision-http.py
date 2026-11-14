@@ -1,5 +1,6 @@
 """Boot the candidate's real HTTP/runtime stack and assert missing vision fails."""
 
+import http.client
 import json
 import math
 import os
@@ -38,7 +39,10 @@ root.mkdir(parents=True, exist_ok=True)
 server_entry = Path(os.environ["BENCHMARK_VISION_SERVER_ENTRY"])
 invalid_agent = "--invalid-agent" in sys.argv
 visualwebbench = "--visualwebbench" in sys.argv
-positive = "--positive" in sys.argv or invalid_agent or visualwebbench
+split_utf8 = "--split-utf8" in sys.argv
+positive = (
+    "--positive" in sys.argv or invalid_agent or visualwebbench or split_utf8
+)
 provider_requests = []
 
 
@@ -237,19 +241,41 @@ with (
                     }
                 ],
             }
-        request = urllib.request.Request(
-            url + "message",
-            data=json.dumps(payload).encode(),
-            headers={
-                "Authorization": "Bearer vision-transport-diagnostic",
-                "Content-Type": "application/json",
-            },
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=request_timeout) as response:
-                status, body = response.status, response.read().decode()
-        except urllib.error.HTTPError as error:
-            status, body = error.code, error.read().decode()
+        if split_utf8:
+            # Send the body in two writes that split one UTF-8 character.
+            payload["text"] = "Inspect this screenshot from the café."
+            data = json.dumps(payload, ensure_ascii=False).encode()
+            cut = data.index("é".encode()) + 1
+            connection = http.client.HTTPConnection(
+                "127.0.0.1", port, timeout=request_timeout
+            )
+            connection.putrequest("POST", "/api/benchmark/message")
+            connection.putheader("Authorization", "Bearer vision-transport-diagnostic")
+            connection.putheader("Content-Type", "application/json")
+            connection.putheader("Content-Length", str(len(data)))
+            connection.endheaders()
+            connection.send(data[:cut])
+            time.sleep(0.2)
+            connection.send(data[cut:])
+            response = connection.getresponse()
+            status, body = response.status, response.read().decode()
+            connection.close()
+        else:
+            request = urllib.request.Request(
+                url + "message",
+                data=json.dumps(payload).encode(),
+                headers={
+                    "Authorization": "Bearer vision-transport-diagnostic",
+                    "Content-Type": "application/json",
+                },
+            )
+            try:
+                with urllib.request.urlopen(
+                    request, timeout=request_timeout
+                ) as response:
+                    status, body = response.status, response.read().decode()
+            except urllib.error.HTTPError as error:
+                status, body = error.code, error.read().decode()
         log.flush()
         if invalid_agent:
             assert status == 500, (status, body)
@@ -297,6 +323,13 @@ with (
             assert any(call["model"] == "vision-test" for call in provider_requests), (
                 provider_requests
             )
+            if split_utf8:
+                sent = json.dumps(
+                    [call.get("messages", []) for call in provider_requests],
+                    ensure_ascii=False,
+                )
+                assert payload["text"] in sent, sent
+                assert "\ufffd" not in sent, sent
             (root / "http-positive-receipt.json").write_text(
                 json.dumps(
                     {

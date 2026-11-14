@@ -326,7 +326,7 @@ export async function runV5MessageRuntimeStage1(
   const stage1PreprocessStartedAt = performance.now();
 
   // G10/G11: construct the per-trajectory recorder. No-op when disabled via
-  // ELIZA_TRAJECTORY_RECORDING=0. Failures inside the recorder must NEVER
+  // ELIZA_TRAJECTORY_LOGGING=0. Failures inside the recorder must NEVER
   // propagate up — the recorder is observability, not load-bearing.
   const recordingEnabled = isTrajectoryRecordingEnabled();
   // Every stage emitted below also mirrors into the turn's database

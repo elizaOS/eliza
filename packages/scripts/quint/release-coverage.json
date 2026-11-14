@@ -1,0 +1,24 @@
+[
+  {
+    "id": "release-packed-provenance",
+    "model": "packages/scripts/quint/ReleasePackedProvenance.qnt",
+    "sources": [
+      "packages/scripts/lib/release-candidate.ts",
+      "packages/scripts/lib/release-registry.ts"
+    ],
+    "invariants": [
+      "AdmittedOnlyAfterRestore",
+      "VerifiedArchiveIdentity",
+      "ProvidedMismatchRejected",
+      "PublicNeedsBothFields",
+      "RegistryIdentityRequired",
+      "RegistryNeedsVerifiedCandidate"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One exact package identity and source commit from an already admitted release cohort, one temporary manifest write, pack, restoration attempt, candidate verification and registry inspection. Two finite modes cover required public provenance and the existing private missing-field fallback. Three registry values mean matching, undefined, or provided-but-wrong (including null and empty).",
+      "Partial release model, not a complete release transaction or machine-checked refinement. One package, no dependency order, state-lock races, atomic Git refs, registry channel promotion, multi-package interrupted publish/resume, concurrent foreign filesystem writers, SIGKILL/process/power loss or failed-ack recovery. Failed write/restoration can leave modified source bytes and never admits a candidate; no automatic source recovery is promised. No public npm publication, provider credential acceptance or deployed source is established. The strict owning20 implementation cases additionally exercise actual local npm archives, local Verdaccio interruption/resume and temporary Git remotes outside these model bounds.",
+      "Local normal operation with a reachable finally block. The exact selected source and cohort are already authenticated at entry. Caller owns the candidate lock and verified immutable archive until inspection. A successful filesystem acknowledgement means its requested bytes are written. Private fallback is used only within the existing verified-archive/authenticated-publisher path; this model does not prove authentication."
+    ]
+  }
+]

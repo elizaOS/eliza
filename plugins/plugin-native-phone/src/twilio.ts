@@ -152,9 +152,7 @@ export function readTwilioCredentialsFromEnv(
   };
 }
 
-function getTwilioBaseUrl(): string {
-  return process.env.ELIZA_MOCK_TWILIO_BASE ?? "https://api.twilio.com";
-}
+const TWILIO_API_BASE_URL = "https://api.twilio.com";
 
 function isSafeToRetry(result: TwilioDeliveryResult): boolean {
   // Twilio documents 429 as not processed and therefore safe to retry. Network
@@ -204,7 +202,7 @@ async function sendTwilioRequest(args: {
   payload: URLSearchParams;
 }): Promise<TwilioDeliveryResult> {
   const { credentials, path, payload } = args;
-  const url = `${getTwilioBaseUrl()}/2010-04-01/Accounts/${encodeURIComponent(
+  const url = `${TWILIO_API_BASE_URL}/2010-04-01/Accounts/${encodeURIComponent(
     credentials.accountSid,
   )}${path}`;
   const operation = twilioOperation(path);

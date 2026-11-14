@@ -1,4 +1,4 @@
-import { resolveStewardBaseUrl } from "@/api-app/steward/base-url";
+import { resolveStewardBaseUrl } from "../../src/steward/base-url";
 /**
  * POST /api/auth/steward-nonce-exchange
  *

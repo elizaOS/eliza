@@ -11,18 +11,13 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { readAliasedEnv } from "@elizaos/host/protocol";
 import type { SecureStoreSecretKind } from "@elizaos/plugin-browser/remote-control/secure-store-contract";
 /** Fixed Keychain / Secret Service “service” identifier (see docs/guides/platform-secure-store.md). */
 export const ELIZA_AGENT_VAULT_SERVICE = "ai.elizaos.agent.vault";
-// Inlined state-dir resolution (rather than core's composition helper) that
-// reads via the alias-aware `readAliasedEnv`, so a branded prefix (e.g.
-// `MILADY_STATE_DIR`) resolves the same vault id from the alias table, with no
-// `process.env` mirror involved.
 function resolveStateDir(): string {
-  const explicit = readAliasedEnv("ELIZA_STATE_DIR");
+  const explicit = process.env.ELIZA_STATE_DIR?.trim();
   if (explicit) return explicit;
-  const namespace = readAliasedEnv("ELIZA_NAMESPACE") || "eliza";
+  const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
   const xdgStateHome = process.env.XDG_STATE_HOME?.trim();
   const stateHome = xdgStateHome
     ? path.isAbsolute(xdgStateHome)

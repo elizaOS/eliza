@@ -1,6 +1,8 @@
 // Trajectory capture queue, graceful durability, and exact-owner crash recovery.
-// Sources: runtime/trajectory-{storage,internals,steps-writer,steps-reader}.ts,
-// dev-trajectory-recovery.ts and dev-trajectory-recovery-protocol.ts.
+// Sources: plugin-assistant's TrajectoriesService and its row store
+// (features/trajectories/store/trajectory-{storage,internals}.ts), the single
+// owner of trajectory persistence, plus the host's dev-trajectory-recovery.ts
+// and dev-trajectory-recovery-protocol.ts.
 // Two captures and two execution identities abstract payloads and arbitrary IDs.
 // Database transactions, compare-and-set and the supervisor's exit proof are trusted boundaries.
 // A crash may lose uncommitted in-memory captures; graceful stop must drain them.
