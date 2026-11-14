@@ -84,9 +84,9 @@ async function releaseReplacedAvatar(
   userId: string,
   previousAvatar: string,
 ): Promise<void> {
-  const key = ownedAvatarKey(env, previousAvatar, organizationId, userId);
-  if (!key || typeof env.BLOB.head !== "function") return;
   try {
+    const key = ownedAvatarKey(env, previousAvatar, organizationId, userId);
+    if (!key || typeof env.BLOB.head !== "function") return;
     // The object's size is the only record of the bytes it reserved. A missing
     // object was already removed (and released) by an earlier attempt, so a
     // repeat run releases nothing.

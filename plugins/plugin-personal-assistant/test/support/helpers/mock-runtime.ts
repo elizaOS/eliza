@@ -6,6 +6,7 @@ import { ChannelType, type Plugin, stringToUuid } from "@elizaos/core";
 import {
   MOCK_ENVIRONMENTS,
   type MockEnvironmentName,
+  redirectTwilioFetch,
   type StartedMocks,
   startMocks,
 } from "@elizaos/testing/mocks";
@@ -285,6 +286,9 @@ export async function prepareMockedTestEnvironment(
     ...FAKE_CREDS,
   };
   const previous = snapshotAndApply(envVars);
+  const restoreFetch = envs.includes("twilio")
+    ? redirectTwilioFetch(mocks.baseUrls.twilio)
+    : () => {};
 
   return {
     mocks,
@@ -318,6 +322,7 @@ export async function prepareMockedTestEnvironment(
           await mocks.stop();
         }
       } finally {
+        restoreFetch();
         restore(previous);
         await mockRuntimeState.cleanup();
       }

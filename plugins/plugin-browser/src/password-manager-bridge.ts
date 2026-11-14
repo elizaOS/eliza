@@ -6,7 +6,6 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { logger } from "@elizaos/core";
 import { leaseCredentialClipboard } from "./credential-clipboard.js";
 
 const execFileAsync = promisify(execFile);
@@ -15,11 +14,7 @@ const execFileAsync = promisify(execFile);
 // Types
 // ---------------------------------------------------------------------------
 
-export type PasswordManagerBackend =
-  | "1password"
-  | "protonpass"
-  | "fixture"
-  | "none";
+export type PasswordManagerBackend = "1password" | "protonpass" | "none";
 
 export interface PasswordManagerItem {
   id: string;
@@ -59,74 +54,6 @@ export class PasswordManagerError extends Error {
 }
 
 const CLIPBOARD_TTL_SECONDS = 30;
-
-const PASSWORD_MANAGER_FIXTURE_ITEMS: ReadonlyArray<PasswordManagerItem> = [
-  {
-    id: "pm-github",
-    title: "GitHub",
-    url: "https://github.com/login",
-    username: "benchmark-user",
-    hasPassword: true,
-    tags: ["dev", "github", "code"],
-    metadata: { vault: "Mocked Benchmark" },
-  },
-  {
-    id: "pm-google-workspace",
-    title: "Google Workspace",
-    url: "https://mail.google.com",
-    username: "owner@example.com",
-    hasPassword: true,
-    tags: ["google", "email"],
-    metadata: { vault: "Mocked Benchmark" },
-  },
-  {
-    id: "pm-aws-prod",
-    title: "AWS Console",
-    url: "https://signin.aws.amazon.com",
-    username: "infra@example.com",
-    hasPassword: true,
-    tags: ["aws", "cloud"],
-    metadata: { vault: "Mocked Benchmark" },
-  },
-];
-
-function isTruthyEnv(value: string | undefined): boolean {
-  if (!value) return false;
-  const normalized = value.trim().toLowerCase();
-  return (
-    normalized === "1" ||
-    normalized === "true" ||
-    normalized === "yes" ||
-    normalized === "on" ||
-    normalized === "fixture"
-  );
-}
-
-function isFalsyEnv(value: string | undefined): boolean {
-  if (!value) return false;
-  const normalized = value.trim().toLowerCase();
-  return (
-    normalized === "0" ||
-    normalized === "false" ||
-    normalized === "no" ||
-    normalized === "off"
-  );
-}
-
-function isFixturePasswordManagerEnabled(): boolean {
-  const explicit = process.env.ELIZA_TEST_PASSWORD_MANAGER_BACKEND;
-  if (isFalsyEnv(explicit)) return false;
-  if (isTruthyEnv(explicit)) return true;
-  return false;
-}
-
-function listItemsViaFixture(): PasswordManagerItem[] {
-  return PASSWORD_MANAGER_FIXTURE_ITEMS.map((item) => ({
-    ...item,
-    tags: item.tags ? [...item.tags] : undefined,
-    metadata: item.metadata ? { ...item.metadata } : undefined,
-  }));
-}
 
 // ---------------------------------------------------------------------------
 // Detection
@@ -189,14 +116,6 @@ export async function detectPasswordManagerBackend(
   if (preferred === "none") {
     detectionCache.set(key, "none");
     return "none";
-  }
-  if (preferred === "fixture") {
-    detectionCache.set(key, "fixture");
-    return "fixture";
-  }
-  if (isFixturePasswordManagerEnabled()) {
-    detectionCache.set(key, "fixture");
-    return "fixture";
   }
   if (preferred === "1password") {
     const ok = await probeOp(config);
@@ -462,11 +381,9 @@ export async function searchPasswordItems(
 ): Promise<PasswordManagerItem[]> {
   const backend = await resolveActiveBackend(config);
   const items =
-    backend === "fixture"
-      ? listItemsViaFixture()
-      : backend === "1password"
-        ? await listItemsVia1Password(config)
-        : await listItemsViaProtonPass(config);
+    backend === "1password"
+      ? await listItemsVia1Password(config)
+      : await listItemsViaProtonPass(config);
   return items.filter((item) => matchesQuery(item, query));
 }
 
@@ -476,11 +393,9 @@ export async function listPasswordItems(
 ): Promise<PasswordManagerItem[]> {
   const backend = await resolveActiveBackend(config);
   const items =
-    backend === "fixture"
-      ? listItemsViaFixture()
-      : backend === "1password"
-        ? await listItemsVia1Password(config)
-        : await listItemsViaProtonPass(config);
+    backend === "1password"
+      ? await listItemsVia1Password(config)
+      : await listItemsViaProtonPass(config);
   const limit = opts.limit;
   if (typeof limit === "number" && limit >= 0) {
     return items.slice(0, limit);
@@ -492,7 +407,7 @@ export async function injectCredentialToClipboard(
   itemId: string,
   field: "username" | "password",
   config?: PasswordManagerBridgeConfig,
-): Promise<{ ok: true; expiresInSeconds: number; fixtureMode?: boolean }> {
+): Promise<{ ok: true; expiresInSeconds: number }> {
   if (!itemId || typeof itemId !== "string") {
     throw new PasswordManagerError(
       "itemId is required",
@@ -500,23 +415,6 @@ export async function injectCredentialToClipboard(
     );
   }
   const backend = await resolveActiveBackend(config);
-
-  if (backend === "fixture") {
-    logger.warn(
-      {
-        itemId,
-        field,
-        boundary: "browser",
-        component: "password-manager-bridge",
-      },
-      "[password-manager-bridge] fixture backend active: no clipboard write performed. Set ELIZA_TEST_PASSWORD_MANAGER_BACKEND=0 for real injection.",
-    );
-    return {
-      ok: true,
-      expiresInSeconds: CLIPBOARD_TTL_SECONDS,
-      fixtureMode: true,
-    };
-  }
 
   if (backend === "1password") {
     const binary = resolveOpBinary(config);

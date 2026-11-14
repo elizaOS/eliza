@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import Stripe from "stripe";
+import { settlementDigest } from "../../../lib/services/settlement-digest";
 import { installCancellationTestSchema } from "../subscription-cancellation-test-fixture";
 import { seedRenewalTestAccount } from "../subscription-renewal-test-fixture";
 
@@ -317,6 +318,160 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
       )
     ).rows[0]!.count;
   }
+  type PurchasedCheckout = Awaited<ReturnType<typeof seedPurchasedCheckout>>;
+
+  /** Serves a paid checkout's provider objects the way the sweep, the webhook and confirm read them. */
+  function servePurchasedCheckout(f: PurchasedCheckout) {
+    for (const [path, value] of [
+      ["/v1/account", { id: f.providerAccountId, object: "account" }],
+      [
+        `/v1/checkout/sessions?customer=${f.customer.id}&limit=100`,
+        { object: "list", data: [f.session], has_more: false, url: "/v1/checkout/sessions" },
+      ],
+      [`/v1/checkout/sessions/${f.session.id}`, f.session],
+      [`/v1/invoices/${f.invoice.id}`, f.invoice],
+      [`/v1/subscriptions/${f.subscription.id}`, f.subscription],
+      [`/v1/customers/${f.customer.id}`, f.customer],
+      [`/v1/payment_intents/${f.paymentIntent.id}`, f.paymentIntent],
+      [`/v1/charges/${f.charge.id}`, f.charge],
+    ] as const)
+      objects.set(path, value);
+  }
+
+  /** The checkout was dispatched, and last touched, this many minutes ago. */
+  async function ageCheckoutDispatch(f: PurchasedCheckout, minutes: number) {
+    await database.query(
+      `UPDATE billing_subscription_commands
+         SET provider_started_at = now() - make_interval(mins => $2::int),
+             updated_at = now() - make_interval(mins => $2::int)
+       WHERE id=$1`,
+      [f.command.id, minutes],
+    );
+  }
+
+  async function checkoutOutcome(f: PurchasedCheckout) {
+    const [command] = (
+      await database.query<{ status: string; result_subscription_id: string | null }>(
+        "SELECT status,result_subscription_id FROM billing_subscription_commands WHERE id=$1",
+        [f.command.id],
+      )
+    ).rows;
+    const entitlements = (
+      await database.query<{ plan_key: string; source_subscription_id: string | null }>(
+        "SELECT plan_key,source_subscription_id FROM organization_entitlements WHERE organization_id=$1 AND billing_scope_id IS NULL",
+        [f.orgId],
+      )
+    ).rows;
+    return { command, entitlements, allowances: await allowanceCount(f.orgId) };
+  }
+
+  test("the recovery sweep entitles a paid checkout whose webhook never arrived", async () => {
+    const checkout = await import("../../../lib/services/subscription-checkout");
+    const f = await seedPurchasedCheckout();
+    servePurchasedCheckout(f);
+    // Dispatched a moment ago: the webhook and its drain get the first chance.
+    expect((await checkout.recoverStaleSubscriptionCheckouts(50)).completed).toBe(0);
+    expect((await checkoutOutcome(f)).command?.status).toBe("OUTCOME_UNKNOWN");
+    expect(requests.some((request) => request.includes(f.session.id))).toBe(false);
+
+    await ageCheckoutDispatch(f, 3);
+    requests.length = 0;
+    const result = await checkout.recoverStaleSubscriptionCheckouts(50);
+    expect(result.completed).toBe(1);
+    const outcome = await checkoutOutcome(f);
+    expect(outcome.command?.status).toBe("APPLIED");
+    expect(outcome.command?.result_subscription_id).not.toBeNull();
+    expect(outcome.entitlements).toEqual([
+      { plan_key: "plus_monthly", source_subscription_id: outcome.command?.result_subscription_id },
+    ]);
+    expect(outcome.allowances).toBe(1);
+    // One provider account read serves the whole sweep, the settlement of the paid session
+    // included, and nothing was written to the provider.
+    expect(requests.filter((request) => request === "GET /v1/account")).toHaveLength(1);
+    expect(writes).toBe(0);
+
+    // The settled checkout leaves the sweep; a later run reads nothing for it.
+    requests.length = 0;
+    expect((await checkout.recoverStaleSubscriptionCheckouts(50)).completed).toBe(0);
+    expect(requests.some((request) => request.includes(f.session.id))).toBe(false);
+    expect((await checkoutOutcome(f)).allowances).toBe(1);
+  });
+
+  test("the sweep, the app's confirm and the webhook settle one paid checkout exactly once", async () => {
+    const checkout = await import("../../../lib/services/subscription-checkout");
+    const f = await seedPurchasedCheckout();
+    servePurchasedCheckout(f);
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Loopback address missing");
+    const stripe = new Stripe("sk_test_cloud_e2e", {
+      host: "127.0.0.1",
+      port: address.port,
+      protocol: "http",
+      maxNetworkRetries: 0,
+    });
+    const retrieved = await stripe.subscriptions.retrieve(f.subscription.id);
+    expect(typeof retrieved.items.data[0]!.price.unit_amount_decimal).toBe("object");
+    expect(settlementDigest(retrieved)).toBe(settlementDigest(f.subscription));
+    const exactDecimal = "12345678901234567890.123456789012";
+    expect(settlementDigest({ nested: [Stripe.Decimal.from(exactDecimal)] })).toBe(
+      settlementDigest({ nested: [exactDecimal] }),
+    );
+    await ageCheckoutDispatch(f, 3);
+    const [sweep, confirm, webhook] = await Promise.allSettled([
+      checkout.recoverStaleSubscriptionCheckouts(50),
+      // `checkout/confirm` passes the caller's organization; the webhook passes none.
+      checkout.reconcileSubscriptionCheckout(f.session.id, f.orgId),
+      checkout.reconcileSubscriptionCheckout(f.session.id),
+    ]);
+    const settlements = [confirm, webhook].flatMap((outcome) =>
+      outcome.status === "fulfilled" ? [outcome.value] : [],
+    );
+    // Every direct caller either published the subscription or replayed the one that was.
+    expect(settlements).toHaveLength(2);
+    expect(new Set(settlements.map((value) => value.subscriptionId)).size).toBe(1);
+    expect(sweep.status).toBe("fulfilled");
+    const outcome = await checkoutOutcome(f);
+    expect(outcome.command?.status).toBe("APPLIED");
+    expect(outcome.command?.result_subscription_id).toBe(settlements[0]?.subscriptionId);
+    expect(outcome.entitlements).toHaveLength(1);
+    expect(outcome.allowances).toBe(1);
+    expect(
+      (
+        await database.query<{ count: number }>(
+          "SELECT count(*)::int AS count FROM billing_subscriptions WHERE organization_id=$1 AND billing_scope_id IS NULL",
+          [f.orgId],
+        )
+      ).rows[0]?.count,
+    ).toBe(1);
+    // A later confirm is a replay of the same subscription.
+    expect(await checkout.reconcileSubscriptionCheckout(f.session.id, f.orgId)).toEqual({
+      subscriptionId: settlements[0]?.subscriptionId,
+      replayed: true,
+    });
+    expect(writes).toBe(0);
+  });
+
+  test("confirm refuses a paid session of another organization before any entitlement work", async () => {
+    const checkout = await import("../../../lib/services/subscription-checkout");
+    const f = await seedPurchasedCheckout();
+    const other = await seedPurchasedCheckout();
+    servePurchasedCheckout(f);
+    requests.length = 0;
+    await expect(
+      checkout.reconcileSubscriptionCheckout(f.session.id, other.orgId),
+    ).rejects.toMatchObject({
+      code: "SUBSCRIPTION_CHECKOUT_REJECTED",
+      context: { reason: "checkout_account_mismatch" },
+    });
+    // Only the session itself was read; neither organization changed.
+    expect(requests).toEqual([`GET /v1/checkout/sessions/${f.session.id}`]);
+    for (const organization of [f, other]) {
+      const outcome = await checkoutOutcome(organization);
+      expect(outcome.command?.status).toBe("OUTCOME_UNKNOWN");
+      expect(outcome.allowances).toBe(0);
+    }
+  });
+
   test.each([
     { plan_key: "app_monthly" },
     { plan_key: "independent_app_plan" },

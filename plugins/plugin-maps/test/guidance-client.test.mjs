@@ -4,9 +4,9 @@ import test from "node:test";
 test("guidance presents the next maneuver, the following step and the remaining trip", async () => {
   const { guidanceView, guidanceDistance, maneuverIcon, MANEUVER_ICONS } =
     await import("../src/client/guidance.ts");
-  assert.equal(guidanceDistance(42), "40 m");
-  assert.equal(guidanceDistance(437), "440 m");
-  assert.equal(guidanceDistance(1830), "1.8 km");
+  assert.equal(guidanceDistance(42, "en-GB"), "40 m");
+  assert.equal(guidanceDistance(437, "en-GB"), "440 m");
+  assert.equal(guidanceDistance(1830, "en-GB"), "1.8 km");
   assert.equal(maneuverIcon(undefined), MANEUVER_ICONS.continue);
   const step = (instruction, maneuver) => ({
     instruction,
@@ -30,6 +30,8 @@ test("guidance presents the next maneuver, the following step and the remaining 
       then: { index: 2, step: step("Turn right", "right") },
     },
     new Date(2026, 9, 8, 12, 0),
+    "none",
+    "en-GB",
   );
   assert.equal(view.icon, MANEUVER_ICONS.left);
   assert.equal(view.distance, "120 m");
@@ -38,7 +40,7 @@ test("guidance presents the next maneuver, the following step and the remaining 
   assert.equal(view.thenIcon, MANEUVER_ICONS.right);
   assert.equal(view.remainingTime, "3 min");
   assert.match(view.remaining, /^900 m · arrive .+ · no live traffic$/);
-  assert.equal(view.spoken, "Turn left onto Rue A");
+  assert.equal(view.spoken, "In 120 m, Turn left onto Rue A");
   const near = guidanceView({
     offRouteMeters: 1,
     alongMeters: 0,
@@ -81,6 +83,55 @@ test("the upcoming maneuver stays fixed until the device has come near it", asyn
   assert.equal(last.next.step.instruction, "Arrive");
   assert.equal(last.next.distanceMeters, 111);
   assert.equal(last.then, undefined);
+});
+
+test("a maneuver that no fix came near is passed after two fixes clear beyond it", async () => {
+  const { advanceStep } = await import("../src/client/guidance.ts");
+  const { routeProgress } = await import("../src/client/route-distance.ts");
+  const at = (latitude, longitude = 0) => ({ latitude, longitude });
+  const step = (coordinate) => ({
+    instruction: "",
+    coordinate,
+    distanceMeters: 1,
+  });
+  const after = (hold, route, coordinate, onRoute = true) =>
+    advanceStep(
+      hold,
+      route,
+      routeProgress(coordinate, route),
+      { coordinate, accuracyMeters: 8 },
+      onRoute,
+    );
+  // A straight line north. The turn is 111 m from the start.
+  const straight = {
+    geometry: [at(0), at(0.003)],
+    steps: [step(at(0)), step(at(0.001)), step(at(0.003))],
+    durationSeconds: 60,
+  };
+  const held = { index: 1, cleared: 0 };
+  assert.deepEqual(after(held, straight, at(0.0008)), { index: 2, cleared: 0 });
+  // The watch lost the turn. The first fix is 111 m beyond it.
+  const once = after(held, straight, at(0.002));
+  assert.deepEqual(once, { index: 1, cleared: 1 });
+  assert.deepEqual(after(once, straight, at(0.0021)), { index: 2, cleared: 0 });
+  // One jumping fix, an off-route fix and the last step do not pass a maneuver.
+  assert.deepEqual(after(once, straight, at(0.0005)), held);
+  assert.deepEqual(after(once, straight, at(0.0021), false), held);
+  assert.deepEqual(
+    after({ index: 2, cleared: 0 }, straight, at(0.0031, 0.001)),
+    { index: 2, cleared: 0 },
+  );
+  // The route goes north and returns 11 m to the east. A fix on the return
+  // line is still near the line before the U-turn, so the U-turn stays.
+  const back = {
+    geometry: [at(0), at(0.003), at(0.003, 0.0001), at(0, 0.0001)],
+    steps: [step(at(0)), step(at(0.003)), step(at(0, 0.0001))],
+    durationSeconds: 60,
+  };
+  const fix = at(0.001, 0.0001);
+  const progress = routeProgress(fix, back);
+  assert.ok(progress.alongMeters > progress.maneuverAlongMeters[1]);
+  assert.deepEqual(after(after(held, back, fix), back, fix), held);
 });
 
 function bridge() {
@@ -299,4 +350,21 @@ test("an instruction that changes while native navigation is starting is sent on
     [["update", "Turn left"]],
   );
   await session.stop();
+});
+
+test("guidance respects the distance locale and does not deny live traffic", async () => {
+  const { guidanceDistance, guidanceView } = await import(
+    "../src/client/guidance.ts"
+  );
+  assert.equal(guidanceDistance(1609.344, "en-US"), "1.0 mi");
+  assert.equal(guidanceDistance(30.48, "en-US"), "100 ft");
+  assert.equal(guidanceDistance(1609.344, "fr-FR"), "1.6 km");
+  const result = guidanceView(
+    { remainingMeters: 1609.344, remainingSeconds: 60 },
+    new Date(),
+    "live",
+    "en-US",
+  );
+  assert.match(result.remaining, /^1.0 mi/);
+  assert.doesNotMatch(result.remaining, /no live traffic/);
 });

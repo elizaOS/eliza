@@ -25,7 +25,7 @@
     "android-apk": {
       "budgetMs": 900000,
       "baselineMs": null,
-      "target": "run-mobile-build.ts android — full web bundle + cap sync + gradle assemble, wall-clock. Emit: ELIZA_MOBILE_BUILD_TIMING_OUT=<file> bun run build:android."
+      "target": "run-mobile-build.ts android-system — full web bundle + cap sync + gradle assemble, wall-clock. Emit: ELIZA_MOBILE_BUILD_TIMING_OUT=<file> bun run build:android:system."
     },
     "ios-ipa": {
       "budgetMs": 900000,

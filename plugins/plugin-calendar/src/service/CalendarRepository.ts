@@ -376,12 +376,19 @@ export class CalendarRepository {
         metadata_json = ${retainNoteSourceMetadata("excluded.metadata_json")},
         synced_at = excluded.synced_at,
         updated_at = excluded.updated_at
+      WHERE app_calendar.life_calendar_events.agent_id = excluded.agent_id
+        AND app_calendar.life_calendar_events.provider = excluded.provider
+        AND app_calendar.life_calendar_events.side = excluded.side
+        AND app_calendar.life_calendar_events.calendar_id = excluded.calendar_id
+        AND app_calendar.life_calendar_events.external_event_id = excluded.external_event_id
+        AND app_calendar.life_calendar_events.grant_id IS NOT DISTINCT FROM excluded.grant_id
+        AND app_calendar.life_calendar_events.connector_account_id IS NOT DISTINCT FROM excluded.connector_account_id
       RETURNING *`,
     );
     const saved = rows[0];
     if (!saved) {
       throw new ElizaError(
-        "Calendar upsert did not return the persisted event.",
+        "Calendar upsert was refused or did not return the persisted event.",
         {
           code: "CALENDAR_EVENT_PERSISTENCE_FAILED",
         },

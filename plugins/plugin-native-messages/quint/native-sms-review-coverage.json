@@ -1,0 +1,28 @@
+[
+  {
+    "id": "NativeSmsReviewOwnership",
+    "model": "plugins/plugin-native-messages/quint/NativeSmsReviewOwnership.qnt",
+    "sources": [
+      "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/TelephonyPlugin.java",
+      "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/SmsTelephony.java",
+      "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/SmsSendJournal.java",
+      "plugins/plugin-native-messages/android/src/test/java/ai/eliza/plugins/messages/TelephonyPluginReviewTest.java",
+      "plugins/plugin-native-messages/android/src/test/java/ai/eliza/plugins/messages/SmsSendJournalTest.java",
+      "plugins/plugin-native-messages/android/src/test/java/ai/eliza/plugins/messages/MmsSendJournalTest.java"
+    ],
+    "invariants": [
+      "TypeOK",
+      "AtMostOneInvocation",
+      "DialogNeedsLiveOwner",
+      "SettledOwnerReleased",
+      "CancelledMeansNoInvocation"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One exact native SMS or MMS bridge call and its pending owner, one worker journal lookup, one main-queue native dialog, one owner Send tap, one queued dispatch, and one cancellation or foreground retirement. At most one platform invocation and one result; fixed operation and binding identity.",
+      "The call owner exists before the journal work is queued and remains until the original call resolves or rejects. Cancellation marks matching outstanding owners before its own acknowledgement. A retired owner cannot open a later dialog or dispatch after a Send tap waits on the worker. A recorded or admitted result is retained through cancellation. An unrelated operation cannot retire this owner.",
+      "The mandatory Android Gradle check compiles the real TelephonyPlugin and SmsTelephony and executes actual bridge methods under Robolectric29 with controlled worker/Main queues, a granted test foreground/SIM and an in-memory native journal. Six new cases exercise initial SMS/MMS cancellation, lifecycle retirement, cancellation after Send, unrelated cancellation, and already recorded submission readback. The existing SMS/MMS journal suites also execute; exact testcase names and zero skips are required.",
+      "The state model is a finite native queue boundary projection, not a refinement proof. The single abstract invocation does not enumerate multipart or multi-recipient partial sends. Native journal suites supplement those cases. Simultaneous independent hosts, arbitrary Android lifecycle delivery, storage write failures, callback batching/listener fanout, carrier/provider acceptance, real SIM roles/permissions and physical Android foreground-service behavior are outside this projection. Robolectric ports prove no radio or carrier delivery."
+    ]
+  }
+]

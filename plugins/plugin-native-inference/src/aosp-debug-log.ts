@@ -12,13 +12,11 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 
-import { readAliasedEnv } from "@elizaos/host/protocol";
-
 function resolveDebugLogPath(): string | null {
   const raw = process.env.ELIZA_AOSP_LLAMA_DEBUG_LOG?.trim();
   if (!raw || raw === "0" || raw.toLowerCase() === "false") return null;
   if (raw === "1" || raw.toLowerCase() === "true") {
-    const stateDir = readAliasedEnv("ELIZA_STATE_DIR")?.trim();
+    const stateDir = process.env.ELIZA_STATE_DIR?.trim();
     return stateDir ? path.join(stateDir, "aosp-llama-debug.log") : null;
   }
   return raw;

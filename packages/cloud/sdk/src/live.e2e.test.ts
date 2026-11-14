@@ -24,13 +24,11 @@ const trimmed = (value: string | undefined): string | undefined => {
 
 const liveEnabled = process.env.ELIZA_CLOUD_SDK_LIVE === "1";
 const baseUrl =
-  trimmed(process.env.ELIZA_CLOUD_BASE_URL) ?? DEFAULT_ELIZA_CLOUD_BASE_URL;
+  trimmed(process.env.ELIZA_CLOUD_URL) ?? DEFAULT_ELIZA_CLOUD_BASE_URL;
 const apiBaseUrl =
-  trimmed(process.env.ELIZA_CLOUD_API_BASE_URL) ??
+  trimmed(process.env.ELIZAOS_CLOUD_BASE_URL) ??
   DEFAULT_ELIZA_CLOUD_API_BASE_URL;
-const apiKey =
-  trimmed(process.env.ELIZAOS_CLOUD_API_KEY) ??
-  trimmed(process.env.ELIZA_CLOUD_API_KEY);
+const apiKey = trimmed(process.env.ELIZAOS_CLOUD_API_KEY);
 const sessionToken = trimmed(process.env.ELIZA_CLOUD_SESSION_TOKEN);
 const generationEnabled = process.env.ELIZA_CLOUD_SDK_LIVE_GENERATION === "1";
 const containerEnabled = process.env.ELIZA_CLOUD_SDK_LIVE_CONTAINERS === "1";

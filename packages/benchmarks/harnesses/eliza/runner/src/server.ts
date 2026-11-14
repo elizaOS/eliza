@@ -21,7 +21,6 @@ import {
   type ToolChoice,
   type ToolDefinition,
 } from "@elizaos/core";
-import { readAliasedEnv } from "@elizaos/host/protocol";
 import type { LifeOpsFakeBackend } from "@elizaos/lifeops-bench";
 import {
   LifeOpsBenchHandler,
@@ -146,7 +145,7 @@ function normalizeBenchmarkTaskAgentEnv(): void {
             ? "opencode"
             : normalized;
   process.env.BENCHMARK_TASK_AGENT ??= requested;
-  if (readAliasedEnv("ELIZA_AGENT_ORCHESTRATOR") === undefined) {
+  if (!process.env.ELIZA_AGENT_ORCHESTRATOR?.trim()) {
     process.env.ELIZA_AGENT_ORCHESTRATOR = "1";
   }
   process.env.ELIZA_AGENT_SELECTION_STRATEGY ??= "fixed";
@@ -2188,7 +2187,7 @@ export async function startBenchmarkServer() {
     }
     if (pathname === "/api/benchmark/reset" && req.method === "POST") {
       if (!checkBenchAuth(req, res)) return;
-      let body = "";
+      const chunks: Buffer[] = [];
       let bodyBytes = 0;
       let bodyTooLarge = false;
       req.on("data", (chunk: Buffer) => {
@@ -2204,10 +2203,12 @@ export async function startBenchmarkServer() {
           req.destroy();
           return;
         }
-        body += chunk;
+        chunks.push(chunk);
       });
       req.on("end", async () => {
         if (bodyTooLarge) return;
+        // Decode once at the end: a chunk can end inside a UTF-8 character.
+        const body = Buffer.concat(chunks).toString("utf8");
         try {
           const parsed = body.trim()
             ? (JSON.parse(body) as {
@@ -2356,7 +2357,7 @@ export async function startBenchmarkServer() {
     }
     if (pathname === "/api/benchmark/message" && req.method === "POST") {
       if (!checkBenchAuth(req, res)) return;
-      let body = "";
+      const chunks: Buffer[] = [];
       let bodyBytes = 0;
       let bodyTooLarge = false;
       req.on("data", (chunk: Buffer) => {
@@ -2372,10 +2373,12 @@ export async function startBenchmarkServer() {
           req.destroy();
           return;
         }
-        body += chunk;
+        chunks.push(chunk);
       });
       req.on("end", async () => {
         if (bodyTooLarge) return;
+        // Decode once at the end: a chunk can end inside a UTF-8 character.
+        const body = Buffer.concat(chunks).toString("utf8");
         try {
           let parsed: {
             text?: unknown;

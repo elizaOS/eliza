@@ -40,10 +40,14 @@ function fixture(basemap, effects = {}) {
       this.options = options;
       this.events = {};
       this.sources = {};
+      this.canvas = { style: {} };
       maps.push(this);
     }
     on(name, callback) {
       this.events[name] = callback;
+    }
+    getCanvas() {
+      return this.canvas;
     }
     isStyleLoaded() {
       return true;
@@ -69,10 +73,10 @@ function fixture(basemap, effects = {}) {
     }
     getBounds() {
       return {
-        getNorth: () => 43.76,
-        getSouth: () => 43.72,
-        getEast: () => 7.45,
-        getWest: () => 7.4,
+        getNorth: () => this.bounds?.north ?? 43.76,
+        getSouth: () => this.bounds?.south ?? 43.72,
+        getEast: () => this.bounds?.east ?? 7.45,
+        getWest: () => this.bounds?.west ?? 7.4,
       };
     }
     getSource(id) {
@@ -144,8 +148,8 @@ function fixture(basemap, effects = {}) {
       ";globalThis.MapPlane=MapPlane;",
     box,
   );
-  const container = { dataset: {} };
-  const create = (overrides = {}, target = { dataset: {} }) =>
+  const container = { dataset: {}, style: {} };
+  const create = (overrides = {}, target = { dataset: {}, style: {} }) =>
     new box.MapPlane(
       target,
       basemap,
@@ -349,6 +353,83 @@ test("explicit global style starts at world scale, permits global manual pins an
   assert.equal(f.container.dataset.mapFeatureCount, "1");
   f.plane.destroy();
   assert.equal(f.map.removed, true);
+});
+test("a host chooses where a worldwide basemap opens; a regional map keeps its coverage", () => {
+  const f = fixture(global);
+  f.create({
+    initialView: { center: { longitude: -98, latitude: 45 }, zoom: 2.4 },
+  });
+  assert.deepEqual(Array.from(f.maps[1].options.center), [-98, 45]);
+  assert.equal(f.maps[1].options.zoom, 2.4);
+  f.create({ initialView: { center: { longitude: -98, latitude: 45 } } });
+  assert.equal(f.maps[2].options.zoom, 2);
+  const r = fixture(regional);
+  r.create({
+    initialView: { center: { longitude: -98, latitude: 45 }, zoom: 2.4 },
+  });
+  assert.deepEqual(
+    Array.from(r.maps[1].options.center),
+    Array.from(r.map.options.center),
+  );
+  assert.equal(r.maps[1].options.zoom, 14);
+});
+test("new result pins are brought into view once; selection, routes and following keep the camera", () => {
+  const f = fixture(global, {
+    selectionPadding: () => ({ top: 10, bottom: 300, left: 20, right: 20 }),
+  });
+  const pin = (id, longitude, latitude) => ({
+    id,
+    label: id,
+    coordinate: { longitude, latitude },
+  });
+  const pins = [pin("a", 7.42, 43.73), pin("b", 7.27, 43.7)];
+  f.plane.update(undefined, null, { pins });
+  assert.deepEqual(JSON.parse(JSON.stringify(f.map.fit.bounds)), [
+    [7.27, 43.7],
+    [7.42, 43.73],
+  ]);
+  assert.equal(f.map.fit.options.maxZoom, 14);
+  assert.deepEqual(JSON.parse(JSON.stringify(f.map.fit.options.padding)), {
+    top: 10,
+    bottom: 300,
+    left: 20,
+    right: 20,
+  });
+  // The same results again leave a camera the user may have moved.
+  f.map.fit = undefined;
+  f.plane.update(undefined, null, { pins });
+  assert.equal(f.map.fit, undefined);
+  // Provider ids may include delimiters. Distinct complete pin records must refit.
+  f.plane.update(undefined, null, {
+    pins: [pin("a", 1, 2), pin("b", 3, 4)],
+  });
+  f.map.fit = undefined;
+  f.plane.update(undefined, null, { pins: [pin("a:1,2|b", 3, 4)] });
+  assert.ok(f.map.fit, "A different complete pin input must fit");
+  assert.deepEqual(JSON.parse(JSON.stringify(f.map.fit.bounds)), [
+    [3, 4],
+    [3, 4],
+  ]);
+  f.map.fit = undefined;
+  // A selected place owns the camera; its result pins do not refit.
+  f.plane.update({ longitude: 7.42, latitude: 43.73 }, null, {
+    pins: [pin("c", 2.35, 48.85)],
+  });
+  assert.equal(f.map.fit, undefined);
+  // Following navigation keeps the camera too.
+  f.plane.update(undefined, null, {
+    pins: [pin("d", 12.49, 41.9)],
+    position: {
+      coordinate: { longitude: 7.42, latitude: 43.73 },
+      accuracyMeters: 10,
+    },
+    follow: true,
+  });
+  assert.equal(f.map.fit, undefined);
+  // A regional map already shows its whole coverage.
+  const r = fixture(regional);
+  r.plane.update(undefined, null, { pins: [pin("e", 7.42, 43.73)] });
+  assert.equal(r.map.fit, undefined);
 });
 test("global style resources stay on the selected public origin; no arbitrary or credential-bearing target", () => {
   const f = fixture(global),
@@ -724,6 +805,7 @@ test("a Cloud raster basemap draws Cloud tiles through its own protocol and repo
   const tiles = [];
   const views = [];
   const copyrights = [];
+  let failCopyright = false;
   const raster = {
     kind: "cloud-raster",
     attribution: "Map data © Google",
@@ -736,6 +818,7 @@ test("a Cloud raster basemap draws Cloud tiles through its own protocol and repo
     },
     copyright: async (view) => {
       views.push(view);
+      if (failCopyright) throw new Error("Viewport metadata unavailable");
       return "Map data ©2026 Google";
     },
   };
@@ -780,17 +863,156 @@ test("a Cloud raster basemap draws Cloud tiles through its own protocol and repo
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.deepEqual(plain(views.at(-1)), {
     zoom: 2,
-    north: 43.76,
-    south: 43.72,
-    east: 7.45,
-    west: 7.4,
+    north: 43.76 + (43.76 - 43.72),
+    south: 43.72 - (43.76 - 43.72),
+    east: 7.45 + (7.45 - 7.4),
+    west: 7.4 - (7.45 - 7.4),
   });
   assert.equal(f.container.dataset.mapCopyright, "Map data ©2026 Google");
-  assert.deepEqual(copyrights, ["Map data ©2026 Google"]);
+  assert.deepEqual(copyrights.filter(Boolean), ["Map data ©2026 Google"]);
+  assert.equal(map.canvas.style.visibility, undefined);
+  assert.equal(f.container.dataset.mapReady, "true");
+  for (let fix = 1; fix <= 25; fix++) {
+    const delta = fix / 10000;
+    map.bounds = {
+      north: 43.76 + delta,
+      south: 43.72 + delta,
+      east: 7.45,
+      west: 7.4,
+    };
+    map.events.move();
+    map.events.moveend();
+    assert.equal(map.canvas.style.visibility, undefined);
+    assert.equal(f.container.dataset.mapReady, "true");
+  }
+  assert.equal(views.length, 1);
+  map.bounds = { north: 44, south: 43.9, east: 7.6, west: 7.55 };
+  map.events.move();
+  assert.equal(map.canvas.style.visibility, "hidden");
+  assert.equal(f.container.dataset.mapCopyright, undefined);
+  assert.equal(f.container.dataset.mapReady, undefined);
+  assert.equal(copyrights.at(-1), "");
+  failCopyright = true;
   map.events.moveend();
   await new Promise((resolve) => setTimeout(resolve, 0));
-  assert.equal(views.length, 2);
+  assert.equal(map.canvas.style.visibility, "hidden");
+  assert.equal(f.container.dataset.mapError, "copyright");
+  assert.equal(f.errors, 1);
+  failCopyright = false;
+  map.events.moveend();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(map.canvas.style.visibility, undefined);
+  assert.equal(f.container.dataset.mapReady, "true");
+  assert.equal(f.container.dataset.mapError, undefined);
+  map.events.error({ error: new Error("Tile load failed") });
+  assert.equal(f.container.dataset.mapError, "resource-load");
+  assert.equal(f.container.dataset.mapReady, undefined);
+  map.bounds = { north: 46, south: 45.9, east: 9.6, west: 9.55 };
+  failCopyright = true;
+  map.events.move();
+  map.events.moveend();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(f.container.dataset.mapError, "resource-load");
+  failCopyright = false;
+  map.events.moveend();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(f.container.dataset.mapError, "resource-load");
+  assert.equal(f.container.dataset.mapReady, undefined);
   plane.destroy();
   f.plane.destroy();
   assert.equal(f.removedProtocols.length, 2);
+});
+
+test("Cloud copyright replies retire on movement and map disposal", async () => {
+  const pending = [];
+  const credits = [];
+  const f = fixture(
+    {
+      kind: "cloud-raster",
+      attribution: "Google Maps",
+      minZoom: 0,
+      maxZoom: 18,
+      tileSize: 256,
+      tile: async () => new ArrayBuffer(1),
+      copyright: (_view, signal) =>
+        new Promise((resolve) => pending.push({ signal, resolve })),
+    },
+    { onCopyright: (text) => credits.push(text) },
+  );
+  f.map.events.load();
+  f.map.bounds = { north: 44, south: 43.9, east: 7.6, west: 7.55 };
+  f.map.events.move();
+  f.map.events.moveend();
+  assert.equal(pending[0].signal.aborted, true);
+  pending[0].resolve("Old viewport");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(f.container.dataset.mapCopyright, undefined);
+  assert.equal(f.map.canvas.style.visibility, "hidden");
+  pending[1].resolve("Current viewport");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(f.container.dataset.mapCopyright, "Current viewport");
+  assert.equal(f.map.canvas.style.visibility, undefined);
+  f.map.bounds = { north: 45, south: 44.9, east: 8.6, west: 8.55 };
+  f.map.events.move();
+  f.map.events.moveend();
+  f.plane.destroy();
+  assert.equal(pending[2].signal.aborted, true);
+  pending[2].resolve("Disposed viewport");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(f.container.dataset.mapCopyright, undefined);
+  assert.equal(f.errors, 0);
+});
+
+test("a settled map reports its centre and zoom; only a direct gesture is an interaction", () => {
+  const viewports = [];
+  let interactions = 0;
+  const f = fixture(global);
+  f.map.getCenter = () => ({
+    lat: 37.77,
+    lng: -122.42,
+    wrap: () => ({ lat: 37.77, lng: -122.42 }),
+  });
+  f.map.events.idle();
+  assert.deepEqual(viewports, [], "a host without the port is not called");
+  const plane = f.create({
+    onViewport: (center, zoom) => viewports.push([center, zoom]),
+    onInteraction: () => interactions++,
+  });
+  const map = f.maps.at(-1);
+  map.getCenter = () => ({
+    lat: 37.77,
+    lng: -122.42,
+    wrap: () => ({ lat: 37.77, lng: -122.42 }),
+  });
+  map.options.zoom = 13;
+  map.events.movestart({});
+  assert.equal(interactions, 0, "a camera move by the plane is not a gesture");
+  map.events.movestart({ originalEvent: {} });
+  assert.equal(interactions, 1);
+  map.events.idle();
+  assert.equal(
+    JSON.stringify(viewports),
+    JSON.stringify([[{ latitude: 37.77, longitude: -122.42 }, 13]]),
+  );
+  plane.destroy();
+});
+
+test("a settled world-copy viewport reports a valid wrapped search coordinate", () => {
+  const f = fixture(global);
+  const areas = [];
+  const plane = f.create({ onViewport: (center) => areas.push(center) });
+  const map = f.maps.at(-1);
+  map.options.zoom = 14;
+  // MapLibre LngLat explicitly permits an unwrapped longitude at world copies.
+  map.getCenter = () => ({
+    lat: 0,
+    lng: 181,
+    wrap: () => ({ lat: 0, lng: -179 }),
+  });
+  map.events.idle();
+  assert.equal(
+    JSON.stringify(areas),
+    JSON.stringify([{ latitude: 0, longitude: -179 }]),
+  );
+  plane.destroy();
 });

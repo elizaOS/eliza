@@ -1,0 +1,43 @@
+{
+  "sources": [
+    "packages/agent/src/runtime/process-lifecycle.ts",
+    "packages/agent/src/runtime/eliza.ts",
+    "packages/agent/test/fixtures/process-lifecycle-child.ts",
+    "packages/agent/test/process-lifecycle-exit.test.ts",
+    "packages/agent/quint/check-process-signal-drain.ts"
+  ],
+  "bounds": {
+    "domain": "One installed Agent process adapter, one initiating SIGINT or SIGTERM, at most one additional graceful signal and one external SIGKILL. Two registered callbacks, one sandbox cleanup, one runtime cleanup and one error report.",
+    "scope": "Normal signals share cleanup ownership and exit with a settled success or failure receipt. External SIGKILL has a distinct outcome and can interrupt pending cleanup. Real Bun and Node child processes exercise repeat delivery and read their cleanup files after exit. Handler removal, process startup, natural exit on an empty event loop, multiple adapters, native signal ordering, callback internals and external supervisor timing are outside the bound."
+  },
+  "cases": [
+    {
+      "name": "process_signal_drain",
+      "main": "process_signal_drain",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["DrainCompletes", "DrainWithoutFairness"],
+      "temporalChecks": [
+        {
+          "property": "DrainCompletes",
+          "expect": "holds",
+          "assumptions": [
+            "No external SIGKILL occurs. Weak fairness of advance means each pending cleanup and the final exit continuation settle. Cleanup or the error reporter may fail.",
+            "The adapter is installed in a running process that has active event-loop work until cleanup settles. The host can deliver the selected signals. No elapsed-time shutdown deadline is assumed."
+          ]
+        },
+        {
+          "property": "DrainWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No external SIGKILL occurs and no fairness is assumed. A teardown callback may remain pending indefinitely."
+          ]
+        }
+      ],
+      "maxSteps": 18,
+      "samples": 500
+    }
+  ],
+  "conformance": "packages/agent/quint/check-process-signal-drain.ts"
+}

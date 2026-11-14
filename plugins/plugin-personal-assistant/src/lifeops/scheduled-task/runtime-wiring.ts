@@ -355,17 +355,18 @@ function makeRepositoryBackedStores(
 
 function defaultOwnerFactsProvider(
   runtime: IAgentRuntime,
+  now: () => Date = () => new Date(),
 ): () => Promise<OwnerFactsView> {
   return async () => {
+    const instant = now();
     const store = resolveOwnerFactStore(runtime);
-    // `new Date()` drives the derived `travelActive` — the view reflects
-    // whether the owner is inside a booked/declared travel window at this
-    // instant, which is exactly what the `during_travel` gate needs each tick.
-    const view = ownerFactsToView(await store.read(), new Date());
-    // With no owner timezone on file, owner_local triggers use the zone saved
-    // in the scheduling plugin settings instead of UTC.
-    view.timezone ??= configuredDefaultTimeZone(runtime);
-    const timezone = view.timezone ?? resolveDefaultTimeZone();
+    // Travel and baseline freshness use the same clock as the runner's tick.
+    const view = ownerFactsToView(await store.read(), instant);
+    // An unset owner zone follows the scheduling setting, runtime setting,
+    // then the host zone before owner-local cron is evaluated.
+    view.timezone ??=
+      configuredDefaultTimeZone(runtime) ?? resolveConfiguredTimeZone(runtime);
+    const timezone = view.timezone;
     try {
       const repo = new LifeOpsRepository(runtime);
       const [local, cloud] = await Promise.all([
@@ -373,7 +374,7 @@ function defaultOwnerFactsProvider(
         repo.getScheduleMergedState(runtime.agentId, "cloud", timezone),
       ]);
       const effective = preferEffectiveMergedState({
-        now: new Date(),
+        now: instant,
         local,
         cloud,
       });
@@ -613,7 +614,8 @@ export async function composeOwnerFacingScheduledTaskText(
     );
     const { LifeOpsService } = await import("../service.js");
     const assembled = await assembleMorningBrief(runtime, {
-      timezone: facts.timezone ?? resolveConfiguredTimeZone(runtime),
+      timezone:
+        record.timezone ?? facts.timezone ?? resolveConfiguredTimeZone(runtime),
       now,
       sources: new LifeOpsService(runtime),
     });
@@ -1492,7 +1494,8 @@ function buildLifeOpsRunnerDeps(
     opts.subjectStore ??
     makeRuntimeSubjectStoreView(opts.runtime, opts.agentId);
 
-  const ownerFacts = opts.ownerFacts ?? defaultOwnerFactsProvider(opts.runtime);
+  const ownerFacts =
+    opts.ownerFacts ?? defaultOwnerFactsProvider(opts.runtime, opts.now);
 
   return {
     store: stores.store,
@@ -1612,8 +1615,8 @@ export function createRuntimeScheduledTaskRunner(
 export function registerLifeOpsScheduledTaskRunnerDeps(
   runtime: IAgentRuntime,
 ): void {
-  registerScheduledTaskRunnerDeps(runtime, (rt, agentId) =>
-    buildLifeOpsRunnerDeps({ runtime: rt, agentId }),
+  registerScheduledTaskRunnerDeps(runtime, (rt, agentId, now) =>
+    buildLifeOpsRunnerDeps({ runtime: rt, agentId, ...(now ? { now } : {}) }),
   );
 }
 

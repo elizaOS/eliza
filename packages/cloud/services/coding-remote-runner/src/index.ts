@@ -113,10 +113,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RunnerConfig {
       readEnv(env, "ELIZA_CODING_CONTAINER_WORKSPACE") ??
         DEFAULT_WORKSPACE_ROOT,
     ),
-    token:
-      readEnv(env, "ELIZA_REMOTE_RUNNER_HTTP_TOKEN") ??
-      readEnv(env, "REMOTE_RUNNER_HTTP_TOKEN") ??
-      null,
+    token: readEnv(env, "ELIZA_REMOTE_RUNNER_HTTP_TOKEN") ?? null,
     allowUnauthenticated:
       readEnv(env, "ELIZA_REMOTE_RUNNER_ALLOW_UNAUTHENTICATED") === "1",
     maxReadBytes: readPositiveInt(

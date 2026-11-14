@@ -16,7 +16,7 @@ import type {
   PermissionId,
   PermissionState,
 } from "@elizaos/core/protocol";
-import { isTruthyEnvValue, resolveEnvAlias } from "@elizaos/core/protocol";
+import { isTruthyEnvValue } from "@elizaos/core/protocol";
 import type {
   FirstRunConnectorConfig as ConnectorConfig,
   FirstRunOptions,
@@ -37,7 +37,6 @@ import {
   type WebsiteBlockerStatusResult,
 } from "../bridge/native-plugins";
 import { TERMINAL_STATUSES } from "../chat/coding-agent-session-state";
-import { getBootConfig } from "../config/boot-config-store";
 import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
 import { openEventSource } from "../utils/event-source";
 import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
@@ -180,15 +179,9 @@ export * from "./client-agent-consumer-keys";
 // Module-level helpers
 // ---------------------------------------------------------------------------
 function clientSettingsDebug(): boolean {
-  const env = Object.fromEntries(
-    Object.entries(import.meta.env ?? {}).map(([key, value]) => [
-      key,
-      value == null ? undefined : String(value),
-    ]),
-  );
-  const aliases = getBootConfig().envAliases;
+  const env: Record<string, unknown> = import.meta.env ?? {};
   return ["ELIZA_SETTINGS_DEBUG", "VITE_ELIZA_SETTINGS_DEBUG"].some((key) =>
-    isTruthyEnvValue(resolveEnvAlias(key, aliases, env)),
+    isTruthyEnvValue(env[key] == null ? undefined : String(env[key])),
   );
 }
 

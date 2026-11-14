@@ -12,9 +12,7 @@ import {
 import { installCloudApiStubs } from "./helpers/cloud-audit-fixtures";
 import { seedStewardSession } from "./helpers/test-auth";
 
-const TEST_AUTH_ENABLED =
-  process.env.VITE_PLAYWRIGHT_TEST_AUTH === "true" ||
-  process.env.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true";
+const TEST_AUTH_ENABLED = process.env.VITE_PLAYWRIGHT_TEST_AUTH === "true";
 
 async function installAdminModerationRoutes(page: Page): Promise<void> {
   await page.route("**/api/v1/admin/moderation**", async (route) => {

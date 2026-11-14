@@ -27,12 +27,15 @@ import { apiKeys } from "../../../db/schemas/api-keys";
 import * as appsSchema from "../../../db/schemas/apps";
 import { containers } from "../../../db/schemas/containers";
 import { creditTransactions } from "../../../db/schemas/credit-transactions";
+import { generations } from "../../../db/schemas/generations";
+import { jobs } from "../../../db/schemas/jobs";
 import { organizations } from "../../../db/schemas/organizations";
 import * as redeemableEarningsSchema from "../../../db/schemas/redeemable-earnings";
 import {
   redeemableEarnings,
   redeemableEarningsLedger,
 } from "../../../db/schemas/redeemable-earnings";
+import { usageRecords } from "../../../db/schemas/usage-records";
 import * as userCharactersSchema from "../../../db/schemas/user-characters";
 import { userCharacters } from "../../../db/schemas/user-characters";
 import * as userMcpsSchema from "../../../db/schemas/user-mcps";
@@ -80,6 +83,9 @@ beforeAll(async () => {
     creditTransactions,
     apiKeys,
     containers,
+    generations,
+    jobs,
+    usageRecords,
     ...appsSchema,
     ...userCharactersSchema,
     ...redeemableEarningsSchema,

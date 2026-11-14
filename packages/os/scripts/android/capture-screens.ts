@@ -7,8 +7,8 @@
 // brand config (resolved via --brand-config / $DISTRO_ANDROID_BRAND_CONFIG).
 //
 // Usage:
-//   node scripts/android/capture-screens.ts --out reports/aosp-boot
-//   node scripts/android/capture-screens.ts --out reports/avd \
+//   bun scripts/android/capture-screens.ts --out reports/aosp-boot
+//   bun scripts/android/capture-screens.ts --out reports/avd \
 //        --steps home,dialer,assist,sms
 //
 // Flags:
@@ -135,7 +135,7 @@ export function parseSubArgs(argv, stepMap) {
       args.noLaunch = true;
     } else if (arg === "-h" || arg === "--help") {
       console.log(
-        "Usage: node scripts/android/capture-screens.ts --out <DIR> [--brand-config PATH] [--serial S] [--adb PATH] [--steps a,b,c] [--label TEXT] [--no-launch]",
+        "Usage: bun scripts/android/capture-screens.ts --out <DIR> [--brand-config PATH] [--serial S] [--adb PATH] [--steps a,b,c] [--label TEXT] [--no-launch]",
       );
       console.log("Steps:", Object.keys(stepMap).join(", "));
       process.exit(0);

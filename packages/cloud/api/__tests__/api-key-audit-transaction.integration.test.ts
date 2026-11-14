@@ -17,6 +17,7 @@ import {
 } from "bun:test";
 import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
+import { getTableConfig } from "drizzle-orm/pg-core";
 
 process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
@@ -108,6 +109,19 @@ beforeAll(async () => {
       expires_at timestamptz NOT NULL DEFAULT now() + interval '7 years'
     )
   `);
+  // Mobile revocation reads the credential's sign-in session from its grant.
+  // These credentials have no grant, so each one is its own session.
+  const { mobileAppAuthGrants } = await import(
+    "../../shared/src/db/schemas/mobile-app-auth-grants"
+  );
+  const grants = getTableConfig(mobileAppAuthGrants);
+  await dbWrite.execute(
+    sql.raw(
+      `CREATE TABLE IF NOT EXISTS "${grants.name}" (${grants.columns
+        .map((column) => `"${column.name}" ${column.getSQLType()}`)
+        .join(", ")})`,
+    ),
+  );
 }, PGLITE_TIMEOUT_MS);
 
 afterEach(async () => {
@@ -121,6 +135,7 @@ afterEach(async () => {
 afterAll(async () => {
   await dbWrite.execute(sql`DROP TABLE IF EXISTS api_keys`);
   await dbWrite.execute(sql`DROP TABLE IF EXISTS auth_events`);
+  await dbWrite.execute(sql`DROP TABLE IF EXISTS mobile_app_auth_grants`);
   await closeDatabaseConnectionsForTests();
 }, PGLITE_TIMEOUT_MS);
 

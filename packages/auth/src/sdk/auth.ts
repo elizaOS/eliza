@@ -450,9 +450,26 @@ export class LoginAuth {
     const session = sessionFromToken(token);
     if (!session) return null;
 
-    // Treat expired tokens as signed out
+    /**
+     * An expired access token is the normal end of its 15-minute life, not a
+     * sign-out. The 30-day rotating refresh credential (storage or the
+     * auth-proxy cookie, whose presence cannot be read here) must survive so
+     * rotation can recover the session. Keep the expired token stored so each
+     * call re-arms rotation after a failed attempt, kick one background
+     * rotation exactly like getToken() does near expiry, and let the refresh
+     * path's 401 handler call signOut() when the server rejects the family.
+     * With no possible credential, the dead access token is removed as before.
+     */
     if (session.expiresAt && session.expiresAt * 1000 < Date.now()) {
-      this.clearToken();
+      const rotationPossible =
+        this.authProxyUrl !== undefined || this.getRefreshToken() !== null;
+      if (!rotationPossible) {
+        this.storage.removeItem(STORAGE_KEY);
+        return null;
+      }
+      void this.refreshSession().catch(() => {
+        /* swallow — rotation resolved against the stored credential */
+      });
       return null;
     }
 

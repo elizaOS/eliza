@@ -42,7 +42,7 @@ import {
   asGenerativeCacheApiError,
   getGenerativeOperationContext,
   requireGenerativeRouteCaller,
-} from "@/api-app/lib/generative-route-auth";
+} from "../../../../src/lib/generative-route-auth";
 
 /**
  * An ElevenLabs lookup that 404s means the voice row exists in our DB but the

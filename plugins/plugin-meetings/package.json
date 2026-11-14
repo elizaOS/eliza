@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-meetings",
-  "version": "2.0.4",
+  "version": "2.0.6",
   "description": "Meeting transcription plugin for elizaOS agents \u2014 browser bots that join Google Meet / Microsoft Teams / Zoom as guests, capture per-speaker audio, transcribe through the runtime model layer, and land diarized transcripts in the Transcripts view and knowledge store",
   "type": "module",
   "main": "dist/index.js",
@@ -37,9 +37,9 @@
     "build": "tsup src/index.ts --format esm --clean && tsc6 --declaration --emitDeclarationOnly --noEmit false --noCheck",
     "test": "vitest run",
     "test:scenarios": "SCENARIO_USE_DETERMINISTIC_MODEL=1 bun --conditions=eliza-source ../../packages/testing/scenario-runner/bin/eliza-scenarios run test/scenarios --lane pr-deterministic",
-    "test:e2e": "node --test ../../packages/scripts/plugins/plugin-meetings/headless-capture-e2e.test.ts",
+    "test:e2e": "bun test --timeout=120000 ../../packages/scripts/plugins/plugin-meetings/headless-capture-e2e.test.ts",
     "typecheck": "tsc --noEmit",
-    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo",
+    "clean": "bun ../../packages/scripts/rm-path-recursive.ts dist .turbo",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
@@ -58,7 +58,7 @@
     "tsup": "9.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "5.0.5",
+    "vitest": "5.1.0",
     "@elizaos/testing": "workspace:*"
   },
   "publishConfig": {

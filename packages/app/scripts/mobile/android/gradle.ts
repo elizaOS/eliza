@@ -24,8 +24,8 @@ import {
   applyConsumerIdentityExt,
   ensureGradleProperty,
   injectAndroidBackgroundRunnerAarFlatDir,
-  injectAndroidSmsGatewayBuildConfigFields,
   injectAospAssetThinning,
+  injectBuildConfigAospField,
   injectCopyForkLlamaLibTask,
   injectNativeLibLegacyPackaging,
   injectNoCompressTarGz,
@@ -270,7 +270,7 @@ export function patchAndroidGradle({ cloudBuild = false } = {}) {
       /getDefaultProguardFile\('proguard-android\.txt'\)/g,
       "getDefaultProguardFile('proguard-android-optimize.txt')",
     );
-    patched = injectAndroidSmsGatewayBuildConfigFields(patched);
+    patched = injectBuildConfigAospField(patched);
     patched = injectNoCompressTarGz(patched);
     patched = injectNativeLibLegacyPackaging(patched);
     patched = injectAndroidRuntimeBytePreservation(patched);

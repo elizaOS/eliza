@@ -1,6 +1,7 @@
 /** Speech-only Durable Object. The caller's agent, history and tools stay on its device. */
 
 import { createHash, timingSafeEqual } from "node:crypto";
+import { getCloudDeployment } from "@elizaos/cloud-shared/lib/deployment/cloud-deployment";
 import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { resolveVoiceUsageLimits } from "@elizaos/cloud-shared/lib/voice-session/config";
@@ -108,7 +109,7 @@ export function preparedSpeechSessionIdForConsent(
   consentNonce: string,
 ): string {
   return uuidv5(
-    `https://api.eliza.app/voice/consent/${userId}/${consentNonce}`,
+    `${getCloudDeployment().speechConsentOrigin}/voice/consent/${userId}/${consentNonce}`,
     uuidv5.URL,
   );
 }

@@ -35,6 +35,19 @@ export interface RemoteHostDirectory {
   hosts: RemoteHostSummary[];
 }
 
+/** Every status Cloud stores for a remote session, in lifecycle order. */
+const REMOTE_SESSION_STATUSES = [
+  "pending",
+  "claimed",
+  "activating",
+  "active",
+  "denied",
+  "revoked",
+  "expired",
+] as const;
+
+export type RemoteSessionStatus = (typeof REMOTE_SESSION_STATUSES)[number];
+
 export interface RemoteSessionSummary {
   id: string;
   ownerId: string;
@@ -42,7 +55,7 @@ export interface RemoteSessionSummary {
   grantRevision: number;
   hostId: string;
   targetRuntimeId: string;
-  status: "pending" | "active" | "denied" | "revoked" | "expired";
+  status: RemoteSessionStatus;
   controllerDeviceId: string;
   controllerKeyId: string;
   targetKeyId: string;
@@ -256,7 +269,7 @@ function parseSession(
   value: unknown,
   expectedHostId: string,
   expectedOwnerId?: string,
-): RemoteSessionSummary {
+): RemoteSessionSummary | null {
   const item = record(value);
   if (!item) {
     throw new Error("Cloud response contains an invalid remote session.");
@@ -273,6 +286,20 @@ function parseSession(
   if (expectedOwnerId && ownerId !== expectedOwnerId) {
     throw new Error("Cloud response contains a session for a different owner.");
   }
+  const status = exactEnum(
+    item.status,
+    "session status",
+    REMOTE_SESSION_STATUSES,
+  );
+  // A target-created pairing challenge has no controller until one claims
+  // it, so no caller can use it as a session yet.
+  if (
+    status === "pending" &&
+    item.controllerDeviceId === null &&
+    item.controllerKeyId === null
+  ) {
+    return null;
+  }
   return {
     id: uuid(item.id, "session id"),
     ownerId,
@@ -280,13 +307,7 @@ function parseSession(
     grantRevision: requiredInteger(item.grantRevision, "grant revision"),
     hostId,
     targetRuntimeId,
-    status: exactEnum(item.status, "session status", [
-      "pending",
-      "active",
-      "denied",
-      "revoked",
-      "expired",
-    ]),
+    status,
     controllerDeviceId: identifier(
       item.controllerDeviceId,
       "controller device id",
@@ -383,8 +404,8 @@ export class RemoteControlCloudClient {
     if (!Array.isArray(data.sessions)) {
       throw new Error("Cloud response is missing remote sessions.");
     }
-    return data.sessions.map((session) =>
-      parseSession(session, expectedHostId, expectedOwnerId),
+    return data.sessions.flatMap(
+      (session) => parseSession(session, expectedHostId, expectedOwnerId) ?? [],
     );
   }
 

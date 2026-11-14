@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cloud-routing",
-  "version": "2.0.4",
+  "version": "2.0.6",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -10,7 +10,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc6 --noCheck -p tsconfig.build.json && node ../../scripts/prepare-package-dist.ts packages/cloud/routing",
+    "build": "tsc6 --noCheck -p tsconfig.build.json && bun ../../scripts/prepare-package-dist.ts packages/cloud/routing",
     "clean": "rm -rf dist",
     "prepack": "bun run build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -21,7 +21,7 @@
     "test": "bun test src"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.3",
+    "@biomejs/biome": "2.6.6",
     "@types/node": "^25.0.0",
     "bun-types": "1.4.2",
     "@typescript/native": "npm:typescript@^7.0.2",

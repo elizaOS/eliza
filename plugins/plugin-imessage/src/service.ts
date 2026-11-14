@@ -61,6 +61,7 @@ import {
   DEFAULT_CHAT_DB_PATH,
   getLastChatDbAccessIssue,
   IMESSAGE_ATTACHMENT_READ_FAILED,
+  IMESSAGE_CHATDB_READ_FAILED,
   openChatDb,
 } from "./chatdb-reader.js";
 import {
@@ -2339,6 +2340,13 @@ export class IMessageService extends Service implements IIMessageService {
 
     try {
       await this.pollForNewMessagesInner();
+    } catch (error) {
+      if (!(error instanceof ElizaError) || error.code !== IMESSAGE_CHATDB_READ_FAILED) {
+        throw error;
+      }
+      // A failed chat.db read is not an empty inbox. Report it and leave the
+      // cursor in place, so the next tick reads the same rows again.
+      this.runtime?.reportError("IMessageService.poll", error);
     } finally {
       this.pollInFlight = false;
     }

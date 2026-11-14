@@ -173,32 +173,9 @@ function authHeader(token: StoredHealthConnectorToken): string {
   return `${type} ${token.accessToken}`;
 }
 
-function providerMockBase(
-  provider: StoredHealthConnectorToken["provider"],
-): string | null {
-  const key = `ELIZA_MOCK_${provider.toUpperCase()}_BASE`;
-  const value = process.env[key] ?? process.env.ELIZA_MOCK_HEALTH_BASE;
-  if (!value) {
-    return null;
-  }
-  const url = new URL(value);
-  if (!["localhost", "127.0.0.1", "::1", "[::1]"].includes(url.hostname)) {
-    throw new HealthConnectorApiError(
-      409,
-      provider,
-      "Health connector mock base must point to loopback.",
-    );
-  }
-  return url.toString().replace(/\/+$/, "");
-}
-
 function providerBaseUrl(
   provider: StoredHealthConnectorToken["provider"],
 ): string {
-  const mock = providerMockBase(provider);
-  if (mock) {
-    return mock;
-  }
   // Base URL provided by the connector contribution; the dispatcher does not
   // hardcode. The registry's `apiBaseUrl` is the single source of truth for
   // the per-provider REST endpoint.

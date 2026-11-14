@@ -78,7 +78,6 @@ afterAll(async () => {
 beforeEach(() => {
   bodies.length = 0;
   vi.stubEnv("ANTHROPIC_AUTH_MODE", "apikey");
-  vi.stubEnv("ELIZA_MOCK_ANTHROPIC_BASE", undefined);
   vi.stubEnv("ELIZA_PLANNER_MAX_TOKENS", undefined);
   for (const key of [
     "ANTHROPIC_COT_BUDGET",

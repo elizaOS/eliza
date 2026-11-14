@@ -7,8 +7,7 @@ import type {
   WalletExportRejection,
   WalletExportRequestBody,
 } from "@elizaos/contracts";
-import { readAliasedEnv } from "@elizaos/host/protocol";
-import { tokenMatches } from "./server-helpers-auth.ts";
+import { tokenMatches } from "@elizaos/core";
 
 export type { WalletExportRejection };
 
@@ -28,7 +27,7 @@ export function resolveWalletExportRejection(
     };
   }
 
-  const expected = readAliasedEnv("ELIZA_WALLET_EXPORT_TOKEN");
+  const expected = process.env.ELIZA_WALLET_EXPORT_TOKEN?.trim();
   if (!expected) {
     return {
       status: 403,

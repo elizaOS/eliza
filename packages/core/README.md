@@ -35,6 +35,14 @@ explicit host environment fallbacks (secret/PII master switches and process
 execution policies). Model context, authorization evidence and effect receipts
 stay complete.
 
+Production string settings require an explicit `SECRET_SALT` other than the
+historical public value `secretsalt`. `ELIZA_ALLOW_DEFAULT_SECRET_SALT` no longer
+changes this check. Keep the existing private salt to retain access to encrypted
+settings. Migrate settings encrypted with the public value before upgrading;
+changing the salt alone does not re-encrypt them. Outside production, an unset
+or historical salt uses one random key for that process. It does not persist
+across process restarts. Hosts must retain a private salt for persistent data.
+
 ## Development
 
 Integration tests live in `test/`. `scripts/verify-package.ts` packs the package

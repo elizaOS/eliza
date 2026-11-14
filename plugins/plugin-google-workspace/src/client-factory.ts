@@ -4,9 +4,13 @@
  * OAuth2 client for the account+capabilities through the injected
  * `GoogleCredentialResolver`, then constructs the matching per-API client. A
  * fresh client is created per call; the auth client itself is cached upstream in
- * the resolver. Honors `ELIZA_MOCK_GOOGLE_BASE` to point at a local mock server.
+ * the resolver. A host may pass an explicit API root. Otherwise
+ * `ELIZA_MOCK_GOOGLE_BASE`, the one test override kept in shipped code, may
+ * point the clients at a loopback mock server: the scenario runner runs the
+ * real plugin, whose googleapis clients are built here, against a mocked
+ * Google API world.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, isLoopbackHost } from "@elizaos/core";
 import {
   type calendar_v3,
   type docs_v1,
@@ -35,6 +39,8 @@ function googleRootUrlOverride(configured?: string): string | undefined {
     const url = new URL(raw);
     if (!["http:", "https:"].includes(url.protocol) || url.username || url.password)
       throw new Error("Expected a credential-free HTTP endpoint");
+    if (configured === undefined && !isLoopbackHost(url.hostname))
+      throw new Error("ELIZA_MOCK_GOOGLE_BASE must name a loopback endpoint");
     if (!url.pathname.endsWith("/")) {
       url.pathname = `${url.pathname}/`;
     }

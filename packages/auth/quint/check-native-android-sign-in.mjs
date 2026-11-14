@@ -8,13 +8,29 @@ import { testOutputPath } from "../../scripts/lib/test-output.ts";
 const root = path.resolve(import.meta.dirname, "../../..");
 const model = path.resolve(root, process.argv[2] ?? "");
 assert.equal(path.dirname(model), import.meta.dirname);
-assert(
-  [
-    "NativeAndroidAckRecovery.qnt",
-    "NativeAndroidCodeVerification.qnt",
-  ].includes(path.basename(model)),
-  "Expected an Android sign-in model",
-);
+// Each model names the JVM fixture that executes the exact plugin methods it describes.
+const chain = "^exact native verify/connect/token/ack chain";
+const fixtures = {
+  "NativeAndroidAckRecovery.qnt": [chain],
+  "NativeAndroidCodeVerification.qnt": [chain],
+  "NativeAndroidActivation.qnt": [chain],
+  "NativeAndroidKeyRenewal.qnt": [
+    chain,
+    "^silent renewal stages durable custody before confirmation",
+    "^renewal bookkeeping commits before admitting another request",
+    "^the exact renewal save through the resident credential store",
+    "^actual Android resident credential mutation owns the exact stop and write",
+  ],
+  "NativeAndroidReadiness.qnt": [
+    "^exact readiness measurement, cache and single-flight probe",
+  ],
+  "NativeAndroidReturnAdoption.qnt": [
+    chain,
+    "^the credential intent fence keeps a durable generation",
+  ],
+};
+const patterns = fixtures[path.basename(model)];
+assert(patterns, "Expected an Android sign-in model");
 
 const output = testOutputPath("quint-native-android-sign-in");
 mkdirSync(output, { recursive: true });
@@ -28,7 +44,7 @@ const child = spawnSync(
     process.execPath,
     "--test",
     "--test-reporter=tap",
-    "--test-name-pattern=^exact native verify/connect/token/ack chain",
+    ...patterns.map((pattern) => `--test-name-pattern=${pattern}`),
     path.join(root, "packages/auth/android/test/native-sign-in.test.mjs"),
   ],
   { cwd: root, encoding: "utf8" },
@@ -37,11 +53,12 @@ const log = path.join(receipt, "jvm.tap");
 writeFileSync(log, `${child.stdout ?? ""}${child.stderr ?? ""}`);
 if (child.error) throw child.error;
 assert.equal(child.status, 0, `Android sign-in JVM fixture failed: ${log}`);
-assert.match(
-  child.stdout,
-  /^ok \d+ - exact native verify\/connect\/token\/ack chain/m,
-);
-assert.match(child.stdout, /^# pass 1$/m);
+for (const pattern of patterns)
+  assert.match(
+    child.stdout,
+    new RegExp(`^ok \\d+ - ${pattern.slice(1).replace(/[/]/g, "\\/")}`, "m"),
+  );
+assert.match(child.stdout, new RegExp(`^# pass ${patterns.length}$`, "m"));
 assert.match(child.stdout, /^# fail 0$/m);
 console.log(
   `Android sign-in and acknowledgement scenarios passed. JVM receipt ${log}`,

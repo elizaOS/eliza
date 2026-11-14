@@ -1,0 +1,45 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/db/schemas/mobile-app-auth-clients.ts",
+    "packages/cloud/shared/src/db/repositories/mobile-app-auth-clients.ts",
+    "packages/cloud/shared/src/db/repositories/mobile-app-auth-clients.test.ts",
+    "packages/cloud/shared/src/lib/services/mobile-app-auth.ts",
+    "packages/cloud/api/v1/app-auth/mobile/_registration.ts",
+    "packages/cloud/quint/check-reviewed-cloud.mjs",
+    "packages/cloud/quint/reviewed-cloud-checks.json",
+    "packages/cloud/shared/src/lib/auth/private-owner-credential.ts",
+    "packages/cloud/api/src/bootstrap-app.ts",
+    "packages/cloud/api/.well-known/assetlinks.json/route.ts",
+    "packages/cloud/shared/src/lib/auth/android-asset-links.ts",
+    "packages/app/functions/_middleware.ts",
+    "packages/cloud/api/__tests__/native-callback.pglite.test.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-reviewed-cloud.mjs",
+  "bounds": "Five entrypoints with twelve boolean policy dimensions: primary database availability, registration and app status, exact deployment configuration, callback syntax, exact allowed callback, TTL, credential grant binding and Android association validity. A second case projects two signers and two relations for one package. Complete finite graph enumeration; one authority fact changes per admission step.",
+  "cases": [
+    {
+      "name": "client-registration-authority",
+      "main": "MobileAppClientRegistration",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "maxSteps": 40,
+      "samples": 1000,
+      "temporal": []
+    },
+    {
+      "name": "android-association-publication",
+      "main": "AndroidAssociationPublication",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "maxSteps": 20,
+      "samples": 1000,
+      "temporal": []
+    }
+  ],
+  "limitations": [
+    "PKCE exchange, renewal temporal limits and key cryptography retain separate lifecycle models.",
+    "The database policy model does not prove preservation of production registry data; deployment requires a reviewed import of existing registrations and signing certificates."
+  ]
+}
