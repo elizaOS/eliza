@@ -51,7 +51,9 @@ export async function retrievePaidRenewalObjects(
     invoiceParsed.data.payment_intent
       ? stripe.paymentIntents.retrieve(invoiceParsed.data.payment_intent)
       : null,
-    invoiceParsed.data.charge ? stripe.charges.retrieve(invoiceParsed.data.charge) : null,
+    invoiceParsed.data.charge
+      ? stripe.charges.retrieve(invoiceParsed.data.charge, { expand: ["refunds"] })
+      : null,
     stripe.prices.retrieve(binding.priceId),
     stripe.products.retrieve(binding.productId),
   ]);
