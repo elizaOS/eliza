@@ -43,6 +43,8 @@ link ticket distinct from the zero marker for a settled link.
 type AccountResult = NoConnection | CalendarReadOnly | CalendarWrite | AccountReadFailed
 type LinkPhase = NoLink | CheckingAccess | WaitingHost | WaitingCalendar
 type PanelNotice = QuietPanel | CheckingAccounts | AccountsVerified | AccountsUnverified | ConnectingCalendar | AccessUnavailable | AwaitingGoogle | SyncUnavailable | NeedsGrant | LinkReturned
+pure val failedAccountRead: AccountResult = AccountReadFailed
+pure val verifiedAccountsNotice: PanelNotice = AccountsVerified
 type LinkPanel = { panelOpen: bool, authority: int, intent: int, scoped: bool, authorizing: bool, review: int,
   nextRead: int, readBusy: int, verifiedRead: int, grant: AccountResult, nextLink: int, linkBusy: int, linkPhase: LinkPhase,
   linkedReadBusy: int, notice: PanelNotice }
@@ -61,7 +63,7 @@ pure def canCloseCalendarPanel(s: LinkPanel): bool = s.panelOpen
 pure def closeCalendarPanel(s: LinkPanel): LinkPanel =
   { ...clearLinkWithAccountBusy(s.readBusy, s), panelOpen: false, scoped: false, authorizing: false, review: 0, verifiedRead: 0 }
 pure def replaceCloudBinding(s: LinkPanel): LinkPanel = {
-  val replaced = { ...clearLinkWithAccountBusy(s.readBusy, s), authority: s.authority + 1, verifiedRead: 0, grant: AccountReadFailed }
+  val replaced = { ...clearLinkWithAccountBusy(s.readBusy, s), authority: s.authority + 1, verifiedRead: 0, grant: failedAccountRead }
   if (s.panelOpen) startAccountRead(s.nextRead + 1, replaced) else replaced
 }
 pure def canReloadCalendarAccounts(s: LinkPanel): bool = s.panelOpen
@@ -77,7 +79,7 @@ pure def startOwnedLink(carriedReadTicket: int, s: LinkPanel): LinkPanel =
   { ...s, nextLink: s.nextLink + 1, linkBusy: s.nextLink + 1, linkPhase: CheckingAccess,
     linkedReadBusy: carriedReadTicket, notice: ConnectingCalendar }
 pure def acceptAccounts(s: LinkPanel, accountEvidence: AccountEvidence): LinkPanel = {
-  val verified = { ...s, verifiedRead: s.readBusy, grant: accountEvidence.accountResult, notice: AccountsVerified }
+  val verified = { ...s, verifiedRead: s.readBusy, grant: accountEvidence.accountResult, notice: verifiedAccountsNotice }
   if (not(accountEvidence.exactTicket)) s
   else if (not(s.panelOpen and accountEvidence.exactOwner and accountEvidence.returnCurrent)) { ...s, readBusy: 0 }
   else if (accountEvidence.accountResult == AccountReadFailed or accountEvidence.namedGrantMissing)
