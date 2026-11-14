@@ -895,6 +895,12 @@ test("coverage notices keep the coordinates of a place outside the region", asyn
 
 test("Cloud admission failure remains visible through explicit search without provider calls", async () => {
   for (const [status, code, message] of [
+    [402, "insufficient_credits", "Add balance or choose a plan to use Maps."],
+    [
+      409,
+      "maps_funding_changed",
+      "Your plan changed. Try the Maps request again.",
+    ],
     [403, "subscription_required", "Maps needs an active Cloud subscription."],
     [401, "unauthorized", "Sign in to Cloud to use Maps."],
   ]) {

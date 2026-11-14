@@ -620,8 +620,9 @@ Maps through their Maps allowance. Without a plan, Google requests reserve the
 published global API unit cost with no platform markup and settle the observed
 provider calls. Account-wide Google discounts and free caps require later invoice
 reconciliation. Metadata does not incur a charge. Duplicate request IDs do not
-start another provider call. An unknown provider outcome retains its reservation
-until the existing billing owner resolves it. The
+start another provider call. An unknown provider outcome conservatively settles
+the admitted estimate through the existing billing owner. A failed settlement
+retains that first choice for retry; no automatic later refund is promised. The
 `admit` hook in `src/lib/maps-route.ts` applies the Maps request buckets while
 `ELIZA_CLOUD_PLAN_RATE_LIMITS` is set: `429 rate_limited` with `Retry-After`
 and `retryAfterSeconds` in the body. The buckets run after the plan read, so a
@@ -706,8 +707,9 @@ an access key and request logging disabled is in `infra/cloud/maps`.
 Ops also own the update schedule (dataset freshness), monitoring, capacity and
 ODbL obligations. Transit, traffic and map tiles are not served.
 
-Maps uses a separate organization request allowance (Alpha P-56, issue #410).
-It never reserves or debits inference funds. Operators must set
+Active plans use a separate organization Maps request allowance without a
+credit charge (Alpha P-56, issue #410). Accounts without a plan reserve provider
+costs from purchased credits instead. Operators must set
 `ELIZA_CLOUD_MAPS_REQUEST_ALLOWANCES` to a selected JSON policy with
 `{selected:true,plans:{<planKey>:{requests:<integer>,windowSeconds:<integer>}}}`.
 No numeric defaults are provided. Zero requests is a valid closed allowance.
@@ -717,12 +719,13 @@ ends. Selected `ELIZA_CLOUD_PLAN_RATE_LIMITS` with usable burst and sustained li
 is also required; its explicit default plan fallback is preserved. Both dimensions are enforced in
 shared durable storage and carry across allowance window resets.
 
-POST Maps requests require `Idempotency-Key`. Admission consumes one request;
+POST Maps requests require `Idempotency-Key`. Included-plan admission consumes one request;
 repeating the same credential/request ID never grants another provider call.
 Cancellation before admission consumes nothing. Accepted requests, lost
 acknowledgements, and cancellation after admission stay consumed. Outcome
-updates are idempotent and do not refund or charge. Provider timeouts and lost
-outcome updates remain unknown. Durable replay records retain only credential
+updates are idempotent. Credit settlement retains billable provider work,
+including no-result responses, and releases known nonbillable failures. Provider
+timeouts and lost outcome updates remain unknown. Durable replay records retain only credential
 identity, operation, admission time/window and outcome, with no query,
 coordinates, payload hash or provider response. These records are not expired
 because expiry would permit replay; account-erasure policy must cover them.
