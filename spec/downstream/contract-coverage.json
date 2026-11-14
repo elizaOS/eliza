@@ -434,7 +434,7 @@
         "product-host-source"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/grace/websiteGuide.md",
+      "relatedSpec": "spec/downstream/grace/websiteHelpFetch.md",
       "coverage": "related-contract"
     },
     {
@@ -1570,7 +1570,7 @@
         "test"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/calendar.md",
+      "relatedSpec": "spec/downstream/alpha/linkedCalendarReconcile.md",
       "coverage": "related-contract"
     },
     {
@@ -3334,7 +3334,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/maps.md",
+      "relatedSpec": "spec/downstream/mobileNavigationHandoff.md",
       "coverage": "related-contract"
     },
     {
@@ -3418,7 +3418,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/maps.md",
+      "relatedSpec": "spec/downstream/mobileNavigationHandoff.md",
       "coverage": "related-contract"
     },
     {
@@ -3428,7 +3428,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/maps.md",
+      "relatedSpec": "spec/downstream/mobileNavigationHandoff.md",
       "coverage": "related-contract"
     },
     {

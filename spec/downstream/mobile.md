@@ -21,6 +21,7 @@ The examined consumer pin lists no patches in
 | Grace and AlphaPhone Android contact picker and Alpha contact edits. | [Address book reads and reviewed writes](./mobileContacts.md) |
 | Alpha renderer drafts and Grace native key and credential custody. | [Encrypted JSON slot admission and readback](./mobileSecureSlots.md) |
 | Alpha Android Calendar deletion and Undo. | [Scoped review and provider dispatch](./mobileCalendarScopedDeletion.md), [deferred journal and Undo](./mobileDeferredDeletion.md) |
+| Alpha Maps foreground guidance and Android navigation service. | [Navigation startup, fallback and watch custody](./mobileNavigationHandoff.md) |
 | Alpha native Notes recordings and saved transcription windows. | [Recording storage and clip custody](./mobileNoteAudioCustody.md) |
 | Alpha Android password fill and save, with Grace debug admission. | [Native Autofill request and unlock custody](./mobilePasswordAutofill.md) |
 | Alpha Android browser state, bookmarks and site clearing. | [Native browser storage](./mobileBrowserStorage.md) |
