@@ -475,7 +475,7 @@ export interface SurfaceState {
   /** Android: text zoom in percent. */
   textZoom?: number | null;
   /**
-   * Android: pinch zoom in CSS pixels per density-independent pixel: 1 is the page's own
+   * Android: pinch zoom in density-independent pixels per CSS pixel: 1 is the page's own
    * mobile size, below 1 a wide page shown whole, above 1 zoomed in.
    */
   pageScale?: number | null;

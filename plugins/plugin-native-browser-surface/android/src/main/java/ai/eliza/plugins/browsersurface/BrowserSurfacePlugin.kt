@@ -358,7 +358,6 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         const val TAG = "ElizaSurfaceManager"
         const val PROFILE_PREFS = "eliza_browser_surface_profiles"
         const val DOWNLOAD_PREFS = "eliza_browser_surface_downloads"
-        const val CERTIFICATE_REFUSED = "The website's security certificate was not accepted."
     }
 
     /** A page's file input, waiting for `answerFileChooser`. */
@@ -471,7 +470,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         var pendingIdentityProvider: Pair<String, String>? = null,
         /** The main-frame address a certificate error blocked, until the page moves on. */
         var securityBlocked: String? = null,
-        /** CSS pixels per density-independent pixel ([BrowserSurfaceRequests.pageScale]). */
+        /** Density-independent pixels per CSS pixel ([BrowserSurfaceRequests.pageScale]). */
         var pageScale: Double = 1.0,
     )
 
@@ -490,8 +489,11 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         }
     }
 
+    private fun pageFailure(surface: Surface): String? =
+        BrowserSurfaceRequests.pageFailure(surface.pageError, surface.securityBlocked)
+
     private fun historyReady(surface: Surface): Boolean =
-        !surface.disposed && surface.foregrounded && !surface.paused && surface.pageError == null &&
+        !surface.disposed && surface.foregrounded && !surface.paused && pageFailure(surface) == null &&
         surface.webView.progress == 100 &&
         activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
 
@@ -1207,11 +1209,11 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     }, surface, 150)
                 }
 
-                // A refused certificate stays the page's error: WebView follows it with a generic one.
+                // WebView follows a refused certificate with a generic error; pageFailure reports the certificate.
                 override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
                     if (!request.isForMainFrame) return
                     val surface = surfaces.values.firstOrNull { it.webView === view } ?: return
-                    if (surface.securityBlocked != request.url.toString()) surface.pageError = error.description.toString()
+                    surface.pageError = error.description.toString()
                 }
 
                 override fun onPageFinished(view: WebView, url: String) {
@@ -2300,9 +2302,9 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             val identity = requireActiveIdentity(call, "captureSurface") ?: return@runOnUiThread
             val surface = ownedSurface(call, id, identity, "captureSurface") ?: return@runOnUiThread
             if (!activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) || !surface.foregrounded ||
-                surface.paused || surface.webView.progress < 100 || surface.pageError != null ||
+                surface.paused || surface.webView.progress < 100 || pageFailure(surface) != null ||
                 surface.container.width <= 0 || surface.container.height <= 0) {
-                call.reject(surface.pageError ?: "The native page is hidden or still loading", "CAPTURE_UNAVAILABLE")
+                call.reject(pageFailure(surface) ?: "The native page is hidden or still loading", "CAPTURE_UNAVAILABLE")
                 return@runOnUiThread
             }
             val webView = surface.webView
@@ -2426,8 +2428,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         activity.runOnUiThread {
             val identity = requireActiveIdentity(call, "readPage") ?: return@runOnUiThread
             val surface = ownedSurface(call, id, identity, "readPage") ?: return@runOnUiThread
-            if (!surface.foregrounded || surface.webView.progress < 100 || surface.pageError != null) {
-                call.reject(surface.pageError ?: "The native page is hidden or still loading")
+            if (!surface.foregrounded || surface.webView.progress < 100 || pageFailure(surface) != null) {
+                call.reject(pageFailure(surface) ?: "The native page is hidden or still loading")
                 return@runOnUiThread
             }
             val revision = surface.pageRevision
@@ -2491,7 +2493,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 activeOwners.isActive(identity) && surfaces[id] === surface && !surface.disposed &&
                     (cleanup || (activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
                     surface.foregrounded && !surface.paused && surface.webView.progress == 100 &&
-                    surface.pageError == null && surface.securityBlocked == null)) &&
+                    pageFailure(surface) == null)) &&
                     surface.pageRevision == revision && surface.webView.url == url
             }
         }
@@ -2736,7 +2738,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         put("canGoBack", surface.webView.canGoBack())
         put("canGoForward", surface.webView.canGoForward())
         put("progress", surface.webView.progress)
-        put("pageError", surface.securityBlocked?.let { CERTIFICATE_REFUSED } ?: surface.pageError ?: JSObject.NULL)
+        put("pageError", pageFailure(surface) ?: JSObject.NULL)
         put("securityBlocked", surface.securityBlocked != null)
         put("textZoom", surface.webView.settings.textZoom)
         put("pageScale", surface.pageScale)
