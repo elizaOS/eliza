@@ -311,6 +311,40 @@ test("missing declared input reports a typed failure without creating output", (
   assert.equal(fs.existsSync(options.output), false);
 });
 
+test("a pnpm-linked dependency is read from its package's real directory", (t) => {
+  const { options, generate } = setup(t);
+  // pnpm's layout: the app's node_modules links into the workspace .pnpm store.
+  const store = path.join(
+    options.consumerRoot,
+    "node_modules/.pnpm/@capacitor+android@8.0.0/node_modules/@capacitor/android",
+  );
+  fs.mkdirSync(path.join(store, "capacitor"), { recursive: true });
+  options.dependencyRoot = path.join(options.consumerRoot, "app/node_modules");
+  fs.mkdirSync(path.join(options.dependencyRoot, "@capacitor"), {
+    recursive: true,
+  });
+  fs.symlinkSync(
+    store,
+    path.join(options.dependencyRoot, "@capacitor/android"),
+  );
+  const capacitor = {
+    name: "capacitor-android",
+    source: { root: "dependencies", path: "@capacitor/android/capacitor" },
+  };
+  options.profile.modules = [capacitor];
+  generate();
+  const profile = JSON.parse(
+    fs.readFileSync(path.join(options.output, ".eliza-consumer-profile.json")),
+  );
+  assert.equal(
+    profile.modules[0].directory,
+    fs.realpathSync(path.join(store, "capacitor")),
+  );
+  // A symlink inside the package still cannot leave it.
+  fs.symlinkSync(upstreamRoot, path.join(store, "escape"));
+  capacitor.source.path = "@capacitor/android/escape";
+  assert.throws(generate, /escapes/);
+});
 test("independent modules remain included without becoming app dependencies", (t) => {
   const { options, generate } = setup(t);
   options.profile.modules = [

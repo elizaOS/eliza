@@ -114,6 +114,25 @@ function environmentNames(value, keys, where) {
 }
 
 /**
+ * The directory an input must stay inside. A `node_modules` dependency root holds
+ * package links (pnpm's point into its `.pnpm` store, a workspace package's at its
+ * source), so an input under one stays inside the real directory of the package it
+ * names; a symlink within that package still cannot escape it. Every other root
+ * contains its inputs itself.
+ */
+function packageContainer(rootName, root, relative) {
+  if (
+    rootName !== "dependencies" ||
+    relative === null ||
+    path.basename(root) !== "node_modules"
+  )
+    return root;
+  const [first, second] = relative.split("/");
+  const name = first.startsWith("@") && second ? `${first}/${second}` : first;
+  return fs.realpathSync(path.join(root, name));
+}
+
+/**
  * All policy is explicit data: identity, selected modules/sources, manifests,
  * resources, variants, signing/version environment names and BuildConfig values.
  * Paths are admitted against named caller roots. Output must be an owned
@@ -224,20 +243,22 @@ export function generateAndroidConsumerHost({
     );
     const root = roots[reference.root];
     // "." names a declared root itself, for example an admission working directory.
-    const requested =
+    const relative =
       reference.path === "." && kind === "directory"
-        ? root
-        : path.join(root, relativePath(reference.path));
-    let candidate;
+        ? null
+        : relativePath(reference.path);
+    const requested = relative === null ? root : path.join(root, relative);
+    let candidate, container;
     try {
       candidate = fs.realpathSync(requested);
+      container = packageContainer(reference.root, root, relative);
     } catch (cause) {
       throw new AndroidConsumerHostError("Android host input is unavailable", {
         cause,
       });
     }
     requireValue(
-      inside(root, candidate),
+      inside(container, candidate),
       "Android host input escapes its declared root",
     );
     const stat = fs.statSync(candidate);
