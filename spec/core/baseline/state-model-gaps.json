@@ -8535,7 +8535,7 @@
       "currentModels": [
         {
           "spec": "spec/core/skeletonStreamState.md",
-          "sha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07",
+          "sha256": "3189f1a3e9340e40349d61a4830ff1b234fb69d956acd55aabfc04ce7bd66cad",
           "definitions": [
             "noField",
             "noKey",

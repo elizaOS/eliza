@@ -59,8 +59,8 @@ lemma SkeletonLookupPrefix(s: SkeletonState, name: string)
 {
   var rows := s.fieldRows;
   var sameName := (row: SkeletonField) => row.name == name;
-  var matches := Std.Collections.Seq.Filter(sameName, rows);
-  reveal ProofLib.Filter();
+  var matches := matchingRows(rows, name);
+  SkeletonMatchingRows(rows, name);
   if |matches| > 0 {
     assert rowAt(rows, name) == matches[0];
     ProofLib.FilterMember(sameName, rows, matches[0]);
@@ -69,6 +69,13 @@ lemma SkeletonLookupPrefix(s: SkeletonState, name: string)
     assert rowAt(rows, name) == noField.(name := name);
     SkeletonPrefixPlusTail([], []);
   }
+}
+
+lemma SkeletonMatchingRows(rows: seq<SkeletonField>, name: string)
+  ensures matchingRows(rows, name) == ProofLib.Filter((row: SkeletonField) => row.name == name, rows)
+{
+  reveal matchingRows();
+  reveal ProofLib.Filter();
 }
 
 lemma searchUnordered_ensures(s: SkeletonState, finalChunk: bool, prefixDecodable: bool, resultTrue: bool)
@@ -132,8 +139,16 @@ lemma flushSurrogate_ensures(s: SkeletonState, name: string)
   if inv(s) && canFlushSurrogate(s, name) {
     var prior := rowAt(s.fieldRows, name);
     var accumulated := prior.emitted + core__streamUnits_wellFormed(core__streamUnits_sliceUnits(prior.content, |prior.emitted|, |prior.content|));
+    var updated := prior.(content := accumulated, emitted := accumulated, hasContent := true, hasEmitted := true);
     SkeletonPrefixPlusTail(accumulated, []);
-    SkeletonRowsPreservePrefix(s.fieldRows, prior.(content := accumulated, emitted := accumulated, hasContent := true, hasEmitted := true));
+    assert accumulated + [] == accumulated;
+    assert updated.content == accumulated && updated.emitted == accumulated;
+    assert core__streamUnits_unitPrefix(updated.content, updated.emitted);
+    SkeletonRowsPreservePrefix(s.fieldRows, updated);
+    var after := flushSurrogate(s, name);
+    assert after.fieldRows == writeRow(s.fieldRows, updated);
+    assert after.pendingEscape == s.pendingEscape && !after.held;
+    assert alwaysEmittedPrefixIsRetained(after);
   }
 }
 
@@ -149,13 +164,28 @@ lemma stringStep_ensures(s: SkeletonState)
     var local_24 := core__streamUnits_findUnits(s.buffer, [92]);
     var local_25 := (if (local_23 < 0) then (if (local_24 < 0) then |s.buffer| else local_24) else (if ((local_24 < 0) || (local_23 < local_24)) then local_23 else local_24));
     if |s.pendingEscape| > 0 && !(s.pendingEscape == [92] && local_21 == 117) && |s.buffer| >= local_22 {
-      SkeletonAppendPrefix(s.(pendingEscape := [], buffer := core__streamUnits_sliceUnits(s.buffer, local_22, |s.buffer|)), s.activeField, core__streamUnits_decodeEscape(s.pendingEscape + core__streamUnits_sliceUnits(s.buffer, 0, local_22)), false);
+      var start := s.(pendingEscape := [], buffer := core__streamUnits_sliceUnits(s.buffer, local_22, |s.buffer|));
+      var decoded := core__streamUnits_decodeEscape(s.pendingEscape + core__streamUnits_sliceUnits(s.buffer, 0, local_22));
+      SkeletonAppendPrefix(start, s.activeField, decoded, false);
+      SkeletonAppendRetainsFrame(start, s.activeField, decoded, false);
     } else if |s.pendingEscape| == 0 && local_25 > 0 {
-      SkeletonAppendPrefix(s.(buffer := core__streamUnits_sliceUnits(s.buffer, local_25, |s.buffer|)), s.activeField, core__streamUnits_sliceUnits(s.buffer, 0, local_25), false);
+      var start := s.(buffer := core__streamUnits_sliceUnits(s.buffer, local_25, |s.buffer|));
+      var decoded := core__streamUnits_sliceUnits(s.buffer, 0, local_25);
+      SkeletonAppendPrefix(start, s.activeField, decoded, false);
+      SkeletonAppendRetainsFrame(start, s.activeField, decoded, false);
     } else if |s.pendingEscape| == 0 && local_25 <= 0 && local_21 == 34 {
-      SkeletonAppendPrefix(s.(activeField := "", buffer := core__streamUnits_sliceUnits(s.buffer, 1, |s.buffer|), spanIndex := (s.spanIndex + (if s.unordered then 0 else 1))), s.activeField, [], true);
+      var start := s.(activeField := "", buffer := core__streamUnits_sliceUnits(s.buffer, 1, |s.buffer|), spanIndex := (s.spanIndex + (if s.unordered then 0 else 1)));
+      SkeletonAppendPrefix(start, s.activeField, [], true);
+      SkeletonAppendRetainsFrame(start, s.activeField, [], true);
     }
   }
+}
+
+lemma SkeletonAppendRetainsFrame(s: SkeletonState, name: string, units: seq<int>, finalChunk: bool)
+  ensures appendFiltered(s, name, units, finalChunk).held == s.held
+  ensures appendFiltered(s, name, units, finalChunk).pendingEscape == s.pendingEscape
+{
+  reveal appendFiltered();
 }
 
 lemma partsStep_ensures(s: SkeletonState, finalChunk: bool, keyIsKind: bool, keyIsValue: bool, decodedKind: seq<int>, validKindString: bool)
@@ -164,9 +194,15 @@ lemma partsStep_ensures(s: SkeletonState, finalChunk: bool, keyIsKind: bool, key
   ensures (inv(s) ==> canPartsStep(s, keyIsKind, keyIsValue) ==> alwaysHeldBuffersAreEmpty(partsStep(s, finalChunk, keyIsKind, keyIsValue, decodedKind, validKindString)))
 {
   if inv(s) && canPartsStep(s, keyIsKind, keyIsValue) {
-    var after := partsStep(s, finalChunk, keyIsKind, keyIsValue, decodedKind, validKindString);
-    assert after.fieldRows == s.fieldRows;
-    assert after.pendingEscape == s.pendingEscape;
-    assert after.held ==> after.buffer == [] && after.gateHead == [] && after.activeField == "" && after.partsField == "";
+    SkeletonPartFrame(s, finalChunk, keyIsKind, keyIsValue, decodedKind, validKindString);
   }
+}
+
+lemma {:induction false} SkeletonPartFrame(s: SkeletonState, finalChunk: bool, keyIsKind: bool, keyIsValue: bool, decodedKind: seq<int>, validKindString: bool)
+  requires !s.held
+  ensures partsStep(s, finalChunk, keyIsKind, keyIsValue, decodedKind, validKindString).fieldRows == s.fieldRows
+  ensures partsStep(s, finalChunk, keyIsKind, keyIsValue, decodedKind, validKindString).pendingEscape == s.pendingEscape
+  ensures alwaysHeldBuffersAreEmpty(partsStep(s, finalChunk, keyIsKind, keyIsValue, decodedKind, validKindString))
+{
+  reveal partsStep(), heldState();
 }

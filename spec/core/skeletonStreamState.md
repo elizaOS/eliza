@@ -182,7 +182,7 @@ pure def partsStep(s: SkeletonState, finalChunk: bool, keyIsKind: bool, keyIsVal
   val valueAt = buffer.length() - value.length()
   val kindEnd = U::jsonStringEnd(value)
   val definition = s.selected.select(key => key.name == s.partsField).nthOr(0, noKey)
-  if (buffer.length() == 0) { ...s, buffer: buffer, partsField: if (finalChunk) "" else s.partsField, finalResidue: finalChunk }
+  val decoded = if (buffer.length() == 0) { ...s, buffer: buffer, partsField: if (finalChunk) "" else s.partsField, finalResidue: finalChunk }
   else if (s.partsPosition == PartElement and code == 93) { ...s, buffer: U::sliceUnits(buffer, 1, buffer.length()), partsField: "" }
   else if (code == 44) { ...s, buffer: U::sliceUnits(buffer, 1, buffer.length()) }
   else if (s.partsPosition == PartElement and code == 123) { ...s, buffer: U::sliceUnits(buffer, 1, buffer.length()), partsPosition: PartKey, hasPartKind: false, partKind: List() }
@@ -195,6 +195,7 @@ pure def partsStep(s: SkeletonState, finalChunk: bool, keyIsKind: bool, keyIsVal
   else if (keyIsKind and value.nthOr(0, -1) == 34) { ...s, buffer: U::sliceUnits(buffer, valueAt + kindEnd, buffer.length()), hasPartKind: validKindString, partKind: if (validKindString) decodedKind else List() }
   else if (keyIsValue and value.nthOr(0, -1) == 34 and s.hasPartKind and definition.kinds.includes(s.partKind)) { ...s, buffer: U::sliceUnits(buffer, valueAt + 1, buffer.length()), activeField: s.partsField }
   else heldState(s)
+  if (decoded.held) heldState(s) else { ...decoded, held: false, fieldRows: s.fieldRows, pendingEscape: s.pendingEscape }
 }
 pure val decodedKindValues = Set(List(116,101,120,116))
 ```
