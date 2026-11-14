@@ -227,6 +227,11 @@ export interface SitePermissionRequestedEvent extends SurfaceIdOptions {
   androidPermissions: string[];
 }
 
+/** Android: a page's fullscreen view (usually video) opened above the host, or closed. */
+export interface FullscreenChangedEvent extends SurfaceIdOptions {
+  active: boolean;
+}
+
 /**
  * A tapped link that belongs to another app (`tel:`, `mailto:`, `sms:`, `smsto:`,
  * `geo:`, `market:`, `intent:`).
@@ -717,6 +722,10 @@ export interface ElizaSurfaceManagerPlugin {
     listener: (event: SitePermissionRequestedEvent) => void,
   ): Promise<PluginListenerHandle>;
   addListener(
+    eventName: "fullscreenChanged",
+    listener: (event: FullscreenChangedEvent) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
     eventName: "externalLinkRequested",
     listener: (event: ExternalLinkRequestedEvent) => void,
   ): Promise<PluginListenerHandle>;
@@ -748,9 +757,9 @@ export interface ElizaSurfaceManagerPlugin {
    * `presentSurface` does not resume it; call `resumeSurface` before the person sees it
    * again. While it is paused, `captureSurface`, `controlPage`, `observeHistory` and
    * `navigateHistory` reject; `goBack`, `goForward`, `navigate` and `reloadSurface` still
-   * run, and `readPage` still reads. Pausing also cancels held page dialogs, refuses new
-   * dialogs, file inputs and site permission requests, takes focus and the keyboard from
-   * the page, and stops sending it touches. Held file inputs and
+   * run, and `readPage` still reads. Pausing also cancels held page dialogs and ends
+   * fullscreen, refuses new dialogs, file inputs and site permission requests, takes focus
+   * and the keyboard from the page, and stops sending it touches. Held file inputs and
    * site permission requests stay open, since the system picker or the host's Android
    * permission prompt may be what covers the page.
    * Repeating the call does nothing. iOS rejects with `UNSUPPORTED`, so a cross-platform

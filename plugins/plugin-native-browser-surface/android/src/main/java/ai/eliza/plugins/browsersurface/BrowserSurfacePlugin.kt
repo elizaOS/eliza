@@ -37,6 +37,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Canvas
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
 import android.net.Uri
@@ -70,13 +71,16 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceError
 import android.webkit.WebResourceResponse
 import android.widget.FrameLayout
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.content.ContextCompat
 import androidx.core.os.HandlerCompat
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.webkit.Profile
 import androidx.webkit.ProfileStore
@@ -372,6 +376,15 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         val pageOrigin: String?,
     )
 
+    /** A page's fullscreen view (usually video), shown above the host until Back or the page ends it. */
+    private class Fullscreen(
+        val id: String,
+        val surface: Surface,
+        val frame: FrameLayout,
+        val callback: WebChromeClient.CustomViewCallback,
+        val back: OnBackPressedCallback,
+    )
+
     private data class HostOuterClip(
         val x: Double,
         val y: Double,
@@ -459,6 +472,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
     private var filePicker: ActivityResultLauncher<Intent>? = null
     /** The surface and file request the open system picker answers. */
     private var pickerFor: Pair<Surface, String>? = null
+    private var fullscreen: Fullscreen? = null
     private var downloads: BrowserDownloads? = null
     private var inputRouter: BelowHostInputRouter? = null
     private var keyboardListener: ViewTreeObserver.OnGlobalLayoutListener? = null
@@ -704,11 +718,12 @@ class ElizaSurfaceManagerPlugin : Plugin() {
     /** A dialog nobody will answer is dismissed: alert/confirm/prompt cancel, never accept. */
     private fun dismissDialogs(surface: Surface) {
         surface.dialogs.drain().forEach { it.cancel() }
+        if (fullscreen?.surface === surface) exitFullscreen(tellPage = true)
     }
 
     /**
      * Ends what the page waits on, unanswered, once it navigated, was hidden or closed: dialogs
-     * cancel, a file input gets no files and site permissions are denied.
+     * cancel, a file input gets no files, site permissions are denied and fullscreen ends.
      * A paused page keeps its file input and permission requests, since the system picker or
      * the host's own Android permission prompt may be what covers it.
      */
@@ -762,6 +777,49 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             put("topFrame", topFrame)
             put("androidPermissions", JSONArray(if (origin == null) emptyList() else androidPermissionsToAsk(kinds)))
         })
+    }
+
+    /** Shows a page's fullscreen view above everything, the host included; Back leaves it. */
+    private fun enterFullscreen(id: String, surface: Surface, view: View, callback: WebChromeClient.CustomViewCallback) {
+        if (fullscreen != null || !isLive(surface) || !surface.foregrounded || surface.paused) {
+            callback.onCustomViewHidden()
+            return
+        }
+        val frame = FrameLayout(activity).apply {
+            setBackgroundColor(Color.BLACK)
+            addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        }
+        activity.findViewById<ViewGroup>(android.R.id.content).addView(frame,
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        WindowCompat.getInsetsController(activity.window, activity.window.decorView).apply {
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            hide(WindowInsetsCompat.Type.systemBars())
+        }
+        // Added last, so Back leaves fullscreen before the host hears it.
+        val back = object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() = exitFullscreen(tellPage = true)
+        }
+        activity.onBackPressedDispatcher.addCallback(back)
+        fullscreen = Fullscreen(id, surface, frame, callback, back)
+        notifyListeners("fullscreenChanged", surfaceEvent(id, surface).apply { put("active", true) })
+    }
+
+    /** Leaves fullscreen; [tellPage] when the host, not the page, ends it. */
+    private fun exitFullscreen(tellPage: Boolean) {
+        val shown = fullscreen ?: return
+        fullscreen = null
+        shown.back.remove()
+        shown.frame.removeAllViews()
+        (shown.frame.parent as? ViewGroup)?.removeView(shown.frame)
+        WindowCompat.getInsetsController(activity.window, activity.window.decorView).show(WindowInsetsCompat.Type.systemBars())
+        if (tellPage) {
+            try {
+                shown.callback.onCustomViewHidden()
+            } catch (error: RuntimeException) {
+                // error-policy:J1 A page that already left fullscreen has nothing to hide.
+            }
+        }
+        if (isLive(shown.surface)) notifyListeners("fullscreenChanged", surfaceEvent(shown.id, shown.surface).apply { put("active", false) })
     }
 
     /**
@@ -1149,6 +1207,16 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     holdSitePermission(id, webView, origin, listOf(BrowserSitePrompt.LOCATION)) { granted ->
                         callback.invoke(origin, BrowserSitePrompt.LOCATION in granted, false)
                     }
+
+                override fun onShowCustomView(view: View, callback: CustomViewCallback) {
+                    val surface = surfaces[id]
+                    if (surface == null || surface.webView !== webView) callback.onCustomViewHidden()
+                    else enterFullscreen(id, surface, view, callback)
+                }
+
+                override fun onHideCustomView() {
+                    if (fullscreen?.surface?.webView === webView) exitFullscreen(tellPage = false)
+                }
 
                 // A new window never opens by itself. A tapped window's address is caught by a
                 // throwaway WebView that never loads it, then reported for the host to check.

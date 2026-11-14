@@ -77,6 +77,8 @@ and does nothing by itself:
   saves the file to Downloads with the surface's own cookie for the requesting page's
   exact origin and reports `downloadFinished` (`saved` or `failed`). The http(s) address
   can carry access tokens, so keep it out of models and logs; native code never logs it.
+- `fullscreenChanged`: a page's fullscreen view (usually video) is shown above the host;
+  Back, the page, or hiding, pausing or navigating the surface ends it.
 - `externalLinkRequested`: a tapped `tel:`, `mailto:`, `sms:`, `geo:`, `market:` or `intent:` link.
   `openExternalLink` opens only that link with a fresh Intent; `tel:` opens the dialer
   and places no call. Script attempts are dropped.
