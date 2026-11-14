@@ -360,7 +360,7 @@
         "issued per-turn lease identity",
         "expiry",
         "closed lease",
-        "tariff qualification",
+        "tariff qualification using the UTF-8 length of the retained serialization",
         "atomic monetary and attempt reservation"
       ]
     },
@@ -373,8 +373,8 @@
         "spec/core/preparedRequests.md"
       ],
       "stateDomains": [
-        "immutable serialization",
-        "exact versus diagnostic token count",
+        "immutable serialized UTF-16 sequence",
+        "exact versus diagnostic token count with derived UTF-8 fallback",
         "per-attempt byte/count checks",
         "attempt counter",
         "lease reservation"
@@ -740,7 +740,7 @@
     "Current integrated simulation, replay and all Dafny obligations must finish; no runtime implementation exists.",
     "Open-workload per-identity fairness and deductive temporal proof remain unsupported by the current frontend; sealed-source and snapshot progress obligations are explicit.",
     "No source-to-model or old-actor-product refinement theorem is claimed. Detailed ownership compositions supplement representative per-call models.",
-    "Prepared-request JSON graph serialization, UTF-8 counting, exact tokenizer and normalized locale/string boundaries remain future pure/boundary implementation contracts.",
+    "Prepared-request JSON graph serialization, provider tokenizer execution and normalized locale/string boundaries remain future pure or adapter contracts. Request qualification and fallback count derive UTF-8 length in the Unicode model. A future adapter must supply the complete UTF-16 sequence of the actual serialization.",
     "Trace identity-conflict rejection is an intentional compatibility correction awaiting user acceptance; wall-clock liveness is conditional on expiry remaining true."
   ]
 }
