@@ -3648,12 +3648,15 @@
     },
     {
       "source": "packages/core/src/runtime/turn-controller.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/turnControllers.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Independent turns retain controller identity until their own cleanup",
+        "Room cancellation excludes its calling turn while global cancellation spares none",
+        "Live listener mutation controls each event's remaining visits",
+        "A live listener frame owns each synchronous callback invocation",
+        "Listener iteration resumes after nested events and uses the live Set",
+        "Each scan advances through the live captured array",
+        "The top delivery returns before its parent scan can resume"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "a69049036ad8848609ac9113090dd16dd45517a5ab03d62d506e1c17156f8111",
@@ -3661,7 +3664,9 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/turn-controller.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/execution.md"
+        "spec/core/turnControllers.md",
+        "spec/core/turnEventStack.md",
+        "spec/core/turnSignalScan.md"
       ]
     },
     {

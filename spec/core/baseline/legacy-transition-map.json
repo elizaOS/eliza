@@ -14437,10 +14437,40 @@
             "lawPeerContextUnchanged",
             "sValues"
           ]
+        },
+        {
+          "path": "spec/core/turnSignalScan.md",
+          "sha256": "18a6d4baeb3332ce734607257293bb97cceb146aead1454e4beef1511275ea3f",
+          "definitions": [
+            "initial",
+            "turnIdValues",
+            "excludedValues",
+            "reasonValues",
+            "emptyFrame",
+            "emptyTurn",
+            "topScan",
+            "replaceScanTop",
+            "mayEnterFromHost",
+            "canAppendSignalTurn",
+            "appendSignalTurn",
+            "canBeginSignalScan",
+            "beginSignalScan",
+            "canVisitSignalTurn",
+            "visitSignalTurn",
+            "alwaysScanCursorValid",
+            "stepExistingAbortReasonsRetained",
+            "canReturnSignalDelivery",
+            "returnSignalDelivery",
+            "canFinishSignalScan",
+            "finishSignalScan",
+            "alwaysNativeDeliveryOwnsAbortedTurn",
+            "sometimesNativeDeliveryReenters",
+            "sometimesRoomExclusionSurvives"
+          ]
         }
       ],
-      "behaviorReview": "Active controller/listener/reentrant cancellation stack, exact context ownership and signal removal are modeled.",
-      "remainingRefinementOrModelGaps": "Wrapper error graph and actual AbortController async ordering require implementation conformance."
+      "behaviorReview": "Active controller/listener/reentrant cancellation stack, exact context ownership and signal removal are modeled. Each room-array scan retains its cursor across synchronous native signal delivery and can visit newly appended turns.",
+      "remainingRefinementOrModelGaps": "Wrapper error graph and actual AbortController async ordering require implementation conformance. Compose the scan with registry-owned room arrays, the ordered global snapshot, and nested telemetry dispatch before claiming source refinement."
     }
   ]
 }
