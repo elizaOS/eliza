@@ -28,7 +28,7 @@
       "currentModels": [
         {
           "spec": "spec/core/requestAuthorityRegistry.md",
-          "sha256": "055c38ed0c556f8b92a01f8912e3a6fc282355bd50eb4d4a67aa6abddc536c31",
+          "sha256": "b0030a8e15e34fd39111d6748309d898205c763ec786f34095d123cb61a4ef3e",
           "definitions": [
             "emptyRuntime",
             "emptyMessage",
@@ -115,6 +115,7 @@
             "denialOwner",
             "canCheckOperation",
             "checkOperation",
+            "flagChangedResult",
             "canBindResult",
             "bindResult",
             "canProjectResult",
@@ -228,7 +229,7 @@
         },
         {
           "spec": "spec/core/requestCompletions.md",
-          "sha256": "2902c1629f4ba781fb6ebd495cab6c4c1325d85049d06bb99711bf152b5b4e50",
+          "sha256": "5bf43b4af1f8c831c1ebf416ff4dfaa37875b7707e17c589b8e79899b24e0f27",
           "definitions": [
             "emptyAttempt",
             "emptyCompletion",
@@ -271,6 +272,7 @@
             "projectResult",
             "canCopyCompletion",
             "copyCompletion",
+            "lawCopySourceMismatchIsSticky",
             "canInspectCompletion",
             "inspectCompletion",
             "alwaysCompletionOwnsAttempt",
@@ -309,7 +311,7 @@
       ],
       "status": "state-modeled",
       "resolutionEvidence": {
-        "semantics": "Dynamic runtime/message pair issuers share process WeakMaps; state/data aliases bind exact request/state/source/projection hashes. Attempts, result fingerprints and denial transfers are uniquely owned across issuer components. Reentry retains taint, changed source invalidates current use, and cross-issuer projection/copy/denial transfer is rejected.",
+        "semantics": "Dynamic runtime/message pair issuers share process WeakMaps; state/data aliases bind exact request/state/source/projection hashes. Attempts, result fingerprints and denial transfers are uniquely owned across issuer components. Reentry retains taint, changed source invalidates current use, and cross-issuer projection/copy/denial transfer is rejected. Each issuer independently observes its original current-status callback. An owned copy attempt that observes a changed source fingerprint marks its completion association changed even when the copy is refused; restoring the original fingerprint cannot clear that mark.",
         "properties": [
           "alwaysActivePairsAreUnique",
           "alwaysSourceObjectIdentitiesAreUnique",
@@ -319,7 +321,9 @@
           "alwaysDenialOwnershipIsUnique",
           "alwaysOwnersRetainProtocolSafety",
           "stepActivePairIdentityNeverChanges",
-          "lawCrossIssuerProjectionRejected"
+          "lawCrossIssuerProjectionRejected",
+          "stepChangedAssociationStaysChanged",
+          "lawCopySourceMismatchIsSticky"
         ],
         "remaining": "Canonical hashing, exact source projection/normalization and action-definition observations remain explicit future adapter refinement boundaries."
       },
@@ -351,7 +355,7 @@
       "currentModels": [
         {
           "spec": "spec/core/requestAuthorityRegistry.md",
-          "sha256": "055c38ed0c556f8b92a01f8912e3a6fc282355bd50eb4d4a67aa6abddc536c31",
+          "sha256": "b0030a8e15e34fd39111d6748309d898205c763ec786f34095d123cb61a4ef3e",
           "definitions": [
             "emptyRuntime",
             "emptyMessage",
@@ -438,6 +442,7 @@
             "denialOwner",
             "canCheckOperation",
             "checkOperation",
+            "flagChangedResult",
             "canBindResult",
             "bindResult",
             "canProjectResult",
@@ -551,7 +556,7 @@
         },
         {
           "spec": "spec/core/requestCompletions.md",
-          "sha256": "2902c1629f4ba781fb6ebd495cab6c4c1325d85049d06bb99711bf152b5b4e50",
+          "sha256": "5bf43b4af1f8c831c1ebf416ff4dfaa37875b7707e17c589b8e79899b24e0f27",
           "definitions": [
             "emptyAttempt",
             "emptyCompletion",
@@ -594,6 +599,7 @@
             "projectResult",
             "canCopyCompletion",
             "copyCompletion",
+            "lawCopySourceMismatchIsSticky",
             "canInspectCompletion",
             "inspectCompletion",
             "alwaysCompletionOwnsAttempt",
@@ -632,7 +638,7 @@
       ],
       "status": "state-modeled",
       "resolutionEvidence": {
-        "semantics": "Dynamic runtime/message pair issuers share process WeakMaps; state/data aliases bind exact request/state/source/projection hashes. Attempts, result fingerprints and denial transfers are uniquely owned across issuer components. Reentry retains taint, changed source invalidates current use, and cross-issuer projection/copy/denial transfer is rejected.",
+        "semantics": "Dynamic runtime/message pair issuers share process WeakMaps; state/data aliases bind exact request/state/source/projection hashes. Attempts, result fingerprints and denial transfers are uniquely owned across issuer components. Reentry retains taint, changed source invalidates current use, and cross-issuer projection/copy/denial transfer is rejected. Each issuer independently observes its original current-status callback. An owned copy attempt that observes a changed source fingerprint marks its completion association changed even when the copy is refused; restoring the original fingerprint cannot clear that mark.",
         "properties": [
           "alwaysActivePairsAreUnique",
           "alwaysSourceObjectIdentitiesAreUnique",
@@ -642,7 +648,9 @@
           "alwaysDenialOwnershipIsUnique",
           "alwaysOwnersRetainProtocolSafety",
           "stepActivePairIdentityNeverChanges",
-          "lawCrossIssuerProjectionRejected"
+          "lawCrossIssuerProjectionRejected",
+          "stepChangedAssociationStaysChanged",
+          "lawCopySourceMismatchIsSticky"
         ],
         "remaining": "Canonical hashing, exact source projection/normalization and action-definition observations remain explicit future adapter refinement boundaries."
       },
