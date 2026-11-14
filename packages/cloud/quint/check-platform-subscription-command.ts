@@ -17,7 +17,10 @@ const commandModel = "packages/cloud/quint/PlatformSubscriptionCommand.qnt";
 const readBackModel = "packages/cloud/quint/SubscriptionCheckoutReadBack.qnt";
 const checkoutRecovery =
   "packages/cloud/shared/src/lib/services/subscription-checkout-recovery.pglite.test.ts";
-const suites = new Map<string, Array<[file: string, required: string[]]>>([
+const suites = new Map<
+  string,
+  Array<[file: string, required: string[] | null]>
+>([
   [
     commandModel,
     [
@@ -48,22 +51,14 @@ const suites = new Map<string, Array<[file: string, required: string[]]>>([
   [
     readBackModel,
     [
-      [
-        checkoutRecovery,
-        [
-          "a still-open checkout is read back with a doubling, capped backoff",
-          "abandoned open checkouts cannot crowd out fenced or provider-expired ones, or each other's lane",
-          "recovery reads a dispatched checkout back within minutes so a paid session is settled without its webhook",
-          "recovery settles provider-expired checkouts and closes payable sessions of fenced organizations",
-          "a dispatched checkout with no session after its provider deadline fails as expired",
-        ],
-      ],
+      [checkoutRecovery, null],
       [
         "packages/cloud/shared/src/db/repositories/subscription-paid-renewal-recovery.pglite.test.ts",
-        [
-          "the recovery sweep entitles a paid checkout whose webhook never arrived",
-          "the sweep, the app's confirm and the webhook settle one paid checkout exactly once",
-        ],
+        null,
+      ],
+      [
+        "packages/cloud/shared/src/lib/services/retained-collecting-invoice-capture.test.ts",
+        null,
       ],
     ],
   ],
@@ -82,7 +77,7 @@ const results = [];
 for (const [index, [file, required]] of selected.entries()) {
   const report = path.join(directory, `${index}.xml`);
   const pattern = required
-    .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    ?.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
     .join("|");
   const child = spawnSync(
     process.execPath,
@@ -96,8 +91,7 @@ for (const [index, [file, required]] of selected.entries()) {
       "--conditions=eliza-source",
       "--timeout=180000",
       path.join(root, file),
-      "--test-name-pattern",
-      pattern,
+      ...(pattern ? ["--test-name-pattern", pattern] : []),
       "--reporter=junit",
       `--reporter-outfile=${report}`,
     ],
@@ -120,7 +114,8 @@ for (const [index, [file, required]] of selected.entries()) {
   );
   const xml = await readFile(report, "utf8");
   const summary = parseJunitSummary(xml);
-  assert.equal(summary.executedTests, required.length);
+  assert(summary.executedTests > 0, "The conformance file must execute tests");
+  if (required) assert.equal(summary.executedTests, required.length);
   assert.equal(summary.failures + summary.errors, 0);
   assert.equal(summary.files.length, 1);
   const names: string[] = [];
@@ -151,15 +146,23 @@ for (const [index, [file, required]] of selected.entries()) {
   // contract scenario must execute; a skipped required case never counts as proof.
   assert.equal(summary.tests, names.length + excluded.length);
   assert.equal(summary.skipped, excluded.length);
-  assert(
-    excluded.every((name) => !required.includes(name)),
-    "A required command scenario was skipped",
-  );
-  assert.deepEqual(
-    names.sort(),
-    [...required].sort(),
-    "Every required command scenario must execute",
-  );
+  if (required) {
+    assert(
+      excluded.every((name) => !required.includes(name)),
+      "A required command scenario was skipped",
+    );
+    assert.deepEqual(
+      names.sort(),
+      [...required].sort(),
+      "Every required command scenario must execute",
+    );
+  } else {
+    assert.equal(
+      summary.skipped,
+      0,
+      "The full conformance file must run without skips",
+    );
+  }
   results.push({ file, names, excluded, summary, report });
 }
 await writeFile(

@@ -6,6 +6,12 @@
     "packages/cloud/shared/src/lib/services/subscription-checkout-recovery.pglite.test.ts",
     "packages/cloud/shared/src/db/repositories/test-support/subscription-paid-renewal-recovery-test-fixture.ts",
     "packages/cloud/shared/src/db/repositories/subscription-paid-renewal-recovery.pglite.test.ts",
+    "packages/cloud/shared/src/lib/services/stripe-paid-renewal-objects.ts",
+    "packages/cloud/shared/src/lib/services/retained-collecting-invoice-capture.ts",
+    "packages/cloud/shared/src/lib/services/stripe-invoice-capture.ts",
+    "packages/cloud/shared/src/lib/services/retained-collecting-invoice-capture.test.ts",
+    "packages/cloud/shared/src/lib/services/test-support/subscription-invoice-event-fixture.ts",
+    "packages/cloud/shared/src/db/repositories/subscription-cancellation-test-fixture.ts",
     "packages/cloud/quint/check-platform-subscription-command.ts"
   ],
   "conformance": "packages/cloud/quint/check-platform-subscription-command.ts",
@@ -17,13 +23,16 @@
     "Lane budgets, ordering among several checkouts and the provider account read (one successful read serves a whole sweep, settlement included; a failed read is not remembered) are outside this single-checkout instance. The repository tests cover them.",
     "The provider is trusted to report open, complete, expired or missing truthfully for the command's own customer and session. A session that expires on its own before the horizon is observed, never forced.",
     "An unavailable read of the checkout's own session rotates the checkout like an open one and is counted as a read-back. A failed provider account read is not a read-back: the checkout is not rotated and stays due, which the repository tests cover. A prepared command that never dispatched is outside the read-back lane and this instance.",
-    "Settlement without the webhook is conditional on the sweep running. Cron scheduling and provider availability are not promised."
+    "Settlement without the webhook is conditional on the sweep running. Cron scheduling and provider availability are not promised.",
+    "The finite state machine covers bounded checkout readback and original command settlement under its provider-observation assumptions. Stripe query encoding, refund payload completeness and freshness, pagination, retained debt allocation, and atomic provider snapshots require separate evidence. Repeated retained observations detect changes.",
+    "The conformance hook runs the full existing checkout-recovery and paid-renewal-recovery PGlite files and the retained collecting-invoice HTTP file in three separate processes, with no name filter and no skipped tests. These boundary regressions exercise response expansion and capture validation. Mechanical refinement of the retained debt observer requires separate evidence."
   ],
   "sourceMapping": {
     "Due/ReadBack": "listDispatchedCheckoutsDueForInspection and the inspection lane of recoverStaleSubscriptionCheckouts; rotateCheckoutRecovery stamps inspectedAt",
     "Stale/Close": "listStalePendingCheckouts and the closure lane; expireOpen only for a fenced organization",
     "Applied": "reconcileSubscriptionCheckout from settlePendingCheckout, the webhook and checkout/confirm",
-    "Materialize": "the original idempotent session create inside PROVIDER_RETRY_WINDOW_MS; noSessionDisposition"
+    "Materialize": "the original idempotent session create inside PROVIDER_RETRY_WINDOW_MS; noSessionDisposition",
+    "ProviderObservationBoundary": "The checkout and paid-renewal retrieval helpers request the existing refund expansion before capture validation. The retained collecting-invoice observer supplies supporting provider-observation evidence. The finite model covers checkout state. Full existing loopback HTTP/PGlite suites exercise these implementations and their validated response shapes."
   },
   "cases": [
     {
