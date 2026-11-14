@@ -58,45 +58,101 @@ added without this call, and the list ends with the surface.
 
 A website never acts for the person through a surface. Android reports these as events
 and does nothing by itself. Dialogs, file inputs and site permission requests wait only on
-a surface whose owner created it with `answersRequests: true` and listens for the event;
-any other surface's are dismissed at once (a dialog cancelled, a file input given nothing,
-a permission denied), so no page freezes on a request another owner's listener would
-never answer. `interceptNavigation` alone still holds dialogs, as before.
+a surface whose own owner created it with `answersRequests: true`, while a listener for the
+event exists; any other surface's are dismissed at once (a dialog cancelled, a file input
+given nothing, a permission denied) and not reported, so no page freezes on a request
+another owner's listener would never answer. `interceptNavigation` does not hold them: an
+intercepting surface without `answersRequests` dismisses dialogs at once like any other.
 
-- `dialogRequested`: `alert`, `confirm`, `prompt` and leave-page dialogs wait for
-  `answerDialog`. A dialog of a hidden, paused, closing or navigating surface is
-  cancelled, never accepted.
+- `dialogRequested`: `alert`, `confirm`, `prompt` and leave-page (`beforeunload`)
+  dialogs wait for `answerDialog`; a dismissed one is cancelled, never accepted.
 - `fileChooserRequested`: a file input waits for `answerFileChooser({ requestId, open })`.
   `open: true` shows the system document picker and gives the page the content URIs the
   person picks (at most 16, one unless the input takes several); `open: false` gives it
-  nothing. Hiding, navigating or closing the surface gives it nothing.
+  nothing. A save-mode input always gets nothing.
 - `sitePermissionRequested`: a camera, microphone or location request from the https
   page's own origin (`{ requestId, origin, kinds, topFrame, androidPermissions }`) waits
   for `answerSitePermission({ requestId, grant })` and is never remembered. A grant rejects
   `ANDROID_PERMISSION_REQUIRED` until the host app holds `androidPermissions`, so the host
   asks Android first and answers again. Another origin's request is already denied and
-  reported with `topFrame: false`. WebView names only the requesting origin, never the
-  frame, so `topFrame` is an origin check: a same-origin embedded frame counts as the page.
-- `sitePermissionWithdrawn`: a held request ended without an answer (`{ requestId }`): the
-  page withdrew it, navigated, or the surface was hidden or closed, and it was denied.
-  Close its prompt.
+  reported with `topFrame: false` and no `requestId`; an insecure page's own request is
+  denied without a word. WebView names only the requesting origin, never the frame, so
+  `topFrame` is an origin check: a same-origin embedded frame counts as the page.
+- `sitePermissionWithdrawn` (`{ requestId }`): a held request ended without the host's
+  answer; close its prompt. Either the page withdrew it (WebView's
+  `onPermissionRequestCanceled` or `onGeolocationPermissionsHidePrompt`: WebView has
+  already cancelled it and the plugin answers nothing), or the page navigated, or the
+  surface was hidden, reconciled or closed, and the plugin denied it.
 - `downloadRequested`: nothing is downloaded until `saveDownload({ requestId })`, which
   saves the file to Downloads with the surface's own cookie for the requesting page's
-  exact origin and reports `downloadFinished` (`saved` or `failed`). A later request
-  replaces it, and the page navigating or the surface being hidden or closed ends it.
-  The http(s) address can carry access tokens, so keep it out of models and logs; native
-  code never logs it.
+  exact origin and reports `downloadFinished` (`saved` or `failed`). The http(s) address
+  can carry access tokens, so keep it out of models and logs; native code never logs it.
 - `fullscreenChanged`: a page's fullscreen view (usually video) is shown above the host;
   Back, the page, or hiding, pausing or navigating the surface ends it, and the host's
   system bars return as they were before.
-- `externalLinkRequested`: a tapped `tel:`, `mailto:`, `sms:`, `geo:`, `market:` or `intent:` link.
+- `externalLinkRequested`: a tapped `tel:`, `mailto:`, `sms:`, `geo:`, `market:` or `intent:` link,
+  with `handoff` (`send-to`, `dial`, `view` or `refuse`).
   `openExternalLink` opens only that link with a fresh Intent; `tel:` opens the dialer
-  and places no call. Script attempts are dropped.
+  and places no call. Script attempts are dropped without an event.
 - `identityProviderRequested`: Google and Facebook sign-in pages refuse embedded
   WebViews (`disallowed_useragent`). They are not loaded; `openIdentityProvider({ requestId })`
   opens the page as a Custom Tab in the default browser, or another browser when the
   default is this app or Android would ask, sent by package so it never comes back into
   this app. The address never comes back from the host.
+
+### Request lifecycle (Android)
+
+What the code does, one surface at a time:
+
+- **Who may wait.** A dialog or site permission request waits only when the surface was
+  created with `answersRequests: true`, a listener for its event exists, the owner's session
+  is live, the surface is foregrounded (presented) and not paused, and fewer than 4 of that
+  kind are already waiting. A file input waits under the same conditions (one at a time, see
+  below). Anything else is dismissed at once and not reported: so a request from a surface
+  that is not foregrounded is dismissed at once. Downloads, external links and sign-in pages
+  are not gated on `answersRequests` or on being foregrounded: any live surface reports them.
+- **Presenting ends the hidden siblings' requests.** `presentSurface({ id })` hides every
+  other surface of the same owner, and `presentSurface()` with no id hides them all; for
+  each hidden one, held dialogs are cancelled (a leave-page dialog cancelled means the page
+  stays), fullscreen ends, the file input gets no files, held site permissions are denied
+  and each sends `sitePermissionWithdrawn`, and the held download is dropped. The surface
+  being presented keeps its own. `reconcileOwner` does the same to every surface of the
+  owner. The held external link and sign-in page are not ended by hiding.
+- **Navigating and closing** (the page starts loading a new document, `destroySurface`,
+  a purged profile, a renderer crash, a stale surface `reconcileOwner` removes) end the
+  same things as hiding, and also drop the held external link and sign-in page.
+  `sitePermissionWithdrawn` is sent only while the owner's session is live.
+- **Pausing** (`pauseSurface`) cancels held dialogs and ends fullscreen only; a held
+  file input and held site permissions stay, since a system picker or the host's own
+  Android permission prompt may be what covers the page.
+- **One of each per surface; the later replaces the earlier.** File input: the earlier
+  one gets no files at once; the host hears nothing for it, and `answerFileChooser` with its
+  id rejects `FILE_CHOOSER_CLOSED`. Download: the earlier one is dropped silently;
+  `saveDownload` with its id rejects `DOWNLOAD_NOT_PENDING`. External link: the later
+  link replaces the earlier silently, and `openExternalLink` with the earlier address
+  rejects `EXTERNAL_LINK_NOT_PENDING`; a refused or scripted link also clears the earlier
+  one. Sign-in page: the later `requestId` replaces the earlier silently, and
+  `openIdentityProvider` with the earlier one rejects `IDENTITY_PROVIDER_NOT_PENDING`.
+  None of the four sends an event for the replaced request.
+- **Site permissions.** A request carries `kinds[]` (`camera`, `microphone`, `location`;
+  kinds the host app declares no Android permission for are left out, and a request left
+  with none is denied at once). One `answerSitePermission` answers the whole request:
+  `grant: true` grants every listed kind, if the page is still at the requesting origin
+  (otherwise it denies them all), and `grant: false` denies them all. It is answered once:
+  a second answer rejects `SITE_PERMISSION_CLOSED`, except that a grant rejected with
+  `ANDROID_PERMISSION_REQUIRED` leaves the request open.
+- **External links.** `openExternalLink` takes the pending link first, so it is used once
+  whatever happens. When no app other than this one resolves the Intent, or the app is gone
+  by launch, it rejects `EXTERNAL_APP_UNAVAILABLE` (Android refusing the launch rejects
+  `EXTERNAL_LINK_DENIED`; an unparsable link `EXTERNAL_LINK_INVALID`). It resolves
+  `{ status: "dispatched" }` once Android started the other app.
+- **Leaving the page (`beforeunload`).** A page's leave-page check reaches the plugin as
+  `onJsBeforeUnload` and is a dialog like the others, `kind: "beforeunload"`.
+  `answerDialog({ accept: true })` leaves the page; `accept: false` keeps the page and
+  drops the navigation. A leave-page dialog that is dismissed — on a surface without
+  `answersRequests`, with no listener, not foregrounded, paused, or when the surface is
+  hidden — is cancelled, so the page stays and the navigation does not happen.
+
 - `surfaceCrashed`: the page renderer crashed or was reclaimed. Only that surface
   closes; the host activity keeps running. Recreate the surface to continue.
 - `keyboardChanged`: the on-screen keyboard opened or closed, with its height.
