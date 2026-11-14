@@ -87,11 +87,11 @@ pure def sometimesAbortedBeforeInvocation(s: ProviderExecutions): bool = s.domai
 
 A work promise queues its creator cleanup exactly once when it settles. The cleanup witness consumes the oldest queued cleanup with its exact domain and work IDs. Each called promise also has its own release callback. The scheduler witness visits eligible domains in rotation and consumes one eligible attachment in the selected domain. An attached caller that has become ready retains its place ahead of later attachments. Explicit provider result and cancellation callbacks remain available for their exact eligible identities. Shared work cleanup and runtime stop remain separate events.
 
-The execution owner currently projects promise outcome to its settlement
-phase. Source refinement still needs the original result or rejection value,
-the race between provider work and execution abort, and the separate observed
-native promise if it finishes after that race. An already-aborted caller
-also installs result observers before its immediate synchronous detach.
+The execution owner uses the settlement phase to schedule creator cleanup and
+waiter release. The [provider promise race](./providerPromiseRace.md) owns the
+original result or rejection and the observed native promise after an abort.
+The shell binds that race to this execution's work identity and installs each
+caller's result observers before an already-aborted caller detaches.
 
 ```quint
 pure def nextProviderCleanup(s: ProviderExecutions): PendingProviderCleanup = s.pendingCleanup.nthOr(0, {domain: 0, work: 0})

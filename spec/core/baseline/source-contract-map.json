@@ -3269,12 +3269,10 @@
     },
     {
       "source": "packages/core/src/runtime/provider-execution.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/providerPromiseRace.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "The invocation microtask checks the execution signal before starting",
+        "The first delivered race reaction fixes the shared outcome"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "3c67f9d8896ef9e68c00744386973604ee57e3bfd2837855a95e21e50b2010d5",
@@ -3282,7 +3280,9 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/provider-execution.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/execution.md"
+        "spec/core/providers.md",
+        "spec/core/providerExecutions.md",
+        "spec/core/providerPromiseRace.md"
       ]
     },
     {

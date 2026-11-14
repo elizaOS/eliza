@@ -9134,7 +9134,7 @@
         },
         {
           "path": "spec/core/providerExecutions.md",
-          "sha256": "792498d88c14c986e3de339f4867c78abcb1af7eae416d2991d456b0cb4bdd18",
+          "sha256": "0d581637efc4932bf6b7ea0dfbe541d4d401ee9d4a9c99d173c3866dd1d07ecf",
           "definitions": [
             "publicAudience",
             "unattestedAudience",
@@ -9191,10 +9191,53 @@
             "fair_runNextProviderCallback",
             "leadsToReadyDomainCallersLeave"
           ]
+        },
+        {
+          "path": "spec/core/providerPromiseRace.md",
+          "sha256": "ef204b7e2294fd83bf51800b4630a98ab42a514c34bd8891e4c602156aff67f5",
+          "definitions": [
+            "initial",
+            "reasonValues",
+            "fallbackRefValues",
+            "resultValues",
+            "rejectionRef",
+            "liveSignal",
+            "queuedNative",
+            "runningNative",
+            "undecidedRace",
+            "canCreateExecution",
+            "createExecution",
+            "canAbortExecution",
+            "abortExecution",
+            "canEnterInvocation",
+            "enterInvocation",
+            "canSettleNative",
+            "settleNative",
+            "nativeWasInvoked",
+            "stepOnlyLiveSignalStartsProvider",
+            "sometimesInvocationSkipped",
+            "canChooseNative",
+            "chooseNative",
+            "canChooseAbort",
+            "chooseAbort",
+            "canPublishShared",
+            "publishShared",
+            "alwaysEmptyBeforeCreation",
+            "alwaysFirstCandidateHasOrigin",
+            "alwaysPublishedHasOutcomeAndNoListener",
+            "alwaysListenerBelongsToLiveRace",
+            "alwaysOutcomeKeepsOrigin",
+            "stepRaceWinnerStaysFixed",
+            "stepFirstCandidateStaysFixed",
+            "sometimesAbortPublishesWhileNativeRuns",
+            "sometimesLateNativeRejectionObserved",
+            "isRejected",
+            "sometimesNativeResultPublished"
+          ]
         }
       ],
-      "behaviorReview": "Keyed and unkeyed executions, shared pending promises, per-waiter cancellation, transport abort and cleanup ownership have separate transitions.",
-      "remainingRefinementOrModelGaps": "Per-client dynamic fairness/source graph refinement not established by event-kind fairness alone."
+      "behaviorReview": "Keyed and unkeyed executions, shared pending promises, per-waiter cancellation, transport abort and cleanup ownership have separate transitions. The local promise race retains its original winning result or rejection and observes native work after an execution-owned abort.",
+      "remainingRefinementOrModelGaps": "Per-client dynamic fairness/source graph refinement not established by event-kind fairness alone. Shell refinement must correlate the promise race events with the domain work identity and the actual native promise reaction queue."
     },
     {
       "legacyFile": "packages/core/quint/ResponseFieldFences.qnt",
