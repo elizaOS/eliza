@@ -9134,7 +9134,7 @@
         },
         {
           "path": "spec/core/providerExecutions.md",
-          "sha256": "0d581637efc4932bf6b7ea0dfbe541d4d401ee9d4a9c99d173c3866dd1d07ecf",
+          "sha256": "b0c9129a9f1b5e04b6d344118319361af0fa9a8d5b1d872e8b67bf15b028adbf",
           "definitions": [
             "publicAudience",
             "unattestedAudience",
@@ -9234,10 +9234,42 @@
             "isRejected",
             "sometimesNativeResultPublished"
           ]
+        },
+        {
+          "path": "spec/core/providerWaiterPromise.md",
+          "sha256": "b8c95c1d308a2c1a4e2be2d66acb06f29f4c371111faba8ba7aeb2ae9429cd8e",
+          "definitions": [
+            "initial",
+            "reasonValues",
+            "fallbackValues",
+            "refValues",
+            "awaitingAnswer",
+            "selectionMissing",
+            "abortedValue",
+            "canAttachWaiter",
+            "attachWaiter",
+            "canAbortWaiter",
+            "abortWaiter",
+            "alwaysUnattachedHasNoCallbacks",
+            "alwaysListenerBelongsToWaitingSignal",
+            "sometimesAlreadyAbortedObservesSharedRejection",
+            "canQueueSharedCallback",
+            "queueSharedCallback",
+            "canRunSharedCallback",
+            "sharedAnswer",
+            "runSharedCallback",
+            "callerAborted",
+            "alwaysSharedAnswerMatchesSelection",
+            "alwaysObservedSharedCallbackHasSelection",
+            "stepReleasedAnswerStaysFixed",
+            "stepSharedSelectionStaysFixed",
+            "sometimesCallerAbortWinsQueuedSharedResult",
+            "sometimesUnsignalledCallerReceivesValue"
+          ]
         }
       ],
-      "behaviorReview": "Keyed and unkeyed executions, shared pending promises, per-waiter cancellation, transport abort and cleanup ownership have separate transitions. The local promise race retains its original winning result or rejection and observes native work after an execution-owned abort.",
-      "remainingRefinementOrModelGaps": "Per-client dynamic fairness/source graph refinement not established by event-kind fairness alone. Shell refinement must correlate the promise race events with the domain work identity and the actual native promise reaction queue."
+      "behaviorReview": "Keyed and unkeyed executions, shared pending promises, per-waiter cancellation, transport abort and cleanup ownership have separate transitions. The local promise race retains its original winning result or rejection and observes native work after an execution-owned abort. A signalled waiter's synchronous abort can win after the shared result is queued, while its installed result callbacks remain active for observation.",
+      "remainingRefinementOrModelGaps": "Per-client dynamic fairness/source graph refinement not established by event-kind fairness alone. Shell refinement must correlate the promise race events with the domain work identity and the actual native promise reaction queue. The Effect shell must pair each waiter release with its exact attachment and synchronously evict final-waiter work before aborting its controller."
     },
     {
       "legacyFile": "packages/core/quint/ResponseFieldFences.qnt",

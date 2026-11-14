@@ -90,8 +90,8 @@ A work promise queues its creator cleanup exactly once when it settles. The clea
 The execution owner uses the settlement phase to schedule creator cleanup and
 waiter release. The [provider promise race](./providerPromiseRace.md) owns the
 original result or rejection and the observed native promise after an abort.
-The shell binds that race to this execution's work identity and installs each
-caller's result observers before an already-aborted caller detaches.
+The [waiter promise](./providerWaiterPromise.md) owns each caller's result and
+observer. The shell binds both promises to this execution's work identity.
 
 ```quint
 pure def nextProviderCleanup(s: ProviderExecutions): PendingProviderCleanup = s.pendingCleanup.nthOr(0, {domain: 0, work: 0})

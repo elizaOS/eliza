@@ -3272,7 +3272,9 @@
       "spec": "spec/core/providerPromiseRace.md",
       "rules": [
         "The invocation microtask checks the execution signal before starting",
-        "The first delivered race reaction fixes the shared outcome"
+        "The first delivered race reaction fixes the shared outcome",
+        "Every admitted caller observes the shared promise before checking its signal",
+        "A queued shared callback releases the caller only if it still owns the wait"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "3c67f9d8896ef9e68c00744386973604ee57e3bfd2837855a95e21e50b2010d5",
@@ -3282,7 +3284,8 @@
       "relatedSpecs": [
         "spec/core/providers.md",
         "spec/core/providerExecutions.md",
-        "spec/core/providerPromiseRace.md"
+        "spec/core/providerPromiseRace.md",
+        "spec/core/providerWaiterPromise.md"
       ]
     },
     {
