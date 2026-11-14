@@ -226,7 +226,7 @@
         },
         {
           "path": "spec/core/actionReceipts.md",
-          "sha256": "41457411af56b7f5a689a3355694cf100c181bf3b5aedbb19064d18e7407ded4",
+          "sha256": "9faab5a0370c143544a44cab27f027b5439cafdb7dad6ced366cc1dd2b37dced",
           "definitions": [
             "initial",
             "actionNameValues",
@@ -265,7 +265,13 @@
             "canFinishCallbackSource",
             "finishCallbackSource",
             "alwaysSettlementRules",
+            "alwaysConcreteQueueMode",
+            "alwaysCallbackIdsUnique",
             "alwaysCallbackQueueAgrees",
+            "alwaysPendingCallbackUnprocessed",
+            "advanceCallbackCursor",
+            "alwaysPendingSuffixIsQueued",
+            "alwaysAppliedCallbackKeepsReceipt",
             "alwaysConfirmationGrounded",
             "alwaysMutationInvocationBound",
             "alwaysDeliveryKeysUnique",
@@ -274,9 +280,14 @@
             "sometimesDuplicateSuppressed",
             "fair_processCallback",
             "fair_finishSuppressed",
-            "fair_acknowledgeCallback",
+            "sendingCallback",
+            "canAcknowledgeNextCallback",
+            "acknowledgeNextCallback",
+            "fair_acknowledgeNextCallback",
             "fair_settleAction",
             "fair_returnSettlement",
+            "callbackTerminal",
+            "leadsToEverySealedCallbackSettles",
             "leadsToClosedCallbacksProcessed"
           ]
         }
@@ -2501,7 +2512,7 @@
       "targets": [
         {
           "path": "spec/core/messaging.md",
-          "sha256": "d072edc9a14fa5dbab6dc02f58a20c6eeeea9b575ed82d2df43aecebaaa47c66",
+          "sha256": "d663cdacbbe48a1650a81744c1daa4914347b49a574fb7f8c07af07e1dea580c",
           "definitions": [
             "initial",
             "sourceValues",
@@ -2534,12 +2545,15 @@
             "sometimesRemovedHandlerStillCompletes",
             "fair_invokeCaptured",
             "fair_finishConnector",
-            "leadsToConnectorSettled"
+            "leadsToConnectorSettled",
+            "alwaysSelectableHandlersAreValid",
+            "alwaysAwaitedCallbackWasSelected",
+            "alwaysHandlerHasInvoked"
           ]
         },
         {
           "path": "spec/core/concurrentConnectors.md",
-          "sha256": "30db4f8aa01cdd8e72ff9ff1ac3fe435d77c68bde72029408cf6c8b86c04b41a",
+          "sha256": "883e7be7c21a896b7faf4835019fc9fc14e7457af5848ef02f43066b0ba6d18d",
           "definitions": [
             "initial",
             "callIdValues",
@@ -2556,6 +2570,7 @@
             "removeAccount",
             "removeSource",
             "canBeginCall",
+            "capturedDescriptors",
             "beginCall",
             "canInvokeCall",
             "invokeCall",
@@ -2569,7 +2584,8 @@
             "sometimesConcurrentModes",
             "fair_invokeCall",
             "fair_finishCall",
-            "leadsToCapturedCallsSettle"
+            "leadsToCapturedCallsSettle",
+            "alwaysSharedCallbackIdsValid"
           ]
         }
       ],
@@ -2744,7 +2760,7 @@
       "targets": [
         {
           "path": "spec/core/embeddingSpace.md",
-          "sha256": "fdbb657c7a7e6c01350c78ba185421ad4236bbb78485ff38dd506c314070656d",
+          "sha256": "46ddd2a42586c57fcf987fdda7594b703999152eb105e606a0884160dba93688",
           "definitions": [
             "initial",
             "encoderValues",
@@ -2775,9 +2791,13 @@
             "lawMarkedVectorCannotChangeIdentity",
             "alwaysPreparedCandidateMatchesPin",
             "alwaysPreparedColumnMatchesCandidate",
+            "alwaysPreparedSpaceMatchesCandidate",
+            "alwaysPinnedUsesPreparedCandidate",
             "alwaysPinnedColumnMatches",
             "alwaysCurrentColumnHasMatchingDimensions",
+            "alwaysResizeWithoutFencePreservesConfirmedColumn",
             "alwaysStoredDimensionsPositive",
+            "alwaysAdmittedVectorHasDimension",
             "sometimesVectorStored",
             "sometimesRepresentationRejected",
             "canPreparationFailed",
@@ -2798,7 +2818,7 @@
         },
         {
           "path": "spec/core/embeddingService.md",
-          "sha256": "f1aabd2ed48da29070f3b1abb6e0ff27f1febe7d9ae6d8aed671d1f3ff9275db",
+          "sha256": "27105bb9e10ffa8ecc73e8d0d35672442fecb21e3a7bf99461886e33f283c3c2",
           "definitions": [
             "emptyWaitingItem",
             "initial",
@@ -2818,15 +2838,18 @@
             "finishInitialization",
             "canRequest",
             "request",
+            "sameEmbeddingSource",
             "canSettleRequest",
             "settleRequest",
+            "retainCaptured",
             "clearQueue",
             "canStop",
             "stop",
             "canDriveQueue",
+            "queueReferences",
+            "completedEmbeddingItems",
+            "retainAfterObservation",
             "driveQueue",
-            "successfulValues",
-            "retryableValues",
             "canSettleBatch",
             "settleBatch",
             "canFinishStop",
@@ -2835,6 +2858,7 @@
             "alwaysPendingKeysAreExactAndUnique",
             "alwaysQueueHasKnownSnapshots",
             "alwaysDisposalDetachesQueuedSnapshots",
+            "alwaysDisposalPhaseHasClosedAdmission",
             "alwaysStoppedHandlersAreDetached",
             "sometimesDistinctSnapshotsCoexist",
             "sometimesWaitsForModel"
@@ -3052,7 +3076,7 @@
         },
         {
           "path": "spec/core/embeddingBatch.md",
-          "sha256": "65675cae2b92aea31c4b2acef7e3fbb63241731163d9db58c52d78e51caf79d7",
+          "sha256": "61f813dfba68cbd16e54dd603e6ebfebebbfab135fc35bf36e3b68bd6e4b5bd1",
           "definitions": [
             "initial",
             "membersValues",
@@ -3066,6 +3090,7 @@
             "canFallbackResult",
             "fallbackResult",
             "alwaysOutcomesBelongToMembers",
+            "alwaysNoOutcomesBeforeAdmission",
             "alwaysFallbackWaitsForPrimary",
             "alwaysCompletedItemsHaveNoRetryOwner",
             "sometimesBatchFallbackCompletes",
@@ -3077,7 +3102,7 @@
         },
         {
           "path": "spec/core/embeddingService.md",
-          "sha256": "f1aabd2ed48da29070f3b1abb6e0ff27f1febe7d9ae6d8aed671d1f3ff9275db",
+          "sha256": "27105bb9e10ffa8ecc73e8d0d35672442fecb21e3a7bf99461886e33f283c3c2",
           "definitions": [
             "emptyWaitingItem",
             "initial",
@@ -3097,15 +3122,18 @@
             "finishInitialization",
             "canRequest",
             "request",
+            "sameEmbeddingSource",
             "canSettleRequest",
             "settleRequest",
+            "retainCaptured",
             "clearQueue",
             "canStop",
             "stop",
             "canDriveQueue",
+            "queueReferences",
+            "completedEmbeddingItems",
+            "retainAfterObservation",
             "driveQueue",
-            "successfulValues",
-            "retryableValues",
             "canSettleBatch",
             "settleBatch",
             "canFinishStop",
@@ -3114,6 +3142,7 @@
             "alwaysPendingKeysAreExactAndUnique",
             "alwaysQueueHasKnownSnapshots",
             "alwaysDisposalDetachesQueuedSnapshots",
+            "alwaysDisposalPhaseHasClosedAdmission",
             "alwaysStoppedHandlersAreDetached",
             "sometimesDistinctSnapshotsCoexist",
             "sometimesWaitsForModel"
@@ -3612,7 +3641,7 @@
         },
         {
           "path": "spec/core/sessionStore.md",
-          "sha256": "aea14e0618aacd24407a5e66916ba92f27492a883acbb6edcffdc2e3517571fe",
+          "sha256": "28060c93ca3e947dbc25bd68f88ef14b85501f73f0b834707d7f45876f1e138d",
           "definitions": [
             "emptyBindings",
             "emptyRow",
@@ -4401,11 +4430,14 @@
       "targets": [
         {
           "path": "spec/core/sourceSweep.md",
-          "sha256": "b7b556c57aa8a54564279fca619448742177c3f0887f9df4215c3f66061a4480",
+          "sha256": "ac4d7c016ca1cbb109cdb668189076112de987f02b02bea911e4beda82783ddd",
           "definitions": [
             "initial",
             "ordinaryRowsValues",
             "sourceRowsValues",
+            "addSourceId",
+            "addSourceMedia",
+            "allInputIds",
             "canLoad",
             "load",
             "canCollectOrdinary",
@@ -4414,8 +4446,8 @@
             "collectSources",
             "canWipe",
             "wipe",
-            "allInputIds",
             "alwaysRetainedRowsComeFromInput",
+            "alwaysSourcePhaseFollowsOrdinaryScan",
             "alwaysClassifiedIdsCoverInput",
             "alwaysSourceCollectionComplete",
             "alwaysSourceMediaRetained",
@@ -7992,7 +8024,7 @@
         },
         {
           "path": "spec/core/pluginRegistry.md",
-          "sha256": "12435c7fe70310841be0545ea9b68a2f98dcdef6131973bcf1b10da94d3c18b7",
+          "sha256": "3b721c348e2053743268b396cfc70f626c05c2d277eb63ee222a1e03c015539c",
           "definitions": [
             "initial",
             "nameValues",
@@ -8020,6 +8052,7 @@
             "cleanPlugin",
             "sometimesFailedRegistrationRetried",
             "sometimesPluginReloaded",
+            "epochDisposalFinished",
             "epochAdmitsClass",
             "epochOwnsResources",
             "epochRetiring",
@@ -8127,7 +8160,7 @@
         },
         {
           "path": "spec/core/serviceInstances.md",
-          "sha256": "8e754a9df62b2a38af26990fff433727c0880dae89d9b4eb10985cbe2510c28b",
+          "sha256": "1a3f82ee7c8a59423e4f5127c7c6cf1858e926ad8112b7431e2db2cb8a26472d",
           "definitions": [
             "initial",
             "classIdValues",
@@ -8151,6 +8184,7 @@
             "serviceTypeEntry",
             "typeAggregate",
             "putType",
+            "pendingTypeStatus",
             "registerType",
             "setTypeStatus",
             "canRegisterClass",
@@ -8276,7 +8310,7 @@
         },
         {
           "path": "spec/core/messaging.md",
-          "sha256": "d072edc9a14fa5dbab6dc02f58a20c6eeeea9b575ed82d2df43aecebaaa47c66",
+          "sha256": "d663cdacbbe48a1650a81744c1daa4914347b49a574fb7f8c07af07e1dea580c",
           "definitions": [
             "initial",
             "sourceValues",
@@ -8309,7 +8343,10 @@
             "sometimesRemovedHandlerStillCompletes",
             "fair_invokeCaptured",
             "fair_finishConnector",
-            "leadsToConnectorSettled"
+            "leadsToConnectorSettled",
+            "alwaysSelectableHandlersAreValid",
+            "alwaysAwaitedCallbackWasSelected",
+            "alwaysHandlerHasInvoked"
           ]
         }
       ],
@@ -8675,7 +8712,7 @@
         },
         {
           "path": "spec/core/runtimeShutdown.md",
-          "sha256": "d957f1fa3c4b2a912eb656b409b60994bff4fbfac87955fed6499f558c701298",
+          "sha256": "d5dfc44348c5227d9159ea0d6c01db49fe5e64e31f0fd48c1d1b85bb379f3176",
           "definitions": [
             "initial",
             "callerValues",
@@ -9030,7 +9067,7 @@
       "targets": [
         {
           "path": "spec/core/providers.md",
-          "sha256": "c29b903d65cc2bb84f975d02df176e426dc23b5cd6795529aac4da2907bde444",
+          "sha256": "00dc5c593c3d740fe1c9c59839f11dff401003e3ba2aae8449de0a2ea87bbbfc",
           "definitions": [
             "initial",
             "callerValues",
@@ -9041,6 +9078,7 @@
             "canAttach",
             "attach",
             "alwaysExecutionIdentitiesUnique",
+            "callerFor",
             "alwaysCallersOwnExistingWork",
             "alwaysKeyedWorkCanBeJoined",
             "sometimesTwoCallersShare",
@@ -9077,8 +9115,12 @@
             "fair_invokeNextWork",
             "fair_settleNextWork",
             "fair_cleanNextWork",
-            "fair_receiveResult",
-            "fair_detachCancelled",
+            "absentCaller",
+            "nextCallbackCaller",
+            "canRunNextCallback",
+            "runNextCallback",
+            "fair_runNextCallback",
+            "leadsToCancelledAttachmentLeaves",
             "leadsToSettledCallersLeave",
             "leadsToStoppedCallersLeave",
             "leadsToAbortedCallersLeave",
@@ -9091,7 +9133,7 @@
         },
         {
           "path": "spec/core/providerExecutions.md",
-          "sha256": "6e5b62eb79e0352010caa1d8ac237f80595ce63e81b428f7290ba47e405fbbad",
+          "sha256": "ea0f2c7b70b70870668ef346d761d74534af6fb1e06987843699db6cad38232b",
           "definitions": [
             "publicAudience",
             "unattestedAudience",
@@ -9130,7 +9172,12 @@
             "alwaysEveryDomainValid",
             "alwaysStoppedDomainsStopped",
             "sometimesDistinctKeysRunning",
-            "sometimesAbortedBeforeInvocation"
+            "sometimesAbortedBeforeInvocation",
+            "nextCallbackDomain",
+            "canRunNextProviderCallback",
+            "runNextProviderCallback",
+            "fair_runNextProviderCallback",
+            "leadsToReadyDomainCallersLeave"
           ]
         }
       ],
@@ -9971,7 +10018,7 @@
         },
         {
           "path": "spec/core/actionReceipts.md",
-          "sha256": "41457411af56b7f5a689a3355694cf100c181bf3b5aedbb19064d18e7407ded4",
+          "sha256": "9faab5a0370c143544a44cab27f027b5439cafdb7dad6ced366cc1dd2b37dced",
           "definitions": [
             "initial",
             "actionNameValues",
@@ -10010,7 +10057,13 @@
             "canFinishCallbackSource",
             "finishCallbackSource",
             "alwaysSettlementRules",
+            "alwaysConcreteQueueMode",
+            "alwaysCallbackIdsUnique",
             "alwaysCallbackQueueAgrees",
+            "alwaysPendingCallbackUnprocessed",
+            "advanceCallbackCursor",
+            "alwaysPendingSuffixIsQueued",
+            "alwaysAppliedCallbackKeepsReceipt",
             "alwaysConfirmationGrounded",
             "alwaysMutationInvocationBound",
             "alwaysDeliveryKeysUnique",
@@ -10019,9 +10072,14 @@
             "sometimesDuplicateSuppressed",
             "fair_processCallback",
             "fair_finishSuppressed",
-            "fair_acknowledgeCallback",
+            "sendingCallback",
+            "canAcknowledgeNextCallback",
+            "acknowledgeNextCallback",
+            "fair_acknowledgeNextCallback",
             "fair_settleAction",
             "fair_returnSettlement",
+            "callbackTerminal",
+            "leadsToEverySealedCallbackSettles",
             "leadsToClosedCallbacksProcessed"
           ]
         },
@@ -10474,7 +10532,7 @@
         },
         {
           "path": "spec/core/runtimeShutdown.md",
-          "sha256": "d957f1fa3c4b2a912eb656b409b60994bff4fbfac87955fed6499f558c701298",
+          "sha256": "d5dfc44348c5227d9159ea0d6c01db49fe5e64e31f0fd48c1d1b85bb379f3176",
           "definitions": [
             "initial",
             "callerValues",
@@ -11409,7 +11467,7 @@
         },
         {
           "path": "spec/core/serviceInstances.md",
-          "sha256": "8e754a9df62b2a38af26990fff433727c0880dae89d9b4eb10985cbe2510c28b",
+          "sha256": "1a3f82ee7c8a59423e4f5127c7c6cf1858e926ad8112b7431e2db2cb8a26472d",
           "definitions": [
             "initial",
             "classIdValues",
@@ -11433,6 +11491,7 @@
             "serviceTypeEntry",
             "typeAggregate",
             "putType",
+            "pendingTypeStatus",
             "registerType",
             "setTypeStatus",
             "canRegisterClass",
@@ -12368,7 +12427,7 @@
         },
         {
           "path": "spec/core/scheduling.md",
-          "sha256": "bffb38cf9c7a1862395379199bfabda5d8cfa38ef6f753b596d66f0743069ed1",
+          "sha256": "8b34570ef57414fff37c7cdb4b204abdc4433be082d09de6c66186eeafae0f8c",
           "definitions": [
             "initial",
             "canRegister",
@@ -12412,6 +12471,13 @@
             "sometimesRepeatPreservesConcurrentWake",
             "sometimesFailureAutoPauses",
             "sometimesOneShotCompletes",
+            "weight_register",
+            "weight_createTask",
+            "weight_query",
+            "weight_settleQuery",
+            "weight_execute",
+            "weight_recordFailure",
+            "weight_elapse",
             "canStop",
             "stop",
             "canClose",
@@ -12840,7 +12906,7 @@
         },
         {
           "path": "spec/core/scheduling.md",
-          "sha256": "bffb38cf9c7a1862395379199bfabda5d8cfa38ef6f753b596d66f0743069ed1",
+          "sha256": "8b34570ef57414fff37c7cdb4b204abdc4433be082d09de6c66186eeafae0f8c",
           "definitions": [
             "initial",
             "canRegister",
@@ -12884,6 +12950,13 @@
             "sometimesRepeatPreservesConcurrentWake",
             "sometimesFailureAutoPauses",
             "sometimesOneShotCompletes",
+            "weight_register",
+            "weight_createTask",
+            "weight_query",
+            "weight_settleQuery",
+            "weight_execute",
+            "weight_recordFailure",
+            "weight_elapse",
             "canStop",
             "stop",
             "canClose",
@@ -13680,7 +13753,7 @@
       "targets": [
         {
           "path": "spec/core/scheduling.md",
-          "sha256": "bffb38cf9c7a1862395379199bfabda5d8cfa38ef6f753b596d66f0743069ed1",
+          "sha256": "8b34570ef57414fff37c7cdb4b204abdc4433be082d09de6c66186eeafae0f8c",
           "definitions": [
             "initial",
             "canRegister",
@@ -13724,6 +13797,13 @@
             "sometimesRepeatPreservesConcurrentWake",
             "sometimesFailureAutoPauses",
             "sometimesOneShotCompletes",
+            "weight_register",
+            "weight_createTask",
+            "weight_query",
+            "weight_settleQuery",
+            "weight_execute",
+            "weight_recordFailure",
+            "weight_elapse",
             "canStop",
             "stop",
             "canClose",
@@ -14068,7 +14148,7 @@
         },
         {
           "path": "spec/core/turnEventStack.md",
-          "sha256": "4bd8317b3f6bb943450d6c513806d1b18a2f56c3f1d3417c0f8232d2fbb146de",
+          "sha256": "537105ae3511abea5becaa8a79a2fbed6ca0b32f98bae6f7044271735258a475",
           "definitions": [
             "initial",
             "turnIdValues",
@@ -14113,7 +14193,11 @@
             "canFinishEvent",
             "finishEvent",
             "alwaysControllerIdentitiesValid",
+            "alwaysGroupAllocatorValid",
+            "alwaysTurnsRetainGroups",
             "alwaysLiveGroupOwnsTurns",
+            "noticeFrameMatches",
+            "cleanupFrameMatches",
             "alwaysFramesRetainNotices",
             "stepOuterCallbackWaits",
             "sometimesNestedListenerEmission",
