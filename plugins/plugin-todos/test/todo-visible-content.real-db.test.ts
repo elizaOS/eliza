@@ -318,6 +318,55 @@ describe("TODO visible-content addressing — real PGLite (#29690)", () => {
     expect(await rows(entityId)).toEqual([]);
   });
 
+  it("keeps a news todo distinct from a new todo and still folds real plurals", async () => {
+    const entityId = newEntity();
+    const news = await seed(entityId, "Read the news");
+
+    const missed = await run(say(entityId, "complete Read the new"), {
+      action: "complete",
+      target: "Read the new",
+    });
+    expect(missed.success).toBe(false);
+    expect(missed.text).toBe(
+      '[Todos] not_found: no todo matching "Read the new" found for this user',
+    );
+    expect(
+      (await rows(entityId)).find((todo) => todo.id === news.id)?.status,
+    ).toBe("pending");
+
+    const created = await run(say(entityId, "add Read the new"), {
+      action: "create",
+      content: "Read the new",
+    });
+    expect(created.data?.duplicate).not.toBe(true);
+    expect(created.effectReceipts?.[0]?.outcome).toBe("applied");
+    expect((await rows(entityId)).map((todo) => todo.content).sort()).toEqual([
+      "Read the new",
+      "Read the news",
+    ]);
+
+    const done = await run(say(entityId, "complete Read the news"), {
+      action: "complete",
+      target: "Read the news",
+    });
+    expect(done.success).toBe(true);
+    expect(done.text).toBe('Marked "Read the news" done.');
+    const after = await rows(entityId);
+    expect(after.find((todo) => todo.id === news.id)?.status).toBe("completed");
+    expect(after.find((todo) => todo.content === "Read the new")?.status).toBe(
+      "pending",
+    );
+
+    const notesEntity = newEntity();
+    await seed(notesEntity, "review the notes");
+    const plural = await run(say(notesEntity, "add review the note"), {
+      action: "create",
+      content: "review the note",
+    });
+    expect(plural.data).toMatchObject({ duplicate: true });
+    expect(await rows(notesEntity)).toHaveLength(1);
+  });
+
   it("keeps positive and negative numeric todos distinct through create and completion", async () => {
     const entityId = newEntity();
     const positive = await seed(entityId, "Set target to 5");
