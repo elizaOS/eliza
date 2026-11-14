@@ -252,10 +252,43 @@ export interface SitePermissionRequestedEvent extends SurfaceIdOptions {
  * the page withdrew it (WebView already cancelled it; the plugin answers nothing), or the
  * page navigated or the surface was hidden, reconciled or closed and the plugin denied it.
  * Close its prompt; `answerSitePermission` would reject `SITE_PERMISSION_CLOSED`, and a
- * grant already waiting on Android's dialog resolves `granted: false`.
+ * grant already waiting on Android's dialog resolves `outcome: "ended"`.
  */
 export interface SitePermissionWithdrawnEvent extends SurfaceIdOptions {
   requestId: string;
+}
+
+/**
+ * Why `answerSitePermission` resolved as it did. Only `granted` gives the page anything.
+ * - `granted`: the page has every requested kind.
+ * - `denied`: the host answered `grant: false`.
+ * - `android-refused`: Android's runtime permission dialog was shown and a permission is
+ *   still missing.
+ * - `ended`: the request ended unanswered: the page withdrew it, navigating, hiding or
+ *   closing ended it while Android asked, the page left the requesting origin, or Android
+ *   could not ask (no dialog could open, or it returned no answer because another
+ *   permission request was already showing).
+ */
+export type SitePermissionOutcome =
+  | "granted"
+  | "denied"
+  | "android-refused"
+  | "ended";
+
+/** Result of `answerSitePermission`; `granted` is `outcome === "granted"`. */
+export interface SitePermissionAnswer {
+  granted: boolean;
+  outcome: SitePermissionOutcome;
+}
+
+/**
+ * Android: the surface's main frame started loading a new document (WebView's
+ * `onPageStarted`; frames and same-document moves never send it, an error page does).
+ * What the previous page waited on has ended first, so every `sitePermissionWithdrawn`
+ * this start caused arrives before it. A camera or microphone grant's autoplay ends here.
+ */
+export interface PageStartedEvent extends SurfaceIdOptions {
+  url: string;
 }
 
 /**
@@ -563,13 +596,15 @@ export interface ElizaSurfaceManagerPlugin {
    * Android: answer a `sitePermissionRequested` request once. `grant: true` first asks
    * Android for any of the event's `androidPermissions` the app still lacks; the page is
    * granted only if Android allowed them all and it is still at the requesting origin,
-   * and is denied otherwise. Resolves with what the page got: `granted: false` after a
-   * grant means Android refused it, or the request was withdrawn while Android asked.
-   * A request already answered or withdrawn rejects `SITE_PERMISSION_CLOSED`.
+   * and is denied otherwise. Resolves with what the page got and why
+   * (`SitePermissionOutcome`). A camera or microphone grant lets the current page play
+   * media without a gesture, as Chrome does while a page captures, until the next
+   * `pageStarted`. A request already answered or withdrawn rejects
+   * `SITE_PERMISSION_CLOSED`.
    */
   answerSitePermission(
     options: SurfaceIdOptions & { requestId: string; grant: boolean },
-  ): Promise<{ granted: boolean }>;
+  ): Promise<SitePermissionAnswer>;
   /**
    * Android 10+: save the `downloadRequested` file to Downloads once the person said yes,
    * with the surface's cookie only for the requesting page's exact origin. Resolves once
@@ -619,9 +654,10 @@ export interface ElizaSurfaceManagerPlugin {
    * surfaces (`surfaceClosed`); use it on account sign-out. `idleMs` (at least one
    * hour) purges every keyed profile unused for that long that no surface has open.
    * `all: true` purges every keyed and ephemeral profile of any owner and closes their
-   * surfaces; it resolves after the cookies are removed, with `clean` true when no
-   * purged profile still holds a cookie. Use it to sign the device out of every website.
-   * Data is cleared at once; the profile directory goes once Android releases it.
+   * surfaces; use it to sign the device out of every website. `profileKey` and `all`
+   * resolve after the cookies are removed, with `clean` true when no purged profile still
+   * holds a cookie; `idleMs` resolves at once, without `clean`. Data is cleared at once;
+   * the profile directory goes once Android releases it.
    */
   purgeProfiles(
     options: SurfaceOwnerOptions &
@@ -765,6 +801,10 @@ export interface ElizaSurfaceManagerPlugin {
   addListener(
     eventName: "sitePermissionWithdrawn",
     listener: (event: SitePermissionWithdrawnEvent) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: "pageStarted",
+    listener: (event: PageStartedEvent) => void,
   ): Promise<PluginListenerHandle>;
   addListener(
     eventName: "fullscreenChanged",
