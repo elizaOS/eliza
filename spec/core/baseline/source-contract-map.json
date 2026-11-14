@@ -3337,12 +3337,11 @@
     },
     {
       "source": "packages/core/src/runtime/response-handler-evaluators.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/responseEvaluation.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Each candidate checks eligibility before evaluating its patch",
+        "Invalid tool choices and scope replacements reject the entire patch",
+        "Applied patches retain exact ordering and context evidence"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "3d0698e2fda405bdceda1730fabb46f03414428fb51db611c972f56fc8e78684",
@@ -3350,7 +3349,8 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/response-handler-evaluators.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/execution.md"
+        "spec/core/responseEvaluators.md",
+        "spec/core/responseFences.md"
       ]
     },
     {
