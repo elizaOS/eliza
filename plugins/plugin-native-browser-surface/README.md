@@ -271,8 +271,8 @@ for its answer.
 
 Script popups never open. Pages pinch-zoom, and a page without a mobile viewport is shown
 whole. `getSurfaceState` also returns `title`, `canGoBack`, `canGoForward`, `progress`,
-`pageError`, `securityBlocked`, `textZoom` and `pageScale` (1 is the page's own mobile
-size); `navigationChanged` follows a pinch once it settles. `setTextZoom` sets the page
+`pageError`, `securityBlocked`, `textZoom` and `pageScale` (density-independent pixels per CSS pixel: 1 is
+the page's own mobile size); `navigationChanged` follows a pinch once it settles. `setTextZoom` sets the page
 text size from 50 to 300 percent. On Android every `navigationChanged` event also
 carries these fields as they were when it was sent. Listeners receive every surface's
 events, so a host uses them only when `exists` is true and `owner`, `session` and
