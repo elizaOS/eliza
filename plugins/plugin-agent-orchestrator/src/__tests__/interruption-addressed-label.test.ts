@@ -60,6 +60,38 @@ describe("interruption decider addressing", () => {
     ).toBe("interrupt");
   });
 
+  it("does not read an @-mention of another sub-agent as addressing this one", () => {
+    for (const [text, peerLabels] of [
+      ["@Ada stop", ["Ada"]],
+      ["@ada, stop", ["Ada", "Cy"]],
+      ["@민수 README도 고쳐줘", ["민수"]],
+    ] as const) {
+      expect(
+        decideInterruption({
+          ...room,
+          text,
+          agentLabel: "Bob",
+          peerLabels,
+          sessionBusy: true,
+        }),
+        text,
+      ).toEqual({ action: "ignore", reason: "ambient chatter during turn" });
+    }
+    // An "@" the room cannot map to another sub-agent still addresses Bob.
+    for (const text of ["<@1234567890> stop", "@eliza stop", "@Adam stop"]) {
+      expect(
+        decideInterruption({
+          ...room,
+          text,
+          agentLabel: "Bob",
+          peerLabels: ["Ada"],
+          sessionBusy: true,
+        }).action,
+        text,
+      ).toBe("interrupt");
+    }
+  });
+
   it("falls back to the same addressing when the model is unavailable", async () => {
     const runtime = {
       useModel: async () => {

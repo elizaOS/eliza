@@ -116,14 +116,18 @@ export function createActiveSessionForwardHandler(
 
       // "Crowded room": more than one live sub-agent bound to this room.
       const multiParty = bound.length > 1;
+      const labelOf = (s: SessionInfo): string | undefined =>
+        typeof s.metadata?.label === "string" ? s.metadata.label : s.name;
       // Every bound live session gets its own interruption decision and its
       // own delivery/queue — a room with several live sub-agents must not
       // quietly forward the user's text to only the first in list order.
       for (const active of bound) {
-        const label =
-          typeof active.metadata?.label === "string"
-            ? active.metadata.label
-            : active.name;
+        const label = labelOf(active);
+        // The other sub-agents in the room: "@Ada stop" names Ada, not Bob.
+        const peerLabels = bound
+          .filter((peer) => peer !== active)
+          .map(labelOf)
+          .filter((peer): peer is string => Boolean(peer));
         const busy = isSessionBusy(active.status);
         // What the sub-agent is working on, for the model classifier's
         // relevance judgement — best-effort from session metadata (all
@@ -160,6 +164,7 @@ export function createActiveSessionForwardHandler(
           multiParty,
           sharedChannel,
           ...(label ? { agentLabel: label } : {}),
+          ...(peerLabels.length > 0 ? { peerLabels } : {}),
           ...(taskContext ? { taskContext } : {}),
         });
         runtime.logger?.debug?.(
