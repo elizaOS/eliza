@@ -231,6 +231,23 @@ describe("parseExplicitLocalDate Intl names", () => {
       month: 10,
       day: 23,
     });
+    for (const [text, year] of [
+      ["2027년 1월 5일", 2027],
+      ["내년 1월 5일", 2027],
+      ["올해 1월 5일", 2026],
+      ["请安排明年 1月 5日", 2027],
+      ["2027年 1月 5日", 2027],
+      ["今年 1月 5日", 2026],
+      ["12027년 1월 5일", 2026],
+      ["국내년 1월 5일", 2026],
+      ["내년 January 5, 2028", 2028],
+    ] as const) {
+      expect(parseExplicitLocalDate(text, ZONE, NOW), text).toEqual({
+        year,
+        month: 1,
+        day: 5,
+      });
+    }
   });
 
   it("resolves Korean and Chinese weekday names, including before particles", () => {
@@ -364,57 +381,6 @@ describe("parseExplicitLocalDate Intl names", () => {
     ]) {
       expect(parseExplicitLocalDate(text, ZONE, NOW), text).toBeNull();
     }
-  });
-});
-
-describe("parseExplicitLocalDate leading year modifier", () => {
-  // Saturday 2026-11-14 12:00 in Seoul — January 5 this year has passed.
-  const now = new Date("2026-11-14T03:00:00.000Z");
-  it("reads a year named before the month instead of falling back to this year", () => {
-    expect(
-      parseExplicitLocalDate("2027년 1월 5일 오후 3시 회의", ZONE, now),
-    ).toEqual({
-      year: 2027,
-      month: 1,
-      day: 5,
-    });
-    expect(
-      parseExplicitLocalDate("내년 1월 5일 오후 3시에 회의 잡아줘", ZONE, now),
-    ).toEqual({
-      year: 2027,
-      month: 1,
-      day: 5,
-    });
-    expect(
-      parseExplicitLocalDate("明年 1月 5日下午3点开会", ZONE, now),
-    ).toEqual({
-      year: 2027,
-      month: 1,
-      day: 5,
-    });
-    expect(parseExplicitLocalDate("올해 1월 5일", ZONE, now)).toEqual({
-      year: 2026,
-      month: 1,
-      day: 5,
-    });
-  });
-
-  it("keeps the trailing-year and yearless behaviour unchanged", () => {
-    expect(parseExplicitLocalDate("January 5, 2027", ZONE, now)).toEqual({
-      year: 2027,
-      month: 1,
-      day: 5,
-    });
-    expect(parseExplicitLocalDate("1월 5일", ZONE, now)).toEqual({
-      year: 2026,
-      month: 1,
-      day: 5,
-    });
-    expect(parseExplicitLocalDate("3월 15일 오후 3시", ZONE, now)).toEqual({
-      year: 2026,
-      month: 3,
-      day: 15,
-    });
   });
 });
 

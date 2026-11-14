@@ -164,25 +164,19 @@ function parseRelativeDayOffset(text: string): number | null {
   return null;
 }
 
-// A year modifier placed directly before the month name ("2027년 1월",
-// "내년 1월", "明年 1月") names the year the month belongs to. Without it
-// the month branch silently falls back to this year even when the user
-// already named next year — and the stated-date correction then overwrites
-// a correct extraction with a past date. A trailing year ("January 5,
-// 2027") still wins. Spaceless CJK month-day ("1月5日") is out of scope: it
-// returns null instead of a wrong year, so it cannot corrupt an extraction.
+// Preserve a year attached to the date before applying stated-date correction.
 function resolveLeadingYearModifier(
   beforeMonth: string,
   thisYear: number,
 ): number | null {
-  const explicit = beforeMonth.match(/(\d{4})년\s*$/u);
+  const explicit = beforeMonth.match(/(?<!\p{N})(\d{4})[년年]\s*$/u);
   if (explicit?.[1]) {
     return Number(explicit[1]);
   }
-  if (/(?:내년|明年)\s*$/u.test(beforeMonth)) {
+  if (/(?:(?<![\p{L}\p{M}\p{N}_])내년|明年)\s*$/u.test(beforeMonth)) {
     return thisYear + 1;
   }
-  if (/(?:올해|今年)\s*$/u.test(beforeMonth)) {
+  if (/(?:(?<![\p{L}\p{M}\p{N}_])올해|今年)\s*$/u.test(beforeMonth)) {
     return thisYear;
   }
   return null;
