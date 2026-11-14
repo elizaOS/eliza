@@ -11,6 +11,10 @@
  * cleared, and the post-failure reload wiped the optimistic bubble).
  */
 
+/** Model prompt for an attachment-only send; the UI can retain blank authored text. */
+export const IMAGE_ONLY_CHAT_FALLBACK_PROMPT =
+	"Please review the attached file.";
+
 /** Max number of attachments on a single chat message (all kinds). */
 export const MAX_CHAT_UPLOAD_ATTACHMENTS = 4;
 

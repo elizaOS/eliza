@@ -25,6 +25,7 @@ import {
   type UUID,
   validateUuid,
 } from "@elizaos/core";
+import { IMAGE_ONLY_CHAT_FALLBACK_PROMPT } from "@elizaos/core/protocol";
 import { sendJsonError } from "@elizaos/host";
 import {
   type ElizaConfig,
@@ -359,8 +360,9 @@ function base64DecodesToZeroBytes(data: string): boolean {
 // Re-exported for chat-routes and for parity tests against the client side.
 
 const ALLOWED_CHAT_MEDIA_MIME_TYPES = new Set<string>(CHAT_UPLOAD_MIME_TYPES);
-export const IMAGE_ONLY_CHAT_FALLBACK_PROMPT =
-  "Please review the attached file.";
+
+export { IMAGE_ONLY_CHAT_FALLBACK_PROMPT };
+
 /** Map an upload MIME type to its canonical attachment content type. */
 function contentTypeForUploadMime(mimeType: string): ContentType {
   const mime = mimeType.toLowerCase();
