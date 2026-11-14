@@ -141,16 +141,16 @@ importers:
         specifier: 4.1.1
         version: 4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))
       '@informalsystems/quint':
-        specifier: 0.33.1
+        specifier: ^0.33.1
         version: 0.33.1
       effect:
         specifier: 4.1.1
         version: 4.1.1
       lemmascript:
-        specifier: 0.6.9
+        specifier: ^0.6.8
         version: 0.6.9(zod@4.6.7)
       typescript:
-        specifier: 6.0.3
+        specifier: ^6.0.3
         version: 6.0.3
       vibelang-runtime:
         specifier: 0.0.13
