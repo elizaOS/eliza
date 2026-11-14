@@ -70,7 +70,7 @@ jobs:
           bun --conditions=eliza-source - <<'BUN'
           import { requireStripe } from './packages/cloud/shared/src/lib/stripe.ts';
           import { initialInvoiceSchema } from './packages/cloud/shared/src/lib/services/stripe-settled-invoice-schema.ts';
-          import { validateInvoiceCapture } from './packages/cloud/shared/src/lib/services/stripe-invoice-capture.ts';
+          import { validateInvoiceCapture, stripePaymentCaptureSchema, stripeChargeCaptureSchema } from './packages/cloud/shared/src/lib/services/stripe-invoice-capture.ts';
           import { proveInvoiceAdjustments } from './packages/cloud/shared/src/lib/services/stripe-invoice-adjustments.ts';
           import { proveInvoiceSettlement } from './packages/cloud/shared/src/lib/services/stripe-invoice-settlement.ts';
           import { canonicalSettlementJson } from './packages/cloud/shared/src/lib/services/settlement-digest.ts';
@@ -256,6 +256,16 @@ jobs:
                 paymentIntentMatchesInvoice: reference(charge.payment_intent) === parsed.data.payment_intent,
               }}));
               if (paymentIntent && charge) {
+                for (const [kind, schema, value] of [
+                  ['payment_intent', stripePaymentCaptureSchema, paymentIntent],
+                  ['charge', stripeChargeCaptureSchema, charge],
+                ]) {
+                  const result = schema.safeParse(value);
+                  console.log(JSON.stringify({ captureShape: {
+                    kind, valid: result.success,
+                    issues: result.success ? [] : result.error.issues.map(({ path, code }) => ({ path, code })),
+                  }}));
+                }
                 for (const [proof, check] of [
                   ['capture', () => validateInvoiceCapture({ invoice, paymentIntent, charge })],
                   ['adjustments', () => proveInvoiceAdjustments(parsed.data, parsed.data.lines.data[0])],
