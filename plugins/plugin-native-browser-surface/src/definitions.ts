@@ -266,8 +266,8 @@ export interface SitePermissionWithdrawnEvent extends SurfaceIdOptions {
  *   still missing.
  * - `ended`: the request ended unanswered: the page withdrew it, navigating, hiding or
  *   closing ended it while Android asked, the page left the requesting origin, or Android
- *   could not ask (no dialog could open, or it returned no answer because another
- *   permission request was already showing).
+ *   could not ask (no dialog could open, or Android returned no answer, e.g. another
+ *   request was showing).
  */
 export type SitePermissionOutcome =
   | "granted"
@@ -562,9 +562,13 @@ export interface ElizaSurfaceManagerPlugin {
    * the first call.
    */
   setOcclusionRects(options: SetOcclusionRectsOptions): Promise<void>;
-  /** Load a URL in an existing surface. */
+  /**
+   * Load a URL in an existing surface. Android: `navigate`, `reloadSurface`, `goBack` and
+   * `goForward` first end what the page holds (held dialogs, a leave-page one included,
+   * are cancelled), so a page frozen on a dialog still loads; `beforeunload` runs again.
+   */
   navigate(options: NavigateOptions): Promise<void>;
-  /** Reload an existing surface's current page. */
+  /** Reload an existing surface's current page; Android ends what it holds first (`navigate`). */
   reloadSurface(options: SurfaceIdOptions): Promise<void>;
   /**
    * Android: stops the current page load where it is; a no-op when nothing is loading.
@@ -598,9 +602,10 @@ export interface ElizaSurfaceManagerPlugin {
    * granted only if Android allowed them all and it is still at the requesting origin,
    * and is denied otherwise. Resolves with what the page got and why
    * (`SitePermissionOutcome`). A camera or microphone grant lets the current page play
-   * media without a gesture, as Chrome does while a page captures, until the next
-   * `pageStarted`. A request already answered or withdrawn rejects
-   * `SITE_PERMISSION_CLOSED`.
+   * media without a gesture, as Chrome does while a page captures, until the next page
+   * start. Only media elements the page creates after the grant play on their own: WebView
+   * fixes the requirement into each element when it is created. A request already
+   * answered or withdrawn rejects `SITE_PERMISSION_CLOSED`.
    */
   answerSitePermission(
     options: SurfaceIdOptions & { requestId: string; grant: boolean },
