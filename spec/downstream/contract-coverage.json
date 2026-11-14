@@ -1655,7 +1655,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/telephony.md",
+      "relatedSpec": "spec/downstream/mobileContacts.md",
       "coverage": "related-contract"
     },
     {
@@ -1817,8 +1817,8 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/core/contracts.md",
-      "coverage": "related-core-model"
+      "relatedSpec": "spec/downstream/alpha/calendarAgendaSource.md",
+      "coverage": "direct-contract"
     },
     {
       "source": "packages/core/src/types/effects.ts",
@@ -1859,8 +1859,8 @@
         "renderer-import"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/core/views.md",
-      "coverage": "related-core-model"
+      "relatedSpec": "spec/downstream/coreImportResolution.md",
+      "coverage": "related-contract"
     },
     {
       "source": "packages/core/src/views/completed-action-navigation.ts",
@@ -2825,7 +2825,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/calendar.md",
+      "relatedSpec": "spec/downstream/alpha/calendarAvailabilityData.md",
       "coverage": "related-contract"
     },
     {
@@ -3545,8 +3545,8 @@
         "test"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobileBrowser.md",
-      "coverage": "related-contract"
+      "relatedSpec": "spec/downstream/alpha/browserPersistence.md",
+      "coverage": "direct-contract"
     },
     {
       "source": "plugins/plugin-native-browser-surface/src/page-reading.ts",

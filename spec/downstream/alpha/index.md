@@ -25,10 +25,10 @@ activation on a physical device.
 | `apps/app/src/main.tsx` and `apps/app/src/prototype/agent-adapter.ts` | [Client conversation](../conversation.md), [turn ownership and cancellation](../../core/turnControllers.md) |
 | `apps/app/src/prototype/assistant-draft-controller.ts`, `apps/app/src/runtime/assistant-draft-store.ts`, `apps/app/src/browser/documents.ts` | [Durable drafts and send recovery](./durableDraft.md), [browser document receipts and recovery](./documentStore.md) |
 | `apps/app/src/prototype/canonical-notes-ui.ts`, `notes-controller.ts`, `notes-editor.ts` | [Notes snapshot and draft custody](./notes.md), [Previous Notes Trash and audio recovery](./notesTrash.md), [local search and selected content](./notesRead.md) |
-| `apps/app/src/prototype/agent-calendar-adapter.ts`, `calendar-approval-adapter.ts` | [Calendar target and availability review](./calendar.md), [draft and versioned mutations](./calendarDraft.md) |
+| `apps/app/src/prototype/agent-calendar-adapter.ts`, `calendar-approval-adapter.ts` | [Calendar target and availability review](./calendar.md), [availability data and receipt shape](./calendarAvailabilityData.md), [agenda source observation](./calendarAgendaSource.md), [draft and versioned mutations](./calendarDraft.md) |
 | `apps/app/src/prototype/maps-adapter.ts` | [Maps route and offer custody](./maps.md) |
 | `apps/app/src/runtime/telephony-executor.ts`, Phone, Messages, and Contacts adapters | [Verified image review, SIM selection, and operation receipt](./telephony.md), [native SMS review custody](../mobileTelephony.md) |
-| `apps/app/src/prototype/browser-adapter.ts` | [Current document, private profile, reading and persistence](./browser.md), [native external link authority](../mobileBrowser.md) |
+| `apps/app/src/prototype/browser-adapter.ts` | [Current document and private profile](./browser.md), [session restore and clear](./browserPersistence.md), [native external link authority](../mobileBrowser.md) |
 | `apps/app/src/passwords/password-manager.ts`, `MainActivity.java` | [Vault visit, native unlock, origin review and secret custody](./passwords.md) |
 | `apps/app/src/browser/files.ts`, `AlphaMailAttachments` | [Reviewed file operations and retained trash](./files.md), [verified document source reopening and read permissions](./sourceReferences.md), [native file observer custody](../mobileStorageWatch.md) |
 | `apps/app/src/prototype/browser-camera.ts` | [Selected media download and stored ZIP](./photosArchive.md) |
@@ -66,8 +66,8 @@ refinements against the same pinned consumers:
 | --- | --- |
 | Storage and authored text | Notes decoder, exact native recording byte and orphan cleanup fixtures, multi-row Trash contention, and format/parser parity; browser legacy archive arrays, same-binding peer draft queues, and Android secure slot recovery. |
 | Files and captured sources | Archive and scan payload decoders, OCR/text-layer parity, file-system ordering, native media callbacks, and cross-bridge Android document grants and cleanup. |
-| Calendar, Inbox and Home | Exact provider JSON/route and reconciliation fixtures; calendar availability and recurrence data; cache eviction across accounts; real time-zone, accessibility and rendered projection fixtures. |
-| Maps, browser and launcher | Provider route geometry, live-location feeds and relay expiry; browser session history and restore arrays; dynamic launcher order, focus and native lifecycle fixtures. |
+| Calendar, Inbox and Home | Provider JSON and reconciliation, recurring-series mutation parity, cache eviction across accounts, accessibility and rendered projection. |
+| Maps, browser and launcher | Provider route geometry, live-location feeds and relay expiry, native browser storage and cookie clearing, launcher order, focus and lifecycle. |
 | Notices and automation | Exact platform signal and notice owner composition, digest/archive data, and provider read projection; verify effects through the linked workflow and mobile owners. |
 
 The [inventory](../alphaBaseline.json) includes these and other reachable

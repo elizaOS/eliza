@@ -35,6 +35,7 @@ features provide distinct evidence from production startup.
 - [Native Cloud operations](./cloudHost.md)
 - [Consumer plugin profile and host composition](./pluginProfile.md)
 - [Product chat authority and runtime configuration](./chatHost.md)
+- [Core source and package import resolution](./coreImportResolution.md)
 - [Client conversation turns and Stop receipts](./conversation.md)
 - [Runtime JSON client and account restart](./runtimeClient.md)
 - [Grace browser protection](./browserProtection.md)
