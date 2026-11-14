@@ -127,7 +127,8 @@ export interface CreateSurfaceOptions extends SurfaceOwnerOptions {
    * example a signed-in account id, 1 to 128 of `A-Z a-z 0-9 . _ : @ -`), so website
    * sign-ins survive across openings. The profile name is a digest, never the key.
    * Remove it with `purgeProfiles`. Without a key every surface gets a fresh profile
-   * that is cleared when it closes and deleted once Android releases it.
+   * that is cleared when it closes and deleted once Android releases it. A keyed profile
+   * accepts third-party cookies, so embedded sign-ins work there as in a browser.
    */
   profileKey?: string;
   /** Default `above-host`. Fixed for the life of the surface. */
@@ -351,6 +352,11 @@ export interface SurfaceState {
   securityBlocked?: boolean;
   /** Android: text zoom in percent. */
   textZoom?: number | null;
+  /**
+   * Android: pinch zoom in CSS pixels per density-independent pixel: 1 is the page's own
+   * mobile size, below 1 a wide page shown whole, above 1 zoomed in.
+   */
+  pageScale?: number | null;
 }
 
 export interface SurfaceStateWithId extends SurfaceState {
