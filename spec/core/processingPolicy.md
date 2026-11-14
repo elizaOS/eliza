@@ -14,8 +14,15 @@ Discovered by the proof: if a wrapper and a runtime can share the same
 identity, a wrapper lookup can hide a previously bound policy. Each runtime
 or wrapper identity is registered once. Every wrapper directly refers to
 an existing original runtime. A runtime setting cannot rebind that original.
+The shell supplies constructor and admission authority separately from the
+parsed event. Only the installed policy callback can settle its decision.
 
 ```quint
+type PolicyCaller = HostConstructor | CoreDispatch | PolicyCallback | OtherCaller
+pure val hostConstructor: PolicyCaller = HostConstructor
+pure val coreDispatch: PolicyCaller = CoreDispatch
+pure val policyCallback: PolicyCaller = PolicyCallback
+pure val byValues = Set(HostConstructor, CoreDispatch, PolicyCallback, OtherCaller)
 type PolicyRuntime = {id: int, policy: int}
 type RuntimeWrapper = {id: int, original: int}
 type ProcessingKind = ModelProcessing | ActionProcessing
@@ -33,12 +40,12 @@ pure val policyIdValues = Set(1, 2)
 pure val admissionIdValues = Set(1, 2, 3)
 pure def runtimeIdentity(s: ProcessingPolicies, runtimeId: int): int = s.wrappers.select(w => w.id == runtimeId).nthOr(0, {id: runtimeId, original: runtimeId}).original
 pure def boundPolicy(s: ProcessingPolicies, runtimeId: int): int = s.runtimes.select(r => r.id == runtimeIdentity(s, runtimeId)).nthOr(0, {id: runtimeId, policy: 0}).policy
-pure def canRegisterPolicyRuntime(s: ProcessingPolicies, runtimeId: int): bool = runtimeId > 0 and not(s.runtimes.some(r => r.id == runtimeId)) and not(s.wrappers.some(w => w.id == runtimeId))
-pure def registerPolicyRuntime(s: ProcessingPolicies, runtimeId: int): ProcessingPolicies = { ...s, runtimes: s.runtimes.append({id: runtimeId, policy: 0}) }
-pure def canBindPolicy(s: ProcessingPolicies, runtimeId: int, policyId: int): bool = policyId > 0 and s.runtimes.some(r => r.id == runtimeId and r.policy == 0)
-pure def bindPolicy(s: ProcessingPolicies, runtimeId: int, policyId: int): ProcessingPolicies = { ...s, runtimes: s.runtimes.listMap(r => if (r.id == runtimeId) { ...r, policy: policyId } else r) }
-pure def canRegisterRuntimeWrapper(s: ProcessingPolicies, wrapperId: int, runtimeId: int): bool = wrapperId > 0 and s.runtimes.some(r => r.id == runtimeId) and not(s.runtimes.some(r => r.id == wrapperId)) and not(s.wrappers.some(w => w.id == wrapperId))
-pure def registerRuntimeWrapper(s: ProcessingPolicies, wrapperId: int, runtimeId: int): ProcessingPolicies = { ...s, wrappers: s.wrappers.append({id: wrapperId, original: runtimeId}) }
+pure def canRegisterPolicyRuntime(s: ProcessingPolicies, by: PolicyCaller, runtimeId: int): bool = by == hostConstructor and runtimeId > 0 and not(s.runtimes.some(r => r.id == runtimeId)) and not(s.wrappers.some(w => w.id == runtimeId))
+pure def registerPolicyRuntime(s: ProcessingPolicies, by: PolicyCaller, runtimeId: int): ProcessingPolicies = { ...s, runtimes: s.runtimes.append({id: runtimeId, policy: 0}) }
+pure def canBindPolicy(s: ProcessingPolicies, by: PolicyCaller, runtimeId: int, policyId: int): bool = by == hostConstructor and policyId > 0 and s.runtimes.some(r => r.id == runtimeId and r.policy == 0)
+pure def bindPolicy(s: ProcessingPolicies, by: PolicyCaller, runtimeId: int, policyId: int): ProcessingPolicies = { ...s, runtimes: s.runtimes.listMap(r => if (r.id == runtimeId) { ...r, policy: policyId } else r) }
+pure def canRegisterRuntimeWrapper(s: ProcessingPolicies, by: PolicyCaller, wrapperId: int, runtimeId: int): bool = by == hostConstructor and wrapperId > 0 and s.runtimes.some(r => r.id == runtimeId) and not(s.runtimes.some(r => r.id == wrapperId)) and not(s.wrappers.some(w => w.id == wrapperId))
+pure def registerRuntimeWrapper(s: ProcessingPolicies, by: PolicyCaller, wrapperId: int, runtimeId: int): ProcessingPolicies = { ...s, wrappers: s.wrappers.append({id: wrapperId, original: runtimeId}) }
 pure def stepBoundPolicyCannotChange(before: ProcessingPolicies, after: ProcessingPolicies): bool = before.runtimes.every(r => r.policy != 0 implies boundPolicy(after, r.id) == r.policy)
 pure def alwaysWrapperKeepsPolicy(s: ProcessingPolicies): bool = s.wrappers.every(w => boundPolicy(s, w.id) == boundPolicy(s, w.original))
 pure def alwaysRuntimeIdentitiesAreUnique(s: ProcessingPolicies): bool = s.runtimes.every(r => r.id > 0 and r.policy >= 0 and s.runtimes.select(other => other.id == r.id).length() == 1 and not(s.wrappers.some(w => w.id == r.id)))
@@ -68,25 +75,25 @@ pure val inputValues = Set(exampleModel, { ...exampleModel, modality: "" }, { ..
 pure val allowedOutput: PolicyOutput = {available: true, shapeValid: true, allow: true, receipt: "admitted", revision: "policy-1", revisionPresent: true, code: "", failure: ""}
 pure val deniedOutput: PolicyOutput = {available: true, shapeValid: true, allow: false, receipt: "", revision: "policy-1", revisionPresent: true, code: "scope_denied", failure: ""}
 pure val outputValues = Set(allowedOutput, { ...allowedOutput, receipt: "" }, { ...allowedOutput, revision: "" }, deniedOutput, { ...deniedOutput, revisionPresent: false, revision: "" }, { ...deniedOutput, shapeValid: false }, { ...deniedOutput, available: false, failure: "policy-error" })
-pure def canBeginAdmission(s: ProcessingPolicies, admissionId: int, runtimeId: int, input: ProcessingInput): bool = admissionId > 0 and s.runtimes.some(r => r.id == runtimeIdentity(s, runtimeId)) and not(s.admissions.some(a => a.id == admissionId))
-pure def beginAdmission(s: ProcessingPolicies, admissionId: int, runtimeId: int, input: ProcessingInput): ProcessingPolicies = {
+pure def canBeginAdmission(s: ProcessingPolicies, by: PolicyCaller, admissionId: int, runtimeId: int, input: ProcessingInput): bool = by == coreDispatch and admissionId > 0 and s.runtimes.some(r => r.id == runtimeIdentity(s, runtimeId)) and not(s.admissions.some(a => a.id == admissionId))
+pure def beginAdmission(s: ProcessingPolicies, by: PolicyCaller, admissionId: int, runtimeId: int, input: ProcessingInput): ProcessingPolicies = {
   val policy = boundPolicy(s, runtimeId)
   val unknown = input.kind == ModelProcessing and input.modality == ""
   val undeclared = input.kind == ActionProcessing and not(input.egressDeclared)
   val refused = policy != 0 and (unknown or undeclared)
   { ...s, admissions: s.admissions.append({id: admissionId, runtime: runtimeIdentity(s, runtimeId), policy: policy, request: input, phase: if (policy == 0) ProcessingAllowed else if (refused) ProcessingDenied else PolicyPending, reason: if (not(refused)) NoDenial else if (unknown) UnknownModality else UndeclaredDestination, receipt: "", revision: "", revisionPresent: false, policyCode: "", cause: if (refused) input.priorFailure else "", decisionCalls: if (policy != 0 and not(refused)) 1 else 0}) }
 }
-pure def canDecideAdmission(s: ProcessingPolicies, admissionId: int, output: PolicyOutput): bool = s.admissions.some(a => a.id == admissionId and a.phase == PolicyPending)
+pure def canDecideAdmission(s: ProcessingPolicies, by: PolicyCaller, admissionId: int, output: PolicyOutput): bool = by == policyCallback and s.admissions.some(a => a.id == admissionId and a.phase == PolicyPending)
 pure def admissionOutcome(a: ProcessingAdmission, output: PolicyOutput): ProcessingAdmission = {
   val valid = output.available and output.shapeValid and (not(output.allow) or (output.receipt != "" and output.revisionPresent and output.revision != ""))
   val admitted = valid and output.allow
   val hostDenied = valid and not(output.allow)
   { ...a, phase: if (admitted) ProcessingAllowed else ProcessingDenied, reason: if (not(output.available)) PolicyUnavailable else if (not(valid)) MalformedDecision else if (hostDenied) HostDenied else NoDenial, receipt: if (admitted) output.receipt else "", revision: if (valid and output.revisionPresent) output.revision else "", revisionPresent: valid and output.revisionPresent, policyCode: if (hostDenied) output.code else "", cause: if (admitted) "" else if (not(output.available) and output.failure != "") output.failure else a.request.priorFailure }
 }
-pure def decideAdmission(s: ProcessingPolicies, admissionId: int, output: PolicyOutput): ProcessingPolicies =
+pure def decideAdmission(s: ProcessingPolicies, by: PolicyCaller, admissionId: int, output: PolicyOutput): ProcessingPolicies =
   { ...s, admissions: s.admissions.listMap(a => if (a.id == admissionId and a.phase == PolicyPending) admissionOutcome(a, output) else a) }
-pure def canPreparePayload(s: ProcessingPolicies, admissionId: int, aborted: bool): bool = s.admissions.some(a => a.id == admissionId and a.phase == ProcessingAllowed and (a.request.kind == ActionProcessing or not(aborted)))
-pure def preparePayload(s: ProcessingPolicies, admissionId: int, aborted: bool): ProcessingPolicies = { ...s, admissions: s.admissions.listMap(a => if (a.id == admissionId and a.phase == ProcessingAllowed and (a.request.kind == ActionProcessing or not(aborted))) { ...a, phase: PayloadPrepared } else a) }
+pure def canPreparePayload(s: ProcessingPolicies, by: PolicyCaller, admissionId: int, aborted: bool): bool = by == coreDispatch and s.admissions.some(a => a.id == admissionId and a.phase == ProcessingAllowed and (a.request.kind == ActionProcessing or not(aborted)))
+pure def preparePayload(s: ProcessingPolicies, by: PolicyCaller, admissionId: int, aborted: bool): ProcessingPolicies = { ...s, admissions: s.admissions.listMap(a => if (a.id == admissionId and a.phase == ProcessingAllowed and (a.request.kind == ActionProcessing or not(aborted))) { ...a, phase: PayloadPrepared } else a) }
 pure def alwaysPolicyAdmissionHasReceipt(s: ProcessingPolicies): bool = s.admissions.every(a => a.policy > 0 and (a.phase == ProcessingAllowed or a.phase == PayloadPrepared) implies a.receipt != "" and a.revisionPresent and a.revision != "" and a.decisionCalls == 1)
 pure def alwaysAdmissionIdsAreUnique(s: ProcessingPolicies): bool = s.admissions.every(a => a.id > 0 and a.policy >= 0 and s.admissions.select(other => other.id == a.id).length() == 1)
 pure def alwaysPendingDecisionWasRequested(s: ProcessingPolicies): bool = s.admissions.every(a => a.phase == PolicyPending implies a.policy > 0 and a.decisionCalls == 1)

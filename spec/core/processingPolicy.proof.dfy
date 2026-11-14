@@ -178,18 +178,18 @@ lemma ProcessingAdmissionMapped(s: ProcessingPolicies, after: ProcessingPolicies
   }
 }
 
-lemma registerPolicyRuntime_ensures(s: ProcessingPolicies, runtimeId: int)
-  ensures (inv(s) ==> canRegisterPolicyRuntime(s, runtimeId) ==> alwaysRuntimeIdentitiesAreUnique(registerPolicyRuntime(s, runtimeId)))
-  ensures (inv(s) ==> canRegisterPolicyRuntime(s, runtimeId) ==> alwaysWrapperIdentitiesAreUnique(registerPolicyRuntime(s, runtimeId)))
-  ensures (inv(s) ==> canRegisterPolicyRuntime(s, runtimeId) ==> alwaysWrapperKeepsPolicy(registerPolicyRuntime(s, runtimeId)))
-  ensures (inv(s) ==> canRegisterPolicyRuntime(s, runtimeId) ==> alwaysPolicyAdmissionHasReceipt(registerPolicyRuntime(s, runtimeId)))
-  ensures (inv(s) ==> canRegisterPolicyRuntime(s, runtimeId) ==> alwaysAdmissionIdsAreUnique(registerPolicyRuntime(s, runtimeId)))
-  ensures (inv(s) ==> canRegisterPolicyRuntime(s, runtimeId) ==> alwaysPendingDecisionWasRequested(registerPolicyRuntime(s, runtimeId)))
-  ensures (inv(s) ==> canRegisterPolicyRuntime(s, runtimeId) ==> stepBoundPolicyCannotChange(s, registerPolicyRuntime(s, runtimeId)))
-  ensures (inv(s) ==> canRegisterPolicyRuntime(s, runtimeId) ==> stepDeniedProcessingTerminal(s, registerPolicyRuntime(s, runtimeId)))
+lemma registerPolicyRuntime_ensures(s: ProcessingPolicies, by_: PolicyCaller, runtimeId: int)
+  ensures (inv(s) ==> canRegisterPolicyRuntime(s, by_, runtimeId) ==> alwaysRuntimeIdentitiesAreUnique(registerPolicyRuntime(s, by_, runtimeId)))
+  ensures (inv(s) ==> canRegisterPolicyRuntime(s, by_, runtimeId) ==> alwaysWrapperIdentitiesAreUnique(registerPolicyRuntime(s, by_, runtimeId)))
+  ensures (inv(s) ==> canRegisterPolicyRuntime(s, by_, runtimeId) ==> alwaysWrapperKeepsPolicy(registerPolicyRuntime(s, by_, runtimeId)))
+  ensures (inv(s) ==> canRegisterPolicyRuntime(s, by_, runtimeId) ==> alwaysPolicyAdmissionHasReceipt(registerPolicyRuntime(s, by_, runtimeId)))
+  ensures (inv(s) ==> canRegisterPolicyRuntime(s, by_, runtimeId) ==> alwaysAdmissionIdsAreUnique(registerPolicyRuntime(s, by_, runtimeId)))
+  ensures (inv(s) ==> canRegisterPolicyRuntime(s, by_, runtimeId) ==> alwaysPendingDecisionWasRequested(registerPolicyRuntime(s, by_, runtimeId)))
+  ensures (inv(s) ==> canRegisterPolicyRuntime(s, by_, runtimeId) ==> stepBoundPolicyCannotChange(s, registerPolicyRuntime(s, by_, runtimeId)))
+  ensures (inv(s) ==> canRegisterPolicyRuntime(s, by_, runtimeId) ==> stepDeniedProcessingTerminal(s, registerPolicyRuntime(s, by_, runtimeId)))
 {
-  if inv(s) && canRegisterPolicyRuntime(s, runtimeId) {
-    var after := registerPolicyRuntime(s, runtimeId);
+  if inv(s) && canRegisterPolicyRuntime(s, by_, runtimeId) {
+    var after := registerPolicyRuntime(s, by_, runtimeId);
     var added := PolicyRuntime(runtimeId, 0);
     ProcessingRuntimeFacts(s);
     ProcessingRuntimeFacts(after);
@@ -201,18 +201,18 @@ lemma registerPolicyRuntime_ensures(s: ProcessingPolicies, runtimeId: int)
   }
 }
 
-lemma registerRuntimeWrapper_ensures(s: ProcessingPolicies, wrapperId: int, runtimeId: int)
-  ensures (inv(s) ==> canRegisterRuntimeWrapper(s, wrapperId, runtimeId) ==> alwaysRuntimeIdentitiesAreUnique(registerRuntimeWrapper(s, wrapperId, runtimeId)))
-  ensures (inv(s) ==> canRegisterRuntimeWrapper(s, wrapperId, runtimeId) ==> alwaysWrapperIdentitiesAreUnique(registerRuntimeWrapper(s, wrapperId, runtimeId)))
-  ensures (inv(s) ==> canRegisterRuntimeWrapper(s, wrapperId, runtimeId) ==> alwaysWrapperKeepsPolicy(registerRuntimeWrapper(s, wrapperId, runtimeId)))
-  ensures (inv(s) ==> canRegisterRuntimeWrapper(s, wrapperId, runtimeId) ==> alwaysPolicyAdmissionHasReceipt(registerRuntimeWrapper(s, wrapperId, runtimeId)))
-  ensures (inv(s) ==> canRegisterRuntimeWrapper(s, wrapperId, runtimeId) ==> alwaysAdmissionIdsAreUnique(registerRuntimeWrapper(s, wrapperId, runtimeId)))
-  ensures (inv(s) ==> canRegisterRuntimeWrapper(s, wrapperId, runtimeId) ==> alwaysPendingDecisionWasRequested(registerRuntimeWrapper(s, wrapperId, runtimeId)))
-  ensures (inv(s) ==> canRegisterRuntimeWrapper(s, wrapperId, runtimeId) ==> stepBoundPolicyCannotChange(s, registerRuntimeWrapper(s, wrapperId, runtimeId)))
-  ensures (inv(s) ==> canRegisterRuntimeWrapper(s, wrapperId, runtimeId) ==> stepDeniedProcessingTerminal(s, registerRuntimeWrapper(s, wrapperId, runtimeId)))
+lemma registerRuntimeWrapper_ensures(s: ProcessingPolicies, by_: PolicyCaller, wrapperId: int, runtimeId: int)
+  ensures (inv(s) ==> canRegisterRuntimeWrapper(s, by_, wrapperId, runtimeId) ==> alwaysRuntimeIdentitiesAreUnique(registerRuntimeWrapper(s, by_, wrapperId, runtimeId)))
+  ensures (inv(s) ==> canRegisterRuntimeWrapper(s, by_, wrapperId, runtimeId) ==> alwaysWrapperIdentitiesAreUnique(registerRuntimeWrapper(s, by_, wrapperId, runtimeId)))
+  ensures (inv(s) ==> canRegisterRuntimeWrapper(s, by_, wrapperId, runtimeId) ==> alwaysWrapperKeepsPolicy(registerRuntimeWrapper(s, by_, wrapperId, runtimeId)))
+  ensures (inv(s) ==> canRegisterRuntimeWrapper(s, by_, wrapperId, runtimeId) ==> alwaysPolicyAdmissionHasReceipt(registerRuntimeWrapper(s, by_, wrapperId, runtimeId)))
+  ensures (inv(s) ==> canRegisterRuntimeWrapper(s, by_, wrapperId, runtimeId) ==> alwaysAdmissionIdsAreUnique(registerRuntimeWrapper(s, by_, wrapperId, runtimeId)))
+  ensures (inv(s) ==> canRegisterRuntimeWrapper(s, by_, wrapperId, runtimeId) ==> alwaysPendingDecisionWasRequested(registerRuntimeWrapper(s, by_, wrapperId, runtimeId)))
+  ensures (inv(s) ==> canRegisterRuntimeWrapper(s, by_, wrapperId, runtimeId) ==> stepBoundPolicyCannotChange(s, registerRuntimeWrapper(s, by_, wrapperId, runtimeId)))
+  ensures (inv(s) ==> canRegisterRuntimeWrapper(s, by_, wrapperId, runtimeId) ==> stepDeniedProcessingTerminal(s, registerRuntimeWrapper(s, by_, wrapperId, runtimeId)))
 {
-  if inv(s) && canRegisterRuntimeWrapper(s, wrapperId, runtimeId) {
-    var after := registerRuntimeWrapper(s, wrapperId, runtimeId);
+  if inv(s) && canRegisterRuntimeWrapper(s, by_, wrapperId, runtimeId) {
+    var after := registerRuntimeWrapper(s, by_, wrapperId, runtimeId);
     var added := RuntimeWrapper(wrapperId, runtimeId);
     ProcessingRuntimeFacts(s);
     ProcessingRuntimeFacts(after);
@@ -224,18 +224,18 @@ lemma registerRuntimeWrapper_ensures(s: ProcessingPolicies, wrapperId: int, runt
   }
 }
 
-lemma bindPolicy_ensures(s: ProcessingPolicies, runtimeId: int, policyId: int)
-  ensures (inv(s) ==> canBindPolicy(s, runtimeId, policyId) ==> alwaysRuntimeIdentitiesAreUnique(bindPolicy(s, runtimeId, policyId)))
-  ensures (inv(s) ==> canBindPolicy(s, runtimeId, policyId) ==> alwaysWrapperIdentitiesAreUnique(bindPolicy(s, runtimeId, policyId)))
-  ensures (inv(s) ==> canBindPolicy(s, runtimeId, policyId) ==> alwaysWrapperKeepsPolicy(bindPolicy(s, runtimeId, policyId)))
-  ensures (inv(s) ==> canBindPolicy(s, runtimeId, policyId) ==> alwaysPolicyAdmissionHasReceipt(bindPolicy(s, runtimeId, policyId)))
-  ensures (inv(s) ==> canBindPolicy(s, runtimeId, policyId) ==> alwaysAdmissionIdsAreUnique(bindPolicy(s, runtimeId, policyId)))
-  ensures (inv(s) ==> canBindPolicy(s, runtimeId, policyId) ==> alwaysPendingDecisionWasRequested(bindPolicy(s, runtimeId, policyId)))
-  ensures (inv(s) ==> canBindPolicy(s, runtimeId, policyId) ==> stepBoundPolicyCannotChange(s, bindPolicy(s, runtimeId, policyId)))
-  ensures (inv(s) ==> canBindPolicy(s, runtimeId, policyId) ==> stepDeniedProcessingTerminal(s, bindPolicy(s, runtimeId, policyId)))
+lemma bindPolicy_ensures(s: ProcessingPolicies, by_: PolicyCaller, runtimeId: int, policyId: int)
+  ensures (inv(s) ==> canBindPolicy(s, by_, runtimeId, policyId) ==> alwaysRuntimeIdentitiesAreUnique(bindPolicy(s, by_, runtimeId, policyId)))
+  ensures (inv(s) ==> canBindPolicy(s, by_, runtimeId, policyId) ==> alwaysWrapperIdentitiesAreUnique(bindPolicy(s, by_, runtimeId, policyId)))
+  ensures (inv(s) ==> canBindPolicy(s, by_, runtimeId, policyId) ==> alwaysWrapperKeepsPolicy(bindPolicy(s, by_, runtimeId, policyId)))
+  ensures (inv(s) ==> canBindPolicy(s, by_, runtimeId, policyId) ==> alwaysPolicyAdmissionHasReceipt(bindPolicy(s, by_, runtimeId, policyId)))
+  ensures (inv(s) ==> canBindPolicy(s, by_, runtimeId, policyId) ==> alwaysAdmissionIdsAreUnique(bindPolicy(s, by_, runtimeId, policyId)))
+  ensures (inv(s) ==> canBindPolicy(s, by_, runtimeId, policyId) ==> alwaysPendingDecisionWasRequested(bindPolicy(s, by_, runtimeId, policyId)))
+  ensures (inv(s) ==> canBindPolicy(s, by_, runtimeId, policyId) ==> stepBoundPolicyCannotChange(s, bindPolicy(s, by_, runtimeId, policyId)))
+  ensures (inv(s) ==> canBindPolicy(s, by_, runtimeId, policyId) ==> stepDeniedProcessingTerminal(s, bindPolicy(s, by_, runtimeId, policyId)))
 {
-  if inv(s) && canBindPolicy(s, runtimeId, policyId) {
-    var after := bindPolicy(s, runtimeId, policyId);
+  if inv(s) && canBindPolicy(s, by_, runtimeId, policyId) {
+    var after := bindPolicy(s, by_, runtimeId, policyId);
     var unbound :| unbound in s.runtimes && unbound.id == runtimeId && unbound.policy == 0;
     ProcessingRuntimeFacts(s);
     ProcessingRuntimeFacts(after);
@@ -272,18 +272,18 @@ lemma bindPolicy_ensures(s: ProcessingPolicies, runtimeId: int, policyId: int)
   }
 }
 
-lemma beginAdmission_ensures(s: ProcessingPolicies, admissionId: int, runtimeId: int, input: ProcessingInput)
-  ensures (inv(s) ==> canBeginAdmission(s, admissionId, runtimeId, input) ==> alwaysRuntimeIdentitiesAreUnique(beginAdmission(s, admissionId, runtimeId, input)))
-  ensures (inv(s) ==> canBeginAdmission(s, admissionId, runtimeId, input) ==> alwaysWrapperIdentitiesAreUnique(beginAdmission(s, admissionId, runtimeId, input)))
-  ensures (inv(s) ==> canBeginAdmission(s, admissionId, runtimeId, input) ==> alwaysWrapperKeepsPolicy(beginAdmission(s, admissionId, runtimeId, input)))
-  ensures (inv(s) ==> canBeginAdmission(s, admissionId, runtimeId, input) ==> alwaysPolicyAdmissionHasReceipt(beginAdmission(s, admissionId, runtimeId, input)))
-  ensures (inv(s) ==> canBeginAdmission(s, admissionId, runtimeId, input) ==> alwaysAdmissionIdsAreUnique(beginAdmission(s, admissionId, runtimeId, input)))
-  ensures (inv(s) ==> canBeginAdmission(s, admissionId, runtimeId, input) ==> alwaysPendingDecisionWasRequested(beginAdmission(s, admissionId, runtimeId, input)))
-  ensures (inv(s) ==> canBeginAdmission(s, admissionId, runtimeId, input) ==> stepBoundPolicyCannotChange(s, beginAdmission(s, admissionId, runtimeId, input)))
-  ensures (inv(s) ==> canBeginAdmission(s, admissionId, runtimeId, input) ==> stepDeniedProcessingTerminal(s, beginAdmission(s, admissionId, runtimeId, input)))
+lemma beginAdmission_ensures(s: ProcessingPolicies, by_: PolicyCaller, admissionId: int, runtimeId: int, input: ProcessingInput)
+  ensures (inv(s) ==> canBeginAdmission(s, by_, admissionId, runtimeId, input) ==> alwaysRuntimeIdentitiesAreUnique(beginAdmission(s, by_, admissionId, runtimeId, input)))
+  ensures (inv(s) ==> canBeginAdmission(s, by_, admissionId, runtimeId, input) ==> alwaysWrapperIdentitiesAreUnique(beginAdmission(s, by_, admissionId, runtimeId, input)))
+  ensures (inv(s) ==> canBeginAdmission(s, by_, admissionId, runtimeId, input) ==> alwaysWrapperKeepsPolicy(beginAdmission(s, by_, admissionId, runtimeId, input)))
+  ensures (inv(s) ==> canBeginAdmission(s, by_, admissionId, runtimeId, input) ==> alwaysPolicyAdmissionHasReceipt(beginAdmission(s, by_, admissionId, runtimeId, input)))
+  ensures (inv(s) ==> canBeginAdmission(s, by_, admissionId, runtimeId, input) ==> alwaysAdmissionIdsAreUnique(beginAdmission(s, by_, admissionId, runtimeId, input)))
+  ensures (inv(s) ==> canBeginAdmission(s, by_, admissionId, runtimeId, input) ==> alwaysPendingDecisionWasRequested(beginAdmission(s, by_, admissionId, runtimeId, input)))
+  ensures (inv(s) ==> canBeginAdmission(s, by_, admissionId, runtimeId, input) ==> stepBoundPolicyCannotChange(s, beginAdmission(s, by_, admissionId, runtimeId, input)))
+  ensures (inv(s) ==> canBeginAdmission(s, by_, admissionId, runtimeId, input) ==> stepDeniedProcessingTerminal(s, beginAdmission(s, by_, admissionId, runtimeId, input)))
 {
-  if inv(s) && canBeginAdmission(s, admissionId, runtimeId, input) {
-    var after := beginAdmission(s, admissionId, runtimeId, input);
+  if inv(s) && canBeginAdmission(s, by_, admissionId, runtimeId, input) {
+    var after := beginAdmission(s, by_, admissionId, runtimeId, input);
     var added := after.admissions[|s.admissions|];
     ProcessingPolicyAlwaysNonnegative(s, runtimeId);
     ProcessingAdmissionFacts(s);
@@ -302,18 +302,18 @@ lemma beginAdmission_ensures(s: ProcessingPolicies, admissionId: int, runtimeId:
   }
 }
 
-lemma decideAdmission_ensures(s: ProcessingPolicies, admissionId: int, output: PolicyOutput)
-  ensures (inv(s) ==> canDecideAdmission(s, admissionId, output) ==> alwaysRuntimeIdentitiesAreUnique(decideAdmission(s, admissionId, output)))
-  ensures (inv(s) ==> canDecideAdmission(s, admissionId, output) ==> alwaysWrapperIdentitiesAreUnique(decideAdmission(s, admissionId, output)))
-  ensures (inv(s) ==> canDecideAdmission(s, admissionId, output) ==> alwaysWrapperKeepsPolicy(decideAdmission(s, admissionId, output)))
-  ensures (inv(s) ==> canDecideAdmission(s, admissionId, output) ==> alwaysPolicyAdmissionHasReceipt(decideAdmission(s, admissionId, output)))
-  ensures (inv(s) ==> canDecideAdmission(s, admissionId, output) ==> alwaysAdmissionIdsAreUnique(decideAdmission(s, admissionId, output)))
-  ensures (inv(s) ==> canDecideAdmission(s, admissionId, output) ==> alwaysPendingDecisionWasRequested(decideAdmission(s, admissionId, output)))
-  ensures (inv(s) ==> canDecideAdmission(s, admissionId, output) ==> stepBoundPolicyCannotChange(s, decideAdmission(s, admissionId, output)))
-  ensures (inv(s) ==> canDecideAdmission(s, admissionId, output) ==> stepDeniedProcessingTerminal(s, decideAdmission(s, admissionId, output)))
+lemma decideAdmission_ensures(s: ProcessingPolicies, by_: PolicyCaller, admissionId: int, output: PolicyOutput)
+  ensures (inv(s) ==> canDecideAdmission(s, by_, admissionId, output) ==> alwaysRuntimeIdentitiesAreUnique(decideAdmission(s, by_, admissionId, output)))
+  ensures (inv(s) ==> canDecideAdmission(s, by_, admissionId, output) ==> alwaysWrapperIdentitiesAreUnique(decideAdmission(s, by_, admissionId, output)))
+  ensures (inv(s) ==> canDecideAdmission(s, by_, admissionId, output) ==> alwaysWrapperKeepsPolicy(decideAdmission(s, by_, admissionId, output)))
+  ensures (inv(s) ==> canDecideAdmission(s, by_, admissionId, output) ==> alwaysPolicyAdmissionHasReceipt(decideAdmission(s, by_, admissionId, output)))
+  ensures (inv(s) ==> canDecideAdmission(s, by_, admissionId, output) ==> alwaysAdmissionIdsAreUnique(decideAdmission(s, by_, admissionId, output)))
+  ensures (inv(s) ==> canDecideAdmission(s, by_, admissionId, output) ==> alwaysPendingDecisionWasRequested(decideAdmission(s, by_, admissionId, output)))
+  ensures (inv(s) ==> canDecideAdmission(s, by_, admissionId, output) ==> stepBoundPolicyCannotChange(s, decideAdmission(s, by_, admissionId, output)))
+  ensures (inv(s) ==> canDecideAdmission(s, by_, admissionId, output) ==> stepDeniedProcessingTerminal(s, decideAdmission(s, by_, admissionId, output)))
 {
-  if inv(s) && canDecideAdmission(s, admissionId, output) {
-    var after := decideAdmission(s, admissionId, output);
+  if inv(s) && canDecideAdmission(s, by_, admissionId, output) {
+    var after := decideAdmission(s, by_, admissionId, output);
     forall i | 0 <= i < |s.admissions|
       ensures after.admissions[i].id == s.admissions[i].id && after.admissions[i].policy == s.admissions[i].policy
       ensures s.admissions[i].phase.ProcessingDenied? ==> after.admissions[i].phase.ProcessingDenied?
@@ -331,18 +331,18 @@ lemma decideAdmission_ensures(s: ProcessingPolicies, admissionId: int, output: P
   }
 }
 
-lemma preparePayload_ensures(s: ProcessingPolicies, admissionId: int, aborted: bool)
-  ensures (inv(s) ==> canPreparePayload(s, admissionId, aborted) ==> alwaysRuntimeIdentitiesAreUnique(preparePayload(s, admissionId, aborted)))
-  ensures (inv(s) ==> canPreparePayload(s, admissionId, aborted) ==> alwaysWrapperIdentitiesAreUnique(preparePayload(s, admissionId, aborted)))
-  ensures (inv(s) ==> canPreparePayload(s, admissionId, aborted) ==> alwaysWrapperKeepsPolicy(preparePayload(s, admissionId, aborted)))
-  ensures (inv(s) ==> canPreparePayload(s, admissionId, aborted) ==> alwaysPolicyAdmissionHasReceipt(preparePayload(s, admissionId, aborted)))
-  ensures (inv(s) ==> canPreparePayload(s, admissionId, aborted) ==> alwaysAdmissionIdsAreUnique(preparePayload(s, admissionId, aborted)))
-  ensures (inv(s) ==> canPreparePayload(s, admissionId, aborted) ==> alwaysPendingDecisionWasRequested(preparePayload(s, admissionId, aborted)))
-  ensures (inv(s) ==> canPreparePayload(s, admissionId, aborted) ==> stepBoundPolicyCannotChange(s, preparePayload(s, admissionId, aborted)))
-  ensures (inv(s) ==> canPreparePayload(s, admissionId, aborted) ==> stepDeniedProcessingTerminal(s, preparePayload(s, admissionId, aborted)))
+lemma preparePayload_ensures(s: ProcessingPolicies, by_: PolicyCaller, admissionId: int, aborted: bool)
+  ensures (inv(s) ==> canPreparePayload(s, by_, admissionId, aborted) ==> alwaysRuntimeIdentitiesAreUnique(preparePayload(s, by_, admissionId, aborted)))
+  ensures (inv(s) ==> canPreparePayload(s, by_, admissionId, aborted) ==> alwaysWrapperIdentitiesAreUnique(preparePayload(s, by_, admissionId, aborted)))
+  ensures (inv(s) ==> canPreparePayload(s, by_, admissionId, aborted) ==> alwaysWrapperKeepsPolicy(preparePayload(s, by_, admissionId, aborted)))
+  ensures (inv(s) ==> canPreparePayload(s, by_, admissionId, aborted) ==> alwaysPolicyAdmissionHasReceipt(preparePayload(s, by_, admissionId, aborted)))
+  ensures (inv(s) ==> canPreparePayload(s, by_, admissionId, aborted) ==> alwaysAdmissionIdsAreUnique(preparePayload(s, by_, admissionId, aborted)))
+  ensures (inv(s) ==> canPreparePayload(s, by_, admissionId, aborted) ==> alwaysPendingDecisionWasRequested(preparePayload(s, by_, admissionId, aborted)))
+  ensures (inv(s) ==> canPreparePayload(s, by_, admissionId, aborted) ==> stepBoundPolicyCannotChange(s, preparePayload(s, by_, admissionId, aborted)))
+  ensures (inv(s) ==> canPreparePayload(s, by_, admissionId, aborted) ==> stepDeniedProcessingTerminal(s, preparePayload(s, by_, admissionId, aborted)))
 {
-  if inv(s) && canPreparePayload(s, admissionId, aborted) {
-    var after := preparePayload(s, admissionId, aborted);
+  if inv(s) && canPreparePayload(s, by_, admissionId, aborted) {
+    var after := preparePayload(s, by_, admissionId, aborted);
     forall i | 0 <= i < |s.admissions|
       ensures after.admissions[i].id == s.admissions[i].id && after.admissions[i].policy == s.admissions[i].policy
       ensures s.admissions[i].phase.ProcessingDenied? ==> after.admissions[i].phase.ProcessingDenied?
