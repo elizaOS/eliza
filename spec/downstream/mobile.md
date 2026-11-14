@@ -13,12 +13,13 @@ The examined consumer pin lists no patches in
 | --- | --- |
 | Grace local paired runtime and credential broker. | [Runtime authority](./mobileRuntime.md), [paired startup](./mobileStartup.md), and [credential broker](./mobileBroker.md) |
 | Alpha resident host and authenticated agent endpoint. | [Resident adoption and shutdown](./mobileResident.md), [credential stop lease](./mobileCredential.md), [notification projection](./mobileNotification.md), and [watchdog](./mobileWatchdog.md) |
-| Alpha Android observes selected apps and posts managed Gmail alerts. | [Cross-app notification mirroring](./mobileCrossAppNotifications.md) and [Gmail background delivery](./mobileGmailBackgroundDelivery.md) |
+| Alpha Android observes selected apps and posts managed Gmail and Brief notices. | [Cross-app notification mirroring](./mobileCrossAppNotifications.md), [Gmail background delivery](./mobileGmailBackgroundDelivery.md), and [hosted Brief result notices](./mobileHostedResultNotices.md) |
 | Alpha local and paired speech requests. Grace streaming speech transport. | [Speech binding](./mobileSpeech.md), [voice capture](./mobileCapture.md), [endpoint decisions](./voiceEndpoint.md), [interruption receipts](./voiceHeard.md), [playback receipts](./mobilePlayback.md), [Grace speech stream](./mobileSpeechStream.md), and [on-device speech](./mobileLocalSpeech.md) |
 | Device actions reviewed on a foreground screen. | [Device action claim and receipt](./mobileDeviceExecution.md), [foreground device reviews](./mobileDeviceReview.md), [Photos and library receipts](./mobileDevicePhotos.md), [still-photo copy recovery](./mobilePhotoCopyRecovery.md), [original photo replacement](./mobilePhotoReplace.md), [video copy](./mobileVideoCopy.md), [owned custom albums](./mobileOwnedAlbums.md), and [owned Photos trash](./mobileOwnedPhotoTrash.md) |
 | Alpha video edit review reads a restricted media stream. | [Android video playback](./mobileVideoPlayback.md) |
+| Alpha Photos requests Android consent for its selected permitted media. | [Permitted-media mutation review](./mobilePermittedMediaReview.md) |
 | Alpha Camera preview, recordings and scan documents. | [Viewfinder and recording custody](./mobileCameraCapture.md), [document scan review and export](./mobileDocumentScan.md), and [assistant photo receipt](./mobileDeviceCamera.md) |
-| Grace updater and the upstream trust AAR. | [OTA admission](./mobileOta.md), [WebView health evidence](./mobileOtaUiHealth.md), and [installation journal](./mobileInstall.md) |
+| Grace updater and the upstream trust AAR. | [OTA admission](./mobileOta.md), [runtime health observations](./grace/otaRuntimeHealth.md), [WebView health evidence](./mobileOtaUiHealth.md), and [installation journal](./mobileInstall.md) |
 | Grace launcher network setup and Internet Settings. | [Wi-Fi discovery and approved join](./mobileWifi.md) |
 | Alpha Android document picker and selected-file operations. | [Selected-document grant custody](./mobileSelectedDocumentGrants.md) and [Files preview and read-only handoff](./mobileFilesReadHandoff.md) |
 | Alpha Android Files moves, restores, and removes exact items. | [Native Files mutation custody](./mobileFilesMutationCustody.md) |
@@ -29,7 +30,7 @@ The examined consumer pin lists no patches in
 | Alpha Maps foreground guidance and Android navigation service. | [Navigation startup, fallback and watch custody](./mobileNavigationHandoff.md) |
 | Alpha native Notes recordings and saved transcription windows. | [Recording storage and clip custody](./mobileNoteAudioCustody.md) |
 | Alpha Android password fill and save, with Grace debug admission. | [Native Autofill request and unlock custody](./mobilePasswordAutofill.md) |
-| Alpha Android browser state, bookmarks and site clearing. | [Native browser storage](./mobileBrowserStorage.md) |
+| Alpha Android browser state, bookmarks, site clearing and page reading. | [Native browser storage](./mobileBrowserStorage.md) and [isolated reading and speech approval](./mobileBrowserReading.md) |
 | Android packaging, explicit bridge registration, feature and permission admission. | [Consumer build and artifact custody](./mobileBuild.md), [Native bridge composition](./mobileBridge.md), [browser handoff](./mobileBrowser.md), [Chromium binding](./mobileChromium.md), [file observer custody](./mobileStorageWatch.md), [calendar edits](./mobileCalendar.md), [photo read permission](./mobilePhotos.md), [message review](./mobileTelephony.md), and [camera receipt](./mobileDeviceCamera.md) |
 
 Paths in the individual models are relative to the named consumer or its

@@ -138,7 +138,8 @@ identity with an observed matching installed package. The current-health
 receipt event represents the callback delivering the intact
 snapshot and verified installed identity without interleaving. The port
 supplies qualified health and probation timing. [WebView health evidence](./mobileOtaUiHealth.md)
-governs the renderer portion of that input. Local failure of the
+governs the renderer portion. [Grace's runtime observation](./grace/otaRuntimeHealth.md)
+binds the agent and gateway readings to the same active launch. Local failure of the
 candidate quarantines it and permits one authorized recovery attempt.
 A failed recovery health outcome quarantines both artifacts and stops
 automatic recovery. Current recovery authority is required before

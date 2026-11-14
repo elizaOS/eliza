@@ -3557,8 +3557,8 @@
         "test"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobileBrowser.md",
-      "coverage": "related-contract"
+      "relatedSpec": "spec/downstream/alpha/browserReadingSource.md",
+      "coverage": "direct-contract"
     },
     {
       "source": "plugins/plugin-native-browser-surface/src/page-source.ts",
@@ -3567,8 +3567,8 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobileBrowser.md",
-      "coverage": "related-contract"
+      "relatedSpec": "spec/downstream/alpha/browserReadingSource.md",
+      "coverage": "direct-contract"
     },
     {
       "source": "plugins/plugin-native-browser-surface/src/tab-host.ts",
@@ -4145,6 +4145,58 @@
         "packages/agent/native-host/gateway.mjs"
       ],
       "relatedSpec": "spec/downstream/grace/nativeConversationOwnership.md"
+    },
+    {
+      "consumer": "AlphaPhone",
+      "consumerPaths": [
+        "apps/app/src/prototype/camera-adapter.ts",
+        "android/app/src/main/java/ai/alphacompute/alphaphone/AlphaPhotosPlugin.java"
+      ],
+      "producerPaths": [
+        "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/PhotosPlugin.java",
+        "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/PermittedMediaReview.java",
+        "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/PermittedMediaCatalog.java"
+      ],
+      "relatedSpec": "spec/downstream/mobilePermittedMediaReview.md"
+    },
+    {
+      "consumer": "AlphaPhone",
+      "consumerPaths": [
+        "apps/app/src/runtime/native-reading-voice.ts",
+        "android/app/src/main/java/ai/alphacompute/alphaphone/AlphaBrowserPlugin.java",
+        "android/app/src/main/java/ai/alphacompute/alphaphone/AlphaVoiceCloudPlugin.java"
+      ],
+      "producerPaths": [
+        "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserTabHostPlugin.java",
+        "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserReadingWorld.java",
+        "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserReviewedReading.java"
+      ],
+      "relatedSpec": "spec/downstream/mobileBrowserReading.md"
+    },
+    {
+      "consumer": "AlphaPhone",
+      "consumerPaths": [
+        "apps/app/src/runtime/hosted-digest-ui.tsx",
+        "android/app/src/main/java/ai/alphacompute/alphaphone/AlphaHostedResultsPlugin.java",
+        "android/app/src/main/java/ai/alphacompute/alphaphone/HostedResultNotices.java"
+      ],
+      "producerPaths": [
+        "plugins/plugin-native-notifications/android/src/main/java/ai/eliza/plugins/notifications/NoticeOwner.java"
+      ],
+      "relatedSpec": "spec/downstream/mobileHostedResultNotices.md"
+    },
+    {
+      "consumer": "Grace",
+      "consumerPaths": [
+        "apps/app/native/java/technology/graceful/grace/LocalRuntimeService.java",
+        "apps/app/native/java/technology/graceful/grace/OtaHealthService.java"
+      ],
+      "producerPaths": [
+        "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/health/NativeHealthService.java",
+        "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/health/LocalRuntimeHealth.java",
+        "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/EmbeddedRuntimeService.java"
+      ],
+      "relatedSpec": "spec/downstream/grace/otaRuntimeHealth.md"
     }
   ]
 }
