@@ -444,7 +444,7 @@
         "optional-research-configuration",
         "test-only-source"
       ],
-      "priority": "priority-consumer-path",
+      "priority": "feature-gated",
       "relatedSpec": "spec/downstream/mobile.md",
       "coverage": "related-contract"
     },
@@ -547,7 +547,7 @@
         "test-only-source"
       ],
       "priority": "test-only",
-      "relatedSpec": "spec/downstream/grace/websiteGuide.md",
+      "relatedSpec": "spec/downstream/browserProtection.md",
       "coverage": "related-contract"
     },
     {
@@ -558,7 +558,7 @@
         "test-only-source"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/grace/websiteGuide.md",
+      "relatedSpec": "spec/downstream/browserProtection.md",
       "coverage": "related-contract"
     },
     {
@@ -570,7 +570,7 @@
         "test-only-source"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/grace/websiteGuide.md",
+      "relatedSpec": "spec/downstream/browserProtection.md",
       "coverage": "related-contract"
     },
     {
@@ -581,7 +581,7 @@
         "test-only-source"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/grace/websiteGuide.md",
+      "relatedSpec": "spec/downstream/browserProtection.md",
       "coverage": "related-contract"
     },
     {
@@ -591,7 +591,7 @@
         "product-host-source"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/grace/websiteGuide.md",
+      "relatedSpec": "spec/downstream/browserProtection.md",
       "coverage": "related-contract"
     },
     {
@@ -703,7 +703,7 @@
       "consumerContexts": [
         "build-development-or-release-tool"
       ],
-      "priority": "priority-consumer-path",
+      "priority": "build-or-test-tooling",
       "relatedSpec": "spec/downstream/mobileStartup.md",
       "coverage": "related-contract"
     },
@@ -723,7 +723,7 @@
       "consumerContexts": [
         "build-development-or-release-tool"
       ],
-      "priority": "priority-consumer-path",
+      "priority": "build-or-test-tooling",
       "relatedSpec": "spec/downstream/mobileStartup.md",
       "coverage": "related-contract"
     },
@@ -733,7 +733,7 @@
       "consumerContexts": [
         "build-development-or-release-tool"
       ],
-      "priority": "priority-consumer-path",
+      "priority": "build-or-test-tooling",
       "relatedSpec": "spec/downstream/mobileStartup.md",
       "coverage": "related-contract"
     },
@@ -754,7 +754,7 @@
         "build-development-or-release-tool",
         "test-only-source"
       ],
-      "priority": "priority-consumer-path",
+      "priority": "build-or-test-tooling",
       "relatedSpec": "spec/downstream/mobileStartup.md",
       "coverage": "related-contract"
     },
@@ -1033,7 +1033,7 @@
         "product-host-source",
         "release-disabled-debug-gated"
       ],
-      "priority": "priority-consumer-path",
+      "priority": "feature-gated",
       "relatedSpec": "spec/downstream/mobile.md",
       "coverage": "related-contract"
     },
@@ -1902,7 +1902,7 @@
         "build-or-host",
         "test"
       ],
-      "priority": "priority-consumer-path",
+      "priority": "development-only",
       "relatedSpec": "spec/downstream/mobile.md",
       "coverage": "related-contract"
     },
@@ -1913,7 +1913,7 @@
         "renderer-import"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/voiceSessionClient.md",
       "coverage": "related-contract"
     },
     {
@@ -1923,7 +1923,7 @@
         "build-or-host",
         "test"
       ],
-      "priority": "priority-consumer-path",
+      "priority": "build-or-test-tooling",
       "relatedSpec": "spec/downstream/mobile.md",
       "coverage": "related-contract"
     },
@@ -1934,7 +1934,7 @@
         "build-or-host",
         "test"
       ],
-      "priority": "priority-consumer-path",
+      "priority": "build-or-test-tooling",
       "relatedSpec": "spec/downstream/mobile.md",
       "coverage": "related-contract"
     },
@@ -1944,7 +1944,7 @@
       "consumerContexts": [
         "build-or-host"
       ],
-      "priority": "priority-consumer-path",
+      "priority": "build-or-test-tooling",
       "relatedSpec": "spec/downstream/mobile.md",
       "coverage": "related-contract"
     },
@@ -1954,7 +1954,7 @@
       "consumerContexts": [
         "build-or-host"
       ],
-      "priority": "priority-consumer-path",
+      "priority": "build-or-test-tooling",
       "relatedSpec": "spec/downstream/mobile.md",
       "coverage": "related-contract"
     },
@@ -1965,7 +1965,7 @@
         "build-or-host",
         "test"
       ],
-      "priority": "priority-consumer-path",
+      "priority": "build-or-test-tooling",
       "relatedSpec": "spec/downstream/mobile.md",
       "coverage": "related-contract"
     },
@@ -1975,7 +1975,7 @@
       "consumerContexts": [
         "build-or-host"
       ],
-      "priority": "priority-consumer-path",
+      "priority": "build-or-test-tooling",
       "relatedSpec": "spec/downstream/mobile.md",
       "coverage": "related-contract"
     },
@@ -1995,7 +1995,7 @@
       "consumerContexts": [
         "build-or-host"
       ],
-      "priority": "priority-consumer-path",
+      "priority": "build-or-test-tooling",
       "relatedSpec": "spec/downstream/mobile.md",
       "coverage": "related-contract"
     },
@@ -2005,7 +2005,7 @@
       "consumerContexts": [
         "build-or-host"
       ],
-      "priority": "priority-consumer-path",
+      "priority": "build-or-test-tooling",
       "relatedSpec": "spec/downstream/mobile.md",
       "coverage": "related-contract"
     },
@@ -2015,7 +2015,7 @@
       "consumerContexts": [
         "build-or-host"
       ],
-      "priority": "priority-consumer-path",
+      "priority": "build-or-test-tooling",
       "relatedSpec": "spec/downstream/mobile.md",
       "coverage": "related-contract"
     },
@@ -2026,7 +2026,7 @@
         "build-or-host",
         "test"
       ],
-      "priority": "priority-consumer-path",
+      "priority": "build-or-test-tooling",
       "relatedSpec": "spec/downstream/mobile.md",
       "coverage": "related-contract"
     },
@@ -2036,7 +2036,7 @@
       "consumerContexts": [
         "build-or-host"
       ],
-      "priority": "priority-consumer-path",
+      "priority": "build-or-test-tooling",
       "relatedSpec": "spec/downstream/mobile.md",
       "coverage": "related-contract"
     },
@@ -2046,7 +2046,7 @@
       "consumerContexts": [
         "build-or-host"
       ],
-      "priority": "priority-consumer-path",
+      "priority": "build-or-test-tooling",
       "relatedSpec": "spec/downstream/mobile.md",
       "coverage": "related-contract"
     },
@@ -2056,7 +2056,7 @@
       "consumerContexts": [
         "build-or-host"
       ],
-      "priority": "priority-consumer-path",
+      "priority": "build-or-test-tooling",
       "relatedSpec": "spec/downstream/mobile.md",
       "coverage": "related-contract"
     },
@@ -2066,7 +2066,7 @@
       "consumerContexts": [
         "build-or-host"
       ],
-      "priority": "priority-consumer-path",
+      "priority": "build-or-test-tooling",
       "relatedSpec": "spec/downstream/mobile.md",
       "coverage": "related-contract"
     },
@@ -2076,7 +2076,7 @@
       "consumerContexts": [
         "build-or-host"
       ],
-      "priority": "priority-consumer-path",
+      "priority": "build-or-test-tooling",
       "relatedSpec": "spec/downstream/mobile.md",
       "coverage": "related-contract"
     },
@@ -2087,7 +2087,7 @@
         "build-or-host",
         "test"
       ],
-      "priority": "priority-consumer-path",
+      "priority": "build-or-test-tooling",
       "relatedSpec": "spec/downstream/mobile.md",
       "coverage": "related-contract"
     },
@@ -2097,7 +2097,7 @@
       "consumerContexts": [
         "build-or-host"
       ],
-      "priority": "priority-consumer-path",
+      "priority": "build-or-test-tooling",
       "relatedSpec": "spec/downstream/mobile.md",
       "coverage": "related-contract"
     },
@@ -2107,7 +2107,7 @@
       "consumerContexts": [
         "build-or-host"
       ],
-      "priority": "priority-consumer-path",
+      "priority": "build-or-test-tooling",
       "relatedSpec": "spec/downstream/mobile.md",
       "coverage": "related-contract"
     },
@@ -2117,7 +2117,7 @@
       "consumerContexts": [
         "build-or-host"
       ],
-      "priority": "priority-consumer-path",
+      "priority": "build-or-test-tooling",
       "relatedSpec": "spec/downstream/mobile.md",
       "coverage": "related-contract"
     },
@@ -2127,7 +2127,7 @@
       "consumerContexts": [
         "build-or-host"
       ],
-      "priority": "priority-consumer-path",
+      "priority": "build-or-test-tooling",
       "relatedSpec": "spec/downstream/mobile.md",
       "coverage": "related-contract"
     },
@@ -2419,7 +2419,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/mobileCapture.md",
       "coverage": "related-contract"
     },
     {
@@ -2429,7 +2429,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/mobilePlayback.md",
       "coverage": "related-contract"
     },
     {
@@ -2439,7 +2439,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/mobilePlayback.md",
       "coverage": "related-contract"
     },
     {
@@ -2449,7 +2449,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/voiceSessionClient.md",
       "coverage": "related-contract"
     },
     {
@@ -2459,7 +2459,7 @@
         "test"
       ],
       "priority": "test-only",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/voiceSessionClient.md",
       "coverage": "related-contract"
     },
     {
@@ -2470,7 +2470,7 @@
         "test"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/mobileCapture.md",
       "coverage": "related-contract"
     },
     {
@@ -2481,7 +2481,7 @@
         "test"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/mobileSpeechStream.md",
       "coverage": "related-contract"
     },
     {
@@ -2491,7 +2491,7 @@
         "renderer-import"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/mobileCapture.md",
       "coverage": "related-contract"
     },
     {
@@ -2501,7 +2501,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/mobileSpeech.md",
       "coverage": "related-contract"
     },
     {
@@ -2512,7 +2512,7 @@
         "test"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/mobileCapture.md",
       "coverage": "related-contract"
     },
     {
@@ -2522,7 +2522,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/mobileSpeech.md",
       "coverage": "related-contract"
     },
     {
@@ -2534,7 +2534,7 @@
         "test"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/voiceEndpoint.md",
       "coverage": "related-contract"
     },
     {
@@ -2545,7 +2545,7 @@
         "renderer-import"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/voiceEndpoint.md",
       "coverage": "related-contract"
     },
     {
@@ -2555,7 +2555,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/voiceEndpoint.md",
       "coverage": "related-contract"
     },
     {
@@ -2565,7 +2565,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/voiceEndpoint.md",
       "coverage": "related-contract"
     },
     {
@@ -2575,7 +2575,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/voiceHeard.md",
       "coverage": "related-contract"
     },
     {
@@ -2586,7 +2586,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/voiceEndpoint.md",
       "coverage": "related-contract"
     },
     {
@@ -3030,7 +3030,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/files.md",
+      "relatedSpec": "spec/downstream/mobileDocumentScan.md",
       "coverage": "related-contract"
     },
     {
@@ -3534,7 +3534,7 @@
         "test"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/mobileBrowser.md",
       "coverage": "related-contract"
     },
     {
@@ -3545,7 +3545,7 @@
         "test"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/mobileBrowser.md",
       "coverage": "related-contract"
     },
     {
@@ -3557,7 +3557,7 @@
         "test"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/mobileBrowser.md",
       "coverage": "related-contract"
     },
     {
@@ -3567,7 +3567,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/mobileBrowser.md",
       "coverage": "related-contract"
     },
     {
@@ -3579,7 +3579,7 @@
         "test"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/mobileBrowser.md",
       "coverage": "related-contract"
     },
     {
@@ -3591,7 +3591,7 @@
         "test"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/mobileCameraCapture.md",
       "coverage": "related-contract"
     },
     {
@@ -3601,7 +3601,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/mobileDocumentScan.md",
       "coverage": "related-contract"
     },
     {
@@ -3611,7 +3611,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/mobileCameraCapture.md",
       "coverage": "related-contract"
     },
     {
@@ -3621,7 +3621,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/alpha/passwords.md",
       "coverage": "related-contract"
     },
     {
@@ -3631,7 +3631,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/alpha/passwords.md",
       "coverage": "related-contract"
     },
     {
@@ -3641,7 +3641,7 @@
         "renderer-import"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/alpha/passwords.md",
       "coverage": "related-contract"
     },
     {
@@ -3651,7 +3651,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/alpha/passwords.md",
       "coverage": "related-contract"
     },
     {
@@ -3661,7 +3661,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/reminderOccurrence.md",
       "coverage": "related-contract"
     },
     {
@@ -3672,7 +3672,7 @@
         "renderer-import"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/alpha/launcher.md",
       "coverage": "related-contract"
     },
     {
@@ -3684,7 +3684,7 @@
         "test"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/alpha/system.md",
       "coverage": "related-contract"
     },
     {
@@ -3694,7 +3694,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/alpha/system.md",
       "coverage": "related-contract"
     },
     {
@@ -3704,7 +3704,7 @@
         "renderer-import"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/alpha/system.md",
       "coverage": "related-contract"
     },
     {
@@ -3714,7 +3714,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/alpha/system.md",
       "coverage": "related-contract"
     },
     {
@@ -3725,7 +3725,7 @@
         "renderer-import"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/alpha/system.md",
       "coverage": "related-contract"
     },
     {
@@ -3735,7 +3735,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/alpha/system.md",
       "coverage": "related-contract"
     },
     {

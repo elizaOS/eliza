@@ -20,6 +20,7 @@ A missing provider revision leaves repeat detection available. A missing
 or already-seen next cursor ends pagination. Only the current
 credential, folder, search and load attempt can adopt the page. A list
 or body cache does not grant access or authorize sending a draft.
+A missing connection or an empty folder cannot start a read.
 
 ```quint
 type MailboxQuery = { connection: int, folder: str, query: str }
@@ -27,7 +28,7 @@ type MailboxFeed = { key: MailboxQuery, load: int, messages: List[str], seen: Li
 type MailboxPage = { messages: List[str], providerHistory: str, nextCursor: str }
 pure val emptyQuery: MailboxQuery = { connection: 0, folder: "", query: "" }
 pure val initial: MailboxFeed = { key: emptyQuery, load: 0, messages: List(), seen: List(), history: "", cursor: "", shifted: false }
-pure val queryValues = Set({ connection: 1, folder: "inbox", query: "" }, { connection: 2, folder: "inbox", query: "" }, { connection: 1, folder: "sent", query: "term" })
+pure val queryValues = Set(emptyQuery, { connection: 1, folder: "inbox", query: "" }, { connection: 2, folder: "inbox", query: "" }, { connection: 1, folder: "sent", query: "term" })
 pure val pageValues = Set({ messages: List("m1", "m2"), providerHistory: "a", nextCursor: "p1" }, { messages: List("m2", "m3", "m3"), providerHistory: "b", nextCursor: "p2" }, { messages: List("m4"), providerHistory: "a", nextCursor: "p1" }, { messages: List(), providerHistory: "", nextCursor: "" })
 pure val pageTokenValues = Set("", "p1", "p2", "stale")
 pure val receiptLoadValues = Set(1, 2, 3, 4, 5)
