@@ -3654,6 +3654,7 @@
         "Room cancellation excludes its calling turn while global cancellation spares none",
         "Live listener mutation controls each event's remaining visits",
         "A live listener frame owns each synchronous callback invocation",
+        "A room notice follows the last native signal callback",
         "Listener iteration resumes after nested events and uses the live Set",
         "Each scan advances through the live captured array",
         "The top delivery returns before its parent scan can resume"
