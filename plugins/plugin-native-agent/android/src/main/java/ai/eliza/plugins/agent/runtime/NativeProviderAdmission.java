@@ -94,12 +94,13 @@ public class NativeProviderAdmission {
    env.remove("ELIZA_LOCAL_EMBEDDING_MODEL_PATH");env.remove("ELIZA_LOCAL_EMBEDDING_DIMENSIONS");
    env.put("ELIZAOS_CLOUD_SMALL_MODEL",model);
    env.put("ELIZAOS_CLOUD_LARGE_MODEL",model);
+   env.put("ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL",model);
   }else if("cerebras".equals(kind)){
    String key=provider.optString("key", "");
    if(!model.matches(PROVIDER_MODEL_PATTERN)||!key.isEmpty()&&!validProviderToken(key,1024))throw new IllegalArgumentException();
    // Earlier builds accepted any model name; launch always uses the pinned model.
    model=CEREBRAS_PROVIDER_MODEL;
-   for(String name:new String[]{"ELIZAOS_CLOUD_API_KEY","ELIZAOS_CLOUD_BASE_URL","ELIZAOS_CLOUD_SMALL_MODEL","ELIZAOS_CLOUD_LARGE_MODEL","ELIZAOS_CLOUD_USE_EMBEDDINGS","ELIZAOS_CLOUD_EMBEDDING_MODEL","ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS","ELIZA_DISABLE_LOCAL_EMBEDDINGS","ELIZA_LOCAL_EMBEDDING_ENABLED"})env.remove(name);
+   for(String name:new String[]{"ELIZAOS_CLOUD_API_KEY","ELIZAOS_CLOUD_BASE_URL","ELIZAOS_CLOUD_SMALL_MODEL","ELIZAOS_CLOUD_LARGE_MODEL","ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL","ELIZAOS_CLOUD_USE_EMBEDDINGS","ELIZAOS_CLOUD_EMBEDDING_MODEL","ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS","ELIZA_DISABLE_LOCAL_EMBEDDINGS","ELIZA_LOCAL_EMBEDDING_ENABLED"})env.remove(name);
    env.remove("CARTESIA_API_KEY");env.remove("CARTESIA_API_KEY_FILE");env.remove("ELIZA_SELF_HOSTED_VOICE_ENABLED");
    String speech=provider.optString("cartesiaKey", "");
    if(!speech.isEmpty()){if(!validProviderToken(speech,1024))throw new IllegalArgumentException();env.put("CARTESIA_API_KEY",speech);env.put("ELIZA_SELF_HOSTED_VOICE_ENABLED","1");}
