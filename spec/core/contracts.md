@@ -4,6 +4,13 @@ The compatibility baseline is `@elizaos/core` 2.0.6 at commit `72fed7e4069ecd35d
 
 Current entrypoints include the Node runtime root and renderer-safe `protocol`, `speech`, `logging`, `permissions`, `schema-types`, `view-interaction`, `task-events`, `task-widgets`, `read-memo`, `security/redact`, and the JSON catalog/restart exports. Browser-safe leaves retain their dependency closure. Module evaluation preserves existing side-effect behavior. The package ships ESM, declarations, JSON assets and source conditions under the existing npm name when implementation is approved.
 
+The [consumer resolution notes](./baseline/compatibility-decisions.json)
+distinguish a JSON default import from TypeScript export declarations, and
+record the one private test import and cloud imports used only as types.
+The restart asset retains its exported JSON shape and exit code. The
+private test fixture needs an explicit adapter decision in the implementation
+phase so it can exercise the same prepared request guard.
+
 ## Story: Consume the replacement through existing imports
 
 As a plugin or host author, I want existing import names and structural contracts to remain usable when the runtime is replaced.

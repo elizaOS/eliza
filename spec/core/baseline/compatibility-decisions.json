@@ -31,5 +31,42 @@
       "publicResult": "A trace identity conflict is an explicit failure instead of silently transferring ownership across runs.",
       "approval": "Proposed specification change for user review; implementation has not been written."
     }
+  ],
+  "consumerResolutionNotes": [
+    {
+      "id": "node-restart-json-default",
+      "importPath": "@elizaos/core/restart-exit-code.json",
+      "kind": "public-runtime-asset",
+      "baselineFile": "packages/core/src/restart-exit-code.json",
+      "observedConsumerCount": 3,
+      "baselineValue": {
+        "restartExitCode": 75
+      },
+      "targetContract": "Preserve Node ESM default import with the JSON import attribute and the existing eliza-source and default export conditions."
+    },
+    {
+      "id": "prepared-model-request-private-test",
+      "importPath": "@elizaos/core/runtime/prepared-model-request",
+      "kind": "private-test-import",
+      "consumer": "plugins/plugin-elizacloud/__tests__/native-application-slot-authority.test.ts",
+      "symbol": "createPreparedModelRequestGuard",
+      "targetContract": "Classify this as an internal fixture dependency. Its import path is not a published export. Preserve its guard behavior and adapt the fixture through an explicitly selected test entry point during implementation."
+    },
+    {
+      "id": "cloud-implicit-type-imports",
+      "importPath": "@elizaos/core",
+      "kind": "type-only-usage-with-value-import-syntax",
+      "consumers": [
+        {
+          "source": "packages/cloud/shared/src/lib/eliza/plugin-web-search/action.ts",
+          "symbol": "Action"
+        },
+        {
+          "source": "packages/cloud/shared/src/lib/eliza/message-handler.ts",
+          "symbol": "Memory"
+        }
+      ],
+      "targetContract": "Preserve the declaration shapes and type-only use. Keep package runtime imports compatible with the consumer transpilers that erase these type references."
+    }
   ]
 }
