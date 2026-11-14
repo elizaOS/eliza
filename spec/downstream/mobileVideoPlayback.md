@@ -14,12 +14,13 @@ stream. The capability owns one source URI and one request path.
 ### A capability is scoped to the WebView origin and its current grant
 
 Every issue creates a fresh UUID with an MP4 suffix. Keep at most
-32 grants in issuance order. Eviction marks the oldest grant revoked
-before removal. Revocation by URI marks and removes every associated
-grant. Pause and teardown clear the registry and retire existing
-grant objects. The visible URL carries neither a provider URI nor a
-filesystem path. Paths outside the configured prefix use the
-ordinary WebView handler.
+32 grants in issuance order. Under the registry lock, eviction removes
+the oldest entry and marks its grant revoked before releasing the lock.
+Revocation by URI marks and removes every associated grant. Pause and
+teardown clear the registry and retire existing grant objects. The model
+uses an increasing number to represent each newly issued UUID. The URL
+contains only the origin, playback prefix and opaque key. Paths outside
+the configured prefix use the ordinary WebView handler.
 
 Inside the prefix accept only a subresource of the exact scheme
 and authority. A foreign origin or main-frame request returns 403.
@@ -30,8 +31,9 @@ where the platform supports the column. A permitted grant rechecks
 the exact permitted key and captured revision before and after
 opening the descriptor, with the issued trash choice. Grant registry
 membership is sampled for the incoming request. An already-open
-stream checks its retired grant on every read, skip and availability
-call. Permitted streams also check device and profile lock state.
+stream checks its grant's revoked flag at the start of each read, skip
+and availability call. Permitted streams also check device and profile
+lock state. A call already admitted may finish during revocation.
 Each accepted HTTP request has its own descriptor and closes it
 or transfers it to that stream.
 
