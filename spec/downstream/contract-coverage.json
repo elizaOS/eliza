@@ -2317,8 +2317,8 @@
         "test"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/navigation.md",
-      "coverage": "related-contract"
+      "relatedSpec": "spec/downstream/alpha/photosWindow.md",
+      "coverage": "direct-contract"
     },
     {
       "source": "packages/ui/src/overview/OverviewCards.tsx",
