@@ -123,21 +123,27 @@ uses the transaction's matching revision and commit as port evidence.
 
 ```quint
 pure def matchesDraftRevision(expected: int, stored: int): bool = expected >= 0 and expected == stored
+pure def queueAutoCleanup(s: ScanDocument): ScanDocument =
+  if (s.draftKind == AutomaticDraft and not(s.autoQueued) and s.cleanupRevision == 0 and
+    (s.lastPageRemoved or s.exportResult == ExportConfirmed)) { ...s, cleanupRevision: s.draftRevision }
+  else s
 pure def canSettleAutoSave(s: ScanDocument): bool = s.autoQueued and s.flight != DraftAction
-pure def settleAutoSave(s: ScanDocument, stored: int, revision: int, committed: bool): ScanDocument =
-  if (not(s.closed) and s.pages.count > 0 and committed and revision > 0 and matchesDraftRevision(s.draftRevision, stored))
+pure def settleAutoSave(s: ScanDocument, stored: int, revision: int, committed: bool): ScanDocument = {
+  val updated = if (not(s.closed) and s.pages.count > 0 and committed and revision > 0 and matchesDraftRevision(s.draftRevision, stored))
     { ...s, autoQueued: false, draftRevision: revision,
       draftKind: if (s.draftKind == ExplicitDraft) ExplicitDraft else AutomaticDraft }
   else { ...s, autoQueued: false }
-pure def canScheduleAutoCleanup(s: ScanDocument): bool =
-  s.draftKind == AutomaticDraft and not(s.autoQueued) and s.cleanupRevision == 0 and
-  (s.lastPageRemoved or s.exportResult == ExportConfirmed)
-pure def scheduleAutoCleanup(s: ScanDocument): ScanDocument = { ...s, cleanupRevision: s.draftRevision }
+  queueAutoCleanup(updated)
+}
 pure def canSettleAutoCleanup(s: ScanDocument): bool = s.cleanupRevision > 0
 pure def settleAutoCleanup(s: ScanDocument, stored: int, committed: bool): ScanDocument =
   if (committed and s.draftKind == AutomaticDraft and matchesDraftRevision(s.cleanupRevision, stored) and s.cleanupRevision == s.draftRevision)
     { ...s, draftKind: NoDraft, draftRevision: 0, cleanupRevision: 0 }
   else { ...s, cleanupRevision: 0 }
+pure val weight_beginEdit = 4
+pure val weight_finishEdit = 8
+pure val weight_settleAutoSave = 8
+pure val weight_settleAutoCleanup = 8
 pure val storedValues = Set(0, 1, 2, 3, 4)
 pure def lawDraftCASRejectsDifferentRevision(expected: int, stored: int): bool = expected != stored implies not(matchesDraftRevision(expected, stored))
 pure def stepCleanupPreservesExplicitDraft(before: ScanDocument, via: str, after: ScanDocument): bool =
@@ -161,7 +167,8 @@ may already exist. The user can explicitly resume their saved draft.
 pure def canBeginExport(s: ScanDocument): bool = editable(s) and s.flight == ScanFree and s.pages.count > 0
 pure def beginExport(s: ScanDocument): ScanDocument = { ...s, flight: ExportingPages, exportRevision: s.pageRevision }
 pure def canFinishExport(s: ScanDocument, result: ScanExport): bool = not(s.closed) and s.flight == ExportingPages and result != ExportUnobserved
-pure def finishExport(s: ScanDocument, result: ScanExport): ScanDocument = { ...s, flight: ScanFree, exportResult: result }
+pure def finishExport(s: ScanDocument, result: ScanExport): ScanDocument =
+  queueAutoCleanup({ ...s, flight: ScanFree, exportResult: result })
 pure val resultValues = Set(ExportRetryable, ExportReviewed, ExportConfirmed, ExportUnknown)
 pure def alwaysExportOwnsCurrentSnapshot(s: ScanDocument): bool =
   s.flight == ExportingPages implies s.exportRevision == s.pageRevision and s.pages.count > 0

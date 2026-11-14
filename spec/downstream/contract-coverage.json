@@ -2501,7 +2501,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobileSpeech.md",
+      "relatedSpec": "spec/downstream/nativeCloudSpeech.md",
       "coverage": "related-contract"
     },
     {

@@ -21,6 +21,8 @@ settles its slot and a subsequent start resets native camera state. The
 model tracks whether that queue has drained. Alpha also allows its
 in-flight photo writer to settle for up to ten seconds before releasing
 preview; storage read-back is handled inside its capture port.
+Discovered by the proof: the first armed preview has a positive epoch.
+The initial off state uses epoch zero.
 
 ```quint
 type PreviewPhase = PreviewOff | PreviewStarting | PreviewReady | PreviewError
@@ -29,8 +31,8 @@ type PreviewAnswer = PreviewStarted | ExplicitCameraDenial | PreviewFailed
 type Work = CameraIdle | CameraControl | CameraCapture | RecordingStarting | RecordingActive | RecordingFinishing
 type VideoAnswer = VideoStarted | ExplicitMicrophoneDenial | VideoStartFailed | StartLostPreview
 type RecordingResult = RecordingUnobserved | RecordingConfirmed | RecordingFailed
-type CameraView = { foreground: bool, epoch: int, phase: PreviewPhase, denied: AccessDenial, previewFlights: Set[int], releases: bool, work: Work, workEpoch: int, finished: RecordingResult }
-pure val initial: CameraView = { foreground: false, epoch: 0, phase: PreviewOff, denied: NoDenial, previewFlights: Set(), releases: false, work: CameraIdle, workEpoch: 0, finished: RecordingUnobserved }
+type CameraView = { foreground: bool, epoch: int, phase: PreviewPhase, denied: AccessDenial, previewPending: bool, retiredPreviews: int -> bool, releases: bool, work: Work, workEpoch: int, finished: RecordingResult }
+pure val initial: CameraView = { foreground: false, epoch: 0, phase: PreviewOff, denied: NoDenial, previewPending: false, retiredPreviews: Map(), releases: false, work: CameraIdle, workEpoch: 0, finished: RecordingUnobserved }
 pure def ownsTicket(s: CameraView, ticket: int): bool = s.foreground and s.epoch == ticket
 pure def ownsPreview(s: CameraView): bool = s.phase == PreviewStarting or s.phase == PreviewReady
 pure def canEnterView(s: CameraView): bool = not(s.foreground)
@@ -40,28 +42,31 @@ pure def canStartView(s: CameraView, retry: bool): bool =
 pure def startView(s: CameraView, retry: bool, bridge: bool): CameraView =
   if (bridge) { ...s, phase: PreviewStarting, epoch: s.epoch + 1 }
   else { ...s, phase: PreviewError }
-pure def canDispatchPreview(s: CameraView): bool = s.foreground and s.phase == PreviewStarting and not(s.previewFlights.contains(s.epoch) or s.releases)
-pure def dispatchPreview(s: CameraView): CameraView = { ...s, previewFlights: s.previewFlights.union(Set(s.epoch)) }
-pure def canObservePreview(s: CameraView, ticket: int): bool = s.previewFlights.contains(ticket)
-pure def observePreview(s: CameraView, ticket: int, answer: PreviewAnswer): CameraView = {
-  val remainingFlights = s.previewFlights.exclude(Set(ticket))
-  if (not(ownsTicket(s, ticket))) { ...s, previewFlights: remainingFlights, releases: s.releases or (answer == PreviewStarted and not(ownsPreview(s))) }
-  else if (answer == PreviewStarted) { ...s, previewFlights: remainingFlights, phase: PreviewReady, denied: if (s.denied == CameraDenied) NoDenial else s.denied }
-  else { ...s, previewFlights: remainingFlights, phase: PreviewError, denied: if (answer == ExplicitCameraDenial) CameraDenied else NoDenial }
-}
+pure def canDispatchPreview(s: CameraView): bool = s.foreground and s.phase == PreviewStarting and not(s.previewPending or s.releases)
+pure def dispatchPreview(s: CameraView): CameraView = { ...s, previewPending: true }
+pure def canObservePreview(s: CameraView, ticket: int): bool =
+  (ticket == s.epoch and s.previewPending) or (ticket > 0 and ticket < s.epoch and s.retiredPreviews.getOr(ticket, false))
+pure def observePreview(s: CameraView, ticket: int, answer: PreviewAnswer): CameraView =
+  if (ticket != s.epoch) { ...s, retiredPreviews: s.retiredPreviews.put(ticket, false), releases: s.releases or (answer == PreviewStarted and not(ownsPreview(s))) }
+  else if (answer == PreviewStarted) { ...s, previewPending: false, phase: PreviewReady, denied: if (s.denied == CameraDenied) NoDenial else s.denied }
+  else { ...s, previewPending: false, phase: PreviewError, denied: if (answer == ExplicitCameraDenial) CameraDenied else NoDenial }
 pure def canReleasePreview(s: CameraView): bool = s.releases and s.work != RecordingFinishing
 pure def releasePreview(s: CameraView): CameraView = { ...s, releases: false }
 pure def canStopView(s: CameraView): bool = s.foreground or ownsPreview(s)
 pure def stopView(s: CameraView): CameraView =
   { ...s, foreground: false, epoch: s.epoch + 1, phase: PreviewOff, releases: true,
+    retiredPreviews: if (s.previewPending) s.retiredPreviews.put(s.epoch, true) else s.retiredPreviews, previewPending: false,
     work: if (s.work == RecordingActive) RecordingFinishing else if (s.work == CameraControl) CameraIdle else s.work }
 pure val ticketValues = Set(0, 1, 2, 3, 4, 5, 6)
 pure val answerValues = Set(PreviewStarted, ExplicitCameraDenial, PreviewFailed)
-pure def alwaysDispatchedHasStartingOwner(s: CameraView): bool = s.previewFlights.contains(s.epoch) implies s.phase == PreviewStarting and s.foreground
-pure def alwaysPreviewTicketsIssued(s: CameraView): bool = s.previewFlights.forall(ticket => ticket > 0 and ticket <= s.epoch)
+pure val weight_startView = 5
+pure val weight_dispatchPreview = 8
+pure val weight_observePreview = 16
+pure def alwaysDispatchedHasStartingOwner(s: CameraView): bool = s.previewPending implies s.phase == PreviewStarting and s.foreground
+pure def alwaysPreviewUsesPositiveEpoch(s: CameraView): bool = s.epoch >= 0 and (ownsPreview(s) implies s.epoch > 0)
 pure def alwaysPreviewHasForegroundOwner(s: CameraView): bool = ownsPreview(s) implies s.foreground
 pure def stepPreviewReadyMatchesInFlightEpoch(before: CameraView, via: str, after: CameraView): bool =
-  (before.phase != PreviewReady and after.phase == PreviewReady) implies via == "observePreview" and before.previewFlights.contains(before.epoch) and before.foreground and before.epoch == after.epoch
+  (before.phase != PreviewReady and after.phase == PreviewReady) implies via == "observePreview" and before.previewPending and before.foreground and before.epoch == after.epoch
 pure def sometimesPreviewReady(s: CameraView): bool = s.phase == PreviewReady
 ```
 
@@ -98,6 +103,9 @@ failure enters the preview error path. Concurrent finish requests share
 the in-flight finalization. A repeated stop without an owned recording
 does not issue a fresh native recording stop. In Alpha the focus-point
 hint can run alongside capture. Its marker does not confirm autofocus.
+Discovered by the proof: a pending recording start that still owns the
+view can only have come from a ready preview. A stop retired its epoch
+before a closed view could be reopened.
 
 ```quint
 pure def canReserveWork(s: CameraView, work: Work): bool =
@@ -118,8 +126,13 @@ pure def canFinishVideo(s: CameraView): bool = s.work == RecordingActive
 pure def finishVideo(s: CameraView): CameraView = { ...s, work: RecordingFinishing }
 pure val workValues = Set(CameraControl, CameraCapture, RecordingStarting, RecordingActive)
 pure val videoAnswerValues = Set(VideoStarted, ExplicitMicrophoneDenial, VideoStartFailed, StartLostPreview)
+pure val weight_reserveWork = 10
+pure val weight_readVideoStart = 16
+pure val weight_finishVideo = 16
 pure def alwaysRecordingIndicatorHasCurrentReadyPreview(s: CameraView): bool =
   s.work == RecordingActive implies s.phase == PreviewReady and ownsTicket(s, s.workEpoch)
+pure def alwaysCurrentVideoStartHasReadyPreview(s: CameraView): bool =
+  (s.work == RecordingStarting and s.epoch == s.workEpoch) implies s.foreground and s.phase == PreviewReady
 pure def alwaysWorkDoesNotComeFromFuture(s: CameraView): bool = s.workEpoch <= s.epoch
 pure def stepStopCarriesOwnedVideoToFinishing(before: CameraView, via: str, after: CameraView): bool =
   (via == "stopView" and before.work == RecordingActive) implies after.work == RecordingFinishing
@@ -151,6 +164,7 @@ pure val receiptValues = Set(
   { pathPresent: true, durationPositiveFinite: true, sizePositiveFinite: true, ownedReadback: false },
   { pathPresent: false, durationPositiveFinite: false, sizePositiveFinite: false, ownedReadback: false }
 )
+pure val weight_observeVideoFinish = 16
 pure def lawMissingReadbackIsUnconfirmed(receipt: VideoReceipt): bool = not(receipt.ownedReadback) implies not(completeVideoReceipt(receipt))
 pure def stepRecordingConfirmationFollowsFinalization(before: CameraView, via: str, after: CameraView): bool =
   (before.finished != RecordingConfirmed and after.finished == RecordingConfirmed) implies via == "observeVideoFinish" and before.work == RecordingFinishing

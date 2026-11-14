@@ -43,6 +43,7 @@ features provide distinct evidence from production startup.
 - [Clock handoff and cancellation](./clockReminder.md)
 - [Reminder recurrence and occurrence](./reminderOccurrence.md)
 - [Reminder creation and action custody](./reminderCustody.md)
+- [Native Cloud live speech custody](./nativeCloudSpeech.md)
 - [Realtime voice client state](./voiceSessionClient.md)
 - [Mobile runtime, device bridges, speech and updates](./mobile.md)
 - [Grace product bindings](./grace/)
