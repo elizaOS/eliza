@@ -676,7 +676,9 @@
         "idle waiter snapshots",
         "live Set callback generations",
         "nested synchronous emission stack",
-        "terminal notice then pruning"
+        "terminal notice then pruning",
+        "positive allocated queue object identity",
+        "errored terminal result and the associated telemetry reference"
       ]
     },
     {

@@ -9541,7 +9541,7 @@
       "targets": [
         {
           "path": "spec/core/concurrency.md",
-          "sha256": "fbfe0fc0462985413b191de019ca7f359a08638ae6181c9e043e563c32eb1ca2",
+          "sha256": "f5b85cc947bc292f9ca43bbd4da7a14f5aef345230f0e8924e1f7b398887c63f",
           "definitions": [
             "initial",
             "capacityValues",
@@ -9555,6 +9555,7 @@
             "activeRooms",
             "canReuseLease",
             "reuseLease",
+            "roomOccupancy",
             "canQueueRoom",
             "queueRoom",
             "canGrantRoom",
@@ -9604,7 +9605,7 @@
         },
         {
           "path": "spec/core/roomQueueObservers.md",
-          "sha256": "2cbca465c482d5405132c8494a72e24f24c023e6cf630c3157c6d822e687b0cb",
+          "sha256": "7f197ae3c76e4a245e5749f5d8258c965149976b69b08f75f6a400ab842fbf57",
           "definitions": [
             "initial",
             "callerValues",
@@ -9633,6 +9634,7 @@
             "finishWrite",
             "canCloseWrites",
             "closeWrites",
+            "idleForWaiter",
             "canFinishWork",
             "finishWork",
             "canCancelQueued",
