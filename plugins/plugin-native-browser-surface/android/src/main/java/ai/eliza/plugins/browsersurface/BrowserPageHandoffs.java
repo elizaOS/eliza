@@ -1,11 +1,13 @@
 package ai.eliza.plugins.browsersurface;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Predicate;
 
 /**
  * Decisions for the moments a website hands control to someone else: a JavaScript dialog, a new
@@ -86,9 +88,23 @@ public final class BrowserPageHandoffs {
 
     /** Every pending result, removed; the caller dismisses each one. */
     public List<T> drain() {
-      List<T> all = new ArrayList<>(pending.values());
-      pending.clear();
-      return all;
+      return new ArrayList<>(withdraw(result -> true).values());
+    }
+
+    /**
+     * The pending results that {@code match}, removed by id without an answer: for a request the
+     * page itself withdrew, or one the caller ends and must report by id.
+     */
+    public Map<String, T> withdraw(Predicate<T> match) {
+      Map<String, T> removed = new LinkedHashMap<>();
+      for (Iterator<Map.Entry<String, T>> it = pending.entrySet().iterator(); it.hasNext(); ) {
+        Map.Entry<String, T> entry = it.next();
+        if (!match.test(entry.getValue()))
+          continue;
+        removed.put(entry.getKey(), entry.getValue());
+        it.remove();
+      }
+      return removed;
     }
   }
 

@@ -23,6 +23,7 @@ describe("BrowserSurfaceWeb", () => {
         url: "https://example.com",
         process: "isolated",
         storage: "isolated",
+        answersRequests: true,
       }),
     ).rejects.toThrow(/native-only/i);
   });

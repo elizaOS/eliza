@@ -57,42 +57,54 @@ hold; every other origin is still held. `origins: []` ends the extension. Nothin
 added without this call, and the list ends with the surface.
 
 A website never acts for the person through a surface. Android reports these as events
-and does nothing by itself:
+and does nothing by itself. Dialogs, file inputs and site permission requests wait only on
+a surface whose owner created it with `answersRequests: true` and listens for the event;
+any other surface's are dismissed at once (a dialog cancelled, a file input given nothing,
+a permission denied), so no page freezes on a request another owner's listener would
+never answer. `interceptNavigation` alone still holds dialogs, as before.
 
 - `dialogRequested`: `alert`, `confirm`, `prompt` and leave-page dialogs wait for
-  `answerDialog` while the host listens for this event; without a listener they are
-  dismissed at once, so no page freezes on a dialog nobody shows. A dialog of a hidden,
-  paused, closing or navigating surface is cancelled, never accepted.
+  `answerDialog`. A dialog of a hidden, paused, closing or navigating surface is
+  cancelled, never accepted.
 - `fileChooserRequested`: a file input waits for `answerFileChooser({ requestId, open })`.
   `open: true` shows the system document picker and gives the page the content URIs the
   person picks (at most 16, one unless the input takes several); `open: false` gives it
   nothing. Hiding, navigating or closing the surface gives it nothing.
-- `sitePermissionRequested`: a top-level https page's own camera, microphone or location
-  request (`{ requestId, origin, kinds, topFrame, androidPermissions }`) waits for
-  `answerSitePermission({ requestId, grant })` and is never remembered. A grant rejects
+- `sitePermissionRequested`: a camera, microphone or location request from the https
+  page's own origin (`{ requestId, origin, kinds, topFrame, androidPermissions }`) waits
+  for `answerSitePermission({ requestId, grant })` and is never remembered. A grant rejects
   `ANDROID_PERMISSION_REQUIRED` until the host app holds `androidPermissions`, so the host
-  asks Android first and answers again. An embedded frame's request is already denied and
-  reported with `topFrame: false`. Hiding, navigating or closing the surface denies it.
+  asks Android first and answers again. Another origin's request is already denied and
+  reported with `topFrame: false`. WebView names only the requesting origin, never the
+  frame, so `topFrame` is an origin check: a same-origin embedded frame counts as the page.
+- `sitePermissionWithdrawn`: a held request ended without an answer (`{ requestId }`): the
+  page withdrew it, navigated, or the surface was hidden or closed, and it was denied.
+  Close its prompt.
 - `downloadRequested`: nothing is downloaded until `saveDownload({ requestId })`, which
   saves the file to Downloads with the surface's own cookie for the requesting page's
-  exact origin and reports `downloadFinished` (`saved` or `failed`). The http(s) address
-  can carry access tokens, so keep it out of models and logs; native code never logs it.
+  exact origin and reports `downloadFinished` (`saved` or `failed`). A later request
+  replaces it, and the page navigating or the surface being hidden or closed ends it.
+  The http(s) address can carry access tokens, so keep it out of models and logs; native
+  code never logs it.
 - `fullscreenChanged`: a page's fullscreen view (usually video) is shown above the host;
-  Back, the page, or hiding, pausing or navigating the surface ends it.
+  Back, the page, or hiding, pausing or navigating the surface ends it, and the host's
+  system bars return as they were before.
 - `externalLinkRequested`: a tapped `tel:`, `mailto:`, `sms:`, `geo:`, `market:` or `intent:` link.
   `openExternalLink` opens only that link with a fresh Intent; `tel:` opens the dialer
   and places no call. Script attempts are dropped.
 - `identityProviderRequested`: Google and Facebook sign-in pages refuse embedded
   WebViews (`disallowed_useragent`). They are not loaded; `openIdentityProvider({ requestId })`
-  opens the page in the person's browser as a Custom Tab, without the address coming back
-  from the host.
-
-A certificate error is never passed. When it is the page's own, `navigationChanged`
-follows with `securityBlocked: true` and a `pageError`, so the host can cover the error
-page with a security block.
+  opens the page as a Custom Tab in the default browser, or another browser when the
+  default is this app or Android would ask, sent by package so it never comes back into
+  this app. The address never comes back from the host.
 - `surfaceCrashed`: the page renderer crashed or was reclaimed. Only that surface
   closes; the host activity keeps running. Recreate the surface to continue.
 - `keyboardChanged`: the on-screen keyboard opened or closed, with its height.
+
+A certificate error is never passed. When it is the page's own, `navigationChanged`
+follows with `securityBlocked: true` and the certificate `pageError`, which a later
+generic load error of the same address does not replace, so the host can cover the error
+page with a security block.
 
 Android `pauseSurface` calls `WebView.onPause()` on one surface and `resumeSurface`
 undoes it. The page stops drawing and its timers slow to about once a second, even while

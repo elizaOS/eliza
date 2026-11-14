@@ -56,4 +56,71 @@ class BrowserSurfaceRequestsTest {
         assertEquals(2.5, BrowserSurfaceRequests.pageScale(6.5625f, 2.625f), 0.0)
         assertEquals(1.0, BrowserSurfaceRequests.pageScale(0f, 2.625f), 0.0)
     }
+
+    @Test
+    fun aSignInPageOpensInABrowserOtherThanThisApp() {
+        val own = "technology.graceful.grace"
+        assertEquals("com.android.chrome",
+            BrowserSurfaceRequests.identityBrowser(own, "com.android.chrome", listOf(own, "org.mozilla.firefox", "com.android.chrome")))
+        // This app as the default, or the system resolver, falls back to another browser.
+        assertEquals("org.mozilla.firefox", BrowserSurfaceRequests.identityBrowser(own, own, listOf(own, "org.mozilla.firefox")))
+        assertEquals("org.mozilla.firefox", BrowserSurfaceRequests.identityBrowser(own, "android", listOf("org.mozilla.firefox")))
+        assertNull(BrowserSurfaceRequests.identityBrowser(own, own, listOf(own)))
+        assertNull(BrowserSurfaceRequests.identityBrowser(own, null, emptyList()))
+    }
+
+    private class Permission(val source: Any)
+
+    @Test
+    fun aWithdrawnPermissionLeavesUnansweredAndFreesItsPlace() {
+        val holds = SurfaceHolds<String, Permission, String>()
+        val camera = Any()
+        val cameraId = holds.permissions.open(Permission(camera))
+        val locationId = holds.permissions.open(Permission("location"))
+        assertEquals(listOf(cameraId), holds.permissions.withdraw { it.source === camera }.keys.toList())
+        assertEquals(1, holds.permissions.size())
+        // The host's late answer to the withdrawn request finds nothing.
+        assertNull(holds.permissions.take(cameraId))
+        assertEquals("location", holds.permissions.take(locationId)?.source)
+        assertNull(holds.permissions.take(locationId))
+    }
+
+    @Test
+    fun closingEndsEverythingAndStaleRequestIdsFindNothing() {
+        val holds = SurfaceHolds<String, Permission, String>()
+        val (firstFile, none) = holds.holdFile("first input")
+        assertNull(none)
+        val (fileId, replaced) = holds.holdFile("second input")
+        assertEquals("first input", replaced)
+        assertNull(holds.file(firstFile))
+        assertEquals("second input", holds.file(fileId))
+        val permissionId = holds.permissions.open(Permission("camera"))
+        val oldDownload = holds.holdDownload("old file")
+        val downloadId = holds.holdDownload("report.pdf")
+        assertNull(holds.takeDownload(oldDownload))
+
+        val closed = holds.close()
+        assertEquals("second input", closed.file)
+        assertEquals(listOf(permissionId), closed.permissions.keys.toList())
+        assertNull(holds.file(fileId))
+        assertNull(holds.takeFile(fileId))
+        assertNull(holds.permissions.get(permissionId))
+        assertNull(holds.takeDownload(downloadId))
+        val again = holds.close()
+        assertNull(again.file)
+        assertTrue(again.permissions.isEmpty())
+    }
+
+    @Test
+    fun anAnswerTakesItsRequestOnce() {
+        val holds = SurfaceHolds<String, Permission, String>()
+        val (fileId, _) = holds.holdFile("input")
+        assertNull(holds.takeFile("someone-else"))
+        assertEquals("input", holds.takeFile(fileId))
+        assertNull(holds.takeFile(fileId))
+        val downloadId = holds.holdDownload("report.pdf")
+        assertNull(holds.takeDownload(null))
+        assertEquals("report.pdf", holds.takeDownload(downloadId))
+        assertNull(holds.takeDownload(downloadId))
+    }
 }
