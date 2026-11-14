@@ -43,6 +43,9 @@ of an observed pending row and reject. They do not assert a terminal
 sees an exception. The model separates those port outcomes and follows
 one exact operation. Full decoded image bytes stay in the native port.
 
+Discovered by the proof: an active writer holds its reservation without
+a terminal reply. Otherwise a failed copy could appear to start an insert.
+
 ```quint
 type CopyAdmission = RejectCopy | ReadExistingCopy | NoChangeCopy | ReserveCopy
 type RequestFacts = { activeEditor: bool, tokenExact: bool, sourceExact: bool, validTransform: bool,

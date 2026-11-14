@@ -127,7 +127,11 @@ pure val summaryValues = Set(emptySummary, { ...emptySummary, mode: "human", sou
 
 GET and POST are the only support methods. Route lookup requires the bound task, with 404 if its runtime lookup throws. A POST reads bounded JSON of at most 1024 bytes, rejects null with 400, rechecks current authority, records, then reads the summary. Store, parser and other exceptions in the route's try block project to `TASK_SUPPORT_UNAVAILABLE` with 409. An explicit POST owner check failure returns the gateway's unauthorized reply. A committed report can outlive the subsequent response read failure. The route uses its owner-scoped evidence store for both methods.
 
-The renderer permits one current load or save at a time. On first save it reads the task ID and exact safe nonnegative epoch, creates one UUID and stores a help-received choice. A failed task lookup does not create a submission. Before posting it holds the event ID, epoch and role. A failed save read retains all three. Another tap posts the same held input without a fresh task lookup. A current matching summary response clears the hold. A reply requires the same task ID and a human roles array of allowed roles. An old answer after task selection changes cannot update the renderer or clear the new request. The model uses one current screen task generation and the host's success or refusal as input. Its post count and symbolic held identity are nonnegative, with identity zero denoting no held report.
+The renderer permits one current load or save at a time. On first save it reads the task ID and exact safe nonnegative epoch, creates one UUID and stores a help-received choice. A failed task lookup does not create a submission. Before posting it holds the event ID, epoch and role. A failed save read retains all three. Another tap posts the same held input without a fresh task lookup. A current matching summary response clears the hold. A reply requires the same task ID and a human roles array of allowed roles. An old answer after task selection changes cannot update the renderer or clear the new request. The model uses one current screen task generation and the host's success or refusal as input.
+
+Discovered by the proof: the post count and symbolic held identity are
+nonnegative, with zero denoting no held report. This keeps both initial
+submission and retry tied to a real held report.
 
 ```quint
 type SupportRoute = { method: str, taskFound: bool, jsonRead: bool, jsonNull: bool, ownerCurrent: bool, storeAnswered: bool }

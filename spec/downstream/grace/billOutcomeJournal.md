@@ -64,6 +64,10 @@ be recognized on the next startup. The count observed by the model is
 the number of retained entries in the successfully replaced file. The
 state also records whether recovery has cleared an append fence.
 
+Discovered by simulation: startup can recover lines from before the
+current process, so the file count can rise at restart. The append
+rule checks only the lines acknowledged by a live append.
+
 ```quint
 type FileRead = MissingJournal | ReadJournal | JournalReadError
 type RestartEvidence = { kind: FileRead, completeLinesValid: bool, recordsReconciled: bool, replacementCommitted: bool, retained: int }
