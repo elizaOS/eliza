@@ -44,13 +44,15 @@ pure def settleTasks(s: ApprovalRetirement, workId: int, ok: bool, resultRows: L
 }
 pure def canSettleRoom(s: ApprovalRetirement, workId: int, ok: bool, worldPresent: bool): bool = readAt(s, workId).phase == AwaitRoom
 pure def settleRoom(s: ApprovalRetirement, workId: int, ok: bool, worldPresent: bool): ApprovalRetirement = {
-  val query = { ...readAt(s, workId), phase: if (not(ok)) ReadRejected else if (worldPresent) AwaitRole else ReadReturned }
+  val phase: ApprovalReadPhase = if (not(ok)) ReadRejected else if (worldPresent) AwaitRole else ReadReturned
+  val query = { ...readAt(s, workId), phase: phase }
   { ...s, queries: putRead(query, s), tracker: readCompletion(query, s) }
 }
 pure def canSettleRole(s: ApprovalRetirement, workId: int, ok: bool, role: str): bool = readAt(s, workId).phase == AwaitRole
 pure def settleRole(s: ApprovalRetirement, workId: int, ok: bool, role: str): ApprovalRetirement = {
   val prior = readAt(s, workId)
-  val query = { ...prior, phase: if (not(ok)) ReadRejected else if (role != "" and prior.allowedRoles.contains(role)) ReadReturned else ReadDenied }
+  val phase: ApprovalReadPhase = if (not(ok)) ReadRejected else if (role != "" and prior.allowedRoles.contains(role)) ReadReturned else ReadDenied
+  val query = { ...prior, phase: phase }
   { ...s, queries: putRead(query, s), tracker: readCompletion(query, s) }
 }
 pure def canReleaseRead(s: ApprovalRetirement, workId: int): bool = R::canRemoveSettled(s.tracker, workId)
