@@ -6,18 +6,24 @@
     "packages/cloud/quint/check-maps-credit-funding.mjs",
     "packages/cloud/shared/src/lib/services/maps/google-provider.ts",
     "packages/cloud/shared/src/lib/services/maps/contract.ts",
-    "packages/cloud/shared/src/lib/services/organization-inference-admission.ts"
+    "packages/cloud/shared/src/lib/services/organization-inference-admission.ts",
+    "packages/cloud/api/__tests__/maps-google-provider.test.ts",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/scripts/lib/test-output.ts"
   ],
   "conformance": "packages/cloud/quint/check-maps-credit-funding.mjs",
   "bounds": {
-    "domain": "Two logical request IDs, three initial credit units, one or two unit quotes, at most two provider calls per request, one account and mutable plan/credential standing.",
-    "atomicity": "Admission and settlement rely on the existing authoritative organization billing owner. Maps replay receipts precede provider dispatch. The first provider call checks credential standing; subrequests within the same operation reuse its acknowledged dispatch promise.",
-    "progress": "Progress assumes weak fairness of provider observation and settlement. The no-fairness property is expected to produce a liveness counterexample."
+    "domain": "Two request IDs, three initial credit units, one- or two-unit reservation bounds, one account, and mutable plan/credential standing. Each request may have multiple sequential provider calls.",
+    "atomicity": "The existing organization billing owner atomically reserves and settles funds. The Maps receipt owner rejects duplicate request keys before a second reservation. Settlement fixes its first known/unknown choice before a retryable attempt. An unknown choice conservatively charges the admitted bound; it is not a promise of a later refund.",
+    "progress": "Weak fairness of finish(key) selects a terminal choice, and weak fairness of acknowledge(key) completes its retryable persistence. Permanent billing-owner failure is outside the progress premise.",
+    "composition": "maps_request_buckets and maps_request_receipts cover the shared rate/receipt owner. This model covers the credit observation and liability boundary; it does not replace the organization billing owner."
   },
   "limitations": [
-    "Unit prices abstract the published Google SKU prices; floating-point money arithmetic is covered by the existing billing engine, not this model.",
-    "The model does not prove transport behavior or cross-process implementation refinement. Route orchestration and actual SQLite replay/rate tests are separate checks.",
-    "Google account-wide free caps and negotiated volume discounts require invoice reconciliation. The request quote uses the published unit rate without platform markup."
+    "Integer units abstract reservation bounds. Exact micro-USD arithmetic, minimum reservations, pricing buffers and ledger transaction implementation remain with the existing billing owner.",
+    "Observation is a classified billable provider result; a definite rejection releases only unused liability. Unclassified responses and lost later replies conservatively settle at the admitted estimate. The real-route and loopback HTTP cases check this classification boundary.",
+    "The finite state model is not universal TypeScript refinement. Authorization, database durability, cross-process transport and external invoice availability are separate owner contracts.",
+    "Google account-wide free caps and negotiated volume discounts require invoice reconciliation. Published unit quotes contain no platform markup.",
+    "A retry keeps the first settlement choice. Any later manual billing adjustment is outside this model; no automatic refund or invoice reconciliation is asserted."
   ],
   "cases": [
     {
@@ -25,24 +31,31 @@
       "main": "maps_credit_funding",
       "init": "init",
       "step": "step",
-      "invariants": ["safety"],
-      "temporal": ["SettlesWhenObserved", "NoFairnessSettles"],
+      "invariants": [
+        "TypeOK",
+        "conserved",
+        "includedNeverDebits",
+        "acceptedCostNeverReleased",
+        "unknownRetainsLiability",
+        "noDuplicateAdmission",
+        "terminalCostCoversObservation"
+      ],
+      "temporal": ["LocalRequestsSettle", "RequestsSettleWithoutFairness"],
       "maxSteps": 40,
       "samples": 1000,
       "temporalChecks": [
         {
-          "property": "SettlesWhenObserved",
+          "property": "LocalRequestsSettle",
           "expect": "holds",
           "assumptions": [
-            "A dispatched provider call eventually produces an accepted, rejected or lost-response observation under weak fairness of observe(key).",
-            "The existing billing owner eventually settles an eligible reservation under weak fairness of settle(key). No provider success is assumed."
+            "Weak fairness of finish(key) selects a known or unknown terminal choice. Weak fairness of acknowledge(key) assumes the billing owner eventually completes the same chosen settlement. Provider success and permanent storage availability are not proved."
           ]
         },
         {
-          "property": "NoFairnessSettles",
+          "property": "RequestsSettleWithoutFairness",
           "expect": "counterexample",
           "assumptions": [
-            "No fairness is assumed. A reserved or inflight request may remain unobserved indefinitely."
+            "Without scheduling and acknowledgment fairness, an admitted request or a selected settlement may wait forever."
           ]
         }
       ]
