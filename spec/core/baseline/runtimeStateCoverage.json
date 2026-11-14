@@ -339,12 +339,12 @@
         "spec/core/postDelivery.md"
       ],
       "stateDomains": [
-        "runtime/room task indexes",
-        "lease-bound delivery settlement",
-        "captured drain batches",
-        "permanent quarantine",
-        "cooperative/noncooperative cancellation",
-        "retained effect permission"
+        "shared runtime and room pending projections",
+        "original task promise admission, invocation, and settlement",
+        "lease-bound delivery promise with captured permission",
+        "empty-first drain entry and repeated captured batches",
+        "permanent quarantine, cooperative cancellation, and ordered pending labels",
+        "boundary cleanup and noncooperative task custody after lease release"
       ]
     },
     {
