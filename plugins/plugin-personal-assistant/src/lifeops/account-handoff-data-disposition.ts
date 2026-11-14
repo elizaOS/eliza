@@ -139,8 +139,9 @@ export class AccountHandoffDataDisposition {
       await this.repository.deleteGmailSyncState(
         this.runtime.agentId,
         "google",
-        previous.grantId,
+        undefined,
         "owner",
+        previous.grantId,
       );
       // The inbox cache holds its own copy of every imported Gmail message.
       // Removing the imported mail must remove those copies too, or the inbox
