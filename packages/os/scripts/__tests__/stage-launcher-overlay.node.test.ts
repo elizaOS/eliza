@@ -1317,3 +1317,71 @@ test("staging writes the allow-list only for a descriptor that names privileged 
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("provisioning is staged atomically from the staged APK's manifest", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "launcher-provision-"));
+  try {
+    const tool = path.join(dir, "tool");
+    fs.writeFileSync(
+      tool,
+      `#!${process.execPath}\nconst a=process.argv.slice(2);console.log(a[0]==='verify'?process.env.SIGNATURES:a[1]==='badging'?process.env.BADGING:process.env.XML);`,
+      { mode: 0o700 },
+    );
+    const apk = path.join(dir, "launcher.apk");
+    fs.writeFileSync(apk, "fixture-apk");
+    const descriptorPath = path.join(dir, "descriptor.json");
+    fs.writeFileSync(
+      descriptorPath,
+      JSON.stringify({
+        ...descriptor,
+        apkSha256: createHash("sha256").update("fixture-apk").digest("hex"),
+      }),
+    );
+    // aapt's own attribute form, which the provisioning parser reads.
+    const home = xml
+      .replace(/(E: [a-z-]+)$/gm, "$1 (line=1)")
+      .replaceAll('android:name="', 'android:name(0x01010003)="')
+      .replace("\n", '\n    A: android:name(0x01010003)=".Home"\n');
+    const stage = (name: string, assistant: boolean) =>
+      stageLauncher({
+        descriptor: descriptorPath,
+        apk,
+        output: path.join(dir, name),
+        aapt: tool,
+        apksigner: tool,
+        development: false,
+        env: {
+          ...process.env,
+          SIGNATURES: signer,
+          BADGING: badging,
+          XML: home,
+        },
+        provisioning: { assistant },
+      });
+    const output = stage("home", false);
+    const read = (file: string) =>
+      fs.readFileSync(path.join(output, file), "utf8");
+    assert.match(
+      read("provisioning/preferred-apps/launcher-home.xml"),
+      /<set name="ai\.alphacompute\.alphaphone\/ai\.alphacompute\.alphaphone\.Home" \/>/,
+    );
+    const config =
+      "provisioning/overlay/frameworks/base/core/res/res/values/config.xml";
+    assert.doesNotMatch(read(config), /config_defaultAssistant/);
+    const product = read("product.mk");
+    assert.ok(
+      product.startsWith(renderOverlay(descriptor).product) &&
+        product.includes("$(launcher_provisioning_dir)/overlay"),
+    );
+    // The assistant role needs an ACTION_ASSIST activity; without one nothing is staged.
+    assert.throws(() => stage("assistant", true), /ACTION_ASSIST activity/);
+    assert.deepEqual(fs.readdirSync(dir).sort(), [
+      "descriptor.json",
+      "home",
+      "launcher.apk",
+      "tool",
+    ]);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

@@ -44,10 +44,7 @@ import {
   stagedImageFeature,
   writeImageCapability,
 } from "./image-capability.mjs";
-import {
-  provisioningComponents,
-  writeProvisioningOverlay,
-} from "./launcher-provisioning.mjs";
+import { provisioningComponents } from "./launcher-provisioning.mjs";
 import {
   createDevelopmentLauncherDescriptor,
   renderOverlay,
@@ -298,6 +295,7 @@ export function stageImageLauncher(options: StageOptions) {
       `${JSON.stringify(descriptor, null, 2)}\n`,
     );
     const staged = path.join(temporary, LAUNCHER_DIRECTORY);
+    const provisioning = { assistant: options.brand.assistantRole !== false };
     stageLauncher({
       descriptor: descriptorFile,
       apk: options.apk,
@@ -306,6 +304,7 @@ export function stageImageLauncher(options: StageOptions) {
       apksigner: options.apksigner,
       development: options.development,
       env: options.env,
+      provisioning,
     });
     const launcherApk = path.join(staged, "Launcher.apk");
     const xml = execFileSync(
@@ -313,9 +312,12 @@ export function stageImageLauncher(options: StageOptions) {
       ["dump", "xmltree", launcherApk, "AndroidManifest.xml"],
       { encoding: "utf8", env: options.env, maxBuffer: 64 << 20 },
     );
-    const components = provisioningComponents(xml, descriptor.packageName, {
-      assistant: options.brand.assistantRole !== false,
-    });
+    // The evidence records the components stageLauncher provisioned.
+    const components = provisioningComponents(
+      xml,
+      descriptor.packageName,
+      provisioning,
+    );
     let native = null;
     if (product.nativeTarget) {
       native = stageAndroidNative({
@@ -336,7 +338,6 @@ export function stageImageLauncher(options: StageOptions) {
           `${product.productName} requires the admitted resident runtime`,
         );
     }
-    writeProvisioningOverlay(staged, descriptor.packageName, components);
     writeImageCapability(staged, descriptor.packageName);
     const productMakefile = path.join(staged, "product.mk");
     fs.writeFileSync(

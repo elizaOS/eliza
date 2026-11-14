@@ -8,8 +8,10 @@ import { createHash } from "node:crypto";
  * The launcher is nonprivileged unless the reviewed descriptor names permissions from
  * the closed REVIEWED_PRIVILEGED_PERMISSIONS set; it is then a priv-app whose allow-list
  * holds exactly those permissions.
- * This does not claim agent payload, default HOME policy, image boot, or release
- * qualification. The caller owns those separate gates.
+ * With `provisioning`, the overlay also makes the launcher default HOME on first boot
+ * (launcher-provisioning.mjs), checked against the staged APK's own manifest.
+ * This does not claim agent payload, image boot, or release qualification.
+ * The caller owns those separate gates.
  * Companion APKs (for example an update supervisor) are staged beside it only when
  * they carry the launcher's signer; they get no grants and no privileged placement.
  * Pinned browser and vault APKs are staged by stage-browser-apps.ts.
@@ -19,6 +21,10 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { crc32 } from "node:zlib";
+import {
+  provisioningComponents,
+  writeProvisioningOverlay,
+} from "./launcher-provisioning.mjs";
 import { soongAppNativePatch } from "./soong-app-native.mjs";
 
 /** A second presigned package of the same product, pinned by hash. Its signer pin is
@@ -597,6 +603,8 @@ export function stageLauncher(options: {
   nativeAbi?: NativeAbi;
   /** With nativeAbi: Android.mk (default) or the Soong-only soong-app-native rule. */
   nativeInstall?: NativeInstall;
+  /** Default HOME (and, with `assistant`, the assistant role) from the staged APK's manifest. */
+  provisioning?: { assistant: boolean };
 }) {
   if (
     options.nativeAbi !== undefined &&
@@ -660,7 +668,8 @@ export function stageLauncher(options: {
         run(options.aapt, ["dump", "xmltree", file, "AndroidManifest.xml"]),
         run(options.apksigner, ["verify", "--print-certs", file]),
       ] as const;
-    validateInspection(d, ...inspect(apk), options.development);
+    const inspection = inspect(apk);
+    validateInspection(d, ...inspection, options.development);
     for (const [c, file] of companionApks)
       validateCompanionInspection(d, c, ...inspect(file), options.development);
     const overlay = renderOverlay(d);
@@ -703,6 +712,16 @@ export function stageLauncher(options: {
       fs.writeFileSync(
         path.join(temporary, "privapp-permissions.xml"),
         overlay.privilegedPermissions,
+      );
+    if (options.provisioning)
+      writeProvisioningOverlay(
+        temporary,
+        d.packageName,
+        provisioningComponents(
+          inspection[1],
+          d.packageName,
+          options.provisioning,
+        ),
       );
     fs.writeFileSync(
       path.join(temporary, "launcher.json"),
