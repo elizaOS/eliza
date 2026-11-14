@@ -18,12 +18,13 @@ The examined consumer pin lists no patches in
 | Device actions reviewed on a foreground screen. | [Device action claim and receipt](./mobileDeviceExecution.md), [foreground device reviews](./mobileDeviceReview.md), [Photos and library receipts](./mobileDevicePhotos.md), [still-photo copy recovery](./mobilePhotoCopyRecovery.md), [original photo replacement](./mobilePhotoReplace.md), [video copy](./mobileVideoCopy.md), [owned custom albums](./mobileOwnedAlbums.md), and [owned Photos trash](./mobileOwnedPhotoTrash.md) |
 | Alpha video edit review reads a restricted media stream. | [Android video playback](./mobileVideoPlayback.md) |
 | Alpha Photos requests Android consent for its selected permitted media. | [Permitted-media mutation review](./mobilePermittedMediaReview.md) |
+| Grace and Alpha page through the permitted Photos library. | [Native catalog paging and cursor custody](./mobilePermittedMediaCatalog.md) |
 | Alpha Camera preview, recordings and scan documents. | [Viewfinder and recording custody](./mobileCameraCapture.md), [document scan review and export](./mobileDocumentScan.md), and [assistant photo receipt](./mobileDeviceCamera.md) |
 | Grace updater and the upstream trust AAR. | [OTA admission](./mobileOta.md), [runtime health observations](./grace/otaRuntimeHealth.md), [WebView health evidence](./mobileOtaUiHealth.md), and [installation journal](./mobileInstall.md) |
 | Grace launcher network setup and Internet Settings. | [Wi-Fi discovery and approved join](./mobileWifi.md) |
 | Alpha Android document picker and selected-file operations. | [Selected-document grant custody](./mobileSelectedDocumentGrants.md) and [Files preview and read-only handoff](./mobileFilesReadHandoff.md) |
 | Alpha Android Files moves, restores, and removes exact items. | [Native Files mutation custody](./mobileFilesMutationCustody.md) |
-| Alpha Inbox and Notes open a reviewed PDF without an external viewer. | [Isolated PDF fallback](./mobileIsolatedPdf.md) |
+| Alpha Inbox and Notes open reviewed PDFs and Files previews selected PDFs. | [Isolated PDF fallback](./mobileIsolatedPdf.md) and [selected PDF preview](./mobileSelectedPdfPreview.md) |
 | Grace and AlphaPhone Android contact picker and Alpha contact edits. | [Address book reads and reviewed writes](./mobileContacts.md) |
 | Alpha renderer drafts and Grace native key and credential custody. | [Encrypted JSON slot admission and readback](./mobileSecureSlots.md) |
 | Alpha Android Calendar deletion and Undo. | [Scoped review and provider dispatch](./mobileCalendarScopedDeletion.md), [deferred journal and Undo](./mobileDeferredDeletion.md) |

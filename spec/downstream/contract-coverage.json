@@ -4197,6 +4197,50 @@
         "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/EmbeddedRuntimeService.java"
       ],
       "relatedSpec": "spec/downstream/grace/otaRuntimeHealth.md"
+    },
+    {
+      "consumer": "AlphaPhone",
+      "consumerPaths": ["apps/app/src/prototype/camera-adapter.ts"],
+      "producerPaths": [
+        "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/PhotosPlugin.java",
+        "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/PermittedMediaCatalog.java"
+      ],
+      "relatedSpec": "spec/downstream/mobilePermittedMediaCatalog.md"
+    },
+    {
+      "consumer": "Grace",
+      "consumerPaths": ["apps/app/src/device-services.ts"],
+      "producerPaths": [
+        "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/PhotosPlugin.java",
+        "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/PermittedMediaCatalog.java"
+      ],
+      "relatedSpec": "spec/downstream/mobilePermittedMediaCatalog.md"
+    },
+    {
+      "consumer": "AlphaPhone",
+      "consumerPaths": [
+        "apps/app/src/prototype/selection-adapter.ts",
+        "android/app/src/main/java/ai/alphacompute/alphaphone/DailyAppsPlugin.java",
+        "android/app/src/main/java/ai/alphacompute/alphaphone/SelectedDocumentAccess.java"
+      ],
+      "producerPaths": [
+        "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/SelectedDocumentCalls.java",
+        "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/SelectedDocuments.java"
+      ],
+      "relatedSpec": "spec/downstream/mobileSelectedPdfPreview.md"
+    },
+    {
+      "consumer": "Grace",
+      "consumerPaths": [
+        "apps/app/src/runtime-client.ts",
+        "apps/app/src/reply-stream.ts",
+        "apps/app/host/local-agent-gateway.ts"
+      ],
+      "producerPaths": [
+        "packages/agent/native-host/gateway.mjs",
+        "packages/agent/src/api/conversation-routes.ts"
+      ],
+      "relatedSpec": "spec/downstream/grace/replyStreaming.md"
     }
   ]
 }
