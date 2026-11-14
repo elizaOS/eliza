@@ -60,6 +60,27 @@ object BrowserSurfaceRequests {
     }
 
     /**
+     * Why `answerSitePermission` resolved as it did: `ended` when the request was no longer held
+     * or the page left its origin, or when a missing Android permission could not be asked
+     * ([androidAnswered] false: no dialog, or Android returned no answer because another request
+     * was showing); `denied` when the host said no; `android-refused` only when Android was asked
+     * and some permission is still missing; else `granted`.
+     */
+    fun sitePermissionOutcome(held: Boolean, grant: Boolean, samePage: Boolean, missing: Boolean, androidAnswered: Boolean): String =
+        when {
+            !held -> "ended"
+            !grant -> "denied"
+            !samePage -> "ended"
+            !missing -> "granted"
+            androidAnswered -> "android-refused"
+            else -> "ended"
+        }
+
+    /** A grant of [kinds] lets the page play media without a gesture, as Chrome does while it captures. */
+    fun capturesMedia(kinds: Collection<String>): Boolean =
+        BrowserSitePrompt.CAMERA in kinds || BrowserSitePrompt.MICROPHONE in kinds
+
+    /**
      * The page's zoom as CSS pixels per device-independent pixel, to two places: 1 is the
      * page's own mobile size, below 1 a wide page shown whole, above 1 pinched in.
      */

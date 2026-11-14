@@ -112,6 +112,22 @@ class BrowserSurfaceRequestsTest {
     }
 
     @Test
+    fun aSitePermissionAnswerSaysWhy() {
+        fun outcome(held: Boolean = true, grant: Boolean = true, samePage: Boolean = true, missing: Boolean = false, androidAnswered: Boolean = false) =
+            BrowserSurfaceRequests.sitePermissionOutcome(held, grant, samePage, missing, androidAnswered)
+        assertEquals("granted", outcome())
+        assertEquals("granted", outcome(androidAnswered = true))
+        assertEquals("denied", outcome(grant = false, missing = true))
+        assertEquals("ended", outcome(held = false, grant = false))
+        assertEquals("ended", outcome(samePage = false))
+        assertEquals("android-refused", outcome(missing = true, androidAnswered = true))
+        // Android returned no answer (another request was showing) or no dialog could open.
+        assertEquals("ended", outcome(missing = true))
+        assertTrue(BrowserSurfaceRequests.capturesMedia(listOf("location", "microphone")))
+        assertFalse(BrowserSurfaceRequests.capturesMedia(listOf("location")))
+    }
+
+    @Test
     fun anAnswerTakesItsRequestOnce() {
         val holds = SurfaceHolds<String, Permission, String>()
         val (fileId, _) = holds.holdFile("input")
