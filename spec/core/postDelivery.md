@@ -133,7 +133,8 @@ pure def canCancelPostDrain(s: PostDelivery, drainId: int): bool = s.drains.some
 pure def cancelPostDrain(s: PostDelivery, drainId: int): PostDelivery = {
   val runtimeId = s.drains.select(d => d.id == drainId).nthOr(0, noPostDrain).runtime
   val quarantinedState = quarantineRuntime(s, runtimeId)
-  { ...quarantinedState, drains: s.drains.listMap(d => if (d.id == drainId) { ...d, phase: DrainFailed } else d) }
+  { ...quarantinedState, drains: s.drains.listMap(d =>
+    if (d.id == drainId) { ...d, phase: DrainFailed, failureLabels: quarantineErrorLabels(s, runtimeId) } else d) }
 }
 pure def alwaysDrainCountsNonnegative(s: PostDelivery): bool = s.drains.every(d => d.drained >= 0)
 pure def alwaysLiveTasksWereIssued(s: PostDelivery): bool = s.tasks.every(t => s.issuedTaskIds.contains(t.id))

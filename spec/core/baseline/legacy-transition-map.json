@@ -8574,7 +8574,7 @@
       "targets": [
         {
           "path": "spec/core/postDelivery.md",
-          "sha256": "6b2eedf3a5c5ebdc9f90e3e3da227fe7d754bc6f88229138c03cd0619e232f5e",
+          "sha256": "b648d17f32b8c3ef5cfe860c728b2bd4eb33789ea17b2c73773aa4b07bf27969",
           "definitions": [
             "noPostDrain",
             "initial",
@@ -10026,7 +10026,7 @@
         },
         {
           "path": "spec/core/postDelivery.md",
-          "sha256": "6b2eedf3a5c5ebdc9f90e3e3da227fe7d754bc6f88229138c03cd0619e232f5e",
+          "sha256": "b648d17f32b8c3ef5cfe860c728b2bd4eb33789ea17b2c73773aa4b07bf27969",
           "definitions": [
             "noPostDrain",
             "initial",
