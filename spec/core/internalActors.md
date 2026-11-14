@@ -6,6 +6,11 @@ The source is `packages/core/src/security/trusted-delivery-audience.ts` at the p
 
 ### Each disposer removes only its own registration
 
+The token represents the identity captured by a returned disposer. Its
+invocation supplies that captured identity. A runtime and actor remain
+trusted while any registration for that exact pair survives. Repeating a
+disposer cannot remove an overlapping registration.
+
 ```quint
 type InternalCaller = ManagedRuntime | ExternalCaller
 pure val byValues = Set(ManagedRuntime, ExternalCaller)
@@ -22,4 +27,20 @@ pure def dispose(s: InternalActors, by: InternalCaller, token: int): InternalAct
 pure def internalActorTrusted(s: InternalActors, runtime: str, actor: str): bool = s.registrations.some(entry => entry.runtime == runtime and entry.actor == actor)
 pure def alwaysRegistrationTokensAreUnique(s: InternalActors): bool = s.nextToken > 0 and s.registrations.every(entry => entry.token > 0 and entry.token < s.nextToken and s.registrations.select(other => other.token == entry.token).length() == 1)
 pure def sometimesOverlappingOwners(s: InternalActors): bool = s.registrations.select(entry => entry.runtime == "runtime1" and entry.actor == "actor1").length() > 1
+```
+
+### Disposing one reference retains every other registration
+
+The disposer removes the captured reference and preserves every reference
+with a different token, including registrations of the same runtime and
+actor.
+
+```quint
+pure val firstRegistration: InternalRegistration = { token: 1, runtime: "runtime1", actor: "actor1" }
+pure val secondRegistration: InternalRegistration = { token: 2, runtime: "runtime1", actor: "actor1" }
+pure val entryValues = Set(firstRegistration, secondRegistration, { token: 1, runtime: "runtime2", actor: "actor1" })
+pure val sValues = Set(initial, { nextToken: 3, registrations: List(firstRegistration, secondRegistration) })
+pure def lawDisposeKeepsOtherReferences(s: InternalActors, token: int, entry: InternalRegistration): bool =
+  dispose(s, ManagedRuntime, token).registrations.some(other => other == entry) ==
+    (s.registrations.some(other => other == entry) and entry.token != token)
 ```
