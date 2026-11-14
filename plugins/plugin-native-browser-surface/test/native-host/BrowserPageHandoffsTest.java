@@ -35,6 +35,9 @@ public final class BrowserPageHandoffsTest {
     equal(dialogs.take(first), "first", "an answer takes its own dialog");
     equal(dialogs.take(first), null, "a repeated answer does nothing");
     equal(dialogs.take(null), null, "a missing id does nothing");
+    String third = dialogs.open("third");
+    equal(dialogs.withdraw("third"::equals), java.util.Map.of(third, "third"), "a withdrawn request leaves by its id");
+    equal(dialogs.take(third), null, "a withdrawn request takes no answer");
     equal(dialogs.drain().size(), 1, "closing drains the rest");
     equal(dialogs.size(), 0, "nothing is left after drain");
     equal(BrowserPageHandoffs.text("Pay\u0000now?\nOK"), "Pay now?\nOK", "control characters are spaces");

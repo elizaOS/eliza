@@ -241,11 +241,12 @@ class ElizaSurfaceManagerPlugin : Plugin() {
     override fun handleOnDestroy() {
         keyboardListener?.let { activity.window.decorView.viewTreeObserver.removeOnGlobalLayoutListener(it) }
         keyboardListener = null
-        surfaces.values.forEach(::disposeSurface)
+        surfaces.forEach { (id, surface) -> disposeSurface(id, surface) }
         surfaces.clear()
         filePicker?.unregister()
         filePicker = null
-        downloads?.destroy()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) downloads?.destroy()
+        downloads = null
         inputRouter?.let { (it.parent as? ViewGroup)?.removeView(it) }
         inputRouter = null
         dockScope.cancel()
@@ -358,18 +359,24 @@ class ElizaSurfaceManagerPlugin : Plugin() {
 
     /** A page's file input, waiting for `answerFileChooser`. */
     private class HeldFileChooser(
-        val requestId: String,
         val callback: ValueCallback<Array<Uri>>,
         val acceptTypes: List<String>,
         val multiple: Boolean,
     )
 
-    /** A top-level page's camera, microphone or location request, waiting for `answerSitePermission`. */
-    private class HeldSitePermission(val origin: String, val kinds: List<String>, val answer: (Set<String>) -> Unit)
+    /**
+     * A top-level page's camera, microphone or location request, waiting for `answerSitePermission`.
+     * [source] is WebView's own request object, which names it when the page withdraws it.
+     */
+    private class HeldSitePermission(
+        val source: Any,
+        val origin: String,
+        val kinds: List<String>,
+        val answer: (Set<String>) -> Unit,
+    )
 
     /** A download the page asked for, waiting for `saveDownload`; its address never leaves native code again. */
     private class HeldDownload(
-        val requestId: String,
         val url: String,
         val download: BrowserPageHandoffs.Download,
         val userAgent: String?,
@@ -383,7 +390,11 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         val frame: FrameLayout,
         val callback: WebChromeClient.CustomViewCallback,
         val back: OnBackPressedCallback,
+        /** The host's system bars before fullscreen, restored after it. */
+        val bars: SystemBars,
     )
+
+    private class SystemBars(val behavior: Int, val status: Boolean, val navigation: Boolean)
 
     private data class HostOuterClip(
         val x: Double,
@@ -425,6 +436,11 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         var occlusions: List<HostOcclusionRect> = emptyList(),
         /** Cross-origin main-frame navigations wait for the host (BrowserNavigationPolicy). */
         val interceptNavigation: Boolean = false,
+        /**
+         * The owner answers this surface's page dialogs, file inputs and site permission requests
+         * (`answersRequests`), so they wait for it; any other surface's are dismissed at once.
+         */
+        val answersRequests: Boolean = false,
         /** Page dialogs waiting for the host's answer; dismissed whenever nobody can answer. */
         val dialogs: BrowserPageHandoffs.Dialogs<JsResult> = BrowserPageHandoffs.Dialogs(),
         /** The one other-app link the page asked for with a tap; `openExternalLink` may open only it. */
@@ -436,10 +452,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         val layer: SurfaceLayer = SurfaceLayer.ABOVE_HOST,
         /** Set by pauseSurface: WebView.onPause() was called and onResume() not yet. */
         var paused: Boolean = false,
-        var fileChooser: HeldFileChooser? = null,
-        val sitePermissions: BrowserPageHandoffs.Dialogs<HeldSitePermission> = BrowserPageHandoffs.Dialogs(),
-        /** The last download the page asked for; `saveDownload` may save only it. */
-        var pendingDownload: HeldDownload? = null,
+        /** File input, site permissions and the last download, waiting for the host. */
+        val holds: SurfaceHolds<HeldFileChooser, HeldSitePermission, HeldDownload> = SurfaceHolds(),
         /** The refused sign-in page (request id to address); `openIdentityProvider` may open only it. */
         var pendingIdentityProvider: Pair<String, String>? = null,
         /** The main-frame address a certificate error blocked, until the page moves on. */
@@ -502,8 +516,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             val (surface, requestId) = pickerFor ?: return@register
             pickerFor = null
             // A chooser the page navigated, hid or closed away from was already answered with nothing.
-            val held = surface.fileChooser?.takeIf { it.requestId == requestId } ?: return@register
-            surface.fileChooser = null
+            val held = surface.holds.takeFile(requestId) ?: return@register
             val picked = LinkedHashSet<Uri>()
             result.data?.data?.let(picked::add)
             result.data?.clipData?.let { clip -> for (i in 0 until clip.itemCount) clip.getItemAt(i).uri?.let(picked::add) }
@@ -690,7 +703,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
     private fun closeProfileSurfaces(name: String) {
         for ((id, surface) in surfaces.entries.filter { it.value.profileName == name }) {
             val live = isLive(surface)
-            closeRequests(surface)
+            closeRequests(id, surface)
             surface.control?.interrupt("The website sign-ins were removed", navigation = true)
             surface.container.visibility = View.GONE
             surface.foregrounded = false
@@ -718,23 +731,48 @@ class ElizaSurfaceManagerPlugin : Plugin() {
     /** A dialog nobody will answer is dismissed: alert/confirm/prompt cancel, never accept. */
     private fun dismissDialogs(surface: Surface) {
         surface.dialogs.drain().forEach { it.cancel() }
+    }
+
+    private fun endFullscreen(surface: Surface) {
         if (fullscreen?.surface === surface) exitFullscreen(tellPage = true)
     }
 
     /**
      * Ends what the page waits on, unanswered, once it navigated, was hidden or closed: dialogs
-     * cancel, a file input gets no files, site permissions are denied and fullscreen ends.
+     * cancel, fullscreen ends, a file input gets no files, site permissions are denied (the host
+     * hears `sitePermissionWithdrawn`) and the download waiting for `saveDownload` is dropped.
      * A paused page keeps its file input and permission requests, since the system picker or
      * the host's own Android permission prompt may be what covers it.
      */
-    private fun closeRequests(surface: Surface) {
+    private fun closeRequests(id: String, surface: Surface) {
         dismissDialogs(surface)
-        surface.fileChooser?.let {
-            surface.fileChooser = null
-            it.callback.onReceiveValue(null)
-        }
-        surface.sitePermissions.drain().forEach { it.answer(emptySet()) }
+        endFullscreen(surface)
+        val closed = surface.holds.close()
+        closed.file?.callback?.onReceiveValue(null)
+        closed.permissions.values.forEach { it.answer(emptySet()) }
+        sitePermissionsWithdrawn(id, surface, closed.permissions.keys)
     }
+
+    /** Tells the host its prompts for these site permission requests have nothing left to answer. */
+    private fun sitePermissionsWithdrawn(id: String, surface: Surface, requestIds: Collection<String>) {
+        if (!isLive(surface)) return
+        for (requestId in requestIds) {
+            notifyListeners("sitePermissionWithdrawn", surfaceEvent(id, surface).apply { put("requestId", requestId) })
+        }
+    }
+
+    /**
+     * The page withdrew a held site permission request (WebView's `onPermissionRequestCanceled`
+     * or `onGeolocationPermissionsHidePrompt`): it leaves unanswered and frees its place.
+     */
+    private fun withdrawSitePermissions(id: String, view: WebView, match: (HeldSitePermission) -> Boolean) {
+        val surface = surfaces[id]?.takeIf { it.webView === view } ?: return
+        sitePermissionsWithdrawn(id, surface, surface.holds.permissions.withdraw { match(it) }.keys)
+    }
+
+    /** Whether this surface's page may wait for the host to answer [event]. */
+    private fun answers(surface: Surface, event: String): Boolean =
+        (surface.answersRequests || (event == "dialogRequested" && surface.interceptNavigation)) && hasListeners(event)
 
     private fun declared(permission: String): Boolean = try {
         activity.packageManager.getPackageInfo(activity.packageName, PackageManager.GET_PERMISSIONS)
@@ -752,16 +790,25 @@ class ElizaSurfaceManagerPlugin : Plugin() {
 
     /**
      * Holds a camera, microphone or location request of a shown page's own top-level origin for the
-     * host ([BrowserSitePrompt.origin]); anything else is denied at once. An embedded frame's request
-     * is still reported, with `topFrame: false` and no request id, so the host can say it was blocked.
-     * Kinds the host app declares no Android permission for are never offered.
+     * host ([BrowserSitePrompt.origin]); anything else is denied at once. WebView names only the
+     * requesting origin, never the frame, so a frame of the page's own origin counts as the page.
+     * Another origin's request is still reported, with `topFrame: false` and no request id, so the
+     * host can say it was blocked. Kinds the host app declares no Android permission for are never
+     * offered.
      */
-    private fun holdSitePermission(id: String, view: WebView, requested: String?, asked: List<String>, answer: (Set<String>) -> Unit) {
+    private fun holdSitePermission(
+        id: String,
+        view: WebView,
+        source: Any,
+        requested: String?,
+        asked: List<String>,
+        answer: (Set<String>) -> Unit,
+    ) {
         val surface = surfaces[id]
         val kinds = asked.filter { BrowserSurfaceRequests.androidPermissionsToAsk(it, ::declared, ::granted) != null }
-        if (surface == null || surface.webView !== view || kinds.isEmpty() || !hasListeners("sitePermissionRequested") ||
+        if (surface == null || surface.webView !== view || kinds.isEmpty() || !answers(surface, "sitePermissionRequested") ||
             !BrowserPageHandoffs.dialogMayWait(isLive(surface), surface.foregrounded && !surface.paused,
-                surface.sitePermissions.size())) {
+                surface.holds.permissions.size())) {
             answer(emptySet())
             return
         }
@@ -771,7 +818,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         // An insecure page's own request is refused without a word, as Chromium would.
         if (origin == null && topFrame) return
         notifyListeners("sitePermissionRequested", surfaceEvent(id, surface).apply {
-            put("requestId", origin?.let { surface.sitePermissions.open(HeldSitePermission(it, kinds, answer)) } ?: JSObject.NULL)
+            put("requestId", origin?.let { surface.holds.permissions.open(HeldSitePermission(source, it, kinds, answer)) } ?: JSObject.NULL)
             put("origin", origin ?: BrowserWebOrigin.of(requested) ?: JSObject.NULL)
             put("kinds", JSONArray(kinds))
             put("topFrame", topFrame)
@@ -791,16 +838,20 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         }
         activity.findViewById<ViewGroup>(android.R.id.content).addView(frame,
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        WindowCompat.getInsetsController(activity.window, activity.window.decorView).apply {
-            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            hide(WindowInsetsCompat.Type.systemBars())
-        }
+        val decor = activity.window.decorView
+        val insets = ViewCompat.getRootWindowInsets(decor)
+        val bars = WindowCompat.getInsetsController(activity.window, decor)
+        val before = SystemBars(bars.systemBarsBehavior,
+            insets?.isVisible(WindowInsetsCompat.Type.statusBars()) ?: true,
+            insets?.isVisible(WindowInsetsCompat.Type.navigationBars()) ?: true)
+        bars.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        bars.hide(WindowInsetsCompat.Type.systemBars())
         // Added last, so Back leaves fullscreen before the host hears it.
         val back = object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() = exitFullscreen(tellPage = true)
         }
         activity.onBackPressedDispatcher.addCallback(back)
-        fullscreen = Fullscreen(id, surface, frame, callback, back)
+        fullscreen = Fullscreen(id, surface, frame, callback, back, before)
         notifyListeners("fullscreenChanged", surfaceEvent(id, surface).apply { put("active", true) })
     }
 
@@ -811,7 +862,12 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         shown.back.remove()
         shown.frame.removeAllViews()
         (shown.frame.parent as? ViewGroup)?.removeView(shown.frame)
-        WindowCompat.getInsetsController(activity.window, activity.window.decorView).show(WindowInsetsCompat.Type.systemBars())
+        // The host's own bars come back as they were: an immersive host stays immersive.
+        WindowCompat.getInsetsController(activity.window, activity.window.decorView).apply {
+            systemBarsBehavior = shown.bars.behavior
+            if (shown.bars.status) show(WindowInsetsCompat.Type.statusBars()) else hide(WindowInsetsCompat.Type.statusBars())
+            if (shown.bars.navigation) show(WindowInsetsCompat.Type.navigationBars()) else hide(WindowInsetsCompat.Type.navigationBars())
+        }
         if (tellPage) {
             try {
                 shown.callback.onCustomViewHidden()
@@ -881,8 +937,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         result: JsResult,
     ): Boolean {
         val surface = surfaces[id]
-        // A held dialog freezes the page, so it waits only while the host listens for it.
-        if (surface == null || surface.webView !== view || !hasListeners("dialogRequested") ||
+        // A held dialog freezes the page, so it waits only for an owner that answers it.
+        if (surface == null || surface.webView !== view || !answers(surface, "dialogRequested") ||
             !BrowserPageHandoffs.dialogMayWait(isLive(surface), surface.foregrounded && !surface.paused,
                 surface.dialogs.size())) {
             result.cancel()
@@ -899,10 +955,9 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         return true
     }
 
-    private fun disposeSurface(surface: Surface) {
-        closeRequests(surface)
+    private fun disposeSurface(id: String, surface: Surface) {
+        closeRequests(id, surface)
         surface.pendingExternalLink = null
-        surface.pendingDownload = null
         surface.pendingIdentityProvider = null
         if (!surface.disposed) {
             surface.historyObservation = null
@@ -937,6 +992,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         }
         val url = call.getString("url")
         val interceptNavigation = call.getBoolean("interceptNavigation", false) ?: false
+        val answersRequests = call.getBoolean("answersRequests", false) ?: false
         val profileKey = call.getString("profileKey")
         if (profileKey != null && (storage != "isolated" || !BrowserProfilePolicy.validKey(profileKey))) {
             call.reject("createSurface profileKey needs isolated storage and 1 to 128 plain characters")
@@ -962,6 +1018,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     existing.epoch != identity.epoch ||
                     existing.process != process || existing.storage != storage ||
                     existing.interceptNavigation != interceptNavigation ||
+                    existing.answersRequests != answersRequests ||
                     existing.profileKey != profileKey || existing.layer != layer
                 ) {
                     call.reject("surface $id already exists with different owner/session/policy")
@@ -1069,7 +1126,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                         it.pageError = null
                         // The error page of a blocked address commits at that address.
                         if (it.securityBlocked != url) it.securityBlocked = null
-                        closeRequests(it)
+                        closeRequests(id, it)
                         it.pendingExternalLink = null
                         it.pendingIdentityProvider = null
                     }
@@ -1103,10 +1160,11 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     }, surface, 150)
                 }
 
+                // A refused certificate stays the page's error: WebView follows it with a generic one.
                 override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
-                    if (request.isForMainFrame) {
-                        surfaces.values.firstOrNull { it.webView === view }?.pageError = error.description.toString()
-                    }
+                    if (!request.isForMainFrame) return
+                    val surface = surfaces.values.firstOrNull { it.webView === view } ?: return
+                    if (surface.securityBlocked != request.url.toString()) surface.pageError = error.description.toString()
                 }
 
                 override fun onPageFinished(view: WebView, url: String) {
@@ -1143,7 +1201,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     val url = view.url
                     val live = isLive(surface)
                     try {
-                        disposeSurface(surface)
+                        disposeSurface(id, surface)
                     } catch (error: RuntimeException) {
                         // error-policy:J1 A dead renderer must never take the host down with it.
                         Log.w(TAG, "Could not release crashed Browser surface", error)
@@ -1175,16 +1233,16 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 override fun onShowFileChooser(view: WebView, callback: ValueCallback<Array<Uri>>, params: FileChooserParams): Boolean {
                     val surface = surfaces[id]
                     if (surface == null || surface.webView !== view || !isLive(surface) || !surface.foregrounded ||
-                        surface.paused || params.mode == FileChooserParams.MODE_SAVE || !hasListeners("fileChooserRequested")) {
+                        surface.paused || params.mode == FileChooserParams.MODE_SAVE || !answers(surface, "fileChooserRequested")) {
                         callback.onReceiveValue(null)
                         return true
                     }
-                    surface.fileChooser?.callback?.onReceiveValue(null)
-                    val held = HeldFileChooser(UUID.randomUUID().toString(), callback,
+                    val held = HeldFileChooser(callback,
                         BrowserSurfaceRequests.acceptTypes(params.acceptTypes), params.mode == FileChooserParams.MODE_OPEN_MULTIPLE)
-                    surface.fileChooser = held
+                    val (requestId, replaced) = surface.holds.holdFile(held)
+                    replaced?.callback?.onReceiveValue(null)
                     notifyListeners("fileChooserRequested", surfaceEvent(id, surface).apply {
-                        put("requestId", held.requestId)
+                        put("requestId", requestId)
                         put("acceptTypes", JSONArray(held.acceptTypes))
                         put("multiple", held.multiple)
                         put("capture", params.isCaptureEnabled)
@@ -1193,7 +1251,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 }
 
                 override fun onPermissionRequest(request: PermissionRequest) =
-                    holdSitePermission(id, webView, request.origin?.toString(), BrowserSurfaceRequests.mediaKinds(request.resources)) { granted ->
+                    holdSitePermission(id, webView, request, request.origin?.toString(), BrowserSurfaceRequests.mediaKinds(request.resources)) { granted ->
                         val resources = BrowserSurfaceRequests.mediaResources(granted)
                         try {
                             if (resources.isEmpty()) request.deny() else request.grant(resources.toTypedArray())
@@ -1204,9 +1262,16 @@ class ElizaSurfaceManagerPlugin : Plugin() {
 
                 // Never retained: WebView asks again next time, and the host answers again.
                 override fun onGeolocationPermissionsShowPrompt(origin: String?, callback: GeolocationPermissions.Callback) =
-                    holdSitePermission(id, webView, origin, listOf(BrowserSitePrompt.LOCATION)) { granted ->
+                    holdSitePermission(id, webView, callback, origin, listOf(BrowserSitePrompt.LOCATION)) { granted ->
                         callback.invoke(origin, BrowserSitePrompt.LOCATION in granted, false)
                     }
+
+                // The page withdrew its request (it navigated, or the frame went away), as the tab host hears too.
+                override fun onPermissionRequestCanceled(request: PermissionRequest) =
+                    withdrawSitePermissions(id, webView) { it.source === request }
+
+                override fun onGeolocationPermissionsHidePrompt() =
+                    withdrawSitePermissions(id, webView) { it.source is GeolocationPermissions.Callback }
 
                 override fun onShowCustomView(view: View, callback: CustomViewCallback) {
                     val surface = surfaces[id]
@@ -1281,11 +1346,10 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 if (surface == null || surface.webView !== webView || !isLive(surface)) return@setDownloadListener
                 val download = BrowserPageHandoffs.Download(downloadUrl,
                     URLUtil.guessFileName(downloadUrl, contentDisposition, mimeType), mimeType, contentLength)
-                val held = HeldDownload(UUID.randomUUID().toString(), downloadUrl, download, userAgent,
-                    BrowserWebOrigin.of(webView.url))
-                surface.pendingDownload = held
+                val requestId = surface.holds.holdDownload(
+                    HeldDownload(downloadUrl, download, userAgent, BrowserWebOrigin.of(webView.url)))
                 notifyListeners("downloadRequested", surfaceEvent(id, surface).apply {
-                    put("requestId", held.requestId)
+                    put("requestId", requestId)
                     put("url", download.url ?: JSObject.NULL)
                     put("fileName", download.fileName)
                     put("mimeType", download.mimeType)
@@ -1400,6 +1464,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 false,
                 control,
                 interceptNavigation = interceptNavigation,
+                answersRequests = answersRequests,
                 gate = gate,
                 profileKey = profileKey,
                 layer = layer,
@@ -1722,7 +1787,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         activity.runOnUiThread {
             val identity = requireActiveIdentity(call, "answerFileChooser") ?: return@runOnUiThread
             val surface = ownedSurface(call, id, identity, "answerFileChooser") ?: return@runOnUiThread
-            val held = surface.fileChooser?.takeIf { it.requestId == requestId } ?: run {
+            val held = surface.holds.file(requestId) ?: run {
                 call.reject("This file request is no longer open", "FILE_CHOOSER_CLOSED")
                 return@runOnUiThread
             }
@@ -1731,7 +1796,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 return@runOnUiThread
             }
             if (!open) {
-                surface.fileChooser = null
+                surface.holds.takeFile(requestId)
                 held.callback.onReceiveValue(null)
                 call.resolve()
                 return@runOnUiThread
@@ -1746,7 +1811,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             } catch (error: RuntimeException) {
                 // error-policy:J1 No picker means no files, never a stuck page.
                 pickerFor = null
-                surface.fileChooser = null
+                surface.holds.takeFile(requestId)
                 held.callback.onReceiveValue(null)
                 call.reject("No file picker is available", "FILE_CHOOSER_UNAVAILABLE", error)
             }
@@ -1769,7 +1834,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         activity.runOnUiThread {
             val identity = requireActiveIdentity(call, "answerSitePermission") ?: return@runOnUiThread
             val surface = ownedSurface(call, id, identity, "answerSitePermission") ?: return@runOnUiThread
-            val held = surface.sitePermissions.get(requestId) ?: run {
+            val held = surface.holds.permissions.get(requestId) ?: run {
                 call.reject("This permission request is no longer open", "SITE_PERMISSION_CLOSED")
                 return@runOnUiThread
             }
@@ -1778,7 +1843,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     "ANDROID_PERMISSION_REQUIRED")
                 return@runOnUiThread
             }
-            surface.sitePermissions.take(requestId)
+            surface.holds.permissions.take(requestId)
             held.answer(if (grant && BrowserWebOrigin.of(surface.webView.url) == held.origin) held.kinds.toSet() else emptySet())
             call.resolve()
         }
@@ -1796,18 +1861,18 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             call.reject("saveDownload requires an id and a requestId", "INVALID_REQUEST")
             return
         }
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            call.reject("Saving downloads needs Android 10", "UNSUPPORTED")
-            return
-        }
         activity.runOnUiThread {
+            // Checked here, inside the task that uses BrowserDownloads, so lint sees the guard.
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                call.reject("Saving downloads needs Android 10", "UNSUPPORTED")
+                return@runOnUiThread
+            }
             val identity = requireActiveIdentity(call, "saveDownload") ?: return@runOnUiThread
             val surface = ownedSurface(call, id, identity, "saveDownload") ?: return@runOnUiThread
-            val held = surface.pendingDownload?.takeIf { it.requestId == requestId } ?: run {
+            val held = surface.holds.takeDownload(requestId) ?: run {
                 call.reject("This download is no longer waiting", "DOWNLOAD_NOT_PENDING")
                 return@runOnUiThread
             }
-            surface.pendingDownload = null
             // A blob: body lives only in the page; capturing it is the tab host's job.
             if (held.url.regionMatches(0, "blob:", 0, 5, ignoreCase = true)) {
                 call.reject("This file exists only inside the page and cannot be saved here", "DOWNLOAD_UNSUPPORTED")
@@ -1818,7 +1883,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             val source = BrowserDownloads.Source(id, false, held.pageOrigin, { cookies.getCookie(held.url) }, held.userAgent)
             val saver = downloads ?: BrowserDownloads(context, BrowserDownloads.Config(DOWNLOAD_PREFS, false)).also { downloads = it }
             saver.save(source, held.url, held.download.fileName, held.download.mimeType) { saved ->
-                if (!activeOwners.isActive(identity)) return@save
+                // A surface closed or replaced meanwhile has nobody to tell.
+                if (surfaces[id] !== surface || !isLive(surface)) return@save
                 notifyListeners("downloadFinished", surfaceEvent(id, surface).apply {
                     put("requestId", requestId)
                     put("status", if (saved == null) "failed" else "saved")
@@ -1850,13 +1916,18 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 return@runOnUiThread
             }
             surface.pendingIdentityProvider = null
-            val tab = CustomTabsIntent.Builder().build()
-            tab.intent.data = Uri.parse(url)
-            val resolved = tab.intent.resolveActivity(activity.packageManager)
-            if (resolved == null || resolved.packageName == activity.packageName) {
+            // Browsers answer any https address; an app that claims only certain sites does not.
+            val anyPage = Intent(Intent.ACTION_VIEW, Uri.parse("https://")).addCategory(Intent.CATEGORY_BROWSABLE)
+            val packages = activity.packageManager
+            val browser = BrowserSurfaceRequests.identityBrowser(activity.packageName,
+                packages.resolveActivity(anyPage, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName,
+                packages.queryIntentActivities(anyPage, PackageManager.MATCH_ALL).map { it.activityInfo.packageName }) ?: run {
                 call.reject("No browser on this device opens this sign-in page", "IDENTITY_BROWSER_UNAVAILABLE")
                 return@runOnUiThread
             }
+            val tab = CustomTabsIntent.Builder().build()
+            // Named outright, so the refused page never comes back into this app.
+            tab.intent.setPackage(browser)
             try {
                 tab.launchUrl(activity, Uri.parse(url))
                 call.resolve(JSObject().apply { put("status", "dispatched") })
@@ -2311,7 +2382,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 activeOwners.isActive(identity) && surfaces[id] === surface && !surface.disposed &&
                     (cleanup || (activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
                     surface.foregrounded && !surface.paused && surface.webView.progress == 100 &&
-                    surface.pageError == null)) &&
+                    surface.pageError == null && surface.securityBlocked == null)) &&
                     surface.pageRevision == revision && surface.webView.url == url
             }
         }
@@ -2327,11 +2398,11 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 ownedSurface(call, it, identity, "presentSurface")
                     ?: return@runOnUiThread
             }
-            for (surface in surfaces.values) {
+            for ((surfaceId, surface) in surfaces) {
                 if (surface.owner == owner) {
                     if (surface !== selected) {
                         surface.control?.interrupt("The native page was hidden")
-                        closeRequests(surface)
+                        closeRequests(surfaceId, surface)
                         surface.historyObservation = null
                     }
                     surface.container.visibility = View.GONE
@@ -2378,6 +2449,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     surface.historyObservation = null
                     surface.control?.interrupt("The native page was paused")
                     dismissDialogs(surface)
+                    endFullscreen(surface)
                     if (surface.webView.hasFocus()) {
                         activity.getSystemService(android.view.inputmethod.InputMethodManager::class.java)
                             ?.hideSoftInputFromWindow(surface.webView.windowToken, 0)
@@ -2414,7 +2486,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 return@runOnUiThread
             }
             try {
-                disposeSurface(surface)
+                disposeSurface(id, surface)
                 surfaces.remove(id)
                 call.resolve()
             } catch (error: RuntimeException) {
@@ -2508,10 +2580,12 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             }
             // Presentation is fenced before fallible cleanup so a stale page
             // cannot remain visible or interactive after its realm is retired.
-            for (surface in surfaces.values) {
+            for ((surfaceId, surface) in surfaces) {
                 if (surface.owner == owner) {
                     surface.historyObservation = null
                     surface.control?.interrupt("The native owner was reconciled")
+                    // Hidden here as by presentSurface, so what the page waits on ends the same way.
+                    closeRequests(surfaceId, surface)
                     surface.container.visibility = View.GONE
                     surface.foregrounded = false
                 }
@@ -2528,7 +2602,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     .map { it.key }
                 for (id in staleIds) {
                     val surface = surfaces.getValue(id)
-                    disposeSurface(surface)
+                    disposeSurface(id, surface)
                     surfaces.remove(id)
                 }
                 call.resolve()
@@ -2553,7 +2627,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         put("canGoBack", surface.webView.canGoBack())
         put("canGoForward", surface.webView.canGoForward())
         put("progress", surface.webView.progress)
-        put("pageError", surface.pageError ?: surface.securityBlocked?.let { CERTIFICATE_REFUSED } ?: JSObject.NULL)
+        put("pageError", surface.securityBlocked?.let { CERTIFICATE_REFUSED } ?: surface.pageError ?: JSObject.NULL)
         put("securityBlocked", surface.securityBlocked != null)
         put("textZoom", surface.webView.settings.textZoom)
         put("pageScale", surface.pageScale)
