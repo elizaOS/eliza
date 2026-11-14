@@ -11,12 +11,13 @@ As a host I authorize bounded model attempts with a concrete provider tariff, ex
 Allowance closure and session abort apply to all its leases. A turn abort closes only its own lease. Absolute wall-clock observations may move backward, as `Date.now()` can. Expiry alone does not close an allowance: an expired but unclosed allowance can become time-eligible after a rewind. The `expiryObserved` flag is a verification history monitor, not additional runtime state.
 
 ```quint
+import unicode as U from "./unicode"
 type Tariff = {provider: str, model: str, route: str, inputRate: int, outputRate: int, inputBound: int}
 type AllowanceInput = {budget: int, maxAttempts: int, maxOutput: int, expiresAt: int, tariffs: List[Tariff]}
-type AttemptReservationInput = {messageId: str, provider: str, model: str, route: str, byteCount: int, bytes: str, outputTokens: int, currentTurn: bool}
+type AttemptReservationInput = {messageId: str, provider: str, model: str, route: str, codeUnits: List[int], outputTokens: int, currentTurn: bool}
 type Allowance = {id: int, remaining: int, attemptsRemaining: int, maxOutput: int, expiresAt: int, closed: bool, expiryObserved: bool, tariffs: List[Tariff]}
 type AttemptLease = {id: int, allowance: int, messageId: str, ended: bool}
-type Reservation = {lease: int, amount: int, provider: str, model: str, route: str, bytes: str}
+type Reservation = {lease: int, amount: int, provider: str, model: str, route: str, codeUnits: List[int]}
 type ModelLeases = {now: int, allowances: List[Allowance], leases: List[AttemptLease], reservations: List[Reservation]}
 pure val initial: ModelLeases = {now: 0, allowances: List(), leases: List(), reservations: List()}
 pure val allowanceIdValues = Set(1, 2)
@@ -33,13 +34,13 @@ pure val modelValues = Set("small", "large")
 pure val routeValues = Set("text", "missing")
 pure val outputTokensValues = Set(0, 1, 10)
 pure val reservationInputValues = Set(
-  {messageId: "turn-a", provider: "alpha", model: "small", route: "text", byteCount: 10, bytes: "complete request", outputTokens: 1, currentTurn: true},
-  {messageId: "turn-b", provider: "alpha", model: "small", route: "text", byteCount: 10, bytes: "complete request", outputTokens: 10, currentTurn: true},
-  {messageId: "turn-a", provider: "beta", model: "large", route: "text", byteCount: 10, bytes: "complete request", outputTokens: 1, currentTurn: true},
-  {messageId: "turn-a", provider: "alpha", model: "small", route: "missing", byteCount: 10, bytes: "complete request", outputTokens: 1, currentTurn: true},
-  {messageId: "turn-a", provider: "alpha", model: "small", route: "text", byteCount: 200, bytes: "complete request", outputTokens: 1, currentTurn: true},
-  {messageId: "turn-a", provider: "alpha", model: "small", route: "text", byteCount: 10, bytes: "complete request", outputTokens: 0, currentTurn: true},
-  {messageId: "turn-a", provider: "alpha", model: "small", route: "text", byteCount: 10, bytes: "complete request", outputTokens: 1, currentTurn: false})
+  {messageId: "turn-a", provider: "alpha", model: "small", route: "text", codeUnits: List(65, 55357, 56832), outputTokens: 1, currentTurn: true},
+  {messageId: "turn-b", provider: "alpha", model: "small", route: "text", codeUnits: List(65, 55357, 56832), outputTokens: 10, currentTurn: true},
+  {messageId: "turn-a", provider: "beta", model: "large", route: "text", codeUnits: List(65, 55357, 56832), outputTokens: 1, currentTurn: true},
+  {messageId: "turn-a", provider: "alpha", model: "small", route: "missing", codeUnits: List(65, 55357, 56832), outputTokens: 1, currentTurn: true},
+  {messageId: "turn-a", provider: "alpha", model: "small", route: "text", codeUnits: List(55357, 56832, 55357, 56832, 55357, 56832, 55357, 56832, 55357, 56832, 65), outputTokens: 1, currentTurn: true},
+  {messageId: "turn-a", provider: "alpha", model: "small", route: "text", codeUnits: List(65, 55357, 56832), outputTokens: 0, currentTurn: true},
+  {messageId: "turn-a", provider: "alpha", model: "small", route: "text", codeUnits: List(65, 55357, 56832), outputTokens: 1, currentTurn: false})
 pure val nowValues = Set(-1, 0, 1, 10, 100, 101)
 pure val noAllowance: Allowance = {id: 0, remaining: 0, attemptsRemaining: 0, maxOutput: 0, expiresAt: 0, closed: true, expiryObserved: false, tariffs: List()}
 pure val noLease: AttemptLease = {id: 0, allowance: 0, messageId: "", ended: true}
@@ -65,7 +66,7 @@ pure def sometimesIndependentTurnLeases(s: ModelLeases): bool = s.leases.some(a 
 
 ### Each qualified attempt consumes the tariff reservation atomically
 
-Reservation receives one correlated request record with its captured route, byte observation and turn authority. Provider, model and route match the first qualified tariff. The request bytes fit its conservative input bound and an explicit output count fits the allowance cap. Funds and attempts are never refunded.
+Reservation receives the complete serialized UTF-16 sequence with its captured route and turn authority. Provider, model and route match the first qualified tariff. The UTF-8 length of that sequence fits its conservative input bound and an explicit output count fits the allowance cap. Each code unit must fit the unsigned 16-bit range. Funds and attempts are never refunded.
 
 Discovered by the proof. Every retained allowance has a positive distinct identity, so a lease can resolve its captured allowance after an unrelated allowance update.
 
@@ -97,16 +98,20 @@ pure def canReserveAttempt(s: ModelLeases, leaseId: int, reservationInput: Attem
   val lease = issuedLease(s, leaseId)
   val account = allowance(s, lease.allowance)
   val tariff = selectedTariff(s, leaseId, reservationInput.provider, reservationInput.model, reservationInput.route)
-  leaseContextValid(s, leaseId, reservationInput.messageId) and not(lease.ended) and not(account.closed) and s.now < account.expiresAt and reservationInput.currentTurn and tariff.provider != "" and reservationInput.byteCount >= 0 and reservationInput.byteCount <= tariff.inputBound and reservationInput.outputTokens > 0 and reservationInput.outputTokens <= account.maxOutput and account.attemptsRemaining > 0 and reservationCharge(tariff, reservationInput.outputTokens, account.remaining).within
+  leaseContextValid(s, leaseId, reservationInput.messageId) and not(lease.ended) and not(account.closed) and s.now < account.expiresAt and reservationInput.currentTurn and tariff.provider != "" and U::validCodeUnits(reservationInput.codeUnits) and U::utf8Length(reservationInput.codeUnits) <= tariff.inputBound and reservationInput.outputTokens > 0 and reservationInput.outputTokens <= account.maxOutput and account.attemptsRemaining > 0 and reservationCharge(tariff, reservationInput.outputTokens, account.remaining).within
 }
 pure def reserveAttempt(s: ModelLeases, leaseId: int, reservationInput: AttemptReservationInput): ModelLeases = {
   val accountId = issuedLease(s, leaseId).allowance
   val charge = reservationCharge(selectedTariff(s, leaseId, reservationInput.provider, reservationInput.model, reservationInput.route), reservationInput.outputTokens, allowance(s, accountId).remaining).whole
-  { ...s, allowances: s.allowances.listMap(a => if (a.id == accountId) { ...a, remaining: a.remaining - charge, attemptsRemaining: a.attemptsRemaining - 1 } else a), reservations: s.reservations.append({lease: leaseId, amount: charge, provider: reservationInput.provider, model: reservationInput.model, route: reservationInput.route, bytes: reservationInput.bytes}) }
+  { ...s, allowances: s.allowances.listMap(a => if (a.id == accountId) { ...a, remaining: a.remaining - charge, attemptsRemaining: a.attemptsRemaining - 1 } else a), reservations: s.reservations.append({lease: leaseId, amount: charge, provider: reservationInput.provider, model: reservationInput.model, route: reservationInput.route, codeUnits: reservationInput.codeUnits}) }
 }
 pure def alwaysAllowancesNonnegative(s: ModelLeases): bool = s.allowances.every(a => a.remaining >= 0 and a.attemptsRemaining >= 0)
 pure def stepAllowanceNeverRefunded(before: ModelLeases, after: ModelLeases): bool = before.allowances.every(a => after.allowances.some(b => b.id == a.id and b.remaining <= a.remaining and b.attemptsRemaining <= a.attemptsRemaining and (not(a.closed) or b.closed)))
 pure def stepClosedLeaseStaysClosed(before: ModelLeases, after: ModelLeases): bool = before.leases.every(l => after.leases.some(other => other.id == l.id and (not(l.ended) or other.ended)))
 pure def lawAffordableChargeBound(t: Tariff, outputTokens: int, remaining: int): bool = reservationCharge(t, outputTokens, remaining).within implies reservationCharge(t, outputTokens, remaining).whole >= 0 and reservationCharge(t, outputTokens, remaining).whole <= remaining
+pure def lawOversizeReservationRefused(s: ModelLeases, leaseId: int, reservationInput: AttemptReservationInput): bool = {
+  val tariff = selectedTariff(s, leaseId, reservationInput.provider, reservationInput.model, reservationInput.route)
+  U::utf8Length(reservationInput.codeUnits) > tariff.inputBound implies not(canReserveAttempt(s, leaseId, reservationInput))
+}
 pure def sometimesReservationDebited(s: ModelLeases): bool = s.reservations.length() > 0
 ```

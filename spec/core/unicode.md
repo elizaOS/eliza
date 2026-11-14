@@ -8,10 +8,11 @@ As a caller, I want emoji and multilingual text preserved across encoding and au
 
 ### Byte counting combines surrogate pairs and replaces unpaired surrogates
 
-ASCII code units consume one UTF-8 byte, code units below 2048 consume two, other BMP code units consume three, and a high/low surrogate pair consumes four. A lone surrogate has the three-byte replacement representation. This function counts the entire supplied sequence.
+ASCII code units consume one UTF-8 byte, code units below 2048 consume two, other BMP code units consume three, and a high/low surrogate pair consumes four. A lone surrogate has the three-byte replacement representation. This function counts the entire supplied sequence. Consumers validate each supplied code unit fits the unsigned 16-bit range.
 
 ```quint
 type Utf8Counter = { pendingHigh: bool, bytes: int }
+pure def validCodeUnits(codeUnits: List[int]): bool = codeUnits.every(code => code >= 0 and code <= 65535)
 pure def highSurrogate(code: int): bool = code >= 55296 and code <= 56319
 pure def lowSurrogate(code: int): bool = code >= 56320 and code <= 57343
 pure def countStandalone(bytes: int, code: int): Utf8Counter = if (highSurrogate(code)) { pendingHigh: true, bytes: bytes } else { pendingHigh: false, bytes: bytes + (if (code < 128) 1 else if (code < 2048) 2 else 3) }

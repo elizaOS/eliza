@@ -6,7 +6,7 @@ lemma PreparedLeaseOwner(s: PreparedRequests)
 lemma PreparedGuardRecordsPreserved(s: PreparedRequests, after: PreparedRequests)
   requires alwaysExactBudgetAdmission(s) && alwaysGuardIdsUnique(s)
   requires |after.guards| == |s.guards|
-  requires forall i :: 0 <= i < |s.guards| ==> after.guards[i].id == s.guards[i].id && after.guards[i].bytes == s.guards[i].bytes && after.guards[i].inputCount == s.guards[i].inputCount && after.guards[i].countSource == s.guards[i].countSource && after.guards[i].threshold == s.guards[i].threshold && after.guards[i].phase == s.guards[i].phase && after.guards[i].exactAuthority == s.guards[i].exactAuthority
+  requires forall i :: 0 <= i < |s.guards| ==> after.guards[i].id == s.guards[i].id && after.guards[i].codeUnits == s.guards[i].codeUnits && after.guards[i].inputCount == s.guards[i].inputCount && after.guards[i].countSource == s.guards[i].countSource && after.guards[i].threshold == s.guards[i].threshold && after.guards[i].phase == s.guards[i].phase && after.guards[i].exactAuthority == s.guards[i].exactAuthority
   ensures stepGuardBytesStayFixed(s, after)
   ensures alwaysExactBudgetAdmission(after) && alwaysGuardIdsUnique(after)
 {
@@ -17,7 +17,7 @@ lemma PreparedGuardRecordsPreserved(s: PreparedRequests, after: PreparedRequests
     assert s.guards[i] in s.guards;
     ProofLib.FilterLengthPointwise((other: PreparedGuard) => (other.id == g.id), (other: PreparedGuard) => (other.id == g.id), s.guards, after.guards);
   }
-  forall g | g in s.guards ensures exists a :: a in after.guards && a.id == g.id && a.bytes == g.bytes && a.inputCount == g.inputCount && a.countSource == g.countSource
+  forall g | g in s.guards ensures exists a :: a in after.guards && a.id == g.id && a.codeUnits == g.codeUnits && a.inputCount == g.inputCount && a.countSource == g.countSource
   {
     var i :| 0 <= i < |s.guards| && s.guards[i] == g;
     assert after.guards[i] in after.guards;
@@ -29,38 +29,38 @@ lemma PreparedGuardRecordsPreserved(s: PreparedRequests, after: PreparedRequests
   }
 }
 
-lemma dispatchPrepared_ensures(s: PreparedRequests, guardId: int, observed: RequestObservation, byteCount: int, currentTurn: bool)
-  ensures (inv(s) ==> canDispatchPrepared(s, guardId, observed, byteCount, currentTurn) ==> alwaysGuardIdsUnique(dispatchPrepared(s, guardId, observed, byteCount, currentTurn)))
-  ensures (inv(s) ==> canDispatchPrepared(s, guardId, observed, byteCount, currentTurn) ==> alwaysExactBudgetAdmission(dispatchPrepared(s, guardId, observed, byteCount, currentTurn)))
-  ensures (inv(s) ==> canDispatchPrepared(s, guardId, observed, byteCount, currentTurn) ==> alwaysGuardAttemptsNonnegative(dispatchPrepared(s, guardId, observed, byteCount, currentTurn)))
-  ensures (inv(s) ==> canDispatchPrepared(s, guardId, observed, byteCount, currentTurn) ==> alwaysPreparedLeasesStayNonnegative(dispatchPrepared(s, guardId, observed, byteCount, currentTurn)))
-  ensures (inv(s) ==> canDispatchPrepared(s, guardId, observed, byteCount, currentTurn) ==> alwaysRecheckKeepsAdmittedGuard(dispatchPrepared(s, guardId, observed, byteCount, currentTurn)))
-  ensures (inv(s) ==> canDispatchPrepared(s, guardId, observed, byteCount, currentTurn) ==> stepGuardBytesStayFixed(s, dispatchPrepared(s, guardId, observed, byteCount, currentTurn)))
-  ensures (inv(s) ==> canDispatchPrepared(s, guardId, observed, byteCount, currentTurn) ==> stepUnchangedCheckDoesNotCount(s, "dispatchPrepared", dispatchPrepared(s, guardId, observed, byteCount, currentTurn)))
+lemma dispatchPrepared_ensures(s: PreparedRequests, guardId: int, observed: RequestObservation, currentTurn: bool)
+  ensures (inv(s) ==> canDispatchPrepared(s, guardId, observed, currentTurn) ==> alwaysGuardIdsUnique(dispatchPrepared(s, guardId, observed, currentTurn)))
+  ensures (inv(s) ==> canDispatchPrepared(s, guardId, observed, currentTurn) ==> alwaysExactBudgetAdmission(dispatchPrepared(s, guardId, observed, currentTurn)))
+  ensures (inv(s) ==> canDispatchPrepared(s, guardId, observed, currentTurn) ==> alwaysGuardAttemptsNonnegative(dispatchPrepared(s, guardId, observed, currentTurn)))
+  ensures (inv(s) ==> canDispatchPrepared(s, guardId, observed, currentTurn) ==> alwaysPreparedLeasesStayNonnegative(dispatchPrepared(s, guardId, observed, currentTurn)))
+  ensures (inv(s) ==> canDispatchPrepared(s, guardId, observed, currentTurn) ==> alwaysRecheckKeepsAdmittedGuard(dispatchPrepared(s, guardId, observed, currentTurn)))
+  ensures (inv(s) ==> canDispatchPrepared(s, guardId, observed, currentTurn) ==> stepGuardBytesStayFixed(s, dispatchPrepared(s, guardId, observed, currentTurn)))
+  ensures (inv(s) ==> canDispatchPrepared(s, guardId, observed, currentTurn) ==> stepUnchangedCheckDoesNotCount(s, "dispatchPrepared", dispatchPrepared(s, guardId, observed, currentTurn)))
 {
-  if inv(s) && canDispatchPrepared(s, guardId, observed, byteCount, currentTurn) {
+  if inv(s) && canDispatchPrepared(s, guardId, observed, currentTurn) {
     var g := preparedGuard(s, guardId);
-    var after := dispatchPrepared(s, guardId, observed, byteCount, currentTurn);
+    var after := dispatchPrepared(s, guardId, observed, currentTurn);
     PreparedLeaseOwner(s);
     if g.leaseId != 0 {
-      core__modelAttemptLeases_reserveAttempt_ensures(s.leases, g.leaseId, preparedReservation(g, observed, byteCount, currentTurn));
+      core__modelAttemptLeases_reserveAttempt_ensures(s.leases, g.leaseId, preparedReservation(g, observed, currentTurn));
     }
     PreparedGuardRecordsPreserved(s, after);
   }
 }
 
-lemma dispatchUnchanged_ensures(s: PreparedRequests, byteCount: int, currentTurn: bool)
-  ensures (inv(s) ==> canDispatchUnchanged(s, byteCount, currentTurn) ==> alwaysGuardIdsUnique(dispatchUnchanged(s, byteCount, currentTurn)))
-  ensures (inv(s) ==> canDispatchUnchanged(s, byteCount, currentTurn) ==> alwaysExactBudgetAdmission(dispatchUnchanged(s, byteCount, currentTurn)))
-  ensures (inv(s) ==> canDispatchUnchanged(s, byteCount, currentTurn) ==> alwaysGuardAttemptsNonnegative(dispatchUnchanged(s, byteCount, currentTurn)))
-  ensures (inv(s) ==> canDispatchUnchanged(s, byteCount, currentTurn) ==> alwaysPreparedLeasesStayNonnegative(dispatchUnchanged(s, byteCount, currentTurn)))
-  ensures (inv(s) ==> canDispatchUnchanged(s, byteCount, currentTurn) ==> alwaysRecheckKeepsAdmittedGuard(dispatchUnchanged(s, byteCount, currentTurn)))
-  ensures (inv(s) ==> canDispatchUnchanged(s, byteCount, currentTurn) ==> stepGuardBytesStayFixed(s, dispatchUnchanged(s, byteCount, currentTurn)))
-  ensures (inv(s) ==> canDispatchUnchanged(s, byteCount, currentTurn) ==> stepUnchangedCheckDoesNotCount(s, "dispatchUnchanged", dispatchUnchanged(s, byteCount, currentTurn)))
+lemma dispatchUnchanged_ensures(s: PreparedRequests, currentTurn: bool)
+  ensures (inv(s) ==> canDispatchUnchanged(s, currentTurn) ==> alwaysGuardIdsUnique(dispatchUnchanged(s, currentTurn)))
+  ensures (inv(s) ==> canDispatchUnchanged(s, currentTurn) ==> alwaysExactBudgetAdmission(dispatchUnchanged(s, currentTurn)))
+  ensures (inv(s) ==> canDispatchUnchanged(s, currentTurn) ==> alwaysGuardAttemptsNonnegative(dispatchUnchanged(s, currentTurn)))
+  ensures (inv(s) ==> canDispatchUnchanged(s, currentTurn) ==> alwaysPreparedLeasesStayNonnegative(dispatchUnchanged(s, currentTurn)))
+  ensures (inv(s) ==> canDispatchUnchanged(s, currentTurn) ==> alwaysRecheckKeepsAdmittedGuard(dispatchUnchanged(s, currentTurn)))
+  ensures (inv(s) ==> canDispatchUnchanged(s, currentTurn) ==> stepGuardBytesStayFixed(s, dispatchUnchanged(s, currentTurn)))
+  ensures (inv(s) ==> canDispatchUnchanged(s, currentTurn) ==> stepUnchangedCheckDoesNotCount(s, "dispatchUnchanged", dispatchUnchanged(s, currentTurn)))
 {
-  if inv(s) && canDispatchUnchanged(s, byteCount, currentTurn) {
-    var g := currentDispatchCandidate(s, byteCount, currentTurn);
-    dispatchPrepared_ensures(s, g.id, capturedObservation(g), byteCount, currentTurn);
+  if inv(s) && canDispatchUnchanged(s, currentTurn) {
+    var g := currentDispatchCandidate(s, currentTurn);
+    dispatchPrepared_ensures(s, g.id, capturedObservation(g), currentTurn);
   }
 }
 

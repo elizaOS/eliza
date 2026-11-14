@@ -3236,12 +3236,13 @@
     },
     {
       "source": "packages/core/src/runtime/prepared-model-request.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/preparedRequests.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "A request guard captures its exact admitted serialization",
+        "Every dispatched attempt rechecks bytes counts and lease authority",
+        "Prepared requests use the same issued allowance and turn lease",
+        "Each qualified attempt consumes the tariff reservation atomically",
+        "Byte counting combines surrogate pairs and replaces unpaired surrogates"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "5dba0eb99f5058655055e237251a2753a2f7ddd9f460abaaa64bebb2fbafc10e",
@@ -3249,7 +3250,9 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/prepared-model-request.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/execution.md"
+        "spec/core/preparedRequests.md",
+        "spec/core/modelAttemptLeases.md",
+        "spec/core/unicode.md"
       ]
     },
     {
@@ -4898,7 +4901,10 @@
         "Only complete current-source selections project prior dialogue",
         "Loading a source set invalidates the old selection and restoring returns exact originals",
         "A historical evidence projection requires exact validated source binding",
-        "Provider discovery preserves originals and requires source-bound review before selection"
+        "Provider discovery preserves originals and requires source-bound review before selection",
+        "Only host-issued leases bind an existing allowance to a turn",
+        "Each qualified attempt consumes the tariff reservation atomically",
+        "Byte counting combines surrogate pairs and replaces unpaired surrogates"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "3f6598b861b7de18149aa7a027be246164ad93491274445a17f9bbe5c98b6a62",
@@ -4906,7 +4912,9 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/streaming-context.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/context.md"
+        "spec/core/context.md",
+        "spec/core/modelAttemptLeases.md",
+        "spec/core/unicode.md"
       ]
     },
     {
