@@ -13,6 +13,7 @@ import { IncomingMessage as NodeIncomingMessage } from "node:http";
 import { Socket } from "node:net";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
+import { buildLegacyShim } from "../../../../packages/agent/src/api/dispatch-route.ts";
 import {
   createInMemoryScheduledTaskStore,
   type ScheduledTaskStore,
@@ -241,6 +242,89 @@ describe("scheduled-tasks REST seam (real reader, real service, real routes)", (
     expect(first).toBeDefined();
     expect((first.detail as { keys?: string[] }).keys).toEqual(["priority"]);
   });
+
+  it.each(["string", "object", "buffer"] as const)(
+    "persists an unframed IPC %s edit through the real schedule route",
+    async (kind) => {
+      const { seam, taskId } = await seedTask();
+      const edit = {
+        promptInstructions: "Good morning ☀",
+        trigger: {
+          kind: "cron",
+          expression: "0 8 * * *",
+          tz: "America/Los_Angeles",
+        },
+      };
+      const encoded = JSON.stringify(edit);
+      const body =
+        kind === "object"
+          ? edit
+          : kind === "buffer"
+            ? Buffer.from(encoded)
+            : encoded;
+      const { req, res, captured } = buildLegacyShim({
+        method: "POST",
+        path: `/api/lifeops/scheduled-tasks/${taskId}/edit`,
+        headers: { "content-type": "application/json" },
+        body,
+        query: {},
+        params: {},
+      });
+      try {
+        await seam.handler(req, res, seam.runtime);
+        expect(captured.statusCode).toBe(200);
+        const listed = await seam.store.list({});
+        const updated = listed.find((task) => task.taskId === taskId);
+        expect(updated?.promptInstructions).toBe(edit.promptInstructions);
+        expect(updated?.trigger).toEqual(edit.trigger);
+        expect(
+          (await seam.logRows(taskId)).filter(
+            (row) => row.transition === "edited",
+          ),
+        ).toHaveLength(1);
+      } finally {
+        req.destroy();
+        req.socket.destroy();
+      }
+    },
+  );
+
+  it.each(["chunked", "zero"] as const)(
+    "preserves explicit %s framing on an IPC schedule edit",
+    async (framing) => {
+      const { seam, taskId } = await seedTask();
+      const headers: Record<string, string> =
+        framing === "chunked"
+          ? { "transfer-encoding": "chunked" }
+          : { "content-length": "0" };
+      const { req, res, captured } = buildLegacyShim({
+        method: "POST",
+        path: `/api/lifeops/scheduled-tasks/${taskId}/edit`,
+        headers: { "content-type": "application/json", ...headers },
+        body: { promptInstructions: "framed update" },
+        query: {},
+        params: {},
+      });
+      try {
+        await seam.handler(req, res, seam.runtime);
+        expect(req.headers["content-length"]).toBe(
+          framing === "zero" ? "0" : undefined,
+        );
+        expect(req.headers["transfer-encoding"]).toBe(
+          framing === "chunked" ? "chunked" : undefined,
+        );
+        expect(captured.statusCode).toBe(framing === "chunked" ? 200 : 400);
+        expect(
+          (await seam.logRows(taskId)).filter(
+            (row) => row.transition === "edited",
+          ),
+        ).toHaveLength(framing === "chunked" ? 1 : 0);
+      } finally {
+        req.destroy();
+        req.socket.destroy();
+      }
+    },
+  );
 
   it("reads a chunked edit body without content-length (#23930 through the seam)", async () => {
     const { seam, taskId } = await seedTask();
