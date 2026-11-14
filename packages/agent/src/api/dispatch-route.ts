@@ -184,8 +184,18 @@ export function buildLegacyShim(args: {
       return "";
     }
   })();
+  const bodyBytes = Buffer.from(bodyText, "utf8");
+  // IPC carries the body separately from HTTP framing. Legacy handlers use
+  // these headers to decide whether to read the synthetic request stream.
+  if (
+    bodyBytes.length > 0 &&
+    incomingHeaders["content-length"] === undefined &&
+    incomingHeaders["transfer-encoding"] === undefined
+  ) {
+    incomingHeaders["content-length"] = String(bodyBytes.length);
+  }
   const readable = Readable.from(
-    bodyText ? [Buffer.from(bodyText, "utf8")] : [],
+    bodyBytes.length > 0 ? [bodyBytes] : [],
     // Reading the request body does not disconnect the IPC response stream.
     { autoDestroy: false },
   );
