@@ -30,15 +30,16 @@ pure def registerTransport(s: ConcurrentConnectors, source: str, account: str, h
 pure def removeAccount(s: ConcurrentConnectors, source: str, account: str): ConcurrentConnectors = { ...s, descriptors: s.descriptors.select(d => d.source != source or d.account != account), transports: s.transports.select(d => d.source != source or d.account != account) }
 pure def removeSource(s: ConcurrentConnectors, source: str): ConcurrentConnectors = { ...s, descriptors: s.descriptors.select(d => d.source != source), transports: s.transports.select(d => d.source != source) }
 pure def canBeginCall(s: ConcurrentConnectors, callId: int, mode: C::DispatchMode, source: str, account: str): bool = callId > 0 and not(s.calls.some(c => c.id == callId)) and C::canConfigureConnector(C::initial, mode, source, account)
+pure def capturedDescriptors(s: ConcurrentConnectors, mode: C::DispatchMode): List[C::ConnectorEntry] = s.descriptors.listMap(d => {source: d.source, account: d.account, handler: if (mode == C::Hook) d.hook else d.post})
 pure def beginCall(s: ConcurrentConnectors, callId: int, mode: C::DispatchMode, source: str, account: str): ConcurrentConnectors = {
-  val unit = { ...C::configureConnector(C::initial, mode, source, account), descriptors: s.descriptors.listMap(d => {source: d.source, account: d.account, handler: if (mode == C::Hook) d.hook else d.post}), transports: s.transports }
+  val unit = { ...C::configureConnector(C::initial, mode, source, account), descriptors: capturedDescriptors(s, mode), transports: s.transports }
   { ...s, calls: s.calls.append({id: callId, unit: C::dispatchConnector(unit)}) }
 }
 pure def canInvokeCall(s: ConcurrentConnectors, callId: int): bool = C::canInvokeCaptured(connectorCall(s, callId))
 pure def invokeCall(s: ConcurrentConnectors, callId: int): ConcurrentConnectors = { ...s, calls: s.calls.listMap(c => if (c.id == callId) { ...c, unit: C::invokeCaptured(c.unit) } else c) }
 pure def canFinishCall(s: ConcurrentConnectors, callId: int, ok: bool): bool = C::canFinishConnector(connectorCall(s, callId), ok)
 pure def finishCall(s: ConcurrentConnectors, callId: int, ok: bool): ConcurrentConnectors = { ...s, calls: s.calls.listMap(c => if (c.id == callId) { ...c, unit: C::finishConnector(c.unit, ok) } else c) }
-pure def alwaysEachCallValid(s: ConcurrentConnectors): bool = s.calls.every(c => C::alwaysUnsupportedNeverInvokes(c.unit) and C::alwaysUsesCapturedHandler(c.unit) and C::alwaysAwaitBeforeInvocation(c.unit) and C::alwaysSuccessRequiresSettlement(c.unit))
+pure def alwaysEachCallValid(s: ConcurrentConnectors): bool = s.calls.every(c => C::alwaysUnsupportedNeverInvokes(c.unit) and C::alwaysUsesCapturedHandler(c.unit) and C::alwaysAwaitBeforeInvocation(c.unit) and C::alwaysSuccessRequiresSettlement(c.unit) and C::alwaysSelectableHandlersAreValid(c.unit) and C::alwaysAwaitedCallbackWasSelected(c.unit) and C::alwaysHandlerHasInvoked(c.unit))
 pure def alwaysCallIdsUnique(s: ConcurrentConnectors): bool = s.calls.every(c => c.id > 0 and s.calls.select(other => other.id == c.id).length() == 1)
 pure def stepCapturedCallbacksStable(before: ConcurrentConnectors, after: ConcurrentConnectors): bool = before.calls.every(c => after.calls.some(other => other.id == c.id and other.unit.selectedOwner == c.unit.selectedOwner and other.unit.selectedAccount == c.unit.selectedAccount))
 pure def stepRegistryDoesNotMutateCalls(before: ConcurrentConnectors, via: str, after: ConcurrentConnectors): bool = (via == "registerDescriptor" or via == "registerTransport" or via == "removeAccount" or via == "removeSource") implies after.calls == before.calls
@@ -47,4 +48,17 @@ pure def sometimesConcurrentModes(s: ConcurrentConnectors): bool = s.calls.some(
 pure val fair_invokeCall = "strong"
 pure val fair_finishCall = "strong"
 pure def leadsToCapturedCallsSettle(s: ConcurrentConnectors, later: ConcurrentConnectors): bool = s.calls.every(c => later.calls.some(done => done.id == c.id and done.unit.phase == C::Done))
+```
+
+### Call admission projects only valid shared callback identities
+
+Discovered by the proof: a fabricated shared descriptor could supply a
+negative callback to an admitted call. Registration allows only nonnegative
+descriptor methods and positive transport callbacks. Each call preserves
+these restrictions in its captured projection. A call awaiting invocation
+or settlement keeps the positive callback it selected.
+
+```quint
+pure def alwaysSharedCallbackIdsValid(s: ConcurrentConnectors): bool =
+  s.descriptors.every(d => d.hook >= 0 and d.post >= 0) and s.transports.every(t => t.handler > 0)
 ```
