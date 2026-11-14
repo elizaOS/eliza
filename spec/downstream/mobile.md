@@ -13,6 +13,7 @@ The examined consumer pin lists no patches in
 | --- | --- |
 | Grace local paired runtime and credential broker. | [Runtime authority](./mobileRuntime.md), [paired startup](./mobileStartup.md), and [credential broker](./mobileBroker.md) |
 | Alpha resident host and authenticated agent endpoint. | [Resident adoption and shutdown](./mobileResident.md), [credential stop lease](./mobileCredential.md), [notification projection](./mobileNotification.md), and [watchdog](./mobileWatchdog.md) |
+| Alpha Android observes selected apps and posts managed Gmail alerts. | [Cross-app notification mirroring](./mobileCrossAppNotifications.md) and [Gmail background delivery](./mobileGmailBackgroundDelivery.md) |
 | Alpha local and paired speech requests. Grace streaming speech transport. | [Speech binding](./mobileSpeech.md), [voice capture](./mobileCapture.md), [endpoint decisions](./voiceEndpoint.md), [interruption receipts](./voiceHeard.md), [playback receipts](./mobilePlayback.md), [Grace speech stream](./mobileSpeechStream.md), and [on-device speech](./mobileLocalSpeech.md) |
 | Device actions reviewed on a foreground screen. | [Device action claim and receipt](./mobileDeviceExecution.md), [foreground device reviews](./mobileDeviceReview.md), [Photos and library receipts](./mobileDevicePhotos.md), [still-photo copy recovery](./mobilePhotoCopyRecovery.md), [original photo replacement](./mobilePhotoReplace.md), [video copy](./mobileVideoCopy.md), [owned custom albums](./mobileOwnedAlbums.md), and [owned Photos trash](./mobileOwnedPhotoTrash.md) |
 | Alpha video edit review reads a restricted media stream. | [Android video playback](./mobileVideoPlayback.md) |
@@ -20,6 +21,8 @@ The examined consumer pin lists no patches in
 | Grace updater and the upstream trust AAR. | [OTA admission](./mobileOta.md), [WebView health evidence](./mobileOtaUiHealth.md), and [installation journal](./mobileInstall.md) |
 | Grace launcher network setup and Internet Settings. | [Wi-Fi discovery and approved join](./mobileWifi.md) |
 | Alpha Android document picker and selected-file operations. | [Selected-document grant custody](./mobileSelectedDocumentGrants.md) |
+| Alpha Android Files moves, restores, and removes exact items. | [Native Files mutation custody](./mobileFilesMutationCustody.md) |
+| Alpha Inbox and Notes open a reviewed PDF without an external viewer. | [Isolated PDF fallback](./mobileIsolatedPdf.md) |
 | Grace and AlphaPhone Android contact picker and Alpha contact edits. | [Address book reads and reviewed writes](./mobileContacts.md) |
 | Alpha renderer drafts and Grace native key and credential custody. | [Encrypted JSON slot admission and readback](./mobileSecureSlots.md) |
 | Alpha Android Calendar deletion and Undo. | [Scoped review and provider dispatch](./mobileCalendarScopedDeletion.md), [deferred journal and Undo](./mobileDeferredDeletion.md) |

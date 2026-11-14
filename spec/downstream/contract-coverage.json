@@ -1,5 +1,5 @@
 {
-  "method": "Conservative trace from direct import, projected source, and source-URL records. The inventories own exact call sites. direct-contract identifies a modeled part of the named producer, not full API or source equivalence. related-contract and related-core-model identify candidate owners for review. A null owner keeps an inventory entry visible for behavioral mapping. Config and native registrations remain in the individual inventories.",
+  "method": "Conservative trace from direct import, projected source, and source-URL records. The inventories own exact call sites. direct-contract identifies a modeled part of the named producer, not full API or source equivalence. related-contract and related-core-model identify candidate owners for review. A null owner keeps an inventory entry visible for behavioral mapping. The native producer entries trace Android composition and call sites separately from the import scan.",
   "Grace": [
     {
       "source": "packages/agent/native-host/account-state.mjs",
@@ -4065,6 +4065,61 @@
       "priority": "test-only",
       "relatedSpec": "spec/downstream/workflowWorker.md",
       "coverage": "related-contract"
+    }
+  ],
+  "nativeProducers": [
+    {
+      "consumer": "AlphaPhone",
+      "consumerPaths": [
+        "android/app/src/main/java/ai/alphacompute/alphaphone/GmailBackground.java",
+        "android/app/src/main/java/ai/alphacompute/alphaphone/GmailDeliveryWorker.java",
+        "android/app/src/main/java/ai/alphacompute/alphaphone/AlphaGmailPlugin.java"
+      ],
+      "producerPaths": [
+        "plugins/plugin-native-notifications/android/src/main/java/ai/eliza/plugins/notifications/MailBackgroundDelivery.java",
+        "plugins/plugin-native-notifications/android/src/main/java/ai/eliza/plugins/notifications/MailHistoryReconciliation.java"
+      ],
+      "relatedSpec": "spec/downstream/mobileGmailBackgroundDelivery.md"
+    },
+    {
+      "consumer": "AlphaPhone",
+      "consumerPaths": [
+        "android/app/src/main/java/ai/alphacompute/alphaphone/AlphaFilesPlugin.java",
+        "apps/app/src/prototype/selection-adapter.ts"
+      ],
+      "producerPaths": [
+        "plugins/plugin-native-filesystem/android/src/main/java/ai/eliza/plugins/filesystem/browser/StorageBrowser.java",
+        "plugins/plugin-native-filesystem/android/src/main/java/ai/eliza/plugins/filesystem/browser/StorageCatalog.java"
+      ],
+      "relatedSpec": "spec/downstream/mobileFilesMutationCustody.md"
+    },
+    {
+      "consumer": "AlphaPhone",
+      "consumerPaths": [
+        "android/app/src/main/java/ai/alphacompute/alphaphone/AlphaNotificationListener.java",
+        "android/app/src/main/java/ai/alphacompute/alphaphone/AlphaNotificationsPlugin.java",
+        "android/app/src/main/java/ai/alphacompute/alphaphone/NotificationAccess.java"
+      ],
+      "producerPaths": [
+        "plugins/plugin-native-notifications/android/src/main/java/ai/eliza/plugins/notifications/NotificationMirror.java",
+        "plugins/plugin-native-notifications/android/src/main/java/ai/eliza/plugins/notifications/NotificationMirrorListenerService.java",
+        "plugins/plugin-native-notifications/android/src/main/java/ai/eliza/plugins/notifications/NotificationMirrorPolicy.java"
+      ],
+      "relatedSpec": "spec/downstream/mobileCrossAppNotifications.md"
+    },
+    {
+      "consumer": "AlphaPhone",
+      "consumerPaths": [
+        "android/app/src/main/java/ai/alphacompute/alphaphone/AlphaMailAttachmentsPlugin.java",
+        "android/app/src/main/java/ai/alphacompute/alphaphone/AlphaMailPdfActivity.java",
+        "android/app/src/main/java/ai/alphacompute/alphaphone/IsolatedPdfService.java"
+      ],
+      "producerPaths": [
+        "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/IsolatedPdfViewerActivity.java",
+        "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/IsolatedPdfRenderService.java",
+        "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/PdfPageLimits.java"
+      ],
+      "relatedSpec": "spec/downstream/mobileIsolatedPdf.md"
     }
   ]
 }
