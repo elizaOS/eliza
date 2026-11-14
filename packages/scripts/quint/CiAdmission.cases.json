@@ -1,5 +1,6 @@
 {
   "sources": [
+    ".github/actions/setup-benchmark-quint-python/action.yml",
     ".github/workflows/pr-validation.yml",
     ".github/rulesets/required-branches.json",
     "packages/scripts/check-quint.ts",
