@@ -120,6 +120,20 @@ function typeErrorLocation(
   }
 }
 
+/** Classify native JSON failures without retaining their messages or input values. */
+function serializationFailure(
+  error: unknown,
+): "bigint" | "circular" | undefined {
+  if (!(error instanceof TypeError)) return;
+  if (
+    error.message === "Do not know how to serialize a BigInt" ||
+    error.message === "JSON.stringify cannot serialize BigInt."
+  )
+    return "bigint";
+  if (error.message.startsWith("Converting circular structure to JSON"))
+    return "circular";
+}
+
 /** Only finite diagnostic identifiers from the error and its direct driver cause. */
 export function checkoutFailureDiagnostic(error: unknown) {
   try {
@@ -128,9 +142,11 @@ export function checkoutFailureDiagnostic(error: unknown) {
         ? error.cause
         : null;
     const location = typeErrorLocation(error);
+    const serialization = serializationFailure(error);
     return {
       ...diagnosticError(error),
       ...(location ? { location } : {}),
+      ...(serialization ? { serialization } : {}),
       ...(cause !== null && cause !== undefined
         ? { cause: diagnosticError(cause) }
         : {}),
