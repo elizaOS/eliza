@@ -74,8 +74,8 @@
         "product-host-source"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/grace/taskOwner.md",
-      "coverage": "related-contract"
+      "relatedSpec": "spec/downstream/grace/taskSupportEvidence.md",
+      "coverage": "direct-contract"
     },
     {
       "source": "packages/agent/native-host/task-id.mjs",
@@ -3020,8 +3020,8 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/files.md",
-      "coverage": "related-contract"
+      "relatedSpec": "spec/downstream/alpha/scanCorrection.md",
+      "coverage": "direct-contract"
     },
     {
       "source": "plugins/plugin-files/src/documents/scan-draft.ts",
@@ -3030,8 +3030,8 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobileDocumentScan.md",
-      "coverage": "related-contract"
+      "relatedSpec": "spec/downstream/alpha/scanDraftStorage.md",
+      "coverage": "direct-contract"
     },
     {
       "source": "plugins/plugin-files/src/documents/scan-edges.ts",
@@ -3061,8 +3061,8 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/files.md",
-      "coverage": "related-contract"
+      "relatedSpec": "spec/downstream/alpha/scanLinks.md",
+      "coverage": "direct-contract"
     },
     {
       "source": "plugins/plugin-files/src/documents/scan-pdf.ts",

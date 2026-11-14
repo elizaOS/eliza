@@ -32,8 +32,9 @@ activation on a physical device.
 | `apps/app/src/prototype/browser-adapter.ts` | [Current document and private profile](./browser.md), [session restore and clear](./browserPersistence.md), [native browser storage](../mobileBrowserStorage.md), [native external link authority](../mobileBrowser.md) |
 | `apps/app/src/passwords/password-manager.ts`, `MainActivity.java` | [Vault visit, native unlock, origin review and secret custody](./passwords.md), [installed Android Autofill](../mobilePasswordAutofill.md) |
 | `apps/app/src/browser/files.ts`, `AlphaMailAttachments` | [Reviewed file operations and retained trash](./files.md), [verified document source reopening and read permissions](./sourceReferences.md), [native file observer custody](../mobileStorageWatch.md), [Android selected-document grants](../mobileSelectedDocumentGrants.md) |
-| `apps/app/src/prototype/browser-camera.ts` | [Selected media download and stored ZIP](./photosArchive.md) |
+| `apps/app/src/prototype/browser-camera.ts` | [Selected media download and stored ZIP](./photosArchive.md), [Android still-photo copy recovery](../mobilePhotoCopyRecovery.md) |
 | `apps/app/src/prototype/local-ocr.ts`, `scan-pdf.ts`, `scan-searchable-review.ts` | [Local OCR worker custody](./localOcr.md), [reviewed searchable PDF](./searchableScanPdf.md) |
+| `apps/app/src/prototype/scan-correction-review.ts`, `scan-link-review.ts`, `apps/app/src/browser/scan-draft.ts` | [Selected-page correction](./scanCorrection.md), [reviewed link handoff](./scanLinks.md), [durable scan draft storage](./scanDraftStorage.md) |
 | `apps/app/src/prototype/inbox-cloud-adapter.ts` | [Managed Inbox paging and cache identity](./inbox.md), [saved reads, grant revocation and cache custody](./inboxCache.md), [managed Gmail wire](./managedGmailWire.md), [draft and provider receipt custody](./inboxDraftCustody.md) |
 | `apps/app/src/prototype/home-cards.ts`, `home-overview-cards.ts` | [Current-source Home projections](./overview.md) |
 | `apps/app/src/prototype/automations-adapter.ts`, `runtime/automations-protocol.ts` | [Automation row, cron and reminder presentations](./automationPresentation.md) |
@@ -67,7 +68,7 @@ refinements against the same pinned consumers:
 | Boundary | Remaining concrete evidence |
 | --- | --- |
 | Storage and authored text | Notes decoder, Android recording extraction and orphan cleanup, multi-row Trash contention, and format/parser parity; browser legacy archive arrays, same-binding peer draft queues, and Android secure slot recovery. |
-| Files and captured sources | Archive and scan payload decoders, replacement OCR and searchable-PDF replay, file-system ordering, native media callbacks, and Android grant behavior on device. |
+| Files and captured sources | Archive payload decoders, replacement replay for scan storage and conversion, file-system ordering, native media callbacks, and Android grant behavior on device. |
 | Calendar, Inbox and Home | Live Calendar reconciliation, physical Android recurring-series mutation, accessibility and rendered projection. |
 | Maps, browser and launcher | Provider route geometry, live-location feeds and relay expiry, device WebView cookie and storage readback, launcher order, focus and lifecycle. |
 | Notices and automation | Exact platform signal and notice owner composition, digest/archive data, and provider read projection; verify effects through the linked workflow and mobile owners. |
