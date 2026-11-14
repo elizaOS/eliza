@@ -167,16 +167,64 @@ export interface DialogRequestedEvent extends SurfaceIdOptions {
 }
 
 /**
- * The page asked for a file. Nothing is downloaded. `url` is http(s) only and can carry
- * access tokens: keep it out of models, threads and logs.
+ * The page asked for a file. Nothing is downloaded until `saveDownload` names `requestId`;
+ * a later request replaces this one. `url` is http(s) only and can carry access tokens:
+ * keep it out of models, threads and logs.
  */
 export interface DownloadRequestedEvent extends SurfaceIdOptions {
+  requestId: string;
   url: string | null;
   fileName: string;
   mimeType: string;
   /** -1 when unknown. */
   contentLength: number;
   pdf: boolean;
+}
+
+/** A `saveDownload` ended. `saved` files are in the device's Downloads. */
+export interface DownloadFinishedEvent extends SurfaceIdOptions {
+  requestId: string;
+  status: "saved" | "failed";
+  fileName: string;
+  mimeType: string;
+}
+
+/**
+ * Android: a file input of a shown page waits for `answerFileChooser`; the page gets no
+ * file until then. Reported only while the host listens; otherwise, and when the surface
+ * is paused, the input gets no files at once. Hiding, navigating or closing the surface
+ * answers it with no files.
+ */
+export interface FileChooserRequestedEvent extends SurfaceIdOptions {
+  requestId: string;
+  /** The input's `accept` MIME types (extensions are dropped); empty means any file. */
+  acceptTypes: string[];
+  multiple: boolean;
+  /** The input asks for a new photo or recording (`capture`); the picker offers files only. */
+  capture: boolean;
+}
+
+/** Website access to device sensors a host may grant. */
+export type SitePermissionKind = "camera" | "microphone" | "location";
+
+/**
+ * Android: a shown page asked for the camera, microphone or location. A top-level https
+ * page's own request waits for `answerSitePermission` and is never remembered; hiding,
+ * navigating or closing the surface denies it. An embedded frame's request is already
+ * denied and reported with `topFrame: false` and no `requestId`, so the host can say it
+ * was blocked. Reported only while the host listens; kinds the host app declares no
+ * Android permission for are never offered.
+ */
+export interface SitePermissionRequestedEvent extends SurfaceIdOptions {
+  requestId: string | null;
+  origin: string | null;
+  kinds: SitePermissionKind[];
+  topFrame: boolean;
+  /**
+   * Android runtime permissions the host app must hold before `grant: true` succeeds,
+   * for example `android.permission.CAMERA`. Ask the person for them first.
+   */
+  androidPermissions: string[];
 }
 
 /**
@@ -194,9 +242,11 @@ export interface ExternalLinkRequestedEvent extends SurfaceIdOptions {
 
 /**
  * A sign-in page that refuses embedded WebViews (Google's `disallowed_useragent`,
- * Facebook's OAuth dialog). It is not loaded; the host opens it in a full browser.
+ * Facebook's OAuth dialog). It is not loaded; the host opens it in a full browser with
+ * `openIdentityProvider`.
  */
 export interface IdentityProviderRequestedEvent extends SurfaceIdOptions {
+  requestId: string;
   provider: "google" | "facebook";
   url: string;
 }
@@ -463,6 +513,37 @@ export interface ElizaSurfaceManagerPlugin {
     },
   ): Promise<void>;
   /**
+   * Android: answer a `fileChooserRequested` file input once. `open: true` shows the
+   * system document picker (one picker at a time, else `FILE_CHOOSER_BUSY`); the files
+   * the person picks go to the page. `open: false` gives it no files.
+   */
+  answerFileChooser(
+    options: SurfaceIdOptions & { requestId: string; open: boolean },
+  ): Promise<void>;
+  /**
+   * Android: answer a `sitePermissionRequested` request once. A grant rejects with
+   * `ANDROID_PERMISSION_REQUIRED` while the host app lacks the event's
+   * `androidPermissions`, and the request stays open for a second answer.
+   */
+  answerSitePermission(
+    options: SurfaceIdOptions & { requestId: string; grant: boolean },
+  ): Promise<void>;
+  /**
+   * Android 10+: save the `downloadRequested` file to Downloads once the person said yes,
+   * with the surface's cookie only for the requesting page's exact origin. Resolves once
+   * started; `downloadFinished` follows. A `blob:` file rejects `DOWNLOAD_UNSUPPORTED`.
+   */
+  saveDownload(
+    options: SurfaceIdOptions & { requestId: string },
+  ): Promise<void>;
+  /**
+   * Android: open the `identityProviderRequested` sign-in page in the person's browser
+   * (a Custom Tab). The address never comes back from the host.
+   */
+  openIdentityProvider(
+    options: SurfaceIdOptions & { requestId: string },
+  ): Promise<{ status: "dispatched" }>;
+  /**
    * Android: open the other-app link the person just tapped (`externalLinkRequested`)
    * with a fresh Intent. Rejects for any other address, and when no app handles it.
    */
@@ -624,6 +705,18 @@ export interface ElizaSurfaceManagerPlugin {
     listener: (event: DownloadRequestedEvent) => void,
   ): Promise<PluginListenerHandle>;
   addListener(
+    eventName: "downloadFinished",
+    listener: (event: DownloadFinishedEvent) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: "fileChooserRequested",
+    listener: (event: FileChooserRequestedEvent) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: "sitePermissionRequested",
+    listener: (event: SitePermissionRequestedEvent) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
     eventName: "externalLinkRequested",
     listener: (event: ExternalLinkRequestedEvent) => void,
   ): Promise<PluginListenerHandle>;
@@ -656,7 +749,10 @@ export interface ElizaSurfaceManagerPlugin {
    * again. While it is paused, `captureSurface`, `controlPage`, `observeHistory` and
    * `navigateHistory` reject; `goBack`, `goForward`, `navigate` and `reloadSurface` still
    * run, and `readPage` still reads. Pausing also cancels held page dialogs, refuses new
-   * ones, takes focus and the keyboard from the page, and stops sending it touches.
+   * dialogs, file inputs and site permission requests, takes focus and the keyboard from
+   * the page, and stops sending it touches. Held file inputs and
+   * site permission requests stay open, since the system picker or the host's Android
+   * permission prompt may be what covers the page.
    * Repeating the call does nothing. iOS rejects with `UNSUPPORTED`, so a cross-platform
    * caller must catch it; web rejects as unavailable. The process-wide
    * `WebView.pauseTimers()` is never called, as it would also stop the host WebView.

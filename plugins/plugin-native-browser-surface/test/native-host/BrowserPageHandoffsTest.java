@@ -30,6 +30,8 @@ public final class BrowserPageHandoffsTest {
     String first = dialogs.open("first");
     String second = dialogs.open("second");
     check(!first.equals(second) && first.length() >= 32, "dialog ids are unguessable and unique");
+    equal(dialogs.get(first), "first", "a request not answered yet stays pending");
+    equal(dialogs.size(), 2, "looking leaves it in place");
     equal(dialogs.take(first), "first", "an answer takes its own dialog");
     equal(dialogs.take(first), null, "a repeated answer does nothing");
     equal(dialogs.take(null), null, "a missing id does nothing");

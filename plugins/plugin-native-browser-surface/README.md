@@ -63,13 +63,27 @@ and does nothing by itself:
   `answerDialog` while the host listens for this event; without a listener they are
   dismissed at once, so no page freezes on a dialog nobody shows. A dialog of a hidden,
   paused, closing or navigating surface is cancelled, never accepted.
-- `downloadRequested`: nothing is downloaded. The http(s) address can carry access
-  tokens, so keep it out of models and logs.
+- `fileChooserRequested`: a file input waits for `answerFileChooser({ requestId, open })`.
+  `open: true` shows the system document picker and gives the page the content URIs the
+  person picks (at most 16, one unless the input takes several); `open: false` gives it
+  nothing. Hiding, navigating or closing the surface gives it nothing.
+- `sitePermissionRequested`: a top-level https page's own camera, microphone or location
+  request (`{ requestId, origin, kinds, topFrame, androidPermissions }`) waits for
+  `answerSitePermission({ requestId, grant })` and is never remembered. A grant rejects
+  `ANDROID_PERMISSION_REQUIRED` until the host app holds `androidPermissions`, so the host
+  asks Android first and answers again. An embedded frame's request is already denied and
+  reported with `topFrame: false`. Hiding, navigating or closing the surface denies it.
+- `downloadRequested`: nothing is downloaded until `saveDownload({ requestId })`, which
+  saves the file to Downloads with the surface's own cookie for the requesting page's
+  exact origin and reports `downloadFinished` (`saved` or `failed`). The http(s) address
+  can carry access tokens, so keep it out of models and logs; native code never logs it.
 - `externalLinkRequested`: a tapped `tel:`, `mailto:`, `sms:`, `geo:`, `market:` or `intent:` link.
   `openExternalLink` opens only that link with a fresh Intent; `tel:` opens the dialer
   and places no call. Script attempts are dropped.
 - `identityProviderRequested`: Google and Facebook sign-in pages refuse embedded
-  WebViews (`disallowed_useragent`). They are not loaded; open them in a full browser.
+  WebViews (`disallowed_useragent`). They are not loaded; `openIdentityProvider({ requestId })`
+  opens the page in the person's browser as a Custom Tab, without the address coming back
+  from the host.
 
 A certificate error is never passed. When it is the page's own, `navigationChanged`
 follows with `securityBlocked: true` and a `pageError`, so the host can cover the error
@@ -82,7 +96,8 @@ Android `pauseSurface` calls `WebView.onPause()` on one surface and `resumeSurfa
 undoes it. The page stops drawing and its timers slow to about once a second, even while
 it is shown; its state and history stay. A hidden surface is already treated this way, so
 use it for a page that stays shown under host screens. It frees no memory. A paused
-page gets no touches, focus or keyboard, its held dialogs are cancelled, and capture,
+page gets no touches, focus or keyboard, its held dialogs are cancelled (held file inputs
+and permission requests stay, as a picker or permission prompt may cover it), and capture,
 page control, `observeHistory` and `navigateHistory` reject until `resumeSurface`;
 `goBack`, `goForward`, `navigate` and `reloadSurface` still run. `presentSurface` never
 resumes it. iOS rejects both methods with `UNSUPPORTED`.

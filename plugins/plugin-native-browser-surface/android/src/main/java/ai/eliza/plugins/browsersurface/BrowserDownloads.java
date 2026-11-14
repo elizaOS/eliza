@@ -20,6 +20,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import androidx.annotation.RequiresApi;
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -41,6 +42,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.json.JSONArray;
@@ -381,6 +383,31 @@ public final class BrowserDownloads {
         message("The download could not be queued. Check Android storage and try again.");
       }
     });
+  }
+
+  /**
+   * Saves a file the host already confirmed with the person in its own interface, so nothing is
+   * reviewed or listed here. An https file is fetched in-app like a signed-in download (the page's
+   * cookie only on hops to its exact origin); a {@code data:} file is decoded natively. Either is
+   * published to Downloads. {@code done} gets the saved row, or null when nothing was saved, on the
+   * main thread. The address is never logged.
+   */
+  public void save(Source source, String raw, String name, String mime, Consumer<Uri> done) {
+    String cookie = BrowserDownloadPolicy.cookieAllowed(raw, source.pageOrigin, true) ? cookie(source) : null;
+    String header = BrowserDownloadPolicy.cookieHeaderAcceptable(cookie) ? cookie : null;
+    work(network, () -> {
+      Uri saved = null;
+      try {
+        if (raw.regionMatches(true, 0, "data:", 0, 5))
+          saved = publish(new ByteArrayInputStream(BrowserDownloadPolicy.decodeData(raw)), name, mime, 0);
+        else if (raw.length() <= 8192 && !raw.matches("(?s).*[\\x00-\\x1f\\x7f].*") && allowed(Uri.parse(raw)))
+          saved = fetch(0, raw, source.pageOrigin, header, source.userAgent, name, mime);
+      } catch (Exception failed) {
+        // error-policy:J1 The host hears that the save failed; the address stays out of logs.
+      }
+      Uri result = saved;
+      handler.post(() -> done.accept(result));
+    }, () -> done.accept(null));
   }
 
   /** data: URLs carry their bytes inline; decode natively, never through page script. */
