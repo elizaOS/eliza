@@ -6,6 +6,8 @@ The source is `packages/core/src/actions/task-extraction-context.ts:40-146,360-3
 
 ### Object identity and current request fields determine the active issuer
 
+Each issuer owns its original liveness callback. A trusted observation can close one request without changing another issuer or the runtime. Source observations retain the exact frozen classification input and its live counterpart.
+
 ```quint
 import requestIssuer as I from "./requestIssuer"
 import requestCompletions as C from "./requestCompletions"
@@ -82,10 +84,10 @@ pure def commitRestriction(s: RequestRegistry, by: RegistryCaller, issuerId: int
   val owner = ownerAt(s, issuerId)
   replaceOwner({ ...owner, originalSourceHash: if (owner.issuer.committed) owner.originalSourceHash else sourceHash, issuer: I::commitRestriction(owner.issuer, classification, interpretation, sourceHash, observedSourceHash) }, s)
 }
-pure def canObserveSources(s: RequestRegistry, by: RegistryCaller, issuerId: int, currentSourceHash: str, currentOriginalHash: str): bool = by == HostBoundary and ownerAt(s, issuerId).id != 0
-pure def observeSources(s: RequestRegistry, by: RegistryCaller, issuerId: int, currentSourceHash: str, currentOriginalHash: str): RequestRegistry = {
+pure def canObserveSources(s: RequestRegistry, by: RegistryCaller, issuerId: int, issuerLive: bool, currentSourceHash: str, currentOriginalHash: str): bool = by == HostBoundary and ownerAt(s, issuerId).id != 0
+pure def observeSources(s: RequestRegistry, by: RegistryCaller, issuerId: int, issuerLive: bool, currentSourceHash: str, currentOriginalHash: str): RequestRegistry = {
   val owner = ownerAt(s, issuerId)
-  replaceOwner({ ...owner, originalSourceHash: currentOriginalHash, issuer: I::observeCurrent(owner.issuer, owner.issuer.live, owner.issuer.currentRequestHash, currentSourceHash) }, s)
+  replaceOwner({ ...owner, originalSourceHash: currentOriginalHash, issuer: I::observeCurrent(owner.issuer, issuerLive, owner.issuer.currentRequestHash, currentSourceHash) }, s)
 }
 ```
 
@@ -143,13 +145,14 @@ pure def checkOperation(s: RequestRegistry, stateObject: int, messageObject: int
   else { ...s, lastAllowed: not(C::mutation(operation)) }
 }
 pure def canBindResult(s: RequestRegistry, by: RegistryCaller, resultId: str, attemptId: str): bool = by == HostBoundary and C::canBindResult(refreshedOwner(attemptOwner(s, attemptId), s).completions, resultId, attemptId)
+pure def flagChangedResult(completions: C::RequestCompletions, resultId: str, fingerprint: str): C::RequestCompletions = { ...completions, results: completions.results.listMap(result => if (result.id == resultId) { ...result, changed: result.changed or result.fingerprint != fingerprint } else result) }
 pure def bindResult(s: RequestRegistry, by: RegistryCaller, resultId: str, attemptId: str, fingerprint: str, projectionHash: str, currentRegistration: bool, canonicalDispatch: bool): RequestRegistry = {
   val owner = refreshedOwner(attemptOwner(s, attemptId), s)
   val existingOwner = resultOwner(s, resultId)
   val existing = C::resultAt(existingOwner.completions, resultId)
   val same = existingOwner.id == 0 or (existingOwner.id == owner.id and existing.attempt == attemptId)
   if (same) { ...replaceOwner({ ...owner, completions: C::bindResult(owner.completions, resultId, attemptId, fingerprint, projectionHash, currentRegistration, canonicalDispatch) }, s), lastBound: existingOwner.id == 0 or (not(existing.changed) and existing.fingerprint == fingerprint) }
-  else { ...replaceOwner({ ...existingOwner, completions: { ...existingOwner.completions, results: existingOwner.completions.results.listMap(result => if (result.id == resultId) { ...result, changed: result.changed or result.fingerprint != fingerprint } else result) } }, s), lastBound: false }
+  else { ...replaceOwner({ ...existingOwner, completions: flagChangedResult(existingOwner.completions, resultId, fingerprint) }, s), lastBound: false }
 }
 pure def canProjectResult(s: RequestRegistry, by: RegistryCaller, issuerId: int, sourceId: str, targetId: str): bool = by == HostBoundary and resultOwner(s, sourceId).id == issuerId and issuerId != 0 and resultOwner(s, targetId).id == 0 and C::canProjectResult(resultOwner(s, sourceId).completions, sourceId, targetId, true)
 pure def projectResult(s: RequestRegistry, by: RegistryCaller, issuerId: int, sourceId: str, targetId: str, fingerprint: str, projectionHash: str, sourceFingerprint: str): RequestRegistry = {
@@ -175,7 +178,7 @@ pure def wrapDenialError(s: RequestRegistry, sourceDenial: str, errorId: str): R
   val owner = refreshedOwner(denialOwner(s, sourceDenial), s)
   replaceOwner({ ...owner, completions: C::wrapDenialError(owner.completions, sourceDenial, errorId) }, s)
 }
-pure def canTransferDenial(s: RequestRegistry, sourceDenial: str, targetResult: str, expectedAttempt: str, targetNotStarted: bool, sourceNotStarted: bool): bool = denialOwner(s, sourceDenial).id != 0 and denialOwner(s, sourceDenial).id == resultOwner(s, targetResult).id and denialOwner(s, sourceDenial).id == attemptOwner(s, expectedAttempt).id and (denialOwner(s, targetResult).id == 0 or denialOwner(s, targetResult).id == denialOwner(s, sourceDenial).id) and C::canTransferDenial(refreshedOwner(denialOwner(s, sourceDenial), s).completions, sourceDenial, targetResult, expectedAttempt, targetNotStarted, sourceNotStarted)
+pure def canTransferDenial(s: RequestRegistry, sourceDenial: str, targetResult: str, expectedAttempt: str, targetNotStarted: bool, sourceNotStarted: bool): bool = targetResult != "" and denialOwner(s, sourceDenial).id != 0 and denialOwner(s, sourceDenial).id == resultOwner(s, targetResult).id and denialOwner(s, sourceDenial).id == attemptOwner(s, expectedAttempt).id and (denialOwner(s, targetResult).id == 0 or denialOwner(s, targetResult).id == denialOwner(s, sourceDenial).id) and C::canTransferDenial(refreshedOwner(denialOwner(s, sourceDenial), s).completions, sourceDenial, targetResult, expectedAttempt, targetNotStarted, sourceNotStarted)
 pure def transferDenial(s: RequestRegistry, sourceDenial: str, targetResult: str, expectedAttempt: str, targetNotStarted: bool, sourceNotStarted: bool): RequestRegistry = {
   val owner = refreshedOwner(denialOwner(s, sourceDenial), s)
   replaceOwner({ ...owner, completions: C::transferDenial(owner.completions, sourceDenial, targetResult, expectedAttempt, targetNotStarted, sourceNotStarted) }, s)

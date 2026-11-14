@@ -64,7 +64,7 @@ pure def sometimesDeniedMutation(s: RequestCompletions): bool = s.denials.length
 
 ### Result fingerprints and invalidation persist across projection
 
-A result may bind once to its current resolved attempt. Rebinding the same object is accepted only for the same attempt and fingerprint; a changed fingerprint permanently marks the association changed. Projection requires an owned source completion fact and a fresh target object under the same issuer. An unequal normalized projection retains a changed historical fact that blocks completion. Copying a fact into a projection requires matching fingerprints, normalized projection and owner. Once observed as stale or changed, completion cannot become current again.
+A result may bind once to its current resolved attempt. Rebinding the same object is accepted only for the same attempt and fingerprint; a changed fingerprint permanently marks the association changed. Projection requires an owned source completion fact and a fresh target object under the same issuer. An unequal normalized projection retains a changed historical fact that blocks completion. An owned copy checks fingerprints and normalized projection before transferring the fact. A source fingerprint mismatch permanently marks that source changed even when copying fails. Once observed as stale or changed, completion cannot become current again.
 
 ```quint
 pure def canBindResult(s: RequestCompletions, resultId: str, attemptId: str): bool = resultId != "" and currentAttempt(s, attemptId) and attemptAt(s, attemptId).resolved != NoOperation
@@ -80,8 +80,16 @@ pure def projectResult(s: RequestCompletions, sourceId: str, targetId: str, fing
   val changed = original.changed or sourceFingerprint != original.fingerprint or projectionHash != original.projectionHash
   { ...s, results: s.results.listMap(result => if (result.id == sourceId) { ...result, changed: result.changed or sourceFingerprint != result.fingerprint } else result).append({ ...original, id: targetId, fingerprint: fingerprint, projectionHash: projectionHash, changed: changed, hasFact: changed, projected: true }) }
 }
-pure def canCopyCompletion(s: RequestCompletions, sourceId: str, targetId: str, sourceFingerprint: str, targetFingerprint: str): bool = resultAt(s, sourceId).hasFact and resultAt(s, targetId).projected and resultAt(s, sourceId).attempt == resultAt(s, targetId).attempt and not(resultAt(s, sourceId).changed) and not(resultAt(s, targetId).changed) and resultAt(s, sourceId).fingerprint == sourceFingerprint and resultAt(s, targetId).fingerprint == targetFingerprint and resultAt(s, sourceId).projectionHash == resultAt(s, targetId).projectionHash
-pure def copyCompletion(s: RequestCompletions, sourceId: str, targetId: str, sourceFingerprint: str, targetFingerprint: str): RequestCompletions = { ...s, results: s.results.listMap(result => if (result.id == targetId) { ...result, hasFact: true } else result) }
+pure def canCopyCompletion(s: RequestCompletions, sourceId: str, targetId: str, sourceFingerprint: str, targetFingerprint: str): bool = resultAt(s, sourceId).hasFact and resultAt(s, targetId).projected and resultAt(s, sourceId).attempt == resultAt(s, targetId).attempt
+pure def copyCompletion(s: RequestCompletions, sourceId: str, targetId: str, sourceFingerprint: str, targetFingerprint: str): RequestCompletions = {
+  val original = resultAt(s, sourceId)
+  val target = resultAt(s, targetId)
+  val currentSource = original.fingerprint == sourceFingerprint
+  val copyable = currentSource and not(original.changed) and not(target.changed) and target.fingerprint == targetFingerprint and original.projectionHash == target.projectionHash
+  { ...s, results: s.results.listMap(result => { ...result, changed: result.changed or (result.id == sourceId and not(currentSource)), hasFact: result.hasFact or (result.id == targetId and copyable) }) }
+}
+pure def lawCopySourceMismatchIsSticky(s: RequestCompletions, sourceId: str, targetId: str, sourceFingerprint: str, targetFingerprint: str): bool =
+  alwaysAttemptAndResultIdentityUnique(s) and canCopyCompletion(s, sourceId, targetId, sourceFingerprint, targetFingerprint) and resultAt(s, sourceId).fingerprint != sourceFingerprint implies resultAt(copyCompletion(s, sourceId, targetId, sourceFingerprint, targetFingerprint), sourceId).changed
 pure def canInspectCompletion(s: RequestCompletions, resultId: str, ownerMatches: bool): bool = resultAt(s, resultId).hasFact and ownerMatches
 pure def inspectCompletion(s: RequestCompletions, resultId: str, ownerMatches: bool, fingerprint: str, registrationCurrent: bool): RequestCompletions = {
   val original = resultAt(s, resultId)

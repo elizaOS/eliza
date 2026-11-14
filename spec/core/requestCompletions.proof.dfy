@@ -198,3 +198,21 @@ lemma transferDenial_ensures(s: RequestCompletions, sourceDenial: string, target
     CompletionState(s, transferDenial(s, sourceDenial, targetResult, expectedAttempt, targetNotStarted, sourceNotStarted));
   }
 }
+
+lemma lawCopySourceMismatchIsSticky_ensures(s: RequestCompletions, sourceId: string, targetId: string, sourceFingerprint: string, targetFingerprint: string)
+  ensures (lawCopySourceMismatchIsSticky(s, sourceId, targetId, sourceFingerprint, targetFingerprint) == true)
+{
+  if alwaysAttemptAndResultIdentityUnique(s) && canCopyCompletion(s,sourceId,targetId,sourceFingerprint,targetFingerprint) && resultAt(s,sourceId).fingerprint != sourceFingerprint {
+    CompletionLookup(s,sourceId);
+    var row := resultAt(s,sourceId);
+    assert row.hasFact && row != emptyCompletion && row in s.results;
+    var t := copyCompletion(s,sourceId,targetId,sourceFingerprint,targetFingerprint);
+    var i :| 0 <= i < |s.results| && s.results[i] == row;
+    assert t.results[i] in t.results && t.results[i].id == sourceId && t.results[i].changed;
+    var selected := ProofLib.Filter((result: Completion) => result.id == sourceId,t.results);
+    var before := ProofLib.Filter((result: Completion) => result.id == sourceId,s.results);
+    ProofLib.FilterLengthPointwise((result: Completion) => result.id == sourceId,(result: Completion) => result.id == sourceId,s.results,t.results);
+    ProofLib.FilterMember((result: Completion) => result.id == sourceId,t.results,t.results[i]);
+    assert |before| == 1 && |selected| == 1 && selected[0] == t.results[i];
+  }
+}
