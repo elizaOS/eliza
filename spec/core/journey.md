@@ -83,7 +83,27 @@ guard checks the outcome's evidence. A hook may invalidate the exact reply
 binding before dispatch. Transport failure retains the committed receipt
 and withholds a delivered confirmation.
 
+Discovered by simulation: consecutive model, action and reply steps need
+enough samples to exercise their complete path before early cancellation
+or rejection. The sampler gives those steps more weight. It still includes
+the refusal and cancellation paths.
+
 ```quint
+pure val weight_beginInitialization = 4
+pure val weight_completeInitialization = 4
+pure val weight_beginTurn = 8
+pure val weight_configureModel = 12
+pure val weight_admitModel = 12
+pure val weight_invokeModel = 12
+pure val weight_observeModel = 16
+pure val weight_recordAction = 16
+pure val weight_bindReply = 12
+pure val weight_sendReply = 12
+pure val weight_acknowledgeReply = 12
+pure val weight_finishTurn = 10
+pure val weight_requestStop = 5
+pure val weight_finishStop = 10
+pure val weight_confirmRetirement = 10
 pure def canRejectAction(j: Journey, failure: ActionFailure): bool = j.phase == Acting and failure != NoActionFailure
 pure def rejectAction(j: Journey, failure: ActionFailure): Journey = { ...j, phase: Completed, actionFailure: failure }
 pure def canRecordAction(j: Journey, receiptOutcome: D::ReceiptOutcome, durable: bool, providerAccepted: bool, hasKey: bool, replayed: bool): bool =
