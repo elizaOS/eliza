@@ -7,7 +7,10 @@ import {
   consumeConsentNonce,
   issueConsentNonce,
 } from "@elizaos/cloud-shared/lib/voice-session/consent-nonce";
-import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import {
   SPEECH_ADMISSION_OUTCOME_HEADER,
   SPEECH_MINT_INTENT_HEADER,
@@ -17,7 +20,10 @@ import {
   SPEECH_RETIREMENT_HEADER,
 } from "@elizaos/host/voice/speech-relay-wire";
 import { Hono } from "hono";
-import { requireGenerativeRouteCaller } from "../../../src/lib/generative-route-auth";
+import {
+  requireGenerativeRouteCaller,
+  timeSpeechPhase,
+} from "../../../src/lib/generative-route-auth";
 import {
   preparedSpeechSessionIdForConsent,
   speechRelayMaxWindows,
@@ -59,16 +65,20 @@ app.use("*", async (c, next) => {
   return next();
 });
 /**
- * Staging-only Server-Timing spans for the speech bootstrap. Workers clocks
- * advance only on I/O, so each span is the I/O wait of that step. Clients that
- * validate exact JSON bodies are unaffected because only headers change.
+ * Record speech bootstrap I/O phases in production logs. Staging supplies the
+ * same phases in Server-Timing headers for diagnostic clients.
  */
-function bootstrapTimer(c: { env: AppEnv["Bindings"] }) {
-  const enabled = c.env.ENVIRONMENT === "staging";
+function bootstrapTimer(c: AppContext) {
+  const staging = c.env.ENVIRONMENT === "staging";
   const spans: string[] = [];
   return {
-    async time<T>(name: string, run: () => Promise<T>): Promise<T> {
-      if (!enabled) return run();
+    async time<T>(
+      name: Parameters<typeof timeSpeechPhase>[1],
+      run: () => Promise<T>,
+    ): Promise<T> {
+      if (c.env.ENVIRONMENT === "production")
+        return timeSpeechPhase(c, name, run);
+      if (!staging) return run();
       const start = performance.now();
       try {
         return await run();

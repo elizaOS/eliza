@@ -746,13 +746,11 @@ function startVisionDepsCheck() {
   let spawnFailed = false;
   child.on("error", (error) => {
     spawnFailed = true;
-    process.env.ELIZA_VISION_DEPS_STATUS = "degraded";
     console.warn(buildVisionDepsFailureMessage(error, visionDepsRetryCommand));
   });
   child.on("exit", (code) => {
     if (visionDepsProcess === child) visionDepsProcess = null;
     if (!spawnFailed && code !== 0) {
-      process.env.ELIZA_VISION_DEPS_STATUS = "degraded";
       console.warn(
         buildVisionDepsFailureMessage(
           new Error(`vision deps check exited with code ${code}`),

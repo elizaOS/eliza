@@ -25,7 +25,6 @@ it("pairs a remote phone through an operator-issued, instance-bound code", async
     ELIZA_STATE_DIR: directory,
     ELIZA_CONFIG_PATH: path.join(directory, "config.json"),
     ELIZA_PERSIST_CONFIG_PATH: path.join(directory, "config.json"),
-    ELIZA_API_BIND_HOST: "127.0.0.1",
     ELIZA_API_TOKEN: API_TOKEN,
     // A hosted CVM has no trusted loopback operator; every request is remote.
     ELIZA_REQUIRE_LOCAL_AUTH: "1",

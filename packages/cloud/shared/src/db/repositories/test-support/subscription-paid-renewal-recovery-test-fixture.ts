@@ -62,8 +62,13 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
       });
       return;
     }
-    const sequence = objectSequences.get(request.url ?? "");
-    const value = sequence?.length ? sequence.shift() : objects.get(request.url ?? "");
+    const url = new URL(request.url ?? "/", "http://stripe.test");
+    const objectKey =
+      url.pathname.startsWith("/v1/charges/") && url.searchParams.get("expand[0]") === "refunds"
+        ? url.pathname
+        : (request.url ?? "");
+    const sequence = objectSequences.get(objectKey);
+    const value = sequence?.length ? sequence.shift() : objects.get(objectKey);
     if (request.method !== "GET" || !value) {
       response.writeHead(400);
       response.end(

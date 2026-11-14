@@ -31,7 +31,6 @@ beforeAll(async () => {
     ELIZA_STATE_DIR: directory,
     ELIZA_CONFIG_PATH: configPath,
     ELIZA_PERSIST_CONFIG_PATH: configPath,
-    ELIZA_API_BIND_HOST: "127.0.0.1",
     NODE_ENV: "production",
     SECRET_SALT: randomUUID(),
     ELIZA_ALLOW_UNAUTHENTICATED_STDIO_MCP: "1",

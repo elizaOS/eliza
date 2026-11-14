@@ -1,8 +1,8 @@
 # On-device OS updater
 
 Candidate implementation of the approved on-device A/B update path (Alpha
-[P-75](https://github.com/eliza-research/alphaphone/blob/main/docs/decisions.md) /
-[issue 680](https://github.com/eliza-research/alphaphone/issues/680)). It is separate from the ordinary launcher and from the
+[P-75](https://github.com/eliza-research/alpha/issues/680#issuecomment-6488865262) /
+[issue 680](https://github.com/eliza-research/alpha/issues/680)). It is separate from the ordinary launcher and from the
 computer-operated recovery/sideload tool. Product hosts own release enrollment.
 The generic resource configuration disables every entry point and schedules
 nothing. This is not yet a qualified or installed updater.
@@ -14,8 +14,10 @@ file descriptor to the engine. It does not change the launcher package or read
 its private data. The small SELinux domain grants only the updater and engine
 connection; payload access needs separate qualification of the exact policy.
 
-The job requires the primary unlocked user, unmetered connectivity and enough
-battery. Apply and reboot also require an idle display and no call. A stopped
+Jobs require the primary unlocked user and unmetered connectivity. Automatic
+checks also wait for enough battery. An explicit check requests an expedited job
+and shows that it is pending. Apply and reboot require enough battery, an idle
+display and no call. A stopped
 download retains a content-addressed partial file and resumes with a checked
 HTTP range; a server that ignores ranges starts a known-unapplied download over.
 An oversized partial or a complete partial with a wrong digest is cleared under
@@ -33,6 +35,12 @@ the candidate held for review. A missing, different or unreadable offer leaves
 automatic restart on hold. The status distinguishes those cases from waiting
 for the phone to become idle.
 The ordinary app remains nonprivileged. Android's shutdown path owns the reboot.
+
+The progress screen observes the engine without installation authority. It keeps
+the saved status when a completed installation needs review. Certificate rotation
+can leave several certificates in Android's trust store. Package verification
+selects the enrolled certificate and supplies only that certificate to Android.
+A rejected candidate can be replaced only before an apply intent exists.
 
 The durable journal records an apply intent before Binder. An unsettled apply
 after process death becomes unknown; it is never silently submitted again. Only
