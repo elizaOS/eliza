@@ -94,6 +94,7 @@ website sign-ins survive. `purgeProfiles({ profileKey })` removes it at once and
 its surfaces (`surfaceClosed`); `purgeProfiles({ idleMs })` removes keyed profiles idle
 for that long. `purgeProfiles({ all: true })` removes every surface profile of any owner,
 closes their surfaces and resolves `clean` once no purged profile holds a cookie.
+A keyed profile accepts third-party cookies, so embedded sign-ins work as in a browser.
 `clearSurfaceStorage` signs one isolated surface out of every website.
 
 Android `createSurface({ ..., layer: "below-host" })` draws the page under the host
@@ -143,8 +144,10 @@ and iOS are not supported by these methods. Form POST resubmission is refused.
 Android `stopLoading` stops the current page load where it is (a no-op when nothing is
 loading) and then sends `navigationChanged`, so the host re-reads `progress`.
 
-Script popups never open. `getSurfaceState` also returns `title`, `canGoBack`,
-`canGoForward`, `progress`, `pageError`, `securityBlocked` and `textZoom`; `setTextZoom` sets the page
+Script popups never open. Pages pinch-zoom, and a page without a mobile viewport is shown
+whole. `getSurfaceState` also returns `title`, `canGoBack`, `canGoForward`, `progress`,
+`pageError`, `securityBlocked`, `textZoom` and `pageScale` (1 is the page's own mobile
+size); `navigationChanged` follows a pinch once it settles. `setTextZoom` sets the page
 text size from 50 to 300 percent. On Android every `navigationChanged` event also
 carries these fields as they were when it was sent. Listeners receive every surface's
 events, so a host uses them only when `exists` is true and `owner`, `session` and

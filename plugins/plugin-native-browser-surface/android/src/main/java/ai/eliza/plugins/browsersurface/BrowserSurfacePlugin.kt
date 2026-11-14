@@ -62,6 +62,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceError
 import android.webkit.WebResourceResponse
 import android.widget.FrameLayout
+import androidx.core.os.HandlerCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
@@ -387,6 +388,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         var paused: Boolean = false,
         /** The main-frame address a certificate error blocked, until the page moves on. */
         var securityBlocked: String? = null,
+        /** CSS pixels per density-independent pixel ([BrowserSurfaceRequests.pageScale]). */
+        var pageScale: Double = 1.0,
     )
 
     private data class HistoryObservation(
@@ -904,6 +907,18 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     if (isLive(surface)) notifyListeners("navigationChanged", surfaceState(id, surface))
                 }
 
+                // A pinch changes the scale every frame, so the host hears once it settles.
+                override fun onScaleChanged(view: WebView, oldScale: Float, newScale: Float) {
+                    val surface = surfaces[id] ?: return
+                    val scale = BrowserSurfaceRequests.pageScale(newScale, density())
+                    if (surface.webView !== view || scale == surface.pageScale) return
+                    surface.pageScale = scale
+                    mainHandler.removeCallbacksAndMessages(surface)
+                    HandlerCompat.postDelayed(mainHandler, {
+                        if (surfaces[id] === surface && isLive(surface)) notifyListeners("navigationChanged", surfaceState(id, surface))
+                    }, surface, 150)
+                }
+
                 override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
                     if (request.isForMainFrame) {
                         surfaces.values.firstOrNull { it.webView === view }?.pageError = error.description.toString()
@@ -1048,6 +1063,11 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             webView.settings.javaScriptEnabled = true
             webView.settings.domStorageEnabled = true
             webView.settings.databaseEnabled = true
+            // Pinch zoom and wide pages shown whole, as in a browser; no on-screen zoom buttons.
+            webView.settings.builtInZoomControls = true
+            webView.settings.displayZoomControls = false
+            webView.settings.useWideViewPort = true
+            webView.settings.loadWithOverviewMode = true
             container.addView(
                 webView,
                 FrameLayout.LayoutParams(
@@ -1078,6 +1098,9 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     }
                 val profile = ProfileStore.getInstance().getOrCreateProfile(profileName)
                 WebViewCompat.setProfile(webView, profile.name)
+                // A keyed profile is the person's own browser, so embedded sign-ins may use
+                // third-party cookies there, as in the tab host's normal tabs.
+                if (profileKey != null) profile.cookieManager.setAcceptThirdPartyCookies(webView, true)
             }
             // shared storage ⇒ the default profile (host-scoped store).
 
@@ -2036,6 +2059,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 result.put("pageError", JSObject.NULL)
                 result.put("securityBlocked", false)
                 result.put("textZoom", JSObject.NULL)
+                result.put("pageScale", JSObject.NULL)
                 call.resolve(result)
             } else {
                 call.resolve(surfaceState(id, surface))
@@ -2136,6 +2160,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         put("pageError", surface.pageError ?: surface.securityBlocked?.let { CERTIFICATE_REFUSED } ?: JSObject.NULL)
         put("securityBlocked", surface.securityBlocked != null)
         put("textZoom", surface.webView.settings.textZoom)
+        put("pageScale", surface.pageScale)
     }
 
     private fun HostOuterClip.hasValidGeometry(): Boolean =
