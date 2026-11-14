@@ -162,12 +162,15 @@ What the code does, one surface at a time:
   Android's dialog is up, rejects `SITE_PERMISSION_CLOSED`.
 - **Autoplay while capturing.** As Chrome lets a page that captures play media, a granted
   camera or microphone request lets that surface's current page play audio and video
-  without a gesture (`mediaPlaybackRequiresUserGesture` off, set before the page hears the
-  grant); the next page start (WebView's `onPageStarted`) turns the gesture requirement
-  back on. A location grant changes nothing. WebView's Blink fixes the requirement into
-  each `<video>` and `<audio>` element when it is created, so only elements the page
-  creates after the grant play on their own: a preview element already in the page (for
-  example a static `<video autoplay>`) stays paused until a tap plays it.
+  without a gesture (`mediaPlaybackRequiresUserGesture` off); the next page start
+  (WebView's `onPageStarted`) turns the gesture requirement back on. A location grant
+  changes nothing. WebView's Blink fixes the requirement into each `<video>` and `<audio>`
+  element when it is created, so only elements the page creates after the grant play on
+  their own: a preview element already in the page (for example a static
+  `<video autoplay>`) stays paused until a tap plays it. The setting is changed before the
+  grant is answered, but WebView sends settings to the page by an asynchronous sync that
+  does not wait for the permission answer, so an element made in the page's
+  `getUserMedia` handler plays on its own only as best effort (observed to on WebView 124).
 - **External links.** `openExternalLink` takes the pending link first, so it is used once
   whatever happens. When no app other than this one resolves the Intent, or the app is gone
   by launch, it rejects `EXTERNAL_APP_UNAVAILABLE` (Android refusing the launch rejects
@@ -252,14 +255,19 @@ Android `observeHistory` exposes adjacent same-origin destinations with opaque,
 short-lived references. `navigateHistory` consumes a reference once and dispatches
 through the native-owned isolated world: Android's ordinary Back/Forward API can
 skip history entries. Hidden, paused, replaced or changed history refuses the
-reference. Navigation can retire the reply; `UNCERTAIN_OUTCOME` requires page
-readback, never replay. A dispatch receipt does not prove arrival or task success.
+reference. While the page holds a dialog it rejects `DIALOG_OPEN` at once, without
+dispatching or consuming the reference: a dialog freezes the page, so the traversal could
+run only once the dialog is answered. Unlike `goBack` and `goForward` it ends nothing the
+page holds. Navigation can retire the reply, and a page that does not answer within 5
+seconds rejects it; `UNCERTAIN_OUTCOME` requires page readback, never replay. A dispatch receipt does not prove arrival or task success.
 These are host primitives, not agent authorization: the caller must compose task
 scope, origin approval, preview and durable effect recording. Cross-origin history
 and iOS are not supported by these methods. Form POST resubmission is refused.
 
 Android `stopLoading` stops the current page load where it is (a no-op when nothing is
-loading) and then sends `navigationChanged`, so the host re-reads `progress`.
+loading) and then sends `navigationChanged`, so the host re-reads `progress`. It ends
+nothing the page holds: a held dialog, file input or site permission request still waits
+for its answer.
 
 Script popups never open. Pages pinch-zoom, and a page without a mobile viewport is shown
 whole. `getSurfaceState` also returns `title`, `canGoBack`, `canGoForward`, `progress`,

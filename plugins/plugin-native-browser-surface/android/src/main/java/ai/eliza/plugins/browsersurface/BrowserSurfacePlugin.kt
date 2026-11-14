@@ -1762,15 +1762,23 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 "${observed?.reference}:forward" -> 1
                 else -> 0
             }
-            if (observed == null || offset == 0 || !historyReady(surface) ||
-                observed.expiresAt < android.os.SystemClock.elapsedRealtime() ||
-                observed.revision != surface.pageRevision || observed.index != history.currentIndex ||
-                observed.urls != historyUrls(surface.webView) ||
-                observed.index + offset !in 0 until history.size ||
-                !BrowserWebOrigin.sameOrigin(surface.webView.url, history.getItemAtIndex(observed.index + offset).url)) {
-                surface.historyObservation = null
-                call.reject("Native history changed or is unavailable; observe again", "STALE_REF")
-                return@runOnUiThread
+            val current = observed != null && offset != 0 && historyReady(surface) &&
+                observed.expiresAt >= android.os.SystemClock.elapsedRealtime() &&
+                observed.revision == surface.pageRevision && observed.index == history.currentIndex &&
+                observed.urls == historyUrls(surface.webView) &&
+                observed.index + offset in 0 until history.size &&
+                BrowserWebOrigin.sameOrigin(surface.webView.url, history.getItemAtIndex(observed.index + offset).url)
+            when (BrowserSurfaceRequests.historyRefusal(surface.dialogs.size() > 0, current)) {
+                // The observation stays: answering the dialog may leave the page where it was.
+                "DIALOG_OPEN" -> {
+                    call.reject("The page is waiting on a dialog; answer it before navigating history", "DIALOG_OPEN")
+                    return@runOnUiThread
+                }
+                "STALE_REF" -> {
+                    surface.historyObservation = null
+                    call.reject("Native history changed or is unavailable; observe again", "STALE_REF")
+                    return@runOnUiThread
+                }
             }
             // Consume before dispatch: even a lost reply cannot repeat this effect.
             surface.historyObservation = null
@@ -1929,8 +1937,10 @@ class ElizaSurfaceManagerPlugin : Plugin() {
      * or microphone grant lets this page play media without a gesture, as Chrome does while a page
      * captures; the next page start (WebView's `onPageStarted`) restores the gesture requirement.
      * Blink fixes the requirement into each media element when it is created, so only elements
-     * the page creates after the grant play on their own; the setting changes before the page hears
-     * the grant, so elements made in its `getUserMedia` handler are among them.
+     * the page creates after the grant play on their own. The setting is changed before the grant is
+     * answered, but WebSettings reach the renderer by an asynchronous preferences sync that does not
+     * wait for the permission response, so elements made in the page's `getUserMedia` handler play
+     * on their own only as best effort (observed to on WebView 124).
      */
     private fun finishSitePermission(ask: AndroidPermissionAsk, grant: Boolean = true) {
         val surface = ask.surface
