@@ -30604,13 +30604,14 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Exact command hook registry, event index, eligibility configuration, PATH-sensitive positive binary cache and interception state.",
+        "representation": "Retained registration object rows distinguish live registry membership from captured references. Metadata operations preserve object identity; a dispatch reads the current handler when its captured row reaches the cursor.",
         "model": {
           "spec": "spec/core/hookService.md",
           "stateType": "HookService",
           "stateFields": [
             "registrations",
-            "index",
+            "eventArrays",
+            "requirementRows",
             "nextId",
             "version",
             "configIdentity",
@@ -30619,8 +30620,9 @@
             "path",
             "binaryHits",
             "interceptors",
-            "setupDone",
-            "calls"
+            "installedOwner",
+            "calls",
+            "lastEligibility"
           ],
           "transitions": [
             "installInterceptors",
@@ -30628,28 +30630,24 @@
             "unregister",
             "setActive",
             "setPriority",
-            "setConfig",
+            "observeRegistrationAlias",
+            "observeEventArray",
+            "observeRequirements",
             "stopService",
-            "probeBinary",
+            "setConfig",
             "updateConfigReference",
+            "checkRequirements",
+            "checkEligibility",
             "dispatch",
             "beginHandler",
             "finishHandler"
           ],
-          "specSha256": "ba605fd22f43d4d1726c01b582bc8f14d992b8accc2088f093bbb78b542e519b"
+          "specSha256": "86c3650db7e6fdf0376e8bb87de62ce53e4e82301490ddac16b36cfd76a094cf"
         },
         "mappedStateFields": [
           "registrations",
-          "index",
-          "nextId",
-          "version",
-          "configIdentity",
-          "config",
-          "pathPresent",
-          "path",
-          "binaryHits",
-          "interceptors",
-          "setupDone",
+          "eventArrays",
+          "requirementRows",
           "calls"
         ],
         "unmodeledState": null
@@ -30698,13 +30696,14 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Exact command hook registry, event index, eligibility configuration, PATH-sensitive positive binary cache and interception state.",
+        "representation": "Ordered live event lookup projects indexedEvents from registration insertion order, separate from current event-array aliases. Unregister removes current array memberships and causes stale memberships to miss the detached registry row.",
         "model": {
           "spec": "spec/core/hookService.md",
           "stateType": "HookService",
           "stateFields": [
             "registrations",
-            "index",
+            "eventArrays",
+            "requirementRows",
             "nextId",
             "version",
             "configIdentity",
@@ -30713,8 +30712,9 @@
             "path",
             "binaryHits",
             "interceptors",
-            "setupDone",
-            "calls"
+            "installedOwner",
+            "calls",
+            "lastEligibility"
           ],
           "transitions": [
             "installInterceptors",
@@ -30722,29 +30722,23 @@
             "unregister",
             "setActive",
             "setPriority",
-            "setConfig",
+            "observeRegistrationAlias",
+            "observeEventArray",
+            "observeRequirements",
             "stopService",
-            "probeBinary",
+            "setConfig",
             "updateConfigReference",
+            "checkRequirements",
+            "checkEligibility",
             "dispatch",
             "beginHandler",
             "finishHandler"
           ],
-          "specSha256": "ba605fd22f43d4d1726c01b582bc8f14d992b8accc2088f093bbb78b542e519b"
+          "specSha256": "86c3650db7e6fdf0376e8bb87de62ce53e4e82301490ddac16b36cfd76a094cf"
         },
         "mappedStateFields": [
           "registrations",
-          "index",
-          "nextId",
-          "version",
-          "configIdentity",
-          "config",
-          "pathPresent",
-          "path",
-          "binaryHits",
-          "interceptors",
-          "setupDone",
-          "calls"
+          "eventArrays"
         ],
         "unmodeledState": null
       }
@@ -30771,13 +30765,14 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Exact command hook registry, event index, eligibility configuration, PATH-sensitive positive binary cache and interception state.",
+        "representation": "The next registration counter survives stop and increments once per register. The adapter binds its generated public string to the immutable internal identity.",
         "model": {
           "spec": "spec/core/hookService.md",
           "stateType": "HookService",
           "stateFields": [
             "registrations",
-            "index",
+            "eventArrays",
+            "requirementRows",
             "nextId",
             "version",
             "configIdentity",
@@ -30786,8 +30781,9 @@
             "path",
             "binaryHits",
             "interceptors",
-            "setupDone",
-            "calls"
+            "installedOwner",
+            "calls",
+            "lastEligibility"
           ],
           "transitions": [
             "installInterceptors",
@@ -30795,29 +30791,22 @@
             "unregister",
             "setActive",
             "setPriority",
-            "setConfig",
+            "observeRegistrationAlias",
+            "observeEventArray",
+            "observeRequirements",
             "stopService",
-            "probeBinary",
+            "setConfig",
             "updateConfigReference",
+            "checkRequirements",
+            "checkEligibility",
             "dispatch",
             "beginHandler",
             "finishHandler"
           ],
-          "specSha256": "ba605fd22f43d4d1726c01b582bc8f14d992b8accc2088f093bbb78b542e519b"
+          "specSha256": "86c3650db7e6fdf0376e8bb87de62ce53e4e82301490ddac16b36cfd76a094cf"
         },
         "mappedStateFields": [
-          "registrations",
-          "index",
-          "nextId",
-          "version",
-          "configIdentity",
-          "config",
-          "pathPresent",
-          "path",
-          "binaryHits",
-          "interceptors",
-          "setupDone",
-          "calls"
+          "nextId"
         ],
         "unmodeledState": null
       }
@@ -30865,13 +30854,14 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Exact command hook registry, event index, eligibility configuration, PATH-sensitive positive binary cache and interception state.",
+        "representation": "Register increments the version; existing-key unregister/enable/priority operations increment it even when the requested metadata already matches. Direct alias changes and stop leave the version unchanged.",
         "model": {
           "spec": "spec/core/hookService.md",
           "stateType": "HookService",
           "stateFields": [
             "registrations",
-            "index",
+            "eventArrays",
+            "requirementRows",
             "nextId",
             "version",
             "configIdentity",
@@ -30880,8 +30870,9 @@
             "path",
             "binaryHits",
             "interceptors",
-            "setupDone",
-            "calls"
+            "installedOwner",
+            "calls",
+            "lastEligibility"
           ],
           "transitions": [
             "installInterceptors",
@@ -30889,29 +30880,22 @@
             "unregister",
             "setActive",
             "setPriority",
-            "setConfig",
+            "observeRegistrationAlias",
+            "observeEventArray",
+            "observeRequirements",
             "stopService",
-            "probeBinary",
+            "setConfig",
             "updateConfigReference",
+            "checkRequirements",
+            "checkEligibility",
             "dispatch",
             "beginHandler",
             "finishHandler"
           ],
-          "specSha256": "ba605fd22f43d4d1726c01b582bc8f14d992b8accc2088f093bbb78b542e519b"
+          "specSha256": "86c3650db7e6fdf0376e8bb87de62ce53e4e82301490ddac16b36cfd76a094cf"
         },
         "mappedStateFields": [
-          "registrations",
-          "index",
-          "nextId",
-          "version",
-          "configIdentity",
-          "config",
-          "pathPresent",
-          "path",
-          "binaryHits",
-          "interceptors",
-          "setupDone",
-          "calls"
+          "version"
         ],
         "unmodeledState": null
       }
@@ -30938,13 +30922,14 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Exact command hook registry, event index, eligibility configuration, PATH-sensitive positive binary cache and interception state.",
+        "representation": "The service retains a config object reference. Only a matching reference observation updates current properties, used by ordered eligibility checks.",
         "model": {
           "spec": "spec/core/hookService.md",
           "stateType": "HookService",
           "stateFields": [
             "registrations",
-            "index",
+            "eventArrays",
+            "requirementRows",
             "nextId",
             "version",
             "configIdentity",
@@ -30953,8 +30938,9 @@
             "path",
             "binaryHits",
             "interceptors",
-            "setupDone",
-            "calls"
+            "installedOwner",
+            "calls",
+            "lastEligibility"
           ],
           "transitions": [
             "installInterceptors",
@@ -30962,29 +30948,23 @@
             "unregister",
             "setActive",
             "setPriority",
-            "setConfig",
+            "observeRegistrationAlias",
+            "observeEventArray",
+            "observeRequirements",
             "stopService",
-            "probeBinary",
+            "setConfig",
             "updateConfigReference",
+            "checkRequirements",
+            "checkEligibility",
             "dispatch",
             "beginHandler",
             "finishHandler"
           ],
-          "specSha256": "ba605fd22f43d4d1726c01b582bc8f14d992b8accc2088f093bbb78b542e519b"
+          "specSha256": "86c3650db7e6fdf0376e8bb87de62ce53e4e82301490ddac16b36cfd76a094cf"
         },
         "mappedStateFields": [
-          "registrations",
-          "index",
-          "nextId",
-          "version",
           "configIdentity",
-          "config",
-          "pathPresent",
-          "path",
-          "binaryHits",
-          "interceptors",
-          "setupDone",
-          "calls"
+          "config"
         ],
         "unmodeledState": null
       }
@@ -31025,13 +31005,14 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Exact command hook registry, event index, eligibility configuration, PATH-sensitive positive binary cache and interception state.",
+        "representation": "Only positive PATH probe results remain cached. All required names are considered, alternatives stop at the first hit, and stop clears hits.",
         "model": {
           "spec": "spec/core/hookService.md",
           "stateType": "HookService",
           "stateFields": [
             "registrations",
-            "index",
+            "eventArrays",
+            "requirementRows",
             "nextId",
             "version",
             "configIdentity",
@@ -31040,8 +31021,9 @@
             "path",
             "binaryHits",
             "interceptors",
-            "setupDone",
-            "calls"
+            "installedOwner",
+            "calls",
+            "lastEligibility"
           ],
           "transitions": [
             "installInterceptors",
@@ -31049,29 +31031,22 @@
             "unregister",
             "setActive",
             "setPriority",
-            "setConfig",
+            "observeRegistrationAlias",
+            "observeEventArray",
+            "observeRequirements",
             "stopService",
-            "probeBinary",
+            "setConfig",
             "updateConfigReference",
+            "checkRequirements",
+            "checkEligibility",
             "dispatch",
             "beginHandler",
             "finishHandler"
           ],
-          "specSha256": "ba605fd22f43d4d1726c01b582bc8f14d992b8accc2088f093bbb78b542e519b"
+          "specSha256": "86c3650db7e6fdf0376e8bb87de62ce53e4e82301490ddac16b36cfd76a094cf"
         },
         "mappedStateFields": [
-          "registrations",
-          "index",
-          "nextId",
-          "version",
-          "configIdentity",
-          "config",
-          "pathPresent",
-          "path",
-          "binaryHits",
-          "interceptors",
-          "setupDone",
-          "calls"
+          "binaryHits"
         ],
         "unmodeledState": null
       }
@@ -31098,13 +31073,14 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Exact command hook registry, event index, eligibility configuration, PATH-sensitive positive binary cache and interception state.",
+        "representation": "The source receiver compares the observed raw PATH on the next binary check, distinguishes unset from empty, and preserves that observation on stop.",
         "model": {
           "spec": "spec/core/hookService.md",
           "stateType": "HookService",
           "stateFields": [
             "registrations",
-            "index",
+            "eventArrays",
+            "requirementRows",
             "nextId",
             "version",
             "configIdentity",
@@ -31113,8 +31089,9 @@
             "path",
             "binaryHits",
             "interceptors",
-            "setupDone",
-            "calls"
+            "installedOwner",
+            "calls",
+            "lastEligibility"
           ],
           "transitions": [
             "installInterceptors",
@@ -31122,29 +31099,23 @@
             "unregister",
             "setActive",
             "setPriority",
-            "setConfig",
+            "observeRegistrationAlias",
+            "observeEventArray",
+            "observeRequirements",
             "stopService",
-            "probeBinary",
+            "setConfig",
             "updateConfigReference",
+            "checkRequirements",
+            "checkEligibility",
             "dispatch",
             "beginHandler",
             "finishHandler"
           ],
-          "specSha256": "ba605fd22f43d4d1726c01b582bc8f14d992b8accc2088f093bbb78b542e519b"
+          "specSha256": "86c3650db7e6fdf0376e8bb87de62ce53e4e82301490ddac16b36cfd76a094cf"
         },
         "mappedStateFields": [
-          "registrations",
-          "index",
-          "nextId",
-          "version",
-          "configIdentity",
-          "config",
           "pathPresent",
-          "path",
-          "binaryHits",
-          "interceptors",
-          "setupDone",
-          "calls"
+          "path"
         ],
         "unmodeledState": null
       }
@@ -31178,13 +31149,14 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Exact command hook registry, event index, eligibility configuration, PATH-sensitive positive binary cache and interception state.",
+        "representation": "The service installs one callback per source HOOK event. Stop removes its own handles while already retained callback objects can still be invoked; selection uses the current registry at that invocation.",
         "model": {
           "spec": "spec/core/hookService.md",
           "stateType": "HookService",
           "stateFields": [
             "registrations",
-            "index",
+            "eventArrays",
+            "requirementRows",
             "nextId",
             "version",
             "configIdentity",
@@ -31193,8 +31165,9 @@
             "path",
             "binaryHits",
             "interceptors",
-            "setupDone",
-            "calls"
+            "installedOwner",
+            "calls",
+            "lastEligibility"
           ],
           "transitions": [
             "installInterceptors",
@@ -31202,28 +31175,23 @@
             "unregister",
             "setActive",
             "setPriority",
-            "setConfig",
+            "observeRegistrationAlias",
+            "observeEventArray",
+            "observeRequirements",
             "stopService",
-            "probeBinary",
+            "setConfig",
             "updateConfigReference",
+            "checkRequirements",
+            "checkEligibility",
             "dispatch",
             "beginHandler",
             "finishHandler"
           ],
-          "specSha256": "ba605fd22f43d4d1726c01b582bc8f14d992b8accc2088f093bbb78b542e519b"
+          "specSha256": "86c3650db7e6fdf0376e8bb87de62ce53e4e82301490ddac16b36cfd76a094cf"
         },
         "mappedStateFields": [
-          "registrations",
-          "index",
-          "nextId",
-          "version",
-          "configIdentity",
-          "config",
-          "pathPresent",
-          "path",
-          "binaryHits",
           "interceptors",
-          "setupDone",
+          "installedOwner",
           "calls"
         ],
         "unmodeledState": null
