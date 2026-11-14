@@ -67,6 +67,11 @@ Grace retains at most 560,000 samples for Cloud previews, including
 initial silence, and 960,000 for setup hearing. The final recorder
 owns a different audio source.
 
+Before context opening there are no observed or stored samples.
+This matters when the selected input changes the retention bound
+from the initial setting. The graph can deliver its first block
+while resume is still pending.
+
 ```quint
 type MicBlock = { sampleCount: int, retainedPrefixHasSpeech: bool }
 pure val soundBlock: MicBlock = { sampleCount: 2048, retainedPrefixHasSpeech: true }
@@ -85,6 +90,8 @@ pure def receiveBlock(s: SampleCaptureState, currentCapture: bool, micBlock: Mic
 pure def alwaysSampleBounds(s: SampleCaptureState): bool =
   s.rate == 16000 and (s.secondsLimit == 35 or s.secondsLimit == 60) and
     s.stored >= 0 and s.stored <= s.received and s.stored <= capSamples(s)
+pure def alwaysUnopenedCaptureHasNoSamples(s: SampleCaptureState): bool =
+  s.phase == BeforeOpening implies s.received == 0 and s.stored == 0
 pure def stepStoredPrefixNeverRegresses(before: SampleCaptureState, after: SampleCaptureState): bool =
   after.stored >= before.stored and after.received >= before.received
 pure def sometimesMeterContinuesBeyondCap(s: SampleCaptureState): bool = s.received > capSamples(s) and s.stored == capSamples(s)
