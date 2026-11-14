@@ -164,6 +164,30 @@ function parseRelativeDayOffset(text: string): number | null {
   return null;
 }
 
+// A year modifier placed directly before the month name ("2027년 1월",
+// "내년 1월", "明年 1月") names the year the month belongs to. Without it
+// the month branch silently falls back to this year even when the user
+// already named next year — and the stated-date correction then overwrites
+// a correct extraction with a past date. A trailing year ("January 5,
+// 2027") still wins. Spaceless CJK month-day ("1月5日") is out of scope: it
+// returns null instead of a wrong year, so it cannot corrupt an extraction.
+function resolveLeadingYearModifier(
+  beforeMonth: string,
+  thisYear: number,
+): number | null {
+  const explicit = beforeMonth.match(/(\d{4})년\s*$/u);
+  if (explicit?.[1]) {
+    return Number(explicit[1]);
+  }
+  if (/(?:내년|明年)\s*$/u.test(beforeMonth)) {
+    return thisYear + 1;
+  }
+  if (/(?:올해|今年)\s*$/u.test(beforeMonth)) {
+    return thisYear;
+  }
+  return null;
+}
+
 export function parseExplicitLocalDate(
   value: string,
   timeZone: string,
@@ -193,7 +217,10 @@ export function parseExplicitLocalDate(
     }
     const year = monthNameMatch[3]
       ? Number(monthNameMatch[3])
-      : localToday.year;
+      : (resolveLeadingYearModifier(
+          normalized.slice(0, monthNameMatch.index),
+          localToday.year,
+        ) ?? localToday.year);
     const day = Number(monthNameMatch[2]);
     return isRealCalendarDay(year, month, day) ? { year, month, day } : null;
   }

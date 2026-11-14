@@ -367,6 +367,57 @@ describe("parseExplicitLocalDate Intl names", () => {
   });
 });
 
+describe("parseExplicitLocalDate leading year modifier", () => {
+  // Saturday 2026-11-14 12:00 in Seoul — January 5 this year has passed.
+  const now = new Date("2026-11-14T03:00:00.000Z");
+  it("reads a year named before the month instead of falling back to this year", () => {
+    expect(
+      parseExplicitLocalDate("2027년 1월 5일 오후 3시 회의", ZONE, now),
+    ).toEqual({
+      year: 2027,
+      month: 1,
+      day: 5,
+    });
+    expect(
+      parseExplicitLocalDate("내년 1월 5일 오후 3시에 회의 잡아줘", ZONE, now),
+    ).toEqual({
+      year: 2027,
+      month: 1,
+      day: 5,
+    });
+    expect(
+      parseExplicitLocalDate("明年 1月 5日下午3点开会", ZONE, now),
+    ).toEqual({
+      year: 2027,
+      month: 1,
+      day: 5,
+    });
+    expect(parseExplicitLocalDate("올해 1월 5일", ZONE, now)).toEqual({
+      year: 2026,
+      month: 1,
+      day: 5,
+    });
+  });
+
+  it("keeps the trailing-year and yearless behaviour unchanged", () => {
+    expect(parseExplicitLocalDate("January 5, 2027", ZONE, now)).toEqual({
+      year: 2027,
+      month: 1,
+      day: 5,
+    });
+    expect(parseExplicitLocalDate("1월 5일", ZONE, now)).toEqual({
+      year: 2026,
+      month: 1,
+      day: 5,
+    });
+    expect(parseExplicitLocalDate("3월 15일 오후 3시", ZONE, now)).toEqual({
+      year: 2026,
+      month: 3,
+      day: 15,
+    });
+  });
+});
+
 // Uses the canonical ALS turn timer; private payload/error identity must never
 // become diagnostic metadata or be retried by a timing boundary.
 it("keeps Calendar update timing bounded, optional and transparent to cancellation", async () => {
