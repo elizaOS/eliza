@@ -11,10 +11,6 @@ import {
   stageAndroidNative,
 } from "./android-native-admission.mjs";
 import {
-  provisioningComponents,
-  writeProvisioningOverlay,
-} from "./launcher-provisioning.mjs";
-import {
   assertPixel10aSourceLayout,
   composePixel10aProduct,
   enforceLauncherLockScreenPolicy,
@@ -102,7 +98,11 @@ export async function stagePixel10aProduct(options) {
   const temporary = fs.mkdtempSync(path.join(parent, ".pixel10a-product-"));
   const output = path.join(temporary, "overlay");
   try {
-    stageLauncher({ ...options, output });
+    stageLauncher({
+      ...options,
+      output,
+      provisioning: { assistant: product.launcher.assistantRole !== false },
+    });
     const xml = execFileSync(
       options.aapt,
       [
@@ -114,10 +114,6 @@ export async function stagePixel10aProduct(options) {
       { encoding: "utf8", env: options.env },
     );
     enforceLauncherLockScreenPolicy(product, xml);
-    const components = provisioningComponents(xml, launcher.packageName, {
-      assistant: product.launcher.assistantRole !== false,
-    });
-    writeProvisioningOverlay(output, launcher.packageName, components);
     const nativeStagingEvidence = stageAndroidNative({
       apk: path.join(output, "Launcher.apk"),
       output,
