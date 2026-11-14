@@ -48,6 +48,7 @@ public final class StorageReplay {
     }
 
     static final class SystemUpdateJob {
+        static void schedule(Context context, boolean requested) { schedule(context, requested, false); }
         static void schedule(Context context, boolean requested, boolean immediate) { context.schedules++; }
     }
 

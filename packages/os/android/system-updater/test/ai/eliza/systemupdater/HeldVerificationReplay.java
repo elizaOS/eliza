@@ -53,6 +53,7 @@ public final class HeldVerificationReplay {
     static final class Log { static void w(String tag, String message, Exception failure) { } }
     static final class PowerManager { int reboots; void reboot(String reason) { reboots++; } }
     static final class SystemUpdateJob {
+        static void schedule(Context context, boolean immediate) { schedule(context, immediate, false); }
         static void schedule(Context context, boolean requested, boolean immediate) { context.schedules++; }
     }
     static final class UpdateChannel {
