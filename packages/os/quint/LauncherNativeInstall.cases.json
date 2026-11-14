@@ -8,7 +8,10 @@
     "packages/os/android/patches/soong-app-native/soong-app-native.patch",
     "packages/os/scripts/__tests__/stage-launcher-overlay.node.test.ts",
     "packages/os/scripts/__tests__/android-native-admission.node.test.ts",
-    "packages/os/scripts/__tests__/pixel10a-product.node.test.ts"
+    "packages/os/scripts/__tests__/pixel10a-product.node.test.ts",
+    "packages/os/quint/native-install-observation.mjs",
+    "packages/scripts/lib/test-output.ts",
+    "packages/scripts/run-with-deadline.ts"
   ],
   "conformance": "packages/os/quint/check-launcher-native.mjs",
   "bounds": {
