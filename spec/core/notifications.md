@@ -142,7 +142,7 @@ pure def sometimesAmbiguousWrite(s: Inbox): bool = s.phase == Uncertain and s.fa
 
 ### Read fences use quiescent durable state and restart reloads that state
 
-A close request immediately rejects new admission and reads. Already admitted operations continue, including their acknowledged fan-out. A queued operation whose uncertainty reconciliation fails returns failure and releases its tail position. Close resolves only after every admitted position settles. Restart creates a new service over durable rows and cannot rebroadcast a prior write. Fairness assumes accepted persistence calls and fan-out return; unreadable storage may reject queued operations without blocking shutdown.
+A close request immediately rejects new admission and reads. Already admitted operations continue, including their acknowledged fan-out. A queued operation whose uncertainty reconciliation fails returns failure and releases its tail position. Close resolves only after every admitted position settles. Restart creates a new service over durable rows and cannot rebroadcast a prior write. Fairness assumes accepted persistence calls and fan-out return. Unreadable storage may reject each queued operation and release its position. An admitted prefix settles even while the inbox remains open and later operations are admitted. Queue counters measure that prefix because every mutation executes, completes or fails in admission order.
 
 ```quint
 pure def canRead(s: Inbox): bool = s.phase == Ready and not(s.closing) and not(s.executing) and s.pending.length() == 0
@@ -174,6 +174,8 @@ pure val fair_broadcast = "weak"
 pure val fair_rejectQueuedUnreadable = "weak"
 pure val fair_close = "weak"
 pure def leadsToAdmittedTailDrains(s: Inbox, later: Inbox): bool = s.closing implies later.phase == Closed
+pure def leadsToAdmittedOperationsSettle(s: Inbox, later: Inbox): bool =
+  s.admitted > s.completed implies later.completed >= s.admitted
 ```
 
 ## Story: Preserve notification group and expiry policy
