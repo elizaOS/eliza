@@ -116,11 +116,13 @@ function environmentNames(value, keys, where) {
 /**
  * The directory an input must stay inside. A `node_modules` dependency root holds
  * package links (pnpm's point into its `.pnpm` store, a workspace package's at its
- * source), so an input under one stays inside the real directory of the package it
- * names; a symlink within that package still cannot escape it. Every other root
- * contains its inputs itself.
+ * source). An input under one stays inside the real directory of the package it
+ * names, which must be that package (its `package.json` names it) and lie inside
+ * `packageRoots`; a symlink within that package still cannot escape it. Every other
+ * root contains its inputs itself.
  */
-function packageContainer(rootName, root, relative) {
+function packageContainer(roots, packageRoots, rootName, relative) {
+  const root = roots[rootName];
   if (
     rootName !== "dependencies" ||
     relative === null ||
@@ -128,8 +130,35 @@ function packageContainer(rootName, root, relative) {
   )
     return root;
   const [first, second] = relative.split("/");
+  requireValue(
+    first !== ".pnpm",
+    "Android host dependency inputs must name a package, not the pnpm store",
+  );
   const name = first.startsWith("@") && second ? `${first}/${second}` : first;
-  return fs.realpathSync(path.join(root, name));
+  const directory = fs.realpathSync(path.join(root, name));
+  requireValue(
+    packageRoots.some((allowed) => inside(allowed, directory)),
+    "Android host dependency link escapes the consumer, upstream and workspace roots",
+  );
+  const manifest = path.join(directory, "package.json");
+  let manifestName;
+  try {
+    if (fs.lstatSync(manifest).isFile())
+      manifestName = JSON.parse(fs.readFileSync(manifest, "utf8")).name;
+  } catch {}
+  requireValue(
+    manifestName === name,
+    `Android host dependency link ${name} is not that package`,
+  );
+  return directory;
+}
+
+/** The pnpm workspace above a directory (holding its `node_modules/.pnpm` store and workspace packages), or null. */
+function workspaceRoot(directory) {
+  for (let cursor = directory; ; cursor = path.dirname(cursor)) {
+    if (fs.existsSync(path.join(cursor, "pnpm-workspace.yaml"))) return cursor;
+    if (cursor === path.dirname(cursor)) return null;
+  }
 }
 
 /**
@@ -156,6 +185,12 @@ export function generateAndroidConsumerHost({
   upstreamRoot = fs.realpathSync(upstreamRoot);
   const roots = { consumer: consumerRoot, upstream: upstreamRoot };
   if (dependencyRoot) roots.dependencies = fs.realpathSync(dependencyRoot);
+  const packageRoots = [
+    consumerRoot,
+    upstreamRoot,
+    roots.dependencies,
+    roots.dependencies && workspaceRoot(path.dirname(roots.dependencies)),
+  ].filter(Boolean);
   output = path.resolve(output);
   if (inside(requestedConsumerRoot, output)) {
     output = path.resolve(
@@ -248,15 +283,20 @@ export function generateAndroidConsumerHost({
         ? null
         : relativePath(reference.path);
     const requested = relative === null ? root : path.join(root, relative);
-    let candidate, container;
+    let candidate;
     try {
       candidate = fs.realpathSync(requested);
-      container = packageContainer(reference.root, root, relative);
     } catch (cause) {
       throw new AndroidConsumerHostError("Android host input is unavailable", {
         cause,
       });
     }
+    const container = packageContainer(
+      roots,
+      packageRoots,
+      reference.root,
+      relative,
+    );
     requireValue(
       inside(container, candidate),
       "Android host input escapes its declared root",

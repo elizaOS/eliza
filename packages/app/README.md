@@ -393,7 +393,9 @@ declare, as data:
 A `dependencyRoot` that is a `node_modules` directory holds package links: an input
 under it, such as `@capacitor/android/capacitor`, may resolve into pnpm's `.pnpm`
 store or a workspace package, and must stay inside the real directory of the
-package it names. Name the Capacitor runtime module `capacitor-android`: the native
+package it names. That directory must hold the named package (its `package.json`
+`name`) and lie inside the consumer, upstream or dependency root or the pnpm
+workspace above the dependency root; a path through `.pnpm` itself is refused. Name the Capacitor runtime module `capacitor-android`: the native
 plugins depend on `project(':capacitor-android')`.
 
 Modules from the upstream and dependency roots, and consumer modules marked
