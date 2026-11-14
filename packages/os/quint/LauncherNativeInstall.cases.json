@@ -1,0 +1,56 @@
+{
+  "sources": [
+    "packages/os/scripts/android/stage-launcher-overlay.ts",
+    "packages/os/scripts/android/stage-android-native.py",
+    "packages/os/scripts/android/android-native-admission.mjs",
+    "packages/os/scripts/android/soong-app-native.mjs",
+    "packages/os/android/patches/soong-app-native/manifest.json",
+    "packages/os/android/patches/soong-app-native/soong-app-native.patch",
+    "packages/os/scripts/__tests__/stage-launcher-overlay.node.test.ts",
+    "packages/os/scripts/__tests__/android-native-admission.node.test.ts",
+    "packages/os/scripts/__tests__/pixel10a-product.node.test.ts"
+  ],
+  "conformance": "packages/os/quint/check-launcher-native.mjs",
+  "bounds": {
+    "domain": "One staging destination, two privilege modes, two native install modes, valid/refused admission, and an absent/existing output. Retries discard unpublished private staging; a published destination is immutable.",
+    "scope": "Actual existing Node fixtures replay renderer and filesystem outcomes; the full native admission and Python suites retain byte/path/permission refusals. Signer tooling is controlled. Raw Python finalization is not an atomic transaction; only its pre-write refusals and successful outputs are covered. Process death during writes, simultaneous cross-process publishers, Android loading and device qualification remain outside this model. The separately recorded pinned Soong Go suite checks compiler acceptance and physical install paths."
+  },
+  "cases": [
+    {
+      "name": "failure-and-retry",
+      "main": "LauncherNativeInstall",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 16,
+      "samples": 200
+    },
+    {
+      "name": "stable-call-progress",
+      "main": "LauncherNativeInstall",
+      "init": "init",
+      "step": "stableStep",
+      "invariants": ["safety"],
+      "temporal": ["FairSettles", "Settles"],
+      "temporalChecks": [
+        {
+          "property": "FairSettles",
+          "expect": "holds",
+          "assumptions": [
+            "The selected input and destination stay fixed, local I/O succeeds, and admission, rendering, publication and refusal actions are weakly fair. No external signer or provider success is assumed."
+          ]
+        },
+        {
+          "property": "Settles",
+          "expect": "counterexample",
+          "assumptions": [
+            "Without fairness, the pending call may stutter forever."
+          ]
+        }
+      ],
+      "maxSteps": 12,
+      "samples": 200
+    }
+  ]
+}

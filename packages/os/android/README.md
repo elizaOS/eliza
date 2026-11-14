@@ -288,6 +288,11 @@ refuses the unknown module type. Its base, build/soong `6722dd88`, is the
 `prebuilt_priv_app` is reserved for generated rules and cannot appear in
 these `Android.bp` files.
 
+The [native installation model](../quint/LauncherNativeInstall.qnt) replays the
+existing launcher staging fixtures. Its finite checks cover admission refusals,
+unchanged payloads and owners, patch receipts, and publication; they do not
+qualify an Android image or device.
+
 For a downstream **system-only GSI**, set `partition: "system"` in the reviewed
 launcher descriptor. Both the nonprivileged APK and optional revocable permission
 file then install in `/system`; the default remains `/product`. Inherit the staged
