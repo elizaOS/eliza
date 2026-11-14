@@ -1468,8 +1468,8 @@
         "test"
       ],
       "priority": "test-only",
-      "relatedSpec": "spec/downstream/alpha/managedGoogle.md",
-      "coverage": "related-contract"
+      "relatedSpec": "spec/downstream/alpha/managedCalendarReadAuthority.md",
+      "coverage": "direct-contract"
     },
     {
       "source": "packages/app/src/runtime/managed-google-agent/managed-google-calendar-read.ts",
