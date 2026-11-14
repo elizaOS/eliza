@@ -60,8 +60,9 @@ A website never acts for the person through a surface. Android reports these as 
 and does nothing by itself:
 
 - `dialogRequested`: `alert`, `confirm`, `prompt` and leave-page dialogs wait for
-  `answerDialog`. A dialog of a hidden, closing or navigating surface is cancelled,
-  never accepted.
+  `answerDialog` while the host listens for this event; without a listener they are
+  dismissed at once, so no page freezes on a dialog nobody shows. A dialog of a hidden,
+  paused, closing or navigating surface is cancelled, never accepted.
 - `downloadRequested`: nothing is downloaded. The http(s) address can carry access
   tokens, so keep it out of models and logs.
 - `externalLinkRequested`: a tapped `tel:`, `mailto:`, `sms:`, `geo:`, `market:` or `intent:` link.
