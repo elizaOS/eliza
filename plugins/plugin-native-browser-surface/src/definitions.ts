@@ -126,9 +126,9 @@ export interface CreateSurfaceOptions extends SurfaceOwnerOptions {
    * Android: this owner answers the page's dialogs (`dialogRequested`), file inputs
    * (`fileChooserRequested`) and camera, microphone and location requests
    * (`sitePermissionRequested`), so they wait for its answer while it listens for the
-   * event. Without it a dialog is cancelled at once (unless `interceptNavigation` is set,
-   * which still holds dialogs), a file input gets no files and a site permission is
-   * denied, whatever any other owner listens for. Fixed for the life of the surface: a
+   * event. Without it a dialog is cancelled at once, a file input gets no files and a site
+   * permission is denied, whatever any other owner listens for; `interceptNavigation` does
+   * not hold them. Fixed for the life of the surface: a
    * repeated `createSurface` with a different value rejects. Default false.
    */
   answersRequests?: boolean;
@@ -162,10 +162,11 @@ export interface NavigationRequestedEvent extends SurfaceIdOptions {
 /**
  * A JavaScript dialog (`alert`, `confirm`, `prompt`, leave-page) waiting for the host.
  * The page is paused until `answerDialog`. Dialogs wait only on a surface created with
- * `answersRequests` (or `interceptNavigation`) while a `dialogRequested` listener exists;
- * any other surface's are dismissed at once, so no page freezes on a dialog nobody shows.
- * Nothing is ever accepted for the person: a dialog of a hidden, paused, closed or
- * navigating surface is dismissed (cancelled).
+ * `answersRequests` while a `dialogRequested` listener exists; any other surface's,
+ * `interceptNavigation` ones included, are dismissed at once, so no page freezes on a
+ * dialog nobody shows. Nothing is ever accepted for the person: a dialog of a hidden,
+ * paused, closed or navigating surface is dismissed (cancelled). A dismissed
+ * `beforeunload` dialog keeps the page and drops the navigation.
  */
 export interface DialogRequestedEvent extends SurfaceIdOptions {
   dialogId: string;
@@ -179,8 +180,8 @@ export interface DialogRequestedEvent extends SurfaceIdOptions {
 
 /**
  * The page asked for a file. Nothing is downloaded until `saveDownload` names `requestId`;
- * a later request replaces this one, and the page navigating or the surface being hidden
- * or closed ends it (`saveDownload` then rejects `DOWNLOAD_NOT_PENDING`). `url` is http(s)
+ * a later request replaces this one without an event, and the page navigating or the
+ * surface being hidden or closed ends it (`saveDownload` then rejects `DOWNLOAD_NOT_PENDING`). `url` is http(s)
  * only and can carry access tokens: keep it out of models, threads and logs.
  */
 export interface DownloadRequestedEvent extends SurfaceIdOptions {
@@ -222,9 +223,9 @@ export type SitePermissionKind = "camera" | "microphone" | "location";
 /**
  * Android: a shown page asked for the camera, microphone or location. A request from the
  * https page's own origin waits for `answerSitePermission` and is never remembered; the
- * page withdrawing it, or hiding, navigating or closing the surface, ends it unanswered
- * (denied) and sends `sitePermissionWithdrawn`. Another origin's request is already
- * denied and reported with `topFrame: false` and no `requestId`, so the host can say it
+ * page withdrawing it, or hiding, navigating or closing the surface, ends it and sends
+ * `sitePermissionWithdrawn`. One `answerSitePermission` answers every kind in `kinds`.
+ * Another origin's request is already denied and reported with `topFrame: false` and no `requestId`, so the host can say it
  * was blocked. Reported only for a surface created with `answersRequests` while the host
  * listens; kinds the host app declares no Android permission for are never offered.
  */
@@ -246,9 +247,10 @@ export interface SitePermissionRequestedEvent extends SurfaceIdOptions {
 }
 
 /**
- * Android: a held `sitePermissionRequested` request ended without the host's answer: the
- * page withdrew it, navigated, or the surface was hidden or closed. Close its prompt;
- * `answerSitePermission` would reject `SITE_PERMISSION_CLOSED`.
+ * Android: a held `sitePermissionRequested` request ended without the host's answer. Either
+ * the page withdrew it (WebView already cancelled it; the plugin answers nothing), or the
+ * page navigated or the surface was hidden, reconciled or closed and the plugin denied it.
+ * Close its prompt; `answerSitePermission` would reject `SITE_PERMISSION_CLOSED`.
  */
 export interface SitePermissionWithdrawnEvent extends SurfaceIdOptions {
   requestId: string;
@@ -583,7 +585,8 @@ export interface ElizaSurfaceManagerPlugin {
   ): Promise<{ status: "dispatched" }>;
   /**
    * Android: open the other-app link the person just tapped (`externalLinkRequested`)
-   * with a fresh Intent. Rejects for any other address, and when no app handles it.
+   * with a fresh Intent, once: a later tap replaces it (`EXTERNAL_LINK_NOT_PENDING` for the
+   * earlier address). Rejects `EXTERNAL_APP_UNAVAILABLE` when no other app handles it.
    */
   openExternalLink(
     options: SurfaceIdOptions & { url: string },

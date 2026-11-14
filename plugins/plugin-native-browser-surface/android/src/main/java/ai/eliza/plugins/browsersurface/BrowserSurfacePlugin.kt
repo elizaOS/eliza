@@ -770,9 +770,11 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         sitePermissionsWithdrawn(id, surface, surface.holds.permissions.withdraw { match(it) }.keys)
     }
 
-    /** Whether this surface's page may wait for the host to answer [event]. */
-    private fun answers(surface: Surface, event: String): Boolean =
-        (surface.answersRequests || (event == "dialogRequested" && surface.interceptNavigation)) && hasListeners(event)
+    /**
+     * Whether this surface's page may wait for the host to answer [event]: only the surface's own
+     * `answersRequests` opts in, never `interceptNavigation` or another owner's listener.
+     */
+    private fun answers(surface: Surface, event: String): Boolean = surface.answersRequests && hasListeners(event)
 
     private fun declared(permission: String): Boolean = try {
         activity.packageManager.getPackageInfo(activity.packageName, PackageManager.GET_PERMISSIONS)
