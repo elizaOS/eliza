@@ -228,19 +228,25 @@
     {
       "owner": "EvaluatorContract",
       "sourceFiles": [
-        "packages/core/src/types/evaluator.ts"
+        "packages/core/src/types/evaluator.ts",
+        "plugins/plugin-assistant/src/services/evaluator.ts",
+        "plugins/plugin-assistant/src/services/evaluator-progress.ts"
       ],
       "specFiles": [
-        "spec/core/evaluators.md"
+        "spec/core/evaluators.md",
+        "spec/core/evaluatorProgress.md"
       ],
       "stateDomains": [
-        "gate",
-        "prepare",
-        "source revision",
-        "input scope",
-        "output source",
-        "processors",
-        "progress"
+        "post-turn input routing and concurrent gate and prepare callbacks",
+        "fresh merged inference and staged or resolved section precedence",
+        "background candidate revalidation and captured processor order",
+        "incremental source revision and private progress snapshot fences",
+        "durable staging, failed and committed progress, and reconciliation audit recovery"
+      ],
+      "refinementBoundaries": [
+        "Evaluator registration and room leases belong to their corresponding core models.",
+        "The runner models an ordered invocation. Native callback launch and settlement, schema validation, and exact model or processor payload capture cross the shell boundary.",
+        "The durable progress model represents one active snapshot handle for one scoped key. Durable adapter validation, page selection and restoration, and background job reconciliation still need end-to-end evidence."
       ]
     },
     {
