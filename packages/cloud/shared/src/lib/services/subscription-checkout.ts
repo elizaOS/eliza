@@ -689,7 +689,7 @@ export async function reconcileSubscriptionCheckout(
     stripe.subscriptions.retrieve(parsed.subscription),
     stripe.customers.retrieve(parsed.customer),
     stripe.paymentIntents.retrieve(paid.payment_intent),
-    stripe.charges.retrieve(paid.charge),
+    stripe.charges.retrieve(paid.charge, { expand: ["refunds"] }),
   ]);
   try {
     return await finalizeSubscriptionCheckout({
