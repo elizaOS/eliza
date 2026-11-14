@@ -1127,7 +1127,7 @@
       ],
       "priority": "priority-consumer-path",
       "relatedSpec": "spec/downstream/grace/billReview.md",
-      "coverage": "related-contract"
+      "coverage": "direct-contract"
     },
     {
       "source": "plugins/plugin-personal-assistant/native-host/bill-owner-key.mjs",
