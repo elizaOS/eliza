@@ -31,6 +31,7 @@ pure def attach(s: ProviderState, caller: int, keyed: bool): ProviderState = {
     callers: s.callers.append({id: caller, workId: id}), keyedId: if (keyed) id else s.keyedId }
 }
 pure def alwaysExecutionIdentitiesUnique(s: ProviderState): bool = s.nextId > 0 and s.works.every(w => w.id > 0 and w.id < s.nextId and s.works.select(x => x.id == w.id).length() == 1)
+pure def callerFor(s: ProviderState, caller: int): ProviderCaller = s.callers.select(c => c.id == caller).nthOr(0, {id: 0, workId: 0})
 pure def alwaysCallersOwnExistingWork(s: ProviderState): bool = s.callers.every(c => c.id > 0 and s.callers.select(x => x.id == c.id).length() == 1 and s.works.some(w => w.id == c.workId))
 pure def alwaysKeyedWorkCanBeJoined(s: ProviderState): bool = s.keyedId != 0 implies (providerWork(s, s.keyedId).id == s.keyedId and providerWork(s, s.keyedId).phase != WorkCleaned and providerWork(s, s.keyedId).active and providerWork(s, s.keyedId).cause == NoAbort)
 pure def sometimesTwoCallersShare(s: ProviderState): bool = s.works.some(w => waiters(s, w.id) > 1)
@@ -45,7 +46,7 @@ pure def canAbortCaller(s: ProviderState, caller: int): bool = s.callers.some(c 
 pure def abortCaller(s: ProviderState, caller: int): ProviderState = { ...s, abortedCallers: s.abortedCallers.union(Set(caller)) }
 pure def canDetachCancelled(s: ProviderState, caller: int): bool = s.abortedCallers.contains(caller) and s.callers.some(c => c.id == caller)
 pure def detachCancelled(s: ProviderState, caller: int): ProviderState = {
-  val id = s.callers.select(c => c.id == caller).nthOr(0, {id: 0, workId: 0}).workId
+  val id = callerFor(s, caller).workId
   val finalWaiter = waiters(s, id) == 1
   { ...s, callers: s.callers.select(c => c.id != caller), keyedId: if (finalWaiter and s.keyedId == id) 0 else s.keyedId,
     works: s.works.listMap(w => if (w.id == id and finalWaiter and w.phase == Working and w.cause == NoAbort) { ...w, cause: LastWaiter } else w) }
