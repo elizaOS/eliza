@@ -18,6 +18,9 @@ export const IMAGE_ONLY_CHAT_FALLBACK_PROMPT =
 /** Max number of attachments on a single chat message (all kinds). */
 export const MAX_CHAT_UPLOAD_ATTACHMENTS = 4;
 
+/** Raw image intake before compression to the smaller server payload cap. */
+export const MAX_CHAT_IMAGE_INTAKE_BYTES = 20 * 1024 * 1024;
+
 /**
  * Server cap on the BASE64 payload length of an image attachment. The server
  * measures the base64 string, not the decoded bytes, so 5 MiB of base64 is
