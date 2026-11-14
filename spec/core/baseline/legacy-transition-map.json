@@ -2012,7 +2012,7 @@
       "targets": [
         {
           "path": "spec/core/channelTopics.md",
-          "sha256": "d5212cfe42c254a08b65755c9b5ff3b449b12fafbd1e50867ba6fd8a4b9ad486",
+          "sha256": "bea371b095e283fa25da8dc15c998fc221f980d90904c6827447d41645ea41d0",
           "definitions": [
             "initial",
             "noCall",
@@ -12292,7 +12292,7 @@
       "targets": [
         {
           "path": "spec/core/sharedScheduler.md",
-          "sha256": "62c61918217b9a6201d2e3269094b0e42c3b9ffc5edd75cb64d327c056e6959e",
+          "sha256": "77da64a06a1717edf57dcc792c38f2b5cd97a5bc1e89c49afc47613e55960be6",
           "definitions": [
             "initial",
             "noLink",
@@ -12303,6 +12303,8 @@
             "fire",
             "canAdvance",
             "settleLinkedTick",
+            "canAdvanceQuery",
+            "advanceQuery",
             "advance",
             "canRegisterRuntime",
             "registerRuntime",
@@ -12319,6 +12321,7 @@
             "canAdvanceDisposal",
             "advanceDisposal",
             "resultRowsValues",
+            "keyValues",
             "agentValues",
             "serviceValues",
             "nameValues",
@@ -12343,10 +12346,15 @@
             "alwaysRetiredStorageDrains",
             "stepOldTickCannotDetachReplacement",
             "sometimesReplacementHasIndependentTick",
+            "sometimesReplacementDispatchesBeforeOldQueryReturns",
             "sometimesProcessTimerSurvivesStop",
             "adapterValues",
             "oldAdapterValues",
             "replacementAdapterValues",
+            "weight_advanceQuery",
+            "weight_fire",
+            "weight_attach",
+            "weight_registerRuntime",
             "fair_fire",
             "fair_advance",
             "fair_advanceDisposal",
@@ -12402,7 +12410,7 @@
         },
         {
           "path": "spec/core/queryDrain.md",
-          "sha256": "5ef71d4c3be7a9ada7a05088eef07001a8263898ece3d0ed2dcb62a959038711",
+          "sha256": "1e7837b417379bee1bf1243eead1d880b0ad4510391f823228f996d1d9327319",
           "definitions": [
             "initial",
             "agentValues",
@@ -12475,6 +12483,8 @@
             "sometimesClosedAfterHandoff",
             "nextPendingQuery",
             "canAdvancePending",
+            "canAdvanceQuery",
+            "advanceQuery",
             "advancePending",
             "canCloseRetiredServices",
             "closeRetiredServices",
@@ -12888,7 +12898,7 @@
       "targets": [
         {
           "path": "spec/core/sharedScheduler.md",
-          "sha256": "62c61918217b9a6201d2e3269094b0e42c3b9ffc5edd75cb64d327c056e6959e",
+          "sha256": "77da64a06a1717edf57dcc792c38f2b5cd97a5bc1e89c49afc47613e55960be6",
           "definitions": [
             "initial",
             "noLink",
@@ -12899,6 +12909,8 @@
             "fire",
             "canAdvance",
             "settleLinkedTick",
+            "canAdvanceQuery",
+            "advanceQuery",
             "advance",
             "canRegisterRuntime",
             "registerRuntime",
@@ -12915,6 +12927,7 @@
             "canAdvanceDisposal",
             "advanceDisposal",
             "resultRowsValues",
+            "keyValues",
             "agentValues",
             "serviceValues",
             "nameValues",
@@ -12939,10 +12952,15 @@
             "alwaysRetiredStorageDrains",
             "stepOldTickCannotDetachReplacement",
             "sometimesReplacementHasIndependentTick",
+            "sometimesReplacementDispatchesBeforeOldQueryReturns",
             "sometimesProcessTimerSurvivesStop",
             "adapterValues",
             "oldAdapterValues",
             "replacementAdapterValues",
+            "weight_advanceQuery",
+            "weight_fire",
+            "weight_attach",
+            "weight_registerRuntime",
             "fair_fire",
             "fair_advance",
             "fair_advanceDisposal",
@@ -12957,7 +12975,7 @@
         },
         {
           "path": "spec/core/queryDrain.md",
-          "sha256": "5ef71d4c3be7a9ada7a05088eef07001a8263898ece3d0ed2dcb62a959038711",
+          "sha256": "1e7837b417379bee1bf1243eead1d880b0ad4510391f823228f996d1d9327319",
           "definitions": [
             "initial",
             "agentValues",
@@ -13030,6 +13048,8 @@
             "sometimesClosedAfterHandoff",
             "nextPendingQuery",
             "canAdvancePending",
+            "canAdvanceQuery",
+            "advanceQuery",
             "advancePending",
             "canCloseRetiredServices",
             "closeRetiredServices",

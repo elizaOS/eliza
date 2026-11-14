@@ -147,9 +147,14 @@ not guarantee a worker consumes its row.
 ```quint
 pure def nextPendingQuery(s: Drain): Query = s.queries.select(query => query.phase == Querying or query.phase == Ready or query.phase == Running).nthOr(0, absentQuery)
 pure def canAdvancePending(s: Drain): bool = nextPendingQuery(s).key != 0
+pure def canAdvanceQuery(s: Drain, key: int): bool = canFinishQuery(s, key) or canDispatchNext(s, key) or canFinishRun(s, key)
+pure def advanceQuery(s: Drain, key: int, succeeded: bool, resultRows: List[TaskResult]): Drain =
+  if (canFinishQuery(s, key)) finishQuery(s, key, succeeded, resultRows)
+  else if (canDispatchNext(s, key)) dispatchNext(s, key)
+  else finishRun(s, key)
 pure def advancePending(s: Drain, succeeded: bool, resultRows: List[TaskResult]): Drain = {
   val query = nextPendingQuery(s)
-  if (query.phase == Querying) finishQuery(s, query.key, succeeded, resultRows) else if (query.phase == Ready) dispatchNext(s, query.key) else finishRun(s, query.key)
+  advanceQuery(s, query.key, succeeded, resultRows)
 }
 pure def canCloseRetiredServices(s: Drain): bool = s.retiredServices.exists(service => not(s.closedServices.contains(service)) and canCloseService(s, service))
 pure def closeRetiredServices(s: Drain): Drain = { ...s, closedServices: s.closedServices.union(s.retiredServices.filter(service => canCloseService(s, service))) }

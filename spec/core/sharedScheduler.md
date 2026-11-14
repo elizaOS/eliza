@@ -6,7 +6,7 @@
 
 ### Each timer tick queues process work and captures at most one query for its own generation
 
-The timer first queues the current process tasks. When a database adapter is attached and no tick is active, it snapshots dirty registrations, retains busy registrations for a later tick and removes the other visited names. The tick then either owns the newly issued query ticket or completes as an empty tick. A process callback's own settlement and disposal proceed independently. Query completion releases storage ownership, while its tick can still own grouped dispatches, and only the same tick can release its active pointer.
+The timer first queues the current process tasks. When a database adapter is attached and no tick is active, it snapshots dirty registrations, retains busy registrations for a later tick and removes the other visited names. The tick then either owns the newly issued query ticket or completes as an empty tick. A process callback's own settlement and disposal proceed independently. Query completion releases storage ownership, while its tick can still own grouped dispatches, and only the same tick can release its active pointer. A replacement query can dispatch while an older database await is still unresolved; fairness for older work does not impose settlement order.
 
 ```quint
 import processScheduler as P from "./processScheduler"
@@ -30,12 +30,13 @@ pure def fire(s: SharedScheduler): SharedScheduler = {
 pure def canAdvance(s: SharedScheduler): bool = Q::canAdvancePending(s.drain)
 pure def settleLinkedTick(process: P::ProcessScheduler, link: TickQueryLink, drain: Q::Drain): P::ProcessScheduler =
   if (link.tick != 0 and Q::queryFor(drain, link.query).phase == Q::Done and P::canFinishTick(process, link.tick)) P::finishTick(process, link.tick) else process
-pure def advance(s: SharedScheduler, succeeded: bool, resultRows: List[Q::TaskResult]): SharedScheduler = {
-  val query = Q::nextPendingQuery(s.drain).key
-  val drain = Q::advancePending(s.drain, succeeded, resultRows)
-  val link = s.links.select(row => row.query == query).nthOr(0, noLink)
+pure def canAdvanceQuery(s: SharedScheduler, key: int): bool = Q::canAdvanceQuery(s.drain, key)
+pure def advanceQuery(s: SharedScheduler, key: int, succeeded: bool, resultRows: List[Q::TaskResult]): SharedScheduler = {
+  val drain = Q::advanceQuery(s.drain, key, succeeded, resultRows)
+  val link = s.links.select(row => row.query == key).nthOr(0, noLink)
   { ...s, drain: drain, process: settleLinkedTick(s.process, link, drain) }
 }
+pure def advance(s: SharedScheduler, succeeded: bool, resultRows: List[Q::TaskResult]): SharedScheduler = advanceQuery(s, Q::nextPendingQuery(s.drain).key, succeeded, resultRows)
 pure def canRegisterRuntime(s: SharedScheduler, agent: str, service: str): bool = Q::canRegister(s.drain, agent, service)
 pure def registerRuntime(s: SharedScheduler, agent: str, service: str): SharedScheduler = { ...s, drain: Q::register(s.drain, agent, service) }
 pure def unregisterRuntime(s: SharedScheduler, agent: str, service: str): SharedScheduler = { ...s, drain: Q::unregister(s.drain, agent, service) }
@@ -51,6 +52,7 @@ pure def returnCallback(s: SharedScheduler, id: int, succeeded: bool): SharedSch
 pure def canAdvanceDisposal(s: SharedScheduler): bool = P::canAdvanceDisposal(s.process)
 pure def advanceDisposal(s: SharedScheduler, succeeded: bool): SharedScheduler = { ...s, process: P::advanceDisposal(s.process, succeeded) }
 pure val resultRowsValues = Q::resultRowsValues
+pure val keyValues = Q::keyValues
 pure val agentValues = Q::agentValues
 pure val serviceValues = Q::serviceValues
 pure val nameValues = P::nameValues
@@ -82,12 +84,17 @@ pure def alwaysAdapterGenerationAgrees(s: SharedScheduler): bool = s.process.ada
 pure def alwaysActiveTickOwnsSameGenerationQuery(s: SharedScheduler): bool = s.process.activeTick == 0 or (activeLink(s).tick == s.process.activeTick and Q::queryFor(s.drain, activeLink(s).query).generation == s.process.generation and Q::queryFor(s.drain, activeLink(s).query).phase != Q::Done and Q::queryFor(s.drain, activeLink(s).query).phase != Q::Missing)
 pure def alwaysCapturedQueryOwnsTick(s: SharedScheduler): bool = s.drain.queries.every(query => s.links.some(link => link.query == query.key and s.process.ticks.some(tick => tick.id == link.tick and tick.generation == query.generation and tick.completed == (query.phase == Q::Done))))
 pure def alwaysRetiredStorageDrains(s: SharedScheduler): bool = Q::alwaysClosedServicesHaveNoQueries(s.drain) and Q::alwaysClosedAdaptersHaveNoQueries(s.drain) and Q::alwaysStopReceiptDrainedItsSnapshot(s.drain)
-pure def stepOldTickCannotDetachReplacement(before: SharedScheduler, via: str, after: SharedScheduler): bool = via == "advance" and before.process.activeTick != 0 and Q::nextPendingQuery(before.drain).key != activeLink(before).query implies after.process.activeTick == before.process.activeTick
+pure def stepOldTickCannotDetachReplacement(before: SharedScheduler, via: str, after: SharedScheduler): bool = (via == "advance" or via == "advanceQuery") and before.process.activeTick != 0 and Q::queryFor(after.drain, activeLink(before).query).phase != Q::Done implies after.process.activeTick == before.process.activeTick
 pure def sometimesReplacementHasIndependentTick(s: SharedScheduler): bool = s.process.activeTick != 0 and s.drain.queries.some(query => query.generation < s.drain.generation and query.phase == Q::Querying)
+pure def sometimesReplacementDispatchesBeforeOldQueryReturns(s: SharedScheduler): bool = Q::sometimesReplacementRunsWhileOldQueryWaits(s.drain)
 pure def sometimesProcessTimerSurvivesStop(s: SharedScheduler): bool = s.drain.stopReturned and s.process.adapter == "" and s.process.timer
 pure val adapterValues = Q::adapterValues
 pure val oldAdapterValues = Q::oldAdapterValues
 pure val replacementAdapterValues = Q::replacementAdapterValues
+pure val weight_advanceQuery = 5
+pure val weight_fire = 4
+pure val weight_attach = 3
+pure val weight_registerRuntime = 3
 ```
 
 ### Fair timer service captures dirty registrations and releases their owned awaits

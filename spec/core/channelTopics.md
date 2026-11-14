@@ -35,7 +35,7 @@ pure def validTopics(topics: List[str]): bool = topics.length() <= 20 and topics
 pure def hydrationAccepted(hydration: TopicHydration): bool = match hydration { | ReadTrackedTopics => true | ReadTopicSnapshot(snapshot) => validTopics(snapshot.topics) | TopicReadFailure => true }
 pure def hydrationSucceeded(hydration: TopicHydration): bool = match hydration { | ReadTrackedTopics => true | ReadTopicSnapshot(_) => true | TopicReadFailure => false }
 pure def hydratedSnapshot(t: TopicService, hydration: TopicHydration): List[str] = match hydration { | ReadTrackedTopics => t.durableTopics | ReadTopicSnapshot(snapshot) => snapshot.topics | TopicReadFailure => t.durableTopics }
-pure def isHydrating(t: TopicService): bool = headCall(t).phase == HydratingTopics
+pure def isHydrating(t: TopicService): bool = not(t.hydrated) and headCall(t).phase == HydratingTopics
 pure def canHydrate(t: TopicService, hydration: TopicHydration): bool = isHydrating(t) and hydrationAccepted(hydration)
 pure def hydrate(t: TopicService, hydration: TopicHydration): TopicService = {
   val succeeded = hydrationSucceeded(hydration)
