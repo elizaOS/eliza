@@ -50,7 +50,16 @@ class BrowserSurfaceRequestsTest {
     }
 
     @Test
-    fun pageScaleIsCssPixelsPerDensityIndependentPixel() {
+    fun aRefusedCertificateFailsThePageBeforeAnyOtherError() {
+        val refused = BrowserSurfaceRequests.CERTIFICATE_REFUSED
+        assertNull(BrowserSurfaceRequests.pageFailure(null, null))
+        assertEquals(refused, BrowserSurfaceRequests.pageFailure(null, "https://a.test/"))
+        assertEquals(refused, BrowserSurfaceRequests.pageFailure("net::ERR_FAILED", "https://a.test/"))
+        assertEquals("net::ERR_FAILED", BrowserSurfaceRequests.pageFailure("net::ERR_FAILED", null))
+    }
+
+    @Test
+    fun pageScaleIsDensityIndependentPixelsPerCssPixel() {
         assertEquals(1.0, BrowserSurfaceRequests.pageScale(2.625f, 2.625f), 0.0)
         assertEquals(0.4, BrowserSurfaceRequests.pageScale(1.05f, 2.625f), 0.0)
         assertEquals(2.5, BrowserSurfaceRequests.pageScale(6.5625f, 2.625f), 0.0)

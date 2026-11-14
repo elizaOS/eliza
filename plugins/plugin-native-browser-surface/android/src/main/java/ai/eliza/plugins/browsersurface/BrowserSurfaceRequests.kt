@@ -92,8 +92,19 @@ object BrowserSurfaceRequests {
     fun capturesMedia(kinds: Collection<String>): Boolean =
         BrowserSitePrompt.CAMERA in kinds || BrowserSitePrompt.MICROPHONE in kinds
 
+    /** What a surface reports while a refused certificate blocks its page. */
+    const val CERTIFICATE_REFUSED = "The website's security certificate was not accepted."
+
     /**
-     * The page's zoom as CSS pixels per device-independent pixel, to two places: 1 is the
+     * Why the main frame failed, or null while it stands. A refused certificate wins over the
+     * generic error WebView follows it with; either one keeps the page from being read,
+     * captured, controlled or walked through history.
+     */
+    fun pageFailure(pageError: String?, securityBlocked: String?): String? =
+        securityBlocked?.let { CERTIFICATE_REFUSED } ?: pageError
+
+    /**
+     * The page's zoom as density-independent pixels per CSS pixel, to two places: 1 is the
      * page's own mobile size, below 1 a wide page shown whole, above 1 pinched in.
      */
     fun pageScale(scale: Float, density: Float): Double =
