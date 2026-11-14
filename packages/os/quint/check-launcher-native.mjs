@@ -65,7 +65,17 @@ assert.equal(
   0,
   `Existing staging suites failed: ${directory}/tests.log`,
 );
-assert.match(tests.stdout, /# fail 0\b/);
+const totals = Object.fromEntries(
+  [
+    ...tests.stdout.matchAll(
+      /^# (tests|pass|fail|cancelled|skipped|todo) (\d+)$/gm,
+    ),
+  ].map((match) => [match[1], Number(match[2])]),
+);
+assert.ok(Number.isSafeInteger(totals.tests) && totals.tests > 0);
+assert.equal(totals.pass, totals.tests, "Every collected fixture must pass");
+for (const outcome of ["fail", "cancelled", "skipped", "todo"])
+  assert.equal(totals[outcome], 0, `Unexpected ${outcome} fixtures`);
 for (const name of [
   "Python source, pin, byte-integrity and packaging regressions",
   "reviewed privileged permissions move the Pixel 10a launcher and its JNI to priv-app, and nothing else does",
@@ -169,6 +179,7 @@ writeFileSync(
   `${JSON.stringify(
     {
       inputs: before,
+      totals,
       observations,
       scope:
         "Existing real launcher renderer/filesystem and Python admission suites. Controlled SDK inspection ports; no image boot or device qualification. Pinned Soong compilation is separate evidence.",
