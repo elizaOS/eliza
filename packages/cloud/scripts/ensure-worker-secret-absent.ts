@@ -98,6 +98,8 @@ async function runWrangler(args) {
  * Confirm that `name` is absent, returning whether this invocation may have
  * removed it. Any ambiguous deletion is treated as removal for rollback
  * ownership if a later names-only inventory proves the binding absent.
+ * Explicit retirement requires the expected type and absence under every type;
+ * legacy secret cleanup can preserve a configured plain-text replacement.
  */
 export async function ensureWorkerSecretAbsent({
   name,
@@ -105,6 +107,7 @@ export async function ensureWorkerSecretAbsent({
   versioned = false,
   // keep_vars preserves a deployed plain variable after it leaves the config.
   bindingType = "secret_text",
+  strictBindingType = false,
   attempts = 3,
   retryDelayMs = 10_000,
   run = runWrangler,
@@ -116,6 +119,12 @@ export async function ensureWorkerSecretAbsent({
   const validatedArgs = validateWranglerEnvironmentArgs(wranglerArgs);
   if (typeof versioned !== "boolean") {
     throw new Error("Versioned secret mode must be boolean");
+  }
+  if (
+    typeof strictBindingType !== "boolean" ||
+    (strictBindingType && !versioned)
+  ) {
+    throw new Error("Explicit binding retirement requires versioned mode");
   }
   if (
     bindingType !== "secret_text" &&
@@ -147,7 +156,7 @@ export async function ensureWorkerSecretAbsent({
     const expectedType = parseWorkerVersionBindingNames(output, bindingType);
     // Secret retirement must preserve a same-name configured plain-text value.
     // The legacy onboarding URL cleanup relies on this distinction.
-    if (bindingType !== "plain_text") return expectedType;
+    if (bindingType !== "plain_text" && !strictBindingType) return expectedType;
     const allTypes = parseWorkerVersionBindingNames(output);
     if (allTypes.has(name) && !expectedType.has(name)) {
       throw new Error("Worker binding has an unexpected type");
@@ -188,15 +197,24 @@ async function main() {
   const args = process.argv.slice(2);
   const versioned = args[0] === "--versions";
   if (versioned) args.shift();
-  const plainText = args[0] === "--plain-text";
-  if (plainText) args.shift();
+  let bindingType = "secret_text";
+  let strictBindingType = false;
+  if (args[0] === "--plain-text") {
+    args.shift();
+    bindingType = "plain_text";
+  } else if (args[0] === "--binding-type") {
+    args.shift();
+    bindingType = args.shift() ?? "";
+    strictBindingType = true;
+  }
   const [name, ...wranglerArgs] = args;
   if (!name) throw new Error("Worker secret name is required");
   const result = await ensureWorkerSecretAbsent({
     name,
     wranglerArgs,
     versioned,
-    bindingType: plainText ? "plain_text" : "secret_text",
+    bindingType,
+    strictBindingType,
   });
   process.stdout.write(`${result}\n`);
 }
