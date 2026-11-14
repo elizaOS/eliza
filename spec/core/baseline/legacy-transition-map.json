@@ -8612,7 +8612,7 @@
       "targets": [
         {
           "path": "spec/core/postDelivery.md",
-          "sha256": "b648d17f32b8c3ef5cfe860c728b2bd4eb33789ea17b2c73773aa4b07bf27969",
+          "sha256": "46dbbbe9b707b432eb7a647ee083264486d6a2ab62626e41174fcb3dd63c1086",
           "definitions": [
             "noPostDrain",
             "initial",
@@ -8696,6 +8696,7 @@
             "alwaysDeniedDeliveryBlocksEffects",
             "alwaysAbortedBeforeInvocationHasNoEffect",
             "alwaysCapturedSettlementRetained",
+            "alwaysUnresolvedCaptureHasNoEffect",
             "alwaysUnresolvedCaptureHasBoundary",
             "sometimesNoncooperativeTaskContinues",
             "stepQuarantineRetainsPending",
@@ -10087,7 +10088,7 @@
         },
         {
           "path": "spec/core/postDelivery.md",
-          "sha256": "b648d17f32b8c3ef5cfe860c728b2bd4eb33789ea17b2c73773aa4b07bf27969",
+          "sha256": "46dbbbe9b707b432eb7a647ee083264486d6a2ab62626e41174fcb3dd63c1086",
           "definitions": [
             "noPostDrain",
             "initial",
@@ -10171,6 +10172,7 @@
             "alwaysDeniedDeliveryBlocksEffects",
             "alwaysAbortedBeforeInvocationHasNoEffect",
             "alwaysCapturedSettlementRetained",
+            "alwaysUnresolvedCaptureHasNoEffect",
             "alwaysUnresolvedCaptureHasBoundary",
             "sometimesNoncooperativeTaskContinues",
             "stepQuarantineRetainsPending",

@@ -10,6 +10,9 @@ As a host I distinguish diagnostic work from room-state work and wait for real s
 
 Diagnostic work is runtime-scoped. Room-state work can be roomless only when the host permits implicit ownership.
 
+Discovered by simulation: the diagnostic path uses lease zero. Include that
+value in the sampler so diagnostic and room-owned work can coexist in a trace.
+
 ```quint
 type PostTaskKind = DiagnosticTask | RoomStateTask
 type PostTaskPhase = PendingTask | WaitingForDelivery | RunningTask | SettledTask
@@ -25,7 +28,7 @@ pure val noPostDrain: PostDrain = {id: 0, entryAborted: false, runtime: 0, room:
 type PostDelivery = {issuedTaskIds: Set[int], issuedDrainIds: Set[int], issuedLeaseIds: Set[int], drains: List[PostDrain], runtimes: List[PostRuntime], leases: List[PostLease], tasks: List[PostTask], boundaries: List[DeliveryBoundary], reportedFailures: int}
 pure val initial: PostDelivery = {issuedTaskIds: Set(), issuedDrainIds: Set(), issuedLeaseIds: Set(), drains: List(), runtimes: List(), leases: List(), tasks: List(), boundaries: List(), reportedFailures: 0}
 pure val runtimeIdValues = Set(1, 2)
-pure val leaseIdValues = Set(1, 2, 3)
+pure val leaseIdValues = Set(0, 1, 2, 3)
 pure val taskIdValues = Set(1, 2, 3, 4)
 pure val roomValues = Set("", "room-a", "room-b")
 pure val labelValues = Set("reflection", "diagnostic")
@@ -104,7 +107,7 @@ pure def settleDeliveryBoundary(s: PostDelivery, runtimeId: int, room: str, deli
 pure def canRemoveDeliveryBoundary(s: PostDelivery, runtimeId: int, room: str): bool = s.boundaries.some(b => b.runtime == runtimeId and b.room == room and b.status != WaitingDelivery) and (quarantined(s, runtimeId) or pendingRoomTasks(s, runtimeId, room).length() == 0)
 pure def removeDeliveryBoundary(s: PostDelivery, runtimeId: int, room: str): PostDelivery = { ...s, boundaries: s.boundaries.select(b => b.runtime != runtimeId or b.room != room) }
 pure def canReleasePostLease(s: PostDelivery, runtimeId: int, room: str, leaseId: int): bool = not(s.boundaries.some(b => b.runtime == runtimeId and b.room == room)) and (quarantined(s, runtimeId) or pendingRoomTasks(s, runtimeId, room).length() == 0) and s.leases.some(l => l.id == leaseId and l.runtime == runtimeId and l.room == room)
-pure def releasePostLease(s: PostDelivery, runtimeId: int, room: str, leaseId: int): PostDelivery = { ...s, leases: s.leases.select(l => l.id != leaseId) }
+pure def releasePostLease(s: PostDelivery, runtimeId: int, room: str, leaseId: int): PostDelivery = { ...s, leases: s.leases.select(l => l.id != leaseId or l.runtime != runtimeId or l.room != room) }
 pure def alwaysDeliveryBoundaryOwned(s: PostDelivery): bool = s.boundaries.every(b => s.leases.some(l => l.id == b.lease and l.runtime == b.runtime and l.room == b.room))
 pure def alwaysOneBoundaryPerRoom(s: PostDelivery): bool = s.boundaries.every(b => s.boundaries.select(other => other.runtime == b.runtime and other.room == b.room).length() == 1)
 pure def sometimesFailedDeliveryRetainsBoundary(s: PostDelivery): bool = s.boundaries.some(b => b.status == FailedDelivery and pendingRoomTasks(s, b.runtime, b.room).length() > 0)
@@ -153,7 +156,15 @@ pure def sometimesQuarantineDrainFails(s: PostDelivery): bool = s.drains.some(d 
 Evidence-bearing work explicitly captures the current delivery promise before
 starting. Ordinary tracked tasks can run independently of delivery. Captured
 work receives the boundary result even if invocation or continuation happens
-after cleanup. A failed delivery prevents its effects. An abort prevents an uninvoked task from running, while an already invoked task may ignore cancellation only when its implementation is noncooperative.
+after cleanup. A failed delivery prevents its effects. An abort prevents an
+uninvoked task from running. A running callback can ignore its signal.
+
+Discovered by the proof: an unresolved capture has performed no
+delivery-dependent effect. A settled failure can therefore deny its effects
+without invalidating an existing receipt.
+An unsettled capture remains queued or waits on its delivery promise. Starting
+or resuming unrestricted work with unknown permission would leave a live task
+waiting on a boundary that settlement has already closed.
 
 ```quint
 pure def mayResumeTask(t: PostTask, taskId: int): bool =
@@ -168,8 +179,10 @@ pure def alwaysEffectsRequireInvocation(s: PostDelivery): bool = s.tasks.every(t
 pure def alwaysDeniedDeliveryBlocksEffects(s: PostDelivery): bool = s.tasks.every(t => t.permission == DeniedPermission implies not(t.effectApplied))
 pure def alwaysAbortedBeforeInvocationHasNoEffect(s: PostDelivery): bool = s.tasks.every(t => t.aborted and not(t.invoked) implies not(t.effectApplied))
 pure def alwaysCapturedSettlementRetained(s: PostDelivery): bool = s.tasks.every(t => t.phase == WaitingForDelivery and not(s.boundaries.some(b => b.runtime == t.runtime and b.room == t.room)) implies t.permission != UnknownPermission)
+pure def alwaysUnresolvedCaptureHasNoEffect(s: PostDelivery): bool = s.tasks.every(t => t.permission == UnknownPermission implies not(t.effectApplied))
 pure def alwaysUnresolvedCaptureHasBoundary(s: PostDelivery): bool = s.tasks.every(t =>
   t.phase != SettledTask and t.permission == UnknownPermission implies
+    (t.phase == PendingTask or t.phase == WaitingForDelivery) and
     t.waitsForDelivery and s.boundaries.some(b =>
       b.runtime == t.runtime and b.room == t.room and b.lease == t.lease and b.status == WaitingDelivery))
 pure def sometimesNoncooperativeTaskContinues(s: PostDelivery): bool = s.tasks.some(t => t.aborted and not(t.cooperative) and t.effectApplied)
@@ -184,7 +197,7 @@ and that only finitely many new tasks enter a draining scope. A callback that
 ignores its signal can postpone that scope indefinitely.
 
 ```quint
-pure def stepQuarantineRetainsPending(before: PostDelivery, after: PostDelivery): bool = before.runtimes.every(r => not(r.quarantined) and quarantined(after, r.id) implies pendingRuntimeTasks(before, r.id).every(t => pendingRuntimeTasks(after, r.id).some(retained => retained.id == t.id)))
+pure def stepQuarantineRetainsPending(before: PostDelivery, after: PostDelivery): bool = before.runtimes.every(r => not(quarantined(before, r.id)) and quarantined(after, r.id) implies pendingRuntimeTasks(before, r.id).every(t => pendingRuntimeTasks(after, r.id).some(retained => retained.id == t.id)))
 pure def stepQuarantinePreventsNewTasks(before: PostDelivery, after: PostDelivery): bool = before.runtimes.every(r => r.quarantined implies after.tasks.every(t => t.runtime != r.id or before.tasks.some(old => old.id == t.id)))
 pure def stepDrainsReturnEmpty(before: PostDelivery, after: PostDelivery): bool = after.drains.every(d => d.phase == DrainDone and not(before.drains.some(old => old.id == d.id and old.phase == DrainDone)) implies drainTasks(after, d.runtime, d.room).length() == 0)
 pure def stepInvocationChecksAbort(before: PostDelivery, via: str, after: PostDelivery): bool =
