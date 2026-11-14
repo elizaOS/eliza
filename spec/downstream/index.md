@@ -9,7 +9,7 @@ contracts across the host, client, workflow, Cloud, and native boundaries.
 | Grace | `48b43b9ca6ade7b72c6488f92bee6d4a3ddcf154` | `7743504b7c936a764b3938a44cad918808b621df` |
 | AlphaPhone | `8d44dfe52b0a6e2f3462b5da85dd3f8037518f43` | `c518127a025ab173874af9c7d304f26b25213b0d` |
 
-The [Grace inventory](./grace/baseline.json) and [AlphaPhone inventory](./alphaBaseline.json) record exact source leaves, aliases, and formal artifacts. The [consumer contract map](./contract-coverage.json) connects those paths to current models and retains the behavior still to map. The pins are independently meaningful. A public export at one pin does
+The [Grace inventory](./grace/baseline.json) and [AlphaPhone inventory](./alphaBaseline.json) record exact source leaves, aliases, and formal artifacts. The [consumer contract map](./contract-coverage.json) connects those paths to current models, includes the exact Android composition paths for traced native producers, and retains the behavior still to map. The pins are independently meaningful. A public export at one pin does
 not establish that a source alias, build entry, native registration, or
 runtime route exists at the other. The consumer's committed build and
 startup configuration determines admission. Tests and optional device
@@ -95,42 +95,67 @@ pure def lawTerminalEvidenceDoesNotReplay(effect: CommitEvidence, retryPermitted
 
 ### Each consumer supplies its own compatibility evidence for the candidate
 
-A spec revision passes the model gate when generation, the declared
-Quint scenarios, TypeScript replay, and all safety proofs pass for
-the same revision. Temporal claims remain bounded to the checked
-fairness assumptions and simulation. Package replacement additionally
-requires the same candidate to pass both consumer pins. The expected
-source identities include the product commit, Eliza pin, and applicable
-consumer build profile. Check type-only and value imports, runtime
-and browser-safe entrypoints, native registration, and persisted data
-fixtures using the packed artifacts. Include provider and platform
-journeys at the I/O boundaries identified by their stories. An inventory
-entry or nearby spec link alone supplies none of these compatibility
-results. All evidence flags denote observed, revision-bound results.
+A spec revision passes the model gate when generation and typechecking,
+the declared Quint scenarios, TypeScript replay, and all safety proofs
+pass for that revision. Record the revision separately for each result
+so reports from different revisions cannot combine into one pass. Temporal
+claims remain bounded to the checked fairness assumptions and simulation.
+Vibestack review records the user's acceptance against the same revision.
+Package replacement additionally requires both consumer pins to pass with
+the same candidate artifact built from that revision. The expected source
+identities include the product commit, Eliza pin, and consumer build profile.
+Check type-only and value imports, runtime and browser-safe entrypoints,
+native registration, and persisted data fixtures using the packed artifacts.
+Include provider and platform journeys at the I/O boundaries in their stories.
+An inventory entry or nearby spec link alone supplies none of these results.
 
 ```quint
-type DownstreamEvidence = { generation: bool, scenarios: bool, replay: bool, safetyProofs: bool }
-type ConsumerEvidence = { consumerPin: str, productCommit: str, candidate: str, buildProfile: str, importsCompile: bool, exportsResolve: bool, behaviorMatches: bool, nativeJourneys: bool }
-pure def reviewableModel(model: DownstreamEvidence): bool =
-  model.generation and model.scenarios and model.replay and model.safetyProofs
-pure def consumerMatches(expected: ConsumerEvidence, observed: ConsumerEvidence, artifact: str): bool =
-  artifact != "" and observed.candidate == artifact and expected.consumerPin != "" and expected.productCommit != "" and expected.buildProfile != "" and
-  observed.consumerPin == expected.consumerPin and observed.productCommit == expected.productCommit and observed.buildProfile == expected.buildProfile and
+type CheckReceipt = { specRevision: str, passed: bool }
+type DownstreamEvidence = { generation: CheckReceipt, scenarios: CheckReceipt, replay: CheckReceipt, safetyProofs: CheckReceipt, review: CheckReceipt }
+type ConsumerPin = { consumerPin: str, productCommit: str, buildProfile: str }
+type ConsumerEvidence = { identity: ConsumerPin, specRevision: str, candidate: str, importsCompile: bool, exportsResolve: bool, behaviorMatches: bool, nativeJourneys: bool }
+pure def receiptMatches(receipt: CheckReceipt, specRevision: str): bool =
+  specRevision != "" and receipt.passed and receipt.specRevision == specRevision
+pure def reviewableModel(model: DownstreamEvidence, specRevision: str): bool =
+  receiptMatches(model.generation,specRevision) and receiptMatches(model.scenarios,specRevision) and
+  receiptMatches(model.replay,specRevision) and receiptMatches(model.safetyProofs,specRevision)
+pure def modelAccepted(model: DownstreamEvidence, specRevision: str): bool =
+  reviewableModel(model,specRevision) and receiptMatches(model.review,specRevision)
+pure def consumerMatches(expected: ConsumerPin, observed: ConsumerEvidence, artifact: str, specRevision: str): bool =
+  artifact != "" and observed.candidate == artifact and specRevision != "" and observed.specRevision == specRevision and
+  expected.consumerPin != "" and expected.productCommit != "" and expected.buildProfile != "" and observed.identity == expected and
   observed.importsCompile and observed.exportsResolve and observed.behaviorMatches and observed.nativeJourneys
-pure val modelValues = Set({ generation: true, scenarios: true, replay: true, safetyProofs: true }, { generation: true, scenarios: true, replay: true, safetyProofs: false })
-pure val graceConsumer: ConsumerEvidence = { consumerPin: "7743504b7c936a764b3938a44cad918808b621df", productCommit: "48b43b9ca6ade7b72c6488f92bee6d4a3ddcf154", candidate: "candidate", buildProfile: "grace-android", importsCompile: true, exportsResolve: true, behaviorMatches: true, nativeJourneys: true }
-pure val alphaConsumer: ConsumerEvidence = { consumerPin: "c518127a025ab173874af9c7d304f26b25213b0d", productCommit: "8d44dfe52b0a6e2f3462b5da85dd3f8037518f43", candidate: "candidate", buildProfile: "alpha-native", importsCompile: true, exportsResolve: true, behaviorMatches: true, nativeJourneys: true }
+pure val goodReceipt: CheckReceipt = { specRevision: "spec-a", passed: true }
+pure val goodModel: DownstreamEvidence = { generation: goodReceipt, scenarios: goodReceipt, replay: goodReceipt, safetyProofs: goodReceipt, review: goodReceipt }
+pure val receiptValues = Set(goodReceipt, { ...goodReceipt, specRevision: "spec-b" }, { ...goodReceipt, passed: false })
+pure val modelValues = Set(goodModel, { ...goodModel, safetyProofs: { ...goodReceipt, specRevision: "spec-b" } },
+  { ...goodModel, review: { ...goodReceipt, passed: false } }, { ...goodModel, review: { ...goodReceipt, specRevision: "spec-b" } })
+pure val graceConsumer: ConsumerPin = { consumerPin: "7743504b7c936a764b3938a44cad918808b621df", productCommit: "48b43b9ca6ade7b72c6488f92bee6d4a3ddcf154", buildProfile: "grace-android" }
+pure val alphaConsumer: ConsumerPin = { consumerPin: "c518127a025ab173874af9c7d304f26b25213b0d", productCommit: "8d44dfe52b0a6e2f3462b5da85dd3f8037518f43", buildProfile: "alpha-native" }
+pure val graceEvidence: ConsumerEvidence = { identity: graceConsumer, specRevision: "spec-a", candidate: "candidate", importsCompile: true, exportsResolve: true, behaviorMatches: true, nativeJourneys: true }
+pure val alphaEvidence: ConsumerEvidence = { ...graceEvidence, identity: alphaConsumer }
 pure val expectedValues = Set(graceConsumer, alphaConsumer)
-pure val observedValues = expectedValues
-pure val graceObservedValues = Set(graceConsumer, alphaConsumer)
+pure val graceObservedValues = Set(graceEvidence, alphaEvidence, { ...graceEvidence, specRevision: "spec-b" },
+  { ...graceEvidence, nativeJourneys: false }, { ...alphaEvidence, candidate: "other" })
+pure val observedValues = graceObservedValues
 pure val alphaObservedValues = graceObservedValues
 pure val artifactValues = Set("", "candidate", "other")
-pure def replacementReady(model: DownstreamEvidence, artifact: str, graceObserved: ConsumerEvidence, alphaObserved: ConsumerEvidence): bool =
-  reviewableModel(model) and consumerMatches(graceConsumer, graceObserved, artifact) and consumerMatches(alphaConsumer, alphaObserved, artifact)
-pure def lawReplacementUsesSameCandidate(model: DownstreamEvidence, artifact: str, graceObserved: ConsumerEvidence, alphaObserved: ConsumerEvidence): bool =
-  replacementReady(model, artifact, graceObserved, alphaObserved) implies graceObserved.candidate == alphaObserved.candidate
-pure def lawReplacementCannotExchangeProductEvidence(model: DownstreamEvidence, artifact: str, graceObserved: ConsumerEvidence, alphaObserved: ConsumerEvidence): bool =
-  replacementReady(model, artifact, graceObserved, alphaObserved) implies
-  graceObserved.consumerPin == graceConsumer.consumerPin and alphaObserved.consumerPin == alphaConsumer.consumerPin and graceObserved.productCommit != alphaObserved.productCommit
-pure def lawModelNeedsSafetyProofs(model: DownstreamEvidence): bool = reviewableModel(model) implies model.safetyProofs
+pure val specRevisionValues = Set("", "spec-a", "spec-b")
+pure def replacementReady(model: DownstreamEvidence, specRevision: str, artifact: str, graceObserved: ConsumerEvidence, alphaObserved: ConsumerEvidence): bool =
+  modelAccepted(model,specRevision) and consumerMatches(graceConsumer,graceObserved,artifact,specRevision) and
+  consumerMatches(alphaConsumer,alphaObserved,artifact,specRevision)
+pure def lawReplacementUsesSameCandidate(model: DownstreamEvidence, specRevision: str, artifact: str, graceObserved: ConsumerEvidence, alphaObserved: ConsumerEvidence): bool =
+  replacementReady(model,specRevision,artifact,graceObserved,alphaObserved) implies
+  graceObserved.candidate == alphaObserved.candidate and graceObserved.specRevision == alphaObserved.specRevision
+pure def lawReplacementCannotExchangeProductEvidence(model: DownstreamEvidence, specRevision: str, artifact: str, graceObserved: ConsumerEvidence, alphaObserved: ConsumerEvidence): bool =
+  replacementReady(model,specRevision,artifact,graceObserved,alphaObserved) implies
+  graceObserved.identity == graceConsumer and alphaObserved.identity == alphaConsumer and graceObserved.identity.productCommit != alphaObserved.identity.productCommit
+pure def lawModelNeedsSafetyProofs(model: DownstreamEvidence, specRevision: str): bool =
+  reviewableModel(model,specRevision) implies model.safetyProofs.passed and model.safetyProofs.specRevision == specRevision
+pure def lawReviewMustMatchCurrentSpec(model: DownstreamEvidence, specRevision: str): bool =
+  model.review.specRevision != specRevision implies not(modelAccepted(model,specRevision))
 ```
+
+The two consumer identities above name the currently pinned release
+profiles. Development or test-only producers can have their own
+conformance evidence without satisfying those identities.
