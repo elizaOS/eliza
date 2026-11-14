@@ -50,7 +50,8 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
  private final Handler main=new Handler(Looper.getMainLooper());
  private final ExecutorService control=Executors.newSingleThreadExecutor();
  private final ExecutorService media=Executors.newSingleThreadExecutor();
- private final OkHttpClient http=new OkHttpClient.Builder().connectTimeout(8,TimeUnit.SECONDS).readTimeout(10,TimeUnit.SECONDS).writeTimeout(5,TimeUnit.SECONDS).followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false).build();
+ // OkHttp WebSockets use HTTP/1.1. Match bootstrap so the upgrade can reuse its connection.
+ private final OkHttpClient http=new OkHttpClient.Builder().protocols(java.util.Collections.singletonList(Protocol.HTTP_1_1)).connectTimeout(8,TimeUnit.SECONDS).readTimeout(10,TimeUnit.SECONDS).writeTimeout(5,TimeUnit.SECONDS).followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false).build();
  private volatile Session session;
  private volatile boolean foreground=true,destroyed;
  private SpeechAudioFocus focus;
