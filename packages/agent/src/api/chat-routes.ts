@@ -42,6 +42,7 @@ import {
   isRateLimitError,
   isTextGenerationModelType,
   type AgentLogEntry as LogEntry,
+  type Logger,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Media,
   type Memory,
@@ -1415,20 +1416,45 @@ export function isChatGenerationTimeoutError(err: unknown): boolean {
     err instanceof Error ? err.message : typeof err === "string" ? err : "";
   return CHAT_GENERATION_TIMEOUT_PATTERN.test(msg);
 }
-function isRemoteOllamaEndpointConfigured(): boolean {
-  const raw =
-    process.env.OLLAMA_BASE_URL?.trim() ||
-    process.env.OLLAMA_API_ENDPOINT?.trim();
-  if (!raw?.trim()) return false;
+const reportedUnparsableOllamaEndpoints = new Set<string>();
+function isRemoteOllamaEndpointConfigured(
+  logger?: Pick<Logger, "warn">,
+): boolean {
+  const envVar = process.env.OLLAMA_BASE_URL?.trim()
+    ? "OLLAMA_BASE_URL"
+    : "OLLAMA_API_ENDPOINT";
+  const raw = process.env[envVar]?.trim();
+  if (!raw) return false;
   try {
-    const normalized = raw.trim().replace(/\/api\/?$/i, "");
+    const normalized = raw.replace(/\/api\/?$/i, "");
     const host = new URL(normalized).hostname.toLowerCase();
     return host !== "localhost" && host !== "127.0.0.1" && host !== "::1";
-  } catch {
+  } catch (error) {
+    // error-policy:J3 an operator-supplied endpoint that cannot be parsed is
+    // broken configuration, not "no remote endpoint configured". Swallowing it
+    // dropped the generation timeout to the local default, so the failure read
+    // as "Chat generation timed out after 180000ms" instead of naming the typo.
+    // A typo must not fail chat, so the local fallback stays; the bad value is
+    // reported once instead of looking identical to an unset variable.
+    if (!reportedUnparsableOllamaEndpoints.has(raw)) {
+      reportedUnparsableOllamaEndpoints.add(raw);
+      logger?.warn(
+        {
+          src: "eliza-api",
+          envVar,
+          endpoint: raw,
+          error: getErrorMessage(error),
+        },
+        "Ollama endpoint is not a parsable URL; using the local chat generation timeout",
+      );
+    }
     return false;
   }
 }
-function resolveChatGenerationTimeoutMs(explicit?: number): number {
+export function resolveChatGenerationTimeoutMs(
+  logger?: Pick<Logger, "warn">,
+  explicit?: number,
+): number {
   if (
     typeof explicit === "number" &&
     Number.isFinite(explicit) &&
@@ -1448,7 +1474,7 @@ function resolveChatGenerationTimeoutMs(explicit?: number): number {
       return Math.max(1000, parsed);
     }
   }
-  if (isRemoteOllamaEndpointConfigured()) {
+  if (isRemoteOllamaEndpointConfigured(logger)) {
     return REMOTE_CHAT_GENERATION_TIMEOUT_MS;
   }
   return DEFAULT_CHAT_GENERATION_TIMEOUT_MS;
@@ -3602,7 +3628,7 @@ async function generateOwnedChatResponse(
   agentName: string,
   opts?: ChatGenerateOptions,
 ): Promise<ChatGenerationResult> {
-  const timeoutMs = resolveChatGenerationTimeoutMs();
+  const timeoutMs = resolveChatGenerationTimeoutMs(runtime.logger);
   const existingTimer = getInferenceTimer();
   if (existingTimer) {
     const result = await runWithGenerationTimeout(
