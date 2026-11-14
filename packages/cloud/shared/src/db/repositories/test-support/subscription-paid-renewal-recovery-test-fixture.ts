@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import Stripe from "stripe";
+import { settlementDigest } from "../../../lib/services/settlement-digest";
 import { installCancellationTestSchema } from "../subscription-cancellation-test-fixture";
 import { seedRenewalTestAccount } from "../subscription-renewal-test-fixture";
 
@@ -400,6 +401,21 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
     const checkout = await import("../../../lib/services/subscription-checkout");
     const f = await seedPurchasedCheckout();
     servePurchasedCheckout(f);
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Loopback address missing");
+    const stripe = new Stripe("sk_test_cloud_e2e", {
+      host: "127.0.0.1",
+      port: address.port,
+      protocol: "http",
+      maxNetworkRetries: 0,
+    });
+    const retrieved = await stripe.subscriptions.retrieve(f.subscription.id);
+    expect(typeof retrieved.items.data[0]!.price.unit_amount_decimal).toBe("object");
+    expect(settlementDigest(retrieved)).toBe(settlementDigest(f.subscription));
+    const exactDecimal = "12345678901234567890.123456789012";
+    expect(settlementDigest({ nested: [Stripe.Decimal.from(exactDecimal)] })).toBe(
+      settlementDigest({ nested: [exactDecimal] }),
+    );
     await ageCheckoutDispatch(f, 3);
     const [sweep, confirm, webhook] = await Promise.allSettled([
       checkout.recoverStaleSubscriptionCheckouts(50),
