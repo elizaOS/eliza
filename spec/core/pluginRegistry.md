@@ -54,6 +54,7 @@ pure def sometimesPluginReloaded(s: PluginEpochs): bool = s.epochs.some(a => a.l
 Only registering or loaded epochs admit new owned classes. Retiring epochs continue to own their original resources until cleanup completes.
 
 ```quint
+pure def epochDisposalFinished(s: PluginEpochs, epochId: int): bool = epoch(s, epochId).id != 0 and not(epoch(s, epochId).lifecycle.disposePending)
 pure def epochAdmitsClass(s: PluginEpochs, epochId: int): bool = epoch(s, epochId).lifecycle.phase == P::Registering or epoch(s, epochId).lifecycle.phase == P::Loaded
 pure def epochOwnsResources(s: PluginEpochs, epochId: int): bool = epoch(s, epochId).id != 0 and activePhase(epoch(s, epochId).lifecycle.phase)
 pure def epochRetiring(s: PluginEpochs, epochId: int): bool = epoch(s, epochId).lifecycle.phase == P::RollingBack or epoch(s, epochId).lifecycle.phase == P::Unloading
