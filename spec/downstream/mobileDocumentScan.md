@@ -123,8 +123,8 @@ uses the transaction's matching revision and commit as port evidence.
 
 ```quint
 pure def matchesDraftRevision(expected: int, stored: int): bool = expected >= 0 and expected == stored
-pure def queueAutoCleanup(s: ScanDocument): ScanDocument =
-  if (s.draftKind == AutomaticDraft and not(s.autoQueued) and s.cleanupRevision == 0 and
+pure def queueAutoCleanup(required: bool, s: ScanDocument): ScanDocument =
+  if (required and s.draftKind == AutomaticDraft and not(s.autoQueued) and s.cleanupRevision == 0 and
     (s.lastPageRemoved or s.exportResult == ExportConfirmed)) { ...s, cleanupRevision: s.draftRevision }
   else s
 pure def canSettleAutoSave(s: ScanDocument): bool = s.autoQueued and s.flight != DraftAction
@@ -133,7 +133,7 @@ pure def settleAutoSave(s: ScanDocument, stored: int, revision: int, committed: 
     { ...s, autoQueued: false, draftRevision: revision,
       draftKind: if (s.draftKind == ExplicitDraft) ExplicitDraft else AutomaticDraft }
   else { ...s, autoQueued: false }
-  queueAutoCleanup(updated)
+  queueAutoCleanup(true, updated)
 }
 pure def canSettleAutoCleanup(s: ScanDocument): bool = s.cleanupRevision > 0
 pure def settleAutoCleanup(s: ScanDocument, stored: int, committed: bool): ScanDocument =
@@ -168,7 +168,7 @@ pure def canBeginExport(s: ScanDocument): bool = editable(s) and s.flight == Sca
 pure def beginExport(s: ScanDocument): ScanDocument = { ...s, flight: ExportingPages, exportRevision: s.pageRevision }
 pure def canFinishExport(s: ScanDocument, result: ScanExport): bool = not(s.closed) and s.flight == ExportingPages and result != ExportUnobserved
 pure def finishExport(s: ScanDocument, result: ScanExport): ScanDocument =
-  queueAutoCleanup({ ...s, flight: ScanFree, exportResult: result })
+  queueAutoCleanup(result == ExportConfirmed, { ...s, flight: ScanFree, exportResult: result })
 pure val resultValues = Set(ExportRetryable, ExportReviewed, ExportConfirmed, ExportUnknown)
 pure def alwaysExportOwnsCurrentSnapshot(s: ScanDocument): bool =
   s.flight == ExportingPages implies s.exportRevision == s.pageRevision and s.pages.count > 0
