@@ -39,6 +39,7 @@ features provide distinct evidence from production startup.
 - [Runtime JSON client and account restart](./runtimeClient.md)
 - [Grace browser protection](./browserProtection.md)
 - [Browser request grounding](./browserGrounding.md)
+- [Required browser execution and qualification](./browserQualification.md)
 - [Website command transport](./surfaceTransport.md)
 - [Clock handoff and cancellation](./clockReminder.md)
 - [Reminder recurrence and occurrence](./reminderOccurrence.md)

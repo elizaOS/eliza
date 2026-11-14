@@ -8,8 +8,15 @@ optional archive and build record metadata. Grace also invokes
 `packages/app/scripts/lib/consumer-android-runtime.mjs`. Alpha stages
 `packages/app/scripts/mobile/android/resident-host-sources.mjs`. See
 [Android host composition](./mobileBridge.md) for descriptor and output
-ownership. Historical producer commands are source evidence. Replacement
-orchestration uses the workspace's Node, pnpm and VibeLang toolchain.
+ownership. See [source integrity](./mobileSourceIntegrity.md) and
+[the emitted dependency inventory](./mobileBundleInventory.md) for the
+provenance checked before build and archive publication.
+[Merged manifest admission](./mobileManifestAdmission.md) supplies the
+Android distribution and callback rules.
+[Android fixture custody](./mobileFixtureCustody.md) owns test leases and
+isolated user cleanup. Historical producer commands are source evidence.
+Replacement orchestration uses the workspace's Node, pnpm and VibeLang
+toolchain.
 
 ## Story: Publish only the Android distribution built and checked in this invocation
 

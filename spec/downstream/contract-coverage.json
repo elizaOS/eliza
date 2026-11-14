@@ -117,7 +117,7 @@
         "build-development-or-release-tool"
       ],
       "priority": "build-or-test-tooling",
-      "relatedSpec": "spec/downstream/mobileStartup.md",
+      "relatedSpec": "spec/downstream/mobileSourceIntegrity.md",
       "coverage": "related-contract"
     },
     {
@@ -178,7 +178,7 @@
         "test-only-source"
       ],
       "priority": "build-or-test-tooling",
-      "relatedSpec": "spec/downstream/mobileStartup.md",
+      "relatedSpec": "spec/downstream/mobileFixtureCustody.md",
       "coverage": "related-contract"
     },
     {
@@ -486,7 +486,7 @@
         "product-host-source"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/grace/taskOwner.md",
+      "relatedSpec": "spec/downstream/grace/taskHttp.md",
       "coverage": "related-contract"
     },
     {
@@ -789,7 +789,7 @@
         "test-only-source"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/grace/taskLifecycleClient.md",
+      "relatedSpec": "spec/downstream/grace/taskHttp.md",
       "coverage": "related-contract"
     },
     {
@@ -1064,7 +1064,7 @@
         "product-host-source"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobileBridge.md",
+      "relatedSpec": "spec/downstream/mobileWifi.md",
       "coverage": "related-contract"
     },
     {
@@ -1253,8 +1253,8 @@
         "build-or-host"
       ],
       "priority": "build-or-test-tooling",
-      "relatedSpec": null,
-      "coverage": "inventoried"
+      "relatedSpec": "spec/downstream/mobileBundleInventory.md",
+      "coverage": "related-contract"
     },
     {
       "source": "packages/app/scripts/lib/android-fixture-observation.mjs",
@@ -1263,8 +1263,8 @@
         "build-or-host"
       ],
       "priority": "build-or-test-tooling",
-      "relatedSpec": null,
-      "coverage": "inventoried"
+      "relatedSpec": "spec/downstream/mobileFixtureEvidence.md",
+      "coverage": "related-contract"
     },
     {
       "source": "packages/app/scripts/lib/android-fixture-reboot.mjs",
@@ -1273,8 +1273,8 @@
         "build-or-host"
       ],
       "priority": "build-or-test-tooling",
-      "relatedSpec": null,
-      "coverage": "inventoried"
+      "relatedSpec": "spec/downstream/mobileFixtureEvidence.md",
+      "coverage": "related-contract"
     },
     {
       "source": "packages/app/scripts/lib/android-manifest-facts.mjs",
@@ -1284,8 +1284,8 @@
         "test"
       ],
       "priority": "build-or-test-tooling",
-      "relatedSpec": null,
-      "coverage": "inventoried"
+      "relatedSpec": "spec/downstream/mobileManifestAdmission.md",
+      "coverage": "related-contract"
     },
     {
       "source": "packages/app/scripts/lib/device-lease.ts",
@@ -1294,8 +1294,8 @@
         "build-or-host"
       ],
       "priority": "build-or-test-tooling",
-      "relatedSpec": null,
-      "coverage": "inventoried"
+      "relatedSpec": "spec/downstream/mobileFixtureCustody.md",
+      "coverage": "related-contract"
     },
     {
       "source": "packages/app/scripts/lib/immutable-workspace-source.mjs",
@@ -1304,8 +1304,8 @@
         "build-or-host"
       ],
       "priority": "build-or-test-tooling",
-      "relatedSpec": null,
-      "coverage": "inventoried"
+      "relatedSpec": "spec/downstream/mobileSourceIntegrity.md",
+      "coverage": "related-contract"
     },
     {
       "source": "packages/app/scripts/lib/instrumentation-result.mjs",
@@ -1314,8 +1314,8 @@
         "build-or-host"
       ],
       "priority": "build-or-test-tooling",
-      "relatedSpec": null,
-      "coverage": "inventoried"
+      "relatedSpec": "spec/downstream/mobileFixtureEvidence.md",
+      "coverage": "related-contract"
     },
     {
       "source": "packages/app/scripts/lib/isolated-android-test.mjs",
@@ -1324,8 +1324,8 @@
         "build-or-host"
       ],
       "priority": "build-or-test-tooling",
-      "relatedSpec": null,
-      "coverage": "inventoried"
+      "relatedSpec": "spec/downstream/mobileFixtureEvidence.md",
+      "coverage": "related-contract"
     },
     {
       "source": "packages/app/scripts/lib/isolated-android-user-test.mjs",
@@ -1334,8 +1334,8 @@
         "build-or-host"
       ],
       "priority": "build-or-test-tooling",
-      "relatedSpec": null,
-      "coverage": "inventoried"
+      "relatedSpec": "spec/downstream/mobileFixtureCustody.md",
+      "coverage": "related-contract"
     },
     {
       "source": "packages/app/scripts/lib/isolated-android-user.mjs",
@@ -1344,8 +1344,8 @@
         "build-or-host"
       ],
       "priority": "build-or-test-tooling",
-      "relatedSpec": null,
-      "coverage": "inventoried"
+      "relatedSpec": "spec/downstream/mobileFixtureCustody.md",
+      "coverage": "related-contract"
     },
     {
       "source": "packages/app/scripts/mobile/android/build-consumer.mjs",
@@ -1376,8 +1376,8 @@
         "build-or-host"
       ],
       "priority": "build-or-test-tooling",
-      "relatedSpec": null,
-      "coverage": "inventoried"
+      "relatedSpec": "spec/downstream/mobileFixtureEvidence.md",
+      "coverage": "related-contract"
     },
     {
       "source": "packages/app/scripts/mobile/android/hosted-fixture/ci-emulator-display.mjs",
@@ -1386,8 +1386,8 @@
         "build-or-host"
       ],
       "priority": "build-or-test-tooling",
-      "relatedSpec": null,
-      "coverage": "inventoried"
+      "relatedSpec": "spec/downstream/mobileFixtureEvidence.md",
+      "coverage": "related-contract"
     },
     {
       "source": "packages/app/scripts/mobile/android/hosted-fixture/webview-provider.mjs",
@@ -1396,8 +1396,8 @@
         "build-or-host"
       ],
       "priority": "build-or-test-tooling",
-      "relatedSpec": null,
-      "coverage": "inventoried"
+      "relatedSpec": "spec/downstream/mobileFixtureEvidence.md",
+      "coverage": "related-contract"
     },
     {
       "source": "packages/app/scripts/mobile/android/resident-host-sources.mjs",
@@ -1417,7 +1417,7 @@
         "build-or-host"
       ],
       "priority": "build-or-test-tooling",
-      "relatedSpec": "spec/downstream/mobileBuild.md",
+      "relatedSpec": "spec/downstream/mobileManifestAdmission.md",
       "coverage": "related-contract"
     },
     {
@@ -1427,8 +1427,8 @@
         "build-or-host"
       ],
       "priority": "build-or-test-tooling",
-      "relatedSpec": null,
-      "coverage": "inventoried"
+      "relatedSpec": "spec/downstream/mobileFixtureEvidence.md",
+      "coverage": "related-contract"
     },
     {
       "source": "packages/app/src/runtime/managed-google-agent/calendar-read-timing.ts",
@@ -1508,8 +1508,8 @@
         "test"
       ],
       "priority": "test-only",
-      "relatedSpec": null,
-      "coverage": "inventoried"
+      "relatedSpec": "spec/downstream/alpha/system.md",
+      "coverage": "related-contract"
     },
     {
       "source": "packages/auth/src/auth/cloud-resident-binding.ts",
@@ -2138,8 +2138,8 @@
         "build-or-host"
       ],
       "priority": "build-or-test-tooling",
-      "relatedSpec": null,
-      "coverage": "inventoried"
+      "relatedSpec": "spec/downstream/browserQualification.md",
+      "coverage": "direct-contract"
     },
     {
       "source": "packages/ui/src/accessibility/screen-focus.ts",
@@ -2715,7 +2715,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "relatedSpec": "spec/downstream/alpha/notesRead.md",
       "coverage": "related-contract"
     },
     {
@@ -2937,7 +2937,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/files.md",
+      "relatedSpec": "spec/downstream/alpha/sourceReferences.md",
       "coverage": "related-contract"
     },
     {
@@ -2947,8 +2947,8 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/files.md",
-      "coverage": "related-contract"
+      "relatedSpec": "spec/downstream/alpha/photosArchive.md",
+      "coverage": "direct-contract"
     },
     {
       "source": "plugins/plugin-files/src/browser/files-agent-contract.ts",
@@ -3092,7 +3092,7 @@
         "test"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/files.md",
+      "relatedSpec": "spec/downstream/alpha/sourceReferences.md",
       "coverage": "related-contract"
     },
     {
@@ -3755,7 +3755,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "relatedSpec": "spec/downstream/alpha/notesTrash.md",
       "coverage": "related-contract"
     },
     {
@@ -3816,7 +3816,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "relatedSpec": "spec/downstream/alpha/notesTrash.md",
       "coverage": "related-contract"
     },
     {
@@ -3878,7 +3878,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "relatedSpec": "spec/downstream/alpha/notesRead.md",
       "coverage": "related-contract"
     },
     {
@@ -3889,7 +3889,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "relatedSpec": "spec/downstream/alpha/notesTrash.md",
       "coverage": "related-contract"
     },
     {
@@ -3940,7 +3940,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "relatedSpec": "spec/downstream/alpha/notesTrash.md",
       "coverage": "related-contract"
     },
     {
@@ -3950,7 +3950,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "relatedSpec": "spec/downstream/alpha/notesTrash.md",
       "coverage": "related-contract"
     },
     {
@@ -3961,7 +3961,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "relatedSpec": "spec/downstream/alpha/notesTrash.md",
       "coverage": "related-contract"
     },
     {
@@ -3971,7 +3971,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "relatedSpec": "spec/downstream/alpha/notesTrash.md",
       "coverage": "related-contract"
     },
     {
@@ -3981,7 +3981,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "relatedSpec": "spec/downstream/alpha/notesTrash.md",
       "coverage": "related-contract"
     },
     {

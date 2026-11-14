@@ -17,19 +17,21 @@ activation on a physical device.
 | Consumer entry and owner | Behavior needed by Alpha |
 | --- | --- |
 | `scripts/prepare-client-features.ts`, `tsconfig.json`, `vite.config.ts` | [Authenticated source projection and publication](./clientPublication.md) |
+| `scripts/qualify-head.ts` | [Required browser reports](../browserQualification.md) and [installed APK campaign evidence](./candidateQualification.md) |
 | `apps/app/src/product/alpha-product.ts`, `apps/app/src/prototype/model.js` | [Versioned product registration and admission](./product.md), [shell navigation, overlays and drafts](./navigation.md), [launcher and retained choices](./launcher.md) |
 | `apps/app/src/startup-permission-flow.ts`, `apps/app/src/startup-permissions.tsx` | [Shared permission step](./permissionStep.md), [Alpha access setup](./permissions.md) |
 | `apps/app/src/prototype/settings-adapter.ts`, `system-shade.ts`, `runtime/always-on-listener.ts`, `AlphaApplication.java` | [Native reset, problem journal, Settings, shade and listener custody](./system.md) |
 | `apps/app/src/main.tsx`, `packages/ui/src/state/app-update-gate.ts` | [Renderer update admission and activation readback](./updateGate.md) |
 | `apps/app/src/main.tsx` and `apps/app/src/prototype/agent-adapter.ts` | [Client conversation](../conversation.md), [turn ownership and cancellation](../../core/turnControllers.md) |
 | `apps/app/src/prototype/assistant-draft-controller.ts`, `apps/app/src/runtime/assistant-draft-store.ts`, `apps/app/src/browser/documents.ts` | [Durable drafts and send recovery](./durableDraft.md), [browser document receipts and recovery](./documentStore.md) |
-| `apps/app/src/prototype/canonical-notes-ui.ts`, `notes-controller.ts`, `notes-editor.ts` | [Notes snapshot and draft custody](./notes.md) |
+| `apps/app/src/prototype/canonical-notes-ui.ts`, `notes-controller.ts`, `notes-editor.ts` | [Notes snapshot and draft custody](./notes.md), [Previous Notes Trash and audio recovery](./notesTrash.md), [local search and selected content](./notesRead.md) |
 | `apps/app/src/prototype/agent-calendar-adapter.ts`, `calendar-approval-adapter.ts` | [Calendar target and availability review](./calendar.md), [draft and versioned mutations](./calendarDraft.md) |
 | `apps/app/src/prototype/maps-adapter.ts` | [Maps route and offer custody](./maps.md) |
 | `apps/app/src/runtime/telephony-executor.ts`, Phone, Messages, and Contacts adapters | [Verified image review, SIM selection, and operation receipt](./telephony.md), [native SMS review custody](../mobileTelephony.md) |
 | `apps/app/src/prototype/browser-adapter.ts` | [Current document, private profile, reading and persistence](./browser.md), [native external link authority](../mobileBrowser.md) |
 | `apps/app/src/passwords/password-manager.ts`, `MainActivity.java` | [Vault visit, native unlock, origin review and secret custody](./passwords.md) |
-| `apps/app/src/browser/files.ts` | [Reviewed file operations and retained trash](./files.md), [native file observer custody](../mobileStorageWatch.md) |
+| `apps/app/src/browser/files.ts`, `AlphaMailAttachments` | [Reviewed file operations and retained trash](./files.md), [verified document source reopening and read permissions](./sourceReferences.md), [native file observer custody](../mobileStorageWatch.md) |
+| `apps/app/src/prototype/browser-camera.ts` | [Selected media download and stored ZIP](./photosArchive.md) |
 | `apps/app/src/prototype/inbox-cloud-adapter.ts` | [Managed Inbox paging and cache identity](./inbox.md) |
 | `apps/app/src/prototype/home-cards.ts`, `home-overview-cards.ts` | [Current-source Home projections](./overview.md) |
 | `apps/app/src/prototype/automations-adapter.ts`, `runtime/automations-protocol.ts` | [Automation row, cron and reminder presentations](./automationPresentation.md) |
@@ -62,8 +64,8 @@ refinements against the same pinned consumers:
 
 | Boundary | Remaining concrete evidence |
 | --- | --- |
-| Storage and authored text | Full Notes trash, search, content and audio codecs; browser legacy archive arrays, IndexedDB/Web Locks cancellation, same-binding peer draft queues, and Android secure slot recovery. |
-| Files and captured sources | Full archive, document import, scan draft, OCR/text-layer and source-link payload custody; exact file-system ordering and native media/permissions callbacks. |
+| Storage and authored text | Notes decoder, exact native recording byte and orphan cleanup fixtures, multi-row Trash contention, and format/parser parity; browser legacy archive arrays, same-binding peer draft queues, and Android secure slot recovery. |
+| Files and captured sources | Archive and scan payload decoders, OCR/text-layer parity, file-system ordering, native media callbacks, and cross-bridge Android document grants and cleanup. |
 | Calendar, Inbox and Home | Exact provider JSON/route and reconciliation fixtures; calendar availability and recurrence data; cache eviction across accounts; real time-zone, accessibility and rendered projection fixtures. |
 | Maps, browser and launcher | Provider route geometry, live-location feeds and relay expiry; browser session history and restore arrays; dynamic launcher order, focus and native lifecycle fixtures. |
 | Notices and automation | Exact platform signal and notice owner composition, digest/archive data, and provider read projection; verify effects through the linked workflow and mobile owners. |
