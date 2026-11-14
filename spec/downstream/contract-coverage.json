@@ -633,7 +633,7 @@
         "renderer-source"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/grace/websiteGuide.md",
+      "relatedSpec": "spec/downstream/grace/websiteSurfaceReceiver.md",
       "coverage": "related-contract"
     },
     {
@@ -3147,7 +3147,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/inbox.md",
+      "relatedSpec": "spec/downstream/alpha/inboxDraftCustody.md",
       "coverage": "related-contract"
     },
     {
@@ -3221,7 +3221,7 @@
         "test"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/inbox.md",
+      "relatedSpec": "spec/downstream/alpha/inboxDraftCustody.md",
       "coverage": "related-contract"
     },
     {
@@ -3272,7 +3272,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/inbox.md",
+      "relatedSpec": "spec/downstream/alpha/inboxDraftCustody.md",
       "coverage": "related-contract"
     },
     {

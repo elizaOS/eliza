@@ -32,7 +32,7 @@ activation on a physical device.
 | `apps/app/src/passwords/password-manager.ts`, `MainActivity.java` | [Vault visit, native unlock, origin review and secret custody](./passwords.md), [installed Android Autofill](../mobilePasswordAutofill.md) |
 | `apps/app/src/browser/files.ts`, `AlphaMailAttachments` | [Reviewed file operations and retained trash](./files.md), [verified document source reopening and read permissions](./sourceReferences.md), [native file observer custody](../mobileStorageWatch.md) |
 | `apps/app/src/prototype/browser-camera.ts` | [Selected media download and stored ZIP](./photosArchive.md) |
-| `apps/app/src/prototype/inbox-cloud-adapter.ts` | [Managed Inbox paging and cache identity](./inbox.md), [saved reads, grant revocation and cache custody](./inboxCache.md), [managed Gmail wire](./managedGmailWire.md) |
+| `apps/app/src/prototype/inbox-cloud-adapter.ts` | [Managed Inbox paging and cache identity](./inbox.md), [saved reads, grant revocation and cache custody](./inboxCache.md), [managed Gmail wire](./managedGmailWire.md), [draft and provider receipt custody](./inboxDraftCustody.md) |
 | `apps/app/src/prototype/home-cards.ts`, `home-overview-cards.ts` | [Current-source Home projections](./overview.md) |
 | `apps/app/src/prototype/automations-adapter.ts`, `runtime/automations-protocol.ts` | [Automation row, cron and reminder presentations](./automationPresentation.md) |
 | `apps/app/src/browser/notifications.ts`, `workflow-notices.ts` | [Exact browser notice action and workflow receipts](./notices.md) |
