@@ -112,10 +112,18 @@ export const BLOCKED_SPAWN_ENV_KEYS: ReadonlySet<string> = new Set([
 	// rebase -i; GIT_PAGER is spawned whenever output is paged; GIT_TEMPLATE_DIR
 	// seeds.git/hooks at init time, so an attacker-supplied template directory
 	// plants a pre-commit hook that runs on the next commit.
+	// GIT_PROXY_COMMAND is run as `<command> <host> <port>` for every git://
+	// fetch, clone or ls-remote, so it carries a full command line just like
+	// GIT_SSH_COMMAND. GIT_EXEC_PATH is where git looks up its helper programs:
+	// pointed at an attacker-written directory, its `git-remote-https` runs on
+	// every https fetch, the same path-resolution class as PATH and
+	// GIT_TEMPLATE_DIR. Both verified against git 2.43.0.
 	// Bare GIT_CONFIG is deliberately absent: it does not resolve aliases and is
 	// not an execution primitive. VISUAL is absent because git does not consult
 	// it. Both verified against git 2.50.1.
 	"GIT_SSH_COMMAND",
+	"GIT_PROXY_COMMAND",
+	"GIT_EXEC_PATH",
 	"GIT_EXTERNAL_DIFF",
 	"GIT_SSH",
 	"GIT_ASKPASS",
