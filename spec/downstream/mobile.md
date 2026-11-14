@@ -17,7 +17,7 @@ The examined consumer pin lists no patches in
 | Device actions reviewed on a foreground screen. | [Device action claim and receipt](./mobileDeviceExecution.md), [foreground device reviews](./mobileDeviceReview.md), [Photos and library receipts](./mobileDevicePhotos.md), [still-photo copy recovery](./mobilePhotoCopyRecovery.md), [original photo replacement](./mobilePhotoReplace.md), [video copy](./mobileVideoCopy.md), [owned custom albums](./mobileOwnedAlbums.md), and [owned Photos trash](./mobileOwnedPhotoTrash.md) |
 | Alpha video edit review reads a restricted media stream. | [Android video playback](./mobileVideoPlayback.md) |
 | Alpha Camera preview, recordings and scan documents. | [Viewfinder and recording custody](./mobileCameraCapture.md), [document scan review and export](./mobileDocumentScan.md), and [assistant photo receipt](./mobileDeviceCamera.md) |
-| Grace updater and the upstream trust AAR. | [OTA admission](./mobileOta.md) and [installation journal](./mobileInstall.md) |
+| Grace updater and the upstream trust AAR. | [OTA admission](./mobileOta.md), [WebView health evidence](./mobileOtaUiHealth.md), and [installation journal](./mobileInstall.md) |
 | Grace launcher network setup and Internet Settings. | [Wi-Fi discovery and approved join](./mobileWifi.md) |
 | Alpha Android document picker and selected-file operations. | [Selected-document grant custody](./mobileSelectedDocumentGrants.md) |
 | Grace and AlphaPhone Android contact picker and Alpha contact edits. | [Address book reads and reviewed writes](./mobileContacts.md) |

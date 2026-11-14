@@ -3126,8 +3126,8 @@
         "renderer-import"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/inbox.md",
-      "coverage": "related-contract"
+      "relatedSpec": "spec/downstream/alpha/gmailNoticeCustody.md",
+      "coverage": "direct-contract"
     },
     {
       "source": "plugins/plugin-inbox/src/mailbox/digest.ts",

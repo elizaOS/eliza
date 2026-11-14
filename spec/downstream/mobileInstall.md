@@ -137,7 +137,8 @@ The same-lock expected-install event supplies the current journal
 identity with an observed matching installed package. The current-health
 receipt event represents the callback delivering the intact
 snapshot and verified installed identity without interleaving. The port
-supplies qualified health and probation timing. Local failure of the
+supplies qualified health and probation timing. [WebView health evidence](./mobileOtaUiHealth.md)
+governs the renderer portion of that input. Local failure of the
 candidate quarantines it and permits one authorized recovery attempt.
 A failed recovery health outcome quarantines both artifacts and stops
 automatic recovery. Current recovery authority is required before
