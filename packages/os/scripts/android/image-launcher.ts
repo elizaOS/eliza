@@ -27,7 +27,6 @@
  *     [--source-commit COMMIT] [--runtime-source ELIZA_ROOT] [--bun-target linux-musl|android]
  *     [--aapt PATH] [--apksigner PATH]
  */
-import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -44,7 +43,6 @@ import {
   stagedImageFeature,
   writeImageCapability,
 } from "./image-capability.mjs";
-import { provisioningComponents } from "./launcher-provisioning.mjs";
 import {
   createDevelopmentLauncherDescriptor,
   renderOverlay,
@@ -295,8 +293,7 @@ export function stageImageLauncher(options: StageOptions) {
       `${JSON.stringify(descriptor, null, 2)}\n`,
     );
     const staged = path.join(temporary, LAUNCHER_DIRECTORY);
-    const provisioning = { assistant: options.brand.assistantRole !== false };
-    stageLauncher({
+    const { provisioning } = stageLauncher({
       descriptor: descriptorFile,
       apk: options.apk,
       output: staged,
@@ -304,20 +301,9 @@ export function stageImageLauncher(options: StageOptions) {
       apksigner: options.apksigner,
       development: options.development,
       env: options.env,
-      provisioning,
+      provisioning: { assistant: options.brand.assistantRole !== false },
     });
     const launcherApk = path.join(staged, "Launcher.apk");
-    const xml = execFileSync(
-      options.aapt,
-      ["dump", "xmltree", launcherApk, "AndroidManifest.xml"],
-      { encoding: "utf8", env: options.env, maxBuffer: 64 << 20 },
-    );
-    // The evidence records the components stageLauncher provisioned.
-    const components = provisioningComponents(
-      xml,
-      descriptor.packageName,
-      provisioning,
-    );
     let native = null;
     if (product.nativeTarget) {
       native = stageAndroidNative({
@@ -355,7 +341,7 @@ export function stageImageLauncher(options: StageOptions) {
       apkSha256: descriptor.apkSha256,
       certificateSha256: descriptor.certificateSha256,
       defaultPermissions: descriptor.defaultPermissions ?? [],
-      provisioning: components,
+      provisioning,
       imageFeature: stagedImageFeature(staged, descriptor.packageName),
       nativeTarget: product.nativeTarget,
       nativeLibrariesStaged: native !== null,

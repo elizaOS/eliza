@@ -723,7 +723,7 @@ test("staging with a native ABI writes the pinned JNI beside the launcher, or no
         development: false,
         nativeAbi: "arm64-v8a",
         env,
-      });
+      }).output;
     };
     const bytes = launcherApk();
     const output = stage(bytes, "out");
@@ -954,7 +954,7 @@ test("staging for a Soong-only product writes no Android.mk, or nothing on refus
       nativeAbi: "arm64-v8a",
       nativeInstall: "soong",
       env,
-    });
+    }).output;
     assert.deepEqual(fs.readdirSync(output).sort(), [
       "Android.bp",
       "Launcher.apk",
@@ -1273,7 +1273,7 @@ test("staging writes the allow-list only for a descriptor that names privileged 
           BADGING: declared,
           XML: xml,
         },
-      });
+      }).output;
     };
     const privileged = { privilegedPermissions: [PHONE_STATE] };
     const output = stage(
@@ -1358,7 +1358,13 @@ test("provisioning is staged atomically from the staged APK's manifest", () => {
         },
         provisioning: { assistant },
       });
-    const output = stage("home", false);
+    const { output, provisioning } = stage("home", false);
+    // The caller's evidence records the components the overlay names.
+    assert.deepEqual(provisioning, {
+      home: "ai.alphacompute.alphaphone.Home",
+      assistant: null,
+      autofill: null,
+    });
     const read = (file: string) =>
       fs.readFileSync(path.join(output, file), "utf8");
     assert.match(

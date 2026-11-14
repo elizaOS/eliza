@@ -636,6 +636,8 @@ export function stageLauncher(options: {
   const parent = path.dirname(path.resolve(options.output));
   fs.mkdirSync(parent, { recursive: true });
   const temporary = fs.mkdtempSync(path.join(parent, ".launcher-stage-"));
+  // The components the provisioning overlay names, for the caller's evidence.
+  let provisioning: ReturnType<typeof provisioningComponents> | null = null;
   try {
     const copy = (source: string, name: string, sha256: string) => {
       const apk = path.join(temporary, name);
@@ -713,16 +715,14 @@ export function stageLauncher(options: {
         path.join(temporary, "privapp-permissions.xml"),
         overlay.privilegedPermissions,
       );
-    if (options.provisioning)
-      writeProvisioningOverlay(
-        temporary,
+    if (options.provisioning) {
+      provisioning = provisioningComponents(
+        inspection[1],
         d.packageName,
-        provisioningComponents(
-          inspection[1],
-          d.packageName,
-          options.provisioning,
-        ),
+        options.provisioning,
       );
+      writeProvisioningOverlay(temporary, d.packageName, provisioning);
+    }
     fs.writeFileSync(
       path.join(temporary, "launcher.json"),
       `${JSON.stringify({ ...d, development: options.development }, null, 2)}\n`,
@@ -732,7 +732,7 @@ export function stageLauncher(options: {
     fs.rmSync(temporary, { recursive: true, force: true });
     throw error;
   }
-  return path.resolve(options.output);
+  return { output: path.resolve(options.output), provisioning };
 }
 export function main(argv = process.argv.slice(2)) {
   const args: Record<string, string> = {};
@@ -786,7 +786,7 @@ export function main(argv = process.argv.slice(2)) {
       ...(args["native-install"]
         ? { nativeInstall: args["native-install"] as NativeInstall }
         : {}),
-    }),
+    }).output,
   );
 }
 if (
