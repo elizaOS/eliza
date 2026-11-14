@@ -1,0 +1,229 @@
+{
+  "version": 1,
+  "specs": {
+    "spec/assistant.md": {
+      "@document": [
+        "a43103dba2dd"
+      ],
+      "## Domain": [
+        "e3b0c44298fc"
+      ],
+      "Domain / Who sends an event": [
+        "90d1f1e87e0c",
+        "6c4188aac5e8"
+      ],
+      "Domain / A turn": [
+        "ba75a1f86511",
+        "ae619ce618c9"
+      ],
+      "Domain / The bill and the page": [
+        "9f14bbcab792",
+        "3353a5a54838"
+      ],
+      "Domain / What the program carries out": [
+        "0a149fb45360",
+        "715519a24f92",
+        "d737ec6b5f82"
+      ],
+      "Domain / The assistant": [
+        "6df706c617e0",
+        "3057e6125ab8",
+        "8bcb74d40fed"
+      ],
+      "## Story: Take a turn": [
+        "f39e71973bd7"
+      ],
+      "Story: Take a turn / Only the person starts a turn, and not while one is under way": [
+        "9d044f410281",
+        "388dcb261c7f",
+        "1ed9c0f92ddd"
+      ],
+      "Story: Take a turn / The model chooses each action, and each costs one from the turn": [
+        "75d53cf4baed",
+        "67c36af36b5d",
+        "1ed9c0f92ddd"
+      ],
+      "Story: Take a turn / A turn's budget stays within bounds, and a turn being planned has some left": [
+        "e3b0c44298fc",
+        "acb2cd4c5ebc",
+        "13743cacaa13"
+      ],
+      "Story: Take a turn / Every choice spends the budget": [
+        "b412e92007d2",
+        "1a662f0e8a18",
+        "13743cacaa13"
+      ],
+      "Story: Take a turn / A turn being planned ends": [
+        "849d569f3129",
+        "6f67d803ea25",
+        "13743cacaa13"
+      ],
+      "Story: Take a turn / A turn can end": [
+        "e3b0c44298fc",
+        "f9984fdcc8d4",
+        "13743cacaa13"
+      ],
+      "## Story: Look up the bill": [
+        "8602f30e7eb0"
+      ],
+      "Story: Look up the bill / Only the world replies, and only to the request still waiting": [
+        "6e2bd700a440",
+        "4599d77303c9",
+        "1ed9c0f92ddd"
+      ],
+      "Story: Look up the bill / A reply answers the request that was waiting": [
+        "e3b0c44298fc",
+        "18b41e938a47",
+        "13743cacaa13"
+      ],
+      "Story: Look up the bill / The amount changes only when a reply arrives": [
+        "e3b0c44298fc",
+        "d04f8bcb6e63",
+        "13743cacaa13"
+      ],
+      "Story: Look up the bill / A bill's amount can arrive": [
+        "e3b0c44298fc",
+        "a213b261fd6e",
+        "13743cacaa13"
+      ],
+      "## Story: Pay a bill": [
+        "42a447305304"
+      ],
+      "Story: Pay a bill / The world decides which page the browser shows": [
+        "e3b0c44298fc",
+        "ed275a04c996",
+        "1ed9c0f92ddd"
+      ],
+      "Story: Pay a bill / Only the person confirms a payment, and only while asked": [
+        "5b42a5473757",
+        "44d677fb3d64",
+        "be0625939247"
+      ],
+      "Story: Pay a bill / Only the person declines a payment": [
+        "af99a31d2236",
+        "8171cd05d73f",
+        "1ed9c0f92ddd"
+      ],
+      "Story: Pay a bill / A bill is paid only on the biller's own page": [
+        "2bd72e2255e8",
+        "ee3061dc513a",
+        "13743cacaa13"
+      ],
+      "Story: Pay a bill / A paid bill was reviewed": [
+        "e3b0c44298fc",
+        "2f0f5c884497",
+        "13743cacaa13"
+      ],
+      "Story: Pay a bill / A reviewed bill has a positive amount": [
+        "0fa952ae2365",
+        "a8f5f0b2011b",
+        "13743cacaa13"
+      ],
+      "Story: Pay a bill / A bill is charged once, and only when the person confirms": [
+        "e3b0c44298fc",
+        "f9cb03c21a70",
+        "13743cacaa13"
+      ],
+      "Story: Pay a bill / A payment is submitted exactly when the bill is charged, for its amount, on the biller's own page": [
+        "49b4e5aba8ab",
+        "31a1158d7ea7",
+        "13743cacaa13"
+      ],
+      "Story: Pay a bill / A bill can be paid": [
+        "e3b0c44298fc",
+        "7fdd21b88d94",
+        "13743cacaa13"
+      ],
+      "## Story: Keep my details safe": [
+        "d7e921e34dfc"
+      ],
+      "Story: Keep my details safe / Only the person saves a card": [
+        "c6f3a1cedd03",
+        "41000aa8ca66",
+        "1ed9c0f92ddd"
+      ],
+      "Story: Keep my details safe / The saved card changes only when the person saves one": [
+        "e3b0c44298fc",
+        "3a4c2e958a26",
+        "13743cacaa13"
+      ],
+      "Story: Keep my details safe / A card can be saved": [
+        "e3b0c44298fc",
+        "8b4c04e3b15c",
+        "13743cacaa13"
+      ],
+      "Story: Keep my details safe / Card details go only into the biller's own page": [
+        "f99b7ac5f01b",
+        "770ca92e7c7c",
+        "13743cacaa13"
+      ],
+      "Story: Keep my details safe / Card details can be filled in": [
+        "6f0540fc91dc",
+        "7882897591bf",
+        "13743cacaa13"
+      ],
+      "Story: Keep my details safe / Nothing secret is said aloud": [
+        "6d826fa970af",
+        "188b04fc435c"
+      ],
+      "Story: Keep my details safe / The model sees nothing secret": [
+        "721c21aafcbd",
+        "fedcbf208f0c",
+        "13743cacaa13"
+      ],
+      "## Story: Survive a restart": [
+        "d18b1057975f"
+      ],
+      "Story: Survive a restart / A restart loses what was in memory and keeps what was saved": [
+        "47694dfa5a3b",
+        "7c46e3d0aa31",
+        "1ed9c0f92ddd"
+      ],
+      "Story: Survive a restart / A request number never goes back": [
+        "e3b0c44298fc",
+        "fd1fc2a7a5b5",
+        "13743cacaa13"
+      ],
+      "Story: Survive a restart / A restart can come after a payment": [
+        "e3b0c44298fc",
+        "6d54f7f7ff82",
+        "13743cacaa13"
+      ],
+      "## Story: Deliver promised effects after a restart": [
+        "2088db2a7b75"
+      ],
+      "Story: Deliver promised effects after a restart / Every emitted effect stays queued until the world acknowledges its delivery number": [
+        "5885e5a4bfb5",
+        "dc12aac5a6d3",
+        "1ed9c0f92ddd"
+      ],
+      "Story: Deliver promised effects after a restart / The number of acknowledged effects is never negative": [
+        "e3b0c44298fc",
+        "e72d168e09e6",
+        "13743cacaa13"
+      ],
+      "Story: Deliver promised effects after a restart / Queued effects are actions the assistant may promise": [
+        "5f22495c8914",
+        "b13e2bfd4286",
+        "bb2f37832fa1"
+      ],
+      "Story: Deliver promised effects after a restart / An effect can await delivery": [
+        "e3b0c44298fc",
+        "1ad978a3a438",
+        "13743cacaa13"
+      ],
+      "Story: Deliver promised effects after a restart / An effect can be acknowledged": [
+        "e3b0c44298fc",
+        "52cc4f13b3e0",
+        "13743cacaa13"
+      ]
+    },
+    "spec/index.md": {
+      "@document": [
+        "792fc4f0e4d7"
+      ]
+    }
+  },
+  "contracts": {},
+  "unproved": {}
+}

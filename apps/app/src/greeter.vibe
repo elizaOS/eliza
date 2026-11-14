@@ -1,0 +1,40 @@
+// spec/app/index.md, "Story: Say hello"
+// The shell: the greeter of spec/app/index.md, kept in a KeyValueStore, which main.tsx makes the browser's localStorage.
+import * as KeyValueStore from "effect/persistence/KeyValueStore"
+import { type Greeter, type NotAnEvent, type Rejected, apply, decodeEvent, decodeState, initial, parseState } from "../gen/app.effect.vibe"
+import { Saved } from "./greeter.schema.ts"
+
+const KEY = "greeter"
+
+/** The store did not take the greeter, which stays as it was. */
+export error NotSaved { cause: unknown }
+
+effect function saved() { return KeyValueStore.toSchemaStore(try KeyValueStore.KeyValueStore, Saved) }
+
+/** The stored greeter, or a new one where the store cannot be read or holds nothing the rules call a greeter. */
+export effect function load() {
+  const found = (try saved()).get(KEY) catch () => Option.none()
+  return decodeState(Option.getOrUndefined(found)) catch () => parseState(initial)!
+}
+
+/** The greeter as last stored, and the one way to change it. */
+export service Greetings {
+  /** The greeter now, then every later one. */
+  readonly changes: Stream.Stream<Greeter>
+  /** `input` may come from anywhere: it is decoded into an event, and the greeter it leads to is stored before it is shown. */
+  receive(input: unknown): Greeter!(NotAnEvent | Rejected | NotSaved)
+}
+
+/** `Greetings` from the stored greeter, one input at a time. */
+export const stored = Layer.effect(Greetings, effect {
+  const store = try saved()
+  const held = try SubscriptionRef.make(try load())
+  return {
+    changes: Stream.map(SubscriptionRef.changes(held), (state) => parseState(state)!),
+    receive: (input) => SubscriptionRef.modifyEffect(held, effect (current) => {
+      const next = try apply(current, try decodeEvent(input))
+      try mapError(store.set(KEY, next), (cause) => new NotSaved({ cause }))
+      return [next, parseState(next)!] as const
+    })
+  }
+})

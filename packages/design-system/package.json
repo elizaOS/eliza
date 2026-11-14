@@ -1,0 +1,21 @@
+{
+  "name": "@repo/design-system",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./tokens.json": "./tokens.json",
+    "./tokens.css": "./generated/tokens.css",
+    "./theme.css": "./generated/theme.css"
+  },
+  "scripts": {
+    "build": "node ../../vibestack/design/cli.ts build",
+    "check": "node ../../vibestack/design/cli.ts check"
+  },
+  "devDependencies": {
+    "eslint": "catalog:",
+    "eslint-plugin-better-tailwindcss": "catalog:",
+    "tailwindcss": "catalog:",
+    "typescript-eslint": "catalog:"
+  }
+}

@@ -1,0 +1,49 @@
+// spec/index.md, "Story: Check out"
+import { type Event, type Order, NotAnEvent, Rejected, apply, decodeEvent } from "../gen/index.effect.vibe"
+
+// src/ledger.ts stays TypeScript, where `pnpm check` proves its contracts. What it throws is said here, as
+// gen/index.effect.vibe says it of the generated module: nothing but the defect of a number past 2^53.
+module ledger {
+  import type { Event, Order } from "../gen/index.ts"
+  import * as L from "./ledger.ts"
+  /** @throws {never} */
+  export function replay(events: Event[]): Order { return L.replay(events) }
+  /** @throws {never} */
+  export function balance(order: Order): number { return L.balance(order) }
+}
+import { balance, replay } from ledger
+
+/** An event-sourced order book. Only events the rules allow are ever stored. */
+export service OrderBook {
+  get(id: string): Order!!
+  /** `input` may come straight from the network: it is decoded into an event before the rules see it. */
+  dispatch(id: string, input: unknown): Order!(NotAnEvent | Rejected)
+  balance(id: string): number!!
+}
+
+/** A book that keeps each order's log in memory, and takes one event at a time. */
+export const OrderBookMemory = Layer.effect(OrderBook, effect {
+  const logs = try SynchronizedRef.make(HashMap.empty<string, Event[]>())
+  const log = (all: HashMap.HashMap<string, Event[]>, id: string) => Option.getOrElse(HashMap.get(all, id), (): Event[] => [])
+  effect function get(id: string) { return replay(log(try SynchronizedRef.get(logs), id)) }
+  return {
+    get,
+    effect dispatch(id, input) {
+      const event = try decodeEvent(input)
+      return try SynchronizedRef.modifyEffect(logs, effect (all) => {
+        const events = log(all, id)
+        const order = try apply(replay(events), event) // what `replay` gives for the longer log
+        return [order, HashMap.set(all, id, [...events, event])] as const
+      })
+    },
+    effect balance(id) { return balance(try get(id)) }
+  }
+})
+
+/** Why the book did not take an input, for the person who sent it. */
+export function reason(error: NotAnEvent | Rejected): string {
+  return match (error) {
+    when NotAnEvent: "not a well-formed event";
+    when Rejected: `${error.event.type} is not allowed for a ${error.state.status} order`;
+  }
+}

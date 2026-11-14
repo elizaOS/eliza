@@ -1,0 +1,9 @@
+// `spec studio`'s entry: ../../spec.ts starts it with the project directory and options, and it serves until stopped.
+// README, "Studio".
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import { commandLine } from "./project.ts"
+import { serve } from "./server.vibe"
+
+const { cwd, args } = commandLine()
+NodeRuntime.runMain(Effect.provide(scoped(serve(cwd, args)), NodeServices.layer))

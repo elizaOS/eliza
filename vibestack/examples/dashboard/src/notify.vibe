@@ -1,0 +1,50 @@
+// spec/tracker.md, "One pass of the notifier sends everything that is due and records that it was sent"; spec/tracker.md, "A pass sends exactly the notes it records"
+// The shell around `notify`: one chat message per person. It touches the outside world, so test/notify.test.vibe
+// tests it; no proof. Duplicates are already ruled out by "Nothing is sent twice".
+import { type Note, Machine, Rejected } from "../gen/tracker.effect.vibe"
+
+export interface Message { to: string; handle: string; text: string }
+
+function line(n: Note): string {
+  return match (n.kind) {
+    when "Update": `✎ #${n.task} changed`;
+    when "Soon": `⏳ #${n.task} due day ${n.version}`;
+    when "Today": `⚠ #${n.task} due today`;
+  }
+}
+
+/** One message per person with a chat handle, in the order people first appear. */
+export function messages(notes: Note[], handles: Record<string, string>): Message[] {
+  const byPerson = new Map<string, string[]>()
+  for (const n of notes) if (Object.hasOwn(handles, n.to)) byPerson.set(n.to, [...(byPerson.get(n.to) ?? []), line(n)])
+  return [...byPerson].map(([to, lines]) => ({ to, handle: handles[to]!, text: lines.join("\n") }))
+}
+
+/** The chat app did not take a message. */
+export error Undelivered { handle: string; cause: unknown }
+
+/** The chat app, as far as the shell needs it; test/notify.test.vibe provides one that records. */
+export service Chat {
+  post(handle: string, text: string): void!Undelivered
+}
+
+/** How often a post is tried again, and how long apart, before its message is given up. */
+const retries = { times: 2, schedule: Schedule.spaced("1 second") }
+
+/**
+ * One pass of the notifier: records it in the Machine, then posts what that pass emitted, each message retried on its
+ * own while the chat app answers `Undelivered`; any other failure ends the pass. Returns the messages the chat app never
+ * took; the others still go out, each once. Delivery is at most once: the notes are recorded in `sent` before they are
+ * posted, so a message that fails every retry, or one lost to a crash between the two, is never sent again.
+ */
+export effect function pass(handles: Record<string, string>): Message[]!Rejected!(Machine | Chat) {
+  const tracker = try Machine
+  const chat = try Chat
+  const { out } = try tracker.send({ type: "notify" })
+  const undelivered: Message[] = []
+  for (const m of messages(out, handles)) {
+    const took = (retry(chat.post(m.handle, m.text), retries) |> as(%, true)) catch (e) => match (e) { when Undelivered: false; }
+    if (!took) undelivered.push(m)
+  }
+  return undelivered
+}

@@ -1,0 +1,241 @@
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import { assert, it } from "@effect/vitest"
+import { type Effect as DeliveryEffect, Machine } from "../gen/assistant.effect.vibe"
+import { NoAnswer, World, deliver, hear, remember } from "../src/agent.vibe"
+import { durable } from "../src/durable.vibe"
+import { type Scene, scriptedModel, scriptedWorld } from "../src/scripted.vibe"
+
+/** The state of the assistant kept in `file`, opened again as after a crash. */
+effect function reopened(file: string) {
+  provide durable(file) { return try (try Machine).get() }
+}
+
+// spec/assistant.md, "Story: Take a turn"; spec/assistant.md, "Story: Look up the bill"; spec/assistant.md, "Story: Pay a bill"; spec/assistant.md, "Story: Keep my details safe"; spec/assistant.md, "Story: Survive a restart"
+it.effect("take a turn, look up the bill and pay it once, whatever the model says, and survive a restart", () => scoped(effect {
+  const fs = try FileSystem.FileSystem
+  const file = `${try fs.makeTempDirectoryScoped()}/assistant.json`
+  const unrelated = `${file}.unrelated`
+  try fs.writeFileString(unrelated, "keep")
+  try fs.symlink(unrelated, `${file}.tmp`)
+  const scene: Scene = { page: "Lookalike", bills: [], done: [], receipts: new Set() }
+  // spec/assistant.md, "Who sends an event": a payload cannot claim to be the person.
+  const spoofed = try effect {
+    provide durable(file) { return try flip((try Machine).receive({ type: "begin", by: "Person" }, "Agent")) }
+  }
+  try Effect.try(() => assert.strictEqual(spoofed._tag, "Rejected"))
+  // The first crash comes while request 1 waits for a biller that has not answered.
+  const waiting = try effect {
+    provide durable(file), scriptedWorld(scene), scriptedModel(["Lookup"]) { return (try hear("begin")).state }
+  }
+  // spec/assistant.md, "A restart loses what was in memory and keeps what was saved": nothing waits after it.
+  const crashed = try reopened(file)
+  // spec/assistant.md, "Only the world replies, and only to the request still waiting": the reply to request 1, which
+  // the rules would have taken before the crash, comes too late.
+  const late = try flip(effect {
+    provide durable(file) { return try (try Machine).send({ type: "reply", request: crashed.request, amount: 5 }, "World") }
+  })
+  scene.bills.push(0, 5)
+  const answers = ["Lookup", "Fill", "Review", "Pay", "Speak", { type: "confirm" }, "Pay", "Fill", "Recite", "Speak"]
+  provide durable(file), scriptedWorld(scene), scriptedModel(answers) {
+    // spec/assistant.md, "Only the person saves a card"
+    try remember("4242")
+    const borrowed = try (try Machine).get()
+    borrowed.card = "changed outside the machine"
+    const retained = try (try Machine).get()
+    const saved = try fs.stat(file)
+    const untouched = try fs.readFileString(unrelated)
+    // spec/assistant.md, "Story: Keep my details safe": only the owner can read the saved card, and saving cannot follow an unrelated link.
+    try Effect.try(() => assert.deepStrictEqual([saved.mode & 0o777, untouched, retained.card], [0o600, "keep", "4242"]))
+    // spec/assistant.md, "Only the person confirms a payment, and only while asked": nothing is asked yet.
+    const early = try flip(hear("confirm"))
+    // spec/assistant.md, "Only the world replies, and only to the request still waiting": the biller's 0 is refused, its 5 taken.
+    // spec/assistant.md, "Card details go only into the biller's own page": the Fill on the lookalike types nothing.
+    const asked = try hear("begin")
+    // spec/assistant.md, "A bill is paid only on the biller's own page"
+    const onLookalike = try flip(hear("confirm"))
+    scene.page = "Genuine"
+    const paid = try hear("confirm")
+    // spec/assistant.md, "The model chooses each action, and each costs one from the turn": an answer that is no choice ends the turn.
+    const nonsense = try hear("begin")
+    // spec/assistant.md, "A bill is charged once, and only when the person confirms"; spec/assistant.md, "Nothing secret is said aloud": reciting the card is no choice at all.
+    const again = try hear("begin")
+    const silent = try hear("begin")
+    try Effect.try(() => assert.deepStrictEqual(
+      {
+        crash: [waiting.waiting, waiting.request, crashed.waiting, crashed.request, late._tag],
+        early: early._tag,
+        asked: [asked.state.phase, asked.state.request, asked.state.bill, asked.refused],
+        onLookalike: onLookalike._tag,
+        paid: [paid.state.phase, paid.state.bill, paid.state.charged],
+        nonsense: [nonsense.state.phase, nonsense.refused.map((r) => r._tag)],
+        again: [again.state.phase, again.state.charged, again.refused.map((r) => r._tag)],
+        silent: [silent.state.phase, silent.state.budget, silent.refused.map((r) => r._tag)],
+        done: scene.done
+      },
+      {
+        crash: [true, 1, false, 1, "Rejected"],
+        early: "Rejected",
+        // spec/assistant.md, "A restart loses what was in memory and keeps what was saved": the next Lookup is request 2.
+        asked: ["Asking", 2, { amount: 5, reviewed: true, paid: false }, []],
+        onLookalike: "Rejected",
+        paid: ["Done", { amount: 5, reviewed: true, paid: true }, 1],
+        nonsense: ["Done", ["NotAnEvent"]],
+        again: ["Done", 1, ["NotAnEvent"]],
+        silent: ["Done", 2, ["NoAnswer"]],
+        // spec/assistant.md, "A payment is submitted exactly when the bill is charged, for its amount, on the biller's own page"
+        done: [
+          { tag: "Submitted", page: "Genuine", amount: 5 }, { tag: "Said", text: "paid" },
+          { tag: "Filled", page: "Genuine", card: "4242" }, { tag: "Said", text: "paid" },
+        ]
+      }
+    ))
+  }
+  // The second crash: the machine above is gone, and only the file is left.
+  // spec/assistant.md, "A restart loses what was in memory and keeps what was saved"; spec/assistant.md, "A bill is charged once, and only when the person confirms"
+  const restored = try reopened(file)
+  // spec/assistant.md, "Story: Deliver promised effects after a restart": crash after persisting the payment, then lose the outside service's receipt.
+  const pendingFile = `${file}.pending`
+  const payment: Scene = { page: "Genuine", bills: [], done: [], receipts: new Set() }
+  provide durable(pendingFile) {
+    const assistant = try Machine
+    try assistant.send({ type: "saveCard", card: "4242" }, "Person")
+    try assistant.send({ type: "begin" }, "Person")
+    try assistant.send({ type: "choose", choice: "Lookup" }, "Agent")
+    try assistant.send({ type: "reply", request: 1, amount: 5 }, "World")
+    try assistant.send({ type: "choose", choice: "Review" }, "Agent")
+    try assistant.send({ type: "load", page: "Genuine" }, "World")
+    try assistant.send({ type: "choose", choice: "Pay" }, "Agent")
+    try assistant.send({ type: "confirm" }, "Person")
+    try assistant.send({ type: "choose", choice: "Fill" }, "Agent")
+  }
+  const promised = try reopened(pendingFile)
+  const simultaneousFile = `${file}.simultaneous`
+  try fs.copyFile(pendingFile, simultaneousFile)
+  const held = try effect {
+    provide scriptedWorld(payment) {
+      const world = try World
+      provide durable(pendingFile), World = {
+        bill: world.bill,
+        page: world.page,
+        effect perform(delivery, carried) {
+          try world.perform(delivery, carried)
+          throw new NoAnswer({ from: "World" })
+        }
+      } {
+        try flip(deliver())
+      }
+      provide durable(pendingFile) {
+        const assistant = try Machine
+        // spec/assistant.md, "A bill is paid only on the biller's own page"
+        // spec/assistant.md, "Card details go only into the biller's own page"
+        // The payment and the fill behind it wait while a lookalike shows.
+        payment.page = "Lookalike"
+        try deliver()
+        const waited = [(try assistant.get()).pending, [...payment.done]]
+        payment.page = "Genuine"
+        try deliver()
+        return waited
+      }
+    }
+  }
+  const delivered = try reopened(pendingFile)
+  const submitted: DeliveryEffect = { tag: "Submitted", page: "Genuine", amount: 5 }
+  const filled: DeliveryEffect = { tag: "Filled", page: "Genuine", card: "4242" }
+  try Effect.try(() => assert.deepStrictEqual(
+    [promised.pending, promised.delivered, held, delivered.pending, delivered.delivered, payment.done, [...payment.receipts]],
+    [[submitted, filled], 0, [[submitted, filled], [submitted]], [], 2, [submitted, filled], [1, 2]]
+  ))
+  const simultaneous: Scene = { page: "Genuine", bills: [], done: [], receipts: new Set() }
+  const raced = try effect {
+    provide durable(simultaneousFile), scriptedWorld(simultaneous) {
+      const assistant = try Machine
+      const world = try World
+      // spec/assistant.md, "A bill is paid only on the biller's own page"
+      // The browser navigates after the page read and before the payment is applied.
+      const navigated = try effect {
+        provide World = {
+          bill: world.bill,
+          page: world.page,
+          effect perform(delivery, carried) {
+            simultaneous.page = "Lookalike"
+            try world.perform(delivery, carried)
+          }
+        } { return try flip(deliver()) }
+      }
+      const waiting = try assistant.get()
+      try Effect.try(() => assert.deepStrictEqual(
+        [navigated._tag, waiting.pending, waiting.delivered, simultaneous.done, [...simultaneous.receipts]],
+        ["NoAnswer", [submitted, filled], 0, [], []]
+      ))
+      simultaneous.page = "Genuine"
+      const firstRead = try Deferred.make<void>()
+      const paymentAcknowledged = try Deferred.make<void>()
+      const firstFinished = try Deferred.make<void>()
+      let reads = 0
+      // spec/assistant.md, "Every emitted effect stays queued until the world acknowledges its delivery number"
+      // One worker pauses at its page read while the other acknowledges the payment and starts reading for the fill.
+      provide World = {
+        bill: world.bill,
+        effect page() {
+          const showing = try world.page()
+          reads++
+          if (reads === 1) {
+            try Deferred.succeed(firstRead, undefined)
+            try Deferred.await(paymentAcknowledged)
+          } else if (reads === 3) {
+            try Deferred.succeed(paymentAcknowledged, undefined)
+            try Deferred.await(firstFinished)
+          }
+          return showing
+        },
+        perform: world.perform
+      } {
+        const first = fork deliver()
+        try Deferred.await(firstRead)
+        const second = fork deliver()
+        try join first
+        try Deferred.succeed(firstFinished, undefined)
+        try join second
+      }
+      const finished = try assistant.get()
+      return [finished.pending, finished.delivered, simultaneous.done, [...simultaneous.receipts]]
+    }
+  }
+  try Effect.try(() => assert.deepStrictEqual(raced,
+    [[], 2, [submitted, filled], [1, 2]]
+  ))
+  const unsafe: unknown[][] = [
+    [{ tag: "Said", text: "4242" }],
+    [{ tag: "Filled", page: "Lookalike", card: "4242" }],
+    [{ tag: "Submitted", page: "Genuine", amount: 0 }],
+    [{ tag: "Submitted", page: "Genuine", amount: 5 }, { tag: "Submitted", page: "Genuine", amount: 5 }],
+  ]
+  const refused: string[] = []
+  for (const pending of unsafe) {
+    try fs.writeFileString(file, JSON.stringify({ ...restored, pending }))
+    refused.push((try flip(reopened(file)))._tag)
+  }
+  try Effect.try(() => assert.deepStrictEqual(refused, ["NotAState", "NotAState", "NotAState", "NotAState"]))
+  // spec/assistant.md, "A bill is charged once, and only when the person confirms": a file that says otherwise is no
+  // state, and neither is one cut short.
+  try fs.writeFileString(file, JSON.stringify({ ...restored, charged: 2 }))
+  const forged = try flip(reopened(file))
+  try fs.writeFileString(file, '{"card":"4242",')
+  const torn = try flip(reopened(file))
+  try Effect.try(() => {
+    // spec/assistant.md, "Story: Keep my details safe"
+    assert.notInclude(JSON.stringify([forged, torn]), "4242")
+    assert.deepStrictEqual(
+      [restored, forged._tag, torn._tag],
+      [
+        {
+          phase: "Idle", budget: 0, page: "Unknown", waiting: false,
+          card: "4242", bill: { amount: 5, reviewed: true, paid: true }, charged: 1, request: 2, answered: 2,
+          pending: [], delivered: 4,
+        },
+        "NotAState",
+        "NotAState",
+      ]
+    )
+  })
+}).pipe(Effect.provide(NodeServices.layer)))

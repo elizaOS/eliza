@@ -1,0 +1,6 @@
+{
+  "fileExtensions": ["ts", "tsx"],
+  "tsConfig": { "compilerOptions": { "module": "nodenext", "allowImportingTsExtensions": true, "jsx": "react-jsx", "paths": { "@repo/ui": ["./packages/ui/src/index.ts"] } } },
+  "excludeRegExp": ["(^|/)(node_modules|dist|storybook-static|\\.vibe|\\.cache)/", "^(vibestack/)?(examples|fixtures)/", "/test/fixtures?/"],
+  "detectiveOptions": { "ts": { "skipTypeImports": true }, "tsx": { "skipTypeImports": true } }
+}

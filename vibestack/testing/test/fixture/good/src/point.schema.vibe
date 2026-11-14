@@ -1,0 +1,4 @@
+// A schema in VibeLang: the generator loads it through vibelang/register, as Node runs the package's shell.
+import { Schema } from "effect"
+
+export const Point = Schema.Struct({ x: Schema.Int, y: Schema.Int })

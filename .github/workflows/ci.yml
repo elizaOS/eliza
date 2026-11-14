@@ -1,0 +1,50 @@
+name: ci
+
+# Every run is `pnpm verify`, the tools' own self-test included; Turborepo and
+# spec skip what the change does not reach, from the cache of the last run.
+# The fixed normal profile is the same locally and in CI. Standalone examples
+# are checked manually.
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+
+concurrency:
+  group: ci-${{ github.ref }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+env:
+  TURBO_TELEMETRY_DISABLED: "1"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event_name == 'push' && 'turbo-cache-publish' || 'turbo-cache-read' }}
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_CACHE: ${{ github.event_name == 'push' && 'local:rw,remote:rw' || 'local:rw,remote:r' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - run: pnpm verify --continue
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: proof
+          path: |
+            gen/proof/
+            vibestack/studio/gen/proof/
+          if-no-files-found: ignore
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: failures
+          path: |
+            **/test/counterexamples/
+            **/test/__traces__/
+            !**/node_modules/**
+          if-no-files-found: ignore

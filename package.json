@@ -1,0 +1,127 @@
+{
+  "name": "vibestack",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=26"
+  },
+  "scripts": {
+    "dev": "turbo run dev //#studio",
+    "studio": "node vibestack/spec.ts studio",
+    "check": "node vibestack/spec.ts check",
+    "gen": "node vibestack/spec.ts gen",
+    "accept": "node vibestack/spec.ts accept",
+    "new": "node vibestack/spec.ts new",
+    "demo": "pnpm -C vibestack/examples/order demo",
+    "selftest": "node --test vibestack/selftest.ts",
+    "build": "node vibestack/spec.ts tasks vibestack-studio#build && node -e \"fs.rmSync('dist', { recursive: true, force: true })\" && vibelang -p tsconfig.build.json && node -e \"fs.chmodSync('dist/spec.js', 0o755); fs.mkdirSync('dist/proof', { recursive: true }); fs.copyFileSync('vibestack/proof/lib.dfy', 'dist/proof/lib.dfy'); fs.cpSync('vibestack/studio/dist/page', 'dist/studio/dist/page', { recursive: true }); fs.cpSync('vibestack/std', 'dist/std', { recursive: true }); fs.copyFileSync('vibestack/conformance.ts', 'dist/conformance.ts')\"",
+    "prepare": "node vibestack/spec.ts tasks //#build && node vibestack/spec.ts gen --if-valid",
+    "test": "vitest run",
+    "test:browser": "node vibestack/spec.ts tasks test:browser",
+    "test:models": "node vibestack/spec.ts tasks check //#examples",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "node vibestack/spec.ts tasks //#lint:js //#lint:css",
+    "lint:js": "eslint . --max-warnings 0",
+    "lint:css": "stylelint \"**/*.css\" --allow-empty-input",
+    "analyze": "knip && madge --circular vibestack packages apps",
+    "examples": "failed=0; for d in vibestack/examples/*/; do pnpm -C \"$d\" install --frozen-lockfile --ignore-workspace && pnpm -C \"$d\" check || failed=1; done; exit $failed",
+    "quick": "node vibestack/spec.ts tasks typecheck test //#lint:js //#lint:css",
+    "verify": "node vibestack/spec.ts tasks build typecheck test test:browser check //#lint:js //#lint:css //#analyze //#selftest",
+    "all": "node vibestack/spec.ts tasks"
+  },
+  "version": "0.1.0",
+  "description": "Stories, rules and Quint in a Markdown spec tree; verified TypeScript out.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lalalune/vibestack.git"
+  },
+  "homepage": "https://github.com/lalalune/vibestack#readme",
+  "bugs": "https://github.com/lalalune/vibestack/issues",
+  "keywords": [
+    "formal-verification",
+    "quint",
+    "dafny",
+    "typescript",
+    "specification",
+    "state-machine",
+    "ai-agents"
+  ],
+  "bin": {
+    "spec": "dist/spec.js"
+  },
+  "files": [
+    "dist",
+    ".claude/skills",
+    "README.md",
+    "AGENTS.md",
+    "SPEC.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "@effect/platform-node": "4.1.1",
+    "@informalsystems/quint": "^0.33.1",
+    "effect": "4.1.1",
+    "lemmascript": "^0.6.8",
+    "typescript": "^6.0.3",
+    "vibelang-runtime": "0.0.13"
+  },
+  "devDependencies": {
+    "@effect/vitest": "4.1.1",
+    "@eslint-react/eslint-plugin": "catalog:",
+    "@eslint/js": "catalog:",
+    "@types/node": "^26.6.6",
+    "@vitest/browser": "catalog:",
+    "@vitest/browser-playwright": "catalog:",
+    "eslint": "catalog:",
+    "eslint-plugin-better-tailwindcss": "catalog:",
+    "eslint-plugin-boundaries": "catalog:",
+    "eslint-plugin-react-hooks": "catalog:",
+    "happy-dom": "catalog:",
+    "jsdom": "catalog:",
+    "knip": "catalog:",
+    "madge": "catalog:",
+    "miniflare": "5.20261113.0-beta",
+    "playwright": "catalog:",
+    "stylelint": "catalog:",
+    "stylelint-config-standard": "catalog:",
+    "turbo": "catalog:",
+    "typescript-eslint": "catalog:",
+    "vibelang": "0.0.13",
+    "vibelang-vite": "0.0.13",
+    "vite": "8.3.5",
+    "vitest": "5.1.0"
+  },
+  "peerDependencies": {
+    "@vitest/browser-playwright": "5.1.0",
+    "vibelang-vite": "0.0.13",
+    "vite": "8.3.5",
+    "vitest": "5.1.0"
+  },
+  "peerDependenciesMeta": {
+    "@vitest/browser-playwright": {
+      "optional": true
+    }
+  },
+  "packageManager": "pnpm@10.24.0",
+  "exports": {
+    "./testing": "./vibestack/testing/index.ts",
+    "./testing/vitest": "./vibestack/testing/vitest.ts",
+    "./testing/generate": "./vibestack/testing/generate.ts",
+    "./stories": "./vibestack/stories/meta.ts",
+    "./stories/storybook": "./vibestack/stories/storybook.ts",
+    "./design/eslint": "./vibestack/design/eslint.ts",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "exports": {
+      "./testing": "./dist/testing/index.js",
+      "./testing/vitest": "./dist/testing/vitest.js",
+      "./testing/generate": "./dist/testing/generate.js",
+      "./stories": "./dist/stories/meta.js",
+      "./stories/storybook": "./dist/stories/storybook.js",
+      "./design/eslint": "./dist/design/eslint.js",
+      "./package.json": "./package.json"
+    }
+  }
+}

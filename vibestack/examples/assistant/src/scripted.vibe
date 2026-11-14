@@ -1,0 +1,40 @@
+// A Model and a World that follow a script, for the demo and the journeys: a real model costs money.
+import type * as T from "../gen/assistant.effect.vibe"
+import { Model, NoAnswer, World } from "./agent.vibe"
+
+/** Says each of `answers` once, in order, then stops answering. */
+export function scriptedModel(answers: ReadonlyArray<unknown>) {
+  const left = [...answers]
+  return Layer.succeed(Model, {
+    effect choose() {
+      if (left.length === 0) throw new NoAnswer({ from: "Agent" })
+      return left.shift()
+    }
+  })
+}
+
+/** What the world shows and answers, which a script may change between turns, and what was done to it. */
+export interface Scene {
+  page: T.Page
+  bills: number[]
+  readonly done: T.Effect[]
+  readonly receipts: Set<number>
+}
+
+export function scriptedWorld(scene: Scene) {
+  return Layer.succeed(World, {
+    page: () => sync(() => scene.page),
+    effect bill() {
+      const amount = scene.bills.shift()
+      if (amount === undefined) throw new NoAnswer({ from: "World" })
+      return amount
+    },
+    effect perform(delivery, carried) {
+      if (scene.receipts.has(delivery)) return
+      // spec/assistant.md, "A bill is paid only on the biller's own page"; spec/assistant.md, "Card details go only into the biller's own page"
+      if (carried.tag !== "Said" && (scene.page !== "Genuine" || carried.page !== scene.page)) throw new NoAnswer({ from: "World" })
+      scene.done.push(carried)
+      scene.receipts.add(delivery)
+    }
+  })
+}

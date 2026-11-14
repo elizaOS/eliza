@@ -1,0 +1,87 @@
+// spec/server.md, "Story: Change the list over HTTP"
+// The real server on a free port, serving the page the `test` script built, with an HttpClient that reaches it, as
+// test/app.test.vibe and test/drivers/server.ts reach it.
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import type { Server } from "../gen/server.ts"
+import type { Op } from "../gen/todo.ts"
+import type { Answer, Request } from "../src/protocol.vibe"
+import { listening, server } from "../src/server.vibe"
+
+module node {
+  import { type IncomingMessage, type Server, createServer } from "node:http"
+  let served: Server | undefined
+  let stallEvent = false
+  /** @throws {never} */
+  export function create() {
+    stallEvent = false
+    served = createServer()
+    const emit = served.emit.bind(served)
+    served.emit = ((event: string, ...args: unknown[]) => {
+      if (event === "request" && stallEvent && (args[0] as IncomingMessage).url === "/api/events") {
+        stallEvent = false
+        return true
+      }
+      return emit(event, ...args)
+    }) as Server["emit"]
+    return served
+  }
+  /** Accept the next edit's connection without answering it, as a stalled server does. */
+  export function stallNextEvent() { stallEvent = true }
+  /** Cut every connection to the server, as a network failure does. */
+  export function dropConnections() {
+    served?.closeAllConnections()
+  }
+}
+import { create, dropConnections, stallNextEvent } from node
+
+export { dropConnections, stallNextEvent }
+
+/** The server over the list kept in `file`. */
+export function served(file: string) {
+  return Layer.fresh(Layer.provideMerge(Layer.provide(HttpServer.layerTestClient, FetchHttpClient.layer), server("dist/web", listening(0, create), file)))
+}
+
+/** The server over a list of its own, in a temporary directory removed when the server stops. */
+export const Served = Layer.provide(Layer.unwrap(effect {
+  const dir = try (try FileSystem.FileSystem).makeTempDirectoryScoped()
+  return served((try Path.Path).join(dir, "todos.json"))
+}), NodeServices.layer)
+
+export effect function send(body: string, type = "application/json") {
+  return try HttpClient.execute(HttpClientRequest.bodyText(HttpClientRequest.post("/api/events"), body, type))
+}
+
+export effect function post(body: unknown) {
+  const response = try send(JSON.stringify(body))
+  return { status: response.status, body: (try response.json) as unknown as Answer }
+}
+
+/** The state the server saved in `file`, read back as a restarted server would find it: an empty list before the first save. */
+export effect function savedIn(file: string) {
+  const fs = try FileSystem.FileSystem
+  if (!(try fs.exists(file))) return { todos: [], version: 0, log: [] } as Server
+  const text = try fs.readFileString(file)
+  return (try Effect.try(() => JSON.parse(text))) as Server
+}
+
+const sameEdit = (a: Op, b: Op) => a.kind === b.kind && a.id === b.id && a.title === b.title && a.done === b.done
+
+/**
+ * What the server did with `raw`, posted over HTTP: "refused" if it is no request (400) or answered from the log,
+ * "accepted" if the server saved it in its log. Its verdict must be what the log says: accepted only if the log
+ * holds this edit as accepted.
+ */
+export effect function outcome(file: string, raw: unknown) {
+  const body = JSON.stringify(raw)
+  const before = (try savedIn(file)).log.length
+  const response = try send(body)
+  if (response.status === 400) return "refused" as const
+  if (response.status !== 200) return try die(new Error(`POST /api/events answered ${response.status}`))
+  const { ok } = (try response.json) as unknown as Answer
+  // What the server read: the body as it was sent, whatever a second read of `raw` would give.
+  const { client, seq, op } = (try Effect.try(() => JSON.parse(body))) as Request
+  const { log } = try savedIn(file)
+  const logged = log.some((h) => h.client === client && h.seq === seq && h.ok && sameEdit(h.op, op))
+  if (ok !== logged) return try die(new Error(`POST /api/events answered ok: ${ok}, but the log says ${logged}`))
+  return log.length > before ? "accepted" as const : "refused" as const
+}

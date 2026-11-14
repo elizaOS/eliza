@@ -1,0 +1,15 @@
+// spec/server.md, "Story: Change the list over HTTP"
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import { listening, server } from "./server.vibe"
+
+effect function main() {
+  // `pnpm build` puts this file in dist/src and the page in dist/web; the list is kept in the working directory.
+  const web = try (try Path.Path).fromFileUrl(new URL("../web", import.meta.url))
+  provide server(web, listening(3000), "todos.json") {
+    try Console.log("http://localhost:3000")
+    try never
+  }
+}
+
+NodeRuntime.runMain(Effect.provide(main(), NodeServices.layer))

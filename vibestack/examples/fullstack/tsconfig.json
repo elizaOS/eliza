@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "es2023",
+    "module": "nodenext",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["node", "vite/client"],
+    "jsx": "react-jsx",
+    "rootDir": ".",
+    "rootDirs": [".", ".vibe/declarations"],
+    "outDir": "dist",
+    "noEmitOnError": true,
+    "rewriteRelativeImportExtensions": true
+  },
+  "include": ["src", "test", "gen/*.ts", "gen/*.vibe"],
+  // A story's metadata imports its type from the tool, outside rootDir; the stories read it (`pnpm stories`).
+  "exclude": ["src/**/*.meta.tsx"],
+  "vibe": { "sidecarDir": ".vibe/declarations" }
+}

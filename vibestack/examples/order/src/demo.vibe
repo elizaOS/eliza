@@ -1,0 +1,34 @@
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
+import type { Event, Order } from "../gen/index.effect.vibe"
+import { OrderBook, OrderBookMemory, reason } from "./app.vibe"
+
+const events: Event[] = [
+  { type: "submit" }, // the draft is empty
+  { type: "addItem", qty: 2 },
+  { type: "submit" },
+  { type: "pay", amount: 4 },
+  { type: "pay", amount: 7 }, // more than the balance
+  { type: "pay", amount: 6 },
+  { type: "cancel" }, // already paid
+]
+
+const paidBar = (o: Order) => {
+  const filled = o.due ? Math.round((10 * o.paid) / o.due) : 0
+  return `${"█".repeat(filled)}${"░".repeat(10 - filled)} ${o.paid}/${o.due}`
+}
+
+effect function main() {
+  provide OrderBookMemory {
+    const book = try OrderBook
+    for (const event of events) {
+      const shown = Object.values(event).join(" ").padEnd(10)
+      const line = effect {
+        const order = try book.dispatch("A1", event)
+        return `✓ ${shown} ${order.status.padEnd(9)} ${paidBar(order)}`
+      } catch (error) => `✗ ${shown} ${reason(error)}`
+      try Console.log(line)
+    }
+  }
+}
+
+NodeRuntime.runMain(main())

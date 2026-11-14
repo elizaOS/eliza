@@ -1,0 +1,282 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "globalDependencies": [
+    ".nvmrc",
+    "pnpm-workspace.yaml",
+    "tsconfig.base.json",
+    "vibestack/*.ts",
+    "vibestack/gen/**",
+    "vibestack/proof/**",
+    "vibestack/std/**",
+    "vibestack/testing/**",
+    "vibestack/stories/**",
+    "vibestack/design/**",
+    "!vibestack/**/{node_modules,.cache}/**",
+    ".cache/toolchain.json"
+  ],
+  "tasks": {
+    "gen": {
+      "outputs": [
+        "gen/**",
+        "generated/**"
+      ]
+    },
+    "build": {
+      "dependsOn": [
+        "gen",
+        "//#gen",
+        "^build"
+      ],
+      "outputs": [
+        "dist/**",
+        "generated/**",
+        "storybook-static/**"
+      ]
+    },
+    "typecheck": {
+      "dependsOn": [
+        "gen",
+        "//#gen",
+        "^build"
+      ],
+      "outputs": [
+        ".vibe/declarations/**"
+      ]
+    },
+    "test": {
+      "dependsOn": [
+        "gen",
+        "//#gen",
+        "^build"
+      ],
+      "outputs": [
+        ".cache/test-result-*.json"
+      ]
+    },
+    "test:browser": {
+      "dependsOn": [
+        "gen",
+        "//#gen",
+        "^build"
+      ],
+      "outputs": []
+    },
+    "check": {
+      "dependsOn": [
+        "build",
+        "typecheck",
+        "test",
+        "test:browser"
+      ],
+      "cache": false
+    },
+    "vibestack-studio#check": {
+      "dependsOn": [
+        "build",
+        "typecheck",
+        "test",
+        "test:browser",
+        "//#build"
+      ],
+      "cache": false
+    },
+    "//#gen": {
+      "inputs": [
+        "spec/**",
+        "apps/*/package.json",
+        "packages/*/package.json",
+        "package.json"
+      ],
+      "outputs": [
+        "gen/**",
+        "apps/*/gen/**",
+        "packages/*/gen/**"
+      ]
+    },
+    "//#build": {
+      "dependsOn": [
+        "vibestack-studio#build"
+      ],
+      "inputs": [
+        "vibestack/**",
+        "!vibestack/examples/**",
+        "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static}/**",
+        "!{apps,packages,vibestack/studio}/**/gen/**",
+        "package.json",
+        "tsconfig.json",
+        "tsconfig.build.json"
+      ],
+      "outputs": [
+        "dist/**"
+      ]
+    },
+    "//#typecheck": {
+      "dependsOn": [
+        "//#gen"
+      ],
+      "inputs": [
+        "vibestack/**",
+        "!vibestack/examples/**",
+        "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static}/**",
+        "!{apps,packages,vibestack/studio}/**/gen/**",
+        "package.json",
+        "tsconfig.json",
+        "spec/**",
+        "src/**",
+        "test/**"
+      ],
+      "outputs": []
+    },
+    "//#test": {
+      "dependsOn": [
+        "//#gen"
+      ],
+      "inputs": [
+        "vibestack/**",
+        "!vibestack/examples/**",
+        "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static}/**",
+        "!{apps,packages,vibestack/studio}/**/gen/**",
+        "package.json",
+        "tsconfig.json",
+        "spec/**",
+        "src/**",
+        "test/**",
+        "vitest.config.ts",
+        "packages/design-system/tokens.json",
+        "packages/design-system/design.md"
+      ],
+      "outputs": [
+        ".cache/test-result-*.json"
+      ]
+    },
+    "//#selftest": {
+      "dependsOn": [
+        "//#build",
+        "//#test",
+        "vibestack-studio#typecheck",
+        "vibestack-studio#test",
+        "vibestack-studio#test:browser"
+      ],
+      "inputs": [
+        "vibestack/**",
+        "!vibestack/examples/{assistant,dashboard,fullstack}/**",
+        "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static}/**",
+        "!{apps,packages,vibestack/studio,vibestack/examples}/**/gen/**",
+        "packages/**",
+        ".claude/skills/**",
+        "AGENTS.md",
+        "SPEC.md",
+        "spec/**",
+        "package.json",
+        "tsconfig.json",
+        "tsconfig.build.json"
+      ],
+      "outputs": []
+    },
+    "//#check": {
+      "dependsOn": [
+        "//#build",
+        "//#typecheck",
+        "//#test",
+        "@repo/app#build",
+        "@repo/app#typecheck",
+        "@repo/app#test",
+        "@repo/app#test:browser"
+      ],
+      "cache": false
+    },
+    "//#lint:js": {
+      "dependsOn": [
+        "@repo/design-system#build",
+        "@repo/app#typecheck"
+      ],
+      "inputs": [
+        "apps/**",
+        "packages/**",
+        "vibestack/**",
+        "!vibestack/examples/**",
+        "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static}/**",
+        "!{apps,packages,vibestack/studio}/**/gen/**",
+        "package.json",
+        "pnpm-workspace.yaml",
+        "tsconfig.json",
+        "*.config.js",
+        "*.config.ts"
+      ],
+      "outputs": []
+    },
+    "//#lint:css": {
+      "inputs": [
+        "apps/**",
+        "packages/**",
+        "vibestack/**",
+        "!vibestack/examples/**",
+        "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static}/**",
+        "!{apps,packages,vibestack/studio}/**/gen/**",
+        "package.json",
+        "pnpm-workspace.yaml",
+        "tsconfig.json",
+        "*.config.js",
+        "*.config.ts"
+      ],
+      "outputs": []
+    },
+    "//#analyze": {
+      "inputs": [
+        "apps/**",
+        "packages/**",
+        "vibestack/**",
+        "!vibestack/examples/**",
+        "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static}/**",
+        "!{apps,packages,vibestack/studio}/**/gen/**",
+        "package.json",
+        "pnpm-workspace.yaml",
+        "tsconfig.json",
+        "*.config.js",
+        "*.config.ts",
+        ".madgerc"
+      ],
+      "outputs": []
+    },
+    "//#examples": {
+      "cache": false
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "//#studio": {
+      "cache": false,
+      "persistent": true
+    },
+    "vibestack-studio#test": {
+      "dependsOn": [
+        "gen",
+        "//#gen",
+        "^build",
+        "//#build"
+      ],
+      "outputs": [
+        ".cache/test-result-*.json"
+      ]
+    },
+    "@repo/design-system#build": {
+      "dependsOn": [
+        "gen",
+        "//#gen",
+        "^build"
+      ],
+      "outputs": [
+        "generated/**",
+        "design.md"
+      ]
+    }
+  },
+  "remoteCache": {
+    "apiUrl": "https://vibestack-turbo-cache.shawmakesmagic.workers.dev",
+    "enabled": true,
+    "timeout": 10,
+    "uploadTimeout": 60,
+    "teamSlug": "vibestack"
+  }
+}

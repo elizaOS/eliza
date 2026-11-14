@@ -1,0 +1,42 @@
+name: setup
+description: Node 26, pnpm from packageManager, Dafny, Chromium, and the caches of pnpm, Turborepo and spec.
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@v6
+    # Before setup-node: this action puts an old Node on PATH, which setup-node then replaces.
+    - uses: dafny-lang/setup-dafny-action@v1
+      with:
+        dafny-version: "4.11.0"
+    - uses: actions/setup-node@v7
+      with:
+        node-version-file: .nvmrc
+        cache: pnpm
+    # Turborepo skips a task whose inputs it has seen; spec skips a simulation or proof it has seen.
+    # Quint downloads its evaluator to ~/.quint from GitHub's rate-limited API: once per cache, not per run.
+    - uses: actions/cache@v6
+      with:
+        path: |
+          **/.spec-cache
+          ~/.quint
+          !**/node_modules/**
+        key: spec-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.nvmrc', 'pnpm-lock.yaml') }}-${{ github.sha }}
+        restore-keys: |
+          spec-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.nvmrc', 'pnpm-lock.yaml') }}-
+    - run: pnpm install --frozen-lockfile
+      shell: bash
+    # Quint's first-run downloader uses the unauthenticated GitHub API.
+    # Fetch its pinned release directly before concurrent checks need it.
+    - name: Install Quint evaluator
+      run: |
+        evaluator_version=$(node -p "require('@informalsystems/quint/dist/src/rust/binaryManager.js').QUINT_EVALUATOR_VERSION")
+        evaluator_dir="$HOME/.quint/rust-evaluator-$evaluator_version"
+        if [ ! -x "$evaluator_dir/quint_evaluator" ]; then
+          mkdir -p "$evaluator_dir"
+          curl --fail --location --retry 3 "https://github.com/quint-co/quint/releases/download/evaluator/$evaluator_version/quint_evaluator-x86_64-unknown-linux-gnu.tar.gz" | tar -xz -C "$evaluator_dir"
+        fi
+        "$evaluator_dir/quint_evaluator" --help
+      shell: bash
+    # Studio's journeys and every test:browser drive a real Chromium.
+    - run: pnpm exec playwright install --with-deps chromium
+      shell: bash

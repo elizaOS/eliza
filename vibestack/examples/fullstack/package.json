@@ -1,0 +1,59 @@
+{
+  "name": "fullstack-todo",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.24.0",
+  "engines": {
+    "node": ">=26"
+  },
+  "scripts": {
+    "check": "node ../../spec.ts check",
+    "gen": "node ../../spec.ts gen",
+    "accept": "node ../../spec.ts accept",
+    "tokens": "node ../../spec.ts tokens build",
+    "stories": "node ../../spec.ts stories gen --check",
+    "storybook": "pnpm -s tokens && storybook dev --no-open",
+    "build": "vibelang && pnpm -s tokens && vite build",
+    "test": "pnpm -s tokens && pnpm -s stories && vite build --logLevel error && vitest run",
+    "lint": "pnpm -s tokens && node ../../spec.ts tokens check && eslint src/web",
+    "start": "pnpm -s build && node dist/src/main.js"
+  },
+  "dependencies": {
+    "@effect/platform-node": "4.1.1",
+    "@radix-ui/react-checkbox": "1.4.1",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "effect": "4.1.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "tailwind-merge": "3.7.0",
+    "vibelang-runtime": "0.0.13"
+  },
+  "devDependencies": {
+    "@effect/vitest": "4.1.1",
+    "@storybook/addon-a11y": "10.6.7",
+    "@storybook/addon-vitest": "10.6.7",
+    "@storybook/react-vite": "10.6.7",
+    "@tailwindcss/vite": "4.3.5",
+    "@types/node": "^26.0.0",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.3.0",
+    "eslint": "10.14.0",
+    "eslint-plugin-better-tailwindcss": "4.11.0",
+    "happy-dom": "21.0.4",
+    "storybook": "10.6.7",
+    "tailwindcss": "4.3.5",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.2",
+    "vibelang": "0.0.13",
+    "vibelang-vite": "0.0.13",
+    "vite": "8.3.5",
+    "vitest": "5.1.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "@effect/platform-node-shared": "4.1.1"
+    }
+  }
+}

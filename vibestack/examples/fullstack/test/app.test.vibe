@@ -1,0 +1,239 @@
+// The real server (test/served.vibe), and tabs that talk to it as the page's do.
+import { assert, it } from "@effect/vitest"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import { type Client, machine, view } from "../gen/client.effect.vibe"
+import { type Event, Machine, initial } from "../gen/server.effect.vibe"
+import { sameTodos } from "../gen/todo.effect.vibe"
+import type { Op } from "../gen/todo.ts"
+import { NotAStateFile } from "../src/server.vibe"
+import { type Tab, newId, open } from "../src/web/sync.vibe"
+import { Served, dropConnections, post, send, served, stallNextEvent } from "./served.vibe"
+
+const request = (client: string, seq: number, op: Op) => ({ type: "request", client, seq, op })
+const create = (id: string, title: string): Op => ({ kind: "create", id, title, done: false })
+
+/** A tab of the page, over a client machine of its own. */
+const openTab = (name: string) => Effect.provide(open("", name), machine())
+
+effect function until(tab: Tab.Shape, ok: (c: Client) => boolean) {
+  try timeout(Stream.runHead(Stream.filter(tab.changes, ok)), "5 seconds")
+}
+
+// spec/server.md, "Story: Change the list over HTTP"
+it.live("change the list over HTTP, and keep it across a restart", () => effect {
+  provide NodeServices.layer {
+    try scoped(effect {
+      const path = try Path.Path
+      const file = path.join(try (try FileSystem.FileSystem).makeTempDirectoryScoped(), "todos.json")
+      const milk = request("ann", 1, create("ann-1", "milk"))
+      const forged = request("dan", 1, create("dan-x", "forged"))
+
+      let saved = initial
+      provide served(file) {
+        const store = try Machine
+
+        // spec/server.md, "A new request whose edit makes sense is applied, raising the version by one"; spec/server.md, "No request is answered twice"
+        const first = try post(milk)
+        const again = try post(milk)
+
+        // spec/server.md, "A new request whose edit does not make sense is refused, which is logged with its edit and changes nothing else"
+        const tick = request("ann", 2, { kind: "done", id: "nobody", title: "", done: true })
+        const refused = try post(tick)
+        const refusedAgain = try post(tick)
+        const logged = (try store.get()).log.length
+
+        // spec/server.md, "A to-do is never taken out of the list, and a removed one stays removed"; spec/server.md, "A to-do can be removed, leaving a tombstone"
+        const removed = try post(request("ben", 1, { kind: "remove", id: "ann-1", title: "", done: false }))
+        const recreate = try post(request("ben", 2, create("ann-1", "milk")))
+
+        // spec/server.md, "No request is answered twice"
+        const squatted = try post(forged)
+        const real = try post(request("dan", 1, create("dan-1", "milk")))
+        const retried = try post(forged)
+
+        // spec/server.md, "Every new request is answered by applying its edit if it makes sense and refusing it if not"
+        const refuse = try post({ type: "refuse", client: "eve", seq: 1, op: create("eve-1", "milk") })
+        const created = try post(request("eve", 1, create("eve-1", "milk")))
+
+        // Input that is no request changes nothing.
+        const fraction = try post(request("ann", 1.5, create("x", "y")))
+        const unknown = try post({ type: "explode" })
+        const notJson = try send("{not json")
+        const { version } = try store.get()
+        const notSentAsJson = try send(JSON.stringify(request("zed", 1, { kind: "remove", id: "eve-1", title: "", done: false })), "text/plain")
+        const after = (try store.get()).version
+
+        const s = (try (try HttpClient.get("/api/snapshot")).json) as { version: number; todos: unknown[] }
+
+        // The page names the script Vite built for it; nothing outside the build is served.
+        const index = try (try HttpClient.get("/")).text
+        const response = try HttpClient.get(/<script type="module"[^>]* src="([^"]+)"/.exec(index)?.[1] ?? "/")
+        const js = try response.text
+        const outside = try HttpClient.get("/src/../package.json")
+
+        try Effect.try(() => assert.deepStrictEqual({
+          first: [first.status, first.body.ok, first.body.version],
+          again: [again.body.ok, again.body.version, again.body.todos.length],
+          refused: [refused.body.ok, refused.body.version, refusedAgain.body.ok, logged],
+          removed: [removed.body.ok, recreate.body.ok, recreate.body.todos.map((t) => [t.id, t.deleted])],
+          forged: [squatted.body.ok, real.body.ok, real.body.todos.some((t) => t.id === "dan-1"), retried.body.ok],
+          refuse: [refuse.status, created.body.ok],
+          malformed: [fraction.status, unknown.status, notJson.status, notSentAsJson.status, after === version],
+          snapshot: [s.version === version, s.todos.length],
+          page: [response.status, /javascript/.test(response.headers["content-type"] ?? ""), js.length > 0, outside.status],
+        }, {
+          first: [200, true, 1],
+          again: [true, 1, 1],
+          refused: [false, 1, false, 2],
+          removed: [true, false, [["ann-1", true]]],
+          forged: [true, false, false, true],
+          refuse: [400, true],
+          malformed: [400, 400, 400, 415, true],
+          snapshot: [true, 3],
+          page: [200, true, true, 404],
+        }))
+
+        // spec/server.md, "The server holds the list, its version and a log of every request it answered"
+        const before = try store.get()
+        const borrowed = try store.get()
+        borrowed.version = -1
+        borrowed.log[0]!.op.title = "borrowed read"
+        try Stream.runHead(Stream.tap(store.changes, (state) => sync(() => {
+          state.version = -2
+          state.todos[0]!.title = "borrowed notification"
+        })))
+        const rejected = try Effect.flip(store.send({ type: "request", client: "ann", seq: 1, op: create("ann-1", "milk") }))
+        rejected.state.version = -3
+        const unchanged = try store.get()
+
+        const typed: Event = { type: "request", client: "typed", seq: 1, op: create("typed-1", "typed") }
+        const accepted = try store.send(typed)
+        typed.op.title = "borrowed input"
+        accepted.todos.at(-1)!.title = "borrowed result"
+        const outsideInput = request("outside", 1, create("outside-1", "outside"))
+        const received = try store.receive(outsideInput)
+        outsideInput.op.title = "borrowed outside input"
+        received.log.at(-1)!.op.title = "borrowed outside result"
+        saved = try store.get()
+        try Effect.try(() => assert.deepStrictEqual(
+          { unchanged, titles: saved.todos.slice(-2).map((t) => t.title), logged: saved.log.slice(-2).map((r) => r.op.title) },
+          { unchanged: before, titles: ["typed", "outside"], logged: ["typed", "outside"] },
+        ))
+        // spec/server.md, "The server holds the list, its version and a log of every request it answered"
+        const isolated = try effect {
+          provide served(`${file}.other`) { return try post(request("isolated", 1, create("isolated-1", "separate"))) }
+        }
+        const retained = try store.get()
+        try Effect.try(() => assert.deepStrictEqual([isolated.body.version, retained], [1, saved]))
+      }
+
+      // Stopped and started again on the same file: spec/server.md, "The server holds the list, its version and a log of every request it answered";
+      // a retry is still answered from the log: spec/server.md, "The log tells which requests were answered, and with which edit each was accepted"
+      provide served(file) {
+        const restarted = try (try Machine).get()
+        const retried = [try post(milk), try post(forged), try post(request("dan", 1, create("dan-1", "milk")))]
+        const after = try (try Machine).get()
+        try Effect.try(() => assert.deepStrictEqual(
+          { restarted, retried: retried.map((a) => [a.body.ok, a.body.version]), after },
+          { restarted: saved, retried: [[true, saved.version], [true, saved.version], [false, saved.version]], after: saved },
+        ))
+      }
+
+      // A file that holds no state the server saved stops it from starting, naming the file: spec/server.md, "The server holds the list, its version and a log of every request it answered"
+      const fs = try FileSystem.FileSystem
+      const notJson = `${file}.notjson`
+      const notAState = `${file}.empty`
+      try fs.writeFileString(notJson, "not json")
+      try fs.writeFileString(notAState, "{}")
+      const unreadable = path.dirname(file)
+      const refusals = try Effect.forEach([notJson, notAState, unreadable], (f) => Effect.flip(Layer.build(served(f))))
+      try Effect.try(() => assert.deepStrictEqual(refusals.map((e) => e instanceof NotAStateFile && e.file), [notJson, notAState, unreadable]))
+    })
+  }
+})
+
+// spec/system.md, "Story: Edit together, online or not"
+it.live("two tabs, one of them offline for a while, end up with the server's list", () => effect {
+  provide Served {
+    const server = try Machine
+    // The tabs stop listening before the server closes.
+    try scoped(effect {
+      const a = try openTab("a")
+      const b = try openTab("b")
+      try Effect.forkScoped(a.listen())
+      try Effect.forkScoped(b.listen())
+
+      // a adds milk; b hears about it through the push stream.
+      const milk = newId("a", try a.get())
+      try a.edit({ type: "create", id: milk, title: "milk" })
+      try until(b, (c) => c.seen === 1)
+
+      // a goes offline and keeps editing; b ticks milk off meanwhile.
+      try a.dispatch({ type: "goOffline" })
+      const eggs = newId("a", try a.get())
+      try a.edit({ type: "create", id: eggs, title: "eggs" })
+      try a.edit({ type: "rename", id: milk, title: "oat milk" })
+      const queued = (try a.get()).pending
+      try b.edit({ type: "setDone", id: milk, done: true })
+      const ticked = (try server.get()).version
+
+      // A request that arrives twice is applied once.
+      // spec/client.md, "Story: Hear back from the server": the answer identifies the request that was sent.
+      let seq = queued[0]!.seq
+      try a.send({ get seq() { return seq++ }, op: queued[0]!.op })
+      try a.send({ seq: 2, op: { kind: "create", id: eggs, title: "eggs", done: false } })
+      const sentTwice = (try server.get()).version
+
+      // Back online: the queue is sent again and the tab catches up.
+      try a.goOnline()
+      const caughtUp = (try server.get()).version
+      try until(b, (c) => c.seen === caughtUp)
+      try b.refresh()
+
+      // spec/client.md, "Story: Hear back from the server": b's stream drops, b reconnects
+      try sync(dropConnections)
+      try a.edit({ type: "setDone", id: eggs, done: true })
+      const { version, todos } = try server.get()
+      try until(b, (c) => c.seen === version)
+
+      const [ours, theirs] = [try a.get(), try b.get()]
+      try Effect.try(() => assert.deepStrictEqual({
+        steps: [queued.length, ticked, sentTwice],
+        pending: [ours.pending.length, theirs.pending.length],
+        seen: [ours.seen, theirs.seen],
+        agree: [sameTodos(view(ours), view(theirs)), sameTodos(view(ours), todos)],
+        list: view(ours).map((t) => [t.title, t.done]),
+      }, {
+        steps: [2, 2, 3],
+        pending: [0, 0],
+        seen: [version, version],
+        agree: [true, true],
+        list: [["oat milk", true], ["eggs", true]],
+      }))
+    })
+  }
+})
+
+// spec/system.md, "Story: Editing alone is never refused"
+it.live("a lone user's queued edits reach the server in order, and none is refused", () => effect {
+  provide Served {
+    const a = try openTab("a")
+    const borrowed = try a.get()
+    borrowed.online = false
+    const retained = try a.get()
+    try Effect.try(() => assert.isTrue(retained.online))
+    try a.dispatch({ type: "goOffline" })
+    const milk = newId("a", try a.get())
+    try a.edit({ type: "create", id: milk, title: "milk" })
+    try a.edit({ type: "setDone", id: milk, done: true })
+    try a.edit({ type: "rename", id: milk, title: "oat milk" })
+    // spec/system.md, "Story: Editing alone is never refused": a stalled response must not hold the queue forever.
+    try sync(stallNextEvent)
+    try a.goOnline()
+    const c = try a.get()
+    try Effect.try(() => assert.deepStrictEqual(
+      { pending: c.pending.length, refusals: c.refusals, list: view(c).map((t) => [t.title, t.done]) },
+      { pending: 0, refusals: 0, list: [["oat milk", true]] },
+    ))
+  }
+})

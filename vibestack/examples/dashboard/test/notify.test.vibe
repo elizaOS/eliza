@@ -1,0 +1,91 @@
+import { assert, it } from "@effect/vitest"
+import { TestClock } from "effect/testing"
+import { Machine, debounce, machine } from "../gen/tracker.effect.vibe"
+import { Chat, Undelivered, pass } from "../src/notify.vibe"
+
+const handles = { ana: "@ana", ben: "@ben", cal: "@cal" }
+
+// spec/tracker.md, "Story: Be told what changed and what is due"
+it.effect("be told what changed and what is due, once, on the chat app", () => effect {
+  const posted: [string, string][] = []
+  const attempts: Record<string, number> = {}
+  // A chat app that is busy for the first two tries of each handle, and always for @cal.
+  const chat = {
+    effect post(handle: string, text: string) {
+      attempts[handle] = (attempts[handle] ?? 0) + 1
+      if (handle === "@cal" || attempts[handle]! < 3) throw new Undelivered({ handle, cause: "busy" })
+      posted.push([handle, text])
+    },
+  }
+  provide machine(), Chat = chat {
+    const tracker = try Machine
+    effect function quiet() { for (let i = 0; i < debounce; i++) try tracker.send({ type: "tick" }) }
+
+    // spec/tracker.md, "Nothing is sent twice": a name typed twice is told once.
+    try tracker.send({ type: "create", actor: "ben" })
+    try tracker.send({ type: "handAddOwner", id: 1, name: "ana" })
+    try tracker.send({ type: "handAddOwner", id: 1, name: "cal" })
+    const typed = try tracker.send({ type: "handAddOwner", id: 1, name: "ana" })
+    try quiet()
+    // Each post is tried again a second apart, and given up after the third try.
+    const first = fork pass(handles)
+    try TestClock.adjust("999 millis")
+    const waited = { ...attempts }
+    try TestClock.adjust("1 millis")
+    const retried = { ...attempts }
+    try TestClock.adjust("1 minute")
+    const lost = try join first
+    const afterFirst = { ...attempts }
+
+    // spec/tracker.md, "One pass of the notifier sends everything that is due and records that it was sent";
+    // spec/tracker.md, "A pass sends exactly the notes it records": one message per person, in the order people first
+    // appear, with only what this pass recorded; a person without a handle, even one named like what every object has,
+    // gets none.
+    try tracker.send({ type: "create", actor: "ana" })
+    for (const owner of ["ana", "ben", "cal"]) try tracker.send({ type: "addOwner", id: 2, owner, actor: "ana" })
+    try tracker.send({ type: "setDue", id: 1, due: 5, actor: "ben" })
+    try tracker.send({ type: "setDue", id: 2, due: 3, actor: "ana" })
+    try tracker.send({ type: "renameOwner", owner: "cal", name: "toString", actor: "ana" })
+    try quiet()
+    const second = fork pass(handles)
+    try TestClock.adjust("1 minute")
+    const secondLost = try join second
+
+    try Effect.try(() => assert.deepStrictEqual({
+      owners: typed.state.tasks[0]!.owners, attempts: [waited, retried, afterFirst], lost, secondLost, posted,
+    }, {
+      owners: ["ana", "cal", "ana"],
+      attempts: [{ "@ana": 1 }, { "@ana": 2 }, { "@ana": 3, "@cal": 3 }],
+      lost: [{ to: "cal", handle: "@cal", text: "✎ #1 changed" }],
+      secondLost: [],
+      posted: [
+        ["@ana", "✎ #1 changed"],
+        ["@ana", "✎ #1 changed\n⏳ #1 due day 5\n⚠ #2 due today"],
+        ["@ben", "✎ #2 changed\n⚠ #2 due today"],
+      ],
+    }))
+  }
+  // spec/tracker.md, "Renaming or removing a person through the dashboard rewrites every cell that names them"
+  // spec/tracker.md, "One pass of the notifier sends everything that is due and records that it was sent"
+  const renamedPosts: [string, string][] = []
+  provide machine(), Chat = { effect post(handle: string, text: string) { renamedPosts.push([handle, text]) } } {
+    const tracker = try Machine
+    try tracker.send({ type: "create", actor: "ana" })
+    try tracker.send({ type: "addOwner", id: 1, owner: "ben", actor: "ana" })
+    try tracker.send({ type: "deleteOwner", owner: "ana", actor: "cal" })
+    try tracker.send({ type: "renameOwner", owner: "ben", name: "ana", actor: "cal" })
+    for (let i = 0; i < debounce; i++) try tracker.send({ type: "tick" })
+    try pass(handles)
+    const notified = try tracker.get()
+    try Effect.try(() => assert.deepStrictEqual(
+      [renamedPosts, notified.tasks[0]!.updatedBy, notified.tasks[0]!.authorIsMember],
+      [[["@ana", "✎ #1 changed"]], "ana", false]
+    ))
+    // A spreadsheet edit reaches a member whose name is the spreadsheet editor label.
+    try tracker.send({ type: "renameOwner", owner: "ana", name: "sheet", actor: "cal" })
+    try tracker.send({ type: "handAddOwner", id: 1, name: "sheet" })
+    for (let i = 0; i < debounce; i++) try tracker.send({ type: "tick" })
+    try pass({ sheet: "@sheet" })
+    try Effect.try(() => assert.deepStrictEqual(renamedPosts, [["@ana", "✎ #1 changed"], ["@sheet", "✎ #1 changed"]]))
+  }
+})

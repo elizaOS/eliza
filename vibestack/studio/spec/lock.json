@@ -1,0 +1,338 @@
+{
+  "version": 1,
+  "specs": {
+    "spec/components.md": {
+      "@document": [
+        "e6971dbf12ee"
+      ],
+      "## Story: Inspect a component and its stories": [
+        "f13cd64cf2c3"
+      ],
+      "Story: Inspect a component and its stories / A catalog records how many stories each component has": [
+        "2291b44781a4",
+        "fe82d844a9d5"
+      ],
+      "Story: Inspect a component and its stories / Before a catalog is loaded nothing is selected": [
+        "e3b0c44298fc",
+        "291fdbd0a25f",
+        "a4907880c200"
+      ],
+      "Story: Inspect a component and its stories / Loading a catalog selects its first component and that component's first story": [
+        "0086558d7ec8",
+        "b0e242aef8a0",
+        "a4907880c200"
+      ],
+      "Story: Inspect a component and its stories / Choosing a component selects its first story and clears prop overrides": [
+        "58cdc940a5a5",
+        "c8167959e7d0",
+        "a4907880c200"
+      ],
+      "Story: Inspect a component and its stories / Choosing a story stays within its component and clears prop overrides": [
+        "9800d5fec590",
+        "bd9ea8fb9000",
+        "a4907880c200"
+      ],
+      "Story: Inspect a component and its stories / Every selected component and story exists in the loaded catalog": [
+        "e3b0c44298fc",
+        "4eca41859a33",
+        "a4907880c200"
+      ],
+      "Story: Inspect a component and its stories / A component without stories and a later story can both be inspected": [
+        "e3b0c44298fc",
+        "18eeb0da2346",
+        "a4907880c200"
+      ]
+    },
+    "spec/index.md": {
+      "@document": [
+        "9153c98da278"
+      ],
+      "## Domain": [
+        "e3b0c44298fc"
+      ],
+      "Domain / A session": [
+        "72fc2b7212f2",
+        "efe70fc1828a"
+      ],
+      "Domain / A new session has nothing to do": [
+        "e3b0c44298fc",
+        "defc620ad492",
+        "4c46885f2276"
+      ],
+      "Domain / What the simulator tries": [
+        "e3b0c44298fc",
+        "158fb4f219e3"
+      ],
+      "## Story: Edit, then publish": [
+        "f9e64bd356bb"
+      ],
+      "Story: Edit, then publish / Edits stay in the page until they are published or discarded": [
+        "e3b0c44298fc",
+        "06fc3b79ab45",
+        "4c46885f2276"
+      ],
+      "Story: Edit, then publish / Only edits can be published, and not while a job runs": [
+        "1c568edc7bb9",
+        "1132d9585765",
+        "4c46885f2276"
+      ],
+      "Story: Edit, then publish / Publishing always starts a check": [
+        "25f9cc6f1a19",
+        "35e29418cbfd",
+        "4c46885f2276"
+      ],
+      "Story: Edit, then publish / Edits can wait in the page while a check runs": [
+        "e3b0c44298fc",
+        "b176ea269db1",
+        "4c46885f2276"
+      ],
+      "Story: Edit, then publish / A change to the specs on disk makes the last verdict unknown": [
+        "138035ee6d59",
+        "fe2b176979b6",
+        "4c46885f2276"
+      ],
+      "## Story: Sync with an agent": [
+        "b4ddecf7c0f3"
+      ],
+      "Story: Sync with an agent / An agent syncs only what is published, and not while a job runs": [
+        "e3b0c44298fc",
+        "d7eebca8063f",
+        "4c46885f2276"
+      ],
+      "Story: Sync with an agent / A sync that ends well leaves nothing waiting and checks again": [
+        "7610adce5096",
+        "9f4a84978389",
+        "4c46885f2276"
+      ],
+      "Story: Sync with an agent / What is waiting can be marked as synced by hand, when no job runs": [
+        "3ea75bcc0251",
+        "40f17cfc45ac",
+        "4c46885f2276"
+      ],
+      "Story: Sync with an agent / What is waiting goes down only by a sync, by hand, or by publishing what undoes a change": [
+        "f37a798a4fb3",
+        "e1eb8558da4b",
+        "4c46885f2276"
+      ],
+      "Story: Sync with an agent / A studio that starts again picks up what was waiting": [
+        "aa421ab40349",
+        "317fdf5a1a25",
+        "4c46885f2276"
+      ],
+      "Story: Sync with an agent / A sync of published changes can be under way": [
+        "e3b0c44298fc",
+        "8ffdfe806c81",
+        "4c46885f2276"
+      ],
+      "## Story: Check": [
+        "67f135d205c6"
+      ],
+      "Story: Check / A check can start whenever no job runs": [
+        "e3b0c44298fc",
+        "74d77c7205ca",
+        "4c46885f2276"
+      ],
+      "Story: Check / A finished check gives its verdict": [
+        "85e726aa0d08",
+        "f5967854440c",
+        "4c46885f2276"
+      ],
+      "Story: Check / A running job can be stopped, and then nothing is known of its result": [
+        "e3b0c44298fc",
+        "2c1b85d84da0",
+        "4c46885f2276"
+      ],
+      "Story: Check / While a check runs, its verdict is unknown": [
+        "e3b0c44298fc",
+        "af5f877952ae",
+        "4c46885f2276"
+      ],
+      "Story: Check / A job starts only when none is running": [
+        "cf0f281debeb",
+        "ac6a8fa23354",
+        "4c46885f2276"
+      ],
+      "Story: Check / A check can find everything green": [
+        "e3b0c44298fc",
+        "5f9fef4625ee",
+        "4c46885f2276"
+      ],
+      "## Story: Sign off": [
+        "334a21a1864d"
+      ],
+      "Story: Sign off / Sign-off needs a check that left only review, nothing unpublished and nothing waiting": [
+        "15b6135b6cb0",
+        "4ea9e0bf18be",
+        "4c46885f2276"
+      ],
+      "Story: Sign off / A sign-off is checked again when it ends": [
+        "e3b0c44298fc",
+        "1518979f7d10",
+        "4c46885f2276"
+      ],
+      "Story: Sign off / A sign-off starts only from a reviewable check": [
+        "e3b0c44298fc",
+        "543ed67a1f64",
+        "4c46885f2276"
+      ],
+      "Story: Sign off / A sign-off can be under way": [
+        "e3b0c44298fc",
+        "5c0ab926ca2e",
+        "4c46885f2276"
+      ],
+      "## Story: Build the app": [
+        "6bcd12bd00a0"
+      ],
+      "Story: Build the app / The app is built from published specs, when no job runs": [
+        "da1a77378584",
+        "44686e4026a6",
+        "4c46885f2276"
+      ],
+      "Story: Build the app / A build ends, and then no job runs": [
+        "5562101bc3d1",
+        "1ae1828b495b",
+        "4c46885f2276"
+      ],
+      "Story: Build the app / Building changes nothing but the job": [
+        "e3b0c44298fc",
+        "9d15a250030d",
+        "4c46885f2276"
+      ],
+      "Story: Build the app / A build can be under way": [
+        "e3b0c44298fc",
+        "e356e07bb94c",
+        "4c46885f2276"
+      ],
+      "## Story: Preview the app": [
+        "8c083fcb83a4"
+      ],
+      "Story: Preview the app / The app can be started and stopped whenever, beside any job": [
+        "b68472cece77",
+        "edebec9d0214",
+        "4c46885f2276"
+      ],
+      "Story: Preview the app / Running the app changes nothing else": [
+        "e3b0c44298fc",
+        "6131340b125e",
+        "4c46885f2276"
+      ],
+      "Story: Preview the app / The app can run while an agent syncs": [
+        "e3b0c44298fc",
+        "82a150b29c61",
+        "4c46885f2276"
+      ]
+    },
+    "spec/outline.md": {
+      "@document": [
+        "0935bbedd531"
+      ],
+      "## Domain": [
+        "e3b0c44298fc"
+      ],
+      "Domain / A story and its rules": [
+        "d020e0860446",
+        "918345e15174"
+      ],
+      "Domain / A new spec's outline is empty": [
+        "414e6bc066c7",
+        "38f225d50bf1",
+        "7202c8d90196"
+      ],
+      "Domain / Positions": [
+        "eefd912d6bfa",
+        "4eb4058f6c13",
+        "7202c8d90196"
+      ],
+      "Domain / What the simulator tries": [
+        "e3b0c44298fc",
+        "309f04323a61"
+      ],
+      "## Story: Shape the outline": [
+        "472a81bb70ee"
+      ],
+      "Story: Shape the outline / The spec's title and introduction can be changed": [
+        "e3b0c44298fc",
+        "a5d75e215798",
+        "7202c8d90196"
+      ],
+      "Story: Shape the outline / A story can be added anywhere, empty or with the text it had elsewhere": [
+        "38a4d0d17356",
+        "73a1ac8fd99b",
+        "32cbc8f25be6"
+      ],
+      "Story: Shape the outline / A story's heading and text can be changed": [
+        "e3b0c44298fc",
+        "ac45e8e0089e",
+        "32cbc8f25be6"
+      ],
+      "Story: Shape the outline / Removing a story removes its rules with it": [
+        "e3b0c44298fc",
+        "462f4eb32553",
+        "32cbc8f25be6"
+      ],
+      "Story: Shape the outline / A story can be moved to any position, and its rules move with it": [
+        "e3b0c44298fc",
+        "644f7e4b33d8",
+        "32cbc8f25be6"
+      ],
+      "Story: Shape the outline / Only retitling changes the spec's title and introduction": [
+        "e3b0c44298fc",
+        "4a2b65ff3a69",
+        "7202c8d90196"
+      ],
+      "Story: Shape the outline / An outline can hold several stories, each with rules": [
+        "e3b0c44298fc",
+        "9edfefa2d4bd",
+        "7202c8d90196"
+      ],
+      "## Story: Group rules under stories": [
+        "5bd824276a12"
+      ],
+      "Story: Group rules under stories / A rule can be added anywhere in a story, empty or with the text it had elsewhere": [
+        "e3b0c44298fc",
+        "0a7b339f7bd6",
+        "32cbc8f25be6"
+      ],
+      "Story: Group rules under stories / A rule's heading and body can be changed": [
+        "455d87da433b",
+        "350b0b71b6a7",
+        "32cbc8f25be6"
+      ],
+      "Story: Group rules under stories / A rule can be removed": [
+        "e3b0c44298fc",
+        "e7e1c4472882",
+        "32cbc8f25be6"
+      ],
+      "Story: Group rules under stories / A rule can be moved to any position of any story, keeping its number and key": [
+        "c8cf397334c7",
+        "f66fe392a79b",
+        "32cbc8f25be6"
+      ],
+      "Story: Group rules under stories / A new story or rule takes a number no story or rule has": [
+        "b9d6cfc4d8e9",
+        "6eaf8e96d18c",
+        "7202c8d90196"
+      ],
+      "Story: Group rules under stories / A move keeps the number of stories and of rules": [
+        "e3b0c44298fc",
+        "598b2b5b0ec0",
+        "7202c8d90196"
+      ],
+      "## Story: Publish only what reads as a spec": [
+        "bb4b336680e2"
+      ],
+      "Story: Publish only what reads as a spec / Every story and rule needs a heading, unique where it is": [
+        "95005ffc6d60",
+        "481a0c27f011",
+        "7202c8d90196"
+      ],
+      "Story: Publish only what reads as a spec / An outline can have headings that would not publish": [
+        "e3b0c44298fc",
+        "104d803680a9",
+        "ec9913e386eb"
+      ]
+    }
+  },
+  "contracts": {},
+  "unproved": {}
+}

@@ -1,0 +1,37 @@
+{
+  "compilerOptions": {
+    "target": "es2023",
+    "module": "nodenext",
+    "strict": true,
+    "outDir": "dist",
+    "rootDir": "vibestack",
+    "rewriteRelativeImportExtensions": true,
+    "erasableSyntaxOnly": true,
+    "skipLibCheck": true,
+    "types": [
+      "node"
+    ],
+    "lib": [
+      "es2023",
+      "dom",
+      "dom.iterable"
+    ],
+    "rootDirs": [
+      "vibestack",
+      ".vibe/build"
+    ]
+  },
+  "include": [
+    "vibestack/spec.ts",
+    "vibestack/studio/src/main.vibe",
+    "vibestack/studio/gen/*.vibe",
+    "vibestack/testing/index.ts",
+    "vibestack/testing/vitest.ts",
+    "vibestack/stories/meta.ts",
+    "vibestack/stories/storybook.ts",
+    "vibestack/design/eslint.ts"
+  ],
+  "vibe": {
+    "sidecarDir": ".vibe/build"
+  }
+}

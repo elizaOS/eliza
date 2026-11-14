@@ -1,0 +1,8 @@
+# The compiler writes these beside a .vibe file that has a `module node` body.
+*.vibe.node.d.ts
+# `pnpm tokens` and `pnpm stories` write these; `storybook build` the last.
+generated/
+storybook-static/
+# `pnpm start` keeps the list here (README, "Where the list is kept").
+todos.json
+todos.json.tmp

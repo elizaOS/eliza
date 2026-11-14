@@ -1,0 +1,38 @@
+import { assert, it, layer } from "@effect/vitest"
+import { OrderBook, OrderBookMemory } from "../src/app.vibe"
+
+/** Sends `input` to order A1 of the journey's book. */
+effect function send(input: unknown) { return try (try OrderBook).dispatch("A1", input) }
+/** The failure the book answers `input` with, or "accepted". */
+effect function refusal(input: unknown) {
+  return effect { try send(input); return "accepted" } catch (error) => error._tag
+}
+effect function owed() { return try (try OrderBook).balance("A1") }
+
+// The journey has a book of its own; the traces stage of `pnpm check` runs the rest of the spec through the same
+// book (test/drivers/index.ts). An assertion may throw, so it runs in `Effect.try`.
+layer(OrderBookMemory, { buildPerTest: true })((it) => {
+  // spec/index.md, "Story: Check out"; spec/index.md, "Story: Change my mind"; spec/index.md, "Story: Take back a payment"; spec/index.md, "Story: Cancel"; spec/index.md, "Story: Reopen a cancelled order"
+  it.effect("an order is filled, paid in part, cancelled with a refund, reopened and paid off", () => effect {
+    try send({ type: "addItem", qty: 3 })
+    // spec/index.md, "No more can be removed than the order holds"
+    const removed = [(try send({ type: "removeItem", qty: 1 })).due, try refusal({ type: "removeItem", qty: 3 })]
+    try send({ type: "submit" })
+    try send({ type: "pay", amount: 6 })
+    // spec/index.md, "No more can be taken back than was paid"
+    const back = [(try send({ type: "takeBack", amount: 2 })).paid, try refusal({ type: "takeBack", amount: 5 })]
+    // spec/index.md, "A pending order can be cancelled, refunding every payment"; spec/index.md, "A cancelled order can be reopened as a draft"
+    const undone = [try send({ type: "cancel" }), try send({ type: "reopen" })]
+    try send({ type: "submit" })
+    const paid = [
+      (try send({ type: "pay", amount: 4 })).status, try owed(),
+      (try send({ type: "pay", amount: 6 })).status, try owed(),
+    ]
+    try Effect.try(() => assert.deepStrictEqual([removed, back, undone, paid], [
+      [10, "Rejected"],
+      [4, "Rejected"],
+      [{ status: "Cancelled", units: 2, due: 10, paid: 0 }, { status: "Draft", units: 2, due: 10, paid: 0 }],
+      ["Pending", 6, "Paid", 0],
+    ]))
+  })
+})

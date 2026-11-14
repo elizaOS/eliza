@@ -1,0 +1,35 @@
+{
+  "name": "assistant",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.24.0",
+  "engines": {
+    "node": ">=26"
+  },
+  "scripts": {
+    "check": "node ../../spec.ts check",
+    "gen": "node ../../spec.ts gen",
+    "accept": "node ../../spec.ts accept",
+    "build": "vibelang",
+    "test": "vitest run",
+    "demo": "pnpm -s gen && node --import vibelang/register src/demo.vibe"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "@effect/vitest": "4.1.1",
+    "vibelang": "0.0.13",
+    "vibelang-vite": "0.0.13",
+    "vite": "8.3.5",
+    "vitest": "5.1.0"
+  },
+  "dependencies": {
+    "@effect/platform-node": "4.1.1",
+    "effect": "4.1.1",
+    "vibelang-runtime": "0.0.13"
+  },
+  "pnpm": {
+    "overrides": {
+      "@effect/platform-node-shared": "4.1.1"
+    }
+  }
+}

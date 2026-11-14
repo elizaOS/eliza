@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "specs": {
+    "spec/app/index.md": {
+      "@document": [
+        "9684951eb5b7"
+      ],
+      "## Story: Say hello": [
+        "90301aa54c53"
+      ],
+      "Story: Say hello / A greeter holds the last name it greeted and how many greetings it gave": [
+        "05c5e3d6a29c",
+        "44d1dd973307"
+      ],
+      "Story: Say hello / Only a name that is not empty can be greeted": [
+        "ee7390717a93",
+        "8cbf4774066e",
+        "372a4a3c5755"
+      ],
+      "Story: Say hello / Once someone has been greeted, the greeter holds a name": [
+        "e3b0c44298fc",
+        "0e0cdba29162",
+        "372a4a3c5755"
+      ],
+      "Story: Say hello / The number of greetings is never negative": [
+        "2bf06e979a4d",
+        "80d9b39629e3",
+        "372a4a3c5755"
+      ],
+      "Story: Say hello / Every step adds exactly one greeting": [
+        "e3b0c44298fc",
+        "6b7e0617d1c4",
+        "372a4a3c5755"
+      ],
+      "Story: Say hello / A greeting is for the name it was given": [
+        "732ea5de733a",
+        "da5bf23d7775",
+        "8a92a0ec85f3"
+      ],
+      "Story: Say hello / The greeter can give a second greeting": [
+        "661f110ac8d8",
+        "c0b6b2a60a60",
+        "372a4a3c5755"
+      ]
+    },
+    "spec/index.md": {
+      "@document": [
+        "b4f1b3b07f62"
+      ]
+    }
+  },
+  "contracts": {
+    "apps/app/src/greeting.ts": "6292c9e16ccf"
+  },
+  "unproved": {}
+}

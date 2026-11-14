@@ -1,0 +1,122 @@
+// spec/server.md, "The log tells which requests were answered, and with which edit each was accepted"; spec/server.md, "Every new request is answered by applying its edit if it makes sense and refusing it if not"; spec/client.md, "Story: Hear back from the server"
+import { type Event, type Server, Machine, NotAnEvent, acceptedAs, apply, decodeEvent, decodeState, initial, parseEvent, parseState } from "../gen/server.effect.vibe"
+import type { Answer, Request, Snapshot } from "./protocol.vibe"
+
+module node {
+  import { createServer } from "node:http"
+  import { NodeHttpServer } from "@effect/platform-node"
+  /** An HTTP server on `port` (0 picks a free one). A push stream never ends by itself, so closing does not wait for the open tabs. */
+  export function listening(port: number, create = createServer) {
+    return NodeHttpServer.layer(create, { port, gracefulShutdownTimeout: 0 })
+  }
+}
+import { listening } from node
+
+export { listening }
+
+const noStore = { "cache-control": "no-store" }
+
+function snapshot(s: Server): Snapshot {
+  return { version: s.version, todos: s.todos }
+}
+
+/** The answer to one request: taken by the machine if it is new, and read back from the log either way. */
+effect function answer(request: Request) {
+  const { client, seq, op } = request
+  const s = (try Machine).send(request) catch (rejected) => rejected.state
+  return { ok: acceptedAs(s, client, seq, op), seq, ...snapshot(s) } satisfies Answer
+}
+
+effect function postEvent() {
+  return effect {
+    const request = try HttpServerRequest.HttpServerRequest
+    // src/web/sync.vibe sends JSON; a cross-site page cannot without a CORS preflight, which is never granted.
+    if (!request.headers["content-type"]?.startsWith("application/json")) {
+      return try HttpServerResponse.json({ error: "send application/json" }, { status: 415, headers: noStore })
+    }
+    // A body that is not JSON, or longer than the limit, is no event either.
+    const event = try decodeEvent(request.json catch () => undefined)
+    return try HttpServerResponse.json(try answer(event), { headers: noStore })
+  } catch effect (error) => match (error) {
+    when NotAnEvent: try HttpServerResponse.json({ error: "not a well-formed request" }, { status: 400, headers: noStore });
+    default: throw error;
+  }
+}
+
+effect function getSnapshot() {
+  return try HttpServerResponse.json(snapshot(try (try Machine).get()), { headers: noStore })
+}
+
+/** Server-sent pushes: the list as it is now, and again after every change to it. */
+effect function getStream() {
+  const pushes = Stream.changesWith(Stream.map((try Machine).changes, snapshot), (a, b) => a.version === b.version)
+  return HttpServerResponse.stream(Stream.encodeText(Stream.map(pushes, (s) => `data: ${JSON.stringify(s)}\n\n`)), {
+    contentType: "text/event-stream",
+    headers: { ...noStore, connection: "keep-alive" }
+  })
+}
+
+const Api = Layer.mergeAll(
+  HttpRouter.add("POST", "/api/events", provideService(postEvent(), HttpServerRequest.MaxBodySize, ByteSize.kibibytes(64))),
+  HttpRouter.add("GET", "/api/snapshot", getSnapshot()),
+  HttpRouter.add("GET", "/api/stream", getStream())
+)
+
+/** `file` holds no state the server saved: it cannot be read, is not JSON, or is not a state that keeps the rules. */
+export error NotAStateFile { file: string; cause: unknown }
+
+/** The state saved in `file`, or `initial` if there is none yet. */
+effect function load(file: string) {
+  const fs = try FileSystem.FileSystem
+  return effect {
+    if (!(try fs.exists(file))) return parseState(initial)!
+    const text = try fs.readFileString(file)
+    return try decodeState(try Effect.try(() => JSON.parse(text) as unknown))
+  } catch effect (cause) => { throw new NotAStateFile({ file, cause }) }
+}
+
+/** Replace `file`, in `dir`, by `s` whole: written beside it and flushed to disk, renamed over it, and the rename flushed with `dir`. */
+effect function save(file: string, dir: string, s: Server) {
+  const fs = try FileSystem.FileSystem
+  const temp = `${file}.tmp`
+  try fs.writeFileString(temp, JSON.stringify(s))
+  try scoped(effect { try (try fs.open(temp, { flag: "r+" })).sync })
+  try fs.rename(temp, file)
+  // Where a directory cannot be opened (Windows), the rename is as lasting as the system makes it.
+  scoped(effect { try (try fs.open(dir)).sync }) catch () => undefined
+}
+
+/**
+ * The server's Machine, kept in `file`: started from what it holds, and each accepted event saved before it is
+ * answered. One event at a time, so two requests never interleave their saves. A failed save fails the request and
+ * changes nothing.
+ */
+function stored(file: string) {
+  return Layer.effect(Machine, effect {
+    const fs = try FileSystem.FileSystem
+    const dir = (try Path.Path).dirname(file)
+    const held = try SubscriptionRef.make(try load(file))
+    effect function send(event: Event) {
+      const input = parseEvent(event)!
+      uninterruptible {
+        return try SubscriptionRef.modifyEffect(held, effect (current) => {
+          const next = try apply(parseState(current)!, input)
+          try orDie(provideService(save(file, dir, next), FileSystem.FileSystem, fs))
+          return [next, parseState(next)!] as const
+        })
+      }
+    }
+    return {
+      changes: Stream.map(SubscriptionRef.changes(held), (state) => parseState(state)!),
+      get: () => map(SubscriptionRef.get(held), (state) => parseState(state)!),
+      send,
+      effect receive(input: unknown) { return try send(try decodeEvent(input)) }
+    }
+  })
+}
+
+/** The HTTP API and the page's files in `web`, on `listener`, over the server machine kept in `file`. */
+export function server(web: string, listener: ReturnType<typeof listening>, file: string) {
+  const app = Layer.mergeAll(Api, HttpStaticServer.layer({ root: web }))
+  return Layer.provideMerge(HttpRouter.serve(app, { disableLogger: true, disableListenLog: true }), Layer.provideMerge(stored(file), listener))
+}

@@ -1,0 +1,422 @@
+// The studio's server: the shell around spec/index.md. Every change to the session is an event sent to the generated
+// `Machine`; this file only runs the jobs the session allows, writes the specs, keeps the manifest (./doc.ts), and
+// serves the page (./page.ts) with the modules it imports. What it reads of a project is ./project.ts.
+// README, "Studio".
+import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer"
+import * as HttpServerRequest from "effect/http/HttpServerRequest"
+import * as HttpServerResponse from "effect/http/HttpServerResponse"
+import { ChildProcess } from "effect/process"
+import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
+import { Machine, enabled, machine } from "../gen/index.effect.vibe"
+import type { Event, Session } from "../gen/index.ts"
+import { promptFor, type Manifest } from "./doc.ts"
+import {
+  NODE, PUBLIC, SPEC, checkCommand, createServer, finder, interactive, manifestFile, opener, ownedFiles, buildPage, appScript, servedAt, buildable, buildCommand, componentsOf,
+  planPublish, projectName, readManifest, skillPath, specsOf, stateFile, studioRoot, verdictOf, type Check, type JobView, type Publish, type Snapshot,
+} from "./project.ts"
+
+const DEEPLINK_LIMIT = 5000 // characters of a prompt a claude-cli:// link carries
+
+export interface Project { id: string; name: string; root: string }
+
+/** An agent the studio can start on the sync prompt, and the link that opens its app on the same prompt. */
+export interface Agent {
+  label: string
+  /** The program, and its arguments for a project; the prompt arrives on standard input. */
+  command: (p: { root: string; check: string }) => [string, string[]]
+  link?: (p: { root: string; prompt: string }) => string
+}
+const AGENTS: Record<string, Agent> = {
+  claude: {
+    label: "Claude Code",
+    command: ({ check }) => ["claude", ["-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "acceptEdits",
+      "--allowedTools", "Read", "Edit", "Write", "Glob", "Grep", `Bash(${check}:*)`, "Bash(pnpm check:*)", "Bash(pnpm exec quint:*)",
+      "--disallowedTools", "Bash(pnpm accept:*)", "Bash(pnpm run accept:*)", "Bash(npm run accept:*)", "Bash(spec accept:*)"]],
+    link: ({ root, prompt }) => `claude-cli://open?cwd=${encodeURIComponent(root)}&q=${encodeURIComponent(prompt)}`,
+  },
+  codex: {
+    label: "Codex",
+    command: ({ root }) => ["codex", ["exec", "--json", "-s", "workspace-write", "-C", root, "-"]],
+    link: ({ root, prompt }) => `codex://new?path=${encodeURIComponent(root)}&prompt=${encodeURIComponent(prompt)}`,
+  },
+}
+
+type Kind = "check" | "agent" | "accept" | "build"
+/** The process behind the session's job, and what it printed. The last of each kind is kept, for its log. */
+interface Job extends JobView { fiber?: Fiber.Fiber<void> }
+
+/** A request this server does not take, with its HTTP status. */
+error Refused { status: number; message: string; conflicts?: string[] }
+
+/** A line of an agent's JSON output, as a person would want to read it; undefined for bookkeeping. */
+function readable(line: string): string | undefined {
+  let e: any
+  try { e = JSON.parse(line) } catch { return line }
+  const clip = (s: string, n = 600) => (s.length > n ? s.slice(0, n) + " …" : s)
+  // Claude Code's stream-json
+  if (e.type === "assistant") return (e.message?.content ?? []).map((c: any) =>
+    c.type === "text" ? clip(c.text) : c.type === "tool_use" ? `▸ ${c.name} ${clip(String(c.input?.command ?? c.input?.file_path ?? c.input?.pattern ?? ""), 200)}` : "").filter(Boolean).join("\n") || undefined
+  // The final message was already shown; the result says only how the run ended, and what it cost.
+  if (e.type === "result") return `${e.is_error ? "✗ failed" : "✓ done"}${e.total_cost_usd ? ` · $${Number(e.total_cost_usd).toFixed(2)}` : ""}`
+  // Codex's --json events
+  const item = e.item
+  if (e.type === "item.completed" && item?.type === "agent_message") return clip(item.text ?? "")
+  if (e.type === "item.started" && item?.type === "command_execution") return `▸ ${clip(item.command ?? "", 200)}`
+  if (e.type === "item.completed" && item?.type === "file_change") return `▸ edit ${(item.changes ?? []).map((c: any) => c.path).join(", ")}`
+  if (e.type === "item.completed" && item?.type === "error") return `! ${clip(item.message ?? "")}`
+  if (e.type === "turn.failed" || e.type === "error") return `✗ ${clip(e.error?.message ?? e.message ?? line)}`
+  return undefined
+}
+
+/** What went wrong, to show. */
+const messageOf = (e: unknown) => (e instanceof Error || e instanceof Refused ? e.message : String(e))
+
+const json = (status: number, body: unknown) => HttpServerResponse.jsonUnsafe(body, { status, headers: { "cache-control": "no-store" } })
+const TYPES: Record<string, string> = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml" }
+
+/** One project's studio: its session, its jobs, and the HTTP handler its page talks to. Lives as long as the scope. */
+effect function studio(project: Project, agents: Record<string, Agent>) {
+  const { root } = project
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const spawner = try ChildProcessSpawner
+  const scope = try Scope.Scope
+  // spec/index.md, "A studio that starts again picks up what was waiting"
+  const waiting = (effect { return readManifest(root) } catch () => undefined)?.changes.length ?? 0
+  const session = Context.get(try Layer.build(machine()), Machine)
+  try session.send({ type: "resume", changes: waiting })
+  const jobs: Partial<Record<Kind, Job>> = {}
+  let check: Check | undefined
+  /** A job's progress, for the pages; the session's changes reach them by `session.changes`. */
+  const ticks = try PubSub.unbounded<void>()
+  /** The specs changed on disk: the pages read them again. */
+  const touched = try PubSub.unbounded<void>()
+  /** One request that acts at a time, so what it checked still holds when it steps the session. */
+  const lock = try Semaphore.make(1)
+  const changed = PubSub.publish(ticks, undefined)
+  const running = () => Object.values(jobs).find((j) => j.status === "running")
+
+  /** The session moves only by an event it allows; refused, the page hears why. */
+  effect function act(event: Event): Session!Refused {
+    return session.send(event) catch effect () => {
+      const busy = running()
+      throw new Refused({ status: 409, message: busy ? `${busy.label} is still running` : `${event.type} is not allowed now` })
+    }
+  }
+
+  const clearManifest = effect {
+    try files.remove(stateFile(root), { force: true })
+    try files.remove(manifestFile(root), { force: true })
+  }
+
+  /** Run the program behind the job the session has just started; `done` hears how it ended, unless it was stopped. */
+  effect function run(kind: Kind, label: string, [program, args]: [string, string[]], input: string | undefined, read: (line: string) => string | undefined, done: (job: Job, out: string) => void!unknown) {
+    const job: Job = { label, status: "running", started: Date.now(), log: [] }
+    jobs[kind] = job
+    const lines = (stream: Stream.Stream<Uint8Array, unknown>, keep: (line: string) => void) =>
+      Stream.runForEach(Stream.splitLines(Stream.decodeText(stream)), (line) => effect {
+        keep(line)
+        const shown = read(line)
+        if (shown?.trim()) { job.log.push(shown); try changed }
+      })
+    const work = effect { return scoped(effect {
+      const command = ChildProcess.make(program, args, {
+        cwd: root, extendEnv: true, env: { FORCE_COLOR: "0", NO_COLOR: "1" },
+        stdin: input === undefined ? "ignore" : Stream.encodeText(Stream.make(input)),
+      })
+      const child = try spawner.spawn(command)
+      const out: string[] = []
+      try.all [lines(child.stdout, (l) => out.push(l)), lines(child.stderr, () => {})]
+      return { code: try child.exitCode as number, out: out.join("\n") }
+    }) catch (e) => {
+      job.log.push(`✗ ${messageOf(e)}`)
+      return { code: -1, out: "" }
+    } }
+    job.fiber = try Effect.forkIn(effect {
+      const { code, out } = try work
+      job.finished = Date.now()
+      job.status = code === 0 ? "passed" : "failed"
+      done(job, out) catch (e) => {
+        job.status = "failed"
+        job.log.push(`✗ ${messageOf(e)}`)
+      }
+      try changed
+    }, scope)
+    try changed
+  }
+
+  /**
+   * The project's app, beside whatever job runs (spec/index.md, "Story: Preview the app"): the session says whether it
+   * runs; this holds its process, what it printed, and where it serves.
+   */
+  const app: { url?: string; log: string[]; fiber?: Fiber.Fiber<void> } = { log: [] }
+  effect function startApp() {
+    const script = appScript(root)
+    if (!script) throw new Refused({ status: 404, message: "the project has no app to run: give its package.json a start or dev script" })
+    try act({ type: "preview" })
+    app.url = undefined
+    app.log = []
+    const lines = (stream: Stream.Stream<Uint8Array, unknown>) => Stream.runForEach(Stream.splitLines(Stream.decodeText(stream)), (line) => effect {
+      app.url ??= servedAt(line)
+      if (line.trim()) app.log = [...app.log.slice(-199), line]
+      try changed
+    })
+    app.fiber = try Effect.forkIn(effect {
+      scoped(effect {
+        const child = try spawner.spawn(ChildProcess.make("pnpm", ["run", script], { cwd: root, extendEnv: true, env: { FORCE_COLOR: "0", NO_COLOR: "1", BROWSER: "none" } }))
+        try.all [lines(child.stdout), lines(child.stderr)]
+        try child.exitCode
+      }) catch (e) => { app.log = [...app.log, `✗ ${messageOf(e)}`] }
+      // An app that stops by itself is no longer running.
+      act({ type: "endPreview" }) catch () => undefined
+      try changed
+    }, scope)
+  }
+  effect function stopApp() {
+    try act({ type: "endPreview" })
+    if (app.fiber) try Fiber.interrupt(app.fiber)
+    try changed
+  }
+
+  /** The check the session is now waiting on (`job == Checking`). */
+  effect function runCheck() {
+    try run("check", "check", [NODE, [SPEC, "check", "--json"]], undefined, () => undefined, (job, out) => effect {
+      const found: Omit<Check, "finished"> | undefined = Effect.try(() => JSON.parse(out)) catch () => undefined
+      if (found) {
+        check = { ...found, finished: Date.now() }
+        job.log.push(found.next)
+      } else job.log.push(out.trim() || "the check did not finish")
+      const verdict = found ? verdictOf(found.results) : "Failing"
+      job.status = verdict === "Failing" ? "failed" : "passed"
+      try act({ type: "checked", verdict })
+    })
+  }
+
+  /** Whether each agent's program is on the PATH: asked once. */
+  const available = new Map<string, boolean>()
+  effect function onPath(program: string) {
+    if (!available.has(program)) available.set(program, (spawner.exitCode(ChildProcess.make(finder(), [program], { stdout: "ignore", stderr: "ignore" })) catch () => 1) === 0)
+    return available.get(program)!
+  }
+
+  /** Everything the page shows for the project. */
+  effect function snapshot(): Snapshot!(PlatformError.PlatformError | Error) {
+    // The specs; what is wrong if they cannot be read.
+    const read: { manifest?: Manifest; specs: ReturnType<typeof specsOf>; problem?: string } =
+      effect { return { manifest: readManifest(root), specs: specsOf(root) } } catch (e) => ({ problem: e.message, specs: [] })
+    const context = { skill: skillPath(root), check: checkCommand(root) }
+    const shown = []
+    for (const [id, a] of Object.entries(agents)) shown.push({
+      id, label: a.label, available: try onPath(a.command({ root, check: context.check })[0]),
+      link: a.link?.({ root, prompt: promptFor(read.manifest, context, DEEPLINK_LIMIT) }),
+    })
+    return { project, session: try session.get(), ...read, prompt: promptFor(read.manifest, context), check, jobs: jobsView(), agents: shown,
+      app: { script: appScript(root), url: app.url, log: app.log, buildable: buildable(root) } }
+  }
+  const jobsView = (): Partial<Record<Kind, JobView>> => Object.fromEntries(Object.entries(jobs).map(([kind, { fiber: _fiber, ...j }]) => [kind, { ...j, log: j.log.slice(-400) }]))
+
+  effect function publish(body: Publish) {
+    // The request carries edits, so the session as the page sees it has some (spec/index.md, "Only edits can be published, and not while a job runs").
+    if (!enabled({ ...(try session.get()), unpublished: true }, { type: "publish", changes: 0 })) {
+      const busy = running()
+      throw new Refused({ status: 409, message: busy ? `${busy.label} is still running` : "publish is not allowed now" })
+    }
+    const plan = planPublish(root, body)
+    if (plan.status !== 200) throw new Refused({ status: plan.status, message: plan.body.error, conflicts: plan.body.conflicts })
+    for (const f of body.files) {
+      const target = path.join(root, f.file)
+      if (f.text === null) for (const ext of [".md", ".proof.dfy"]) try files.remove(target.replace(/\.md$/, ext), { force: true })
+      else if (plan.disk[f.file] !== f.text) {
+        try files.makeDirectory(path.dirname(target), { recursive: true })
+        try files.writeFileString(target, f.text)
+      }
+    }
+    const { manifest } = plan
+    if (!manifest.changes.length) try clearManifest
+    else {
+      try files.makeDirectory(path.dirname(stateFile(root)), { recursive: true })
+      try files.writeFileString(stateFile(root), JSON.stringify(plan.state, null, 2) + "\n")
+      try files.writeFileString(manifestFile(root), JSON.stringify(manifest, null, 2) + "\n")
+    }
+    check = undefined
+    try act({ type: "edit" })
+    try act({ type: "publish", changes: manifest.changes.length })
+    try runCheck()
+    return { manifest: manifest.changes.length ? manifest : undefined }
+  }
+
+  effect function sync(name: unknown) {
+    const agent = typeof name === "string" && Object.hasOwn(agents, name) ? agents[name] : undefined
+    if (!agent) throw new Refused({ status: 400, message: `no agent ${String(name)}` })
+    const check = checkCommand(root)
+    const prompt = promptFor(readManifest(root), { skill: skillPath(root), check })
+    const owned = ownedFiles(root)
+    const command = agent.command({ root, check })
+    try act({ type: "sync" })
+    try run("agent", agent.label, command, prompt, readable, (job) => effect {
+      // The review ledgers and Studio's state are the tools' to write: a sync that touched them is not trusted.
+      // Whatever happens here, the sync ends (spec/index.md, "A sync that ends well leaves nothing waiting and checks again").
+      effect {
+        const now = ownedFiles(root)
+        const changedFiles = [...new Set([...Object.keys(owned), ...Object.keys(now)])].filter((f) => owned[f] !== now[f])
+        if (changedFiles.length) { job.status = "failed"; job.log.push(`✗ the agent changed ${changedFiles.join(", ")}: not marked synced`) }
+        if (job.status === "passed") try clearManifest
+      } catch (e) => {
+        job.status = "failed"
+        job.log.push(`✗ ${messageOf(e)}`)
+      }
+      const ok = job.status === "passed"
+      try act({ type: "synced", ok })
+      if (ok) try runCheck()
+    })
+  }
+
+  /** What each route does; the session decides whether it may. */
+  effect function post(route: string, body: any) {
+    switch (route) {
+      case "/api/publish": return try publish(body)
+      // spec/index.md, "Story: Build the app": the project's own build script, as a job.
+      case "/api/build": {
+        const command = buildCommand(root)
+        if (!command) throw new Refused({ status: 404, message: "the project has no build script, and no app under apps/ has one" })
+        try act({ type: "build" })
+        try run("build", "build", command, undefined, (l) => l, () => act({ type: "built" }))
+        return {}
+      }
+      case "/api/check":
+        try act({ type: "check" })
+        try runCheck()
+        return {}
+      case "/api/app":
+        try (body.start === true ? startApp() : stopApp())
+        return {}
+      case "/api/agent":
+        try sync(body.agent)
+        return {}
+      case "/api/accept":
+        try act({ type: "signOff" })
+        try run("accept", "sign-off", [NODE, [SPEC, "accept"]], undefined, (l) => l, () => effect {
+          try act({ type: "signedOff" })
+          try runCheck()
+        })
+        return {}
+      case "/api/stop": {
+        try act({ type: "stop" })
+        const job = running()
+        if (job) {
+          // A stopped job's end was already stepped (spec/index.md, "A running job can be stopped, and then nothing is known of its result").
+          job.status = "stopped"
+          job.finished = Date.now()
+          if (job.fiber) try Fiber.interrupt(job.fiber)
+          try changed
+        }
+        return {}
+      }
+      case "/api/synced":
+        try act({ type: "markSynced" })
+        try clearManifest
+        try PubSub.publish(touched, undefined)
+        return {}
+      default: throw new Refused({ status: 404, message: "not found" })
+    }
+  }
+
+  // Changes to the specs reach every page, whoever made them, and make the last verdict unknown (spec/index.md).
+  if (try files.exists(path.join(root, "spec"))) try Effect.forkIn(effect {
+    return Stream.runForEach(Stream.debounce(files.watch(path.join(root, "spec"), { recursive: true }), "150 millis"), () => effect {
+      act({ type: "touch" }) catch () => undefined
+      try PubSub.publish(touched, undefined)
+    }) catch () => undefined
+  }, scope)
+
+  const frame = (event: string, data: unknown) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
+  /** What a page hears: its job's progress, a little at a time, and when the specs change. */
+  const events = Stream.encodeText(Stream.concat(Stream.make(": studio\n\n"), Stream.merge(
+    Stream.mapEffect(Stream.debounce(Stream.merge(Stream.fromPubSub(ticks), Stream.map(session.changes, () => undefined)), "100 millis"),
+      () => effect {
+        const script = effect { return appScript(root) } catch () => undefined
+        const canBuild = effect { return buildable(root) } catch () => false
+        return frame("job", { session: try session.get(), jobs: jobsView(), check, app: { script, url: app.url, log: app.log, buildable: canBuild } })
+      }),
+    Stream.map(Stream.fromPubSub(touched), () => frame("files", {})))))
+
+  return {
+    snapshot,
+    /** A request for this project, past the guards every request meets. */
+    handle: effect (method: string, route: string, request: HttpServerRequest.HttpServerRequest) => {
+      if (route === "/api/events") return HttpServerResponse.stream(events, { contentType: "text/event-stream", headers: { "cache-control": "no-store", connection: "keep-alive" } })
+      if (method === "GET" && route === "/api/project") return json(200, try snapshot())
+      // The Components view (./page/Components.tsx): absent when the project has no catalog.
+      if (method === "GET" && route === "/api/components") {
+        const index = componentsOf(root)
+        if (!index) throw new Refused({ status: 404, message: "no component catalog: run the story generator" })
+        return json(200, index)
+      }
+      if (method !== "POST") throw new Refused({ status: 405, message: "method not allowed" })
+      if (request.headers["content-type"]?.split(";")[0].trim().toLowerCase() !== "application/json") throw new Refused({ status: 415, message: "send application/json" })
+      const text = request.text catch () => ""
+      const body: any = text ? try Effect.try({ try: () => JSON.parse(text), catch: () => new Refused({ status: 400, message: "the body is not JSON" }) }) : {}
+      return json(200, try lock.withPermits(1)(post(route, body)))
+    },
+  }
+}
+
+/** The studio's HTTP server on 127.0.0.1, at `port` or the next free one after it. `open` is the project shown first. */
+export effect function startStudio({ projects, open = projects[0].id, port = 4321, agents = AGENTS }: { projects: Project[]; open?: string; port?: number; agents?: Record<string, Agent> }) {
+  const lives = new Map<string, Effect.Success<ReturnType<typeof studio>>>()
+  for (const p of projects) lives.set(p.id, try studio(p, agents))
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  try tryPromise({ try: () => buildPage(), catch: (e) => new Refused({ status: 500, message: `the page did not build: ${messageOf(e)}` }) })
+
+  let server: Effect.Success<ReturnType<typeof NodeHttpServer.make>> | undefined
+  for (let p = port; !server; p++) {
+    server = NodeHttpServer.make(createServer, { port: p, host: "127.0.0.1", gracefulShutdownTimeout: 0 }) catch effect (e) => {
+      if (port === 0 || p >= port + 20 || !String(e.cause).includes("EADDRINUSE")) throw e
+      return undefined
+    }
+  }
+  const at = "port" in server.address ? server.address.port : port
+  const hosts = [`localhost:${at}`, `127.0.0.1:${at}`]
+
+  const app = effect {
+    const request = try HttpServerRequest.HttpServerRequest
+    const response = effect {
+      const host = request.headers.host?.toLowerCase()
+      if (!host || !hosts.includes(host)) throw new Refused({ status: 403, message: "use the local studio address" })
+      const origin = request.headers.origin
+      if (origin !== undefined && origin !== `http://${host}`) throw new Refused({ status: 403, message: "cross-origin requests are not allowed" })
+      if (request.headers["sec-fetch-site"] === "cross-site") throw new Refused({ status: 403, message: "cross-site requests are not allowed" })
+      const url = new URL(request.url, `http://${host}`)
+      if (request.method === "GET" && !url.pathname.startsWith("/api/")) {
+        const file = path.join(PUBLIC, url.pathname === "/" ? "index.html" : path.normalize(url.pathname).replace(/^([/\\])+/, ""))
+        const kind = files.stat(file) catch () => undefined
+        if (!file.startsWith(PUBLIC) || kind?.type !== "File") throw new Refused({ status: 404, message: "not found" })
+        return HttpServerResponse.uint8Array(try files.readFile(file), { contentType: TYPES[path.extname(file)] ?? "application/octet-stream", headers: { "cache-control": "no-store" } })
+      }
+      if (url.pathname === "/api/projects") return json(200, { projects: projects.map(({ id, name }) => ({ id, name })), open })
+      const live = lives.get(url.searchParams.get("project") ?? open)
+      if (!live) throw new Refused({ status: 404, message: "no such project" })
+      return try live.handle(request.method, url.pathname, request)
+    } catch (e) => json(e instanceof Refused ? e.status : 400, e instanceof Refused && e.conflicts ? { error: e.message, conflicts: e.conflicts } : { error: messageOf(e) })
+    return HttpServerResponse.setHeaders(response, {
+      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src http://localhost:* http://127.0.0.1:*; base-uri 'none'; object-src 'none'; frame-ancestors 'none'",
+      "x-content-type-options": "nosniff",
+    })
+  }
+  try server.serve(app)
+  return { url: `http://localhost:${at}` }
+}
+
+/** `spec studio [<directory>] [--port <n>]`: the selected project's spec tree, open until the program is stopped. */
+export effect function serve(cwd: string, args: string[]) {
+  const at = args.indexOf("--port")
+  const port = at < 0 ? undefined : Number(args[at + 1])
+  if (port !== undefined && !(Number.isInteger(port) && port >= 0 && port < 65536)) throw new Refused({ status: 400, message: `--port ${args[at + 1]}: not a port` })
+  const root = studioRoot(cwd, args[0] === "--port" ? "." : args[0] ?? ".")
+  const studio = try startStudio({ projects: [{ id: ".", name: projectName(root), root }], port })
+  const url = `${studio.url}/?project=.`
+  try Console.log(`studio: ${url}`)
+  if (interactive()) scoped(effect { try (try ChildProcessSpawner).spawn(ChildProcess.make(opener(), [url], { detached: true, stdin: "ignore", stdout: "ignore", stderr: "ignore" })) }) catch () => undefined
+  return try Effect.never
+}

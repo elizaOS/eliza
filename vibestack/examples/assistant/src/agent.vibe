@@ -1,0 +1,102 @@
+// The program around spec/assistant.md: it knows who sent each event from the service the event came
+// through, never from what was said (spec/assistant.md, "Who sends an event").
+import { canAcknowledge, Machine, type NotAnEvent, type Rejected, seen } from "../gen/assistant.effect.vibe"
+import type * as T from "../gen/assistant.effect.vibe"
+
+export error NoAnswer { from: T.Actor }
+
+/** The model that chooses the agent's actions. What it returns is untrusted. */
+export service Model {
+  // spec/assistant.md, "The model sees nothing secret"
+  choose(shown: T.Seen): unknown!NoAnswer
+}
+
+/** Websites and devices: the biller's answer to a request, the page the browser shows, and what the program does to them. */
+export service World {
+  bill(request: number): number!NoAnswer
+  page(): T.Page!!
+  /**
+   * Apply each delivery number once for this assistant; a retry returns the previous success. A fill or a payment
+   * is applied only while the page it names is showing: the page can change after `deliver` last read it.
+   */
+  perform(delivery: number, carried: T.Effect): void!NoAnswer
+}
+
+export type Said = "begin" | "confirm" | "decline"
+export type Refusal = Rejected | NotAnEvent | NoAnswer
+
+/** Where a turn stopped, and each answer of the model that ended it instead of becoming a choice. */
+export interface Turn {
+  readonly state: T.Assistant
+  readonly refused: ReadonlyArray<Refusal>
+}
+
+/** Finish the saved effects, oldest first, keeping each delivery number until the world confirms it. */
+export effect function deliver(): void!(NoAnswer | Rejected)!(Machine | World) {
+  const machine = try Machine
+  const world = try World
+  while (true) {
+    let state = try machine.get()
+    const first = state.pending[0]
+    if (first === undefined) return
+    // spec/assistant.md, "Card details go only into the biller's own page"
+    // spec/assistant.md, "A bill is paid only on the biller's own page"
+    // A fill or payment waits for that page, judged by the page the world shows now.
+    if (first.tag !== "Said") state = (try machine.send({ type: "load", page: try world.page() }, "World")).state
+    const carried = state.pending[0]
+    if (carried === undefined) return
+    const delivery = state.delivered + 1
+    if (!canAcknowledge(state, delivery, "World")) return
+    try world.perform(delivery, carried)
+    // Another delivery worker may already have acknowledged this same id.
+    machine.send({ type: "acknowledge", delivery }, "World") catch () => undefined
+  }
+}
+
+/** Offers the rules the page showing now and, for a request still waiting, the biller's answer. */
+effect function observe() {
+  const machine = try Machine
+  const world = try World
+  const loaded = (try machine.send({ type: "load", page: try world.page() }, "World")).state
+  if (!loaded.waiting) return loaded
+  // spec/assistant.md, "Only the world replies, and only to the request still waiting": no answer, or one refused, changes nothing.
+  return effect {
+    return (try machine.receive({ type: "reply", request: loaded.request, amount: try world.bill(loaded.request) }, "World")).state
+  } catch () => loaded
+}
+
+/** The card the person saves, sent as the Person (spec/assistant.md, "Only the person saves a card"). */
+export effect function remember(card: T.SecretCard): void!Rejected!Machine {
+  try (try Machine).send({ type: "saveCard", card }, "Person")
+}
+
+/**
+ * What the person said, then the agent's actions until the turn ends or asks the person. `Rejected` refuses what
+ * the person said; `NoAnswer` leaves an unconfirmed delivery queued for the next attempt.
+ */
+export effect function hear(said: Said): Turn!(Rejected | NoAnswer)!(Machine | Model | World) {
+  const machine = try Machine
+  const model = try Model
+  const refused: Refusal[] = []
+  try deliver()
+  try observe()
+  try machine.send({ type: said }, "Person")
+  // spec/assistant.md, "What the program carries out": a confirmation submits the payment.
+  try deliver()
+  let state = try machine.get()
+  // spec/assistant.md, "Every choice spends the budget": each pass makes one choice, so there are at most `maxActions`.
+  while (state.phase === "Planning") {
+    // The model's answer can only become the Agent's choice. Any other answer finishes the turn, which
+    // spec/assistant.md, "A turn's budget stays within bounds, and a turn being planned has some left" allows.
+    state = effect {
+      return (try machine.receive({ type: "choose", choice: try model.choose(seen(state)) }, "Agent")).state
+    } catch effect (error) => {
+      refused.push(error)
+      return (try machine.send({ type: "choose", choice: "Finish" }, "Agent")).state
+    }
+    // spec/assistant.md, "What the program carries out": what this choice returned beside the state.
+    try deliver()
+    state = try observe()
+  }
+  return { state, refused }
+}

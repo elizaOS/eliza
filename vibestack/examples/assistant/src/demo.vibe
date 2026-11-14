@@ -1,0 +1,41 @@
+// A person pays a bill through a scripted model that then tries what the rules refuse.
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
+import { machine, NotAnEvent, Rejected } from "../gen/assistant.effect.vibe"
+import type * as T from "../gen/assistant.effect.vibe"
+import { hear, NoAnswer, type Refusal, remember, type Said } from "./agent.vibe"
+import { type Scene, scriptedModel, scriptedWorld } from "./scripted.vibe"
+
+function why(refusal: Refusal) {
+  return match (refusal) {
+    when Rejected: `the rules refuse ${JSON.stringify(refusal.event)} from the ${refusal.by}`;
+    when NotAnEvent: `${JSON.stringify(refusal.input)} is not an event`;
+    when NoAnswer: `no answer from the ${refusal.from}`;
+  }
+}
+
+function shown(carried: T.Effect) {
+  return match (carried.tag) {
+    when "Said": `said "${carried.text}"`;
+    when "Filled": `typed the card into the ${carried.page} page`;
+    when "Submitted": `paid ${carried.amount} on the ${carried.page} page`;
+  }
+}
+
+effect function say(said: Said) {
+  const lines = effect {
+    const { state, refused } = try hear(said)
+    return [`✓ ${said.padEnd(8)} ${state.phase}, bill ${JSON.stringify(state.bill)}`, ...refused.map((refusal) => `    ${why(refusal)}`)]
+  } catch (error) => [`✗ ${said.padEnd(8)} ${why(error)}`]
+  try Console.log(lines.join("\n"))
+}
+
+effect function main() {
+  const scene: Scene = { page: "Genuine", bills: [5], done: [], receipts: new Set() }
+  provide machine(), scriptedWorld(scene), scriptedModel(["Lookup", "Review", "Fill", "Pay", "Speak", "Recite"]) {
+    try remember("4242 4242 4242 4242")
+    for (const said of ["confirm", "begin", "confirm", "begin"] as const) try say(said)
+  }
+  try Console.log(`the program ${scene.done.map(shown).join(", then ")}`)
+}
+
+NodeRuntime.runMain(main())

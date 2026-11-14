@@ -1,0 +1,23 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "erasableSyntaxOnly": true,
+    "types": [
+      "node"
+    ]
+  },
+  "include": [
+    "vibestack",
+    "gen/*.ts"
+  ],
+  "exclude": [
+    "vibestack/examples",
+    "vibestack/studio",
+    "node_modules",
+    "vibestack/design/test",
+    "vibestack/stories/test"
+  ],
+  "vibe": {
+    "sidecarDir": ".vibe/declarations"
+  }
+}

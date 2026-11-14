@@ -1,0 +1,13 @@
+// spec/server.md, "The log tells which requests were answered, and with which edit each was accepted"
+// Shared by src/server.vibe and src/web/sync.vibe.
+import type { Event } from "../gen/server.ts"
+import type { Todo } from "../gen/todo.ts"
+
+/** What a client asks the server to do: one queued edit, under the client's name and number for it. */
+export type Request = Event
+
+/** The server's answer to one request: was it applied, and the list as it now is. */
+export interface Answer { ok: boolean; seq: number; version: number; todos: Todo[] }
+
+/** The list at a version, as `GET /api/snapshot` returns it and `GET /api/stream` pushes it. */
+export interface Snapshot { version: number; todos: Todo[] }

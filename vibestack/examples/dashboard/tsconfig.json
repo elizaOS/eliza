@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "es2023",
+    "module": "nodenext",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["node"],
+    "rootDir": ".",
+    "rootDirs": [".", ".vibe/declarations"],
+    "outDir": "dist",
+    "noEmitOnError": true,
+    "rewriteRelativeImportExtensions": true
+  },
+  "include": ["src", "test", "gen/*.ts", "gen/*.vibe"],
+  "vibe": { "sidecarDir": ".vibe/declarations" }
+}

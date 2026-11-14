@@ -1,0 +1,32 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": [
+      "es2023",
+      "dom",
+      "dom.iterable"
+    ],
+    "rewriteRelativeImportExtensions": true,
+    "allowArbitraryExtensions": true,
+    "types": [
+      "node",
+      "vite/client"
+    ],
+    "rootDirs": [
+      ".",
+      ".vibe/declarations/studio"
+    ],
+    "jsx": "react-jsx"
+  },
+  "include": [
+    "src",
+    "test",
+    "gen/*.ts",
+    "gen/*.vibe",
+    "vite.config.ts",
+    "vitest.config.ts"
+  ],
+  "vibe": {
+    "sidecarDir": ".vibe/declarations"
+  }
+}

@@ -1,0 +1,435 @@
+{
+  "version": 1,
+  "specs": {
+    "spec/todo.md": {
+      "@document": [
+        "d65b2702dd0e"
+      ],
+      "## Domain": [
+        "e3b0c44298fc"
+      ],
+      "Domain / A to-do has an id, a title, a done mark and a deleted mark": [
+        "c2450ec2c4ae",
+        "a61a7f960038"
+      ],
+      "Domain / An edit creates a to-do, sets its done mark, renames it or removes it": [
+        "dff9216e9afe",
+        "124ab6be62a3"
+      ],
+      "Domain / What the simulator tries": [
+        "a00be0f802fb",
+        "aa2540488d10"
+      ],
+      "## Story: Keep a shared list of things to do": [
+        "4929f4efd9a1"
+      ],
+      "Story: Keep a shared list of things to do / A to-do can be found by its id": [
+        "9dc7f314738c",
+        "12a8de7a51cb",
+        "3579ff1b384b"
+      ],
+      "Story: Keep a shared list of things to do / A new to-do needs a title and an id never used before; other edits need a live to-do": [
+        "ba16e4009355",
+        "cdb5f7a1acd0",
+        "95e4bd0a0914"
+      ],
+      "Story: Keep a shared list of things to do / Applying an edit changes only the to-do it names": [
+        "3f684f744b39",
+        "b1f5d09de9a1",
+        "95e4bd0a0914"
+      ],
+      "Story: Keep a shared list of things to do / Two lists of to-dos are the same when they agree position by position": [
+        "dd4f540fa36f",
+        "8c262828aa2b",
+        "3579ff1b384b"
+      ],
+      "Story: Keep a shared list of things to do / Two edits are the same when they agree field by field": [
+        "e3b0c44298fc",
+        "931af3b285d5",
+        "b50c59a4a966"
+      ],
+      "## Story: Edits survive being sent twice": [
+        "3e8800772e30"
+      ],
+      "Story: Edits survive being sent twice / Applying an edit to a to-do twice is the same as applying it once": [
+        "e3b0c44298fc",
+        "890c6c378bce",
+        "6737a660bbf4"
+      ],
+      "Story: Edits survive being sent twice / Creating a to-do twice adds it once": [
+        "e3b0c44298fc",
+        "9749cb7488b7",
+        "6737a660bbf4"
+      ],
+      "Story: Edits survive being sent twice / An edit other than a creation never changes the number of to-dos": [
+        "e3b0c44298fc",
+        "3293f7821e66",
+        "6737a660bbf4"
+      ],
+      "## Story: Copies of the list can be compared": [
+        "768ce69ce1d7"
+      ],
+      "Story: Copies of the list can be compared / A list of to-dos is the same as itself": [
+        "e3b0c44298fc",
+        "21ac3297fa8e",
+        "8395f61d2727"
+      ]
+    },
+    "spec/client.md": {
+      "@document": [
+        "e840be5f8eec"
+      ],
+      "## Domain": [
+        "e3b0c44298fc"
+      ],
+      "Domain / A client holds a confirmed copy, its version, and a queue of unanswered edits": [
+        "71994ec1c5c1",
+        "524e799e1a30",
+        "f56cd8e43735"
+      ],
+      "Domain / A new client is online, has seen version 0 and has nothing queued": [
+        "0f668b7a3c02",
+        "78aef2525933",
+        "9147756354c0"
+      ],
+      "Domain / What the simulator tries": [
+        "47a2d8089d60",
+        "7152b735b586"
+      ],
+      "## Story: Edit the list in the browser": [
+        "8a7a6fcf565b"
+      ],
+      "Story: Edit the list in the browser / The user sees the queued edits applied over the confirmed copy, in order": [
+        "ad4df57e83b2",
+        "819dca135a17",
+        "6252b949dcbe"
+      ],
+      "Story: Edit the list in the browser / An edit the user makes is checked against what they see, numbered and queued": [
+        "e3b0c44298fc",
+        "1004edfc7ae6",
+        "128d151e66da"
+      ],
+      "Story: Edit the list in the browser / Every queued edit was numbered here, and no two share a number": [
+        "e3b0c44298fc",
+        "45e2298f1c36",
+        "9147756354c0"
+      ],
+      "Story: Edit the list in the browser / The count of numbered edits is never negative": [
+        "82e3ed85dab4",
+        "1459387d6f47",
+        "9147756354c0"
+      ],
+      "Story: Edit the list in the browser / A tab can go offline and back online, and queue edits while offline": [
+        "4fcfde348b2e",
+        "feae05cf32db",
+        "688baa564ff7"
+      ],
+      "## Story: Hear back from the server": [
+        "41c09bb4ec95"
+      ],
+      "Story: Hear back from the server / An answer takes its edit out of the queue": [
+        "02dd233ae5ba",
+        "69274257eda6",
+        "9147756354c0"
+      ],
+      "Story: Hear back from the server / A copy of the list replaces the confirmed copy only if it is newer": [
+        "6e5230518fda",
+        "b13d093d471a",
+        "9147756354c0"
+      ],
+      "Story: Hear back from the server / The confirmed version is never negative": [
+        "01ec8bed0a8f",
+        "266f45a37382",
+        "9147756354c0"
+      ],
+      "Story: Hear back from the server / The client hears answers and other people's changes only while online": [
+        "2d4279ff047a",
+        "52c19947724f",
+        "47c5471d604f"
+      ],
+      "Story: Hear back from the server / A copy of the list leaves the queue alone": [
+        "009be9739889",
+        "1351f5b87b00",
+        "9147756354c0"
+      ],
+      "Story: Hear back from the server / A client can catch up after editing, and can be told of a refusal": [
+        "e3b0c44298fc",
+        "d6b3728a0c70",
+        "9147756354c0"
+      ],
+      "## Story: Other specs can rely on the client's rules": [
+        "44880e38108e"
+      ],
+      "Story: Other specs can rely on the client's rules / Queueing an edit or hearing an answer keeps the client's state invariants": [
+        "f202da8c0868",
+        "dc1e2ddc0135",
+        "bf90199cc878"
+      ]
+    },
+    "spec/index.md": {
+      "@document": [
+        "d834cdbc58c5"
+      ]
+    },
+    "spec/server.md": {
+      "@document": [
+        "78116dbdab87"
+      ],
+      "## Domain": [
+        "e3b0c44298fc"
+      ],
+      "Domain / The server holds the list, its version and a log of every request it answered": [
+        "e1c72db6dd49",
+        "aa99e659601b",
+        "f56cd8e43735"
+      ],
+      "Domain / A new server has an empty list at version 0": [
+        "e3b0c44298fc",
+        "41df1f513950",
+        "4ba012e4f56b"
+      ],
+      "Domain / What the simulator tries": [
+        "314c0465e5b7",
+        "238575464a27"
+      ],
+      "## Story: Change the list over HTTP": [
+        "7de7f37d9a96"
+      ],
+      "Story: Change the list over HTTP / The log tells which requests were answered, and with which edit each was accepted": [
+        "5b519d6d9893",
+        "85e39f010382",
+        "8979d006fef0"
+      ],
+      "Story: Change the list over HTTP / A new request whose edit makes sense is applied, raising the version by one": [
+        "f8a5a2b7176e",
+        "a28a5ef01854",
+        "a2311be18edf"
+      ],
+      "Story: Change the list over HTTP / A new request whose edit does not make sense is refused, which is logged with its edit and changes nothing else": [
+        "eeb89aecf26f",
+        "a94b2891f218",
+        "4ba012e4f56b"
+      ],
+      "Story: Change the list over HTTP / Every new request is answered by applying its edit if it makes sense and refusing it if not": [
+        "117c9a6c0b96",
+        "e12054a9cdd5",
+        "4061634e334c"
+      ],
+      "Story: Change the list over HTTP / The version counts the changes": [
+        "62975f2acdd7",
+        "385804cb7f2c",
+        "4ba012e4f56b"
+      ],
+      "Story: Change the list over HTTP / No request is answered twice": [
+        "e3b0c44298fc",
+        "bc039f362b00",
+        "4ba012e4f56b"
+      ],
+      "Story: Change the list over HTTP / Each request is logged once and raises the version by at most one": [
+        "e3b0c44298fc",
+        "615aa3a42c79",
+        "4ba012e4f56b"
+      ],
+      "Story: Change the list over HTTP / Two clients can both change the list, and a server that has accepted a change can also hold a refusal": [
+        "bdc5ba7b2f45",
+        "2bb1cf90ebde",
+        "4ba012e4f56b"
+      ],
+      "## Story: A to-do keeps its id for ever": [
+        "f90c903b482a"
+      ],
+      "Story: A to-do keeps its id for ever / No two to-dos share an id": [
+        "e3b0c44298fc",
+        "57a2a4659ccf",
+        "4ba012e4f56b"
+      ],
+      "Story: A to-do keeps its id for ever / A to-do is never taken out of the list, and a removed one stays removed": [
+        "e3b0c44298fc",
+        "e3f21f4c6ede",
+        "4ba012e4f56b"
+      ],
+      "Story: A to-do keeps its id for ever / A to-do can be removed, leaving a tombstone": [
+        "e3b0c44298fc",
+        "48004704f5c1",
+        "4ba012e4f56b"
+      ],
+      "## Story: Other specs can rely on the server's rules": [
+        "797dc06b922c"
+      ],
+      "Story: Other specs can rely on the server's rules / Answering a new request keeps the server's state invariants": [
+        "b0adfdd060b3",
+        "3469e81992a4",
+        "d2c5fbcd8291"
+      ]
+    },
+    "spec/system.md": {
+      "@document": [
+        "f8b122e81169"
+      ],
+      "## Domain": [
+        "e3b0c44298fc"
+      ],
+      "Domain / Messages": [
+        "46786a1444e8",
+        "fc0b0f07fcb9",
+        "f56cd8e43735"
+      ],
+      "Domain / The system holds the server, clients a and b, the messages in flight, and the history of the list": [
+        "79e4e262a6b3",
+        "9a951a70c1ab",
+        "f0015deb30f6"
+      ],
+      "Domain / What the simulator tries": [
+        "6d0f94b5e559",
+        "6ae106504c86"
+      ],
+      "Domain / Helpers": [
+        "e3b0c44298fc",
+        "5d9a78bcd74c",
+        "cab64cb575a9"
+      ],
+      "## Story: Edit together, online or not": [
+        "728813f37c78"
+      ],
+      "Story: Edit together, online or not / Only a tab's oldest queued edit can be on its way unanswered": [
+        "aae854335787",
+        "2d882afa30bb",
+        "5b575577cade"
+      ],
+      "Story: Edit together, online or not / A user edit is queued in the tab, and sent at once if the tab is online and has nothing else queued": [
+        "fe5673766dc0",
+        "4c916c56849b",
+        "f8fda2ff0035"
+      ],
+      "Story: Edit together, online or not / A tab can go offline, and sends its oldest queued edit when it comes back": [
+        "e3b0c44298fc",
+        "f692744de526",
+        "34b48cd8b615"
+      ],
+      "Story: Edit together, online or not / An online tab may send its oldest queued edit again at any time": [
+        "fac709956e12",
+        "864c56e50a35",
+        "a3b7f2351825"
+      ],
+      "## Story: The server answers every request once": [
+        "d3cb2e974804"
+      ],
+      "Story: The server answers every request once / The server takes any request off the network and answers it": [
+        "3d8f3a93bd8f",
+        "b6525ec140ef",
+        "7ab28ac01661"
+      ],
+      "Story: The server answers every request once / An online tab takes any answer off the network": [
+        "f40f2aaf64ce",
+        "149105938aa7",
+        "54f53000e4fa"
+      ],
+      "Story: The server answers every request once / The network may lose or repeat any message": [
+        "e3b0c44298fc",
+        "ef1a428de116",
+        "a3b7f2351825"
+      ],
+      "Story: The server answers every request once / Anyone may send the server a request in a tab's name": [
+        "c84727872297",
+        "05c2094a64c6",
+        "a3b7f2351825"
+      ],
+      "## Story: The tabs can synchronize with the server": [
+        "f2e37625ede7"
+      ],
+      "Story: The tabs can synchronize with the server / The server and both tabs keep their own state rules": [
+        "e3b0c44298fc",
+        "1e4fc1bd8f41",
+        "0fc232479527"
+      ],
+      "Story: The tabs can synchronize with the server / No tab is ahead of the server": [
+        "e3b0c44298fc",
+        "d4861f222ebf",
+        "4173fc9d180c"
+      ],
+      "Story: The tabs can synchronize with the server / The history has one list for each version, and the last is the current list": [
+        "e3b0c44298fc",
+        "4ed97b8a87de",
+        "a3b7f2351825"
+      ],
+      "Story: The tabs can synchronize with the server / The history only grows: a step leaves it as it was or adds one list at its end": [
+        "e5e8300bf997",
+        "6569cc854f3a",
+        "a3b7f2351825"
+      ],
+      "Story: The tabs can synchronize with the server / A tab's confirmed copy is the list exactly as it was at the version the tab has seen": [
+        "fd46ed09604f",
+        "0f91a56f6e98",
+        "a3b7f2351825"
+      ],
+      "Story: The tabs can synchronize with the server / Both tabs can finish their edits and agree with the server": [
+        "0b9e053eba94",
+        "125682f1fde2",
+        "9b9fe48db2ce"
+      ],
+      "Story: The tabs can synchronize with the server / A tab can queue edits while offline, and an edit can be refused": [
+        "eaacd9c225f4",
+        "40eedf4c5cce",
+        "aacf7a7f9509"
+      ],
+      "## Story: Nobody can answer for my edits": [
+        "847663cba73b"
+      ],
+      "Story: Nobody can answer for my edits / An acknowledgement of a queued edit means the server applied that very edit": [
+        "e3b0c44298fc",
+        "732ad7060273",
+        "5b575577cade"
+      ],
+      "Story: Nobody can answer for my edits / A tab's request carries the edit the tab queued under its number": [
+        "642b758a7ca4",
+        "6cf2a8e1f2dd",
+        "bd9beb738302"
+      ],
+      "Story: Nobody can answer for my edits / Every request, acknowledgement and refusal of a tab belongs to an edit the tab has numbered, and every acknowledgement and refusal to one the server answered": [
+        "2123e989c3d2",
+        "86dd297aa9b7",
+        "5b575577cade"
+      ],
+      "Story: Nobody can answer for my edits / A forger can get an edit applied in a tab's name": [
+        "e3b0c44298fc",
+        "39b872e38d56",
+        "d9a7d301976c"
+      ],
+      "Story: Nobody can answer for my edits / The count of forged requests is never negative": [
+        "46abc0bca015",
+        "c10fbb1cbf5e",
+        "4173fc9d180c"
+      ],
+      "## Story: Editing alone is never refused": [
+        "9f9e7c435894"
+      ],
+      "Story: Editing alone is never refused / A lone user's edit is never refused": [
+        "5fdb186ec1b7",
+        "6ba8f54893d5",
+        "a3b7f2351825"
+      ],
+      "Story: Editing alone is never refused / A lone user can have several edits accepted": [
+        "8efc21a65c0d",
+        "b3b74283f389",
+        "c4b56f21c3cd"
+      ],
+      "Story: Editing alone is never refused / Without forgeries, the network holds no forged request, the server has answered only numbered edits, and of a tab's queued edits only the oldest": [
+        "f04abea6f8bf",
+        "3129965f8f60",
+        "d9a7d301976c"
+      ],
+      "Story: Editing alone is never refused / A tab is told of a change only after the other tab or a forger made an edit": [
+        "62963caf172b",
+        "82385d2a29be",
+        "a3b7f2351825"
+      ],
+      "Story: Editing alone is never refused / A lone user's tab keeps in step with the server": [
+        "6b6f2447f7d1",
+        "a6f17ac3243d",
+        "491a127938d6"
+      ]
+    }
+  },
+  "contracts": {},
+  "unproved": {}
+}

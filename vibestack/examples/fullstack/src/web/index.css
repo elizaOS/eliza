@@ -1,0 +1,2 @@
+/* `pnpm tokens` writes the theme from tokens.json (design.md). */
+@import "../../generated/theme.css";
