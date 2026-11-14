@@ -1,0 +1,7 @@
+[
+  {
+    "source": "plugins/plugin-assistant/src/services/message/time-observations.ts",
+    "sha256": "7883d2e95ee41ed34b09d1a4388cab8440af16b42e1996170896871dc3512b31",
+    "reason": "The StateData type import matches the inventory pattern. The current-time question predicate and observation checks synchronously read supplied provider data and effect receipts. They own no stored state or lifecycle."
+  }
+]
