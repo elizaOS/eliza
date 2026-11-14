@@ -3435,7 +3435,9 @@
         "Backoff starts only after rejection and uses the declared delay sequence",
         "Registry observations are pure projections of detailed instance state",
         "An invalid stop target records a failure without publishing work",
-        "A callable stop joins the shared promise and reports its original rejection"
+        "A callable stop joins the shared promise and reports its original rejection",
+        "Captured results and the live publication supply distinct observations",
+        "The caller and the pending load handler observe the same error"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "b5474e62ed59552b9e19fdf2710ff0cb2e4ff6fbedbe55c242bf161802a3020c",
@@ -3446,7 +3448,8 @@
         "spec/core/serviceInstances.md",
         "spec/core/eagerServices.md",
         "spec/core/serviceRegistry.md",
-        "spec/core/serviceStopObservation.md"
+        "spec/core/serviceStopObservation.md",
+        "spec/core/serviceAcquisitionResult.md"
       ]
     },
     {
