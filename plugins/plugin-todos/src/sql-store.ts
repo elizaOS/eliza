@@ -481,6 +481,30 @@ function mutationApplied(result: TodoMutationResult): boolean {
   }
 }
 
+/**
+ * Whether applying `patch` to `todo` would change nothing. A patch field
+ * only counts when it is present and differs from the stored value, so an
+ * update that restates the current state is a no-op.
+ */
+function todoPatchIsNoop(todo: Todo, patch: UpdateTodoInput): boolean {
+  if (patch.content !== undefined && patch.content !== todo.content)
+    return false;
+  if (patch.activeForm !== undefined && patch.activeForm !== todo.activeForm)
+    return false;
+  if (patch.status !== undefined && patch.status !== todo.status) return false;
+  if (
+    patch.parentTodoId !== undefined &&
+    patch.parentTodoId !== todo.parentTodoId
+  )
+    return false;
+  if (
+    patch.metadata !== undefined &&
+    JSON.stringify(patch.metadata) !== JSON.stringify(todo.metadata)
+  )
+    return false;
+  return true;
+}
+
 function sameTodoListState(before: Todo[], after: Todo[]): boolean {
   if (before.length !== after.length) return false;
   const beforeById = new Map(before.map((todo) => [todo.id, todo]));
@@ -1144,6 +1168,22 @@ class SqlTodoStore<TSchema extends Record<string, unknown>>
         })),
       );
     }
+    // Restating the current state changes nothing: leave the row (and its
+    // updatedAt) untouched, like writeListInTransaction's needsUpdate check.
+    const [current] = await tx
+      .select()
+      .from(todosTable)
+      .where(
+        and(
+          eq(todosTable.id, id as UUID),
+          eq(todosTable.agentId, scope.agentId as UUID),
+          eq(todosTable.entityId, scope.entityId as UUID),
+        ),
+      )
+      .limit(1);
+    if (!current) return null;
+    const currentTodo = rowToTodo(current);
+    if (todoPatchIsNoop(currentTodo, patch)) return currentTodo;
     const set: Record<string, unknown> = { updatedAt: new Date() };
     if (patch.content !== undefined) set.content = patch.content;
     if (patch.activeForm !== undefined) set.activeForm = patch.activeForm;
@@ -1622,6 +1662,58 @@ class SqlTodoStore<TSchema extends Record<string, unknown>>
     return { miss: { kind: "ambiguous", candidates: matches } };
   }
 
+  /** Full row for one todo under the scope lock, or null when it is gone. */
+  private async currentTodoInTransaction(
+    tx: TodoTransaction<TSchema>,
+    scope: TodoScope,
+    id: string,
+  ): Promise<Todo | null> {
+    const [row] = await tx
+      .select()
+      .from(todosTable)
+      .where(
+        and(
+          eq(todosTable.id, id as UUID),
+          eq(todosTable.agentId, scope.agentId as UUID),
+          eq(todosTable.entityId, scope.entityId as UUID),
+        ),
+      )
+      .limit(1);
+    return row ? rowToTodo(row) : null;
+  }
+
+  /**
+   * Latest applied record of `operation` whose committed result covers
+   * `todoId`. A re-complete (or re-cancel, or identical re-update) with no
+   * verified prior commit has nothing to bind a no-op receipt to, so it
+   * falls through to the normal write path instead.
+   */
+  private async latestAppliedRecordForTodo(
+    tx: TodoTransaction<TSchema>,
+    scope: TodoScope,
+    operation: "update" | "complete" | "cancel",
+    todoId: string,
+  ): Promise<TodoMutationRecord | null> {
+    const [row] = await tx
+      .select()
+      .from(todoMutationsTable)
+      .where(
+        and(
+          eq(todoMutationsTable.agentId, scope.agentId as UUID),
+          eq(todoMutationsTable.entityId, scope.entityId as UUID),
+          eq(todoMutationsTable.operation, operation),
+          eq(todoMutationsTable.applied, true),
+          sql`${todoMutationsTable.resultJson} -> 'result' -> 'todo' ->> 'id' = ${todoId}`,
+        ),
+      )
+      .orderBy(
+        desc(todoMutationsTable.committedAt),
+        desc(todoMutationsTable.mutationId),
+      )
+      .limit(1);
+    return row ? rowToMutationRecord(row) : null;
+  }
+
   /** Latest record of one operation, only while its confirmation window is open. */
   private async openConfirmationRecord(
     tx: TodoTransaction<TSchema>,
@@ -1819,20 +1911,72 @@ class SqlTodoStore<TSchema extends Record<string, unknown>>
             result = { action: mutation.action, todo: null, miss: target.miss };
             break;
           }
+          const patch: UpdateTodoInput =
+            mutation.action === "update"
+              ? mutation.patch
+              : {
+                  status:
+                    mutation.action === "complete" ? "completed" : "cancelled",
+                };
+          const current = await this.currentTodoInTransaction(
+            tx,
+            input.scope,
+            target.id,
+          );
+          if (current && todoPatchIsNoop(current, patch)) {
+            // Nothing changed. Bind the no-op receipt to the earlier
+            // committed record for this operation, like the PA sibling
+            // ("was already marked done — nothing changed") and the
+            // replayed-noop receipt contract in core effects: a noop
+            // without a verified prior commit proves nothing, so without
+            // one fall through to the normal write below.
+            const prior = await this.latestAppliedRecordForTodo(
+              tx,
+              input.scope,
+              mutation.action,
+              target.id,
+            );
+            if (prior) {
+              // Persist this request under its OWN key, or a later retry
+              // of it looks like a new request and re-applies the change
+              // once the todo moves on (e.g. back to pending). The row
+              // records the verified prior result, not a new application:
+              // applied stays false, and the receipt reuses the prior
+              // effect while keeping this request's identifier.
+              const [inserted] = await tx
+                .insert(todoMutationsTable)
+                .values({
+                  agentId: input.scope.agentId as UUID,
+                  entityId: input.scope.entityId as UUID,
+                  idempotencyKey: input.idempotencyKey,
+                  operation: input.mutation.action,
+                  requestDigest,
+                  resultJson: serializeMutationResult(prior.result),
+                  applied: false,
+                })
+                .returning();
+              if (!inserted) {
+                throw new Error(
+                  `${TODOS_LOG_PREFIX} mutation insert returned no row`,
+                );
+              }
+              return {
+                mutationId: inserted.mutationId,
+                idempotencyKey: inserted.idempotencyKey,
+                replayed: true,
+                committedAt: inserted.committedAt,
+                applied: inserted.applied,
+                result: prior.result,
+              };
+            }
+          }
           result = {
             action: mutation.action,
             todo: await this.updateInTransaction(
               tx,
               input.scope,
               target.id,
-              mutation.action === "update"
-                ? mutation.patch
-                : {
-                    status:
-                      mutation.action === "complete"
-                        ? "completed"
-                        : "cancelled",
-                  },
+              patch,
             ),
           };
           break;
