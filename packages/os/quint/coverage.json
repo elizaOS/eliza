@@ -1,5 +1,23 @@
 [
   {
+    "id": "os.LauncherNativeInstall",
+    "model": "packages/os/quint/LauncherNativeInstall.qnt",
+    "sources": [
+      "packages/os/scripts/android/stage-launcher-overlay.ts",
+      "packages/os/scripts/android/stage-android-native.py",
+      "packages/os/scripts/android/android-native-admission.mjs",
+      "packages/os/scripts/android/soong-app-native.mjs",
+      "packages/os/android/patches/soong-app-native/manifest.json",
+      "packages/os/android/patches/soong-app-native/soong-app-native.patch"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One completed local staging call, fixed input admission and destination ownership. Existing renderer and filesystem fixtures replay observed privilege, patch receipt, byte, path and publication outcomes; the existing Node/Python admission suites also run.",
+      "Admission abstracts signature and source verification. Raw Python finalization is not an atomic transaction. Process-death recovery, cross-process publication races, Soong compilation, image loading and physical-device qualification remain separate evidence. Progress assumes successful I/O and fair local actions."
+    ]
+  },
+  {
     "id": "os.OtaFreshAdmission",
     "model": "packages/os/quint/OtaFreshAdmission.qnt",
     "sources": [
