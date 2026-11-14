@@ -73,6 +73,13 @@ pure def stepConcurrentWakeSurvivesCompletion(before: Schedule, via: str, after:
 pure def sometimesRepeatPreservesConcurrentWake(s: Schedule): bool = s.executions > 0 and s.phase == Idle and s.wakePending and s.wakeRevision > s.observedWake
 pure def sometimesFailureAutoPauses(s: Schedule): bool = s.paused and s.failures >= 5
 pure def sometimesOneShotCompletes(s: Schedule): bool = not(s.repeating) and not(s.exists) and s.consumedRuns == 1
+pure val weight_register = 12
+pure val weight_createTask = 12
+pure val weight_query = 12
+pure val weight_settleQuery = 12
+pure val weight_execute = 12
+pure val weight_recordFailure = 20
+pure val weight_elapse = 12
 ```
 
 ### Retirement fences new admission and drains actual storage ownership
