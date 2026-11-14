@@ -93,6 +93,7 @@ pure def writeDirectGrant(s: ApprovalState, request: G::GrantWrite): ApprovalSta
 pure def removeGrant(s: ApprovalState, key: str): ApprovalState = { ...s, grants: G::removeGrant(s.grants, key) }
 pure def ownsCapturedRequest(phase: ApprovalPhase): bool = phase == ApprovalGranting or phase == ApprovalConsuming or phase == ApprovalGrantFailed or phase == ApprovalConsumeFailed or phase == ApprovalAccepted
 pure def ownsRetainedGrant(phase: ApprovalPhase): bool = phase == ApprovalConsuming or phase == ApprovalConsumeFailed or phase == ApprovalAccepted
+pure def alwaysStoredRequestHasIssuedId(s: ApprovalState): bool = s.requests.rows.every(row => s.requests.issuedIds.contains(row.id))
 pure def alwaysRequestOwnerIsStable(s: ApprovalState): bool = s.attempts.every(attempt => ownsCapturedRequest(attempt.phase) implies attempt.captured.id != "" and s.requests.issuedIds.contains(attempt.captured.id) and R::sameChannel(attempt.captured.scope, requestChannel(attempt.lookup)) and attempt.captured.normalizedCode == attempt.lookup.codeQuery)
 pure def alwaysGrantMatchesRequest(s: ApprovalState): bool = s.attempts.every(attempt => ownsRetainedGrant(attempt.phase) implies attempt.retained.key != "" and attempt.retained.owner == attempt.captured.scope)
 pure def alwaysConsumedExactRequest(s: ApprovalState): bool = s.attempts.every(attempt => attempt.phase == ApprovalAccepted implies not(s.requests.rows.some(row => row.id == attempt.captured.id)))
@@ -129,14 +130,14 @@ Oldest unfinished selection is a fair service abstraction: each actual approval 
 pure def approvalPending(phase: ApprovalPhase): bool = phase == ApprovalReading or phase == ApprovalGranting or phase == ApprovalConsuming
 pure def oldestApproval(s: ApprovalState): Approval = s.attempts.select(attempt => approvalPending(attempt.phase)).nthOr(0, noAttempt)
 pure def canAdvanceApproval(s: ApprovalState, grantInput: GrantAttempt): bool = {
-  val attempt = oldestApproval(s)
-  attempt.phase == ApprovalReading or canGrant(s, attempt.id, grantInput) or attempt.phase == ApprovalConsuming
+  val id = oldestApproval(s).id
+  canReadApproval(s, id) or canGrant(s, id, grantInput) or canConsume(s, id)
 }
 pure def advanceApproval(s: ApprovalState, grantInput: GrantAttempt, readAt: int, success: bool): ApprovalState = {
-  val attempt = oldestApproval(s)
-  if (attempt.phase == ApprovalReading) readApproval(s, attempt.id, readAt, success)
-  else if (attempt.phase == ApprovalGranting) grant(s, attempt.id, grantInput)
-  else consume(s, attempt.id, success)
+  val id = oldestApproval(s).id
+  if (canReadApproval(s, id)) readApproval(s, id, readAt, success)
+  else if (canGrant(s, id, grantInput)) grant(s, id, grantInput)
+  else consume(s, id, success)
 }
 pure val fair_advanceApproval = "weak"
 pure val fair_enterAdmission = "weak"

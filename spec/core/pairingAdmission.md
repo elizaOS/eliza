@@ -85,10 +85,12 @@ pure def canReadFailed(s: PairingAdmission): bool = s.phase == AdmissionReading
 pure def readFailed(s: PairingAdmission): PairingAdmission = finishAdmission({ ...noReceipt, ticket: s.activeTicket, resultKind: AdmissionFailed }, s)
 pure def canSettleCleanup(s: PairingAdmission, id: str): bool = s.cleanupIds.includes(id)
 pure def settleCleanup(s: PairingAdmission, id: str, success: bool): PairingAdmission = { ...s, cleanupIds: s.cleanupIds.select(other => other != id), rows: if (success) s.rows.select(row => row.id != id) else s.rows }
-pure def alwaysUniquePendingIds(s: PairingAdmission): bool = s.rows.every(row => row.id != "" and s.issuedIds.contains(row.id) and s.rows.select(other => row.id == other.id).length() == 1)
+pure def rowsForId(rows: List[PendingRow], id: str): List[PendingRow] = rows.select(row => row.id == id)
+pure def alwaysUniquePendingIds(s: PairingAdmission): bool = s.rows.every(row => row.id != "" and row.code != "" and s.issuedIds.contains(row.id) and rowsForId(s.rows, row.id).length() == 1)
 pure def alwaysCreatingHasFreeCapacity(s: PairingAdmission): bool = s.phase == AdmissionCreating implies s.captured.length() < s.maximum
 pure def alwaysUpdatingOwnsCapturedPrior(s: PairingAdmission): bool = s.phase == AdmissionUpdating implies s.prior.id != "" and s.captured.includes(s.prior) and s.prior.scope == s.request.scope
 pure def alwaysReceiptHasIdentity(s: PairingAdmission): bool = s.receipts.every(receipt => receipt.resultKind == AdmissionAccepted implies receipt.returned.id != "" and receipt.returned.code != "")
+pure def alwaysUnconfiguredHasNoCall(s: PairingAdmission): bool = not(s.configured) implies s.phase == AdmissionIdle and s.waiting.length() == 0
 pure def alwaysActiveOwnerAgreesWithPhase(s: PairingAdmission): bool = (s.activeTicket == 0) == (s.phase == AdmissionIdle)
 pure def completedTickets(s: PairingAdmission): int = s.receipts.length()
 pure def occupiedTickets(s: PairingAdmission): int = completedTickets(s) + (if (s.activeTicket == 0) 0 else 1)
@@ -96,9 +98,11 @@ pure def alwaysTicketFrontier(s: PairingAdmission): bool =
   s.nextTicket == occupiedTickets(s) + s.waiting.length() + 1 and (s.activeTicket == 0 or s.activeTicket == completedTickets(s) + 1)
 pure def walkTicket(walk: TicketWalk, ticket: int): TicketWalk = { valid: walk.valid and ticket == walk.expected, expected: walk.expected + 1 }
 pure def consecutiveTickets(tickets: List[int], first: int): bool = tickets.foldl({ valid: true, expected: first }, (walk, ticket) => walkTicket(walk, ticket)).valid
+pure def waitingIds(items: List[WaitingAdmission]): List[int] = items.listMap(queuedCall => queuedCall.ticket)
+pure def receiptIds(items: List[AdmissionReceipt]): List[int] = items.listMap(receipt => receipt.ticket)
 pure def alwaysTicketOrder(s: PairingAdmission): bool =
-  consecutiveTickets(s.receipts.listMap(receipt => receipt.ticket), 1) and
-  consecutiveTickets(s.waiting.listMap(queuedCall => queuedCall.ticket), occupiedTickets(s) + 1)
+  consecutiveTickets(receiptIds(s.receipts), 1) and
+  consecutiveTickets(waitingIds(s.waiting), occupiedTickets(s) + 1)
 pure def stepOnlyHeadEnters(before: PairingAdmission, via: str, after: PairingAdmission): bool = via == "enterAdmission" implies after.activeTicket == queuedFirst(before).ticket and after.request.scope == queuedFirst(before).input.scope and after.request.metadata == queuedFirst(before).input.metadata
 pure def stepReceiptsNameActiveCall(before: PairingAdmission, via: str, after: PairingAdmission): bool =
   (via == "writePending" or via == "rejectFull" or via == "readFailed") implies lastReceipt(after).ticket == before.activeTicket

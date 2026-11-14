@@ -6335,7 +6335,7 @@
       "targets": [
         {
           "path": "spec/core/pairing.md",
-          "sha256": "9c6ef9d36d81c08241c4c8f32c8d4394e1896467f043a872af37fee331144122",
+          "sha256": "3fc17a90d29973d73e0fec832df2905e1fc7e064f65e9985e5c2628e0b3d9f96",
           "definitions": [
             "sameSender",
             "lawDifferentAgentsStayIndependent",
@@ -6380,6 +6380,7 @@
             "removeGrant",
             "ownsCapturedRequest",
             "ownsRetainedGrant",
+            "alwaysStoredRequestHasIssuedId",
             "alwaysRequestOwnerIsStable",
             "alwaysGrantMatchesRequest",
             "alwaysConsumedExactRequest",
@@ -6421,7 +6422,7 @@
         },
         {
           "path": "spec/core/pairingAdmission.md",
-          "sha256": "5550f51a819100ce97bb05dc23978e842244ca7b9c613a8c0db81f86bfd929da",
+          "sha256": "bddccd60e403418e1786241ddae94354c9750a508422e942ad3ea582c003ecc5",
           "definitions": [
             "emptyScope",
             "absentMetadata",
@@ -6464,16 +6465,20 @@
             "readFailed",
             "canSettleCleanup",
             "settleCleanup",
+            "rowsForId",
             "alwaysUniquePendingIds",
             "alwaysCreatingHasFreeCapacity",
             "alwaysUpdatingOwnsCapturedPrior",
             "alwaysReceiptHasIdentity",
+            "alwaysUnconfiguredHasNoCall",
             "alwaysActiveOwnerAgreesWithPhase",
             "completedTickets",
             "occupiedTickets",
             "alwaysTicketFrontier",
             "walkTicket",
             "consecutiveTickets",
+            "waitingIds",
+            "receiptIds",
             "alwaysTicketOrder",
             "stepOnlyHeadEnters",
             "stepReceiptsNameActiveCall",
@@ -6697,7 +6702,7 @@
       "targets": [
         {
           "path": "spec/core/pairing.md",
-          "sha256": "9c6ef9d36d81c08241c4c8f32c8d4394e1896467f043a872af37fee331144122",
+          "sha256": "3fc17a90d29973d73e0fec832df2905e1fc7e064f65e9985e5c2628e0b3d9f96",
           "definitions": [
             "sameSender",
             "lawDifferentAgentsStayIndependent",
@@ -6742,6 +6747,7 @@
             "removeGrant",
             "ownsCapturedRequest",
             "ownsRetainedGrant",
+            "alwaysStoredRequestHasIssuedId",
             "alwaysRequestOwnerIsStable",
             "alwaysGrantMatchesRequest",
             "alwaysConsumedExactRequest",
@@ -6783,7 +6789,7 @@
         },
         {
           "path": "spec/core/pairingAdmission.md",
-          "sha256": "5550f51a819100ce97bb05dc23978e842244ca7b9c613a8c0db81f86bfd929da",
+          "sha256": "bddccd60e403418e1786241ddae94354c9750a508422e942ad3ea582c003ecc5",
           "definitions": [
             "emptyScope",
             "absentMetadata",
@@ -6826,16 +6832,20 @@
             "readFailed",
             "canSettleCleanup",
             "settleCleanup",
+            "rowsForId",
             "alwaysUniquePendingIds",
             "alwaysCreatingHasFreeCapacity",
             "alwaysUpdatingOwnsCapturedPrior",
             "alwaysReceiptHasIdentity",
+            "alwaysUnconfiguredHasNoCall",
             "alwaysActiveOwnerAgreesWithPhase",
             "completedTickets",
             "occupiedTickets",
             "alwaysTicketFrontier",
             "walkTicket",
             "consecutiveTickets",
+            "waitingIds",
+            "receiptIds",
             "alwaysTicketOrder",
             "stepOnlyHeadEnters",
             "stepReceiptsNameActiveCall",
