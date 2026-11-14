@@ -24,8 +24,9 @@
  * A website never acts for the person through this layer: JavaScript dialogs,
  * new windows, downloads, other-app links and sign-in pages that refuse embedded
  * WebViews are reported to the host as events ([BrowserPageHandoffs]); nothing is
- * accepted, opened or started by itself. A crashed or killed page renderer
- * closes only its surface (`surfaceCrashed`), never the host activity.
+ * accepted, opened or started by itself, and a certificate error is never passed.
+ * A crashed or killed page renderer closes only its surface (`surfaceCrashed`),
+ * never the host activity.
  */
 package ai.eliza.plugins.browsersurface
 
@@ -35,6 +36,7 @@ import android.graphics.Canvas
 import android.graphics.Bitmap
 import android.graphics.Paint
 import android.graphics.Rect
+import android.net.http.SslError
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
@@ -51,6 +53,7 @@ import android.view.ViewTreeObserver
 import android.webkit.JsPromptResult
 import android.webkit.JsResult
 import android.webkit.RenderProcessGoneDetail
+import android.webkit.SslErrorHandler
 import android.webkit.URLUtil
 import android.webkit.WebChromeClient
 import android.webkit.WebView
@@ -79,6 +82,7 @@ import kotlinx.coroutines.launch
 import java.io.ByteArrayInputStream
 import java.security.MessageDigest
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicReference
 import org.json.JSONObject
 
 internal data class NativeOwnerIdentity(
@@ -327,6 +331,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
     private companion object {
         const val TAG = "ElizaSurfaceManager"
         const val PROFILE_PREFS = "eliza_browser_surface_profiles"
+        const val CERTIFICATE_REFUSED = "The website's security certificate was not accepted."
     }
 
     private data class HostOuterClip(
@@ -380,6 +385,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         val layer: SurfaceLayer = SurfaceLayer.ABOVE_HOST,
         /** Set by pauseSurface: WebView.onPause() was called and onResume() not yet. */
         var paused: Boolean = false,
+        /** The main-frame address a certificate error blocked, until the page moves on. */
+        var securityBlocked: String? = null,
     )
 
     private data class HistoryObservation(
@@ -793,6 +800,9 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             val container = OccludingSurfaceLayout(activity, layer)
             val webView = WebView(activity)
             val gate = BrowserMainFrameGate()
+            // The latest main-frame address requested (any thread), which tells a page's own
+            // certificate error from a subresource's.
+            val mainRequest = AtomicReference<String?>()
             // Every frame's requests after a task effect (SurfaceControlChannel arms it).
             val effects = BrowserEffectWatch()
             webView.webViewClient = object : WebViewClient() {
@@ -806,6 +816,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     if (surface == null || surface.webView !== view) return false
                     val target = request.url.toString()
                     if (request.isForMainFrame && handOff(id, surface, target, request.hasGesture())) return true
+                    if (request.isForMainFrame) mainRequest.set(target)
                     if (!surface.interceptNavigation) return false
                     val redirect = request.isRedirect && request.isForMainFrame
                     if (redirect && surface.gate.redirect(target)) return false
@@ -834,6 +845,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 // gets a local empty 204, which ends the navigation without sending anything.
                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                     val now = System.currentTimeMillis()
+                    if (request.isForMainFrame) mainRequest.set(request.url.toString())
                     if (!interceptNavigation || !request.isForMainFrame) {
                         effects.observe(request.url.toString(), request.method, request.isForMainFrame, now,
                             request.requestHeaders?.get("Accept"))
@@ -869,6 +881,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                         it.historyObservation = null
                         it.pageRevision += 1
                         it.pageError = null
+                        // The error page of a blocked address commits at that address.
+                        if (it.securityBlocked != url) it.securityBlocked = null
                         dismissDialogs(it)
                         it.pendingExternalLink = null
                     }
@@ -878,6 +892,16 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 // History traversal must never silently resubmit a payment/form POST.
                 override fun onFormResubmission(view: WebView, dontResend: android.os.Message, resend: android.os.Message) {
                     dontResend.sendToTarget()
+                }
+
+                // A certificate error is never passed. The page's own is reported so the host can
+                // show a security block; a subresource's only fails that resource.
+                override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
+                    handler.cancel()
+                    val surface = surfaces[id] ?: return
+                    if (surface.webView !== view || error.url != mainRequest.get()) return
+                    surface.securityBlocked = error.url
+                    if (isLive(surface)) notifyListeners("navigationChanged", surfaceState(id, surface))
                 }
 
                 override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
@@ -1245,6 +1269,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             // A sign-in page that refuses WebViews is reported instead of showing its error page.
             if (BrowserPageHandoffs.identityProvider(url) == null) {
                 surface.historyObservation = null
+                surface.securityBlocked = null
                 surface.gate.approve(url)
                 surface.webView.loadUrl(url)
             } else {
@@ -1265,6 +1290,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             val surface = ownedSurface(call, id, identity, "reloadSurface")
                 ?: return@runOnUiThread
             surface.historyObservation = null
+            surface.securityBlocked = null
             surface.webView.reload()
             call.resolve()
         }
@@ -2008,6 +2034,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 result.put("canGoForward", false)
                 result.put("progress", 0)
                 result.put("pageError", JSObject.NULL)
+                result.put("securityBlocked", false)
                 result.put("textZoom", JSObject.NULL)
                 call.resolve(result)
             } else {
@@ -2106,7 +2133,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         put("canGoBack", surface.webView.canGoBack())
         put("canGoForward", surface.webView.canGoForward())
         put("progress", surface.webView.progress)
-        put("pageError", surface.pageError ?: JSObject.NULL)
+        put("pageError", surface.pageError ?: surface.securityBlocked?.let { CERTIFICATE_REFUSED } ?: JSObject.NULL)
+        put("securityBlocked", surface.securityBlocked != null)
         put("textZoom", surface.webView.settings.textZoom)
     }
 

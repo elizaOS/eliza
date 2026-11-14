@@ -344,6 +344,11 @@ export interface SurfaceState {
   progress?: number;
   /** Android: the main-frame load error of the current page, if any. */
   pageError?: string | null;
+  /**
+   * Android: the page's certificate was refused (it is never passed), so the surface shows
+   * an error page in its place. Show a security block over it.
+   */
+  securityBlocked?: boolean;
   /** Android: text zoom in percent. */
   textZoom?: number | null;
 }
