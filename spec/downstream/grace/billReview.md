@@ -9,6 +9,8 @@ its browser dispatch and authorization. The provider owns actual payment.
 [Receipt lookup](./billReceiptLookup.md) governs optional email confirmation after saving.
 [Configured review history](./configuredBillReviewHistory.md) covers the
 store’s same-key replay, retained row and cross-task lookup boundary.
+[Configured saved-card selection](./configuredBillMethodSelection.md) binds a
+reviewed row to one click and defines when relocation or read-only recovery applies.
 
 ## Story: Review a bill before pressing the provider's payment control
 
