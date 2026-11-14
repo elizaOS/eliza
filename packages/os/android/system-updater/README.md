@@ -1,8 +1,8 @@
 # On-device OS updater
 
 Candidate implementation of the approved on-device A/B update path (Alpha
-[P-75](https://github.com/eliza-research/alphaphone/blob/main/docs/decisions.md) /
-[issue 680](https://github.com/eliza-research/alphaphone/issues/680)). It is separate from the ordinary launcher and from the
+[P-75](https://github.com/eliza-research/alpha/issues/680#issuecomment-6488865262) /
+[issue 680](https://github.com/eliza-research/alpha/issues/680)). It is separate from the ordinary launcher and from the
 computer-operated recovery/sideload tool. Product hosts own release enrollment.
 The generic resource configuration disables every entry point and schedules
 nothing. This is not yet a qualified or installed updater.
