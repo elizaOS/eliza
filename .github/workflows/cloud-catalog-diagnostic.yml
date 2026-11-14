@@ -75,6 +75,10 @@ jobs:
           bun --conditions=eliza-source - <<'BUN'
           import { requireStripe } from './packages/cloud/shared/src/lib/stripe.ts';
           import { initialInvoiceSchema } from './packages/cloud/shared/src/lib/services/stripe-settled-invoice-schema.ts';
+          import { validateInvoiceCapture } from './packages/cloud/shared/src/lib/services/stripe-invoice-capture.ts';
+          import { proveInvoiceAdjustments } from './packages/cloud/shared/src/lib/services/stripe-invoice-adjustments.ts';
+          import { proveInvoiceSettlement } from './packages/cloud/shared/src/lib/services/stripe-invoice-settlement.ts';
+          import { canonicalSettlementJson } from './packages/cloud/shared/src/lib/services/settlement-digest.ts';
           import { Client } from 'pg';
           import { enforceTlsForRemote } from './packages/cloud/shared/src/db/client.ts';
           import { readDatabaseIdentityConfig, runDatabaseIdentityPreflight } from './packages/cloud/scripts/admin/preflight-database-identity.ts';
@@ -91,7 +95,13 @@ jobs:
             console.log(JSON.stringify({ failure: {
               stage, name: safe(error?.name), type: safe(error?.type), code,
               sqlstate: code && /^[0-9A-Z]{5}$/.test(code) ? code : undefined,
-              reason: safe(error?.context?.reason),
+              reason: [
+                'unsupported_provider_shape_or_adjustment',
+                'payment_invoice_or_catalog_identity_mismatch',
+                'invoice_adjustment_arithmetic_mismatch',
+                'unsettled_or_deferred_invoice_debt',
+                'invoice_balance_arithmetic_mismatch',
+              ].includes(error?.context?.reason) ? error.context.reason : undefined,
               statusCode: typeof error?.statusCode === 'number' ? error.statusCode : undefined,
             }}));
             process.exitCode = 1;
@@ -225,6 +235,13 @@ jobs:
               if (typeof session.customer !== 'string') throw new Error('Customer missing');
               return stripe.customers.retrieve(session.customer);
             });
+            if (subscription) {
+              const serialized = await observe('subscription_serialization', () => {
+                canonicalSettlementJson(subscription);
+                return true;
+              });
+              console.log(JSON.stringify({ subscriptionSerialization: { passed: serialized === true } }));
+            }
             if (customer) console.log(JSON.stringify({ customer: {
               deleted: customer.deleted === true, livemode: customer.livemode,
               idMatchesSession: customer.id === reference(session.customer),
@@ -245,6 +262,18 @@ jobs:
                 customerMatchesSession: reference(charge.customer) === reference(session.customer),
                 paymentIntentMatchesInvoice: reference(charge.payment_intent) === parsed.data.payment_intent,
               }}));
+              if (paymentIntent && charge) {
+                for (const [proof, check] of [
+                  ['capture', () => validateInvoiceCapture({ invoice, paymentIntent, charge })],
+                  ['adjustments', () => proveInvoiceAdjustments(parsed.data, parsed.data.lines.data[0])],
+                  ['invoice_settlement', () => proveInvoiceSettlement(parsed.data)],
+                ]) {
+                  const passed = await observe(`initial_payment_${proof}`, () => { check(); return true; });
+                  console.log(JSON.stringify({ initialPaymentProof: { proof, passed: passed === true } }));
+                }
+              } else {
+                console.log(JSON.stringify({ initialPaymentProof: { skipped: true, reason: 'provider_read_unavailable' } }));
+              }
             }
             if (process.env.RECONCILE_CHECKOUT === '1') {
               if (!databaseIdentityVerified || session.status !== 'complete' || session.payment_status !== 'paid' ||
