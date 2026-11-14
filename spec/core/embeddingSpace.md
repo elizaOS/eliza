@@ -8,6 +8,8 @@ As an agent, I initialize and pin the embedding provider only after its probe an
 
 ### A probe prepares dimensions and representation before pinning
 
+Discovered by the proof: before an adapter mutation, a probe keeps the previous durable dimensions and metadata. A named candidate in the prepared state already matches its stored representation. A failed preparation retains the fence if the adapter might have changed durable state.
+
 ```quint
 type ProbePhase = Idle | Probing | Resized | Spaced | Pinned
 type Encoder = { provider: str, space: str, dimension: int }
@@ -54,9 +56,13 @@ pure def vectorRelabelAllowed(originalSpace: str, requestedSpace: str, previousl
 pure def lawMarkedVectorCannotChangeIdentity(originalSpace: str, requestedSpace: str): bool = vectorRelabelAllowed(originalSpace, requestedSpace, true) == (originalSpace == requestedSpace)
 pure def alwaysPreparedCandidateMatchesPin(s: EmbeddingSpace): bool = (s.phase != Resized and s.phase != Spaced and s.phase != Pinned) or compatiblePin(s, s.candidate)
 pure def alwaysPreparedColumnMatchesCandidate(s: EmbeddingSpace): bool = (s.phase != Resized and s.phase != Spaced and s.phase != Pinned) or s.column == s.candidate.dimension
-pure def alwaysPinnedColumnMatches(s: EmbeddingSpace): bool = s.phase != Idle or s.transitionUnconfirmed or not(s.hasPin) or (s.pin.dimension == s.column and (s.pin.space == "" or s.pin.space == s.storeSpace))
-pure def alwaysCurrentColumnHasMatchingDimensions(s: EmbeddingSpace): bool = s.phase != Idle or s.transitionUnconfirmed or s.clearFailed or s.stored.every(vector => vector.space != s.storeSpace or vector.dimension == s.column)
+pure def alwaysPreparedSpaceMatchesCandidate(s: EmbeddingSpace): bool = (s.phase != Spaced and s.phase != Pinned) or s.candidate.space == "" or s.candidate.space == s.storeSpace
+pure def alwaysPinnedUsesPreparedCandidate(s: EmbeddingSpace): bool = s.phase != Pinned or (s.hasPin and s.pin.dimension == s.candidate.dimension and s.pin.space == s.candidate.space)
+pure def alwaysPinnedColumnMatches(s: EmbeddingSpace): bool = (s.phase != Idle and s.phase != Probing) or s.transitionUnconfirmed or not(s.hasPin) or (s.pin.dimension == s.column and (s.pin.space == "" or s.pin.space == s.storeSpace))
+pure def alwaysCurrentColumnHasMatchingDimensions(s: EmbeddingSpace): bool = (s.phase != Idle and s.phase != Probing) or s.transitionUnconfirmed or s.clearFailed or s.stored.every(vector => vector.space != s.storeSpace or vector.dimension == s.column)
+pure def alwaysResizeWithoutFencePreservesConfirmedColumn(s: EmbeddingSpace): bool = s.phase != Resized or s.transitionUnconfirmed or ((not(s.hasPin) or (s.pin.dimension == s.column and (s.pin.space == "" or s.pin.space == s.storeSpace))) and (s.clearFailed or s.stored.every(vector => vector.space != s.storeSpace or vector.dimension == s.column)))
 pure def alwaysStoredDimensionsPositive(s: EmbeddingSpace): bool = s.stored.every(vector => vector.dimension > 0)
+pure def alwaysAdmittedVectorHasDimension(s: EmbeddingSpace): bool = s.admitted implies s.vector.dimension > 0
 pure def sometimesVectorStored(s: EmbeddingSpace): bool = s.stored.length() > 0
 pure def sometimesRepresentationRejected(s: EmbeddingSpace): bool = s.rejected
 ```

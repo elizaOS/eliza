@@ -8,6 +8,8 @@ As an agent, I can fall back to single-item embedding without racing unfinished 
 
 ### A batch owns a finite supplied member set without a fixed size limit
 
+Discovered by the proof: a batch without admitted members has no primary or fallback outcomes. A primary success never owns a retry, and a completed fallback releases its retry slot.
+
 ```quint
 type Batch = { admitted: bool, members: Set[str], primaryDone: Set[str], retryable: Set[str], retrying: Set[str], completed: Set[str] }
 pure val initial: Batch = { admitted: false, members: Set(), primaryDone: Set(), retryable: Set(), retrying: Set(), completed: Set() }
@@ -27,8 +29,9 @@ pure def fallback(s: Batch, id: str): Batch = { ...s, retrying: s.retrying.union
 pure def canFallbackResult(s: Batch, id: str): bool = s.retrying.contains(id)
 pure def fallbackResult(s: Batch, id: str): Batch = { ...s, retrying: s.retrying.exclude(Set(id)), retryable: s.retryable.exclude(Set(id)), completed: s.completed.union(Set(id)) }
 pure def alwaysOutcomesBelongToMembers(s: Batch): bool = s.primaryDone.subseteq(s.members) and s.retryable.subseteq(s.primaryDone) and s.retrying.subseteq(s.retryable) and s.completed.subseteq(s.primaryDone)
+pure def alwaysNoOutcomesBeforeAdmission(s: Batch): bool = not(s.admitted) implies (s.primaryDone.size() == 0 and s.retryable.size() == 0 and s.retrying.size() == 0 and s.completed.size() == 0)
 pure def alwaysFallbackWaitsForPrimary(s: Batch): bool = s.retrying.size() == 0 or s.members.subseteq(s.primaryDone)
-pure def alwaysCompletedItemsHaveNoRetryOwner(s: Batch): bool = s.completed.intersect(s.retrying).size() == 0
+pure def alwaysCompletedItemsHaveNoRetryOwner(s: Batch): bool = s.completed.forall(id => not(s.retrying.contains(id)))
 pure def sometimesBatchFallbackCompletes(s: Batch): bool = s.members.size() > 1 and s.members.subseteq(s.completed)
 pure val fair_primaryResult = "weak"
 pure val fair_fallback = "weak"
