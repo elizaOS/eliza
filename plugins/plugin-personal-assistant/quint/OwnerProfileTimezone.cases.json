@@ -4,10 +4,11 @@
     "plugins/plugin-personal-assistant/src/lifeops/owner/fact-store.ts",
     "packages/contracts/src/lifeops-normalize/time-zone.ts",
     "packages/contracts/src/lifeops-normalize/calendar-time-zone.ts",
-    "plugins/plugin-personal-assistant/src/lifeops/owner/profile-extraction-evaluator.pglite.test.ts"
+    "plugins/plugin-personal-assistant/src/lifeops/owner/profile-extraction-evaluator.pglite.test.ts",
+    "packages/scripts/lib/test-output.ts"
   ],
   "conformance": "plugins/plugin-personal-assistant/quint/check-owner-profile-timezone.mjs",
-  "bounds": "Eight scenarios: no stored zone or a valid stored zone (Europe/Berlin), then one owner statement: an IANA zone, the same zone ending the sentence with a period, an alias ending the sentence, or text that names no zone. The implementation check sends each generated scenario through the real owner.profile_extraction evaluator (runResponseHandlerEvaluators) on a fresh PGlite runtime with the production plugin, then reads the stored owner zone and the shared calendar zone. Model-extracted timezone facts (core-fact-memory-bridge.ts), other fact keys, the full alias table and concurrent owner messages remain outside this model. Safety is unconditional.",
+  "bounds": "Eight timezone scenarios cover a known or absent prior zone and one owner statement naming a zone, its alias, or no zone. Six travel scenarios cover ordinal, plain and ISO dates, an omitted date and an impossible ordinal date, with one fixed reporting clock and one later scheduling tick. Conformance sends generated statements through the real owner.profile_extraction evaluator on PGlite. It reads persisted facts and compares the calendar zone or scheduling travel status. The steps assume an authenticated owner, successful local storage, one message at a time and an explicit tick. Model-extracted facts, concurrent messages, other date forms and clock changes remain outside the model.",
   "cases": [
     {
       "name": "owner-profile-timezone-update",
@@ -22,6 +23,36 @@
       ],
       "temporal": [],
       "maxSteps": 4,
+      "samples": 300
+    },
+    {
+      "name": "owner-travel-return",
+      "main": "OwnerTravelReturn",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "ExplicitReturnStored",
+        "UnresolvedReturnIsBounded",
+        "ScheduleSeesExpiry"
+      ],
+      "temporal": ["FairTickObserved", "TickObserved"],
+      "temporalChecks": [
+        {
+          "property": "FairTickObserved",
+          "expect": "holds",
+          "assumptions": [
+            "The owner evaluator and the later scheduling read eventually run when enabled. Storage succeeds."
+          ]
+        },
+        {
+          "property": "TickObserved",
+          "expect": "counterexample",
+          "assumptions": [
+            "Without fairness, the evaluator or the scheduling read can stall indefinitely."
+          ]
+        }
+      ],
+      "maxSteps": 12,
       "samples": 300
     }
   ]
