@@ -3209,7 +3209,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/inbox.md",
+      "relatedSpec": "spec/downstream/alpha/managedGmailWire.md",
       "coverage": "related-contract"
     },
     {

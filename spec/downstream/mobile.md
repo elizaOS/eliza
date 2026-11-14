@@ -21,6 +21,7 @@ The examined consumer pin lists no patches in
 | Grace and AlphaPhone Android contact picker and Alpha contact edits. | [Address book reads and reviewed writes](./mobileContacts.md) |
 | Alpha renderer drafts and Grace native key and credential custody. | [Encrypted JSON slot admission and readback](./mobileSecureSlots.md) |
 | Alpha Android Calendar deletion and Undo. | [Scoped review and provider dispatch](./mobileCalendarScopedDeletion.md), [deferred journal and Undo](./mobileDeferredDeletion.md) |
+| Alpha Android password fill and save, with Grace debug admission. | [Native Autofill request and unlock custody](./mobilePasswordAutofill.md) |
 | Alpha Android browser state, bookmarks and site clearing. | [Native browser storage](./mobileBrowserStorage.md) |
 | Android packaging, explicit bridge registration, feature and permission admission. | [Consumer build and artifact custody](./mobileBuild.md), [Native bridge composition](./mobileBridge.md), [browser handoff](./mobileBrowser.md), [Chromium binding](./mobileChromium.md), [file observer custody](./mobileStorageWatch.md), [calendar edits](./mobileCalendar.md), [photo read permission](./mobilePhotos.md), [message review](./mobileTelephony.md), and [camera receipt](./mobileDeviceCamera.md) |
 
