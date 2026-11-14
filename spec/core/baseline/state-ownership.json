@@ -18437,81 +18437,33 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/hookService.md",
-        "spec/core/concurrentHooks.md"
+        "spec/core/concurrentHooks.md",
+        "spec/core/hooks.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "HookService models its own interceptor handles, event index, metadata/version, eligibility config and PATH-scoped positive binary cache; concurrentHooks models pipeline snapshot dispatch independently.",
+        "representation": "One ordered registry retains exact hook ID, resolved phase and schedule, position and handler identity. Replacement preserves the original insertion slot. A memo miss captures the sorted current phase fields.",
         "model": {
-          "spec": "spec/core/hookService.md",
-          "stateType": "HookService",
+          "spec": "spec/core/concurrentHooks.md",
+          "stateType": "ConcurrentHooks",
           "stateFields": [
-            "registrations",
-            "index",
-            "nextId",
-            "version",
-            "configIdentity",
-            "config",
-            "pathPresent",
-            "path",
-            "binaryHits",
-            "interceptors",
-            "setupDone",
+            "registry",
             "calls"
           ],
           "transitions": [
-            "installInterceptors",
             "register",
             "unregister",
-            "setActive",
-            "setPriority",
-            "setConfig",
-            "stopService",
-            "probeBinary",
-            "updateConfigReference",
-            "dispatch",
-            "beginHandler",
-            "finishHandler"
+            "lookupPhase",
+            "beginCall",
+            "startCallHook",
+            "finishCallHook",
+            "finishCall"
           ],
-          "specSha256": "ba605fd22f43d4d1726c01b582bc8f14d992b8accc2088f093bbb78b542e519b"
+          "specSha256": "30d5566eace4ec941c0874d33b51931403cde7d11dcf0fcfd3ec8b053565c8bf"
         },
         "associatedModels": [
-          {
-            "spec": "spec/core/hookService.md",
-            "stateType": "HookService",
-            "stateFields": [
-              "registrations",
-              "index",
-              "nextId",
-              "version",
-              "configIdentity",
-              "config",
-              "pathPresent",
-              "path",
-              "binaryHits",
-              "interceptors",
-              "setupDone",
-              "calls"
-            ],
-            "transitions": [
-              "installInterceptors",
-              "register",
-              "unregister",
-              "setActive",
-              "setPriority",
-              "setConfig",
-              "stopService",
-              "probeBinary",
-              "updateConfigReference",
-              "dispatch",
-              "beginHandler",
-              "finishHandler"
-            ],
-            "specSha256": "ba605fd22f43d4d1726c01b582bc8f14d992b8accc2088f093bbb78b542e519b"
-          },
           {
             "spec": "spec/core/concurrentHooks.md",
             "stateType": "ConcurrentHooks",
@@ -18522,27 +18474,46 @@
             "transitions": [
               "register",
               "unregister",
+              "lookupPhase",
               "beginCall",
               "startCallHook",
               "finishCallHook",
               "finishCall"
             ],
-            "specSha256": "1219abe1fdc9f07602cd74aedba0d83c3a24dd2448e7faa6d861cadd9cef424c"
+            "specSha256": "30d5566eace4ec941c0874d33b51931403cde7d11dcf0fcfd3ec8b053565c8bf"
+          },
+          {
+            "spec": "spec/core/hooks.md",
+            "stateType": "HookState",
+            "stateFields": [
+              "registry",
+              "snapshot",
+              "results",
+              "dispatching",
+              "completed",
+              "rejected",
+              "parallel",
+              "localAdmission",
+              "nextOrder",
+              "memo",
+              "epoch",
+              "nextArray",
+              "capturedArray"
+            ],
+            "transitions": [
+              "registerHook",
+              "unregisterHook",
+              "lookupPhase",
+              "beginHooks",
+              "startHook",
+              "finishHook",
+              "finishHooks"
+            ],
+            "specSha256": "7bd853fd6ffb940c890480089bbfebb705d91691f9c3627d89d27a6c6b25efba"
           }
         ],
         "mappedStateFields": [
-          "registrations",
-          "index",
-          "nextId",
-          "version",
-          "configIdentity",
-          "config",
-          "pathPresent",
-          "path",
-          "binaryHits",
-          "interceptors",
-          "setupDone",
-          "calls"
+          "registry"
         ],
         "unmodeledState": null,
         "closureStatus": "state-modeled",
@@ -18579,81 +18550,33 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/hookService.md",
-        "spec/core/concurrentHooks.md"
+        "spec/core/concurrentHooks.md",
+        "spec/core/hooks.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "HookService models its own interceptor handles, event index, metadata/version, eligibility config and PATH-scoped positive binary cache; concurrentHooks models pipeline snapshot dispatch independently.",
+        "representation": "The source ID-to-position cache is a projection of the ordered live registry: replacement updates the same slot; deleting it shifts later ranks. Pipeline registrations do not share the event HookService registry.",
         "model": {
-          "spec": "spec/core/hookService.md",
-          "stateType": "HookService",
+          "spec": "spec/core/concurrentHooks.md",
+          "stateType": "ConcurrentHooks",
           "stateFields": [
-            "registrations",
-            "index",
-            "nextId",
-            "version",
-            "configIdentity",
-            "config",
-            "pathPresent",
-            "path",
-            "binaryHits",
-            "interceptors",
-            "setupDone",
+            "registry",
             "calls"
           ],
           "transitions": [
-            "installInterceptors",
             "register",
             "unregister",
-            "setActive",
-            "setPriority",
-            "setConfig",
-            "stopService",
-            "probeBinary",
-            "updateConfigReference",
-            "dispatch",
-            "beginHandler",
-            "finishHandler"
+            "lookupPhase",
+            "beginCall",
+            "startCallHook",
+            "finishCallHook",
+            "finishCall"
           ],
-          "specSha256": "ba605fd22f43d4d1726c01b582bc8f14d992b8accc2088f093bbb78b542e519b"
+          "specSha256": "30d5566eace4ec941c0874d33b51931403cde7d11dcf0fcfd3ec8b053565c8bf"
         },
         "associatedModels": [
-          {
-            "spec": "spec/core/hookService.md",
-            "stateType": "HookService",
-            "stateFields": [
-              "registrations",
-              "index",
-              "nextId",
-              "version",
-              "configIdentity",
-              "config",
-              "pathPresent",
-              "path",
-              "binaryHits",
-              "interceptors",
-              "setupDone",
-              "calls"
-            ],
-            "transitions": [
-              "installInterceptors",
-              "register",
-              "unregister",
-              "setActive",
-              "setPriority",
-              "setConfig",
-              "stopService",
-              "probeBinary",
-              "updateConfigReference",
-              "dispatch",
-              "beginHandler",
-              "finishHandler"
-            ],
-            "specSha256": "ba605fd22f43d4d1726c01b582bc8f14d992b8accc2088f093bbb78b542e519b"
-          },
           {
             "spec": "spec/core/concurrentHooks.md",
             "stateType": "ConcurrentHooks",
@@ -18664,27 +18587,46 @@
             "transitions": [
               "register",
               "unregister",
+              "lookupPhase",
               "beginCall",
               "startCallHook",
               "finishCallHook",
               "finishCall"
             ],
-            "specSha256": "1219abe1fdc9f07602cd74aedba0d83c3a24dd2448e7faa6d861cadd9cef424c"
+            "specSha256": "30d5566eace4ec941c0874d33b51931403cde7d11dcf0fcfd3ec8b053565c8bf"
+          },
+          {
+            "spec": "spec/core/hooks.md",
+            "stateType": "HookState",
+            "stateFields": [
+              "registry",
+              "snapshot",
+              "results",
+              "dispatching",
+              "completed",
+              "rejected",
+              "parallel",
+              "localAdmission",
+              "nextOrder",
+              "memo",
+              "epoch",
+              "nextArray",
+              "capturedArray"
+            ],
+            "transitions": [
+              "registerHook",
+              "unregisterHook",
+              "lookupPhase",
+              "beginHooks",
+              "startHook",
+              "finishHook",
+              "finishHooks"
+            ],
+            "specSha256": "7bd853fd6ffb940c890480089bbfebb705d91691f9c3627d89d27a6c6b25efba"
           }
         ],
         "mappedStateFields": [
-          "registrations",
-          "index",
-          "nextId",
-          "version",
-          "configIdentity",
-          "config",
-          "pathPresent",
-          "path",
-          "binaryHits",
-          "interceptors",
-          "setupDone",
-          "calls"
+          "registry"
         ],
         "unmodeledState": null,
         "closureStatus": "state-modeled",
@@ -18721,81 +18663,33 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/hookService.md",
-        "spec/core/concurrentHooks.md"
+        "spec/core/concurrentHooks.md",
+        "spec/core/hooks.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "HookService models its own interceptor handles, event index, metadata/version, eligibility config and PATH-scoped positive binary cache; concurrentHooks models pipeline snapshot dispatch independently.",
+        "representation": "The authoritative leaf caches an array reference per phase and epoch, including empty selections. Upsert or removal of a registered ID invalidates every phase, while absent removal retains each memo. Dispatches hold their original array and handler references across invalidation.",
         "model": {
-          "spec": "spec/core/hookService.md",
-          "stateType": "HookService",
+          "spec": "spec/core/concurrentHooks.md",
+          "stateType": "ConcurrentHooks",
           "stateFields": [
-            "registrations",
-            "index",
-            "nextId",
-            "version",
-            "configIdentity",
-            "config",
-            "pathPresent",
-            "path",
-            "binaryHits",
-            "interceptors",
-            "setupDone",
+            "registry",
             "calls"
           ],
           "transitions": [
-            "installInterceptors",
             "register",
             "unregister",
-            "setActive",
-            "setPriority",
-            "setConfig",
-            "stopService",
-            "probeBinary",
-            "updateConfigReference",
-            "dispatch",
-            "beginHandler",
-            "finishHandler"
+            "lookupPhase",
+            "beginCall",
+            "startCallHook",
+            "finishCallHook",
+            "finishCall"
           ],
-          "specSha256": "ba605fd22f43d4d1726c01b582bc8f14d992b8accc2088f093bbb78b542e519b"
+          "specSha256": "30d5566eace4ec941c0874d33b51931403cde7d11dcf0fcfd3ec8b053565c8bf"
         },
         "associatedModels": [
-          {
-            "spec": "spec/core/hookService.md",
-            "stateType": "HookService",
-            "stateFields": [
-              "registrations",
-              "index",
-              "nextId",
-              "version",
-              "configIdentity",
-              "config",
-              "pathPresent",
-              "path",
-              "binaryHits",
-              "interceptors",
-              "setupDone",
-              "calls"
-            ],
-            "transitions": [
-              "installInterceptors",
-              "register",
-              "unregister",
-              "setActive",
-              "setPriority",
-              "setConfig",
-              "stopService",
-              "probeBinary",
-              "updateConfigReference",
-              "dispatch",
-              "beginHandler",
-              "finishHandler"
-            ],
-            "specSha256": "ba605fd22f43d4d1726c01b582bc8f14d992b8accc2088f093bbb78b542e519b"
-          },
           {
             "spec": "spec/core/concurrentHooks.md",
             "stateType": "ConcurrentHooks",
@@ -18806,26 +18700,46 @@
             "transitions": [
               "register",
               "unregister",
+              "lookupPhase",
               "beginCall",
               "startCallHook",
               "finishCallHook",
               "finishCall"
             ],
-            "specSha256": "1219abe1fdc9f07602cd74aedba0d83c3a24dd2448e7faa6d861cadd9cef424c"
+            "specSha256": "30d5566eace4ec941c0874d33b51931403cde7d11dcf0fcfd3ec8b053565c8bf"
+          },
+          {
+            "spec": "spec/core/hooks.md",
+            "stateType": "HookState",
+            "stateFields": [
+              "registry",
+              "snapshot",
+              "results",
+              "dispatching",
+              "completed",
+              "rejected",
+              "parallel",
+              "localAdmission",
+              "nextOrder",
+              "memo",
+              "epoch",
+              "nextArray",
+              "capturedArray"
+            ],
+            "transitions": [
+              "registerHook",
+              "unregisterHook",
+              "lookupPhase",
+              "beginHooks",
+              "startHook",
+              "finishHook",
+              "finishHooks"
+            ],
+            "specSha256": "7bd853fd6ffb940c890480089bbfebb705d91691f9c3627d89d27a6c6b25efba"
           }
         ],
         "mappedStateFields": [
-          "registrations",
-          "index",
-          "nextId",
-          "version",
-          "configIdentity",
-          "config",
-          "pathPresent",
-          "path",
-          "binaryHits",
-          "interceptors",
-          "setupDone",
+          "registry",
           "calls"
         ],
         "unmodeledState": null,
