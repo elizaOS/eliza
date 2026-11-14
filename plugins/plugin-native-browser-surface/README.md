@@ -70,6 +70,10 @@ and does nothing by itself:
   and places no call. Script attempts are dropped.
 - `identityProviderRequested`: Google and Facebook sign-in pages refuse embedded
   WebViews (`disallowed_useragent`). They are not loaded; open them in a full browser.
+
+A certificate error is never passed. When it is the page's own, `navigationChanged`
+follows with `securityBlocked: true` and a `pageError`, so the host can cover the error
+page with a security block.
 - `surfaceCrashed`: the page renderer crashed or was reclaimed. Only that surface
   closes; the host activity keeps running. Recreate the surface to continue.
 - `keyboardChanged`: the on-screen keyboard opened or closed, with its height.
@@ -140,7 +144,7 @@ Android `stopLoading` stops the current page load where it is (a no-op when noth
 loading) and then sends `navigationChanged`, so the host re-reads `progress`.
 
 Script popups never open. `getSurfaceState` also returns `title`, `canGoBack`,
-`canGoForward`, `progress`, `pageError` and `textZoom`; `setTextZoom` sets the page
+`canGoForward`, `progress`, `pageError`, `securityBlocked` and `textZoom`; `setTextZoom` sets the page
 text size from 50 to 300 percent. On Android every `navigationChanged` event also
 carries these fields as they were when it was sent. Listeners receive every surface's
 events, so a host uses them only when `exists` is true and `owner`, `session` and
