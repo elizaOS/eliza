@@ -6,6 +6,8 @@ The source is `packages/core/src/security/trusted-delivery-audience.ts:182-187,3
 
 ### Binding objects share one global sequence and retain their own lease
 
+Discovered by the proof: even an empty registry retains a positive next binding identity. An unbound message has identity zero and cannot consume or update another message's binding.
+
 ```quint
 import trustedAudience as A from "./trustedAudience"
 type AudienceBindingRecord = { id: int, evidence: A::AudienceLease }
@@ -68,7 +70,7 @@ pure def canMarkSensitiveUsed(s: AudienceRegistry, by: A::AudienceCaller, messag
 pure def markSensitiveUsed(s: AudienceRegistry, by: A::AudienceCaller, messageId: int): AudienceRegistry = replaceEvidence(A::markSensitiveUsed(evidenceAt(s, messageId), by), messageId, s)
 pure def canRecordSuppression(s: AudienceRegistry, by: A::AudienceCaller, messageId: int, reason: str): bool = messageBinding(s, messageId) != 0 and A::canRecordSuppression(evidenceAt(s, messageId), by)
 pure def recordSuppression(s: AudienceRegistry, by: A::AudienceCaller, messageId: int, reason: str): AudienceRegistry = replaceEvidence(A::recordSuppression(evidenceAt(s, messageId), by, reason), messageId, s)
-pure def alwaysRegistryIdentitiesAreUnique(s: AudienceRegistry): bool = s.records.every(record => record.id > 0 and record.id < s.nextBinding and s.records.select(other => other.id == record.id).length() == 1) and s.messages.every(message => message.id > 0 and s.messages.select(other => other.id == message.id).length() == 1 and (message.binding == 0 or s.records.some(record => record.id == message.binding)))
+pure def alwaysRegistryIdentitiesAreUnique(s: AudienceRegistry): bool = s.nextBinding > 0 and s.records.every(record => record.id > 0 and record.id < s.nextBinding and s.records.select(other => other.id == record.id).length() == 1) and s.messages.every(message => message.id > 0 and s.messages.select(other => other.id == message.id).length() == 1 and (message.binding == 0 or s.records.some(record => record.id == message.binding)))
 pure def alwaysGlobalAttestationSequenceDominates(s: AudienceRegistry): bool = s.attestationSequence >= 0 and s.records.every(record => record.evidence.sequence > 0 and record.evidence.sequence <= s.attestationSequence and record.evidence.now == s.now)
 pure def alwaysEveryBindingRetainsLeaseRules(s: AudienceRegistry): bool = s.records.every(record => A::alwaysAllowedEvidenceIsFresh(record.evidence) and A::alwaysLeaseCountersAreValid(record.evidence))
 pure def stepGlobalSequenceNeverDecreases(before: AudienceRegistry, via: str, after: AudienceRegistry): bool = after.attestationSequence >= before.attestationSequence
