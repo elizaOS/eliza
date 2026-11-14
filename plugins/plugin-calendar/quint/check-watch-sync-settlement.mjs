@@ -29,6 +29,8 @@ const outsideProjection = [
   "does not create or accept push channels when the webhook is disabled",
   "binds and processes the sync notification that arrives before the watch response",
   "survives a runtime restart and ignores duplicate or out-of-order message numbers",
+  "processes a notification that proxies relay with any X-Forwarded-Proto chain",
+  "replays the forwarded proto model through the Google Calendar webhook",
   "does not mutate durable channel state for an invalid capability token",
   "rejects stale tokens, wrong resources, and changed account bindings",
   "fails visibly instead of fabricating a cursor when durable channel state is malformed",

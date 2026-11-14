@@ -1,0 +1,27 @@
+{
+  "sources": [
+    "plugins/plugin-maps/src/client/cloud-provider.ts",
+    "plugins/plugin-maps/test/cloud-maps-client.test.mjs"
+  ],
+  "conformance": "plugins/plugin-maps/quint/check-map-request-pause.mjs",
+  "bounds": {
+    "domain": "One account, three request attempts and two owner generations. A server pause expires after three abstract ticks.",
+    "progress": "Safety only. No provider availability or wall-clock guarantee."
+  },
+  "limitations": [
+    "Controlled HTTP responses verify request suppression, reopening, expiry and retirement. Live provider throttling remains a separate check."
+  ],
+  "cases": [
+    {
+      "name": "map-request-pause",
+      "main": "MapRequestPause",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 30,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ]
+}

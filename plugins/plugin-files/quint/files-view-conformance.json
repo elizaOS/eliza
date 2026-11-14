@@ -334,6 +334,21 @@
       "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
       "classname": "test",
       "name": "unreadable secondary Trash keeps the visible list incomplete until it is read"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
+      "classname": "test",
+      "name": "Downloads lists folders beside files from the actual Download directory"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
+      "classname": "test",
+      "name": "an empty Downloads directory is readable and creates a folder in Downloads"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
+      "classname": "test",
+      "name": "leaving Downloads during the parent read retires folder creation"
     }
   ],
   "assistant": {
