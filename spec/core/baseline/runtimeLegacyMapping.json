@@ -1388,7 +1388,10 @@
           "targetDefinitions": [
             "concurrentHooks.HookCall",
             "concurrentHooks.ConcurrentHooks",
-            "concurrentHooks.stepEverySnapshotStable"
+            "concurrentHooks.stepEverySnapshotStable",
+            "hooks.memoAt",
+            "hooks.alwaysMemoSelection",
+            "concurrentHooks.beginCall"
           ],
           "reason": "Dynamic concurrent HookCall entries capture the shared registry independently. Every existing call retains its snapshot while shared registry replacements continue. Legacy finite two-call product is generalized; equivalence is unproved."
         },
@@ -1401,9 +1404,10 @@
           "category": "finite-simulation-domain",
           "targetDefinitions": [
             "hooks.Hook",
-            "hooks.hookById"
+            "hooks.childCall",
+            "concurrentHooks.stepEverySnapshotStable"
           ],
-          "reason": "Legacy original/replacement target labels become Hook.id identity. The live registry and each captured snapshot retain exact Hook records."
+          "reason": "The live registry distinguishes the public hook ID from the handler reference. Each captured phase array and dispatch retains the handler references it selected, including across same-ID replacement."
         },
         {
           "name": "Registry",
@@ -1475,9 +1479,12 @@
           "status": "candidate-correspondence-unproved",
           "category": "step-safety",
           "targetDefinitions": [
-            "hooks.beginHooks + stepSnapshotStableDuringDispatch"
+            "hooks.beginHooks + stepSnapshotStableDuringDispatch",
+            "hooks.memoAt",
+            "hooks.alwaysMemoSelection",
+            "concurrentHooks.beginCall"
           ],
-          "reason": "Concrete state/transition definition listed. Preservation under generated transitions and semantic refinement against the legacy expression remain separate obligations."
+          "reason": "Each call resolves the exact current phase memo, whose selection is proved equal to the sorted registry projection. Registered edits invalidate all phase slots without changing older captured array identities or handler lists."
         },
         {
           "name": "UnfairDispatchSettles",
@@ -1602,7 +1609,7 @@
           }
         ]
       },
-      "remainingGap": "Snapshot independence formalized. Group scheduling, local admission refusal and simultaneous calls require full product composition."
+      "remainingGap": "Generated proofs cover group eligibility, local admission refusal, current ordered phase selection and independent retained calls. Exact JavaScript collation, callback and array identity, payload effects and fairness assumptions remain adapter refinement obligations."
     },
     {
       "legacyFile": "packages/core/quint/ProviderExecution.qnt",
