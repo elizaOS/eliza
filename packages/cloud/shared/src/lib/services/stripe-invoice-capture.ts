@@ -52,6 +52,9 @@ const chargeSchema = z.object({
   transfer_data: z.null(),
 });
 
+// The protected staging diagnostic reports field errors from these same schemas.
+export { chargeSchema as stripeChargeCaptureSchema, paymentSchema as stripePaymentCaptureSchema };
+
 const invoiceCaptureSchema = z.object({
   object: z.literal("invoice"),
   id: z.string().regex(/^in_[A-Za-z0-9]+$/),
