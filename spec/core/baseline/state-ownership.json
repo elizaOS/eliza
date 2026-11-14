@@ -28250,51 +28250,47 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Run records retain per-run monotonic sequence and fixed session binding.",
+        "representation": "Run records retain each current counter. Emission envelopes keep allocated sequence and attribution after clear.",
         "model": {
           "spec": "spec/core/events.md",
           "stateType": "EventState",
           "stateFields": [
             "runs",
-            "phase",
-            "activeRun",
-            "baseSequence",
-            "eventSequence",
-            "requestedSession",
-            "savedSession",
-            "eventSession",
-            "received",
             "listeners",
             "nextGeneration",
-            "pending",
-            "delivered",
-            "listenerFailed",
-            "heartbeat",
-            "indicator"
+            "nextEmission",
+            "frames",
+            "lastHeartbeat",
+            "suppliedIndicator",
+            "allocated",
+            "fanoutFinished",
+            "completed",
+            "reported",
+            "warnings",
+            "blockedReports"
           ],
           "transitions": [
             "registerRun",
             "clearRun",
             "admitEvent",
+            "subscribe",
+            "detach",
+            "beginListener",
+            "deliverListener",
             "finishOriginal",
             "reportListenerError",
             "emitListenerWarning",
-            "subscribe",
-            "detach",
-            "deliverListener",
+            "closeEmission",
             "heartbeat",
             "stopEvents"
           ],
-          "specSha256": "640e7b0ecd693d87fb978dae7e5ff3f455a54a1a091062aabebc7cc4fe58da2f"
+          "specSha256": "1801e02849a7e5eb7a03dce7f0d14392bed3027ffe4bfe77c2ee7fd96582f498"
         },
         "mappedStateFields": [
           "runs",
-          "activeRun",
-          "baseSequence",
-          "eventSequence",
-          "requestedSession",
-          "savedSession",
-          "eventSession"
+          "allocated",
+          "frames",
+          "nextEmission"
         ],
         "unmodeledState": null
       }
@@ -28321,50 +28317,48 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Listener generations and heartbeat visibility explicitly preserved.",
+        "representation": "Agent channel subscriptions follow insertion generations. Each nested traversal retains its own active slot and cursor.",
         "model": {
           "spec": "spec/core/events.md",
           "stateType": "EventState",
           "stateFields": [
             "runs",
-            "phase",
-            "activeRun",
-            "baseSequence",
-            "eventSequence",
-            "requestedSession",
-            "savedSession",
-            "eventSession",
-            "received",
             "listeners",
             "nextGeneration",
-            "pending",
-            "delivered",
-            "listenerFailed",
-            "heartbeat",
-            "indicator"
+            "nextEmission",
+            "frames",
+            "lastHeartbeat",
+            "suppliedIndicator",
+            "allocated",
+            "fanoutFinished",
+            "completed",
+            "reported",
+            "warnings",
+            "blockedReports"
           ],
           "transitions": [
             "registerRun",
             "clearRun",
             "admitEvent",
+            "subscribe",
+            "detach",
+            "beginListener",
+            "deliverListener",
             "finishOriginal",
             "reportListenerError",
             "emitListenerWarning",
-            "subscribe",
-            "detach",
-            "deliverListener",
+            "closeEmission",
             "heartbeat",
             "stopEvents"
           ],
-          "specSha256": "640e7b0ecd693d87fb978dae7e5ff3f455a54a1a091062aabebc7cc4fe58da2f"
+          "specSha256": "1801e02849a7e5eb7a03dce7f0d14392bed3027ffe4bfe77c2ee7fd96582f498"
         },
         "mappedStateFields": [
           "listeners",
           "nextGeneration",
-          "pending",
-          "delivered",
-          "heartbeat",
-          "indicator"
+          "frames",
+          "fanoutFinished",
+          "completed"
         ],
         "unmodeledState": null
       }
@@ -28391,50 +28385,48 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Listener generations and heartbeat visibility explicitly preserved.",
+        "representation": "Heartbeat channel subscriptions share the generation representation and use independent live-map traversal.",
         "model": {
           "spec": "spec/core/events.md",
           "stateType": "EventState",
           "stateFields": [
             "runs",
-            "phase",
-            "activeRun",
-            "baseSequence",
-            "eventSequence",
-            "requestedSession",
-            "savedSession",
-            "eventSession",
-            "received",
             "listeners",
             "nextGeneration",
-            "pending",
-            "delivered",
-            "listenerFailed",
-            "heartbeat",
-            "indicator"
+            "nextEmission",
+            "frames",
+            "lastHeartbeat",
+            "suppliedIndicator",
+            "allocated",
+            "fanoutFinished",
+            "completed",
+            "reported",
+            "warnings",
+            "blockedReports"
           ],
           "transitions": [
             "registerRun",
             "clearRun",
             "admitEvent",
+            "subscribe",
+            "detach",
+            "beginListener",
+            "deliverListener",
             "finishOriginal",
             "reportListenerError",
             "emitListenerWarning",
-            "subscribe",
-            "detach",
-            "deliverListener",
+            "closeEmission",
             "heartbeat",
             "stopEvents"
           ],
-          "specSha256": "640e7b0ecd693d87fb978dae7e5ff3f455a54a1a091062aabebc7cc4fe58da2f"
+          "specSha256": "1801e02849a7e5eb7a03dce7f0d14392bed3027ffe4bfe77c2ee7fd96582f498"
         },
         "mappedStateFields": [
           "listeners",
           "nextGeneration",
-          "pending",
-          "delivered",
-          "heartbeat",
-          "indicator"
+          "frames",
+          "reported",
+          "warnings"
         ],
         "unmodeledState": null
       }
@@ -28475,51 +28467,46 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Run records retain per-run monotonic sequence and fixed session binding.",
+        "representation": "Run records retain the complete normalized context and merge specified fields. Emission envelopes capture the resolved key.",
         "model": {
           "spec": "spec/core/events.md",
           "stateType": "EventState",
           "stateFields": [
             "runs",
-            "phase",
-            "activeRun",
-            "baseSequence",
-            "eventSequence",
-            "requestedSession",
-            "savedSession",
-            "eventSession",
-            "received",
             "listeners",
             "nextGeneration",
-            "pending",
-            "delivered",
-            "listenerFailed",
-            "heartbeat",
-            "indicator"
+            "nextEmission",
+            "frames",
+            "lastHeartbeat",
+            "suppliedIndicator",
+            "allocated",
+            "fanoutFinished",
+            "completed",
+            "reported",
+            "warnings",
+            "blockedReports"
           ],
           "transitions": [
             "registerRun",
             "clearRun",
             "admitEvent",
+            "subscribe",
+            "detach",
+            "beginListener",
+            "deliverListener",
             "finishOriginal",
             "reportListenerError",
             "emitListenerWarning",
-            "subscribe",
-            "detach",
-            "deliverListener",
+            "closeEmission",
             "heartbeat",
             "stopEvents"
           ],
-          "specSha256": "640e7b0ecd693d87fb978dae7e5ff3f455a54a1a091062aabebc7cc4fe58da2f"
+          "specSha256": "1801e02849a7e5eb7a03dce7f0d14392bed3027ffe4bfe77c2ee7fd96582f498"
         },
         "mappedStateFields": [
           "runs",
-          "activeRun",
-          "baseSequence",
-          "eventSequence",
-          "requestedSession",
-          "savedSession",
-          "eventSession"
+          "allocated",
+          "frames"
         ],
         "unmodeledState": null
       }
@@ -28553,50 +28540,46 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Listener generations and heartbeat visibility explicitly preserved.",
+        "representation": "The full heartbeat snapshot is published before its callbacks. An explicit indicator overrides the default, and stop clears the snapshot.",
         "model": {
           "spec": "spec/core/events.md",
           "stateType": "EventState",
           "stateFields": [
             "runs",
-            "phase",
-            "activeRun",
-            "baseSequence",
-            "eventSequence",
-            "requestedSession",
-            "savedSession",
-            "eventSession",
-            "received",
             "listeners",
             "nextGeneration",
-            "pending",
-            "delivered",
-            "listenerFailed",
-            "heartbeat",
-            "indicator"
+            "nextEmission",
+            "frames",
+            "lastHeartbeat",
+            "suppliedIndicator",
+            "allocated",
+            "fanoutFinished",
+            "completed",
+            "reported",
+            "warnings",
+            "blockedReports"
           ],
           "transitions": [
             "registerRun",
             "clearRun",
             "admitEvent",
+            "subscribe",
+            "detach",
+            "beginListener",
+            "deliverListener",
             "finishOriginal",
             "reportListenerError",
             "emitListenerWarning",
-            "subscribe",
-            "detach",
-            "deliverListener",
+            "closeEmission",
             "heartbeat",
             "stopEvents"
           ],
-          "specSha256": "640e7b0ecd693d87fb978dae7e5ff3f455a54a1a091062aabebc7cc4fe58da2f"
+          "specSha256": "1801e02849a7e5eb7a03dce7f0d14392bed3027ffe4bfe77c2ee7fd96582f498"
         },
         "mappedStateFields": [
-          "listeners",
-          "nextGeneration",
-          "pending",
-          "delivered",
-          "heartbeat",
-          "indicator"
+          "lastHeartbeat",
+          "suppliedIndicator",
+          "frames"
         ],
         "unmodeledState": null
       }

@@ -4452,13 +4452,13 @@
     },
     {
       "source": "packages/core/src/services/agent-event.ts",
-      "spec": "spec/core/services.md",
+      "spec": "spec/core/events.md",
       "rules": [
-        "Concurrent acquisition joins the original startup",
-        "An observer failure retains the running service",
-        "Late startup enters retirement without publication",
-        "A requested service stop eventually retires under fair completion",
-        "Every original startup eventually settles under fair completion"
+        "Each emission captures its payload and allocates the next run sequence",
+        "Fanout visits the live listener map in insertion order",
+        "Original fanout precedes its diagnostic reports",
+        "Heartbeat snapshots use an explicit indicator before the default",
+        "Finite synchronous callback work lets the emission finish"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "510ff6a2840d44d8d572d51db8d5ecf57665c34e79616d50b9aff9abb16e9782",
@@ -4466,7 +4466,8 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/services/agent-event.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/services.md"
+        "spec/core/services.md",
+        "spec/core/diagnostics.md"
       ]
     },
     {

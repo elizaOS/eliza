@@ -185,11 +185,11 @@
         "spec/core/events.md"
       ],
       "stateDomains": [
-        "run sequence",
-        "saved session",
-        "listener snapshots",
-        "handle generations",
-        "heartbeat"
+        "run sequence and retained run context",
+        "channel-specific live registration and disposer generations",
+        "nested agent and heartbeat emission frames",
+        "ordered individual diagnostic forwards and report latch",
+        "heartbeat payload, indicator override and stop"
       ]
     },
     {

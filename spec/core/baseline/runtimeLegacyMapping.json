@@ -613,9 +613,10 @@
           "status": "candidate-correspondence-unproved",
           "category": "safety-invariant",
           "targetDefinitions": [
-            "events.alwaysReceivedInSequence"
+            "events.stepEmissionAllocatesRunSequence",
+            "events.alwaysAllocatedSequencesArePositive"
           ],
-          "reason": "Concrete state/transition definition listed. Preservation under generated transitions and semantic refinement against the legacy expression remain separate obligations."
+          "reason": "Allocation advances one run counter at admission. The legacy delivered trace is a non-reentrant projection; a peer may observe a nested higher sequence before the outer lower sequence."
         },
         {
           "name": "DiagnosticsFollowOriginal",
@@ -627,7 +628,7 @@
           "targetDefinitions": [
             "events.alwaysDiagnosticsFollowOriginal"
           ],
-          "reason": "Concrete state/transition definition listed. Preservation under generated transitions and semantic refinement against the legacy expression remain separate obligations."
+          "reason": "Agent fanout completes before reports and warning; the warning holds parent lineage. Zero or multiple forwarded errors are represented separately from the legacy single-failure scenario."
         },
         {
           "name": "SessionUsesCallerOrRun",
@@ -661,10 +662,10 @@
           "status": "generalized-vocabulary",
           "category": "finite-simulation-domain",
           "targetDefinitions": [
-            "events.channelValues",
+            "events.ListenerChannel",
             "events.Subscription"
           ],
-          "reason": "Legacy fixed channel names are sampling vocabulary; listeners retain channel strings and callback generations."
+          "reason": "The runtime has two live listener maps, with independent registration keys and generation-owned disposal."
         },
         {
           "name": "Heartbeats",
@@ -711,9 +712,12 @@
           "status": "candidate-correspondence-unproved",
           "category": "safety-invariant",
           "targetDefinitions": [
-            "events.deliverListener"
+            "events.detach",
+            "events.nextListener",
+            "events.stepListenerBeginsAtNextPosition",
+            "events.leadsToEventIdle"
           ],
-          "reason": "Concrete state/transition definition listed. Preservation under generated transitions and semantic refinement against the legacy expression remain separate obligations."
+          "reason": "An exact removal skips that generation without invalidating the live insertion cursor or other registrations. Progress assumes finite callback reentry and membership changes."
         },
         {
           "name": "HeartbeatStatusMatchesIndicator",
@@ -747,9 +751,12 @@
           "status": "candidate-correspondence-unproved",
           "category": "liveness",
           "targetDefinitions": [
-            "events.leadsToEventIdle + deliverListener"
+            "events.detach",
+            "events.nextListener",
+            "events.stepListenerBeginsAtNextPosition",
+            "events.leadsToEventIdle"
           ],
-          "reason": "Concrete state/transition definition listed. Preservation under generated transitions and semantic refinement against the legacy expression remain separate obligations."
+          "reason": "An exact removal skips that generation without invalidating the live insertion cursor or other registrations. Progress assumes finite callback reentry and membership changes."
         }
       ],
       "cases": {
@@ -818,7 +825,7 @@
           }
         ]
       },
-      "remainingGap": "Dynamic per-run clocks, snapshot callback handles and exact-generation detachment modeled. Collection proofs, synchronous reentrant emission and source refinement remain unverified."
+      "remainingGap": "Native listener payloads and error forwarding require adapter conformance. Legacy delivery-order correspondence is conditional on non-reentrant callbacks and matching diagnostic availability."
     },
     {
       "legacyFile": "packages/core/quint/ConnectorDispatch.qnt",
