@@ -19,6 +19,13 @@ updates a client without a Worker or Pages release. Unknown or disabled clients
 fail closed. The canonical Pages configuration retains the environment's API
 service binding; it has no per-client callback variable.
 
+After both database cutovers are certified, the canonical release retires only
+the three old Worker registry bindings and the Pages callback variable. The
+Worker removal is versioned. Pages removal preserves other project variables
+and checks the exact deployed source after upload. After provider and database
+readback, remove the old app ID and client JSON environment secrets and Android
+asset-link environment variable from GitHub. Keep the global enable setting.
+
 Homepage readiness and DNS operations belong here. Invoke them with
 `bun run --cwd packages/cloud/scripts homepage:check` or `homepage:dns`.
 

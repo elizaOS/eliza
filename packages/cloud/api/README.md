@@ -206,17 +206,9 @@ is the existing broad user/organization capability, not a narrower permission cl
 Native registration lives in `mobile_app_auth_clients`. It binds a unique client
 ID to an approved app, exact redirect URI, enabled state, credential lifetime,
 optional Android package and fingerprints, and optional browser sign-in paths.
-Only reviewed administrator or migration changes can write this table.
-Before the first runtime cutover, run the protected Native App Auth Database
-Migration workflow for each environment. It imports the exact existing client,
-Android and deployed Pages configuration in one transaction, then verifies the
-complete import. An absent source, ambiguous app or conflicting row refuses the
-import. Keep the old runtime deployed until this succeeds. Later registrations
-and renames are reviewed database changes. The first database-only release runs
-the import before activation if no completion marker exists. Later releases
-validate only the marker's environment, schema version and database identity;
-they do not require the original client rows or legacy inputs. Remove this
-temporary import phase after both environments complete cutover. Client
+Only reviewed database changes can write this table. Normal releases do not
+import the retired deployment registry or restore its historical clients.
+Migrations and the original import receipt remain for recovery and audit. Client
 IDs are independent of Android package names. The API, Digital Asset Links and
 hosted fallback read the same rows, so changes take effect without a release.
 Unknown or disabled clients fail closed. No deployment secret stores client
@@ -780,10 +772,3 @@ It does not repeat the DELETE or accept a 404 as success. Escalate the original 
 and repository ID to an operator; this release has no automatic evidence-import
 endpoint. Independent original provider evidence is required before an operator
 can reconcile that receipt. The app and its deletion fence remain retained.
-
-Before the database-only native App Auth runtime is released, run the protected
-Native App Auth Database Migration workflow for each environment. It imports
-the exact existing registrations, Android associations and deployed Pages
-callback configuration in one transaction. The follow-up verification compares
-the full imported snapshot. The old runtime remains in use until that preparation
-succeeds. This preparation adds storage; it does not enable database-backed auth.

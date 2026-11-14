@@ -586,6 +586,31 @@
         "release refuses a conflicting identity, unsupported marker version, or incompatible schema",
         "release refuses to bind a preparation marker after imported rows changed"
       ]
+    },
+    {
+      "file": "packages/cloud/scripts/ensure-worker-secret-absent.test.ts",
+      "required": [
+        "post-cutover retirement removes only the three legacy native secrets in either environment",
+        "strict secret retirement refuses an unexpected plain_text binding",
+        "strict secret retirement refuses an unexpected json binding",
+        "staging retirement preserves every other binding, including the complete Stripe catalog",
+        "plain-text retirement refuses a same-name secret without deleting it",
+        "legacy secret retirement preserves the configured plain-text onboarding URL",
+        "retirement does not report success if the name remains under a different type"
+      ]
+    },
+    {
+      "file": "packages/cloud/scripts/retire-pages-native-callback-binding.test.ts",
+      "required": [
+        "retires only the selected Pages callback field and preserves other variables, bindings and config hash",
+        "verifies the exact deployed source and both retired-name inventories without mutation",
+        "refuses ambiguous current staging deployments before any mutation",
+        "refuses malformed Pages binding types without mutation",
+        "refuses unverified Pages removal or changes to other variables",
+        "Pages provider failures disclose no response, token or binding value",
+        "Pages retirement runs after source and production checks before canonical upload",
+        "production CLI refuses an uncertified PATCH and leaves verification read-only"
+      ]
     }
   ],
   "MobileClientCompatibility.qnt": [
