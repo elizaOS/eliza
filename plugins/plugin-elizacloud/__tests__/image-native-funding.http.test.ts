@@ -2,6 +2,9 @@
 import { createServer } from "node:http";
 import type { IAgentRuntime } from "@elizaos/core";
 import { expect, test } from "vitest";
+import { applyNativeCloudRuntimeProfile } from "../../../packages/app/src/runtime/native-runtime-profile";
+import { resolveElizaCloudTopology } from "../../../packages/host/src/contracts/cloud-topology";
+import { registerCloudMediaModels } from "../src/index";
 import { handleImageDescription } from "../src/models/image";
 
 test("native image funding retains one operation across retries and preserves prepaid and failure boundaries", async () => {
@@ -48,7 +51,47 @@ test("native image funding retains one operation across retries and preserves pr
   };
   const input = { imageUrl: "data:image/png;base64,AA==", prompt: "Describe the synthetic image" };
   try {
-    expect((await handleImageDescription(runtime(true), input)).description).toBe("A green square");
+    // Exercise the boot route and actual plugin registry before the handler.
+    // The old native profile left media disabled, so this delegate did not exist.
+    let config: Record<string, unknown> = {};
+    await applyNativeCloudRuntimeProfile(
+      {
+        ELIZA_RUNTIME_PROFILE: "cloud",
+        ELIZAOS_CLOUD_BASE_URL: "https://cloud.example.com/api/v1",
+        ELIZAOS_CLOUD_SMALL_MODEL: "cerebras/qwen-3.8-27b",
+        ELIZAOS_CLOUD_LARGE_MODEL: "cerebras/qwen-3.8-27b",
+      },
+      { apiBaseUrl: "https://cloud.example.com/api/v1" },
+      {
+        loadConfig: () => config,
+        saveConfig: (next) => {
+          config = next;
+        },
+        updateRoutingPreferences: async () => {},
+      }
+    );
+    const registered = new Map<string, typeof handleImageDescription>();
+    let imageProvider: string | undefined;
+    const selectedRuntime = runtime(true);
+    const readSetting = selectedRuntime.getSetting.bind(selectedRuntime);
+    selectedRuntime.getSetting = (key: string) =>
+      key === "ELIZAOS_CLOUD_USE_MEDIA"
+        ? String(resolveElizaCloudTopology(config).services.media)
+        : readSetting(key);
+    selectedRuntime.registerModel = ((
+      model: string,
+      handler: typeof handleImageDescription,
+      provider: string
+    ) => {
+      if (model === "IMAGE_DESCRIPTION") imageProvider = provider;
+      registered.set(model, handler);
+    }) as IAgentRuntime["registerModel"];
+    registerCloudMediaModels(selectedRuntime);
+    const describe = registered.get("IMAGE_DESCRIPTION");
+    expect(describe).toBe(handleImageDescription);
+    expect(imageProvider).toBe("elizaOSCloud");
+    if (!describe) throw Error("Cloud image delegate missing after native boot");
+    expect((await describe(selectedRuntime, input)).description).toBe("A green square");
     expect(requests).toHaveLength(1);
     requests.length = 0;
     mode = "cancel-warming";

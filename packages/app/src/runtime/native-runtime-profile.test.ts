@@ -1,6 +1,8 @@
+import { resolveElizaCloudTopology } from "@elizaos/host/protocol";
 import { describe, expect, test } from "vitest";
 import {
   applyNativeCloudRuntimeProfile,
+  applyNativeDirectRuntimeProfile,
   applyNativeRuntimeProfileEnvironment,
   MISSED_OCCURRENCES_ENV,
   NATIVE_RUNTIME_PROFILES,
@@ -189,7 +191,7 @@ describe("applying a profile before boot", () => {
     });
   });
 
-  test("the Cloud QA profile writes the Cloud embedding route", async () => {
+  test("the Cloud QA profile enables media registration and pins image descriptions to its selected provider", async () => {
     const { value, state } = stores({});
     await applyNativeCloudRuntimeProfile(
       env("cloud"),
@@ -199,8 +201,62 @@ describe("applying a profile before boot", () => {
     expect(state.saved).toMatchObject({
       serviceRouting: {
         embeddings: { backend: "elizacloud", transport: "cloud-proxy" },
+        media: { backend: "elizacloud", transport: "cloud-proxy" },
       },
     });
+    expect(resolveElizaCloudTopology(state.saved).services.media).toBe(true);
+    expect(state.routing).toMatchObject({
+      preferredProvider: { IMAGE_DESCRIPTION: "elizaOSCloud" },
+      policy: { IMAGE_DESCRIPTION: "manual", TEXT_TO_SPEECH: "local-only" },
+    });
+  });
+
+  test("Cloud to Direct to Cloud replaces the image route without changing owner data or speech", async () => {
+    let config: Record<string, unknown> = { ownerData: { note: "retained" } };
+    let routing = { preferredProvider: {}, policy: {} };
+    const store: NativeRuntimeProfileStores = {
+      loadConfig: () => structuredClone(config),
+      saveConfig: (next) => {
+        config = structuredClone(next);
+      },
+      updateRoutingPreferences: async (update) => {
+        routing = update(routing);
+      },
+    };
+    await applyNativeCloudRuntimeProfile(
+      env("cloud"),
+      { apiBaseUrl: API_BASE },
+      store,
+    );
+    expect(resolveElizaCloudTopology(config).services.media).toBe(true);
+    const direct = {
+      ELIZA_RUNTIME_PROFILE: "cloud",
+      ELIZA_PROVIDER: "cerebras",
+      CEREBRAS_API_KEY: "fixture-key",
+      CEREBRAS_SMALL_MODEL: "qwen-3.8-27b",
+      CEREBRAS_LARGE_MODEL: "qwen-3.8-27b",
+      ELIZAOS_CLOUD_USE_INFERENCE: "false",
+    };
+    await applyNativeDirectRuntimeProfile(direct, store);
+    expect(resolveElizaCloudTopology(config).services.media).toBe(false);
+    expect(routing).toMatchObject({
+      preferredProvider: { IMAGE_DESCRIPTION: "openai" },
+      policy: { IMAGE_DESCRIPTION: "manual", TRANSCRIPTION: "local-only" },
+    });
+    expect(direct).toHaveProperty(
+      "OPENAI_IMAGE_DESCRIPTION_MODEL",
+      "qwen-3.8-27b",
+    );
+    await applyNativeCloudRuntimeProfile(
+      env("cloud"),
+      { apiBaseUrl: API_BASE },
+      store,
+    );
+    expect(resolveElizaCloudTopology(config).services.media).toBe(true);
+    expect(routing).toMatchObject({
+      preferredProvider: { IMAGE_DESCRIPTION: "elizaOSCloud" },
+    });
+    expect(config.ownerData).toEqual({ note: "retained" });
   });
 
   test("an incomplete or foreign binding writes nothing", async () => {
