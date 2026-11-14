@@ -20,7 +20,7 @@ The examined consumer pin lists no patches in
 | Alpha Camera preview, recordings and scan documents. | [Viewfinder and recording custody](./mobileCameraCapture.md), [document scan review and export](./mobileDocumentScan.md), and [assistant photo receipt](./mobileDeviceCamera.md) |
 | Grace updater and the upstream trust AAR. | [OTA admission](./mobileOta.md), [WebView health evidence](./mobileOtaUiHealth.md), and [installation journal](./mobileInstall.md) |
 | Grace launcher network setup and Internet Settings. | [Wi-Fi discovery and approved join](./mobileWifi.md) |
-| Alpha Android document picker and selected-file operations. | [Selected-document grant custody](./mobileSelectedDocumentGrants.md) |
+| Alpha Android document picker and selected-file operations. | [Selected-document grant custody](./mobileSelectedDocumentGrants.md) and [Files preview and read-only handoff](./mobileFilesReadHandoff.md) |
 | Alpha Android Files moves, restores, and removes exact items. | [Native Files mutation custody](./mobileFilesMutationCustody.md) |
 | Alpha Inbox and Notes open a reviewed PDF without an external viewer. | [Isolated PDF fallback](./mobileIsolatedPdf.md) |
 | Grace and AlphaPhone Android contact picker and Alpha contact edits. | [Address book reads and reviewed writes](./mobileContacts.md) |

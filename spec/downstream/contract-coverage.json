@@ -21,8 +21,8 @@
         "test-only-source"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/grace/taskOwner.md",
-      "coverage": "related-contract"
+      "relatedSpec": "spec/downstream/grace/nativeConversationOwnership.md",
+      "coverage": "direct-contract"
     },
     {
       "source": "packages/agent/native-host/private-runtime-json.mjs",
@@ -4120,6 +4120,31 @@
         "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/PdfPageLimits.java"
       ],
       "relatedSpec": "spec/downstream/mobileIsolatedPdf.md"
+    },
+    {
+      "consumer": "AlphaPhone",
+      "consumerPaths": [
+        "android/app/src/main/java/ai/alphacompute/alphaphone/AlphaFilesPlugin.java",
+        "android/app/src/main/AndroidManifest.xml",
+        "apps/app/src/prototype/selection-adapter.ts"
+      ],
+      "producerPaths": [
+        "plugins/plugin-native-filesystem/android/src/main/java/ai/eliza/plugins/filesystem/browser/ReadOnlyStorageFileProvider.java",
+        "plugins/plugin-files/src/browser/files-browser-adapter.ts"
+      ],
+      "relatedSpec": "spec/downstream/mobileFilesReadHandoff.md"
+    },
+    {
+      "consumer": "Grace",
+      "consumerPaths": [
+        "apps/app/host/local-agent-gateway.ts",
+        "apps/app/native/java/technology/graceful/grace/LocalRuntimeService.java"
+      ],
+      "producerPaths": [
+        "packages/host/native-host/gateway-bootstrap.mjs",
+        "packages/agent/native-host/gateway.mjs"
+      ],
+      "relatedSpec": "spec/downstream/grace/nativeConversationOwnership.md"
     }
   ]
 }
