@@ -4254,6 +4254,35 @@
         "packages/app/src/runtime/managed-google-agent/managed-google-agent-host.ts"
       ],
       "relatedSpec": "spec/downstream/alpha/nativeGoogleAccessFile.md"
+    },
+    {
+      "consumer": "Grace",
+      "consumerPaths": [
+        "apps/app/native/java/technology/graceful/grace/LocalRuntimeService.java",
+        "apps/app/native/java/technology/graceful/grace/TaskDataKeys.java"
+      ],
+      "producerPaths": [
+        "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/RuntimeInstallationIdentity.java",
+        "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/EmbeddedRuntimeLaunch.java",
+        "packages/agent/src/runtime/runtime-installation-id.ts",
+        "packages/agent/src/runtime/eliza.ts"
+      ],
+      "relatedSpec": "spec/downstream/mobileRuntimeIdentity.md"
+    },
+    {
+      "consumer": "AlphaPhone",
+      "consumerPaths": [
+        "scripts/build-archive.ts",
+        "scripts/stage-local-agent-sources.ts"
+      ],
+      "producerPaths": [
+        "packages/app/scripts/mobile/android/resident-host-sources.mjs",
+        "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaAgentService.java",
+        "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/RuntimeInstallationIdentity.java",
+        "packages/agent/src/runtime/runtime-installation-id.ts",
+        "packages/agent/src/runtime/eliza.ts"
+      ],
+      "relatedSpec": "spec/downstream/mobileRuntimeIdentity.md"
     }
   ]
 }
