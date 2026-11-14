@@ -19,6 +19,7 @@ activation on a physical device.
 | `scripts/prepare-client-features.ts`, `tsconfig.json`, `vite.config.ts` | [Authenticated source projection and publication](./clientPublication.md) |
 | `scripts/qualify-head.ts` | [Required browser reports](../browserQualification.md) and [installed APK campaign evidence](./candidateQualification.md) |
 | `apps/app/src/product/alpha-product.ts`, `apps/app/src/prototype/model.js` | [Versioned product registration and admission](./product.md), [shell navigation, overlays and drafts](./navigation.md), [launcher and retained choices](./launcher.md) |
+| `apps/app/src/prototype/home-shell.ts`, Eliza `mobile-launcher.ts` | [Launcher inventory, exact Android handoff, and observation](./launcherInventory.md) |
 | `apps/app/src/startup-permission-flow.ts`, `apps/app/src/startup-permissions.tsx` | [Shared permission step](./permissionStep.md), [Alpha access setup](./permissions.md) |
 | `apps/app/src/prototype/settings-adapter.ts`, `system-shade.ts`, `runtime/always-on-listener.ts`, `AlphaApplication.java` | [Native reset, problem journal, Settings, shade and listener custody](./system.md) |
 | `apps/app/src/runtime/view-focus.ts` | [Screen focus ownership, priority, and restoration](./screenFocus.md) |
