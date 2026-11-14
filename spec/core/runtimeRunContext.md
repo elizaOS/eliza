@@ -23,7 +23,14 @@ pure def canBeginInitialization(s: RuntimeRunContext): bool = R::canBeginInitial
 pure def beginInitialization(s: RuntimeRunContext): RuntimeRunContext = { ...s, kernel: R::beginInitialization(s.kernel) }
 pure def canCompleteInitialization(s: RuntimeRunContext, ok: bool): bool = R::canCompleteInitialization(s.kernel, ok)
 pure def completeInitialization(s: RuntimeRunContext, ok: bool): RuntimeRunContext = { ...s, kernel: R::completeInitialization(s.kernel, ok) }
-pure def stepContextDoesNotMutateKernel(before: RuntimeRunContext, via: str, after: RuntimeRunContext): bool = (via == "startRun" or via == "endRun" or via == "getCurrentRun") implies after.kernel == before.kernel
+pure def sameRuntimeLifecycle(left: R::Runtime, right: R::Runtime): bool =
+  left.initPhase == right.initPhase and left.stopPhase == right.stopPhase and
+  left.initWaitersReleased == right.initWaitersReleased and left.admissionOpen == right.admissionOpen and
+  left.activeTurns == right.activeTurns and left.pendingDeliveries == right.pendingDeliveries and
+  left.pendingServices == right.pendingServices and left.pendingBeforeClose == right.pendingBeforeClose and
+  left.fast == right.fast and left.prepareCalls == right.prepareCalls and
+  left.retirementFailed == right.retirementFailed and left.strictSuccess == right.strictSuccess and left.adapterClosed == right.adapterClosed
+pure def stepContextDoesNotMutateKernel(before: RuntimeRunContext, via: str, after: RuntimeRunContext): bool = (via == "startRun" or via == "endRun" or via == "getCurrentRun") implies sameRuntimeLifecycle(after.kernel, before.kernel)
 pure def stepLookupKeepsRoom(before: RuntimeRunContext, via: str, after: RuntimeRunContext): bool = via == "getCurrentRun" implies after.roomId == before.roomId
 pure def sometimesRunWithoutRoom(s: RuntimeRunContext): bool = s.runId != "" and s.roomId == ""
 ```
