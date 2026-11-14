@@ -338,7 +338,8 @@
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
         "spec/core/requestIssuer.md",
-        "spec/core/requestCompletions.md"
+        "spec/core/requestCompletions.md",
+        "spec/core/requestAuthorityRegistry.md"
       ]
     },
     {

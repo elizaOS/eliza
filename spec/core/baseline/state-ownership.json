@@ -405,7 +405,7 @@
             "wrapDenialError",
             "transferDenial"
           ],
-          "specSha256": "b0030a8e15e34fd39111d6748309d898205c763ec786f34095d123cb61a4ef3e"
+          "specSha256": "4b00920e9343cd0333d4d4b72614b0e599ad13571d4d9329770913988e8b71d6"
         },
         "associatedModels": [
           {
@@ -445,7 +445,7 @@
               "wrapDenialError",
               "transferDenial"
             ],
-            "specSha256": "b0030a8e15e34fd39111d6748309d898205c763ec786f34095d123cb61a4ef3e"
+            "specSha256": "4b00920e9343cd0333d4d4b72614b0e599ad13571d4d9329770913988e8b71d6"
           },
           {
             "spec": "spec/core/requestIssuer.md",
@@ -493,7 +493,7 @@
               "wrapDenialError",
               "transferDenial"
             ],
-            "specSha256": "5bf43b4af1f8c831c1ebf416ff4dfaa37875b7707e17c589b8e79899b24e0f27"
+            "specSha256": "6c5cfa8a085423ed30abe4494a589e46b184c870f32296a3543e9d701bd25f05"
           }
         ],
         "mappedStateFields": [
@@ -566,7 +566,7 @@
             "wrapDenialError",
             "transferDenial"
           ],
-          "specSha256": "b0030a8e15e34fd39111d6748309d898205c763ec786f34095d123cb61a4ef3e"
+          "specSha256": "4b00920e9343cd0333d4d4b72614b0e599ad13571d4d9329770913988e8b71d6"
         },
         "associatedModels": [
           {
@@ -606,7 +606,7 @@
               "wrapDenialError",
               "transferDenial"
             ],
-            "specSha256": "b0030a8e15e34fd39111d6748309d898205c763ec786f34095d123cb61a4ef3e"
+            "specSha256": "4b00920e9343cd0333d4d4b72614b0e599ad13571d4d9329770913988e8b71d6"
           },
           {
             "spec": "spec/core/requestIssuer.md",
@@ -654,7 +654,7 @@
               "wrapDenialError",
               "transferDenial"
             ],
-            "specSha256": "5bf43b4af1f8c831c1ebf416ff4dfaa37875b7707e17c589b8e79899b24e0f27"
+            "specSha256": "6c5cfa8a085423ed30abe4494a589e46b184c870f32296a3543e9d701bd25f05"
           }
         ],
         "mappedStateFields": [
@@ -727,7 +727,7 @@
             "wrapDenialError",
             "transferDenial"
           ],
-          "specSha256": "b0030a8e15e34fd39111d6748309d898205c763ec786f34095d123cb61a4ef3e"
+          "specSha256": "4b00920e9343cd0333d4d4b72614b0e599ad13571d4d9329770913988e8b71d6"
         },
         "associatedModels": [
           {
@@ -767,7 +767,7 @@
               "wrapDenialError",
               "transferDenial"
             ],
-            "specSha256": "b0030a8e15e34fd39111d6748309d898205c763ec786f34095d123cb61a4ef3e"
+            "specSha256": "4b00920e9343cd0333d4d4b72614b0e599ad13571d4d9329770913988e8b71d6"
           },
           {
             "spec": "spec/core/requestIssuer.md",
@@ -815,7 +815,7 @@
               "wrapDenialError",
               "transferDenial"
             ],
-            "specSha256": "5bf43b4af1f8c831c1ebf416ff4dfaa37875b7707e17c589b8e79899b24e0f27"
+            "specSha256": "6c5cfa8a085423ed30abe4494a589e46b184c870f32296a3543e9d701bd25f05"
           }
         ],
         "mappedStateFields": [
@@ -850,7 +850,7 @@
       "sourceClassification": "owned-global-registry",
       "coverage": {
         "classification": "state-projection",
-        "representation": "The shared RequestRegistry composes independent issuer and completion owners with exact runtime, message, state-data, attempt, result and denial identities. Owner-only observations preserve each issuer’s original current-status callback and reject foreign associations; an owned copy that observes a changed source fingerprint permanently invalidates that result’s completion association. JavaScript WeakMap identity and reachability are adapter refinement obligations.",
+        "representation": "The shared RequestRegistry composes independent issuer and completion owners with exact runtime, message, state-data, attempt, result and denial identities. Owner-only observations preserve each issuer’s original current-status callback and reject foreign associations; an owned copy that observes a changed source fingerprint permanently invalidates that result’s completion association. JavaScript WeakMap identity and reachability are adapter refinement obligations. Mutation attempt mint captures registered action and family object identities, definition identities and fingerprints. Permission checking records the operation independently and preserves that capture.",
         "model": {
           "spec": "spec/core/requestAuthorityRegistry.md",
           "stateType": "RequestRegistry",
@@ -888,7 +888,7 @@
             "wrapDenialError",
             "transferDenial"
           ],
-          "specSha256": "b0030a8e15e34fd39111d6748309d898205c763ec786f34095d123cb61a4ef3e"
+          "specSha256": "4b00920e9343cd0333d4d4b72614b0e599ad13571d4d9329770913988e8b71d6"
         },
         "associatedModels": [
           {
@@ -928,7 +928,7 @@
               "wrapDenialError",
               "transferDenial"
             ],
-            "specSha256": "b0030a8e15e34fd39111d6748309d898205c763ec786f34095d123cb61a4ef3e"
+            "specSha256": "4b00920e9343cd0333d4d4b72614b0e599ad13571d4d9329770913988e8b71d6"
           },
           {
             "spec": "spec/core/requestIssuer.md",
@@ -976,7 +976,7 @@
               "wrapDenialError",
               "transferDenial"
             ],
-            "specSha256": "5bf43b4af1f8c831c1ebf416ff4dfaa37875b7707e17c589b8e79899b24e0f27"
+            "specSha256": "6c5cfa8a085423ed30abe4494a589e46b184c870f32296a3543e9d701bd25f05"
           }
         ],
         "mappedStateFields": [
@@ -1049,7 +1049,7 @@
             "wrapDenialError",
             "transferDenial"
           ],
-          "specSha256": "b0030a8e15e34fd39111d6748309d898205c763ec786f34095d123cb61a4ef3e"
+          "specSha256": "4b00920e9343cd0333d4d4b72614b0e599ad13571d4d9329770913988e8b71d6"
         },
         "associatedModels": [
           {
@@ -1089,7 +1089,7 @@
               "wrapDenialError",
               "transferDenial"
             ],
-            "specSha256": "b0030a8e15e34fd39111d6748309d898205c763ec786f34095d123cb61a4ef3e"
+            "specSha256": "4b00920e9343cd0333d4d4b72614b0e599ad13571d4d9329770913988e8b71d6"
           },
           {
             "spec": "spec/core/requestIssuer.md",
@@ -1137,7 +1137,7 @@
               "wrapDenialError",
               "transferDenial"
             ],
-            "specSha256": "5bf43b4af1f8c831c1ebf416ff4dfaa37875b7707e17c589b8e79899b24e0f27"
+            "specSha256": "6c5cfa8a085423ed30abe4494a589e46b184c870f32296a3543e9d701bd25f05"
           }
         ],
         "mappedStateFields": [
@@ -1172,7 +1172,7 @@
       "sourceClassification": "owned-global-registry",
       "coverage": {
         "classification": "state-projection",
-        "representation": "The shared RequestRegistry composes independent issuer and completion owners with exact runtime, message, state-data, attempt, result and denial identities. Owner-only observations preserve each issuer’s original current-status callback and reject foreign associations; an owned copy that observes a changed source fingerprint permanently invalidates that result’s completion association. JavaScript WeakMap identity and reachability are adapter refinement obligations.",
+        "representation": "The shared RequestRegistry composes independent issuer and completion owners with exact runtime, message, state-data, attempt, result and denial identities. Owner-only observations preserve each issuer’s original current-status callback and reject foreign associations; an owned copy that observes a changed source fingerprint permanently invalidates that result’s completion association. JavaScript WeakMap identity and reachability are adapter refinement obligations. Completion binds the exact captured registration and canonical child. A verified copy transfers the evidence, while a changed child or registration makes an inspected fact permanently stale.",
         "model": {
           "spec": "spec/core/requestAuthorityRegistry.md",
           "stateType": "RequestRegistry",
@@ -1210,7 +1210,7 @@
             "wrapDenialError",
             "transferDenial"
           ],
-          "specSha256": "b0030a8e15e34fd39111d6748309d898205c763ec786f34095d123cb61a4ef3e"
+          "specSha256": "4b00920e9343cd0333d4d4b72614b0e599ad13571d4d9329770913988e8b71d6"
         },
         "associatedModels": [
           {
@@ -1250,7 +1250,7 @@
               "wrapDenialError",
               "transferDenial"
             ],
-            "specSha256": "b0030a8e15e34fd39111d6748309d898205c763ec786f34095d123cb61a4ef3e"
+            "specSha256": "4b00920e9343cd0333d4d4b72614b0e599ad13571d4d9329770913988e8b71d6"
           },
           {
             "spec": "spec/core/requestIssuer.md",
@@ -1298,7 +1298,7 @@
               "wrapDenialError",
               "transferDenial"
             ],
-            "specSha256": "5bf43b4af1f8c831c1ebf416ff4dfaa37875b7707e17c589b8e79899b24e0f27"
+            "specSha256": "6c5cfa8a085423ed30abe4494a589e46b184c870f32296a3543e9d701bd25f05"
           }
         ],
         "mappedStateFields": [
