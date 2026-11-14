@@ -95,6 +95,36 @@ it("preserves authenticated native provenance across the full kernel and Hono ad
   }
 });
 
+it("frames an IPC schedule edit body for legacy handlers without HTTP headers", async () => {
+  const edit = JSON.stringify({
+    promptInstructions: "Good morning ☀",
+    trigger: {
+      kind: "cron",
+      expression: "0 8 * * *",
+      tz: "America/Los_Angeles",
+    },
+  });
+  const { req } = buildLegacyShim({
+    method: "POST",
+    path: "/api/lifeops/scheduled-tasks/morning/edit",
+    headers: { "content-type": "application/json" },
+    body: edit,
+    query: {},
+    params: {},
+  });
+  try {
+    expect(req.headers["content-length"]).toBe(String(Buffer.byteLength(edit)));
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(chunk);
+    expect(JSON.parse(Buffer.concat(chunks).toString())).toEqual(
+      JSON.parse(edit),
+    );
+  } finally {
+    req.destroy();
+    req.socket.destroy();
+  }
+});
+
 it("overwrites an HTTP client's spoofed native-provenance header", async () => {
   const { kernel } = fixture();
   const { req, res, captured } = buildLegacyShim({
