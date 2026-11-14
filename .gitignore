@@ -14,3 +14,4 @@ generated/
 storybook-static/
 .vibe/
 build/
+test-results/

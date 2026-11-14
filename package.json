@@ -30,14 +30,14 @@
     "all": "node vibestack/spec.ts tasks"
   },
   "version": "0.1.0",
-  "description": "Stories, rules and Quint in a Markdown spec tree; verified TypeScript out.",
+  "description": "Eliza core specifications and models on the Vibestack toolchain.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lalalune/vibestack.git"
+    "url": "git+https://github.com/elizaOS/eliza.git"
   },
-  "homepage": "https://github.com/lalalune/vibestack#readme",
-  "bugs": "https://github.com/lalalune/vibestack/issues",
+  "homepage": "https://github.com/elizaOS/eliza#readme",
+  "bugs": "https://github.com/elizaOS/eliza/issues",
   "keywords": [
     "formal-verification",
     "quint",

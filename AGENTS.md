@@ -72,7 +72,7 @@ directly.
 | [`prove` skill](.claude/skills/prove/SKILL.md) | a `proof` stage `✗`, writing a `.proof.dfy`, or a `//@` file |
 | [`design` skill](.claude/skills/design/SKILL.md) | anything a person looks at: layout, components, stories and tokens |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | generated files, tests, caching and CI; adding a package or task, or changing the tools under `vibestack/` |
-| [README.md](README.md#commands) | the commands, Studio, and [using the tools from another package](README.md#using-it-from-another-package) |
+| [Toolchain guide](vibestack/README.md#commands) | the commands, Studio, and [using the tools from another package](vibestack/README.md#using-it-from-another-package) |
 
 ## Hard rules
 
