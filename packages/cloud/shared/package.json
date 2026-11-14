@@ -275,6 +275,7 @@
     "./lib/services/ai-billing": "./src/lib/services/ai-billing.ts",
     "./lib/services/ai-billing-records": "./src/lib/services/ai-billing-records.ts",
     "./lib/services/ai-billing-settled": "./src/lib/services/ai-billing-settled.ts",
+    "./lib/services/allowance-first-credits": "./src/lib/services/allowance-first-credits.ts",
     "./lib/services/ai-pricing": "./src/lib/services/ai-pricing.ts",
     "./lib/services/ai-pricing-definitions": "./src/lib/services/ai-pricing-definitions.ts",
     "./lib/services/ai-pricing/cache": "./src/lib/services/ai-pricing/cache.ts",

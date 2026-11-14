@@ -24,9 +24,12 @@ import {
   type MapsCoverage,
   type MapsCoverageRegion,
   type MapsManeuver,
+  type MapsOperation,
   type MapsPlace,
   type MapsPlaceDetailsRequest,
+  type MapsPriceObserver,
   type MapsProviderAdapter,
+  type MapsProviderPrice,
   type MapsReverseRequest,
   type MapsRoute,
   type MapsRouteStep,
@@ -300,6 +303,68 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
     this.now = config.now ?? Date.now;
   }
 
+  creditPrice(operation: MapsOperation, request: unknown): MapsProviderPrice {
+    // Google global first paid tier, USD per request, retrieved 2026-11-13.
+    // Account-wide free caps and volume discounts are invoice reconciliation inputs.
+    // https://developers.google.com/maps/billing-and-pricing/pricing
+    if (operation === "reverse" && (request as MapsReverseRequest).preferPlace)
+      return {
+        amountUsd: 0.037,
+        sku: "99F9-A108-83A6+BAC8-4E68-E261",
+        priceVersion: "google-global-2026-11-13",
+      };
+    const prices = {
+      search: [0.032, "4FDA-34B1-A910"],
+      details: [0.02, "2D9A-3DE0-3766"],
+      geocode: [0.005, "BAC8-4E68-E261"],
+      reverse: [0.005, "BAC8-4E68-E261"],
+      tiles: [0.0006, "0164-F76D-680A"],
+      coverage: [0, "metadata"],
+      viewport: [0, "metadata"],
+    } as const;
+    const traffic =
+      operation === "routes" && this.traffic && (request as MapsRoutesRequest).mode === "drive";
+    const [amountUsd, sku]: readonly [number, string] =
+      operation === "routes"
+        ? traffic
+          ? [0.01, "02F7-1B55-DC90"]
+          : [0.005, "9EFF-679A-9B16"]
+        : prices[operation];
+    return { amountUsd, sku, priceVersion: "google-global-2026-11-13" };
+  }
+
+  private billableFetch(
+    url: URL,
+    init: RequestInit,
+    signal: AbortSignal | undefined,
+    observer: MapsPriceObserver | undefined,
+    price: MapsProviderPrice | undefined,
+    accept?: readonly number[],
+  ): Promise<Response> {
+    const fetchImpl = observer
+      ? new Proxy(this.fetchImpl ?? fetch, {
+          async apply(target, receiver, args) {
+            await observer.beforeRequest?.();
+            const response: Response = await Reflect.apply(target, receiver, args);
+            // Google bills successful no-result/unknown-place responses too.
+            // Authentication, quota and server errors are not billable; a 400
+            // can be billable or not, so leave an unclassified result unknown.
+            // https://developers.google.com/maps/reporting-and-monitoring/reporting
+            if ((response.status === 200 || response.status === 404) && price) observer(price);
+            else if (
+              response.status === 401 ||
+              response.status === 403 ||
+              response.status === 429 ||
+              response.status >= 500
+            )
+              observer.requestRejected?.();
+            return response;
+          },
+        })
+      : this.fetchImpl;
+    return upstreamFetch(url, init, signal, fetchImpl, accept);
+  }
+
   coverage(): MapsCoverage {
     return {
       providerId: this.providerId,
@@ -350,7 +415,11 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
     };
   }
 
-  async search(request: MapsTextSearchRequest, signal?: AbortSignal): Promise<MapsPlace[]> {
+  async search(
+    request: MapsTextSearchRequest,
+    signal?: AbortSignal,
+    reportPrice?: MapsPriceObserver,
+  ): Promise<MapsPlace[]> {
     if (request.near) this.requireCovered(request.near);
     const body: Record<string, unknown> = {
       textQuery: request.query,
@@ -368,7 +437,7 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
           }
         : {}),
     };
-    const response = await upstreamFetch(
+    const response = await this.billableFetch(
       new URL(SEARCH_TEXT_URL),
       {
         method: "POST",
@@ -376,7 +445,8 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
         body: JSON.stringify(body),
       },
       signal,
-      this.fetchImpl,
+      reportPrice,
+      this.creditPrice("search", request),
     );
     if (response.status !== 200) throw invalidResponse(response.status);
     const json = await responseJson(response);
@@ -387,7 +457,11 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
     return this.covered(places.map((entry) => this.placeCandidate(entry)));
   }
 
-  async geocode(request: MapsTextSearchRequest, signal?: AbortSignal): Promise<MapsPlace[]> {
+  async geocode(
+    request: MapsTextSearchRequest,
+    signal?: AbortSignal,
+    reportPrice?: MapsPriceObserver,
+  ): Promise<MapsPlace[]> {
     if (request.near) this.requireCovered(request.near);
     const url = new URL(GEOCODE_URL);
     url.searchParams.set("address", request.query);
@@ -400,14 +474,18 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
       const east = Math.min(180, longitude + 0.25);
       url.searchParams.set("bounds", `${south},${west}|${north},${east}`);
     }
-    const results = await this.geocoding(url, signal);
+    const results = await this.geocoding(url, signal, reportPrice);
     return this.covered(results.slice(0, request.limit ?? 10));
   }
 
-  async reverse(request: MapsReverseRequest, signal?: AbortSignal): Promise<MapsPlace | null> {
+  async reverse(
+    request: MapsReverseRequest,
+    signal?: AbortSignal,
+    reportPrice?: MapsPriceObserver,
+  ): Promise<MapsPlace | null> {
     this.requireCovered(request.coordinate);
     if (request.preferPlace) {
-      const response = await upstreamFetch(
+      const response = await this.billableFetch(
         new URL(SEARCH_NEARBY_URL),
         {
           method: "POST",
@@ -423,37 +501,46 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
           }),
         },
         signal,
-        this.fetchImpl,
+        reportPrice,
+        { amountUsd: 0.032, sku: "99F9-A108-83A6", priceVersion: "google-global-2026-11-13" },
       );
       if (response.status !== 200) throw invalidResponse(response.status);
+
       const body = await responseJson(response);
       if (!body || typeof body !== "object" || Array.isArray(body)) throw invalidResponse();
       const places = (body as { places?: unknown }).places;
       if (places !== undefined && (!Array.isArray(places) || places.length > 1))
         throw invalidResponse();
       const [nearest] = this.covered((places ?? []).map((entry) => this.placeCandidate(entry)));
-      if (nearest) return nearest;
+      if (nearest) {
+        return nearest;
+      }
     }
     const url = new URL(GEOCODE_URL);
     url.searchParams.set(
       "latlng",
       `${request.coordinate.latitude},${request.coordinate.longitude}`,
     );
-    const [first] = await this.geocoding(url, signal);
+    const [first] = await this.geocoding(url, signal, reportPrice);
     return first ? this.place(first) : null;
   }
 
-  async details(request: MapsPlaceDetailsRequest, signal?: AbortSignal): Promise<MapsPlace | null> {
+  async details(
+    request: MapsPlaceDetailsRequest,
+    signal?: AbortSignal,
+    reportPrice?: MapsPriceObserver,
+  ): Promise<MapsPlace | null> {
     if (!GOOGLE_PLACE_ID.test(request.id))
       throw new MapsServiceError("invalid_request", "The place id is not valid for this provider.");
     const url = new URL(`places/${encodeURIComponent(request.id)}`, PLACES_URL);
     if (this.language) url.searchParams.set("languageCode", this.language);
     if (this.region) url.searchParams.set("regionCode", this.region);
-    const response = await upstreamFetch(
+    const response = await this.billableFetch(
       url,
       { method: "GET", headers: this.googleHeaders(DETAILS_FIELDS) },
       signal,
-      this.fetchImpl,
+      reportPrice,
+      this.creditPrice("details", request),
       [200, 400, 404],
     );
     // A place id Google no longer knows (or never issued) has no details.
@@ -465,7 +552,11 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
     return this.place(candidate);
   }
 
-  async routes(request: MapsRoutesRequest, signal?: AbortSignal): Promise<MapsRoute[]> {
+  async routes(
+    request: MapsRoutesRequest,
+    signal?: AbortSignal,
+    reportPrice?: MapsPriceObserver,
+  ): Promise<MapsRoute[]> {
     if (request.mode === "transit" && !this.transit)
       throw new MapsServiceError(
         "unsupported_mode",
@@ -495,7 +586,7 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
     const waypoint = (point: MapsCoordinate) => ({
       location: { latLng: { latitude: point.latitude, longitude: point.longitude } },
     });
-    const response = await upstreamFetch(
+    const response = await this.billableFetch(
       new URL(ROUTES_URL),
       {
         method: "POST",
@@ -517,7 +608,8 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
         }),
       },
       signal,
-      this.fetchImpl,
+      reportPrice,
+      this.creditPrice("routes", request),
     );
     if (response.status !== 200) throw invalidResponse(response.status);
     const json = await responseJson(response);
@@ -561,16 +653,20 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
     );
   }
 
-  async tile(request: MapsTileRequest, signal?: AbortSignal): Promise<MapsTile> {
+  async tile(
+    request: MapsTileRequest,
+    signal?: AbortSignal,
+    reportPrice?: MapsPriceObserver,
+  ): Promise<MapsTile> {
     if (!this.tiles)
       throw new MapsServiceError("maps_not_configured", "Map tiles are not configured.");
     let session = await this.tileSession(signal);
-    let response = await this.fetchTile(request, session, signal);
+    let response = await this.fetchTile(request, session, signal, reportPrice);
     if (response.status === 401 || response.status === 403) {
       // A revoked or expired session is renewed once; a second refusal is a configuration fault.
       tileSessions.delete(this.tileSessionKey());
       session = await this.tileSession(signal);
-      response = await this.fetchTile(request, session, signal);
+      response = await this.fetchTile(request, session, signal, reportPrice);
     }
     if (response.status === 404)
       throw new MapsServiceError("unsupported_region", "No map tile is available here.");
@@ -617,8 +713,7 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
       maxZoomRects?: unknown;
     } | null;
     const copyright = boundedText(json?.copyright, 500);
-    if (copyright === undefined && json?.copyright !== undefined && json.copyright !== "")
-      throw invalidResponse();
+    if (!copyright) throw invalidResponse();
     const maxZoom = Array.isArray(json?.maxZoomRects)
       ? json.maxZoomRects.reduce<number | undefined>((best, rect) => {
           const zoom = finiteNumber((rect as { maxZoom?: unknown } | null)?.maxZoom);
@@ -627,7 +722,7 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
       : undefined;
     return {
       providerId: this.providerId,
-      copyright: copyright ?? TILE_ATTRIBUTION,
+      copyright,
       ...(maxZoom !== undefined ? { maxZoom } : {}),
     };
   }
@@ -636,11 +731,20 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
     request: MapsTileRequest,
     session: TileSession,
     signal?: AbortSignal,
+    reportPrice?: MapsPriceObserver,
   ): Promise<Response> {
     const url = new URL(`2dtiles/${request.z}/${request.x}/${request.y}`, TILES_URL);
     url.searchParams.set("session", session.token);
     url.searchParams.set("key", this.apiKey);
-    return upstreamFetch(url, { method: "GET" }, signal, this.fetchImpl, [200, 401, 403, 404]);
+    // Fetch the current tile without retaining provider content in an HTTP cache.
+    return this.billableFetch(
+      url,
+      { method: "GET", cache: "no-store" },
+      signal,
+      reportPrice,
+      this.creditPrice("tiles", request),
+      [200, 401, 403, 404],
+    );
   }
 
   private tileSessionKey(): string {
@@ -700,27 +804,38 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
     };
   }
 
-  private async geocoding(url: URL, signal?: AbortSignal): Promise<MapsPlaceCandidate[]> {
+  private async geocoding(
+    url: URL,
+    signal?: AbortSignal,
+    reportPrice?: MapsPriceObserver,
+  ): Promise<MapsPlaceCandidate[]> {
     url.searchParams.set("key", this.apiKey);
     if (this.language) url.searchParams.set("language", this.language);
     if (this.region) url.searchParams.set("region", this.region.toLowerCase());
-    const response = await upstreamFetch(
+    const response = await this.billableFetch(
       url,
       { method: "GET", headers: { accept: "application/json" } },
       signal,
-      this.fetchImpl,
+      reportPrice,
+      undefined,
+      [200, 400, 404],
     );
-    if (response.status !== 200) throw invalidResponse(response.status);
     const json = (await responseJson(response)) as { status?: unknown; results?: unknown } | null;
     switch (json?.status) {
       case "OK":
+        if (response.status !== 200) throw invalidResponse(response.status);
+        reportPrice?.(this.creditPrice("geocode", {}));
         break;
       case "ZERO_RESULTS":
+        if (response.status !== 200 && response.status !== 404)
+          throw invalidResponse(response.status);
+        reportPrice?.(this.creditPrice("geocode", {}));
         return [];
       case "OVER_QUERY_LIMIT":
       case "OVER_DAILY_LIMIT":
       case "REQUEST_DENIED":
       case "UNKNOWN_ERROR":
+        reportPrice?.requestRejected?.();
         throw unavailable(json.status);
       default:
         throw invalidResponse(typeof json?.status === "string" ? json.status : undefined);
