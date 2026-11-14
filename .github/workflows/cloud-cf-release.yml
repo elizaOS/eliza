@@ -1669,9 +1669,6 @@ jobs:
           fi
 
           args=(${{ steps.env.outputs.wrangler_args }} --secrets-file "$WORKER_SECRETS_FILE" --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA" --var ELIZA_MOBILE_APP_AUTH_ENABLED:"$ELIZA_MOBILE_APP_AUTH_ENABLED" --var ELIZA_APP_TELEGRAM_BOT_ID:"$ELIZA_APP_TELEGRAM_BOT_ID" --var ELIZA_APP_TELEGRAM_BOT_USERNAME:"$ELIZA_APP_TELEGRAM_BOT_USERNAME" --var VOICE_REALTIME_WS_ENABLED:"$VOICE_REALTIME_WS_ENABLED" --var ELIZA_TTS_FISH_ENABLED:"$ELIZA_TTS_FISH_ENABLED" --var FISH_AUDIO_DATA_GOVERNANCE_APPROVED:"$FISH_AUDIO_DATA_GOVERNANCE_APPROVED" --var FISH_AUDIO_MODEL:"$FISH_AUDIO_MODEL" --var FISH_AUDIO_SAMPLE_RATE:"$FISH_AUDIO_SAMPLE_RATE" --var FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS:"$FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS")
-          if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
-            args+=(--outdir "$CHECKOUT_DIR/test-results/cloud-api-worker-bundle")
-          fi
           # keep_vars retains deployed selectors. Omit a Redis default only if
           # its binding is absent; otherwise explicitly publish the selected backend.
           backend_vars=$(bun "$CHECKOUT_DIR/packages/cloud/scripts/worker-state-backend-vars.mjs")
@@ -1751,17 +1748,6 @@ jobs:
           fi
           bunx wrangler deploy "${args[@]}"
           trap - ERR
-
-      - name: Preserve deployed staging Worker bundle
-        if: ${{ inputs.target_environment == 'staging' && steps.worker_deploy.outcome == 'success' }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-        with:
-          name: cloud-api-worker-bundle-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            ${{ env.CHECKOUT_DIR }}/test-results/cloud-api-worker-bundle/index.js
-            ${{ env.CHECKOUT_DIR }}/test-results/cloud-api-worker-bundle/index.js.map
-          if-no-files-found: error
-          retention-days: 7
 
       - name: Preserve Worker startup CPU profile
         if: ${{ failure() && steps.worker_deploy.outcome == 'failure' }}
