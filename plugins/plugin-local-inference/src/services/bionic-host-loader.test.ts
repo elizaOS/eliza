@@ -208,6 +208,49 @@ describe("deriveBundleDir", () => {
 		).toBe(false);
 	});
 
+	it("surfaces an unstageable bundle view instead of reporting no bundle", () => {
+		const modelsDir = fs.mkdtempSync(
+			path.join(os.tmpdir(), "eliza-bionic-flat-stage-blocked-"),
+		);
+		tempDirs.push(modelsDir);
+		const modelPath = path.join(modelsDir, "eliza-1-2b-128k.gguf");
+		fs.writeFileSync(modelPath, "GGUF");
+		// A file where the view directory must be created makes staging fail for
+		// a reason unrelated to "there is nothing to stage yet".
+		fs.writeFileSync(path.join(modelsDir, ".bionic-bundles"), "occupied");
+
+		expect(() => deriveBundleDir(modelPath)).toThrow(
+			/could not stage the bionic bundle view/i,
+		);
+	});
+
+	it("surfaces an unreadable staged view instead of reporting no bundle", () => {
+		// Root ignores the mode bits, so the unreadable-directory setup is moot.
+		if (typeof process.getuid === "function" && process.getuid() === 0) return;
+		const modelsDir = fs.mkdtempSync(
+			path.join(os.tmpdir(), "eliza-bionic-flat-stage-unreadable-"),
+		);
+		tempDirs.push(modelsDir);
+		const modelPath = path.join(modelsDir, "eliza-1-2b-128k.gguf");
+		fs.writeFileSync(modelPath, "GGUF");
+		const textDir = path.join(
+			modelsDir,
+			".bionic-bundles",
+			"eliza-1-2b-128k",
+			"text",
+		);
+		fs.mkdirSync(textDir, { recursive: true });
+		fs.writeFileSync(path.join(textDir, "eliza-1-2b-128k.gguf"), "STALE");
+		fs.chmodSync(textDir, 0o000);
+		try {
+			expect(() => deriveBundleDir(modelPath)).toThrow(
+				/could not stage the bionic bundle view/i,
+			);
+		} finally {
+			fs.chmodSync(textDir, 0o755);
+		}
+	});
+
 	it("keeps flat text-only bundle aliases behind the ASR bundle gate", async () => {
 		const modelsDir = fs.mkdtempSync(
 			path.join(os.tmpdir(), "eliza-bionic-flat-text-only-"),
