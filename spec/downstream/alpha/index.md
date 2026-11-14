@@ -49,6 +49,7 @@ activation on a physical device.
 | Overview, automation feed, and reminder presentation | [Daily overview](./overview.md), [automation and reminder projection](./automationPresentation.md) |
 | Remote agent connection and pairing link | [Exact instance and revocable session admission](../remotePairing.md) |
 | `scripts/native-google-product-host.ts`, `apps/app/src/prototype/inbox-cloud-adapter.ts`, `apps/app/src/runtime/google-connection-ui.tsx` | [Managed Google grant and receipt custody](./managedGoogle.md), [Calendar link publication and stale request custody](./googleCalendarLinkPublication.md), [Cloud host ownership](../cloudHost.md), [resident inference](../residentCloud.md), [credential enrollment](../cloudEnrollment.md) |
+| `GoogleAgentAccessFile.java`, `AlphaLocalAgentPlugin.java`, `native-google-agent-host.ts` | [Native Google access file custody](./nativeGoogleAccessFile.md) |
 
 The development launcher sets `ELIZA_PLUGIN_SET=lean-chat` and
 `ELIZA_LEAN_CHAT_WORKFLOWS=1`. Native stages runtime profile `native`.

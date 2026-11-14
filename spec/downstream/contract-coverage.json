@@ -850,8 +850,8 @@
         "renderer-source"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobileCapture.md",
-      "coverage": "related-contract"
+      "relatedSpec": "spec/downstream/grace/draftTranscript.md",
+      "coverage": "direct-contract"
     },
     {
       "source": "packages/ui/src/voice/microphone-capture.ts",
@@ -901,8 +901,8 @@
         "test-only-source"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobileCapture.md",
-      "coverage": "related-contract"
+      "relatedSpec": "spec/downstream/grace/recordedTranscription.md",
+      "coverage": "direct-contract"
     },
     {
       "source": "packages/ui/src/voice/segmented-speech-playback.ts",
@@ -4241,6 +4241,19 @@
         "packages/agent/src/api/conversation-routes.ts"
       ],
       "relatedSpec": "spec/downstream/grace/replyStreaming.md"
+    },
+    {
+      "consumer": "AlphaPhone",
+      "consumerPaths": [
+        "android/app/src/main/java/ai/alphacompute/alphaphone/GoogleAgentAccessFile.java",
+        "android/app/src/main/java/ai/alphacompute/alphaphone/AlphaLocalAgentPlugin.java",
+        "scripts/native-google-product-host.ts"
+      ],
+      "producerPaths": [
+        "packages/app/src/runtime/managed-google-agent/native-google-agent-host.ts",
+        "packages/app/src/runtime/managed-google-agent/managed-google-agent-host.ts"
+      ],
+      "relatedSpec": "spec/downstream/alpha/nativeGoogleAccessFile.md"
     }
   ]
 }
