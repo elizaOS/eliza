@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+  "sourcePath": "packages/core/src/utils/streaming.ts",
+  "sourceSha256": "f33f5d77d0d4b6ab250d8f1e2a07079eb2e478ab0516e589a540ae0c4135b153",
+  "fixtureArtifact": "stream-decoder-fixtures.json",
+  "status": "Normative input/output/refusal obligations for the future decoder adapter; source fixtures executed with Bun 1.4.2. Lexical/JSON decoding refinement to generated model transitions is not yet proved, and no replacement adapter exists.",
+  "representation": {
+    "StringUnits": "The complete ordered list of UTF-16 code units, each integer in [0,65535], with no normalization or replacement before a contract explicitly requests well-formed output.",
+    "LineDecode": "Header { rawLine: StringUnits, name: StringUnits, inline: boolean, value: StringUnits } | Continuation { rawLine: StringUnits, value: StringUnits }",
+    "JsonBoundary": "Complete { input: StringUnits, endExclusive: integer } | Incomplete { input: StringUnits }",
+    "StrictJsonString": "Decoded { input: StringUnits, value: StringUnits } | Invalid { input: StringUnits }",
+    "EnvelopePrefix": "DecodedObject { input: StringUnits, properties: complete ordered own JSON properties } | Invalid { input: StringUnits }",
+    "Refusal": "TypeError { message } | StreamError { code: CHUNK_TOO_LARGE, chunkSize, maxAllowed: 1048576 } | Held { previousVisibleOutput, clearedInputBuffer, clearedGateHead }",
+    "binding": "Each decoder result is bound to the exact raw slice supplied by the canonical owner. A result about a different slice, false decoded key, incorrect end offset, omitted property, or changed numeric/string value cannot authorize a transition. The JSON adapter must establish this binding; the current pure state models explicitly assume it at the boundary."
+  },
+  "contracts": [
+    {
+      "id": "stream-input",
+      "sourceMethods": ["validateChunkSize", "StructuredFieldStreamExtractor.push", "ResponseSkeletonStreamExtractor.push"],
+      "input": "A proposed chunk and the exact current extractor lifecycle/abort state.",
+      "output": "For an active, non-aborted streaming extractor, a string of at most 1048576 UTF-16 units is accepted unchanged. A non-string throws TypeError('Stream chunk must be a string'); a larger string throws StreamError with CHUNK_TOO_LARGE and exact lengths before input state changes. Lifecycle/abort checks precede validation as in the owning source. Skeleton held state checks follow size validation.",
+      "refusal": "Refused chunks produce no chunk callback or fabricated successful content. Abort produces the source error lifecycle/event and consumes no new input. Empty input is a valid chunk.",
+      "fixtures": ["line-chunk-too-large", "json-chunk-too-large", "line-nonstring-refused", "json-nonstring-refused", "line-abort", "json-abort"]
+    },
+    {
+      "id": "structured-lines",
+      "sourceMethods": ["StructuredFieldStreamExtractor.processAvailableLines", "StructuredFieldStreamExtractor.processLine", "StructuredFieldStreamExtractor.baseStructuredFieldName", "StructuredFieldStreamExtractor.normalizeContinuationLine"],
+      "input": "The exact retained line buffer and final-flush flag, followed by each exact line without its LF or CRLF delimiter.",
+      "output": "Consume successive /\\r?\\n/ delimiters in order. Preserve the incomplete suffix until flush; on final flush process a nonempty suffix exactly once. A bare CR is not a delimiter. A line beginning with space or tab is a continuation. Otherwise a header matches exactly /^([A-Za-z_][A-Za-z0-9_.-]*(?:\\[[^\\]\\n]*\\])?(?:\\{[^\\n]*\\})?):(?:\\s?(.*))?$/ with source JavaScript regex semantics. Name is capture 1 before its first '[' or '{'. inline is capture 2 trimmed nonempty. Every other line is a continuation: remove exactly two initial spaces, otherwise one initial tab, otherwise none. Header inline values are decoded by structured-inline-value; subsequent field ownership is exclusively structuredStreamState.md.",
+      "refusal": "A candidate that does not match the complete header grammar cannot open or rename a field. It is appended only when a tracked field is already open; otherwise ignored. In particular, a bare CR inside an apparent inline header prevents its dot capture from matching, while the same CR is retained in an already-open field's continuation.",
+      "fixtures": ["line-crlf-and-json-escape", "line-header-split-and-final-tail", "line-validation-suffix", "line-multiline-selected-and-control", "line-indented-header", "line-invalid-header-characters", "line-bare-cr-header", "line-bare-cr-continuation"]
+    },
+    {
+      "id": "structured-inline-value",
+      "sourceMethods": ["StructuredFieldStreamExtractor.parseInlineValue"],
+      "input": "Capture 2 of one complete recognized header, as exact UTF-16 units.",
+      "output": "Apply JavaScript String.trim. Empty remains empty. If both ends are double quotes, apply JSON.parse to the complete trimmed value; on parse failure remove exactly the first and final quote and preserve all interior units. If both ends are single quotes remove exactly those two quotes without interpreting escapes. Otherwise preserve the complete trimmed text, including an unmatched quote.",
+      "refusal": "Malformed JSON has the explicit raw-inner-string fallback; it never authorizes additional fields or loses an interior escape. This is a scalar streaming decoder, not validation that the entire response is a valid structured document.",
+      "fixtures": ["line-malformed-json-fallback", "line-empty-quotes", "line-unclosed-quote", "line-single-quotes-and-trim", "line-repeated-header"]
+    },
+    {
+      "id": "json-boundaries",
+      "sourceMethods": ["findJsonStringEnd", "findJsonValueEnd", "findBalancedJsonEnd"],
+      "input": "One exact retained UTF-16 suffix. No character beyond this suffix is available to the decoder.",
+      "output": "String end requires an initial quote and returns the first unescaped closing quote's exclusive index. Backslash skips the following unit; backslash-u additionally requires and skips four units without validating hexadecimal digits. Container end tracks an exact stack of matching braces/brackets, ignoring structural units inside quoted strings, and returns when the initial container closes. Value end skips leading JavaScript whitespace; strings/containers use those boundaries; true/false/null require the complete literal when the whole remaining suffix is its prefix; numbers use the maximal initial match of /^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?/. A returned offset includes leading whitespace and is within the supplied suffix.",
+      "refusal": "Missing closing delimiters, unfinished escapes, mismatched containers and unrecognized prefixes return Incomplete rather than an invented end. Lexical completeness does not imply JSON validity; strict JSON decoding remains separately required for keys, part kinds and envelope prefixes.",
+      "modelOwners": ["../streamUnits.md", "../skeletonStreamState.md"],
+      "fixtures": ["json-key-and-string-split", "json-partial-delimiters", "json-ordered-skeleton", "json-ordered-truncated-string", "json-incomplete-unicode-escape"]
+    },
+    {
+      "id": "json-string-content",
+      "sourceMethods": ["ResponseSkeletonStreamExtractor.processActiveString", "decodeJsonEscape", "ResponseSkeletonStreamExtractor.appendVisibleAndEmit"],
+      "input": "The canonical active field, pending escape prefix (empty, backslash, or backslash-u), and exact current input suffix.",
+      "output": "Plain runs remain exact until reasoning filtering. A complete escape is decoded by JSON.parse on a string consisting exactly of quote + escape + quote; invalid complete escapes retain their raw units. A high surrogate at the current visible end is retained until the next units or final flush, then valid pairs remain paired and unpaired units become U+FFFD. An unterminated final string closes with its already-decoded visible prefix; an unfinished trailing backslash/Unicode escape is discarded with final residue, matching source behavior.",
+      "refusal": "No incomplete escape may be decoded early, and no surrogate pair may be split into independently emitted code units. Final truncation is an explicit source-compatible terminal rule; it must not be confused with complete malformed-escape fallback.",
+      "modelOwners": ["../streamUnits.md", "../skeletonStreamState.md"],
+      "fixtures": ["json-malformed-escape", "json-unicode-escape-pair-split", "json-raw-surrogate-pair-split", "json-lone-surrogates-final", "json-incomplete-unicode-escape", "json-ordered-truncated-string"]
+    },
+    {
+      "id": "gate-envelope-prefix",
+      "sourceMethods": ["decodeEnvelopePrefix", "ResponseSkeletonStreamExtractor.passesGate", "ResponseSkeletonStreamExtractor.findNextStreamFieldStart"],
+      "input": "The complete gate-head prefix ending immediately before the first matched streamed field key, or null for raw prose.",
+      "output": "For structured input: trim, remove one final comma plus following whitespace, require an opening '{', append exactly '}', JSON.parse once, and accept only a non-null object that is not an array. Supply every preceding top-level property and exact decoded value to the caller gate. Prose supplies null. Invoke the gate at most once per attempt. Only literal true permits the first selected top-level value; ending that value holds the remaining envelope. Reset starts a fresh attempt.",
+      "refusal": "Invalid prefix, nested-key prefix, array/XML prefix, gate false, any non-true result, gate exception, or a predecision gate head longer than 65536 units holds. Invalid structured prefixes do not invoke the gate. Held attempts clear input/gate buffers and emit no more visible output. Gate configuration without unordered extraction throws TypeError at construction.",
+      "fixtures": ["json-gate-allows-prefix", "json-gate-denies", "json-gate-throws", "json-gate-nested-key", "json-gate-malformed-prefix", "json-gate-single-value", "json-gate-cap", "prose-gate-null", "prose-gate-denies", "json-gate-requires-unordered"]
+    },
+    {
+      "id": "parts-strict-keys",
+      "sourceMethods": ["ResponseSkeletonStreamExtractor.drainParts"],
+      "input": "The exact complete quoted key slice and optional quoted kind slice selected by json-boundaries, the configured allowed kinds and canonical element/key position.",
+      "output": "Strict JSON.parse must yield the actual key and kind strings. Kind stores only a decoded string value and must precede value. Value streams only when the key equals 'value', it starts a string, and the previously decoded kind is in the configured allowed list. Accepted parts concatenate in source order without synthetic separators. Incomplete slices remain buffered until further input or final truncation.",
+      "refusal": "A malformed decoded key/kind, value-before-kind, unknown property, disallowed kind or unsupported shape holds at its first occurrence and never resumes later parts. Already emitted accepted parts remain authoritative historical output.",
+      "fixtures": ["json-parts-first-disallowed", "json-parts-value-before-kind", "json-parts-malformed-kind", "json-parts-multiple-text"]
+    },
+    {
+      "id": "reasoning-tag-filter",
+      "sourceMethods": ["matchTagAt", "matchReasoningOpenTagAt", "ResponseSkeletonStreamExtractor.filterReasoningTags"],
+      "input": "Exact decoded field units plus that field's inside/outside mode, partial tag prefix and exact close tag.",
+      "output": "Match only the source's fixed reasoning names using its character-by-character ASCII lowercase fold and Unicode lowercase comparison fallback. Retain partial prefixes between pushes. Hide recognized opening/closing delimiters and every inside unit; preserve all other outside units. At flush, an outside unfinished opening prefix becomes visible, and an inside unfinished region remains hidden.",
+      "refusal": "A partial recognized tag cannot leak before it is resolved. One field's partial tag state cannot affect another field. The canonical field carries and resulting output are defined in skeletonStreamState.md.",
+      "fixtures": ["json-reasoning-tag-split", "json-partial-open-tag-final", "json-unclosed-reasoning-final", "json-unselected-control-string"]
+    }
+  ],
+  "futureConformance": {
+    "required": "Implement only the external string/JSON adapter when runtime work is authorized. Decode each input to these tagged outcomes, bind it to the exact canonical slice, dispatch only the corresponding canonical transition, and compare observations to stream-decoder-fixtures.json. Run existing core stream regression scenarios against the replacement as additional compatibility evidence.",
+    "existingSourceTests": ["packages/core/test/stream-truncated-string.test.ts", "packages/core/test/stream-unicode-chunk.test.ts", "packages/core/test/use-model-structured-stream-fields.test.ts", "packages/core/test/use-model-stream-text-cancellation.test.ts"],
+    "notCertified": ["Total equivalence of JavaScript regular-expression/JSON.parse behavior and a future adapter", "Future adapter-to-model trace refinement", "Callback exception/reentrancy and host I/O integration beyond the represented canonical transition protocol", "Exhaustive correctness inferred from a finite fixture suite"]
+  }
+}

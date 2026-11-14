@@ -1,11 +1,11 @@
 # Eliza on Vibestack
 
-The specification-first replacement for `@elizaos/core`, built with
-VibeLang and Effect. This phase contains core research, stories, formal
-models and generated contracts. Runtime implementation follows review of
-the complete specification.
+This workspace specifies the replacement for `@elizaos/core` on Vibestack.
+The specification covers requirements, Quint models, and the generated
+contracts for a future VibeLang and Effect implementation.
 
-Start with [the core specification](spec/core/index.md),
+Start with [the Grace and AlphaPhone contracts](spec/downstream/index.md),
+[the core specification](spec/core/index.md),
 [the agent procedure](AGENTS.md) and [the spec reference](SPEC.md).
 The source baseline is Eliza commit
 `72fed7e4069ecd35d61d886ab6eec5c02c137517`. The orphan `vibestack` branch

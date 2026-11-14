@@ -1,0 +1,35 @@
+{
+  "sourceRevision": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+  "decisions": [
+    {
+      "id": "release-partial-log-acquisition",
+      "kind": "internal-resource-cleanup",
+      "source": "packages/core/src/logger.ts",
+      "sourceBehavior": "A failed later file open leaves earlier descriptors owned until process termination.",
+      "targetBehavior": "Close earlier descriptors before disabling file sinks. If a close fails, retain explicit ownership and a retryable cleanup-failure state.",
+      "specification": "spec/core/logFiles.md",
+      "publicResult": "An unsuccessful initialization continues to produce no file-log success.",
+      "approval": "Proposed specification change for user review; implementation has not been written."
+    },
+    {
+      "id": "task-event-observer-failure-cleanup",
+      "kind": "internal-failure-recovery",
+      "source": "packages/core/src/messaging/task-events.ts",
+      "sourceBehavior": "A throw from the first changed observer occurs before try/finally and retains pending=true until stop/start.",
+      "targetBehavior": "Release pending ownership, preserve the accepted page and report TASK_EVENT_OBSERVER_FAILED. Permit an explicit refresh or stop/start; do not automatically retry.",
+      "specification": "spec/core/taskEventReader.md",
+      "publicResult": "Successful polling retains its existing pages and notifications. An observer failure becomes an explicit recoverable failure rather than permanently suppressing refresh.",
+      "approval": "Proposed specification change for user review; implementation has not been written."
+    },
+    {
+      "id": "trace-owner-conflict",
+      "kind": "cross-owner-identity-validation",
+      "source": "packages/core/src/runtime/active-prompt-traces.ts",
+      "sourceBehavior": "A trace ID may be overwritten by another run while the earlier run index retains that ID; deleting the earlier run can remove the newer run trace.",
+      "targetBehavior": "Reject cross-run trace ID reuse with TraceIdentityConflict carrying the trace ID and both run identities. Preserve trace rows, run indexes and purge count on rejection. Permit same-run overwrite.",
+      "specification": "spec/core/traces.md",
+      "publicResult": "A trace identity conflict is an explicit failure instead of silently transferring ownership across runs.",
+      "approval": "Proposed specification change for user review; implementation has not been written."
+    }
+  ]
+}

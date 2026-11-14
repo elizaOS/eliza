@@ -1,0 +1,738 @@
+{
+  "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+  "status": "Concrete runtime owners and compositions specified. Current proof and simulation diagnostics belong to the verification reports. Unproved obligations and source-product refinement remain open.",
+  "units": [
+    {
+      "owner": "AgentRuntime",
+      "sourceFiles": [
+        "packages/core/src/runtime.ts"
+      ],
+      "specFiles": [
+        "spec/core/runtime.md",
+        "spec/core/runtimeShutdown.md"
+      ],
+      "stateDomains": [
+        "initialization",
+        "settings-owner identity",
+        "stop attempts",
+        "strict retirement"
+      ]
+    },
+    {
+      "owner": "RuntimeServiceLifecycle",
+      "sourceFiles": [
+        "packages/core/src/runtime/service-lifecycle.ts"
+      ],
+      "specFiles": [
+        "spec/core/services.md",
+        "spec/core/serviceRegistry.md"
+      ],
+      "stateDomains": [
+        "class starts",
+        "shared pending attempts",
+        "late instance cleanup",
+        "declaration order",
+        "stop-once"
+      ]
+    },
+    {
+      "owner": "PluginLifecycle",
+      "sourceFiles": [
+        "packages/core/src/plugin-lifecycle.ts"
+      ],
+      "specFiles": [
+        "spec/core/plugins.md",
+        "spec/core/pluginRegistry.md",
+        "spec/core/registries.md",
+        "spec/core/pluginServices.md"
+      ],
+      "stateDomains": [
+        "epoch ownership",
+        "shared registration result",
+        "rollback",
+        "dispose",
+        "reload",
+        "component/model/event registrations",
+        "joint service ownership and retirement"
+      ]
+    },
+    {
+      "owner": "ProviderStateComposer",
+      "sourceFiles": [
+        "packages/core/src/runtime/state-composition.ts",
+        "packages/core/src/runtime/provider-execution.ts"
+      ],
+      "specFiles": [
+        "spec/core/providers.md"
+      ],
+      "stateDomains": [
+        "coalesced execution",
+        "waiters",
+        "abort cause",
+        "cleanup",
+        "stop"
+      ]
+    },
+    {
+      "owner": "RuntimeModelDispatch",
+      "sourceFiles": [
+        "packages/core/src/runtime/model-dispatch.ts"
+      ],
+      "specFiles": [
+        "spec/core/models.md",
+        "spec/core/registries.md"
+      ],
+      "stateDomains": [
+        "request admission",
+        "provider attempts",
+        "pinned routing",
+        "fallback",
+        "cancellation",
+        "registry order"
+      ]
+    },
+    {
+      "owner": "RuntimePipelineHooks",
+      "sourceFiles": [
+        "packages/core/src/runtime/pipeline-hooks.ts"
+      ],
+      "specFiles": [
+        "spec/core/hooks.md"
+      ],
+      "stateDomains": [
+        "phase snapshot",
+        "grouped execution",
+        "local refusal",
+        "late registry changes"
+      ]
+    },
+    {
+      "owner": "ActionSettlement",
+      "sourceFiles": [
+        "packages/core/src/runtime/action-handler-settlement.ts"
+      ],
+      "specFiles": [
+        "spec/core/execution.md"
+      ],
+      "stateDomains": [
+        "buffering",
+        "settlement",
+        "late callbacks",
+        "transport result"
+      ]
+    },
+    {
+      "owner": "RoomHandlerQueue",
+      "sourceFiles": [
+        "packages/core/src/runtime/room-handler-queue.ts"
+      ],
+      "specFiles": [
+        "spec/core/concurrency.md",
+        "spec/core/multiRoomLeases.md",
+        "spec/core/roomQueueObservers.md"
+      ],
+      "stateDomains": [
+        "leases",
+        "ordered acquisition",
+        "queue capacities",
+        "writes",
+        "cancellation",
+        "terminal ownership",
+        "captured unique room set and acquisition cursor",
+        "live nested reuse or widening rejection",
+        "typed partial acquisition and callback failures",
+        "durable reverse unwind"
+      ]
+    },
+    {
+      "owner": "Semaphore",
+      "sourceFiles": [
+        "packages/core/src/utils/task-scheduling.ts"
+      ],
+      "specFiles": [
+        "spec/core/semaphore.md"
+      ],
+      "stateDomains": [
+        "permits",
+        "FIFO tickets",
+        "abort-listener race",
+        "release"
+      ]
+    },
+    {
+      "owner": "ActivePromptTraces",
+      "sourceFiles": [
+        "packages/core/src/runtime/active-prompt-traces.ts"
+      ],
+      "specFiles": [
+        "spec/core/traces.md"
+      ],
+      "stateDomains": [
+        "active trace IDs",
+        "per-run insertion indexes",
+        "fixed TTL and hundred-record purge cadence",
+        "score-signal append",
+        "same-run overwrite",
+        "typed cross-run identity rejection"
+      ]
+    },
+    {
+      "owner": "AgentEventService",
+      "sourceFiles": [
+        "packages/core/src/services/agent-event.ts"
+      ],
+      "specFiles": [
+        "spec/core/events.md"
+      ],
+      "stateDomains": [
+        "run sequence",
+        "saved session",
+        "listener snapshots",
+        "handle generations",
+        "heartbeat"
+      ]
+    },
+    {
+      "owner": "ConnectorRegistry",
+      "sourceFiles": [
+        "packages/core/src/runtime/connector-registry.ts"
+      ],
+      "specFiles": [
+        "spec/core/messaging.md"
+      ],
+      "stateDomains": [
+        "source/account selection",
+        "transport snapshot",
+        "registry replacement",
+        "result"
+      ]
+    },
+    {
+      "owner": "RunTerminalOwner",
+      "sourceFiles": [
+        "packages/core/src/runtime/run-terminal-owner.ts"
+      ],
+      "specFiles": [
+        "spec/core/terminal.md"
+      ],
+      "stateDomains": [
+        "multiple pending promise identities",
+        "settled effect records",
+        "complete first terminal request",
+        "schedule failure reset",
+        "terminal task identity",
+        "captured work snapshot",
+        "subscriber settlement"
+      ]
+    },
+    {
+      "owner": "EvaluatorContract",
+      "sourceFiles": [
+        "packages/core/src/types/evaluator.ts"
+      ],
+      "specFiles": [
+        "spec/core/evaluators.md"
+      ],
+      "stateDomains": [
+        "gate",
+        "prepare",
+        "source revision",
+        "input scope",
+        "output source",
+        "processors",
+        "progress"
+      ]
+    },
+    {
+      "owner": "PriorityQueue",
+      "sourceFiles": [
+        "packages/core/src/utils/batch-queue.ts"
+      ],
+      "specFiles": [
+        "spec/core/priorityQueue.md"
+      ],
+      "stateDomains": [
+        "priority arrays",
+        "pressure callback",
+        "soft size threshold",
+        "dequeue",
+        "drain"
+      ]
+    },
+    {
+      "owner": "BatchProcessor",
+      "sourceFiles": [
+        "packages/core/src/utils/batch-queue.ts"
+      ],
+      "specFiles": [
+        "spec/core/batchProcessor.md"
+      ],
+      "stateDomains": [
+        "attempt budgets",
+        "global concurrency",
+        "backoff",
+        "per-item outcomes",
+        "exhaustion callback"
+      ]
+    },
+    {
+      "owner": "BatchQueue",
+      "sourceFiles": [
+        "packages/core/src/utils/batch-queue.ts"
+      ],
+      "specFiles": [
+        "spec/core/batchQueue.md"
+      ],
+      "stateDomains": [
+        "scheduled task",
+        "drain ownership",
+        "capability probe",
+        "batch fallback",
+        "dispose",
+        "urgent flush"
+      ]
+    },
+    {
+      "owner": "InferencePriorityGate",
+      "sourceFiles": [
+        "packages/core/src/utils/inference-priority-gate.ts"
+      ],
+      "specFiles": [
+        "spec/core/inferenceGate.md"
+      ],
+      "stateDomains": [
+        "holder",
+        "interactive/background queues",
+        "deadline",
+        "cancellation",
+        "request immutability"
+      ]
+    },
+    {
+      "owner": "ConnectorSourceRegistry",
+      "sourceFiles": [
+        "packages/core/src/connectors.ts"
+      ],
+      "specFiles": [
+        "spec/core/connectorSources.md"
+      ],
+      "stateDomains": [
+        "per-owner canonical metadata",
+        "merged metadata cache",
+        "alias lookup cache",
+        "owner withdrawal",
+        "undefined field presence"
+      ]
+    },
+    {
+      "owner": "PostDeliveryTaskTracker",
+      "sourceFiles": [
+        "packages/core/src/services/post-delivery-task-tracker.ts"
+      ],
+      "specFiles": [
+        "spec/core/postDelivery.md"
+      ],
+      "stateDomains": [
+        "runtime/room task indexes",
+        "lease-bound delivery settlement",
+        "captured drain batches",
+        "permanent quarantine",
+        "cooperative/noncooperative cancellation",
+        "retained effect permission"
+      ]
+    },
+    {
+      "owner": "ModelAttemptLeases",
+      "sourceFiles": [
+        "packages/core/src/streaming-context.ts"
+      ],
+      "specFiles": [
+        "spec/core/modelAttemptLeases.md"
+      ],
+      "stateDomains": [
+        "per-session allowance",
+        "issued per-turn lease identity",
+        "expiry",
+        "closed lease",
+        "tariff qualification",
+        "atomic monetary and attempt reservation"
+      ]
+    },
+    {
+      "owner": "PreparedModelRequestGuard",
+      "sourceFiles": [
+        "packages/core/src/runtime/prepared-model-request.ts"
+      ],
+      "specFiles": [
+        "spec/core/preparedRequests.md"
+      ],
+      "stateDomains": [
+        "immutable serialization",
+        "exact versus diagnostic token count",
+        "per-attempt byte/count checks",
+        "attempt counter",
+        "lease reservation"
+      ]
+    },
+    {
+      "owner": "RuntimeRoutingRegistries",
+      "sourceFiles": [
+        "packages/core/src/runtime/localized-examples-provider.ts",
+        "packages/core/src/runtime/direct-action-routing.ts",
+        "packages/core/src/runtime/candidate-action-backstop.ts"
+      ],
+      "specFiles": [
+        "spec/core/routingRegistries.md"
+      ],
+      "stateDomains": [
+        "per-runtime localized provider replacement",
+        "direct rule identity and insertion order",
+        "backstop append-only rules"
+      ]
+    },
+    {
+      "owner": "InstalledProcessingPolicy",
+      "sourceFiles": [
+        "packages/core/src/runtime/processing-policy.ts"
+      ],
+      "specFiles": [
+        "spec/core/processingPolicy.md"
+      ],
+      "stateDomains": [
+        "runtime-owned installed policy",
+        "wrapper forwarding",
+        "typed admission denial"
+      ]
+    },
+    {
+      "owner": "AmbientManagerInjection",
+      "sourceFiles": [
+        "packages/core/src/ambient-context.ts",
+        "packages/core/src/trajectory-context.ts",
+        "packages/core/src/runtime/action-routing-context.ts",
+        "packages/core/src/trajectory-utils.ts",
+        "packages/core/src/streaming-context.ts"
+      ],
+      "specFiles": [
+        "spec/core/ambientManagers.md"
+      ],
+      "stateDomains": [
+        "global symbol manager slot",
+        "injected versus fallback manager",
+        "existing operation capture",
+        "replacement affects future operations"
+      ]
+    },
+    {
+      "owner": "TurnControllerRegistry",
+      "sourceFiles": [
+        "packages/core/src/runtime/turn-controller.ts"
+      ],
+      "specFiles": [
+        "spec/core/turnControllers.md"
+      ],
+      "stateDomains": [
+        "per-room ordered concurrent controllers",
+        "first abort reason",
+        "self-excluded room cancellation",
+        "global cancellation",
+        "permanent close reason",
+        "identity-specific final cleanup",
+        "live callback set",
+        "observer exception isolation"
+      ]
+    },
+    {
+      "owner": "ConcurrentPipelineHooks",
+      "sourceFiles": [
+        "packages/core/src/runtime/pipeline-hooks.ts"
+      ],
+      "specFiles": [
+        "spec/core/concurrentHooks.md"
+      ],
+      "stateDomains": [
+        "shared registry",
+        "unbounded independent dispatch snapshots",
+        "interleaved handler progress"
+      ]
+    },
+    {
+      "owner": "ConcurrentConnectorDispatch",
+      "sourceFiles": [
+        "packages/core/src/runtime/connector-registry.ts",
+        "packages/core/src/runtime/connector-registration.ts"
+      ],
+      "specFiles": [
+        "spec/core/concurrentConnectors.md"
+      ],
+      "stateDomains": [
+        "shared method-specific descriptors",
+        "send transport map",
+        "independent captured callbacks"
+      ]
+    },
+    {
+      "owner": "ProviderExecutionDomains",
+      "sourceFiles": [
+        "packages/core/src/runtime/state-composition.ts",
+        "packages/core/src/runtime/provider-execution.ts"
+      ],
+      "specFiles": [
+        "spec/core/providerExecutions.md"
+      ],
+      "stateDomains": [
+        "structural six-dimension key",
+        "multiple coalescing domains",
+        "unkeyed refresh ownership",
+        "abort before native invocation"
+      ]
+    },
+    {
+      "owner": "ServiceInstanceGenerations",
+      "sourceFiles": [
+        "packages/core/src/runtime/service-lifecycle.ts",
+        "packages/core/src/runtime.ts",
+        "packages/core/src/plugin-lifecycle.ts"
+      ],
+      "specFiles": [
+        "spec/core/serviceInstances.md",
+        "spec/core/eagerServices.md",
+        "spec/core/serviceRegistry.md",
+        "spec/core/pluginServices.md"
+      ],
+      "stateDomains": [
+        "initialization waiters",
+        "class generation",
+        "captured acquisition attempts",
+        "returned object identities",
+        "stop-once promise cache",
+        "publication-before-observer",
+        "eager 2/5/10 second retry timers",
+        "per-type registration status",
+        "retained deferred load promises and resolver ownership",
+        "latest aggregate identity and superseded cleanup",
+        "plugin withdrawal captures aggregate and class startup promises before status reconciliation"
+      ]
+    },
+    {
+      "owner": "ActionReceiptComposition",
+      "sourceFiles": [
+        "packages/core/src/runtime/action-handler-settlement.ts",
+        "packages/core/src/runtime/effect-delivery.ts",
+        "packages/core/src/types/effects.ts"
+      ],
+      "specFiles": [
+        "spec/core/actionReceipts.md"
+      ],
+      "stateDomains": [
+        "normalized receipt list",
+        "bound receipt IDs",
+        "exact callback text",
+        "delivery dedupe key",
+        "suppression",
+        "actual transport invocation",
+        "applied confirmation"
+      ]
+    },
+    {
+      "owner": "ReentrantTurnEvents",
+      "sourceFiles": [
+        "packages/core/src/runtime/turn-controller.ts"
+      ],
+      "specFiles": [
+        "spec/core/turnEventStack.md"
+      ],
+      "stateDomains": [
+        "synchronous callback stack",
+        "nested event frames",
+        "captured per-room array identities",
+        "global abort cursor",
+        "immediate finally cleanup"
+      ]
+    },
+    {
+      "owner": "HookService",
+      "sourceFiles": [
+        "packages/core/src/services/hook.ts"
+      ],
+      "specFiles": [
+        "spec/core/hookService.md"
+      ],
+      "stateDomains": [
+        "registration ID",
+        "event index",
+        "snapshot version",
+        "configuration reference",
+        "positive binary cache/PATH owner",
+        "interceptor handles",
+        "eligibility",
+        "sequential dispatch"
+      ]
+    },
+    {
+      "owner": "RuntimeExtensionRegistries",
+      "sourceFiles": [
+        "packages/core/src/runtime.ts",
+        "packages/core/src/runtime/model-dispatch.ts"
+      ],
+      "specFiles": [
+        "spec/core/runtimeExtensions.md"
+      ],
+      "stateDomains": [
+        "task worker replacement and wake signal",
+        "search categories",
+        "prompt optimization hook reference",
+        "last resolved model provider"
+      ]
+    },
+    {
+      "owner": "ServiceBuilder",
+      "sourceFiles": [
+        "packages/core/src/services.ts"
+      ],
+      "specFiles": [
+        "spec/core/serviceBuilder.md"
+      ],
+      "stateDomains": [
+        "builder closure setters",
+        "immutable built class snapshots"
+      ]
+    },
+    {
+      "owner": "CapabilityStrategyRouter",
+      "sourceFiles": [
+        "packages/core/src/services/runtime-capability-service.ts"
+      ],
+      "specFiles": [
+        "spec/core/capabilityStrategies.md"
+      ],
+      "stateDomains": [
+        "ordered strategies",
+        "fallback replacement",
+        "per-capability owner selection",
+        "availability owner"
+      ]
+    },
+    {
+      "owner": "ChatPreHandlerRegistry",
+      "sourceFiles": [
+        "packages/core/src/runtime/chat-pre-handler-registry.ts"
+      ],
+      "specFiles": [
+        "spec/core/chatPreHandlers.md"
+      ],
+      "stateDomains": [
+        "last registration by ID",
+        "stable priority snapshots",
+        "first truthy result",
+        "pre/post await cancellation"
+      ]
+    },
+    {
+      "owner": "ResponseHandlerEvaluatorRegistry",
+      "sourceFiles": [
+        "packages/core/src/runtime.ts"
+      ],
+      "specFiles": [
+        "spec/core/responseEvaluators.md"
+      ],
+      "stateDomains": [
+        "exact-name first registration",
+        "trimmed removal",
+        "object identity and insertion order"
+      ]
+    },
+    {
+      "owner": "ModelStreamChunkDepth",
+      "sourceFiles": [
+        "packages/core/src/streaming-context.ts"
+      ],
+      "specFiles": [
+        "spec/core/streamDepth.md"
+      ],
+      "stateDomains": [
+        "per-continuation integer depth",
+        "nested restoration stack",
+        "fork inheritance",
+        "message-service duplicate hook suppression"
+      ]
+    },
+    {
+      "owner": "RoomQueueObservers",
+      "sourceFiles": [
+        "packages/core/src/runtime/room-handler-queue.ts"
+      ],
+      "specFiles": [
+        "spec/core/roomQueueObservers.md"
+      ],
+      "stateDomains": [
+        "concrete queue object map",
+        "idle waiter snapshots",
+        "live Set callback generations",
+        "nested synchronous emission stack",
+        "terminal notice then pruning"
+      ]
+    },
+    {
+      "owner": "RuntimeAdapterOwnership",
+      "specFiles": [
+        "spec/core/adapterOwnership.md"
+      ],
+      "stateDomains": [
+        "Exact adapter reference table, first-wins registration, before-adapter capture, owned replacement, close-vs-stop selection, success-only restoration, and per-call captured migration adapter/path/schema values."
+      ],
+      "gapId": "surface-10",
+      "sourceFiles": [
+        "packages/core/src/runtime.ts",
+        "packages/core/src/plugin-lifecycle.ts",
+        "packages/core/src/provisioning.ts"
+      ]
+    },
+    {
+      "owner": "RuntimeRunContext",
+      "specFiles": [
+        "spec/core/runtimeRunContext.md"
+      ],
+      "stateDomains": [
+        "Runtime global currentRunId/currentRoomId are directly modeled with startRun replacement, endRun clearing without restoring older values, and lazy run getter preserving room; lifecycle state composed from runtime."
+      ],
+      "gapId": "surface-12",
+      "sourceFiles": [
+        "packages/core/src/runtime.ts"
+      ]
+    },
+    {
+      "owner": "ModelDiagnosticPromises",
+      "specFiles": [
+        "spec/core/modelDiagnostics.md"
+      ],
+      "stateDomains": [
+        "Exact tracked diagnostic promise identities, Set idempotence, settled re-tracking, fulfilled/rejected cleanup and repeated drain snapshots include concurrent new writes."
+      ],
+      "gapId": "surface-15",
+      "sourceFiles": [
+        "packages/core/src/runtime/model-dispatch.ts"
+      ]
+    },
+    {
+      "owner": "RuntimeRetirement",
+      "specFiles": [
+        "spec/core/retirementTracker.md"
+      ],
+      "stateDomains": [
+        "Exact pending promise identities and beforeClose flags, admission-only monotonic revision, append-only scope/cause failure records, scoped drain snapshots and returned failure list."
+      ],
+      "gapId": "surface-17",
+      "sourceFiles": [
+        "packages/core/src/runtime/retirement.ts"
+      ]
+    }
+  ],
+  "explicitAcceptanceGaps": [
+    "Current integrated simulation, replay and all Dafny obligations must finish; no runtime implementation exists.",
+    "Open-workload per-identity fairness and deductive temporal proof remain unsupported by the current frontend; sealed-source and snapshot progress obligations are explicit.",
+    "No source-to-model or old-actor-product refinement theorem is claimed. Detailed ownership compositions supplement representative per-call models.",
+    "Prepared-request JSON graph serialization, UTF-8 counting, exact tokenizer and normalized locale/string boundaries remain future pure/boundary implementation contracts.",
+    "Trace identity-conflict rejection is an intentional compatibility correction awaiting user acceptance; wall-clock liveness is conditional on expiry remaining true."
+  ]
+}

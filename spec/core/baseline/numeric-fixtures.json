@@ -1,0 +1,309 @@
+{
+  "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+  "runtime": "Bun 1.4.2",
+  "bm25": {
+    "docs": [
+      {
+        "title": "Cats",
+        "body": "Cats chase birds."
+      },
+      {
+        "title": "Dogs",
+        "body": "Dogs chase balls."
+      },
+      {
+        "title": "Catalog",
+        "body": "Bird catalog entry."
+      },
+      {
+        "title": "",
+        "body": ""
+      }
+    ],
+    "search": [
+      {
+        "query": "cats",
+        "result": [
+          {
+            "index": 0,
+            "score": 1.5135657787322998
+          }
+        ]
+      },
+      {
+        "query": "chase",
+        "result": [
+          {
+            "index": 0,
+            "score": 0.6099694967269897
+          },
+          {
+            "index": 1,
+            "score": 0.6099694967269897
+          }
+        ]
+      },
+      {
+        "query": "bird",
+        "result": [
+          {
+            "index": 2,
+            "score": 1.0594960451126099
+          }
+        ]
+      },
+      {
+        "query": "",
+        "result": []
+      }
+    ],
+    "phrase": {
+      "query": "cats chase",
+      "result": [
+        {
+          "index": 0,
+          "score": 2.1235353300453577
+        }
+      ]
+    },
+    "nonpositiveLimit": [],
+    "fractionalBoost": {
+      "docs": [
+        {
+          "body": "one one two"
+        },
+        {
+          "body": "two three"
+        }
+      ],
+      "options": {
+        "fieldBoosts": {
+          "body": 0.5
+        }
+      },
+      "constructor": {
+        "storedLengths": [
+          1,
+          1
+        ],
+        "average": 1.25,
+        "search": [
+          {
+            "index": 0,
+            "score": 0.1319432258605957
+          },
+          {
+            "index": 1,
+            "score": 0.1319432258605957
+          }
+        ]
+      },
+      "incremental": {
+        "storedLengths": [
+          1,
+          1
+        ],
+        "average": 1,
+        "search": [
+          {
+            "index": 0,
+            "score": 0.11797276884317398
+          },
+          {
+            "index": 1,
+            "score": 0.11797276884317398
+          }
+        ]
+      }
+    }
+  },
+  "scoreCards": [
+    {
+      "name": "default-exact-and-source-weight",
+      "signals": [
+        {
+          "source": "dpe",
+          "kind": "parseSuccess",
+          "value": 1
+        },
+        {
+          "source": "evaluator",
+          "kind": "quality",
+          "value": 0
+        }
+      ],
+      "result": 0.6666666666666666,
+      "serialized": {
+        "signals": [
+          {
+            "source": "dpe",
+            "kind": "parseSuccess",
+            "value": 1
+          },
+          {
+            "source": "evaluator",
+            "kind": "quality",
+            "value": 0
+          }
+        ],
+        "compositeScore": 0.6666666666666666
+      }
+    },
+    {
+      "name": "explicit-zero-weight",
+      "signals": [
+        {
+          "source": "dpe",
+          "kind": "parseSuccess",
+          "value": 1,
+          "weight": 0
+        }
+      ],
+      "result": 0,
+      "serialized": {
+        "signals": [
+          {
+            "source": "dpe",
+            "kind": "parseSuccess",
+            "value": 1,
+            "weight": 0
+          }
+        ],
+        "compositeScore": 0
+      }
+    },
+    {
+      "name": "exact-overrides",
+      "constructor": {
+        "dpe:parseSuccess": 2
+      },
+      "call": {
+        "dpe:parseSuccess": 7
+      },
+      "signals": [
+        {
+          "source": "dpe",
+          "kind": "parseSuccess",
+          "value": 1
+        },
+        {
+          "source": "custom",
+          "kind": "metric",
+          "value": 0
+        }
+      ],
+      "result": 0.875,
+      "serialized": {
+        "signals": [
+          {
+            "source": "dpe",
+            "kind": "parseSuccess",
+            "value": 1
+          },
+          {
+            "source": "custom",
+            "kind": "metric",
+            "value": 0
+          }
+        ],
+        "compositeScore": 0.6666666666666666
+      }
+    },
+    {
+      "name": "custom-wildcard-ignored",
+      "constructor": {
+        "evaluator:*": 100
+      },
+      "signals": [
+        {
+          "source": "evaluator",
+          "kind": "quality",
+          "value": 1
+        },
+        {
+          "source": "custom",
+          "kind": "metric",
+          "value": 0
+        }
+      ],
+      "result": 0.6,
+      "serialized": {
+        "signals": [
+          {
+            "source": "evaluator",
+            "kind": "quality",
+            "value": 1
+          },
+          {
+            "source": "custom",
+            "kind": "metric",
+            "value": 0
+          }
+        ],
+        "compositeScore": 0.6
+      }
+    },
+    {
+      "name": "nan-retained-but-skipped",
+      "signals": [
+        {
+          "source": "custom",
+          "kind": "metric",
+          "value": {
+            "numericKind": "NaN"
+          }
+        },
+        {
+          "source": "custom",
+          "kind": "metric",
+          "value": 0.25
+        }
+      ],
+      "result": 0.25,
+      "serialized": {
+        "signals": [
+          {
+            "source": "custom",
+            "kind": "metric",
+            "value": {
+              "numericKind": "NaN"
+            }
+          },
+          {
+            "source": "custom",
+            "kind": "metric",
+            "value": 0.25
+          }
+        ],
+        "compositeScore": 0.25
+      }
+    },
+    {
+      "name": "infinity-times-zero",
+      "signals": [
+        {
+          "source": "custom",
+          "kind": "metric",
+          "value": {
+            "numericKind": "PositiveInfinity"
+          },
+          "weight": 0
+        }
+      ],
+      "result": 0,
+      "serialized": {
+        "signals": [
+          {
+            "source": "custom",
+            "kind": "metric",
+            "value": {
+              "numericKind": "PositiveInfinity"
+            },
+            "weight": 0
+          }
+        ],
+        "compositeScore": 0
+      }
+    }
+  ]
+}
