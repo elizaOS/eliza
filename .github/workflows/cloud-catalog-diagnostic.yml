@@ -247,7 +247,7 @@ jobs:
                 customerMatchesSession: reference(paymentIntent.customer) === reference(session.customer),
                 latestChargeMatchesInvoice: reference(paymentIntent.latest_charge) === parsed.data.charge,
               }}));
-              const charge = await observe('charge', () => stripe.charges.retrieve(parsed.data.charge));
+              const charge = await observe('charge', () => stripe.charges.retrieve(parsed.data.charge, { expand: ["refunds"] }));
               if (charge) console.log(JSON.stringify({ charge: {
                 status: charge.status, paid: charge.paid, captured: charge.captured,
                 refunded: charge.refunded, livemode: charge.livemode,

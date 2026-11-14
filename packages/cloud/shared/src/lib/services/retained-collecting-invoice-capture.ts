@@ -47,7 +47,9 @@ export async function observeRetainedCollectingInvoiceCapture(
     // This existing observer bounds complete ledger traversal and authenticates invoice ownership.
     const balance = await observeRetainedInvoiceBalance(original, stripe);
     const rawPayment = await read(() => stripe.paymentIntents.retrieve(paymentId, {}, options));
-    const rawCharge = await read(() => stripe.charges.retrieve(chargeId, {}, options));
+    const rawCharge = await read(() =>
+      stripe.charges.retrieve(chargeId, { expand: ["refunds"] }, options),
+    );
     const capture = validateInvoiceCapture({
       invoice: balance.invoice,
       paymentIntent: rawPayment,
