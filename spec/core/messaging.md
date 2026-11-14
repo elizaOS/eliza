@@ -74,3 +74,21 @@ pure val fair_invokeCaptured = "weak"
 pure val fair_finishConnector = "weak"
 pure def leadsToConnectorSettled(s: ConnectorState, later: ConnectorState): bool = (s.phase == Voice or s.phase == Snapshot or s.phase == Handler) implies later.phase == Done
 ```
+
+### Invocation requires a registered callback identity
+
+Discovered by the proof: an invented Handler phase could reach settlement
+without having invoked a callback. A transport holds a positive callback
+identity. A descriptor can use zero to record an unsupported hook. A
+dispatch waiting for voice processing or deferred invocation has already
+selected a positive identity. A dispatch waiting for settlement has
+invoked that identity.
+
+```quint
+pure def alwaysSelectableHandlersAreValid(s: ConnectorState): bool =
+  s.descriptors.every(entry => entry.handler >= 0) and s.transports.every(entry => entry.handler > 0)
+pure def alwaysAwaitedCallbackWasSelected(s: ConnectorState): bool =
+  (s.phase == Voice or s.phase == Snapshot or s.phase == Handler) implies s.selectedOwner > 0
+pure def alwaysHandlerHasInvoked(s: ConnectorState): bool =
+  s.phase == Handler implies s.invokedOwner == s.selectedOwner and s.invokedOwner > 0
+```
