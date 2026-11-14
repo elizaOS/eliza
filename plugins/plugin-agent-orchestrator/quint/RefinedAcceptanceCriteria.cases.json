@@ -1,0 +1,47 @@
+{
+  "sources": [
+    "plugins/plugin-agent-orchestrator/src/services/acceptance-criteria.ts",
+    "plugins/plugin-agent-orchestrator/src/services/producible-evidence.ts",
+    "plugins/plugin-agent-orchestrator/src/__tests__/refined-acceptance-criteria-model.test.ts",
+    "plugins/plugin-agent-orchestrator/quint/check-refined-acceptance-criteria.mjs"
+  ],
+  "conformance": "plugins/plugin-agent-orchestrator/quint/check-refined-acceptance-criteria.mjs",
+  "bounds": "One task created without acceptance criteria and with a goal that names one file, for each of the four template kinds: coding (four template lines), app-build, view-create and deploy (three lines each). The refinement model call either fails with no usable JSON or answers with any subset of the kind's template lines kept verbatim, zero to two goal checks that name no file, and at most one criterion that names a file: the goal's file or a file that neither the goal nor the template names. Two view-create lines and two deploy lines name a path token. The conformance script replays every generated answer through OrchestratorTaskService.createTask on a PGlite-backed runtime and requires all 364 kind and answer pairs (144 coding, 72 for each other kind, 4 failed answers). Template lines rewritten by the model, answers that repeat a criterion, criteria in another order and caller-supplied criteria are not covered by this model. Under weak fairness of the model answer the task's criteria are eventually stored. Explicit stuttering lets the model call stay unanswered, so the same claim without fairness must fail. No answer-time bound is proved.",
+  "cases": [
+    {
+      "name": "refined-criteria-for-four-task-kinds",
+      "main": "RefinedAcceptanceCriteria",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "KeptTemplateLinesStay",
+        "GoalChecksStay",
+        "GoalFileStays",
+        "UnnamedFileDropped",
+        "FailedAnswerUsesTemplate",
+        "AtLeastThree",
+        "NoDuplicates",
+        "TypeOK"
+      ],
+      "temporal": ["CriteriaStored", "CriteriaStoredWithoutFairness"],
+      "maxSteps": 2,
+      "samples": 12000,
+      "temporalChecks": [
+        {
+          "property": "CriteriaStored",
+          "expect": "holds",
+          "assumptions": [
+            "Every continuously enabled model answer (a list of criteria or a failed call) eventually arrives (weak fairness). This checks that the task then stores its criteria, not how long the model call takes."
+          ]
+        },
+        {
+          "property": "CriteriaStoredWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No answer fairness is assumed. The model call may stay unanswered forever, so a temporal loop counterexample is required."
+          ]
+        }
+      ]
+    }
+  ]
+}
