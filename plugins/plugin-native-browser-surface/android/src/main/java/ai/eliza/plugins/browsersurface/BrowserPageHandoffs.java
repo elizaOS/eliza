@@ -58,8 +58,9 @@ public final class BrowserPageHandoffs {
   }
 
   /**
-   * Pending dialog results of one surface, keyed by an unguessable id. Confined to the UI thread.
-   * {@link #take} hands a result out once, so a late or repeated answer does nothing.
+   * Pending results of one surface (page dialogs, site permission requests), keyed by an
+   * unguessable id. Confined to the UI thread. {@link #take} hands a result out once, so a late or
+   * repeated answer does nothing.
    */
   public static final class Dialogs<T> {
     private final Map<String, T> pending = new LinkedHashMap<>();
@@ -72,6 +73,11 @@ public final class BrowserPageHandoffs {
       String id = UUID.randomUUID().toString();
       pending.put(id, result);
       return id;
+    }
+
+    /** The pending result, left pending: for an answer that may not be given yet. */
+    public T get(String id) {
+      return id == null ? null : pending.get(id);
     }
 
     public T take(String id) {

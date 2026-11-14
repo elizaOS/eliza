@@ -92,6 +92,17 @@ describe("BrowserSurfaceWeb", () => {
     await expect(web.goBack({ ...identity, id: "a" })).rejects.toThrow(
       /native-only/i,
     );
+    const request = { ...identity, id: "a", requestId: "r" };
+    await expect(
+      web.answerFileChooser({ ...request, open: true }),
+    ).rejects.toThrow(/native-only/i);
+    await expect(
+      web.answerSitePermission({ ...request, grant: false }),
+    ).rejects.toThrow(/native-only/i);
+    await expect(web.saveDownload(request)).rejects.toThrow(/native-only/i);
+    await expect(web.openIdentityProvider(request)).rejects.toThrow(
+      /native-only/i,
+    );
     await expect(web.readPage({ ...identity, id: "a" })).rejects.toThrow(
       /native-only/i,
     );
