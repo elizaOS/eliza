@@ -127,7 +127,7 @@ export class BrowserSurfaceWeb
   }
   async answerSitePermission(
     _options: SurfaceIdOptions & { requestId: string; grant: boolean },
-  ): Promise<{ granted: boolean }> {
+  ): ReturnType<ElizaSurfaceManagerPlugin["answerSitePermission"]> {
     throw this.unavailable(UNAVAILABLE);
   }
   async saveDownload(

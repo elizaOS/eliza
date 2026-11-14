@@ -379,8 +379,14 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         val answer: (Set<String>) -> Unit,
     )
 
-    /** A granted site permission request waiting on Android's own runtime permission dialog. */
-    private class AndroidPermissionAsk(val call: PluginCall, val id: String, val surface: Surface, val requestId: String)
+    /**
+     * A granted site permission request waiting on Android's own runtime permission dialog.
+     * [androidAnswered] is set once Android answered the dialog; an empty answer means Android
+     * showed nothing (another permission request was in progress), so it never refused.
+     */
+    private class AndroidPermissionAsk(val call: PluginCall, val id: String, val surface: Surface, val requestId: String) {
+        var androidAnswered = false
+    }
 
     /** A download the page asked for, waiting for `saveDownload`; its address never leaves native code again. */
     private class HeldDownload(
@@ -536,8 +542,11 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         }
         androidPermissionPrompt = activity.activityResultRegistry.register(
             "eliza-surface-site-permission", ActivityResultContracts.RequestMultiplePermissions(),
-        ) {
-            androidPermissionAsks.removeFirstOrNull()?.let(::finishSitePermission)
+        ) { result ->
+            androidPermissionAsks.removeFirstOrNull()?.let {
+                it.androidAnswered = result.isNotEmpty()
+                finishSitePermission(it)
+            }
             askAndroidNext()
         }
         // Observe the root insets instead of installing an insets listener, which would
@@ -1147,6 +1156,13 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                         closeRequests(id, it)
                         it.pendingExternalLink = null
                         it.pendingIdentityProvider = null
+                        // A capture grant's autoplay lasts for its page only (finishSitePermission).
+                        view.settings.mediaPlaybackRequiresUserGesture = true
+                        // WebView starts pages for the main frame only. After closeRequests, so the
+                        // host hears every sitePermissionWithdrawn this start caused before it.
+                        if (surfaces[id] === it && isLive(it)) {
+                            notifyListeners("pageStarted", surfaceEvent(id, it).apply { put("url", url) })
+                        }
                     }
                     gate.commit(url)
                 }
@@ -1839,7 +1855,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
     /**
      * Answers a `sitePermissionRequested` request once. A grant first asks Android for any runtime
      * permission the host app still lacks for its kinds; the page is granted only if Android allowed
-     * them all and it is still at the requesting origin, else denied. Resolves `{ granted }`.
+     * them all and it is still at the requesting origin, else denied. Resolves `{ granted, outcome }`
+     * ([BrowserSurfaceRequests.sitePermissionOutcome]).
      */
     @PluginMethod
     fun answerSitePermission(call: PluginCall) {
@@ -1892,15 +1909,29 @@ class ElizaSurfaceManagerPlugin : Plugin() {
     /**
      * Answers [ask]'s page once: granted when [grant] holds, Android allows every kind and the page is
      * still at the requesting origin. A request the page withdrew, or that navigating, hiding or closing
-     * ended while Android asked, was already denied; it resolves `granted: false` and is never granted.
+     * ended while Android asked, was already denied; it resolves `ended` and is never granted. A camera
+     * or microphone grant lets this page play media without a gesture, as Chrome does while a page
+     * captures; the next page start restores the gesture requirement.
      */
     private fun finishSitePermission(ask: AndroidPermissionAsk, grant: Boolean = true) {
         val surface = ask.surface
         val held = if (surfaces[ask.id] === surface) surface.holds.permissions.take(ask.requestId) else null
-        val granted = held != null && grant && isLive(surface) && androidPermissionsToAsk(held.kinds).isEmpty() &&
-            BrowserWebOrigin.of(surface.webView.url) == held.origin
+        val outcome = BrowserSurfaceRequests.sitePermissionOutcome(
+            held = held != null,
+            grant = grant,
+            samePage = held != null && isLive(surface) && BrowserWebOrigin.of(surface.webView.url) == held.origin,
+            missing = held != null && androidPermissionsToAsk(held.kinds).isNotEmpty(),
+            androidAnswered = ask.androidAnswered,
+        )
+        val granted = outcome == "granted"
         held?.answer(if (granted) held.kinds.toSet() else emptySet())
-        ask.call.resolve(JSObject().apply { put("granted", granted) })
+        if (held != null && granted && BrowserSurfaceRequests.capturesMedia(held.kinds)) {
+            surface.webView.settings.mediaPlaybackRequiresUserGesture = false
+        }
+        ask.call.resolve(JSObject().apply {
+            put("granted", granted)
+            put("outcome", outcome)
+        })
     }
 
     /**
@@ -2147,8 +2178,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
     /**
      * Purges profiles: one key at once (sign-out), every keyed profile idle for at least
      * `idleMs` that no open surface uses, or (`all: true`) every keyed and ephemeral profile of
-     * any owner. Surfaces on a purged profile close first. `all` resolves after the cookies are
-     * removed, with `clean` true when no purged profile still holds a cookie.
+     * any owner. Surfaces on a purged profile close first. `profileKey` and `all` resolve after the
+     * cookies are removed, with `clean` true when no purged profile still holds a cookie.
      */
     @PluginMethod
     fun purgeProfiles(call: PluginCall) {
@@ -2164,13 +2195,15 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         activity.runOnUiThread {
             val identity = requireActiveIdentity(call, "purgeProfiles") ?: return@runOnUiThread
             if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
-                call.resolve(JSObject().apply { put("purged", 0); if (all) put("clean", true) })
+                call.resolve(JSObject().apply { put("purged", 0); if (idle == null) put("clean", true) })
                 return@runOnUiThread
             }
-            var purged = 0
-            if (all) {
-                val names = BrowserProfilePolicy.surfaceProfiles(ProfileStore.getInstance().allProfileNames)
-                names.forEach(::closeProfileSurfaces)
+            val store = ProfileStore.getInstance()
+            if (idle == null) {
+                val closing = if (all) BrowserProfilePolicy.surfaceProfiles(store.allProfileNames)
+                    else listOf(keyedProfileName(identity.owner, key!!))
+                closing.forEach(::closeProfileSurfaces)
+                val names = closing.filter(store.allProfileNames::contains)
                 if (names.isEmpty()) {
                     call.resolve(JSObject().apply { put("purged", 0); put("clean", true) })
                     return@runOnUiThread
@@ -2187,22 +2220,14 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 }
                 return@runOnUiThread
             }
-            if (key != null) {
-                val name = keyedProfileName(identity.owner, key)
-                closeProfileSurfaces(name)
-                if (ProfileStore.getInstance().allProfileNames.contains(name)) {
-                    purgeKeyedProfile(name)
-                    purged = 1
-                }
-            } else {
-                val now = System.currentTimeMillis()
-                for (name in ProfileStore.getInstance().allProfileNames) {
-                    if (!BrowserProfilePolicy.keyed(name) || surfaces.values.any { it.profileName == name }) continue
-                    val used = if (profilePrefs.contains("used:$name")) profilePrefs.getLong("used:$name", 0) else null
-                    if (!BrowserProfilePolicy.expired(used, now, idle!!.toLong())) continue
-                    purgeKeyedProfile(name)
-                    purged += 1
-                }
+            var purged = 0
+            val now = System.currentTimeMillis()
+            for (name in store.allProfileNames) {
+                if (!BrowserProfilePolicy.keyed(name) || surfaces.values.any { it.profileName == name }) continue
+                val used = if (profilePrefs.contains("used:$name")) profilePrefs.getLong("used:$name", 0) else null
+                if (!BrowserProfilePolicy.expired(used, now, idle.toLong())) continue
+                purgeKeyedProfile(name)
+                purged += 1
             }
             call.resolve(JSObject().apply { put("purged", purged) })
         }
