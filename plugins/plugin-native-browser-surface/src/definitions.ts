@@ -240,8 +240,9 @@ export interface SitePermissionRequestedEvent extends SurfaceIdOptions {
    */
   topFrame: boolean;
   /**
-   * Android runtime permissions the host app must hold before `grant: true` succeeds,
-   * for example `android.permission.CAMERA`. Ask the person for them first.
+   * Android runtime permissions the host app does not hold yet, for example
+   * `android.permission.CAMERA`. `answerSitePermission({ grant: true })` asks Android for
+   * them itself, so the person sees Android's own dialog after the host's.
    */
   androidPermissions: string[];
 }
@@ -250,7 +251,8 @@ export interface SitePermissionRequestedEvent extends SurfaceIdOptions {
  * Android: a held `sitePermissionRequested` request ended without the host's answer. Either
  * the page withdrew it (WebView already cancelled it; the plugin answers nothing), or the
  * page navigated or the surface was hidden, reconciled or closed and the plugin denied it.
- * Close its prompt; `answerSitePermission` would reject `SITE_PERMISSION_CLOSED`.
+ * Close its prompt; `answerSitePermission` would reject `SITE_PERMISSION_CLOSED`, and a
+ * grant already waiting on Android's dialog resolves `granted: false`.
  */
 export interface SitePermissionWithdrawnEvent extends SurfaceIdOptions {
   requestId: string;
@@ -558,13 +560,16 @@ export interface ElizaSurfaceManagerPlugin {
     options: SurfaceIdOptions & { requestId: string; open: boolean },
   ): Promise<void>;
   /**
-   * Android: answer a `sitePermissionRequested` request once. A grant rejects with
-   * `ANDROID_PERMISSION_REQUIRED` while the host app lacks the event's
-   * `androidPermissions`, and the request stays open for a second answer.
+   * Android: answer a `sitePermissionRequested` request once. `grant: true` first asks
+   * Android for any of the event's `androidPermissions` the app still lacks; the page is
+   * granted only if Android allowed them all and it is still at the requesting origin,
+   * and is denied otherwise. Resolves with what the page got: `granted: false` after a
+   * grant means Android refused it, or the request was withdrawn while Android asked.
+   * A request already answered or withdrawn rejects `SITE_PERMISSION_CLOSED`.
    */
   answerSitePermission(
     options: SurfaceIdOptions & { requestId: string; grant: boolean },
-  ): Promise<void>;
+  ): Promise<{ granted: boolean }>;
   /**
    * Android 10+: save the `downloadRequested` file to Downloads once the person said yes,
    * with the surface's cookie only for the requesting page's exact origin. Resolves once

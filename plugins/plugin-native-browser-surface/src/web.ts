@@ -127,7 +127,7 @@ export class BrowserSurfaceWeb
   }
   async answerSitePermission(
     _options: SurfaceIdOptions & { requestId: string; grant: boolean },
-  ): Promise<void> {
+  ): Promise<{ granted: boolean }> {
     throw this.unavailable(UNAVAILABLE);
   }
   async saveDownload(

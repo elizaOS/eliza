@@ -245,6 +245,10 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         surfaces.clear()
         filePicker?.unregister()
         filePicker = null
+        // Their requests were denied with their surfaces above.
+        generateSequence { androidPermissionAsks.removeFirstOrNull() }.forEach(::finishSitePermission)
+        androidPermissionPrompt?.unregister()
+        androidPermissionPrompt = null
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) downloads?.destroy()
         downloads = null
         inputRouter?.let { (it.parent as? ViewGroup)?.removeView(it) }
@@ -375,6 +379,9 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         val answer: (Set<String>) -> Unit,
     )
 
+    /** A granted site permission request waiting on Android's own runtime permission dialog. */
+    private class AndroidPermissionAsk(val call: PluginCall, val id: String, val surface: Surface, val requestId: String)
+
     /** A download the page asked for, waiting for `saveDownload`; its address never leaves native code again. */
     private class HeldDownload(
         val url: String,
@@ -486,6 +493,9 @@ class ElizaSurfaceManagerPlugin : Plugin() {
     private var filePicker: ActivityResultLauncher<Intent>? = null
     /** The surface and file request the open system picker answers. */
     private var pickerFor: Pair<Surface, String>? = null
+    private var androidPermissionPrompt: ActivityResultLauncher<Array<String>>? = null
+    /** Granted requests in answer order; the first one's Android dialog is up. */
+    private val androidPermissionAsks = ArrayDeque<AndroidPermissionAsk>()
     private var fullscreen: Fullscreen? = null
     private var downloads: BrowserDownloads? = null
     private var inputRouter: BelowHostInputRouter? = null
@@ -523,6 +533,12 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             val ok = result.resultCode == Activity.RESULT_OK &&
                 BrowserSurfaceRequests.pickedFiles(picked.map { it.scheme }, held.multiple)
             held.callback.onReceiveValue(if (ok) picked.toTypedArray() else null)
+        }
+        androidPermissionPrompt = activity.activityResultRegistry.register(
+            "eliza-surface-site-permission", ActivityResultContracts.RequestMultiplePermissions(),
+        ) {
+            androidPermissionAsks.removeFirstOrNull()?.let(::finishSitePermission)
+            askAndroidNext()
         }
         // Observe the root insets instead of installing an insets listener, which would
         // replace the host's own. The host moves its controls above the keyboard.
@@ -742,7 +758,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
      * cancel, fullscreen ends, a file input gets no files, site permissions are denied (the host
      * hears `sitePermissionWithdrawn`) and the download waiting for `saveDownload` is dropped.
      * A paused page keeps its file input and permission requests, since the system picker or
-     * the host's own Android permission prompt may be what covers it.
+     * Android's runtime permission dialog for a grant may be what covers it.
      */
     private fun closeRequests(id: String, surface: Surface) {
         dismissDialogs(surface)
@@ -1821,8 +1837,9 @@ class ElizaSurfaceManagerPlugin : Plugin() {
     }
 
     /**
-     * Answers a `sitePermissionRequested` request once. A grant needs the host app's own Android
-     * permissions first; without them it rejects and the request stays open for a second answer.
+     * Answers a `sitePermissionRequested` request once. A grant first asks Android for any runtime
+     * permission the host app still lacks for its kinds; the page is granted only if Android allowed
+     * them all and it is still at the requesting origin, else denied. Resolves `{ granted }`.
      */
     @PluginMethod
     fun answerSitePermission(call: PluginCall) {
@@ -1836,19 +1853,54 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         activity.runOnUiThread {
             val identity = requireActiveIdentity(call, "answerSitePermission") ?: return@runOnUiThread
             val surface = ownedSurface(call, id, identity, "answerSitePermission") ?: return@runOnUiThread
-            val held = surface.holds.permissions.get(requestId) ?: run {
+            if (surface.holds.permissions.get(requestId) == null ||
+                androidPermissionAsks.any { it.surface === surface && it.requestId == requestId }) {
                 call.reject("This permission request is no longer open", "SITE_PERMISSION_CLOSED")
                 return@runOnUiThread
             }
-            if (grant && androidPermissionsToAsk(held.kinds).isNotEmpty()) {
-                call.reject("Android has not allowed this app to use the ${BrowserSitePrompt.labels(held.kinds)}",
-                    "ANDROID_PERMISSION_REQUIRED")
-                return@runOnUiThread
+            val ask = AndroidPermissionAsk(call, id, surface, requestId)
+            if (!grant) {
+                finishSitePermission(ask, grant = false)
+            } else {
+                androidPermissionAsks.addLast(ask)
+                if (androidPermissionAsks.size == 1) askAndroidNext()
             }
-            surface.holds.permissions.take(requestId)
-            held.answer(if (grant && BrowserWebOrigin.of(surface.webView.url) == held.origin) held.kinds.toSet() else emptySet())
-            call.resolve()
         }
+    }
+
+    /**
+     * Shows Android's runtime permission dialog for the first waiting grant, or finishes it at once
+     * when nothing is missing or no dialog can be shown, then moves on to the next.
+     */
+    private fun askAndroidNext() {
+        while (true) {
+            val ask = androidPermissionAsks.firstOrNull() ?: return
+            val missing = ask.surface.holds.permissions.get(ask.requestId)?.let { androidPermissionsToAsk(it.kinds) }.orEmpty()
+            if (missing.isNotEmpty()) try {
+                androidPermissionPrompt?.launch(missing.toTypedArray())
+                    ?: throw IllegalStateException("The permission prompt is not registered")
+                return
+            } catch (error: RuntimeException) {
+                // error-policy:J1 No Android dialog means Android did not allow it; the page is denied.
+                Log.w(TAG, "Could not ask Android for site permissions", error)
+            }
+            androidPermissionAsks.removeFirstOrNull()
+            finishSitePermission(ask)
+        }
+    }
+
+    /**
+     * Answers [ask]'s page once: granted when [grant] holds, Android allows every kind and the page is
+     * still at the requesting origin. A request the page withdrew, or that navigating, hiding or closing
+     * ended while Android asked, was already denied; it resolves `granted: false` and is never granted.
+     */
+    private fun finishSitePermission(ask: AndroidPermissionAsk, grant: Boolean = true) {
+        val surface = ask.surface
+        val held = if (surfaces[ask.id] === surface) surface.holds.permissions.take(ask.requestId) else null
+        val granted = held != null && grant && isLive(surface) && androidPermissionsToAsk(held.kinds).isEmpty() &&
+            BrowserWebOrigin.of(surface.webView.url) == held.origin
+        held?.answer(if (granted) held.kinds.toSet() else emptySet())
+        ask.call.resolve(JSObject().apply { put("granted", granted) })
     }
 
     /**
