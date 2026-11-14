@@ -252,6 +252,34 @@ async function sendTwilioReply(
   return sids;
 }
 
+/**
+ * A proxy chain appends a hop to each X-Forwarded-* header, and Node joins
+ * repeated header lines with ", ". The first value is the one the client used.
+ */
+function firstForwardedValue(value: string | null): string | undefined {
+  const first = value?.split(",")[0]?.trim();
+  return first ? first : undefined;
+}
+
+function forwardedScheme(value: string | null): "http" | "https" | undefined {
+  const first = firstForwardedValue(value)?.toLowerCase().replace(/:$/, "");
+  return first === "http" || first === "https" ? first : undefined;
+}
+
+/** Split a forwarded authority into the parts the URL setters take. */
+function forwardedAuthority(
+  value: string | null,
+): { hostname: string; port: string } | undefined {
+  const first = firstForwardedValue(value);
+  if (!first) return undefined;
+  try {
+    const parsed = new URL(`http://${first}`);
+    return { hostname: parsed.hostname, port: parsed.port };
+  } catch {
+    return undefined;
+  }
+}
+
 async function verifySignature(
   authToken: string,
   signature: string,
@@ -324,10 +352,18 @@ export const twilioAdapter: PlatformAdapter = {
     // Behind a reverse proxy/ingress, request.url has the internal pod URL,
     // not the external URL Twilio used. Use X-Forwarded-* or PUBLIC_URL to fix.
     const url = new URL(request.url);
-    const forwardedProto = request.headers.get("x-forwarded-proto");
-    const forwardedHost = request.headers.get("x-forwarded-host");
+    const forwardedProto = forwardedScheme(
+      request.headers.get("x-forwarded-proto"),
+    );
+    const forwardedHost = forwardedAuthority(
+      request.headers.get("x-forwarded-host"),
+    );
     if (forwardedProto) url.protocol = `${forwardedProto}:`;
-    if (forwardedHost) url.host = forwardedHost;
+    if (forwardedHost) {
+      url.hostname = forwardedHost.hostname;
+      // The internal listening port is not part of the URL Twilio signed.
+      url.port = forwardedHost.port;
+    }
     if (process.env.TWILIO_PUBLIC_URL) {
       const publicBase = new URL(process.env.TWILIO_PUBLIC_URL);
       url.protocol = publicBase.protocol;
