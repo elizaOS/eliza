@@ -508,8 +508,8 @@
           "lastBound"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-current-canonical-check-running",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -669,8 +669,8 @@
           "lastBound"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-current-canonical-check-running",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -830,8 +830,8 @@
           "lastBound"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-current-canonical-check-running",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -991,8 +991,8 @@
           "lastBound"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-current-canonical-check-running",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -1152,8 +1152,8 @@
           "lastBound"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-current-canonical-check-running",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -1313,8 +1313,8 @@
           "lastBound"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-current-canonical-check-running",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -2701,7 +2701,7 @@
             "registerApp",
             "refreshLookup"
           ],
-          "specSha256": "c8ab6a5628d3297bc4add562f98fd571622e9eab5414afd81829f18befda5c97"
+          "specSha256": "c9c90e017f553e9b5b16cb86e7284fbea2173c94f25294a79ed577850355b903"
         },
         "mappedStateFields": [
           "definitions",
@@ -2749,7 +2749,7 @@
             "registerApp",
             "refreshLookup"
           ],
-          "specSha256": "c8ab6a5628d3297bc4add562f98fd571622e9eab5414afd81829f18befda5c97"
+          "specSha256": "c9c90e017f553e9b5b16cb86e7284fbea2173c94f25294a79ed577850355b903"
         },
         "mappedStateFields": [
           "version",
@@ -4211,6 +4211,7 @@
           "stateType": "Reconciliations",
           "stateFields": [
             "queue",
+            "Q",
             "calls",
             "keyCatalog"
           ],
@@ -4222,7 +4223,7 @@
             "callbackReturns",
             "releaseKey"
           ],
-          "specSha256": "740f1c3a18093a9cba55092df4a7b699701ae6cea621d54f3eca9b630d2b0165"
+          "specSha256": "f981b76dd0c46f4d9127b004386bc06ea805807f85db6670e13d21d7c6553da3"
         },
         "mappedStateFields": [
           "queue",
@@ -4779,8 +4780,8 @@
           "now"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-generation-in-progress",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -4986,8 +4987,8 @@
           "hasOutbound"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-generation-in-progress",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -5172,8 +5173,8 @@
           "hasOutbound"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-generation-in-progress",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -5375,8 +5376,8 @@
           "hasOutbound"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-generation-in-progress",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -5817,15 +5818,23 @@
           "stateType": "Handoff",
           "stateFields": [
             "fallback",
-            "target",
+            "D",
+            "targets",
+            "D",
+            "targetIds",
             "bridge",
+            "B",
+            "bridgeAdapter",
             "kind",
             "queue",
+            "Q",
             "activeTicket",
             "selectedBackend",
             "phase",
             "accountSnapshot",
+            "A",
             "flowSnapshot",
+            "D",
             "accountIndex",
             "flowIndex",
             "failed"
@@ -5833,8 +5842,10 @@
           "transitions": [
             "enqueue",
             "beginOperation",
+            "beginNextOperation",
             "writeFallbackAccount",
             "writeFallbackFlow",
+            "consumeFallbackFlow",
             "nextPhase",
             "copyAccount",
             "copyFlow",
@@ -5849,7 +5860,7 @@
             "finishOperation",
             "setClock"
           ],
-          "specSha256": "458805ed1666a2f887400eb2dff80c4581019b9a7b09b63ac2adfd39c3145dd6"
+          "specSha256": "eeb17c8d30aec70fd5c73c6fe94f0273c5be3d1ddd9913c2d611cb3fefc864b9"
         },
         "associatedModels": [
           {
@@ -5857,15 +5868,23 @@
             "stateType": "Handoff",
             "stateFields": [
               "fallback",
-              "target",
+              "D",
+              "targets",
+              "D",
+              "targetIds",
               "bridge",
+              "B",
+              "bridgeAdapter",
               "kind",
               "queue",
+              "Q",
               "activeTicket",
               "selectedBackend",
               "phase",
               "accountSnapshot",
+              "A",
               "flowSnapshot",
+              "D",
               "accountIndex",
               "flowIndex",
               "failed"
@@ -5873,8 +5892,10 @@
             "transitions": [
               "enqueue",
               "beginOperation",
+              "beginNextOperation",
               "writeFallbackAccount",
               "writeFallbackFlow",
+              "consumeFallbackFlow",
               "nextPhase",
               "copyAccount",
               "copyFlow",
@@ -5889,7 +5910,7 @@
               "finishOperation",
               "setClock"
             ],
-            "specSha256": "458805ed1666a2f887400eb2dff80c4581019b9a7b09b63ac2adfd39c3145dd6"
+            "specSha256": "eeb17c8d30aec70fd5c73c6fe94f0273c5be3d1ddd9913c2d611cb3fefc864b9"
           }
         ],
         "mappedStateFields": [
@@ -5908,8 +5929,8 @@
           "failed"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-generation-in-progress",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -8031,8 +8052,8 @@
           "logAttempts"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-verification",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -9468,8 +9489,8 @@
           "listed"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-current-canonical-check-running",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -10527,8 +10548,8 @@
           "requestsClosed"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-refinement-pending",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled-with-explicit-refinement-boundary",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -10666,8 +10687,8 @@
           "requestsClosed"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-refinement-pending",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled-with-explicit-refinement-boundary",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -12120,8 +12141,8 @@
           "linkedRuntimes"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-verification",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -12194,8 +12215,8 @@
           "migrations"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -12497,8 +12518,8 @@
           "entries"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -14101,8 +14122,8 @@
           "linkedRuntimes"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-verification",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -14822,8 +14843,8 @@
           "roomId"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -14898,8 +14919,8 @@
           "roomId"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -15643,8 +15664,8 @@
           "lastEnrichedRun"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -15757,8 +15778,8 @@
           "lastEnrichedRun"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -15870,8 +15891,8 @@
           "lastEnrichedRun"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -16765,8 +16786,8 @@
           "nextObject"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-current-canonical-check-running",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -18011,8 +18032,8 @@
           "drains"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -18524,8 +18545,8 @@
           "calls"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -18666,8 +18687,8 @@
           "calls"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -18808,8 +18829,8 @@
           "calls"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -19624,8 +19645,8 @@
           "generation"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -19702,8 +19723,8 @@
           "generation"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -19780,8 +19801,8 @@
           "generation"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -20171,8 +20192,8 @@
           "diagnosticErrors"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -20307,8 +20328,8 @@
           "diagnosticErrors"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -20436,8 +20457,8 @@
           "diagnosticErrors"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -20565,8 +20586,8 @@
           "diagnosticErrors"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -20694,8 +20715,8 @@
           "diagnosticErrors"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -20816,8 +20837,8 @@
           "diagnosticErrors"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -21022,8 +21043,8 @@
           "diagnosticErrors"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -21216,8 +21237,8 @@
           "scheduleError"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -21332,8 +21353,8 @@
           "scheduleError"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -21455,8 +21476,8 @@
           "scheduleError"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -21571,8 +21592,8 @@
           "scheduleError"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -22053,8 +22074,8 @@
           "nextObserver"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-verification",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -27172,8 +27193,8 @@
           "now"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-current-canonical-check-running",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -27340,8 +27361,8 @@
           "now"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-current-canonical-check-running",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -27586,8 +27607,8 @@
           "now"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-current-canonical-check-running",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -27712,8 +27733,8 @@
           "now"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-current-canonical-check-running",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -27755,28 +27776,30 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Scoped 500-entry LRU stores successful voiced rewrites; hits refresh position and original-on-failure remains explicit.",
+        "representation": "Exact LRU keys and order; one state row per caller preserves detached original/output and settlement identity. Parallel same-key misses do not join; late success overwrites its cache value in place.",
         "model": {
           "spec": "spec/core/voiceRewrite.md",
           "stateType": "VoiceRewrite",
           "stateFields": [
             "cache",
-            "phase",
-            "key",
-            "originalText",
-            "output",
-            "voiced",
+            "calls",
+            "nextTicket",
             "errors"
           ],
           "transitions": [
             "beginRewrite",
-            "rewriteSuccess",
-            "rewriteFailure"
+            "settleRewrite",
+            "settleNext"
           ],
-          "specSha256": "c4b7546801276fec45d6f18a135dc8c3e7e68e964fe3d0fa29bada15df359a66"
+          "specSha256": "bcb28210e42b46c3bdb05329fe28fcff5536723f929ce8bf5a27e41179e7f6c6"
         },
         "mappedStateFields": [
-          "cache"
+          "cache",
+          "calls",
+          "calls.ticket",
+          "calls.key",
+          "calls.originalText",
+          "calls.output"
         ],
         "unmodeledState": null
       }
@@ -28809,8 +28832,8 @@
           "lastRejectedId"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-current-canonical-check-running",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -29014,8 +29037,8 @@
           "lastRejectedId"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-current-canonical-check-running",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -29116,7 +29139,7 @@
             "finishStop",
             "replace"
           ],
-          "specSha256": "414c0014c790b4328a0e88fc078234cd0190d941ef3eae930a0e5e74045867db"
+          "specSha256": "98b139a7d6e0defe58a6372b936e6bd4a9369eed3d7a9fc0f7dbe2cb366cd8d4"
         },
         "associatedModels": [
           {
@@ -29138,7 +29161,7 @@
               "finishStop",
               "replace"
             ],
-            "specSha256": "414c0014c790b4328a0e88fc078234cd0190d941ef3eae930a0e5e74045867db"
+            "specSha256": "98b139a7d6e0defe58a6372b936e6bd4a9369eed3d7a9fc0f7dbe2cb366cd8d4"
           },
           {
             "spec": "spec/core/channelTopics.md",
@@ -29173,8 +29196,8 @@
           "cacheOrder"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -29226,7 +29249,7 @@
             "finishStop",
             "replace"
           ],
-          "specSha256": "414c0014c790b4328a0e88fc078234cd0190d941ef3eae930a0e5e74045867db"
+          "specSha256": "98b139a7d6e0defe58a6372b936e6bd4a9369eed3d7a9fc0f7dbe2cb366cd8d4"
         },
         "associatedModels": [
           {
@@ -29248,7 +29271,7 @@
               "finishStop",
               "replace"
             ],
-            "specSha256": "414c0014c790b4328a0e88fc078234cd0190d941ef3eae930a0e5e74045867db"
+            "specSha256": "98b139a7d6e0defe58a6372b936e6bd4a9369eed3d7a9fc0f7dbe2cb366cd8d4"
           },
           {
             "spec": "spec/core/channelTopics.md",
@@ -29282,8 +29305,8 @@
           "rooms.unit.durableTopics"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -29342,7 +29365,7 @@
             "finishStop",
             "replace"
           ],
-          "specSha256": "414c0014c790b4328a0e88fc078234cd0190d941ef3eae930a0e5e74045867db"
+          "specSha256": "98b139a7d6e0defe58a6372b936e6bd4a9369eed3d7a9fc0f7dbe2cb366cd8d4"
         },
         "associatedModels": [
           {
@@ -29364,7 +29387,7 @@
               "finishStop",
               "replace"
             ],
-            "specSha256": "414c0014c790b4328a0e88fc078234cd0190d941ef3eae930a0e5e74045867db"
+            "specSha256": "98b139a7d6e0defe58a6372b936e6bd4a9369eed3d7a9fc0f7dbe2cb366cd8d4"
           },
           {
             "spec": "spec/core/channelTopics.md",
@@ -29399,8 +29422,8 @@
           "scheduling"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -29445,7 +29468,7 @@
             "finishStop",
             "replace"
           ],
-          "specSha256": "414c0014c790b4328a0e88fc078234cd0190d941ef3eae930a0e5e74045867db"
+          "specSha256": "98b139a7d6e0defe58a6372b936e6bd4a9369eed3d7a9fc0f7dbe2cb366cd8d4"
         },
         "associatedModels": [
           {
@@ -29467,7 +29490,7 @@
               "finishStop",
               "replace"
             ],
-            "specSha256": "414c0014c790b4328a0e88fc078234cd0190d941ef3eae930a0e5e74045867db"
+            "specSha256": "98b139a7d6e0defe58a6372b936e6bd4a9369eed3d7a9fc0f7dbe2cb366cd8d4"
           },
           {
             "spec": "spec/core/channelTopics.md",
@@ -29504,8 +29527,8 @@
           "rooms.unit.generation"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -29736,8 +29759,8 @@
           "lastEnqueued"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-current-canonical-check-running",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -29935,8 +29958,8 @@
           "lastEnqueued"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-current-canonical-check-running",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -30113,8 +30136,8 @@
           "lastEnqueued"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-current-canonical-check-running",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -30284,8 +30307,8 @@
           "lastEnqueued"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-current-canonical-check-running",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -30462,8 +30485,8 @@
           "lastEnqueued"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-current-canonical-check-running",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -31691,8 +31714,8 @@
           "completed"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-current-canonical-check-running",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -31830,8 +31853,8 @@
           "completed"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-current-canonical-check-running",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -31983,8 +32006,8 @@
           "completed"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-current-canonical-check-running",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -32143,8 +32166,8 @@
           "completed"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-current-canonical-check-running",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -32289,8 +32312,8 @@
           "completed"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-current-canonical-check-running",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -32428,8 +32451,8 @@
           "completed"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-current-canonical-check-running",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -32567,8 +32590,8 @@
           "completed"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-current-canonical-check-running",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -33047,8 +33070,8 @@
           "flushTicket"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-current-canonical-check-running",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -33259,8 +33282,8 @@
           "flushTicket"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-current-canonical-check-running",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -33457,8 +33480,8 @@
           "flushTicket"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-current-canonical-check-running",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -33662,8 +33685,8 @@
           "flushTicket"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-current-canonical-check-running",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -34168,6 +34191,7 @@
           "stateFields": [
             "generation",
             "nextRegistration",
+            "nextQuery",
             "activeAdapter",
             "registry",
             "queries",
@@ -34205,7 +34229,7 @@
             "closeRetiredServices",
             "closeRetiredAdapters"
           ],
-          "specSha256": "aeb75468179002d6a8042e2cbc5efb55ef87fe168cfa62cf0a64d5931a47011b"
+          "specSha256": "5ef71d4c3be7a9ada7a05088eef07001a8263898ece3d0ed2dcb62a959038711"
         },
         "mappedStateFields": [
           "registry"
@@ -34284,6 +34308,7 @@
           "stateFields": [
             "generation",
             "nextRegistration",
+            "nextQuery",
             "activeAdapter",
             "registry",
             "queries",
@@ -34321,7 +34346,7 @@
             "closeRetiredServices",
             "closeRetiredAdapters"
           ],
-          "specSha256": "aeb75468179002d6a8042e2cbc5efb55ef87fe168cfa62cf0a64d5931a47011b"
+          "specSha256": "5ef71d4c3be7a9ada7a05088eef07001a8263898ece3d0ed2dcb62a959038711"
         },
         "mappedStateFields": [
           "dirtyAgents"
@@ -34357,6 +34382,7 @@
         }
       ],
       "ownerSpecs": [
+        "spec/core/sharedScheduler.md",
         "spec/core/processScheduler.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
@@ -34398,7 +34424,44 @@
           "tasks",
           "ticks"
         ],
-        "unmodeledState": null
+        "unmodeledState": null,
+        "associatedModels": [
+          {
+            "spec": "spec/core/sharedScheduler.md",
+            "stateType": "SharedScheduler",
+            "stateFields": [
+              "process",
+              "P",
+              "drain",
+              "Q",
+              "links"
+            ],
+            "transitions": [
+              "fire",
+              "advance",
+              "registerRuntime",
+              "unregisterRuntime",
+              "markDirty",
+              "registerProcess",
+              "disposeProcess",
+              "enterCallback",
+              "returnCallback",
+              "advanceDisposal",
+              "attach",
+              "handoff",
+              "retireAdapter",
+              "stop",
+              "returnStop",
+              "closeAdapters",
+              "closeServices"
+            ],
+            "specSha256": "62c61918217b9a6201d2e3269094b0e42c3b9ffc5edd75cb64d327c056e6959e"
+          }
+        ],
+        "composedStateFields": [
+          "process.timer",
+          "process.tasks"
+        ]
       }
     },
     {
@@ -34422,6 +34485,7 @@
         }
       ],
       "ownerSpecs": [
+        "spec/core/sharedScheduler.md",
         "spec/core/queryDrain.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
@@ -34435,6 +34499,7 @@
           "stateFields": [
             "generation",
             "nextRegistration",
+            "nextQuery",
             "activeAdapter",
             "registry",
             "queries",
@@ -34472,7 +34537,7 @@
             "closeRetiredServices",
             "closeRetiredAdapters"
           ],
-          "specSha256": "aeb75468179002d6a8042e2cbc5efb55ef87fe168cfa62cf0a64d5931a47011b"
+          "specSha256": "5ef71d4c3be7a9ada7a05088eef07001a8263898ece3d0ed2dcb62a959038711"
         },
         "mappedStateFields": [
           "activeAdapter",
@@ -34480,7 +34545,43 @@
           "closedAdapters"
         ],
         "unmodeledState": null,
-        "associatedModels": []
+        "associatedModels": [
+          {
+            "spec": "spec/core/sharedScheduler.md",
+            "stateType": "SharedScheduler",
+            "stateFields": [
+              "process",
+              "P",
+              "drain",
+              "Q",
+              "links"
+            ],
+            "transitions": [
+              "fire",
+              "advance",
+              "registerRuntime",
+              "unregisterRuntime",
+              "markDirty",
+              "registerProcess",
+              "disposeProcess",
+              "enterCallback",
+              "returnCallback",
+              "advanceDisposal",
+              "attach",
+              "handoff",
+              "retireAdapter",
+              "stop",
+              "returnStop",
+              "closeAdapters",
+              "closeServices"
+            ],
+            "specSha256": "62c61918217b9a6201d2e3269094b0e42c3b9ffc5edd75cb64d327c056e6959e"
+          }
+        ],
+        "composedStateFields": [
+          "process.adapter",
+          "drain.activeAdapter"
+        ]
       }
     },
     {
@@ -34516,6 +34617,7 @@
         }
       ],
       "ownerSpecs": [
+        "spec/core/sharedScheduler.md",
         "spec/core/queryDrain.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
@@ -34529,6 +34631,7 @@
           "stateFields": [
             "generation",
             "nextRegistration",
+            "nextQuery",
             "activeAdapter",
             "registry",
             "queries",
@@ -34566,14 +34669,53 @@
             "closeRetiredServices",
             "closeRetiredAdapters"
           ],
-          "specSha256": "aeb75468179002d6a8042e2cbc5efb55ef87fe168cfa62cf0a64d5931a47011b"
+          "specSha256": "5ef71d4c3be7a9ada7a05088eef07001a8263898ece3d0ed2dcb62a959038711"
         },
         "mappedStateFields": [
           "queries.phase",
           "queries.generation"
         ],
         "unmodeledState": null,
-        "associatedModels": []
+        "associatedModels": [
+          {
+            "spec": "spec/core/sharedScheduler.md",
+            "stateType": "SharedScheduler",
+            "stateFields": [
+              "process",
+              "P",
+              "drain",
+              "Q",
+              "links"
+            ],
+            "transitions": [
+              "fire",
+              "advance",
+              "registerRuntime",
+              "unregisterRuntime",
+              "markDirty",
+              "registerProcess",
+              "disposeProcess",
+              "enterCallback",
+              "returnCallback",
+              "advanceDisposal",
+              "attach",
+              "handoff",
+              "retireAdapter",
+              "stop",
+              "returnStop",
+              "closeAdapters",
+              "closeServices"
+            ],
+            "specSha256": "62c61918217b9a6201d2e3269094b0e42c3b9ffc5edd75cb64d327c056e6959e"
+          }
+        ],
+        "composedStateFields": [
+          "process.activeTick",
+          "process.ticks",
+          "links.tick",
+          "links.query",
+          "drain.queries.phase"
+        ]
       }
     },
     {
@@ -34597,6 +34739,7 @@
         }
       ],
       "ownerSpecs": [
+        "spec/core/sharedScheduler.md",
         "spec/core/queryDrain.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
@@ -34610,6 +34753,7 @@
           "stateFields": [
             "generation",
             "nextRegistration",
+            "nextQuery",
             "activeAdapter",
             "registry",
             "queries",
@@ -34647,13 +34791,50 @@
             "closeRetiredServices",
             "closeRetiredAdapters"
           ],
-          "specSha256": "aeb75468179002d6a8042e2cbc5efb55ef87fe168cfa62cf0a64d5931a47011b"
+          "specSha256": "5ef71d4c3be7a9ada7a05088eef07001a8263898ece3d0ed2dcb62a959038711"
         },
         "mappedStateFields": [
           "generation"
         ],
         "unmodeledState": null,
-        "associatedModels": []
+        "associatedModels": [
+          {
+            "spec": "spec/core/sharedScheduler.md",
+            "stateType": "SharedScheduler",
+            "stateFields": [
+              "process",
+              "P",
+              "drain",
+              "Q",
+              "links"
+            ],
+            "transitions": [
+              "fire",
+              "advance",
+              "registerRuntime",
+              "unregisterRuntime",
+              "markDirty",
+              "registerProcess",
+              "disposeProcess",
+              "enterCallback",
+              "returnCallback",
+              "advanceDisposal",
+              "attach",
+              "handoff",
+              "retireAdapter",
+              "stop",
+              "returnStop",
+              "closeAdapters",
+              "closeServices"
+            ],
+            "specSha256": "62c61918217b9a6201d2e3269094b0e42c3b9ffc5edd75cb64d327c056e6959e"
+          }
+        ],
+        "composedStateFields": [
+          "process.generation",
+          "drain.generation",
+          "drain.queries.generation"
+        ]
       }
     },
     {
@@ -34684,6 +34865,7 @@
           "stateFields": [
             "generation",
             "nextRegistration",
+            "nextQuery",
             "activeAdapter",
             "registry",
             "queries",
@@ -34721,7 +34903,7 @@
             "closeRetiredServices",
             "closeRetiredAdapters"
           ],
-          "specSha256": "aeb75468179002d6a8042e2cbc5efb55ef87fe168cfa62cf0a64d5931a47011b"
+          "specSha256": "5ef71d4c3be7a9ada7a05088eef07001a8263898ece3d0ed2dcb62a959038711"
         },
         "mappedStateFields": [
           "nextRegistration",
@@ -34765,6 +34947,7 @@
           "stateFields": [
             "generation",
             "nextRegistration",
+            "nextQuery",
             "activeAdapter",
             "registry",
             "queries",
@@ -34802,7 +34985,7 @@
             "closeRetiredServices",
             "closeRetiredAdapters"
           ],
-          "specSha256": "aeb75468179002d6a8042e2cbc5efb55ef87fe168cfa62cf0a64d5931a47011b"
+          "specSha256": "5ef71d4c3be7a9ada7a05088eef07001a8263898ece3d0ed2dcb62a959038711"
         },
         "mappedStateFields": [
           "busyServices",
@@ -34833,6 +35016,7 @@
         }
       ],
       "ownerSpecs": [
+        "spec/core/sharedScheduler.md",
         "spec/core/queryDrain.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
@@ -34846,6 +35030,7 @@
           "stateFields": [
             "generation",
             "nextRegistration",
+            "nextQuery",
             "activeAdapter",
             "registry",
             "queries",
@@ -34883,7 +35068,7 @@
             "closeRetiredServices",
             "closeRetiredAdapters"
           ],
-          "specSha256": "aeb75468179002d6a8042e2cbc5efb55ef87fe168cfa62cf0a64d5931a47011b"
+          "specSha256": "5ef71d4c3be7a9ada7a05088eef07001a8263898ece3d0ed2dcb62a959038711"
         },
         "mappedStateFields": [
           "queries.key",
@@ -34893,7 +35078,46 @@
           "stopWaiting"
         ],
         "unmodeledState": null,
-        "associatedModels": []
+        "associatedModels": [
+          {
+            "spec": "spec/core/sharedScheduler.md",
+            "stateType": "SharedScheduler",
+            "stateFields": [
+              "process",
+              "P",
+              "drain",
+              "Q",
+              "links"
+            ],
+            "transitions": [
+              "fire",
+              "advance",
+              "registerRuntime",
+              "unregisterRuntime",
+              "markDirty",
+              "registerProcess",
+              "disposeProcess",
+              "enterCallback",
+              "returnCallback",
+              "advanceDisposal",
+              "attach",
+              "handoff",
+              "retireAdapter",
+              "stop",
+              "returnStop",
+              "closeAdapters",
+              "closeServices"
+            ],
+            "specSha256": "62c61918217b9a6201d2e3269094b0e42c3b9ffc5edd75cb64d327c056e6959e"
+          }
+        ],
+        "composedStateFields": [
+          "links.query",
+          "drain.queries.captured",
+          "drain.queries.adapters",
+          "drain.queries.phase",
+          "drain.stopWaiting"
+        ]
       }
     },
     {
@@ -35069,7 +35293,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/taskServiceOwners.md",
           "stateType": "TaskServiceOwners",
@@ -35179,8 +35403,8 @@
           "timerAt"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -35219,7 +35443,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/taskServiceOwners.md",
           "stateType": "TaskServiceOwners",
@@ -35328,8 +35552,8 @@
           "hasTimer"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -35354,7 +35578,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/taskServiceOwners.md",
           "stateType": "TaskServiceOwners",
@@ -35463,8 +35687,8 @@
           "timerAt"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -35496,7 +35720,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/taskServiceOwners.md",
           "stateType": "TaskServiceOwners",
@@ -35605,8 +35829,8 @@
           "localTimer"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -35631,7 +35855,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/taskServiceOwners.md",
           "stateType": "TaskServiceOwners",
@@ -35740,8 +35964,8 @@
           "maxTick"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -35787,7 +36011,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/taskServiceOwners.md",
           "stateType": "TaskServiceOwners",
@@ -35897,8 +36121,8 @@
           "ticks"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -35923,7 +36147,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/taskServiceOwners.md",
           "stateType": "TaskServiceOwners",
@@ -36033,8 +36257,8 @@
           "stops"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -36109,7 +36333,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/taskServiceOwners.md",
           "stateType": "TaskServiceOwners",
@@ -36218,8 +36442,8 @@
           "executions"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -36251,7 +36475,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/taskServiceOwners.md",
           "stateType": "TaskServiceOwners",
@@ -36360,8 +36584,8 @@
           "operations"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -36400,7 +36624,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/taskServiceOwners.md",
           "stateType": "TaskServiceOwners",
@@ -36509,8 +36733,8 @@
           "quarantined"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -36564,7 +36788,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/taskServiceOwners.md",
           "stateType": "TaskServiceOwners",
@@ -36673,8 +36897,8 @@
           "stopped"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -36949,8 +37173,8 @@
           "warningCount"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-verification",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -37042,8 +37266,8 @@
           "warningCount"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-verification",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -37129,8 +37353,8 @@
           "warningCount"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-verification",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -37401,8 +37625,8 @@
           "continuations"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -37493,8 +37717,8 @@
           "continuations"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -37585,8 +37809,8 @@
           "continuations"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -37769,8 +37993,8 @@
           "continuations"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -38983,8 +39207,8 @@
           "nextObject"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-current-canonical-check-running",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -40131,7 +40355,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries.",
         "model": {
           "spec": "spec/core/temporaryNames.md",
           "stateType": "TemporaryNames",
@@ -40163,8 +40387,8 @@
           "allocated"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -43036,7 +43260,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/structuredStreamState.md",
           "stateType": "StructuredState",
@@ -43117,8 +43341,8 @@
           "buffer"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -43164,7 +43388,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/structuredStreamState.md",
           "stateType": "StructuredState",
@@ -43245,8 +43469,8 @@
           "currentField"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -43285,7 +43509,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/structuredStreamState.md",
           "stateType": "StructuredState",
@@ -43367,8 +43591,8 @@
           "fieldRows.hasContent"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -43407,7 +43631,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/structuredStreamState.md",
           "stateType": "StructuredState",
@@ -43489,8 +43713,8 @@
           "fieldRows.hasEmitted"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -43522,7 +43746,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/structuredStreamState.md",
           "stateType": "StructuredState",
@@ -43603,8 +43827,8 @@
           "validated"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -43657,7 +43881,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/structuredStreamState.md",
           "stateType": "StructuredState",
@@ -43738,8 +43962,8 @@
           "fieldRows.status"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -43792,7 +44016,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/structuredStreamState.md",
           "stateType": "StructuredState",
@@ -43873,8 +44097,8 @@
           "life"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -43899,7 +44123,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/structuredStreamState.md",
           "stateType": "StructuredState",
@@ -43980,8 +44204,8 @@
           "revision"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -44051,7 +44275,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/structuredStreamState.md",
           "stateType": "StructuredState",
@@ -44132,8 +44356,8 @@
           "currentTracked"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -44165,7 +44389,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/structuredStreamState.md",
           "stateType": "StructuredState",
@@ -44246,8 +44470,8 @@
           "started"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -44279,7 +44503,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/structuredStreamState.md",
           "stateType": "StructuredState",
@@ -44361,8 +44585,8 @@
           "doneValues"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -44676,7 +44900,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/skeletonStreamState.md",
           "stateType": "SkeletonState",
@@ -44727,7 +44951,7 @@
             "discardFinalResidue",
             "finish"
           ],
-          "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+          "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
         },
         "associatedModels": [
           {
@@ -44780,15 +45004,15 @@
               "discardFinalResidue",
               "finish"
             ],
-            "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+            "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
           }
         ],
         "mappedStateFields": [
           "buffer"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -44862,7 +45086,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/skeletonStreamState.md",
           "stateType": "SkeletonState",
@@ -44913,7 +45137,7 @@
             "discardFinalResidue",
             "finish"
           ],
-          "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+          "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
         },
         "associatedModels": [
           {
@@ -44966,15 +45190,15 @@
               "discardFinalResidue",
               "finish"
             ],
-            "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+            "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
           }
         ],
         "mappedStateFields": [
           "spanIndex"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -45048,7 +45272,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/skeletonStreamState.md",
           "stateType": "SkeletonState",
@@ -45099,7 +45323,7 @@
             "discardFinalResidue",
             "finish"
           ],
-          "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+          "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
         },
         "associatedModels": [
           {
@@ -45152,15 +45376,15 @@
               "discardFinalResidue",
               "finish"
             ],
-            "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+            "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
           }
         ],
         "mappedStateFields": [
           "activeField"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -45220,7 +45444,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/skeletonStreamState.md",
           "stateType": "SkeletonState",
@@ -45271,7 +45495,7 @@
             "discardFinalResidue",
             "finish"
           ],
-          "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+          "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
         },
         "associatedModels": [
           {
@@ -45324,15 +45548,15 @@
               "discardFinalResidue",
               "finish"
             ],
-            "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+            "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
           }
         ],
         "mappedStateFields": [
           "pendingEscape"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -45385,7 +45609,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/skeletonStreamState.md",
           "stateType": "SkeletonState",
@@ -45436,7 +45660,7 @@
             "discardFinalResidue",
             "finish"
           ],
-          "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+          "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
         },
         "associatedModels": [
           {
@@ -45489,7 +45713,7 @@
               "discardFinalResidue",
               "finish"
             ],
-            "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+            "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
           }
         ],
         "mappedStateFields": [
@@ -45497,8 +45721,8 @@
           "fieldRows.hasContent"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -45537,7 +45761,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/skeletonStreamState.md",
           "stateType": "SkeletonState",
@@ -45588,7 +45812,7 @@
             "discardFinalResidue",
             "finish"
           ],
-          "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+          "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
         },
         "associatedModels": [
           {
@@ -45641,7 +45865,7 @@
               "discardFinalResidue",
               "finish"
             ],
-            "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+            "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
           }
         ],
         "mappedStateFields": [
@@ -45649,8 +45873,8 @@
           "fieldRows.hasEmitted"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -45682,7 +45906,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/skeletonStreamState.md",
           "stateType": "SkeletonState",
@@ -45733,7 +45957,7 @@
             "discardFinalResidue",
             "finish"
           ],
-          "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+          "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
         },
         "associatedModels": [
           {
@@ -45786,7 +46010,7 @@
               "discardFinalResidue",
               "finish"
             ],
-            "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+            "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
           }
         ],
         "mappedStateFields": [
@@ -45796,8 +46020,8 @@
           "fieldRows.hasFilter"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -45864,7 +46088,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/skeletonStreamState.md",
           "stateType": "SkeletonState",
@@ -45915,7 +46139,7 @@
             "discardFinalResidue",
             "finish"
           ],
-          "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+          "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
         },
         "associatedModels": [
           {
@@ -45968,15 +46192,15 @@
               "discardFinalResidue",
               "finish"
             ],
-            "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+            "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
           }
         ],
         "mappedStateFields": [
           "life"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -46008,7 +46232,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/skeletonStreamState.md",
           "stateType": "SkeletonState",
@@ -46059,7 +46283,7 @@
             "discardFinalResidue",
             "finish"
           ],
-          "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+          "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
         },
         "associatedModels": [
           {
@@ -46112,15 +46336,15 @@
               "discardFinalResidue",
               "finish"
             ],
-            "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+            "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
           }
         ],
         "mappedStateFields": [
           "formatDecided"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -46152,7 +46376,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/skeletonStreamState.md",
           "stateType": "SkeletonState",
@@ -46203,7 +46427,7 @@
             "discardFinalResidue",
             "finish"
           ],
-          "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+          "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
         },
         "associatedModels": [
           {
@@ -46256,15 +46480,15 @@
               "discardFinalResidue",
               "finish"
             ],
-            "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+            "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
           }
         ],
         "mappedStateFields": [
           "passthrough"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -46296,7 +46520,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/skeletonStreamState.md",
           "stateType": "SkeletonState",
@@ -46347,7 +46571,7 @@
             "discardFinalResidue",
             "finish"
           ],
-          "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+          "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
         },
         "associatedModels": [
           {
@@ -46400,15 +46624,15 @@
               "discardFinalResidue",
               "finish"
             ],
-            "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+            "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
           }
         ],
         "mappedStateFields": [
           "passthroughEmitted"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -46433,7 +46657,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/skeletonStreamState.md",
           "stateType": "SkeletonState",
@@ -46484,7 +46708,7 @@
             "discardFinalResidue",
             "finish"
           ],
-          "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+          "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
         },
         "associatedModels": [
           {
@@ -46537,15 +46761,15 @@
               "discardFinalResidue",
               "finish"
             ],
-            "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+            "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
           }
         ],
         "mappedStateFields": [
           "revision"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -46684,7 +46908,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/skeletonStreamState.md",
           "stateType": "SkeletonState",
@@ -46735,7 +46959,7 @@
             "discardFinalResidue",
             "finish"
           ],
-          "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+          "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
         },
         "associatedModels": [
           {
@@ -46788,15 +47012,15 @@
               "discardFinalResidue",
               "finish"
             ],
-            "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+            "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
           }
         ],
         "mappedStateFields": [
           "gateHead"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -46828,7 +47052,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/skeletonStreamState.md",
           "stateType": "SkeletonState",
@@ -46879,7 +47103,7 @@
             "discardFinalResidue",
             "finish"
           ],
-          "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+          "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
         },
         "associatedModels": [
           {
@@ -46932,15 +47156,15 @@
               "discardFinalResidue",
               "finish"
             ],
-            "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+            "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
           }
         ],
         "mappedStateFields": [
           "gateDecided"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -46972,7 +47196,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/skeletonStreamState.md",
           "stateType": "SkeletonState",
@@ -47023,7 +47247,7 @@
             "discardFinalResidue",
             "finish"
           ],
-          "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+          "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
         },
         "associatedModels": [
           {
@@ -47076,15 +47300,15 @@
               "discardFinalResidue",
               "finish"
             ],
-            "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+            "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
           }
         ],
         "mappedStateFields": [
           "held"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -47151,7 +47375,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/skeletonStreamState.md",
           "stateType": "SkeletonState",
@@ -47202,7 +47426,7 @@
             "discardFinalResidue",
             "finish"
           ],
-          "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+          "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
         },
         "associatedModels": [
           {
@@ -47255,15 +47479,15 @@
               "discardFinalResidue",
               "finish"
             ],
-            "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+            "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
           }
         ],
         "mappedStateFields": [
           "partsField"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -47309,7 +47533,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/skeletonStreamState.md",
           "stateType": "SkeletonState",
@@ -47360,7 +47584,7 @@
             "discardFinalResidue",
             "finish"
           ],
-          "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+          "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
         },
         "associatedModels": [
           {
@@ -47413,15 +47637,15 @@
               "discardFinalResidue",
               "finish"
             ],
-            "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+            "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
           }
         ],
         "mappedStateFields": [
           "partsPosition"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -47460,7 +47684,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/skeletonStreamState.md",
           "stateType": "SkeletonState",
@@ -47511,7 +47735,7 @@
             "discardFinalResidue",
             "finish"
           ],
-          "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+          "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
         },
         "associatedModels": [
           {
@@ -47564,7 +47788,7 @@
               "discardFinalResidue",
               "finish"
             ],
-            "specSha256": "3d7584d7efa09f918dfb509714b370b467a4396b8e68945a8658f5014db75c51"
+            "specSha256": "c0151dd08f0242e7774a9e2fa85db661f0320a9e46f6f3ef7f97eb66cea87d07"
           }
         ],
         "mappedStateFields": [
@@ -47572,8 +47796,8 @@
           "partKind"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -48026,7 +48250,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/taskDrain.md",
           "stateType": "TaskDrain",
@@ -48097,8 +48321,8 @@
           "interval"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -48144,7 +48368,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/taskDrain.md",
           "stateType": "TaskDrain",
@@ -48215,8 +48439,8 @@
           "task"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -48241,7 +48465,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Generation/check is still in progress for this latest state. Exact source member correspondence is listed separately in mappedStateFields.",
+        "representation": "Concrete source-owned fields and operation/identity relations are modeled; source decoder and adapter refinement remain explicit boundaries. Exact source member correspondence is listed separately in mappedStateFields.",
         "model": {
           "spec": "spec/core/taskDrain.md",
           "stateType": "TaskDrain",
@@ -48312,8 +48536,8 @@
           "disposed"
         ],
         "unmodeledState": null,
-        "closureStatus": "state-modeled-awaiting-current-check",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -48889,8 +49113,8 @@
           "signalAborted"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-verification",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -49010,8 +49234,8 @@
           "signalAborted"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-verification",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {
@@ -49137,8 +49361,8 @@
           "signalAborted"
         ],
         "unmodeledState": null,
-        "closureStatus": "modeled-awaiting-verification",
-        "verification": "Modeled by the cited concrete fields/transitions. Current generation/check status belongs to the receipt; no implementation refinement claim."
+        "closureStatus": "state-modeled",
+        "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
     {

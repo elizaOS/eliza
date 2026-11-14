@@ -4679,14 +4679,17 @@
     },
     {
       "source": "packages/core/src/services/task-scheduler.ts",
-      "spec": "spec/core/queryDrain.md",
+      "spec": "spec/core/sharedScheduler.md",
       "rules": [
         "Queries capture every selected registration and their adapter ownership",
         "Each result group rechecks registration identity after the prior worker settles",
         "Adapter handoff keeps both handles owned until every captured query settles",
         "Process task names are unique only while registered and stale disposers preserve replacements",
         "Adapter detachment keeps the timer only for registered process work",
-        "Fair settlement drains every captured query and closes retired owners"
+        "Fair settlement drains every captured query and closes retired owners",
+        "Each timer tick queues process work and captures at most one query for its own generation",
+        "Adapter replacement and stop retain detached query and process ownership",
+        "Fair timer service captures dirty registrations and releases their owned awaits"
       ],
       "classification": "source-reviewed-domain-model-with-explicit-boundaries",
       "sourceSha256": "eb294f413b5fddbb367cbc17cda6c9ab456404c41260c6bda0028682079e4482",
@@ -4694,6 +4697,7 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/services/task-scheduler.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
+        "spec/core/sharedScheduler.md",
         "spec/core/queryDrain.md",
         "spec/core/processScheduler.md"
       ]
