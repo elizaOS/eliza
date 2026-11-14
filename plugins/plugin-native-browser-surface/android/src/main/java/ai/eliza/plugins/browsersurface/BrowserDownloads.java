@@ -45,6 +45,7 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.util.regex.Pattern;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -132,6 +133,7 @@ public final class BrowserDownloads {
   private Runnable update;
   /** Positive ids are DownloadManager IDs; negative ids are files the host saved to MediaStore. */
   private static final String TAG = "BrowserDownloads";
+  private static final Pattern CONTROL = Pattern.compile("[\\x00-\\x1f\\x7f]");
   private final BrowserDownloadPolicy.History history = new BrowserDownloadPolicy.History();
   private long localSequence;
   /** Set by destroy(): the activity is gone, so no dialog may be shown and no worker accepts work. */
@@ -221,6 +223,16 @@ public final class BrowserDownloads {
     if (uri.getHost() == null || uri.getUserInfo() != null)
       return false;
     return "https".equalsIgnoreCase(uri.getScheme()) || loopbackAllowed(uri);
+  }
+
+  /** A bounded address with no control characters: the shape every download address must have. */
+  private static boolean plainAddress(String raw) {
+    return raw != null && raw.length() <= 8192 && !CONTROL.matcher(raw).find();
+  }
+
+  /** A download address this instance may fetch: plain, absolute and allowed ({@link #allowed}). */
+  private boolean fetchable(String raw) {
+    return plainAddress(raw) && allowed(Uri.parse(raw));
   }
 
   /** Runs download work on a worker that destroy() stops; dropped work runs its cleanup instead. */
@@ -325,7 +337,7 @@ public final class BrowserDownloads {
     Uri uri;
     try {
       uri = Uri.parse(raw);
-      if (raw.length() > 8192 || raw.matches("(?s).*[\\x00-\\x1f\\x7f].*") || !allowed(uri))
+      if (!fetchable(raw))
         throw new IllegalArgumentException();
     } catch (Exception invalid) {
       refuse(source, "Only HTTPS file downloads are supported.");
@@ -400,7 +412,7 @@ public final class BrowserDownloads {
       try {
         if (raw.regionMatches(true, 0, "data:", 0, 5))
           saved = publish(new ByteArrayInputStream(BrowserDownloadPolicy.decodeData(raw)), name, mime, 0);
-        else if (raw.length() <= 8192 && !raw.matches("(?s).*[\\x00-\\x1f\\x7f].*") && allowed(Uri.parse(raw)))
+        else if (fetchable(raw))
           saved = fetch(0, raw, source.pageOrigin, header, source.userAgent, name, mime);
       } catch (Exception failed) {
         // error-policy:J1 The host hears that the save failed; the address stays out of logs.
@@ -588,10 +600,10 @@ public final class BrowserDownloads {
         int code = connection.getResponseCode();
         if (code == 301 || code == 302 || code == 303 || code == 307 || code == 308) {
           String location = connection.getHeaderField("Location");
-          if (location == null || location.length() > 8192 || location.matches("(?s).*[\\x00-\\x1f\\x7f].*"))
+          if (!plainAddress(location))
             throw new Refused("The site redirected the download to an invalid address.");
           URL next = new URL(url, location);
-          if (!allowed(Uri.parse(next.toString())))
+          if (!fetchable(next.toString()))
             throw new Refused("The site redirected the download to an address that is not supported.");
           url = next;
           continue;
