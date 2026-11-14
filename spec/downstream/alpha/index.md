@@ -1,0 +1,72 @@
+# AlphaPhone's imported Eliza contracts
+
+The Alpha source is `8d44dfe52b0a6e2f3462b5da85dd3f8037518f43`. Its
+`upstream.lock.json`, Git submodule pointer, and local Eliza checkout agree on
+`c518127a025ab173874af9c7d304f26b25213b0d`. The inventory reads committed
+Alpha source and exact pinned Git blobs. It excludes unrelated edits in the
+working copy. The checked existing `.eliza/client-features` projection
+claims the same pin, and every listed raw Git blob and published file was
+checked against its recorded SHA-256. Two generated re-export maps select
+pinned source leaves, and nine pinned files receive reviewed import-only
+rewrites. The full [import and model inventory](../alphaBaseline.json)
+retains import locations, admitted native modules, projection hashes,
+main-entry transitive edges, and the original Quint file identities.
+Static reachability includes gated imports. It does not certify their
+activation on a physical device.
+
+| Consumer entry and owner | Behavior needed by Alpha |
+| --- | --- |
+| `scripts/prepare-client-features.ts`, `tsconfig.json`, `vite.config.ts` | [Authenticated source projection and publication](./clientPublication.md) |
+| `apps/app/src/product/alpha-product.ts`, `apps/app/src/prototype/model.js` | [Versioned product registration and admission](./product.md), [shell navigation, overlays and drafts](./navigation.md), [launcher and retained choices](./launcher.md) |
+| `apps/app/src/startup-permission-flow.ts`, `apps/app/src/startup-permissions.tsx` | [Shared permission step](./permissionStep.md), [Alpha access setup](./permissions.md) |
+| `apps/app/src/main.tsx`, `packages/ui/src/state/app-update-gate.ts` | [Renderer update admission and activation readback](./updateGate.md) |
+| `apps/app/src/main.tsx` and `apps/app/src/prototype/agent-adapter.ts` | [Client conversation](../conversation.md), [turn ownership and cancellation](../../core/turnControllers.md) |
+| `apps/app/src/prototype/assistant-draft-controller.ts`, `apps/app/src/runtime/assistant-draft-store.ts`, `apps/app/src/browser/documents.ts` | [Durable drafts and send recovery](./durableDraft.md), [browser document receipts and recovery](./documentStore.md) |
+| `apps/app/src/prototype/canonical-notes-ui.ts`, `notes-controller.ts`, `notes-editor.ts` | [Notes snapshot and draft custody](./notes.md) |
+| `apps/app/src/prototype/agent-calendar-adapter.ts`, `calendar-approval-adapter.ts` | [Calendar target and availability review](./calendar.md), [draft and versioned mutations](./calendarDraft.md) |
+| `apps/app/src/prototype/maps-adapter.ts` | [Maps route and offer custody](./maps.md) |
+| `apps/app/src/runtime/telephony-executor.ts`, Phone, Messages, and Contacts adapters | [Verified image review, SIM selection, and operation receipt](./telephony.md), [native SMS review custody](../mobileTelephony.md) |
+| `apps/app/src/prototype/browser-adapter.ts` | [Current document, private profile, reading and persistence](./browser.md), [native external link authority](../mobileBrowser.md) |
+| `apps/app/src/passwords/password-manager.ts`, `MainActivity.java` | [Vault visit, native unlock, origin review and secret custody](./passwords.md) |
+| `apps/app/src/browser/files.ts` | [Reviewed file operations and retained trash](./files.md), [native file observer custody](../mobileStorageWatch.md) |
+| `apps/app/src/prototype/inbox-cloud-adapter.ts` | [Managed Inbox paging and cache identity](./inbox.md) |
+| `apps/app/src/prototype/home-cards.ts`, `home-overview-cards.ts` | [Current-source Home projections](./overview.md) |
+| `apps/app/src/prototype/automations-adapter.ts`, `runtime/automations-protocol.ts` | [Automation row, cron and reminder presentations](./automationPresentation.md) |
+| `apps/app/src/browser/notifications.ts`, `workflow-notices.ts` | [Exact browser notice action and workflow receipts](./notices.md) |
+| `apps/app/src/runtime/client-observation-support.ts`, `alpha-client.ts` | [Authenticated observation negotiation](./observationSupport.md), [remote pairing](../remotePairing.md) |
+| `scripts/stage-local-agent-runtime.ts`, `android/consumer-host.json`, `MainActivity.java` | Authenticated agent runtime, work directories, native system/camera/browser/location/secure storage/calendar/reminders/notification/media registration, packaged local speech and hardware eligibility. [Shared mobile contracts](../mobile.md) |
+| `scripts/prepared-workflow-worker.ts`, `WorkflowWorkerAssets.java`, `apps/app/src/prototype/workflow-adapter.ts` | [Compiler and worker admission](../workflowWorker.md), [workflow intent review](../workflowIntents.md), [workflow lifecycle](../workflow.md) |
+| `scripts/start-local-remote.ts`, `vendor/eliza/packages/agent/src/runtime/plugin-collector.ts` | Native mobile profile versus local development lean-chat profile, SQL, scheduler, browser and vision, assistant and plugin contributions |
+| Overview, automation feed, and reminder presentation | [Daily overview](./overview.md), [automation and reminder projection](./automationPresentation.md) |
+| Remote agent connection and pairing link | [Exact instance and revocable session admission](../remotePairing.md) |
+| `scripts/native-google-product-host.ts`, `apps/app/src/prototype/inbox-cloud-adapter.ts`, `apps/app/src/runtime/google-connection-ui.tsx` | [Managed Google grant and receipt custody](./managedGoogle.md), [Cloud host ownership](../cloudHost.md), [resident inference](../residentCloud.md), [credential enrollment](../cloudEnrollment.md) |
+
+The development launcher sets `ELIZA_PLUGIN_SET=lean-chat` and
+`ELIZA_LEAN_CHAT_WORKFLOWS=1`. Native stages runtime profile `native`.
+Native workflow admission depends on a vetted compiler/worker installation.
+The collection still applies platform, configuration and credential gates.
+Alpha's native view declarations describe its renderer fallbacks for Photos,
+Maps, Camera, Notes, Calendar, and Inbox. They do not by themselves grant
+an effect or prove an adapter is live. The native image gates Phone,
+Messages and Contacts; Wallet is outside the release MVP. The reference
+fixtures only appear in explicitly flagged development builds.
+
+The pinned managed Gmail host reports marked partial body text above 32,000
+UTF-16 units. The replacement returns an explicit oversize refusal at that
+boundary and returns the complete body below it. [Managed Google read policy](./managedGoogle.md).
+
+The state models cover the admission, ownership and receipt rules in
+the table. Before declaring replacement parity, confirm the host
+refinements against the same pinned consumers:
+
+| Boundary | Remaining concrete evidence |
+| --- | --- |
+| Storage and authored text | Full Notes trash, search, content and audio codecs; browser legacy archive arrays, IndexedDB/Web Locks cancellation, same-binding peer draft queues, and Android secure slot recovery. |
+| Files and captured sources | Full archive, document import, scan draft, OCR/text-layer and source-link payload custody; exact file-system ordering and native media/permissions callbacks. |
+| Calendar, Inbox and Home | Exact provider JSON/route and reconciliation fixtures; calendar availability and recurrence data; cache eviction across accounts; real time-zone, accessibility and rendered projection fixtures. |
+| Maps, browser and launcher | Provider route geometry, live-location feeds and relay expiry; browser session history and restore arrays; dynamic launcher order, focus and native lifecycle fixtures. |
+| Notices and automation | Exact platform signal and notice owner composition, digest/archive data, and provider read projection; verify effects through the linked workflow and mobile owners. |
+
+The [inventory](../alphaBaseline.json) includes these and other reachable
+source leaves. A source reference or passing abstract proof does not count
+as a platform refinement test.

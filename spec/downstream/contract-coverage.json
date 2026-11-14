@@ -1,0 +1,4070 @@
+{
+  "method": "Conservative trace from direct import, projected source, and source-URL records. The inventories own exact call sites. direct-contract identifies a modeled part of the named producer, not full API or source equivalence. related-contract and related-core-model identify candidate owners for review. A null owner keeps an inventory entry visible for behavioral mapping. Config and native registrations remain in the individual inventories.",
+  "Grace": [
+    {
+      "source": "packages/agent/native-host/account-state.mjs",
+      "references": 3,
+      "consumerContexts": [
+        "build-development-or-release-tool",
+        "test-only-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileBroker.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/agent/native-host/gateway.mjs",
+      "references": 7,
+      "consumerContexts": [
+        "build-development-or-release-tool",
+        "product-host-source",
+        "test-only-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/taskOwner.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/agent/native-host/private-runtime-json.mjs",
+      "references": 2,
+      "consumerContexts": [
+        "product-host-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileStartup.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/agent/native-host/private-runtime-launch.mjs",
+      "references": 4,
+      "consumerContexts": [
+        "build-development-or-release-tool",
+        "product-host-source",
+        "test-only-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileStartup.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/agent/native-host/surface-channel.mjs",
+      "references": 2,
+      "consumerContexts": [
+        "build-development-or-release-tool",
+        "product-host-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/websiteGuide.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/agent/native-host/surface-client.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/websiteGuide.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/agent/native-host/task-evidence-store.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "product-host-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/taskOwner.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/agent/native-host/task-id.mjs",
+      "references": 8,
+      "consumerContexts": [
+        "product-host-source",
+        "renderer-source",
+        "test-only-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/core/interactiveTask.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/agent/src/runtime/core-plugins.ts",
+      "references": 1,
+      "consumerContexts": [
+        "test-only-source"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/chatHost.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/app/scripts/build-consumer-task-runtime.mjs",
+      "references": 3,
+      "consumerContexts": [
+        "build-development-or-release-tool",
+        "test-only-source"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": "spec/downstream/mobileStartup.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/app/scripts/lib/committed-source.mjs",
+      "references": 2,
+      "consumerContexts": [
+        "build-development-or-release-tool"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": "spec/downstream/mobileStartup.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/app/scripts/lib/consumer-android-runtime.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "build-development-or-release-tool"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": "spec/downstream/mobileBridge.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/app/scripts/lib/consumer-mobile-dns.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "build-development-or-release-tool"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": "spec/downstream/mobileStartup.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/app/scripts/lib/dev-process-lifecycle.ts",
+      "references": 1,
+      "consumerContexts": [
+        "build-development-or-release-tool"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": "spec/downstream/mobileStartup.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/app/scripts/lib/development-probes.ts",
+      "references": 2,
+      "consumerContexts": [
+        "build-development-or-release-tool"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": "spec/downstream/mobileStartup.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/app/scripts/lib/development-process-scope.ts",
+      "references": 1,
+      "consumerContexts": [
+        "build-development-or-release-tool"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": "spec/downstream/mobileStartup.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/app/scripts/lib/device-lease.ts",
+      "references": 2,
+      "consumerContexts": [
+        "build-development-or-release-tool",
+        "test-only-source"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": "spec/downstream/mobileStartup.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/app/scripts/lib/instrumentation-result.mjs",
+      "references": 2,
+      "consumerContexts": [
+        "build-development-or-release-tool",
+        "test-only-source"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": "spec/downstream/mobileStartup.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/app/scripts/lib/isolated-android-test.mjs",
+      "references": 2,
+      "consumerContexts": [
+        "build-development-or-release-tool"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": "spec/downstream/mobileStartup.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/app/scripts/lib/single-device-adb.ts",
+      "references": 2,
+      "consumerContexts": [
+        "build-development-or-release-tool",
+        "test-only-source"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": "spec/downstream/mobileStartup.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/app/scripts/mobile/android/build-consumer.mjs",
+      "references": 2,
+      "consumerContexts": [
+        "build-development-or-release-tool",
+        "test-only-source"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": "spec/downstream/mobileStartup.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/app/scripts/mobile/android/consumer-host.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "build-development-or-release-tool"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": "spec/downstream/mobileBridge.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/app/scripts/mobile/artifact-inspection/archive.ts",
+      "references": 2,
+      "consumerContexts": [
+        "build-development-or-release-tool"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": "spec/downstream/mobileStartup.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/app/scripts/mobile/toolchain.ts",
+      "references": 1,
+      "consumerContexts": [
+        "build-development-or-release-tool"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": "spec/downstream/mobileStartup.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/auth/native-host/cloud-enrollment.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "product-host-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/cloudHost.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/cloud/sdk/native-host/clef-decisions.mjs",
+      "references": 5,
+      "consumerContexts": [
+        "product-host-source",
+        "test-only-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/cloudHost.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/cloud/sdk/native-host/cloud-services.mjs",
+      "references": 6,
+      "consumerContexts": [
+        "product-host-source",
+        "test-only-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/cloudHost.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/cloud/sdk/native-host/document-runtime.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "product-host-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/cloudHost.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/cloud/sdk/native-host/mail-fields.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "product-host-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/cloudHost.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/cloud/sdk/native-host/mailbox-read-port.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "test-only-source"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/cloudHost.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/cloud/sdk/native-host/managed-google-read-port.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "test-only-source"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/cloudHost.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/cloud/sdk/native-host/subscription-grant.mjs",
+      "references": 3,
+      "consumerContexts": [
+        "product-host-source",
+        "test-only-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/cloudHost.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/cloud/sdk/src/account-billing-snapshot.ts",
+      "references": 1,
+      "consumerContexts": [
+        "product-host-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/cloudHost.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/cloud/sdk/src/native-host-routes.ts",
+      "references": 1,
+      "consumerContexts": [
+        "product-host-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/cloudHost.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/cloud/sdk/src/native-speech-stream.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/cloudHost.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/core/src/messaging/task-events.ts",
+      "references": 3,
+      "consumerContexts": [
+        "renderer-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/core/taskEventReader.md",
+      "coverage": "related-core-model"
+    },
+    {
+      "source": "packages/core/src/messaging/task-widgets.ts",
+      "references": 7,
+      "consumerContexts": [
+        "renderer-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/core/interactiveTask.md",
+      "coverage": "related-core-model"
+    },
+    {
+      "source": "packages/host/native-host/android-documents.mjs",
+      "references": 3,
+      "consumerContexts": [
+        "build-development-or-release-tool"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/cloudHost.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/host/native-host/build-document-runtime.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "build-development-or-release-tool"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/cloudHost.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/host/native-host/errors.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "product-host-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/hostRefusals.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/host/native-host/gateway-bootstrap.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "product-host-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileStartup.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/host/native-host/public-fetch.mjs",
+      "references": 3,
+      "consumerContexts": [
+        "product-host-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/websiteGuide.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/host/native-host/research-capture-host.mjs",
+      "references": 4,
+      "consumerContexts": [
+        "optional-research-configuration",
+        "test-only-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/host/native-host/research-server.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "test-only-source"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/host/native-host/research-store.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "test-only-source"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/host/native-host/sensitive-text.mjs",
+      "references": 5,
+      "consumerContexts": [
+        "product-host-source",
+        "test-only-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/hostRefusals.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/host/native-host/task-runtime-gateway.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "product-host-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/taskOwner.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/host/native-host/task-sqlcipher.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "product-host-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/taskStorage.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/host/native-host/task-storage-sealing.mjs",
+      "references": 9,
+      "consumerContexts": [
+        "product-host-source",
+        "test-only-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/taskStorage.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/host/native-host/task-trace-capture.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "test-only-source"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/host/native-host/trace-queue.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "test-only-source"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/browser/identity.json",
+      "references": 1,
+      "consumerContexts": [
+        "test-only-source"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/mobileStartup.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/browser/protection/advisory.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "test-only-source"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/grace/websiteGuide.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/browser/protection/build.mjs",
+      "references": 4,
+      "consumerContexts": [
+        "build-development-or-release-tool",
+        "test-only-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/websiteGuide.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/browser/protection/domain-lookalike.mjs",
+      "references": 4,
+      "consumerContexts": [
+        "product-host-source",
+        "renderer-source",
+        "test-only-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/websiteGuide.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/browser/protection/policy.mjs",
+      "references": 4,
+      "consumerContexts": [
+        "product-host-source",
+        "test-only-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/websiteGuide.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/browser/protection/reputation.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "product-host-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/websiteGuide.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/browser/scripts/android-consumer-inputs.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "build-development-or-release-tool"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileStartup.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/browser/scripts/chromium-component.mjs",
+      "references": 2,
+      "consumerContexts": [
+        "test-only-source"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/mobileStartup.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/browser/src/page-command.mjs",
+      "references": 3,
+      "consumerContexts": [
+        "build-development-or-release-tool",
+        "product-host-source",
+        "test-only-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/websiteGuide.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/browser/src/surface-task-handler.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/websiteGuide.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/browser/src/task-bindings.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "test-only-source"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/grace/websiteGuide.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/native/ota-publisher/publication-authorizer.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "build-development-or-release-tool"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileOta.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/native/ota-publisher/publisher-policy.mjs",
+      "references": 2,
+      "consumerContexts": [
+        "build-development-or-release-tool",
+        "test-only-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileOta.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/native/ota-publisher/strict-json.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "build-development-or-release-tool"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileOta.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/native/ota-trust/scripts/build-android.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "build-development-or-release-tool"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileOta.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/native/ota-trust/scripts/compose-source.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "build-development-or-release-tool"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileOta.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/scripts/android/decrypt-release-keys.ts",
+      "references": 1,
+      "consumerContexts": [
+        "build-development-or-release-tool"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileStartup.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/scripts/android/device-qualify-lib.ts",
+      "references": 1,
+      "consumerContexts": [
+        "test-only-source"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/mobileStartup.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/scripts/android/device-qualify.ts",
+      "references": 1,
+      "consumerContexts": [
+        "build-development-or-release-tool"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileStartup.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/scripts/android/generate-release-keys.ts",
+      "references": 2,
+      "consumerContexts": [
+        "build-development-or-release-tool"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileStartup.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/scripts/android/stage-browser-apps.ts",
+      "references": 1,
+      "consumerContexts": [
+        "test-only-source"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/mobileStartup.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/scripts/android/stage-launcher-overlay.ts",
+      "references": 5,
+      "consumerContexts": [
+        "build-development-or-release-tool",
+        "test-only-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileStartup.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/api/conversation-turn-controller.ts",
+      "references": 4,
+      "consumerContexts": [
+        "renderer-source",
+        "test-only-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/conversation.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/api/runtime-json-client.ts",
+      "references": 4,
+      "consumerContexts": [
+        "product-host-source",
+        "renderer-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/conversation.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/api/task-lifecycle.ts",
+      "references": 4,
+      "consumerContexts": [
+        "product-host-source",
+        "renderer-source",
+        "test-only-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/taskLifecycleClient.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/api/transport.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/conversation.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/components/chat/TaskChoice.tsx",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/taskChoices.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/utils/json-storage.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/rendererUtilities.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/utils/text-control-editing.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/rendererUtilities.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/utils/value-formatting.ts",
+      "references": 3,
+      "consumerContexts": [
+        "product-host-source",
+        "renderer-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/rendererUtilities.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/voice/draft-transcript-guard.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileCapture.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/voice/microphone-capture.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileCapture.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/voice/microphone-samples.worklet.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileCapture.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/voice/pcm-wave.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileCapture.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/voice/progressive-speech-playback.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileCapture.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/voice/recorded-transcription-controller.ts",
+      "references": 3,
+      "consumerContexts": [
+        "renderer-source",
+        "test-only-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileCapture.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/voice/segmented-speech-playback.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileCapture.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/voice/speech-segments.ts",
+      "references": 3,
+      "consumerContexts": [
+        "renderer-source",
+        "test-only-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileCapture.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-browser/src/native-wire.ts",
+      "references": 3,
+      "consumerContexts": [
+        "test-only-source"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/grace/websiteGuide.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-browser/src/task-actuator.ts",
+      "references": 1,
+      "consumerContexts": [
+        "test-only-source"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/grace/websiteGuide.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-native-agent/native-host/android-runtime-inventory.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "build-development-or-release-tool"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileBridge.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-native-agent/native-host/gateway-artifact.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "build-development-or-release-tool"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileBridge.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-native-agent/native-host/local-credential-client.mjs",
+      "references": 3,
+      "consumerContexts": [
+        "product-host-source",
+        "test-only-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileBroker.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-native-browser-surface/src/address-input.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileBridge.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-native-browser-surface/src/index.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileBridge.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-native-browser-surface/src/submitted-navigation.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/websiteGuide.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-native-camera/src/definitions.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileBridge.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-native-passwords/src/client.ts",
+      "references": 1,
+      "consumerContexts": [
+        "release-disabled-debug-gated"
+      ],
+      "priority": "feature-gated",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-native-passwords/src/definitions.ts",
+      "references": 2,
+      "consumerContexts": [
+        "product-host-source",
+        "release-disabled-debug-gated"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-native-system/src/definitions.ts",
+      "references": 1,
+      "consumerContexts": [
+        "product-host-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileBridge.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-native-system/src/index.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileBridge.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-native-wifi/src/definitions.ts",
+      "references": 1,
+      "consumerContexts": [
+        "product-host-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileBridge.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-personal-assistant/native-host/bill-client.ts",
+      "references": 3,
+      "consumerContexts": [
+        "renderer-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/billClient.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-personal-assistant/native-host/bill-code-coordinator.mjs",
+      "references": 3,
+      "consumerContexts": [
+        "test-only-source"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/grace/billVerification.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-personal-assistant/native-host/bill-controls.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "product-host-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/billReview.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-personal-assistant/native-host/bill-extraction-profile.mjs",
+      "references": 3,
+      "consumerContexts": [
+        "product-host-source",
+        "test-only-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/billSource.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-personal-assistant/native-host/bill-helper-host.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "product-host-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/billReview.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-personal-assistant/native-host/bill-outcome-store.mjs",
+      "references": 10,
+      "consumerContexts": [
+        "product-host-source",
+        "test-only-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/billReview.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-personal-assistant/native-host/bill-owner-key.mjs",
+      "references": 4,
+      "consumerContexts": [
+        "test-only-source"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/grace/billReview.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-personal-assistant/native-host/bill-pdf-parser.mjs",
+      "references": 2,
+      "consumerContexts": [
+        "test-only-source"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/grace/billSource.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-personal-assistant/native-host/bill-review-controller.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/billClient.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-personal-assistant/native-host/bill-source-discovery.mjs",
+      "references": 2,
+      "consumerContexts": [
+        "test-only-source"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/grace/billSource.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-personal-assistant/native-host/bill-source-store.mjs",
+      "references": 3,
+      "consumerContexts": [
+        "product-host-source",
+        "test-only-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/billSource.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-personal-assistant/native-host/bill-task-routes.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "product-host-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/billReview.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-personal-assistant/native-host/bill-workflow.mjs",
+      "references": 4,
+      "consumerContexts": [
+        "product-host-source",
+        "test-only-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/billReview.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-personal-assistant/native-host/configured-bill-helper.mjs",
+      "references": 3,
+      "consumerContexts": [
+        "product-host-source",
+        "test-only-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/billReview.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-personal-assistant/native-host/guided-website-workflow.mjs",
+      "references": 4,
+      "consumerContexts": [
+        "product-host-source",
+        "test-only-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/websiteGuide.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-personal-assistant/native-host/load-configured-bill-helper.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "product-host-source"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/grace/billReview.md",
+      "coverage": "related-contract"
+    }
+  ],
+  "AlphaPhone": [
+    {
+      "source": "packages/agent/native-host/private-runtime-launch.mjs",
+      "references": 3,
+      "consumerContexts": [
+        "build-or-host",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileRuntime.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/agent/scripts/mobile-bundle-dependencies.ts",
+      "references": 1,
+      "consumerContexts": [
+        "build-or-host"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": null,
+      "coverage": "inventoried"
+    },
+    {
+      "source": "packages/app/scripts/lib/android-fixture-observation.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "build-or-host"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": null,
+      "coverage": "inventoried"
+    },
+    {
+      "source": "packages/app/scripts/lib/android-fixture-reboot.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "build-or-host"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": null,
+      "coverage": "inventoried"
+    },
+    {
+      "source": "packages/app/scripts/lib/android-manifest-facts.mjs",
+      "references": 2,
+      "consumerContexts": [
+        "build-or-host",
+        "test"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": null,
+      "coverage": "inventoried"
+    },
+    {
+      "source": "packages/app/scripts/lib/device-lease.ts",
+      "references": 6,
+      "consumerContexts": [
+        "build-or-host"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": null,
+      "coverage": "inventoried"
+    },
+    {
+      "source": "packages/app/scripts/lib/immutable-workspace-source.mjs",
+      "references": 2,
+      "consumerContexts": [
+        "build-or-host"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": null,
+      "coverage": "inventoried"
+    },
+    {
+      "source": "packages/app/scripts/lib/instrumentation-result.mjs",
+      "references": 4,
+      "consumerContexts": [
+        "build-or-host"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": null,
+      "coverage": "inventoried"
+    },
+    {
+      "source": "packages/app/scripts/lib/isolated-android-test.mjs",
+      "references": 3,
+      "consumerContexts": [
+        "build-or-host"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": null,
+      "coverage": "inventoried"
+    },
+    {
+      "source": "packages/app/scripts/lib/isolated-android-user-test.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "build-or-host"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": null,
+      "coverage": "inventoried"
+    },
+    {
+      "source": "packages/app/scripts/lib/isolated-android-user.mjs",
+      "references": 4,
+      "consumerContexts": [
+        "build-or-host"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": null,
+      "coverage": "inventoried"
+    },
+    {
+      "source": "packages/app/scripts/mobile/android/build-consumer.mjs",
+      "references": 2,
+      "consumerContexts": [
+        "build-or-host",
+        "test"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": "spec/downstream/mobileBuild.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/app/scripts/mobile/android/consumer-host.mjs",
+      "references": 2,
+      "consumerContexts": [
+        "build-or-host",
+        "test"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": "spec/downstream/mobileBuild.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/app/scripts/mobile/android/hosted-fixture/ci-emulator-diagnostics.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "build-or-host"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": null,
+      "coverage": "inventoried"
+    },
+    {
+      "source": "packages/app/scripts/mobile/android/hosted-fixture/ci-emulator-display.mjs",
+      "references": 2,
+      "consumerContexts": [
+        "build-or-host"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": null,
+      "coverage": "inventoried"
+    },
+    {
+      "source": "packages/app/scripts/mobile/android/hosted-fixture/webview-provider.mjs",
+      "references": 2,
+      "consumerContexts": [
+        "build-or-host"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": null,
+      "coverage": "inventoried"
+    },
+    {
+      "source": "packages/app/scripts/mobile/android/resident-host-sources.mjs",
+      "references": 4,
+      "consumerContexts": [
+        "build-or-host",
+        "test"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": "spec/downstream/mobileBuild.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/app/scripts/mobile/artifact-inspection/apk-distribution.mjs",
+      "references": 5,
+      "consumerContexts": [
+        "build-or-host"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": "spec/downstream/mobileBuild.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/app/scripts/mobile/toolchain.ts",
+      "references": 1,
+      "consumerContexts": [
+        "build-or-host"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": null,
+      "coverage": "inventoried"
+    },
+    {
+      "source": "packages/app/src/runtime/managed-google-agent/calendar-read-timing.ts",
+      "references": 1,
+      "consumerContexts": [
+        "test"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/alpha/managedGoogle.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/app/src/runtime/managed-google-agent/index.ts",
+      "references": 5,
+      "consumerContexts": [
+        "build-or-host",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/managedGoogle.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/app/src/runtime/managed-google-agent/managed-google-agent-broker.ts",
+      "references": 4,
+      "consumerContexts": [
+        "test"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/alpha/managedGoogle.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/app/src/runtime/managed-google-agent/managed-google-agent-host.ts",
+      "references": 1,
+      "consumerContexts": [
+        "test"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/alpha/managedGoogle.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/app/src/runtime/managed-google-agent/managed-google-calendar-read.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/managedGoogle.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/app/src/runtime/managed-google-agent/managed-google-failure-stage.ts",
+      "references": 1,
+      "consumerContexts": [
+        "test"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/alpha/managedGoogle.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/app/src/runtime/managed-google-agent/native-google-cloud-port.ts",
+      "references": 1,
+      "consumerContexts": [
+        "test"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/alpha/managedGoogle.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/app/test/android/sense.test.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "test"
+      ],
+      "priority": "test-only",
+      "relatedSpec": null,
+      "coverage": "inventoried"
+    },
+    {
+      "source": "packages/auth/src/auth/cloud-resident-binding.ts",
+      "references": 8,
+      "consumerContexts": [
+        "renderer-entry",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/residentCloud.md",
+      "coverage": "direct-contract"
+    },
+    {
+      "source": "packages/auth/src/auth/native-cloud-sign-in.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/nativeSignIn.md",
+      "coverage": "direct-contract"
+    },
+    {
+      "source": "packages/cloud/sdk/src/cloud-account-billing.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/cloudEntitlement.md",
+      "coverage": "direct-contract"
+    },
+    {
+      "source": "packages/cloud/sdk/src/subscription-entitlement.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/cloudEntitlement.md",
+      "coverage": "direct-contract"
+    },
+    {
+      "source": "packages/contracts/src/browser-request-grounding.ts",
+      "references": 1,
+      "consumerContexts": [
+        "test"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/browserGrounding.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/contracts/src/calendar-linked-sync.ts",
+      "references": 5,
+      "consumerContexts": [
+        "renderer-import",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/calendar.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/contracts/src/calendar.ts",
+      "references": 6,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry",
+        "renderer-import",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/calendar.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/contracts/src/client-turn-observation.ts",
+      "references": 4,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/conversation.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/contracts/src/contracts/remote-agent-pairing.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/remotePairing.md",
+      "coverage": "direct-contract"
+    },
+    {
+      "source": "packages/contracts/src/deletion-window.ts",
+      "references": 6,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/files.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/contracts/src/device-action-execution.ts",
+      "references": 1,
+      "consumerContexts": [
+        "test"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/mobileDeviceExecution.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/contracts/src/device-reviews.ts",
+      "references": 7,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileDeviceReview.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/contracts/src/mms-send.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/telephony.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/contracts/src/native-address-book.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/telephony.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/contracts/src/native-notes-query.ts",
+      "references": 4,
+      "consumerContexts": [
+        "renderer-entry",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/contracts/src/native-telephony-session.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/telephony.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/contracts/src/native-telephony.ts",
+      "references": 9,
+      "consumerContexts": [
+        "renderer-entry",
+        "renderer-import",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/telephony.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/contracts/src/notice-routes.ts",
+      "references": 4,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/overview.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/contracts/src/phone-dial.ts",
+      "references": 3,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/telephony.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/contracts/src/phone-workflow.ts",
+      "references": 6,
+      "consumerContexts": [
+        "renderer-entry",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/workflowAuthoring.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/contracts/src/sms-send.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/telephony.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/contracts/src/telephony-actions.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/telephony.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/contracts/src/workflow-approval-poster.ts",
+      "references": 2,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/workflowApprovals.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/contracts/src/workflow-client.ts",
+      "references": 3,
+      "consumerContexts": [
+        "renderer-entry",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/workflow.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/contracts/src/workflow-device.ts",
+      "references": 4,
+      "consumerContexts": [
+        "renderer-entry",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/workflowApprovals.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/contracts/src/workflow-intents.ts",
+      "references": 2,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/workflowIntents.md",
+      "coverage": "direct-contract"
+    },
+    {
+      "source": "packages/contracts/src/workflow-scope.ts",
+      "references": 3,
+      "consumerContexts": [
+        "renderer-entry",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/workflowAuthoring.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/core/src/events.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/core/events.md",
+      "coverage": "related-core-model"
+    },
+    {
+      "source": "packages/core/src/read-memo.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/core/contracts.md",
+      "coverage": "related-core-model"
+    },
+    {
+      "source": "packages/core/src/types/effects.ts",
+      "references": 3,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/core/contracts.md",
+      "coverage": "related-core-model"
+    },
+    {
+      "source": "packages/core/src/types/system-notice.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/core/contracts.md",
+      "coverage": "related-core-model"
+    },
+    {
+      "source": "packages/core/src/utils/uuid.ts",
+      "references": 5,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/core/contracts.md",
+      "coverage": "related-core-model"
+    },
+    {
+      "source": "packages/core/src/view-interaction.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/core/views.md",
+      "coverage": "related-core-model"
+    },
+    {
+      "source": "packages/core/src/views/completed-action-navigation.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/core/viewNavigation.md",
+      "coverage": "related-core-model"
+    },
+    {
+      "source": "packages/core/src/views/view-action-handoff.ts",
+      "references": 3,
+      "consumerContexts": [
+        "renderer-entry",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/core/contracts.md",
+      "coverage": "related-core-model"
+    },
+    {
+      "source": "packages/core/src/views/view-interact-protocol.ts",
+      "references": 2,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/core/protocols.md",
+      "coverage": "related-core-model"
+    },
+    {
+      "source": "packages/host/native-host/provider-key-session.mjs",
+      "references": 2,
+      "consumerContexts": [
+        "build-or-host",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/host/src/voice/ui-context.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/scripts/android/aosp-clock-handlers.mjs",
+      "references": 2,
+      "consumerContexts": [
+        "build-or-host",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/scripts/android/aosp-ota-update.mjs",
+      "references": 2,
+      "consumerContexts": [
+        "build-or-host",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/scripts/android/aosp-release-record.mjs",
+      "references": 2,
+      "consumerContexts": [
+        "build-or-host"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/scripts/android/aosp-release-signing.mjs",
+      "references": 2,
+      "consumerContexts": [
+        "build-or-host"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/scripts/android/apk-release-record.mjs",
+      "references": 4,
+      "consumerContexts": [
+        "build-or-host",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/scripts/android/cuttlefish-product.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "build-or-host"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/scripts/android/generate-release-keys.ts",
+      "references": 2,
+      "consumerContexts": [
+        "test"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/scripts/android/image-apk-admission.mjs",
+      "references": 2,
+      "consumerContexts": [
+        "build-or-host"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/scripts/android/image-capability.mjs",
+      "references": 2,
+      "consumerContexts": [
+        "build-or-host"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/scripts/android/launcher-provisioning.mjs",
+      "references": 2,
+      "consumerContexts": [
+        "build-or-host"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/scripts/android/pixel10a-product.ts",
+      "references": 3,
+      "consumerContexts": [
+        "build-or-host",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/scripts/android/pixel10a-release.mjs",
+      "references": 2,
+      "consumerContexts": [
+        "build-or-host"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/scripts/android/secure-camera.mjs",
+      "references": 2,
+      "consumerContexts": [
+        "build-or-host"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/scripts/android/sense-listener.mjs",
+      "references": 2,
+      "consumerContexts": [
+        "build-or-host"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/scripts/android/sense-systemui.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "build-or-host"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/scripts/android/soong-app-native.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "build-or-host"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/scripts/android/system-updater-staging.mjs",
+      "references": 2,
+      "consumerContexts": [
+        "build-or-host",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/scripts/android/vendor-api.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "build-or-host"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/scripts/android/verify-device-source.mjs",
+      "references": 1,
+      "consumerContexts": [
+        "build-or-host"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/scripts/android/verify-launcher-image.mjs",
+      "references": 2,
+      "consumerContexts": [
+        "build-or-host"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/os/scripts/android/verify-source-lock.ts",
+      "references": 1,
+      "consumerContexts": [
+        "build-or-host"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/scripts/check-required-playwright-results.ts",
+      "references": 1,
+      "consumerContexts": [
+        "build-or-host"
+      ],
+      "priority": "build-or-test-tooling",
+      "relatedSpec": null,
+      "coverage": "inventoried"
+    },
+    {
+      "source": "packages/ui/src/accessibility/screen-focus.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/navigation.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/api/conversation-turn-controller.ts",
+      "references": 4,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/conversation.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/api/transport.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/runtimeClient.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/components/chat/message-maps-parser.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/maps.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/components/composites/deferred-deletion-notice.tsx",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/files.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/components/permissions/permission-walkthrough.ts",
+      "references": 4,
+      "consumerContexts": [
+        "renderer-entry",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/permissions.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/components/settings/cloud-subscription-summary.tsx",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/cloudEntitlement.md",
+      "coverage": "direct-contract"
+    },
+    {
+      "source": "packages/ui/src/components/shell/chat-overlay-motion.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/navigation.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/components/shell/chat-panel-layout.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/navigation.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/components/shell/dock-clearance.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/navigation.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/components/shell/responsive-layout.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/navigation.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/components/shell/use-pull-gesture.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/navigation.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/gestures/constants.ts",
+      "references": 3,
+      "consumerContexts": [
+        "renderer-entry",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/navigation.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/mobile-shell/InstalledAppsGridDrawer.tsx",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/navigation.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/mobile-shell/core.ts",
+      "references": 3,
+      "consumerContexts": [
+        "renderer-entry",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/navigation.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/mobile-shell/index.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/navigation.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/mobile-shell/photos-view.ts",
+      "references": 5,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/navigation.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/overview/OverviewCards.tsx",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/overview.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/overview/daily-overview.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/overview.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/platform/browser-document-store.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/documentStore.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/state/app-update-gate.ts",
+      "references": 3,
+      "consumerContexts": [
+        "renderer-entry",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/updateGate.md",
+      "coverage": "direct-contract"
+    },
+    {
+      "source": "packages/ui/src/state/durable-draft-controller.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/durableDraft.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/state/durable-draft.ts",
+      "references": 3,
+      "consumerContexts": [
+        "renderer-entry",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/durableDraft.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/utils/automation-feed-filter.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/automationPresentation.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/utils/cron-format.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/automationPresentation.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/utils/reminder-presentation.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/automationPresentation.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/voice/batch-conversation.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/voice/tts-playback-activity.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/voice/voice-chat-playback.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/voice/voice-session-client-core.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/ui/src/voice/voice-session-state.ts",
+      "references": 2,
+      "consumerContexts": [
+        "test"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/voice/src/browser-capture/recording-pcm.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/voice/src/cloud-speech-chunks.ts",
+      "references": 3,
+      "consumerContexts": [
+        "renderer-entry",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/voice/src/live-voice-session.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/voice/src/native-cloud-speech.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/voice/src/native-live-voice.ts",
+      "references": 4,
+      "consumerContexts": [
+        "renderer-entry",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/voice/src/native-speech-request.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/voice/src/realtime-voice-timing.ts",
+      "references": 6,
+      "consumerContexts": [
+        "renderer-entry",
+        "renderer-import",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/voice/src/turn.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/voice/src/voice-assistant-session.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/voice/src/voice-endpoint-chain.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/voice/src/voice-turn-routes.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "packages/voice/src/voice-turn-timing.ts",
+      "references": 2,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-assistant/src/services/device-actions/calendar-contract.ts",
+      "references": 9,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/calendar.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-assistant/src/services/device-actions/camera-contract.ts",
+      "references": 4,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileDeviceCamera.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-assistant/src/services/device-actions/client-coordinator.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileDeviceExecution.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-assistant/src/services/device-actions/clock-contract.ts",
+      "references": 3,
+      "consumerContexts": [
+        "renderer-entry",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/clockReminder.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-assistant/src/services/device-actions/clock-handoff-history.ts",
+      "references": 3,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/clockReminder.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-assistant/src/services/device-actions/clock-handoff.ts",
+      "references": 3,
+      "consumerContexts": [
+        "renderer-entry",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/clockReminder.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-assistant/src/services/device-actions/clock-review-executor.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/clockReminder.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-assistant/src/services/device-actions/device-record-presentation.ts",
+      "references": 5,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileDeviceReview.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-assistant/src/services/device-actions/files-browser-contract.ts",
+      "references": 3,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/files.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-assistant/src/services/device-actions/foreground-review-contract.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileDeviceReview.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-assistant/src/services/device-actions/notes-contract.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-assistant/src/services/device-actions/notes-query-result.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-assistant/src/services/device-actions/photo-library-contract.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileDevicePhotos.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-assistant/src/services/device-actions/photos-view-contract.ts",
+      "references": 4,
+      "consumerContexts": [
+        "renderer-entry",
+        "renderer-import",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobileDevicePhotos.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts",
+      "references": 11,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/reminderCustody.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-assistant/src/services/device-actions/reminder-create-contract.ts",
+      "references": 8,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/reminderCustody.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-assistant/src/services/device-actions/reminder-journal.ts",
+      "references": 8,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry",
+        "renderer-import",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/reminderCustody.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-assistant/src/services/device-actions/telephony-actions-contract.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/telephony.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-browser/src/dispatch-types.ts",
+      "references": 1,
+      "consumerContexts": [
+        "test"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/alpha/browser.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-browser/src/native-client-command.ts",
+      "references": 3,
+      "consumerContexts": [
+        "renderer-entry",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/browser.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-calendar/src/api/calendar-api.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/calendar.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-calendar/src/client/availability-review.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/calendar.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-calendar/src/client/named-read.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/calendar.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-calendar/src/components/event-editor-command.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/calendar.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-calendar/src/components/event-editor-policy.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/calendar.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-calendar/src/internal/time.ts",
+      "references": 4,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/calendar.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-calendar/src/linked-sync/google-reader.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/calendar.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-calendar/src/linked-sync/google-sync-port.ts",
+      "references": 3,
+      "consumerContexts": [
+        "renderer-entry",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/calendar.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-calendar/src/linked-sync/linked-store.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/calendar.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-calendar/src/linked-sync/sync-controller.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/calendar.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-calendar/src/linked-sync/sync-host.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-import",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/calendar.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-calendar/src/service/managed-calendar-host.ts",
+      "references": 1,
+      "consumerContexts": [
+        "test"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/alpha/calendar.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-files/src/browser/attachment.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/files.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-files/src/browser/file-archive.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/files.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-files/src/browser/files-agent-contract.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/files.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-files/src/browser/files-browser-adapter.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/files.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-files/src/browser/files.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/files.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-files/src/browser/storage-model.ts",
+      "references": 1,
+      "consumerContexts": [
+        "test"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/alpha/files.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-files/src/browser/storage-volume.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/files.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-files/src/documents/local-ocr.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/files.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-files/src/documents/scan-correction.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/files.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-files/src/documents/scan-draft.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/files.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-files/src/documents/scan-edges.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/files.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-files/src/documents/scan-event.ts",
+      "references": 3,
+      "consumerContexts": [
+        "renderer-entry",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/files.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-files/src/documents/scan-links.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/files.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-files/src/documents/scan-pdf.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/files.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-files/src/documents/scan-text-layer.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/files.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-files/src/documents/source-links.ts",
+      "references": 4,
+      "consumerContexts": [
+        "renderer-entry",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/files.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-inbox/src/components/mailbox/MailFolderPicker.tsx",
+      "references": 3,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/inbox.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-inbox/src/mailbox/attachments.ts",
+      "references": 3,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/inbox.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-inbox/src/mailbox/background-notices.ts",
+      "references": 4,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/inbox.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-inbox/src/mailbox/digest.ts",
+      "references": 4,
+      "consumerContexts": [
+        "build-or-host"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/inbox.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-inbox/src/mailbox/drafts-controller.ts",
+      "references": 4,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/inbox.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-inbox/src/mailbox/failures.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/inbox.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-inbox/src/mailbox/grants.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/inbox.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-inbox/src/mailbox/links.ts",
+      "references": 3,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/inbox.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-inbox/src/mailbox/mail-context.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/inbox.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-inbox/src/mailbox/mailbox-list.ts",
+      "references": 3,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/inbox.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-inbox/src/mailbox/managed-gmail-client.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/inbox.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-inbox/src/mailbox/operation-journal.ts",
+      "references": 7,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/inbox.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-inbox/src/mailbox/preview.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/inbox.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-inbox/src/mailbox/read-ahead.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/inbox.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-inbox/src/mailbox/read-state.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/inbox.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-inbox/src/mailbox/retained-draft.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/inbox.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-inbox/src/mailbox/review-controller.ts",
+      "references": 4,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/inbox.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-inbox/src/mailbox/types.ts",
+      "references": 8,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/inbox.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-inbox/src/mailbox/use-in-email.ts",
+      "references": 3,
+      "consumerContexts": [
+        "renderer-entry",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/inbox.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-maps/src/client/agent-context.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/maps.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-maps/src/client/agent-navigation.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/maps.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-maps/src/client/approved-read.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/maps.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-maps/src/client/background-navigation.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/maps.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-maps/src/client/cloud-provider.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/maps.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-maps/src/client/cloud-session.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/maps.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-maps/src/client/contracts.ts",
+      "references": 6,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/maps.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-maps/src/client/device-navigation.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/maps.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-maps/src/client/guidance.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/maps.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-maps/src/client/location.ts",
+      "references": 3,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/maps.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-maps/src/client/map-plane.ts",
+      "references": 3,
+      "consumerContexts": [
+        "renderer-entry",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/maps.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-maps/src/client/maps-screen.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/maps.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-maps/src/client/native-location.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/maps.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-maps/src/client/navigation-fix.ts",
+      "references": 1,
+      "consumerContexts": [
+        "build-or-host"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/maps.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-maps/src/client/navigation-relay.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/maps.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-maps/src/client/navigation-voice.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/maps.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-maps/src/client/regional-provider.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/maps.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-maps/src/client/route-distance.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/maps.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-maps/src/client/runtime.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/maps.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-maps/src/client/saved-places.ts",
+      "references": 4,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/maps.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-maps/src/client/share.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/maps.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-maps/src/client/state.ts",
+      "references": 5,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/maps.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-native-browser-surface/src/address-input.ts",
+      "references": 3,
+      "consumerContexts": [
+        "renderer-entry",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-native-browser-surface/src/browsing-session.ts",
+      "references": 3,
+      "consumerContexts": [
+        "renderer-entry",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-native-browser-surface/src/page-reading.ts",
+      "references": 11,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-native-browser-surface/src/page-source.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-native-browser-surface/src/tab-host.ts",
+      "references": 6,
+      "consumerContexts": [
+        "renderer-entry",
+        "renderer-import",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-native-camera/src/host-ports.ts",
+      "references": 3,
+      "consumerContexts": [
+        "renderer-entry",
+        "renderer-import",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-native-camera/src/scan-document.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-native-camera/src/session.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-native-passwords/src/bindings.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-native-passwords/src/client.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-native-passwords/src/definitions.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-native-passwords/src/transfer.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-native-reminders/src/occurrence.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-native-system/src/client/launcher.ts",
+      "references": 3,
+      "consumerContexts": [
+        "renderer-entry",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-native-system/src/client/shade.ts",
+      "references": 5,
+      "consumerContexts": [
+        "renderer-entry",
+        "renderer-import",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-native-system/src/crash-log.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-native-system/src/index.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-native-system/src/reset.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-native-system/src/sense-bridge.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-native-system/src/settings.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/mobile.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-notes/src/client/note-dates.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-notes/src/client/note-deleted-origins.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-notes/src/client/note-documents.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-notes/src/client/note-origin.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-notes/src/client/note-schedule-draft.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-notes/src/client/note-share-text.ts",
+      "references": 3,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-notes/src/client/notes-api.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-notes/src/client/notes-audio-store.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-notes/src/client/notes-contract.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-notes/src/client/notes-controller.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-notes/src/client/notes-document-store.ts",
+      "references": 4,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-notes/src/client/notes-draft.ts",
+      "references": 3,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-notes/src/client/notes-editor.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-notes/src/client/notes-query.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-notes/src/client/notes-recording-deletion.ts",
+      "references": 5,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-notes/src/client/notes-recording-effects.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-notes/src/client/notes-recording-summary.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-notes/src/client/notes-secure-store.ts",
+      "references": 5,
+      "consumerContexts": [
+        "renderer-entry",
+        "renderer-import"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-notes/src/client/notes-store.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-notes/src/client/notes-trash-actions.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-notes/src/client/notes-trash-maintenance.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-notes/src/client/notes-trash-policy.ts",
+      "references": 4,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-notes/src/client/notes-trash-schedule.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-notes/src/client/notes-trash-store.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-notes/src/note-authored.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry",
+        "test"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-notes/src/note-format.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-notes/src/note-id.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-notes/src/types.ts",
+      "references": 4,
+      "consumerContexts": [
+        "build-or-host",
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-workflow/src/client/hosted-digests.ts",
+      "references": 2,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/hostedDigest.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-workflow/src/services/hosted-digest-policy.ts",
+      "references": 1,
+      "consumerContexts": [
+        "renderer-entry"
+      ],
+      "priority": "priority-consumer-path",
+      "relatedSpec": "spec/downstream/hostedDigest.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-workflow/src/services/workflow-source-publication.ts",
+      "references": 1,
+      "consumerContexts": [
+        "test"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/workflowSource.md",
+      "coverage": "related-contract"
+    },
+    {
+      "source": "plugins/plugin-workflow/src/services/workflow-worker-lease-prelude.ts",
+      "references": 1,
+      "consumerContexts": [
+        "test"
+      ],
+      "priority": "test-only",
+      "relatedSpec": "spec/downstream/workflowWorker.md",
+      "coverage": "related-contract"
+    }
+  ]
+}
