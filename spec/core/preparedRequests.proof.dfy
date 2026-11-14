@@ -6,7 +6,7 @@ lemma PreparedLeaseOwner(s: PreparedRequests)
 lemma PreparedGuardRecordsPreserved(s: PreparedRequests, after: PreparedRequests)
   requires alwaysExactBudgetAdmission(s) && alwaysGuardIdsUnique(s)
   requires |after.guards| == |s.guards|
-  requires forall i :: 0 <= i < |s.guards| ==> after.guards[i].id == s.guards[i].id && after.guards[i].codeUnits == s.guards[i].codeUnits && after.guards[i].inputCount == s.guards[i].inputCount && after.guards[i].countSource == s.guards[i].countSource && after.guards[i].threshold == s.guards[i].threshold && after.guards[i].phase == s.guards[i].phase && after.guards[i].exactAuthority == s.guards[i].exactAuthority
+  requires forall i :: 0 <= i < |s.guards| ==> after.guards[i].id == s.guards[i].id && after.guards[i].codeUnits == s.guards[i].codeUnits && after.guards[i].inputCount == s.guards[i].inputCount && after.guards[i].countSource == s.guards[i].countSource && after.guards[i].contextTokens == s.guards[i].contextTokens && after.guards[i].outputTokens == s.guards[i].outputTokens && after.guards[i].reservationTokens == s.guards[i].reservationTokens && after.guards[i].threshold == s.guards[i].threshold && after.guards[i].phase == s.guards[i].phase && after.guards[i].exactAuthority == s.guards[i].exactAuthority
   ensures stepGuardBytesStayFixed(s, after)
   ensures alwaysExactBudgetAdmission(after) && alwaysGuardIdsUnique(after)
 {
@@ -17,7 +17,7 @@ lemma PreparedGuardRecordsPreserved(s: PreparedRequests, after: PreparedRequests
     assert s.guards[i] in s.guards;
     ProofLib.FilterLengthPointwise((other: PreparedGuard) => (other.id == g.id), (other: PreparedGuard) => (other.id == g.id), s.guards, after.guards);
   }
-  forall g | g in s.guards ensures exists a :: a in after.guards && a.id == g.id && a.codeUnits == g.codeUnits && a.inputCount == g.inputCount && a.countSource == g.countSource
+  forall g | g in s.guards ensures exists a :: a in after.guards && a.id == g.id && a.codeUnits == g.codeUnits && a.inputCount == g.inputCount && a.countSource == g.countSource && a.contextTokens == g.contextTokens && a.outputTokens == g.outputTokens && a.reservationTokens == g.reservationTokens && a.threshold == g.threshold && a.exactAuthority == g.exactAuthority
   {
     var i :| 0 <= i < |s.guards| && s.guards[i] == g;
     assert after.guards[i] in after.guards;

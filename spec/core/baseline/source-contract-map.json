@@ -3239,6 +3239,7 @@
       "spec": "spec/core/preparedRequests.md",
       "rules": [
         "A request guard captures its exact admitted serialization",
+        "Rejection authority uses explicit limits and reservation uses the original output argument",
         "Every dispatched attempt rechecks bytes counts and lease authority",
         "Prepared requests use the same issued allowance and turn lease",
         "Each qualified attempt consumes the tariff reservation atomically",
