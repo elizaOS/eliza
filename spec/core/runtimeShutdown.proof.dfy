@@ -89,6 +89,7 @@ lemma FindShutdownAttempt(s: Shutdown, attemptId: int)
   requires alwaysAttemptIdentityUnique(s)
   ensures (exists a :: a in s.attempts && a.id == attemptId) ==> stopAttempt(s, attemptId) in s.attempts && stopAttempt(s, attemptId).id == attemptId
   ensures forall a :: a in s.attempts && a.id == attemptId ==> a == stopAttempt(s, attemptId)
+  ensures stopAttempt(s, attemptId).phase.StopFailed? ==> stopAttempt(s, attemptId) in s.attempts
 {
   ShutdownAttemptLookup(s, attemptId); ShutdownAttemptFilters(s);
   var matches := ProofLib.Filter((a: StopAttempt) => (a.id == attemptId), s.attempts);
@@ -97,6 +98,7 @@ lemma FindShutdownAttempt(s: Shutdown, attemptId: int)
     ProofLib.FilterMember((a: StopAttempt) => (a.id == attemptId), s.attempts, selected);
     ProofLib.FilterSamePredicate((a: StopAttempt) => (a.id == attemptId), (other: StopAttempt) => (other.id == selected.id), s.attempts);
     assert |matches| == 1;
+    assert stopAttempt(s, attemptId) == selected && selected in s.attempts;
     forall a | a in s.attempts && a.id == attemptId ensures a == selected
     { ProofLib.FilterMember((a: StopAttempt) => (a.id == attemptId), s.attempts, a); }
   } else {
@@ -152,7 +154,8 @@ lemma BeginStopRecords(s: Shutdown, fast: bool)
       FindShutdownAttempt(s, c.attempt);
       ShutdownAttemptLookup(s, c.attempt);
       var a := stopAttempt(s, c.attempt);
-      assert a in s.attempts && a in after.attempts;
+      assert a.phase.StopFailed? && a in s.attempts;
+      assert a in after.attempts;
       FindShutdownAttempt(after, c.attempt);
     }
   }
@@ -221,6 +224,7 @@ lemma completeOwnedWork_ensures(s: Shutdown, workId: int, teardownFailed: bool)
       ProofLib.FilterOfFilterShorter((w: RetirementWork) => (w.id != workId), (other: RetirementWork) => (other.id == w.id), s.pending);
       ProofLib.FilterMember((other: RetirementWork) => (other.id == w.id), after.pending, w);
     }
+    ShutdownProgress(after);
   }
 }
 
@@ -267,6 +271,7 @@ lemma callStrictStop_ensures(s: Shutdown, caller: int, fast: bool)
     var after := callStrictStop(s, caller, fast);
     ShutdownCallerFilters(after);
     AppendShutdownCaller(s, after, after.callers[|s.callers|]);
+    ShutdownProgress(after);
   }
 }
 
@@ -288,6 +293,18 @@ lemma observeStopAttempt_ensures(s: Shutdown, caller: int)
   if inv(s) && canObserveStopAttempt(s, caller) {
     var after := observeStopAttempt(s, caller);
     ShutdownCallerFilters(after); MapShutdownCallers(s, after);
+    var chosen :| chosen in s.callers && chosen.id == caller && !chosen.strict && chosen.resultKind.WaitingCall? &&
+      (stopAttempt(s, chosen.attempt).phase.StopSucceeded? || stopAttempt(s, chosen.attempt).phase.StopFailed?);
+    ShutdownCallerById(s, chosen);
+    forall c | c in after.callers && !c.strict && c.resultKind.FailedCall?
+      ensures stopAttempt(after, c.attempt).phase.StopFailed?
+    {
+      var i :| 0 <= i < |after.callers| && after.callers[i] == c;
+      var prior := s.callers[i];
+      assert prior in s.callers;
+      if prior.id == caller { assert prior == chosen; }
+    }
+    ShutdownProgress(after);
   }
 }
 
@@ -309,6 +326,17 @@ lemma observeStrictResult_ensures(s: Shutdown, caller: int)
   if inv(s) && canObserveStrictResult(s, caller) {
     var after := observeStrictResult(s, caller);
     ShutdownCallerFilters(after); MapShutdownCallers(s, after);
+    var chosen :| chosen in s.callers && chosen.id == caller && chosen.strict && chosen.resultKind.WaitingCall?;
+    ShutdownCallerById(s, chosen);
+    forall c | c in after.callers && !c.strict && c.resultKind.FailedCall?
+      ensures stopAttempt(after, c.attempt).phase.StopFailed?
+    {
+      var i :| 0 <= i < |after.callers| && after.callers[i] == c;
+      var prior := s.callers[i];
+      assert prior in s.callers;
+      if prior.id == caller { assert prior == chosen; }
+    }
+    ShutdownProgress(after);
   }
 }
 
@@ -361,6 +389,7 @@ lemma finishRoomDrain_ensures(s: Shutdown, attemptId: int)
       var i :| 0 <= i < |after.attempts| && after.attempts[i] == a;
       assert s.attempts[i] in s.attempts;
     }
+    ShutdownProgress(after);
   }
 }
 
@@ -395,6 +424,12 @@ lemma beginServiceStop_ensures(s: Shutdown, attemptId: int, startWaitTimedOut: b
       var i :| 0 <= i < |after.attempts| && after.attempts[i] == a;
       assert s.attempts[i] in s.attempts;
     }
+    assert s.activeAttempt == attemptId && s.activeAttempt != 0;
+    assert s.admissionClosed;
+    assert after.admissionClosed == s.admissionClosed && after.callers == s.callers && after.runtimeStopped && after.strictPhase == s.strictPhase;
+    ShutdownCallerFilters(s); ShutdownCallerFilters(after);
+    assert alwaysPublishedStopOwnership(after);
+    ShutdownProgress(after);
   }
 }
 
@@ -429,6 +464,7 @@ lemma finishStopAttempt_ensures(s: Shutdown, attemptId: int, serviceWaitTimedOut
       var i :| 0 <= i < |after.attempts| && after.attempts[i] == a;
       assert s.attempts[i] in s.attempts;
     }
+    ShutdownProgress(after);
   }
 }
 
@@ -464,4 +500,221 @@ lemma timeoutRoomDrain_ensures(s: Shutdown, attemptId: int)
       assert s.attempts[i] in s.attempts;
     }
   }
+}
+
+
+lemma ShutdownCallerById(s: Shutdown, chosen: StopCaller)
+  requires alwaysPublishedStopOwnership(s) && chosen in s.callers
+  ensures forall c :: c in s.callers && c.id == chosen.id ==> c == chosen
+{
+  ShutdownCallerFilters(s);
+  var selected := ProofLib.Filter((other: StopCaller) => (other.id == chosen.id), s.callers);
+  ProofLib.FilterMember((other: StopCaller) => (other.id == chosen.id), s.callers, chosen);
+  forall c | c in s.callers && c.id == chosen.id ensures c == chosen
+  { ProofLib.FilterMember((other: StopCaller) => (other.id == chosen.id), s.callers, c); }
+}
+
+lemma ShutdownProgress(s: Shutdown)
+  requires alwaysOneActiveAttempt(s) && alwaysAttemptIdentityUnique(s)
+  requires alwaysWaitingCallerHasOwner(s) && alwaysStrictBaseOwnership(s)
+  requires alwaysPublishedStopOwnership(s)
+  ensures alwaysShutdownDeadlockFree(s)
+{
+  if |s.pending| > 0 {
+    var w := s.pending[0];
+    assert w in s.pending && canCompleteOwnedWork(s, w.id, false);
+  } else if s.activeAttempt != 0 {
+    FindShutdownAttempt(s, s.activeAttempt);
+    var a := stopAttempt(s, s.activeAttempt);
+    assert a in s.attempts && a.id == s.activeAttempt && attemptInFlight(a);
+    assert canFinishRoomDrain(s, s.activeAttempt) || canBeginServiceStop(s, s.activeAttempt, true) || canFinishStopAttempt(s, s.activeAttempt, true);
+  } else if s.strictPhase.StrictAwaitingAttempt? {
+    FindShutdownAttempt(s, s.strictAttempt);
+    var a := stopAttempt(s, s.strictAttempt);
+    assert a in s.attempts && a.id == s.strictAttempt && a.id > 0;
+    assert !attemptInFlight(a) && canObserveStrictBase(s);
+  } else if s.strictPhase.StrictDraining? {
+    assert canFinishStrictDrain(s);
+  } else if exists c :: c in s.callers && c.resultKind.WaitingCall? {
+    var c :| c in s.callers && c.resultKind.WaitingCall?;
+    if c.strict {
+      assert !s.strictPhase.NoStrictStop?;
+      assert canObserveStrictResult(s, c.id);
+    } else {
+      FindShutdownAttempt(s, c.attempt);
+      var a := stopAttempt(s, c.attempt);
+      assert a in s.attempts && a.id == c.attempt && a.id > 0;
+      assert !attemptInFlight(a) && canObserveStopAttempt(s, c.id);
+    }
+  }
+}
+
+lemma finishActiveRoomDrain_ensures(s: Shutdown)
+  ensures (inv(s) ==> canFinishActiveRoomDrain(s) ==> alwaysOneActiveAttempt(finishActiveRoomDrain(s)))
+  ensures (inv(s) ==> canFinishActiveRoomDrain(s) ==> alwaysPreparationOnce(finishActiveRoomDrain(s)))
+  ensures (inv(s) ==> canFinishActiveRoomDrain(s) ==> alwaysClosedIngressAbortsTurns(finishActiveRoomDrain(s)))
+  ensures (inv(s) ==> canFinishActiveRoomDrain(s) ==> alwaysAttemptIdentityUnique(finishActiveRoomDrain(s)))
+  ensures (inv(s) ==> canFinishActiveRoomDrain(s) ==> alwaysPublishedStopOwnership(finishActiveRoomDrain(s)))
+  ensures (inv(s) ==> canFinishActiveRoomDrain(s) ==> alwaysStrictBaseOwnership(finishActiveRoomDrain(s)))
+  ensures (inv(s) ==> canFinishActiveRoomDrain(s) ==> alwaysAttemptFailureHonest(finishActiveRoomDrain(s)))
+  ensures (inv(s) ==> canFinishActiveRoomDrain(s) ==> alwaysPendingWorkIdentitiesUnique(finishActiveRoomDrain(s)))
+  ensures (inv(s) ==> canFinishActiveRoomDrain(s) ==> alwaysStrictSuccessQuiescent(finishActiveRoomDrain(s)))
+  ensures (inv(s) ==> canFinishActiveRoomDrain(s) ==> alwaysWaitingCallerHasOwner(finishActiveRoomDrain(s)))
+  ensures (inv(s) ==> canFinishActiveRoomDrain(s) ==> alwaysStrictCallerAgreement(finishActiveRoomDrain(s)))
+  ensures (inv(s) ==> canFinishActiveRoomDrain(s) ==> alwaysShutdownDeadlockFree(finishActiveRoomDrain(s)))
+  ensures (inv(s) ==> canFinishActiveRoomDrain(s) ==> stepRetirementFailurePersists(s, finishActiveRoomDrain(s)))
+{
+  if inv(s) && canFinishActiveRoomDrain(s) { finishRoomDrain_ensures(s, s.activeAttempt); }
+}
+
+lemma beginActiveServiceStop_ensures(s: Shutdown, startWaitTimedOut: bool)
+  ensures (inv(s) ==> canBeginActiveServiceStop(s, startWaitTimedOut) ==> alwaysOneActiveAttempt(beginActiveServiceStop(s, startWaitTimedOut)))
+  ensures (inv(s) ==> canBeginActiveServiceStop(s, startWaitTimedOut) ==> alwaysPreparationOnce(beginActiveServiceStop(s, startWaitTimedOut)))
+  ensures (inv(s) ==> canBeginActiveServiceStop(s, startWaitTimedOut) ==> alwaysClosedIngressAbortsTurns(beginActiveServiceStop(s, startWaitTimedOut)))
+  ensures (inv(s) ==> canBeginActiveServiceStop(s, startWaitTimedOut) ==> alwaysAttemptIdentityUnique(beginActiveServiceStop(s, startWaitTimedOut)))
+  ensures (inv(s) ==> canBeginActiveServiceStop(s, startWaitTimedOut) ==> alwaysPublishedStopOwnership(beginActiveServiceStop(s, startWaitTimedOut)))
+  ensures (inv(s) ==> canBeginActiveServiceStop(s, startWaitTimedOut) ==> alwaysStrictBaseOwnership(beginActiveServiceStop(s, startWaitTimedOut)))
+  ensures (inv(s) ==> canBeginActiveServiceStop(s, startWaitTimedOut) ==> alwaysAttemptFailureHonest(beginActiveServiceStop(s, startWaitTimedOut)))
+  ensures (inv(s) ==> canBeginActiveServiceStop(s, startWaitTimedOut) ==> alwaysPendingWorkIdentitiesUnique(beginActiveServiceStop(s, startWaitTimedOut)))
+  ensures (inv(s) ==> canBeginActiveServiceStop(s, startWaitTimedOut) ==> alwaysStrictSuccessQuiescent(beginActiveServiceStop(s, startWaitTimedOut)))
+  ensures (inv(s) ==> canBeginActiveServiceStop(s, startWaitTimedOut) ==> alwaysWaitingCallerHasOwner(beginActiveServiceStop(s, startWaitTimedOut)))
+  ensures (inv(s) ==> canBeginActiveServiceStop(s, startWaitTimedOut) ==> alwaysStrictCallerAgreement(beginActiveServiceStop(s, startWaitTimedOut)))
+  ensures (inv(s) ==> canBeginActiveServiceStop(s, startWaitTimedOut) ==> alwaysShutdownDeadlockFree(beginActiveServiceStop(s, startWaitTimedOut)))
+  ensures (inv(s) ==> canBeginActiveServiceStop(s, startWaitTimedOut) ==> stepRetirementFailurePersists(s, beginActiveServiceStop(s, startWaitTimedOut)))
+{
+  if inv(s) && canBeginActiveServiceStop(s, startWaitTimedOut) { beginServiceStop_ensures(s, s.activeAttempt, startWaitTimedOut); }
+}
+
+lemma finishActiveStop_ensures(s: Shutdown, serviceWaitTimedOut: bool)
+  ensures (inv(s) ==> canFinishActiveStop(s, serviceWaitTimedOut) ==> alwaysOneActiveAttempt(finishActiveStop(s, serviceWaitTimedOut)))
+  ensures (inv(s) ==> canFinishActiveStop(s, serviceWaitTimedOut) ==> alwaysPreparationOnce(finishActiveStop(s, serviceWaitTimedOut)))
+  ensures (inv(s) ==> canFinishActiveStop(s, serviceWaitTimedOut) ==> alwaysClosedIngressAbortsTurns(finishActiveStop(s, serviceWaitTimedOut)))
+  ensures (inv(s) ==> canFinishActiveStop(s, serviceWaitTimedOut) ==> alwaysAttemptIdentityUnique(finishActiveStop(s, serviceWaitTimedOut)))
+  ensures (inv(s) ==> canFinishActiveStop(s, serviceWaitTimedOut) ==> alwaysPublishedStopOwnership(finishActiveStop(s, serviceWaitTimedOut)))
+  ensures (inv(s) ==> canFinishActiveStop(s, serviceWaitTimedOut) ==> alwaysStrictBaseOwnership(finishActiveStop(s, serviceWaitTimedOut)))
+  ensures (inv(s) ==> canFinishActiveStop(s, serviceWaitTimedOut) ==> alwaysAttemptFailureHonest(finishActiveStop(s, serviceWaitTimedOut)))
+  ensures (inv(s) ==> canFinishActiveStop(s, serviceWaitTimedOut) ==> alwaysPendingWorkIdentitiesUnique(finishActiveStop(s, serviceWaitTimedOut)))
+  ensures (inv(s) ==> canFinishActiveStop(s, serviceWaitTimedOut) ==> alwaysStrictSuccessQuiescent(finishActiveStop(s, serviceWaitTimedOut)))
+  ensures (inv(s) ==> canFinishActiveStop(s, serviceWaitTimedOut) ==> alwaysWaitingCallerHasOwner(finishActiveStop(s, serviceWaitTimedOut)))
+  ensures (inv(s) ==> canFinishActiveStop(s, serviceWaitTimedOut) ==> alwaysStrictCallerAgreement(finishActiveStop(s, serviceWaitTimedOut)))
+  ensures (inv(s) ==> canFinishActiveStop(s, serviceWaitTimedOut) ==> alwaysShutdownDeadlockFree(finishActiveStop(s, serviceWaitTimedOut)))
+  ensures (inv(s) ==> canFinishActiveStop(s, serviceWaitTimedOut) ==> stepRetirementFailurePersists(s, finishActiveStop(s, serviceWaitTimedOut)))
+{
+  if inv(s) && canFinishActiveStop(s, serviceWaitTimedOut) { finishStopAttempt_ensures(s, s.activeAttempt, serviceWaitTimedOut); }
+}
+
+lemma observeStrictBase_ensures(s: Shutdown)
+  ensures (inv(s) ==> canObserveStrictBase(s) ==> alwaysOneActiveAttempt(observeStrictBase(s)))
+  ensures (inv(s) ==> canObserveStrictBase(s) ==> alwaysPreparationOnce(observeStrictBase(s)))
+  ensures (inv(s) ==> canObserveStrictBase(s) ==> alwaysClosedIngressAbortsTurns(observeStrictBase(s)))
+  ensures (inv(s) ==> canObserveStrictBase(s) ==> alwaysAttemptIdentityUnique(observeStrictBase(s)))
+  ensures (inv(s) ==> canObserveStrictBase(s) ==> alwaysPublishedStopOwnership(observeStrictBase(s)))
+  ensures (inv(s) ==> canObserveStrictBase(s) ==> alwaysStrictBaseOwnership(observeStrictBase(s)))
+  ensures (inv(s) ==> canObserveStrictBase(s) ==> alwaysAttemptFailureHonest(observeStrictBase(s)))
+  ensures (inv(s) ==> canObserveStrictBase(s) ==> alwaysPendingWorkIdentitiesUnique(observeStrictBase(s)))
+  ensures (inv(s) ==> canObserveStrictBase(s) ==> alwaysStrictSuccessQuiescent(observeStrictBase(s)))
+  ensures (inv(s) ==> canObserveStrictBase(s) ==> alwaysWaitingCallerHasOwner(observeStrictBase(s)))
+  ensures (inv(s) ==> canObserveStrictBase(s) ==> alwaysStrictCallerAgreement(observeStrictBase(s)))
+  ensures (inv(s) ==> canObserveStrictBase(s) ==> alwaysShutdownDeadlockFree(observeStrictBase(s)))
+  ensures (inv(s) ==> canObserveStrictBase(s) ==> stepRetirementFailurePersists(s, observeStrictBase(s)))
+{
+  if inv(s) && canObserveStrictBase(s) {
+    FindShutdownAttempt(s, s.strictAttempt);
+    var a := stopAttempt(s, s.strictAttempt);
+    assert a in s.attempts;
+    var after := observeStrictBase(s);
+    ShutdownProgress(after);
+  }
+}
+
+lemma finishStrictDrain_ensures(s: Shutdown)
+  ensures (inv(s) ==> canFinishStrictDrain(s) ==> alwaysOneActiveAttempt(finishStrictDrain(s)))
+  ensures (inv(s) ==> canFinishStrictDrain(s) ==> alwaysPreparationOnce(finishStrictDrain(s)))
+  ensures (inv(s) ==> canFinishStrictDrain(s) ==> alwaysClosedIngressAbortsTurns(finishStrictDrain(s)))
+  ensures (inv(s) ==> canFinishStrictDrain(s) ==> alwaysAttemptIdentityUnique(finishStrictDrain(s)))
+  ensures (inv(s) ==> canFinishStrictDrain(s) ==> alwaysPublishedStopOwnership(finishStrictDrain(s)))
+  ensures (inv(s) ==> canFinishStrictDrain(s) ==> alwaysStrictBaseOwnership(finishStrictDrain(s)))
+  ensures (inv(s) ==> canFinishStrictDrain(s) ==> alwaysAttemptFailureHonest(finishStrictDrain(s)))
+  ensures (inv(s) ==> canFinishStrictDrain(s) ==> alwaysPendingWorkIdentitiesUnique(finishStrictDrain(s)))
+  ensures (inv(s) ==> canFinishStrictDrain(s) ==> alwaysStrictSuccessQuiescent(finishStrictDrain(s)))
+  ensures (inv(s) ==> canFinishStrictDrain(s) ==> alwaysWaitingCallerHasOwner(finishStrictDrain(s)))
+  ensures (inv(s) ==> canFinishStrictDrain(s) ==> alwaysStrictCallerAgreement(finishStrictDrain(s)))
+  ensures (inv(s) ==> canFinishStrictDrain(s) ==> alwaysShutdownDeadlockFree(finishStrictDrain(s)))
+  ensures (inv(s) ==> canFinishStrictDrain(s) ==> stepRetirementFailurePersists(s, finishStrictDrain(s)))
+{
+  if inv(s) && canFinishStrictDrain(s) {
+    var after := finishStrictDrain(s);
+    ShutdownProgress(after);
+  }
+}
+
+lemma step_ensures(current: Shutdown, event: Event)
+  requires inv(current)
+  ensures inv(step(current, event))
+{
+  if event.admitOwnedWork? && canAdmitOwnedWork(current, event.workId, event.kind) {
+    admitOwnedWork_ensures(current, event.workId, event.kind);
+    assert step(current, event) == admitOwnedWork(current, event.workId, event.kind);
+  }
+  else if event.callStop? && canCallStop(current, event.caller, event.fast) {
+    callStop_ensures(current, event.caller, event.fast);
+    assert step(current, event) == callStop(current, event.caller, event.fast);
+  }
+  else if event.beginServiceStop? && canBeginServiceStop(current, event.attemptId, event.startWaitTimedOut) {
+    beginServiceStop_ensures(current, event.attemptId, event.startWaitTimedOut);
+    assert step(current, event) == beginServiceStop(current, event.attemptId, event.startWaitTimedOut);
+  }
+  else if event.finishStopAttempt? && canFinishStopAttempt(current, event.attemptId, event.serviceWaitTimedOut) {
+    finishStopAttempt_ensures(current, event.attemptId, event.serviceWaitTimedOut);
+    assert step(current, event) == finishStopAttempt(current, event.attemptId, event.serviceWaitTimedOut);
+  }
+  else if event.finishRoomDrain? && canFinishRoomDrain(current, event.attemptId) {
+    finishRoomDrain_ensures(current, event.attemptId);
+    assert step(current, event) == finishRoomDrain(current, event.attemptId);
+  }
+  else if event.timeoutRoomDrain? && canTimeoutRoomDrain(current, event.attemptId) {
+    timeoutRoomDrain_ensures(current, event.attemptId);
+    assert step(current, event) == timeoutRoomDrain(current, event.attemptId);
+  }
+  else if event.observeStopAttempt? && canObserveStopAttempt(current, event.caller) {
+    observeStopAttempt_ensures(current, event.caller);
+    assert step(current, event) == observeStopAttempt(current, event.caller);
+  }
+  else if event.spawnRetirementChild? && canSpawnRetirementChild(current, event.parentId, event.workId, event.kind) {
+    spawnRetirementChild_ensures(current, event.parentId, event.workId, event.kind);
+    assert step(current, event) == spawnRetirementChild(current, event.parentId, event.workId, event.kind);
+  }
+  else if event.completeOwnedWork? && canCompleteOwnedWork(current, event.workId, event.teardownFailed) {
+    completeOwnedWork_ensures(current, event.workId, event.teardownFailed);
+    assert step(current, event) == completeOwnedWork(current, event.workId, event.teardownFailed);
+  }
+  else if event.finishStrictDrain? && canFinishStrictDrain(current) {
+    finishStrictDrain_ensures(current);
+    assert step(current, event) == finishStrictDrain(current);
+  }
+  else if event.observeStrictResult? && canObserveStrictResult(current, event.caller) {
+    observeStrictResult_ensures(current, event.caller);
+    assert step(current, event) == observeStrictResult(current, event.caller);
+  }
+  else if event.observeStrictBase? && canObserveStrictBase(current) {
+    observeStrictBase_ensures(current);
+    assert step(current, event) == observeStrictBase(current);
+  }
+  else if event.callStrictStop? && canCallStrictStop(current, event.caller, event.fast) {
+    callStrictStop_ensures(current, event.caller, event.fast);
+    assert step(current, event) == callStrictStop(current, event.caller, event.fast);
+  }
+  else if event.finishActiveRoomDrain? && canFinishActiveRoomDrain(current) {
+    finishActiveRoomDrain_ensures(current);
+    assert step(current, event) == finishActiveRoomDrain(current);
+  }
+  else if event.beginActiveServiceStop? && canBeginActiveServiceStop(current, event.startWaitTimedOut) {
+    beginActiveServiceStop_ensures(current, event.startWaitTimedOut);
+    assert step(current, event) == beginActiveServiceStop(current, event.startWaitTimedOut);
+  }
+  else if event.finishActiveStop? && canFinishActiveStop(current, event.serviceWaitTimedOut) {
+    finishActiveStop_ensures(current, event.serviceWaitTimedOut);
+    assert step(current, event) == finishActiveStop(current, event.serviceWaitTimedOut);
+  }
+  else { assert step(current, event) == current; }
 }

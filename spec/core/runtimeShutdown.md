@@ -12,7 +12,7 @@ The first stop closes ingress and marks admitted turns aborted. Reentrant and co
 
 Discovered by the proof: published stop ownership closes ingress, caller IDs
 remain unique, and a strict drain follows a stopped base operation. A strict
-wait retains the real attempt it joined. These relations exclude states that
+wait retains the real attempt it joined. Active attempt transitions require a positive published identity. These relations exclude states that
 cannot be produced by registration or the preceding shutdown transition.
 
 ```quint
@@ -58,13 +58,13 @@ pure def sometimesConcurrentStopJoins(s: Shutdown): bool = s.callers.some(a => s
 Retry creates a fresh attempt without preparing services or reopening ingress a second time.
 
 ```quint
-pure def canFinishRoomDrain(s: Shutdown, attemptId: int): bool = s.activeAttempt == attemptId and stopAttempt(s, attemptId).phase == DrainingRooms and not(s.pending.some(w => w.kind == RoomWork))
+pure def canFinishRoomDrain(s: Shutdown, attemptId: int): bool = attemptId > 0 and s.activeAttempt == attemptId and stopAttempt(s, attemptId).phase == DrainingRooms and not(s.pending.some(w => w.kind == RoomWork))
 pure def finishRoomDrain(s: Shutdown, attemptId: int): Shutdown = { ...s, attempts: s.attempts.listMap(a => if (a.id == attemptId) { ...a, phase: WaitingStarts } else a) }
-pure def canTimeoutRoomDrain(s: Shutdown, attemptId: int): bool = s.activeAttempt == attemptId and stopAttempt(s, attemptId).phase == DrainingRooms and stopAttempt(s, attemptId).fast and s.pending.some(w => w.kind == RoomWork)
+pure def canTimeoutRoomDrain(s: Shutdown, attemptId: int): bool = attemptId > 0 and s.activeAttempt == attemptId and stopAttempt(s, attemptId).phase == DrainingRooms and stopAttempt(s, attemptId).fast and s.pending.some(w => w.kind == RoomWork)
 pure def timeoutRoomDrain(s: Shutdown, attemptId: int): Shutdown = { ...s, activeAttempt: 0, retirementFailed: true, attempts: s.attempts.listMap(a => if (a.id == attemptId) { ...a, phase: StopFailed } else a) }
-pure def canBeginServiceStop(s: Shutdown, attemptId: int, startWaitTimedOut: bool): bool = s.activeAttempt == attemptId and stopAttempt(s, attemptId).phase == WaitingStarts and (stopAttempt(s, attemptId).fast or startWaitTimedOut or not(s.pending.some(w => w.kind == ServiceStartWork)))
+pure def canBeginServiceStop(s: Shutdown, attemptId: int, startWaitTimedOut: bool): bool = attemptId > 0 and s.activeAttempt == attemptId and stopAttempt(s, attemptId).phase == WaitingStarts and (stopAttempt(s, attemptId).fast or startWaitTimedOut or not(s.pending.some(w => w.kind == ServiceStartWork)))
 pure def beginServiceStop(s: Shutdown, attemptId: int, startWaitTimedOut: bool): Shutdown = { ...s, runtimeStopped: true, attempts: s.attempts.listMap(a => if (a.id == attemptId) { ...a, phase: StoppingServices } else a) }
-pure def canFinishStopAttempt(s: Shutdown, attemptId: int, serviceWaitTimedOut: bool): bool = s.activeAttempt == attemptId and stopAttempt(s, attemptId).phase == StoppingServices and (not(s.pending.some(w => w.kind == ServiceStopWork)) or (stopAttempt(s, attemptId).fast and serviceWaitTimedOut))
+pure def canFinishStopAttempt(s: Shutdown, attemptId: int, serviceWaitTimedOut: bool): bool = attemptId > 0 and s.activeAttempt == attemptId and stopAttempt(s, attemptId).phase == StoppingServices and (not(s.pending.some(w => w.kind == ServiceStopWork)) or (stopAttempt(s, attemptId).fast and serviceWaitTimedOut))
 pure def finishStopAttempt(s: Shutdown, attemptId: int, serviceWaitTimedOut: bool): Shutdown = { ...s, activeAttempt: 0, attempts: s.attempts.listMap(a => if (a.id == attemptId) { ...a, phase: StopSucceeded } else a) }
 pure def canObserveStopAttempt(s: Shutdown, caller: int): bool = s.callers.some(c => c.id == caller and not(c.strict) and c.resultKind == WaitingCall and (stopAttempt(s, c.attempt).phase == StopSucceeded or stopAttempt(s, c.attempt).phase == StopFailed))
 pure def observeStopAttempt(s: Shutdown, caller: int): Shutdown = { ...s, callers: s.callers.listMap(c => if (c.id == caller) { ...c, resultKind: if (stopAttempt(s, c.attempt).phase == StopSucceeded) SuccessfulCall else FailedCall } else c) }
