@@ -1,6 +1,6 @@
 # Shared request authority and completion registry
 
-The source is `packages/core/src/actions/task-extraction-context.ts:40-146,360-375,810-1015,1028-1087,1184-1371`. The process-wide WeakMaps are composed here: runtime/message pairs own issuer objects; State.data objects own extraction views; each opaque attempt and result object has one issuer owner. [Issuer restriction](./requestIssuer.md) and [completion evidence](./requestCompletions.md) are components of that owner, not independent authorities. IDs denote actual host object references. `HostBoundary` is supplied separately from parsed caller payloads. Hashes, source projections and current action-registration observations remain exact external algorithm inputs.
+The source is `packages/core/src/actions/task-extraction-context.ts:40-146,431-524,810-1087,1184-1415`. Runtime/message pairs own issuer objects. State.data objects own extraction views. Each opaque attempt and result object has one issuer owner, and its [issuer restriction](./requestIssuer.md) and [completion evidence](./requestCompletions.md) live under that owner. IDs denote actual host object references. The authenticated sender supplies `HostBoundary` separately from parsed payloads. The host derives hashes and resolves the registered action, family and canonical child from its live registry.
 
 ## Story: Keep concurrent requests and their copied views isolated
 
@@ -128,12 +128,15 @@ pure val denialIdValues = Set("denial1", "denial2")
 pure val fingerprintValues = Set("fingerprint1", "fingerprint2")
 pure val sourceFingerprintValues = fingerprintValues
 pure val targetFingerprintValues = fingerprintValues
+pure val registrationValues = C::registrationValues
+pure val observationValues = C::observationValues
+pure val childValues = C::childValues
 pure def attemptOwner(s: RequestRegistry, attemptId: str): IssuerOwner = s.owners.select(owner => owner.completions.attempts.some(attempt => attempt.id == attemptId)).nthOr(0, emptyOwner)
 pure def resultOwner(s: RequestRegistry, resultId: str): IssuerOwner = s.owners.select(owner => owner.completions.results.some(result => result.id == resultId)).nthOr(0, emptyOwner)
 pure def canBeginAttempt(s: RequestRegistry, by: RegistryCaller, issuerId: int, stateObject: int, messageObject: int, attemptId: str): bool = by == HostBoundary and boundViewCurrent(s, stateObject, messageObject) and viewAt(s, stateObject).issuerId == issuerId and ownerAt(s, issuerId).messageObject == messageObject and attemptOwner(s, attemptId).id == 0 and C::canBeginAttempt(refreshedOwner(ownerAt(s, issuerId), s).completions, attemptId)
-pure def beginAttempt(s: RequestRegistry, by: RegistryCaller, issuerId: int, stateObject: int, messageObject: int, attemptId: str): RequestRegistry = {
+pure def beginAttempt(s: RequestRegistry, by: RegistryCaller, issuerId: int, stateObject: int, messageObject: int, attemptId: str, registration: C::RegistrationSnapshot): RequestRegistry = {
   val owner = refreshedOwner(ownerAt(s, issuerId), s)
-  replaceOwner({ ...owner, completions: C::beginAttempt(owner.completions, attemptId) }, s)
+  replaceOwner({ ...owner, completions: C::beginAttempt(owner.completions, attemptId, registration) }, s)
 }
 pure def denialOwner(s: RequestRegistry, denialId: str): IssuerOwner = s.owners.select(owner => owner.completions.denials.some(denial => denial.id == denialId)).nthOr(0, emptyOwner)
 pure def canCheckOperation(s: RequestRegistry, stateObject: int, messageObject: int, attemptId: str, operation: C::Operation, registered: C::Operation, denialId: str): bool = operation != C::NoOperation and (denialId == "" or denialOwner(s, denialId).id == 0)
@@ -146,12 +149,12 @@ pure def checkOperation(s: RequestRegistry, stateObject: int, messageObject: int
 }
 pure def canBindResult(s: RequestRegistry, by: RegistryCaller, resultId: str, attemptId: str): bool = by == HostBoundary and C::canBindResult(refreshedOwner(attemptOwner(s, attemptId), s).completions, resultId, attemptId)
 pure def flagChangedResult(completions: C::RequestCompletions, resultId: str, fingerprint: str): C::RequestCompletions = { ...completions, results: completions.results.listMap(result => if (result.id == resultId) { ...result, changed: result.changed or result.fingerprint != fingerprint } else result) }
-pure def bindResult(s: RequestRegistry, by: RegistryCaller, resultId: str, attemptId: str, fingerprint: str, projectionHash: str, currentRegistration: bool, canonicalDispatch: bool): RequestRegistry = {
+pure def bindResult(s: RequestRegistry, by: RegistryCaller, resultId: str, attemptId: str, fingerprint: str, projectionHash: str, observation: C::RegistrationSnapshot, child: C::ChildSnapshot): RequestRegistry = {
   val owner = refreshedOwner(attemptOwner(s, attemptId), s)
   val existingOwner = resultOwner(s, resultId)
   val existing = C::resultAt(existingOwner.completions, resultId)
   val same = existingOwner.id == 0 or (existingOwner.id == owner.id and existing.attempt == attemptId)
-  if (same) { ...replaceOwner({ ...owner, completions: C::bindResult(owner.completions, resultId, attemptId, fingerprint, projectionHash, currentRegistration, canonicalDispatch) }, s), lastBound: existingOwner.id == 0 or (not(existing.changed) and existing.fingerprint == fingerprint) }
+  if (same) { ...replaceOwner({ ...owner, completions: C::bindResult(owner.completions, resultId, attemptId, fingerprint, projectionHash, observation, child) }, s), lastBound: existingOwner.id == 0 or (not(existing.changed) and existing.fingerprint == fingerprint) }
   else { ...replaceOwner({ ...existingOwner, completions: flagChangedResult(existingOwner.completions, resultId, fingerprint) }, s), lastBound: false }
 }
 pure def canProjectResult(s: RequestRegistry, by: RegistryCaller, issuerId: int, sourceId: str, targetId: str): bool = by == HostBoundary and resultOwner(s, sourceId).id == issuerId and issuerId != 0 and resultOwner(s, targetId).id == 0 and C::canProjectResult(resultOwner(s, sourceId).completions, sourceId, targetId, true)
@@ -165,9 +168,9 @@ pure def copyCompletion(s: RequestRegistry, sourceId: str, targetId: str, source
   replaceOwner({ ...owner, completions: C::copyCompletion(owner.completions, sourceId, targetId, sourceFingerprint, targetFingerprint) }, s)
 }
 pure def canInspectCompletion(s: RequestRegistry, issuerId: int, resultId: str): bool = issuerId != 0 and resultOwner(s, resultId).id == issuerId and C::canInspectCompletion(resultOwner(s, resultId).completions, resultId, true)
-pure def inspectCompletion(s: RequestRegistry, issuerId: int, resultId: str, fingerprint: str, registrationCurrent: bool): RequestRegistry = {
+pure def inspectCompletion(s: RequestRegistry, issuerId: int, resultId: str, fingerprint: str, observation: C::RegistrationSnapshot, child: C::ChildSnapshot): RequestRegistry = {
   val owner = refreshedOwner(resultOwner(s, resultId), s)
-  replaceOwner({ ...owner, completions: C::inspectCompletion(owner.completions, resultId, true, fingerprint, registrationCurrent) }, s)
+  replaceOwner({ ...owner, completions: C::inspectCompletion(owner.completions, resultId, true, fingerprint, observation, child) }, s)
 }
 pure val sourceDenialValues = denialIdValues
 pure val errorIdValues = Set("error1", "error2")

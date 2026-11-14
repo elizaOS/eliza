@@ -427,14 +427,14 @@ lemma RequestLeafTransferDenial(c: core__requestCompletions_RequestCompletions, 
   RequestDenialKeys(c.denials,t.denials,targetResult);
 }
 
-lemma RequestLeafBindResult(c: core__requestCompletions_RequestCompletions,resultId: string, attemptId: string, fingerprint: string, projectionHash: string, currentRegistration: bool, canonicalDispatch: bool)
+lemma RequestLeafBindResult(c: core__requestCompletions_RequestCompletions,resultId: string, attemptId: string, fingerprint: string, projectionHash: string, observation: core__requestCompletions_RegistrationSnapshot, child: core__requestCompletions_ChildSnapshot)
   requires core__requestCompletions_inv(c) && core__requestCompletions_canBindResult(c,resultId,attemptId)
-  ensures var t := core__requestCompletions_bindResult(c,resultId,attemptId,fingerprint,projectionHash,currentRegistration,canonicalDispatch);
+  ensures var t := core__requestCompletions_bindResult(c,resultId,attemptId,fingerprint,projectionHash,observation, child);
     core__requestCompletions_inv(t) && t.attempts == c.attempts && t.denials == c.denials &&
     (forall r :: r in t.results ==> (r.id == resultId || exists prior :: prior in c.results && prior.id == r.id))
 {
-  core__requestCompletions_bindResult_ensures(c,resultId,attemptId,fingerprint,projectionHash,currentRegistration,canonicalDispatch);
-  var t := core__requestCompletions_bindResult(c,resultId,attemptId,fingerprint,projectionHash,currentRegistration,canonicalDispatch);
+  core__requestCompletions_bindResult_ensures(c,resultId,attemptId,fingerprint,projectionHash,observation, child);
+  var t := core__requestCompletions_bindResult(c,resultId,attemptId,fingerprint,projectionHash,observation, child);
   RequestResultKeys(c.results,t.results,resultId);
 }
 
@@ -623,23 +623,23 @@ lemma observeSources_ensures(s: RequestRegistry, by_: RegistryCaller, issuerId: 
   }
 }
 
-lemma beginAttempt_ensures(s: RequestRegistry, by_: RegistryCaller, issuerId: int, stateObject: int, messageObject: int, attemptId: string)
-  ensures (inv(s) ==> canBeginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId) ==> alwaysDenialOwnershipIsUnique(beginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId)))
-  ensures (inv(s) ==> canBeginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId) ==> alwaysSourceObjectIdentitiesAreUnique(beginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId)))
-  ensures (inv(s) ==> canBeginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId) ==> alwaysActivePairsAreUnique(beginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId)))
-  ensures (inv(s) ==> canBeginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId) ==> alwaysAttemptOwnershipIsUnique(beginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId)))
-  ensures (inv(s) ==> canBeginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId) ==> alwaysResultOwnershipIsUnique(beginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId)))
-  ensures (inv(s) ==> canBeginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId) ==> alwaysOwnersRetainProtocolSafety(beginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId)))
-  ensures (inv(s) ==> canBeginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId) ==> alwaysViewsHaveOneDataOwner(beginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId)))
-  ensures (inv(s) ==> canBeginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId) ==> stepActivePairIdentityNeverChanges(s, "beginAttempt", beginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId)))
+lemma beginAttempt_ensures(s: RequestRegistry, by_: RegistryCaller, issuerId: int, stateObject: int, messageObject: int, attemptId: string, registration: core__requestCompletions_RegistrationSnapshot)
+  ensures (inv(s) ==> canBeginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId) ==> alwaysDenialOwnershipIsUnique(beginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId, registration)))
+  ensures (inv(s) ==> canBeginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId) ==> alwaysSourceObjectIdentitiesAreUnique(beginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId, registration)))
+  ensures (inv(s) ==> canBeginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId) ==> alwaysActivePairsAreUnique(beginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId, registration)))
+  ensures (inv(s) ==> canBeginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId) ==> alwaysAttemptOwnershipIsUnique(beginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId, registration)))
+  ensures (inv(s) ==> canBeginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId) ==> alwaysResultOwnershipIsUnique(beginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId, registration)))
+  ensures (inv(s) ==> canBeginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId) ==> alwaysOwnersRetainProtocolSafety(beginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId, registration)))
+  ensures (inv(s) ==> canBeginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId) ==> alwaysViewsHaveOneDataOwner(beginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId, registration)))
+  ensures (inv(s) ==> canBeginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId) ==> stepActivePairIdentityNeverChanges(s, "beginAttempt", beginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId, registration)))
 {
   if inv(s) && canBeginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId) {
     RequestOwnerLookup(s,issuerId);
     var a := ownerAt(s,issuerId);
     assert a in s.owners;
-    core__requestCompletions_beginAttempt_ensures(refreshedOwner(a,s).completions,attemptId);
+    core__requestCompletions_beginAttempt_ensures(refreshedOwner(a,s).completions,attemptId,registration);
     RequestAttemptLookup(s,attemptId);
-    var t := beginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId);
+    var t := beginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId, registration);
     var i :| 0 <= i < |s.owners| && s.owners[i] == a;
     var changed := t.owners[i];
     RequestCompletionPeers(s,a,changed.completions,attemptId,"","");
@@ -703,22 +703,22 @@ lemma copyCompletion_ensures(s: RequestRegistry, sourceId: string, targetId: str
   }
 }
 
-lemma inspectCompletion_ensures(s: RequestRegistry, issuerId: int, resultId: string, fingerprint: string, registrationCurrent: bool)
-  ensures (inv(s) ==> canInspectCompletion(s, issuerId, resultId) ==> alwaysDenialOwnershipIsUnique(inspectCompletion(s, issuerId, resultId, fingerprint, registrationCurrent)))
-  ensures (inv(s) ==> canInspectCompletion(s, issuerId, resultId) ==> alwaysSourceObjectIdentitiesAreUnique(inspectCompletion(s, issuerId, resultId, fingerprint, registrationCurrent)))
-  ensures (inv(s) ==> canInspectCompletion(s, issuerId, resultId) ==> alwaysActivePairsAreUnique(inspectCompletion(s, issuerId, resultId, fingerprint, registrationCurrent)))
-  ensures (inv(s) ==> canInspectCompletion(s, issuerId, resultId) ==> alwaysAttemptOwnershipIsUnique(inspectCompletion(s, issuerId, resultId, fingerprint, registrationCurrent)))
-  ensures (inv(s) ==> canInspectCompletion(s, issuerId, resultId) ==> alwaysResultOwnershipIsUnique(inspectCompletion(s, issuerId, resultId, fingerprint, registrationCurrent)))
-  ensures (inv(s) ==> canInspectCompletion(s, issuerId, resultId) ==> alwaysOwnersRetainProtocolSafety(inspectCompletion(s, issuerId, resultId, fingerprint, registrationCurrent)))
-  ensures (inv(s) ==> canInspectCompletion(s, issuerId, resultId) ==> alwaysViewsHaveOneDataOwner(inspectCompletion(s, issuerId, resultId, fingerprint, registrationCurrent)))
-  ensures (inv(s) ==> canInspectCompletion(s, issuerId, resultId) ==> stepActivePairIdentityNeverChanges(s, "inspectCompletion", inspectCompletion(s, issuerId, resultId, fingerprint, registrationCurrent)))
+lemma inspectCompletion_ensures(s: RequestRegistry, issuerId: int, resultId: string, fingerprint: string, observation: core__requestCompletions_RegistrationSnapshot, child: core__requestCompletions_ChildSnapshot)
+  ensures (inv(s) ==> canInspectCompletion(s, issuerId, resultId) ==> alwaysDenialOwnershipIsUnique(inspectCompletion(s, issuerId, resultId, fingerprint, observation, child)))
+  ensures (inv(s) ==> canInspectCompletion(s, issuerId, resultId) ==> alwaysSourceObjectIdentitiesAreUnique(inspectCompletion(s, issuerId, resultId, fingerprint, observation, child)))
+  ensures (inv(s) ==> canInspectCompletion(s, issuerId, resultId) ==> alwaysActivePairsAreUnique(inspectCompletion(s, issuerId, resultId, fingerprint, observation, child)))
+  ensures (inv(s) ==> canInspectCompletion(s, issuerId, resultId) ==> alwaysAttemptOwnershipIsUnique(inspectCompletion(s, issuerId, resultId, fingerprint, observation, child)))
+  ensures (inv(s) ==> canInspectCompletion(s, issuerId, resultId) ==> alwaysResultOwnershipIsUnique(inspectCompletion(s, issuerId, resultId, fingerprint, observation, child)))
+  ensures (inv(s) ==> canInspectCompletion(s, issuerId, resultId) ==> alwaysOwnersRetainProtocolSafety(inspectCompletion(s, issuerId, resultId, fingerprint, observation, child)))
+  ensures (inv(s) ==> canInspectCompletion(s, issuerId, resultId) ==> alwaysViewsHaveOneDataOwner(inspectCompletion(s, issuerId, resultId, fingerprint, observation, child)))
+  ensures (inv(s) ==> canInspectCompletion(s, issuerId, resultId) ==> stepActivePairIdentityNeverChanges(s, "inspectCompletion", inspectCompletion(s, issuerId, resultId, fingerprint, observation, child)))
 {
   if inv(s) && canInspectCompletion(s, issuerId, resultId) {
     RequestResultLookup(s,resultId);
     var a := resultOwner(s,resultId);
     assert a in s.owners;
-    core__requestCompletions_inspectCompletion_ensures(refreshedOwner(a,s).completions,resultId,true,fingerprint,registrationCurrent);
-    var t := inspectCompletion(s, issuerId, resultId, fingerprint, registrationCurrent);
+    core__requestCompletions_inspectCompletion_ensures(refreshedOwner(a,s).completions,resultId,true,fingerprint,observation, child);
+    var t := inspectCompletion(s, issuerId, resultId, fingerprint, observation, child);
     var i :| 0 <= i < |s.owners| && s.owners[i] == a;
     var changed := t.owners[i];
     RequestCompletionPeers(s,a,changed.completions,"","","");
@@ -1052,12 +1052,12 @@ lemma RequestBindExistingAssociation(s: RequestRegistry, t: RequestRegistry, a: 
   RequestReplacement(s,t,a,a.(completions := updated));
 }
 
-lemma RequestFreshResultAssociation(s: RequestRegistry, t: RequestRegistry, a: IssuerOwner, resultId: string, attemptId: string, fingerprint: string, projectionHash: string, currentRegistration: bool, canonicalDispatch: bool)
+lemma RequestFreshResultAssociation(s: RequestRegistry, t: RequestRegistry, a: IssuerOwner, resultId: string, attemptId: string, fingerprint: string, projectionHash: string, observation: core__requestCompletions_RegistrationSnapshot, child: core__requestCompletions_ChildSnapshot)
   requires inv(s) && a in s.owners
   requires resultOwner(s,resultId).id == 0 || resultOwner(s,resultId).id == a.id
   requires core__requestCompletions_canBindResult(refreshedOwner(a,s).completions,resultId,attemptId)
   requires var owner := refreshedOwner(a,s);
-    var updated := core__requestCompletions_bindResult(owner.completions,resultId,attemptId,fingerprint,projectionHash,currentRegistration,canonicalDispatch);
+    var updated := core__requestCompletions_bindResult(owner.completions,resultId,attemptId,fingerprint,projectionHash,observation, child);
     t == replaceOwner(owner.(completions := updated),s).(lastBound := t.lastBound)
   ensures inv(t) && stepActivePairIdentityNeverChanges(s,"",t)
 {
@@ -1066,42 +1066,42 @@ lemma RequestFreshResultAssociation(s: RequestRegistry, t: RequestRegistry, a: I
   var c := owner.completions;
   core__requestCompletions_observeAuthority_ensures(a.completions,a.issuer.revision,ownerCurrent(a,s) && a.issuer.committed,completionClass(core__requestIssuer_restriction(a.issuer)));
   assert core__requestCompletions_inv(c);
-  RequestLeafBindResult(c,resultId,attemptId,fingerprint,projectionHash,currentRegistration,canonicalDispatch);
-  var updated := core__requestCompletions_bindResult(c,resultId,attemptId,fingerprint,projectionHash,currentRegistration,canonicalDispatch);
+  RequestLeafBindResult(c,resultId,attemptId,fingerprint,projectionHash,observation, child);
+  var updated := core__requestCompletions_bindResult(c,resultId,attemptId,fingerprint,projectionHash,observation, child);
   RequestCompletionPeers(s,a,updated,"",resultId,"");
   RequestReplacement(s,t,a,owner.(completions := updated));
 }
 
-lemma RequestBindResultAggregate(s: RequestRegistry, by_: RegistryCaller, resultId: string, attemptId: string, fingerprint: string, projectionHash: string, currentRegistration: bool, canonicalDispatch: bool)
+lemma RequestBindResultAggregate(s: RequestRegistry, by_: RegistryCaller, resultId: string, attemptId: string, fingerprint: string, projectionHash: string, observation: core__requestCompletions_RegistrationSnapshot, child: core__requestCompletions_ChildSnapshot)
   requires inv(s) && canBindResult(s,by_,resultId,attemptId)
-  ensures inv(bindResult(s, by_, resultId, attemptId, fingerprint, projectionHash, currentRegistration, canonicalDispatch)) && stepActivePairIdentityNeverChanges(s, "", bindResult(s, by_, resultId, attemptId, fingerprint, projectionHash, currentRegistration, canonicalDispatch))
+  ensures inv(bindResult(s, by_, resultId, attemptId, fingerprint, projectionHash, observation, child)) && stepActivePairIdentityNeverChanges(s, "", bindResult(s, by_, resultId, attemptId, fingerprint, projectionHash, observation, child))
 {
   RequestAttemptLookup(s,attemptId);
   RequestResultLookup(s,resultId);
   var a := attemptOwner(s,attemptId);
   var existingOwner := resultOwner(s,resultId);
   var existing := core__requestCompletions_resultAt(existingOwner.completions,resultId);
-  var t := bindResult(s,by_,resultId,attemptId,fingerprint,projectionHash,currentRegistration,canonicalDispatch);
+  var t := bindResult(s,by_,resultId,attemptId,fingerprint,projectionHash,observation, child);
   assert a in s.owners;
   if existingOwner.id == 0 || (existingOwner.id == a.id && existing.attempt == attemptId) {
-    RequestFreshResultAssociation(s,t,a,resultId,attemptId,fingerprint,projectionHash,currentRegistration,canonicalDispatch);
+    RequestFreshResultAssociation(s,t,a,resultId,attemptId,fingerprint,projectionHash,observation, child);
   } else {
     assert existingOwner in s.owners;
     RequestBindExistingAssociation(s,t,existingOwner,resultId,fingerprint);
   }
 }
 
-lemma bindResult_ensures(s: RequestRegistry, by_: RegistryCaller, resultId: string, attemptId: string, fingerprint: string, projectionHash: string, currentRegistration: bool, canonicalDispatch: bool)
-  ensures (inv(s) ==> canBindResult(s, by_, resultId, attemptId) ==> alwaysDenialOwnershipIsUnique(bindResult(s, by_, resultId, attemptId, fingerprint, projectionHash, currentRegistration, canonicalDispatch)))
-  ensures (inv(s) ==> canBindResult(s, by_, resultId, attemptId) ==> alwaysSourceObjectIdentitiesAreUnique(bindResult(s, by_, resultId, attemptId, fingerprint, projectionHash, currentRegistration, canonicalDispatch)))
-  ensures (inv(s) ==> canBindResult(s, by_, resultId, attemptId) ==> alwaysActivePairsAreUnique(bindResult(s, by_, resultId, attemptId, fingerprint, projectionHash, currentRegistration, canonicalDispatch)))
-  ensures (inv(s) ==> canBindResult(s, by_, resultId, attemptId) ==> alwaysAttemptOwnershipIsUnique(bindResult(s, by_, resultId, attemptId, fingerprint, projectionHash, currentRegistration, canonicalDispatch)))
-  ensures (inv(s) ==> canBindResult(s, by_, resultId, attemptId) ==> alwaysResultOwnershipIsUnique(bindResult(s, by_, resultId, attemptId, fingerprint, projectionHash, currentRegistration, canonicalDispatch)))
-  ensures (inv(s) ==> canBindResult(s, by_, resultId, attemptId) ==> alwaysOwnersRetainProtocolSafety(bindResult(s, by_, resultId, attemptId, fingerprint, projectionHash, currentRegistration, canonicalDispatch)))
-  ensures (inv(s) ==> canBindResult(s, by_, resultId, attemptId) ==> alwaysViewsHaveOneDataOwner(bindResult(s, by_, resultId, attemptId, fingerprint, projectionHash, currentRegistration, canonicalDispatch)))
-  ensures (inv(s) ==> canBindResult(s, by_, resultId, attemptId) ==> stepActivePairIdentityNeverChanges(s, "bindResult", bindResult(s, by_, resultId, attemptId, fingerprint, projectionHash, currentRegistration, canonicalDispatch)))
+lemma bindResult_ensures(s: RequestRegistry, by_: RegistryCaller, resultId: string, attemptId: string, fingerprint: string, projectionHash: string, observation: core__requestCompletions_RegistrationSnapshot, child: core__requestCompletions_ChildSnapshot)
+  ensures (inv(s) ==> canBindResult(s, by_, resultId, attemptId) ==> alwaysDenialOwnershipIsUnique(bindResult(s, by_, resultId, attemptId, fingerprint, projectionHash, observation, child)))
+  ensures (inv(s) ==> canBindResult(s, by_, resultId, attemptId) ==> alwaysSourceObjectIdentitiesAreUnique(bindResult(s, by_, resultId, attemptId, fingerprint, projectionHash, observation, child)))
+  ensures (inv(s) ==> canBindResult(s, by_, resultId, attemptId) ==> alwaysActivePairsAreUnique(bindResult(s, by_, resultId, attemptId, fingerprint, projectionHash, observation, child)))
+  ensures (inv(s) ==> canBindResult(s, by_, resultId, attemptId) ==> alwaysAttemptOwnershipIsUnique(bindResult(s, by_, resultId, attemptId, fingerprint, projectionHash, observation, child)))
+  ensures (inv(s) ==> canBindResult(s, by_, resultId, attemptId) ==> alwaysResultOwnershipIsUnique(bindResult(s, by_, resultId, attemptId, fingerprint, projectionHash, observation, child)))
+  ensures (inv(s) ==> canBindResult(s, by_, resultId, attemptId) ==> alwaysOwnersRetainProtocolSafety(bindResult(s, by_, resultId, attemptId, fingerprint, projectionHash, observation, child)))
+  ensures (inv(s) ==> canBindResult(s, by_, resultId, attemptId) ==> alwaysViewsHaveOneDataOwner(bindResult(s, by_, resultId, attemptId, fingerprint, projectionHash, observation, child)))
+  ensures (inv(s) ==> canBindResult(s, by_, resultId, attemptId) ==> stepActivePairIdentityNeverChanges(s, "bindResult", bindResult(s, by_, resultId, attemptId, fingerprint, projectionHash, observation, child)))
 {
-  if inv(s) && canBindResult(s,by_,resultId,attemptId) { RequestBindResultAggregate(s, by_, resultId, attemptId, fingerprint, projectionHash, currentRegistration, canonicalDispatch); }
+  if inv(s) && canBindResult(s,by_,resultId,attemptId) { RequestBindResultAggregate(s, by_, resultId, attemptId, fingerprint, projectionHash, observation, child); }
 }
 
 lemma RequestCompletionAttemptAt(c: core__requestCompletions_RequestCompletions, a: core__requestCompletions_Attempt)

@@ -101,14 +101,14 @@ lemma observeAuthority_ensures(s: RequestCompletions, revision: int, live: bool,
   }
 }
 
-lemma beginAttempt_ensures(s: RequestCompletions, id: string)
-  ensures (inv(s) ==> canBeginAttempt(s, id) ==> alwaysAttemptAndResultIdentityUnique(beginAttempt(s, id)))
-  ensures (inv(s) ==> canBeginAttempt(s, id) ==> alwaysCompletionOwnsAttempt(beginAttempt(s, id)))
-  ensures (inv(s) ==> canBeginAttempt(s, id) ==> stepChangedAssociationStaysChanged(s, beginAttempt(s, id)))
+lemma beginAttempt_ensures(s: RequestCompletions, id: string, registration: RegistrationSnapshot)
+  ensures (inv(s) ==> canBeginAttempt(s, id) ==> alwaysAttemptAndResultIdentityUnique(beginAttempt(s, id, registration)))
+  ensures (inv(s) ==> canBeginAttempt(s, id) ==> alwaysCompletionOwnsAttempt(beginAttempt(s, id, registration)))
+  ensures (inv(s) ==> canBeginAttempt(s, id) ==> stepChangedAssociationStaysChanged(s, beginAttempt(s, id, registration)))
 {
   if inv(s) && canBeginAttempt(s, id) {
 
-    CompletionState(s, beginAttempt(s, id));
+    CompletionState(s, beginAttempt(s, id, registration));
   }
 }
 
@@ -134,15 +134,15 @@ lemma copyCompletion_ensures(s: RequestCompletions, sourceId: string, targetId: 
   }
 }
 
-lemma bindResult_ensures(s: RequestCompletions, resultId: string, attemptId: string, fingerprint: string, projectionHash: string, currentRegistration: bool, canonicalDispatch: bool)
-  ensures (inv(s) ==> canBindResult(s, resultId, attemptId) ==> alwaysAttemptAndResultIdentityUnique(bindResult(s, resultId, attemptId, fingerprint, projectionHash, currentRegistration, canonicalDispatch)))
-  ensures (inv(s) ==> canBindResult(s, resultId, attemptId) ==> alwaysCompletionOwnsAttempt(bindResult(s, resultId, attemptId, fingerprint, projectionHash, currentRegistration, canonicalDispatch)))
-  ensures (inv(s) ==> canBindResult(s, resultId, attemptId) ==> stepChangedAssociationStaysChanged(s, bindResult(s, resultId, attemptId, fingerprint, projectionHash, currentRegistration, canonicalDispatch)))
+lemma bindResult_ensures(s: RequestCompletions, resultId: string, attemptId: string, fingerprint: string, projectionHash: string, observation: RegistrationSnapshot, child: ChildSnapshot)
+  ensures (inv(s) ==> canBindResult(s, resultId, attemptId) ==> alwaysAttemptAndResultIdentityUnique(bindResult(s, resultId, attemptId, fingerprint, projectionHash, observation, child)))
+  ensures (inv(s) ==> canBindResult(s, resultId, attemptId) ==> alwaysCompletionOwnsAttempt(bindResult(s, resultId, attemptId, fingerprint, projectionHash, observation, child)))
+  ensures (inv(s) ==> canBindResult(s, resultId, attemptId) ==> stepChangedAssociationStaysChanged(s, bindResult(s, resultId, attemptId, fingerprint, projectionHash, observation, child)))
 {
   if inv(s) && canBindResult(s, resultId, attemptId) {
     CompletionLookup(s, attemptId);
     if resultAt(s, resultId).id == "" { CompletionAbsent(s, resultId); }
-    CompletionState(s, bindResult(s, resultId, attemptId, fingerprint, projectionHash, currentRegistration, canonicalDispatch));
+    CompletionState(s, bindResult(s, resultId, attemptId, fingerprint, projectionHash, observation, child));
   }
 }
 
@@ -158,14 +158,14 @@ lemma projectResult_ensures(s: RequestCompletions, sourceId: string, targetId: s
   }
 }
 
-lemma inspectCompletion_ensures(s: RequestCompletions, resultId: string, ownerMatches: bool, fingerprint: string, registrationCurrent: bool)
-  ensures (inv(s) ==> canInspectCompletion(s, resultId, ownerMatches) ==> alwaysAttemptAndResultIdentityUnique(inspectCompletion(s, resultId, ownerMatches, fingerprint, registrationCurrent)))
-  ensures (inv(s) ==> canInspectCompletion(s, resultId, ownerMatches) ==> alwaysCompletionOwnsAttempt(inspectCompletion(s, resultId, ownerMatches, fingerprint, registrationCurrent)))
-  ensures (inv(s) ==> canInspectCompletion(s, resultId, ownerMatches) ==> stepChangedAssociationStaysChanged(s, inspectCompletion(s, resultId, ownerMatches, fingerprint, registrationCurrent)))
+lemma inspectCompletion_ensures(s: RequestCompletions, resultId: string, ownerMatches: bool, fingerprint: string, observation: RegistrationSnapshot, child: ChildSnapshot)
+  ensures (inv(s) ==> canInspectCompletion(s, resultId, ownerMatches) ==> alwaysAttemptAndResultIdentityUnique(inspectCompletion(s, resultId, ownerMatches, fingerprint, observation, child)))
+  ensures (inv(s) ==> canInspectCompletion(s, resultId, ownerMatches) ==> alwaysCompletionOwnsAttempt(inspectCompletion(s, resultId, ownerMatches, fingerprint, observation, child)))
+  ensures (inv(s) ==> canInspectCompletion(s, resultId, ownerMatches) ==> stepChangedAssociationStaysChanged(s, inspectCompletion(s, resultId, ownerMatches, fingerprint, observation, child)))
 {
   if inv(s) && canInspectCompletion(s, resultId, ownerMatches) {
     CompletionLookup(s, resultId);
-    var t := inspectCompletion(s, resultId, ownerMatches, fingerprint, registrationCurrent);
+    var t := inspectCompletion(s, resultId, ownerMatches, fingerprint, observation, child);
     forall i | 0 <= i < |s.results|
       ensures s.results[i].id == t.results[i].id && s.results[i].attempt == t.results[i].attempt && (s.results[i].changed ==> t.results[i].changed)
     {

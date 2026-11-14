@@ -10,16 +10,34 @@ As the planner, I want a denied step removed only when a current same-request su
 
 Read-only get/list checks leave mutation resolution unchanged. A mutation check resolves one operation, and a later different mutation latches conflict. A current attempt requires an unchanged issuer revision, original binding and live issuer. Without a current committed mutation classification, mutation checks deny with a process-local denial token. All decisions carry `addsAuthority: false`.
 
+Minting a mutation attempt captures the actual registered action and its
+family, including each definition identity and fingerprint. Reading or checking
+an operation preserves that capture. The operation label learned during
+permission checking remains independent of the registration.
+
 ```quint
 type Operation = NoOperation | GetOperation | ListOperation | CreateOperation | UpdateOperation | PatchOperation | DeleteOperation
 type RequestClass = ReadOnlyClass | MutationClass | UnresolvedClass
 type CompletionStatus = CurrentCompletion | StaleCompletion | ChangedCompletion
-type Attempt = { id: str, revision: int, resolved: Operation, registered: Operation, conflicted: bool, invalidated: CompletionStatus }
-type Completion = { id: str, attempt: str, fingerprint: str, projectionHash: str, changed: bool, hasFact: bool, projected: bool, status: CompletionStatus }
+type DefinitionIdentity = { objectId: int, definitionId: str, fingerprint: str }
+type RegistrationSnapshot = { registeredAction: DefinitionIdentity, family: DefinitionIdentity }
+type ChildSnapshot = { definition: DefinitionIdentity, operation: Operation }
+type Attempt = { id: str, revision: int, resolved: Operation, registered: Operation, registration: RegistrationSnapshot, conflicted: bool, invalidated: CompletionStatus }
+type Completion = { id: str, attempt: str, fingerprint: str, projectionHash: str, registration: RegistrationSnapshot, child: ChildSnapshot, changed: bool, hasFact: bool, projected: bool, status: CompletionStatus }
 type Denial = { id: str, attempt: str, operation: Operation, classification: RequestClass, projectedResult: bool }
 type RequestCompletions = { revision: int, live: bool, classification: RequestClass, attempts: List[Attempt], results: List[Completion], denials: List[Denial], lastAllowed: bool }
-pure val emptyAttempt: Attempt = { id: "", revision: 0, resolved: NoOperation, registered: NoOperation, conflicted: false, invalidated: CurrentCompletion }
-pure val emptyCompletion: Completion = { id: "", attempt: "", fingerprint: "", projectionHash: "", changed: false, hasFact: false, projected: false, status: StaleCompletion }
+pure val noDefinition: DefinitionIdentity = { objectId: 0, definitionId: "", fingerprint: "" }
+pure val noRegistration: RegistrationSnapshot = { registeredAction: noDefinition, family: noDefinition }
+pure val noChild: ChildSnapshot = { definition: noDefinition, operation: NoOperation }
+pure val sampleAction: DefinitionIdentity = { objectId: 1, definitionId: "notes-create", fingerprint: "action-definition" }
+pure val sampleFamily: DefinitionIdentity = { objectId: 2, definitionId: "notes", fingerprint: "family-definition" }
+pure val sampleRegistration: RegistrationSnapshot = { registeredAction: sampleAction, family: sampleFamily }
+pure val registrationValues = Set(sampleRegistration, noRegistration)
+pure val observationValues = Set(sampleRegistration, { ...sampleRegistration, registeredAction: { ...sampleAction, fingerprint: "changed-definition" } })
+pure val sampleChild: ChildSnapshot = { definition: sampleAction, operation: CreateOperation }
+pure val childValues = Set(sampleChild, { definition: { ...sampleAction, objectId: 3, definitionId: "notes-update" }, operation: UpdateOperation })
+pure val emptyAttempt: Attempt = { id: "", revision: 0, resolved: NoOperation, registered: NoOperation, registration: noRegistration, conflicted: false, invalidated: CurrentCompletion }
+pure val emptyCompletion: Completion = { id: "", attempt: "", fingerprint: "", projectionHash: "", registration: noRegistration, child: noChild, changed: false, hasFact: false, projected: false, status: StaleCompletion }
 pure val emptyDenial: Denial = { id: "", attempt: "", operation: NoOperation, classification: UnresolvedClass, projectedResult: false }
 pure val initial: RequestCompletions = { revision: 0, live: false, classification: UnresolvedClass, attempts: List(), results: List(), denials: List(), lastAllowed: false }
 pure val revisionValues = Set(1, 2)
@@ -44,10 +62,15 @@ pure def resultAt(s: RequestCompletions, id: str): Completion = s.results.select
 pure def denialAt(s: RequestCompletions, id: str): Denial = s.denials.select(denial => denial.id == id).nthOr(0, emptyDenial)
 pure def currentAttempt(s: RequestCompletions, id: str): bool = id != "" and s.live and attemptAt(s, id).id == id and attemptAt(s, id).revision == s.revision and not(attemptAt(s, id).conflicted)
 pure def mutation(operation: Operation): bool = operation != NoOperation and operation != GetOperation and operation != ListOperation
+pure def knownDefinition(definition: DefinitionIdentity): bool = definition.objectId > 0 and definition.definitionId != "" and definition.fingerprint != ""
+pure def knownRegistration(registration: RegistrationSnapshot): bool = knownDefinition(registration.registeredAction) and knownDefinition(registration.family)
+pure def registrationAtMint(classification: RequestClass, registration: RegistrationSnapshot): RegistrationSnapshot =
+  if (classification == MutationClass and knownRegistration(registration)) registration else noRegistration
 pure def canObserveAuthority(s: RequestCompletions, revision: int): bool = revision >= 0
 pure def observeAuthority(s: RequestCompletions, revision: int, live: bool, classification: RequestClass): RequestCompletions = { ...s, revision: revision, live: live, classification: classification }
 pure def canBeginAttempt(s: RequestCompletions, id: str): bool = s.live and s.revision > 0 and id != "" and not(s.attempts.some(attempt => attempt.id == id))
-pure def beginAttempt(s: RequestCompletions, id: str): RequestCompletions = { ...s, attempts: s.attempts.append({ ...emptyAttempt, id: id, revision: s.revision }) }
+pure def beginAttempt(s: RequestCompletions, id: str, registration: RegistrationSnapshot): RequestCompletions =
+  { ...s, attempts: s.attempts.append({ ...emptyAttempt, id: id, revision: s.revision, registration: registrationAtMint(s.classification, registration) }) }
 pure def canCheckOperation(s: RequestCompletions, operation: Operation): bool = operation != NoOperation
 pure def checkOperation(s: RequestCompletions, id: str, operation: Operation, registered: Operation, denialId: str): RequestCompletions = {
   val old = attemptAt(s, id)
@@ -66,19 +89,35 @@ pure def sometimesDeniedMutation(s: RequestCompletions): bool = s.denials.length
 
 A result may bind once to its current resolved attempt. Rebinding the same object is accepted only for the same attempt and fingerprint; a changed fingerprint permanently marks the association changed. Projection requires an owned source completion fact and a fresh target object under the same issuer. An unequal normalized projection retains a changed historical fact that blocks completion. An owned copy checks fingerprints and normalized projection before transferring the fact. A source fingerprint mismatch permanently marks that source changed even when copying fails. Once observed as stale or changed, completion cannot become current again.
 
+A new completion fact requires the original registered action and family
+snapshot to match a current observation and a canonical child for the
+registered operation. Inspection compares the current action, family and
+child definitions with the stored evidence. The host resolves the canonical
+child from the actual action registry and its promoted subaction metadata
+before supplying the boundary observation.
+
+An unchanged projection holds an owned association until the copy verifies
+both shapes and installs the original completion evidence. A changed
+projection retains the original evidence only as a historical blocker.
+
 ```quint
 pure def canBindResult(s: RequestCompletions, resultId: str, attemptId: str): bool = resultId != "" and currentAttempt(s, attemptId) and attemptAt(s, attemptId).resolved != NoOperation
-pure def bindResult(s: RequestCompletions, resultId: str, attemptId: str, fingerprint: str, projectionHash: str, currentRegistration: bool, canonicalDispatch: bool): RequestCompletions = {
+pure def bindingHasFact(classification: RequestClass, attempt: Attempt, observation: RegistrationSnapshot, child: ChildSnapshot): bool =
+  classification == MutationClass and mutation(attempt.resolved) and mutation(attempt.registered) and
+  knownRegistration(attempt.registration) and attempt.registration == observation and
+  knownDefinition(child.definition) and child.operation == attempt.registered
+pure def bindResult(s: RequestCompletions, resultId: str, attemptId: str, fingerprint: str, projectionHash: str, observation: RegistrationSnapshot, child: ChildSnapshot): RequestCompletions = {
   val existing = resultAt(s, resultId)
-  val hasFact = s.classification == MutationClass and mutation(attemptAt(s, attemptId).resolved) and mutation(attemptAt(s, attemptId).registered) and currentRegistration and canonicalDispatch
+  val attempt = attemptAt(s, attemptId)
+  val hasFact = bindingHasFact(s.classification, attempt, observation, child)
   if (existing.id != "") { ...s, results: s.results.listMap(result => if (result.id == resultId) { ...result, changed: result.changed or result.fingerprint != fingerprint } else result) }
-  else { ...s, results: s.results.append({ id: resultId, attempt: attemptId, fingerprint: fingerprint, projectionHash: projectionHash, changed: false, hasFact: hasFact, projected: false, status: CurrentCompletion }) }
+  else { ...s, results: s.results.append({ ...emptyCompletion, id: resultId, attempt: attemptId, fingerprint: fingerprint, projectionHash: projectionHash, registration: if (hasFact) attempt.registration else noRegistration, child: if (hasFact) child else noChild, hasFact: hasFact, status: CurrentCompletion }) }
 }
 pure def canProjectResult(s: RequestCompletions, sourceId: str, targetId: str, ownerMatches: bool): bool = resultAt(s, sourceId).hasFact and targetId != "" and resultAt(s, targetId).id == "" and ownerMatches
 pure def projectResult(s: RequestCompletions, sourceId: str, targetId: str, fingerprint: str, projectionHash: str, ownerMatches: bool, sourceFingerprint: str): RequestCompletions = {
   val original = resultAt(s, sourceId)
   val changed = original.changed or sourceFingerprint != original.fingerprint or projectionHash != original.projectionHash
-  { ...s, results: s.results.listMap(result => if (result.id == sourceId) { ...result, changed: result.changed or sourceFingerprint != result.fingerprint } else result).append({ ...original, id: targetId, fingerprint: fingerprint, projectionHash: projectionHash, changed: changed, hasFact: changed, projected: true }) }
+  { ...s, results: s.results.listMap(result => if (result.id == sourceId) { ...result, changed: result.changed or sourceFingerprint != result.fingerprint } else result).append({ ...original, id: targetId, fingerprint: fingerprint, projectionHash: projectionHash, registration: if (changed) original.registration else noRegistration, child: if (changed) original.child else noChild, changed: changed, hasFact: changed, projected: true }) }
 }
 pure def canCopyCompletion(s: RequestCompletions, sourceId: str, targetId: str, sourceFingerprint: str, targetFingerprint: str): bool = resultAt(s, sourceId).hasFact and resultAt(s, targetId).projected and resultAt(s, sourceId).attempt == resultAt(s, targetId).attempt
 pure def copyCompletion(s: RequestCompletions, sourceId: str, targetId: str, sourceFingerprint: str, targetFingerprint: str): RequestCompletions = {
@@ -86,16 +125,20 @@ pure def copyCompletion(s: RequestCompletions, sourceId: str, targetId: str, sou
   val target = resultAt(s, targetId)
   val currentSource = original.fingerprint == sourceFingerprint
   val copyable = currentSource and not(original.changed) and not(target.changed) and target.fingerprint == targetFingerprint and original.projectionHash == target.projectionHash
-  { ...s, results: s.results.listMap(result => { ...result, changed: result.changed or (result.id == sourceId and not(currentSource)), hasFact: result.hasFact or (result.id == targetId and copyable) }) }
+  { ...s, results: s.results.listMap(result =>
+    if (result.id == targetId and copyable) { ...result, hasFact: true, registration: original.registration, child: original.child }
+    else { ...result, changed: result.changed or (result.id == sourceId and not(currentSource)) }) }
 }
 pure def lawCopySourceMismatchIsSticky(s: RequestCompletions, sourceId: str, targetId: str, sourceFingerprint: str, targetFingerprint: str): bool =
   alwaysAttemptAndResultIdentityUnique(s) and canCopyCompletion(s, sourceId, targetId, sourceFingerprint, targetFingerprint) and resultAt(s, sourceId).fingerprint != sourceFingerprint implies resultAt(copyCompletion(s, sourceId, targetId, sourceFingerprint, targetFingerprint), sourceId).changed
 pure def canInspectCompletion(s: RequestCompletions, resultId: str, ownerMatches: bool): bool = resultAt(s, resultId).hasFact and ownerMatches
-pure def inspectCompletion(s: RequestCompletions, resultId: str, ownerMatches: bool, fingerprint: str, registrationCurrent: bool): RequestCompletions = {
+pure def completionEvidenceCurrent(result: Completion, observation: RegistrationSnapshot, child: ChildSnapshot): bool =
+  result.registration == observation and result.child == child
+pure def inspectCompletion(s: RequestCompletions, resultId: str, ownerMatches: bool, fingerprint: str, observation: RegistrationSnapshot, child: ChildSnapshot): RequestCompletions = {
   val original = resultAt(s, resultId)
   val attempt = attemptAt(s, original.attempt)
   val changed = original.changed or original.fingerprint != fingerprint or attempt.invalidated == ChangedCompletion
-  val stale = not(currentAttempt(s, original.attempt)) or not(registrationCurrent) or attempt.invalidated == StaleCompletion
+  val stale = not(currentAttempt(s, original.attempt)) or not(completionEvidenceCurrent(original, observation, child)) or attempt.invalidated == StaleCompletion
   val status = if (changed) ChangedCompletion else if (stale) StaleCompletion else CurrentCompletion
   { ...s, results: s.results.listMap(result => if (result.id == resultId) { ...result, status: status, changed: changed } else result), attempts: s.attempts.listMap(entry => if (entry.id == original.attempt and status != CurrentCompletion) { ...entry, invalidated: status } else entry) }
 }
