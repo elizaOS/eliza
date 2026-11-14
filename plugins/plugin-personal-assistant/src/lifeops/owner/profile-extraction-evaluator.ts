@@ -234,8 +234,9 @@ const TRAVEL_UNTIL_PATTERN =
  * Parses a free-text return-date phrase to a bounded ISO end. Returns null when
  * it cannot resolve a real future date within `MAX_TRAVEL_HORIZON_MS`; the
  * caller then falls back to the horizon cap. `Date.parse` handles common forms
- * ("July 20", "2026-07-20", "Aug 3"); the current year is assumed when the
- * parsed date lands in the past (a bare month/day for a future trip).
+ * ("July 20", "2026-07-20", "Aug 3") but rejects an ordinal day ("November 21st").
+ * The ordinal suffix is removed before parsing. The current year is assumed when
+ * the parsed date lands in the past (a bare month/day for a future trip).
  */
 const HAS_EXPLICIT_YEAR = /\b\d{4}\b/;
 const ISO_DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -276,7 +277,12 @@ function parseLocalDate(value: string): number | null {
 }
 
 function parseTravelReturnIso(phrase: string, now: Date): string | null {
-  const trimmed = phrase.trim().replace(/[.,]+$/u, "");
+  // `Date.parse` rejects "November 21st" and "Dec 3rd". The same suffix strip
+  // used for check-in report dates leaves the day number for the parser.
+  const trimmed = phrase
+    .trim()
+    .replace(/[.,]+$/u, "")
+    .replace(/(\d)(?:st|nd|rd|th)\b/giu, "$1");
   if (trimmed.length === 0) return null;
 
   // A bare "Month Day" string never fails to parse: absent a year,
