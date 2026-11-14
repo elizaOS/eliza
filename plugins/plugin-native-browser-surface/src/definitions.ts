@@ -150,10 +150,10 @@ export interface NavigationRequestedEvent extends SurfaceIdOptions {
 
 /**
  * A JavaScript dialog (`alert`, `confirm`, `prompt`, leave-page) waiting for the host.
- * The page is paused until `answerDialog`. Only surfaces created with
- * `interceptNavigation: true` hold dialogs; any other surface dismisses them at once.
- * Nothing is ever accepted for the person: a dialog of a hidden, closed or navigating
- * surface is dismissed (cancelled).
+ * The page is paused until `answerDialog`. Dialogs wait only while the host listens for
+ * `dialogRequested`; without a listener they are dismissed at once, so a page never
+ * freezes on a dialog nobody shows. Nothing is ever accepted for the person: a dialog of
+ * a hidden, paused, closed or navigating surface is dismissed (cancelled).
  */
 export interface DialogRequestedEvent extends SurfaceIdOptions {
   dialogId: string;
