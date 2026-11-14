@@ -21,6 +21,7 @@ activation on a physical device.
 | `apps/app/src/product/alpha-product.ts`, `apps/app/src/prototype/model.js` | [Versioned product registration and admission](./product.md), [shell navigation, overlays and drafts](./navigation.md), [launcher and retained choices](./launcher.md) |
 | `apps/app/src/startup-permission-flow.ts`, `apps/app/src/startup-permissions.tsx` | [Shared permission step](./permissionStep.md), [Alpha access setup](./permissions.md) |
 | `apps/app/src/prototype/settings-adapter.ts`, `system-shade.ts`, `runtime/always-on-listener.ts`, `AlphaApplication.java` | [Native reset, problem journal, Settings, shade and listener custody](./system.md) |
+| `apps/app/src/runtime/view-focus.ts` | [Screen focus ownership, priority, and restoration](./screenFocus.md) |
 | `apps/app/src/main.tsx`, `packages/ui/src/state/app-update-gate.ts` | [Renderer update admission and activation readback](./updateGate.md) |
 | `apps/app/src/main.tsx` and `apps/app/src/prototype/agent-adapter.ts` | [Client conversation](../conversation.md), [turn ownership and cancellation](../../core/turnControllers.md) |
 | `apps/app/src/prototype/assistant-draft-controller.ts`, `apps/app/src/runtime/assistant-draft-store.ts`, `apps/app/src/browser/documents.ts` | [Durable drafts and send recovery](./durableDraft.md), [browser document receipts and recovery](./documentStore.md) |
@@ -30,8 +31,9 @@ activation on a physical device.
 | `apps/app/src/runtime/telephony-executor.ts`, Phone, Messages, and Contacts adapters | [Verified image review, SIM selection, and operation receipt](./telephony.md), [native SMS review custody](../mobileTelephony.md) |
 | `apps/app/src/prototype/browser-adapter.ts` | [Current document and private profile](./browser.md), [session restore and clear](./browserPersistence.md), [native browser storage](../mobileBrowserStorage.md), [native external link authority](../mobileBrowser.md) |
 | `apps/app/src/passwords/password-manager.ts`, `MainActivity.java` | [Vault visit, native unlock, origin review and secret custody](./passwords.md), [installed Android Autofill](../mobilePasswordAutofill.md) |
-| `apps/app/src/browser/files.ts`, `AlphaMailAttachments` | [Reviewed file operations and retained trash](./files.md), [verified document source reopening and read permissions](./sourceReferences.md), [native file observer custody](../mobileStorageWatch.md) |
+| `apps/app/src/browser/files.ts`, `AlphaMailAttachments` | [Reviewed file operations and retained trash](./files.md), [verified document source reopening and read permissions](./sourceReferences.md), [native file observer custody](../mobileStorageWatch.md), [Android selected-document grants](../mobileSelectedDocumentGrants.md) |
 | `apps/app/src/prototype/browser-camera.ts` | [Selected media download and stored ZIP](./photosArchive.md) |
+| `apps/app/src/prototype/local-ocr.ts`, `scan-pdf.ts`, `scan-searchable-review.ts` | [Local OCR worker custody](./localOcr.md), [reviewed searchable PDF](./searchableScanPdf.md) |
 | `apps/app/src/prototype/inbox-cloud-adapter.ts` | [Managed Inbox paging and cache identity](./inbox.md), [saved reads, grant revocation and cache custody](./inboxCache.md), [managed Gmail wire](./managedGmailWire.md), [draft and provider receipt custody](./inboxDraftCustody.md) |
 | `apps/app/src/prototype/home-cards.ts`, `home-overview-cards.ts` | [Current-source Home projections](./overview.md) |
 | `apps/app/src/prototype/automations-adapter.ts`, `runtime/automations-protocol.ts` | [Automation row, cron and reminder presentations](./automationPresentation.md) |
@@ -65,7 +67,7 @@ refinements against the same pinned consumers:
 | Boundary | Remaining concrete evidence |
 | --- | --- |
 | Storage and authored text | Notes decoder, Android recording extraction and orphan cleanup, multi-row Trash contention, and format/parser parity; browser legacy archive arrays, same-binding peer draft queues, and Android secure slot recovery. |
-| Files and captured sources | Archive and scan payload decoders, OCR/text-layer parity, file-system ordering, native media callbacks, and cross-bridge Android document grants and cleanup. |
+| Files and captured sources | Archive and scan payload decoders, replacement OCR and searchable-PDF replay, file-system ordering, native media callbacks, and Android grant behavior on device. |
 | Calendar, Inbox and Home | Live Calendar reconciliation, physical Android recurring-series mutation, accessibility and rendered projection. |
 | Maps, browser and launcher | Provider route geometry, live-location feeds and relay expiry, device WebView cookie and storage readback, launcher order, focus and lifecycle. |
 | Notices and automation | Exact platform signal and notice owner composition, digest/archive data, and provider read projection; verify effects through the linked workflow and mobile owners. |
