@@ -3428,12 +3428,14 @@
     },
     {
       "source": "packages/core/src/runtime/service-lifecycle.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/serviceInstances.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Acquisition snapshots keep each class and attempt generation",
+        "Instance stop promises retain identity across every caller",
+        "Backoff starts only after rejection and uses the declared delay sequence",
+        "Registry observations are pure projections of detailed instance state",
+        "An invalid stop target records a failure without publishing work",
+        "A callable stop joins the shared promise and reports its original rejection"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "b5474e62ed59552b9e19fdf2710ff0cb2e4ff6fbedbe55c242bf161802a3020c",
@@ -3441,7 +3443,10 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/service-lifecycle.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/serviceRegistry.md"
+        "spec/core/serviceInstances.md",
+        "spec/core/eagerServices.md",
+        "spec/core/serviceRegistry.md",
+        "spec/core/serviceStopObservation.md"
       ]
     },
     {

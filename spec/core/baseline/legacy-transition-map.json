@@ -11845,10 +11845,39 @@
             "observedUnloadRetainsSibling",
             "observedLateStartRetired"
           ]
+        },
+        {
+          "path": "spec/core/serviceStopObservation.md",
+          "sha256": "c6b2456194140bfc0b354f11f323cde438b5040e767c5ed34abc2c5a52b880c4",
+          "definitions": [
+            "initial",
+            "objectIdValues",
+            "workRefValues",
+            "serviceTypeValues",
+            "reasonValues",
+            "errorRefValues",
+            "canObserveStopTarget",
+            "observeStopTarget",
+            "alwaysInvalidStopHasNoWork",
+            "sometimesMissingMethodRecorded",
+            "canJoinStopWork",
+            "joinStopWork",
+            "canObserveStopSettlement",
+            "observeStopSettlement",
+            "canFinishStopWarning",
+            "finishStopWarning",
+            "alwaysBoundStopHasTargetAndNoLocalFailure",
+            "alwaysWaitingStopHasWork",
+            "alwaysJoinIsFreshAndCallable",
+            "alwaysWaitingWarningsHaveOrigin",
+            "alwaysReturnedWarningsHaveOrigin",
+            "stepReturnedStopStaysFixed",
+            "sometimesRejectedStopReturns"
+          ]
         }
       ],
-      "behaviorReview": "Register/start/stop and superseded/eager lifecycle composition is explicit; published instance and caller captured generation preserved. serviceInstances retains one TypeEntry/LoadPromise per service type, separate TypeAggregate readiness, exact settle/reject/delete/retain semantics; pluginServices retires captured aggregate IDs and class attempts before owned stops.",
-      "remainingRefinementOrModelGaps": "Type-specific promise ownership now exists in the authoritative serviceInstances product. Verify registerType/registerClass, publishTypeAggregate, settle/clear aggregate, settleAcquire, reconcileType, and stopRuntime against baseline; generation/check/temporal equivalence pending."
+      "behaviorReview": "Register/start/stop and superseded/eager lifecycle composition is explicit; published instance and caller captured generation preserved. serviceInstances retains one TypeEntry/LoadPromise per service type, separate TypeAggregate readiness, exact settle/reject/delete/retain semantics; pluginServices retires captured aggregate IDs and class attempts before owned stops. Runtime stop wrappers retain missing-target and missing-method failures and observe rejection of a joined object stop without duplicating its retirement failure.",
+      "remainingRefinementOrModelGaps": "Type-specific promise ownership now exists in the authoritative serviceInstances product. Verify registerType/registerClass, publishTypeAggregate, settle/clear aggregate, settleAcquire, reconcileType, and stopRuntime against baseline; generation/check/temporal equivalence pending. The shell must bind a stop wrapper to the original object stop promise and send validation failures to the retirement tracker."
     },
     {
       "legacyFile": "packages/core/quint/SingleFlightMemo.qnt",
