@@ -6,6 +6,7 @@ Grace adapts them in `apps/app/host/bill-helper-host.ts`. This machine is
 one task's review and outcome projection. The interactive-task kernel owns
 its browser dispatch and authorization. The provider owns actual payment.
 [Outcome journal framing and restart](./billOutcomeJournal.md) governs the local file.
+[Receipt lookup](./billReceiptLookup.md) governs optional email confirmation after saving.
 [Configured review history](./configuredBillReviewHistory.md) covers the
 store’s same-key replay, retained row and cross-task lookup boundary.
 

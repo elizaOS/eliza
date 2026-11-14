@@ -126,14 +126,19 @@ pure val requestIdValues = Set(1, 2, 3)
 pure val digestValues = Set(1, 2)
 pure val revisionValues = Set(0, 1, 2)
 pure val messageValues = Set(0, 1, 2)
-pure val epochIdValues = Set(1, 2, 3, 4, 5)
+pure val epochIdValues = Set(1, 2, 3)
+pure val mailKindValues = Set(CreateMail, ReplaceMail, DeleteMail, SendMail)
 pure def needsComposer(mailKind: MailKind): bool = mailKind == CreateMail or mailKind == ReplaceMail or mailKind == SendMail
 pure def sameComposed(before: Copy, shown: Copy): bool = hasCopy(before) and before.id == shown.id and before.content == shown.content
-pure val weight_prepareMail = 8
-pure val weight_observeReview = 10
-pure val weight_reserveDispatch = 10
-pure val weight_adoptProviderReference = 18
-pure val weight_readReceipt = 10
+pure val weight_openBinding = 4
+pure val weight_showComposer = 18
+pure val weight_prepareMail = 10
+pure val weight_observeReview = 14
+pure val weight_reserveDispatch = 8
+pure val weight_dispatchMail = 8
+pure val weight_adoptProviderReference = 14
+pure val weight_readReceipt = 8
+pure val weight_abandonPrepared = 12
 pure def canOpenBinding(s: MailState): bool = not(s.attached)
 pure def openBinding(s: MailState): MailState = { ...s, attached: true, epoch: s.epoch + 1 }
 pure def canRetireBinding(s: MailState): bool = s.attached
@@ -206,7 +211,10 @@ same request, operation kind and review digest. Unknown receipts keep their
 durable record. An observed terminal receipt can be retired separately.
 Different operations use different request IDs. Increasing model IDs
 represent creation order for fresh UUIDs. Clearing a journal is restricted to the explicit abandon,
-review-discard or terminal-retirement events.
+review-discard or terminal-retirement events. The receipt's epoch,
+request, operation kind and digest travel together as one observation.
+The simulator uses a mix of matching and stale observations. The proof
+covers arbitrary observations.
 
 ```quint
 pure def receiptAttempt(s: MailState): bool =
@@ -223,10 +231,16 @@ pure def readReceipt(s: MailState, epochId: int, requestId: int, mailKind: MailK
     sentMessage: if (confirmed) message else 0, cleanupHeld: s.cleanupHeld and not(sameSavedSend),
     cleanupReady: confirmed and (not(s.cleanupHeld) or sameSavedSend) }
 }
-pure def canAbandonPrepared(s: MailState, epochId: int, requestId: int, mailKind: MailKind, digest: int, receipt: MailReceipt, warned: bool): bool =
+type ReceiptObservation = { epochId: int, requestId: int, mailKind: MailKind, digest: int }
+pure val firstCreateObservation: ReceiptObservation = { epochId: 1, requestId: 1, mailKind: CreateMail, digest: 1 }
+pure val observedReceiptValues = Set(firstCreateObservation,
+  { ...firstCreateObservation, mailKind: DeleteMail },
+  { ...firstCreateObservation, mailKind: SendMail })
+pure def canAbandonPrepared(s: MailState, observedReceipt: ReceiptObservation, receipt: MailReceipt, warned: bool): bool =
   (s.phase == ReservedMail or s.phase == DispatchUnknown) and s.dispatchEpoch == 0 and
-  receiptMatches(s, epochId, requestId, mailKind, digest) and receipt == PreparedReceipt and warned
-pure def abandonPrepared(s: MailState, epochId: int, requestId: int, mailKind: MailKind, digest: int, receipt: MailReceipt, warned: bool): MailState =
+  receiptMatches(s, observedReceipt.epochId, observedReceipt.requestId, observedReceipt.mailKind, observedReceipt.digest) and
+  receipt == PreparedReceipt and warned
+pure def abandonPrepared(s: MailState, observedReceipt: ReceiptObservation, receipt: MailReceipt, warned: bool): MailState =
   emptyJournal(emptyCopy, s)
 pure def canRetireReceipt(s: MailState): bool = s.attached and (s.phase == SucceededMail or s.phase == RefusedMail)
 pure def retireReceipt(s: MailState): MailState = emptyJournal(emptyCopy, s)
@@ -247,6 +261,11 @@ unchanged already-saved reference may reopen without writing. Otherwise
 an unrelated saved copy must first be shelved, and the new provider
 reference must be saved locally before the old receipt is clearable. Lost
 write acknowledgement leaves the old receipt available for recovery.
+The Edit invocation clears the journal only after that adoption and a
+current-binding check. If clear is unconfirmed, keep the old receipt
+available and require the same provider and local checks on a later
+Edit. The receipt clear result and the binding check are observed
+together by the same call.
 
 Forwarded original parts come from the reviewed source message ID and
 history ID and the exact ordered reviewed part IDs. The draft carries
@@ -263,6 +282,7 @@ behavior as an atomic compare-and-exchange.
 type ProviderRead = { currentEpoch: bool, exactId: bool, exactDigest: bool, localCanAdopt: bool, forwardedSource: bool, exactForwardMetadata: bool, localAcknowledged: bool }
 pure val providerReadValues = Set(
   { currentEpoch: true, exactId: true, exactDigest: true, localCanAdopt: true, forwardedSource: true, exactForwardMetadata: true, localAcknowledged: true },
+  { currentEpoch: true, exactId: true, exactDigest: true, localCanAdopt: true, forwardedSource: false, exactForwardMetadata: true, localAcknowledged: true },
   { currentEpoch: true, exactId: true, exactDigest: false, localCanAdopt: true, forwardedSource: false, exactForwardMetadata: true, localAcknowledged: true },
   { currentEpoch: true, exactId: true, exactDigest: true, localCanAdopt: true, forwardedSource: true, exactForwardMetadata: false, localAcknowledged: true },
   { currentEpoch: false, exactId: true, exactDigest: true, localCanAdopt: true, forwardedSource: false, exactForwardMetadata: true, localAcknowledged: true },
@@ -273,20 +293,25 @@ pure def adoptAllowed(providerRead: ProviderRead): bool =
   (not(providerRead.forwardedSource) or providerRead.exactForwardMetadata) and providerRead.localAcknowledged
 pure def forwardMetadataMatches(messageId: str, historyId: str, partIds: List[str], reviewedMessageId: str, reviewedHistoryId: str, reviewedParts: List[str]): bool =
   messageId == reviewedMessageId and historyId == reviewedHistoryId and partIds == reviewedParts and partIds.length() > 0
-pure def canAdoptProviderReference(s: MailState, epochId: int, requestId: int, revision: int, providerRead: ProviderRead): bool =
-  s.attached and s.epoch == epochId and s.request == requestId and s.phase == SucceededMail and
+type ProviderObservation = { epochId: int, requestId: int }
+pure val observedDraftValues = Set({ epochId: 1, requestId: 1 }, { epochId: 1, requestId: 2 })
+pure def canAdoptProviderReference(s: MailState, observedDraft: ProviderObservation, revision: int, providerRead: ProviderRead): bool =
+  s.attached and s.epoch == observedDraft.epochId and s.request == observedDraft.requestId and s.phase == SucceededMail and
   (s.kind == CreateMail or s.kind == ReplaceMail) and revision > 0 and
   providerRead.forwardedSource == s.forwarded and adoptAllowed(providerRead)
-pure def adoptProviderReference(s: MailState, epochId: int, requestId: int, revision: int, providerRead: ProviderRead): MailState =
-  { ...s, localReference: revision, referenceRequest: requestId }
-pure def canCloseAdoptedReceipt(s: MailState): bool =
-  s.attached and s.phase == SucceededMail and s.referenceRequest == s.request and s.localReference > 0
-pure def closeAdoptedReceipt(s: MailState): MailState = emptyJournal(emptyCopy, s)
+pure def adoptProviderReference(s: MailState, observedDraft: ProviderObservation, revision: int, providerRead: ProviderRead, receiptCleared: bool): MailState = {
+  val adopted = { ...s, localReference: revision, referenceRequest: observedDraft.requestId }
+  if (receiptCleared) emptyJournal(emptyCopy, adopted) else adopted
+}
+pure def stepConfirmedAdoptionKeepsLocalReference(before: MailState, via: str, after: MailState): bool =
+  via == "adoptProviderReference" implies after.localReference > 0 and
+    (after.phase == EmptyJournal or (after.phase == SucceededMail and after.referenceRequest == before.request))
 pure def lawStaleDigestCannotAdopt(providerRead: ProviderRead): bool = not(providerRead.exactDigest) implies not(adoptAllowed(providerRead))
 pure def lawUnacknowledgedLocalWriteCannotAdopt(providerRead: ProviderRead): bool = not(providerRead.localAcknowledged) implies not(adoptAllowed(providerRead))
 pure def lawChangedForwardCannotAdopt(providerRead: ProviderRead): bool =
   providerRead.forwardedSource and not(providerRead.exactForwardMetadata) implies not(adoptAllowed(providerRead))
 pure def sometimesProviderReferenceSaved(s: MailState): bool = s.localReference > 0
+pure def sometimesProviderEditClosesReceipt(s: MailState): bool = s.localReference > 0 and s.phase == EmptyJournal
 ```
 
 ### A confirmed send cleans up only copies of the reviewed local draft
