@@ -5,6 +5,10 @@ Sources are `packages/core/src/runtime/action-handler-settlement.ts:195-260,300-
 
 Discovered by the proof: each embedded machine must retain its complete safety
 invariant before the composition can rely on that machine's transition lemmas.
+Callback IDs are positive and unique. The queue's nonmutation mode is permanent
+because receipt binding belongs to this composition. Before queue settlement,
+every emitted callback is still queued. A sending callback owns the latest
+in-flight index. Before any handoff, every callback remains untouched. Applied evidence retains the resolved receipt binding through transport.
 
 ## Story: Drain action callbacks with exact receipt evidence
 
@@ -20,6 +24,7 @@ Once the host closes callback emission, the list of accepted callback identities
 import execution as Q from "./execution"
 import receipts as R from "./receipts"
 type NamedReceipt = {id: str, receipt: R::Receipt}
+type CallbackCursor = {remaining: int, valid: bool}
 type CallbackPhase = CallbackQueued | CallbackSending | CallbackSuppressed | CallbackDelivered | CallbackFailed
 type ActionCallback = {id: int, actionName: str, text: str, suppliedIds: List[str], phase: CallbackPhase, boundIds: List[str], coreBound: bool, applied: bool, visibleText: str, visibleIds: List[str], confirms: bool}
 type DeliveryKey = {actionName: str, text: str, ids: List[str]}
@@ -56,7 +61,7 @@ pure def processCallback(s: ActionReceipts): ActionReceipts = {
   val invoke = not(s.mutation) or (bound and not(s.keys.includes(key)))
   { ...s, queue: Q::deliverCallback(s.queue), keys: if (invoke and s.mutation) s.keys.append(key) else s.keys, callbacks: s.callbacks.listMap(other => if (other.id == c.id) { ...other, phase: if (invoke) CallbackSending else CallbackSuppressed, boundIds: if (bound and invoke) s.selectedIds else List(), coreBound: bound and invoke, applied: bound and invoke and bindingApplied(s), visibleIds: if (bound and invoke) s.selectedIds else List() } else other) }
 }
-pure def canFinishSuppressed(s: ActionReceipts): bool = s.queue.busy and s.callbacks.some(c => c.phase == CallbackSuppressed and s.callbacks.nthOr(s.queue.delivered - 1, noCallback).id == c.id)
+pure def canFinishSuppressed(s: ActionReceipts): bool = s.queue.busy and s.callbacks.nthOr(s.queue.delivered - 1, noCallback).id != 0 and s.callbacks.nthOr(s.queue.delivered - 1, noCallback).phase == CallbackSuppressed
 pure def finishSuppressed(s: ActionReceipts): ActionReceipts = { ...s, queue: Q::settleTransport(s.queue, true) }
 pure def canTransformCallback(s: ActionReceipts, callbackId: int, visibleText: str, visibleIds: List[str]): bool = s.callbacks.some(c => c.id == callbackId and c.phase == CallbackSending)
 pure def transformCallback(s: ActionReceipts, callbackId: int, visibleText: str, visibleIds: List[str]): ActionReceipts = { ...s, callbacks: s.callbacks.listMap(c => if (c.id == callbackId) { ...c, visibleText: visibleText, visibleIds: visibleIds } else c) }
@@ -67,7 +72,13 @@ pure def returnSettlement(s: ActionReceipts): ActionReceipts = { ...s, queue: Q:
 pure def canFinishCallbackSource(s: ActionReceipts): bool = Q::canFinishCallbackSource(s.queue)
 pure def finishCallbackSource(s: ActionReceipts): ActionReceipts = { ...s, queue: Q::finishCallbackSource(s.queue) }
 pure def alwaysSettlementRules(s: ActionReceipts): bool = Q::alwaysSettledResultValid(s.queue) and Q::alwaysNoDeliveryBeforeSettlement(s.queue) and Q::alwaysFailureSuppressesCallbacks(s.queue) and Q::alwaysDeliveryBoundedByEmission(s.queue) and Q::alwaysMutationCallbackGrounded(s.queue) and Q::alwaysDeliveryAccounting(s.queue) and Q::alwaysSettlementDeadlockFree(s.queue)
-pure def alwaysCallbackQueueAgrees(s: ActionReceipts): bool = s.callbacks.length() == s.queue.emitted and s.queue.delivered <= s.callbacks.length() and s.callbacks.select(c => c.phase == CallbackSending).length() <= 1
+pure def alwaysConcreteQueueMode(s: ActionReceipts): bool = not(s.queue.mutation)
+pure def alwaysCallbackIdsUnique(s: ActionReceipts): bool = s.callbacks.every(c => c.id > 0 and s.callbacks.select(other => other.id == c.id).length() == 1)
+pure def alwaysCallbackQueueAgrees(s: ActionReceipts): bool = s.callbacks.length() == s.queue.emitted and s.queue.delivered <= s.callbacks.length() and s.callbacks.every(c => c.phase == CallbackSending implies s.queue.busy and c.id == s.callbacks.nthOr(s.queue.delivered - 1, noCallback).id)
+pure def alwaysPendingCallbackUnprocessed(s: ActionReceipts): bool = s.queue.delivered == 0 implies s.callbacks.every(c => c.phase == CallbackQueued and not(c.confirms) and not(c.applied))
+pure def advanceCallbackCursor(position: CallbackCursor, c: ActionCallback): CallbackCursor = {remaining: position.remaining - 1, valid: position.valid and (position.remaining > 0 or (c.phase == CallbackQueued and not(c.confirms)))}
+pure def alwaysPendingSuffixIsQueued(s: ActionReceipts): bool = s.callbacks.foldl({remaining: s.queue.delivered, valid: true}, (position, c) => advanceCallbackCursor(position, c)).valid
+pure def alwaysAppliedCallbackKeepsReceipt(s: ActionReceipts): bool = s.callbacks.every(c => c.applied implies c.coreBound and bindingApplied(s))
 pure def alwaysConfirmationGrounded(s: ActionReceipts): bool = s.callbacks.every(c => c.confirms implies c.phase == CallbackDelivered and c.coreBound and c.applied and c.visibleText == s.canonicalText and c.visibleIds == c.boundIds and bindingApplied(s))
 pure def alwaysMutationInvocationBound(s: ActionReceipts): bool = s.mutation implies s.callbacks.every(c => c.phase == CallbackSending or c.phase == CallbackDelivered or c.phase == CallbackFailed implies c.coreBound and c.text == s.canonicalText and c.boundIds == s.selectedIds)
 pure def alwaysDeliveryKeysUnique(s: ActionReceipts): bool = s.keys.every(key => s.keys.select(other => other == key).length() == 1)
