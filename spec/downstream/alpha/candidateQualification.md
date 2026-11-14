@@ -35,10 +35,9 @@ pure val unreadableReceipt: CampaignReceipt = { mockOnly: false, appHashes: Set(
 pure val receiptsValues = Set(List(), List(plainReceipt), List(mockReceipt), List(unreadableReceipt), List(mockReceipt, plainReceipt), List(plainReceipt, unreadableReceipt))
 pure def collectAppHashes(receipts: List[CampaignReceipt]): Set[str] =
   receipts.foldl(Set(), (hashes, row) => hashes.union(row.appHashes))
-pure def suiteReceipts(present: bool, passed: bool, receipts: List[CampaignReceipt]): CampaignReceipts = {
-  val bound = receipts.select(row => not(row.mockOnly) or row.appHashes.size() > 0)
-  { present: present, passed: passed, appHashes: collectAppHashes(bound), unbound: bound.length() == 0 or bound.some(row => row.appHashes.size() == 0) }
-}
+pure def suiteReceipts(present: bool, passed: bool, receipts: List[CampaignReceipt]): CampaignReceipts =
+  { present: present, passed: passed, appHashes: collectAppHashes(receipts),
+    unbound: receipts.every(row => row.appHashes.size() == 0) or receipts.some(row => not(row.mockOnly) and row.appHashes.size() == 0) }
 pure def residentReceipts(receipts: List[CampaignReceipt]): CampaignReceipts =
   { present: receipts.length() > 0, passed: receipts.length() > 0 and receipts.every(row => row.passed),
     appHashes: collectAppHashes(receipts), unbound: receipts.some(row => row.appHashes.size() == 0) }
@@ -47,8 +46,10 @@ pure def ciReceipts(archivePresent: bool, proofsPresent: bool, appHashes: Set[st
   else { present: proofsPresent, passed: false, appHashes: Set(), unbound: proofsPresent }
 pure val appHashesValues = Set(Set(), Set("local"), Set("archive"))
 pure val proofVerdictsValues = Set(List(), List(true), List(false), List(true, false))
-pure def lawTestMocksDoNotBind(present: bool, passed: bool): bool = suiteReceipts(present, passed, List(mockReceipt)).unbound
-pure def lawMissingSuiteRowCannotBind(present: bool, passed: bool): bool = suiteReceipts(present, passed, List(plainReceipt, unreadableReceipt)).unbound
+pure def lawTestMocksDoNotBind(present: bool, passed: bool, receipts: List[CampaignReceipt]): bool =
+  receipts.every(row => row.appHashes.size() == 0) implies suiteReceipts(present, passed, receipts).unbound
+pure def lawMissingSuiteRowCannotBind(present: bool, passed: bool, receipts: List[CampaignReceipt]): bool =
+  receipts.some(row => not(row.mockOnly) and row.appHashes.size() == 0) implies suiteReceipts(present, passed, receipts).unbound
 pure def lawNativeCiRequiresArchive(proofsPresent: bool, appHashes: Set[str], proofVerdicts: List[bool]): bool =
   not(ciReceipts(false, proofsPresent, appHashes, proofVerdicts).passed)
 ```
