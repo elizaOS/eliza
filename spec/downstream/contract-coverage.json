@@ -1613,7 +1613,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/files.md",
+      "relatedSpec": "spec/downstream/mobileDeferredDeletion.md",
       "coverage": "related-contract"
     },
     {
