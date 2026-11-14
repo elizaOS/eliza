@@ -572,7 +572,8 @@ export interface ElizaSurfaceManagerPlugin {
   reloadSurface(options: SurfaceIdOptions): Promise<void>;
   /**
    * Android: stops the current page load where it is; a no-op when nothing is loading.
-   * `navigationChanged` follows so the host re-reads `progress`.
+   * `navigationChanged` follows so the host re-reads `progress`. Ends nothing the page
+   * holds: a held dialog, file input or site permission request still waits.
    */
   stopLoading(options: SurfaceIdOptions): Promise<void>;
   /** Move back in this surface's own history; never replays after a lost reply. */
@@ -604,7 +605,10 @@ export interface ElizaSurfaceManagerPlugin {
    * (`SitePermissionOutcome`). A camera or microphone grant lets the current page play
    * media without a gesture, as Chrome does while a page captures, until the next page
    * start. Only media elements the page creates after the grant play on their own: WebView
-   * fixes the requirement into each element when it is created. A request already
+   * fixes the requirement into each element when it is created. The setting changes before
+   * the grant is answered, but reaches the page by an asynchronous settings sync, so an
+   * element made in the `getUserMedia` handler plays on its own only as best effort
+   * (observed to on WebView 124). A request already
    * answered or withdrawn rejects `SITE_PERMISSION_CLOSED`.
    */
   answerSitePermission(
@@ -691,6 +695,10 @@ export interface ElizaSurfaceManagerPlugin {
    * Android host-only one-shot dispatch using a fresh observed entry reference.
    * Task authorization and preview are required at the trusted caller. A receipt
    * does not prove arrival; changed/hidden/paused history refuses before dispatch.
+   * While the page holds a dialog it rejects `DIALOG_OPEN` at once, keeping the
+   * reference: the frozen page could take the traversal only after the answer. It ends
+   * nothing the page holds. A page that does not reply within 5 seconds rejects
+   * `UNCERTAIN_OUTCOME`.
    */
   navigateHistory(options: SurfaceIdOptions & { reference: string }): Promise<{
     documentId: string;

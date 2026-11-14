@@ -76,6 +76,18 @@ object BrowserSurfaceRequests {
             else -> "ended"
         }
 
+    /**
+     * Why `navigateHistory` refuses before dispatching, or null to dispatch: `DIALOG_OPEN` while the
+     * page holds a dialog, which freezes it, so the isolated world could take the traversal only after
+     * the dialog is answered, past the command's timeout, as an effect nobody awaits; else
+     * `STALE_REF` unless the reference is the current observation's adjacent same-origin entry.
+     */
+    fun historyRefusal(dialogHeld: Boolean, current: Boolean): String? = when {
+        dialogHeld -> "DIALOG_OPEN"
+        !current -> "STALE_REF"
+        else -> null
+    }
+
     /** A grant of [kinds] lets the page play media without a gesture, as Chrome does while it captures. */
     fun capturesMedia(kinds: Collection<String>): Boolean =
         BrowserSitePrompt.CAMERA in kinds || BrowserSitePrompt.MICROPHONE in kinds

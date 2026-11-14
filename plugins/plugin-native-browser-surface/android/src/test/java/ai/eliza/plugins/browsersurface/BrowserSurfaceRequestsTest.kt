@@ -128,6 +128,15 @@ class BrowserSurfaceRequestsTest {
     }
 
     @Test
+    fun aHeldDialogRefusesHistoryNavigationBeforeDispatch() {
+        // A frozen page could take the traversal only after its dialog is answered, unawaited.
+        assertEquals("DIALOG_OPEN", BrowserSurfaceRequests.historyRefusal(dialogHeld = true, current = true))
+        assertEquals("DIALOG_OPEN", BrowserSurfaceRequests.historyRefusal(dialogHeld = true, current = false))
+        assertEquals("STALE_REF", BrowserSurfaceRequests.historyRefusal(dialogHeld = false, current = false))
+        assertNull(BrowserSurfaceRequests.historyRefusal(dialogHeld = false, current = true))
+    }
+
+    @Test
     fun anAnswerTakesItsRequestOnce() {
         val holds = SurfaceHolds<String, Permission, String>()
         val (fileId, _) = holds.holdFile("input")
