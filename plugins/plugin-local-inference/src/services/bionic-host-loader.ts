@@ -179,11 +179,18 @@ export function deriveBundleDir(modelPath: string): string {
 		}
 		return bundleRoot;
 	} catch (err) {
-		logger.warn(
-			`[BionicHostLoader] could not stage bionic bundle view for flat model "${modelPath}": ${err instanceof Error ? err.message : String(err)}`,
+		// The flat Eliza-1 GGUF is installed, so a staging failure is a broken
+		// bundle view, not an absent one: returning "" would hand the host
+		// <host-default> and generate against the wrong (or no) model.
+		throw new ElizaError(
+			`Could not stage the bionic bundle view for flat model "${modelPath}"`,
+			{
+				code: "BIONIC_BUNDLE_STAGE_FAILED",
+				cause: err,
+				context: { modelPath, bundleRoot },
+			},
 		);
 	}
-	return "";
 }
 function isStagedAlias(stagedPath: string): boolean {
 	try {

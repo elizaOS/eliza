@@ -172,6 +172,45 @@ describe("deriveBundleDir", () => {
 		expect(fs.readFileSync(staged, "utf8")).toBe("NEW2");
 	});
 
+	it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+		"reports a flat bundle view it cannot stage instead of returning an empty bundle",
+		() => {
+			const modelsDir = fs.mkdtempSync(
+				path.join(os.tmpdir(), "eliza-bionic-flat-stage-fault-"),
+			);
+			tempDirs.push(modelsDir);
+			const modelPath = path.join(modelsDir, "eliza-1-2b-128k.gguf");
+			fs.writeFileSync(modelPath, "GGUF");
+			// The flat Eliza-1 GGUF is installed, but its staging area rejects the
+			// alias (read-only `text/`). That is a broken bundle view, not an
+			// absent one: an empty return hides it behind `<host-default>`.
+			const textDir = path.join(
+				modelsDir,
+				".bionic-bundles",
+				"eliza-1-2b-128k",
+				"text",
+			);
+			fs.mkdirSync(textDir, { recursive: true });
+			fs.chmodSync(textDir, 0o555);
+			let caught: unknown;
+			try {
+				deriveBundleDir(modelPath);
+			} catch (err) {
+				caught = err;
+			} finally {
+				fs.chmodSync(textDir, 0o755);
+			}
+
+			expect(caught).toBeDefined();
+			expect((caught as { code?: string }).code).toBe(
+				"BIONIC_BUNDLE_STAGE_FAILED",
+			);
+			expect((caught as { cause?: { code?: string } }).cause?.code).toBe(
+				"EACCES",
+			);
+		},
+	);
+
 	it("prunes bundle views whose flat GGUF was removed and keeps live ones", () => {
 		const modelsDir = fs.mkdtempSync(
 			path.join(os.tmpdir(), "eliza-bionic-flat-prune-"),
