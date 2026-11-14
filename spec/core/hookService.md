@@ -1,102 +1,185 @@
 # Hook service registry eligibility and dispatch
 
-The source is `packages/core/src/services/hook.ts:88-491` at `72fed7e4069ecd35d61d886ab6eec5c02c137517`. This service is distinct from runtime pipeline hooks. It owns generated registration IDs, event indexes, mutable metadata, configuration reference, binary-hit cache and runtime event interceptors. Directory loading explicitly throws as unsupported in environment-independent core.
+This service owns event hook registrations, event index membership, mutable metadata, the eligibility configuration and PATH cache, and the interceptors it installs in the runtime event system. Runtime pipeline hooks have their own dispatch contract in `concurrentHooks.md`. The source is `packages/core/src/services/hook.ts:38-505`, `packages/core/src/types/hook.ts` and `packages/core/src/types/events.ts:127-154` at `72fed7e4069ecd35d61d886ab6eec5c02c137517`.
 
-## Story: Register eligible event hooks and retain exact dispatch snapshots
+## Story: Dispatch eligible event hooks in a stable order
 
-As a host I register handlers for one or more hook events, enable or reprioritize them, and dispatch eligible handlers sequentially. Unregistering or stopping the service cannot rewrite registrations already captured by an in-flight dispatch.
+As a host I can register, inspect and configure event hooks. Each event invokes the registrations eligible when the interceptor captured them. Each handler sees the same mutable event payload and runs after the previous handler resolves.
 
-### Registration and event indexes retain identity and version together
+### Registration identities, event membership and live metadata are separate
 
-ID formatting uses an incrementing counter and normalized name suffix. The numeric identity is modeled independently of formatting. Finite priorities pass through; invalid priorities map to the source default zero. Equal priority and timestamp retain event-index insertion order. Stopping clears runtime interceptors, registrations, indexes and binary hits without resetting the counters, configuration or cached PATH value.
+The ID format joins the incrementing counter and the lowercased name with whitespace runs replaced by underscores. The public ID encoder binds the generated string to its counter component; the model uses that counter as the immutable map key. The registration retains the source tag, optional owner and description. The registration decoder supplies runtime when the source is omitted and omitted or nonfinite priority becomes zero. A finite priority's ordered numeric value is supplied by the adapter, which preserves source ordering including fractional priorities. Equal priorities and timestamps keep insertion order. Writes through the service increment snapshot version only if a registration exists. Stopping clears registrations, index memberships, positive hits and installed interceptors, preserving the counters, PATH observation and config reference. Directory registration rejects with the unsupported error.
+
+The index is a projection of each row's indexed event memberships, read in registration insertion order. A source array or returned `metadata.events` array can change without reindexing. Unregister uses the current array to remove index memberships and detaches the registration. A stale membership for a detached row is skipped, exactly like finding no registration for its ID in the source. A caller retaining a registration object can observe its changed metadata or handler. The model keeps object IDs and preserves detached rows to account for captured references. JavaScript aliases and garbage collection are adapter obligations.
 
 ```quint
-type HookRequirement = {os: Set[str], bins: List[str], anyBins: List[str], env: Set[str], config: List[str]}
+type HookRequirement = {os: List[str], bins: List[str], anyBins: List[str], env: List[str], config: List[str]}
 type ConfigValue = ConfigMissing | ConfigNull | ConfigBoolean({value: bool}) | ConfigNumber({value: int}) | ConfigNonfinite | ConfigText({text: str, nonblank: bool}) | ConfigObject({identity: int})
 pure val absentConfigValue: ConfigValue = ConfigMissing
 type ConfigField = {path: str, value: ConfigValue}
-type HookRegistration = {id: int, name: str, handler: int, events: List[str], priority: int, registeredAt: int, active: bool, bypassEligibility: bool, requirements: HookRequirement}
-type HookIndex = {eventName: str, ids: List[int]}
-type CapturedEventHook = {id: int, handler: int}
-type EventHookCall = {id: int, snapshot: List[CapturedEventHook], nextIndex: int, running: bool, done: bool, failed: bool}
-type Eligibility = {binaryHits: Set[str], eligible: bool}
-type HookService = {registrations: List[HookRegistration], index: List[HookIndex], nextId: int, version: int, configIdentity: int, config: List[ConfigField], pathPresent: bool, path: str, binaryHits: Set[str], interceptors: List[str], setupDone: bool, calls: List[EventHookCall]}
-pure val initial: HookService = {registrations: List(), index: List(), nextId: 1, version: 0, configIdentity: 0, config: List(), pathPresent: false, path: "", binaryHits: Set(), interceptors: List(), setupDone: false, calls: List()}
-pure val emptyRequirements: HookRequirement = {os: Set(), bins: List(), anyBins: List(), env: Set(), config: List()}
-pure val requirementsValues = Set(emptyRequirements, {os: Set("linux"), bins: List("git"), anyBins: List("node", "bun"), env: Set("TOKEN"), config: List("feature.active")})
-pure val eventsValues = Set(List(), List("HOOK_START"), List("HOOK_START", "HOOK_STOP"))
-pure val nameValues = Set("first", "second")
+type HookSource = BundledHook | ManagedHook | WorkspaceHook | PluginHook | RuntimeHook
+type HookMetadata = {name: str, description: str, hasDescription: bool, source: HookSource, pluginId: str, hasPlugin: bool, eventRef: int, priority: int, active: bool, bypassEligibility: bool, requirementRef: int}
+type HookRegistration = {id: int, handler: int, registeredAt: int, registered: bool, metadata: HookMetadata, indexedEvents: Set[str]}
+type HookSummary = {name: str, eventRef: int, source: HookSource, active: bool, pluginId: str, hasPlugin: bool, priority: int}
+type HookSnapshot = {hooks: List[HookSummary], version: int, timestamp: int}
+type EventArray = {ref: int, names: List[str]}
+type RequirementRow = {ref: int, requirements: HookRequirement}
+type Interceptor = {eventName: str, owner: int}
+type EventHookCall = {id: int, payloadRef: int, snapshot: List[int], nextIndex: int, runningHandler: int, done: bool, errorRef: int}
+type EligibilityReason = HookMissing | WrongPlatform({currentPlatform: str, allowedPlatforms: List[str]}) | MissingBinary({bin: str}) | MissingAlternatives({choices: List[str]}) | MissingEnvironment({envName: str}) | FalsyConfig({configPath: str})
+type Eligibility = {binaryHits: Set[str], eligible: bool, reasons: List[EligibilityReason]}
+type ReflectedEligibility = {eligible: bool, reasons: List[EligibilityReason]}
+type HookService = {registrations: List[HookRegistration], eventArrays: List[EventArray], requirementRows: List[RequirementRow], nextId: int, version: int, configIdentity: int, config: List[ConfigField], pathPresent: bool, path: str, binaryHits: Set[str], interceptors: List[Interceptor], installedOwner: int, calls: List[EventHookCall], lastEligibility: ReflectedEligibility}
+pure val noReasons: List[EligibilityReason] = List()
+pure val noHookReason: EligibilityReason = HookMissing
+pure val missingResult: ReflectedEligibility = {eligible: false, reasons: List(noHookReason)}
+pure val eligibleResult: ReflectedEligibility = {eligible: true, reasons: noReasons}
+pure val initial: HookService = {registrations: List(), eventArrays: List(), requirementRows: List(), nextId: 1, version: 0, configIdentity: 0, config: List(), pathPresent: false, path: "", binaryHits: Set(), interceptors: List(), installedOwner: 0, calls: List(), lastEligibility: eligibleResult}
+pure val emptyRequirements: HookRequirement = {os: List(), bins: List(), anyBins: List(), env: List(), config: List()}
+pure val defaultHookSource: HookSource = RuntimeHook
+pure val emptyMetadata: HookMetadata = {name: "", description: "", hasDescription: false, source: defaultHookSource, pluginId: "", hasPlugin: false, eventRef: 0, priority: 0, active: false, bypassEligibility: false, requirementRef: 0}
+pure val noRegistration: HookRegistration = {id: 0, handler: 0, registeredAt: 0, registered: false, metadata: emptyMetadata, indexedEvents: Set()}
+pure val eventCatalog = List("HOOK_COMMAND_NEW", "HOOK_COMMAND_RESET", "HOOK_COMMAND_STOP", "HOOK_SESSION_START", "HOOK_SESSION_END", "HOOK_AGENT_BASIC_CAPABILITIES", "HOOK_AGENT_START", "HOOK_AGENT_END", "HOOK_GATEWAY_START", "HOOK_GATEWAY_STOP", "HOOK_COMPACTION_BEFORE", "HOOK_COMPACTION_AFTER", "HOOK_TOOL_BEFORE", "HOOK_TOOL_AFTER", "HOOK_TOOL_PERSIST", "HOOK_MESSAGE_SENDING")
+pure val commandEvents = List("HOOK_COMMAND_NEW")
+pure val agentEvents = List("HOOK_AGENT_START")
+pure val extendedEvents = List("HOOK_COMMAND_NEW", "HOOK_AGENT_START")
+pure val requirementsValues = Set(emptyRequirements, {os: List("linux"), bins: List("git"), anyBins: List("node", "bun"), env: List("TOKEN"), config: List("feature.active")})
+pure val namesValues = Set(List(), commandEvents, agentEvents, extendedEvents)
+pure val metadataValues = Set({ ...emptyMetadata, name: "standard", eventRef: 1, active: true}, { ...emptyMetadata, name: "preferred", eventRef: 1, active: true, priority: 1, bypassEligibility: true}, { ...emptyMetadata, name: "checked", eventRef: 2, active: true, requirementRef: 1})
 pure val handlerValues = Set(1, 2)
 pure val priorityValues = Set(-1, 0, 1)
 pure val registeredAtValues = Set(0, 1)
 pure val hookIdValues = Set(1, 2, 3)
 pure val callIdValues = Set(1, 2)
-pure val eventNameValues = Set("HOOK_START", "HOOK_STOP")
+pure val ownerValues = Set(1)
+pure val payloadRefValues = Set(1, 2)
+pure val errorRefValues = Set(0, 1)
+pure val referenceValues = Set(1, 2)
+pure val eventNameValues = Set("HOOK_COMMAND_NEW", "HOOK_AGENT_START")
 pure val platformValues = Set("linux", "darwin")
 pure val environmentValues = Set(Set(), Set("TOKEN"))
 pure val foundBinsValues = Set(Set(), Set("git"), Set("git", "node"))
 pure val pathValues = Set("", "/usr/bin", "/opt/bin")
 pure val configIdentityValues = Set(1, 2)
 pure val configValues = Set(List(), List({path: "feature.active", value: ConfigBoolean({value: true})}), List({path: "feature.active", value: ConfigBoolean({value: false})}))
-pure def canInstallInterceptors(s: HookService, events: List[str]): bool = not(s.setupDone)
-pure def installInterceptors(s: HookService, events: List[str]): HookService = { ...s, setupDone: true, interceptors: events }
-pure def canRegister(s: HookService, name: str, handler: int, events: List[str], priority: int, registeredAt: int, bypassEligibility: bool, requirements: HookRequirement): bool = handler > 0
-pure def register(s: HookService, name: str, handler: int, events: List[str], priority: int, registeredAt: int, bypassEligibility: bool, requirements: HookRequirement): HookService = {
-  val added = {id: s.nextId, name: name, handler: handler, events: events, priority: priority, registeredAt: registeredAt, active: true, bypassEligibility: bypassEligibility, requirements: requirements}
-  val existing = s.index.listMap(entry => if (events.includes(entry.eventName)) { ...entry, ids: entry.ids.append(s.nextId) } else entry)
-  val indexed = events.foldl(existing, (acc, eventName) => if (acc.some(entry => entry.eventName == eventName)) acc else acc.append({eventName: eventName, ids: List(s.nextId)}))
-  { ...s, registrations: s.registrations.append(added), index: indexed, nextId: s.nextId + 1, version: s.version + 1 }
+pure def canInstallInterceptors(s: HookService, owner: int): bool = s.installedOwner == 0 and owner > 0
+pure def installInterceptors(s: HookService, owner: int): HookService = { ...s, installedOwner: owner, interceptors: eventCatalog.listMap(eventName => {eventName: eventName, owner: owner}) }
+pure def eventNames(s: HookService, reference: int): List[str] = s.eventArrays.select(entry => entry.ref == reference).nthOr(0, {ref: 0, names: List()}).names
+pure def requirementsAt(s: HookService, reference: int): HookRequirement = s.requirementRows.select(entry => entry.ref == reference).nthOr(0, {ref: 0, requirements: emptyRequirements}).requirements
+pure def registrationAt(s: HookService, hookId: int): HookRegistration = s.registrations.select(entry => entry.id == hookId).nthOr(0, noRegistration)
+pure def isRegistered(s: HookService, hookId: int): bool = s.registrations.some(entry => entry.id == hookId and entry.registered)
+pure def getHook(s: HookService, hookId: int): HookRegistration = if (isRegistered(s, hookId)) registrationAt(s, hookId) else noRegistration
+pure def getAllHooks(s: HookService): List[HookRegistration] = s.registrations.select(entry => entry.registered)
+pure def getHooksByEvent(s: HookService, eventName: str): List[HookRegistration] = s.registrations.select(entry => entry.registered and entry.indexedEvents.contains(eventName))
+pure def getSnapshot(s: HookService, timestamp: int): HookSnapshot = {hooks: getAllHooks(s).listMap(entry => {name: entry.metadata.name, eventRef: entry.metadata.eventRef, source: entry.metadata.source, active: entry.metadata.active, pluginId: entry.metadata.pluginId, hasPlugin: entry.metadata.hasPlugin, priority: entry.metadata.priority}), version: s.version, timestamp: timestamp}
+pure val directoryRegistrationError: str = "registerFromDirectory is not supported in the environment-agnostic core."
+pure def normalizedPriority(priority: int, finite: bool): int = if (finite) priority else 0
+pure def canRegister(s: HookService, handler: int, metadata: HookMetadata, names: List[str], requirements: HookRequirement, registeredAt: int, finite: bool): bool = handler > 0 and metadata.eventRef > 0 and metadata.requirementRef >= 0
+pure def register(s: HookService, handler: int, metadata: HookMetadata, names: List[str], requirements: HookRequirement, registeredAt: int, finite: bool): HookService = {
+  val knownEvents = s.eventArrays.some(entry => entry.ref == metadata.eventRef)
+  val knownRequirements = s.requirementRows.some(entry => entry.ref == metadata.requirementRef)
+  val actualEvents = if (knownEvents) eventNames(s, metadata.eventRef) else names
+  val added: HookRegistration = {id: s.nextId, handler: handler, registeredAt: registeredAt, registered: true, metadata: { ...metadata, active: true, priority: normalizedPriority(metadata.priority, finite) }, indexedEvents: actualEvents.foldl(Set(), (ever, eventName) => ever.union(Set(eventName)))}
+  { ...s, registrations: s.registrations.append(added), eventArrays: if (knownEvents) s.eventArrays else s.eventArrays.append({ref: metadata.eventRef, names: names}), requirementRows: if (knownRequirements or metadata.requirementRef == 0) s.requirementRows else s.requirementRows.append({ref: metadata.requirementRef, requirements: requirements}), nextId: s.nextId + 1, version: s.version + 1 }
 }
 pure def canUnregister(s: HookService, hookId: int): bool = true
-pure def unregister(s: HookService, hookId: int): HookService = if (not(s.registrations.some(r => r.id == hookId))) s else { ...s, registrations: s.registrations.select(r => r.id != hookId), index: s.index.listMap(entry => { ...entry, ids: entry.ids.select(id => id != hookId) }).select(entry => entry.ids.length() > 0), version: s.version + 1 }
-pure def setActive(s: HookService, hookId: int, active: bool): HookService = if (not(s.registrations.some(r => r.id == hookId))) s else { ...s, registrations: s.registrations.listMap(r => if (r.id == hookId) { ...r, active: active } else r), version: s.version + 1 }
-pure def setPriority(s: HookService, hookId: int, priority: int, finite: bool): HookService = if (not(s.registrations.some(r => r.id == hookId))) s else { ...s, registrations: s.registrations.listMap(r => if (r.id == hookId) { ...r, priority: if (finite) priority else 0 } else r), version: s.version + 1 }
-pure def canSetConfig(s: HookService, configIdentity: int, config: List[ConfigField]): bool = configIdentity > 0 and config.every(configEntry => config.select(other => other.path == configEntry.path).length() == 1)
-pure def setConfig(s: HookService, configIdentity: int, config: List[ConfigField]): HookService = { ...s, configIdentity: configIdentity, config: config }
-pure def stopService(s: HookService): HookService = { ...s, registrations: List(), index: List(), binaryHits: Set(), interceptors: List() }
-pure def alwaysIndexAgrees(s: HookService): bool = s.index.every(entry => entry.ids.length() > 0 and entry.ids.every(id => s.registrations.some(r => r.id == id and r.events.includes(entry.eventName)))) and s.registrations.every(r => r.events.every(eventName => s.index.some(entry => entry.eventName == eventName and entry.ids.includes(r.id))))
-pure def alwaysRegistrationIds(s: HookService): bool = s.registrations.every(r => r.id > 0 and r.id < s.nextId and s.registrations.select(other => other.id == r.id).length() == 1)
+pure def unregister(s: HookService, hookId: int): HookService = if (not(isRegistered(s, hookId))) s else { ...s, registrations: s.registrations.listMap(entry => if (entry.id == hookId) { ...entry, registered: false, indexedEvents: entry.indexedEvents.filter(eventName => not(eventNames(s, entry.metadata.eventRef).includes(eventName))) } else entry), version: s.version + 1 }
+pure def setActive(s: HookService, hookId: int, active: bool): HookService = if (not(isRegistered(s, hookId))) s else { ...s, registrations: s.registrations.listMap(entry => if (entry.id == hookId) { ...entry, metadata: { ...entry.metadata, active: active } } else entry), version: s.version + 1 }
+pure def setPriority(s: HookService, hookId: int, priority: int, finite: bool): HookService = if (not(isRegistered(s, hookId))) s else { ...s, registrations: s.registrations.listMap(entry => if (entry.id == hookId) { ...entry, metadata: { ...entry.metadata, priority: normalizedPriority(priority, finite) } } else entry), version: s.version + 1 }
+pure def canObserveRegistrationAlias(s: HookService, hookId: int, handler: int, metadata: HookMetadata, registeredAt: int): bool = registrationAt(s, hookId).id != 0 and handler > 0 and metadata.eventRef > 0 and metadata.requirementRef >= 0 and s.eventArrays.some(entry => entry.ref == metadata.eventRef) and (metadata.requirementRef == 0 or s.requirementRows.some(entry => entry.ref == metadata.requirementRef))
+pure def observeRegistrationAlias(s: HookService, hookId: int, handler: int, metadata: HookMetadata, registeredAt: int): HookService = { ...s, registrations: s.registrations.listMap(entry => if (entry.id == hookId) { ...entry, handler: handler, metadata: metadata, registeredAt: registeredAt } else entry) }
+pure def canObserveEventArray(s: HookService, reference: int, names: List[str]): bool = reference > 0
+pure def observeEventArray(s: HookService, reference: int, names: List[str]): HookService = { ...s, eventArrays: if (s.eventArrays.some(entry => entry.ref == reference)) s.eventArrays.listMap(entry => if (entry.ref == reference) { ...entry, names: names } else entry) else s.eventArrays.append({ref: reference, names: names}) }
+pure def canObserveRequirements(s: HookService, reference: int, requirements: HookRequirement): bool = reference > 0
+pure def observeRequirements(s: HookService, reference: int, requirements: HookRequirement): HookService = { ...s, requirementRows: if (s.requirementRows.some(entry => entry.ref == reference)) s.requirementRows.listMap(entry => if (entry.ref == reference) { ...entry, requirements: requirements } else entry) else s.requirementRows.append({ref: reference, requirements: requirements}) }
+pure def stopService(s: HookService): HookService = { ...s, registrations: s.registrations.listMap(entry => { ...entry, registered: false, indexedEvents: Set() }), binaryHits: Set(), interceptors: List() }
+pure def alwaysRegistrationIds(s: HookService): bool = s.nextId > 0 and s.registrations.every(entry => entry.id > 0 and entry.id < s.nextId and s.registrations.select(other => other.id == entry.id).length() == 1)
 pure def stepCountersNeverReset(before: HookService, after: HookService): bool = after.nextId >= before.nextId and after.version >= before.version
 ```
 
-### Eligibility keeps only successful binary probes for the current PATH
+### Eligibility returns every failure in source order and caches successful binary probes
 
-The filesystem adapter validates a binary name has no slash or backslash and reports only regular executable files on POSIX, or the supported executable extensions on Windows. Missing probes are not cached. The normalized configuration path adapter splits on dots and discards empty segments. `ConfigText.nonblank` records trimmed length, and objects and nonfinite numeric values are truthy under the source's explicit helper.
+The filesystem boundary validates names and reports regular executable files on POSIX or regular files at the supported Windows suffixes. A changed raw PATH, including unset versus empty, invalidates positive entries on the next binary probe. Each probe checks all required binaries and visits alternative binaries until the first hit. Failures accumulate in platform, required binary, alternatives, environment and configuration order. The environment observation contains keys with nonempty string values. A direct requirements check with no config object skips config paths. Registration eligibility uses the service's config reference, and always-enabled hooks bypass requirements. Dispatch still respects enabled metadata. The adapter resolves JS properties along the dot-separated path after removing empty segments. Nonblank strings, nonzero numbers and objects are truthy under the source helper.
 
 ```quint
 pure def configTruthy(value: ConfigValue): bool = match value { | ConfigMissing => false | ConfigNull => false | ConfigBoolean(v) => v.value | ConfigNumber(v) => v.value != 0 | ConfigText(v) => v.nonblank | _ => true }
-pure def configPathTruthy(config: List[ConfigField], path: str): bool = configTruthy(config.select(configEntry => configEntry.path == path).nthOr(0, {path: "", value: absentConfigValue}).value)
-pure def requirementEligibility(requirements: HookRequirement, hits: Set[str], foundBins: Set[str], platform: str, environment: Set[str], config: List[ConfigField]): Eligibility = {
-  val allHits = requirements.bins.foldl(hits, (acc, bin) => if (foundBins.contains(bin)) acc.union(Set(bin)) else acc)
-  val eligible = (requirements.os.size() == 0 or requirements.os.contains(platform)) and requirements.bins.every(bin => allHits.contains(bin)) and (requirements.anyBins.length() == 0 or requirements.anyBins.some(bin => allHits.contains(bin) or foundBins.contains(bin))) and requirements.env.forall(key => environment.contains(key)) and requirements.config.every(path => configPathTruthy(config, path))
-  val firstAny = requirements.anyBins.select(bin => allHits.contains(bin) or foundBins.contains(bin)).nthOr(0, "")
-  {binaryHits: if (firstAny == "") allHits else allHits.union(Set(firstAny)), eligible: eligible}
+pure def configPathTruthy(config: List[ConfigField], configPath: str): bool = configTruthy(config.select(entry => entry.path == configPath).nthOr(0, {path: "", value: absentConfigValue}).value)
+pure def requiresProbe(requirements: HookRequirement): bool = requirements.bins.length() > 0 or requirements.anyBins.length() > 0
+pure def requirementEligibility(requirements: HookRequirement, hits: Set[str], foundBins: Set[str], platform: str, environment: Set[str], config: List[ConfigField], hasConfig: bool): Eligibility = {
+  val allHits = requirements.bins.foldl(hits, (acc, bin) => if (bin != "" and foundBins.contains(bin)) acc.union(Set(bin)) else acc)
+  val positives = requirements.anyBins.select(bin => bin != "" and (allHits.contains(bin) or foundBins.contains(bin)))
+  val firstAny = positives.nthOr(0, "")
+  val wrongOs = if (requirements.os.length() > 0 and not(requirements.os.includes(platform))) List(WrongPlatform({currentPlatform: platform, allowedPlatforms: requirements.os})) else noReasons
+  val missingBins = requirements.bins.select(bin => not(allHits.contains(bin))).listMap(bin => MissingBinary({bin: bin}))
+  val missingAlternatives = if (requirements.anyBins.length() > 0 and firstAny == "") List(MissingAlternatives({choices: requirements.anyBins})) else noReasons
+  val missingEnvironment = requirements.env.select(envName => not(environment.contains(envName))).listMap(envName => MissingEnvironment({envName: envName}))
+  val missingConfig = if (hasConfig) requirements.config.select(configPath => not(configPathTruthy(config, configPath))).listMap(configPath => FalsyConfig({configPath: configPath})) else noReasons
+  val reasons = wrongOs.concat(missingBins).concat(missingAlternatives).concat(missingEnvironment).concat(missingConfig)
+  {binaryHits: if (firstAny == "") allHits else allHits.union(Set(firstAny)), eligible: reasons.length() == 0, reasons: reasons}
 }
-pure def canProbeBinary(s: HookService, bin: str, validName: bool, found: bool, pathPresent: bool, path: str): bool = true
-pure def probeBinary(s: HookService, bin: str, validName: bool, found: bool, pathPresent: bool, path: str): HookService = {
-  val hits = if (s.pathPresent == pathPresent and s.path == path) s.binaryHits else Set()
-  { ...s, pathPresent: pathPresent, path: path, binaryHits: if (validName and found) hits.union(Set(bin)) else hits }
+pure def samePath(s: HookService, pathPresent: bool, path: str): bool = s.pathPresent == pathPresent and (not(pathPresent) or s.path == path)
+pure def binaryBaseline(s: HookService, needsBinary: bool, pathPresent: bool, path: str): Set[str] = if (not(needsBinary) or samePath(s, pathPresent, path)) s.binaryHits else Set()
+pure def eligibilityState(needsBinary: bool, verdict: Eligibility, pathPresent: bool, path: str, s: HookService): HookService = { ...s, pathPresent: if (needsBinary) pathPresent else s.pathPresent, path: if (needsBinary) path else s.path, binaryHits: verdict.binaryHits, lastEligibility: {eligible: verdict.eligible, reasons: verdict.reasons} }
+pure def checkRequirements(s: HookService, requirements: HookRequirement, foundBins: Set[str], platform: str, environment: Set[str], pathPresent: bool, path: str, config: List[ConfigField], hasConfig: bool): HookService = {
+  val needsBinary = requiresProbe(requirements)
+  eligibilityState(needsBinary, requirementEligibility(requirements, binaryBaseline(s, needsBinary, pathPresent, path), foundBins, platform, environment, config, hasConfig), pathPresent, path, s)
 }
-pure def canUpdateConfigReference(s: HookService, configIdentity: int, config: List[ConfigField]): bool = config.every(configEntry => config.select(other => other.path == configEntry.path).length() == 1)
+pure def checkEligibility(s: HookService, hookId: int, foundBins: Set[str], platform: str, environment: Set[str], pathPresent: bool, path: str): HookService = {
+  val registration = getHook(s, hookId)
+  val requirements = requirementsAt(s, registration.metadata.requirementRef)
+  val needsBinary = requiresProbe(requirements)
+  if (registration.id == 0) { ...s, lastEligibility: missingResult }
+  else if (registration.metadata.bypassEligibility or registration.metadata.requirementRef == 0) { ...s, lastEligibility: eligibleResult }
+  else eligibilityState(needsBinary, requirementEligibility(requirements, binaryBaseline(s, needsBinary, pathPresent, path), foundBins, platform, environment, s.config, true), pathPresent, path, s)
+}
+pure def canSetConfig(s: HookService, configIdentity: int, config: List[ConfigField]): bool = configIdentity > 0 and config.every(entry => config.select(other => other.path == entry.path).length() == 1)
+pure def setConfig(s: HookService, configIdentity: int, config: List[ConfigField]): HookService = { ...s, configIdentity: configIdentity, config: config }
+pure def canUpdateConfigReference(s: HookService, configIdentity: int, config: List[ConfigField]): bool = configIdentity > 0 and config.every(entry => config.select(other => other.path == entry.path).length() == 1)
 pure def updateConfigReference(s: HookService, configIdentity: int, config: List[ConfigField]): HookService = if (configIdentity == s.configIdentity) { ...s, config: config } else s
-pure def hookBefore(first: HookRegistration, second: HookRegistration): bool = first.priority > second.priority or (first.priority == second.priority and first.registeredAt <= second.registeredAt)
+```
+
+### A captured interceptor dispatches sequentially against one payload object
+
+The runtime supplies an interceptor handle previously allocated for this service, including when the runtime captured it before `stop` and invokes it later. Dispatch reads the current live rows and eligibility in event index order and then sorts the captured registration references by priority and timestamp. Handler lookup reads the current property of the captured registration when its turn arrives. The handler receives the original payload identity. A thrown or rejected handler settles the dispatch with that error and prevents later peers from running. The callback can modify the payload, register and unregister other hooks, or start another dispatch. The adapter retains and passes the actual payload object and reads the source callback result.
+
+Discovered by the proof: a running handler must own a valid cursor slot in its dispatch. Bounding the idle cursor alone allowed an arbitrary state to start or finish a callback past the end of its captured list.
+
+```quint
+type DispatchEligibility = {binaryHits: Set[str], selected: List[HookRegistration]}
+pure val noHooks: List[HookRegistration] = List()
+pure val noCall: EventHookCall = {id: 0, payloadRef: 0, snapshot: List(), nextIndex: 0, runningHandler: 0, done: true, errorRef: 0}
+pure def callAt(s: HookService, callId: int): EventHookCall = s.calls.select(entry => entry.id == callId).nthOr(0, noCall)
+pure def hookBefore(first: HookRegistration, second: HookRegistration): bool = first.metadata.priority > second.metadata.priority or (first.metadata.priority == second.metadata.priority and first.registeredAt <= second.registeredAt)
 pure def insertHook(hooks: List[HookRegistration], hook: HookRegistration): List[HookRegistration] = hooks.select(old => hookBefore(old, hook)).append(hook).concat(hooks.select(old => not(hookBefore(old, hook))))
-pure val emptyHooks: List[HookRegistration] = List()
-pure def canDispatch(s: HookService, callId: int, eventName: str, foundBins: Set[str], platform: str, environment: Set[str], pathPresent: bool, path: str): bool = callId > 0 and not(s.calls.some(c => c.id == callId))
-pure def dispatch(s: HookService, callId: int, eventName: str, foundBins: Set[str], platform: str, environment: Set[str], pathPresent: bool, path: str): HookService = {
-  val checked = s.registrations.select(r => r.events.includes(eventName) and r.active and not(r.bypassEligibility))
-  val needsProbe = checked.some(r => r.requirements.bins.length() > 0 or r.requirements.anyBins.length() > 0)
-  val hits = if (not(needsProbe) or (s.pathPresent == pathPresent and s.path == path)) s.binaryHits else Set()
-  val selected = s.registrations.select(r => r.events.includes(eventName) and r.active and (r.bypassEligibility or requirementEligibility(r.requirements, hits, foundBins, platform, environment, s.config).eligible))
-  val cache = checked.foldl(hits, (acc, r) => requirementEligibility(r.requirements, acc, foundBins, platform, environment, s.config).binaryHits)
-  { ...s, pathPresent: if (needsProbe) pathPresent else s.pathPresent, path: if (needsProbe) path else s.path, binaryHits: cache, calls: s.calls.append({id: callId, snapshot: selected.foldl(emptyHooks, (acc, hook) => insertHook(acc, hook)).listMap(hook => {id: hook.id, handler: hook.handler}), nextIndex: 0, running: false, done: selected.length() == 0, failed: false}) }
+pure def orderEligible(hooks: List[HookRegistration]): List[int] = hooks.foldl(noHooks, (acc, entry) => insertHook(acc, entry)).listMap(entry => entry.id)
+pure def selectEligible(entry: HookRegistration, acc: DispatchEligibility, foundBins: Set[str], platform: str, environment: Set[str], s: HookService): DispatchEligibility = {
+  val verdict = requirementEligibility(requirementsAt(s, entry.metadata.requirementRef), acc.binaryHits, foundBins, platform, environment, s.config, true)
+  if (entry.metadata.bypassEligibility or entry.metadata.requirementRef == 0) { ...acc, selected: acc.selected.append(entry) }
+  else {binaryHits: verdict.binaryHits, selected: if (verdict.eligible) acc.selected.append(entry) else acc.selected}
 }
-pure def canBeginHandler(s: HookService, callId: int): bool = s.calls.some(c => c.id == callId and not(c.done) and not(c.running) and c.nextIndex < c.snapshot.length())
-pure def beginHandler(s: HookService, callId: int): HookService = { ...s, calls: s.calls.listMap(c => if (c.id == callId) { ...c, running: true } else c) }
-pure def canFinishHandler(s: HookService, callId: int, ok: bool): bool = s.calls.some(c => c.id == callId and c.running)
-pure def finishHandler(s: HookService, callId: int, ok: bool): HookService = { ...s, calls: s.calls.listMap(c => if (c.id == callId) { ...c, running: false, nextIndex: c.nextIndex + 1, failed: not(ok), done: not(ok) or c.nextIndex + 1 == c.snapshot.length() } else c) }
-pure def alwaysDispatchBounds(s: HookService): bool = s.calls.every(c => c.nextIndex >= 0 and c.nextIndex <= c.snapshot.length() and (c.failed implies c.done))
-pure def stepSnapshotsImmutable(before: HookService, after: HookService): bool = before.calls.every(c => after.calls.some(other => other.id == c.id and other.snapshot == c.snapshot))
-pure def sometimesStoppedWhileSnapshotRuns(s: HookService): bool = s.registrations.length() == 0 and s.interceptors.length() == 0 and s.calls.some(c => not(c.done))
-pure def sometimesHandlerFailureStopsPeers(s: HookService): bool = s.calls.some(c => c.failed and c.nextIndex < c.snapshot.length())
+pure def canDispatch(s: HookService, callId: int, owner: int, payloadRef: int, eventName: str): bool = callId > 0 and owner > 0 and owner == s.installedOwner and payloadRef > 0 and eventCatalog.includes(eventName) and not(s.calls.some(entry => entry.id == callId))
+pure def dispatch(s: HookService, callId: int, owner: int, payloadRef: int, eventName: str, foundBins: Set[str], platform: str, environment: Set[str], pathPresent: bool, path: str): HookService = {
+  val checked = getHooksByEvent(s, eventName).select(entry => entry.metadata.active)
+  val needsBinary = checked.some(entry => not(entry.metadata.bypassEligibility) and requiresProbe(requirementsAt(s, entry.metadata.requirementRef)))
+  val initialProbe: DispatchEligibility = {binaryHits: binaryBaseline(s, needsBinary, pathPresent, path), selected: noHooks}
+  val selection = checked.foldl(initialProbe, (acc, entry) => selectEligible(entry, acc, foundBins, platform, environment, s))
+  val ordered = orderEligible(selection.selected)
+  { ...s, pathPresent: if (needsBinary) pathPresent else s.pathPresent, path: if (needsBinary) path else s.path, binaryHits: selection.binaryHits, calls: s.calls.append({id: callId, payloadRef: payloadRef, snapshot: ordered, nextIndex: 0, runningHandler: 0, done: ordered.length() == 0, errorRef: 0}) }
+}
+pure def nextHandler(s: HookService, callId: int): int = {
+  val call = callAt(s, callId)
+  registrationAt(s, call.snapshot.nthOr(call.nextIndex, 0)).handler
+}
+pure def canBeginHandler(s: HookService, callId: int): bool = callId > 0 and s.calls.some(entry => entry.id == callId and not(entry.done) and entry.runningHandler == 0 and entry.nextIndex < entry.snapshot.length()) and nextHandler(s, callId) > 0
+pure def beginHandler(s: HookService, callId: int): HookService = { ...s, calls: s.calls.listMap(entry => if (entry.id == callId) { ...entry, runningHandler: nextHandler(s, callId) } else entry) }
+pure def canFinishHandler(s: HookService, callId: int, errorRef: int): bool = callId > 0 and errorRef >= 0 and s.calls.some(entry => entry.id == callId and entry.runningHandler > 0)
+pure def finishHandler(s: HookService, callId: int, errorRef: int): HookService = { ...s, calls: s.calls.listMap(entry => if (entry.id == callId) { ...entry, runningHandler: 0, nextIndex: entry.nextIndex + 1, errorRef: errorRef, done: errorRef > 0 or entry.nextIndex + 1 == entry.snapshot.length() } else entry) }
+pure def validCall(entry: EventHookCall): bool = entry.id > 0 and entry.payloadRef > 0 and entry.nextIndex >= 0 and entry.nextIndex <= entry.snapshot.length() and entry.runningHandler >= 0 and entry.errorRef >= 0 and (not(entry.done) implies entry.nextIndex < entry.snapshot.length()) and (entry.runningHandler > 0 implies not(entry.done)) and (entry.errorRef > 0 implies entry.done)
+pure def alwaysDispatchBounds(s: HookService): bool = s.calls.every(entry => validCall(entry) and s.calls.select(other => other.id == entry.id).length() == 1)
+pure def stepSnapshotsImmutable(before: HookService, via: str, after: HookService): bool =
+  if (via == "beginHandler" or via == "finishHandler" or via == "dispatch")
+    before.calls.every(entry => after.calls.some(other => other.id == entry.id and other.payloadRef == entry.payloadRef and other.snapshot == entry.snapshot))
+  else before.calls == after.calls
+pure def sometimesStoppedWhileSnapshotRuns(s: HookService): bool = s.installedOwner > 0 and s.interceptors.length() == 0 and s.calls.some(entry => not(entry.done))
+pure def sometimesHandlerFailureStopsPeers(s: HookService): bool = s.calls.some(entry => entry.errorRef > 0 and entry.nextIndex < entry.snapshot.length())
 ```
