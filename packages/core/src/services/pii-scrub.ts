@@ -46,6 +46,15 @@ interface PiiScrubQueueItem {
 
 const SRC = "plugin:basic-capabilities:service:pii-scrub";
 
+/** Without a requester-built pack, the item assembles one from the corpus map. */
+function assemblesCorpusMap(item: PiiScrubQueueItem): boolean {
+	return (
+		item.contextPack === undefined &&
+		item.pseudonymAssignments === undefined &&
+		item.candidateSpans.length > 0
+	);
+}
+
 /**
  * Service responsible for running the corpus PII scrub asynchronously on the
  * core task queue. Mirrors {@link EmbeddingGenerationService}.
@@ -59,6 +68,8 @@ export class PiiScrubService extends Service {
 	private drainStart: Promise<void> | null = null;
 	private stopping = false;
 	private stopPromise: Promise<void> | null = null;
+	/** Tail of the corpus-map load, mint and save sections; one runs at a time. */
+	private mapStage: Promise<void> = Promise.resolve();
 	private readonly scrubRequestHandler = (payload: PiiScrubRequestPayload) =>
 		this.handleScrubRequest(payload);
 
@@ -98,7 +109,12 @@ export class PiiScrubService extends Service {
 			// device from thrashing.
 			maxParallel: 2,
 			maxRetriesAfterFailure: 3,
-			process: (item) => this.scrubItem(item),
+			// The corpus map is loaded, grown and saved as one artifact, so two
+			// items that assemble it at once would lose the earlier save.
+			process: (item) =>
+				assemblesCorpusMap(item)
+					? this.serialiseMapStage(() => this.scrubItem(item))
+					: this.scrubItem(item),
 			onExhausted: async (item, error) => {
 				await this.emitFailure(item, error);
 			},
@@ -198,6 +214,13 @@ export class PiiScrubService extends Service {
 		await this.startDrain(queue);
 	}
 
+	private serialiseMapStage(run: () => Promise<void>): Promise<void> {
+		const result = this.mapStage.then(run);
+		// A failed item releases the stage too; BatchQueue retries it later.
+		this.mapStage = result.catch(() => undefined);
+		return result;
+	}
+
 	/**
 	 * Process one item: idempotency skip, scrub, then confirm the done-marker.
 	 * Failures before confirmation remain with BatchQueue for retry or exhaustion.
@@ -229,11 +252,7 @@ export class PiiScrubService extends Service {
 			let contextPack = item.contextPack;
 			let pseudonymAssignments = item.pseudonymAssignments;
 			let candidateSpans = item.candidateSpans;
-			if (
-				contextPack === undefined &&
-				pseudonymAssignments === undefined &&
-				candidateSpans.length > 0
-			) {
+			if (assemblesCorpusMap(item)) {
 				const assembled = await this.assembleContextStage(item);
 				stage = { store: assembled.store, map: assembled.map };
 				contextPack = assembled.pack.contextPack;
