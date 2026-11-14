@@ -4,7 +4,7 @@ The authoritative service state is [service instances and generations](./service
 
 ## Story: Observe one shared class and instance registry
 
-As a caller I observe declaration-ordered instances, captured acquisition results and stopped status from the same state that owns start and stop promises. Duplicate class declarations preserve repeated published entries without creating separate start operations.
+As a caller I observe published instances, captured acquisition results and stopped status from the same state that owns start and stop promises. Publication follows declaration order and preserves repeated entries without creating separate start operations. Teardown filters published arrays by object identity while retaining a surviving class's own instance reference.
 
 ### Registry observations are pure projections of detailed instance state
 

@@ -307,11 +307,14 @@
         "spec/core/inferenceGate.md"
       ],
       "stateDomains": [
-        "holder",
-        "interactive/background queues",
-        "deadline",
-        "cancellation",
-        "request immutability"
+        "holder identity, label and acquisition timestamp",
+        "acquired-to-native-invocation handoff",
+        "interactive and background FIFO queues",
+        "wall-clock deadline and separately owned native wait timer",
+        "expired prefix pruning before background handoff",
+        "captured timeout diagnostics from timer and handoff",
+        "queued listener cancellation and active lease retention",
+        "prompt and optional token limit immutability"
       ]
     },
     {
@@ -517,7 +520,11 @@
         "per-type registration status",
         "retained deferred load promises and resolver ownership",
         "latest aggregate identity and superseded cleanup",
-        "plugin withdrawal captures aggregate and class startup promises before status reconciliation"
+        "plugin withdrawal captures aggregate and class startup promises before status reconciliation",
+        "ordered published type arrays independent of the per-class instance map",
+        "reference-identity withdrawal and subsequent publication of shared objects",
+        "sequential captured instance stop slots and per-slot callable observations",
+        "static hook rejection short-circuit and untouched later service type groups"
       ]
     },
     {

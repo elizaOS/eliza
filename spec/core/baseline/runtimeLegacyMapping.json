@@ -1655,9 +1655,10 @@
             "providers.fair_settleNextWork",
             "providers.fair_cleanNextWork",
             "providers.fair_runNextCallback",
-            "providerExecutions.fair_runNextProviderCallback"
+            "providerExecutions.fair_runNextProviderCallback",
+            "providerExecutions.fair_runNextProviderCleanup"
           ],
-          "reason": "Eligible callback consumption selects an actual retained attachment independent of sampled identities. Attachments append at the tail, and multiple key domains rotate once an eligible callback runs. Identity-specific host callbacks remain permitted. Lifecycle stop is a host operation; holder progress after it is conditional on fair work settlement and cleanup. The frontend expresses fairness over event kinds. Unbounded equivalence to legacy parameterized fairness remains unproved."
+          "reason": "Eligible callback consumption selects an actual retained attachment independent of sampled identities. Attachments append at the tail, and multiple key domains rotate once an eligible callback runs. Identity-specific host callbacks remain permitted. Lifecycle stop is a host operation; holder progress after it is conditional on fair work settlement and cleanup. The frontend expresses fairness over event kinds. Unbounded equivalence to legacy parameterized fairness remains unproved. Settled work enqueues its captured cleanup identity, which the fair cleanup event consumes independently of later work and callback emplacements."
         },
         {
           "name": "TypeOK",
@@ -1767,7 +1768,7 @@
             "providers.runNextCallback",
             "providerExecutions.leadsToReadyDomainCallersLeave"
           ],
-          "reason": "Quantifies actual caller and execution identities captured before settlement. Older eligible attachments cannot be displaced by new work in the fair callback witness. The multi-key progress premise begins after that attachment's result or cancellation callback becomes eligible. Legacy-site refinement and unbounded liveness proof remain outstanding."
+          "reason": "Quantifies actual caller and execution identities captured before settlement. Older eligible attachments cannot be displaced by new work in the fair callback witness. The multi-key progress premise begins at shared work settlement or when the caller's cancellation callback is eligible. Legacy-site refinement and unbounded liveness proof remain outstanding."
         },
         {
           "name": "StopReleasesCallers",
@@ -1781,7 +1782,7 @@
             "providers.runNextCallback",
             "providerExecutions.leadsToReadyDomainCallersLeave"
           ],
-          "reason": "Quantifies actual caller and execution identities captured before settlement. Older eligible attachments cannot be displaced by new work in the fair callback witness. The multi-key progress premise begins after that attachment's result or cancellation callback becomes eligible. Legacy-site refinement and unbounded liveness proof remain outstanding."
+          "reason": "Quantifies actual caller and execution identities captured before settlement. Older eligible attachments cannot be displaced by new work in the fair callback witness. The multi-key progress premise begins at shared work settlement or when the caller's cancellation callback is eligible. Legacy-site refinement and unbounded liveness proof remain outstanding."
         },
         {
           "name": "SettledCallerLeaves",
@@ -1795,7 +1796,7 @@
             "providers.runNextCallback",
             "providerExecutions.leadsToReadyDomainCallersLeave"
           ],
-          "reason": "Quantifies actual caller and execution identities captured before settlement. Older eligible attachments cannot be displaced by new work in the fair callback witness. The multi-key progress premise begins after that attachment's result or cancellation callback becomes eligible. Legacy-site refinement and unbounded liveness proof remain outstanding."
+          "reason": "Quantifies actual caller and execution identities captured before settlement. Older eligible attachments cannot be displaced by new work in the fair callback witness. The multi-key progress premise begins at shared work settlement or when the caller's cancellation callback is eligible. Legacy-site refinement and unbounded liveness proof remain outstanding."
         }
       ],
       "cases": {
@@ -1969,7 +1970,7 @@
           }
         ]
       },
-      "remainingGap": "Source-shaped callback completion and per-attachment progress modeled. Collection proofs, compositional progress from pending execution through settlement across keys, and unbounded legacy temporal equivalence remain unverified."
+      "remainingGap": "Source-shaped cleanup, callback completion and per-attachment progress after work settles are modeled across keys. Collection proof, aborted-but-pending progress across keys, and unbounded legacy temporal equivalence remain unverified."
     },
     {
       "legacyFile": "packages/core/quint/RoomHandlerQueue.qnt",
@@ -3285,12 +3286,12 @@
           "status": "partial-fairness-correspondence",
           "category": "fairness-assumption",
           "targetDefinitions": [
-            "pluginServices.fair_commitPlugin",
-            "pluginServices.fair_failPlugin",
+            "pluginServices.fair_finishNextRegistration",
             "pluginServices.fair_resolveNextStart",
             "pluginServices.fair_finishClassStop",
-            "pluginServices.fair_disposePlugin",
-            "pluginServices.fair_cleanPlugin",
+            "pluginServices.fair_finishNextPluginDisposal",
+            "pluginServices.fair_advanceRetirement",
+            "pluginServices.fair_skipMissingStop",
             "pluginServices.fair_settleEnsure"
           ],
           "reason": "These explicit event fairness declarations support target progress rules. Vibestack fair_<event> quantifies an event kind, not every dynamic parameter identity. For a sealed finite workload, each completion permanently removes pending work; for an open workload this does not imply the legacy per-actor weak fairness. Parameterized temporal fairness and unbounded temporal proof are unavailable in the current frontend; no equivalence is claimed."
@@ -3360,9 +3361,18 @@
             "pluginServices.alwaysServiceOwnerEpochExists",
             "pluginServices.alwaysRetiredEpochHasNoResources",
             "pluginServices.alwaysChildLifecyclesValid",
-            "serviceInstances.alwaysClassAndObjectIdentities"
+            "serviceInstances.alwaysClassAndObjectIdentities",
+            "serviceInstances.alwaysPublicationIdentitiesValid",
+            "serviceInstances.classInstances",
+            "pluginServices.withdrawNextType",
+            "pluginServices.claimInstanceStop",
+            "pluginServices.observeInstanceStop",
+            "pluginServices.skipMissingStop",
+            "pluginServices.alwaysStopObservationsFollowSlots",
+            "pluginServices.sometimesWithdrawalKeepsSiblingObject",
+            "pluginServices.sometimesHookFailureLeavesLaterType"
           ],
-          "reason": "PluginServices stores the authoritative ServiceInstances state. Declaration occurrences, unique class start generations and unique returned objects are related to captured plugin retirement receipts. Old captured objects remain owned during withdrawal; repeated class aliases share start and stop identities. ServiceRegistry exposes only pure views. Semantic refinement to the original finite actor encoding remains unproved."
+          "reason": "A captured object remains owned until retirement observes the shared stop or checks that its stop property is non-callable and advances synchronously. Each group withdraws only after plugin disposal and previous group completion. A class hook rejection short-circuits later groups, leaving their publication and declarations reachable and retaining the hook failure. When distinct classes return the same object, withdrawing one class removes every equal reference from publication, keeps the other class instance, and allows later publication after a different start. Duplicate declarations of the same class capture one instance slot. Shared non-callable stop reporting for runtime shutdown and late start remains a separate composition gap. Legacy live and service ownership predicates still require a source-site refinement proof."
         },
         {
           "name": "StopStopsAll",
@@ -3672,7 +3682,7 @@
         ],
         "selection": "Set stop-order choices are nondeterministic, including every ordering the implementation can select."
       },
-      "remainingGap": "One-plugin ownership projection still needs cross-plugin registration/unload actor composition and reload generations."
+      "remainingGap": "Per-type retirement, class-hook short circuit, captured failure identity, distinct class and publication views, and non-callable stop observation are modeled. Shared runtime-shutdown and late-start malformed-object reporting needs a separate composed owner. Legacy scenario actor refinement, universal state preservation, and final bounded progress validation remain open."
     },
     {
       "legacyFile": "packages/core/quint/Semaphore.qnt",

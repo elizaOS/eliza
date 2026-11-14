@@ -4205,15 +4205,16 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Per-adapter/key non-poisoning FIFO tails are shared queue state; sorted multi-key requests retain all acquired tickets until callback settlement. Empty outer adapter index is derived from remaining queue tails.",
+        "representation": "Per-adapter/key non-poisoning FIFO tails use the connector queue owner. Sorted key operations hold distinct per-ticket diagnostic timers and clear each while releasing its nested operation. Cleanup microtasks are owned separately and run before a same-scope successor enters, preserving its already-installed replacement tail. Empty adapter registries are derived from remaining exact current tail identities.",
         "model": {
           "spec": "spec/core/connectionLocks.md",
           "stateType": "Reconciliations",
           "stateFields": [
             "queue",
-            "Q",
             "calls",
-            "keyCatalog"
+            "keyCatalog",
+            "timers",
+            "cleanupPending"
           ],
           "transitions": [
             "admit",
@@ -4221,14 +4222,17 @@
             "acquireKey",
             "warn",
             "callbackReturns",
-            "releaseKey"
+            "releaseKey",
+            "cleanupKey"
           ],
-          "specSha256": "f981b76dd0c46f4d9127b004386bc06ea805807f85db6670e13d21d7c6553da3"
+          "specSha256": "edc1b8f762a72e1cad8b43ec9f28ead14b4665e92941708821a257a43f15d635"
         },
         "mappedStateFields": [
           "queue",
           "calls",
-          "keyCatalog"
+          "keyCatalog",
+          "timers",
+          "cleanupPending"
         ],
         "unmodeledState": null
       }

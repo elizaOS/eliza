@@ -39,7 +39,7 @@ activation on a physical device.
 | `apps/app/src/prototype/scan-correction-review.ts`, `scan-link-review.ts`, `apps/app/src/browser/scan-draft.ts` | [Selected-page correction](./scanCorrection.md), [reviewed link handoff](./scanLinks.md), [durable scan draft storage](./scanDraftStorage.md) |
 | `apps/app/src/prototype/inbox-cloud-adapter.ts`, `apps/app/src/runtime/gmail-background.ts` | [Managed Inbox paging and cache identity](./inbox.md), [saved reads, grant revocation and cache custody](./inboxCache.md), [managed Gmail wire](./managedGmailWire.md), [Gmail notice and Ask custody](./gmailNoticeCustody.md), [native Gmail background delivery](../mobileGmailBackgroundDelivery.md), [draft and provider receipt custody](./inboxDraftCustody.md) |
 | `AlphaNotificationListener`, `AlphaNotificationsPlugin` | [Selected-app notification mirroring and actions](../mobileCrossAppNotifications.md) |
-| `apps/app/src/runtime/hosted-digest-ui.tsx`, `AlphaHostedResultsPlugin` | [Android hosted Brief result notice custody](../mobileHostedResultNotices.md) |
+| `apps/app/src/runtime/hosted-digest-ui.tsx`, `AlphaHostedResultsPlugin` | [Android Brief inbox reconciliation](../mobileHostedInbox.md), [hosted Brief result notice custody](../mobileHostedResultNotices.md) |
 | `apps/app/src/prototype/home-cards.ts`, `home-overview-cards.ts` | [Current-source Home projections](./overview.md) |
 | `apps/app/src/prototype/automations-adapter.ts`, `runtime/automations-protocol.ts` | [Automation row, cron and reminder presentations](./automationPresentation.md) |
 | `apps/app/src/browser/notifications.ts`, `workflow-notices.ts` | [Exact browser notice action and workflow receipts](./notices.md) |
@@ -50,7 +50,7 @@ activation on a physical device.
 | Overview, automation feed, and reminder presentation | [Daily overview](./overview.md), [automation and reminder projection](./automationPresentation.md) |
 | Remote agent connection and pairing link | [Exact instance and revocable session admission](../remotePairing.md) |
 | `scripts/native-google-product-host.ts`, `apps/app/src/prototype/inbox-cloud-adapter.ts`, `apps/app/src/runtime/google-connection-ui.tsx` | [Managed Google grant and receipt custody](./managedGoogle.md), [Calendar link publication and stale request custody](./googleCalendarLinkPublication.md), [Cloud host ownership](../cloudHost.md), [resident inference](../residentCloud.md), [credential enrollment](../cloudEnrollment.md) |
-| `GoogleAgentAccessFile.java`, `AlphaLocalAgentPlugin.java`, `native-google-agent-host.ts` | [Native Google access file custody](./nativeGoogleAccessFile.md) |
+| `google-agent-access.ts`, `GoogleAgentAccessFile.java`, `AlphaLocalAgentPlugin.java`, `native-google-agent-host.ts` | [Google access settings publication](./googleAccessPublication.md), [native Google access file custody](./nativeGoogleAccessFile.md) |
 
 The development launcher sets `ELIZA_PLUGIN_SET=lean-chat` and
 `ELIZA_LEAN_CHAT_WORKFLOWS=1`. Native stages runtime profile `native`.

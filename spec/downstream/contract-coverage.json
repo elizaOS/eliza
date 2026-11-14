@@ -507,8 +507,8 @@
         "test-only-source"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/grace/taskStorage.md",
-      "coverage": "related-contract"
+      "relatedSpec": "spec/downstream/grace/diagnosticsJournalStorage.md",
+      "coverage": "direct-contract"
     },
     {
       "source": "packages/host/native-host/task-trace-capture.mjs",
@@ -860,8 +860,8 @@
         "renderer-source"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobileCapture.md",
-      "coverage": "related-contract"
+      "relatedSpec": "spec/downstream/grace/cumulativeMicrophone.md",
+      "coverage": "direct-contract"
     },
     {
       "source": "packages/ui/src/voice/microphone-samples.worklet.mjs",
@@ -870,8 +870,8 @@
         "renderer-source"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobileCapture.md",
-      "coverage": "related-contract"
+      "relatedSpec": "spec/downstream/grace/cumulativeMicrophone.md",
+      "coverage": "direct-contract"
     },
     {
       "source": "packages/ui/src/voice/pcm-wave.ts",
@@ -880,8 +880,8 @@
         "renderer-source"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/mobileCapture.md",
-      "coverage": "related-contract"
+      "relatedSpec": "spec/downstream/grace/cumulativeMicrophone.md",
+      "coverage": "direct-contract"
     },
     {
       "source": "packages/ui/src/voice/progressive-speech-playback.ts",
@@ -4279,6 +4279,20 @@
         "packages/agent/src/runtime/eliza.ts"
       ],
       "relatedSpec": "spec/downstream/mobileRuntimeIdentity.md"
+    },
+    {
+      "consumer": "AlphaPhone",
+      "consumerPaths": [
+        "android/app/src/main/java/ai/alphacompute/alphaphone/AlphaHostedResultsPlugin.java",
+        "android/app/src/main/java/ai/alphacompute/alphaphone/HostedDelivery.java",
+        "android/app/src/main/java/ai/alphacompute/alphaphone/HostedDeliveryWorker.java",
+        "android/app/src/main/java/ai/alphacompute/alphaphone/HostedInbox.java"
+      ],
+      "producerPaths": [
+        "plugins/plugin-workflow/src/routes/workflow-routes.ts",
+        "plugins/plugin-workflow/src/services/embedded-workflow-service.ts"
+      ],
+      "relatedSpec": "spec/downstream/mobileHostedInbox.md"
     },
     {
       "consumer": "AlphaPhone",

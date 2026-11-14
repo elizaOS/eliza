@@ -969,22 +969,22 @@ lemma mutateView_ensures(s: RequestRegistry, stateObject: int, sourceHash: strin
   }
 }
 
-lemma bindView_ensures(s: RequestRegistry, by_: RegistryCaller, stateObject: int, messageObject: int, issuerId: int, runtimeId: int, sourceMessageId: string, sourceRoomId: string, sourceHash: string, projectionHash: string, expectedProjectionHash: string, extractionAllowed: bool)
-  ensures (inv(s) ==> canBindView(s, by_, stateObject, messageObject, issuerId, runtimeId, sourceMessageId, sourceRoomId, sourceHash, projectionHash, expectedProjectionHash, extractionAllowed) ==> alwaysDenialOwnershipIsUnique(bindView(s, by_, stateObject, messageObject, issuerId, runtimeId, sourceMessageId, sourceRoomId, sourceHash, projectionHash, expectedProjectionHash, extractionAllowed)))
-  ensures (inv(s) ==> canBindView(s, by_, stateObject, messageObject, issuerId, runtimeId, sourceMessageId, sourceRoomId, sourceHash, projectionHash, expectedProjectionHash, extractionAllowed) ==> alwaysSourceObjectIdentitiesAreUnique(bindView(s, by_, stateObject, messageObject, issuerId, runtimeId, sourceMessageId, sourceRoomId, sourceHash, projectionHash, expectedProjectionHash, extractionAllowed)))
-  ensures (inv(s) ==> canBindView(s, by_, stateObject, messageObject, issuerId, runtimeId, sourceMessageId, sourceRoomId, sourceHash, projectionHash, expectedProjectionHash, extractionAllowed) ==> alwaysActivePairsAreUnique(bindView(s, by_, stateObject, messageObject, issuerId, runtimeId, sourceMessageId, sourceRoomId, sourceHash, projectionHash, expectedProjectionHash, extractionAllowed)))
-  ensures (inv(s) ==> canBindView(s, by_, stateObject, messageObject, issuerId, runtimeId, sourceMessageId, sourceRoomId, sourceHash, projectionHash, expectedProjectionHash, extractionAllowed) ==> alwaysAttemptOwnershipIsUnique(bindView(s, by_, stateObject, messageObject, issuerId, runtimeId, sourceMessageId, sourceRoomId, sourceHash, projectionHash, expectedProjectionHash, extractionAllowed)))
-  ensures (inv(s) ==> canBindView(s, by_, stateObject, messageObject, issuerId, runtimeId, sourceMessageId, sourceRoomId, sourceHash, projectionHash, expectedProjectionHash, extractionAllowed) ==> alwaysResultOwnershipIsUnique(bindView(s, by_, stateObject, messageObject, issuerId, runtimeId, sourceMessageId, sourceRoomId, sourceHash, projectionHash, expectedProjectionHash, extractionAllowed)))
-  ensures (inv(s) ==> canBindView(s, by_, stateObject, messageObject, issuerId, runtimeId, sourceMessageId, sourceRoomId, sourceHash, projectionHash, expectedProjectionHash, extractionAllowed) ==> alwaysOwnersRetainProtocolSafety(bindView(s, by_, stateObject, messageObject, issuerId, runtimeId, sourceMessageId, sourceRoomId, sourceHash, projectionHash, expectedProjectionHash, extractionAllowed)))
-  ensures (inv(s) ==> canBindView(s, by_, stateObject, messageObject, issuerId, runtimeId, sourceMessageId, sourceRoomId, sourceHash, projectionHash, expectedProjectionHash, extractionAllowed) ==> alwaysViewsHaveOneDataOwner(bindView(s, by_, stateObject, messageObject, issuerId, runtimeId, sourceMessageId, sourceRoomId, sourceHash, projectionHash, expectedProjectionHash, extractionAllowed)))
-  ensures (inv(s) ==> canBindView(s, by_, stateObject, messageObject, issuerId, runtimeId, sourceMessageId, sourceRoomId, sourceHash, projectionHash, expectedProjectionHash, extractionAllowed) ==> stepActivePairIdentityNeverChanges(s, "bindView", bindView(s, by_, stateObject, messageObject, issuerId, runtimeId, sourceMessageId, sourceRoomId, sourceHash, projectionHash, expectedProjectionHash, extractionAllowed)))
+lemma bindView_ensures(s: RequestRegistry, by_: RegistryCaller, stateObject: int, messageObject: int, binding: ViewBindingObservation)
+  ensures (inv(s) ==> canBindView(s, by_, stateObject, messageObject) ==> alwaysDenialOwnershipIsUnique(bindView(s, by_, stateObject, messageObject, binding)))
+  ensures (inv(s) ==> canBindView(s, by_, stateObject, messageObject) ==> alwaysSourceObjectIdentitiesAreUnique(bindView(s, by_, stateObject, messageObject, binding)))
+  ensures (inv(s) ==> canBindView(s, by_, stateObject, messageObject) ==> alwaysActivePairsAreUnique(bindView(s, by_, stateObject, messageObject, binding)))
+  ensures (inv(s) ==> canBindView(s, by_, stateObject, messageObject) ==> alwaysAttemptOwnershipIsUnique(bindView(s, by_, stateObject, messageObject, binding)))
+  ensures (inv(s) ==> canBindView(s, by_, stateObject, messageObject) ==> alwaysResultOwnershipIsUnique(bindView(s, by_, stateObject, messageObject, binding)))
+  ensures (inv(s) ==> canBindView(s, by_, stateObject, messageObject) ==> alwaysOwnersRetainProtocolSafety(bindView(s, by_, stateObject, messageObject, binding)))
+  ensures (inv(s) ==> canBindView(s, by_, stateObject, messageObject) ==> alwaysViewsHaveOneDataOwner(bindView(s, by_, stateObject, messageObject, binding)))
+  ensures (inv(s) ==> canBindView(s, by_, stateObject, messageObject) ==> stepActivePairIdentityNeverChanges(s, "bindView", bindView(s, by_, stateObject, messageObject, binding)))
 {
-  if inv(s) && canBindView(s,by_,stateObject,messageObject,issuerId,runtimeId,sourceMessageId,sourceRoomId,sourceHash,projectionHash,expectedProjectionHash,extractionAllowed) {
-    var t := bindView(s,by_,stateObject,messageObject,issuerId,runtimeId,sourceMessageId,sourceRoomId,sourceHash,projectionHash,expectedProjectionHash,extractionAllowed);
+  if inv(s) && canBindView(s,by_,stateObject,messageObject) {
+    var t := bindView(s,by_,stateObject,messageObject, binding);
     RequestStateLookup(s,stateObject);
     var frame := stateAt(s,stateObject);
     assert frame in s.states;
-    RequestOwnerLookup(s,issuerId);
+    RequestOwnerLookup(s,binding.issuerId);
     var keep := ProofLib.Filter((view: ExtractionView) => view.dataId != frame.dataId,s.views);
     if t.views != keep {
       assert |t.views| == |keep| + 1;

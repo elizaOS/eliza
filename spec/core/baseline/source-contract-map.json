@@ -3243,7 +3243,10 @@
         "Every dispatched attempt rechecks bytes counts and lease authority",
         "Prepared requests use the same issued allowance and turn lease",
         "Each qualified attempt consumes the tariff reservation atomically",
-        "Byte counting combines surrogate pairs and replaces unpaired surrogates"
+        "Byte counting combines surrogate pairs and replaces unpaired surrogates",
+        "Exactly one provider serializer determines the request body",
+        "The validation walk refuses cycles and unsupported visited values",
+        "A projected body requires a finished valid walk"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "5dba0eb99f5058655055e237251a2753a2f7ddd9f460abaaa64bebb2fbafc10e",
@@ -3253,7 +3256,8 @@
       "relatedSpecs": [
         "spec/core/preparedRequests.md",
         "spec/core/modelAttemptLeases.md",
-        "spec/core/unicode.md"
+        "spec/core/unicode.md",
+        "spec/core/preparedRequestSerialization.md"
       ]
     },
     {

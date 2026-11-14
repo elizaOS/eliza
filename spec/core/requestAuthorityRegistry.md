@@ -36,13 +36,10 @@ pure val messageIdValues = Set("message1", "message2")
 pure val roomIdValues = Set("room1", "room2")
 pure val entityIdValues = Set("actor1", "actor2")
 pure val requestHashValues = Set("request1", "request2")
-pure val sourceMessageIdValues = messageIdValues
-pure val sourceRoomIdValues = roomIdValues
 pure val stateHashValues = Set("state1", "state2")
 pure val sourceHashValues = Set("source1", "source2")
 pure val observedSourceHashValues = sourceHashValues
 pure val projectionHashValues = Set("projection1", "projection2")
-pure val expectedProjectionHashValues = projectionHashValues
 pure val currentSourceHashValues = sourceHashValues
 pure val currentOriginalHashValues = sourceHashValues
 pure val classificationValues = Set(I::ReadOnlyRequest, I::MutationRequest, I::UnresolvedRequest)
@@ -93,19 +90,36 @@ pure def observeSources(s: RequestRegistry, by: RegistryCaller, issuerId: int, i
 
 ### State.data aliases share one exact view while serialized copies carry no view
 
+Discovered by simulation: the source and projection values of a binding
+come from one host observation. Sample them together so the simulation
+exercises an exact view, a mismatched projection and a stale source tuple.
+Each field is still checked with its own identity or hash.
+
 ```quint
 pure def viewAt(s: RequestRegistry, stateObject: int): ExtractionView = s.views.select(view => view.dataId == stateAt(s, stateObject).dataId).nthOr(0, emptyView)
 pure def boundViewCurrent(s: RequestRegistry, stateObject: int, messageObject: int): bool = viewAt(s, stateObject).dataId != 0 and viewAt(s, stateObject).requestHash == messageAt(s, messageObject).requestHash and viewAt(s, stateObject).stateHash == stateAt(s, stateObject).stateHash and viewAt(s, stateObject).sourceHash == viewAt(s, stateObject).observedSourceHash and viewAt(s, stateObject).projectionHash == viewAt(s, stateObject).observedProjectionHash
 pure def extractionViewAllowed(s: RequestRegistry, stateObject: int, messageObject: int): bool = boundViewCurrent(s, stateObject, messageObject) and viewAt(s, stateObject).extractionAllowed
-pure def canBindView(s: RequestRegistry, by: RegistryCaller, stateObject: int, messageObject: int, issuerId: int, runtimeId: int, sourceMessageId: str, sourceRoomId: str, sourceHash: str, projectionHash: str, expectedProjectionHash: str, extractionAllowed: bool): bool = by == HostBoundary and stateAt(s, stateObject).objectId != 0 and messageAt(s, messageObject).objectId != 0
-pure def bindView(s: RequestRegistry, by: RegistryCaller, stateObject: int, messageObject: int, issuerId: int, runtimeId: int, sourceMessageId: str, sourceRoomId: str, sourceHash: str, projectionHash: str, expectedProjectionHash: str, extractionAllowed: bool): RequestRegistry = {
+type ViewBindingObservation = {issuerId: int, runtimeId: int, sourceMessageId: str, sourceRoomId: str, sourceHash: str, projectionHash: str, expectedProjectionHash: str, extractionAllowed: bool}
+pure val bindingValues = Set(
+  {issuerId: 1, runtimeId: 1, sourceMessageId: "message1", sourceRoomId: "room1", sourceHash: "source1", projectionHash: "projection1", expectedProjectionHash: "projection1", extractionAllowed: true},
+  {issuerId: 1, runtimeId: 1, sourceMessageId: "message1", sourceRoomId: "room2", sourceHash: "source1", projectionHash: "projection1", expectedProjectionHash: "projection1", extractionAllowed: true},
+  {issuerId: 1, runtimeId: 1, sourceMessageId: "message2", sourceRoomId: "room1", sourceHash: "source1", projectionHash: "projection1", expectedProjectionHash: "projection1", extractionAllowed: true},
+  {issuerId: 1, runtimeId: 1, sourceMessageId: "message2", sourceRoomId: "room2", sourceHash: "source1", projectionHash: "projection1", expectedProjectionHash: "projection1", extractionAllowed: true},
+  {issuerId: 2, runtimeId: 2, sourceMessageId: "message1", sourceRoomId: "room1", sourceHash: "source2", projectionHash: "projection2", expectedProjectionHash: "projection2", extractionAllowed: true},
+  {issuerId: 2, runtimeId: 2, sourceMessageId: "message1", sourceRoomId: "room2", sourceHash: "source2", projectionHash: "projection2", expectedProjectionHash: "projection2", extractionAllowed: true},
+  {issuerId: 2, runtimeId: 2, sourceMessageId: "message2", sourceRoomId: "room1", sourceHash: "source2", projectionHash: "projection2", expectedProjectionHash: "projection2", extractionAllowed: true},
+  {issuerId: 2, runtimeId: 2, sourceMessageId: "message2", sourceRoomId: "room2", sourceHash: "source2", projectionHash: "projection2", expectedProjectionHash: "projection2", extractionAllowed: true},
+  {issuerId: 1, runtimeId: 1, sourceMessageId: "message1", sourceRoomId: "room1", sourceHash: "source1", projectionHash: "projection1", expectedProjectionHash: "projection2", extractionAllowed: true},
+  {issuerId: 2, runtimeId: 1, sourceMessageId: "message1", sourceRoomId: "room1", sourceHash: "source1", projectionHash: "projection1", expectedProjectionHash: "projection1", extractionAllowed: false})
+pure def canBindView(s: RequestRegistry, by: RegistryCaller, stateObject: int, messageObject: int): bool = by == HostBoundary and stateAt(s, stateObject).objectId != 0 and messageAt(s, messageObject).objectId != 0
+pure def bindView(s: RequestRegistry, by: RegistryCaller, stateObject: int, messageObject: int, binding: ViewBindingObservation): RequestRegistry = {
   val frame = stateAt(s, stateObject)
-  val exact = projectionHash == expectedProjectionHash
-  val projected = if (exact) projectionHash else sourceHash
-  val owner = ownerAt(s, issuerId)
-  val boundOwner = if (owner.runtimeId == runtimeId and owner.messageObject == messageObject and ownerCurrent(owner, s)) issuerId else 0
-  val sourceValid = messageAt(s, messageObject).messageId != "" and messageAt(s, messageObject).roomId != "" and messageAt(s, messageObject).entityId != "" and sourceMessageId == messageAt(s, messageObject).messageId and sourceRoomId == messageAt(s, messageObject).roomId
-  { ...s, views: if (not(sourceValid)) s.views.select(view => view.dataId != frame.dataId) else s.views.select(view => view.dataId != frame.dataId).append({ dataId: frame.dataId, messageObject: messageObject, requestHash: messageAt(s, messageObject).requestHash, stateHash: frame.stateHash, sourceHash: sourceHash, projectionHash: projected, observedSourceHash: sourceHash, observedProjectionHash: projected, issuerId: boundOwner, extractionAllowed: exact and extractionAllowed }) }
+  val exact = binding.projectionHash == binding.expectedProjectionHash
+  val projected = if (exact) binding.projectionHash else binding.sourceHash
+  val owner = ownerAt(s, binding.issuerId)
+  val boundOwner = if (owner.runtimeId == binding.runtimeId and owner.messageObject == messageObject and ownerCurrent(owner, s)) binding.issuerId else 0
+  val sourceValid = messageAt(s, messageObject).messageId != "" and messageAt(s, messageObject).roomId != "" and messageAt(s, messageObject).entityId != "" and binding.sourceMessageId == messageAt(s, messageObject).messageId and binding.sourceRoomId == messageAt(s, messageObject).roomId
+  { ...s, views: if (not(sourceValid)) s.views.select(view => view.dataId != frame.dataId) else s.views.select(view => view.dataId != frame.dataId).append({ dataId: frame.dataId, messageObject: messageObject, requestHash: messageAt(s, messageObject).requestHash, stateHash: frame.stateHash, sourceHash: binding.sourceHash, projectionHash: projected, observedSourceHash: binding.sourceHash, observedProjectionHash: projected, issuerId: boundOwner, extractionAllowed: exact and binding.extractionAllowed }) }
 }
 pure def canMutateState(s: RequestRegistry, stateObject: int, stateHash: str): bool = stateAt(s, stateObject).objectId != 0
 pure def mutateState(s: RequestRegistry, stateObject: int, stateHash: str): RequestRegistry = { ...s, states: s.states.listMap(frame => if (frame.objectId == stateObject) { ...frame, stateHash: stateHash } else frame) }
@@ -117,13 +131,15 @@ pure def mutateView(s: RequestRegistry, stateObject: int, sourceHash: str, proje
 
 Discovered by the proof: each owner retains the identity uniqueness of its own completion records as well as the cross-owner fence. A reordered or copied view cannot supply a duplicate identity to a component. An issued view names an actual issuer, so a view with a fabricated issuer ID cannot pick up authority when that ID is allocated later.
 
+Discovered by simulation: completing an attempt requires a live issuer, a committed restriction and a current bound view before the operation and result can be observed. Give those events and the matching operation and child observations more chances in the harness. Include both a mutation that can complete and a restricted request whose denial can transfer.
+
 ```quint
 pure val attemptIdValues = Set("attempt1", "attempt2")
 pure val resultIdValues = Set("result1", "result2")
 pure val sourceIdValues = Set("result1")
 pure val targetIdValues = Set("result2")
-pure val operationValues = Set(C::GetOperation, C::ListOperation, C::CreateOperation, C::UpdateOperation, C::PatchOperation, C::DeleteOperation)
-pure val registeredValues = operationValues
+pure val operationValues = Set(C::NoOperation, C::GetOperation, C::CreateOperation, C::UpdateOperation)
+pure val registeredValues = Set(C::CreateOperation, C::UpdateOperation)
 pure val denialIdValues = Set("denial1", "denial2")
 pure val fingerprintValues = Set("fingerprint1", "fingerprint2")
 pure val sourceFingerprintValues = fingerprintValues
@@ -196,6 +212,24 @@ pure def alwaysResultOwnershipIsUnique(s: RequestRegistry): bool = s.owners.ever
 pure def alwaysOwnersRetainProtocolSafety(s: RequestRegistry): bool = s.owners.every(owner => I::alwaysIssuerRevision(owner.issuer) and I::alwaysTaintedIssuerUnresolved(owner.issuer) and C::alwaysCompletionOwnsAttempt(owner.completions) and C::alwaysAttemptAndResultIdentityUnique(owner.completions))
 pure def lawExternalCannotMint(s: RequestRegistry, runtimeId: int, messageObject: int): bool = not(canBeginIssuer(s, ExternalPayload, runtimeId, messageObject))
 pure def lawCrossIssuerProjectionRejected(s: RequestRegistry, by: RegistryCaller, issuerId: int, sourceId: str, targetId: str): bool = resultOwner(s, sourceId).id != issuerId implies not(canProjectResult(s, by, issuerId, sourceId, targetId))
+pure val weight_registerRuntime = 4
+pure val weight_createMessage = 4
+pure val weight_createState = 4
+pure val weight_beginIssuer = 8
+pure val weight_commitRestriction = 8
+pure val weight_bindView = 8
+pure val weight_beginAttempt = 10
+pure val weight_checkOperation = 12
+pure val weight_bindResult = 12
+pure val weight_projectResult = 8
+pure val weight_copyCompletion = 8
+pure val weight_inspectCompletion = 8
+pure val weight_wrapDenialError = 8
+pure val weight_transferDenial = 8
 pure def sometimesIndependentRequestIssuers(s: RequestRegistry): bool = s.owners.length() > 1
 pure def sometimesStateCopiesShareData(s: RequestRegistry): bool = s.states.some(frame => s.states.some(other => other.objectId != frame.objectId and other.dataId == frame.dataId))
+pure def sometimesRegistryTransfersDenial(s: RequestRegistry): bool =
+  s.owners.some(owner => owner.completions.denials.some(denial => denial.projectedResult))
+pure def sometimesRegistryCopiesCompletion(s: RequestRegistry): bool =
+  s.owners.some(owner => owner.completions.results.some(result => result.projected and result.hasFact and not(result.changed)))
 ```
