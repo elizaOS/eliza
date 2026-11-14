@@ -66,7 +66,9 @@ import { seedStewardSession } from "./helpers/test-auth";
  * Output dir: `test-results/aesthetic-audit-cloud/` (override: ELIZA_AUDIT_CLOUD_DIR).
  */
 
-const TEST_AUTH_ENABLED = process.env.VITE_PLAYWRIGHT_TEST_AUTH === "true";
+const TEST_AUTH_ENABLED =
+  process.env.VITE_PLAYWRIGHT_TEST_AUTH === "true" ||
+  process.env.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true";
 
 // Strict gate (#13624), mirroring the app audit (#9304/#10710). Without this the
 // cloud audit was a pure reporter — a `broken`/`needs-work` cloud page failed

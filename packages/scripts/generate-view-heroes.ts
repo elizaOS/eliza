@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
  * the full manifest-derived app catalog so hero omissions cannot silently ship.
  *
  * Output is deterministic: re-running produces byte-identical files. Run with
- * `bun packages/scripts/generate-view-heroes.ts`.
+ * `node packages/scripts/generate-view-heroes.ts`.
  */
 import {
   renderViewHeroSvg,
@@ -65,7 +65,7 @@ export function parseArgs(argv = process.argv.slice(2)) {
   return options;
 }
 export function printHelp() {
-  console.log(`Usage: bun packages/scripts/generate-view-heroes.ts [options]
+  console.log(`Usage: node packages/scripts/generate-view-heroes.ts [options]
 
 Generate clean, brand-consistent SVG hero images for plugin views.
 

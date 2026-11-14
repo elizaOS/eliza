@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# Gives a bundle's Bun permission host the identifier in its adjacent
+# Info.plist before Electrobun seals updater artifacts. Every other codesign
+# invocation is delegated byte-for-byte so unrelated helpers stay distinct.
+
+set -euo pipefail
+
+REAL_CODESIGN="${ELIZA_REAL_CODESIGN:-/usr/bin/codesign}"
+REAL_PLUTIL="${ELIZA_REAL_PLUTIL:-/usr/bin/plutil}"
+
+if [[ ! -x "$REAL_CODESIGN" ]]; then
+  echo "eliza codesign wrapper: real codesign executable not found: $REAL_CODESIGN" >&2
+  exit 1
+fi
+
+args=("$@")
+if [[ "${#args[@]}" -eq 0 ]]; then
+  exec "$REAL_CODESIGN"
+fi
+
+target_index=$((${#args[@]} - 1))
+target_path="${args[$target_index]}"
+is_signing=0
+for arg in "${args[@]}"; do
+  case "$arg" in
+    --sign|-s|--sign=*|-s*)
+      is_signing=1
+      break
+      ;;
+  esac
+done
+
+if [[ "$is_signing" != "1" || "$target_path" != */Contents/MacOS/bun ]]; then
+  exec "$REAL_CODESIGN" "${args[@]}"
+fi
+
+if [[ ! -x "$REAL_PLUTIL" ]]; then
+  echo "eliza codesign wrapper: plutil executable not found: $REAL_PLUTIL" >&2
+  exit 1
+fi
+
+info_plist="${target_path%/MacOS/bun}/Info.plist"
+if ! app_identifier="$("$REAL_PLUTIL" -extract CFBundleIdentifier raw -expect string -o - "$info_plist" 2>/dev/null)"; then
+  echo "eliza codesign wrapper: failed to read CFBundleIdentifier from $info_plist" >&2
+  exit 1
+fi
+
+if [[ ! "$app_identifier" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]]; then
+  echo "eliza codesign wrapper: invalid application identifier: $app_identifier" >&2
+  exit 1
+fi
+
+rewritten_args=()
+for ((index = 0; index < target_index; index += 1)); do
+  arg="${args[$index]}"
+  case "$arg" in
+    --identifier|-i)
+      index=$((index + 1))
+      ;;
+    --identifier=*|-i=*)
+      ;;
+    *)
+      rewritten_args+=("$arg")
+      ;;
+  esac
+done
+rewritten_args+=(--identifier "$app_identifier" "$target_path")
+
+exec "$REAL_CODESIGN" "${rewritten_args[@]}"

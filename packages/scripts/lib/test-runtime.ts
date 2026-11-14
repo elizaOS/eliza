@@ -75,31 +75,21 @@ function pathNodeCandidates(env: NodeJS.ProcessEnv) {
   return splitPath(env.PATH).map((dir) => path.join(dir, "node"));
 }
 
-function canRunNode(
-  nodePath: string,
-  currentExecPath: string,
-  rejectBun: boolean,
-) {
+function canRunNode(nodePath: string, currentExecPath: string) {
   if (!nodePath || path.resolve(nodePath) === path.resolve(currentExecPath)) {
     return false;
   }
   if (!isExecutable(nodePath) || isCodexBundledNode(nodePath)) {
     return false;
   }
-  // `bun run` can put a `node` alias for Bun on PATH; report it as "bun".
   const result = spawnSync(
     nodePath,
-    [
-      "-e",
-      "process.stdout.write((process.versions.bun ? 'bun:' : 'node:') + process.platform + '/' + process.arch)",
-    ],
+    ["-e", "process.stdout.write(process.platform + '/' + process.arch)"],
     { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
   );
-  if (result.status !== 0) return false;
-  const [runtime, target] = result.stdout.trim().split(":");
   return (
-    target === `${process.platform}/${process.arch}` &&
-    !(rejectBun && runtime === "bun")
+    result.status === 0 &&
+    result.stdout.trim() === `${process.platform}/${process.arch}`
   );
 }
 
@@ -107,15 +97,10 @@ export function isCodexBundledNode(execPath = process.execPath) {
   return process.platform === "darwin" && execPath.includes(CODEX_NODE_MARKER);
 }
 
-/**
- * Finds a runtime other than the current executable. `rejectBun` restricts the
- * search to real Node.js for lanes that do not pass on Bun.
- */
 export function resolveExternalNode({
   env = process.env,
   repoRoot = process.cwd(),
   execPath = process.execPath,
-  rejectBun = false,
 } = {}) {
   const homeDir = os.homedir();
   const candidates = [
@@ -128,25 +113,8 @@ export function resolveExternalNode({
   ].filter((candidate): candidate is string => Boolean(candidate));
 
   return (
-    candidates.find((candidate) =>
-      canRunNode(candidate, execPath, rejectBun),
-    ) || null
+    candidates.find((candidate) => canRunNode(candidate, execPath)) || null
   );
-}
-
-/**
- * Real Node.js for consumer checks of packages that declare `engines.node`;
- * a packed package that only loads on Bun must fail them.
- */
-export function requireRealNode(repoRoot = process.cwd()) {
-  if (!process.versions.bun) return process.execPath;
-  const node = resolveExternalNode({ repoRoot, rejectBun: true });
-  if (!node) {
-    throw new Error(
-      "Node.js is required for packed-package consumer checks; put node on PATH or set ELIZA_TEST_NODE",
-    );
-  }
-  return node;
 }
 
 export function buildTestRuntimeEnv(

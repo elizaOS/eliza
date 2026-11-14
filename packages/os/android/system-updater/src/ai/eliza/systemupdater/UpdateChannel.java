@@ -95,12 +95,7 @@ final class UpdateChannel {
                 FileLock held = output.getChannel().tryLock()) {
             if (held == null) throw new IOException("Another download owns this file");
             long received = output.length();
-            if (received > candidate.bytes) {
-                // This partial has never been admitted to the engine. Retain its locked inode,
-                // but remove rejected bytes so a later call can fetch the candidate again.
-                output.setLength(0); output.getFD().sync();
-                throw new IOException("Retained download exceeds expected length");
-            }
+            if (received > candidate.bytes) throw new IOException("Retained download exceeds expected length");
             if (directory.getUsableSpace() < candidate.bytes - received + candidate.bytes + 2L * 1024 * 1024 * 1024) {
                 throw new IOException("Insufficient space for a preserving OS update");
             }
@@ -140,7 +135,6 @@ final class UpdateChannel {
             }
             if (received != candidate.bytes) throw new DownloadDeferred();
             if (!hex(hash.digest()).equals(candidate.sha256)) {
-                output.setLength(0); output.getFD().sync();
                 throw new IOException("Complete update package digest differs");
             }
         } catch (NoSuchAlgorithmException impossible) { throw new IOException(impossible); }

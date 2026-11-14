@@ -30,7 +30,14 @@ function terminalSupportedByEnv(ctx: PluginAutoEnableContext): boolean {
     Boolean(env.ANDROID_ROOT || env.ANDROID_DATA);
   if (!mobile) return true;
 
-  const mode = (env.ELIZA_RUNTIME_MODE ?? "").trim().toLowerCase();
+  const mode = (
+    env.ELIZA_RUNTIME_MODE ??
+    env.RUNTIME_MODE ??
+    env.LOCAL_RUNTIME_MODE ??
+    ""
+  )
+    .trim()
+    .toLowerCase();
   return platform === "android" && mode === "local-yolo";
 }
 

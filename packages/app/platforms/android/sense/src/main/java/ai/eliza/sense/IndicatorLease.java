@@ -70,7 +70,7 @@ public final class IndicatorLease {
   * waits for a fresh acknowledgement of a visible surface, but nothing latches.
   */
  public static boolean sleepLapse(boolean microphoneHeld,ListenerPolicy.IndicatorPause pause,Loss loss){
-  return !microphoneHeld&&pause==ListenerPolicy.IndicatorPause.DISPLAY_OFF&&(loss==Loss.EXPIRED||loss==Loss.PENDING);
+  return !microphoneHeld&&pause==ListenerPolicy.IndicatorPause.DISPLAY_OFF&&(loss==Loss.EXPIRED||loss==Loss.PENDING||loss==Loss.REPLACED);
  }
 
  private long generation;

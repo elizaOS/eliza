@@ -212,7 +212,7 @@ export function selectTasks(options) {
 }
 
 function usage() {
-  return `Usage: bun packages/scripts/launch-qa/run.ts [--suite quick|release|nightly|all] [--only a,b] [--skip a,b] [--artifacts-dir <path>] [--dry-run] [--json] [--list] [--continue-on-failure]
+  return `Usage: node packages/scripts/launch-qa/run.ts [--suite quick|release|nightly|all] [--only a,b] [--skip a,b] [--artifacts-dir <path>] [--dry-run] [--json] [--list] [--continue-on-failure]
 
 Logs and summary.json are written under a fresh directory in ${os.tmpdir()} unless --artifacts-dir is set.
 

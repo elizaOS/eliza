@@ -13,9 +13,6 @@ import { describe, expect, it } from "vitest";
 import {
   buildNativeSignInIntentUrl,
   NATIVE_CALLBACK_SCRUB_SCRIPT,
-  nativeBillingReturnFallback,
-  nativeBillingReturnPath,
-  nativeSignInCallbackFallback,
   onRequest,
   resolveCanonicalPageRedirect,
   selectNativeAuthCallback,
@@ -32,7 +29,7 @@ const CALLBACK_CONFIG = ["eliza.app", "staging.eliza.app"].map((host) => ({
   appName: "Example Reader",
 }));
 const CALLBACK_ENV = {
-  callbacks: JSON.stringify(CALLBACK_CONFIG),
+  ELIZA_NATIVE_AUTH_CALLBACKS_JSON: JSON.stringify(CALLBACK_CONFIG),
 };
 const ORIGIN = "https://cloud.eliza.app";
 
@@ -78,41 +75,8 @@ const assetHit = () =>
 const run = (
   request: Request,
   next: (input?: Request) => Promise<Response>,
-  env: PagesProxyEnv & { callbacks?: string } = CALLBACK_ENV,
-): Promise<Response> =>
-  onRequest({
-    request,
-    env: env.API_WORKER
-      ? env
-      : {
-          ...env,
-          API_WORKER: {
-            fetch: async (forwarded: Request) => {
-              const url = new URL(
-                new URL(forwarded.url).searchParams.get("url") ?? forwarded.url,
-              );
-              try {
-                const callback = selectNativeAuthCallback(env.callbacks, url);
-                if (callback)
-                  return nativeSignInCallbackFallback(url, callback);
-                const billing = selectNativeAuthCallback(
-                  env.callbacks,
-                  url,
-                  "billing-return",
-                );
-                if (billing) return nativeBillingReturnFallback(url, billing);
-                return new Response("Not Found", { status: 404 });
-              } catch {
-                return new Response(
-                  "Native auth callback configuration is invalid",
-                  { status: 503 },
-                );
-              }
-            },
-          },
-        },
-    next,
-  });
+  env: PagesProxyEnv = CALLBACK_ENV,
+): Promise<Response> => onRequest({ request, env, next });
 
 describe("pages middleware /assets/* serving", () => {
   it("converts an asset miss (SPA fallback) into an uncacheable 404", async () => {
@@ -276,52 +240,6 @@ describe("unified host migration", () => {
         {},
       ),
     ).toBe("https://api-staging.eliza.app/api/health?full=1");
-  });
-
-  it("sends a product Cloud only to its own configured API origin", async () => {
-    const product = { CLOUD_DEPLOYMENT_ID: "example-product" };
-    expect(
-      resolveApiWorkerTarget("https://cloud.example.org/api/health?full=1", {
-        ...product,
-        API_UPSTREAM: "https://api.example.org/",
-      }),
-    ).toBe("https://api.example.org/api/health?full=1");
-
-    // No Eliza fallback: a missing or malformed upstream stops the request
-    // before it reaches the bound Worker.
-    for (const upstream of [
-      undefined,
-      "",
-      "api.example.org",
-      "http://api.example.org",
-      "https://api.example.org/v1",
-      "https://user@api.example.org",
-    ]) {
-      const forwarded: Request[] = [];
-      const response = await proxyToApiWorker({
-        request: new Request("https://cloud.example.org/api/health"),
-        env: {
-          ...product,
-          API_UPSTREAM: upstream,
-          API_WORKER: {
-            fetch: async (request) => {
-              forwarded.push(request);
-              return new Response("bound");
-            },
-          },
-        },
-      });
-      expect(response.status).toBe(503);
-      expect(response.headers.get("Cache-Control")).toBe("no-store");
-      expect(forwarded).toEqual([]);
-    }
-
-    // The eliza deployment, named or implied, keeps its host-based fallback.
-    expect(
-      resolveApiWorkerTarget("https://cloud.eliza.app/api/health", {
-        CLOUD_DEPLOYMENT_ID: "eliza",
-      }),
-    ).toBe("https://api.eliza.app/api/health");
   });
 
   it("proxies exact protocol roots and OIDC discovery through the bound API Worker", async () => {
@@ -731,7 +649,10 @@ describe("native sign-in callback fallback", () => {
       appName: '<Notes & "Friends">',
     };
     const env = {
-      callbacks: JSON.stringify([...CALLBACK_CONFIG, other]),
+      ELIZA_NATIVE_AUTH_CALLBACKS_JSON: JSON.stringify([
+        ...CALLBACK_CONFIG,
+        other,
+      ]),
     };
     const response = await run(
       new Request(`${other.redirectUri}?package=attacker&code=secret`),
@@ -745,7 +666,7 @@ describe("native sign-in callback fallback", () => {
     expect(html).not.toContain("package=attacker");
     expect(
       selectNativeAuthCallback(
-        env.callbacks,
+        env.ELIZA_NATIVE_AUTH_CALLBACKS_JSON,
         new URL("https://eliza.app/notes/return"),
       ),
     ).toBeNull();
@@ -766,7 +687,7 @@ describe("native sign-in callback fallback", () => {
       const response = await run(
         new Request(CALLBACK),
         async () => spaFallback(),
-        { callbacks: JSON.stringify(entries) },
+        { ELIZA_NATIVE_AUTH_CALLBACKS_JSON: JSON.stringify(entries) },
       );
       expect(response.status).toBe(503);
     }
@@ -780,87 +701,5 @@ describe("native sign-in callback fallback", () => {
     expect(response.headers.get("Content-Type")).toContain("text/html");
     expect(await response.text()).toContain("app");
     expect(response.headers.get("X-Robots-Tag")).toBeNull();
-  });
-});
-
-describe("native checkout return fallback", () => {
-  const RETURN = "https://eliza.app/reader/billing/return";
-  const unescapeHtml = (value: string) =>
-    value.replaceAll("&amp;", "&").replaceAll("&quot;", '"');
-  const href = async (url: string): Promise<string> => {
-    const response = await run(new Request(url), async () => spaFallback());
-    expect(response.status).toBe(200);
-    expect(response.headers.get("Cache-Control")).toBe("no-store");
-    expect(response.headers.get("Content-Security-Policy")).toContain(
-      "default-src 'none'",
-    );
-    const html = await response.text();
-    expect(html).not.toContain("<script");
-    // An unauthenticated address never claims a payment or a plan.
-    expect(html).toContain("Return to Example Reader to finish.");
-    expect(html).not.toMatch(/payment|paid|plan|confirm|received/i);
-    const match = html.match(/<a id="open" href="([^"]*)">/);
-    expect(match).not.toBeNull();
-    return unescapeHtml(match?.[1] ?? "");
-  };
-
-  it("derives the return from the configured sign-in callback only", () => {
-    expect(
-      nativeBillingReturnPath("https://eliza.app/alphaphone/auth/callback"),
-    ).toBe("/alphaphone/billing/return");
-    expect(nativeBillingReturnPath("https://eliza.app/auth/callback")).toBe(
-      "/billing/return",
-    );
-    expect(
-      nativeBillingReturnPath("https://eliza.app/notes/return"),
-    ).toBeNull();
-    expect(
-      selectNativeAuthCallback(
-        CALLBACK_ENV.callbacks,
-        new URL(RETURN),
-        "billing-return",
-      )?.androidPackage,
-    ).toBe("org.example.reader");
-    // The sign-in callback and the checkout return never select each other.
-    expect(
-      selectNativeAuthCallback(CALLBACK_ENV.callbacks, new URL(RETURN)),
-    ).toBeNull();
-    expect(resolveCanonicalPageRedirect(`${RETURN}?result=cancel`)).toBeNull();
-  });
-
-  it("hands the app only a well-formed session id and result", async () => {
-    expect(await href(`${RETURN}?session_id=cs_test_a1B2&result=success`)).toBe(
-      "intent://eliza.app/reader/billing/return?session_id=cs_test_a1B2&result=success#Intent;scheme=https;package=org.example.reader;end",
-    );
-    expect(await href(`${RETURN}?result=cancel`)).toBe(
-      "intent://eliza.app/reader/billing/return?result=cancel#Intent;scheme=https;package=org.example.reader;end",
-    );
-    // Anything else in the request is dropped, never reflected.
-    expect(
-      await href(
-        `${RETURN}?session_id=${encodeURIComponent("cs_test_a;package=evil;end")}&result=paid&code=secret#Intent;package=evil;end`,
-      ),
-    ).toBe(
-      "intent://eliza.app/reader/billing/return#Intent;scheme=https;package=org.example.reader;end",
-    );
-  });
-
-  it("serves the SPA for an unconfigured return and fails closed on a route collision", async () => {
-    const spa = await run(
-      new Request("https://eliza.app/other/billing/return?result=cancel"),
-      async () => spaFallback(),
-    );
-    expect(await spa.text()).toContain("app</body>");
-    const collision = await run(
-      new Request(RETURN),
-      async () => spaFallback(),
-      {
-        callbacks: JSON.stringify([
-          CALLBACK_CONFIG[0],
-          { ...CALLBACK_CONFIG[0], redirectUri: RETURN },
-        ]),
-      },
-    );
-    expect(collision.status).toBe(503);
   });
 });

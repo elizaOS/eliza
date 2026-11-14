@@ -96,18 +96,9 @@ describe("computer-use browser fixture (real e2e)", () => {
       parameters: { selector: "#safe-action" },
     });
     expect(completed.result).toMatchObject({ success: true });
-    const verification = completed.result.verificationObservation;
-    expect(verification).toMatchObject({
-      sequence: frame.provenance.sequence + 1,
-      source: "browser",
-    });
-    expect(verification?.observationId).not.toBe(
-      frame.provenance.observationId,
-    );
-    expect(verification?.sha256).not.toBe(frame.provenance.sha256);
     expect(completed.session.lastOutcome).toMatchObject({
       actionId: "verify-local-fixture",
-      observationId: verification?.observationId,
+      observationId: frame.provenance.observationId,
       status: "SUCCEEDED",
     });
 

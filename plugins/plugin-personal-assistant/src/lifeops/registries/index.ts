@@ -1,6 +1,6 @@
 /**
  * Registries barrel. BlockerRegistry, AnchorRegistry, EventKindRegistry,
- * FamilyRegistry, WorkflowStepRegistry. No cross-imports
+ * FamilyRegistry, WorkflowStepRegistry, FeatureFlagRegistry. No cross-imports
  * between siblings — each registry stands alone.
  */
 
@@ -53,6 +53,20 @@ export {
   registerBuiltinTelemetryFamilies,
   registerFamilyRegistry,
 } from "./family-registry.js";
+export {
+  DEFAULT_FEATURE_FLAG_PACK,
+  LIFEOPS_BUILTIN_FEATURE_KEYS,
+  registerDefaultFeatureFlagPack,
+} from "./feature-flag-default-pack.js";
+export {
+  __resetFeatureFlagRegistryForTests,
+  createFeatureFlagRegistry,
+  type FeatureFlagContribution,
+  type FeatureFlagRegistry,
+  getFeatureFlagRegistry,
+  registerFeatureFlagRegistry,
+  UnknownFeatureFlagError,
+} from "./feature-flag-registry.js";
 export {
   __resetSignalSourceRegistryForTests,
   createSignalSourceRegistry,

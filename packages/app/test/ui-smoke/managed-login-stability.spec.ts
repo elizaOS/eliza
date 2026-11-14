@@ -26,7 +26,9 @@ const PROVIDERS = {
 };
 
 const STABILITY_WINDOW_MS = 5_500;
-const TEST_AUTH_ENABLED = process.env.VITE_PLAYWRIGHT_TEST_AUTH === "true";
+const TEST_AUTH_ENABLED =
+  process.env.VITE_PLAYWRIGHT_TEST_AUTH === "true" ||
+  process.env.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true";
 const PERSONAL_ID = "personal:11111111-1111-5111-8111-111111111111";
 const ONBOARDING_TOKEN = "aaaaaaaa-test-test-test-tokentoken01";
 const SURFACES = [

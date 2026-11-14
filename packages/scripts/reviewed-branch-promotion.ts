@@ -67,8 +67,8 @@ export async function verifyMergedPromotion(api, targetBranch, targetSha) {
 
 export async function requestReviewedPromotion(api, promotion) {
   const { sourceBranch, targetBranch, sourceSha, sourceRunUrl } = promotion;
-  if (sourceBranch !== "staging" || targetBranch !== "main") {
-    throw new Error("promotion must follow staging -> main");
+  if ({ develop: "staging", staging: "main" }[sourceBranch] !== targetBranch) {
+    throw new Error("promotion must follow develop -> staging -> main");
   }
   if (!SHA.test(sourceSha)) throw new Error("invalid promotion source SHA");
   const source = await api.request("GET", `/git/ref/heads/${sourceBranch}`);

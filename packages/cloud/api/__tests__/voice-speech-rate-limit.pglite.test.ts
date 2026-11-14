@@ -439,9 +439,9 @@ describe("Worker speech rate limit without an admission snapshot", () => {
 
       const response = await speakOnce("consent", rawKey, true);
       expect(response.status).toBe(allowed ? 200 : 401);
-      // A denial also triggers the existing authoritative cache refresh.
-      // Its fence check is separate from the one consent retry.
-      expect(credentialChecks).toBe(allowed ? 2 : 3);
+      // This release baseline returns a denied credential without a background
+      // cache refresh. Both outcomes perform the single consent retry.
+      expect(credentialChecks).toBe(2);
       expect(gateCalls).toHaveLength(allowed ? 1 : 0);
       expect(speechPrepares).toBe(allowed ? 1 : 0);
     });

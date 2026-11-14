@@ -28,26 +28,6 @@ async function bodyOf(res: Response): Promise<{
   return (await res.json()) as { success: false; error: string; code: string };
 }
 
-describe("funding refusals raised by the billing services", () => {
-  // The billing services raise their own InsufficientCreditsError and its
-  // subclasses, none of which is an ApiError; each sets its own name.
-  for (const name of [
-    "InsufficientCreditsError",
-    "AllowanceExhaustedError",
-    "BillingHoldActiveError",
-  ]) {
-    it(`answers 402 insufficient_credits for ${name}`, async () => {
-      const error = Object.assign(
-        new Error("Insufficient credits. Required: $0.0200, Available: $0.0000"),
-        { name },
-      );
-      const res = failureResponse(fakeContext(), error);
-      expect(res.status).toBe(402);
-      expect((await bodyOf(res)).code).toBe("insufficient_credits");
-    });
-  }
-});
-
 describe("failureResponse infrastructure-error sanitization", () => {
   it("reports a credential boundary outage as a retryable 503 without its diagnostic", async () => {
     const error = Object.assign(

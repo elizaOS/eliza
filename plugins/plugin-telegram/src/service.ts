@@ -56,7 +56,6 @@ import {
   resolveDefaultTelegramAccountId,
   resolveTelegramAccount,
 } from "./accounts";
-import { preserveTelegramCancellation } from "./cancellation";
 import { TELEGRAM_SERVICE_NAME } from "./constants";
 import { checkTelegramDmAccess, resolveTelegramDmPolicy } from "./dm-policy";
 import { resolveTelegramRuntimeEntityId } from "./identity";
@@ -471,11 +470,6 @@ export class TelegramService extends Service {
     }
     const bot = new Telegraf(account.botToken, {
       telegram: { apiRoot: account.apiRoot },
-    });
-    preserveTelegramCancellation(bot.telegram);
-    bot.use((ctx, next) => {
-      preserveTelegramCancellation(ctx.telegram);
-      return next();
     });
     const messageManager = new MessageManager(
       bot,

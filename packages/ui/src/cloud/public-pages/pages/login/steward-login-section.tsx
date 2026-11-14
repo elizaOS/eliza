@@ -162,12 +162,14 @@ const STEWARD_TENANT_ID = configuredStewardTenantId(DEFAULT_STEWARD_TENANT_ID);
  * e2e preload (or their own seed) minted, and `/api/test/auth/session` trades
  * it for a test session cookie. The button stays hidden when the key is absent.
  */
-// A build-time constant, so production bundles drop every test sign-in branch.
-const PLAYWRIGHT_TEST_AUTH_BUILD =
-  import.meta.env?.VITE_PLAYWRIGHT_TEST_AUTH === "true";
 function readLocalDedicatedTestApiKey(): string | null {
   const fromVite = import.meta.env.VITE_LOCAL_DEDICATED_TEST_API_KEY;
   if (typeof fromVite === "string" && fromVite.trim()) return fromVite.trim();
+  const fromNext =
+    typeof process !== "undefined"
+      ? process.env?.NEXT_PUBLIC_LOCAL_DEDICATED_TEST_API_KEY
+      : undefined;
+  if (typeof fromNext === "string" && fromNext.trim()) return fromNext.trim();
   return null;
 }
 type AuthStep =
@@ -624,10 +626,15 @@ export default function StewardLoginSection({
 }: {
   phoneOnly?: boolean;
 }) {
-  const PLAYWRIGHT_TEST_AUTH_ENABLED = PLAYWRIGHT_TEST_AUTH_BUILD && !phoneOnly;
-  const LOCAL_DEDICATED_TEST_API_KEY = PLAYWRIGHT_TEST_AUTH_ENABLED
-    ? readLocalDedicatedTestApiKey()
-    : null;
+  // Resolve the build-time test switches for each mounted section. Vite still
+  // replaces these values in production builds, while tests can exercise each
+  // supported configuration without invalidating React's module instance.
+  const PLAYWRIGHT_TEST_AUTH_ENABLED =
+    !phoneOnly &&
+    (import.meta.env.VITE_PLAYWRIGHT_TEST_AUTH === "true" ||
+      (typeof process !== "undefined" &&
+        process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true"));
+  const LOCAL_DEDICATED_TEST_API_KEY = readLocalDedicatedTestApiKey();
   const LOCAL_DEDICATED_TEST_SIGN_IN_ENABLED =
     PLAYWRIGHT_TEST_AUTH_ENABLED && LOCAL_DEDICATED_TEST_API_KEY !== null;
   const t = useCloudT();
@@ -1493,7 +1500,7 @@ export default function StewardLoginSection({
   }
 
   async function handleLocalDedicatedSignIn() {
-    if (!PLAYWRIGHT_TEST_AUTH_BUILD || !LOCAL_DEDICATED_TEST_API_KEY) return;
+    if (!LOCAL_DEDICATED_TEST_API_KEY) return;
     setLoading("local");
     setError(null);
     try {
@@ -2894,7 +2901,7 @@ export default function StewardLoginSection({
         </Alert>
       )}
 
-      {PLAYWRIGHT_TEST_AUTH_BUILD && LOCAL_DEDICATED_TEST_SIGN_IN_ENABLED && (
+      {LOCAL_DEDICATED_TEST_SIGN_IN_ENABLED && (
         <div className="space-y-2">
           <Button
             type="button"

@@ -15,7 +15,7 @@ import { admitBrowserVendor } from "./stage-browser-apps.ts";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../..");
 const USAGE =
-  "Usage: bun scripts/android/sync-to-aosp.ts [--brand-config <PATH>] [--source-vendor <VENDOR_DIR>] <AOSP_ROOT>";
+  "Usage: node scripts/android/sync-to-aosp.ts [--brand-config <PATH>] [--source-vendor <VENDOR_DIR>] <AOSP_ROOT>";
 
 export function parseSubArgs(argv, brand) {
   const args = {

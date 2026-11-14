@@ -6,13 +6,6 @@
     "paths": {
       "@elizaos/cloud-sdk/*": ["../cloud/sdk/src/*"],
       "@elizaos/plugin-assistant/*": ["../../plugins/plugin-assistant/src/*"],
-      "@elizaos/plugin-personal-assistant/*": [
-        "../../plugins/plugin-personal-assistant/src/*"
-      ],
-      "@elizaos/plugin-reminders": [
-        "../../plugins/plugin-reminders/src/index.ts"
-      ],
-      "@elizaos/plugin-goals": ["../../plugins/plugin-goals/src/index.ts"],
       "@elizaos/plugin-elizacloud/*": ["../../plugins/plugin-elizacloud/src/*"],
       "@elizaos/app": ["./src/index.ts"],
       "@elizaos/app/*": ["./src/*"],
@@ -39,9 +32,11 @@
     "src/renderer",
     "src/first-run-boot-patches.ts",
     "src/native-transcript-bridge.ts",
+    "src/env-prefix.js",
     "src/web-ws-base-fix.ts",
     "src/camera-bridge-responder.ts",
     "src/remote-controller-deep-link.ts",
+    "src/brand-env.ts",
     "src/main.tsx",
     "src/embed-bootstrap.ts",
     "vite-env.d.ts",
@@ -69,6 +64,7 @@
     "src/mobile-lifecycle.ts",
     "src/desktop-hotkey.ts",
     "src/deep-link-routing.ts",
+    "src/env-prefix.d.ts",
     "src/url-trust-policy.ts",
     "src/host-externals.ts",
     "src/renderer-build-manifest-plugin.test.ts",

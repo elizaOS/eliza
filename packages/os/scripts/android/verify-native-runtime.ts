@@ -14,11 +14,13 @@ import { resolve } from "node:path";
 const ABI_BY_ARCH = Object.freeze({
   arm64: "arm64-v8a",
   x86_64: "x86_64",
+  riscv64: "riscv64",
 });
 
 const ELF_MACHINE_BY_ABI = Object.freeze({
   "arm64-v8a": 183,
   x86_64: 62,
+  riscv64: 243,
 });
 
 const REQUIRED_ABI_SYMBOLS = Object.freeze([
@@ -36,7 +38,7 @@ function fail(message) {
 }
 
 export function targetAbi(target) {
-  const match = /^android-(arm64|x86_64)-cpu-fused$/.exec(target);
+  const match = /^android-(arm64|x86_64|riscv64)-cpu-fused$/.exec(target);
   if (!match) {
     fail(
       `unsupported release target ${target}; only Android CPU-fused targets are permitted`,

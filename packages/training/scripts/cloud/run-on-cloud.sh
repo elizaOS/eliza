@@ -182,7 +182,7 @@ git clone --filter=blob:none "$GIT_REMOTE" eliza
 cd eliza
 git checkout "$GIT_SHA"
 bun install --frozen-lockfile || bun install
-ELIZA_MTP_SKIP_SERVER_STRUCTURED_OUTPUT=1 bun packages/app/scripts/build-llama-cpp-mtp.ts --target linux-x64-cuda
+ELIZA_MTP_SKIP_SERVER_STRUCTURED_OUTPUT=1 node packages/app/scripts/build-llama-cpp-mtp.ts --target linux-x64-cuda
 make -C packages/inference/verify kernel-contract reference-test
 REMOTE
 )"
@@ -214,7 +214,7 @@ REMOTE
 # e2e CUDA bench harness. The repo bench entrypoint reads the bench_results
 # dir; we point it at /workspace and copy out.
 ELIZA1_BENCH_TIER=$TIER ELIZA1_BENCH_REGISTRY_KEY=$REG_KEY \
-  bun packages/inference/verify/eliza1_gates_collect.mjs --backend cuda --bench --out /workspace/bench.json || \
+  node packages/inference/verify/eliza1_gates_collect.mjs --backend cuda --bench --out /workspace/bench.json || \
   { echo "bench harness not present on this commit - emitting toolchain-only evidence"; \
     printf "{\"schemaVersion\":1,\"backend\":\"cuda\",\"gpu\":\"%s\",\"tier\":\"%s\",\"status\":\"toolchain-only\",\"note\":\"eliza1 bench harness not on this commit\"}\\n" "$GPU" "$TIER" > /workspace/bench.json; }
 cp /workspace/bench.json /workspace/eliza/bench.json 2>/dev/null || true

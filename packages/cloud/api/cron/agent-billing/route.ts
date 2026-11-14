@@ -50,7 +50,7 @@ import {
   CRON_SCHEDULED_TIME_HEADER,
   getScheduledCronInvocationMetadata,
   scheduledCronInvocationId,
-} from "../../src/cron";
+} from "@/api-app/cron";
 
 const REBILL_GUARD_MINUTES = 55;
 const AGENT_BILLING_PATH = "/api/cron/agent-billing";

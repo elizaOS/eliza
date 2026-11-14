@@ -18,6 +18,7 @@ export {
 	BargeInController,
 	type BargeInControllerConfig,
 	type BargeInListener,
+	type CancelSignal,
 } from "./barge-in";
 export {
 	type BionicAsrHost,
@@ -448,6 +449,7 @@ export {
 	END_HANGOVER_SEMANTIC_EOT_MS,
 	type ExternalVadAdapter,
 	GgmlSileroVad,
+	NativeSileroVad,
 	type ResolvedVadProvider,
 	RmsEnergyGate,
 	type RmsEnergyGateConfig,

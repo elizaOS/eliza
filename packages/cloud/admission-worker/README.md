@@ -27,6 +27,7 @@ Use the pinned toolchain and normal built workspace dependencies. From the root:
 ```bash
 bun packages/cloud/admission-worker/verify-staging-contract.ts
 bun run --cwd packages/cloud/api test inference-recovery-service
+bun run --cwd packages/cloud/api test inference-rate-deadline
 bun run --cwd packages/cloud/shared test inference-admission-recovery.pglite
 bun run --cwd packages/cloud/shared test sdk-provider-telemetry.integration
 bun packages/cloud/api/node_modules/wrangler/bin/wrangler.js deploy --config packages/cloud/admission-worker/wrangler.toml --dry-run --outdir test-results/admission-worker-candidate

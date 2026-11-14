@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "url": "https://github.com/elizaOS/research.git",
+    "ref": "refs/heads/main",
+    "commit": "2296b67262e629286a2df7ff5087bf141a66c83f",
+    "root": "chip/sw/aosp-device"
+  },
+  "trees": [
+    {
+      "source": "device/eliza/eliza_ai_soc",
+      "destination": "device/eliza/eliza_ai_soc",
+      "requiredFiles": [
+        "hal/e1_npu/Android.bp",
+        "hal/e1_npu/1.0/Android.bp",
+        "hal/e1_npu/1.0/IE1Npu.hal",
+        "hal/e1_npu/1.0/types.hal",
+        "hal/e1_npu_sim/Android.bp",
+        "hal/e1_npu_sim/E1NpuSim.cpp",
+        "hal/e1_npu_sim/E1NpuSim.h",
+        "hal/e1_npu_sim/service.cpp",
+        "hal/e1_npu_sim/vendor.eliza.e1_npu@1.0-service.sim.rc",
+        "hal/e1_npu_sim/vendor.eliza.e1_npu@1.0-service.sim.xml",
+        "sepolicy/e1_npu.te",
+        "sepolicy/file_contexts",
+        "sepolicy/hwservice_contexts",
+        "sepolicy/property_contexts"
+      ]
+    },
+    {
+      "source": "device/eliza/cuttlefish_e1",
+      "destination": "device/eliza/cuttlefish_e1",
+      "requiredFiles": [
+        "README.md",
+        "eliza_e1_cuttlefish.mk",
+        "framework_compatibility_matrix.xml",
+        "manifest.fragment.xml",
+        "sepolicy/file_contexts",
+        "sepolicy/hal_e1_npu_default.te"
+      ]
+    }
+  ],
+  "license": {
+    "requiredFiles": [
+      "device/eliza/eliza_ai_soc/hal/e1_npu/Android.bp",
+      "device/eliza/eliza_ai_soc/hal/e1_npu/1.0/Android.bp",
+      "device/eliza/eliza_ai_soc/hal/e1_npu_sim/Android.bp"
+    ],
+    "notice": "The imported Android.bp modules declare Android-Apache-2.0. Review upstream research notices before redistributing an image."
+  }
+}

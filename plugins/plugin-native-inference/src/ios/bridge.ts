@@ -40,7 +40,13 @@ import {
   transcriptPreview,
   transcriptSpeakerCount,
 } from "@elizaos/core/protocol";
-import { isCloudInferenceSelectedInConfig } from "@elizaos/host/protocol";
+import {
+  buildBrandEnvAliases,
+  getBootConfig,
+  isCloudInferenceSelectedInConfig,
+  readAliasedEnv,
+  setBootConfig,
+} from "@elizaos/host/protocol";
 import {
   closeDownloadWriter,
   teardownFailedDownload,
@@ -191,6 +197,13 @@ type AgentModule = {
   dispatchRoute: DispatchRoute;
   cloudInferenceRejection: () => string | null;
 };
+const IOS_BRIDGE_DEFAULT_ENV_PREFIX = "MILADY";
+const IOS_BRIDGE_BRAND_ENV_SUFFIXES = [
+  "STATE_DIR",
+  "NAMESPACE",
+  "PLATFORM",
+  "API_PORT",
+] as const;
 async function loadAgentModule(): Promise<AgentModule> {
   const {
     bootElizaRuntime,
@@ -545,6 +558,7 @@ async function bootRuntimeWithRetry(
 async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
   installIosBackendCrashGuards();
   const argvEnv = hydrateIosEnvFromArgv();
+  installIosBridgeEnvAliases();
   // ── Mobile filesystem sandbox ────────────────────────────────────────────
   // Install the fs shim as the very first action — before any runtime code
   // runs — so that PGlite, trajectory logs, skill files, and all other agent
@@ -559,7 +573,7 @@ async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
     process.env.MOBILE_WORKSPACE_ROOT ||
     argvEnv.appSupportDir ||
     process.env.ELIZA_WORKSPACE_DIR ||
-    process.env.ELIZA_STATE_DIR?.trim() ||
+    readAliasedEnv("ELIZA_STATE_DIR") ||
     process.env.ELIZA_HOME ||
     (process.env.HOME
       ? `${process.env.HOME}/Library/Application Support/Eliza/workspace`
@@ -575,9 +589,11 @@ async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
       __ELIZA_DISABLE_DIRECT_RUN?: boolean;
     }
   ).__ELIZA_DISABLE_DIRECT_RUN = true;
-  if (!process.env.ELIZA_PLATFORM?.trim()) {
+  if (!readAliasedEnv("ELIZA_PLATFORM")) {
     process.env.ELIZA_PLATFORM = "ios";
   }
+  process.env.ELIZA_MOBILE_PLATFORM =
+    process.env.ELIZA_MOBILE_PLATFORM || "ios";
   process.env.ELIZA_IOS_LOCAL_BACKEND =
     process.env.ELIZA_IOS_LOCAL_BACKEND || "1";
   process.env.ELIZA_DISABLE_DIRECT_RUN =
@@ -2226,13 +2242,33 @@ function callIosHost(
   });
 }
 export function resolveMobileStateDir(): string {
-  const explicit =
-    process.env.ELIZA_STATE_DIR?.trim() || process.env.ELIZA_HOME;
+  installIosBridgeEnvAliases();
+  const explicit = readAliasedEnv("ELIZA_STATE_DIR") || process.env.ELIZA_HOME;
   if (explicit?.trim()) return explicit.trim();
   if (process.env.HOME?.trim()) {
     return path.join(process.env.HOME.trim(), ".eliza");
   }
   return "/tmp/eliza";
+}
+function installIosBridgeEnvAliases(): void {
+  const config = getBootConfig();
+  if (config.envAliases?.length) return;
+  setBootConfig({
+    ...config,
+    envAliases: resolveIosBridgeEnvAliases(),
+  });
+}
+function resolveIosBridgeEnvAliases(): ReturnType<typeof buildBrandEnvAliases> {
+  const prefixes = new Set<string>([IOS_BRIDGE_DEFAULT_ENV_PREFIX]);
+  for (const key of Object.keys(process.env)) {
+    for (const suffix of IOS_BRIDGE_BRAND_ENV_SUFFIXES) {
+      const marker = `_${suffix}`;
+      if (!key.endsWith(marker)) continue;
+      const prefix = key.slice(0, -marker.length);
+      if (prefix && prefix !== "ELIZA") prefixes.add(prefix);
+    }
+  }
+  return [...prefixes].flatMap((prefix) => buildBrandEnvAliases(prefix));
 }
 function localInferenceRootPath(): string {
   return path.join(resolveMobileStateDir(), "local-inference");

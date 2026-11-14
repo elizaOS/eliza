@@ -12,8 +12,8 @@ import {
   type IAgentRuntime,
   Service,
 } from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 import {
-  expandHome,
   isAbsolutePath,
   isBlockedPath,
   isUncPath,
@@ -250,6 +250,13 @@ function parseList(s: string): string[] {
     .filter((p) => p.length > 0);
 }
 
+function expandHome(p: string): string {
+  if (p === "~" || p === "$HOME") return homedir();
+  if (p.startsWith("~/")) return path.join(homedir(), p.slice(2));
+  if (p.startsWith("$HOME/")) return path.join(homedir(), p.slice(6));
+  return p;
+}
+
 function defaultBlockedPaths(): string[] {
   const home = homedir();
   // User-private home subdirs we never want the agent to touch on any OS.
@@ -352,7 +359,7 @@ function defaultBlockedPaths(): string[] {
 
 function isAndroidRuntime(): boolean {
   return (
-    process.env.ELIZA_PLATFORM?.trim().toLowerCase() === "android" ||
+    readAliasedEnv("ELIZA_PLATFORM")?.toLowerCase() === "android" ||
     Boolean(process.env.ANDROID_ROOT || process.env.ANDROID_DATA)
   );
 }

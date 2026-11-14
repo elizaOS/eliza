@@ -103,6 +103,11 @@
         "$TURBO_ROOT$/packages/scripts/lib/rewrite-module-specifiers.ts"
       ]
     },
+    "@elizaos/electrobun#build": {
+      "dependsOn": ["@elizaos/app#build:dist", "^build"],
+      "cache": false,
+      "outputs": []
+    },
     "@elizaos/plugin-assistant#build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**"]
@@ -161,8 +166,24 @@
         "@elizaos/plugin-pdf#build"
       ]
     },
+    "@elizaos/os-usb-installer#typecheck": {
+      "dependsOn": [
+        "typecheck:deps",
+        "@elizaos/ui#build",
+        "@elizaos/host#build",
+        "@elizaos/contracts#build",
+        "@elizaos/voice#build"
+      ]
+    },
     "@elizaos/os#typecheck": {
-      "dependsOn": ["typecheck:deps", "^build"]
+      "dependsOn": [
+        "typecheck:deps",
+        "^build",
+        "@elizaos/ui#build",
+        "@elizaos/host#build",
+        "@elizaos/contracts#build",
+        "@elizaos/voice#build"
+      ]
     },
     "@elizaos/benchmark-eliza-host#typecheck": {
       "dependsOn": ["typecheck:deps", "^build"]
@@ -371,6 +392,24 @@
         "@elizaos/auth#build",
         "@elizaos/plugin-assistant#build",
         "@elizaos/plugin-sqlite#build",
+        "@elizaos/plugin-web-search#build"
+      ]
+    },
+    "@elizaos/electrobun#typecheck": {
+      "dependsOn": [
+        "typecheck:deps",
+        "@elizaos/auth#build",
+        "@elizaos/ui#build",
+        "@elizaos/plugin-calendar#build",
+        "@elizaos/plugin-inbox#build",
+        "@elizaos/plugin-knowledge#build",
+        "@elizaos/plugin-meetings#build",
+        "@elizaos/plugin-native-filesystem#build",
+        "@elizaos/plugin-notes#build",
+        "@elizaos/plugin-pty#build",
+        "@elizaos/plugin-relationships#build",
+        "@elizaos/plugin-todos#build",
+        "@elizaos/plugin-vision#build",
         "@elizaos/plugin-web-search#build"
       ]
     },
@@ -668,7 +707,12 @@
         "ELIZA_BROWSER_ANDROID_CERTIFICATE",
         "ELIZA_BROWSER_ANDROID_APPLICATION"
       ],
-      "outputs": ["dist/**", "browser/dist/**"],
+      "outputs": [
+        "dist/**",
+        "browser/dist/**",
+        "setup/dist/**",
+        "usb-installer/dist/**"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/plugins/plugin-browser/src/native-wire.ts"

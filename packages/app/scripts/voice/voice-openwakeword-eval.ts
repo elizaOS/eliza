@@ -37,7 +37,7 @@ function parseArgs(argv) {
 }
 
 function printHelp() {
-  console.log(`Usage: bun packages/app/scripts/voice/voice-openwakeword-eval.ts [--report path] [--out dir]
+  console.log(`Usage: node packages/app/scripts/voice/voice-openwakeword-eval.ts [--report path] [--out dir]
 
 Validates real openWakeWord wake-context evidence for issue #9958.
 

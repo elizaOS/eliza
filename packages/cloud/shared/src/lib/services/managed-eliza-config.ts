@@ -88,7 +88,8 @@ export function resolveCloudPublicUrl(): string {
 
 export function resolveCloudApiBaseUrl(): string {
   const env = getCloudAwareEnv();
-  const explicit = env.ELIZAOS_CLOUD_BASE_URL || env.NEXT_PUBLIC_API_URL;
+  const explicit =
+    env.ELIZAOS_CLOUD_BASE_URL || env.ELIZA_CLOUD_API_BASE_URL || env.NEXT_PUBLIC_API_URL;
   if (explicit) {
     return normalizeBaseUrl(explicit);
   }

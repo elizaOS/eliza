@@ -1,9 +1,3 @@
-import { browserSignInStart } from "@elizaos/cloud-shared/lib/auth/browser-sign-in";
-import { selectNativeAuthCallback } from "@elizaos/cloud-shared/lib/auth/native-auth-callback-config";
-import {
-  admitMobileAppAuthRegistration,
-  MobileAppAuthProtocolError,
-} from "@elizaos/cloud-shared/lib/services/mobile-app-auth";
 /**
  * Full Hono application — imported asynchronously from `index.ts` so the Worker
  * does not evaluate hundreds of route modules during Cloudflare startup validation
@@ -17,7 +11,6 @@ import {
  */
 
 import { runWithDbCacheAsync } from "@elizaos/cloud-shared/db/client";
-import { mobileAppAuthClientsRepository } from "@elizaos/cloud-shared/db/repositories/mobile-app-auth-clients";
 import {
   ApiError,
   failureResponse,
@@ -26,10 +19,6 @@ import {
   getPresentedMobileApiKeySecret,
   mobileApiKeyIngressRateLimitKey,
 } from "@elizaos/cloud-shared/lib/auth/mobile-api-key";
-import {
-  nativeBillingReturnFallback,
-  nativeSignInCallbackFallback,
-} from "@elizaos/cloud-shared/lib/auth/native-callback-fallback";
 import { buildRedisClient } from "@elizaos/cloud-shared/lib/cache/redis-factory";
 import { corsMiddleware } from "@elizaos/cloud-shared/lib/cors/cloud-api-hono-cors";
 import {
@@ -478,6 +467,9 @@ export async function createApp(
   // also mounts /api/ twins of these two files; those are never advertised.
   app.route("/.well-known/openid-configuration", oidcDiscoveryRoute);
   app.route("/.well-known/oidc/jwks.json", oidcJwksRoute);
+  // Android App Link verification fetches this from the link host's root and
+  // never follows a redirect; the Pages middleware proxies it from eliza.app.
+  app.route("/.well-known/assetlinks.json", assetLinksRoute);
 
   // Rate-limit config guard (#9853 P1.1) — never let production silently serve
   // with rate limiting OFF. The limiters fall open whenever REDIS_RATE_LIMITING
@@ -550,101 +542,6 @@ export async function createApp(
       { bindingName: "GLOBAL_RATE_LIMITER" },
     ),
   );
-
-  // Android verification needs a direct root response. Its registration lookup
-  // uses the database, so admit it only after the same global ingress limiter.
-  app.route("/.well-known/assetlinks.json", assetLinksRoute);
-
-  // A single database authority serves native callbacks and browser loopback launches.
-  // Every lookup is behind the global IP limiter, including ordinary Pages misses.
-  const hostedNativeRoute = async (
-    request: Request,
-    env: AppEnv["Bindings"],
-  ): Promise<Response> => {
-    const url = new URL(request.url);
-    if (url.protocol !== "https:" || url.username || url.password)
-      return new Response("Not Found", { status: 404 });
-    try {
-      const record = await mobileAppAuthClientsRepository.findByHostedUrl(
-        `${url.origin}${url.pathname}`,
-      );
-      if (!record)
-        return new Response("Not Found", {
-          status: 404,
-          headers: { "Cache-Control": "no-store" },
-        });
-      await admitMobileAppAuthRegistration(env, record);
-      if (
-        !record.client.callback_android_package &&
-        !record.client.android_package_name
-      )
-        return new Response("Not Found", { status: 404 });
-      const callback = selectNativeAuthCallback(
-        JSON.stringify([
-          {
-            redirectUri: record.client.redirect_uri,
-            androidPackage:
-              record.client.callback_android_package ??
-              record.client.android_package_name,
-            appName: record.app.name,
-            ...(record.client.browser_sign_in
-              ? { browserSignIn: record.client.browser_sign_in }
-              : {}),
-          },
-        ]),
-        url,
-        record.client.browser_sign_in?.startPath === url.pathname
-          ? "browser-start"
-          : url.pathname.endsWith("/billing/return")
-            ? "billing-return"
-            : "callback",
-      );
-      if (!callback) return new Response("Not Found", { status: 404 });
-      if (callback.browserSignIn?.startPath === url.pathname)
-        return browserSignInStart(
-          request,
-          new URL(callback.redirectUri),
-          callback.browserSignIn,
-        );
-      if (url.pathname.endsWith("/billing/return"))
-        return nativeBillingReturnFallback(url, callback);
-      return nativeSignInCallbackFallback(url, callback);
-    } catch (error) {
-      if (
-        error instanceof MobileAppAuthProtocolError &&
-        error.protocolCode === "invalid_client"
-      )
-        return new Response("Not Found", {
-          status: 404,
-          headers: { "Cache-Control": "no-store" },
-        });
-      logger.error(
-        "[bootstrap-app] Native callback registration is unavailable",
-        error,
-      );
-      return new Response("Native auth callback is unavailable", {
-        status: 503,
-        headers: { "Cache-Control": "no-store" },
-      });
-    }
-  };
-  app.all("/api/v1/app-auth/mobile/hosted-route", async (c) => {
-    const publicUrl = c.req.query("url");
-    if (!publicUrl) return c.text("Not Found", 404);
-    let target: URL;
-    try {
-      target = new URL(publicUrl);
-    } catch {
-      return c.text("Not Found", 404);
-    }
-    return hostedNativeRoute(new Request(target, c.req.raw), c.env);
-  });
-  app.get("*", async (c, next) => {
-    const path = c.req.path;
-    if (!path.endsWith("/auth/callback") && !path.endsWith("/billing/return"))
-      return next();
-    return hostedNativeRoute(c.req.raw, c.env);
-  });
 
   // A mobile secret bypasses positive auth caches so revocation is immediate.
   // Bound each credential before auth to keep primary-consistency validation

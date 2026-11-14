@@ -78,6 +78,8 @@ export const PHONE_CHECKS = [
 const CVD_TARGETS = new Map([
   ["cuttlefish-x86_64", "x86_64"],
   ["cuttlefish-arm64", "arm64"],
+  ["cuttlefish-riscv64", "riscv64"],
+  ["cuttlefish-riscv64-e1", "riscv64"],
 ]);
 
 function fileContract(entry) {
@@ -114,7 +116,7 @@ export function validateReleaseShape(release) {
     "invalid target kind",
   );
   requireThat(
-    ["arm64", "x86_64"].includes(r.target.architecture) &&
+    ["arm64", "x86_64", "riscv64"].includes(r.target.architecture) &&
       [4096, 16384].includes(r.target.pageSize),
     "invalid architecture/page size",
   );

@@ -3,7 +3,7 @@
  * Gate cold /login transfer samples against login-transfer-budgets.json (#18056).
  *
  * Usage:
- *   bun scripts/check-login-transfer-budget.ts \
+ *   node scripts/check-login-transfer-budget.ts \
  *     --report output-login-transfer/report.json \
  *     [--budgets login-transfer-budgets.json] \
  *     [--update-baseline]

@@ -13,15 +13,16 @@ import {
   TaskService,
   withStandaloneTrajectory,
 } from "@elizaos/core";
-import {
-  type TrajectoriesService,
-  trajectoriesPlugin,
-} from "@elizaos/plugin-assistant";
+import { trajectoriesPlugin } from "@elizaos/plugin-assistant";
 import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
+import {
+  DatabaseTrajectoryLogger,
+  installDatabaseTrajectoryLogger,
+} from "../src/runtime/trajectory-storage.ts";
 
 let fixture: Awaited<ReturnType<typeof createTestRuntime>>;
-let reader: TrajectoriesService;
+let reader: DatabaseTrajectoryLogger;
 let service: TaskService;
 beforeAll(async () => {
   vi.stubEnv("ELIZA_TRAJECTORY_LOGGING", "1");
@@ -31,13 +32,13 @@ beforeAll(async () => {
     plugins: [trajectoriesPlugin],
   });
   await fixture.runtime.getServiceLoadPromise("trajectories");
-  const registered =
-    fixture.runtime.getService<TrajectoriesService>("trajectories");
-  if (!registered) throw new Error("Trajectory service did not start");
-  reader = registered;
+  await installDatabaseTrajectoryLogger(fixture.runtime);
+  reader = new DatabaseTrajectoryLogger(fixture.runtime);
+  reader.setEnabled(true);
   service = new TaskService(fixture.runtime);
 }, 120_000);
 afterAll(async () => {
+  if (reader) await reader.stop();
   if (fixture) await fixture.cleanup();
   vi.unstubAllEnvs();
 });

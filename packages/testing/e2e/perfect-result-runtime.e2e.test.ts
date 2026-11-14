@@ -247,12 +247,6 @@ test.each([false, true])(
           args: { content },
           input,
           contextIds: ["notes"],
-          stage1Fields: {
-            notesRequestEffect: {
-              classification: "mutation_requested",
-              operations: ["create"],
-            },
-          },
           messageToUser: "Saved your note.",
         }),
       ],
@@ -276,7 +270,6 @@ test.each([false, true])(
     });
     const inbound = createMessageMemory({
       id: randomUUID() as UUID,
-      agentId: runtime.agentId,
       entityId: userId,
       roomId,
       content: {
@@ -295,10 +288,7 @@ test.each([false, true])(
         if (message.text) replies.push(message.text);
         return [];
       },
-      {
-        abortSignal: new AbortController().signal,
-        ...(streaming ? { onStreamChunk: async () => {} } : {}),
-      },
+      streaming ? { onStreamChunk: async () => {} } : {},
     );
     const stored = JSON.parse(
       await readFile(

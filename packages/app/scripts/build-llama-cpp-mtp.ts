@@ -27,9 +27,9 @@
  * fallback to a stock (kernel-less) framework.
  *
  * Usage:
- *   bun build-llama-cpp-mtp.ts --target ios-arm64-metal
- *   bun build-llama-cpp-mtp.ts --target ios-arm64-simulator-metal
- *   bun build-llama-cpp-mtp.ts --list
+ *   node build-llama-cpp-mtp.ts --target ios-arm64-metal
+ *   node build-llama-cpp-mtp.ts --target ios-arm64-simulator-metal
+ *   node build-llama-cpp-mtp.ts --list
  *
  * Env overrides:
  *   ELIZA_STATE_DIR                 install root (default ~/.eliza) — MUST match

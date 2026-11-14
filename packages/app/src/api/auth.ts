@@ -5,13 +5,7 @@
  * timing-safe comparison so route handlers don't reimplement it.
  */
 import type http from "node:http";
-import {
-  firstHeaderValue,
-  getProvidedApiToken,
-  type RoleGateRole,
-  roleRank,
-  tokenMatches,
-} from "@elizaos/core";
+import { type RoleGateRole, roleRank } from "@elizaos/core";
 import { resolveApiToken } from "@elizaos/host/protocol";
 import type {
   AuthIdentityRow,
@@ -37,10 +31,14 @@ import {
   SESSION_COOKIE_NAME,
   verifyCsrfToken,
 } from "./auth/sessions.js";
+import {
+  extractHeaderValue,
+  getProvidedApiToken,
+  tokenMatches,
+} from "./auth/tokens.js";
 import { isTrustedLocalRequest } from "./compat-route-shared.js";
 import { sendJsonError } from "./response.js";
 
-export { getProvidedApiToken, tokenMatches } from "@elizaos/core";
 // AuthStore is statically imported elsewhere in the package; the dynamic
 // import below was INEFFECTIVE_DYNAMIC_IMPORT.
 export {
@@ -51,6 +49,11 @@ export {
 } from "./auth/auth-context.js";
 /** Fail-closed cookie reader; the implementation lives with the session model. */
 export { readCookie } from "./auth/sessions.js";
+export {
+  extractHeaderValue,
+  getProvidedApiToken,
+  tokenMatches,
+} from "./auth/tokens.js";
 export interface CompatStateLike {
   current: (EmbedSessionSecretRuntime & AuthRuntimeSource) | null;
   stoppedAuthRuntime?: AuthRuntimeSource | null;
@@ -476,7 +479,7 @@ export async function resolveAuthorizedRouteRole(
     }).catch(denyOnAuthStoreError("resolveAuthorizedRouteRole/cookieSession"));
     if (session) {
       if (csrfRequired) {
-        const csrfHeader = firstHeaderValue(
+        const csrfHeader = extractHeaderValue(
           (req.headers as http.IncomingHttpHeaders)[CSRF_HEADER_NAME],
         );
         if (!verifyCsrfToken(session, csrfHeader)) {

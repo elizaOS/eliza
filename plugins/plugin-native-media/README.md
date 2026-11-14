@@ -11,8 +11,8 @@ Owned media (items the host package published, `OWNER_PACKAGE_NAME`):
   file names, and the MediaStore `RELATIVE_PATH` and display-name prefix for photo edit copies and
   kept captures (under `Pictures/` or `DCIM/`) and, optionally, video edit copies (under `Movies/`
   or `DCIM/`). Shared code never chooses product names or folders.
-- `OwnedPhotoEdits` – serial edit sessions over one still photo: quarter-turn rotation, a crop
-  (`cropRect` fractions of the rotated photo, or the fixed centered crop for `crop: true`) and filters, previewed at most 1024 px, saved as a new owned PNG copy. Each save has a UUID
+- `OwnedPhotoEdits` – serial edit sessions over one still photo: quarter-turn rotation, centered
+  crop and filters, previewed at most 1024 px, saved as a new owned PNG copy. Each save has a UUID
   operation identity, a receipt journal and a deterministic display name, so a crash between
   publish and receipt resolves to `saved` or `failed`, never a duplicate. The session aborts if
   the source changes (MediaStore generation and SHA-256 of the snapshot). Explicit Replace keeps

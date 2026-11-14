@@ -179,8 +179,6 @@ export interface AndroidCalendarPlugin {
     calendarIds: string[];
     start: string;
     end: string;
-    /** Reviewed zone for civil all-day dates and the seven-day bound. */
-    timeZone?: string;
     maximumEvents: number;
   }): Promise<
     | {

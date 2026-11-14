@@ -330,6 +330,11 @@ function isDisabled(value: string | undefined): boolean {
 }
 
 function isMobileRuntime(env: NodeJS.ProcessEnv): boolean {
-  const platform = (env.ELIZA_PLATFORM ?? "").toLowerCase();
+  const platform = (
+    env.ELIZA_MOBILE_PLATFORM ??
+    env.ELIZA_PLATFORM ??
+    env.CAPACITOR_PLATFORM ??
+    ""
+  ).toLowerCase();
   return platform === "ios" || platform === "android" || platform === "mobile";
 }

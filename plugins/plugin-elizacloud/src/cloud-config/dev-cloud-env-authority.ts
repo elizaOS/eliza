@@ -59,62 +59,6 @@ export const DEV_CLOUD_STEWARD_OPERATIONAL_ENV_KEYS = [
   "STEWARD_POLYMARKET_TRADE_SESSION_ID",
 ] as const;
 
-/**
- * Cloud credentials and activation switches. Development launchers clear these
- * for the staging-default and offline targets so an inherited production
- * credential cannot reach a local agent.
- */
-export const DEV_CLOUD_CREDENTIAL_ENV_KEYS = [
-  "ELIZA_DEV_CLOUD_API_KEY",
-  "ELIZAOS_CLOUD_API_KEY",
-  // App-container runtime key name. Coding sub-agents inherit ELIZA_* keys.
-  "ELIZA_CLOUD_API_KEY",
-  "ELIZAOS_CLOUD_SERVICE_KEY",
-  "ELIZAOS_CLOUD_EMBEDDING_API_KEY",
-  "ELIZAOS_CLOUD_ENABLED",
-  "ELIZAOS_CLOUD_USE_INFERENCE",
-  "ELIZAOS_CLOUD_USE_TTS",
-  "ELIZAOS_CLOUD_USE_STT",
-  "ELIZAOS_CLOUD_USE_MEDIA",
-  "ELIZAOS_CLOUD_USE_EMBEDDINGS",
-  "ELIZAOS_CLOUD_USE_RPC",
-  "ELIZA_CLOUD_SERVICE_KEY",
-  "ELIZA_CLOUD_SERVICE_TOKEN",
-  "ELIZA_CLOUD_SESSION_TOKEN",
-  "ELIZA_CLOUD_AUTH_TOKEN",
-  "ELIZA_CLOUD_SANDBOX_TOKEN",
-  "ELIZA_CLOUD_PROVISIONED",
-  "ELIZA_CLOUD_AGENT_ID",
-  "WAIFU_ELIZA_CLOUD_AGENT_ID",
-  "ELIZAOS_CLOUD_AGENT_ID",
-] as const;
-
-/**
- * Endpoint settings that some clients read ahead of ELIZAOS_CLOUD_BASE_URL.
- * Hosted targets clear them and stamp the exact canonical tuple; only a
- * complete self-hosted tuple may retain them.
- */
-export const DEV_CLOUD_ENDPOINT_OVERRIDE_ENV_KEYS = [
-  "ELIZAOS_CLOUD_EMBEDDING_URL",
-  "ELIZAOS_CLOUD_REQUEST_BASE_URL",
-  "ELIZA_CLOUD_API_BASE",
-  "ELIZA_CLOUD_API_URL",
-  "ELIZA_CLOUD_LOCAL_API_URL",
-  "ELIZA_CLOUD_LOCAL_APP_URL",
-  "ELIZA_CLOUD_OPENAI_BASE_URL",
-  "ELIZA_CLOUD_PUBLIC_URL",
-  "ELIZA_CLOUD_ROUTE_BASE",
-  "ELIZA_CLOUD_URL",
-  "ELIZA_CLOUD_WEB_URL",
-  "ELIZA_CLOUD_WRITE_BASE_URL",
-  "ELIZACLOUD_API_URL",
-  "ELIZA_CLOUD_SANDBOX_API_BASE_URL",
-  "ELIZA_CLOUD_SANDBOX_BASE_URL",
-  "ELIZA_CLOUD_SANDBOX_ACCESS_URL",
-  "ELIZA_CLOUD_REMOTE_RUNNER_URL",
-  "ELIZA_CLOUD_RUNNER_URL",
-] as const;
-
 const DEV_CLOUD_STEWARD_OPERATIONAL_ENV_KEY_SET = new Set<string>(
   DEV_CLOUD_STEWARD_OPERATIONAL_ENV_KEYS,
 );

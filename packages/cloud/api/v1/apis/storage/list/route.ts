@@ -15,7 +15,6 @@
 
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { storageOperationPriceUsd } from "@elizaos/cloud-shared/lib/constants/pricing";
-import { getCloudDeployment } from "@elizaos/cloud-shared/lib/deployment/cloud-deployment";
 import {
   executeNativeStorageList,
   NativeStorageReadError,
@@ -23,7 +22,7 @@ import {
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { requirePaidRouteStanding } from "../../../../src/lib/paid-route-standing";
+import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
 
 const MAX_LIST_RESULTS = 1000;
 
@@ -97,7 +96,7 @@ app.get("/", async (c) => {
         return c.json(
           {
             error: "Insufficient credits",
-            topUpUrl: getCloudDeployment().billingUrl,
+            topUpUrl: "https://cloud.eliza.app/cloud/billing",
           },
           402,
         );

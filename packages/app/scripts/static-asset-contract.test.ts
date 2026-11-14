@@ -139,7 +139,7 @@ describe("static asset manifest contract (#16290)", () => {
         })
         .join("\n");
       throw new Error(
-        `static asset manifest is ${result.reason}; run bun packages/app/scripts/generate-static-asset-manifest.ts\n${detail}`,
+        `static asset manifest is ${result.reason}; run node packages/app/scripts/generate-static-asset-manifest.ts\n${detail}`,
       );
     }
     expect(result.ok).toBe(true);

@@ -7,13 +7,14 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { expect, it } from "vitest";
 import {
   copyPublishAssets,
@@ -64,7 +65,7 @@ it("publishes the relative dependency closure of every shipped script module", (
 it("ships consumer build tools without private repository test dependencies", async () => {
   const fixture = mkdtempSync(path.join(tmpdir(), "app-payload-"));
   try {
-    for (const root of ["scripts", "platforms"]) {
+    for (const root of ["src/styles", "scripts", "platforms"]) {
       mkdirSync(path.dirname(path.join(fixture, root)), { recursive: true });
       cpSync(path.join(packageRoot, root), path.join(fixture, root), {
         recursive: true,
@@ -97,7 +98,11 @@ it("ships consumer build tools without private repository test dependencies", as
     }
     const dist = path.join(fixture, "dist");
     // Every quoted C include must ship in the assembled consumer payload.
-    for (const name of ["sigsys-handler.c", "sigsys-handler-arm64.c"]) {
+    for (const name of [
+      "sigsys-handler.c",
+      "sigsys-handler-arm64.c",
+      "sigsys-handler-riscv64.c",
+    ]) {
       const file = path.join(dist, "scripts/aosp/seccomp-shim", name);
       for (const match of readFileSync(file, "utf8").matchAll(
         /^#include "([^"]+)"/gm,
@@ -117,6 +122,8 @@ it("ships consumer build tools without private repository test dependencies", as
     );
     // An installed app must not carry repository deployment and CI entrypoints.
     for (const operator of [
+      "deploy-cloud-api-production-gateway.ts",
+      "continue-sms-gateway-work.ts",
       "sync-homepage-porkbun-dns.ts",
       "docker-ci-smoke.sh",
       "fix-workspace-deps.ts",
@@ -126,6 +133,14 @@ it("ships consumer build tools without private repository test dependencies", as
     ]) {
       expect(existsSync(path.join(dist, "scripts", operator))).toBe(false);
     }
+    const { resolveElectrobunDir } = await import(
+      pathToFileURL(path.join(dist, "scripts/lib/app-dir.ts")).href
+    );
+    const platform = resolveElectrobunDir(fixture);
+    expect(realpathSync(platform)).toBe(
+      realpathSync(path.join(dist, "platforms/electrobun")),
+    );
+    expect(existsSync(path.join(platform, "electrobun.config.ts"))).toBe(true);
     expect(
       readFileSync(
         path.join(dist, "scripts/lib/ios-app-store-runtime-policy.ts"),
@@ -144,9 +159,13 @@ it("ships consumer build tools without private repository test dependencies", as
       "bun",
       [
         "build",
-        ...["dev-ui", "run-mobile-build"].map((entry) =>
-          path.join(dist, `scripts/${entry}.mjs`),
-        ),
+        ...[
+          "dev-ui",
+          "run-mobile-build",
+          "desktop-build",
+          "dev-platform",
+          "build-electrobun-preload",
+        ].map((entry) => path.join(dist, `scripts/${entry}.mjs`)),
         "--packages=external",
         "--target=node",
         `--outdir=${path.join(fixture, "bundled")}`,

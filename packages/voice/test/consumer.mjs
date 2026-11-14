@@ -9,7 +9,7 @@ import { testOutputPath } from "../../scripts/lib/test-output.ts";
 // ownership, WAV decoding to mono 16 kHz samples, PCM16 WAV encoding and cancellation.
 // The package has no recognizer; hosts send the WAV to their own speech service.
 if (process.argv.length > 2)
-  throw Error("Usage: bun packages/voice/test/consumer.mjs (no arguments)");
+  throw Error("Usage: node packages/voice/test/consumer.mjs (no arguments)");
 const voice = path.resolve(import.meta.dirname, "../dist"),
   repository = path.resolve(import.meta.dirname, "../../..");
 const output = testOutputPath("browser-capture-consumer");

@@ -16,7 +16,6 @@ import { drizzle } from "drizzle-orm/pglite";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { trajectoriesPlugin } from "./index";
 import { tryHandleTrajectoryReadRoutes } from "./read-routes";
-import { ensureTrajectoriesTable } from "./store/trajectory-internals.ts";
 import { TrajectoriesService } from "./TrajectoriesService";
 
 let db: ReturnType<typeof drizzle>;
@@ -35,16 +34,103 @@ function queryText(value: unknown): string {
     .join("");
 }
 
+type LookupGate = {
+  entered: Promise<void>;
+  release: () => void;
+};
+
+function createLookupGate(): {
+  gate: LookupGate;
+  markEntered: () => void;
+  waitForRelease: Promise<void>;
+} {
+  let markEntered = (): void => {};
+  let release = (): void => {};
+  const entered = new Promise<void>((resolve) => {
+    markEntered = resolve;
+  });
+  const waitForRelease = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return { gate: { entered, release }, markEntered, waitForRelease };
+}
+
+async function makeDelayedLookupService(
+  agentId: string,
+  lookupCount: number,
+  shouldDelay: (text: string) => boolean = (text) =>
+    text.includes("FROM trajectory_step_index i"),
+  delayAfterExecute = false,
+): Promise<{
+  service: TrajectoriesService;
+  runtime: IAgentRuntime;
+  gates: LookupGate[];
+  enableDelays: () => void;
+}> {
+  type RawQuery = ReturnType<typeof sql.raw>;
+  type TransactionExecutor = {
+    execute: (query: RawQuery) => Promise<unknown>;
+  };
+  const gateStates = Array.from({ length: lookupCount }, createLookupGate);
+  let delaysEnabled = false;
+  let nextGate = 0;
+  const proxyDb = {
+    execute: async (query: RawQuery) => {
+      if (delaysEnabled && shouldDelay(queryText(query))) {
+        const state = gateStates[nextGate];
+        nextGate += 1;
+        if (!state) {
+          throw new Error("Unexpected delayed trajectory lookup");
+        }
+        if (delayAfterExecute) {
+          const result = await db.execute(query);
+          state.markEntered();
+          await state.waitForRelease;
+          return result;
+        }
+        state.markEntered();
+        await state.waitForRelease;
+      }
+      return db.execute(query);
+    },
+    transaction: async <T>(
+      work: (executor: TransactionExecutor) => Promise<T>,
+    ): Promise<T> =>
+      db.transaction((tx) => work({ execute: (query) => tx.execute(query) })),
+  };
+  const runtime = {
+    agentId,
+    runtimeInstanceId: crypto.randomUUID(),
+    adapter: { db: proxyDb },
+    getService: () => null,
+    getServicesByType: () => [],
+    reportError: vi.fn(),
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+  } as unknown as IAgentRuntime;
+  const delayedService = new TrajectoriesService(runtime);
+  delayedService.setEnabled(true);
+  await delayedService.initialize();
+  return {
+    service: delayedService,
+    runtime,
+    gates: gateStates.map((state) => state.gate),
+    enableDelays: () => {
+      delaysEnabled = true;
+    },
+  };
+}
+
 async function makeFaultService(agentId: string): Promise<{
   service: TrajectoriesService;
   runtime: IAgentRuntime;
   fault: { failAt: number | null; observed: number };
 }> {
-  const fault = {
-    failAt: null as number | null,
-    failOn: null as string | null,
-    observed: 0,
-  };
+  const fault = { failAt: null as number | null, observed: 0 };
   type RawQuery = ReturnType<typeof sql.raw>;
   type TransactionExecutor = {
     execute: (query: RawQuery) => Promise<unknown>;
@@ -59,10 +145,7 @@ async function makeFaultService(agentId: string): Promise<{
         return work({
           execute: async (query) => {
             fault.observed += 1;
-            if (
-              fault.failAt === fault.observed ||
-              (fault.failOn !== null && queryText(query).includes(fault.failOn))
-            ) {
+            if (fault.failAt === fault.observed) {
               throw new Error(
                 `injected transaction statement ${fault.observed}: ${queryText(query)}`,
               );
@@ -78,7 +161,6 @@ async function makeFaultService(agentId: string): Promise<{
     adapter: { db: proxyDb },
     getService: () => null,
     getServicesByType: () => [],
-    getSetting: () => undefined,
     reportError: vi.fn(),
     logger: {
       debug: vi.fn(),
@@ -89,7 +171,7 @@ async function makeFaultService(agentId: string): Promise<{
   } as unknown as IAgentRuntime;
   const faultService = new TrajectoriesService(runtime);
   faultService.setEnabled(true);
-  await ensureTrajectoriesTable(runtime);
+  await faultService.initialize();
   return { service: faultService, runtime, fault };
 }
 
@@ -121,19 +203,6 @@ async function raw(text: string): Promise<Record<string, unknown>[]> {
   return (res.rows as Record<string, unknown>[]) ?? [];
 }
 
-async function rewardRow(trajectoryId: string): Promise<{
-  totalReward: number;
-  components: unknown;
-}> {
-  const [row] = await raw(
-    `SELECT total_reward, reward_components_json FROM trajectories WHERE id = '${trajectoryId}'`,
-  );
-  return {
-    totalReward: Number(row?.total_reward),
-    components: JSON.parse(String(row?.reward_components_json)).components,
-  };
-}
-
 async function traceColumnExists(): Promise<boolean> {
   const rows = await raw(
     `SELECT column_name FROM information_schema.columns
@@ -151,13 +220,12 @@ beforeAll(async () => {
     adapter: { db },
     getService: () => null,
     getServicesByType: () => [],
-    getSetting: () => undefined,
   } as unknown as IAgentRuntime;
   service = new TrajectoriesService(serviceRuntime);
   // NODE_ENV=test defaults the gate off; enable persistence directly for this
   // DB-round-trip test.
   service.setEnabled(true);
-  await ensureTrajectoriesTable(serviceRuntime);
+  await service.initialize();
 }, 60_000);
 
 afterAll(async () => {
@@ -165,6 +233,28 @@ afterAll(async () => {
 });
 
 describe("trajectory graceful shutdown ownership (real PGlite)", () => {
+  it("does not reclaim ownership after a concurrent clear deletes a committed start", async () => {
+    const owner = await makeDelayedLookupService(
+      crypto.randomUUID(),
+      1,
+      (text) => text.includes("INSERT INTO trajectories"),
+      true,
+    );
+    const gate = owner.gates[0];
+    if (!gate) throw new Error("Missing committed insert gate");
+    owner.enableDelays();
+    const starting = owner.service.startTrajectory(owner.runtime.agentId);
+    await gate.entered;
+    const count = await owner.service.clearAllTrajectories();
+    gate.release();
+    const trajectoryId = await starting;
+    expect(count).toBe(1);
+    expect(await owner.service.getTrajectoryDetail(trajectoryId)).toBeNull();
+    // No owned run remains, so stopping must not need a storage transaction.
+    owner.runtime.adapter.db = {};
+    await expect(owner.service.stop()).resolves.toBeUndefined();
+  });
+
   it.each(["selected", "all"] as const)(
     "releases shutdown ownership after deleting %s trajectories",
     async (mode) => {
@@ -176,8 +266,6 @@ describe("trajectory graceful shutdown ownership (real PGlite)", () => {
       const otherId = await other.service.startTrajectory(
         other.runtime.agentId,
       );
-      await owner.service.flushWriteQueue();
-      await other.service.flushWriteQueue();
       const count =
         mode === "selected"
           ? await owner.service.deleteTrajectories([trajectoryId, otherId])
@@ -218,14 +306,12 @@ describe("trajectory graceful shutdown ownership (real PGlite)", () => {
       userPrompt: "prompt",
       response: "Saved before shutdown.",
       purpose: "action",
-      actionType: "fixture",
     });
     await owner.service.flushWriteQueue(activeId);
     const contentBefore = await owner.service.getTrajectoryDetail(activeId);
     const completedId = await owner.service.startTrajectory(
       owner.runtime.agentId,
     );
-    await owner.service.flushWriteQueue();
     // A terminal event can be persisted through another service before the
     // creator shuts down. Its local start registry must not reopen that result.
     await sibling.service.endTrajectory(completedId, "completed");
@@ -237,8 +323,6 @@ describe("trajectory graceful shutdown ownership (real PGlite)", () => {
     const otherId = await otherAgent.service.startTrajectory(
       otherAgent.runtime.agentId,
     );
-    await sibling.service.flushWriteQueue();
-    await otherAgent.service.flushWriteQueue();
     // A service can capture a same-agent trajectory through the public routing
     // contract. That routing is not authority to terminate its creator's run.
     owner.service.startStep(siblingId, { timestamp: Date.now() });
@@ -257,6 +341,11 @@ describe("trajectory graceful shutdown ownership (real PGlite)", () => {
     expect(stopped?.durationMs).toBe(
       (stopped?.endTime ?? 0) - (stopped?.startTime ?? 0),
     );
+    expect(
+      await raw(
+        `SELECT is_active FROM trajectory_step_index WHERE step_id = '${stepId}'`,
+      ),
+    ).toEqual([{ is_active: false }]);
     const noStep = await owner.service.getTrajectoryDetail(noStepId);
     expect(noStep).toMatchObject({
       steps: [],
@@ -277,6 +366,40 @@ describe("trajectory graceful shutdown ownership (real PGlite)", () => {
     expect(await owner.service.getTrajectoryDetail(activeId)).toEqual(stopped);
   });
 
+  it("waits for an accepted no-step insert before shutdown and rejects new starts", async () => {
+    const owner = await makeDelayedLookupService(
+      "00000000-0000-4000-8000-000000000403",
+      1,
+      (text) => text.includes("INSERT INTO trajectories"),
+    );
+    const gate = owner.gates[0];
+    if (!gate) throw new Error("Missing start gate");
+    owner.enableDelays();
+    const starting = owner.service.startTrajectory(owner.runtime.agentId);
+    await gate.entered;
+    let stopped = false;
+    const stopping = owner.service.stop().then(() => {
+      stopped = true;
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    const stoppedBeforeInsert = stopped;
+    const rejectedId = await owner.service.startTrajectory(
+      owner.runtime.agentId,
+    );
+    gate.release();
+    const trajectoryId = await starting;
+    await stopping;
+    expect(stoppedBeforeInsert).toBe(false);
+    expect(await owner.service.getTrajectoryDetail(trajectoryId)).toMatchObject(
+      {
+        steps: [],
+        metrics: { finalStatus: "terminated" },
+      },
+    );
+    expect(await owner.service.getTrajectoryDetail(rejectedId)).toBeNull();
+  });
+
   it("drains queued capture before termination without discarding its recorded result", async () => {
     const owner = await makeFaultService(
       "00000000-0000-4000-8000-000000000404",
@@ -294,7 +417,6 @@ describe("trajectory graceful shutdown ownership (real PGlite)", () => {
       userPrompt: "prompt",
       response: "The accepted response must survive.",
       purpose: "action",
-      actionType: "fixture",
     });
     await owner.service.stop();
     const detail = await owner.service.getTrajectoryDetail(trajectoryId);
@@ -307,14 +429,16 @@ describe("trajectory graceful shutdown ownership (real PGlite)", () => {
   });
 
   it("rolls back every shutdown statement and allows a later stop to finish", async () => {
-    for (let failAt = 1; failAt <= 2; failAt += 1) {
+    for (let failAt = 1; failAt <= 3; failAt += 1) {
       const owner = await makeFaultService(
         `00000000-0000-4000-8000-00000000041${failAt}`,
       );
       const trajectoryId = await owner.service.startTrajectory(
         owner.runtime.agentId,
       );
-      owner.service.startStep(trajectoryId, { timestamp: Date.now() });
+      const stepId = owner.service.startStep(trajectoryId, {
+        timestamp: Date.now(),
+      });
       await owner.service.flushWriteQueue(trajectoryId);
       const before = await owner.service.getTrajectoryDetail(trajectoryId);
       owner.fault.failAt = failAt;
@@ -323,11 +447,22 @@ describe("trajectory graceful shutdown ownership (real PGlite)", () => {
       expect(await owner.service.getTrajectoryDetail(trajectoryId)).toEqual(
         before,
       );
+      expect(
+        await raw(
+          `SELECT is_active FROM trajectory_step_index WHERE step_id = '${stepId}'`,
+        ),
+      ).toEqual([{ is_active: true }]);
+      expect(owner.service.isEnabled()).toBe(false);
       await owner.service.stop();
       expect(
         (await owner.service.getTrajectoryDetail(trajectoryId))?.metrics
           .finalStatus,
       ).toBe("terminated");
+      expect(
+        await raw(
+          `SELECT is_active FROM trajectory_step_index WHERE step_id = '${stepId}'`,
+        ),
+      ).toEqual([{ is_active: false }]);
     }
   });
 });
@@ -341,9 +476,12 @@ describe("trajectories trace_id join key (real PGLite)", () => {
     await raw(`ALTER TABLE trajectories DROP COLUMN trace_id`);
     expect(await traceColumnExists()).toBe(false);
 
-    // Schema readiness is remembered per runtime; a fresh runtime over the
-    // same database runs the bootstrap again.
-    await ensureTrajectoriesTable({ ...serviceRuntime } as IAgentRuntime);
+    const svc = service as unknown as {
+      initialized: boolean;
+      initialize: () => Promise<void>;
+    };
+    svc.initialized = false;
+    await svc.initialize();
     expect(await traceColumnExists()).toBe(true);
   });
 
@@ -422,7 +560,6 @@ describe("trajectories trace_id join key (real PGLite)", () => {
       source: "background_memory",
       metadata: { roomId },
     });
-    await service.flushWriteQueue();
     let body = "";
     const res = {
       setHeader: () => {},
@@ -492,14 +629,14 @@ describe("trajectories trace_id join key (real PGLite)", () => {
     expect(outcomes.filter(Boolean)).toHaveLength(8);
     const detail = await service.getTrajectoryDetail(trajectoryId);
     expect(detail).toMatchObject({
+      totalReward: 0.75,
       metrics: { finalStatus: "completed" },
+      rewardComponents: {
+        components: { briefEngagementReward: 0.75 },
+      },
       metadata: {
         appliedRewardKeys: ["brief-engagement:event-1"],
       },
-    });
-    expect(await rewardRow(trajectoryId)).toEqual({
-      totalReward: 0.75,
-      components: { briefEngagementReward: 0.75 },
     });
   });
 
@@ -510,6 +647,7 @@ describe("trajectories trace_id join key (real PGLite)", () => {
     await service.endTrajectory(trajectoryId, "completed");
     const otherService = new TrajectoriesService(serviceRuntime);
     otherService.setEnabled(true);
+    await otherService.initialize();
 
     expect(
       await Promise.all([
@@ -528,9 +666,11 @@ describe("trajectories trace_id join key (real PGLite)", () => {
       ]),
     ).toEqual([true, true]);
     const detail = await service.getTrajectoryDetail(trajectoryId);
-    expect(await rewardRow(trajectoryId)).toEqual({
+    expect(detail).toMatchObject({
       totalReward: 1.25,
-      components: { briefEngagementReward: 1.25 },
+      rewardComponents: {
+        components: { briefEngagementReward: 1.25 },
+      },
     });
     expect(detail?.metadata.appliedRewardKeys).toEqual(
       expect.arrayContaining([
@@ -633,7 +773,6 @@ describe("trajectories trace_id join key (real PGLite)", () => {
       userPrompt: "prompt",
       response: "response",
       purpose: "action",
-      actionType: "fixture",
     });
     await harness.service.flushWriteQueue(trajectoryId);
     await harness.service.endTrajectory(trajectoryId, "completed");
@@ -649,7 +788,6 @@ describe("trajectories trace_id join key (real PGLite)", () => {
         userPrompt: "prompt",
         response: "must be rejected",
         purpose: "action",
-        actionType: "fixture",
       });
       harness.service.logProviderAccess(stepId, {
         providerName: "native-after-end-provider",
@@ -668,10 +806,10 @@ describe("trajectories trace_id join key (real PGLite)", () => {
           harness.runtime.reportError as ReturnType<typeof vi.fn>
         ).mock.calls.filter(
           ([scope, , context]) =>
-            scope === "TrajectoryStorage.lateCapture" &&
+            scope === "TrajectoriesService.lateCapture" &&
             (context as { diagnosticOnly?: boolean }).diagnosticOnly === true,
         ),
-      ).toHaveLength(1);
+      ).toHaveLength(2);
 
       const reloaded = await makeFaultService(harness.runtime.agentId);
       reloaded.service.logLlmCall({
@@ -681,7 +819,6 @@ describe("trajectories trace_id join key (real PGLite)", () => {
         userPrompt: "prompt",
         response: "must still be rejected",
         purpose: "action",
-        actionType: "fixture",
       });
       reloaded.service.logProviderAccess(stepId, {
         providerName: "native-after-reload-provider",
@@ -690,15 +827,15 @@ describe("trajectories trace_id join key (real PGLite)", () => {
       });
       await new Promise((resolve) => setTimeout(resolve, 20));
       await reloaded.service.flushWriteQueue(trajectoryId);
-      // The reloaded owner first sees the closed row now, so its rejection is
-      // the expected same-instant race and is logged at debug level.
       expect(
         (
           reloaded.runtime.reportError as ReturnType<typeof vi.fn>
         ).mock.calls.filter(
-          ([scope]) => scope === "TrajectoryStorage.lateCapture",
+          ([scope, , context]) =>
+            scope === "TrajectoriesService.lateCapture" &&
+            (context as { diagnosticOnly?: boolean }).diagnosticOnly === true,
         ),
-      ).toHaveLength(0);
+      ).toHaveLength(2);
       const afterReloadCapture =
         await reloaded.service.getTrajectoryDetail(trajectoryId);
       expect(
@@ -724,7 +861,6 @@ describe("trajectories trace_id join key (real PGLite)", () => {
         userPrompt: "prompt",
         response: "must remain inert",
         purpose: "action",
-        actionType: "fixture",
       });
       await harness.service.flushWriteQueue(inertId);
       const rowsAfter = await raw(
@@ -734,6 +870,225 @@ describe("trajectories trace_id join key (real PGLite)", () => {
       expect(harness.service.isEnabled()).toBe(false);
     } finally {
       clock.mockRestore();
+    }
+  });
+
+  it("drains cache-miss capture and terminal lookup before native stop", async () => {
+    const creator = await makeFaultService(
+      "00000000-0000-4000-8000-000000000102",
+    );
+    const trajectoryId = await creator.service.startTrajectory(
+      creator.runtime.agentId,
+      { source: "native-delayed-stop" },
+    );
+    const stepId = creator.service.startStep(trajectoryId, {
+      timestamp: Date.now(),
+    });
+    await creator.service.flushWriteQueue(trajectoryId);
+
+    const delayed = await makeDelayedLookupService(creator.runtime.agentId, 2);
+    const [llmGate, providerGate] = delayed.gates;
+    if (!llmGate || !providerGate) throw new Error("Missing lookup gates");
+    delayed.enableDelays();
+    delayed.service.logLlmCall({
+      stepId,
+      model: "native-delayed-llm",
+      systemPrompt: "system",
+      userPrompt: "prompt",
+      response: "captured before stop",
+      purpose: "action",
+    });
+    delayed.service.logProviderAccess(stepId, {
+      providerName: "native-delayed-provider",
+      data: {},
+      purpose: "context",
+    });
+    await Promise.all([llmGate.entered, providerGate.entered]);
+
+    let stopSettled = false;
+    const stopPromise = delayed.service.stop().then(() => {
+      stopSettled = true;
+    });
+    await Promise.resolve();
+    expect(stopSettled).toBe(false);
+    llmGate.release();
+    await Promise.resolve();
+    expect(stopSettled).toBe(false);
+    providerGate.release();
+    await stopPromise;
+
+    const captured = await creator.service.getTrajectoryDetail(trajectoryId);
+    expect(captured?.steps.flatMap((step) => step.llmCalls)).toEqual([
+      expect.objectContaining({ model: "native-delayed-llm" }),
+    ]);
+    expect(captured?.steps.flatMap((step) => step.providerAccesses)).toEqual([
+      expect.objectContaining({ providerName: "native-delayed-provider" }),
+    ]);
+    delayed.service.logLlmCall({
+      stepId,
+      model: "native-after-delayed-stop",
+      systemPrompt: "system",
+      userPrompt: "prompt",
+      response: "must remain inert",
+      purpose: "action",
+    });
+    expect(delayed.service.isEnabled()).toBe(false);
+
+    const terminalTrajectoryId = await creator.service.startTrajectory(
+      creator.runtime.agentId,
+      { source: "native-delayed-end" },
+    );
+    const terminalStepId = creator.service.startStep(terminalTrajectoryId, {
+      timestamp: Date.now(),
+    });
+    await creator.service.flushWriteQueue(terminalTrajectoryId);
+    const delayedEnd = await makeDelayedLookupService(
+      creator.runtime.agentId,
+      1,
+    );
+    const [endGate] = delayedEnd.gates;
+    if (!endGate) throw new Error("Missing terminal lookup gate");
+    delayedEnd.enableDelays();
+    const endPromise = delayedEnd.service.endTrajectory(
+      terminalStepId,
+      "completed",
+    );
+    await endGate.entered;
+    let endStopSettled = false;
+    const endStopPromise = delayedEnd.service.stop().then(() => {
+      endStopSettled = true;
+    });
+    await Promise.resolve();
+    expect(endStopSettled).toBe(false);
+    endGate.release();
+    await Promise.all([endPromise, endStopPromise]);
+    const terminal =
+      await creator.service.getTrajectoryDetail(terminalTrajectoryId);
+    expect(terminal?.metrics.finalStatus).toBe("completed");
+    expect(endStopSettled).toBe(true);
+  });
+
+  it("rolls back every native lifecycle transaction statement", async () => {
+    const harness = await makeFaultService(
+      "00000000-0000-4000-8000-000000000201",
+    );
+
+    for (let failAt = 1; failAt <= 3; failAt += 1) {
+      const source = `legacy-start-fault-${failAt}`;
+      harness.fault.failAt = failAt;
+      await expect(
+        harness.service.startTrajectory(`legacy-step-${failAt}`, {
+          agentId: harness.runtime.agentId,
+          source,
+        }),
+      ).rejects.toMatchObject({ code: "TRAJECTORY_START_PERSIST_FAILED" });
+      harness.fault.failAt = null;
+      expect(
+        await raw(`SELECT id FROM trajectories WHERE source = '${source}'`),
+      ).toEqual([]);
+    }
+
+    for (let failAt = 1; failAt <= 5; failAt += 1) {
+      const trajectoryId = await harness.service.startTrajectory(
+        harness.runtime.agentId,
+        { source: `start-step-fault-${failAt}` },
+      );
+      harness.fault.failAt = failAt;
+      const failedStepId = harness.service.startStep(trajectoryId, {
+        timestamp: Date.now(),
+      });
+      await expect(
+        harness.service.flushWriteQueue(trajectoryId),
+      ).rejects.toThrow(`injected transaction statement ${failAt}`);
+      harness.fault.failAt = null;
+      const detail = await harness.service.getTrajectoryDetail(trajectoryId);
+      expect(detail?.steps).toEqual([]);
+      expect(
+        await raw(
+          `SELECT step_id FROM trajectory_step_index WHERE step_id = '${failedStepId}'`,
+        ),
+      ).toEqual([]);
+      await harness.service.deleteTrajectories([trajectoryId]);
+    }
+
+    for (let failAt = 1; failAt <= 4; failAt += 1) {
+      const trajectoryId = await harness.service.startTrajectory(
+        harness.runtime.agentId,
+        { source: `complete-step-fault-${failAt}` },
+      );
+      const stepId = harness.service.startStep(trajectoryId, {
+        timestamp: Date.now(),
+      });
+      await harness.service.flushWriteQueue(trajectoryId);
+      harness.fault.failAt = failAt;
+      harness.service.completeStep(trajectoryId, stepId, {
+        actionType: "TEST_ACTION",
+        actionName: "TEST_ACTION",
+        parameters: {},
+        success: true,
+        result: { settled: true },
+      });
+      await expect(
+        harness.service.flushWriteQueue(trajectoryId),
+      ).rejects.toThrow(`injected transaction statement ${failAt}`);
+      harness.fault.failAt = null;
+      const detail = await harness.service.getTrajectoryDetail(trajectoryId);
+      expect(detail?.steps[0]?.action).toBeUndefined();
+      const indexRows = await raw(
+        `SELECT is_active FROM trajectory_step_index WHERE step_id = '${stepId}'`,
+      );
+      expect(indexRows[0]?.is_active).toBe(true);
+      if (failAt === 4) {
+        harness.service.completeStep(trajectoryId, stepId, {
+          actionType: "TEST_ACTION",
+          actionName: "TEST_ACTION",
+          parameters: {},
+          success: true,
+          result: { settled: true },
+        });
+        await harness.service.flushWriteQueue(trajectoryId);
+        const retriedDetail =
+          await harness.service.getTrajectoryDetail(trajectoryId);
+        expect(retriedDetail?.steps).toHaveLength(1);
+        expect(retriedDetail?.steps[0]?.action).toMatchObject({
+          success: true,
+          result: { settled: true },
+        });
+        const retriedIndexRows = await raw(
+          `SELECT is_active FROM trajectory_step_index WHERE step_id = '${stepId}'`,
+        );
+        expect(retriedIndexRows[0]?.is_active).toBe(false);
+      }
+      await harness.service.deleteTrajectories([trajectoryId]);
+    }
+
+    for (let failAt = 1; failAt <= 3; failAt += 1) {
+      const trajectoryId = await harness.service.startTrajectory(
+        harness.runtime.agentId,
+        { source: `end-fault-${failAt}` },
+      );
+      const stepId = harness.service.startStep(trajectoryId, {
+        timestamp: Date.now(),
+      });
+      await harness.service.flushWriteQueue(trajectoryId);
+      harness.fault.failAt = failAt;
+      await expect(
+        harness.service.endTrajectory(trajectoryId, "completed"),
+      ).rejects.toThrow(`injected transaction statement ${failAt}`);
+      harness.fault.failAt = null;
+      const parentRows = await raw(
+        `SELECT status, end_time, duration_ms FROM trajectories WHERE id = '${trajectoryId}'`,
+      );
+      expect(parentRows[0]).toMatchObject({
+        status: "active",
+        end_time: null,
+        duration_ms: null,
+      });
+      const indexRows = await raw(
+        `SELECT is_active FROM trajectory_step_index WHERE step_id = '${stepId}'`,
+      );
+      expect(indexRows[0]?.is_active).toBe(true);
+      await harness.service.deleteTrajectories([trajectoryId]);
     }
   });
 
@@ -759,13 +1114,13 @@ describe("trajectories trace_id join key (real PGLite)", () => {
       createdAt: Date.now(),
       content: { text: "partial trajectory start", source: "partial-start" },
     } as unknown as Memory;
-    harness.fault.failOn = "INSERT INTO trajectory_steps";
+    harness.fault.failAt = 5;
     await handler?.({
       runtime: harness.runtime,
       message,
       source: "partial-start",
     } as MessagePayload);
-    harness.fault.failOn = null;
+    harness.fault.failAt = null;
 
     const rows = await raw(
       `SELECT id, status, end_time, duration_ms FROM trajectories
@@ -816,30 +1171,21 @@ describe("trajectories trace_id join key (real PGLite)", () => {
   });
 
   it("strictly rejects malformed actions and active or terminal timing", async () => {
-    // Each read surface wraps the invalid row in its operation failure.
-    const rejected = {
-      code: expect.stringMatching(
-        /^TRAJECTORY_(ROW_INVALID|LOAD_FAILED|STORAGE_OPERATION_FAILED)$/,
-      ),
-    };
     const assertAllReadSurfacesReject = async (
       trajectoryId: string,
-      checkList = true,
     ): Promise<void> => {
-      // The list reads parent rows only; step payloads decode on detail/export.
-      if (checkList)
-        await expect(
-          service.listTrajectories({ search: trajectoryId, limit: 10 }),
-        ).rejects.toMatchObject(rejected);
+      await expect(
+        service.listTrajectories({ search: trajectoryId, limit: 10 }),
+      ).rejects.toMatchObject({ code: "TRAJECTORY_ROW_INVALID" });
       await expect(
         service.getTrajectoryDetail(trajectoryId),
-      ).rejects.toMatchObject(rejected);
+      ).rejects.toMatchObject({ code: "TRAJECTORY_ROW_INVALID" });
       await expect(
         service.exportTrajectories({
           format: "jsonl",
           trajectoryIds: [trajectoryId],
         }),
-      ).rejects.toMatchObject(rejected);
+      ).rejects.toMatchObject({ code: "TRAJECTORY_ROW_INVALID" });
     };
 
     const malformedActionId = await service.startTrajectory(
@@ -849,31 +1195,29 @@ describe("trajectories trace_id join key (real PGLite)", () => {
     service.startStep(malformedActionId, { timestamp: Date.now() });
     await service.flushWriteQueue(malformedActionId);
     await service.endTrajectory(malformedActionId, "completed");
-    const [malformedStep] = await raw(
-      `SELECT id, payload FROM trajectory_steps WHERE trajectory_id = '${malformedActionId}'`,
+    const malformedActionRows = await raw(
+      `SELECT steps_json FROM trajectories WHERE id = '${malformedActionId}'`,
     );
-    const malformedPayload = JSON.parse(String(malformedStep?.payload));
-    malformedPayload.action = {
+    const malformedSteps = malformedActionRows[0]?.steps_json as Array<
+      Record<string, unknown>
+    >;
+    malformedSteps[0].action = {
       timestamp: Date.now(),
       actionType: "BROKEN",
       actionName: "BROKEN",
       parameters: {},
       success: false,
     };
-    const malformedJson = JSON.stringify(malformedPayload).replaceAll(
-      "'",
-      "''",
-    );
+    const malformedJson = JSON.stringify(malformedSteps).replaceAll("'", "''");
     await raw(
-      `UPDATE trajectory_steps SET payload = '${malformedJson}' WHERE id = '${malformedStep?.id}'`,
+      `UPDATE trajectories SET steps_json = '${malformedJson}'::jsonb WHERE id = '${malformedActionId}'`,
     );
-    await assertAllReadSurfacesReject(malformedActionId, false);
+    await assertAllReadSurfacesReject(malformedActionId);
 
     const malformedActiveId = await service.startTrajectory(
       serviceRuntime.agentId,
       { source: "malformed-active-timing" },
     );
-    await service.flushWriteQueue(malformedActiveId);
     const activeEnd = Date.now();
     await raw(
       `UPDATE trajectories SET end_time = ${activeEnd}, duration_ms = 0 WHERE id = '${malformedActiveId}'`,

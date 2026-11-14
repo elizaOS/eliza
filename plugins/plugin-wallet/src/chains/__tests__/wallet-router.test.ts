@@ -176,17 +176,9 @@ function handler(
   };
 }
 
-// A confirmation turn is a later user message, so it must carry a different
-// id than the request: core treats a reply with the request's id as still
-// waiting, not as a reply.
-const CONFIRMATION_MESSAGE_ID = "00000000-0000-0000-0000-000000000005";
-
-function message(
-  text = "wallet action",
-  id = "00000000-0000-0000-0000-000000000001",
-): Memory {
+function message(text = "wallet action"): Memory {
   return {
-    id,
+    id: "00000000-0000-0000-0000-000000000001",
     entityId: "00000000-0000-0000-0000-000000000002",
     agentId: "00000000-0000-0000-0000-000000000003",
     roomId: "00000000-0000-0000-0000-000000000004",
@@ -208,7 +200,7 @@ async function runConfirmed(
   expect(first?.data?.requiresConfirmation).toBe(true);
   return walletRouterAction.handler(
     runtime,
-    message("yes, confirm", CONFIRMATION_MESSAGE_ID),
+    message("yes, confirm"),
     undefined,
     { parameters } as HandlerOptions,
   );
@@ -330,14 +322,9 @@ describe("wallet router action", () => {
       mode: "execute",
     };
     const confirm = (parameters: Record<string, unknown>) =>
-      walletRouterAction.handler(
-        runtime,
-        message("yes, confirm", CONFIRMATION_MESSAGE_ID),
-        undefined,
-        {
-          parameters,
-        } as HandlerOptions,
-      );
+      walletRouterAction.handler(runtime, message("yes, confirm"), undefined, {
+        parameters,
+      } as HandlerOptions);
 
     const pendingVote = await run(runtime, vote);
     expect(pendingVote?.data?.requiresConfirmation).toBe(true);

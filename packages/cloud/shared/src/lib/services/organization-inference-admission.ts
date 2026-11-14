@@ -1,11 +1,26 @@
 import { withCanonicalSettlementReceipt } from "./inference-settlement-receipt";
 /**
- * Organization-funded inference keeps cached identity/funding projections, while
- * the shared gate acknowledges a recoverable funding lease before provider work.
- * A refused stale snapshot is rechecked against the published projection and
- * primary. Post-response accounting fences and settles the same durable owner,
- * then repairs cached standing when the balance or settlement is uncertain.
- * Hosts without a Worker lifetime keep synchronous primary reservations.
+ * Admission for organization-funded inference.
+ *
+ * Worker requests are admitted from the cached organization admission
+ * snapshot (policy, billing hold, balance or subscriber funding capacity) and
+ * the organization Durable Object. No Postgres read or transaction runs before
+ * provider dispatch: the Durable Object lease is the only pre-provider write,
+ * and post-provider accounting replays one deterministic debit or funding
+ * identity under `waitUntil`, with the lease alarm as the durable backstop.
+ *
+ * Exactness of the cached decision comes from the standing fence in
+ * `inference-policy-fence.ts`: every policy or billing-hold mutation closes the
+ * organization gate before it writes and advances the policy generation the
+ * snapshot carries, so a snapshot read before that mutation can never lease or
+ * dispatch after it. Every other committed balance change (top-ups, refunds,
+ * non-inference debits) republishes the projection to the gate, and the gate
+ * keeps the newest balance revision, so affordability is decided against the
+ * committed balance rather than the snapshot's. A cold or superseded snapshot
+ * is refilled inline, and an aged snapshot is refilled once before it refuses.
+ *
+ * Hosts without a Worker lifetime keep a synchronous reservation because they
+ * have no Durable Object to fence a deferred charge.
  */
 
 import { ElizaError } from "@elizaos/core";
@@ -15,7 +30,6 @@ import { lockOrganizationPolicy } from "../../db/repositories/organization-polic
 import { inferenceFundingBudgetGrants } from "../../db/schemas/inference-funding-budgets";
 import { CacheTTL } from "../cache/keys";
 import { calculateCost, normalizeModelName } from "../pricing";
-import { getRequestInferenceAuthEntryRefresh } from "../runtime/request-context";
 import { createCreditReservationSettler } from "../utils/credit-reservation";
 import { logger } from "../utils/logger";
 import type { AffiliateBillingAttribution } from "./affiliate-billing-attribution";
@@ -49,15 +63,11 @@ import {
   inferenceSettlementAmounts,
   isInferenceAdmissionPolicyStaleError,
   markInferenceAdmissionLeaseDispatched,
-  rebaseStaleInferenceAdmissionLease,
   settleInferenceAdmissionLease,
 } from "./inference-admission-gate";
 import {
   fillInferenceAdmissionSnapshot,
   getInferenceAdmissionSnapshotCacheFirst,
-  peekInferenceAdmissionSnapshot,
-  peekInferenceAdmissionSnapshotInIsolate,
-  refreshInferenceAdmissionSnapshotOffResponse,
   refreshStaleInferenceAdmissionSnapshot,
 } from "./inference-admission-snapshot";
 import {
@@ -105,6 +115,11 @@ export interface OrganizationInferenceAdmission {
 }
 
 export interface OrganizationInferenceAdmissionParams {
+  /** Provider-enforced bounds, distinct from estimates used for unknown-outcome recovery. */
+  maximumInputTokens?: number;
+  maximumOutputTokens?: number;
+  fundedBudgetRateReceipt?: string;
+  fundedBudgetEndpointType?: "completions" | "embeddings" | "standard" | "strict";
   context: BillingContext & {
     provider: string;
     billingSource: string;
@@ -119,22 +134,13 @@ export interface OrganizationInferenceAdmissionParams {
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
   /** Combined auth-cache projection; skips the separate balance KV read. */
   admissionSnapshot?: InferenceAdmissionSnapshot;
-  /** Verified standing bound to the durable provider admission when available. */
+  /** Strong standing proof consumed atomically by the primary admission gate. */
   credential?: InferenceCredentialCheck;
-  /** Join the durable lease and dispatch at the caller's provider boundary. */
+  /**
+   * Prepare the lease locally and commit it with dispatch at an audited
+   * provider boundary. Limited to callers whose dispatch callback is required.
+   */
   atomicProviderBoundary?: boolean;
-  /**
-   * Rewrites the request's cached auth entry from the primary, off the
-   * response (`InferenceAuthResolution.refreshEntry`). Admission and
-   * settlement call it when the entry's funding standing is no longer true.
-   * Defaults to the refresh the request's authentication registered.
-   */
-  refreshAuthEntry?: () => void;
-  /**
-   * Join the gate lease and dispatch at the caller's provider boundary.
-   * Retained for bounded sessions; every paid route commits before its provider.
-   */
-  commitLeaseAtDispatch?: boolean;
   /** Await primary persistence and gate acknowledgment for funded settlement. */
   requireTerminalSettlementReceipt?: boolean;
 }
@@ -231,83 +237,42 @@ function attachInferenceAdmissionLease(
   params: OrganizationInferenceAdmissionParams,
   /** Balance observed by the settling transaction; omitted lanes read it after debit. */
   settledBalance?: () => InferenceAdmissionBalanceObservation | undefined,
-  /**
-   * The balance this lane leases against in a refilled snapshot, or undefined
-   * when that snapshot funds the organization through the other lane.
-   */
-  rebaseOnFreshSnapshot?: (
-    fresh: InferenceAdmissionSnapshot,
-  ) => { balanceUsd: number; balanceRevision: string } | undefined,
 ): OrganizationInferenceAdmission {
   const settleAuthoritatively = admission.settle;
   const settleUnknownAuthoritatively = admission.settleUnknown;
   type SettlementChoice = { kind: "actual"; actualCostUsd: number } | { kind: "unknown" };
   let choice: SettlementChoice | undefined;
   let settlement: Promise<CreditReconciliationResult | null> | null = null;
-  // error-policy:J2 add request identity and preserve the established
-  // transport-facing standing, balance, and availability error types.
-  const dispatchRefusal = (error: unknown): unknown => {
-    if (error instanceof InferenceCredentialRevokedError) {
-      logger.warn(
-        "[OrganizationInferenceAdmission] blocked provider dispatch at combined credential and balance gate",
-        {
-          organizationId: params.context.organizationId,
-          userId: params.context.userId,
-          requestId: params.context.requestId,
-          credentialKind: params.credential?.kind ?? "unavailable",
-          reason: error.reason,
-        },
-      );
-      return error;
-    }
-    if (error instanceof InferenceAdmissionLeaseRejectedError) {
-      return new InsufficientCreditsError(
-        error.requiredUsd,
-        error.availableUsd,
-        "cached_balance_gate",
-      );
-    }
-    if (error instanceof InferenceAdmissionGateUnavailableError) {
-      return admissionUnavailable(params, error);
-    }
-    return error;
-  };
-  let stalePolicyRepairUsed = false;
   const markProviderDispatched = async (): Promise<void> => {
     try {
       await markInferenceAdmissionLeaseDispatched(lease);
-      return;
     } catch (error) {
-      if (
-        !rebaseOnFreshSnapshot ||
-        stalePolicyRepairUsed ||
-        !isInferenceAdmissionPolicyStaleError(error)
-      ) {
-        throw dispatchRefusal(error);
+      // error-policy:J2 add request identity and preserve the established
+      // transport-facing standing, balance, and availability error types.
+      if (error instanceof InferenceCredentialRevokedError) {
+        logger.warn(
+          "[OrganizationInferenceAdmission] blocked provider dispatch at combined credential and balance gate",
+          {
+            organizationId: params.context.organizationId,
+            userId: params.context.userId,
+            requestId: params.context.requestId,
+            credentialKind: params.credential?.kind ?? "unavailable",
+            reason: error.reason,
+          },
+        );
+        throw error;
       }
-      // A deferred commit meets the gate for the first time here, so this is
-      // where a snapshot from before a policy change is refused. The gate
-      // recorded nothing: refill from the primary, decide again, commit once.
-      stalePolicyRepairUsed = true;
-      const fresh = await refreshAfterStalePolicy(params);
-      if (fresh.billingHold === true) {
-        throw new BillingHoldActiveError(params.context.organizationId, "0.000000");
+      if (error instanceof InferenceAdmissionLeaseRejectedError) {
+        throw new InsufficientCreditsError(
+          error.requiredUsd,
+          error.availableUsd,
+          "cached_balance_gate",
+        );
       }
-      const observation = rebaseOnFreshSnapshot(fresh);
-      if (
-        !observation ||
-        !rebaseStaleInferenceAdmissionLease(lease, {
-          ...observation,
-          policyGeneration: fresh.authority.generation,
-        })
-      ) {
-        throw dispatchRefusal(error);
+      if (error instanceof InferenceAdmissionGateUnavailableError) {
+        throw admissionUnavailable(params, error);
       }
-    }
-    try {
-      await markInferenceAdmissionLeaseDispatched(lease);
-    } catch (error) {
-      throw dispatchRefusal(error);
+      throw error;
     }
   };
   const run = (requestedChoice: SettlementChoice): Promise<CreditReconciliationResult | null> => {
@@ -343,38 +308,21 @@ function attachInferenceAdmissionLease(
           selected.kind === "actual" ? selected.actualCostUsd : lease.estimatedCostUsd,
         );
       }
-      let reconciliation: CreditReconciliationResult | null;
-      try {
-        reconciliation =
-          selected.kind === "actual"
-            ? await settleAuthoritatively(selected.actualCostUsd)
-            : await settleUnknownAuthoritatively();
-      } catch (error) {
-        refreshStandingOffResponse(params);
-        throw error;
-      }
-      const remaining = settledBalance?.();
-      if (
-        reconciliation?.adjustmentType === "uncollected_overage" ||
-        (remaining !== undefined && !(remaining.balanceUsd > 0))
-      )
-        refreshStandingOffResponse(params);
+      const reconciliation =
+        selected.kind === "actual"
+          ? await settleAuthoritatively(selected.actualCostUsd)
+          : await settleUnknownAuthoritatively();
       const actualCostUsd =
         selected.kind === "actual"
           ? selected.actualCostUsd
           : Math.max(lease.estimatedCostUsd, reconciliation?.actualCost ?? 0);
       const amounts = inferenceSettlementAmounts(lease, actualCostUsd, reconciliation);
-      try {
-        await settleInferenceAdmissionLease(
-          lease,
-          amounts.balanceBackedUsd,
-          amounts.gateConsumedUsd,
-          remaining,
-        );
-      } catch (error) {
-        refreshStandingOffResponse(params);
-        throw error;
-      }
+      await settleInferenceAdmissionLease(
+        lease,
+        amounts.balanceBackedUsd,
+        amounts.gateConsumedUsd,
+        settledBalance?.(),
+      );
       return reconciliation;
     })();
     settlement = current;
@@ -404,39 +352,16 @@ function attachInferenceAdmissionLease(
 }
 
 /**
- * Settlement found the organization unable to fund another request. Refill
- * the projection from the primary and rewrite this request's cached auth
- * entry, both off the response, so the next request is refused from its own
- * cache read.
- */
-function refreshStandingOffResponse(params: OrganizationInferenceAdmissionParams): void {
-  if (params.executionCtx) {
-    refreshInferenceAdmissionSnapshotOffResponse(
-      params.context.organizationId,
-      params.executionCtx,
-      { force: true },
-    );
-  }
-  params.refreshAuthEntry?.();
-}
-
-/**
  * Admit one organization-credit inference request.
  *
- * Worker requests use a cached snapshot and a durable lease before provider
- * work, then perform their deterministic debit after it. Valid affiliate
- * attribution selects the atomic debit-plus-payout lane; non-Worker callers
- * keep synchronous reservation compatibility.
+ * Worker requests acquire one exact balance lease before dispatch and perform
+ * their deterministic debit after provider work. Valid affiliate attribution
+ * selects the atomic debit-plus-payout lane; non-Worker callers keep
+ * synchronous reservation compatibility.
  */
 export async function admitOrganizationInference(
-  input: OrganizationInferenceAdmissionParams,
+  params: OrganizationInferenceAdmissionParams,
 ): Promise<OrganizationInferenceAdmission> {
-  // Settlement can run where the request's async context is gone (a stream's
-  // pull or cancel), so the entry refresh is bound to the admission here.
-  const params: OrganizationInferenceAdmissionParams = {
-    ...input,
-    refreshAuthEntry: input.refreshAuthEntry ?? getRequestInferenceAuthEntryRefresh(),
-  };
   try {
     return withCanonicalSettlementReceipt(
       await admitOrganizationInferenceOnce(params),
@@ -492,17 +417,17 @@ async function admitOrganizationInferenceOnce(
     InferenceFundingBudgetUnavailableError,
   } = await import("./inference-funded-budget-admission");
   if (
-    // Only a session that commits at dispatch may take the funded-budget
-    // lane; a request route never calls the gate before its provider.
-    params.commitLeaseAtDispatch === true &&
     isFundedBudgetAdmissionEnabled() &&
     params.admissionSnapshot?.fundedBudget?.enabled &&
     params.executionCtx &&
     params.credential?.kind === "api_key" &&
     params.credential.rateLimit !== undefined &&
     params.credential.expiresAt !== undefined &&
-    params.flatCost !== undefined &&
-    params.flatCost.totalCost > 0
+    ((params.flatCost && params.flatCost.totalCost > 0) ||
+      (Number.isSafeInteger(params.maximumInputTokens) &&
+        params.maximumInputTokens! > 0 &&
+        Number.isSafeInteger(params.maximumOutputTokens) &&
+        params.maximumOutputTokens! > 0))
   ) {
     try {
       return await admitFundedBudgetInference(params);
@@ -540,94 +465,33 @@ async function admitWithoutGate(
 }
 
 /**
- * A refusing snapshot younger than this was just read from the primary (an
- * isolate refill, a republished projection or a rewritten auth entry), so it
- * is not refilled again. It bounds a refused organization to one primary
- * snapshot fill per isolate in this window; a payment that commits inside the
- * window is honoured when it ends.
+ * A refusal decided from a snapshot older than this refills the snapshot from
+ * the primary once and retries. It matches the isolate projection lifetime, so
+ * an organization that stays refused costs at most one primary read per isolate
+ * in this window, while a top-up or hold release missed by the cached snapshot
+ * is honored on the next request.
  */
-const REFUSAL_REFILL_MIN_AGE_MS = 1_000;
+const REFUSAL_REFILL_MIN_AGE_MS = 5_000;
 
 /**
- * How long one isolate waits before asking again for the same rewrite of the
- * same credential's entry. A rewrite takes shared-cache propagation time to
- * become readable, and the entry's own aged refresh repeats a lost one.
- */
-const ENTRY_REWRITE_REPEAT_MS = 10_000;
-const ENTRY_REWRITE_MAX_TRACKED = 2_048;
-const requestedEntryRewrites = new Map<string, { standing: string; at: number }>();
-
-/** Test hook: forget which entry rewrites this isolate already requested. */
-export function __clearRequestedInferenceEntryRewrites(): void {
-  requestedEntryRewrites.clear();
-}
-
-/** The snapshot facts that decide funding; snapshots equal in them decide alike. */
-function fundingStanding(snapshot: InferenceAdmissionSnapshot): string {
-  return JSON.stringify([
-    snapshot.billingHold,
-    snapshot.subscriptionFunded,
-    snapshot.balance.balanceRevision,
-    snapshot.balance.balanceUsd,
-    snapshot.funding?.balanceRevision ?? null,
-    snapshot.funding?.balanceUsd ?? null,
-    snapshot.authority.generation,
-    snapshot.authority.effectiveUntil,
-  ]);
-}
-
-/**
- * Rewrite the request's cached auth entry when a newer snapshot decided the
- * request differently from the facts the entry carries. An entry that
- * already carries the newer standing is left alone, and one isolate asks for
- * the same rewrite once per `ENTRY_REWRITE_REPEAT_MS`: a client retrying a
- * refusal in a loop starts no authoritative key hydration per request.
- */
-function rewriteDisagreeingAuthEntry(
-  params: OrganizationInferenceAdmissionParams,
-  decided: InferenceAdmissionSnapshot,
-): void {
-  if (!params.refreshAuthEntry) return;
-  const standing = fundingStanding(decided);
-  const carried = params.admissionSnapshot;
-  if (isInferenceAdmissionSnapshot(carried) && fundingStanding(carried) === standing) return;
-  const credential = `${params.context.organizationId}:${params.apiKeyId ?? params.context.userId}`;
-  const now = Date.now();
-  const requested = requestedEntryRewrites.get(credential);
-  if (requested?.standing === standing && now - requested.at < ENTRY_REWRITE_REPEAT_MS) return;
-  if (requestedEntryRewrites.size >= ENTRY_REWRITE_MAX_TRACKED) requestedEntryRewrites.clear();
-  requestedEntryRewrites.set(credential, { standing, at: now });
-  params.refreshAuthEntry();
-}
-
-/**
- * The snapshot a Worker request is first decided from: the one carried by the
- * combined auth decision, or the isolate's newer copy of it. It decides an
- * admitted request through the durable funding gate; one older than the shared
- * projection lifetime is refreshed under `waitUntil` for later requests. Only
- * a request with no snapshot reads the shared cache and, when that is cold
- * too, the primary. A snapshot that cannot prove hold standing or subscriber
- * funding is not a usable decision and is filled from the primary once.
+ * The snapshot a Worker request is admitted from: the one carried by the
+ * combined auth decision while it is no older than the shared projection,
+ * else the organization projection read cache-first (a cold cache is filled
+ * inline). A snapshot that cannot prove hold standing or subscriber funding is
+ * refilled from the primary once instead of failing.
  */
 async function workerAdmissionSnapshot(
   params: OrganizationInferenceAdmissionParams,
 ): Promise<InferenceAdmissionSnapshot> {
-  const organizationId = params.context.organizationId;
   const carried = params.admissionSnapshot;
-  let snapshot: InferenceAdmissionSnapshot;
-  if (isInferenceAdmissionSnapshot(carried)) {
-    const local = peekInferenceAdmissionSnapshotInIsolate(organizationId);
-    snapshot = local && local.balance.balanceAt > carried.balance.balanceAt ? local : carried;
-  } else {
-    snapshot = await getInferenceAdmissionSnapshotCacheFirst(organizationId);
-  }
+  let snapshot: InferenceAdmissionSnapshot =
+    isInferenceAdmissionSnapshot(carried) &&
+    snapshotAgeMs(carried) <= CacheTTL.inference.orgAdmission * 1000
+      ? carried
+      : await getInferenceAdmissionSnapshotCacheFirst(params.context.organizationId);
   if (!snapshotIsComplete(snapshot)) {
-    snapshot = await fillInferenceAdmissionSnapshot(organizationId);
+    snapshot = await fillInferenceAdmissionSnapshot(params.context.organizationId);
     if (!snapshotIsComplete(snapshot)) throw admissionUnavailable(params);
-    return snapshot;
-  }
-  if (params.executionCtx && snapshotAgeMs(snapshot) > CacheTTL.inference.orgAdmission * 1000) {
-    refreshInferenceAdmissionSnapshotOffResponse(organizationId, params.executionCtx);
   }
   return snapshot;
 }
@@ -644,131 +508,74 @@ function snapshotIsComplete(snapshot: InferenceAdmissionSnapshot): boolean {
   );
 }
 
-/** The plan period the snapshot's allowance belongs to has already ended. */
-function allowancePeriodEnded(snapshot: InferenceAdmissionSnapshot): boolean {
-  const until = snapshot.authority.effectiveUntil;
-  return Boolean(until) && Date.parse(until as string) <= Date.now();
-}
-
-/** The plan period ended after the snapshot was read, so its allowance may have rolled over. */
-function allowancePeriodEndedSince(snapshot: InferenceAdmissionSnapshot): boolean {
-  const until = snapshot.authority.effectiveUntil;
-  if (!until) return false;
-  const endedAt = Date.parse(until);
-  return endedAt <= Date.now() && endedAt >= snapshot.balance.balanceAt;
-}
-
 /**
- * Admit from the cached snapshot, then commit a durable funding lease before
- * the provider can run. The snapshot must also show no billing hold and enough
- * subscriber capacity or credit for the request's estimate.
- *
- * A snapshot that would refuse is not trusted. A top-up, a redeemed grant, a
- * new subscription, a period rollover or a released hold changes the primary
- * without rewriting the cached auth entry, so the refusal is decided again:
- * first from the published projection when that is newer (one cache read),
- * then from an inline primary fill (coalesced per isolate). A refusal is off
- * the hot path, so those reads cost an admitted request nothing. Whenever the
- * carried entry disagreed with the newer state, it is rewritten off the
- * response (`rewriteDisagreeingAuthEntry`); an entry that already refuses for
- * the same facts is not.
+ * Admit from the published snapshot. The only pre-dispatch round trip is the
+ * organization Durable Object lease and dispatch, and the gate decides
+ * affordability: every committed balance change is published to it (see
+ * `republishInferenceAdmissionAfterCreditMutation`) and it keeps the newest
+ * balance revision, so a lease carrying an older snapshot is charged against
+ * the committed balance. The gate also refuses a snapshot whose policy
+ * generation was superseded or while a policy/hold mutation is open (see the
+ * standing fence in `inference-policy-fence.ts`); that refusal refills the
+ * projection inline and retries once. A balance or hold refusal decided from
+ * an aged snapshot refills it once too, so a stale snapshot never refuses a
+ * funded organization by itself.
  */
 async function admitFromSnapshot(
   params: OrganizationInferenceAdmissionParams,
   snapshot: InferenceAdmissionSnapshot,
 ): Promise<OrganizationInferenceAdmission> {
-  const organizationId = params.context.organizationId;
   const admitOnce = (current: InferenceAdmissionSnapshot) => {
     if (current.billingHold === true) {
-      throw new BillingHoldActiveError(organizationId, "0.000000");
+      throw new BillingHoldActiveError(params.context.organizationId, "0.000000");
     }
     const policyGeneration = current.authority.generation;
     return current.subscriptionFunded && current.funding
-      ? admitSubscriberViaDurableObject(
-          params,
-          current.funding,
-          policyGeneration,
-          allowancePeriodEnded(current) ? null : current.authority.effectiveUntil,
-        )
+      ? admitSubscriberViaDurableObject(params, current.funding, policyGeneration)
       : admitCreditsViaDurableObject(params, {
           balanceUsd: current.balance.balanceUsd,
           balanceRevision: current.balance.balanceRevision,
           policyGeneration,
         });
   };
-  let refusal: unknown;
   try {
     return await admitOnce(snapshot);
   } catch (error) {
-    if (
-      error instanceof InferenceAdmissionUnavailableError &&
-      isInferenceAdmissionPolicyStaleError(error.cause)
-    ) {
+    if (isStalePolicyRefusal(error)) {
       return await admitOnce(await refreshAfterStalePolicy(params));
     }
-    if (!isStandingRefusal(error)) throw error;
-    refusal = error;
-  }
-  // A refusal just read from the primary stands with no further read. A
-  // carried entry it superseded still decides other isolates from older
-  // facts, so that entry is rewritten.
-  const refusalIsCurrent = (decided: InferenceAdmissionSnapshot) =>
-    snapshotAgeMs(decided) < REFUSAL_REFILL_MIN_AGE_MS && !allowancePeriodEndedSince(decided);
-  if (refusalIsCurrent(snapshot)) {
-    rewriteDisagreeingAuthEntry(params, snapshot);
-    throw refusal;
-  }
-  const published = await peekInferenceAdmissionSnapshot(organizationId);
-  if (
-    published &&
-    snapshotIsComplete(published) &&
-    published.balance.balanceAt > snapshot.balance.balanceAt
-  ) {
+    if (!isStandingRefusal(error) || snapshotAgeMs(snapshot) < REFUSAL_REFILL_MIN_AGE_MS) {
+      throw error;
+    }
+    let refreshed: InferenceAdmissionSnapshot;
     try {
-      const admitted = await admitOnce(published);
-      rewriteDisagreeingAuthEntry(params, published);
-      return admitted;
-    } catch (error) {
-      if (!isStandingRefusal(error)) throw error;
-      refusal = error;
+      refreshed = await fillInferenceAdmissionSnapshot(params.context.organizationId);
+    } catch (fillError) {
+      // error-policy:J2 an aged snapshot alone must not refuse; without the
+      // primary the refusal is unproven, so report it as retryable.
+      throw admissionUnavailable(params, fillError);
     }
-    if (refusalIsCurrent(published)) {
-      rewriteDisagreeingAuthEntry(params, published);
-      throw refusal;
+    if (!snapshotIsComplete(refreshed)) throw admissionUnavailable(params);
+    if (
+      refreshed.billingHold === snapshot.billingHold &&
+      refreshed.balance.balanceRevision === snapshot.balance.balanceRevision &&
+      refreshed.authority.generation === snapshot.authority.generation
+    ) {
+      throw error;
     }
-  }
-  let fresh: InferenceAdmissionSnapshot;
-  try {
-    fresh = await fillInferenceAdmissionSnapshot(organizationId);
-  } catch (fillError) {
-    // error-policy:J4 the cached refusal stands when the primary cannot be
-    // read; the next refused request tries the fill again.
-    logger.warn("[OrganizationInferenceAdmission] refusal refill failed", {
-      organizationId,
-      error: fillError instanceof Error ? fillError.message : String(fillError),
-    });
-    throw refusal;
-  }
-  if (!snapshotIsComplete(fresh)) throw admissionUnavailable(params);
-  rewriteDisagreeingAuthEntry(params, fresh);
-  return await admitOnce(fresh);
-}
-
-/** A plan subscriber has too little allowance and credit left for this request. */
-export class AllowanceExhaustedError extends InsufficientCreditsError {
-  constructor(
-    required: number,
-    available: number,
-    /** End of the current plan period, when the snapshot names one still ahead. */
-    readonly resetsAt: string | null,
-  ) {
-    super(required, available, "cached_admission_snapshot");
-    this.name = "AllowanceExhaustedError";
+    return await admitOnce(refreshed);
   }
 }
 
 function isStandingRefusal(error: unknown): boolean {
   return error instanceof InsufficientCreditsError || error instanceof BillingHoldActiveError;
+}
+
+function isStalePolicyRefusal(error: unknown): boolean {
+  return (
+    error instanceof InferenceAdmissionUnavailableError &&
+    isInferenceAdmissionPolicyStaleError(error.cause)
+  );
 }
 
 async function refreshAfterStalePolicy(
@@ -795,7 +602,6 @@ async function admitSubscriberViaDurableObject(
   params: OrganizationInferenceAdmissionParams,
   capacity: SubscriberFundingCapacity,
   policyGeneration: string,
-  resetsAt: string | null,
 ): Promise<OrganizationInferenceAdmission> {
   const executionCtx = params.executionCtx;
   if (!executionCtx) throw admissionUnavailable(params);
@@ -840,10 +646,6 @@ async function admitSubscriberViaDurableObject(
       ? { attribution: affiliateAttribution, sourceId: affiliatePayoutSourceId }
       : undefined;
   const requiredLeaseUsd = Math.max(estimatedCostUsd, MIN_RESERVATION);
-  // Reject a locally unaffordable estimate before asking the durable funding gate.
-  if (capacity.balanceUsd < requiredLeaseUsd) {
-    throw new AllowanceExhaustedError(requiredLeaseUsd, capacity.balanceUsd, resetsAt);
-  }
   let lease: InferenceAdmissionLease;
   try {
     lease = await acquireInferenceAdmissionLease({
@@ -876,8 +678,7 @@ async function admitSubscriberViaDurableObject(
       },
       credential: params.credential,
       executionCtx,
-      deferCommitUntilDispatch:
-        params.atomicProviderBoundary === true || params.commitLeaseAtDispatch === true,
+      deferCommitUntilDispatch: params.atomicProviderBoundary === true,
       policyGeneration,
     });
   } catch (error) {
@@ -935,15 +736,6 @@ async function admitSubscriberViaDurableObject(
     lease,
     params,
     () => settledBalance,
-    (fresh) => {
-      if (!fresh.subscriptionFunded || !fresh.funding) return undefined;
-      settledBalance = {
-        balanceUsd: fresh.funding.balanceUsd,
-        balanceRevision: fresh.funding.balanceRevision,
-        balanceView: "funding",
-      };
-      return settledBalance;
-    },
   );
 }
 
@@ -1000,16 +792,9 @@ async function admitCreditsViaDurableObject(
     throw classifyCacheError(error);
   }
 
-  // Reject a locally unaffordable estimate before the durable gate serializes
-  // all in-flight estimates against the authoritative balance.
+  // The Durable Object serializes every in-flight estimate, so no balance
+  // cushion applies here: an affordable request is admitted at any balance.
   const requiredLeaseUsd = Math.max(estimatedCostUsd, MIN_RESERVATION);
-  if (observation.balanceUsd < requiredLeaseUsd) {
-    throw new InsufficientCreditsError(
-      requiredLeaseUsd,
-      observation.balanceUsd,
-      "cached_admission_snapshot",
-    );
-  }
 
   let inferenceLease: InferenceAdmissionLease;
   try {
@@ -1042,8 +827,7 @@ async function admitCreditsViaDurableObject(
       },
       credential: params.credential,
       executionCtx,
-      deferCommitUntilDispatch:
-        params.atomicProviderBoundary === true || params.commitLeaseAtDispatch === true,
+      deferCommitUntilDispatch: params.atomicProviderBoundary === true,
       policyGeneration: observation.policyGeneration,
     });
   } catch (error) {
@@ -1099,13 +883,7 @@ async function admitCreditsViaDurableObject(
       },
       affiliateAttribution,
     };
-    return attachInferenceAdmissionLease(
-      result,
-      inferenceLease,
-      params,
-      undefined,
-      creditBalanceInFreshSnapshot,
-    );
+    return attachInferenceAdmissionLease(result, inferenceLease, params);
   }
 
   // A zero-cost outcome can settle against the admission observation. The
@@ -1163,23 +941,7 @@ async function admitCreditsViaDurableObject(
     inferenceLease,
     params,
     () => settledBalance,
-    (fresh) => {
-      const balance = creditBalanceInFreshSnapshot(fresh);
-      if (balance) settledBalance = balance;
-      return balance;
-    },
   );
-}
-
-/** The credit balance of a refilled snapshot, unless it now funds through a subscription. */
-function creditBalanceInFreshSnapshot(
-  fresh: InferenceAdmissionSnapshot,
-): { balanceUsd: number; balanceRevision: string } | undefined {
-  if (fresh.subscriptionFunded && fresh.funding) return undefined;
-  return {
-    balanceUsd: fresh.balance.balanceUsd,
-    balanceRevision: fresh.balance.balanceRevision,
-  };
 }
 
 /** Map pricing/affiliate policy failures to retryable admission errors. */

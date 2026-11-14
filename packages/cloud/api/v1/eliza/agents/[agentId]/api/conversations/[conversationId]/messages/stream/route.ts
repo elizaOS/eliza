@@ -148,7 +148,7 @@ async function resolveAgentScope(
       : null;
     if (!agent) {
       const hydration = import(
-        "../../../../../../../../voice/session/lib/voice-agent-scope-hydration"
+        "@/api/v1/voice/session/lib/voice-agent-scope-hydration"
       )
         .then(async ({ hydrateVoiceSharedAgentScope }) => {
           await hydrateVoiceSharedAgentScope(c.env, {

@@ -25,9 +25,9 @@
     "notifications"
   ],
   "scripts": {
-    "test": "bun test --timeout=120000 ./test/native-host/policy.node.mjs ./test/native-host/notices.node.mjs ./test/native-host/mail.node.mjs ./test/native-host/android-compile.node.mjs",
+    "test": "node --test test/native-host/policy.node.mjs test/native-host/notices.node.mjs test/native-host/mail.node.mjs test/native-host/android-compile.node.mjs",
     "lint:check": "bunx @biomejs/biome check .",
-    "typecheck": "tsc --noEmit -p tsconfig.json && bun test --timeout=120000 ./test/native-host/android-compile.node.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json && node --test test/native-host/android-compile.node.mjs",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format ."

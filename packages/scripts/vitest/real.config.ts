@@ -415,6 +415,7 @@ export default defineConfig({
       "**/node_modules/**",
       ".claude/**",
       ...(hiddenElizaWorkspaceGlob ? [hiddenElizaWorkspaceGlob] : []),
+      elizaWorkspacePattern("packages/app/platforms/electrobun/**"),
       "apps/chrome-extension/**",
       elizaWorkspacePattern("cloud/**"),
       ...(isCiReal ? ciExcludedRealPaths : []),

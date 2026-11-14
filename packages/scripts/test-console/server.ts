@@ -3,7 +3,7 @@
  * Local test console server: one process that serves the console UI, holds
  * the operator's saved credentials, and drives test runs with live status.
  *
- * Launched via `bun packages/scripts/test-console/server.ts`. Binds 127.0.0.1 only — it holds raw
+ * Launched via `node packages/scripts/test-console/server.ts`. Binds 127.0.0.1 only — it holds raw
  * API keys and can execute repo code, so it must never listen on a routable
  * interface; there is deliberately no auth layer beyond that. The browser
  * gets presence/suffix hints for saved secrets, never the values.
@@ -239,6 +239,7 @@ export const routes = {
     if (result.status === "authenticated" && result.apiKey) {
       setConnection("eliza-cloud", {
         ELIZAOS_CLOUD_API_KEY: result.apiKey,
+        ELIZA_CLOUD_API_KEY: result.apiKey,
       });
     }
     json(res, 200, { status: result.status });

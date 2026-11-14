@@ -204,9 +204,15 @@ function normalizeEndpointSetting(value: string | undefined): string | undefined
 /**
  * Resolve the text API endpoint from an injected setting reader. Keeping this
  * pure lets diagnostics use the exact provider policy without constructing a
- * runtime or depending on the ambient process environment.
+ * runtime or depending on the ambient process environment. The scenario
+ * runner's `ELIZA_MOCK_OPENAI_BASE` remains authoritative when present.
  */
-export function resolveOpenAIBaseURL(readSetting: EndpointSettingReader): string {
+export function resolveOpenAIBaseURL(
+  readSetting: EndpointSettingReader,
+  options: {
+    mockBaseURL?: string;
+  } = {}
+): string {
   const read = (key: string): string | undefined => normalizeEndpointSetting(readSetting(key));
   const explicitProvider = compatibleProvider(read("ELIZA_PROVIDER"));
   const openAIBaseURL = explicitCompatibleBase(read("OPENAI_BASE_URL"), explicitProvider);
@@ -223,6 +229,7 @@ export function resolveOpenAIBaseURL(readSetting: EndpointSettingReader): string
         read("OPENAI_API_KEY") === undefined &&
         openAIBaseURL === undefined);
   return (
+    normalizeEndpointSetting(options.mockBaseURL) ??
     openAIBaseURL ??
     (cerebrasMode ? (read("CEREBRAS_BASE_URL") ?? "https://api.cerebras.ai/v1") : undefined) ??
     (evolinkMode ? (read("EVOLINK_BASE_URL") ?? "https://direct.evolink.ai/v1") : undefined) ??
@@ -230,13 +237,19 @@ export function resolveOpenAIBaseURL(readSetting: EndpointSettingReader): string
   );
 }
 export function getBaseURL(runtime: IAgentRuntime): string {
-  return resolveOpenAIBaseURL((key) => {
-    const runtimeValue = runtime.getSetting(key);
-    const normalizedRuntime = normalizeEndpointSetting(
-      runtimeValue === undefined || runtimeValue === null ? undefined : String(runtimeValue)
-    );
-    return normalizedRuntime ?? getEnvValue(key);
-  });
+  const baseURL = resolveOpenAIBaseURL(
+    (key) => {
+      const runtimeValue = runtime.getSetting(key);
+      const normalizedRuntime = normalizeEndpointSetting(
+        runtimeValue === undefined || runtimeValue === null ? undefined : String(runtimeValue)
+      );
+      return normalizedRuntime ?? getEnvValue(key);
+    },
+    {
+      mockBaseURL: getEnvValue("ELIZA_MOCK_OPENAI_BASE"),
+    }
+  );
+  return baseURL;
 }
 export function getEmbeddingBaseURL(runtime: IAgentRuntime): string {
   const embeddingURL = getSetting(runtime, "OPENAI_EMBEDDING_URL");

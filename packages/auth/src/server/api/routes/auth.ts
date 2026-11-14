@@ -5595,7 +5595,18 @@ auth.get("/test/sms-inbox/:phone", (c) => {
  * membership for arbitrary users.
  */
 auth.post("/test/token", async (c) => {
-  if (process.env.NODE_ENV === "production") {
+  // ⚠️ SECURITY WARNING — STEWARD_ENABLE_PROD_TEST_ACCOUNT_TOKEN ⚠️
+  // This endpoint mints a real, fully-privileged session token for a tenant's
+  // test-account credentials. It is hard-disabled in production by default.
+  // Setting STEWARD_ENABLE_PROD_TEST_ACCOUNT_TOKEN=true in a production
+  // environment is DANGEROUS: anyone who learns the (often static) test-account
+  // email/phone/OTP can obtain a valid session. Only enable it for short,
+  // supervised app-review / automation windows and disable it immediately
+  // afterward. Never leave it enabled on an internet-reachable prod deploy.
+  if (
+    process.env.NODE_ENV === "production" &&
+    process.env.STEWARD_ENABLE_PROD_TEST_ACCOUNT_TOKEN !== "true"
+  ) {
     return c.json<ApiResponse>(
       { ok: false, error: "Test account token exchange is disabled" },
       404,
@@ -5795,19 +5806,6 @@ auth.post("/sms/send", async (c) => {
     trustedClientIp(c),
   );
   if (!captcha.ok) {
-    // A 503 here previously left no server-side cause: the request log
-    // recorded only the status, so operators could not tell a missing
-    // CAPTCHA configuration from any other 503. Log the generic cause
-    // server-side only; the client response below stays unchanged and
-    // carries no phone number, token, or provider secret.
-    if (captcha.status === 503) {
-      logger.error(
-        {
-          details: ["[SmsSend] sms/send CAPTCHA failure", captcha.error],
-        },
-        "[Login:auth] error",
-      );
-    }
     return c.json<ApiResponse>(
       { ok: false, error: captcha.error },
       captcha.status as 400 | 502 | 503,
@@ -5836,17 +5834,6 @@ auth.post("/sms/send", async (c) => {
     ));
   } catch (err) {
     if (err instanceof Error && err.message === "SMS provider not configured") {
-      // Same 503 cause-logging gap as the CAPTCHA branch above: log the
-      // generic cause server-side only, client response unchanged.
-      logger.error(
-        {
-          details: [
-            "[SmsSend] sms/send SMS provider not configured",
-            redactedThrownDiagnostics(err),
-          ],
-        },
-        "[Login:auth] error",
-      );
       return c.json<ApiResponse>(
         { ok: false, error: "SMS provider not configured" },
         503,

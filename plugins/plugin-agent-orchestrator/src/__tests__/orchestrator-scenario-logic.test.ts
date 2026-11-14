@@ -46,9 +46,9 @@ let savedTrajectoryRecording: string | undefined;
 
 beforeEach(() => {
   savedAutoVerify = process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY;
-  savedTrajectoryRecording = process.env.ELIZA_TRAJECTORY_LOGGING;
+  savedTrajectoryRecording = process.env.ELIZA_TRAJECTORY_RECORDING;
   process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY = "1";
-  process.env.ELIZA_TRAJECTORY_LOGGING = "0";
+  process.env.ELIZA_TRAJECTORY_RECORDING = "0";
 });
 
 afterEach(() => {
@@ -58,9 +58,9 @@ afterEach(() => {
     process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY = savedAutoVerify;
   }
   if (savedTrajectoryRecording === undefined) {
-    delete process.env.ELIZA_TRAJECTORY_LOGGING;
+    delete process.env.ELIZA_TRAJECTORY_RECORDING;
   } else {
-    process.env.ELIZA_TRAJECTORY_LOGGING = savedTrajectoryRecording;
+    process.env.ELIZA_TRAJECTORY_RECORDING = savedTrajectoryRecording;
   }
 });
 

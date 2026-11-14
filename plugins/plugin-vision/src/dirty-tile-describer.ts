@@ -156,13 +156,7 @@ export class DirtyTileDescriber {
       }
       const description = await this.deps.describeTile(tile);
       this.stats.tilesDescribed += 1;
-      // Never cache an empty result: a failed describe normalizes to "" (see
-      // createTileDescribeFn — an unusable model result yields ""), and caching
-      // it would pin the failure for as long as the tile hash is unchanged.
-      // Leaving it uncached makes the next frame re-describe the tile instead.
-      if (description.trim().length > 0) {
-        this.cache.set(tile.id, { hash, description });
-      }
+      this.cache.set(tile.id, { hash, description });
       described.push(this.toDescribed(tile, description, false));
     }
 

@@ -39,12 +39,6 @@ export interface TaskStoreEntry {
 // ============================================================================
 
 const TASK_TTL_SECONDS = 3600; // 1 hour
-const TERMINAL_TASK_STATES: ReadonlySet<Task["status"]["state"]> = new Set([
-  "completed",
-  "canceled",
-  "failed",
-  "rejected",
-]);
 const ENV_PREFIX = process.env.ENVIRONMENT || "local";
 const TASK_KEY_PREFIX = `${ENV_PREFIX}:a2a:task:`;
 const TASK_ORG_INDEX_PREFIX = "a2a:org:";
@@ -300,28 +294,17 @@ class A2ATaskStoreService {
     state: Task["status"]["state"],
     message?: Task["status"]["message"],
   ): Promise<Task | null> {
-    const result = await this.update(taskId, organizationId, (entry) => {
-      // Evaluate terminal eligibility on the locked or versioned snapshot.
-      // Cloudflare re-runs this guard on the current row after a CAS conflict.
-      const currentState = entry.task.status.state;
-      if (TERMINAL_TASK_STATES.has(currentState)) {
-        throw new ElizaError(`Task ${taskId} is already in terminal state: ${currentState}`, {
-          code: "A2A_TASK_TERMINAL_STATE",
-          context: { taskId, currentState, requestedState: state },
-        });
-      }
-      return {
-        ...entry,
-        task: {
-          ...entry.task,
-          status: {
-            state,
-            message,
-            timestamp: new Date().toISOString(),
-          },
+    const result = await this.update(taskId, organizationId, (entry) => ({
+      ...entry,
+      task: {
+        ...entry.task,
+        status: {
+          state,
+          message,
+          timestamp: new Date().toISOString(),
         },
-      };
-    });
+      },
+    }));
 
     return result?.task ?? null;
   }

@@ -4,7 +4,7 @@
  * host. Downstream brands bind their own release descriptor through
  * aosp-release-signing.mjs `signingMain(args, release)` with their repository root.
  *
- *   bun packages/os/scripts/android/sign-pixel10a-release.mjs \
+ *   node packages/os/scripts/android/sign-pixel10a-release.mjs \
  *     --target-files /abs/unsigned-target_files.zip --target-files-sha256 HEX \
  *     --keys-dir /dev/shm/keys --releasetools /abs/otatools/bin --out /abs/new-dir [--dry-run] ...
  */

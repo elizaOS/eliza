@@ -3,7 +3,6 @@ import {
   CALENDAR_AVAILABILITY_CAPABILITY,
   CALENDAR_NAMED_READ_CAPABILITY,
   NAMED_TARGET_CAPABILITY,
-  NOTES_LIST_FILTER_CAPABILITY,
   NOTES_SEARCH_CAPABILITY,
 } from "@elizaos/contracts";
 import {
@@ -98,7 +97,6 @@ export function deviceRequestCredential(
     "notes.local-record.v1",
     "notes.query.v1",
     "notes.organize.v1",
-    NOTES_LIST_FILTER_CAPABILITY,
     "photos.library.v1",
     "photos.view.v1",
     CALENDAR_NAMED_READ_CAPABILITY,
@@ -118,14 +116,6 @@ export function deviceRequestCredential(
     // phones advertise them only with the native telephony profile.
     "phone.dial.v1",
     "contacts.lookup.v1",
-    // Owner-approved calls, contact changes, contact SMS and open-item reads
-    // (@elizaos/contracts/telephony-actions), under the same native profile.
-    "phone.call.v1",
-    "contacts.write.v1",
-    "sms.compose.v1",
-    "messages.read.v1",
-    "voicemail.read.v1",
-    "voicemail.delete.v1",
   ]);
   if (
     capabilities.length > allowedCapabilities.size ||
@@ -198,7 +188,6 @@ export async function handleDeviceActionRoutes(
             "notes.local-record.v1",
             "notes.query.v1",
             "notes.organize.v1",
-            NOTES_LIST_FILTER_CAPABILITY,
             "photos.library.v1",
             "photos.view.v1",
             CALENDAR_AVAILABILITY_CAPABILITY,
@@ -291,7 +280,7 @@ export async function handleDeviceActionRoutes(
     if (method === "POST" && pathname === "/api/client-devices/register") {
       const body = await ctx.readJsonBody<{
         label: string;
-        workflowProtocol?: number;
+        workflowProtocol?: 0 | 1 | 2;
       }>(req, res);
       if (body)
         json(

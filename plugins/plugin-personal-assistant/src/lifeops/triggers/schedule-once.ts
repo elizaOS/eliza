@@ -74,7 +74,7 @@ export async function scheduleOnceTriggerTask(
   }
 
   const activeTasks = await listTriggerTasks(args.runtime);
-  const limit = getTriggerLimit();
+  const limit = getTriggerLimit(args.runtime);
   const activeCreatorCount = activeTasks.filter((task) => {
     const trigger = readTriggerConfig(task);
     return trigger?.enabled && trigger.createdBy === creator;

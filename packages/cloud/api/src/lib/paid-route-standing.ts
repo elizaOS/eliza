@@ -12,7 +12,7 @@ import type { AppContext } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import {
   type GenerativeRouteCaller,
   requireGenerativeRouteCaller,
-} from "./generative-route-auth";
+} from "@/api-app/lib/generative-route-auth";
 
 type CompatibilityStandingReason =
   | "account_inactive"

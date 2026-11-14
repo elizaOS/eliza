@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { JSONSchema, PlannerRuntime } from "@elizaos/core";
+import { resolveAppAliasedEnvValue as resolveAliasedEnvValue } from "@elizaos/host/protocol";
 import { z } from "zod";
 import { gepaHash, parseGepaPlannerCase } from "./gepa-planner-case.ts";
 import { proveGepaSources } from "./gepa-source-proof.ts";
@@ -20,7 +21,7 @@ const requestSchema: z.ZodType<JSONSchema> = z.lazy(() =>
 );
 
 async function main() {
-  const stateRoot = process.env.ELIZA_STATE_DIR?.trim();
+  const stateRoot = resolveAliasedEnvValue("ELIZA_STATE_DIR");
   if (!stateRoot || stateRoot !== process.cwd())
     throw new Error("Worker must own its state directory");
   if (

@@ -141,13 +141,22 @@ export function createMcpToolAction(
       const params = extractParams(message, state);
       logger.info({ serverName, toolName: tool.name, params }, `[MCP] Executing ${actionName}`);
       const errors = validateParamsAgainstSchema(params, tool.inputSchema);
-      if (errors.length > 0) {
-        logger.error({ errors, params }, `[MCP] Invalid params for ${actionName}`);
+      const missing = errors.filter((e) => e.startsWith("Missing required"));
+      const rejected = errors.filter(
+        (e) => !e.startsWith("Missing required") && e.includes("does not accept null"),
+      );
+      if (missing.length > 0 || rejected.length > 0) {
+        const blockingErrors = [...missing, ...rejected];
+        logger.error({ errors: blockingErrors, params }, `[MCP] Invalid params for ${actionName}`);
         return {
           success: false,
-          error: errors.join(", "),
-          data: { actionName, serverName, toolName: tool.name, code: "MCP_TOOL_ARGUMENTS_INVALID" },
+          error: blockingErrors.join(", "),
+          data: { actionName, serverName, toolName: tool.name },
         };
+      }
+      const warnings = errors.filter((e) => !e.startsWith("Missing required"));
+      if (warnings.length > 0) {
+        logger.warn({ warnings, params }, `[MCP] Type warnings for ${actionName}`);
       }
       let result: CallToolResult;
       try {

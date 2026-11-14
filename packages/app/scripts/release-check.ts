@@ -45,10 +45,19 @@ const cdnValidationScriptPathCandidates = [
   "packages/app/scripts/validate-cdn-assets.ts",
   "scripts/validate-cdn-assets.ts",
 ] as const;
+const patchedElectrobunCliHelperPathCandidates = [
+  "packages/app/scripts/build-patched-electrobun-cli.ts",
+] as const;
 const cloudAgentTemplatePackageJsonPathCandidates = [
   "packages/app/deploy/cloud-agent-template/package.json",
 ] as const;
 const agentPackageJsonPathCandidates = ["packages/agent/package.json"] as const;
+const innoBuildScriptPathCandidates = [
+  "packages/app/packaging/inno/build-inno.ps1",
+] as const;
+const innoTemplatePathCandidates = [
+  "packages/app/packaging/inno/ElizaOSApp.iss",
+] as const;
 
 function resolveExistingPath(candidates: readonly string[]) {
   return candidates.find((candidate) => existsSync(candidate)) ?? null;
@@ -57,9 +66,279 @@ function resolveExistingPath(candidates: readonly string[]) {
 function resolveOrchestratorPluginPackageJsonPath() {
   return resolveExistingPath(orchestratorPluginPackageJsonPathCandidates);
 }
+const requiredWorkflowSnippets = [
+  'BUN_VERSION: "1.4.2"',
+  "workflow_call:",
+  "name: Validate Release Inputs",
+  "bun-version: $" + "{{ env.BUN_VERSION }}",
+  "name: Regression matrix contract",
+  "run: node packages/app/scripts/validate-regression-matrix.ts --workflow release",
+  "name: Run heavy E2E regression suite",
+  "run: bun run test:e2e:heavy",
+  "name: Run optional cloud live regression suite",
+  'if bun run --cwd packages/cloud/sdk test:e2e 2>&1 | tee "$log_file"; then',
+  "name: Restore build metadata after test rebuilds",
+  "name: Release readiness checks",
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub Actions expression
+  "ELIZA_RELEASE_TAG: ${{ needs.prepare.outputs.tag }}",
+  'ELIZA_VALIDATE_CDN: "1"',
+  "bun run release:check",
+  "for attempt in 1 2 3; do",
+  `bun install failed on attempt \${attempt}; retrying in 15 seconds`,
+  "name: Ensure avatar assets",
+  "node packages/app/scripts/ensure-avatars.ts",
+  "Install quiet macOS packaging wrappers",
+  "packages/app/scripts/electrobun/hdiutil-wrapper.sh",
+  "packages/app/scripts/electrobun/xcrun-wrapper.sh",
+  "packages/app/scripts/electrobun/zip-wrapper.sh",
+  "ELECTROBUN_REAL_HDIUTIL: /usr/bin/hdiutil",
+  "ELECTROBUN_REAL_XCRUN: /usr/bin/xcrun",
+  "ELECTROBUN_REAL_ZIP: /usr/bin/zip",
+  "Stage desktop bundle inputs",
+  "node packages/app/scripts/desktop-build.ts stage --variant=base",
+  "Inject version.json into bundle (Windows)",
+  "Inject version.json into bundle (macOS / Linux)",
+  '"identifier":"ai.elizaos.Eliza"',
+  "Run packaged Linux user journeys",
+  "Run packaged macOS user journeys",
+  "Upload macOS journey diagnostics",
+  "Installer proof did not retain a renderer launcher.",
+  "ELIZA_TEST_WINDOWS_LAUNCHER_PATH=$launcherPath",
+  "Stage standard macOS release app",
+  "packages/app/scripts/electrobun/stage-macos-release-artifacts.sh",
+  "retry_stapler_validate()",
+  "bun run --cwd packages/app test:desktop:packaged",
+  "wrapper-diagnostics.json",
+  "Install Inno Setup 6.7.1",
+  "Downloading Inno Setup 6.7.1...",
+  "https://github.com/jrsoftware/issrc/releases/download/is-6_7_1/innosetup-6.7.1.exe",
+  "Start-Process -FilePath $installer",
+  "Extract Windows app bundle for Inno Setup",
+  '$extractDir = "C:\\e"',
+  "eliza-dist/entry.js found",
+  "Build Inno Setup installer",
+  "packaging/inno/build-inno.ps1",
+  '-BuildDir "C:\\e"',
+  "Verify Windows public installer looks complete",
+  'Get-ChildItem -Path "packages/app/platforms/electrobun/artifacts" -File -Filter "*-Setup-*.exe"',
+  "$minimumBytes = 50MB",
+  "packages/app/platforms/electrobun/artifacts/*.exe",
+  "name: Prepare public canary Windows installer artifact",
+  "needs.prepare.outputs.env == 'canary'",
+  '$publicCanaryDir = Join-Path $artifactsDir "public-canary-installer"',
+  '$canonicalInstallers = Get-ChildItem -Path $artifactsDir -File -Filter "*-Setup-*.exe"',
+  "Copy-Item $canonicalInstaller.FullName -Destination $publicCanaryDir -Force",
+  '$canonicalInstallerZips = Get-ChildItem -Path $artifactsDir -File -Filter "*-Setup-*.exe.zip"',
+  "No canonical Windows installer (or zip fallback) found for canary artifact publishing.",
+  "Expand-Archive -Path $canonicalInstallerZip.FullName -DestinationPath $publicCanaryDir -Force",
+  "Prepared public canary installer artifact:",
+  "name: Upload public canary installer artifact",
+  "name: electrobun-$" + "{{ matrix.platform.artifact-name }}-public-installer",
+  "path: packages/app/platforms/electrobun/artifacts/public-canary-installer/*-Setup-*.exe",
+  "name: Collect public release files",
+  '-name "*-Setup-*.exe" -o \\',
+  '-name "*-Setup-*.exe.zip" -o \\',
+  '-name "*Setup*.tar.gz" -o \\',
+  "name: Collect update channel files",
+  '-name "*.tar.zst" -o \\',
+  '-name "*-update.json" \\',
+  "DMG attach attempt $attempt/5 failed",
+  "name: Resolve electrobun package dir",
+  "id: resolve-electrobun",
+  'const workspacePackageJson = path.resolve("packages/app/platforms/electrobun/package.json");',
+  'const entryPath = req.resolve("electrobun");',
+  "Could not find electrobun package.json starting from",
+  "Resolved unexpected package at",
+  'echo "package-dir=$package_dir"',
+  'echo "cache-dir=$package_dir/.cache"',
+  "$" + "{{ steps.resolve-electrobun.outputs.cache-dir }}",
+  "name: Build patched Electrobun CLI",
+  'node packages/app/scripts/build-patched-electrobun-cli.ts "$' +
+    '{{ steps.resolve-electrobun.outputs.package-dir }}"',
+  '"${{ matrix.platform.artifact-name }}"',
+  "node packages/app/scripts/desktop-build.ts package --env=$" +
+    "{{ needs.prepare.outputs.env }}",
+  "ELIZA_ELECTROBUN_NOTARIZE: 0",
+  'ELIZA_DISABLE_LOCAL_EMBEDDINGS: "1"',
+  "name: Run Windows clean installer proof",
+  "verify-windows-installer-proof.ps1",
+  "ELIZA_TEST_WINDOWS_PROOF_INSTALL_DIR: $" + "{{ runner.temp }}\\el-proof",
+  "name: Upload Windows installer proof artifact",
+  "path: packages/app/platforms/electrobun/artifacts/windows-installer-proof/**",
+  "if: always() && matrix.platform.os == 'windows'",
+  "ANTHROPIC_API_KEY: $" + "{{ secrets.ANTHROPIC_API_KEY }}",
+  "ELIZAOS_CLOUD_API_KEY: $" +
+    "{{ secrets.ELIZAOS_CLOUD_API_KEY != '' && secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}",
+  "ELIZAOS_CLOUD_BASE_URL: $" + "{{ secrets.ELIZAOS_CLOUD_BASE_URL }}",
+  "bun run --cwd packages/app test:desktop:packaged",
+];
+const _requiredPatchedElectrobunCliSnippets = [
+  "https://github.com/elizaOS/electrobun.git",
+  '"sparse-checkout", "set", "package"',
+  'writeGitHubEnv("ELECTROBUN_RCEDIT_PACKAGE_JSON", resolvedRceditPackageJson);',
+  'const overridePackageJson = process.env["ELECTROBUN_RCEDIT_PACKAGE_JSON"];',
+  'const overrideEntry = overrideRequire.resolve("rcedit");',
+  "function resolveBuildTarget(value) {",
+  "--target=${buildTarget.bunTarget}",
+  "[electrobun-build] Bun entry:",
+  "targetPaths.BUN_BINARY",
+  "Bun CLI fallback succeeded",
+  "const installedBinPath = path.join(",
+  "const installedCachePath = path.join(",
+];
+
+export function findMissingPatchedElectrobunCliSnippets(
+  source: string,
+): string[] {
+  return _requiredPatchedElectrobunCliSnippets.filter(
+    (snippet) => !source.includes(snippet),
+  );
+}
+
+export function findMissingRequiredSnippets(
+  content: string,
+  snippets: readonly string[],
+): string[] {
+  return snippets.filter((snippet) => !content.includes(snippet));
+}
+
+/**
+ * Whether `lines` appear in `content` as CONSECUTIVE lines, in order.
+ *
+ * `content.includes(line)` per line proves only that each line exists somewhere
+ * in the file, in any order, at any distance. That is worthless when a line's
+ * whole meaning is positional: `exit 1` occurs nine times in the macOS stager
+ * and `fi` fifty-eight, so deleting the one `exit 1` that fails a
+ * require-staple release still satisfies a per-line check (#17680).
+ *
+ * Indentation is compared after trimming so the guard survives reformatting,
+ * but order and adjacency — the properties that carry the meaning — are pinned.
+ */
+export function containsContiguousBlock(
+  content: string,
+  lines: readonly string[],
+): boolean {
+  if (lines.length === 0) return true;
+  const haystack = content.split("\n").map((line) => line.trim());
+  const needle = lines.map((line) => line.trim());
+  const last = haystack.length - needle.length;
+  for (let start = 0; start <= last; start++) {
+    let matched = true;
+    for (let offset = 0; offset < needle.length; offset++) {
+      if (haystack[start + offset] !== needle[offset]) {
+        matched = false;
+        break;
+      }
+    }
+    if (matched) return true;
+  }
+  return false;
+}
+
+/**
+ * The staple-failure block of the macOS stager, asserted as one unit.
+ *
+ * Every line here is individually ambiguous or individually meaningless; the
+ * contract lives in their arrangement. Keep this in sync with
+ * `scripts/electrobun/stage-macos-release-artifacts.sh`.
+ */
+export const requiredMacStaplerFailureBlock = [
+  'if ! retry_command "$STAPLER_ATTEMPTS" "$STAPLER_DELAY_SECONDS" xcrun stapler staple "$TEMP_DMG_PATH"; then',
+  'if [[ "${ELECTROBUN_REQUIRE_STAPLED_DMG:-0}" == "1" ]]; then',
+  "exit 1",
+  "fi",
+  'echo "stage-macos-release-artifacts: notarization accepted but stapler ticket was not available; continuing without stapled DMG" >&2',
+  "fi",
+] as const;
+
+/**
+ * The stager block that derives the permission host's signing identity from
+ * the app bundle rather than assigning a helper-owned identifier.
+ */
+export const requiredMacAppIdentifierReadBlock = [
+  'APP_INFO_PLIST_PATH="$STAGED_APP_PATH/Contents/Info.plist"',
+  'if ! APP_IDENTIFIER="$(/usr/bin/plutil -extract CFBundleIdentifier raw -expect string -o - "$APP_INFO_PLIST_PATH" 2>/dev/null)"; then',
+  'echo "stage-macos-release-artifacts: failed to read CFBundleIdentifier from $APP_INFO_PLIST_PATH" >&2',
+  "exit 1",
+  "fi",
+  'if [[ ! "$APP_IDENTIFIER" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]]; then',
+  'echo "stage-macos-release-artifacts: invalid CFBundleIdentifier: $APP_IDENTIFIER" >&2',
+  "exit 1",
+  "fi",
+] as const;
+
+/**
+ * The stager block that signs and verifies only the top-level Bun permission
+ * host with the app identity before the outer bundle is sealed.
+ */
+export const requiredMacPermissionHostIdentityBlock = [
+  'bun_permission_host_path="$macos_code_dir/bun"',
+  'if [[ ! -e "$bun_permission_host_path" ]]; then',
+  'echo "stage-macos-release-artifacts: Bun permission host is missing: $bun_permission_host_path" >&2',
+  "exit 1",
+  "fi",
+  'sign_macos_runtime_target_with_identifier "$bun_permission_host_path" "$APP_IDENTIFIER"',
+  'codesign --verify --strict --verbose=2 -R "=identifier \\"$APP_IDENTIFIER\\"" "$bun_permission_host_path"',
+] as const;
+
+const forbiddenWorkflowSnippets = [
+  ' -name "*.exe" -o \\',
+  'bun install -g "rcedit@4.0.1"',
+  "name: Cache Bun install",
+  "path: ~/.bun/install/cache",
+  "restore-keys: bun-electrobun-validate-",
+  "restore-keys: bun-electrobun-$" +
+    "{{ matrix.platform.artifact-name }}" +
+    "-",
+  "key: bun-electrobun-validate-$" + "{{ hashFiles('bun.lock') }}",
+  "key: bun-electrobun-$" +
+    "{{ matrix.platform.artifact-name }}" +
+    "-$" +
+    "{{ hashFiles('bun.lock') }}",
+  `TAG="v$(node -p "require('./package.json').version")"`,
+  "name: Ensure Windows rcedit binary is available for Electrobun",
+  "name: Pre-extract electrobun native CLI on Windows",
+  "https://api.github.com/repos/blackboardsh/electrobun/releases/tags/v$version",
+  "electrobun CLI checksum mismatch",
+  '$extractionBases = @("D:\\a\\electrobun\\electrobun\\package")',
+];
 const requiredRootPackageScriptSnippets: Record<string, readonly string[]> = {
   "release:check": ["scripts/run-release-check.ts"],
 };
+const requiredElectrobunConfigSnippets = [
+  'postBuild: "../../scripts/electrobun/postwrap-sign-runtime-macos.ts"',
+  'postWrap: "../../scripts/electrobun/postwrap-diagnostics.ts"',
+  "process.env.ELIZA_ELECTROBUN_NOTARIZE !==",
+  "copy[repoPackageJsonPath] = `${runtimeDistDir}/package.json`",
+];
+const electrobunDirCandidates = [
+  resolve("packages", "app", "platforms", "electrobun"),
+];
+
+function resolveElectrobunPath(...segments: string[]) {
+  if (segments[0] === "scripts") {
+    return resolve(
+      "packages",
+      "app",
+      "scripts",
+      "electrobun",
+      ...segments.slice(1),
+    );
+  }
+  for (const candidate of electrobunDirCandidates) {
+    const targetPath = resolve(candidate, ...segments);
+    if (existsSync(targetPath)) {
+      return targetPath;
+    }
+  }
+
+  return resolve(electrobunDirCandidates[0]!, ...segments);
+}
+
+function readElectrobunFile(...segments: string[]) {
+  return readFileSync(resolveElectrobunPath(...segments), "utf8");
+}
+
 type RootPackageJson = {
   bundleDependencies?: string[];
   bundledDependencies?: string[];
@@ -596,6 +875,58 @@ function assertAgentDependenciesAlignedWithRootPins() {
   }
 }
 
+function assertReleaseWorkflowHasNotaryWrapper() {
+  const workflow = readFileSync(
+    ".github/workflows/release-electrobun.yml",
+    "utf8",
+  );
+  const missing = findMissingRequiredSnippets(
+    workflow,
+    requiredWorkflowSnippets,
+  );
+
+  if (missing.length > 0) {
+    console.error(
+      "release-check: release workflow is missing required release wiring:",
+    );
+    for (const snippet of missing) {
+      console.error(`  - ${snippet}`);
+    }
+    process.exit(1);
+  }
+
+  const patchedCliHelper = readExistingReleaseCheckFile(
+    "patched Electrobun CLI helper",
+    patchedElectrobunCliHelperPathCandidates,
+  );
+  const missingPatchedCli =
+    findMissingPatchedElectrobunCliSnippets(patchedCliHelper);
+
+  if (missingPatchedCli.length > 0) {
+    console.error(
+      "release-check: patched Electrobun helper is missing expected build wiring:",
+    );
+    for (const snippet of missingPatchedCli) {
+      console.error(`  - ${snippet}`);
+    }
+    process.exit(1);
+  }
+
+  const forbidden = forbiddenWorkflowSnippets.filter((snippet) =>
+    workflow.includes(snippet),
+  );
+
+  if (forbidden.length > 0) {
+    console.error(
+      "release-check: release workflow still exposes raw bootstrap artifacts on the public GitHub release:",
+    );
+    for (const snippet of forbidden) {
+      console.error(`  - ${snippet}`);
+    }
+    process.exit(1);
+  }
+}
+
 function assertRequiredRootPackageScripts() {
   const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
   const scripts = packageJson.scripts ?? {};
@@ -627,6 +958,387 @@ function assertRequiredRootPackageScripts() {
   }
 }
 
+function assertAppleStoreSandboxAuditPasses() {
+  const auditScriptPath = resolveExistingPath([
+    "packages/app/scripts/audit-apple-store-sandbox.ts",
+  ]);
+  if (!auditScriptPath) {
+    console.error(
+      "release-check: Apple store sandbox audit script is missing.",
+    );
+    process.exit(1);
+  }
+
+  try {
+    execSync(`node ${JSON.stringify(auditScriptPath)}`, {
+      stdio: "inherit",
+      env: process.env,
+    });
+  } catch {
+    console.error("release-check: Apple store sandbox audit failed.");
+    process.exit(1);
+  }
+}
+
+function assertElectrobunConfigHasPostWrapSigner() {
+  const config = readElectrobunFile("electrobun.config.ts");
+  const missing = requiredElectrobunConfigSnippets.filter(
+    (snippet) => !config.includes(snippet),
+  );
+
+  if (missing.length > 0) {
+    console.error(
+      "release-check: electrobun config is missing postBuild signer wiring:",
+    );
+    for (const snippet of missing) {
+      console.error(`  - ${snippet}`);
+    }
+    process.exit(1);
+  }
+}
+
+function assertMacArtifactStagerLooksCorrect() {
+  const script = readElectrobunFile(
+    "scripts",
+    "stage-macos-release-artifacts.sh",
+  );
+  const requiredSnippets = [
+    'for tarball_pattern in "*-macos-*.app.tar.zst" "*-macos-*.app.tar.gz" "*-macos-*.tar.gz"; do',
+    'tar --zstd -xf "$TARBALL_PATH" -C "$EXTRACT_DIR"',
+    'tar -xzf "$TARBALL_PATH" -C "$EXTRACT_DIR"',
+    'TARBALL_BASENAME="$(basename "$TARBALL_PATH")"',
+    "no macOS updater tarball found",
+    'DIRECT_LAUNCHER_SOURCE="$SCRIPT_DIR/macos-direct-launcher.c"',
+    'codesign -d --entitlements :- "$STAGED_APP_PATH"',
+    "/usr/bin/clang \\",
+    'install -m 0755 "$TMP_LAUNCHER_PATH" "$LAUNCHER_PATH"',
+    "retry_codesign() {",
+    "retry_notarytool_submit() {",
+    "retry_notarytool_wait() {",
+    "retry_notarytool_log() {",
+    '"$macos_code_dir/libasar.dylib"',
+    "sign_nested_macos_runtime_targets() {",
+    'runtime_resources_dir="$STAGED_APP_PATH/Contents/Resources/app/eliza-dist"',
+    'file "$candidate_path"',
+    "*Mach-O*)",
+    'find "$runtime_resources_dir" -type f -print0',
+    "sign_nested_macos_runtime_targets",
+    'sign_macos_runtime_target "$LAUNCHER_PATH"',
+    'retry_codesign "${app_sign_args[@]}" "$STAGED_APP_PATH"',
+    'codesign --verify --deep --strict --verbose=2 "$STAGED_APP_PATH"',
+    "hdiutil create \\",
+    'NOTARY_SUBMIT_ATTEMPTS="${ELECTROBUN_NOTARY_SUBMIT_ATTEMPTS:-3}"',
+    'NOTARY_SUBMIT_RETRY_DELAY_SECONDS="${ELECTROBUN_NOTARY_SUBMIT_RETRY_DELAY_SECONDS:-30}"',
+    'if ! retry_notarytool_submit "$NOTARY_SUBMIT_OUTPUT_PATH" "$NOTARY_SUBMIT_ATTEMPTS" "$NOTARY_SUBMIT_RETRY_DELAY_SECONDS"; then',
+    '"$REAL_XCRUN" notarytool submit \\',
+    'NOTARY_WAIT_ATTEMPTS="${ELECTROBUN_NOTARY_WAIT_ATTEMPTS:-3}"',
+    'NOTARY_WAIT_RETRY_DELAY_SECONDS="${ELECTROBUN_NOTARY_WAIT_RETRY_DELAY_SECONDS:-60}"',
+    'if ! retry_notarytool_wait "$NOTARY_WAIT_OUTPUT_PATH" "$NOTARY_WAIT_ATTEMPTS" "$NOTARY_WAIT_RETRY_DELAY_SECONDS"; then',
+    "retry_notarytool_log >&2 || true",
+    'STAPLER_ATTEMPTS="${ELECTROBUN_STAPLER_ATTEMPTS:-12}"',
+    'STAPLER_DELAY_SECONDS="${ELECTROBUN_STAPLER_DELAY_SECONDS:-30}"',
+    // The staple-failure block is asserted contiguously below, not here: each
+    // of its lines is ambiguous alone (#17680).
+    'mv "$TEMP_DMG_PATH" "$FINAL_DMG_PATH"',
+  ];
+  const missing = requiredSnippets.filter(
+    (snippet) => !script.includes(snippet),
+  );
+
+  if (!containsContiguousBlock(script, requiredMacStaplerFailureBlock)) {
+    console.error(
+      "release-check: macOS artifact stager's staple-failure block is missing, reordered, or no longer contiguous:",
+    );
+    for (const line of requiredMacStaplerFailureBlock) {
+      console.error(`  | ${line}`);
+    }
+    console.error(
+      "  A require-staple release must exit non-zero rather than fall through to the warning.",
+    );
+    process.exit(1);
+  }
+
+  if (!containsContiguousBlock(script, requiredMacAppIdentifierReadBlock)) {
+    console.error(
+      "release-check: macOS artifact stager's app-identifier block is missing, reordered, or no longer contiguous:",
+    );
+    for (const line of requiredMacAppIdentifierReadBlock) {
+      console.error(`  | ${line}`);
+    }
+    console.error(
+      "  The permission host must inherit the staged app bundle's canonical identifier.",
+    );
+    process.exit(1);
+  }
+
+  if (
+    !containsContiguousBlock(script, requiredMacPermissionHostIdentityBlock)
+  ) {
+    console.error(
+      "release-check: macOS artifact stager's permission-host identity block is missing, reordered, or no longer contiguous:",
+    );
+    for (const line of requiredMacPermissionHostIdentityBlock) {
+      console.error(`  | ${line}`);
+    }
+    console.error(
+      "  The top-level Bun permission host must be signed and verified with the app identity before the bundle is sealed.",
+    );
+    process.exit(1);
+  }
+
+  if (missing.length > 0) {
+    console.error(
+      "release-check: macOS artifact stager is missing required release wiring:",
+    );
+    for (const snippet of missing) {
+      console.error(`  - ${snippet}`);
+    }
+    process.exit(1);
+  }
+
+  const forbiddenSnippets = [
+    'codesign --force --deep --timestamp --sign "$ELECTROBUN_DEVELOPER_ID" "$STAGED_APP_PATH"',
+    "exit_code=$?",
+  ];
+  const forbidden = forbiddenSnippets.filter((snippet) =>
+    script.includes(snippet),
+  );
+
+  if (forbidden.length > 0) {
+    console.error(
+      "release-check: macOS artifact stager still contains known-bad signing/retry logic:",
+    );
+    for (const snippet of forbidden) {
+      console.error(`  - ${snippet}`);
+    }
+    process.exit(1);
+  }
+}
+
+function assertWindowsSmokeScriptHasLeadingParamBlock() {
+  const script = readElectrobunFile("scripts", "smoke-test-windows.ps1");
+  const firstRelevantLine = script
+    .replace(/^\s*<#[\s\S]*?#>/, "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0 && !line.startsWith("#"));
+
+  if (firstRelevantLine !== "param(") {
+    console.error(
+      "release-check: smoke-test-windows.ps1 must start with a param() block before executable statements.",
+    );
+    console.error(`  - first relevant line: ${firstRelevantLine ?? "<none>"}`);
+    process.exit(1);
+  }
+
+  const requiredSnippets = [
+    "Find-Launcher $resolvedBuildDir",
+    'Get-ChildItem -Path $resolvedArtifactsDir -File -Filter "*.tar.zst"',
+    'Join-Path $env:APPDATA "Eliza\\\\eliza-startup.log"',
+    '$requireInstaller = $env:ELIZA_WINDOWS_SMOKE_REQUIRE_INSTALLER -eq "1"',
+    "Installing via Inno Setup:",
+    "/VERYSILENT",
+    "installed Inno package",
+    "$persistLauncherPathFile = $env:ELIZA_TEST_WINDOWS_LAUNCHER_PATH_FILE",
+    "Installer-required runs skip build/tarball reuse and validate the installed package directly.",
+    "Using $launcherSource launcher:",
+    "Using packaged tarball:",
+    "Find-Launcher $selfExtractionRoot",
+    "Started extracted launcher:",
+    '$startupSessionId = "eliza-windows-smoke-"',
+    "$tempRoot = if ($env:RUNNER_TEMP)",
+    "$startupStateFile = Join-Path $tempRoot",
+    '$startupBootstrapFile = Join-Path $startupBundleRoot "startup-session.json"',
+    "Write-StartupBootstrap",
+    "$stopProtectedProcessIds = Get-ProtectedAncestorProcessIds -ProcessId $PID",
+    "$protected = [System.Collections.Generic.HashSet[int]]::new()",
+    'Get-CimInstance Win32_Process -Filter "ProcessId = $currentPid"',
+    "-not $stopProtectedProcessIds.Contains([int]$_.Id)",
+    "[int]::TryParse([string]$state.port, [ref]$observedPort)",
+    "if ($state.session_id -ne $startupSessionId)",
+    "$handler.UseProxy = $false",
+    '--noproxy "127.0.0.1"',
+    "function Test-BackendProbeStatus",
+    "Cleared stale startup log:",
+    "Startup trace entered fatal phase:",
+    "Latest startup trace state:",
+    "-SkipHttpErrorCheck",
+    "Dump-PortDiagnostics",
+    "Dump-ProcessDiagnostics",
+    "Dump-FailureDiagnostics",
+    "periodic diagnostics at",
+    "FAILURE DIAGNOSTICS",
+  ];
+  const missingSnippets = requiredSnippets.filter(
+    (snippet) => !script.includes(snippet),
+  );
+
+  if (missingSnippets.length > 0) {
+    console.error(
+      "release-check: smoke-test-windows.ps1 is missing the packaged-launcher/dynamic-port smoke logic.",
+    );
+    for (const snippet of missingSnippets) {
+      console.error(`  - ${snippet}`);
+    }
+    process.exit(1);
+  }
+}
+
+function assertWindowsInstallerProofScript() {
+  const script = readElectrobunFile(
+    "scripts",
+    "verify-windows-installer-proof.ps1",
+  );
+
+  const requiredSnippets = [
+    '"*-Setup-*.exe"',
+    "smoke-test-windows.ps1",
+    "ELIZA_WINDOWS_SMOKE_REQUIRE_INSTALLER",
+    "Start Menu",
+    "unins*.exe",
+    "proof-summary.json",
+  ];
+  const missingSnippets = requiredSnippets.filter(
+    (snippet) => !script.includes(snippet),
+  );
+
+  if (missingSnippets.length > 0) {
+    console.error(
+      "release-check: verify-windows-installer-proof.ps1 is missing required clean-install proof logic.",
+    );
+    for (const snippet of missingSnippets) {
+      console.error(`  - ${snippet}`);
+    }
+    process.exit(1);
+  }
+}
+
+function assertInnoBuildScriptHasTimeoutAndHeartbeat() {
+  const script = readExistingReleaseCheckFile(
+    "Inno Setup build script",
+    innoBuildScriptPathCandidates,
+  );
+  const requiredSnippets = [
+    "$isccTimeout = [TimeSpan]::FromMinutes(25)",
+    "$isccHeartbeatInterval = [TimeSpan]::FromSeconds(30)",
+    "Write-Host \"Starting ISCC.exe: $isccPath $($isccArgumentDisplay -join ' ')\"",
+    "Start-Process -FilePath $isccPath",
+    'Write-Host "ISCC.exe still running after $([math]::Round($elapsed.TotalMinutes, 1)) minutes..."',
+    "Stop-Process -Id $isccProcess.Id -Force",
+    'throw "ISCC.exe timed out after $([int]$isccTimeout.TotalMinutes) minutes while building the Windows installer."',
+  ];
+  const missingSnippets = requiredSnippets.filter(
+    (snippet) => !script.includes(snippet),
+  );
+
+  if (missingSnippets.length > 0) {
+    console.error(
+      "release-check: build-inno.ps1 must supervise ISCC.exe with heartbeat logging and a hard timeout.",
+    );
+    for (const snippet of missingSnippets) {
+      console.error(`  - ${snippet}`);
+    }
+    process.exit(1);
+  }
+}
+
+function assertInnoTemplateTargetsBundledLauncher() {
+  const template = readExistingReleaseCheckFile(
+    "Inno Setup template",
+    innoTemplatePathCandidates,
+  );
+  const requiredSnippets = [
+    '#define MyAppExeName "bin\\launcher.exe"',
+    '#define MyAppIconFile "ElizaOSApp.ico"',
+    'Source: "{#MySetupIconFile}"; DestDir: "{app}"; DestName: "{#MyAppIconFile}"; Flags: ignoreversion',
+    "UninstallDisplayIcon={app}\\{#MyAppIconFile}",
+    'Name: "{autoprograms}\\{#MyDefaultGroupName}\\{#MyAppName}"; Filename: "{app}\\{#MyAppExeName}"; IconFilename: "{app}\\{#MyAppIconFile}"',
+    'Name: "{autodesktop}\\{#MyAppName}"; Filename: "{app}\\{#MyAppExeName}"; Tasks: desktopicon; IconFilename: "{app}\\{#MyAppIconFile}"',
+  ];
+  const missingSnippets = requiredSnippets.filter(
+    (snippet) => !template.includes(snippet),
+  );
+
+  if (missingSnippets.length > 0) {
+    console.error(
+      "release-check: the Inno template must target the bundled launcher and clean owned browser registrations on uninstall.",
+    );
+    for (const snippet of missingSnippets) {
+      console.error(`  - ${snippet}`);
+    }
+    process.exit(1);
+  }
+
+  if (template.includes('#define MyAppExeName "launcher.exe"')) {
+    console.error(
+      "release-check: Eliza.iss must not point Windows shortcuts at {app}\\launcher.exe; the bundled launcher lives under bin\\.",
+    );
+    process.exit(1);
+  }
+}
+
+function assertMacSmokeScriptLaunchesPackagedLauncherDirectly() {
+  const script = readElectrobunFile("scripts", "smoke-test.sh");
+
+  if (
+    !script.includes(
+      'LAUNCHER_PATH="$LAUNCH_APP_BUNDLE/Contents/MacOS/launcher"',
+    )
+  ) {
+    console.error(
+      "release-check: smoke-test.sh must launch the packaged Contents/MacOS/launcher directly.",
+    );
+    process.exit(1);
+  }
+
+  const requiredSnippets = [
+    "dump_failure_diagnostics()",
+    "write_bundle_diagnostics()",
+    "collect_recent_crash_reports()",
+    "build_launcher_command()",
+    "probe_macos_bundle_exec_support()",
+    "launch_packaged_app_with_open()",
+    'OPEN_LAUNCH_ATTEMPTED="1"',
+    'STARTUP_BOOTSTRAP_FILE="$LAUNCH_APP_BUNDLE/Contents/Resources/startup-session.json"',
+    "while IFS= read -r startup_state_line; do",
+    "const [filePath, expectedSession] = process.argv.slice(1);",
+    'TERM="$' + "{TERM:-dumb}" + '"',
+    "attach_dmg_with_retry()",
+    'MOUNT_POINT="$(attach_dmg_with_retry "$DMG_PATH")"',
+    'DIRECT_WGPU_DYLIB="$APP_BUNDLE/Contents/MacOS/libwebgpu_dawn.dylib"',
+    'echo "WGPU : direct app bundle -> $DIRECT_WGPU_DYLIB"',
+    "assert_packaged_archive_asset()",
+    'echo "Packaged renderer asset check PASSED (wrapper archive)."',
+    'echo "Launcher: $' + "{LAUNCHER_PATH:-<unset>}" + '"',
+    'local launcher_stdout="$' + "{LAUNCHER_STDOUT:-}" + '"',
+    "backend_health_probe_satisfied()",
+    '[[ "$status" == "200" || "$status" == "401" ]]',
+    "Launcher exited before the first health probe; continuing to wait for packaged app handoff...",
+    'dump_failure_diagnostics "open(1) failed to launch packaged app"',
+    'FAILURE_REASON="open(1) launch produced no startup trace"',
+    'FAILURE_REASON="macOS direct app-bundle exec probe returned SIGKILL (137) before startup trace began"',
+  ];
+  const missing = requiredSnippets.filter(
+    (snippet) => !script.includes(snippet),
+  );
+  if (missing.length > 0) {
+    console.error(
+      "release-check: smoke-test.sh is missing failure-time diagnostics hooks.",
+    );
+    for (const snippet of missing) {
+      console.error(`  - ${snippet}`);
+    }
+    process.exit(1);
+  }
+
+  if (script.includes("mapfile -t startup_state_parts")) {
+    console.error(
+      "release-check: smoke-test.sh must stay compatible with macOS Bash 3.2 and cannot use mapfile.",
+    );
+    process.exit(1);
+  }
+}
+
 function assertStartApiServerCatchBlockSafety() {
   const elizaSource = readExistingReleaseCheckFile(
     "autonomous runtime source",
@@ -634,7 +1346,7 @@ function assertStartApiServerCatchBlockSafety() {
   );
 
   // The catch block around startApiServer must use console.error so errors
-  // are visible in packaged builds.
+  // are visible in packaged builds (Electrobun agent.ts reads stderr).
   if (!elizaSource.includes("console.error(apiErrMsg)")) {
     console.error(
       "release-check: eliza.ts startApiServer catch block must use console.error(apiErrMsg) so errors are visible in packaged builds.",
@@ -700,7 +1412,7 @@ function assertStaticAssetManifestIsCurrent() {
   }
 
   console.error(
-    `release-check: static asset manifest is ${result.reason}. Run bun packages/app/scripts/generate-static-asset-manifest.ts.`,
+    `release-check: static asset manifest is ${result.reason}. Run node packages/app/scripts/generate-static-asset-manifest.ts.`,
   );
   console.error(`  - ${result.manifestPath}`);
   process.exit(1);
@@ -721,7 +1433,16 @@ function assertAppleStoreEntitlementsReviewed() {
 
 function main() {
   assertRequiredRootPackageScripts();
+  assertAppleStoreSandboxAuditPasses();
   assertAppleStoreEntitlementsReviewed();
+  assertReleaseWorkflowHasNotaryWrapper();
+  assertElectrobunConfigHasPostWrapSigner();
+  assertMacArtifactStagerLooksCorrect();
+  assertWindowsSmokeScriptHasLeadingParamBlock();
+  assertWindowsInstallerProofScript();
+  assertInnoBuildScriptHasTimeoutAndHeartbeat();
+  assertInnoTemplateTargetsBundledLauncher();
+  assertMacSmokeScriptLaunchesPackagedLauncherDirectly();
   assertStartApiServerCatchBlockSafety();
   assertStaticAssetManifestIsCurrent();
   maybeValidateCdnAssets();

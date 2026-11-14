@@ -123,7 +123,7 @@ export function probeRequirement(requirement, { runProbe = spawnSync } = {}) {
 }
 
 function printHelp() {
-  console.log(`Usage: bun packages/scripts/evidence-review/run-matrix.ts [options]
+  console.log(`Usage: node packages/scripts/evidence-review/run-matrix.ts [options]
 
 Options:
   --only=<ids>             Comma-separated step ids to run.

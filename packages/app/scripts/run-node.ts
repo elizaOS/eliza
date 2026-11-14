@@ -12,7 +12,7 @@ import restartExitCodeDefinition from "@elizaos/core/restart-exit-code.json" wit
   type: "json",
 };
 import { registerRestartAndShouldAbort } from "./lib/restart-guard.ts";
-import { seedDevEnvDefaults } from "./lib/seed-dev-env-defaults.ts";
+import { syncElizaEnvAliases } from "./lib/sync-eliza-env-aliases.ts";
 import {
   chooseElizaRuntime,
   resolveRuntimeExecPath,
@@ -44,7 +44,7 @@ if (fs.existsSync(_worktreeEnvPath)) {
   }
 }
 
-seedDevEnvDefaults();
+syncElizaEnvAliases();
 
 const env = { ...process.env };
 if (!env.ELIZA_NAMESPACE) {

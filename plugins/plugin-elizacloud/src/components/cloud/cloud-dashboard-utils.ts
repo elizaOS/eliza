@@ -244,7 +244,7 @@ export function consumeManagedGithubCallbackUrl(rawUrl: string): {
         status: connected ? "connected" : "error",
         connectionId: readString(url.searchParams.get("connection_id")) ?? null,
         agentId,
-        message: readString(error) ?? null,
+        message: error ? decodeURIComponent(error) : null,
     };
     for (const key of MANAGED_GITHUB_CALLBACK_QUERY_KEYS) {
         url.searchParams.delete(key);

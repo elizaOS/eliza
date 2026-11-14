@@ -9,7 +9,7 @@
  * renders it, with one exit code.
  *
  * Usage:
- *   bun eliza/packages/app/scripts/voice-latency-report.ts [--json] [--limit N] [--base http://127.0.0.1:31337]
+ *   node eliza/packages/app/scripts/voice-latency-report.ts [--json] [--limit N] [--base http://127.0.0.1:31337]
  *
  * Exit codes:
  *   0  — payload fetched (regardless of whether any traces exist).
@@ -61,7 +61,7 @@ for (let i = 0; i < argv.length; i += 1) {
     base = argv[i];
   } else if (a === "--help" || a === "-h") {
     console.log(
-      "Usage: bun voice-latency-report.ts [--json] [--limit N] [--base http://127.0.0.1:31337]",
+      "Usage: node voice-latency-report.ts [--json] [--limit N] [--base http://127.0.0.1:31337]",
     );
     process.exit(0);
   }

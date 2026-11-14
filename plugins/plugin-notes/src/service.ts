@@ -1,13 +1,6 @@
 import { authoredNoteText } from "./note-authored.js";
 import { applyNotePatch } from "./note-patch.js";
 import { assertNotesServiceMutation } from "./request-effect-gate.js";
-import {
-  NOTES_TRASH_CLEANUP_LIMIT,
-  NOTES_TRASH_RETENTION_SETTING,
-  notesTrashExpired,
-  notesTrashRecordingId,
-  notesTrashRecordingReferences,
-} from "./trash-retention.js";
 import { reconstructNoteContent } from "./types.js";
 /**
  * Server-owned Notes domain service. It is the only layer allowed to mutate
@@ -24,16 +17,12 @@ import type {
   NotesDocument,
   NotesSnapshot,
   NotesStoreStatus,
-  NotesTrashRecordingCleanup,
   StickyNote,
-  TrashedNote,
 } from "./types.js";
 import {
   parseCreateNoteInput,
   parseEntityId,
   parseNoteEditRevision,
-  parseNotesTrashErase,
-  parseNotesTrashRecordingCleanup,
   parseUpdateNoteInput,
 } from "./validation.js";
 
@@ -238,66 +227,6 @@ function assertEditRevision(
     );
 }
 
-function eraseTrashEntries(
-  draft: NotesDocument,
-  selected: ReadonlySet<string>,
-  explicit: boolean,
-): { erased: number; recordingCleanup: NotesTrashRecordingCleanup[] } {
-  const trash = draft.trash ?? [];
-  const references = new Map<string, number>();
-  for (const note of [...draft.notes, ...trash.map((entry) => entry.note)]) {
-    for (const audioId of notesTrashRecordingReferences(note)) {
-      references.set(audioId, (references.get(audioId) ?? 0) + 1);
-    }
-  }
-  const pending = [...(draft.trashRecordingCleanup ?? [])];
-  const pendingBefore = pending.length;
-  const kept: TrashedNote[] = [];
-  for (const entry of trash) {
-    if (!selected.has(entry.note.id)) {
-      kept.push(entry);
-      continue;
-    }
-    const audioId = notesTrashRecordingId(entry.note);
-    if (
-      audioId === null ||
-      (audioId &&
-        (references.get(audioId) !== 1 ||
-          pending.length >= NOTES_TRASH_CLEANUP_LIMIT))
-    ) {
-      if (explicit)
-        throw new ElizaError(
-          "This recording needs review before erasing the note.",
-          {
-            code: "NOTES_TRASH_RECORDING_UNAVAILABLE",
-            severity: "ephemeral",
-          },
-        );
-      kept.push(entry);
-      continue;
-    }
-    if (audioId) {
-      pending.push({
-        operationId: randomUUID(),
-        noteId: entry.note.id,
-        audioId,
-        deletedAt: entry.deletedAt,
-      });
-    }
-  }
-  const erased = trash.length - kept.length;
-  if (erased) {
-    draft.trash = kept;
-    if (pending.length) draft.trashRecordingCleanup = pending;
-  }
-  return { erased, recordingCleanup: pending.slice(pendingBefore) };
-}
-
-type VerifyRecordingCleanup = (
-  receipt: NotesTrashRecordingCleanup,
-  signal?: AbortSignal,
-) => Promise<boolean>;
-
 export class NotesService extends Service {
   static override readonly serviceType = NOTES_SERVICE_TYPE;
 
@@ -309,8 +238,6 @@ export class NotesService extends Service {
   private readonly now: () => Date;
   private readonly createId: () => string;
   private readonly eventRuntime: IAgentRuntime | undefined;
-  private readonly threeDayTrash: boolean;
-  private readonly verifyRecordingCleanup?: VerifyRecordingCleanup;
 
   constructor(
     runtime?: IAgentRuntime,
@@ -320,14 +247,10 @@ export class NotesService extends Service {
       stateDir?: string;
       now?: () => Date;
       createId?: () => string;
-      threeDayTrash?: boolean;
-      verifyRecordingCleanup?: VerifyRecordingCleanup;
     } = {},
   ) {
     super(runtime);
     this.eventRuntime = runtime;
-    this.threeDayTrash = options.threeDayTrash === true;
-    this.verifyRecordingCleanup = options.verifyRecordingCleanup;
     this.store = options.store
       ? options.store
       : new NotesStore({
@@ -342,10 +265,7 @@ export class NotesService extends Service {
   }
 
   static override async start(runtime: IAgentRuntime): Promise<NotesService> {
-    const retention = runtime.getSetting(NOTES_TRASH_RETENTION_SETTING);
-    const service = new NotesService(runtime, {
-      threeDayTrash: retention === "3" || retention === 3,
-    });
+    const service = new NotesService(runtime);
     await service.initialize();
     logger.info(
       {
@@ -359,7 +279,6 @@ export class NotesService extends Service {
 
   async initialize(): Promise<void> {
     await this.store.initialize();
-    await this.sweepExpiredTrash();
   }
 
   override async stop(): Promise<void> {
@@ -373,125 +292,6 @@ export class NotesService extends Service {
 
   snapshot(): NotesSnapshot {
     return this.store.snapshot(projectNotesSnapshot);
-  }
-
-  async readSnapshot(signal?: AbortSignal): Promise<NotesSnapshot> {
-    signal?.throwIfAborted();
-    const view = this.snapshot();
-    if (!this.threeDayTrash) return view;
-    const now = this.now().getTime();
-    if (!view.trash?.some((entry) => notesTrashExpired(entry, now))) {
-      return view;
-    }
-    const committed = await this.sweepExpiredTrash(signal);
-    if (committed) await this.emitStateUpdated(committed, "trash:expired");
-    return this.snapshot();
-  }
-
-  private requireTrashRetention(): void {
-    if (!this.threeDayTrash)
-      throw new ElizaError(
-        "Permanent Notes Trash erase is disabled for this host.",
-        {
-          code: "NOTES_TRASH_RETENTION_DISABLED",
-          severity: "ephemeral",
-        },
-      );
-  }
-
-  private async sweepExpiredTrash(
-    signal?: AbortSignal,
-  ): Promise<NotesSnapshot | undefined> {
-    signal?.throwIfAborted();
-    if (!this.threeDayTrash) return;
-    const { value, snapshot } = await this.store.transact((draft) => {
-      signal?.throwIfAborted();
-      const now = this.now().getTime();
-      const due = new Set(
-        (draft.trash ?? [])
-          .filter((entry) => notesTrashExpired(entry, now))
-          .map((entry) => entry.note.id),
-      );
-      return due.size ? eraseTrashEntries(draft, due, false).erased : 0;
-    }, projectNotesSnapshot);
-    return value ? snapshot : undefined;
-  }
-
-  /** Accept only the collection revision and deletion selected by the owner. */
-  async eraseTrash(
-    input: unknown,
-    signal?: AbortSignal,
-  ): Promise<{
-    value: { erased: number; recordingCleanup: NotesTrashRecordingCleanup[] };
-    snapshot: NotesSnapshot;
-  }> {
-    this.requireTrashRetention();
-    assertNotesServiceMutation(this.runtime, "delete");
-    const review = parseNotesTrashErase(input);
-    const transaction = await this.store.transact((draft) => {
-      signal?.throwIfAborted();
-      assertEditRevision(draft.revision, review.expectedRevision);
-      const trash = draft.trash ?? [];
-      if (
-        review.scope === "entry" &&
-        !trash.some(
-          (entry) =>
-            entry.note.id === review.id && entry.deletedAt === review.deletedAt,
-        )
-      )
-        throw notFound(review.id);
-      const selected = new Set(
-        review.scope === "all"
-          ? trash.map((entry) => entry.note.id)
-          : [review.id],
-      );
-      return eraseTrashEntries(draft, selected, true);
-    }, projectNotesSnapshot);
-    if (transaction.value.erased)
-      await this.emitStateUpdated(transaction.snapshot, "trash:erased");
-    return transaction;
-  }
-
-  async readTrashRecordingCleanup(
-    signal?: AbortSignal,
-  ): Promise<NotesTrashRecordingCleanup[]> {
-    this.requireTrashRetention();
-    const { value } = await this.store.transact((draft) => {
-      signal?.throwIfAborted();
-      return draft.trashRecordingCleanup ?? [];
-    });
-    return value;
-  }
-
-  /** A cleanup acknowledgement requires independent proof from the trusted host. */
-  async acknowledgeTrashRecordingCleanup(
-    input: unknown,
-    signal?: AbortSignal,
-  ): Promise<boolean> {
-    this.requireTrashRetention();
-    const receipt = parseNotesTrashRecordingCleanup(input);
-    const matches = (entry: NotesTrashRecordingCleanup) =>
-      entry.operationId === receipt.operationId &&
-      entry.noteId === receipt.noteId &&
-      entry.audioId === receipt.audioId &&
-      entry.deletedAt === receipt.deletedAt;
-    const pending = await this.readTrashRecordingCleanup(signal);
-    if (!pending.some(matches)) return false;
-    if (!(await this.verifyRecordingCleanup?.(receipt, signal)))
-      throw new ElizaError("The device has not confirmed recording erase.", {
-        code: "NOTES_TRASH_RECORDING_UNAVAILABLE",
-        severity: "ephemeral",
-      });
-    const { value } = await this.store.transact((draft) => {
-      signal?.throwIfAborted();
-      const pending = draft.trashRecordingCleanup ?? [];
-      const match = pending.findIndex(matches);
-      if (match < 0) return false;
-      pending.splice(match, 1);
-      if (!pending.length) delete draft.trashRecordingCleanup;
-      return true;
-    });
-    return value;
   }
 
   listNotes(): StickyNote[] {
@@ -830,11 +630,6 @@ export class NotesService extends Service {
       const entry = trash[index];
       if (!entry || draft.notes.some((note) => note.id === id))
         throw notFound(id);
-      if (this.threeDayTrash && notesTrashExpired(entry, this.now().getTime()))
-        throw new ElizaError("This note is past the Trash retention period.", {
-          code: "NOTES_TRASH_EXPIRED",
-          severity: "ephemeral",
-        });
       draft.notes.unshift(structuredClone(entry.note));
       trash.splice(index, 1);
       return entry.note;

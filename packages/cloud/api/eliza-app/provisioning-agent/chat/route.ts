@@ -16,7 +16,7 @@ import { z } from "zod";
 import {
   getGenerativeOperationContext,
   requireGenerativeKnownIdentity,
-} from "../../../src/lib/generative-route-auth";
+} from "@/api-app/lib/generative-route-auth";
 
 const app = new Hono<AppEnv>();
 

@@ -114,7 +114,9 @@ export function parseCrashInjectionSpec(
 }
 /** True when the running process is a production runtime (no fault hooks). */
 function isProductionRuntime(env: NodeJS.ProcessEnv): boolean {
-  return env.NODE_ENV === "production";
+  return (
+    env.NODE_ENV === "production" || env.ELIZA_BUILD_VARIANT === "production"
+  );
 }
 /**
  * Resolve the active config from the environment, enforcing the production

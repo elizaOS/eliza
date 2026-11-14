@@ -1,16 +1,10 @@
 /** Produces canonical replay digests for immutable billing settlement contracts. */
 import { createHash } from "node:crypto";
-import Stripe from "stripe";
-
-const stripeDecimalPrototype = Object.getPrototypeOf(Stripe.Decimal.zero);
 
 function canonicalJson(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalJson);
   if (typeof value !== "object" || value === null) return value;
   if (value instanceof Date) return value.toISOString();
-  // Preserve the SDK's exact JSON decimal string before walking its BigInt storage.
-  if (Object.getPrototypeOf(value) === stripeDecimalPrototype)
-    return (value as Stripe.Decimal).toJSON();
   return Object.fromEntries(
     Object.entries(value as Record<string, unknown>)
       .filter(([, nested]) => nested !== undefined)

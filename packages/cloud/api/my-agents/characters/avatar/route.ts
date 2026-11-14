@@ -15,7 +15,7 @@ import { putPublicObject } from "@elizaos/cloud-shared/lib/storage/r2-public-obj
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { readRequestWithinMultipartBudget } from "../../../_lib/multipart-body-budget";
+import { readRequestWithinMultipartBudget } from "@/api/_lib/multipart-body-budget";
 
 const MAX_BYTES = 5 * 1024 * 1024;
 // The multipart envelope — boundaries, part headers, any additional fields —

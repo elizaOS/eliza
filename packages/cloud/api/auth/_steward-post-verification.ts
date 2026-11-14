@@ -25,7 +25,7 @@ import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { settleOffResponsePath } from "@elizaos/cloud-shared/lib/utils/settle-off-response-path";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import type { Context, MiddlewareHandler } from "hono";
-import { getAuditDispatcher } from "../src/services/audit-dispatcher-singleton";
+import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
 
 type SyncInput = Parameters<typeof syncUserFromSteward>[0];
 export type SyncedStewardUser = Awaited<ReturnType<typeof syncUserFromSteward>>;

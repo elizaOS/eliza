@@ -14,7 +14,7 @@ Before activation, verify the image and configuration, then stop and drain the
 old gateway. Deploy with `GATEWAY_ENABLED=true`. Verify health, authenticated
 routing, provider callbacks, and retained receipts before retiring the old host.
 After the canonical API release changes routing, run
-`DEPLOY_ENVIRONMENT=staging bun packages/cloud/scripts/verify-served-webhook-gateway.ts`
+`DEPLOY_ENVIRONMENT=staging node packages/cloud/scripts/verify-served-webhook-gateway.ts`
 from the repository root (use `production` for production). This checks the served
 API reaches the healthy Cloudflare image using an invalid verification handshake;
 it sends no provider message. Direct gateway health alone is not cutover proof.
@@ -73,13 +73,7 @@ original absolute expiry (null means persistent). Complete raw job values and
 list duplicates are retained. Public operations cannot import. Serving closes
 imports permanently; the existing managed bot still owns queue start/stop and
 Discord nonce deduplication. Other Discord leases and routing state remain on
-their configured stores. Deploy the Worker with retry replacement support
-before starting a gateway that uses it. The operation replaces one exact
-processing member in one transaction. It preserves previously imported copies.
-The writer checks retry support on the authenticated delivery-marker read.
-An older Worker leaves the claim available for a later poll without sending a
-welcome. Stop and drain the writer before rolling back the Worker so an
-admitted send and its retry use the same protocol.
+their configured stores.
 
 Discord coordination can use `DISCORD_COORDINATION_STATE` when
 `CLOUD_DISCORD_COORDINATION_BACKEND=cloudflare`, with `DISCORD_COORDINATION_URL`

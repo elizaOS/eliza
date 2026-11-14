@@ -174,15 +174,10 @@ function stripExcessiveStarDirections(input: string): string {
 }
 
 /** True when one peel pass consumes every star on the line, so the line holds
- * flat emphasis spans instead of nested layers the bounded peel must drop.
- * Only a span whose text has no space next to its markers counts. Nested
- * layers (`*a *b* c*`) also pair up across layers in one pass, but each such
- * pair has a space inside a marker (`*a *`, `* c*`). */
+ * flat emphasis spans instead of nested layers the bounded peel must drop. */
 function starSpansSettleInOnePass(line: string, starCount: number): boolean {
 	let covered = 0;
 	for (const match of line.matchAll(STAR_SPAN_PATTERN)) {
-		const inner = match[1] ?? "";
-		if (inner.trim() !== inner) continue;
 		for (const char of match[0]) if (char === "*") covered += 1;
 	}
 	return covered === starCount;
@@ -233,12 +228,7 @@ function sanitizeSpeechPunctuation(input: string): string {
 	);
 	// U+2116 (numero sign) is speech-semantic, not punctuation: keep it so a
 	// later language-aware stage can read "№4" instead of a stripped "4".
-	// Currency signs (\p{Sc}: $, €, £, ¥, ₹, …) are speech-semantic too: TTS
-	// reads "€20" as "20 euros", while a stripped sign speaks only "20".
-	text = text.replace(
-		/[^\p{L}\p{N}\p{Sc}\s.,!?'"%/:+，。！？；：\u2116-]/gu,
-		" ",
-	);
+	text = text.replace(/[^\p{L}\p{N}\s.,!?'"%/$:+，。！？；：\u2116-]/gu, " ");
 	text = text.replace(/([,.!?，。！？])\1+/g, "$1");
 	text = text.replace(/^[,;:.!?，。！？；：]+/g, " ");
 	return text;

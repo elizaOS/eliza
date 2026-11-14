@@ -118,7 +118,7 @@ try {
     for (const abi of knownAbis.filter((abi) => !expected.includes(abi))) {
       assert(!fs.existsSync(path.join(agent, abi)));
     }
-    for (const abi of expected) {
+    for (const abi of expected.filter((abi) => abi !== "riscv64")) {
       assert(fs.statSync(path.join(agent, abi, "bun")).size > 0);
     }
     assert.equal(sha(hostAsset), expectedHostAsset);
@@ -186,6 +186,11 @@ try {
         sha(path.join(merged, "agent", abi, "bun")),
         sha(path.join(agent, abi, "bun")),
       );
+    // Default selection retains all ABI directories, including an unavailable
+    // RISC-V slice left from a prior stage; it must not introduce filtering.
+    if (selection === undefined) {
+      assert(fs.existsSync(path.join(merged, "agent/riscv64/stale-payload")));
+    }
     assert.equal(
       sha(path.join(merged, "agent/models/bge-small-en-v1.5-f16.gguf")),
       expectedModel,

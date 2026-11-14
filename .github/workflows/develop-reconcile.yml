@@ -39,8 +39,8 @@ jobs:
           SOURCE_SHA: ${{ inputs.source_sha }}
         run: |
           set -euo pipefail
-          [[ "$GITHUB_REF_NAME" == "staging" || "$GITHUB_REF_NAME" == "main" ]] || {
-            echo "::error::Reconciliation requires staging or main"
+          [[ "$GITHUB_REF_NAME" == "develop" || "$GITHUB_REF_NAME" == "staging" || "$GITHUB_REF_NAME" == "main" ]] || {
+            echo "::error::Reconciliation requires develop, staging, or main"
             exit 1
           }
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || {

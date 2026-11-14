@@ -44,8 +44,9 @@ const hostFunctions = declarations(host, [
   "isMobilePlatform",
 ]);
 const mobilePolicy = new Function(
+  "getBootConfigEnvAliases",
   stripTypeScriptTypes(hostFunctions) + ";return isMobilePlatform;",
-)();
+)(() => null);
 const engineFunctions = declarations(engine, [
   "resolveSelfControlHostsFilePath",
   "reconcileSelfControlBlockState",

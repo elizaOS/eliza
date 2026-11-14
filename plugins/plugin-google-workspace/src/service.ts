@@ -93,9 +93,9 @@ function runtimeMockRoot(runtime?: IAgentRuntime): string | undefined {
   const value = runtime?.getSetting("ELIZA_MOCK_GOOGLE_BASE");
   if (value == null || value === "") return undefined;
   const raw = String(value).trim();
-  // The one test override kept in shipped code: the scenario runner's mocked
-  // Google API world. It may only name a loopback endpoint; any other
-  // endpoint is host-owned and comes through `options.apiRootUrl`.
+  // A process environment override is host-owned. Character/runtime settings
+  // may only select a local fixture endpoint; remote overrides require options.
+  if (raw === process.env.ELIZA_MOCK_GOOGLE_BASE?.trim()) return raw;
   let url: URL;
   try {
     url = new URL(raw);
@@ -111,7 +111,7 @@ function runtimeMockRoot(runtime?: IAgentRuntime): string | undefined {
     url.username ||
     url.password
   )
-    throw new ElizaError("Google mock endpoints must be credential-free loopback URLs", {
+    throw new ElizaError("Runtime Google mock endpoints must be credential-free loopback URLs", {
       code: "GOOGLE_MOCK_ENDPOINT_INVALID",
     });
   return raw;

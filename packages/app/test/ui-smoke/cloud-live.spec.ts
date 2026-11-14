@@ -317,16 +317,10 @@ async function requireDeployedRendererIdentity(
 async function requireRendererCloudApiOrigin(
   page: Page,
   expectedApiOrigin: string,
-  deployedRenderer: DeployedRendererIdentity | null,
 ): Promise<string> {
-  // Owned Pages boot deliberately uses its first-party API proxy. Only an
-  // already verified staging renderer may use that exact alias, and its
-  // public proxy must prove the same staging source before receiving a bearer.
-  const stagingPagesOrigin = cloudLiveDeployedRendererOrigin("staging");
-  const stagingPagesRenderer =
-    deployedRenderer?.origin === stagingPagesOrigin ? deployedRenderer : null;
-  const expectedRendererOrigin =
-    stagingPagesRenderer?.origin ?? expectedApiOrigin;
+  // The renderer carries its own Cloud base, resolved at BUILD time from
+  // VITE_ELIZA_CLOUD_BASE and otherwise defaulted. In deployed mode this check
+  // runs on the first public load, before the staging bearer reaches the page.
   const readRendererCloudBase = () =>
     page.evaluate(() => {
       const config = (
@@ -334,48 +328,12 @@ async function requireRendererCloudApiOrigin(
           __ELIZAOS_APP_BOOT_CONFIG__?: { cloudApiBase?: string };
         }
       ).__ELIZAOS_APP_BOOT_CONFIG__;
-      return config?.cloudApiBase ?? "";
+      return config?.cloudApiBase?.trim() ?? "";
     });
   const observation = await waitForRendererCloudApiOrigin({
     readCloudBase: readRendererCloudBase,
-    expectedApiOrigin: expectedRendererOrigin,
+    expectedApiOrigin,
   });
-  if (stagingPagesRenderer) {
-    expect(expectedApiOrigin).toBe("https://api-staging.eliza.app");
-    expect(await readRendererCloudBase()).toBe(stagingPagesRenderer.origin);
-    const health = await page.evaluate(async (expectedOrigin) => {
-      if (window.top !== window || window.location.origin !== expectedOrigin) {
-        throw new Error("refusing Cloud health proof outside the Pages alias");
-      }
-      const response = await fetch("/api/health", {
-        credentials: "omit",
-        redirect: "error",
-        cache: "no-store",
-        headers: { "cache-control": "no-cache" },
-      });
-      const responseUrl = new URL(response.url);
-      if (
-        response.status !== 200 ||
-        response.headers.get("content-type")?.split(";", 1)[0]?.trim() !==
-          "application/json" ||
-        responseUrl.origin !== expectedOrigin ||
-        responseUrl.pathname !== "/api/health" ||
-        responseUrl.search !== "" ||
-        responseUrl.hash !== ""
-      ) {
-        throw new Error("Cloud health did not come from the Pages API proxy");
-      }
-      const value = (await response.json()) as Record<string, unknown>;
-      return {
-        status: value.status,
-        commit: value.commit,
-        environment: value.environment,
-      };
-    }, stagingPagesRenderer.origin);
-    expect(health.status).toBe("ok");
-    expect(health.commit).toBe(stagingPagesRenderer.commit);
-    expect(health.environment).toBe("staging");
-  }
   return observation.apiOrigin;
 }
 
@@ -394,7 +352,6 @@ async function openProtectedCloudBlankStart(
   const publicApiOrigin = await requireRendererCloudApiOrigin(
     page,
     expectedApiOrigin,
-    publicIdentity,
   );
   if (!DEPLOYED_RENDERER_ENABLED) {
     return {
@@ -418,7 +375,6 @@ async function openProtectedCloudBlankStart(
   const authenticatedApiOrigin = await requireRendererCloudApiOrigin(
     page,
     expectedApiOrigin,
-    authenticatedIdentity,
   );
   expect(authenticatedApiOrigin).toBe(publicApiOrigin);
   return {

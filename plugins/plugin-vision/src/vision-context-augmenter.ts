@@ -18,11 +18,9 @@
 
 import { Buffer } from "node:buffer";
 import { logger } from "@elizaos/core";
-import { getSharp } from "./image/sharp-compat.js";
 import {
   getOcrWithCoordsService,
   type OcrWithCoordsService,
-  readPngDimensionsOrNull,
 } from "./ocr-with-coords.js";
 
 /** Raw signals extracted from an image, joined into prompt-ready strings. */
@@ -69,12 +67,10 @@ const DEFAULT_DESCRIBE_PROMPT = "Describe what is in this image.";
  * photo (vs a clean document) emits per-glyph noise — `|`, `=`, `—`, stray
  * single letters — that would pollute the prompt and waste tokens. Require at
  * least two alphanumeric characters so genuine words/labels survive and noise
- * is dropped. Count Unicode letters and numbers, not ASCII only: a word in
- * another script (e.g. Korean, Japanese, Arabic) carries signal even when it
- * has no ASCII characters. Pure — exported for tests.
+ * is dropped. Pure — exported for tests.
  */
 export function isMeaningfulOcrText(text: string): boolean {
-  return (text.match(/[\p{L}\p{N}]/gu)?.length ?? 0) >= 2;
+  return (text.match(/[A-Za-z0-9]/g)?.length ?? 0) >= 2;
 }
 
 /**
@@ -105,7 +101,7 @@ export class FusedVisionContextAugmenter {
           displayId: "vision-describe",
           sourceX: 0,
           sourceY: 0,
-          pngBytes: await toOcrPngBytes(bytes),
+          pngBytes: new Uint8Array(bytes),
         });
         const lines = res.blocks
           .map((b) => b.text.trim())
@@ -199,36 +195,6 @@ function resolveImageBytes(image: AugmenterImageInput): Buffer | null {
     }
     case "url":
       return null;
-  }
-}
-
-/**
- * The coord-OCR seam takes encoded PNG (`OcrWithCoordsInput.pngBytes`) and
- * `RapidOcrCoordAdapter` rejects any other format, but describe inputs are
- * usually JPEG (camera frames, photo uploads). Re-encode a non-PNG image as
- * PNG. When the image backend cannot load or cannot decode the bytes, throw
- * with that failure so OCR is skipped for the real reason; non-PNG bytes are
- * never sent to the seam.
- */
-async function toOcrPngBytes(bytes: Buffer): Promise<Uint8Array> {
-  if (readPngDimensionsOrNull(bytes) !== null) return new Uint8Array(bytes);
-  let sharp: Awaited<ReturnType<typeof getSharp>>;
-  try {
-    sharp = await getSharp();
-  } catch (err) {
-    throw new Error(
-      `image backend unavailable to convert the image to PNG: ${messageOf(err)}`,
-      { cause: err },
-    );
-  }
-  try {
-    return new Uint8Array(
-      await sharp(bytes, { limitInputPixels: 100_000_000 }).png().toBuffer(),
-    );
-  } catch (err) {
-    throw new Error(`image could not be converted to PNG: ${messageOf(err)}`, {
-      cause: err,
-    });
   }
 }
 

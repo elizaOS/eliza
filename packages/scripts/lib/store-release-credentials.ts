@@ -16,13 +16,24 @@
 export const RELEASE_ENVIRONMENT = "production-release";
 
 /**
+ * Names referenced by the store workflows that are runner/fleet routing
+ * controls rather than store credentials. They are repository-level and are
+ * deliberately outside the environment credential contract.
+ */
+export const NON_CREDENTIAL_VARIABLES = Object.freeze([
+  "HETZNER_FLEET_ONLINE",
+  "RUNNER_WINDOWS",
+]);
+
+/**
  * Repo-owned policy contract for the protected environment itself, checked by
  * the live audit alongside the name inventory. Deployments to
- * `production-release` legitimately originate from exactly one ref:
+ * `production-release` legitimately originate from exactly two refs:
  * `release.yaml` enforces that the canonical release transaction (and the
- * reusable store legs it calls) runs on `refs/heads/develop`. The
- * environment's deployment policy must therefore use a custom branch policy
- * admitting exactly that pattern — protected-branches-only, any-branch,
+ * reusable store legs it calls) runs on `refs/heads/develop`, and
+ * `release-electrobun.yml` runs on the pushed `v*` release tag. The
+ * environment's deployment policy must therefore use custom branch policies
+ * admitting exactly those two patterns — protected-branches-only, any-branch,
  * and any additional pattern all violate the contract.
  *
  * `authorizedReviewers` is the allowlist of GitHub principals (user logins or
@@ -34,6 +45,7 @@ export const RELEASE_ENVIRONMENT = "production-release";
 export const RELEASE_ENVIRONMENT_POLICY = Object.freeze({
   deploymentRefs: Object.freeze([
     Object.freeze({ type: "branch", name: "develop" }),
+    Object.freeze({ type: "tag", name: "v*" }),
   ]),
   preventSelfReview: true,
   authorizedReviewers: Object.freeze(["lalalune"]),
@@ -54,6 +66,20 @@ export const RELEASE_ENVIRONMENT_POLICY = Object.freeze({
 
 /** @type {readonly StoreLane[]} */
 export const STORE_LANES = Object.freeze([
+  Object.freeze({
+    id: "snap",
+    provider: "Snap Store",
+    workflow: ".github/workflows/snap-publish.yml",
+    secrets: Object.freeze(["SNAPCRAFT_STORE_CREDENTIALS"]),
+    variables: Object.freeze([]),
+    prerequisite:
+      "Registered `eliza` snap name owned by the company Snapcraft account.",
+    owner: "Release engineering",
+    rotation:
+      "Re-export every 90 days with `snapcraft export-login --snaps eliza --channels edge,beta,candidate,stable --acls package_access,package_push,package_release -`.",
+    revocation:
+      "Revoke the exported macaroon in the Snapcraft account authentication settings, then re-export.",
+  }),
   Object.freeze({
     id: "google-play",
     provider: "Google Play Console",
@@ -98,6 +124,30 @@ export const STORE_LANES = Object.freeze([
       "Rotate the App Store Connect API key every 180 days; rotate the match repository token on the same cadence.",
     revocation:
       "Revoke the API key in App Store Connect > Users and Access > Integrations, and revoke the match repository token.",
+  }),
+  Object.freeze({
+    id: "microsoft",
+    provider: "Microsoft Partner Center",
+    workflow: ".github/workflows/store-windows-publish.yml",
+    secrets: Object.freeze([
+      "MICROSOFT_STORE_TENANT_ID",
+      "MICROSOFT_STORE_CLIENT_ID",
+      "MICROSOFT_STORE_CLIENT_SECRET",
+    ]),
+    variables: Object.freeze([
+      "MICROSOFT_STORE_IDENTITY_NAME",
+      "MICROSOFT_STORE_PUBLISHER_ID",
+      "MICROSOFT_STORE_PUBLISHER_DISPLAY_NAME",
+      "MICROSOFT_STORE_APPLICATION_ID",
+    ]),
+    prerequisite:
+      "Microsoft Partner Center account with a reserved app identity and a completed first manual submission.",
+    owner:
+      "Release engineering (Partner Center Manager role with the org owner)",
+    rotation:
+      "Rotate the Entra application client secret every 180 days and update the environment secret in the same change window.",
+    revocation:
+      "Delete the client secret on the Entra app registration and remove the Azure AD tenant association in Partner Center.",
   }),
 ]);
 
@@ -149,7 +199,10 @@ export function auditWorkflowCoverage(workflowSources) {
     const refs = extractWorkflowReferences(source);
     perWorkflow.set(path, refs);
     for (const name of refs.secrets) referencedSecrets.add(name);
-    for (const name of refs.variables) referencedVariables.add(name);
+    for (const name of refs.variables) {
+      if (!NON_CREDENTIAL_VARIABLES.includes(name))
+        referencedVariables.add(name);
+    }
   }
 
   const missingInWorkflows = [];

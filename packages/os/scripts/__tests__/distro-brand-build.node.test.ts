@@ -29,7 +29,10 @@ import { resolveElizaSourceRoot } from "../eliza-source.ts";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const original = JSON.parse(
-  readFileSync(new URL("../android/brand.eliza.json", import.meta.url), "utf8"),
+  readFileSync(
+    new URL("../android/brand.eliza.json", import.meta.url),
+    "utf8",
+  ),
 );
 function fixture(t) {
   const directory = mkdtempSync(join(tmpdir(), "distro-build-"));
@@ -78,7 +81,7 @@ test("APK build uses retained source selection, AOSP environment and exact argv 
     buildAndroidSystemCmd: [
       process.execPath,
       "-e",
-      'require("node:fs").writeFileSync(process.argv[1], JSON.stringify({args:process.argv.slice(2),cwd:process.cwd(),app:process.env.ELIZA_APP_ID,aosp:process.env.ELIZA_AOSP_BUILD}))',
+      'require("node:fs").writeFileSync(process.argv[1], JSON.stringify({args:process.argv.slice(2),cwd:process.cwd(),app:process.env.ELIZA_APP_ID,aosp:process.env.ELIZA_AOSP_BUILD,gradle:process.env.ELIZA_GRADLE_AOSP_BUILD}))',
       output,
       ...args,
     ],
@@ -89,6 +92,7 @@ test("APK build uses retained source selection, AOSP environment and exact argv 
     cwd: resolveElizaSourceRoot(),
     app: original.packageName,
     aosp: "1",
+    gradle: "true",
   });
   assert.equal(existsSync(sentinel), false);
   save({
@@ -130,7 +134,9 @@ test("CI brand resolution treats paths as data and refuses multiline action outp
   save({ ...original, distroName: "name\ninjected=value" });
   assert.notEqual(run().status, 0);
   assert.equal(existsSync(output), false);
-  const build = steps.find((step) => step.name?.startsWith("Build image APK"));
+  const build = steps.find((step) =>
+    step.name?.startsWith("Build image APK"),
+  );
   assert.match(
     build.run,
     /rebuildLauncherApk\(loadBrandConfig\(process.env.BRAND_CONFIG\)\)/,

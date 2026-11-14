@@ -113,6 +113,34 @@ test("downloadFile does not retry permanent HTTP misses", async () => {
   }
 });
 
+test("riscv64 Bun artifact path resolves from the ELIZA_BUN_RISCV64_FILE env", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-riscv64-bun-"));
+  try {
+    const artifact = path.join(tmp, __testables.RISCV64_BUN_ARTIFACT_FILENAME);
+    fs.writeFileSync(artifact, "fixture");
+    const resolved = withEnv(
+      {
+        ELIZA_BUN_RISCV64_FILE: artifact,
+      },
+      () => __testables.riscv64BunFilePath(),
+    );
+    assert.equal(resolved, artifact);
+  } finally {
+    removePathRecursive(tmp);
+  }
+});
+
+test("riscv64 Bun artifact hash resolves from the ELIZA_BUN_RISCV64_SHA256 env", () => {
+  const hash = "a".repeat(64);
+  const resolved = withEnv(
+    {
+      ELIZA_BUN_RISCV64_SHA256: hash,
+    },
+    () => __testables.riscv64BunSha256(),
+  );
+  assert.equal(resolved, hash);
+});
+
 test("SIGSYS shim Zig auto-provision uses pinned release metadata for this host", () => {
   const toolchain = __testables.resolveZigToolchain();
   if (process.platform === "darwin" || process.platform === "linux") {
@@ -396,14 +424,50 @@ test("SIGSYS shim restaging preserves the real loader when the wrapper exceeds 2
   }
 });
 
+test("riscv64 Bun defaults to the external OS toolchain checkout", () => {
+  const osRepositoryRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "eliza-os-riscv64-bun-"),
+  );
+  const artifact = path.join(
+    osRepositoryRoot,
+    "packages",
+    "os",
+    "toolchains",
+    "bun-riscv64",
+    "dist",
+    __testables.RISCV64_BUN_ARTIFACT_FILENAME,
+  );
+  try {
+    fs.mkdirSync(path.dirname(artifact), { recursive: true });
+    fs.writeFileSync(artifact, "fixture");
+    const resolved = withEnv(
+      {
+        ELIZAOS_OS_REPO_ROOT: osRepositoryRoot,
+        ELIZA_BUN_RISCV64_FILE: null,
+      },
+      () => __testables.riscv64BunFilePath(),
+    );
+    assert.equal(resolved, artifact);
+  } finally {
+    removePathRecursive(osRepositoryRoot);
+  }
+});
+
 test("runtime provenance records external artifacts by basename only", () => {
   const artifact = path.join(
     os.tmpdir(),
-    "eliza-external-bun",
-    "bun-linux-aarch64-musl.zip",
+    "eliza-external-riscv64",
+    __testables.RISCV64_BUN_ARTIFACT_FILENAME,
   );
-  assert.deepEqual(__testables.provenancePath(artifact), {
-    path: "bun-linux-aarch64-musl.zip",
+  const source = withEnv(
+    {
+      ELIZA_BUN_RISCV64_FILE: artifact,
+    },
+    () => __testables.riscv64BunArtifactSource(),
+  );
+  assert.deepEqual(source, {
+    kind: "file",
+    path: "bun-linux-riscv64-musl.zip",
     path_provenance: "external_artifact_basename",
   });
 });
@@ -551,18 +615,17 @@ test("artifact downloads preserve GitHub binary content negotiation", async () =
   }
 });
 
-test("runtime selection narrows to the requested ABI and defaults to all", () => {
+test("Pixel runtime selection excludes RISC-V without weakening defaults", () => {
   assert.deepEqual(
     selectAndroidRuntimeTargets("arm64-v8a").map((t) => t.bunArch),
     ["aarch64"],
   );
-  assert.deepEqual(
-    selectAndroidRuntimeTargets(undefined).map((t) => t.androidAbi),
-    ["x86_64", "arm64-v8a"],
+  assert.ok(
+    selectAndroidRuntimeTargets(undefined).some((t) => t.bunArch === "riscv64"),
   );
-  assert.throws(
-    () => selectAndroidRuntimeTargets("riscv64"),
-    /unique supported/,
+  assert.deepEqual(
+    selectAndroidRuntimeTargets("riscv64").map((t) => t.bunArch),
+    ["riscv64"],
   );
 });
 test("runtime selection rejects empty, unknown, and duplicate ABI inputs", () => {
@@ -597,8 +660,6 @@ test("ABI restaging removes only unselected owned runtime directories", () => {
   try {
     fs.mkdirSync(assetsAgentDir, { recursive: true });
     fs.writeFileSync(path.join(assetsAgentDir, "unrelated"), "keep");
-    // A retired ABI left by an older checkout is pruned even when all targets stay.
-    fs.mkdirSync(path.join(assetsAgentDir, "riscv64"));
     stage(undefined);
     stage("arm64-v8a");
     stage("x86_64");

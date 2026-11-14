@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { flushTrajectoryWrites } from "@elizaos/agent/runtime/trajectory-storage";
 import {
   type AgentRuntime,
   ElizaError,
@@ -225,6 +226,7 @@ export async function createRealTestRuntime(
       configureRuntime: (runtime) => {
         installHttpPluginLifecycle(runtime);
       },
+      flushTrajectoryWrites,
     });
     const { runtime } = fixture;
     for (const plugin of options.plugins ?? [])

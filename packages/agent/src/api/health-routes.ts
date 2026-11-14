@@ -520,17 +520,7 @@ export function computeCanRespond(
     if (!hasTextGenerationHandler(runtime)) return false;
     if (!textRegistrationsBehindRouter(runtime).length) return false;
     if (localModelReadiness?.status === "model_not_loaded") return false;
-  } catch (error) {
-    // error-policy:J7 an unreadable registry is "unknown", not evidence that the
-    // agent has no text handler. Keep the answer fail-closed for the composer,
-    // but report the fault so "never responds" is not diagnosed as "no model".
-    runtime.logger.warn(
-      {
-        src: "health-routes",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Text handler registrations unavailable",
-    );
+  } catch {
     return false;
   }
   return !isCloudTextModelUnavailable(runtime);

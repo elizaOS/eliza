@@ -1,6 +1,6 @@
 /**
- * Finalizes live voice captures into revision-bound evidence. The web lane
- * privately validates its real acoustic captures, then publish only black
+ * Finalizes live voice captures into revision-bound evidence. Web and desktop
+ * privately validate their real acoustic captures, then publish only black
  * video and non-intelligible, duration-only tone projections. Source waveforms,
  * speech, transcripts, and correlation inputs never enter public artifacts.
  */
@@ -12,6 +12,87 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+const COMMON_VIRTUAL_MICROPHONE_PATTERNS = [
+  /black ?hole/,
+  /sound ?flower/,
+  /vb ?audio/,
+  /vb ?cable/,
+  /cable (?:input|output)/,
+  /stereo mix/,
+  /what u hear/,
+  /wave out mix/,
+  /voice ?meeter/,
+  /virtual(?: audio| microphone| input| capturer)/,
+  /loopback/,
+  /(?:^| )monitor(?: |$)/,
+  /(?:^| )null(?: |$)/,
+  /snd ?aloop/,
+  /(?:^| )pulse(?: ?audio)?(?: |$)/,
+];
+
+const PLATFORM_VIRTUAL_MICROPHONE_PATTERNS = {
+  darwin: [/aggregate device/, /multi output/],
+  win32: [/audio repeater/],
+};
+
+function normalizedDeviceIdentity(value) {
+  return String(value ?? "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+/**
+ * Reject known software-routing endpoints before they can be labelled as a
+ * physical microphone. The runner still owns the hardware assertion: desktop
+ * audio APIs do not expose a portable cryptographic device attestation, so the
+ * provenance records this classifier rather than pretending it proves more.
+ */
+export function classifyPhysicalMicrophoneEndpoint(
+  platform,
+  configuredDevice,
+  enumeratedLabel,
+) {
+  const platformPatterns = PLATFORM_VIRTUAL_MICROPHONE_PATTERNS[platform];
+  if (!platformPatterns) {
+    throw new Error(
+      `Physical microphone classification supports darwin or win32, not ${platform}.`,
+    );
+  }
+  const configured = configuredDevice?.trim();
+  const canonicalLabel = enumeratedLabel?.trim();
+  if (!configured || !canonicalLabel) {
+    throw new Error(
+      "Physical microphone classification requires configured and enumerated identities.",
+    );
+  }
+  const configuredIdentity = normalizedDeviceIdentity(configured);
+  const canonicalIdentity = normalizedDeviceIdentity(canonicalLabel);
+  const matched = [
+    ...COMMON_VIRTUAL_MICROPHONE_PATTERNS,
+    ...platformPatterns,
+  ].find(
+    (pattern) =>
+      pattern.test(configuredIdentity) || pattern.test(canonicalIdentity),
+  );
+  if (matched) {
+    throw new Error(
+      `Configured microphone ${configured} resolves to a virtual, loopback, ` +
+        `monitor, or aggregate endpoint (${canonicalLabel}); physical voice ` +
+        "evidence requires a real microphone input.",
+    );
+  }
+  return {
+    kind: "physical-microphone",
+    device: configured,
+    enumeratedLabel: canonicalLabel,
+    classification: "operator-selected-enumerated-nonvirtual-endpoint",
+    classifier: "eliza-voice-physical-microphone-v2",
+    platform,
+  };
+}
 
 const require = createRequire(import.meta.url);
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
@@ -1383,6 +1464,459 @@ function finalizeWebVoiceEvidenceSnapshot({
   });
 }
 
+function assertDesktopReport(file, head) {
+  const evidence = readJson(file, "packaged desktop report");
+  const report = evidence.report;
+  if (evidence.revision !== head) {
+    throw new Error(
+      `Packaged report revision ${evidence.revision} != ${head}.`,
+    );
+  }
+  if (
+    typeof evidence.packagedRevision !== "string" ||
+    evidence.packagedRevision !== head ||
+    typeof evidence.rendererBuildId !== "string" ||
+    evidence.rendererBuildId.length === 0
+  ) {
+    throw new Error(
+      "Packaged report lacks a running-renderer build stamp for HEAD.",
+    );
+  }
+  if (
+    report?.overall !== "pass" ||
+    report?.platform !== "desktop" ||
+    report?.mode !== "mic-capture" ||
+    report?.ttsRoute !== "/api/tts/local-inference" ||
+    !String(report?.sendBackend ?? "").startsWith("local-inference:")
+  ) {
+    throw new Error("Packaged desktop report is not a local real-mic pass.");
+  }
+  if (
+    !Array.isArray(report.stages) ||
+    report.stages.length !== 3 ||
+    report.stages.some((stage) => stage.status !== "pass")
+  ) {
+    throw new Error("Packaged desktop report contains a non-pass stage.");
+  }
+  const ttsStage = report.stages.find((stage) => stage.stage === "tts");
+  if (
+    ttsStage?.detail?.played !== true ||
+    ttsStage?.detail?.outputObserved !== true
+  ) {
+    throw new Error(
+      "Packaged desktop report did not observe real TTS output playback.",
+    );
+  }
+  return evidence;
+}
+
+function assertPhysicalCaptureProvenance(
+  file,
+  head,
+  desktopEvidence,
+  captureFiles,
+) {
+  const provenance = readJson(file, "physical capture provenance");
+  const deviceLabel = normalizedDeviceIdentity;
+  const sameDeviceLabel = (left, right) => {
+    const tokens = (value) =>
+      deviceLabel(value).split(" ").filter(Boolean).sort();
+    const leftTokens = tokens(left);
+    const rightTokens = tokens(right);
+    if (leftTokens.length === 0 || leftTokens.length !== rightTokens.length) {
+      return false;
+    }
+    return leftTokens.every((token, index) => token === rightTokens[index]);
+  };
+  const reportStartedAt = Date.parse(desktopEvidence.report.startedAt);
+  const reportFinishedAt = Date.parse(desktopEvidence.report.finishedAt);
+  const captureClocks = [
+    provenance.captures?.screen,
+    provenance.captures?.microphone,
+    provenance.captures?.speakerLoopback,
+  ];
+  const clockFiles = [
+    captureFiles.screen,
+    captureFiles.microphone,
+    captureFiles.speakerLoopback,
+  ];
+  const captureStarts = captureClocks.map((clock) =>
+    Date.parse(clock?.startedAt),
+  );
+  const asrStage = desktopEvidence.report.stages.find(
+    (stage) => stage.stage === "asr",
+  );
+  let microphoneClassified = false;
+  try {
+    classifyPhysicalMicrophoneEndpoint(
+      provenance.microphone?.platform,
+      provenance.microphone?.device,
+      provenance.microphone?.enumeratedLabel,
+    );
+    classifyPhysicalMicrophoneEndpoint(
+      provenance.microphone?.platform,
+      asrStage?.detail?.inputDeviceId,
+      asrStage?.detail?.inputDeviceLabel,
+    );
+    microphoneClassified = true;
+  } catch {
+    // error-policy:J3 provenance is untrusted input; the shared validation
+    // condition below translates every invalid identity into one failure.
+    microphoneClassified = false;
+  }
+  if (
+    provenance.kind !== "physical-hardware" ||
+    provenance.revision !== head ||
+    provenance.sessionId !== desktopEvidence.sessionId ||
+    typeof desktopEvidence.sessionId !== "string" ||
+    desktopEvidence.sessionId.length < 12 ||
+    !microphoneClassified ||
+    provenance.microphone?.kind !== "physical-microphone" ||
+    provenance.microphone?.classification !==
+      "operator-selected-enumerated-nonvirtual-endpoint" ||
+    provenance.microphone?.classifier !==
+      "eliza-voice-physical-microphone-v2" ||
+    typeof provenance.microphone?.device !== "string" ||
+    provenance.microphone.device.trim().length === 0 ||
+    deviceLabel(asrStage?.detail?.inputDeviceLabel).length === 0 ||
+    !sameDeviceLabel(
+      provenance.microphone?.enumeratedLabel,
+      asrStage?.detail?.inputDeviceLabel,
+    ) ||
+    provenance.speakerLoopback?.kind !== "system-output-loopback" ||
+    typeof provenance.speakerLoopback?.device !== "string" ||
+    provenance.speakerLoopback.device.trim().length === 0 ||
+    provenance.microphone.device === provenance.speakerLoopback.device ||
+    provenance.browserDevices?.microphone !== asrStage?.detail?.inputDeviceId ||
+    provenance.browserDevices?.speaker !==
+      desktopEvidence.report.stages.find((stage) => stage.stage === "tts")
+        ?.detail?.outputDeviceId ||
+    provenance.browserDevices?.microphone ===
+      provenance.browserDevices?.speaker ||
+    !Number.isFinite(reportStartedAt) ||
+    !Number.isFinite(reportFinishedAt)
+  ) {
+    throw new Error(
+      "Desktop evidence requires one synchronized, session-bound, current-revision physical microphone and system-output loopback capture enclosing the packaged run.",
+    );
+  }
+  for (let index = 0; index < captureClocks.length; index += 1) {
+    const clock = captureClocks[index];
+    const startedAt = Date.parse(clock?.startedAt);
+    const finishedAt = Date.parse(clock?.finishedAt);
+    if (
+      !Number.isFinite(startedAt) ||
+      !Number.isFinite(finishedAt) ||
+      startedAt > reportStartedAt ||
+      finishedAt < reportFinishedAt
+    ) {
+      throw new Error(
+        `Desktop capture clock ${index} does not enclose the packaged run.`,
+      );
+    }
+    if (clock?.sha256 !== sha256(clockFiles[index])) {
+      throw new Error(
+        `Desktop capture clock ${index} is not bound to its media bytes.`,
+      );
+    }
+  }
+  if (Math.max(...captureStarts) - Math.min(...captureStarts) > 250) {
+    throw new Error(
+      "Desktop physical microphone, speaker loopback, and screen captures did not start within 250ms.",
+    );
+  }
+  const backendClock = provenance.captures?.backend;
+  if (
+    typeof backendClock?.source !== "string" ||
+    !Number.isInteger(backendClock?.startOffset) ||
+    !Number.isInteger(backendClock?.endOffset) ||
+    backendClock.endOffset <= backendClock.startOffset ||
+    backendClock.sha256 !== sha256(captureFiles.backend) ||
+    Date.parse(backendClock.startedAt) > reportStartedAt ||
+    Date.parse(backendClock.finishedAt) < reportFinishedAt
+  ) {
+    throw new Error(
+      "Desktop backend evidence is not the session-bounded log delta for this packaged run.",
+    );
+  }
+  return provenance;
+}
+
+export function finalizeDesktopVoiceEvidence(args) {
+  assertOutputDestinationAvailable(args.outDir);
+  const snapshotRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "eliza-voice-desktop-evidence-"),
+  );
+  try {
+    const head = revision(args.expectedRevision);
+    const report = snapshotEvidenceFile(
+      args.report,
+      snapshotRoot,
+      "report.json",
+      "packaged desktop report",
+    );
+    // Reject a non-live packaged run before requiring the downstream acoustic
+    // artifacts, preserving the report as the authoritative stage boundary.
+    assertDesktopReport(report, head);
+    return finalizeDesktopVoiceEvidenceSnapshot({
+      ...args,
+      report,
+      trajectory: snapshotEvidenceFile(
+        args.trajectory,
+        snapshotRoot,
+        "trajectory.json",
+      ),
+      backendLog: snapshotEvidenceFile(
+        args.backendLog,
+        snapshotRoot,
+        "backend.log",
+      ),
+      screenRecording: snapshotEvidenceFile(
+        args.screenRecording,
+        snapshotRoot,
+        "screen.mp4",
+      ),
+      microphoneAudio: snapshotEvidenceFile(
+        args.microphoneAudio,
+        snapshotRoot,
+        "microphone.wav",
+      ),
+      speakerLoopbackAudio: snapshotEvidenceFile(
+        args.speakerLoopbackAudio,
+        snapshotRoot,
+        "speaker-loopback.wav",
+        "speaker loopback capture",
+      ),
+      captureProvenance: snapshotEvidenceFile(
+        args.captureProvenance,
+        snapshotRoot,
+        "capture-provenance.json",
+      ),
+      microphonePayload: snapshotEvidenceFile(
+        args.microphonePayload,
+        snapshotRoot,
+        "microphone-payload.audio",
+      ),
+      referencePayload: snapshotEvidenceFile(
+        args.referencePayload,
+        snapshotRoot,
+        "reference-payload.audio",
+      ),
+      ttsPayload: snapshotEvidenceFile(
+        args.ttsPayload,
+        snapshotRoot,
+        "tts-payload.audio",
+      ),
+    });
+  } finally {
+    fs.rmSync(snapshotRoot, { recursive: true, force: true });
+  }
+}
+
+function finalizeDesktopVoiceEvidenceSnapshot({
+  report,
+  trajectory,
+  backendLog,
+  screenRecording,
+  microphoneAudio,
+  speakerLoopbackAudio,
+  captureProvenance,
+  microphonePayload,
+  referencePayload,
+  ttsPayload,
+  outDir,
+  expectedRevision,
+  tools = resolveMediaTools(),
+}) {
+  const head = revision(expectedRevision);
+  const desktopEvidence = assertDesktopReport(report, head);
+  for (const [file, label] of [
+    [screenRecording, "desktop screen recording"],
+    [microphoneAudio, "physical microphone capture"],
+    [speakerLoopbackAudio, "speaker loopback capture"],
+    [captureProvenance, "physical capture provenance"],
+    [microphonePayload, "app-captured microphone payload"],
+    [referencePayload, "known-phrase reference payload"],
+    [ttsPayload, "returned TTS payload"],
+    [backendLog, "desktop backend log"],
+  ]) {
+    assertFreshCapture(file, desktopEvidence.report.startedAt, label);
+  }
+  const provenance = assertPhysicalCaptureProvenance(
+    captureProvenance,
+    head,
+    desktopEvidence,
+    {
+      screen: screenRecording,
+      microphone: microphoneAudio,
+      speakerLoopback: speakerLoopbackAudio,
+      backend: backendLog,
+    },
+  );
+  const trajectoryValue = assertTrajectory(trajectory);
+  const sendStage = desktopEvidence.report.stages.find(
+    (stage) => stage.stage === "send",
+  );
+  if (
+    typeof sendStage?.detail?.conversationId !== "string" ||
+    typeof sendStage?.detail?.userMessageId !== "string" ||
+    trajectoryValue.trajectory?.metadata?.conversationId !==
+      sendStage.detail.conversationId ||
+    trajectoryValue.trajectory?.metadata?.messageId !==
+      sendStage.detail.userMessageId
+  ) {
+    throw new Error(
+      "Desktop trajectory is not correlated to the self-test conversation.",
+    );
+  }
+  inspectAudibleMedia(microphoneAudio, tools);
+  const speakerLoopbackInspection = inspectAudibleMedia(
+    speakerLoopbackAudio,
+    tools,
+  );
+  const referenceInspection = inspectAudibleMedia(referencePayload, tools);
+  const ttsInspection = inspectAudibleMedia(ttsPayload, tools);
+  const asrStage = desktopEvidence.report.stages.find(
+    (stage) => stage.stage === "asr",
+  );
+  const ttsStage = desktopEvidence.report.stages.find(
+    (stage) => stage.stage === "tts",
+  );
+  const captureStartedAt = Date.parse(provenance.captures.screen.startedAt);
+  const correlationWindow = (startedAt, finishedAt, label) => {
+    const start = Date.parse(startedAt);
+    const finish = Date.parse(finishedAt);
+    if (
+      !Number.isFinite(start) ||
+      !Number.isFinite(finish) ||
+      start < captureStartedAt ||
+      finish <= start ||
+      finish > Date.parse(provenance.captures.screen.finishedAt)
+    ) {
+      throw new Error(`${label} timing is outside the synchronized capture.`);
+    }
+    return {
+      startSeconds: Math.max(0, (start - captureStartedAt) / 1_000 - 1),
+      durationSeconds: (finish - start) / 1_000 + 2,
+    };
+  };
+  const microphoneCorrelation = correlateAudioWindow(
+    microphonePayload,
+    microphoneAudio,
+    correlationWindow(
+      asrStage?.detail?.captureStartedAt,
+      asrStage?.detail?.captureFinishedAt,
+      "ASR capture",
+    ),
+    tools,
+  );
+  const acousticReferenceCorrelation = correlateAudioWindow(
+    referencePayload,
+    microphonePayload,
+    {
+      startSeconds: 0,
+      durationSeconds: inspectAudibleMedia(microphonePayload, tools).duration,
+    },
+    tools,
+  );
+  const loopbackReferenceCorrelation = correlateAudioWindow(
+    referencePayload,
+    speakerLoopbackAudio,
+    correlationWindow(
+      asrStage?.detail?.referenceStartedAt,
+      asrStage?.detail?.referenceFinishedAt,
+      "known-phrase playback",
+    ),
+    tools,
+  );
+  const ttsCorrelation = correlateAudioWindow(
+    ttsPayload,
+    speakerLoopbackAudio,
+    correlationWindow(
+      ttsStage?.detail?.playbackStartedAt,
+      ttsStage?.detail?.playbackFinishedAt,
+      "TTS playback",
+    ),
+    tools,
+  );
+  return atomicallyPublishEvidence(outDir, (stagingDir) => {
+    const safeSpeakerLoopback = projectAcousticSignal(
+      speakerLoopbackInspection.duration,
+      path.join(stagingDir, "voice-desktop-projected-speaker-loopback.wav"),
+      tools,
+    );
+    const safeReference = projectAcousticSignal(
+      referenceInspection.duration,
+      path.join(stagingDir, "voice-desktop-projected-reference.wav"),
+      tools,
+    );
+    const safeTts = projectAcousticSignal(
+      ttsInspection.duration,
+      path.join(stagingDir, "voice-desktop-projected-tts.wav"),
+      tools,
+    );
+    const mp4 = path.join(stagingDir, "voice-desktop-live-roundtrip.mp4");
+    mux(screenRecording, [safeSpeakerLoopback], mp4, tools);
+    const inspected = inspectAudibleMp4(mp4, tools);
+    const proof = {
+      modelResponsePresent: true,
+      trajectoryMatched: true,
+      physicalMicrophoneClassified: true,
+      backendEvidencePresent: true,
+      packagedStageCount: desktopEvidence.report.stages.length,
+      packagedStagePassCount: desktopEvidence.report.stages.filter(
+        (stage) => stage.status === "pass",
+      ).length,
+      synchronizedCaptureCount: 3,
+      audioCorrelationCount: 4,
+      publicAudioProjectedFromDurationOnly: true,
+      privateAudioPublished: false,
+    };
+    const proofFile = writeProof(stagingDir, "desktop", head, proof);
+    const artifacts = [
+      {
+        file: mp4,
+        role: "privacy-safe-black-video-plus-projected-loopback-tone",
+      },
+      {
+        file: safeSpeakerLoopback,
+        role: "privacy-safe-projected-speaker-loopback-duration-tone",
+      },
+      {
+        file: safeReference,
+        role: "privacy-safe-projected-reference-duration-tone",
+      },
+      {
+        file: safeTts,
+        role: "privacy-safe-projected-tts-duration-tone",
+      },
+      {
+        file: proofFile,
+        role: "privacy-safe-correlation-proof",
+      },
+    ];
+    return {
+      mp4,
+      ...manifest(
+        stagingDir,
+        "desktop",
+        head,
+        {
+          ...projectedMedia(inspected, "SESSION_CLOCK_ALIGNED_WITHIN_250MS"),
+          correlatedSignalCount: [
+            microphoneCorrelation,
+            acousticReferenceCorrelation,
+            loopbackReferenceCorrelation,
+            ttsCorrelation,
+          ].length,
+        },
+        proof,
+        artifacts,
+      ),
+    };
+  });
+}
+
 function options(argv) {
   const [command, ...rest] = argv;
   const values = {};
@@ -1415,11 +1949,24 @@ function main() {
           loopbackClock: values["loopback-clock"],
           matrixReport: values.matrix,
         })
-      : (() => {
-          throw new Error(
-            "Usage: voice-evidence-media.ts web --<artifact> <path> ...",
-          );
-        })();
+      : command === "desktop"
+        ? finalizeDesktopVoiceEvidence({
+            ...common,
+            report: values.report,
+            trajectory: values.trajectory,
+            screenRecording: values.screen,
+            microphoneAudio: values.mic,
+            speakerLoopbackAudio: values.speaker,
+            captureProvenance: values["capture-provenance"],
+            microphonePayload: values["microphone-payload"],
+            referencePayload: values["reference-payload"],
+            ttsPayload: values["tts-payload"],
+          })
+        : (() => {
+            throw new Error(
+              "Usage: voice-evidence-media.ts web|desktop --<artifact> <path> ...",
+            );
+          })();
   console.log(
     `[voice-evidence] phase=finalize status=passed code=EVIDENCE_READY artifacts=${result.manifest.artifacts.length}`,
   );

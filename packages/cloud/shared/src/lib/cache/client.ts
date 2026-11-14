@@ -12,9 +12,7 @@ import { randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import { Redis as UpstashRedis } from "@upstash/redis";
 import { createClient } from "redis";
-import type { RuntimeDurableObjectNamespace } from "../../types/cloud-worker-env";
 import { getCloudAwareEnv, getCloudBinding } from "../runtime/cloud-bindings";
-import { getRequestTaskDefer, type RequestTaskDefer } from "../runtime/request-context";
 import { logger } from "../utils/logger";
 import { KvCacheAdapter, type KvNamespaceLike } from "./adapters/kv-cache-adapter";
 import { MemoryCacheAdapter } from "./adapters/memory-cache-adapter";
@@ -23,7 +21,6 @@ import { SocketRedisAdapter } from "./adapters/socket-redis-adapter";
 import type { CacheRedisClient } from "./adapters/types";
 import { UpstashRedisAdapter } from "./adapters/upstash-redis-adapter";
 import { type WadisClientLike, WadisRedisAdapter } from "./adapters/wadis-redis-adapter";
-import { CACHE_CIRCUIT_COOLDOWN_MS, readCacheCircuitClock } from "./cache-circuit-clock";
 import { SocketRedis } from "./socket-redis";
 
 function isCloudflareWorkerRuntime(): boolean {
@@ -129,13 +126,9 @@ export class CacheClient {
   private backendConfigured = false;
   private initialized = false;
   private failureCount = 0;
-  private lastFailurePerformanceMs = 0;
-  private failureGeneration = 0;
-  private workerReadyGeneration = -1;
-  private circuitProbe?: { generation: number; defer: RequestTaskDefer };
-  private workerRequestDefer?: RequestTaskDefer;
+  private lastFailureTime = 0;
   private readonly MAX_FAILURES = 5;
-  private readonly CIRCUIT_BREAKER_TIMEOUT = CACHE_CIRCUIT_COOLDOWN_MS;
+  private readonly CIRCUIT_BREAKER_TIMEOUT = 60000;
   // A timed-out delivery can still own an uncancellable loader. Retain that
   // ownership until the loader settles, including when the cache entry expires.
   private revalidationQueue = new Map<string, Promise<unknown>>();
@@ -416,17 +409,6 @@ export class CacheClient {
 
   private async getRedisClient(): Promise<CacheRedisClient | null> {
     this.initialize();
-    if (!this.enabled) return null;
-    if (isCloudflareWorkerRuntime() && !this.workerRequestDefer) {
-      // Match the existing Worker-only socket import. Node/Bun never load it.
-      const workerModule = "cloudflare:" + "workers";
-      const runtime = (await import(/* @vite-ignore */ workerModule)) as {
-        waitUntil: RequestTaskDefer;
-      };
-      this.workerRequestDefer = runtime.waitUntil;
-    }
-    if (this.enabled && isCloudflareWorkerRuntime() && this.failureCount >= this.MAX_FAILURES)
-      await this.refreshWorkerCircuit(this.failureGeneration);
     if (!this.enabled || this.isCircuitOpen()) {
       return null;
     }
@@ -490,7 +472,6 @@ export class CacheClient {
    */
   isAvailable(): boolean {
     this.initialize();
-    this.refreshWorkerCircuitInBackground();
     return !!(
       this.enabled &&
       (this.redis || this.nativeRedisConnectPromise) &&
@@ -1267,14 +1248,7 @@ export class CacheClient {
       return false;
     }
 
-    if (isCloudflareWorkerRuntime()) {
-      if (this.workerReadyGeneration !== this.failureGeneration) return true;
-      this.failureCount = 0;
-      return false;
-    }
-
-    // Use the host performance clock for this process-local cooldown.
-    const timeSinceLastFailure = performance.now() - this.lastFailurePerformanceMs;
+    const timeSinceLastFailure = Date.now() - this.lastFailureTime;
     if (timeSinceLastFailure > this.CIRCUIT_BREAKER_TIMEOUT) {
       logger.info("[Cache] Circuit breaker timeout expired, attempting to reconnect");
       this.failureCount = 0;
@@ -1288,9 +1262,7 @@ export class CacheClient {
 
   private recordFailure(): void {
     this.failureCount++;
-    this.failureGeneration++;
-    this.lastFailurePerformanceMs = performance.now();
-    this.refreshWorkerCircuitInBackground();
+    this.lastFailureTime = Date.now();
 
     // Log exactly on the closed->open transition (failureCount keeps climbing past
     // MAX_FAILURES while open, so `=== MAX_FAILURES` fires once per open). Include the
@@ -1301,42 +1273,6 @@ export class CacheClient {
         cooldownMs: this.CIRCUIT_BREAKER_TIMEOUT,
       });
     }
-  }
-
-  private async refreshWorkerCircuit(generation: number): Promise<void> {
-    try {
-      const namespace = getCloudBinding<RuntimeDurableObjectNamespace>("INFERENCE_ADMISSION_GATES");
-      if (!namespace) throw new Error("Worker cache circuit clock binding is unavailable");
-      const ready = await readCacheCircuitClock(namespace, this.getInstanceId(), generation);
-      if (ready && this.failureGeneration === generation && this.failureCount >= this.MAX_FAILURES)
-        this.workerReadyGeneration = generation;
-    } catch (error) {
-      logger.warn("[Cache] Circuit timer receipt remains unconfirmed", { error });
-    }
-  }
-
-  private refreshWorkerCircuitInBackground(): void {
-    if (
-      !isCloudflareWorkerRuntime() ||
-      this.failureCount < this.MAX_FAILURES ||
-      this.workerReadyGeneration === this.failureGeneration
-    )
-      return;
-    const requestDefer = getRequestTaskDefer();
-    const defer = requestDefer ?? this.workerRequestDefer;
-    if (!defer) return;
-    if (
-      requestDefer &&
-      this.circuitProbe?.generation === this.failureGeneration &&
-      this.circuitProbe.defer === defer
-    )
-      return;
-    const probe = { generation: this.failureGeneration, defer };
-    this.circuitProbe = probe;
-    const task = this.refreshWorkerCircuit(probe.generation).finally(() => {
-      if (this.circuitProbe === probe) this.circuitProbe = undefined;
-    });
-    defer(task);
   }
 
   private resetFailures(): void {

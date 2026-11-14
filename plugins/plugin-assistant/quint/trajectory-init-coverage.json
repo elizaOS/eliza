@@ -3,8 +3,7 @@
     "id": "DeferredTrajectoryInit",
     "model": "plugins/plugin-assistant/quint/DeferredTrajectoryInit.qnt",
     "sources": [
-      "plugins/plugin-assistant/src/features/trajectories/TrajectoriesService.ts",
-      "plugins/plugin-assistant/src/features/trajectories/store/trajectory-internals.ts"
+      "plugins/plugin-assistant/src/features/trajectories/TrajectoriesService.ts"
     ],
     "invariants": [
       "TypeOK",

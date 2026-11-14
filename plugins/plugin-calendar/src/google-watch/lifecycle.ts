@@ -859,20 +859,25 @@ export class GoogleCalendarWatchLifecycle {
           random: this.random(),
           providerRetryAfterSeconds: failure.retryAfterSeconds,
         });
-        if (!failure.retryable) {
-          // A fatal result belongs to the same lease as completion or retry.
+        if (failure.bindingMismatch) {
           await this.repo.markError({
             agentId: this.runtime.agentId,
             channelId: claimed.channelId,
             failedAt: this.now().toISOString(),
-            state:
-              failure.bindingMismatch || failure.reason === "auth_expired"
-                ? "revoked"
-                : "error",
+            state: "revoked",
             error: failure,
-            syncLeaseToken: leaseToken,
           });
-          return { kind: failure.bindingMismatch ? "unauthorized" : "settled" };
+          return { kind: "unauthorized" };
+        }
+        if (!failure.retryable) {
+          await this.repo.markError({
+            agentId: this.runtime.agentId,
+            channelId: claimed.channelId,
+            failedAt: this.now().toISOString(),
+            state: failure.reason === "auth_expired" ? "revoked" : "error",
+            error: failure,
+          });
+          return { kind: "settled" };
         }
         const released = await this.repo.releaseFailedSync({
           agentId: this.runtime.agentId,

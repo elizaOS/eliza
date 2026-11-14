@@ -131,7 +131,7 @@ export async function copyPackageAssets({
     assetPaths.length === 0
   ) {
     throw new TypeError(
-      "usage: bun packages/scripts/copy-package-assets.ts <package-dir> <src-path> [<src-path> ...]",
+      "usage: node packages/scripts/copy-package-assets.ts <package-dir> <src-path> [<src-path> ...]",
     );
   }
   const packageDir = path.resolve(repositoryRoot, packageDirectory);

@@ -25,6 +25,15 @@ mock.module("@/api-app/lib/generative-route-auth", () => ({
   getGenerativeOperationContext: () => ({}),
   asGenerativeCacheApiError: () => null,
 }));
+mock.module(
+  "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard",
+  () => ({
+    deferredCredentialAdmissionGuard: () => ({
+      credentialForAdmission: async () => ({}),
+      [Symbol.asyncDispose]: async () => {},
+    }),
+  }),
+);
 const { default: route } = await import("./route");
 const app = new Hono().route("/apps/:id/promote", route);
 afterAll(() => mock.restore());

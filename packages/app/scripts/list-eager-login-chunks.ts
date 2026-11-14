@@ -5,7 +5,7 @@
  * Complements #18056 cold transfer measurement with a static closure list.
  *
  * Usage (after production build):
- *   bun scripts/list-eager-login-chunks.ts [--out report.json]
+ *   node scripts/list-eager-login-chunks.ts [--out report.json]
  */
 
 import { execSync } from "node:child_process";

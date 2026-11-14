@@ -61,8 +61,6 @@ export type StrictActionRouteFixture = {
   discoverBeforeExecution?: boolean;
   args: JsonRecord;
   contextIds?: readonly string[];
-  /** Explicit plugin-owned Stage-1 fields for the authored user request. */
-  stage1Fields?: JsonRecord;
   input: string;
   messageToUser?: string;
 };
@@ -307,7 +305,6 @@ export function stage1ResponseHandlerFixture(
       toolName: "HANDLE_RESPONSE",
     },
     response: {
-      ...spec.stage1Fields,
       contexts: [...(spec.contextIds ?? ["general"])],
       intents: [spec.input.toLowerCase()],
       replyText: spec.messageToUser ?? "On it.",

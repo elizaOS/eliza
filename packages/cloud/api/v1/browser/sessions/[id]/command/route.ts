@@ -25,7 +25,7 @@ import {
   asGenerativeCacheApiError,
   getGenerativeOperationContext,
   requireGenerativeRouteCaller,
-} from "../../../../../src/lib/generative-route-auth";
+} from "@/api-app/lib/generative-route-auth";
 
 const commandSchema = z.object({
   id: z.string().trim().optional(),

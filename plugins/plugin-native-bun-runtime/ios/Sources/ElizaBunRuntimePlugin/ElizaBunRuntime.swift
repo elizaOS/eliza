@@ -733,6 +733,12 @@ enum IosRuntimePolicy {
     static let allowsJSContextCompatibilityFallback = false
 #endif
 
+    private static let executionModeKeys = [
+        "ELIZA_RUNTIME_MODE",
+        "RUNTIME_MODE",
+        "LOCAL_RUNTIME_MODE",
+    ]
+
     static func normalizeEngine(_ value: String) -> String {
         switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "bun":
@@ -752,9 +758,15 @@ enum IosRuntimePolicy {
         }
 
         sanitized["ELIZA_PLATFORM"] = "ios"
+        sanitized["ELIZA_MOBILE_PLATFORM"] = "ios"
 
-        let resolvedMode = normalizeExecutionMode(sanitized["ELIZA_RUNTIME_MODE"]) ?? safeLocalExecutionMode
-        sanitized["ELIZA_RUNTIME_MODE"] = resolvedMode == "local-yolo" ? safeLocalExecutionMode : resolvedMode
+        let resolvedMode = executionModeKeys
+            .compactMap { normalizeExecutionMode(sanitized[$0]) }
+            .first ?? safeLocalExecutionMode
+        let clampedMode = resolvedMode == "local-yolo" ? safeLocalExecutionMode : resolvedMode
+        for key in executionModeKeys {
+            sanitized[key] = clampedMode
+        }
 
         sanitized["ELIZA_IOS_RUNTIME_POLICY"] = safeLocalExecutionMode
 #if ELIZA_IOS_FULL_BUN_ENGINE

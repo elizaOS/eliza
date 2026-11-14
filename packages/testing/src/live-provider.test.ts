@@ -13,6 +13,7 @@ beforeEach(() => {
     "OPENAI_API_KEY",
     "CEREBRAS_API_KEY",
     "ELIZAOS_CLOUD_API_KEY",
+    "ELIZA_CLOUD_API_KEY",
   ])
     vi.stubEnv(name, "");
   vi.stubEnv("ELIZA_CONFIG_PATH", config);

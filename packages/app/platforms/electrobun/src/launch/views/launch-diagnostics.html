@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Launch Diagnostics</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+        background: #101318;
+        color: #e6edf3;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        grid-template-rows: auto auto 1fr;
+      }
+      header {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+        padding: 12px;
+        border-bottom: 1px solid #2b323d;
+        background: #151a21;
+      }
+      h1 {
+        margin: 0;
+        font-size: 15px;
+        line-height: 1.25;
+      }
+      .phase {
+        justify-self: end;
+        border: 1px solid #3d4858;
+        border-radius: 999px;
+        padding: 3px 10px;
+        font-size: 12px;
+        color: #dbeafe;
+        background: #1d2837;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 1px;
+        background: #2b323d;
+        border-bottom: 1px solid #2b323d;
+      }
+      .grid div {
+        min-width: 0;
+        background: #151a21;
+        padding: 8px 10px;
+      }
+      span {
+        display: block;
+        font-size: 11px;
+        color: #94a3b8;
+      }
+      strong {
+        display: block;
+        margin-top: 2px;
+        font-size: 13px;
+        overflow-wrap: anywhere;
+      }
+      main {
+        overflow: auto;
+        padding: 12px;
+      }
+      section {
+        margin-bottom: 12px;
+        border: 1px solid #2b323d;
+        border-radius: 6px;
+        background: #151a21;
+      }
+      h2 {
+        margin: 0;
+        padding: 10px 12px;
+        border-bottom: 1px solid #2b323d;
+        font-size: 13px;
+      }
+      pre {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        max-height: 260px;
+        overflow: auto;
+        margin: 0;
+        padding: 10px 12px;
+        background: #0b0f14;
+        color: #d1d5db;
+        font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        line-height: 1.45;
+      }
+      ol {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      li {
+        display: grid;
+        grid-template-columns: 80px 1fr;
+        gap: 10px;
+        padding: 9px 12px;
+        border-top: 1px solid #232a34;
+      }
+      li:first-child {
+        border-top: 0;
+      }
+      time {
+        color: #94a3b8;
+        font-size: 11px;
+      }
+      .event {
+        font-size: 12px;
+        color: #f8fafc;
+        overflow-wrap: anywhere;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Launch Diagnostics</h1>
+      <div id="phase" class="phase">waiting</div>
+    </header>
+    <div class="grid">
+      <div><span>Agent</span><strong id="agent">unknown</strong></div>
+      <div><span>Runtime</span><strong id="runtime">unknown</strong></div>
+      <div><span>Database</span><strong id="database">unknown</strong></div>
+      <div><span>Recovery</span><strong id="recovery">none</strong></div>
+    </div>
+    <main>
+      <section>
+        <h2>Snapshot</h2>
+        <pre id="snapshot">{}</pre>
+      </section>
+      <section>
+        <h2>Events</h2>
+        <ol id="events"></ol>
+      </section>
+      <section>
+        <h2>Log Tail</h2>
+        <pre id="log"></pre>
+      </section>
+    </main>
+    <script>
+      const phase = document.getElementById("phase");
+      const agent = document.getElementById("agent");
+      const runtime = document.getElementById("runtime");
+      const database = document.getElementById("database");
+      const recovery = document.getElementById("recovery");
+      const snapshot = document.getElementById("snapshot");
+      const events = document.getElementById("events");
+      const log = document.getElementById("log");
+
+      function formatTime(value) {
+        if (!value) return "";
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return value;
+        return date.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        });
+      }
+
+      function render(state) {
+        const snap = state.snapshot || {};
+        phase.textContent = snap.phase || "waiting";
+        agent.textContent = snap.agent
+          ? `${snap.agent.state || "unknown"} ${snap.agent.apiBase || ""}`.trim()
+          : "unknown";
+        runtime.textContent = snap.boot?.runtimePhase || "unknown";
+        database.textContent = snap.database
+          ? `${snap.database.mode || "unknown"} ${snap.database.status || ""}`.trim()
+          : "unknown";
+        recovery.textContent = snap.recovery?.suggestedAction || "none";
+        snapshot.textContent = JSON.stringify(snap, null, 2);
+        log.textContent = snap.diagnostics?.logTail || "";
+        events.textContent = "";
+        for (const item of state.events || []) {
+          const li = document.createElement("li");
+          const time = document.createElement("time");
+          const body = document.createElement("div");
+          time.textContent = formatTime(item.timestamp);
+          body.className = "event";
+          body.textContent = `${item.sequence}. ${item.name} (${item.phase})`;
+          li.append(time, body);
+          events.append(li);
+        }
+      }
+
+      window.addEventListener("message", (event) => {
+        const data = event.data;
+        if (data && data.type === "dynamic-view.session.opened") {
+          render(data.initialState || {});
+        }
+        if (data && data.type === "dynamic-view.event") {
+          const payload = data.payload || {};
+          if (payload.snapshot) render(payload);
+        }
+      });
+    </script>
+  </body>
+</html>

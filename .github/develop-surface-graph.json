@@ -11,6 +11,7 @@
   },
   "globalInputs": [
     ".github/develop-surface-graph.json",
+    ".github/develop-effects.json",
     ".github/workflows/develop-full.yml",
     ".github/workflows/develop-reconcile.yml",
     ".github/actions/setup-bun-workspace/**",

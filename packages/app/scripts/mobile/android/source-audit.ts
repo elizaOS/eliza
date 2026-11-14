@@ -9,7 +9,13 @@ import {
   validateAndroidAppActionsXmlResource,
 } from "../android-manifest.ts";
 import { walkFiles } from "../build-tools.ts";
-import { APP, androidDir, repoRoot, systemApkStaging } from "../context.ts";
+import {
+  APP,
+  androidDir,
+  platformsDir,
+  repoRoot,
+  systemApkStaging,
+} from "../context.ts";
 import { escapeRegExp } from "../escape.ts";
 import {
   ANDROID_CLOUD_NATIVE_SIGN_IN_JAVA_FILES,
@@ -18,16 +24,31 @@ import {
   ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
   ANDROID_CLOUD_STRIPPED_RESOURCE_FILES,
   ANDROID_CLOUD_STRIPPED_RESOURCE_VALUES,
+  ANDROID_LP3_COLOR_POLICY_COMPONENTS,
+  ANDROID_LP3_COLOR_POLICY_JAVA_FILES,
+  ANDROID_LP3_COLOR_POLICY_REQUIRED_PERMISSIONS,
   ANDROID_PLAY_DATA_EXTRACTION_RULES,
+  ANDROID_SMS_GATEWAY_COMPONENTS,
+  ANDROID_SMS_GATEWAY_PERMISSIONS,
+  ANDROID_SMS_GATEWAY_STRIPPED_COMPONENTS,
+  ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS,
+  assertAndroidLauncherManifest,
+  isAndroidLp3ColorPolicyEnabled,
   isCloudBannedAsset,
   isCloudBannedNativeLibrary,
   resolveAndroidCloudAllowedNativePluginPackages,
+  resolveAndroidCloudCapacitorConfigPolicy,
   resolveAndroidCloudStripPolicy,
   sanitizeAndroidCloudCapacitorConfig,
 } from "./cloud-policy.ts";
+import { packageNameToPath } from "./shared-tree.ts";
 
-export function auditAndroidCloudSource(phase, { env = process.env } = {}) {
+export function auditAndroidCloudSource(
+  phase,
+  { allowHomeRole = false, env = process.env } = {},
+) {
   const failures = [];
+  const lp3ColorPolicyEnabled = isAndroidLp3ColorPolicyEnabled(env);
   const stripPolicy = resolveAndroidCloudStripPolicy(env);
   const manifestPath = path.join(
     androidDir,
@@ -79,7 +100,7 @@ export function auditAndroidCloudSource(phase, { env = process.env } = {}) {
       );
     }
     for (const forbidden of [
-      "android.intent.category.HOME",
+      ...(allowHomeRole ? [] : ["android.intent.category.HOME"]),
       "com.google.android.apps.healthdata",
       "android.hardware.telephony",
       "android.hardware.bluetooth_le",
@@ -90,6 +111,50 @@ export function auditAndroidCloudSource(phase, { env = process.env } = {}) {
     }
     if (!xml.includes('android:name="android.app.shortcuts"')) {
       failures.push("AndroidManifest.xml does not register @xml/shortcuts");
+    }
+  }
+
+  const lp3DebugRoot = path.join(
+    platformsDir,
+    "android",
+    "lp3-color-policy",
+    "src",
+    "debug",
+  );
+  if (lp3ColorPolicyEnabled) {
+    const lp3ManifestPath = path.join(lp3DebugRoot, "AndroidManifest.xml");
+    if (!fs.existsSync(lp3ManifestPath)) {
+      failures.push("LP3 direct-debug manifest overlay is missing");
+    } else {
+      const lp3Manifest = stripXmlComments(
+        fs.readFileSync(lp3ManifestPath, "utf8"),
+      );
+      for (const component of ANDROID_LP3_COLOR_POLICY_COMPONENTS) {
+        if (!lp3Manifest.includes(component)) {
+          failures.push(
+            `LP3 direct-debug manifest is missing component ${component}`,
+          );
+        }
+      }
+      for (const permission of ANDROID_LP3_COLOR_POLICY_REQUIRED_PERMISSIONS) {
+        const full = `android.permission.${permission}`;
+        if (!hasAndroidPermissionRequest(lp3Manifest, full)) {
+          failures.push(
+            `LP3 direct-debug manifest is missing permission ${full}`,
+          );
+        }
+      }
+      if (!lp3Manifest.includes('android:screenOrientation="portrait"')) {
+        failures.push(
+          "LP3 direct-debug manifest does not lock MainActivity to portrait",
+        );
+      }
+    }
+    const lp3JavaRoot = path.join(lp3DebugRoot, "java", "ai", "elizaos", "app");
+    for (const file of ANDROID_LP3_COLOR_POLICY_JAVA_FILES) {
+      if (!fs.existsSync(path.join(lp3JavaRoot, file))) {
+        failures.push(`LP3 direct-debug Java source is missing: ${file}`);
+      }
     }
   }
 
@@ -300,7 +365,10 @@ export function auditAndroidCloudSource(phase, { env = process.env } = {}) {
   } else {
     try {
       const config = JSON.parse(fs.readFileSync(capacitorConfigPath, "utf8"));
-      const expected = sanitizeAndroidCloudCapacitorConfig(config);
+      const expected = sanitizeAndroidCloudCapacitorConfig(
+        config,
+        resolveAndroidCloudCapacitorConfigPolicy(env),
+      );
       if (JSON.stringify(config) !== JSON.stringify(expected)) {
         failures.push(
           "capacitor.config.json differs from the restricted Play runtime contract",
@@ -322,6 +390,137 @@ export function auditAndroidCloudSource(phase, { env = process.env } = {}) {
     );
   }
   console.log(`[mobile-build] android-cloud ${phase} audit passed.`);
+}
+
+export function auditAndroidLauncherSource(phase, options = {}) {
+  auditAndroidCloudSource(phase, { ...options, allowHomeRole: true });
+  const manifestPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "AndroidManifest.xml",
+  );
+  const manifest = fs.existsSync(manifestPath)
+    ? fs.readFileSync(manifestPath, "utf8")
+    : "";
+  assertAndroidLauncherManifest(manifest, {
+    label: `android-launcher ${phase} source`,
+  });
+  const mainActivityPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "java",
+    packageNameToPath(APP.appId),
+    "MainActivity.java",
+  );
+  const mainActivity = fs.existsSync(mainActivityPath)
+    ? fs.readFileSync(mainActivityPath, "utf8")
+    : "";
+  // Cloud sign-in is native: the launcher registers the shared sign-in host
+  // and never navigates its WebView to a hosted login page or reloads it on
+  // an auth callback.
+  if (
+    !mainActivity.includes("registerPlugin(ElizaCloudSignInPlugin.class);") ||
+    mainActivity.includes("isCloudAuthCallback(") ||
+    mainActivity.includes("webView.loadUrl(")
+  ) {
+    throw new Error(
+      `[mobile-build] android-launcher ${phase} source audit failed: MainActivity must register the native Cloud sign-in host and must not reload the WebView on an auth callback.`,
+    );
+  }
+  console.log(`[mobile-build] android-launcher ${phase} audit passed.`);
+}
+
+export function auditAndroidSmsGatewaySource(phase) {
+  const failures = [];
+  const manifestPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "AndroidManifest.xml",
+  );
+  failures.push(...auditAndroidSmsGatewayManifest(manifestPath));
+  failures.push(...missingAndroidSmsGatewayJavaFiles());
+  failures.push(
+    ...androidCloudNativePluginReferenceFailures(
+      ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS,
+    ),
+  );
+
+  if (failures.length > 0) {
+    throw new Error(
+      `[mobile-build] android-sms-gateway ${phase} audit failed:\n` +
+        failures.map((failure) => `  - ${failure}`).join("\n"),
+    );
+  }
+  console.log(`[mobile-build] android-sms-gateway ${phase} audit passed.`);
+}
+
+export function auditAndroidSmsGatewayManifest(manifestPath) {
+  const failures = [];
+  if (!fs.existsSync(manifestPath)) {
+    failures.push("AndroidManifest.xml is missing");
+    return failures;
+  }
+  const xml = stripXmlComments(fs.readFileSync(manifestPath, "utf8"));
+  for (const component of ANDROID_SMS_GATEWAY_COMPONENTS) {
+    if (!xml.includes(component)) {
+      failures.push(`AndroidManifest.xml is missing ${component}`);
+    }
+  }
+  for (const perm of ANDROID_SMS_GATEWAY_PERMISSIONS) {
+    const full = `android.permission.${perm}`;
+    if (!xml.includes(full)) {
+      failures.push(`AndroidManifest.xml is missing ${full}`);
+    }
+  }
+  for (const component of ANDROID_SMS_GATEWAY_STRIPPED_COMPONENTS) {
+    if (xml.includes(component)) {
+      failures.push(`AndroidManifest.xml still references ${component}`);
+    }
+  }
+  if (/usesCleartextTraffic="true"/.test(xml)) {
+    failures.push("AndroidManifest.xml still allows global cleartext traffic");
+  }
+  return failures;
+}
+
+export function missingAndroidSmsGatewayJavaFiles() {
+  const missing = [];
+  const javaRoot = path.join(androidDir, "app", "src", "main", "java");
+  for (const file of ["ElizaSmsGatewayService.java", "ElizaSmsReceiver.java"]) {
+    let found = false;
+    walkFiles(javaRoot, (filePath) => {
+      if (path.basename(filePath) === file) found = true;
+    });
+    if (!found) missing.push(`app/src/main/java is missing ${file}`);
+  }
+  return missing;
+}
+
+export function androidCloudNativePluginReferenceFailures(
+  strippedPlugins = ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
+) {
+  const failures = [];
+  for (const relPath of [
+    "capacitor.settings.gradle",
+    path.join("app", "capacitor.build.gradle"),
+    path.join("app", "src", "main", "assets", "capacitor.plugins.json"),
+  ]) {
+    const filePath = path.join(androidDir, relPath);
+    if (!fs.existsSync(filePath)) continue;
+    const source = fs.readFileSync(filePath, "utf8");
+    for (const [pkg, gradleProject] of strippedPlugins) {
+      if (source.includes(pkg) || source.includes(gradleProject)) {
+        failures.push(`${relPath} still references ${pkg}/${gradleProject}`);
+      }
+    }
+  }
+  return failures;
 }
 
 export function auditAndroidSystemSource(

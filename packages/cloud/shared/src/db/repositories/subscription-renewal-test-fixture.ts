@@ -50,13 +50,6 @@ export function renewalPaidObjects(
     chargeId = `ch_${suffix}`;
   const subscription = {
     ...provider,
-    items: {
-      ...provider.items,
-      data: provider.items.data.map((item) => ({
-        ...item,
-        price: { ...item.price, unit_amount_decimal: String(item.price.unit_amount) },
-      })),
-    },
     current_period_start: start,
     current_period_end: end,
     latest_invoice: invoiceId,

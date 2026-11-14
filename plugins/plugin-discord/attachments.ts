@@ -4,7 +4,6 @@
  * Media. Processed entries are cached by attachment id in a bounded TTL map
  * that does not retain extracted transcript text.
  */
-import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -409,15 +408,9 @@ export class AttachmentManager {
 		// Use fluent-ffmpeg to extract the audio stream from the MP4 data
 		// and convert it to MP3 format
 		const tmpDir = os.tmpdir();
-		// Concurrent turns extract video attachments in parallel, and a
-		// timestamp alone collides when two extractions start in the same
-		// millisecond: the second write overwrites the first file, and the
-		// first cleanup deletes files the second still needs, so one turn
-		// transcribes the other's audio or fails outright. A UUID suffix
-		// keeps every extraction on its own temp files.
-		const unique = `${Date.now()}-${randomUUID()}`;
-		const tempMP4File = path.join(tmpDir, `discord_video_${unique}.mp4`);
-		const tempAudioFile = path.join(tmpDir, `discord_audio_${unique}.mp3`);
+		const timestamp = Date.now();
+		const tempMP4File = path.join(tmpDir, `discord_video_${timestamp}.mp4`);
+		const tempAudioFile = path.join(tmpDir, `discord_audio_${timestamp}.mp3`);
 
 		try {
 			// Write the MP4 data to a temporary file

@@ -19,8 +19,8 @@
  * than a cryptic model-load error deep in the server.
  *
  * Usage:
- *   bun packages/scripts/gpu-vision/serve.ts [--vlm] [--parallel N] [--port P] [--verify]
- *   bun packages/scripts/gpu-vision/serve.ts --stop [--vlm]
+ *   node packages/scripts/gpu-vision/serve.ts [--vlm] [--parallel N] [--port P] [--verify]
+ *   node packages/scripts/gpu-vision/serve.ts --stop [--vlm]
  */
 
 import { spawn, spawnSync } from "node:child_process";
@@ -164,7 +164,7 @@ async function serve({ setKey, parallel, requestedPort, verify }) {
   for (const p of [modelPath, mmprojPath]) {
     await fs.access(p).catch(() => {
       throw new Error(
-        `[gpu-vision] missing model file: ${p}\n  Run: bun packages/scripts/gpu-vision/setup.ts${setKey === "vlm" ? " --with-vlm" : ""}`,
+        `[gpu-vision] missing model file: ${p}\n  Run: node packages/scripts/gpu-vision/setup.ts${setKey === "vlm" ? " --with-vlm" : ""}`,
       );
     });
   }
@@ -176,7 +176,7 @@ async function serve({ setKey, parallel, requestedPort, verify }) {
     if (entryIsLive(existing)) {
       throw new Error(
         `[gpu-vision] a ${setKey} server is already running (pid ${existing.pid}, port ${existing.port}).\n` +
-          "  Stop it first: bun packages/scripts/gpu-vision/serve.ts --stop" +
+          "  Stop it first: node packages/scripts/gpu-vision/serve.ts --stop" +
           (setKey === "vlm" ? " --vlm" : ""),
       );
     }
@@ -275,7 +275,7 @@ async function serve({ setKey, parallel, requestedPort, verify }) {
   process.stdout.write(`[gpu-vision]   server log:    ${logPath}\n`);
   process.stdout.write(`[gpu-vision]   state file:    ${serveStatePath()}\n`);
   process.stdout.write(
-    `[gpu-vision] stop with: bun packages/scripts/gpu-vision/serve.ts --stop${setKey === "vlm" ? " --vlm" : ""}\n`,
+    `[gpu-vision] stop with: node packages/scripts/gpu-vision/serve.ts --stop${setKey === "vlm" ? " --vlm" : ""}\n`,
   );
   // Exit explicitly so the launcher returns the shell; the server keeps running.
   process.exit(0);

@@ -12,7 +12,6 @@
  */
 import { type RouteSpec, resolveCloudRoute } from "@elizaos/cloud-routing";
 import {
-  ElizaError,
   type IAgentRuntime,
   Service,
   type ServiceTypeName,
@@ -881,42 +880,11 @@ export class BirdeyeService extends Service {
       `${this.birdeyeUrl("v1/wallet/tx_list")}?wallet=${publicKey}&limit=100`,
       birdeyeFetchOptions,
     );
-    const failure = (detail: string, cause?: unknown) =>
-      new ElizaError(
-        `Birdeye wallet transaction history failed (${res.status}): ${detail}`,
-        {
-          code: "BIRDEYE_WALLET_HISTORY_FAILED",
-          context: { status: res.status, chain },
-          cause,
-        },
-      );
-    let response: unknown;
-    try {
-      response = await res.json();
-    } catch (error) {
-      if (error instanceof SyntaxError)
-        throw failure("invalid JSON response", error);
-      throw error;
+    const resp = (await res.json()) as WalletTransactionHistoryResponse;
+    const data = resp.data[chain] || [];
+    if (data) {
+      this.setCacheTimed(key, data, tsInMs);
     }
-    const resp =
-      response && typeof response === "object" && !Array.isArray(response)
-        ? (response as Record<string, unknown>)
-        : undefined;
-    if (
-      !res.ok ||
-      resp?.success !== true ||
-      !resp.data ||
-      typeof resp.data !== "object" ||
-      Array.isArray(resp.data)
-    ) {
-      throw failure(
-        typeof resp?.message === "string" ? resp.message : "invalid response",
-      );
-    }
-    const history = (resp.data as Record<string, unknown>)[chain];
-    const data = history === undefined ? [] : history;
-    if (!Array.isArray(data)) throw failure("invalid transaction list");
-    this.setCacheTimed(key, data, tsInMs);
     return data;
   }
 

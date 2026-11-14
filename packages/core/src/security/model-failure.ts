@@ -13,8 +13,6 @@ import { TrajectoryLimitExceeded } from "../runtime/limits.ts";
 import { readActionFailureProvenance } from "../types/action-failure.ts";
 import { ModelType } from "../types/model.ts";
 import {
-	hasModelErrorCode,
-	isModelCancellationError,
 	isModelFundingAuthorityError,
 	isProviderContextOverflowFailure,
 	modelProviderErrorStatus,
@@ -253,9 +251,7 @@ export function isAuthError(error: unknown): boolean {
 	);
 }
 
-/** Socket-level error codes that mean the provider was unreachable, not wrong.
- * Bun's fetch reports the same failures as ConnectionRefused / ConnectionClosed /
- * FailedToOpenSocket. */
+/** Socket-level error codes that mean the provider was unreachable, not wrong. */
 const TRANSIENT_NETWORK_ERROR_CODES: ReadonlySet<string> = new Set([
 	"ECONNREFUSED",
 	"ECONNRESET",
@@ -263,9 +259,6 @@ const TRANSIENT_NETWORK_ERROR_CODES: ReadonlySet<string> = new Set([
 	"EHOSTUNREACH",
 	"EAI_AGAIN",
 	"ETIMEDOUT",
-	"ConnectionRefused",
-	"ConnectionClosed",
-	"FailedToOpenSocket",
 ]);
 
 /**
@@ -294,7 +287,15 @@ export function isModelProviderFallbackError(
 	const unwrapped = unwrapRetryError(error);
 	// Cancellation is authoritative even if an SDK wrapper carries a stale
 	// retryable HTTP status or a message containing "timeout".
-	if (isModelCancellationError(error)) return false;
+	if (
+		[error, unwrapped].some((value) => {
+			const candidate = asErrorObject(value);
+			return (
+				candidate?.name === "AbortError" || candidate?.code === "ABORT_ERR"
+			);
+		})
+	)
+		return false;
 	if (isModelProviderRetryBudgetExhaustedError(unwrapped)) {
 		return true;
 	}
@@ -304,9 +305,11 @@ export function isModelProviderFallbackError(
 	// envelope also carries input/output validation failures, which must remain
 	// terminal even when another provider could return a plausible response.
 	const localFailure = asErrorObject(unwrapped);
-	// The AI SDK wraps a refused connection in an APICallError ("Cannot connect
-	// to API") and keeps the socket error, with its code, on `.cause`.
-	if (hasModelErrorCode(unwrapped, TRANSIENT_NETWORK_ERROR_CODES)) return true;
+	if (
+		typeof localFailure?.code === "string" &&
+		TRANSIENT_NETWORK_ERROR_CODES.has(localFailure.code)
+	)
+		return true;
 	if (localFailure?.code === "LOCAL_INFERENCE_UNAVAILABLE") {
 		return (
 			localFailure.reason === "backend_unavailable" ||

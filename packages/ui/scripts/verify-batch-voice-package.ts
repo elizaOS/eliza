@@ -11,12 +11,9 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { testOutputPath } from "../../scripts/lib/test-output.ts";
-import { requireRealNode } from "../../scripts/lib/test-runtime.ts";
 
 const repo = path.resolve(import.meta.dirname, "../../.."),
-  output = testOutputPath("batch-voice-package"),
-  // The packed consumer must pass on Node, the declared engine.
-  node = requireRealNode(repo);
+  output = testOutputPath("batch-voice-package");
 mkdirSync(output, { recursive: true });
 const run = (command: string, args: string[], cwd = repo) =>
   execFileSync(command, args, {
@@ -119,7 +116,7 @@ try {
       consumer,
     ),
   );
-  process.stdout.write(run(node, ["runtime.mjs"], consumer));
+  process.stdout.write(run(process.execPath, ["runtime.mjs"], consumer));
   const metafile = path.join(consumer, "browser-meta.json"),
     bundle = path.join(consumer, "browser.mjs");
   process.stdout.write(
@@ -160,7 +157,7 @@ try {
   );
   process.stdout.write(
     run(
-      node,
+      process.execPath,
       [
         "--experimental-vm-modules",
         path.join(

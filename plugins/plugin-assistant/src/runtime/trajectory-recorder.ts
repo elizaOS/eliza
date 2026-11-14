@@ -24,6 +24,7 @@ import {
   type TrajectoryRecorder,
   toWellFormedUnicode,
 } from "@elizaos/core";
+import { resolveAliasedEnvValue } from "@elizaos/host/protocol";
 import { computeCallCostUsd, PRICE_TABLE_ID } from "./model-pricing";
 
 function envFlagEnabled(key: string, defaultValue = false): boolean {
@@ -51,7 +52,7 @@ export function resolveTrajectoryDir(): string {
   const explicit = process.env.ELIZA_TRAJECTORY_DIR?.trim();
   if (explicit) return explicit;
 
-  const elizaState = process.env.ELIZA_STATE_DIR?.trim();
+  const elizaState = resolveAliasedEnvValue("ELIZA_STATE_DIR")?.trim();
   if (elizaState) return path.join(elizaState, "trajectories");
 
   return path.join(resolveStateDir(), "trajectories");

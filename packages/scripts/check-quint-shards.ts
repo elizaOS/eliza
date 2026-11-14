@@ -9,7 +9,6 @@ import {
   loadQuintModels,
   QUINT_VERSION,
   quintRepositoryFingerprint,
-  quintTestMatch,
 } from "./check-quint.ts";
 import { selectQuintShard } from "./lib/quint-shards.ts";
 import { testOutputPath } from "./lib/test-output.ts";
@@ -246,8 +245,6 @@ export function validateQuintShardReports(
               "typescript",
               "--seed",
               "20261107",
-              "--match",
-              quintTestMatch(path.join(directory, model.file), item.main),
             ]);
           }
           if (command[0] === "verify") {

@@ -239,7 +239,7 @@ function messageSentTexts(harness: Harness): string[] {
 
 describe("delivery observability floor for transient failure replies", () => {
   beforeEach(() => {
-    vi.stubEnv("ELIZA_TRAJECTORY_LOGGING", "0");
+    vi.stubEnv("ELIZA_TRAJECTORY_RECORDING", "0");
   });
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -311,7 +311,7 @@ describe("delivery observability floor for transient failure replies", () => {
 
 describe("silent failure on an unaddressed group turn", () => {
   beforeEach(() => {
-    vi.stubEnv("ELIZA_TRAJECTORY_LOGGING", "0");
+    vi.stubEnv("ELIZA_TRAJECTORY_RECORDING", "0");
   });
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -357,7 +357,7 @@ describe("silent failure on an unaddressed group turn", () => {
 
 describe("MESSAGE_SENT commits only after the delivery boundary succeeds", () => {
   beforeEach(() => {
-    vi.stubEnv("ELIZA_TRAJECTORY_LOGGING", "0");
+    vi.stubEnv("ELIZA_TRAJECTORY_RECORDING", "0");
   });
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -493,7 +493,7 @@ describe("terminal action fulfillment", () => {
 
 describe("race-superseded turns keep addressed responses", () => {
   beforeEach(() => {
-    vi.stubEnv("ELIZA_TRAJECTORY_LOGGING", "0");
+    vi.stubEnv("ELIZA_TRAJECTORY_RECORDING", "0");
   });
   afterEach(() => {
     vi.unstubAllEnvs();

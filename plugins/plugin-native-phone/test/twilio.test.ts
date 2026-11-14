@@ -17,7 +17,7 @@ const credentials = {
 let bodies: string[] = [];
 let rejectFromCall: number | undefined;
 let server: ReturnType<typeof Bun.serve>;
-const realFetch = globalThis.fetch;
+let savedBase: string | undefined;
 
 beforeAll(() => {
   server = Bun.serve({
@@ -34,20 +34,14 @@ beforeAll(() => {
       return Response.json({ sid: `SM${bodies.length}` }, { status: 201 });
     },
   });
-  // Send the client's Twilio REST calls to the loopback server.
-  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
-    const url = new URL(input instanceof Request ? input.url : String(input));
-    if (url.origin !== "https://api.twilio.com") return realFetch(input, init);
-    return realFetch(
-      `http://127.0.0.1:${server.port}${url.pathname}${url.search}`,
-      init,
-    );
-  }) as typeof fetch;
+  savedBase = process.env.ELIZA_MOCK_TWILIO_BASE;
+  process.env.ELIZA_MOCK_TWILIO_BASE = `http://127.0.0.1:${server.port}`;
 });
 
 afterAll(() => {
   server.stop(true);
-  globalThis.fetch = realFetch;
+  if (savedBase === undefined) delete process.env.ELIZA_MOCK_TWILIO_BASE;
+  else process.env.ELIZA_MOCK_TWILIO_BASE = savedBase;
 });
 
 beforeEach(() => {

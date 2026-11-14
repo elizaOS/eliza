@@ -45,7 +45,7 @@ import {
   getGenerativeExecutionContext,
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
-} from "../../src/lib/generative-route-auth";
+} from "@/api-app/lib/generative-route-auth";
 
 const DEFAULT_MUSIC_MODEL = "fal-ai/minimax-music/v2.6";
 const MAX_PROMPT_LENGTH = 4100;

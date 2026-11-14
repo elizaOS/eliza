@@ -47,28 +47,5 @@
     "implementationTests": [
       "plugins/plugin-wallet/src/chains/__tests__/solana-transfer-confirmation.test.ts"
     ]
-  },
-  {
-    "id": "plugin-wallet.EvmBalanceRead",
-    "model": "plugins/plugin-wallet/quint/EvmBalanceRead.qnt",
-    "sources": ["plugins/plugin-wallet/src/analytics/evm-balances.ts"],
-    "invariants": [
-      "BoundedEndpoints",
-      "CompleteSuccess",
-      "NoGuessedDecimals",
-      "ZeroSkipsMetadata",
-      "ErrorHasNoHoldings",
-      "FailedReadNeverPublished"
-    ],
-    "status": "partial",
-    "limitations": [
-      "Two known token addresses and two RPC endpoints; balances abstract to zero, nonzero or invalid, with valid or invalid uint8 decimals.",
-      "Provider promises and their continuations must eventually settle for progress. No wall-clock latency bound is proven.",
-      "Price enrichment, Alchemy/Ankr paths, external provider correctness and caller cancellation are outside this direct-RPC model.",
-      "The real loopback implementation tests cover the modeled observations; this finite model and those cases are not a full TypeScript refinement proof."
-    ],
-    "implementationTests": [
-      "plugins/plugin-wallet/src/analytics/evm-balances-erc20-errors.test.ts"
-    ]
   }
 ]

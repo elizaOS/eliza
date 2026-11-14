@@ -57,7 +57,7 @@ tamper-evident bags.
    ```
 3. Generate. The output must be a new directory outside any Git working tree:
    ```sh
-   bun packages/os/scripts/android/generate-release-keys.ts \
+   node packages/os/scripts/android/generate-release-keys.ts \
      --output /media/USB1/release-keys-2026 \
      --passphrase-file /dev/shm/ceremony/pass --organization "<Legal entity>" \
      [--manifest /path/to/product-key-manifest.json]
@@ -87,7 +87,7 @@ Run on an ephemeral machine with no external IP, gated by required reviewers.
    SHA-256 against the build record.
 2. Decrypt into tmpfs (also refused inside any Git working tree):
    ```sh
-   bun packages/os/scripts/android/decrypt-release-keys.ts --input bundle \
+   node packages/os/scripts/android/decrypt-release-keys.ts --input bundle \
      --output /dev/shm/keys --passphrase-file /dev/shm/pass
    ```
 3. Sign and build the OTA. For a Pixel 10a product use the checked job in

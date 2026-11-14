@@ -1,5 +1,4 @@
 {
-  "extends": "../../../../testing/tsconfig.workspace.json",
   "compilerOptions": {
     "target": "ES2023",
     "module": "ESNext",
@@ -12,7 +11,10 @@
     "resolveJsonModule": true,
     "types": ["node", "vite/client"],
     "customConditions": ["eliza-source", "development"],
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "paths": {
+      "@elizaos/plugin-pdf": ["../../../../../plugins/plugin-pdf/index.ts"]
+    }
   },
   "include": ["src/**/*.ts"]
 }

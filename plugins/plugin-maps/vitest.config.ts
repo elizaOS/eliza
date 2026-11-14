@@ -2,7 +2,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
-import { buildWorkspaceSourceAliases } from "../../packages/scripts/vitest/source-aliases.ts";
 
 const root = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -70,7 +69,6 @@ export default defineConfig({
           "plugins/plugin-maps/test/shims/ui-csrf-client.ts",
         ),
       },
-      ...buildWorkspaceSourceAliases(),
     ],
   },
   ssr: {

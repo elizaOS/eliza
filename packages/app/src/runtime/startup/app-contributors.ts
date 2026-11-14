@@ -154,6 +154,27 @@ function getRegistryAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
   });
 }
 /**
+ * Opt-in dev knob: comma-separated app-route-plugin ids to skip on boot.
+ * Empty / unset => no filtering (default behavior unchanged: every app-route
+ * plugin loads). This trims time-to-ready for core/runtime work by not
+ * transpiling + registering hundreds of feature routes a core dev does not
+ * exercise.
+ *
+ * A loader's id is its full package name (e.g. `@elizaos/plugin-personal-assistant`,
+ * `@elizaos/plugin-elizacloud:routes`). Tokens
+ * are matched against BOTH the full id and a normalized short alias
+ * (see {@link normalizeAppRoutePluginId}), so the ergonomic short forms work
+ * too: `ELIZA_SKIP_APP_ROUTE_PLUGINS=lifeops,github,workflow`.
+ */
+export function getSkippedAppRoutePluginIds(): Set<string> {
+  return new Set(
+    (process.env.ELIZA_SKIP_APP_ROUTE_PLUGINS ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean),
+  );
+}
+/**
  * Whether the post-ready boot tail (app-route plugins, training hooks,
  * sensitive-request adapters, telegram polling, trigger bridge, connector
  * catalog, voice warmup) runs in the background instead of blocking the
@@ -168,12 +189,29 @@ function getRegistryAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
  * inline before ready — the pre-deferral boot shape, for callers that must
  * have every feature route mounted at ready and accept the slower
  * time-to-ready. Any other value (unset, `""`, `"1"`, `"true"`) defers.
+ * Composes with {@link getSkippedAppRoutePluginIds}:
+ * `ELIZA_SKIP_APP_ROUTE_PLUGINS` filters WHICH route plugins load; this
+ * controls WHETHER the tail blocks ready.
  */
 export function getDeferAppRoutesEnabled(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
   const raw = env.ELIZA_DEFER_APP_ROUTES?.trim().toLowerCase();
   return !(raw === "0" || raw === "false" || raw === "no" || raw === "off");
+}
+/**
+ * Normalize an app-route-plugin id (or a user-supplied skip token) to a short
+ * alias for forgiving matching: lowercase, drop the `@elizaos/plugin-` prefix
+ * and the `:routes` / `:ui` / `-app` / `-ui` / `-routes` suffixes. So
+ * `@elizaos/plugin-wallet:ui` and `wallet` both normalize to `wallet`.
+ */
+export function normalizeAppRoutePluginId(id: string): string {
+  return id
+    .trim()
+    .toLowerCase()
+    .replace(/^@elizaos\/plugin-/, "")
+    .replace(/:(routes|ui)$/, "")
+    .replace(/-(app|ui|routes)$/, "");
 }
 function getAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
   const byId = new Map<string, AppRoutePluginRegistryEntry>();
@@ -183,7 +221,33 @@ function getAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
   for (const entry of listAppRoutePluginLoaders()) {
     byId.set(entry.id, entry);
   }
-  return [...byId.values()];
+  const skip = getSkippedAppRoutePluginIds();
+  if (skip.size === 0) {
+    return [...byId.values()];
+  }
+  // Match a loader against the skip tokens by full id OR normalized short alias
+  // (so both `@elizaos/plugin-wallet:ui` and `wallet` skip the same loader).
+  const skipNormalized = new Set(
+    [...skip].map((token) => normalizeAppRoutePluginId(token)),
+  );
+  const kept: AppRoutePluginRegistryEntry[] = [];
+  const skipped: string[] = [];
+  for (const entry of byId.values()) {
+    if (
+      skip.has(entry.id) ||
+      skipNormalized.has(normalizeAppRoutePluginId(entry.id))
+    ) {
+      skipped.push(entry.id);
+    } else {
+      kept.push(entry);
+    }
+  }
+  if (skipped.length > 0) {
+    logger.info(
+      `[eliza] Skipping ${skipped.length} app route plugin(s) via ELIZA_SKIP_APP_ROUTE_PLUGINS: ${skipped.join(", ")}`,
+    );
+  }
+  return kept;
 }
 export async function registerAppRoutePlugins(
   runtime: AgentRuntime,
@@ -191,7 +255,8 @@ export async function registerAppRoutePlugins(
   // App-route plugins register a loader on a global registry (so they survive
   // bundler tree-shaking) rather than exposing routes through Plugin.routes.
   // getAppRoutePluginLoaders() resolves the curated registry-app loaders plus
-  // the globally-registered ones. The shared core drain loads them concurrently
+  // the globally-registered ones, minus any skipped via
+  // ELIZA_SKIP_APP_ROUTE_PLUGINS. The shared core drain loads them concurrently
   // — overlapping ~11 independent dynamic imports (lifeops alone registers 188
   // routes) on the gated ready-path instead of serializing them — applies them
   // in loader order with per-loader failure isolation, and pushes their rawPath

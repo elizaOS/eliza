@@ -19,7 +19,7 @@ const defaultTtl = "600";
 
 function usage() {
   return [
-    "Usage: bun packages/cloud/scripts/gateway/sync-homepage-porkbun-dns.ts [options]",
+    "Usage: node packages/cloud/scripts/gateway/sync-homepage-porkbun-dns.ts [options]",
     "",
     "Options:",
     "  --domain <domain>         Domain to manage. Defaults to eliza.app.",

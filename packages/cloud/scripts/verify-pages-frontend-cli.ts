@@ -10,7 +10,7 @@
  * flow-level proof that critical UI code is present in the served bundle.
  *
  * Usage:
- *   bun packages/cloud/scripts/verify-pages-frontend-cli.ts \
+ *   node packages/cloud/scripts/verify-pages-frontend-cli.ts \
  *     --served-url https://cloud.eliza.app \
  *     --dist packages/app/web-dist \
  *     --require-text "Signing in to your agent"

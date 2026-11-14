@@ -1,9 +1,5 @@
 // Coordinates cloud service steward tenant config behavior behind route handlers.
 import { organizationsRepository } from "../../db/repositories/organizations";
-import {
-  ELIZA_DEFAULT_STEWARD_TENANT_ID,
-  getCloudDeployment,
-} from "../deployment/cloud-deployment";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import {
@@ -12,8 +8,7 @@ import {
   isStewardPlatformConfigured,
 } from "./steward-platform-users";
 
-/** The Eliza deployment's default tenant. Other deployments configure their own. */
-export const DEFAULT_STEWARD_TENANT_ID = ELIZA_DEFAULT_STEWARD_TENANT_ID;
+export const DEFAULT_STEWARD_TENANT_ID = "elizacloud";
 
 export interface StewardTenantCredentials {
   tenantId: string;
@@ -36,7 +31,12 @@ function getEnvStewardApiKey(): string | undefined {
 }
 
 export function resolveDefaultStewardTenantId(): string {
-  return getCloudDeployment().tenantId;
+  const env = getCloudAwareEnv();
+  return (
+    normalizeOptionalValue(env.NEXT_PUBLIC_STEWARD_TENANT_ID) ||
+    normalizeOptionalValue(env.STEWARD_TENANT_ID) ||
+    DEFAULT_STEWARD_TENANT_ID
+  );
 }
 
 export async function resolveStewardTenantCredentials(

@@ -38,7 +38,7 @@ const [packageDirArg, separator, ...command] = process.argv.slice(2);
 
 if (!packageDirArg || separator !== "--" || command.length === 0) {
   console.error(
-    "Usage: bun packages/scripts/with-package-build-lock.ts <package-dir> -- <command...>",
+    "Usage: node packages/scripts/with-package-build-lock.ts <package-dir> -- <command...>",
   );
   process.exit(1);
 }

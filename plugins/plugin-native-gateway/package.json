@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-gateway",
-  "version": "2.0.6",
+  "version": "2.0.4",
   "description": "Connects the app to an Eliza Gateway with discovery, RPC, and realtime events.",
   "keywords": [
     "gateway",
@@ -48,23 +48,23 @@
     "format:check": "bunx @biomejs/biome format .",
     "swiftlint": "node-swiftlint",
     "docgen": "docgen --api GatewayPlugin --output-readme README.md --output-json dist/docs.json",
-    "build": "bun ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-gateway -- bun run build:unlocked",
+    "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-gateway -- bun run build:unlocked",
     "build:docs": "bun run clean && bun run docgen && tsc6 && bunx rollup -c rollup.config.mjs",
-    "clean": "bun ../../packages/scripts/rm-path-recursive.ts dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
     "watch": "tsc6 --watch",
     "prepublishOnly": "bun run build",
     "build:unlocked": "bun run clean && tsc6 && bunx rollup -c rollup.config.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.6",
+    "@biomejs/biome": "2.6.3",
     "@capacitor/core": "^8.3.1",
     "@capacitor/docgen": "^0.3.0",
-    "rollup": "^4.68.0",
+    "rollup": "^4.65.0",
     "swiftlint": "^2.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.1.0"
+    "vitest": "^5.0.5"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.3.1"

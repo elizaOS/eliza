@@ -8,6 +8,9 @@
 
 import { toWellFormedUnicode } from "@elizaos/core";
 
+/** @deprecated Document labels are no longer silently length-limited. */
+export const DOCUMENT_TITLE_MAX_LENGTH = 80;
+
 export function truncateDocumentLabel(value: string): string {
   return toWellFormedUnicode(value);
 }

@@ -11,6 +11,7 @@
 import { readFileSync } from "node:fs";
 import * as path from "node:path";
 import { getElizaNamespace, resolveStateDir } from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 import {
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,
@@ -19,7 +20,7 @@ import type { AcpMcpServerConfig } from "./acp-native-transport.js";
 
 function readConfig(): Record<string, unknown> | undefined {
   try {
-    const explicitPath = process.env.ELIZA_CONFIG_PATH?.trim();
+    const explicitPath = readAliasedEnv("ELIZA_CONFIG_PATH");
     const configPath = explicitPath
       ? path.resolve(explicitPath)
       : (() => {

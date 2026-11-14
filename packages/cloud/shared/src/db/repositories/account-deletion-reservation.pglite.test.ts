@@ -7,7 +7,6 @@ process.env.NODE_ENV = "test";
 
 import { pushSchema } from "drizzle-kit/api";
 import { eq, sql } from "drizzle-orm";
-import { pgTable, uuid } from "drizzle-orm/pg-core";
 import {
   acquireProviderAdmission,
   releaseProviderAdmission,
@@ -40,15 +39,6 @@ const {
 const { reconcileAccountDeletionExportRevocations } = await import(
   "../../lib/services/account-deletion-export"
 );
-
-// Keep the original bounded jobs fixture in the schema push so apps' job FK
-// has its dependency before Drizzle installs constraints.
-const reservationJobsFixture = pgTable("jobs", {
-  id: uuid("id").primaryKey(),
-  organization_id: uuid("organization_id")
-    .notNull()
-    .references(() => organizations.id, { onDelete: "cascade" }),
-});
 
 const organizationId = "10000000-0000-4000-8000-000000000001";
 const userId = "20000000-0000-4000-8000-000000000001";
@@ -134,7 +124,6 @@ beforeAll(async () => {
       organizationBalanceRevisionSequence,
       organizations,
       providerAdmissions,
-      reservationJobsFixture,
       userSessions,
       users,
     } as never,
@@ -147,6 +136,12 @@ beforeAll(async () => {
   for (const statement of publisherMigration.split("--> statement-breakpoint")) {
     if (statement.trim()) await dbWrite.execute(statement);
   }
+  await dbWrite.execute(`
+    CREATE TABLE jobs (
+      id uuid PRIMARY KEY,
+      organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE
+    )
+  `);
   for (const statement of billingCancelMigrations
     .join("\n--> statement-breakpoint\n")
     .split("--> statement-breakpoint")) {

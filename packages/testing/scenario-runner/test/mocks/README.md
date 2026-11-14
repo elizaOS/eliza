@@ -11,7 +11,7 @@ the owning process instead of signaling saved PIDs. Logs and the private control
 record live under `test-results/mock-services/`. Google calendar's compatibility
 port proxies the same state as Gmail.
 
-For standalone Mockoon, `bun mockoon/_generate.mjs` exports the canonical route
+For standalone Mockoon, `node mockoon/_generate.mjs` exports the canonical route
 files to `test-results/mock-services/mockoon/`. Exports preserve response rules;
 stateful runtime handlers remain available through `startMocks`.
 

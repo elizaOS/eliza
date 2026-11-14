@@ -27,7 +27,7 @@ it("loads fixtures through the package root and keeps temporary databases isolat
         const second = createSQLiteTestRuntime(options);
         await Promise.all([first.adapter.initialize(), second.adapter.initialize()]);
         try {
-          const entity = { id: entityId, agentId, names: ["persisted fixture"], metadata: {}, components: [] };
+          const entity = { id: entityId, agentId, names: ["persisted fixture"], metadata: {} };
           await first.adapter.createEntities([entity]);
           assert.deepEqual(await first.adapter.getEntitiesByIds([entityId]), [entity]);
           assert.deepEqual(await second.adapter.getEntitiesByIds([entityId]), []);

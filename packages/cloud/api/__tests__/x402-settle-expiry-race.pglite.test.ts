@@ -34,10 +34,6 @@ const { cryptoPayments } = await import(
 );
 const {
   apps,
-  jobs,
-  apiKeys,
-  generations,
-  usageRecords,
   appDeploymentStatusEnum,
   appReviewStatusEnum,
   userDatabaseStatusEnum,
@@ -79,10 +75,6 @@ beforeAll(async () => {
         users,
         cryptoPayments,
         apps,
-        jobs,
-        apiKeys,
-        generations,
-        usageRecords,
         appDeploymentStatusEnum,
         appReviewStatusEnum,
         userDatabaseStatusEnum,

@@ -7,7 +7,7 @@
  * checks per-tier budgets, and writes timestamped results + a report — the same
  * budgets/results/gate contract as `loadperf`.
  *
- *   bun suites/mobile-resource/run-workbench.mjs \
+ *   node suites/mobile-resource/run-workbench.mjs \
  *     --platform=android --tier=eliza-1-2b --device-class=android-phone
  *
  * Flags / env:

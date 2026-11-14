@@ -127,13 +127,13 @@ const PLUGIN_TOKEN_RE =
   /(?:plugins\/plugin-[a-z0-9][a-z0-9-]*|@elizaos\/plugin-[a-z0-9][a-z0-9-]*)/g;
 const PLUGIN_COUPLING_ALLOWLIST_FILE = "script-plugin-coupling.allowlist.json";
 
-// Files exempt from the coupling scan: tests (they assert on plugin behavior
-// by name), generated files, and the allowlist itself.
+// Files exempt from the coupling scan: tests + self-tests (they assert on
+// plugin behavior by name), generated files, and the allowlist itself.
 function isCouplingExemptFile(relPath) {
   const norm = relPath.split(path.sep).join("/");
   const base = path.basename(norm);
   return (
-    /\.test\.[cm]?[jt]sx?$/.test(base) ||
+    /\.(test|self-test)\.[cm]?[jt]sx?$/.test(base) ||
     norm.includes("/__tests__/") ||
     /\.generated\./.test(base) ||
     base === PLUGIN_COUPLING_ALLOWLIST_FILE

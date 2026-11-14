@@ -7,7 +7,7 @@
 // Reference: https://android.googlesource.com/platform/system/core/+/master/init/README.md
 //
 // Usage:
-//   bun scripts/android/lint-init-rc.ts <PATH/TO/init.rc>
+//   node scripts/android/lint-init-rc.ts <PATH/TO/init.rc>
 
 import fs from "node:fs";
 import path from "node:path";
@@ -217,7 +217,7 @@ function formatIssue(issue, filePath) {
 async function main(argv = process.argv.slice(2)) {
   if (argv.length === 0 || argv[0] === "-h" || argv[0] === "--help") {
     console.log(
-      "Usage: bun scripts/android/lint-init-rc.ts <FILE> [<FILE> ...]",
+      "Usage: node scripts/android/lint-init-rc.ts <FILE> [<FILE> ...]",
     );
     process.exit(argv.length === 0 ? 1 : 0);
   }

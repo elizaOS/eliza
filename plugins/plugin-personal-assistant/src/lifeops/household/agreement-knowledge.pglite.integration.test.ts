@@ -16,13 +16,10 @@ import { withAgentBackupAuthority } from "@elizaos/agent/services/agent-backup-a
 import { AuthStore } from "@elizaos/app/auth";
 import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import type { Plugin } from "@elizaos/core";
-// Preload the host plugin before the fixture's lifecycle timeout begins.
-import "../../plugin.ts";
 import {
   type AgentRuntime,
   attestAuthenticatedApiDeliveryAudience,
   ChannelType,
-  DOCUMENT_PARENT_INLINE_MAX_BYTES,
   ElizaError,
   type IAgentRuntime,
   type IFileStorageService,
@@ -387,8 +384,6 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   }
 
   afterEach(async () => {
-    restoreTrajectoryLogging?.();
-    restoreTrajectoryLogging = undefined;
     runtime.models.set(ModelType.TEXT_LARGE, [...initialTextModels]);
     unregisterScheduledTaskChannelDispatcher(runtime, "family_fence_test");
     if (restoreWorkspaceFence) {
@@ -417,7 +412,6 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   let syntheticSchedulerDispatches = 0;
   let restoreWorkspaceFence = false;
   let initialTextModels: ModelHandler[];
-  let restoreTrajectoryLogging: (() => void) | undefined;
 
   function registerFixtureDispatcher() {
     registerScheduledTaskChannelDispatcher(runtime, {
@@ -1097,65 +1091,6 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       await executeRawSql(
         runtime,
         `DELETE FROM app_lifeops.life_family_intake_reviews WHERE id IN (${sqlQuote(selected.id)},${sqlQuote(foreignId)})`,
-      );
-    }
-  });
-
-  it("exports a selected correspondence that the documents service stored in segments", async () => {
-    const documents = runtime.getService<DocumentService>(
-      DocumentService.serviceType,
-    );
-    if (!documents) throw new Error("Canonical documents are unavailable");
-    const text = `${"Synthetic correspondence about the holiday schedule.\n".repeat(1_400)}Please confirm pickup on December 23.`;
-    expect(Buffer.byteLength(text)).toBeGreaterThan(
-      DOCUMENT_PARENT_INLINE_MAX_BYTES,
-    );
-    const selected = await importFamilyCorrespondence(runtime, {
-      id: crypto.randomUUID(),
-      periodKey: "2026-12",
-      title: "Synthetic segmented export source",
-      text,
-    });
-    const access = {
-      requesterEntityId: selected.selectedByEntityId,
-      role: "OWNER" as const,
-      isOwner: true,
-    };
-    try {
-      const stored = await documents.getDocumentByIdWithAccessContext(
-        selected.source.documentId as UUID,
-        access,
-      );
-      expect(stored?.content.text).toBeUndefined();
-      expect(stored?.content.documentSource).toMatchObject({
-        storage: "segments",
-      });
-      const files = readStoredZip(
-        (await exportFamilyWorkspace(runtime, SELF_ENTITY_ID)).bytes,
-      );
-      const manifestBytes = files.get("manifest.json");
-      if (!manifestBytes) throw new Error("Workspace manifest is missing");
-      const sources = JSON.parse(
-        manifestBytes.toString("utf8"),
-      ).intakeSources.filter(
-        (source: { documentId: string }) =>
-          source.documentId === selected.source.documentId,
-      );
-      expect(sources).toHaveLength(1);
-      const original = files.get(sources[0].path);
-      if (!original) throw new Error("Selected correspondence is missing");
-      expect(original.toString("utf8")).toBe(text);
-      expect(crypto.createHash("sha256").update(original).digest("hex")).toBe(
-        selected.source.contentSha256,
-      );
-    } finally {
-      await executeRawSql(
-        runtime,
-        `DELETE FROM app_lifeops.life_family_intake_reviews WHERE id=${sqlQuote(selected.id)}`,
-      );
-      await documents.deleteDocumentWithAccessContext(
-        selected.source.documentId as UUID,
-        access,
       );
     }
   });
@@ -2229,15 +2164,13 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   });
 
   it("prepares cited proposals once, preserves owner decisions across service recreation, and never activates them implicitly", async () => {
+    runtime.setSetting("ELIZA_TRAJECTORY_LOGGING", "1");
     if (!runtime.getService("trajectories"))
       await runtime.registerService(TrajectoriesService);
     await runtime.getServiceLoadPromise("trajectories");
     const trajectories =
       runtime.getService<TrajectoriesService>("trajectories");
     if (!trajectories) throw new Error("Trajectory service unavailable");
-    const loggingWasEnabled = trajectories.isEnabled();
-    restoreTrajectoryLogging = () => trajectories.setEnabled(loggingWasEnabled);
-    trajectories.setEnabled(true);
     expect(trajectories.isEnabled()).toBe(true);
     const service = createAgreementKnowledgeService(runtime);
     const citation = "Each parent must share school notices within 24 hours.";

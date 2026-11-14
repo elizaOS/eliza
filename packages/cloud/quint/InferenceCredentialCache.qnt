@@ -66,7 +66,7 @@ module InferenceCredentialCache {
   action deliverGateReply = all {
     s.phase == "reply_gate",
     s' = {
-      val refreshed = if (s.source == "cache" and (s.aged or s.gateResult == "denied"))
+      val refreshed = if (s.source == "cache" and s.aged and s.gateResult == "allowed")
         enqueueRefresh(s, "read_primary") else s
       refreshed.with("phase", "terminal").with("result", s.gateResult)
     }
@@ -98,7 +98,7 @@ module InferenceCredentialCache {
   }
   action checkRefreshGate = all {
     s.refresh == "read_gate",
-    s' = s.with("refresh", if (gateAllows(s)) "publish_allow" else "publish_deny")
+    s' = s.with("refresh", if (gateAllows(s)) "publish_allow" else "idle")
   }
   action publishRefresh = all {
     Set("publish_allow", "publish_deny").contains(s.refresh),
@@ -189,14 +189,6 @@ module InferenceCredentialCache {
     .then(readRefreshPrimary).then(checkRefreshGate).then(setFence("key", true))
     .then(publishRefresh).then(finish).then(begin(true)).then(evaluateGate).then(deliverGateReply)
     .expect(s.result == "denied" and s.cache == "fresh_allow")
-
-  // A retained positive is subordinate to the fence on this request. Its
-  // refresh publishes that same denial even when the primary still allows it.
-  run gateFenceAloneRewritesRetainedPositiveTest = initialize("stale_allow", true)
-    .then(setFence("key", true)).then(begin(true)).then(evaluateGate).then(deliverGateReply)
-    .expect(s.result == "denied" and s.source == "cache")
-    .then(readRefreshPrimary).then(checkRefreshGate).expect(s.refresh == "publish_deny")
-    .then(publishRefresh).expect(s.cache == "fresh_deny")
 
   run clearingOneFenceCannotClearAnotherTest = initialize("fresh_allow", true)
     .then(setFence("account", true)).then(setFence("moderation", true))

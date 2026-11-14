@@ -66,8 +66,12 @@ export const TEST_LANE_MEMBERSHIP_EXCLUSIONS = new Map([
     "Cloud operation tests are covered by root test:scripts and its fail-closed script-test inventory, available locally and excluded from CI admission.",
   ],
   [
+    "packages/app/platforms/electrobun",
+    "Native/macOS integration tests run through the package test command on their owning platform. These platform-specific suites are excluded from the shared Linux lane.",
+  ],
+  [
     "packages/cloud/e2e",
-    "plain `test` script is a Playwright suite against a live stack and is deliberately excluded from the fast/no-cloud lanes (NO_CLOUD_PACKAGE_DIRS in run-all-tests.ts). The full suite remains operator-dispatched through monetized-loop-nightly.yml; cloud-tests.yml runs the blocking stack subset after cloud changes reach staging, while pr-validation.yml runs the billing payment replay spec on exact PR and merge-group heads when its Cloud/app/UI contract surface changes.",
+    "plain `test` script is a Playwright suite against a live stack and is deliberately excluded from the fast/no-cloud lanes (NO_CLOUD_PACKAGE_DIRS in run-all-tests.ts). The full suite remains operator-dispatched through monetized-loop-nightly.yml; cloud-tests.yml runs the blocking stack subset after cloud changes reach develop, while pr-validation.yml runs the billing payment replay spec on exact PR and merge-group heads when its Cloud/app/UI contract surface changes.",
   ],
 ]);
 

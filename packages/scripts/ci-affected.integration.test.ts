@@ -234,14 +234,15 @@ cat "$RUNNER_TEMP/candidates-$branch"
       trusted,
       "retain the destination's existing validated baseline",
     );
+    assert.equal(select("staging", { develop: [trusted] }).base, trusted);
     assert.equal(
       select("main", { staging: [unvalidated] }).base,
       zero,
       "upstream validation cannot qualify changed source",
     );
-    assert.deepEqual(select("staging", { develop: [trusted] }), {
+    assert.deepEqual(select("develop", { staging: [trusted] }), {
       base: zero,
-      requests: ["staging"],
+      requests: ["develop"],
     });
     assert.equal(
       select("main", { staging: [diverged] }).base,

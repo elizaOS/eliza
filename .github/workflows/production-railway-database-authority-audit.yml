@@ -171,7 +171,7 @@ jobs:
           set -e
           chmod 0600 "$report"
           if ! GITHUB_TOKEN='${{ github.token }}' \
-            bun packages/cloud/scripts/canonical-deploy-source-guard.ts \
+            node packages/cloud/scripts/canonical-deploy-source-guard.ts \
             --run-sha "$GITHUB_SHA" \
             --canonical-ref refs/heads/main \
             > "$evidence_dir/freshness.stdout" \
@@ -234,7 +234,7 @@ jobs:
           readiness_status="$?"
           set -e
           if ! GITHUB_TOKEN='${{ github.token }}' \
-            bun packages/cloud/scripts/canonical-deploy-source-guard.ts \
+            node packages/cloud/scripts/canonical-deploy-source-guard.ts \
             --run-sha "$GITHUB_SHA" --canonical-ref refs/heads/main \
             > "$BACKUP_EVIDENCE_DIR/backup-freshness.stdout" \
             2> "$BACKUP_EVIDENCE_DIR/backup-freshness.stderr"; then
@@ -287,7 +287,7 @@ jobs:
           plan_status="$?"
           set -e
           if ! GITHUB_TOKEN='${{ github.token }}' \
-            bun packages/cloud/scripts/canonical-deploy-source-guard.ts \
+            node packages/cloud/scripts/canonical-deploy-source-guard.ts \
             --run-sha "$GITHUB_SHA" --canonical-ref refs/heads/main \
             > "$BACKUP_EVIDENCE_DIR/plan-freshness.stdout" \
             2> "$BACKUP_EVIDENCE_DIR/plan-freshness.stderr"; then

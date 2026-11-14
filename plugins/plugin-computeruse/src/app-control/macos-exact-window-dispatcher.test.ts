@@ -1,11 +1,14 @@
 /** Verifies the experimental helper resolver requires direct macOS, explicit opt-in, and an executable exact-name file. */
 
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   MacosExperimentalExactWindowDispatcher,
+  parseExperimentalExactWindowDispatchResult,
   resolveExperimentalExactWindowHelper,
 } from "./macos-exact-window-dispatcher.js";
 
@@ -102,6 +105,63 @@ describe("experimental exact-window helper resolution", () => {
 });
 
 describe("experimental exact-window helper adapter", () => {
+  it.skipIf(process.platform !== "darwin")(
+    "accepts the dispatch receipt emitted by the actual helper process",
+    () => {
+      const root = fs.mkdtempSync(
+        path.join(os.tmpdir(), "exact-window-wire-contract-"),
+      );
+      temporaryRoots.push(root);
+      const sourceDir = fileURLToPath(
+        new URL(
+          "../../../../packages/app/platforms/electrobun/direct-only/computeruse-exact-window/",
+          import.meta.url,
+        ),
+      );
+      const helper = path.join(root, "computeruse-exact-window-helper");
+      execFileSync("xcrun", [
+        "swiftc",
+        "-framework",
+        "ApplicationServices",
+        "-framework",
+        "AppKit",
+        path.join(sourceDir, "ExperimentalExactWindowProtocol.swift"),
+        path.join(sourceDir, "ExperimentalExactWindowSPI.swift"),
+        path.join(sourceDir, "main.swift"),
+        "-o",
+        helper,
+      ]);
+      const stdout = execFileSync(helper, [], {
+        encoding: "utf8",
+        input: JSON.stringify({
+          command: "wire-contract",
+          observationId: "observation-wire",
+          pid: 42,
+          windowId: 99,
+          expectedWindowBounds: { x: 100, y: 200, width: 800, height: 600 },
+          screenPoint: { x: 10, y: 20 },
+        }),
+      });
+      const envelope = JSON.parse(stdout) as {
+        ok: boolean;
+        result?: unknown;
+      };
+      expect(envelope.ok).toBe(true);
+      expect(
+        parseExperimentalExactWindowDispatchResult(envelope.result),
+      ).toEqual({
+        success: true,
+        route: "experimental_direct_exact_window",
+        observationId: "observation-wire",
+        targetPid: 42,
+        targetWindowId: 99,
+        targetWindowBounds: { x: 100, y: 200, width: 800, height: 600 },
+        pointerBefore: { x: 10, y: 20 },
+        pointerAfter: { x: 10, y: 20 },
+      });
+    },
+  );
+
   it("probes before dispatch and binds the exact observation, PID, window, and bounds", async () => {
     const requests: Record<string, unknown>[] = [];
     const dispatcher = new MacosExperimentalExactWindowDispatcher({

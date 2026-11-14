@@ -73,7 +73,7 @@ test("shared builder preserves freshness, forced development builds, and depende
         JSON.stringify({
           name: name === "core" ? "@elizaos/core" : "@fixture/native",
           version: "1.0.0",
-          scripts: { build: "bun build.ts" },
+          scripts: { build: "node build.ts" },
           dependencies:
             name === "plugin" ? { "@elizaos/core": "workspace:*" } : {},
         }),

@@ -7,6 +7,8 @@ import { handleLocalInferenceCompatRoutes } from "./local-inference-compat-route
 
 const KEY_NAMES = [
 	"ELIZAOS_CLOUD_API_KEY",
+	"ELIZA_CLOUD_TOKEN",
+	"ELIZACLOUD_TOKEN",
 	"ELIZAOS_API_KEY",
 	"GROK_API_KEY",
 	"XAI_API_KEY",

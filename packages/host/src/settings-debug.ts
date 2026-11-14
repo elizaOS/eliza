@@ -9,6 +9,7 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core/protocol";
+import { resolveAliasedEnvValue } from "./config/boot-config-store.js";
 
 /** Keys whose values are always redacted in debug dumps. */
 const SENSITIVE_KEY_RE =
@@ -18,14 +19,14 @@ const MAX_DEPTH = 14;
 const MAX_ARRAY = 40;
 export const MAX_STRING = 120;
 
-/** Resolve the host flag from the supplied environment or the process environment. */
+/** Resolve the host flag and its configured process-environment aliases. */
 export function isElizaSettingsDebugEnabled(options?: {
-  /** Additional host environment flags; the process environment is also checked. */
+  /** Additional host environment flags; process boot aliases are also checked. */
   env?: Record<string, string | undefined> | null;
 }): boolean {
   return (
     isTruthyEnvValue(options?.env?.ELIZA_SETTINGS_DEBUG) ||
-    isTruthyEnvValue(globalThis.process?.env?.ELIZA_SETTINGS_DEBUG)
+    isTruthyEnvValue(resolveAliasedEnvValue("ELIZA_SETTINGS_DEBUG"))
   );
 }
 

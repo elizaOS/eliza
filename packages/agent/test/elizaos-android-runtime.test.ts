@@ -71,27 +71,3 @@ it("config enabling local llama after boot still finds the app plugins", async (
   ]()) as { default?: { name?: unknown } };
   expect(typeof wifi.default?.name).toBe("string");
 });
-
-it("an Android host can load only SMS drafting without the native inference profile", async () => {
-  const phone = "@elizaos/plugin-native-phone";
-  vi.stubEnv("ELIZA_LOCAL_LLAMA", "");
-  vi.stubEnv("ELIZA_PLATFORM", "ios");
-  vi.stubEnv("ELIZA_MOBILE_SMS_REPLY_DRAFT", "1");
-  expect(collectPluginNames({}).has(phone)).toBe(false);
-
-  vi.stubEnv("ELIZA_PLATFORM", "android");
-  const selected = collectPluginNames({});
-  expect(selected.has(phone)).toBe(true);
-  expect(selected.has("@elizaos/plugin-native-contacts")).toBe(false);
-
-  vi.resetModules();
-  const { appPhonePlugin } = await import(
-    "../src/runtime/android-app-plugins.ts"
-  );
-  expect(appPhonePlugin).toMatchObject({
-    name: phone,
-    routes: [{ type: "POST", path: "/api/messages/reply-draft" }],
-  });
-  expect(appPhonePlugin).not.toHaveProperty("providers");
-  expect(appPhonePlugin).not.toHaveProperty("views");
-});

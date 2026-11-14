@@ -9,8 +9,8 @@
  * and writes the GitHub environment secrets consumed by the deploy workflow.
  *
  * Usage:
- *   HCLOUD_TOKEN=... bun packages/cloud/scripts/admin/bootstrap-provisioning-worker-host.ts --environment staging
- *   HCLOUD_TOKEN=... bun packages/cloud/scripts/admin/bootstrap-provisioning-worker-host.ts --environment production
+ *   HCLOUD_TOKEN=... node packages/cloud/scripts/admin/bootstrap-provisioning-worker-host.ts --environment staging
+ *   HCLOUD_TOKEN=... node packages/cloud/scripts/admin/bootstrap-provisioning-worker-host.ts --environment production
  */
 
 import { spawn, spawnSync } from "node:child_process";
@@ -166,8 +166,8 @@ Required:
   A cloud runtime env file, defaulting to packages/cloud/shared/.env.local.
 
 Examples:
-  HCLOUD_TOKEN=... bun packages/cloud/scripts/admin/bootstrap-provisioning-worker-host.ts --environment staging
-  HCLOUD_TOKEN=... bun packages/cloud/scripts/admin/bootstrap-provisioning-worker-host.ts --environment production --env-file packages/cloud/shared/.env.production
+  HCLOUD_TOKEN=... node packages/cloud/scripts/admin/bootstrap-provisioning-worker-host.ts --environment staging
+  HCLOUD_TOKEN=... node packages/cloud/scripts/admin/bootstrap-provisioning-worker-host.ts --environment production --env-file packages/cloud/shared/.env.production
 
 Options:
   --environment staging|production   GitHub environment and deploy branch default.

@@ -5,15 +5,15 @@
  * issue #9309.
  *
  * Usage:
- *   bun verify-ondevice-artifact.ts \
+ *   node verify-ondevice-artifact.ts \
  *     --renderer-dir packages/app/ios/App/App/public \
  *     --fresh-dist packages/app/web-dist \
  *     --require agent/agent-bundle.js \
  *     --label ios
  *
  *   # presets resolve the standard paths for a platform:
- *   bun verify-ondevice-artifact.ts --platform ios [--local]
- *   bun verify-ondevice-artifact.ts --platform desktop
+ *   node verify-ondevice-artifact.ts --platform ios [--local]
+ *   node verify-ondevice-artifact.ts --platform desktop
  */
 import path from "node:path";
 import { fileURLToPath } from "node:url";

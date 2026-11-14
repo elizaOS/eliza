@@ -1039,11 +1039,6 @@ it("preserves certified creation after registered discovery in the complete host
     channelType: ChannelType.DM,
     chatIdempotency: marker,
   });
-  const extracted = taskPlans.buildTaskCreatePlan(nativeCreatePlan);
-  if (!extracted) throw Error("Invalid extraction fixture");
-  const extraction = vi
-    .spyOn(taskPlans, "extractTaskCreatePlanWithLlm")
-    .mockResolvedValue(extracted);
   await attestDeliveryAudienceFromCanonicalRoom(fixture.runtime, f.message);
   const state = bindCreateRequest(f.message, ["Create one reminder"]);
   const bindings = Reflect.get(
@@ -1107,9 +1102,6 @@ it("preserves certified creation after registered discovery in the complete host
       executorOptions: { actions },
     }),
   );
-  expect(extraction).toHaveBeenCalledOnce();
-  expect(extraction.mock.calls[0]?.[0].intent).toBe(f.message.content.text);
-  expect(extraction.mock.calls[0]?.[0].message).toBe(f.message);
   expect(created.success).toBe(true);
   const actionResults = summarizeRuntimeActionResults(
     fixture.runtime,
@@ -1276,11 +1268,13 @@ it.each([
               : "selected",
         );
     const fallback = kind.startsWith("fallback_");
-    const extracted = taskPlans.buildTaskCreatePlan(nativeCreatePlan);
-    if (!extracted) throw Error("Invalid extraction fixture");
-    const extraction = vi
-      .spyOn(taskPlans, "extractTaskCreatePlanWithLlm")
-      .mockResolvedValue(extracted);
+    if (fallback) {
+      const extracted = taskPlans.buildTaskCreatePlan(nativeCreatePlan);
+      if (!extracted) throw Error("Invalid extraction fixture");
+      vi.spyOn(taskPlans, "extractTaskCreatePlanWithLlm").mockResolvedValue(
+        extracted,
+      );
+    }
     const createPlan = {
       ...nativeCreatePlan,
       title: `Stretch shoulders ${kind}`,
@@ -1303,9 +1297,6 @@ it.each([
         },
       },
     );
-    expect(extraction).toHaveBeenCalledOnce();
-    expect(extraction.mock.calls[0]?.[0].intent).toBe(f.message.content.text);
-    expect(extraction.mock.calls[0]?.[0].message).toBe(f.message);
     expect(result.success).toBe(true);
     const actionResults = summarizeRuntimeActionResults(
       fixture.runtime,

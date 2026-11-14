@@ -58,6 +58,7 @@ eliza/plugins/*/.eliza
 eliza/plugins/*/.elizadb-test
 packages/app/android
 packages/app/ios
+packages/app/platforms/electrobun
 packages/app/.vite
 packages/app/screenshots
 test-results

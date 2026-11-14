@@ -73,7 +73,7 @@ APP_APK="$GITHUB_WORKSPACE/packages/app/platforms/android/app/build/outputs/apk/
 if [ -f "$APP_APK" ]; then
   adb install -r -t "$APP_APK"
 else
-  echo "app-debug.apk not found at $APP_APK — :app:connectedDebugAndroidTest should have produced it"
+  echo "app-debug.apk not found at $APP_APK — build:android should have produced it"
   exit 1
 fi
 ASSISTANT_ARTIFACT_DIR="$GITHUB_WORKSPACE/test-results/app/android-assistant-verify"

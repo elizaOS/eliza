@@ -3,9 +3,9 @@
  * Read-only qualification of a connected Android device against a requirements
  * file (default: android/device-requirements/treble-gsi.json).
  *
- *   bun packages/os/scripts/android/device-qualify.ts --serial SERIAL \
+ *   node packages/os/scripts/android/device-qualify.ts --serial SERIAL \
  *     [--requirements FILE] [--out DIR] [--adb PATH]
- *   bun packages/os/scripts/android/device-qualify.ts --serial SERIAL --fastboot \
+ *   node packages/os/scripts/android/device-qualify.ts --serial SERIAL --fastboot \
  *     [--requirements FILE] [--out DIR] [--fastboot-bin PATH]
  *
  * adb mode runs only the fixed read-only commands below: no settings changes,

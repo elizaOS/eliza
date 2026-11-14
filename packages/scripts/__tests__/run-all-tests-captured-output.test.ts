@@ -27,7 +27,7 @@ test("parallel package failures retain a complete file inventory after truncatio
           name: "@elizaos/run-all-tests-captured-output-fixture",
           private: true,
           type: "module",
-          scripts: { test: "bun fail.mjs" },
+          scripts: { test: "node fail.mjs" },
         },
         null,
         2,

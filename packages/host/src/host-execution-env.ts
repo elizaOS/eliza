@@ -37,19 +37,14 @@ export function validateHostExecutionPath(
 ): string | undefined {
   if (!value || value.includes("\0")) return undefined;
   const pathApi = platform === "win32" ? path.win32 : path.posix;
-  let entries = value.split(pathApi.delimiter);
-  // On POSIX an empty entry means the current directory, so it fails closed.
-  // A Windows Path often has an empty entry (";;" or a trailing ";") from
-  // installers. Drop those entries so they can never resolve to the current
-  // directory, and keep the remaining absolute directories.
-  if (platform === "win32") entries = entries.filter((entry) => entry !== "");
+  const entries = value.split(pathApi.delimiter);
   if (
     entries.length === 0 ||
     entries.some((entry) => entry.length === 0 || !pathApi.isAbsolute(entry))
   ) {
     return undefined;
   }
-  return entries.join(pathApi.delimiter);
+  return value;
 }
 
 export function validateHostExecutionDirectory(

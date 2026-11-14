@@ -12,13 +12,24 @@
 import path from "node:path";
 
 /**
- * The fused FFI loader is enabled by `ELIZA_LOCAL_LLAMA=1` — the canonical
- * AOSP / mobile opt-in, set by `ElizaAgentService.java` before spawning the
- * bun agent. `ELIZA_DISABLE_FFI_LLAMA=1` forces a hard opt-out.
+ * The fused FFI loader is enabled when ANY of these signals fires:
+ *
+ *   1. `ELIZA_LOCAL_LLAMA=1` — the canonical AOSP / mobile opt-in. Set by
+ *      `ElizaAgentService.java` before spawning the bun agent.
+ *   2. `process.arch === "riscv64"` — there is no riscv64 NAPI prebuild, so
+ *      the in-process FFI loader (dlopening the vendored `.so`) is the only
+ *      viable local path. Auto-firing keeps the riscv64 boot zero-config.
+ *
+ * `ELIZA_DISABLE_FFI_LLAMA=1` forces a hard opt-out.
  */
-export function isAospEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+export function isAospEnabled(
+  env: NodeJS.ProcessEnv = process.env,
+  arch: NodeJS.Architecture = process.arch,
+): boolean {
   if (env.ELIZA_DISABLE_FFI_LLAMA?.trim() === "1") return false;
-  return env.ELIZA_LOCAL_LLAMA?.trim() === "1";
+  if (env.ELIZA_LOCAL_LLAMA?.trim() === "1") return true;
+  if (arch === "riscv64") return true;
+  return false;
 }
 
 export function firstSentenceEndIndex(text: string, minChars = 12): number {
@@ -43,7 +54,7 @@ export function firstSentenceEndIndex(text: string, minChars = 12): number {
  * Resolve the per-ABI native asset directory for the current ABI. The AOSP
  * agent process runs with `cwd = <agent_root>`; the Java side unpacks
  * `agent/{abi}/libelizainference.so` (and siblings) alongside the bun runtime.
- * `{abi}` is `arm64-v8a` (arm64) or `x86_64` (x64).
+ * `{abi}` is `arm64-v8a` (arm64), `x86_64` (x64), or `riscv64`.
  *
  * Exported for unit tests so we can verify ABI mapping without dlopen.
  */
@@ -52,7 +63,13 @@ export function resolveAospAbiDir(
   cwd: string = process.cwd(),
 ): string {
   const abiDir =
-    arch === "arm64" ? "arm64-v8a" : arch === "x64" ? "x86_64" : null;
+    arch === "arm64"
+      ? "arm64-v8a"
+      : arch === "x64"
+        ? "x86_64"
+        : arch === "riscv64"
+          ? "riscv64"
+          : null;
   if (abiDir === null) {
     throw new Error(
       `[aosp-llama] Unsupported process.arch for AOSP build: ${arch}`,

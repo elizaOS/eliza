@@ -124,7 +124,7 @@ export function parseArgs(argv) {
 }
 
 function printHelp() {
-  console.log(`Usage: bun packages/scripts/evidence-review/generate.ts [options]
+  console.log(`Usage: node packages/scripts/evidence-review/generate.ts [options]
 
 Options:
   --open                  Open the generated dashboard in the browser.

@@ -134,7 +134,7 @@ const discordPlugin: Plugin = {
 				{
 					name: "DISCORD_SHOULD_IGNORE_BOT_MESSAGES",
 					value: ignoreBotMessages,
-					defaultValue: "false",
+					defaultValue: "true",
 				},
 				{
 					name: "DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES",
@@ -144,7 +144,7 @@ const discordPlugin: Plugin = {
 				{
 					name: "DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS",
 					value: respondOnlyToMentions,
-					defaultValue: "false",
+					defaultValue: "true",
 				},
 			],
 			runtime,

@@ -15,7 +15,7 @@
  * well-formed `.xcframework` bundle.
  *
  * Invocation:
- *   bun build-xcframework.ts --output <dir>
+ *   node build-xcframework.ts --output <dir>
  *     [--device-archive-dir   <path>]   default: $ELIZA_STATE_DIR/local-inference/bin/mtp/ios-arm64-metal
  *     [--sim-archive-dir      <path>]   default: $ELIZA_STATE_DIR/local-inference/bin/mtp/ios-arm64-simulator-metal
  *     [--build-if-missing]              run build-llama-cpp-mtp.ts first
@@ -287,7 +287,7 @@ function run(cmd, args, opts = {}) {
 
 function removeDirectoryRecursive(targetPath) {
   try {
-    execFileSync("bun", [RECURSIVE_CLEANUP_SCRIPT, path.resolve(targetPath)], {
+    execFileSync("node", [RECURSIVE_CLEANUP_SCRIPT, path.resolve(targetPath)], {
       encoding: "utf8",
       stdio: "pipe",
     });

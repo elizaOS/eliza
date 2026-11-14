@@ -35,192 +35,8 @@ const expected = {
   "types/llama-cpp-capacitor.d.ts":
     "declare module 'llama-cpp-capacitor' {\n  export const legacy: number;\n  export const embedding: number;\n}\n",
 };
-const javaPath =
-  "android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java";
-// Android files as left by the installer when riscv64 was still a target.
-const riscv64Android = {
-  "android/build.gradle": `ext {
-    junitVersion = '4.13.2'
-}
-
-def resolveElizaRepoRoot = { ->
-    return rootProject.projectDir.toPath().resolve('../../../..').normalize().toFile().absolutePath
-}
-
-// unsuffixed names are still honored for backwards compatibility.
-// riscv64 has no Vulkan path yet (Wave 2 ships CPU-only), so only the
-// \`cpu\` backend is searched on that ABI.
-def resolveElizaMtpAndroidLibDir = { String abi ->
-    def abiToken = [
-        'arm64-v8a': 'android-arm64',
-        'x86_64'   : 'android-x86_64',
-        'riscv64'  : 'android-riscv64',
-    ][abi]
-    def backends = abi == 'riscv64' ? ['cpu'] : ['vulkan', 'cpu']
-}
-
-def resolveElizaSkipMtpAndroidLib = { ->
-    return false
-}
-
-buildscript {
-}
-
-android {
-    defaultConfig {
-        ndk {
-            abiFilters 'arm64-v8a', 'riscv64'
-        }
-
-        externalNativeBuild {
-            cmake {
-                arguments "-DELIZA_REPO_ROOT=\${resolveElizaRepoRoot()}",
-                    "-DELIZA_MTP_ANDROID_LIBDIR_ARM64_V8A=\${resolveElizaMtpAndroidLibDir('arm64-v8a')}",
-                    "-DELIZA_MTP_ANDROID_LIBDIR_RISCV64=\${resolveElizaMtpAndroidLibDir('riscv64')}",
-                    "-DELIZA_SKIP_MTP_ANDROID_LIB=\${resolveElizaSkipMtpAndroidLib() ? 'ON' : 'OFF'}"
-            }
-        }
-    }
-}
-`,
-  "android/src/main/CMakeLists.txt": `project(llama-cpp-capacitor-eliza-mtp)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-option(ELIZA_SKIP_MTP_ANDROID_LIB "Build a no-op JNI library" OFF)
-if(ELIZA_SKIP_MTP_ANDROID_LIB)
-    if(ANDROID_ABI STREQUAL "riscv64")
-        set(ELIZA_SMOKE_OUTPUT_NAME "llama-cpp-riscv64")
-    else()
-        set(ELIZA_SMOKE_OUTPUT_NAME "llama-cpp-arm64")
-    endif()
-    return()
-endif()
-if(NOT DEFINED ELIZA_REPO_ROOT)
-    message(FATAL_ERROR "ELIZA_REPO_ROOT is required for the Eliza MTP Android JNI bridge")
-endif()
-
-if(NOT DEFINED ELIZA_REPO_ROOT)
-    message(FATAL_ERROR "ELIZA_REPO_ROOT is required for the Eliza MTP Android JNI bridge")
-endif()
-# Per-ABI MTP lib dirs are passed by android/build.gradle. Only the
-# entry for the currently-building ABI is required; the other can be empty.
-# riscv64 is CPU-only today (no ggml-vulkan.so produced yet).
-if(ANDROID_ABI STREQUAL "arm64-v8a")
-    set(ELIZA_MTP_LIBDIR "\${ELIZA_MTP_ANDROID_LIBDIR_ARM64_V8A}")
-    set(ELIZA_OUTPUT_NAME "llama-cpp-arm64")
-    set(ELIZA_HAS_VULKAN TRUE)
-elseif(ANDROID_ABI STREQUAL "riscv64")
-    set(ELIZA_MTP_LIBDIR "\${ELIZA_MTP_ANDROID_LIBDIR_RISCV64}")
-    set(ELIZA_OUTPUT_NAME "llama-cpp-riscv64")
-    set(ELIZA_HAS_VULKAN FALSE)
-else()
-    message(FATAL_ERROR "Unsupported ANDROID_ABI for Eliza MTP JNI bridge: \${ANDROID_ABI} (expected arm64-v8a or riscv64)")
-endif()
-set(ELIZA_MTP_JNI_CPP "\${ELIZA_REPO_ROOT}/packages/native/plugins/llama/android/eliza-mtp-jni.cpp")
-`,
-  [javaPath]: `            switch (abi) {
-                case "x86_64":
-                    libraryName = "llama-cpp-x86_64";
-                    break;
-                case "riscv64":
-                    libraryName = "llama-cpp-riscv64";
-                    break;
-                default:
-                    libraryName = "llama-cpp-arm64";
-                    break;
-            }
-            // riscv64 currently has no ggml-vulkan.so (Wave 2 CPU-only); the
-            // preload is wrapped in try/catch and an absent dependency is
-            // logged as a warning rather than failing the load.
-            if ("arm64-v8a".equals(abi) || "riscv64".equals(abi)) {
-                mtpDependencies.add("ggml-cpu");
-                if ("arm64-v8a".equals(abi)) {
-                    mtpDependencies.add("ggml-vulkan");
-                }
-                mtpDependencies.add("ggml");
-            }
-`,
-};
-const arm64Android = {
-  "android/build.gradle": `ext {
-    junitVersion = '4.13.2'
-}
-
-def resolveElizaRepoRoot = { ->
-    return rootProject.projectDir.toPath().resolve('../../../..').normalize().toFile().absolutePath
-}
-
-// unsuffixed names are still honored for backwards compatibility.
-def resolveElizaMtpAndroidLibDir = { String abi ->
-    def abiToken = [
-        'arm64-v8a': 'android-arm64',
-        'x86_64'   : 'android-x86_64',
-    ][abi]
-    def backends = ['vulkan', 'cpu']
-}
-
-def resolveElizaSkipMtpAndroidLib = { ->
-    return false
-}
-
-buildscript {
-}
-
-android {
-    defaultConfig {
-        ndk {
-            abiFilters 'arm64-v8a'
-        }
-
-        externalNativeBuild {
-            cmake {
-                arguments "-DELIZA_REPO_ROOT=\${resolveElizaRepoRoot()}",
-                    "-DELIZA_MTP_ANDROID_LIBDIR_ARM64_V8A=\${resolveElizaMtpAndroidLibDir('arm64-v8a')}",
-                    "-DELIZA_SKIP_MTP_ANDROID_LIB=\${resolveElizaSkipMtpAndroidLib() ? 'ON' : 'OFF'}"
-            }
-        }
-    }
-}
-`,
-  "android/src/main/CMakeLists.txt": `project(llama-cpp-capacitor-eliza-mtp)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-option(ELIZA_SKIP_MTP_ANDROID_LIB "Build a no-op JNI library" OFF)
-if(ELIZA_SKIP_MTP_ANDROID_LIB)
-    set(ELIZA_SMOKE_OUTPUT_NAME "llama-cpp-arm64")
-    return()
-endif()
-if(NOT DEFINED ELIZA_REPO_ROOT)
-    message(FATAL_ERROR "ELIZA_REPO_ROOT is required for the Eliza MTP Android JNI bridge")
-endif()
-# The arm64-v8a MTP lib dir is passed by android/build.gradle.
-if(ANDROID_ABI STREQUAL "arm64-v8a")
-    set(ELIZA_MTP_LIBDIR "\${ELIZA_MTP_ANDROID_LIBDIR_ARM64_V8A}")
-    set(ELIZA_OUTPUT_NAME "llama-cpp-arm64")
-    set(ELIZA_HAS_VULKAN TRUE)
-else()
-    message(FATAL_ERROR "Unsupported ANDROID_ABI for Eliza MTP JNI bridge: \${ANDROID_ABI} (expected arm64-v8a)")
-endif()
-set(ELIZA_MTP_JNI_CPP "\${ELIZA_REPO_ROOT}/packages/native/plugins/llama/android/eliza-mtp-jni.cpp")
-`,
-  [javaPath]: `            switch (abi) {
-                case "x86_64":
-                    libraryName = "llama-cpp-x86_64";
-                    break;
-                default:
-                    libraryName = "llama-cpp-arm64";
-                    break;
-            }
-            // Each preload is wrapped in try/catch and an absent dependency is
-            // logged as a warning rather than failing the load.
-            if ("arm64-v8a".equals(abi)) {
-                mtpDependencies.add("ggml-cpu");
-                mtpDependencies.add("ggml-vulkan");
-                mtpDependencies.add("ggml");
-            }
-`,
-};
 for (const mode of [
   "existing Android",
-  "riscv64 Android",
   "partial bridge",
   "hardlinked",
   "corrupt",
@@ -251,16 +67,6 @@ for (const mode of [
         fs.mkdirSync(path.dirname(file), { recursive: true });
         fs.writeFileSync(file, value);
       }
-      if (mode === "riscv64 Android")
-        for (const [relative, value] of Object.entries(riscv64Android)) {
-          const file = path.join(pkg, relative);
-          fs.mkdirSync(path.dirname(file), { recursive: true });
-          fs.writeFileSync(file, value);
-        }
-      const want =
-        mode === "riscv64 Android"
-          ? { ...expected, ...arm64Android }
-          : expected;
       if (mode === "partial bridge")
         fs.writeFileSync(
           path.join(pkg, "dist/esm/index.js"),
@@ -334,11 +140,11 @@ for (const mode of [
         return;
       }
       assert.equal(first.status, 0, first.stderr);
-      for (const [relative, value] of Object.entries(want))
+      for (const [relative, value] of Object.entries(expected))
         assert.equal(fs.readFileSync(path.join(pkg, relative), "utf8"), value);
       const second = run();
       assert.equal(second.status, 0, second.stderr);
-      for (const [relative, value] of Object.entries(want))
+      for (const [relative, value] of Object.entries(expected))
         assert.equal(fs.readFileSync(path.join(pkg, relative), "utf8"), value);
       if (mode === "hardlinked") {
         for (const [relative, value] of Object.entries(initial))

@@ -82,61 +82,7 @@ public final class CloudSignInFlowTest {
   check(CloudSignInFlow.Pending.parse(CloudSignInFlow.Pending.create(staging, now).serialize(), development) != null, "a development build reads its staging record");
   for (String bad : new String[]{null, "", "v2.production." + pending.state + "." + pending.verifier + ".1", "v1.production.short." + pending.verifier + ".1", "v1.production." + pending.state + "." + pending.verifier + ".x", pending.serialize() + ".extra"})
    check(CloudSignInFlow.Pending.parse(bad, development) == null, "refused record " + bad);
-  // A record written with the host's durable credential generation keeps it; one without stays the first format.
-  check(pending.generation == null && pending.serialize().startsWith("v1.") && restored.generation == null, "a host without a durable generation writes the first format");
-  CloudSignInFlow.Pending durable = CloudSignInFlow.Pending.create(production, now, "0b6f3c1e-5a52-4c0e-9d5e-1f2a3b4c5d6e");
-  CloudSignInFlow.Pending durableRestored = CloudSignInFlow.Pending.parse(durable.serialize(), product);
-  check(durable.serialize().startsWith("v2.") && durableRestored != null && "0b6f3c1e-5a52-4c0e-9d5e-1f2a3b4c5d6e".equals(durableRestored.generation)
-   && durableRestored.state.equals(durable.state) && durableRestored.verifier.equals(durable.verifier) && durableRestored.expiresAt == durable.expiresAt, "durable generation round trip");
-  check(CloudSignInFlow.Pending.create(production, now, "has.dot").generation == null && CloudSignInFlow.Pending.create(production, now, "").generation == null, "a generation the record cannot carry is treated as none");
-  for (String bad : new String[]{durable.serialize() + ".extra", durable.serialize().replace("v2.", "v1."), "v2.production." + durable.state + "." + durable.verifier + ".1.", "v2.production." + durable.state + "." + durable.verifier + ".1.a b"})
-   check(CloudSignInFlow.Pending.parse(bad, development) == null, "refused durable record " + bad);
   check(CloudSignInFlow.MAX_VERIFY_ATTEMPTS == 5 && CloudSignInFlow.RESEND_COOLDOWN_MS == 30_000L, "verify cap and send cooldown");
-
-  // Silent key renewal policy.
-  final long day = 24 * 60 * 60 * 1000L;
-  check(CloudKeyRenewal.RENEW_BEFORE_MS == 10 * day && CloudKeyRenewal.MIN_INTERVAL_MS == day && CloudKeyRenewal.WARN_BEFORE_MS == 3 * day, "renewal windows");
-  check(!CloudKeyRenewal.due(now, 0, now + 10 * day) && CloudKeyRenewal.due(now, 0, now + 10 * day - 1) && !CloudKeyRenewal.due(now, 0, now) && !CloudKeyRenewal.due(now, 0, now - 1), "due with less than ten days left, never once expired");
-  check(!CloudKeyRenewal.due(now, now - 59 * day, now + 31 * day) && CloudKeyRenewal.due(now, now - 60 * day, now + 30 * day) && !CloudKeyRenewal.due(now, 0, now + 30 * day), "due in the last third of a known life");
-  check(!CloudKeyRenewal.due(now, now + day, now + 30 * day) && !CloudKeyRenewal.due(now, now + 40 * day, now + 30 * day), "an issue time from the future or after the expiry is not trusted");
-  check(CloudKeyRenewal.allowed(now, 0) && !CloudKeyRenewal.allowed(now, now - day + 1) && CloudKeyRenewal.allowed(now, now - day) && CloudKeyRenewal.allowed(now, now + 1), "at most one request a day");
-  check(!CloudKeyRenewal.warn(now, now + 3 * day, true) && CloudKeyRenewal.warn(now, now + 3 * day - 1, true) && !CloudKeyRenewal.warn(now, now + day, false) && !CloudKeyRenewal.warn(now, now, true), "warning only inside three days and only when renewal cannot help");
-  check(CloudKeyRenewal.answer(200) == CloudKeyRenewal.Answer.CODE, "a code");
-  for (int status : new int[]{401, 403, 409}) check(CloudKeyRenewal.answer(status) == CloudKeyRenewal.Answer.SIGN_IN_REQUIRED, "full sign-in after " + status);
-  for (int status : new int[]{-1, 400, 404, 408, 429, 500, 503}) check(CloudKeyRenewal.answer(status) == CloudKeyRenewal.Answer.RETRY, "asked again after " + status);
-  org.json.JSONObject renewal = CloudKeyRenewal.body(product, production, state, CloudSignInFlow.s256(CloudSignInFlow.newVerifier()));
-  check(renewal.length() == 7 && "ai.example.signin".equals(renewal.getString("clientId")) && "production".equals(renewal.getString("environment")) && base.equals(renewal.getString("redirectUri"))
-   && state.equals(renewal.getString("state")) && "S256".equals(renewal.getString("codeChallengeMethod")) && "Example Phone".equals(renewal.getString("deviceName")) && !renewal.has("flow"), "strict renewal body");
-  try { CloudKeyRenewal.body(product, production, "short", state); check(false, "renewal state shape"); } catch (IllegalArgumentException expected) { checks++; }
-  String keyId = "55555555-5555-4555-8555-555555555555";
-  CloudKeyRenewal.Record record = new CloudKeyRenewal.Record(keyId, now, 0, CloudKeyRenewal.Record.NONE).attempted(now + 5, CloudKeyRenewal.Record.REFUSED);
-  CloudKeyRenewal.Record read = CloudKeyRenewal.Record.parse(record.serialize());
-  check(read != null && read.credentialId.equals(keyId) && read.issuedAt == now && read.attemptedAt == now + 5 && read.failed() && CloudKeyRenewal.Record.REFUSED.equals(read.result), "renewal record round trip");
-  check(CloudKeyRenewal.Record.of(read, keyId) == read && !CloudKeyRenewal.Record.of(read, "66666666-6666-4666-8666-666666666666").failed() && CloudKeyRenewal.Record.of(null, keyId).issuedAt == 0, "a record for another key says nothing");
-  for (String bad : new String[]{null, "", "v2|" + keyId + "|1|1|none", "v1|x|1|1|none", "v1|" + keyId + "|1|1|done", "v1|" + keyId + "|-1|1|none", "v1|" + keyId + "|1|x|none", record.serialize() + "|extra"})
-   check(CloudKeyRenewal.Record.parse(bad) == null, "refused renewal record " + bad);
-  check(CloudKeyRenewal.keyRefused(401) && !CloudKeyRenewal.keyRefused(403) && !CloudKeyRenewal.keyRefused(409) && !CloudKeyRenewal.keyRefused(503), "only 401 is Cloud refusing the saved key itself");
-  for (String result : new String[]{CloudKeyRenewal.Record.CONFIRMING, CloudKeyRenewal.Record.REJECTED}) {
-   CloudKeyRenewal.Record kept = CloudKeyRenewal.Record.parse(new CloudKeyRenewal.Record(keyId, now, now + 5, result).serialize());
-   check(kept != null && result.equals(kept.result) && kept.failed() && kept.signInRequired() && kept.spent() == result.equals(CloudKeyRenewal.Record.CONFIRMING), "renewal record round trip: " + result);
-  }
-  check(!new CloudKeyRenewal.Record(keyId, now, now, CloudKeyRenewal.Record.RETRY).signInRequired() && new CloudKeyRenewal.Record(keyId, now, now, CloudKeyRenewal.Record.REFUSED).signInRequired() && !new CloudKeyRenewal.Record(keyId, now, now, CloudKeyRenewal.Record.REFUSED).spent(), "a key Cloud would not renew may still be asked again a day later; one that may have a confirmed successor never");
-  check("X-Renewed-Credential-Id".equals(CloudKeyRevocation.RENEWED_CREDENTIAL_HEADER) && keyId.toLowerCase(java.util.Locale.ROOT).equals(CloudKeyRevocation.renewedCredential(keyId.toUpperCase(java.util.Locale.ROOT))), "the renewed key is named by its credential id");
-  check(CloudKeyRevocation.renewedCredential(null) == null && CloudKeyRevocation.renewedCredential("") == null && CloudKeyRevocation.renewedCredential("eliza_mobile_key") == null, "nothing else is a name");
-  check(!CloudKeyRevocation.retire(product, production, "eliza_mobile_" + "a".repeat(64), null) && !CloudKeyRevocation.retire(product, production, "eliza_mobile_" + "a".repeat(64), "not-an-id"), "a retirement that cannot name the renewed key sends nothing and is not done");
-  check(CloudKeyRevocation.retired(200) && CloudKeyRevocation.retired(204) && CloudKeyRevocation.retired(401) && !CloudKeyRevocation.retired(-1) && !CloudKeyRevocation.retired(400) && !CloudKeyRevocation.retired(503), "retired by Cloud's answer only");
-  for (int status : new int[]{500, 502, 503, 504, 408, 429}) check(CloudSignInReadiness.unanswered(status), "no judgement from " + status);
-  for (int status : new int[]{200, 302, 400, 401, 403, 404, 405}) check(!CloudSignInReadiness.unanswered(status), "an answer: " + status);
-  CloudSignInReadiness.Result held = CloudSignInReadiness.Result.measured(true, true, false, now);
-  CloudSignInReadiness.Result carried = CloudSignInReadiness.Result.measured(null, null, true, held, now + 60_000);
-  check(carried.email && carried.google && carried.phone && carried.until == held.until, "an unanswered method keeps a fresh answer, for no longer than that answer; a measured one is replaced");
-  check(carried.complete() || carried.recheckAt == now + 60_000 + CloudSignInReadiness.METHOD_RECHECK_MS, "recheck time");
-  CloudSignInReadiness.Result half = CloudSignInReadiness.Result.measured(null, false, false, held, now + 60_000);
-  check(half.email && !half.google && !half.phone && half.until == held.until && half.recheckAt == now + 60_000 + CloudSignInReadiness.METHOD_RECHECK_MS, "it is measured again on the short TTL");
-  CloudSignInReadiness.Result cold = CloudSignInReadiness.Result.measured(null, null, true, null, now), stale = CloudSignInReadiness.Result.measured(null, true, true, held, held.until);
-  check(!cold.email && !cold.google && cold.phone && !stale.email && stale.google, "with no fresh answer an unanswered method is not ready");
-  CloudSignInReadiness.Result plain = CloudSignInReadiness.Result.measured(Boolean.FALSE, Boolean.TRUE, true, held, now + 60_000);
-  check(!plain.email && plain.google && plain.until == now + 60_000 + CloudSignInReadiness.READY_TTL_MS, "a full measurement owes nothing to the earlier answer");
 
   // Inputs and responses.
   check(CloudSignInFlow.validEmail("owner@example.invalid") && !CloudSignInFlow.validEmail("owner@") && !CloudSignInFlow.validEmail("a b@example.invalid") && !CloudSignInFlow.validEmail("owner@example.invalid‮"), "email shape");
@@ -156,14 +102,14 @@ public final class CloudSignInFlowTest {
   // Routes: exactly the fixed sign-in routes on an admitted API origin.
   for (String route : new String[]{CloudEmailCode.SEND_PATH, CloudEmailCode.VERIFY_PATH, CloudSmsCode.SEND_PATH, CloudSmsCode.VERIFY_PATH, "/steward/auth/oauth/exchange",
     "/steward/auth/oauth/google/native/challenge", "/steward/auth/oauth/google/native/verify", "/steward/auth/mfa/totp/complete", "/steward/auth/mfa/sms/complete",
-    "/steward/auth/logout", "/api/v1/app-auth/connect", "/api/v1/app-auth/mobile/token", "/api/v1/app-auth/mobile/ack", "/api/v1/app-auth/mobile/renew"}) {
+    "/steward/auth/logout", "/api/v1/app-auth/connect", "/api/v1/app-auth/mobile/token", "/api/v1/app-auth/mobile/ack"}) {
    check(CloudSignInRoutes.route(route, "POST", true), "sign-in route " + route);
    check(!CloudSignInRoutes.route(route, "GET", false) && !CloudSignInRoutes.route(route, "POST", false), "POST with a body only " + route);
   }
   for (String route : new String[]{"/api/public/service", "/api/v1/app-auth/mobile/config", "/steward/auth/providers", "/steward/auth/oauth/google/authorize"})
    check(CloudSignInRoutes.route(route, "GET", false) && !CloudSignInRoutes.route(route, "GET", true) && !CloudSignInRoutes.route(route, "POST", true), "readiness read " + route);
   for (String route : new String[]{"/steward/auth/email/send", "/steward/auth/mfa/passkey/complete", "/steward/auth/email/code/send/", "/steward/auth/revoke",
-    "/api/v1/app-auth/mobile/ack/x", "/api/v1/app-auth/mobile/renew/", "/api/auth/cli-session", "/steward/cloud-owner-phone/auth/sms/send", null})
+    "/api/v1/app-auth/mobile/ack/x", "/api/auth/cli-session", "/steward/cloud-owner-phone/auth/sms/send", null})
    check(!CloudSignInRoutes.route(route, "POST", true) && !CloudSignInRoutes.route(route, "GET", false), "refused sign-in route " + route);
   check(CloudSignInRoutes.origin(product, "https", "api.eliza.app", -1) && CloudSignInRoutes.origin(product, "https", "api.eliza.app", 443), "production API");
   check(!CloudSignInRoutes.origin(product, "https", "api-staging.eliza.app", -1) && CloudSignInRoutes.origin(development, "https", "api-staging.eliza.app", -1), "staging only when admitted");
@@ -194,24 +140,6 @@ public final class CloudSignInFlowTest {
   check(CloudSignInReadiness.Result.notReady(t).until == t + CloudSignInReadiness.NOT_READY_TTL_MS && !CloudSignInReadiness.Result.notReady(t).methodsKnown, "not ready");
   check(CloudSignInReadiness.Result.parse("v2|true|true|1800000001000") == null && CloudSignInReadiness.Result.parse("v4-native-google|true|true|yes|true|1") == null && CloudSignInReadiness.Result.parse(null) == null, "old or malformed cache re-probes");
   check(!new CloudSignInReadiness.Result(true, true, false, t + 365L * 86400000L).fresh(t), "a cache entry from the future is not trusted");
-  // Per-method TTL: a ready method keeps six hours, a method that is not ready is due again after the short TTL.
-  CloudSignInReadiness.Result noGoogle = CloudSignInReadiness.Result.measured(true, false, true, t);
-  check(noGoogle.until == t + CloudSignInReadiness.READY_TTL_MS && noGoogle.recheckAt == t + CloudSignInReadiness.METHOD_RECHECK_MS, "a negative method never takes the six-hour TTL");
-  check(noGoogle.fresh(t + CloudSignInReadiness.METHOD_RECHECK_MS) && !noGoogle.complete() && !noGoogle.recheckDue(t + CloudSignInReadiness.METHOD_RECHECK_MS - 1) && noGoogle.recheckDue(t + CloudSignInReadiness.METHOD_RECHECK_MS), "the ready methods stay cached while the missing one is due");
-  for (boolean[] row : new boolean[][]{{false, true, true}, {true, true, false}, {false, false, false}})
-   check(CloudSignInReadiness.Result.measured(row[0], row[1], row[2], t).recheckDue(t + CloudSignInReadiness.METHOD_RECHECK_MS), "each method that is not ready is due on its own");
-  CloudSignInReadiness.Result all = CloudSignInReadiness.Result.measured(true, true, true, t);
-  check(all.complete() && all.recheckAt == all.until && !all.recheckDue(t + CloudSignInReadiness.READY_TTL_MS - 1), "a complete answer has nothing to measure again");
-  check(CloudSignInReadiness.Result.notReady(t).recheckDue(t + CloudSignInReadiness.METHOD_RECHECK_MS) && !CloudSignInReadiness.Result.notReady(t).recheckDue(t), "an unavailable answer is due on the short TTL");
-  CloudSignInReadiness.Result restoredPartial = CloudSignInReadiness.Result.parse(noGoogle.serialize());
-  check(restoredPartial.recheckAt == noGoogle.recheckAt && restoredPartial.until == noGoogle.until && restoredPartial.sameMethods(noGoogle) && !restoredPartial.sameMethods(all), "the recheck time survives the stored cache");
-  check(CloudSignInReadiness.Result.parse("v4-native-google|true|false|false|true|" + (t + CloudSignInReadiness.READY_TTL_MS)) == null, "a six-hour negative Google answer cached by an earlier build is measured again");
-  check(new CloudSignInReadiness.Result(true, false, true, true, t + CloudSignInReadiness.READY_TTL_MS, t + 365L * 86400000L).recheckDue(t) , "a recheck time from the future is not trusted");
-  check(CloudSignInReadiness.LINK_WATCH_MS.length == 6 && java.util.Arrays.stream(CloudSignInReadiness.LINK_WATCH_MS).sum() < 5 * 60 * 1000L, "the return link watch is bounded");
-  // Verification: only an answer about the code ends or counts against the step.
-  check(CloudSignInFlow.verifyRetryable(500) && CloudSignInFlow.verifyRetryable(503) && CloudSignInFlow.verifyRetryable(408) && CloudSignInFlow.verifyRetryable(429), "timeouts, rate limits and server errors keep the code step");
-  check(!CloudSignInFlow.verifyRetryable(200) && !CloudSignInFlow.verifyRetryable(400) && !CloudSignInFlow.verifyRetryable(401) && !CloudSignInFlow.verifyRetryable(403) && !CloudSignInFlow.verifyRetryable(410), "an answer about the code or the account is final");
-  check(CloudSignInFlow.ackRetryDelayMs(0) == 5000 && CloudSignInFlow.ackRetryDelayMs(1) == 10000 && CloudSignInFlow.ackRetryDelayMs(3) == 40000 && CloudSignInFlow.ackRetryDelayMs(4) == 60000 && CloudSignInFlow.ackRetryDelayMs(400) == 60000, "background acknowledgement backoff is bounded at one minute");
 
   // Code adapters: tenant and client binding, PKCE, bounded expiry and resend deadlines.
   String verifier = CloudSignInFlow.newVerifier();
@@ -223,30 +151,6 @@ public final class CloudSignInFlowTest {
   check(CloudEmailCode.expiresAt(null, t) == t + 600_000L && CloudEmailCode.expiresAt(t + 3_600_000L, t) == t + 900_000L && CloudEmailCode.expiresAt(t + 60_000L, t) == t + 60_000L, "code expiry bounded");
   check(CloudEmailCode.resendAt(null, null, t) == t + 30_000L && CloudEmailCode.resendAt(t + 90_000L, "5", t) == t + 90_000L && CloudEmailCode.resendAt(null, "120", t) == t + 120_000L
    && CloudEmailCode.resendAt("invalid", "not a date", t) == t + 30_000L && CloudEmailCode.resendAt(t - 1000, "0", t) == t + 30_000L, "a server deadline is never shortened");
-  check(CloudEmailCode.resendAt(null, "3600", t) == t + 3_600_000L && CloudEmailCode.resendAt(null, "999999999", t) == t + CloudEmailCode.MAX_RESEND_WAIT_MS
-   && CloudEmailCode.resendAt(t + 365L * 86_400_000L, null, t) == t + CloudEmailCode.MAX_RESEND_WAIT_MS, "an hour is honoured; a wait of years is bounded at a day");
-  // A replaced key is retired once Cloud revoked it or already refuses it; any other answer, or none, is asked again.
-  check(CloudKeyRevocation.retired(200) && CloudKeyRevocation.retired(204) && CloudKeyRevocation.retired(401)
-   && !CloudKeyRevocation.retired(-1) && !CloudKeyRevocation.retired(403) && !CloudKeyRevocation.retired(429) && !CloudKeyRevocation.retired(500) && !CloudKeyRevocation.retired(302), "retired only by a revocation or a key Cloud no longer accepts");
-  check(product.retiringSlot(production).equals("cloud-signin:v1:retire:production") && !product.retiringSlot(production).equals(product.receiptSlot(production))
-   && TestRegistration.base().environment(production).retiringSlotPrefix("host:retire:").build().retiringSlot(production).equals("host:retire:production"), "the retiring slot is its own native-only slot");
-  // Readiness rechecks nobody asked for wait longer with every unchanged answer; a failed one keeps the methods.
-  CloudSignInReadiness.Result partial = CloudSignInReadiness.Result.measured(true, false, true, t);
-  check(partial.unchanged == 0 && partial.passiveAt == t + 30_000L && partial.passiveDue(t + 30_000L) && !partial.passiveDue(t + 29_999L), "the first passive recheck is due with the short TTL");
-  CloudSignInReadiness.Result again = CloudSignInReadiness.Result.measured(true, false, true, t + 30_000L).repeated(partial, t + 30_000L);
-  check(again.unchanged == 1 && again.passiveAt == t + 30_000L + 120_000L && again.recheckAt == t + 60_000L && again.recheckDue(t + 60_000L) && !again.passiveDue(t + 60_000L), "an unchanged answer: the sign-in screen keeps 30 seconds, a resume waits two minutes");
-  CloudSignInReadiness.Result third = CloudSignInReadiness.Result.measured(true, false, true, t).repeated(again, t), fourth = CloudSignInReadiness.Result.measured(true, false, true, t).repeated(third, t), fifth = CloudSignInReadiness.Result.measured(true, false, true, t).repeated(fourth, t);
-  check(third.passiveAt == t + 600_000L && fourth.passiveAt == t + 3_600_000L && fifth.passiveAt == t + 3_600_000L && fifth.unchanged == 4, "then ten minutes, then hourly");
-  CloudSignInReadiness.Result changed = CloudSignInReadiness.Result.measured(true, true, false, t).repeated(fourth, t);
-  check(changed.unchanged == 0 && changed.passiveAt == t + 30_000L && CloudSignInReadiness.Result.measured(true, true, true, t).repeated(fourth, t).unchanged == 0, "a changed or complete answer starts over");
-  CloudSignInReadiness.Result unmeasured = partial.unmeasured(t + 40_000L);
-  check(unmeasured.email && !unmeasured.google && unmeasured.phone && unmeasured.methodsKnown && unmeasured.until == partial.until && unmeasured.recheckAt == t + 70_000L && unmeasured.unchanged == 1 && unmeasured.sameMethods(partial), "a measurement with no result keeps the methods and their TTL and only puts off the next one");
-  CloudSignInReadiness.Result restoredPassive = CloudSignInReadiness.Result.parse(again.serialize());
-  check(restoredPassive.passiveAt == again.passiveAt && restoredPassive.unchanged == 1 && restoredPassive.recheckAt == again.recheckAt, "the passive wait survives the stored cache");
-  check(CloudSignInReadiness.Result.parse("v5-method-ttl|true|false|true|true|" + (t + 1000) + "|" + (t + 500)) == null, "an earlier cache format is measured again");
-  check(new CloudSignInReadiness.Result(true, false, true, true, t + CloudSignInReadiness.READY_TTL_MS, t, t + 365L * 86_400_000L, 2).passiveDue(t), "a passive time from the future is not trusted");
-  check(CloudSignInReadiness.resumeProbe(t, t - 1000, false) && CloudSignInReadiness.resumeProbe(t, 0, true) && !CloudSignInReadiness.resumeProbe(t, 0, false)
-   && !CloudSignInReadiness.resumeProbe(t, t - CloudSignInReadiness.RESUME_PROBE_WINDOW_MS, false) && !CloudSignInReadiness.resumeProbe(t, t + 1000, false), "resume measures only for a recent sign-in screen or an attempt in progress");
   for (String phone : new String[]{null, "", "4155550100", "+01234567", "+1 4155550100", "+12345", "+1234567890123456"}) {
    check(!CloudSmsCode.validPhone(phone), "invalid phone " + phone);
    try { CloudSmsCode.sendBody(production, phone); check(false, "invalid phone accepted"); } catch (IllegalArgumentException expected) { checks++; }

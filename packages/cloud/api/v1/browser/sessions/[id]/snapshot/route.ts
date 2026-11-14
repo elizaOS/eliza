@@ -22,7 +22,7 @@ import {
   asGenerativeCacheApiError,
   getGenerativeOperationContext,
   requireGenerativeRouteCaller,
-} from "../../../../../src/lib/generative-route-auth";
+} from "@/api-app/lib/generative-route-auth";
 
 async function handleGET(c: AppContext, context: RouteContext<{ id: string }>) {
   try {

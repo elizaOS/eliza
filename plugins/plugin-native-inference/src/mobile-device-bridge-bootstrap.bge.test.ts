@@ -10,6 +10,7 @@ import {
   getEmbeddingVectorSpace,
   ModelType,
 } from "@elizaos/core";
+import { getBootConfig, setBootConfig } from "@elizaos/host/protocol";
 import { initializeTestRuntime } from "@elizaos/testing/runtime";
 import { expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
@@ -166,7 +167,9 @@ it("honors host-disabled local embeddings at registration and for retained handl
     "./mobile-device-bridge-bootstrap"
   );
   const disabled = new AgentRuntime({ logLevel: "fatal" }),
-    enabled = new AgentRuntime({ logLevel: "fatal" });
+    enabled = new AgentRuntime({ logLevel: "fatal" }),
+    branded = new AgentRuntime({ logLevel: "fatal" });
+  const originalBootConfig = getBootConfig();
   try {
     vi.stubEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS", "true");
     await ensureMobileDeviceBridgeInferenceHandlers(disabled);
@@ -203,7 +206,23 @@ it("honors host-disabled local embeddings at registration and for retained handl
         code: "LOCAL_EMBEDDING_DISABLED",
       });
     }
+    vi.stubEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS", undefined);
+    vi.stubEnv("REVIEW_DISABLE_LOCAL_EMBEDDINGS", "yes");
+    setBootConfig({
+      ...originalBootConfig,
+      envAliases: [
+        ["REVIEW_DISABLE_LOCAL_EMBEDDINGS", "ELIZA_DISABLE_LOCAL_EMBEDDINGS"],
+      ],
+    });
+    await ensureMobileDeviceBridgeInferenceHandlers(branded);
+    expect(branded.getModel(ModelType.TEXT_EMBEDDING)).toBeUndefined();
+    await expect(
+      handler(enabled, { text: "Synthetic branded policy check" }),
+    ).rejects.toMatchObject({ code: "LOCAL_EMBEDDING_DISABLED" });
   } finally {
+    setBootConfig(originalBootConfig);
+    await branded.stop();
+    await branded.close();
     await disabled.stop();
     await enabled.stop();
     await disabled.close();

@@ -49,9 +49,7 @@ Filenames are untrusted metadata, never output paths. Hosts still own task
 reauthorization, content-type policy and document extraction; this method does
 not register a model action, parse documents or persist attachment contents.
 
-Hosts can supply `GoogleWorkspaceServiceOptions.apiRootUrl` for an isolated API
-world. `ELIZA_MOCK_GOOGLE_BASE` is the one test override kept in shipped code:
-the scenario runner sets it to its loopback Google mock, and any other host is
-rejected. `GoogleApiClientFactory`
+Hosts can supply `GoogleWorkspaceServiceOptions.apiRootUrl` (or a runtime-local
+`ELIZA_MOCK_GOOGLE_BASE`) for an isolated API world. `GoogleApiClientFactory`
 also accepts an explicit endpoint. Credential resolution remains account-scoped;
 independent clients do not require changing process environment variables.

@@ -1,6 +1,7 @@
 /** Phone Notes organisation operations: list filter, folders, move, restore and voice recording.
- * This contract is browser-safe. The bounds mirror the phone's own validation, which rejects
- * values that exceed them.
+ * Dependency-free apart from the selected Notes target contract, so hosts and tests can use the
+ * rules anywhere. The bounds mirror the phone's own validation; validation rejects rather than
+ * truncates.
  *
  * `notes_filter` only changes what the phone's Notes list shows and returns no note content.
  * `notes_record` starts or stops a voice note in the open Notes view. Both may run directly when
@@ -8,7 +9,6 @@
  * creating a folder and restoring from Recently deleted change saved data, so the owner reviews
  * each first. A move is bound to the reviewed note revision. Folders are addressed by name, never
  * by internal id. */
-import { canonicalNotesListContextAllowed } from "@elizaos/contracts";
 import { type NotesTarget, notesTarget } from "./notes-contract.ts";
 
 export const NOTES_ORGANIZE_CAPABILITY = "notes.organize.v1";
@@ -19,7 +19,6 @@ export const NOTES_FILTER_TEXT_MAX = 200;
 
 export type NotesOrganizeOperation =
   | { type: "notes_filter"; text?: string; folder?: string; kind?: NotesKind }
-  | { type: "notes_list_filter"; text?: string; kind?: NotesKind }
   | { type: "notes_move"; target: NotesTarget; folder: string | null }
   | { type: "notes_folder_create"; name: string }
   | { type: "notes_restore"; noteId: string }
@@ -28,7 +27,6 @@ export type NotesOrganizeType = NotesOrganizeOperation["type"];
 
 export const NOTES_ORGANIZE_TYPES: readonly NotesOrganizeType[] = [
   "notes_filter",
-  "notes_list_filter",
   "notes_move",
   "notes_folder_create",
   "notes_restore",
@@ -37,7 +35,6 @@ export const NOTES_ORGANIZE_TYPES: readonly NotesOrganizeType[] = [
 /** May run without a review only when bound to the owner's own current message. */
 export const NOTES_ORGANIZE_DIRECT_TYPES: readonly NotesOrganizeType[] = [
   "notes_filter",
-  "notes_list_filter",
   "notes_record",
 ];
 
@@ -84,20 +81,15 @@ export function validateNotesOrganizeOperation(
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw Error("Invalid Notes operation");
   const op = value as Record<string, unknown>;
-  if (op.type === "notes_filter" || op.type === "notes_list_filter") {
-    only(
-      op,
-      op.type === "notes_filter"
-        ? ["type", "text", "folder", "kind"]
-        : ["type", "text", "kind"],
-    );
+  if (op.type === "notes_filter") {
+    only(op, ["type", "text", "folder", "kind"]);
     if (
       op.kind !== undefined &&
       !(NOTES_KINDS as readonly unknown[]).includes(op.kind)
     )
       throw Error("Invalid note kind");
-    const out = {
-      type: op.type,
+    const out: NotesOrganizeOperation = {
+      type: "notes_filter",
       ...(op.text !== undefined
         ? { text: text(op.text, NOTES_FILTER_TEXT_MAX) }
         : {}),
@@ -105,7 +97,7 @@ export function validateNotesOrganizeOperation(
         ? { folder: notesFolderName(op.folder) }
         : {}),
       ...(op.kind !== undefined ? { kind: op.kind as NotesKind } : {}),
-    } as const;
+    };
     if (
       out.text === undefined &&
       out.folder === undefined &&
@@ -155,13 +147,13 @@ export function describeNotesOrganizeOperation(op: NotesOrganizeOperation): {
   title: string;
   description: string;
 } {
-  if (op.type === "notes_filter" || op.type === "notes_list_filter")
+  if (op.type === "notes_filter")
     return {
       title: "Show notes",
       description: [
         op.text ? quoted(op.text) : "",
         op.kind ? KIND_LABELS[op.kind] : "",
-        "folder" in op && op.folder ? `In ${op.folder}` : "",
+        op.folder ? `In ${op.folder}` : "",
       ]
         .filter(Boolean)
         .join(" · "),
@@ -186,12 +178,10 @@ export function describeNotesOrganizeOperation(op: NotesOrganizeOperation): {
 /** Where a proposal may be reviewed or run: the unlocked phone on Home or in Notes; recording
  * only while the Notes view is open. */
 export function notesOrganizeContextAllowed(
-  context: Parameters<typeof canonicalNotesListContextAllowed>[0],
+  context: { view: string; sensitive?: boolean },
   operation?: Pick<NotesOrganizeOperation, "type">,
 ): boolean {
   if (context.sensitive) return false;
-  if (operation?.type === "notes_list_filter")
-    return canonicalNotesListContextAllowed(context);
   return operation?.type === "notes_record"
     ? context.view === "notes"
     : context.view === "home" || context.view === "notes";

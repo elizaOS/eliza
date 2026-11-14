@@ -202,6 +202,8 @@ for (const key of [
   ensureLocalSharedSecret(key);
 }
 
+mirrorEnvValue("ELIZAOS_CLOUD_API_KEY", ["ELIZA_CLOUD_API_KEY"]);
+mirrorEnvValue("ELIZA_CLOUD_API_KEY", ["ELIZAOS_CLOUD_API_KEY"]);
 mirrorEnvValue("STEWARD_JWT_SECRET", ["STEWARD_SESSION_SECRET"]);
 mirrorEnvValue("STEWARD_API_KEY", ["STEWARD_TENANT_API_KEY"]);
 mirrorEnvValue("DISCORD_API_TOKEN", ["DISCORD_BOT_TOKEN"]);

@@ -546,7 +546,7 @@ function parseArgs(argv) {
 }
 
 function usage() {
-  return `Usage: bun packages/scripts/launch-qa/check-model-data.ts [--json] [--repo-root <path>] [--path <file-or-dir> ...]
+  return `Usage: node packages/scripts/launch-qa/check-model-data.ts [--json] [--repo-root <path>] [--path <file-or-dir> ...]
 
 Validates app-training JSONL datasets and trajectory/fine-tune artifacts offline.
 `;

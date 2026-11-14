@@ -1,0 +1,35 @@
+# This builtins-only diagnostic does not replace normal-hook installation or
+# platform-specific release qualification.
+name: Windows helper startup probe
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: windows-helper-probe-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  startup:
+    runs-on: windows-2025
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          submodules: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "1.4.2"
+      - name: Verify exact source and runtime
+        shell: powershell
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          if ((git rev-parse HEAD) -ne $env:EXPECTED_SHA) { throw 'Source mismatch' }
+          if ((bun --version) -ne '1.4.2') { throw 'Runtime mismatch' }
+      - name: Actual uninstrumented helper environment and stdin matrix
+        shell: powershell
+        run: |
+          bun test plugins/plugin-workflow/test/windows/windows-helper-startup.integration.test.ts
+          if ($LASTEXITCODE -ne 0) { throw 'Windows helper startup probe failed' }

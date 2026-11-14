@@ -30,15 +30,9 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 let root: string;
 let previousHome: string | undefined;
 let previousState: string | undefined;
-const vaultKeyEnv = ["ELIZA_VAULT_DISABLE_KEYCHAIN", "ELIZA_VAULT_PASSPHRASE"];
-let previousVaultKeyEnv: Array<string | undefined>;
 beforeEach(() => {
   previousHome = process.env.ELIZA_HOME;
   previousState = process.env.ELIZA_STATE_DIR;
-  previousVaultKeyEnv = vaultKeyEnv.map((key) => process.env[key]);
-  // The runtime credential store reads the vault master key; inject a passphrase key.
-  process.env.ELIZA_VAULT_DISABLE_KEYCHAIN = "1";
-  process.env.ELIZA_VAULT_PASSPHRASE = "account-pool-snapshot-passphrase";
   root = mkdtempSync(path.join(tmpdir(), "pool-snapshot-"));
   process.env.ELIZA_HOME = root;
   process.env.ELIZA_STATE_DIR = root;
@@ -66,11 +60,6 @@ afterEach(() => {
   else process.env.ELIZA_HOME = previousHome;
   if (previousState === undefined) delete process.env.ELIZA_STATE_DIR;
   else process.env.ELIZA_STATE_DIR = previousState;
-  vaultKeyEnv.forEach((key, index) => {
-    const value = previousVaultKeyEnv[index];
-    if (value === undefined) delete process.env[key];
-    else process.env[key] = value;
-  });
   rmSync(root, { recursive: true, force: true });
 });
 

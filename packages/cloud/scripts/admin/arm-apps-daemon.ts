@@ -16,7 +16,7 @@
  * terraform outputs, so re-running after an infra change re-converges the box.
  *
  * Usage:
- *   bun packages/cloud/scripts/admin/arm-apps-daemon.ts \
+ *   node packages/cloud/scripts/admin/arm-apps-daemon.ts \
  *     --host <control-plane-ip> \
  *     --ssh-key <path-to-key-for-the-cp-deploy-user> \
  *     --app-node <id:ip:capacity>            # e.g. apps-node-1:167.233.112.155:20

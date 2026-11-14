@@ -20,6 +20,7 @@ import {
 	createSileroVadDetector,
 	createVadDetector,
 	GgmlSileroVad,
+	NativeSileroVad,
 	RmsEnergyGate,
 	resolveVadProvider,
 	rms,
@@ -329,6 +330,10 @@ describe("GgmlSileroVad", () => {
 		// tried first only when a caller supplies one.
 		expect(vadProviderOrder()).toEqual(["external-vad", "silero-ggml"]);
 		expect(vadProviderOrder("silero-ggml")).toEqual(["silero-ggml"]);
+	});
+
+	it("exposes NativeSileroVad as a back-compat alias for GgmlSileroVad", () => {
+		expect(NativeSileroVad).toBe(GgmlSileroVad);
 	});
 
 	it("prefers a supplied external VAD adapter over the native provider", async () => {

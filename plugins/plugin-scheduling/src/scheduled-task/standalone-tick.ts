@@ -36,7 +36,6 @@ import {
   logger,
   type Task,
   type TaskMetadata,
-  type TaskWorker,
   type UUID,
 } from "@elizaos/core";
 import type { ScheduledTaskFireResult } from "./runner.js";
@@ -55,7 +54,6 @@ export const STANDALONE_TICK_TASK_TAGS = [
 ] as const;
 
 const STANDALONE_TICK_TASK_KIND = "standalone_scheduled_task_runner";
-const pendingDriverWrites = new WeakMap<IAgentRuntime, Promise<UUID>>();
 
 /** Process-level kill switch, mirroring PA's ELIZA_DISABLE_LIFEOPS_SCHEDULER. */
 export function isStandaloneTickDisabled(
@@ -162,12 +160,9 @@ function buildStandaloneTickMetadata(): TaskMetadata {
 }
 
 /** Register the fallback tick as a core TaskService worker. */
-export function registerStandaloneTickWorker(
-  runtime: IAgentRuntime,
-): TaskWorker {
-  const existing = runtime.getTaskWorker(STANDALONE_TICK_TASK_NAME);
-  if (existing) return existing;
-  const worker: TaskWorker = {
+export function registerStandaloneTickWorker(runtime: IAgentRuntime): void {
+  if (runtime.getTaskWorker(STANDALONE_TICK_TASK_NAME)) return;
+  runtime.registerTaskWorker({
     name: STANDALONE_TICK_TASK_NAME,
     shouldRun: async () =>
       !isStandaloneTickDisabled() &&
@@ -176,9 +171,7 @@ export function registerStandaloneTickWorker(
       await runStandaloneSchedulingTick(runtime);
       return { nextInterval: STANDALONE_TICK_INTERVAL_MS };
     },
-  };
-  runtime.registerTaskWorker(worker);
-  return worker;
+  });
 }
 
 /**
@@ -189,24 +182,7 @@ export function registerStandaloneTickWorker(
  * wall clock. If the host unloads, the next core TaskService poll resumes the
  * fallback automatically.
  */
-export function ensureStandaloneTickTask(
-  runtime: IAgentRuntime,
-): Promise<UUID> {
-  const existing = pendingDriverWrites.get(runtime);
-  if (existing) return existing;
-  // Publish the join before any adapter call can yield to plugin unload.
-  const write = Promise.resolve().then(() =>
-    reconcileStandaloneTickTask(runtime),
-  );
-  pendingDriverWrites.set(runtime, write);
-  const clear = () => {
-    pendingDriverWrites.delete(runtime);
-  };
-  void write.then(clear, clear);
-  return write;
-}
-
-async function reconcileStandaloneTickTask(
+export async function ensureStandaloneTickTask(
   runtime: IAgentRuntime,
 ): Promise<UUID> {
   const tasks = await runtime.getTasks({
@@ -245,10 +221,6 @@ export async function disposeStandaloneTick(
   runtime: IAgentRuntime,
 ): Promise<void> {
   runtime.unregisterTaskWorker(STANDALONE_TICK_TASK_NAME);
-  const pending = pendingDriverWrites.get(runtime);
-  // Boot reports reconciliation failure. Always read the final row state,
-  // including a write that committed before its acknowledgement failed.
-  if (pending) await Promise.allSettled([pending]);
   const tasks = await runtime.getTasks({
     agentIds: [runtime.agentId],
     tags: [...STANDALONE_TICK_TASK_TAGS],

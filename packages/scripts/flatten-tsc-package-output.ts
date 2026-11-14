@@ -9,7 +9,7 @@ import { removePathRecursive as removePath } from "./rm-path-recursive.ts";
 const packageDirArg = process.argv[2];
 if (!packageDirArg) {
   console.error(
-    "Usage: bun packages/scripts/flatten-tsc-package-output.ts <package-dir>",
+    "Usage: node packages/scripts/flatten-tsc-package-output.ts <package-dir>",
   );
   process.exit(1);
 }

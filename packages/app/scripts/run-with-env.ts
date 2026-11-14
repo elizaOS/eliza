@@ -11,7 +11,7 @@ const separatorIndex = args.indexOf("--");
 
 if (separatorIndex < 1 || separatorIndex === args.length - 1) {
   console.error(
-    "Usage: bun scripts/run-with-env.ts KEY=VALUE [KEY=VALUE ...] -- <command> [args...]",
+    "Usage: node scripts/run-with-env.ts KEY=VALUE [KEY=VALUE ...] -- <command> [args...]",
   );
   process.exit(1);
 }

@@ -153,32 +153,6 @@ it("hides rows while concealed and clears them when the owner changes", async ()
   expect(screen.getByText("Event b")).toBeTruthy();
 });
 
-it("polls at pollMs only while a deletion is pending", async () => {
-  vi.useFakeTimers();
-  try {
-    const rows: DeferredDeletionEntry[] = [];
-    const fake = bridge(rows);
-    render(<DeferredDeletionNotice bridge={fake} pollMs={500} />);
-    await flush();
-    expect(fake.pending).toHaveBeenCalledTimes(1);
-    await act(async () => vi.advanceTimersByTimeAsync(4_500));
-    expect(fake.pending).toHaveBeenCalledTimes(1);
-    rows.push(row("a", "queued", "open"));
-    await act(async () => vi.advanceTimersByTimeAsync(500));
-    expect(fake.pending).toHaveBeenCalledTimes(2);
-    expect(screen.getByText("Event a")).toBeTruthy();
-    await act(async () => vi.advanceTimersByTimeAsync(1_000));
-    expect(fake.pending).toHaveBeenCalledTimes(4);
-    rows.length = 0;
-    await act(async () => vi.advanceTimersByTimeAsync(500));
-    expect(fake.pending).toHaveBeenCalledTimes(5);
-    await act(async () => vi.advanceTimersByTimeAsync(4_500));
-    expect(fake.pending).toHaveBeenCalledTimes(5);
-  } finally {
-    vi.useRealTimers();
-  }
-});
-
 it("reports unavailable status only after repeated failures", async () => {
   const fake = bridge([]);
   fake.pending.mockRejectedValue(new Error("offline"));

@@ -197,7 +197,7 @@ export function computeTurboCacheKey(repoRoot = DEFAULT_REPO_ROOT) {
 }
 
 function printHelp() {
-  console.log(`Usage: bun packages/scripts/turbo-cache-key.ts [options]
+  console.log(`Usage: node packages/scripts/turbo-cache-key.ts [options]
 
 Options:
   --github-output  Write turbo_cache_key=<hash> to $GITHUB_OUTPUT.

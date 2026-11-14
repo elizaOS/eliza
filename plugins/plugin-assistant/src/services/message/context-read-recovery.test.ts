@@ -585,7 +585,7 @@ describe("invalid context read recovery", () => {
       const directory = await mkdtemp(
         join(tmpdir(), "stage1-invalid-read-recording-"),
       );
-      vi.stubEnv("ELIZA_TRAJECTORY_LOGGING", "1");
+      vi.stubEnv("ELIZA_TRAJECTORY_RECORDING", "1");
       vi.stubEnv("ELIZA_TRAJECTORY_DIR", directory);
       vi.stubEnv("ELIZA_AWAIT_FACTS_STAGE", "true");
       const rejected = {
@@ -664,7 +664,7 @@ describe("invalid context read recovery", () => {
       const directory = await mkdtemp(
         join(tmpdir(), "stage1-failed-recording-"),
       );
-      vi.stubEnv("ELIZA_TRAJECTORY_LOGGING", "1");
+      vi.stubEnv("ELIZA_TRAJECTORY_RECORDING", "1");
       vi.stubEnv("ELIZA_TRAJECTORY_DIR", directory);
       vi.stubEnv("ELIZA_AWAIT_FACTS_STAGE", "true");
       const f = fixture([]);

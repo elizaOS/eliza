@@ -3001,9 +3001,7 @@ export class CalendarService extends Service {
           schedules.map((schedule) => [schedule.scheduleId, schedule]),
         );
         for (const grant of group) {
-          const availability = schedulesById.get(
-            grant.calendarId.trim().toLowerCase(),
-          );
+          const availability = schedulesById.get(grant.calendarId);
           if (!availability || availability.error) {
             resolved.set(grant.grantId, unavailableSourceFor(grant, "error"));
             continue;
@@ -4555,25 +4553,6 @@ export class CalendarService extends Service {
     }
   }
 
-  private async withManagedCalendarFeedLock<T>(
-    grantId: string,
-    calendarId: string,
-    operation: () => Promise<T>,
-  ): Promise<T> {
-    // Register under the grant admission lock, without holding it during I/O.
-    // Calendars stay concurrent; a purge can fence admission and drain them all.
-    const { read } = await this.withGoogleSyncLock(
-      `managed:${grantId}`,
-      async () => ({
-        read: this.withGoogleSyncLock(
-          `managed:${grantId}:${calendarId}`,
-          operation,
-        ),
-      }),
-    );
-    return read;
-  }
-
   private async syncGoogleCalendarFeed(args: {
     requestUrl: URL;
     requestedMode?: LifeOpsConnectorMode;
@@ -5968,7 +5947,6 @@ export class CalendarService extends Service {
     // alone, so a failed source still degrades and reports on its own. A read
     // whose request ended while it waited gives its turn back unread.
     const managed = this.managedCalendar;
-    let pulledManagedChange = false;
     const managedFeeds = calendars.map((calendar) =>
       managed?.owns(calendar)
         ? (async (): Promise<
@@ -5980,32 +5958,18 @@ export class CalendarService extends Service {
               acquired = true;
               signal.throwIfAborted();
               return {
-                feed: await this.withManagedCalendarFeedLock(
-                  calendar.grantId,
-                  calendar.calendarId,
-                  async () => {
-                    signal.throwIfAborted();
-                    const feed = await timeInferenceSpan(
-                      "calendar:feed:managed-source",
-                      () =>
-                        managed.feed(
-                          calendar,
-                          timeMin,
-                          timeMax,
-                          timeZone,
-                          this.agentId(),
-                          signal,
-                        ),
-                      { provider: calendar.provider },
-                    );
-                    // Use the same canonical cache as ordinary provider reads.
-                    // Selected-event actions still verify the live revision.
-                    for (const event of feed.events) {
-                      signal.throwIfAborted();
-                      await this.repo.upsertCalendarEvent(event, calendar.side);
-                    }
-                    return feed;
-                  },
+                feed: await timeInferenceSpan(
+                  "calendar:feed:managed-source",
+                  () =>
+                    managed.feed(
+                      calendar,
+                      timeMin,
+                      timeMax,
+                      timeZone,
+                      this.agentId(),
+                      signal,
+                    ),
+                  { provider: calendar.provider },
                 ),
               };
             } catch (error) {
@@ -6025,76 +5989,6 @@ export class CalendarService extends Service {
         let feed: LifeOpsCalendarFeed;
         if ("feed" in read) {
           feed = read.feed;
-          // The managed broker bypasses the standard Google cache sync. Pull
-          // changed mapped events through the same reconciler before presenting
-          // local rows. Do not import unrelated events or replay pending writes.
-          const control = await this.linkedControl.read();
-          if (
-            !calendarRecordPolicyFailure() &&
-            !control.paused &&
-            !control.dispatch &&
-            control.destination?.connectorAccountId ===
-              calendar.connectorAccountId &&
-            control.destination.providerCalendarId === calendar.calendarId
-          ) {
-            const links = await this.linkedRepo.listForAgent(this.agentId());
-            for (const link of links) {
-              signal.throwIfAborted();
-              if (
-                link.state !== "clean" ||
-                !link.providerEventId ||
-                link.connectorAccountId !== calendar.connectorAccountId ||
-                link.providerCalendarId !== calendar.calendarId
-              )
-                continue;
-              const remote = feed.events.find(
-                (event) => event.externalId === link.providerEventId,
-              );
-              if (remote && remote.metadata.etag === link.providerEtag)
-                continue;
-              if (!remote) {
-                const local = await this.repo.getCalendarEventById(
-                  this.agentId(),
-                  link.localEventId,
-                );
-                if (
-                  !local ||
-                  (local.isAllDay
-                    ? !allDayEventIntersectsLocalWindow(
-                        local,
-                        timeMin,
-                        timeMax,
-                        timeZone,
-                      )
-                    : Date.parse(local.startAt) >= Date.parse(timeMax) ||
-                      Date.parse(local.endAt) <= Date.parse(timeMin))
-                )
-                  continue;
-              }
-              try {
-                if ((await this.runLinkedCalendarOperation(link)) === "pulled")
-                  pulledManagedChange = true;
-              } catch (error) {
-                // Revoked write access or another admitted sync must not turn
-                // a successful provider read into a failed Calendar feed.
-                if (
-                  !(
-                    (error instanceof CalendarServiceError &&
-                      error.code ===
-                        "LINKED_CALENDAR_DESTINATION_UNAVAILABLE") ||
-                    (error instanceof ElizaError &&
-                      error.code === "LINKED_CALENDAR_DISPATCH_REJECTED")
-                  )
-                )
-                  throw error;
-                this.runtime.reportError(
-                  "calendar:managed-linked-pull",
-                  error,
-                  { linkId: link.id },
-                );
-              }
-            }
-          }
         } else {
           const { error } = read;
           const sourceError = calendarSourceError(error);
@@ -6265,18 +6159,6 @@ export class CalendarService extends Service {
           timeMin,
           timeMax,
         });
-      }
-    }
-    if (pulledManagedChange) {
-      for (const source of sources) {
-        if (source.calendar.provider === ELIZA_CALENDAR_PROVIDER) {
-          signal.throwIfAborted();
-          source.feed = await this.readElizaCalendarFeed({
-            calendar: source.calendar,
-            timeMin,
-            timeMax,
-          });
-        }
       }
     }
     const hasLinkedCandidates =
@@ -6770,29 +6652,6 @@ export class CalendarService extends Service {
         "CALENDAR_IMPORTED_DATA_CONFIRMATION_REQUIRED",
       );
     }
-    const purge = () => this.purgeImportedCalendarDataUnlocked(request, now);
-    // Drain reads already admitted for this managed owner grant before deleting
-    // their cache writes. A later read may import again if the source is enabled.
-    return request.provider === "google" &&
-      request.side === "owner" &&
-      request.connectorAccountId === request.grantId &&
-      this.managedCalendar?.acceptsGrantId(request.grantId)
-      ? this.withGoogleSyncLock(`managed:${request.grantId}`, async () => {
-          const prefix = `managed:${request.grantId}:`;
-          await Promise.all(
-            [...this.googleSyncLocks]
-              .filter(([key]) => key.startsWith(prefix))
-              .map(([, settled]) => settled),
-          );
-          return purge();
-        })
-      : purge();
-  }
-
-  private async purgeImportedCalendarDataUnlocked(
-    request: PurgeLifeOpsCalendarImportedDataRequest,
-    now: Date,
-  ): Promise<LifeOpsCalendarImportedDataPurgeReceipt> {
     const events = await this.repo.listCalendarEvents(
       this.agentId(),
       request.provider,

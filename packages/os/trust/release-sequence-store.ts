@@ -27,7 +27,7 @@ interface SequenceStateFile {
   sequences: Record<string, number>;
 }
 
-const sequenceKeyPattern = /^(stable|beta|nightly)\/(x86_64|arm64)$/;
+const sequenceKeyPattern = /^(stable|beta|nightly)\/(x86_64|arm64|riscv64)$/;
 
 function validateSequences(value: unknown): Record<string, number> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {

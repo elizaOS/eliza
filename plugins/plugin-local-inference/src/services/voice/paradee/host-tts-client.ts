@@ -216,12 +216,7 @@ export class HostTtsClient {
 			}, 10);
 			poll.unref?.();
 			this.pending = pending;
-			// The worker reads stdin with readline, which also ends a line at U+2028
-			// and U+2029. JSON.stringify leaves both unescaped inside strings.
-			const line = JSON.stringify({ id, op: "synthesize", text })
-				.replace(/\u2028/g, "\\u2028")
-				.replace(/\u2029/g, "\\u2029");
-			input.write(`${line}\n`);
+			input.write(`${JSON.stringify({ id, op: "synthesize", text })}\n`);
 		});
 	}
 

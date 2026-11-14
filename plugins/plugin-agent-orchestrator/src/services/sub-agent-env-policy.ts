@@ -227,7 +227,7 @@ export function shouldForwardEnv(
     key.startsWith("ACPX_AUTH_") ||
     key.startsWith("ELIZA_") ||
     // The live Cloud creds use the ELIZAOS_ prefix (ELIZAOS_CLOUD_API_KEY /
-    // ELIZAOS_CLOUD_BASE_URL), which the broad ELIZA_ rule above does NOT match.
+    // ELIZAOS_CLOUD_URL), which the broad ELIZA_ rule above does NOT match.
     // Broker-first (#14118): a child does NOT get the raw owner key by default —
     // it registers/deploys via the parent broker (spend-gated) and fetches any
     // container-runtime secret via the owner-approved credential bridge. Only the

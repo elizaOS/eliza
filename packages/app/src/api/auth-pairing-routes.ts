@@ -17,6 +17,7 @@ import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent";
 import { normalizeHostPairingCode } from "@elizaos/agent/host-use-cases";
 import { logger } from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 import { authStoreForHost } from "../services/auth-store";
 import {
   createMachineSession,
@@ -123,7 +124,7 @@ export function _rotateAuthPairingInstanceForTests(): string {
 function pairingEnabled(): boolean {
   return (
     Boolean(getCompatApiToken()) &&
-    process.env.ELIZA_PAIRING_DISABLED?.trim() !== "1" &&
+    readAliasedEnv("ELIZA_PAIRING_DISABLED") !== "1" &&
     !isCloudProvisioned()
   );
 }

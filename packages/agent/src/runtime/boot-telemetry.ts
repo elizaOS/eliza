@@ -7,7 +7,7 @@
  *
  * Telemetry is best-effort and must never affect boot: only the filesystem
  * writes are guarded, and a failed write logs a single warning. It is disabled
- * entirely under tests.
+ * entirely under tests and when `ELIZA_DISABLE_TELEMETRY=1`.
  */
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -61,9 +61,12 @@ interface MemoryTelemetryRecord {
   /** Most recent samples, capped at {@link MAX_SAMPLES}. */
   samples: MemorySample[];
 }
-/** True when telemetry should not run (tests). */
+/** True when telemetry should not run (tests or explicit opt-out). */
 function telemetryDisabled(): boolean {
-  return process.env.NODE_ENV === "test";
+  return (
+    process.env.ELIZA_DISABLE_TELEMETRY === "1" ||
+    process.env.NODE_ENV === "test"
+  );
 }
 function captureMemory(): MemoryUsageSnapshot {
   const usage = process.memoryUsage();

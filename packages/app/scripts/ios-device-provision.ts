@@ -943,7 +943,8 @@ async function main() {
 // Only run when invoked directly, not when imported by the test.
 if (
   process.argv[1] &&
-  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+  path.resolve(process.argv[1]) ===
+    path.resolve(new URL(import.meta.url).pathname)
 ) {
   main().catch((err) => {
     console.error(`[provision] ${err instanceof Error ? err.message : err}`);

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-sql",
-  "version": "2.0.6",
+  "version": "2.0.4",
   "description": "",
   "type": "module",
   "main": "dist/index.js",
@@ -46,7 +46,7 @@
     "typecheck": "tsc --noEmit -p src/tsconfig.typecheck.json",
     "lint": "bunx @biomejs/biome check --write src build.ts",
     "lint:check": "bunx @biomejs/biome check src build.ts",
-    "clean": "bun ../../packages/scripts/rm-path-recursive.ts dist src/dist .turbo",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist src/dist .turbo",
     "format": "bunx @biomejs/biome format --write src build.ts",
     "format:check": "bunx @biomejs/biome format src build.ts",
     "test:postgres": "bash ../../packages/scripts/plugins/plugin-sql/run-integration-tests.sh --postgres",
@@ -62,14 +62,14 @@
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.6",
+    "@biomejs/biome": "2.6.3",
     "@types/bun": "1.4.2",
     "@types/node": "^25.0.3",
     "@types/pg": "^8.23.1",
     "drizzle-kit": "^0.31.8",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.1.0",
+    "vitest": "^5.0.5",
     "tsup": "^9.0.0"
   },
   "peerDependencies": {

@@ -12,7 +12,7 @@ const PROCESS_SPAWNED_AT_ENV = "ELIZA_PROCESS_SPAWNED_AT_MS";
 const API_PROCESS_SPAWNED_AT_ENV = "ELIZA_API_PROCESS_SPAWNED_AT_MS";
 
 if (args.length === 0) {
-  console.error("Usage: bun scripts/rt.ts <bun-args...>");
+  console.error("Usage: node scripts/rt.ts <bun-args...>");
   process.exit(1);
 }
 

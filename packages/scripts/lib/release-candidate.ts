@@ -91,9 +91,8 @@ function assertManifestsUnchanged(snapshots) {
   }
 }
 
-function publishedManifest(sourceBytes, packageRecord, sourceSha) {
+function publishedManifest(sourceBytes, packageRecord) {
   const manifest = JSON.parse(sourceBytes.toString("utf8"));
-  manifest.gitHead = sourceSha;
   if (manifest.exports !== undefined) {
     manifest.exports = publishedExports(manifest.exports);
   }
@@ -104,23 +103,6 @@ function publishedManifest(sourceBytes, packageRecord, sourceSha) {
     );
   }
   return `${JSON.stringify(manifest, null, 2)}\n`;
-}
-
-function validatePackedManifest(tarballPath, packageRecord, sourceSha) {
-  const manifest = JSON.parse(
-    execFileSync("tar", ["-xzOf", tarballPath, "package/package.json"], {
-      encoding: "utf8",
-    }),
-  );
-  if (
-    manifest?.name !== packageRecord.name ||
-    manifest?.version !== packageRecord.version ||
-    manifest?.gitHead !== sourceSha
-  ) {
-    throw new Error(
-      `${packageRecord.name} packed manifest is ${manifest?.name}@${manifest?.version}/${manifest?.gitHead ?? "missing"}, expected ${packageRecord.name}@${packageRecord.version}/${sourceSha}`,
-    );
-  }
 }
 
 function runBuildOnce(repoRoot, build) {
@@ -215,13 +197,7 @@ function parsePackResult(stdout, packageName) {
   return result;
 }
 
-function packOnce({
-  repoRoot,
-  stagingDirectory,
-  packageRecord,
-  sourceSha,
-  npmCommand,
-}) {
+function packOnce({ repoRoot, stagingDirectory, packageRecord, npmCommand }) {
   const tarballsDirectory = path.join(stagingDirectory, "tarballs");
   const packageDirectory = path.join(repoRoot, packageRecord.directory);
   const result = spawnSync(
@@ -268,7 +244,6 @@ function packOnce({
     );
   }
   validatePackedEntrypoints(packageRecord, metadata.files);
-  validatePackedManifest(tarballPath, packageRecord, sourceSha);
   return {
     filename: metadata.filename,
     path: `tarballs/${metadata.filename}`,
@@ -345,11 +320,11 @@ export function buildAndPackReleaseCandidate({
     const filenames = new Set();
     for (const packageRecord of cohort.packages) {
       const snapshot = snapshots.get(packageRecord.name);
-      // Only the packed manifest pins workspace ranges and the release commit.
-      // Restore the original source bytes before the next check.
+      // Source manifests keep workspace ranges; only the packed manifest pins
+      // them, and the source bytes are restored before the next check.
       writeFileSync(
         snapshot.manifestPath,
-        publishedManifest(snapshot.bytes, packageRecord, identity.sourceSha),
+        publishedManifest(snapshot.bytes, packageRecord),
       );
       let tarball;
       try {
@@ -357,7 +332,6 @@ export function buildAndPackReleaseCandidate({
           repoRoot: root,
           stagingDirectory,
           packageRecord,
-          sourceSha: identity.sourceSha,
           npmCommand,
         });
       } finally {
@@ -705,7 +679,6 @@ export function verifyReleaseCandidate({
         `${packageRecord.name} tarball no longer matches the recorded candidate`,
       );
     }
-    validatePackedManifest(tarballPath, packageRecord, plan.sourceSha);
   }
   return { plan, state, planIntegrity };
 }

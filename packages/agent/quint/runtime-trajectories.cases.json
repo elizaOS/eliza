@@ -1,8 +1,9 @@
 {
   "sources": [
-    "plugins/plugin-assistant/src/features/trajectories/TrajectoriesService.ts",
-    "plugins/plugin-assistant/src/features/trajectories/store/trajectory-storage.ts",
-    "plugins/plugin-assistant/src/features/trajectories/store/trajectory-internals.ts",
+    "packages/agent/src/runtime/trajectory-storage.ts",
+    "packages/agent/src/runtime/trajectory-internals.ts",
+    "packages/agent/src/runtime/trajectory-steps-writer.ts",
+    "packages/agent/src/runtime/trajectory-steps-reader.ts",
     "packages/agent/src/runtime/dev-trajectory-recovery.ts",
     "packages/agent/src/runtime/dev-trajectory-recovery-protocol.ts"
   ],

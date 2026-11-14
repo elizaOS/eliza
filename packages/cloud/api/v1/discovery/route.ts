@@ -10,7 +10,6 @@
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { cache } from "@elizaos/cloud-shared/lib/cache/client";
 import { CacheKeys, CacheTTL } from "@elizaos/cloud-shared/lib/cache/keys";
-import { getCloudDeployment } from "@elizaos/cloud-shared/lib/deployment/cloud-deployment";
 import {
   RateLimitPresets,
   rateLimit,
@@ -449,7 +448,7 @@ async function fetchLocalAgents(
   depth: number,
   appUrlEnv?: string,
 ): Promise<{ rows: DiscoveredService[]; truncated: boolean }> {
-  const baseUrl = appUrlEnv || getCloudDeployment().appOrigin;
+  const baseUrl = appUrlEnv || "https://cloud.eliza.app";
   const source = resolveDiscoverySource(baseUrl);
 
   let characters: Awaited<ReturnType<typeof charactersService.listPublic>> = [];
@@ -546,7 +545,7 @@ async function fetchLocalMcps(
   depth: number,
   appUrlEnv?: string,
 ): Promise<{ rows: DiscoveredService[]; truncated: boolean }> {
-  const baseUrl = appUrlEnv || getCloudDeployment().appOrigin;
+  const baseUrl = appUrlEnv || "https://cloud.eliza.app";
   const source = resolveDiscoverySource(baseUrl);
 
   let mcps: Awaited<ReturnType<typeof userMcpsService.listPublic>> = [];

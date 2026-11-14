@@ -9,8 +9,4 @@ public final class CredentialIntentFence {
   public long current() { return delegate.current(); }
   public void require(long intent) { delegate.require(intent); }
   public boolean isCurrent(long intent) { return delegate.isCurrent(intent); }
-  /** Durable generation storage; see the shared fence. */
-  public void attach(ai.eliza.plugins.securestore.nativeonly.CredentialIntentFence.Ledger ledger) { delegate.attach(ledger); }
-  public String generation() { return delegate.generation(); }
-  public long adopt(String expected) { return delegate.adopt(expected); }
 }

@@ -133,6 +133,7 @@ The shared wire contracts remain in core. Run `bun run --cwd
 plugins/plugin-browser test:remote-control` for authority and real encrypted SQL
 storage regressions.
 
+
 Trusted hosts can use `NativeSocketBrowserTarget.guideTask` after negotiating
 `task-guide` and `task-bind`. Supply the exact task context, increasing per-binding
 guidance revision and a current main-frame snapshot selector. The extension admits

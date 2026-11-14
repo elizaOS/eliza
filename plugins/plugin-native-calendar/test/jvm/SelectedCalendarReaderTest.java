@@ -43,10 +43,7 @@ public final class SelectedCalendarReaderTest {
    JSONArray rows=SelectedCalendarReader.readOwnerDay(provider,sources(provider),start,end,20,"2026-10-08","2026-10-09");require(titles(rows).equals(Set.of("today","multiday","timed")));
    String[] parts=provider.uri.split("/");require(Long.parseLong(parts[1])==Math.min(epoch(start),epoch("2026-10-08T00:00:00Z")));require(Long.parseLong(parts[2])==Math.max(epoch(end),epoch("2026-10-09T00:00:00Z")));
    rejects(()->SelectedCalendarReader.readOwnerDay(provider,sources(provider),start,end,1,"2026-10-08","2026-10-09"));
-   JSONArray ids=new JSONArray().put("1");
-   provider.ownerDay=false;Set<String> legacy=titles(SelectedCalendarReader.readWorkflowRange(provider,ids,start,end,20,null));require(legacy.contains(zone.equals("Asia/Tokyo")?"yesterday":"tomorrow"));
-   provider.ownerDay=true;
-   require(titles(SelectedCalendarReader.readWorkflowRange(provider,ids,start,end,20,zone)).equals(Set.of("today","multiday","timed")));
+   provider.ownerDay=false;Set<String> legacy=titles(SelectedCalendarReader.read(provider,new JSONArray().put("1"),start,end,20));require(legacy.contains(zone.equals("Asia/Tokyo")?"yesterday":"tomorrow"));
   }
   for(String date:new String[]{"2026-03-08","2026-11-01"}){LocalDate day=LocalDate.parse(date);ZoneId zone=ZoneId.of("America/Los_Angeles");String start=day.atStartOfDay(zone).toInstant().toString().replace("Z",".000Z"),end=day.plusDays(1).atStartOfDay(zone).toInstant().toString().replace("Z",".000Z");Provider provider=new Provider();provider.ownerDay=true;provider.events.add(event(1,"today",date+"T00:00:00Z",day.plusDays(1)+"T00:00:00Z",true));provider.events.add(event(2,"tomorrow",day.plusDays(1)+"T00:00:00Z",day.plusDays(2)+"T00:00:00Z",true));require(titles(SelectedCalendarReader.readOwnerDay(provider,sources(provider),start,end,20,date,day.plusDays(1).toString())).equals(Set.of("today")));require(Duration.between(Instant.parse(start),Instant.parse(end)).toHours()==(date.contains("03-08")?23:25));}
   Provider changed=new Provider();changed.ownerDay=true;changed.events.add(event(1,"original","2026-10-08T15:00:00Z","2026-10-08T16:00:00Z",false));JSONArray approved=sources(changed);changed.account="different-account";rejects(()->SelectedCalendarReader.readOwnerDay(changed,approved,"2026-10-08T07:00:00.000Z","2026-10-09T07:00:00.000Z",20,"2026-10-08","2026-10-09"));require(changed.eventReads==0);
@@ -63,53 +60,6 @@ public final class SelectedCalendarReaderTest {
    JSONArray identity=sources(next);next.account="foreign-calendar-owner";rejects(()->SelectedCalendarReader.next(next,identity,now,zone));next.account="selected-account";next.changeDuringRead=true;rejects(()->SelectedCalendarReader.next(next,sources(next),now,zone));
   }
   for(String date:new String[]{"2026-03-01","2026-10-15"}){ZoneId zone=ZoneId.of("America/Los_Angeles");LocalDate day=LocalDate.parse(date);long now=day.atStartOfDay(zone).toInstant().toEpochMilli();Provider empty=new Provider();empty.ownerDay=true;JSONObject result=SelectedCalendarReader.next(empty,sources(empty),now,zone);require(result.isNull("event"));require(result.getJSONObject("window").getString("end").equals(day.plusDays(30).atStartOfDay(zone).toInstant().toString().replace("Z",".000Z")));}
-  workflowCivilRange();
   System.out.println("PASS selected Calendar reader: LA/Tokyo civil dates, multi-day events, DST, provider query coverage/projection, overflow, source/account revision mismatch/race, daily content edits and unchanged foreground instant contract");
- }
- private static void workflowCivilRange()throws Exception {
-  String zone="America/New_York";
-  JSONArray ids=new JSONArray().put("1");
-  Provider week=new Provider();week.ownerDay=true;
-  String start="2027-11-06T04:00:00.000Z",end="2027-11-13T05:00:00.000Z";
-  require(Duration.between(Instant.parse(start),Instant.parse(end)).toHours()==169);
-  week.events.add(event(1,"first timed instant",start,start,false));
-  week.events.add(event(2,"last timed interval","2027-11-13T04:45:00Z",end,false));
-  week.events.add(event(3,"outside timed interval",end,"2027-11-13T06:00:00Z",false));
-  week.events.add(event(4,"last all-day event","2027-11-12T00:00:00Z","2027-11-13T00:00:00Z",true));
-  week.events.add(event(5,"following all-day event","2027-11-13T00:00:00Z","2027-11-14T00:00:00Z",true));
-  require(titles(SelectedCalendarReader.readWorkflowRange(week,ids,start,end,20,zone))
-    .equals(Set.of("first timed instant","last timed interval","last all-day event")));
-  require(week.selection.contains("calendar_id IN (?)")&&week.selection.contains("deleted=0"));
-  rejects(()->SelectedCalendarReader.readWorkflowRange(week,ids,start,end,20,null));
-  rejects(()->SelectedCalendarReader.readWorkflowRange(week,ids,start,"2027-11-13T05:00:00.001Z",20,zone));
-  rejects(()->SelectedCalendarReader.readWorkflowRange(week,ids,start,end,20,"Invalid/Zone"));
-  require(week.eventReads==1);
-  rejects(()->SelectedCalendarReader.readWorkflowRange(week,ids,start,end,1,zone));
-  require(week.eventReads==2);
-
-  Provider evening=new Provider();evening.ownerDay=true;
-  evening.events.add(event(1,"run day","2027-03-14T00:00:00Z","2027-03-15T00:00:00Z",true));
-  evening.events.add(event(2,"following day","2027-03-15T00:00:00Z","2027-03-16T00:00:00Z",true));
-  String late="2027-03-15T03:00:00.000Z",midnight="2027-03-15T04:00:00.000Z";
-  require(titles(SelectedCalendarReader.readWorkflowRange(evening,ids,late,midnight,20,zone)).equals(Set.of("run day")));
-  evening.ownerDay=false;
-  require(titles(SelectedCalendarReader.readWorkflowRange(evening,ids,late,midnight,20,null)).equals(Set.of("following day")));
-  Provider spring=new Provider();spring.ownerDay=true;
-  rejects(()->SelectedCalendarReader.readWorkflowRange(spring,ids,"2027-03-13T05:00:00.000Z","2027-03-20T04:00:00.001Z",20,zone));
-  require(spring.eventReads==0);
-
-  Provider rollback=new Provider();rollback.ownerDay=true;
-  rollback.events.add(event(1,"previous civil date","2008-11-01T00:00:00Z","2008-11-02T00:00:00Z",true));
-  rollback.events.add(event(2,"started civil date","2008-11-02T00:00:00Z","2008-11-03T00:00:00Z",true));
-  require(titles(SelectedCalendarReader.readWorkflowRange(rollback,ids,"2008-11-02T02:31:00.000Z","2008-11-02T02:32:00.000Z",20,"America/St_Johns"))
-    .equals(Set.of("started civil date")));
-  require(rollback.selection.contains("begin<"+epoch("2008-11-03T00:00:00Z"))
-    &&rollback.selection.contains("end>"+epoch("2008-11-02T00:00:00Z")));
-
-  Provider skipped=new Provider();skipped.ownerDay=true;
-  skipped.events.add(event(1,"skipped civil date","2011-12-30T00:00:00Z","2011-12-31T00:00:00Z",true));
-  require(titles(SelectedCalendarReader.readWorkflowRange(skipped,ids,"2011-12-30T10:00:00.000Z","2011-12-30T10:01:00.000Z",20,"Pacific/Apia"))
-    .equals(Set.of("skipped civil date")));
-  require(SelectedCalendarReader.readWorkflowRange(skipped,ids,"2011-12-30T10:01:00.000Z","2011-12-30T10:02:00.000Z",20,"Pacific/Apia").length()==0);
  }
 }

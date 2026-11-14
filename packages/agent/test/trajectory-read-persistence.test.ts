@@ -1,4 +1,4 @@
-/** Exercises host trajectory writes, the trajectory service read surface and the viewer HTTP formatter against real PGlite. The loopback harness supplies transport only; authentication and live-model generation are outside this storage contract. */
+/** Exercises host trajectory writes, both public read surfaces and the viewer HTTP formatter against real PGlite. The loopback harness supplies transport only; authentication and live-model generation are outside this storage contract. */
 import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -12,14 +12,7 @@ import {
 } from "@elizaos/core";
 import { parseTrajectorySemanticStage } from "@elizaos/core/protocol";
 import {
-  createBaseTrajectory,
-  ensureStep,
-  executeRawSql,
-  extractRequiredRows,
-  loadTrajectoryById,
-  saveTrajectory,
-  sqlQuote,
-  type TrajectoriesService,
+  TrajectoriesService,
   trajectoriesPlugin,
   tryHandleTrajectoryReadRoutes,
 } from "@elizaos/plugin-assistant";
@@ -27,10 +20,25 @@ import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, onTestFinished, vi } from "vitest";
 import { proposeDeviceAction } from "../../../plugins/plugin-assistant/src/services/device-actions/action.ts";
 import { handleTrajectoryManagementRoutes } from "../src/api/trajectory-management-routes.ts";
+import { runtimeTrajectoriesEnabled } from "../src/runtime/native-runtime-features.ts";
 import { installPromptOptimizations } from "../src/runtime/prompt-optimization.ts";
+import {
+  createBaseTrajectory,
+  ensureStep,
+  executeRawSql,
+  extractRequiredRows,
+  loadTrajectoryById,
+  saveTrajectory,
+  sqlQuote,
+} from "../src/runtime/trajectory-internals.ts";
+import {
+  DatabaseTrajectoryLogger,
+  installDatabaseTrajectoryLogger,
+} from "../src/runtime/trajectory-storage.ts";
 
 let fixture: Awaited<ReturnType<typeof createTestRuntime>>;
-let service: TrajectoriesService;
+let direct: DatabaseTrajectoryLogger;
+let bridge: TrajectoriesService;
 let server: Server;
 let origin: string;
 
@@ -45,7 +53,11 @@ beforeAll(async () => {
   const registered =
     fixture.runtime.getService<TrajectoriesService>("trajectories");
   if (!registered) throw new Error("Trajectory service did not start");
-  service = registered;
+  expect(runtimeTrajectoriesEnabled(fixture.runtime)).toBe(true);
+  bridge = registered;
+  await installDatabaseTrajectoryLogger(fixture.runtime);
+  direct = new DatabaseTrajectoryLogger(fixture.runtime);
+  direct.setEnabled(true);
   server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     const method = req.method ?? "GET";
@@ -92,24 +104,31 @@ afterAll(async () => {
       server.close((error) => (error ? reject(error) : resolve())),
     );
   }
+  if (direct) await direct.stop();
   if (fixture) await fixture.cleanup();
   vi.unstubAllEnvs();
 });
 
-it("reads complete persisted calls with filters and failures on the trajectory service", async () => {
-  expect(await service.getStats()).toMatchObject({
+it("reads complete persisted calls with the same filters and failures on both logger paths", async () => {
+  expect(await direct.getStats()).toEqual({
+    total: 0,
+    enabled: true,
+    byStatus: {},
+    bySource: {},
+  });
+  expect(await bridge.getStats()).toMatchObject({
     totalTrajectories: 0,
     byModel: {},
     bySource: {},
   });
   const roomId = randomUUID();
   const prompt = `complete original request ${"x".repeat(180_000)} FINAL-REQUEST`;
-  const trajectoryId = await service.startTrajectory(fixture.runtime.agentId, {
+  const trajectoryId = await direct.startTrajectory(fixture.runtime.agentId, {
     source: "read-acceptance",
     roomId,
   });
-  const stepId = service.startStep(trajectoryId, { kind: "llm" });
-  service.logLlmCall({
+  const stepId = direct.startStep(trajectoryId, { kind: "llm" });
+  direct.logLlmCall({
     stepId,
     model: "fixture",
     purpose: "action",
@@ -120,13 +139,13 @@ it("reads complete persisted calls with filters and failures on the trajectory s
     promptTokens: 7,
     completionTokens: 3,
   });
-  await service.flushWriteQueue(trajectoryId);
-  await service.endTrajectory(trajectoryId, "completed");
-  const otherId = await service.startTrajectory(fixture.runtime.agentId, {
+  await direct.flushWriteQueue(trajectoryId);
+  await direct.endTrajectory(trajectoryId, "completed");
+  const otherId = await direct.startTrajectory(fixture.runtime.agentId, {
     source: "other-source",
     roomId: randomUUID(),
   });
-  await service.endTrajectory(otherId, "completed");
+  await direct.endTrajectory(otherId, "completed");
 
   const foreignId = randomUUID();
   const stamp = sqlQuote(new Date().toISOString());
@@ -141,30 +160,35 @@ it("reads complete persisted calls with filters and failures on the trajectory s
      FROM trajectory_steps WHERE id = ${sqlQuote(stepId)}`,
   );
   await expect(
-    service.exportTrajectoriesZip({ trajectoryIds: [foreignId] }),
+    bridge.exportTrajectoriesZip({ trajectoryIds: [foreignId] }),
   ).rejects.toMatchObject({
     code: "TRAJECTORY_EXPORT_INCOMPLETE",
   });
   await expect(
-    service.exportTrajectoriesZip({ trajectoryIds: [randomUUID()] }),
+    bridge.exportTrajectoriesZip({ trajectoryIds: [randomUUID()] }),
   ).rejects.toMatchObject({
     code: "TRAJECTORY_EXPORT_INCOMPLETE",
   });
-  const filtered = await service.listTrajectories({
-    source: "read-acceptance",
-    roomId,
-    status: "completed",
+  for (const reader of [direct, bridge]) {
+    const filtered = await reader.listTrajectories({
+      source: "read-acceptance",
+      roomId,
+      status: "completed",
+    });
+    expect(filtered.total).toBe(1);
+    expect(filtered.trajectories.map((row) => row.id)).toEqual([trajectoryId]);
+    const page = await reader.listTrajectories({ limit: 1, offset: 1 });
+    expect(page.total).toBe(2);
+    expect(page.trajectories).toHaveLength(1);
+    expect(await reader.getTrajectoryDetail(foreignId)).toBeNull();
+    expect(await reader.getTrajectoryDetail(randomUUID())).toBeNull();
+  }
+  expect(await direct.getStats()).toEqual({
+    total: 2,
+    enabled: true,
+    byStatus: { completed: 2 },
+    bySource: { "read-acceptance": 1, "other-source": 1 },
   });
-  expect(filtered.total).toBe(1);
-  expect(filtered.trajectories.map((row) => row.id)).toEqual([trajectoryId]);
-  const page = await service.listTrajectories({ limit: 1, offset: 1 });
-  expect(page.total).toBe(2);
-  expect(page.trajectories).toHaveLength(1);
-  expect(await service.getTrajectoryDetail(foreignId)).toBeNull();
-  expect(await service.getTrajectoryDetail(randomUUID())).toBeNull();
-  expect((await service.listTrajectories({ status: "completed" })).total).toBe(
-    2,
-  );
   const statsResponse = await fetch(`${origin}/api/trajectories/stats`);
   expect(statsResponse.status).toBe(200);
   expect(await statsResponse.json()).toMatchObject({
@@ -175,7 +199,14 @@ it("reads complete persisted calls with filters and failures on the trajectory s
     byModel: { fixture: 1 },
     bySource: { "read-acceptance": 1, "other-source": 1 },
   });
-  const detail = await service.getTrajectoryDetail(trajectoryId);
+  // Dedicated steps remain authoritative when the compatibility snapshot is stale.
+  await executeRawSql(
+    fixture.runtime,
+    `UPDATE trajectories SET steps_json = '[]' WHERE id = ${sqlQuote(trajectoryId)}`,
+  );
+  expect(await bridge.getStats()).toMatchObject({ byModel: { fixture: 1 } });
+  const detail = await direct.getTrajectoryDetail(trajectoryId);
+  expect(detail).toEqual(await bridge.getTrajectoryDetail(trajectoryId));
   expect(
     detail?.steps
       ?.flatMap((step) => step.llmCalls ?? [])
@@ -195,10 +226,7 @@ it("reads complete persisted calls with filters and failures on the trajectory s
     component: "acceptance",
   };
   expect(
-    await Promise.all([
-      service.applyReward(reward),
-      service.applyReward(reward),
-    ]),
+    await Promise.all([direct.applyReward(reward), bridge.applyReward(reward)]),
   ).toEqual([true, true]);
   expect(
     extractRequiredRows(
@@ -208,20 +236,20 @@ it("reads complete persisted calls with filters and failures on the trajectory s
       ),
     ),
   ).toMatchObject([{ total_reward: 5 }]);
-  service.setEnabled(false);
+  bridge.setEnabled(false);
   try {
     expect(
-      await service.applyReward({
+      await bridge.applyReward({
         ...reward,
         idempotencyKey: "disabled-reward",
       }),
     ).toBe(false);
   } finally {
-    service.setEnabled(true);
+    bridge.setEnabled(true);
   }
-  expect(
-    await service.applyReward({ ...reward, trajectoryId: foreignId }),
-  ).toBe(false);
+  expect(await bridge.applyReward({ ...reward, trajectoryId: foreignId })).toBe(
+    false,
+  );
   expect(
     extractRequiredRows(
       await executeRawSql(
@@ -237,9 +265,11 @@ it("reads complete persisted calls with filters and failures on the trajectory s
      WHERE id = ${sqlQuote(stepId)}`,
   );
   try {
-    await expect(service.getStats()).rejects.toMatchObject({
-      code: "TRAJECTORY_STORAGE_OPERATION_FAILED",
-    });
+    for (const reader of [direct, bridge]) {
+      await expect(reader.getStats()).rejects.toMatchObject({
+        code: "TRAJECTORY_STORAGE_OPERATION_FAILED",
+      });
+    }
     expect((await fetch(`${origin}/api/trajectories/stats`)).status).toBe(500);
   } finally {
     await executeRawSql(
@@ -248,32 +278,43 @@ it("reads complete persisted calls with filters and failures on the trajectory s
        WHERE id = ${sqlQuote(stepId)}`,
     );
   }
-  // Exercise persisted counters wider than a 32-bit sum.
-  for (const id of [trajectoryId, otherId]) {
-    await executeRawSql(
-      fixture.runtime,
-      `UPDATE trajectories SET total_prompt_tokens = 1073741824 WHERE id = ${sqlQuote(id)}`,
-    );
-  }
-  expect(await service.getStats()).toMatchObject({
+  // Exercise records that predate dedicated steps, with persisted wide counters.
+  await executeRawSql(
+    fixture.runtime,
+    `UPDATE trajectories SET steps_json = (SELECT jsonb_agg(payload::jsonb ORDER BY ordinal)
+      FROM trajectory_steps WHERE trajectory_id = ${sqlQuote(trajectoryId)}),
+      total_prompt_tokens = 1073741824 WHERE id = ${sqlQuote(trajectoryId)}`,
+  );
+  await executeRawSql(
+    fixture.runtime,
+    `DELETE FROM trajectory_steps WHERE trajectory_id = ${sqlQuote(trajectoryId)}`,
+  );
+  await executeRawSql(
+    fixture.runtime,
+    `UPDATE trajectories SET total_prompt_tokens = 1073741824 WHERE id = ${sqlQuote(otherId)}`,
+  );
+  expect(await bridge.getStats()).toMatchObject({
     byModel: { fixture: 1 },
     totalPromptTokens: 2147483648,
   });
-  expect((await service.listTrajectories({ status: "completed" })).total).toBe(
-    2,
-  );
+  expect(await direct.getStats()).toMatchObject({
+    total: 2,
+    byStatus: { completed: 2 },
+  });
 
   await executeRawSql(
     fixture.runtime,
     "ALTER TABLE trajectories RENAME TO trajectories_unavailable",
   );
   try {
-    await expect(service.getStats()).rejects.toMatchObject({
-      code: "TRAJECTORY_STORAGE_OPERATION_FAILED",
-    });
-    await expect(service.listTrajectories({})).rejects.toMatchObject({
-      code: "TRAJECTORY_STORAGE_OPERATION_FAILED",
-    });
+    for (const reader of [direct, bridge]) {
+      await expect(reader.getStats()).rejects.toMatchObject({
+        code: "TRAJECTORY_STORAGE_OPERATION_FAILED",
+      });
+      await expect(reader.listTrajectories({})).rejects.toMatchObject({
+        code: "TRAJECTORY_STORAGE_OPERATION_FAILED",
+      });
+    }
     expect((await fetch(`${origin}/api/trajectories`)).status).toBe(500);
     expect((await fetch(`${origin}/api/trajectories/stats`)).status).toBe(500);
   } finally {
@@ -282,15 +323,15 @@ it("reads complete persisted calls with filters and failures on the trajectory s
       "ALTER TABLE trajectories_unavailable RENAME TO trajectories",
     );
   }
-  expect((await service.listTrajectories({})).total).toBe(2);
+  expect((await direct.listTrajectories({})).total).toBe(2);
 }, 120_000);
 
 it("exports every owned match beyond viewer and archive page sizes", async () => {
-  const templateId = await service.startTrajectory(fixture.runtime.agentId, {
+  const templateId = await direct.startTrajectory(fixture.runtime.agentId, {
     source: "export-template",
   });
-  const templateStep = service.startStep(templateId, { kind: "llm" });
-  service.logLlmCall({
+  const templateStep = direct.startStep(templateId, { kind: "llm" });
+  direct.logLlmCall({
     stepId: templateStep,
     model: "export-fixture",
     purpose: "action",
@@ -299,31 +340,27 @@ it("exports every owned match beyond viewer and archive page sizes", async () =>
     userPrompt: "original request",
     response: "original response",
   });
-  await service.flushWriteQueue(templateId);
-  await service.endTrajectory(templateId, "completed");
+  await direct.flushWriteQueue(templateId);
+  await direct.endTrajectory(templateId, "completed");
+  await executeRawSql(
+    fixture.runtime,
+    `UPDATE trajectories SET steps_json = (SELECT jsonb_agg(payload::jsonb ORDER BY ordinal)
+      FROM trajectory_steps WHERE trajectory_id = ${sqlQuote(templateId)}) WHERE id = ${sqlQuote(templateId)}`,
+  );
+
   await executeRawSql(
     fixture.runtime,
     `INSERT INTO trajectories
     (id, trajectory_id, agent_id, source, status, start_time, end_time, duration_ms,
-     metrics_json, reward_components_json, metadata_json, created_at, updated_at)
+     steps_json, metrics_json, reward_components_json, metadata_json, created_at, updated_at)
     SELECT 'archive-' || n, 'archive-' || n, agent_id,
       CASE WHEN n <= 501 THEN 'zip-pages' ELSE 'archive-pages' END,
-      status, start_time, end_time, duration_ms, metrics_json,
+      status, start_time, end_time, duration_ms, steps_json, metrics_json,
       reward_components_json, metadata_json, created_at, updated_at
     FROM trajectories CROSS JOIN generate_series(1, 10001) n
     WHERE id = ${sqlQuote(templateId)}`,
   );
-  await executeRawSql(
-    fixture.runtime,
-    `INSERT INTO trajectory_steps
-    (id, trajectory_id, ordinal, parent_step_id, step_type, name, started_at,
-     ended_at, payload, script)
-    SELECT id || '-archive-' || n, 'archive-' || n, ordinal, NULL, step_type,
-      name, started_at, ended_at, payload, script
-    FROM trajectory_steps CROSS JOIN generate_series(1, 10001) n
-    WHERE trajectory_id = ${sqlQuote(templateId)}`,
-  );
-  const zip = await service.exportTrajectoriesZip({ source: "zip-pages" });
+  const zip = await bridge.exportTrajectoriesZip({ source: "zip-pages" });
   expect(
     zip.entries.filter((entry) => entry.name.endsWith("/trajectory.json")),
   ).toHaveLength(501);
@@ -336,7 +373,21 @@ it("exports every owned match beyond viewer and archive page sizes", async () =>
     new Set(parsedManifest.trajectories.map((entry) => entry.trajectoryId))
       .size,
   ).toBe(501);
-  const archive = await service.exportTrajectories({ format: "json" });
+  const independent = new TrajectoriesService(fixture.runtime);
+  await independent.initialize();
+  try {
+    const nativeZip = await independent.exportTrajectoriesZip({
+      source: "zip-pages",
+    });
+    expect(
+      nativeZip.entries.filter((entry) =>
+        entry.name.endsWith("/trajectory.json"),
+      ),
+    ).toHaveLength(501);
+  } finally {
+    await independent.stop();
+  }
+  const archive = await direct.exportTrajectories({ format: "json" });
   if (typeof archive.data !== "string")
     throw new Error("JSON export did not return text");
   const rows = JSON.parse(archive.data) as { trajectoryId: string }[];
@@ -566,12 +617,12 @@ it("retains the parent revision conflict before any child can be written", async
 });
 
 it("persists and reads complete planner stages with the canonical native proposal schema", async () => {
-  const trajectoryId = await service.startTrajectory(fixture.runtime.agentId, {
+  const trajectoryId = await direct.startTrajectory(fixture.runtime.agentId, {
     source: "semantic-schema-acceptance",
     roomId: randomUUID(),
   });
-  const stepId = service.startStep(trajectoryId, { kind: "llm" });
-  await service.flushWriteQueue(trajectoryId);
+  const stepId = direct.startStep(trajectoryId, { kind: "llm" });
+  await direct.flushWriteQueue(trajectoryId);
   const schema = actionToTool(proposeDeviceAction).function.parameters;
   const messages = [
     {
@@ -582,7 +633,7 @@ it("persists and reads complete planner stages with the canonical native proposa
   const providerOptions = {
     eliza: { plannerActionSchemas: { PROPOSE_DEVICE_ACTION: schema } },
   };
-  service.logSemanticStage({
+  bridge.logSemanticStage({
     stepId,
     stage: {
       stageId: "native-schema-planner",
@@ -598,14 +649,16 @@ it("persists and reads complete planner stages with the canonical native proposa
       },
     },
   });
-  await service.flushWriteQueue(trajectoryId);
-  const detail = await service.getTrajectoryDetail(trajectoryId);
+  await bridge.flushWriteQueue(trajectoryId);
+  const detail = await bridge.getTrajectoryDetail(trajectoryId);
   const semantic = detail?.steps?.flatMap((step) => step.semanticStages ?? []);
   expect(semantic).toHaveLength(1);
   expect(semantic?.[0].payload.model).toMatchObject({
     messages,
     providerOptions,
   });
+  const directDetail = await direct.getTrajectoryDetail(trajectoryId);
+  expect(directDetail).toEqual(detail);
   const response = await fetch(`${origin}/api/trajectories/${trajectoryId}`);
   expect(response.status).toBe(200);
   const read = await response.json();
@@ -683,12 +736,12 @@ it("records every planner, evaluator and concurrent provider model call with its
       "ledger-fixture",
     );
   }
-  const trajectoryId = await service.startTrajectory(fixture.runtime.agentId, {
+  const trajectoryId = await direct.startTrajectory(fixture.runtime.agentId, {
     source: "model-call-ledger",
     roomId: randomUUID(),
   });
-  const stepId = service.startStep(trajectoryId, { kind: "llm" });
-  await service.flushWriteQueue(trajectoryId);
+  const stepId = direct.startStep(trajectoryId, { kind: "llm" });
+  await direct.flushWriteQueue(trajectoryId);
   const prompts = [
     "first planner request",
     "second planner request, a little longer",
@@ -703,7 +756,7 @@ it("records every planner, evaluator and concurrent provider model call with its
     async () => {
       for (const prompt of prompts.slice(0, 2)) {
         // As in a real turn, a queued provider capture delays the call's write.
-        service.logProviderAccess({
+        direct.logProviderAccess({
           stepId,
           providerName: "LEDGER_PROVIDER",
           purpose: "compose",
@@ -740,9 +793,9 @@ it("records every planner, evaluator and concurrent provider model call with its
       ]);
     },
   );
-  await service.flushWriteQueue(trajectoryId);
+  await direct.flushWriteQueue(trajectoryId);
   const calls = (
-    await service.getTrajectoryDetail(trajectoryId)
+    await direct.getTrajectoryDetail(trajectoryId)
   )?.steps?.flatMap((step) => step.llmCalls ?? []);
   expect(
     calls?.map((call) => [
@@ -764,18 +817,18 @@ it("records every planner, evaluator and concurrent provider model call with its
       },
     });
   }
-  await service.endTrajectory(trajectoryId, "completed");
+  await direct.endTrajectory(trajectoryId, "completed");
 });
 
 it("redacts the text that a model-call update fills in as it redacts a call record", async () => {
-  const trajectoryId = await service.startTrajectory(fixture.runtime.agentId, {
+  const trajectoryId = await direct.startTrajectory(fixture.runtime.agentId, {
     source: "model-call-update-redaction",
     roomId: randomUUID(),
   });
-  const stepId = service.startStep(trajectoryId, { kind: "llm" });
+  const stepId = direct.startStep(trajectoryId, { kind: "llm" });
   const callId = randomUUID();
   const privateText = "write to ada@example.com, card 4111111111111111";
-  service.logLlmCall({
+  direct.logLlmCall({
     stepId,
     callId,
     model: "fixture",
@@ -785,7 +838,7 @@ it("redacts the text that a model-call update fills in as it redacts a call reco
     userPrompt: "",
     response: "",
   });
-  service.updateLlmCall(stepId, callId, {
+  direct.updateLlmCall(stepId, callId, {
     userPrompt: privateText,
     response: privateText,
     providerMetadata: {
@@ -793,9 +846,9 @@ it("redacts the text that a model-call update fills in as it redacts a call reco
       accessToken: "fixture-private-credential",
     },
   });
-  await service.flushWriteQueue(trajectoryId);
+  await direct.flushWriteQueue(trajectoryId);
   const [call] =
-    (await service.getTrajectoryDetail(trajectoryId))?.steps?.flatMap(
+    (await direct.getTrajectoryDetail(trajectoryId))?.steps?.flatMap(
       (step) => step.llmCalls ?? [],
     ) ?? [];
   expect([call?.systemPrompt, call?.userPrompt, call?.response]).toEqual(
@@ -805,7 +858,7 @@ it("redacts the text that a model-call update fills in as it redacts a call reco
     promptOptimization: { budgetTokens: 1000, outputReserveTokens: 100 },
     accessToken: "[REDACTED]",
   });
-  await service.endTrajectory(trajectoryId, "completed");
+  await direct.endTrajectory(trajectoryId, "completed");
 });
 
 it("serves the viewer's config, export and delete requests from the registered service", async () => {
@@ -822,28 +875,28 @@ it("serves the viewer's config, export and delete requests from the registered s
 
   const config = await send("GET", "/api/trajectories/config");
   expect(config.status).toBe(200);
-  expect(await config.json()).toEqual({ enabled: service.isEnabled() });
+  expect(await config.json()).toEqual({ enabled: bridge.isEnabled() });
   const disabled = await send("PUT", "/api/trajectories/config", {
     enabled: false,
   });
   expect(await disabled.json()).toEqual({ enabled: false });
-  expect(service.isEnabled()).toBe(false);
+  expect(bridge.isEnabled()).toBe(false);
   const enabled = await send("PUT", "/api/trajectories/config", {
     enabled: true,
   });
   expect(await enabled.json()).toEqual({ enabled: true });
-  expect(service.isEnabled()).toBe(true);
+  expect(bridge.isEnabled()).toBe(true);
   expect(
     (await send("PUT", "/api/trajectories/config", { enabled: "yes" })).status,
   ).toBe(400);
 
   const source = `management-${randomUUID()}`;
   const record = async (): Promise<string> => {
-    const id = await service.startTrajectory(fixture.runtime.agentId, {
+    const id = await direct.startTrajectory(fixture.runtime.agentId, {
       source,
     });
-    service.logLlmCall({
-      stepId: service.startStep(id, { kind: "llm" }),
+    direct.logLlmCall({
+      stepId: direct.startStep(id, { kind: "llm" }),
       model: "fixture",
       purpose: "action",
       actionType: "runtime.useModel",
@@ -853,8 +906,8 @@ it("serves the viewer's config, export and delete requests from the registered s
       promptTokens: 1,
       completionTokens: 1,
     });
-    await service.flushWriteQueue(id);
-    await service.endTrajectory(id, "completed");
+    await direct.flushWriteQueue(id);
+    await direct.endTrajectory(id, "completed");
     return id;
   };
   const kept = await record();
@@ -895,6 +948,6 @@ it("serves the viewer's config, export and delete requests from the registered s
   });
   expect(deleted.status).toBe(200);
   expect(await deleted.json()).toEqual({ deleted: 1 });
-  const remaining = await service.listTrajectories({ source });
+  const remaining = await bridge.listTrajectories({ source });
   expect(remaining.trajectories.map((row) => row.id)).toEqual([kept]);
 }, 120_000);

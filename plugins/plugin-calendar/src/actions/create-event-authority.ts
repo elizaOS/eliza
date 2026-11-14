@@ -37,7 +37,7 @@ const stateSchema = {
   type: "string",
   enum: ["none", "requested", "unresolved"],
 } satisfies JSONSchema;
-const authorityProperties = {
+export const calendarCreateAuthorityProperties = {
   guestIntent: {
     type: "object",
     properties: {
@@ -86,49 +86,6 @@ const authorityProperties = {
     additionalProperties: false,
   },
 } satisfies Record<string, JSONSchema>;
-
-/** Bind absent optional effects to the same complete source the validator requires. */
-export function calendarCreateAuthorityProperties(current: CalendarUserSource) {
-  const absentEvidence: JSONSchema = {
-    type: "array",
-    minItems: 1,
-    maxItems: 1,
-    items: {
-      type: "object",
-      properties: {
-        sourceId: { type: "string", enum: [current.id] },
-        quote: { type: "string", enum: [current.text] },
-      },
-      required: ["sourceId", "quote"],
-      additionalProperties: false,
-    },
-  };
-  const intent = (
-    schema: (typeof authorityProperties)[keyof typeof authorityProperties],
-  ): JSONSchema => ({
-    anyOf: [
-      {
-        ...schema,
-        properties: {
-          ...schema.properties,
-          state: { type: "string", enum: ["none"] },
-          evidence: absentEvidence,
-        },
-      },
-      {
-        ...schema,
-        properties: {
-          ...schema.properties,
-          state: { type: "string", enum: ["requested", "unresolved"] },
-        },
-      },
-    ],
-  });
-  return {
-    guestIntent: intent(authorityProperties.guestIntent),
-    noteIntent: intent(authorityProperties.noteIntent),
-  };
-}
 const object = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
 function clarify(

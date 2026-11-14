@@ -56,9 +56,11 @@ export interface FfiBackendRuntime {
 	/**
 	 * Optional parallel-slot pool surface. When the runtime exposes a
 	 * ctx pool (the desktop libllama path does), `parallelSlots()`
-	 * reports the live count. Runtimes without a pool report 1.
+	 * reports the live count and `resizeParallel(N)` grows/shrinks it.
+	 * Runtimes without a pool report 1 and ignore resize requests.
 	 */
 	parallelSlots?(): number;
+	resizeParallel?(target: number): Promise<boolean>;
 }
 
 /**
@@ -500,6 +502,17 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 	 */
 	parallelSlots(): number {
 		return this.runtime.parallelSlots?.() ?? 1;
+	}
+
+	/**
+	 * Grow or shrink the runtime's ctx pool to `target` slots. Returns
+	 * false when the runtime has no pool surface (in which case parallel
+	 * resize is ignored — the conversation registry tolerates
+	 * fixed 1-slot operation).
+	 */
+	async resizeParallel(target: number): Promise<boolean> {
+		if (!this.runtime.resizeParallel) return false;
+		return this.runtime.resizeParallel(target);
 	}
 
 	/**

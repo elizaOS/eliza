@@ -35,7 +35,7 @@ and `deviceAcceptanceVerified` are evidence and stay `false` in every descriptor
 On the image host, after the production image build:
 
 ```sh
-bun packages/os/scripts/android/sign-pixel10a-release.mjs \
+node packages/os/scripts/android/sign-pixel10a-release.mjs \
   --target-files /abs/unsigned-target_files.zip --target-files-sha256 <build record> \
   --keys-dir /dev/shm/keys --releasetools /abs/otatools/bin --out /abs/new-release \
   [--map-key SOURCE=NAME ...] [--incremental-from /abs/previous-signed-target_files.zip] \

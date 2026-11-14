@@ -131,33 +131,11 @@ function googleCapabilitiesForAccount(
     ...stringArray(meta.googleCapabilities),
   ];
   const scopes = stringArray(meta.grantedScopes);
-  // Map each granted Google Calendar scope to the event capabilities it
-  // actually carries. Substring matching granted write to readonly scopes
-  // and read to settings-only scopes. Keep the table explicit so supporting
-  // a scope is a deliberate addition, and unknown scopes grant no event
-  // capability.
-  const CALENDAR_SCOPE_CAPABILITIES: Record<string, LifeOpsGoogleCapability[]> =
-    {
-      calendar: ["google.calendar.read", "google.calendar.write"],
-      "calendar.readonly": ["google.calendar.read"],
-      "calendar.events": ["google.calendar.read", "google.calendar.write"],
-      "calendar.events.readonly": ["google.calendar.read"],
-      "calendar.events.owned": [
-        "google.calendar.read",
-        "google.calendar.write",
-      ],
-      "calendar.events.owned.readonly": ["google.calendar.read"],
-      "calendar.events.public.readonly": ["google.calendar.read"],
-      "calendar.app.created": ["google.calendar.read", "google.calendar.write"],
-    };
-  for (const scope of scopes) {
-    const prefix = "https://www.googleapis.com/auth/";
-    const suffix = scope.startsWith(prefix)
-      ? scope.slice(prefix.length)
-      : scope;
-    if (Object.hasOwn(CALENDAR_SCOPE_CAPABILITIES, suffix)) {
-      values.push(...CALENDAR_SCOPE_CAPABILITIES[suffix]);
-    }
+  if (scopes.some((scope) => scope.includes("calendar"))) {
+    values.push("google.calendar.read");
+  }
+  if (scopes.some((scope) => scope.includes("calendar.events"))) {
+    values.push("google.calendar.write");
   }
   if (scopes.some((scope) => scope.includes("gmail.readonly"))) {
     values.push("google.gmail.triage");

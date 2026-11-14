@@ -16,6 +16,7 @@ import { constants } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { UUID } from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 
 const INSTALLATION_ID_FILENAME = "runtime-installation-id";
 const UUID_PATTERN =
@@ -151,7 +152,7 @@ function isSameOrDescendant(candidate: string, directory: string): boolean {
 function resolveMobileStateBoundary(
   stateDirectory: string,
 ): MobileStateBoundary | undefined {
-  const platform = process.env.ELIZA_PLATFORM?.trim().toLowerCase();
+  const platform = readAliasedEnv("ELIZA_PLATFORM")?.trim().toLowerCase();
   if (platform !== "android" && platform !== "ios") return undefined;
   const platformName = platform === "android" ? "Android" : "iOS";
   const environmentKey =

@@ -1,7 +1,5 @@
 // Handles v1 cloud API v1 oauth generic callback route traffic with route-local auth expectations.
-
 import { cache } from "@elizaos/cloud-shared/lib/cache/client";
-import { getCloudDeployment } from "@elizaos/cloud-shared/lib/deployment/cloud-deployment";
 import { getCloudAwareEnv } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import {
   getDefaultPlatformRedirectOrigins,
@@ -36,7 +34,7 @@ export async function handleGenericOAuthCallback(
   const searchParams = new URL(request.url).searchParams;
 
   const baseUrl =
-    getCloudAwareEnv().NEXT_PUBLIC_APP_URL || getCloudDeployment().appOrigin;
+    getCloudAwareEnv().NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
   const defaultRedirect = `${baseUrl}/cloud/connectors`;
 
   // Get provider configuration
@@ -124,12 +122,6 @@ export async function handleGenericOAuthCallback(
   });
 
   try {
-    // Validate redirect configuration before exchanging or storing credentials.
-    const allowedAbsoluteOrigins = [
-      ...getDefaultPlatformRedirectOrigins(),
-      ...LOOPBACK_REDIRECT_ORIGINS,
-    ];
-
     const result = await handleOAuth2Callback(provider, code, state);
     // A completed provider exchange is also authoritative if the preliminary cache read failed.
     if (appReturnLookupFailed)
@@ -140,6 +132,11 @@ export async function handleGenericOAuthCallback(
       );
     if (appReturn && result.redirectUrl !== appReturn.source)
       throw new Error("OAuth return binding changed");
+
+    const allowedAbsoluteOrigins = [
+      ...getDefaultPlatformRedirectOrigins(),
+      ...LOOPBACK_REDIRECT_ORIGINS,
+    ];
 
     const { target: redirectTarget, rejected } = appReturn
       ? {

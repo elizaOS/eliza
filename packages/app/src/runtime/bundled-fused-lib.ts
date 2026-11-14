@@ -1,12 +1,14 @@
 /**
  * Locate + wire the fused `libelizainference` that ships INSIDE a packaged
- * `eliza-dist` tree, so a compiled app serves local inference with no env
- * wiring and no separate download.
+ * desktop app, so a compiled app serves local inference with no env wiring and
+ * no separate download.
  *
- * `stage-desktop-fused-lib.ts` stages the fused set into
- * `<eliza-dist>/local-inference/lib/`. At runtime this module lives at
- * `<eliza-dist>/node_modules/@elizaos/app/dist/runtime/…`, so we walk up
- * looking for a `local-inference/lib/<fused>` that actually exists.
+ * The desktop packaging (`packages/app/scripts/desktop-build.ts` →
+ * `stage-desktop-fused-lib.ts`) stages the fused set into
+ * `<eliza-dist>/local-inference/lib/`, and the Electrobun build copies the
+ * whole `dist` tree to `Resources/app/eliza-dist/`. At runtime this module
+ * lives at `<eliza-dist>/node_modules/@elizaos/app/dist/runtime/…`, so we
+ * walk up looking for a `local-inference/lib/<fused>` that actually exists.
  */
 
 import { existsSync } from "node:fs";

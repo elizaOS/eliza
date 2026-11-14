@@ -14,6 +14,7 @@ import {
   type EventPayload,
   EventType,
   type IAgentRuntime,
+  logger,
   type MessagePayload,
   promoteSubactionsToActions,
   registerCandidateActionBackstopRule,
@@ -152,6 +153,7 @@ import {
   registerConnectorRegistry,
   registerDefaultConnectorPack,
 } from "./lifeops/connectors/index.js";
+import { applyMockoonEnvOverrides } from "./lifeops/connectors/mockoon-redirect.js";
 import { createDelegationInboundMessageHandler } from "./lifeops/delegation-contracts/inbound-event.js";
 import { processDelegationInboundTurn } from "./lifeops/delegation-contracts/index.js";
 import { handleVoiceTurnObserved } from "./lifeops/entities/voice-observer-bridge.js";
@@ -218,6 +220,7 @@ import {
   registerAppLifeOpsEventKinds,
   registerBuiltinTelemetryFamilies,
   registerDefaultBlockerPack,
+  registerDefaultFeatureFlagPack,
   registerDefaultWorkflowStepPack,
   registerEventKindRegistry,
   registerFamilyRegistry,
@@ -963,6 +966,15 @@ const rawPersonalAssistantPlugin: Plugin = {
       runtime,
       createUndatedOwnerTodoDirectRoutingRule(),
     );
+    // When LIFEOPS_USE_MOCKOON=1, redirect every external connector base URL
+    // to the matching Mockoon environment on localhost. No-op otherwise.
+    const mockoonApplied = applyMockoonEnvOverrides();
+    if (mockoonApplied.length > 0) {
+      logger.info(
+        { mockoonConnectors: mockoonApplied },
+        `[lifeops] LIFEOPS_USE_MOCKOON=1 — redirecting ${mockoonApplied.length} connector base URL(s) to mock servers`,
+      );
+    }
     registerLifeOpsWebsiteBlockingPermissionProber(runtime);
     await ensureLifeOpsGooglePluginRegistered(runtime);
     await ensureLifeOpsCalendarPluginRegistered(runtime);
@@ -1094,6 +1106,10 @@ const rawPersonalAssistantPlugin: Plugin = {
         workflowStepRegistry?: typeof workflowStepRegistry;
       }
     ).workflowStepRegistry = workflowStepRegistry;
+    // FeatureFlagRegistry — open-key registry covering the 10 closed
+    // `LifeOpsFeatureKey` built-ins plus any 3rd-party plugin contributions.
+    // Audit C top-1 finding (`docs/audit/rigidity-hunt-audit.md`).
+    registerDefaultFeatureFlagPack(runtime);
     const activitySignalBus = createActivitySignalBus({ familyRegistry });
     registerActivitySignalBus(runtime, activitySignalBus);
     // Structural runtime property (same pattern as anchorRegistry /

@@ -25,7 +25,6 @@ import type {
 } from "../../db/schemas";
 import { CacheInvalidation } from "../cache/invalidation";
 import { invalidateOrganizationCache } from "../cache/organizations-cache";
-import { getCloudDeployment } from "../deployment/cloud-deployment";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { requireStripe } from "../stripe";
 import { logger } from "../utils/logger";
@@ -1555,7 +1554,7 @@ export class AutoTopUpService {
     if (paymentMethod.card) {
       paymentMethodDisplay = `${paymentMethod.card.brand} ••••${paymentMethod.card.last4}`;
     }
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || getCloudDeployment().appOrigin;
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
     await emailService.sendAutoTopUpSuccessEmail({
       email: recipientEmail,
       organizationName: org.name,
@@ -1573,7 +1572,7 @@ export class AutoTopUpService {
     if (!org) return;
     const recipientEmail = await this.getUserEmail(org.id);
     if (!recipientEmail) return;
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || getCloudDeployment().appOrigin;
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
     await emailService.sendAutoTopUpDisabledEmail({
       email: recipientEmail,
       organizationName: org.name,

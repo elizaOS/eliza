@@ -61,21 +61,6 @@ public final class CloudConnectionPolicy {
           "/api/v1/eliza/google/calendar/feed",
           "/api/v1/eliza/google/gmail/search",
           "/api/v1/eliza/google/gmail/read");
-  /** The subscription plan catalogue: one bare GET. */
-  public static final String SUBSCRIPTION_PLANS_PATH = "/api/v1/subscriptions/plans";
-  /**
-   * Body-only POSTs a signed-in device makes for its own plan; exact paths. Sign-in routes are not
-   * here: key renewal answers an authorization code that is redeemed on the token and ack routes,
-   * so it belongs to the native sign-in client and never to this renderer-facing transport.
-   */
-  private static final Set<String> DEVICE_BILLING_POSTS =
-      setOf("/api/v1/subscriptions/checkout", "/api/v1/subscriptions/checkout/confirm");
-  /**
-   * The hosted payment page a checkout answers. Admitting the checkout POST does not open it: a
-   * host that offers checkout must also declare this host in {@link Hosts#externalProviders}, or
-   * {@link #externalHost} refuses the returned URL and the owner cannot pay.
-   */
-  public static final String SUBSCRIPTION_CHECKOUT_HOST = "checkout.stripe.com";
   private static final String MAPS_DATA = "/api/v1/maps/(geocode|reverse|places/search|places/details|routes|tiles/viewport)";
   public static boolean mapsTilePath(String path) {
     if (path == null || !path.matches("/api/v1/maps/tiles/(0|[1-9][0-9]?)/(0|[1-9][0-9]{0,6})/(0|[1-9][0-9]{0,6})")) return false;
@@ -135,13 +120,6 @@ public final class CloudConnectionPolicy {
     if (mapsTilePath(path)) return "GET".equals(method) && query == null && !hasBody;
     // Subscription code redemption carries its code and idempotency key in the JSON body only.
     if ("POST".equals(method) && "/api/v1/subscription/redeem".equals(path)) return query == null && hasBody;
-    // Paid plans, with the device's own sign-in key: the catalogue is a bare read; opening a checkout
-    // and confirming its return each carry one JSON body and no query. The checkout's payment page is
-    // opened only where the host declares SUBSCRIPTION_CHECKOUT_HOST as an external provider.
-    // Cancel, portal, plan changes, sign-up codes, referrals, affiliates and every sign-in route
-    // (key renewal included) stay off this transport.
-    if (SUBSCRIPTION_PLANS_PATH.equals(path)) return "GET".equals(method) && query == null && !hasBody;
-    if (DEVICE_BILLING_POSTS.contains(path)) return "POST".equals(method) && query == null && hasBody;
     if ("POST".equals(method))
       return query == null
           && (MANAGED_POSTS.contains(path)

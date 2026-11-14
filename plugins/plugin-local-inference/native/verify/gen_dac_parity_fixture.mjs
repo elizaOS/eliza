@@ -37,7 +37,7 @@
  *     `baseline_wav_path` field points at the path used.
  *
  * Usage (capture against pre-merge build):
- *   bun plugins/plugin-local-inference/native/verify/gen_dac_parity_fixture.mjs \
+ *   node plugins/plugin-local-inference/native/verify/gen_dac_parity_fixture.mjs \
  *     --omnivoice-codec /path/to/pre-merge/omnivoice-codec \
  *     --codec-gguf ~/.eliza/local-inference/models/eliza-1-2b.bundle/tts/omnivoice-tokenizer-0.8b.gguf \
  *     --baseline-build-sha <pre-merge-sha>

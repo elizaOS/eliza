@@ -1,6 +1,5 @@
 // Android code and MFA verification from an issued code to the mobile grant boundary.
-// The worker owns a retry reply after it has detached the bridge waiter.
-// A retry reply follows a wrong code or a request that got no answer.
+// The worker owns an invalid-code reply after it has detached the bridge waiter.
 module NativeAndroidCodeVerification {
   pure val rpcIds = 1.to(12)
   pure val codeLanes = Set("email", "phone")
@@ -63,12 +62,6 @@ module NativeAndroidCodeVerification {
     else s' = { ...s, failed: s.failed + 1, waiter: 0,
       work: { ...s.work, stage: "invalid-reply" } },
   }
-  // The request got no answer, so the code can still be correct.
-  // The step stays for a retry and the wrong-code budget does not change.
-  action noAnswer = all {
-    s.work.stage == "checking", ownsWork(s),
-    s' = { ...s, waiter: 0, work: { ...s.work, stage: "invalid-reply" } },
-  }
   action deliverWrongCode = all {
     s.work.stage == "invalid-reply",
     s' = reply({ ...s, work: noWork }, s.work.rpc),
@@ -82,14 +75,14 @@ module NativeAndroidCodeVerification {
     s.work.stage == "checking", ownsWork(s), not(s.expired),
     s' = { ...s, work: { ...s.work, stage: "grant" } },
   }
-  // Answered failure, rejection, grant completion, or drainage after cancellation.
+  // Transport failure, rejection, grant completion, or drainage after cancellation.
   action finishTerminal = all {
     Set("checking", "grant").contains(s.work.stage),
     s' = if (ownsWork(s)) retire(reply({ ...s, work: noWork }, s.waiter))
       else { ...s, work: noWork },
   }
   action finishWork = any {
-    wrongCode, noAnswer, deliverWrongCode, handoffGrant, finishTerminal,
+    wrongCode, deliverWrongCode, handoffGrant, finishTerminal,
     { nondet factor = factorLanes.oneOf() requireFactor(factor) },
   }
   action step = any {
@@ -144,11 +137,6 @@ module NativeAndroidCodeVerification {
     .expect(s.failed == 0 and s.waiter == 0)
     .then(verify(1, "email")).expect(s.waiter == 0)
     .then(verify(1, "factor")).then(startWork).then(handoffGrant)
-    .expect(s.work.stage == "grant" and ownsWork(s))
-  run unansweredVerifyKeepsStepTest = init.then(startCode("email")).then(codeSent)
-    .then(verify(1, "email")).then(startWork).then(noAnswer).then(deliverWrongCode)
-    .expect(s.channel == "email" and s.failed == 0 and s.replies.get(1) == 1)
-    .then(verify(1, "email")).then(startWork).then(handoffGrant)
     .expect(s.work.stage == "grant" and ownsWork(s))
   run expiredCodeCannotClaimWorkerTest = init.then(startCode("phone")).then(codeSent).then(expire)
     .then(verify(1, "phone")).expect(s.issued == 0 and s.channel == "idle")

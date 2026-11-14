@@ -29,7 +29,7 @@
  * Device id: --device flag or ELIZA_IOS_DEVICE_ID.
  *
  * Usage:
- *   bun scripts/ios-device-e2e.ts [--device <id>] [--skip-appexes]
+ *   node scripts/ios-device-e2e.ts [--device <id>] [--skip-appexes]
  *     [--skip-logs] [--require-chat]
  *     [--bundle-id <id>] [--output <dir>]
  */
@@ -198,7 +198,7 @@ async function main() {
   });
   if (args.help) {
     console.log(
-      "Usage: bun scripts/ios-device-e2e.ts [--device <id>] [--skip-appexes] [--skip-logs] [--require-chat] [--bundle-id <id>] [--output <dir>]",
+      "Usage: node scripts/ios-device-e2e.ts [--device <id>] [--skip-appexes] [--skip-logs] [--require-chat] [--bundle-id <id>] [--output <dir>]",
     );
     return;
   }

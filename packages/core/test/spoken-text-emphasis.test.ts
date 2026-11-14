@@ -81,17 +81,4 @@ describe("sanitizeSpeechText star spans", () => {
 			"",
 		);
 	});
-
-	it.each(["*", "**"])(
-		"drops %s directions nested deeper than the peel budget",
-		(marker) => {
-			let nested = `${marker}pause${marker}`;
-			for (let layer = 0; layer < 12; layer += 1) {
-				nested = `${marker}secret-${layer} ${nested} tail-${layer}${marker}`;
-			}
-			expect(sanitizeSpeechText(`Say this. ${nested} Done.`)).toBe(
-				"Say this. Done.",
-			);
-		},
-	);
 });

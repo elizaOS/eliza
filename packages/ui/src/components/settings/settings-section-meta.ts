@@ -146,6 +146,20 @@ export const SETTINGS_SECTION_META: SettingsSectionMeta[] = [
  */
 export const SETTINGS_NON_CATALOG_SECTION_META = [
   {
+    id: "desktop-integration",
+    defaultLabel: "Desktop app",
+    group: "system",
+    aliases: [
+      "desktop",
+      "startup",
+      "dock",
+      "tray",
+      "shortcuts",
+      "hotkeys",
+      "keyboard",
+    ],
+  },
+  {
     id: "cloud-overview",
     defaultLabel: "Overview",
     group: "cloud",

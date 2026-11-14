@@ -25,7 +25,7 @@ import {
   solanaRpcHandler,
 } from "@elizaos/cloud-shared/lib/services/proxy/solana-rpc";
 import { isValidSolanaAddress } from "@elizaos/cloud-shared/lib/services/proxy/solana-validation";
-import { executeGuardedPaidProxyWithPreflight } from "../../../../src/lib/guarded-paid-proxy";
+import { executeGuardedPaidProxyWithPreflight } from "@/api-app/lib/guarded-paid-proxy";
 
 async function __hono_OPTIONS() {
   return handleCorsOptions("GET, OPTIONS");

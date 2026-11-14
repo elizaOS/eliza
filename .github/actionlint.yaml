@@ -3,10 +3,15 @@
 
 self-hosted-runner:
   labels:
+    - prod-ops
+    - x-canary
+    - prod-ops-1
+    - prod-ops-2
     - android-device
     - kvm
     - elizaos-release-build
     - elizaos-release-signing
+    - riscv64
 
 paths:
   .github/workflows/*.yml:

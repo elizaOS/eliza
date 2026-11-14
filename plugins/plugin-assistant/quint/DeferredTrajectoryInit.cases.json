@@ -1,7 +1,6 @@
 {
   "sources": [
     "plugins/plugin-assistant/src/features/trajectories/TrajectoriesService.ts",
-    "plugins/plugin-assistant/src/features/trajectories/store/trajectory-internals.ts",
     "plugins/plugin-assistant/src/features/trajectories/TrajectoriesService.test.ts",
     "plugins/plugin-assistant/quint/check-deferred-trajectory-init.ts"
   ],

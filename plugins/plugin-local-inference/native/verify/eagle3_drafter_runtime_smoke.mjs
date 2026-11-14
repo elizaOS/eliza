@@ -99,7 +99,7 @@ function parseArgs(argv) {
     else if (arg === "--help" || arg === "-h") {
       console.log(
         [
-          "Usage: bun eagle3_drafter_runtime_smoke.mjs [options]",
+          "Usage: node eagle3_drafter_runtime_smoke.mjs [options]",
           "",
           "Options:",
           "  --target-model <path>   Target GGUF",

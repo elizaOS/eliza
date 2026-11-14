@@ -17,11 +17,9 @@ import {
 	createCoreSecurityHooksPlugin,
 } from "../src/security/core-hooks.ts";
 import type { Memory } from "../src/types/memory.ts";
-import { ModelType } from "../src/types/model.ts";
 import {
 	incomingPipelineHookContext,
 	type PipelineHookSpec,
-	preModelPipelineHookContext,
 } from "../src/types/pipeline-hooks.ts";
 import type { UUID } from "../src/types/primitives.ts";
 import { formatMessages } from "../src/utils.ts";
@@ -113,82 +111,6 @@ describe("core security hooks plugin (#12091 item 23)", () => {
 			expect(history).toContain("<<<EXTERNAL_UNTRUSTED_CONTENT>>>");
 			expect(history).not.toContain("SECURITY NOTICE");
 		} finally {
-			await runtime.stop();
-		}
-	});
-
-	it("keeps admitted handlers when the next pipeline dispatch sees replacements and removals", async () => {
-		const runtime = new AgentRuntime({ logLevel: "fatal" });
-		const mutatorEntered = Promise.withResolvers<void>();
-		const releaseMutator = Promise.withResolvers<void>();
-		const oldCalls: string[] = [];
-		const newCalls: string[] = [];
-		const dispatch = (calls: string[]) =>
-			runtime.applyPipelineHooks(
-				"pre_model",
-				preModelPipelineHookContext({
-					requestedModelType: ModelType.TEXT_LARGE,
-					resolvedModelKey: ModelType.TEXT_LARGE,
-					provider: "pipeline-snapshot-fixture",
-					params: calls,
-				}),
-				false,
-			);
-		const serialReader = (id: string, label: string, fails = false) =>
-			runtime.registerPipelineHook({
-				id,
-				phase: "pre_model",
-				schedule: "serial",
-				mutatesPrimary: false,
-				handler: async (_, ctx) => {
-					if (ctx.phase !== "pre_model") return;
-					const calls = ctx.params === oldCalls ? oldCalls : newCalls;
-					calls.push(label);
-					if (fails) throw new Error("fixture hook failure");
-				},
-			});
-		runtime.registerPipelineHook({
-			id: "snapshot-mutator",
-			phase: "pre_model",
-			position: 10,
-			mutatesPrimary: true,
-			handler: async (_, ctx) => {
-				if (ctx.phase !== "pre_model") return;
-				const calls = ctx.params === oldCalls ? oldCalls : newCalls;
-				calls.push("mutator");
-				if (calls === oldCalls) {
-					mutatorEntered.resolve();
-					await releaseMutator.promise;
-				}
-			},
-		});
-		serialReader("snapshot-b", "removed");
-		serialReader("snapshot-a", "original", true);
-
-		const oldDispatch = dispatch(oldCalls);
-		try {
-			await mutatorEntered.promise;
-			runtime.unregisterPipelineHook("snapshot-b");
-			serialReader("snapshot-a", "replacement");
-
-			await dispatch(newCalls);
-			expect(newCalls).toEqual(["mutator", "replacement"]);
-			expect(oldCalls).toEqual(["mutator"]);
-
-			releaseMutator.resolve();
-			await oldDispatch;
-			expect(oldCalls).toEqual(["mutator", "original", "removed"]);
-			expect(runtime.getRecentReportedErrors()).toEqual(
-				expect.arrayContaining([
-					expect.objectContaining({
-						scope: "AgentRuntime.pipelineHook",
-						message: "fixture hook failure",
-					}),
-				]),
-			);
-		} finally {
-			releaseMutator.resolve();
-			await Promise.allSettled([oldDispatch]);
 			await runtime.stop();
 		}
 	});

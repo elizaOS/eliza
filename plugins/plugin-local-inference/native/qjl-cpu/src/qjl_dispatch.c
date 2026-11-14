@@ -26,6 +26,7 @@ typedef enum {
     QJL_SIMD_NEON_DOTPROD,
     QJL_SIMD_AVX2,
     QJL_SIMD_AVXVNNI,
+    QJL_SIMD_RVV,
 } qjl_simd_t;
 
 static qjl_simd_t qjl_pick(void) {
@@ -42,6 +43,9 @@ static qjl_simd_t qjl_pick(void) {
 #endif
 #if defined(QJL_HAVE_NEON)
     if (f.has_neon) return QJL_SIMD_NEON;
+#endif
+#if defined(QJL_HAVE_RVV) && QJL_HAVE_RVV
+    if (f.has_rvv) return QJL_SIMD_RVV;
 #endif
     (void)f;
     return QJL_SIMD_REF;
@@ -66,6 +70,10 @@ void qjl_quantize_rows(const float *keys, const float *prj,
         case QJL_SIMD_AVXVNNI:
             qjl_quantize_rows_avx2(keys, prj, out, n_rows); return;
 #endif
+#if defined(QJL_HAVE_RVV) && QJL_HAVE_RVV
+        case QJL_SIMD_RVV:
+            qjl_quantize_rows_rvv(keys, prj, out, n_rows); return;
+#endif
         default:
             qjl_quantize_rows_ref(keys, prj, out, n_rows); return;
     }
@@ -86,6 +94,11 @@ void qjl_score_qk(const float *q_sketch,
         case QJL_SIMD_AVX2:
         case QJL_SIMD_AVXVNNI:
             qjl_score_qk_avx2(q_sketch, packed_k, n_heads, n_kv_heads, n_tokens, scores);
+            return;
+#endif
+#if defined(QJL_HAVE_RVV) && QJL_HAVE_RVV
+        case QJL_SIMD_RVV:
+            qjl_score_qk_rvv(q_sketch, packed_k, n_heads, n_kv_heads, n_tokens, scores);
             return;
 #endif
         default:
@@ -109,6 +122,11 @@ void qjl_score_qk_i8(const qjl_i8_sketch_256 *q_sketch_i8,
             qjl_score_qk_i8_dotprod(q_sketch_i8, packed_k, n_heads, n_kv_heads, n_tokens, scores);
             return;
 #endif
+#if defined(QJL_HAVE_RVV) && QJL_HAVE_RVV
+        case QJL_SIMD_RVV:
+            qjl_score_qk_i8_rvv(q_sketch_i8, packed_k, n_heads, n_kv_heads, n_tokens, scores);
+            return;
+#endif
         default:
             qjl_score_qk_i8_ref(q_sketch_i8, packed_k, n_heads, n_kv_heads, n_tokens, scores);
             return;
@@ -121,6 +139,7 @@ const char *qjl_active_simd(void) {
         case QJL_SIMD_AVX2:         return "avx2";
         case QJL_SIMD_NEON_DOTPROD: return "neon-dotprod";
         case QJL_SIMD_NEON:         return "neon";
+        case QJL_SIMD_RVV:          return "rvv";
         default:                    return "ref";
     }
 }

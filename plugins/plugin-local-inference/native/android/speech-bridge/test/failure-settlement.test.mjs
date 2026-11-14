@@ -16,7 +16,7 @@ function method(source,signature){
  assert.equal(depth,0);return source.slice(start,end);
 }
 // Exercise the production submit method and actual gate, without Android/audio.
-const submit=method(bridge,'protected final void submit(')+'\n'+method(bridge,'private void submit(');
+const submit=method(bridge,'protected final void submit(');
 const rejection=method(bridge,'protected void rejectFailure(');
 const java=`import ai.eliza.voice.SpeechRequestGate;
 import java.io.*;
@@ -36,7 +36,6 @@ public class SettlementTest {
  static final int REQUEST_TIMEOUT_MS=120000;
  class Main {void postDelayed(Runnable r,int timeout){deadline=true;} void removeCallbacks(Runnable r){deadline=false;}}
  Main main=new Main();
- boolean sensitiveSurfaceActive(){return false;}
  interface Work {void run(SpeechRequestGate.Request request)throws Exception;}
  static String required(String s,int max){if(s==null||s.length()>max)throw new IllegalArgumentException();return s;}
  static final class SpeechHttpException extends IOException {int status;SpeechHttpException(int n){status=n;}}

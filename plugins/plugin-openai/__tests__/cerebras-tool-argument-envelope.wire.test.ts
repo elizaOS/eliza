@@ -148,6 +148,7 @@ it.each([
     vi.stubEnv("OPENAI_BASE_URL", "https://api.cerebras.ai/v1");
     vi.stubEnv("OPENAI_API_KEY", "fixture");
     vi.stubEnv("CEREBRAS_API_KEY", "");
+    vi.stubEnv("ELIZA_MOCK_OPENAI_BASE", "");
     vi.stubEnv("ELIZA_PLANNER_FULL_ACTION_SURFACE", buffered ? "1" : "");
     const callbacks: string[] = [];
     let inputEffects = 0;

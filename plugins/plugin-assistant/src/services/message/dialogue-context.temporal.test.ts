@@ -141,7 +141,7 @@ describe("historical message temporal grounding", () => {
     vi.setSystemTime(now);
     const clock = await currentTimeProvider.get(runtime, current, {} as State);
     expect(clock.values?.currentDate).toBe("2026-10-26");
-    expect(clock.text).toContain("UTC instant: 2026-10-27T02:57Z");
+    expect(clock.text).toContain("UTC instant: 2026-10-27T02:57:00.000Z");
     const events: ContextEvent[] = [];
     appendPriorDialogueEvents(
       events,

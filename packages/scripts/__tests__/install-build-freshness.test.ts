@@ -105,8 +105,8 @@ for (const task of ["build", "@elizaos/app#build:dist", "@elizaos/ui#build"]) {
             type: "module",
             scripts:
               name === "consumer"
-                ? { "build:package": "bun build.mjs" }
-                : { build: "bun build.mjs" },
+                ? { "build:package": "node build.mjs" }
+                : { build: "node build.mjs" },
             dependencies: name === "consumer" ? { leaf: "workspace:*" } : {},
             elizaos: {
               scripts: {
@@ -222,7 +222,7 @@ for (const dependencyKind of ["dependencies", "peerDependencies"]) {
       write("packages/leaf/package.json", {
         name: leaf,
         version: "1.0.0",
-        scripts: { build: "bun fail-build.mjs" },
+        scripts: { build: "node fail-build.mjs" },
       });
       write(
         "packages/leaf/fail-build.mjs",
@@ -232,7 +232,7 @@ for (const dependencyKind of ["dependencies", "peerDependencies"]) {
       write("packages/consumer/package.json", {
         name: consumer,
         version: "1.0.0",
-        scripts: { typecheck: "bun check.mjs" },
+        scripts: { typecheck: "node check.mjs" },
         [dependencyKind]: { [leaf]: "workspace:*" },
       });
       write("packages/consumer/tsconfig.json", {

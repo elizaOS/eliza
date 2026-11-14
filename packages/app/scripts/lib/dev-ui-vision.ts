@@ -4,7 +4,7 @@
  */
 export function buildVisionDepsFailureMessage(
   error: unknown,
-  command = "bun scripts/ensure-vision-deps.ts",
+  command = "node scripts/ensure-vision-deps.ts",
 ) {
   const detail =
     error instanceof Error ? error.message : String(error ?? "unknown error");

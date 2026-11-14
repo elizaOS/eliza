@@ -61,10 +61,6 @@ import { validateMapsResult } from "./maps-contract.ts";
 import { validateNotesResult } from "./notes-contract.ts";
 import { validateNotesQueryResult } from "./notes-query-result.ts";
 import { validateReminderResult } from "./reminder-contract.ts";
-import {
-  validateMessagesReadResult,
-  validateVoicemailReadResult,
-} from "./telephony-actions-contract.ts";
 import { validateWorkflowReadResult } from "./workflow-contract.ts";
 
 export interface DeviceReadReplyOrigin {
@@ -310,23 +306,10 @@ export function deviceReadResult(request: ApprovalRequest): JsonValue {
                   ? validateReminderResult(op, receipt.result)
                   : op.type === "maps_read_selected"
                     ? validateMapsResult(op, receipt.result)
-                    : op.type === "messages_read_selected"
-                      ? validateMessagesReadResult(receipt.result)
-                      : op.type === "voicemail_read_selected"
-                        ? validateVoicemailReadResult(receipt.result)
-                        : fail();
-  // An applied open-item read always carries the item; an empty selection is a failed receipt.
-  if (
-    (op.type === "messages_read_selected" ||
-      op.type === "voicemail_read_selected") &&
-    (result as { status?: unknown }).status !== "read"
-  )
-    fail();
+                    : fail();
   const serialized = JSON.stringify(result);
-  // The Notes and Messages contracts bound their own result; other reads keep the 64 KiB cap.
   if (
     !isCompletableNotesRead(request) &&
-    op.type !== "messages_read_selected" &&
     new TextEncoder().encode(serialized).length > 65536
   )
     fail();
@@ -668,13 +651,7 @@ export async function synthesizeDeviceReadReply(
         : validateDevicePayload(request.payload).operation.type ===
             "reminder_read_selected"
           ? "Reminders"
-          : validateDevicePayload(request.payload).operation.type ===
-              "messages_read_selected"
-            ? "Messages"
-            : validateDevicePayload(request.payload).operation.type ===
-                "voicemail_read_selected"
-              ? "Voicemail"
-              : "Maps";
+          : "Maps";
   const context: ContextObject = {
     id: `${binding.origin.original.id}:approved-read`,
     metadata: {

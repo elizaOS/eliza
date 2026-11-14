@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateSchema } from "../../../../packages/core/src/actions/validate-tool-args.js";
-import {
-  calendarCreateAuthorityProperties,
-  validateCalendarCreateAuthority,
-} from "./create-event-authority.js";
+import { validateCalendarCreateAuthority } from "./create-event-authority.js";
 
 const source = { id: "current:one", text: "Create Solo tomorrow at 3pm." };
 const none = {
@@ -15,44 +11,6 @@ const solo = {
   noteIntent: { ...none, sourceNote: null },
 };
 describe("canonical Calendar create authority", () => {
-  it("constrains absent guest evidence to the complete request before provider generation", () => {
-    const current = {
-      id: "current:8bf670dd-eb73-0707-9c78-9223ebdc5b55",
-      text: "Create one disposable Calendar event tomorrow at 4:17 PM. No guests and no reminders.",
-    };
-    const schema = calendarCreateAuthorityProperties(current).guestIntent;
-    const partial = {
-      state: "none",
-      evidence: [
-        { sourceId: current.id, quote: "No guests and no reminders." },
-      ],
-      guests: [],
-    };
-    const partialErrors: Parameters<typeof validateSchema>[3] = [];
-    validateSchema(schema, partial, "guestIntent", partialErrors);
-    expect(partialErrors.length).toBeGreaterThan(0);
-    const complete = {
-      ...partial,
-      evidence: [{ sourceId: current.id, quote: current.text }],
-    };
-    const completeErrors: Parameters<typeof validateSchema>[3] = [];
-    validateSchema(schema, complete, "guestIntent", completeErrors);
-    expect(completeErrors).toEqual([]);
-    expect(
-      validateCalendarCreateAuthority(
-        {
-          guestIntent: complete,
-          noteIntent: {
-            state: "none",
-            evidence: complete.evidence,
-            sourceNote: null,
-          },
-        },
-        [current],
-        [],
-      ),
-    ).toEqual({});
-  });
   it("uses explicit verified solo intent instead of invented outer guests and note", () => {
     expect(validateCalendarCreateAuthority(solo, [source], [])).toEqual({});
   });

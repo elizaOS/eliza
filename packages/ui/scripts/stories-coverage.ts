@@ -146,7 +146,7 @@ export function buildStoryCoverage({ all = false } = {}) {
 if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
   if (args.some((arg) => !["--all", "--json"].includes(arg))) {
-    throw new Error("Usage: bun scripts/stories-coverage.ts [--all] [--json]");
+    throw new Error("Usage: node scripts/stories-coverage.ts [--all] [--json]");
   }
   const report = buildStoryCoverage({ all: args.includes("--all") });
   process.stdout.write(

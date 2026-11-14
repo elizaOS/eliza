@@ -15,8 +15,8 @@ include_directories(include src)
 # The melspec + window TUs are pure-C utilities the runtime uses.
 #
 # Architecture portability: every TU below is plain scalar C with no
-# x86/ARM intrinsics, so the same source list builds on x86_64 and
-# aarch64 without any CMAKE_SYSTEM_PROCESSOR branching.
+# x86/ARM/RVV intrinsics, so the same source list builds on x86_64,
+# aarch64, and riscv64 without any CMAKE_SYSTEM_PROCESSOR branching.
 # Cross-build verified by the OS-owned toolchain in elizaOS/os.
 set(WAKEWORD_SRCS
     src/wakeword_runtime.c

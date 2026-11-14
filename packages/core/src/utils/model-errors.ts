@@ -255,27 +255,6 @@ export function modelProviderErrorStatus(error: unknown): number | undefined {
 	return undefined;
 }
 
-/** True when a node of the cause and retry envelopes has a string `code` in `codes`. */
-export function hasModelErrorCode(
-	error: unknown,
-	codes: ReadonlySet<string>,
-): boolean {
-	for (const node of modelErrorChain(error)) {
-		const code = (node as { code?: unknown }).code;
-		if (typeof code === "string" && codes.has(code)) return true;
-	}
-	return false;
-}
-
-/** Cancellation is authoritative through every cause/retry wrapper, including cycles. */
-export function isModelCancellationError(error: unknown): boolean {
-	for (const node of modelErrorChain(error, Number.POSITIVE_INFINITY)) {
-		const { name, code } = node as { name?: unknown; code?: unknown };
-		if (name === "AbortError" || code === "ABORT_ERR") return true;
-	}
-	return false;
-}
-
 /**
  * Structured diagnostic detail for a model/provider failure: the HTTP status,
  * the provider's own error message parsed out of the response body, and a

@@ -117,21 +117,6 @@ describe("native phone Calendar create", () => {
     expect(runJsonModel).toHaveBeenCalledTimes(1);
   });
 
-  it("refuses empty extraction with a plain answer and no native review", async () => {
-    const { runtime, reportError, runJsonModel } = runtimeWith({});
-    const draft = await infer(runtime);
-    expect(draft.fields).toBeUndefined();
-    expect(draft.text).toBe(
-      "The event details could not be confirmed from your request. No event was created. Say the title, date and time again.",
-    );
-    expect(reportError).toHaveBeenCalledWith(
-      "calendar:native-create",
-      expect.objectContaining({ code: "CALENDAR_CREATE_EXTRACTION_INVALID" }),
-      { diagnosticOnly: true, code: "CALENDAR_CREATE_EXTRACTION_INVALID" },
-    );
-    expect(runJsonModel).toHaveBeenCalledTimes(1);
-  });
-
   it("asks for the address of a named guest given an address the owner never wrote", async () => {
     const { runtime, reportError, runJsonModel } = runtimeWith(
       plan({

@@ -14,7 +14,7 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
-import { type ElizaConfig, isMobilePlatform } from "@elizaos/host/protocol";
+import type { ElizaConfig } from "@elizaos/host/protocol";
 import { getBundledRuntimePluginIds } from "../runtime/release-plugin-policy.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 import {
@@ -70,7 +70,7 @@ function applyWhatsAppQrOverride(
 
 function findPluginsManifestRoot(startDir: string): string {
   // Mobile bundles are single-file — no workspace tree to walk.
-  if (isMobilePlatform()) {
+  if (process.env.ELIZA_MOBILE_PLATFORM) {
     return startDir;
   }
   let dir = startDir;

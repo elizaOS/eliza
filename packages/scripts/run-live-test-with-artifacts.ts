@@ -104,7 +104,7 @@ export function parseArgs(argv) {
   }
   if (options.command.length === 0) {
     throw new Error(
-      "missing command. Usage: bun packages/scripts/run-live-test-with-artifacts.ts --label name -- <command...>",
+      "missing command. Usage: node packages/scripts/run-live-test-with-artifacts.ts --label name -- <command...>",
     );
   }
   return options;

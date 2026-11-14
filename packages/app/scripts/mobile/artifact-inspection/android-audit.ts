@@ -5,18 +5,30 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import {
+  ANDROID_LP3_POLICY_CLASSES,
+  ANDROID_LP3_POLICY_MARKERS,
+  ANDROID_LP3_PRIVATE_ACTIONS,
   assertAndroidPlayManifestPolicyEvidence,
   inspectAndroidAppBundle,
   resolveAndroidArtifactKind,
 } from "../../lib/android-cloud-artifact-audit.ts";
 import {
   ANDROID_CLOUD_SPLASH_MARK_RESOURCE,
+  ANDROID_LP3_COLOR_POLICY_COMPONENTS,
+  ANDROID_LP3_COLOR_POLICY_JAVA_FILES,
+  ANDROID_LP3_COLOR_POLICY_REQUIRED_PERMISSIONS,
+  assertAndroidArtifactOmitsLp3ManifestMarkers,
   assertAndroidCloudNativeLibraryAllowlist,
+  assertAndroidLauncherManifest,
+  assertAndroidLp3ColorPolicyManifest,
+  assertAndroidSmsGatewayArtifactManifest,
+  assertAndroidSmsGatewayBadging,
   createAndroidPlayManifestPolicy,
   findAndroidCloudPackagedRuntimeOffenders,
   findAndroidPlayIndexHtmlFindings,
   findAndroidPlayTextAssetFindings,
-  isAndroidVpsSidecarBuild,
+  isAndroidFirebaseIndependentRemoteBuild,
+  isAndroidLp3ColorPolicyEnabled,
   resolveAndroidCloudStripPolicy,
 } from "../android/cloud-policy.ts";
 import { mobileBuildError } from "../build-error.ts";
@@ -37,6 +49,37 @@ import {
   snapshotAndroidArtifact,
 } from "./archive.ts";
 import { findAndroidSystemApk } from "./provenance.ts";
+
+/**
+ * Audit the sideload (`android`) debug APK. The sideload target ships both the
+ * web renderer and the on-device agent payload, so assert both are packaged —
+ * a web-less sideload APK is the exact regression of elizaOS/eliza#8387
+ * (ERR_CONNECTION_REFUSED on device).
+ */
+export function auditAndroidSideloadArtifact({ javaHome } = {}) {
+  const artifact = findAndroidCloudDebugApk();
+  if (!artifact) {
+    throw new Error(
+      "[mobile-build] android sideload debug APK was not found under app/build/outputs/.",
+    );
+  }
+  const entries = listAndroidArtifactEntries(artifact, javaHome);
+  assertAndroidArtifactRetainsBackgroundRunnerJniBridge(
+    artifact,
+    entries,
+    javaHome,
+    { label: "android sideload" },
+  );
+  assertAndroidArtifactShipsWebPayload(artifact, entries, {
+    requireAgent: true,
+    label: "android",
+  });
+  auditAndroidBionicInferenceLibraries(artifact, entries, javaHome);
+  console.log(
+    `[mobile-build] android sideload artifact audit passed: ${artifact}`,
+  );
+  return artifact;
+}
 
 /** Check every selected architecture, including emulator-only APKs. */
 export function auditAndroidBionicInferenceLibraries(
@@ -61,7 +104,7 @@ export function auditAndroidBionicInferenceLibraries(
     const offenders = findAndroidBionicInferenceOffenders(fusedBytes);
     if (offenders.length > 0) {
       throw mobileBuildError(
-        `[mobile-build] android-system artifact contains a Linux/musl fused inference library at ${fusedEntry} that Android's bionic loader cannot load: ${offenders.join(", ")}. Rebuild and stage that architecture with \`bun packages/app/scripts/stage-elizavoice-lib.ts --abi <abi> --variant cpu\` (or the Vulkan variant with its required host tooling).`,
+        `[mobile-build] android sideload artifact contains a Linux/musl fused inference library at ${fusedEntry} that Android's bionic loader cannot load: ${offenders.join(", ")}. Rebuild and stage that architecture with \`node packages/app/scripts/stage-elizavoice-lib.ts --abi <abi> --variant cpu\` (or the Vulkan variant with its required host tooling).`,
         {
           code: "ANDROID_BIONIC_INFERENCE_INCOMPATIBLE",
           context: { artifact, fusedEntry, offenders },
@@ -84,12 +127,49 @@ export function findAndroidBionicInferenceOffenders(bytes) {
   );
 }
 
-export function auditAndroidSystemArtifact({ javaHome } = {}) {
-  // The privileged release APK needs a positive artifact audit or it could
-  // ship web-less (ERR_CONNECTION_REFUSED) silently — the exact regression
-  // class #8387 closes. `-PelizaAospBuild=true` preserves assets/agent, so
-  // requireAgent stays true, and the on-device agent's fused inference library
-  // must load under bionic.
+/** Audit the hosted-emulator debug APK without requiring a local agent payload. */
+export function auditAndroidHostE2eArtifact({ javaHome } = {}) {
+  const artifact = findAndroidCloudDebugApk();
+  if (!artifact) {
+    throw new Error(
+      "[mobile-build] android host-e2e debug APK was not found under app/build/outputs/.",
+    );
+  }
+  const entries = listAndroidArtifactEntries(artifact, javaHome);
+  assertAndroidArtifactRetainsBackgroundRunnerJniBridge(
+    artifact,
+    entries,
+    javaHome,
+    { label: "android host-e2e" },
+  );
+  assertAndroidArtifactShipsWebPayload(artifact, entries, {
+    requireAgent: false,
+    label: "android-host-e2e",
+  });
+  const packagedAgent = entries.find((entry) =>
+    /(^|\/)assets\/agent\//i.test(entry.replaceAll("\\", "/")),
+  );
+  if (packagedAgent) {
+    throw mobileBuildError(
+      `[mobile-build] android-host-e2e artifact unexpectedly contains the embedded agent payload: ${packagedAgent}`,
+      {
+        code: "ANDROID_HOST_E2E_AGENT_PAYLOAD_PRESENT",
+        context: { artifact, packagedAgent },
+      },
+    );
+  }
+  console.log(
+    `[mobile-build] android host-e2e artifact audit passed: ${artifact}`,
+  );
+  return artifact;
+}
+
+export function auditAndroidSystemArtifact({ androidSdkRoot, javaHome } = {}) {
+  // The AOSP/system target gets the web-payload mirror like the other three
+  // sync targets, but the privileged release APK still needs the same positive
+  // artifact audit or it could ship web-less (ERR_CONNECTION_REFUSED) silently —
+  // the exact regression class #8387 closes. `-PelizaAospBuild=true` preserves
+  // assets/agent, so requireAgent stays true here like the sideload path.
   const artifact = findAndroidSystemApk();
   if (!artifact) {
     throw new Error(
@@ -103,11 +183,33 @@ export function auditAndroidSystemArtifact({ javaHome } = {}) {
     javaHome,
     { label: "android-system" },
   );
+  const aapt = resolveAndroidBuildTool(androidSdkRoot, "aapt");
+  if (!aapt) {
+    throw mobileBuildError(
+      "[mobile-build] Could not find aapt under Android SDK build-tools for android-system artifact audit.",
+    );
+  }
+  // RECEIVE_BOOT_COMPLETED and FOREGROUND_SERVICE_SPECIAL_USE are also used by
+  // non-LP3 AOSP services. WRITE_SECURE_SETTINGS is the LP3-only manifest
+  // delta; the remaining private boundary is enforced by component/action/DEX
+  // markers below.
+  assertAndroidArtifactOmitsLp3ManifestMarkers(
+    dumpAndroidArtifactManifest(aapt, artifact),
+    {
+      appId: APP.appId,
+      label: "ordinary AOSP",
+      permissions: ["WRITE_SECURE_SETTINGS"],
+    },
+  );
+  auditAndroidArtifactDexLp3Policy(artifact, entries, javaHome, {
+    debug: false,
+    expectedPresent: false,
+    label: "ordinary AOSP",
+  });
   assertAndroidArtifactShipsWebPayload(artifact, entries, {
     requireAgent: true,
     label: "android-system",
   });
-  auditAndroidBionicInferenceLibraries(artifact, entries, javaHome);
   console.log(
     `[mobile-build] android-system artifact audit passed: ${artifact}`,
   );
@@ -141,6 +243,63 @@ export function findAndroidCloudDebugApk() {
   ]);
 }
 
+export function auditAndroidArtifactDexLp3Policy(
+  artifact,
+  entries,
+  javaHome,
+  { debug, expectedPresent, label = "normal Cloud" },
+  { readEntryBuffers = readAndroidArtifactEntryBuffers } = {},
+) {
+  const dexEntries = entries.filter((entry) =>
+    /(^|\/)classes\d*\.dex$/.test(entry),
+  );
+  if (dexEntries.length === 0) {
+    throw mobileBuildError(
+      `[mobile-build] Android artifact has no classes*.dex entries: ${artifact}`,
+    );
+  }
+
+  const dexBuffers = readEntryBuffers(artifact, dexEntries, javaHome, {
+    label: "LP3 policy DEX audit",
+  });
+  const packagePath = APP.appId.replaceAll(".", "/");
+  const classNames =
+    expectedPresent && !debug
+      ? ANDROID_LP3_COLOR_POLICY_COMPONENTS
+      : ANDROID_LP3_COLOR_POLICY_JAVA_FILES.map((file) =>
+          file.replace(/\.java$/, ""),
+        );
+  const findings = classNames.filter((className) => {
+    const marker = Buffer.from(`${packagePath}/${className}`, "utf8");
+    return dexBuffers.some((dex) => dex.includes(marker));
+  });
+  if (expectedPresent && findings.length !== classNames.length) {
+    const missing = classNames.filter((name) => !findings.includes(name));
+    throw mobileBuildError(
+      "[mobile-build] opted-in LP3 artifact DEX is missing policy classes:\n" +
+        missing.map((name) => `  - ${APP.appId}.${name}`).join("\n"),
+    );
+  }
+  if (!expectedPresent) {
+    const forbiddenMarkers = [
+      ...ANDROID_LP3_POLICY_CLASSES.map(
+        (className) => `${packagePath}/${className}`,
+      ),
+      ...ANDROID_LP3_PRIVATE_ACTIONS,
+      ...ANDROID_LP3_POLICY_MARKERS,
+    ];
+    const markerFindings = forbiddenMarkers.filter((marker) => {
+      const bytes = Buffer.from(marker, "utf8");
+      return dexBuffers.some((dex) => dex.includes(bytes));
+    });
+    if (markerFindings.length === 0) return;
+    throw mobileBuildError(
+      `[mobile-build] ${label} artifact DEX still contains LP3 policy markers:\n` +
+        markerFindings.map((marker) => `  - ${marker}`).join("\n"),
+    );
+  }
+}
+
 export function auditAndroidCloudArtifact(
   {
     artifact: requestedArtifact,
@@ -153,6 +312,7 @@ export function auditAndroidCloudArtifact(
     log = console.log,
   } = {},
 ) {
+  const lp3ColorPolicyEnabled = isAndroidLp3ColorPolicyEnabled(env);
   const stripPolicy = resolveAndroidCloudStripPolicy(env);
   const artifact =
     typeof requestedArtifact === "string" && requestedArtifact.trim() !== ""
@@ -207,40 +367,45 @@ export function auditAndroidCloudArtifact(
       },
     );
   }
-  assertAndroidCloudNativeLibraryAllowlist({ artifact, entries, env });
-  const textAssetEntries = entries.filter(
-    (entry) =>
-      /(?:^|\/)assets\//.test(entry) &&
-      /\.(?:css|html|js|json|svg|txt|webmanifest|xml)$/i.test(entry),
-  );
-  const textAssetBuffers = readAndroidArtifactEntryBuffers(
-    artifact,
-    textAssetEntries,
-    javaHome,
-    {
-      artifactBytes: initialSnapshot.bytes,
-      label: "android-cloud Play text asset audit",
-    },
-  );
-  const textAssetFindings = findAndroidPlayTextAssetFindings(
-    textAssetEntries,
-    textAssetBuffers,
-  );
-  const indexHtmlFindings = findAndroidPlayIndexHtmlFindings(
-    textAssetEntries,
-    textAssetBuffers,
-  );
-  const playTextFindings = [...textAssetFindings, ...indexHtmlFindings].sort();
-  if (playTextFindings.length > 0) {
-    throw mobileBuildError(
-      `[mobile-build] android-cloud text asset policy failed:\n${playTextFindings
-        .map((finding) => `  - ${finding}`)
-        .join("\n")}`,
+  if (!lp3ColorPolicyEnabled) {
+    assertAndroidCloudNativeLibraryAllowlist({ artifact, entries, env });
+    const textAssetEntries = entries.filter(
+      (entry) =>
+        /(?:^|\/)assets\//.test(entry) &&
+        /\.(?:css|html|js|json|svg|txt|webmanifest|xml)$/i.test(entry),
+    );
+    const textAssetBuffers = readAndroidArtifactEntryBuffers(
+      artifact,
+      textAssetEntries,
+      javaHome,
       {
-        code: "ANDROID_PLAY_TEXT_ASSET_POLICY_FAILED",
-        context: { artifact, findings: playTextFindings },
+        artifactBytes: initialSnapshot.bytes,
+        label: "android-cloud Play text asset audit",
       },
     );
+    const textAssetFindings = findAndroidPlayTextAssetFindings(
+      textAssetEntries,
+      textAssetBuffers,
+    );
+    const indexHtmlFindings = findAndroidPlayIndexHtmlFindings(
+      textAssetEntries,
+      textAssetBuffers,
+    );
+    const playTextFindings = [
+      ...textAssetFindings,
+      ...indexHtmlFindings,
+    ].sort();
+    if (playTextFindings.length > 0) {
+      throw mobileBuildError(
+        `[mobile-build] android-cloud text asset policy failed:\n${playTextFindings
+          .map((finding) => `  - ${finding}`)
+          .join("\n")}`,
+        {
+          code: "ANDROID_PLAY_TEXT_ASSET_POLICY_FAILED",
+          context: { artifact, findings: playTextFindings },
+        },
+      );
+    }
   }
   const integrityEntries = entries.filter((entry) =>
     artifactKind === "aab"
@@ -279,8 +444,8 @@ export function auditAndroidCloudArtifact(
   try {
     // The Play client deliberately strips Background Runner and every
     // background execution surface. Its artifact must therefore stay native
-    // library free; JNI bridge retention is enforced only by the system
-    // artifact audit, whose build compiles the plugin.
+    // library free; JNI bridge retention is enforced only by the sideload,
+    // host-E2E, and system artifact audits that compile the plugin.
     if (artifactKind === "apk") {
       // APK inspection deliberately retains the existing AAPT badging/xmltree
       // behavior. bundletool is only valid for the release App Bundle path.
@@ -310,12 +475,61 @@ export function auditAndroidCloudArtifact(
           );
         }
       }
-      assertAndroidPlayManifestPolicyEvidence(
-        androidPlayManifestEvidenceFromAapt(manifestText),
-        createAndroidPlayManifestPolicy({
-          debug: true,
-          firebaseIndependent: isAndroidVpsSidecarBuild(env),
-        }),
+      if (lp3ColorPolicyEnabled) {
+        const missingPermissions =
+          ANDROID_LP3_COLOR_POLICY_REQUIRED_PERMISSIONS.filter(
+            (permission) =>
+              !badging.includes(
+                `uses-permission: name='android.permission.${permission}'`,
+              ),
+          );
+        if (missingPermissions.length > 0) {
+          throw mobileBuildError(
+            "[mobile-build] opted-in LP3 artifact is missing required permissions:\n" +
+              missingPermissions
+                .map((permission) => `  - android.permission.${permission}`)
+                .join("\n"),
+          );
+        }
+        assertAndroidLp3ColorPolicyManifest(manifestText);
+      } else {
+        assertAndroidArtifactOmitsLp3ManifestMarkers(manifestText, {
+          appId: APP.appId,
+          label: "normal Cloud",
+        });
+        assertAndroidPlayManifestPolicyEvidence(
+          androidPlayManifestEvidenceFromAapt(manifestText),
+          createAndroidPlayManifestPolicy({
+            debug: true,
+            firebaseIndependent: isAndroidFirebaseIndependentRemoteBuild(env),
+          }),
+        );
+      }
+      auditAndroidArtifactDexLp3Policy(
+        inspectedArtifact,
+        entries,
+        javaHome,
+        {
+          debug,
+          expectedPresent: lp3ColorPolicyEnabled,
+        },
+        {
+          readEntryBuffers: (
+            selectedArtifact,
+            selectedEntries,
+            selectedJavaHome,
+            options,
+          ) =>
+            readAndroidArtifactEntryBuffers(
+              selectedArtifact,
+              selectedEntries,
+              selectedJavaHome,
+              {
+                ...options,
+                artifactBytes: initialSnapshot.bytes,
+              },
+            ),
+        },
       );
     } else {
       evidence = inspectAndroidAppBundleImpl({
@@ -340,7 +554,7 @@ export function auditAndroidCloudArtifact(
       });
     }
     // Cloud is a thin client (no on-device agent), but it must still ship the
-    // renderer — a web-less cloud APK is just as broken as a web-less system APK.
+    // renderer — a web-less cloud APK is just as broken as a web-less sideload.
     assertAndroidArtifactShipsWebPayload(artifact, entries, {
       requireAgent: false,
       label: "android-cloud",
@@ -372,6 +586,127 @@ export function auditAndroidCloudArtifact(
       })}`,
     );
   }
-  log(`[mobile-build] android-cloud artifact audit passed: ${artifact}`);
+  log(
+    `[mobile-build] android-cloud${lp3ColorPolicyEnabled ? " LP3 direct" : ""} artifact audit passed: ${artifact}`,
+  );
   return artifact;
+}
+
+export function auditAndroidLauncherArtifact({
+  androidSdkRoot,
+  env = process.env,
+  javaHome,
+} = {}) {
+  const artifact = auditAndroidCloudArtifact({
+    debug: true,
+    env,
+    javaHome,
+  });
+  const aapt = resolveAndroidBuildTool(androidSdkRoot, "aapt");
+  if (!aapt) {
+    throw mobileBuildError(
+      "[mobile-build] Could not find aapt under Android SDK build-tools for android-launcher artifact audit.",
+    );
+  }
+  assertAndroidLauncherManifest(dumpAndroidArtifactManifest(aapt, artifact));
+  const [runtimeConfigBytes] = readAndroidArtifactEntryBuffers(
+    artifact,
+    ["assets/capacitor.config.json"],
+    javaHome,
+    { label: "android-launcher Capacitor runtime config" },
+  );
+  let runtimeConfig;
+  try {
+    runtimeConfig = JSON.parse(runtimeConfigBytes.toString("utf8"));
+  } catch (cause) {
+    throw mobileBuildError(
+      `[mobile-build] android-launcher capacitor.config.json is invalid JSON: ${cause instanceof Error ? cause.message : String(cause)}`,
+      {
+        cause,
+        code: "ANDROID_LAUNCHER_RUNTIME_CONFIG_INVALID",
+        context: { artifact },
+      },
+    );
+  }
+  if (runtimeConfig.loggingBehavior !== "none") {
+    throw mobileBuildError(
+      "[mobile-build] android-launcher must package Capacitor loggingBehavior=none so native bridge results never reach logcat.",
+      {
+        code: "ANDROID_LAUNCHER_RUNTIME_LOGGING_ENABLED",
+        context: {
+          artifact,
+          loggingBehavior: runtimeConfig.loggingBehavior ?? null,
+        },
+      },
+    );
+  }
+  // Sign-in is native, so the launcher WebView never navigates to a hosted
+  // page: any packaged navigation allowance is a regression.
+  if (runtimeConfig.server?.allowNavigation !== undefined) {
+    throw mobileBuildError(
+      "[mobile-build] android-launcher must not allow WebView navigation away from the bundled renderer; Cloud sign-in is native.",
+      {
+        code: "ANDROID_LAUNCHER_AUTH_NAVIGATION_INVALID",
+        context: {
+          allowNavigation: runtimeConfig.server?.allowNavigation ?? null,
+          artifact,
+        },
+      },
+    );
+  }
+  console.log(
+    `[mobile-build] android-launcher HOME-role artifact audit passed: ${artifact}`,
+  );
+  return artifact;
+}
+
+export function auditAndroidSmsGatewayArtifact({
+  androidSdkRoot,
+  javaHome,
+} = {}) {
+  const artifact = findAndroidCloudDebugApk();
+  if (!artifact) {
+    throw new Error(
+      "[mobile-build] android-sms-gateway debug APK was not found under app/build/outputs/.",
+    );
+  }
+
+  assertNoAndroidSmsGatewayPackagedOffenders(artifact, javaHome);
+  assertAndroidArtifactShipsWebPayload(
+    artifact,
+    listAndroidArtifactEntries(artifact, javaHome),
+    { requireAgent: false, label: "android-sms-gateway" },
+  );
+
+  const aapt = resolveAndroidBuildTool(androidSdkRoot, "aapt");
+  if (!aapt) {
+    throw new Error(
+      "[mobile-build] Could not find aapt under Android SDK build-tools for android-sms-gateway artifact audit.",
+    );
+  }
+  const badging = dumpAndroidArtifactBadging(aapt, artifact);
+  assertAndroidSmsGatewayBadging(badging);
+  const manifestText = dumpAndroidArtifactManifest(aapt, artifact);
+  assertAndroidSmsGatewayArtifactManifest(manifestText);
+
+  console.log(
+    `[mobile-build] android-sms-gateway artifact audit passed: ${artifact}`,
+  );
+  return artifact;
+}
+
+export function assertNoAndroidSmsGatewayPackagedOffenders(artifact, javaHome) {
+  const packagedOffenders = findAndroidCloudPackagedRuntimeOffenders(
+    listAndroidArtifactEntries(artifact, javaHome),
+  );
+  if (packagedOffenders.length > 0) {
+    throw mobileBuildError(
+      `[mobile-build] android-sms-gateway artifact contains local runtime payloads:\n` +
+        packagedOffenders.map((entry) => `  - ${entry}`).join("\n"),
+      {
+        code: "ANDROID_CLOUD_RUNTIME_PAYLOAD_PRESENT",
+        context: { artifact, offenders: packagedOffenders },
+      },
+    );
+  }
 }

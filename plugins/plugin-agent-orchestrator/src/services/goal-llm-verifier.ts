@@ -259,7 +259,7 @@ export interface GoalVerificationInput {
 /**
  * Optional recording context for {@link verifyGoalCompletion}. When
  * `recordTrajectory` is supplied AND trajectory recording is enabled
- * (`ELIZA_TRAJECTORY_LOGGING` != 0), the single grill model call is written
+ * (`ELIZA_TRAJECTORY_RECORDING` != 0), the single grill model call is written
  * as a one-stage trajectory under the active trajectory dir
  * (`ELIZA_TRAJECTORY_DIR` → state-dir/trajectories). That stage carries the
  * verifier prompt and the model's verdict — exactly the model-boundary record
@@ -513,7 +513,7 @@ const GOAL_VERIFIER_TRAJECTORY_AGENT = "orchestrator-goal-verifier";
  * active trajectory dir, so the scenario native-export converts it to an
  * `eliza_native_v1` row and the observability stack can read the grill
  * boundary. No-op unless a recording context is supplied and
- * `ELIZA_TRAJECTORY_LOGGING` is on. Fully guarded: this is observability, and
+ * `ELIZA_TRAJECTORY_RECORDING` is on. Fully guarded: this is observability, and
  * a recorder fault must never break {@link verifyGoalCompletion}'s verdict.
  */
 async function recordVerifierBoundary(

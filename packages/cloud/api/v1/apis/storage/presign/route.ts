@@ -5,7 +5,6 @@
 
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { storageOperationPriceUsd } from "@elizaos/cloud-shared/lib/constants/pricing";
-import { getCloudDeployment } from "@elizaos/cloud-shared/lib/deployment/cloud-deployment";
 import {
   executeNativeStoragePresign,
   NativeStorageReadError,
@@ -14,12 +13,12 @@ import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { requirePaidRouteStanding } from "../../../../src/lib/paid-route-standing";
+import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
 import {
   mintStorageReadCapabilityUrl,
   StorageReadCapabilityConfigurationError,
   validateStorageReadCapabilityConfiguration,
-} from "../../../../src/storage-read-capability";
+} from "@/api-app/storage-read-capability";
 
 const requestSchema = z.object({
   operation: z.literal("get"),
@@ -123,7 +122,7 @@ app.post("/", async (c) => {
         return c.json(
           {
             error: "Insufficient credits",
-            topUpUrl: getCloudDeployment().billingUrl,
+            topUpUrl: "https://cloud.eliza.app/cloud/billing",
           },
           402,
         );

@@ -12,13 +12,14 @@ import {
   Service,
 } from "@elizaos/core";
 import type { HttpPlugin, Route } from "@elizaos/host/protocol";
+import { resolveAppAliasedEnvValue as resolveAliasedEnvValue } from "@elizaos/host/protocol";
 import { dispatchBufferedRequest } from "@elizaos/plugin-native-inference/android/dispatch";
-import { LoopbackRemoteTargetExecutor } from "./remote-target/executor";
-import { RemoteTargetService } from "./remote-target/rpc";
-import type { RemoteTargetCommandExecutor } from "./remote-target/runner";
-import { JsonFileRemoteTargetStateStore } from "./remote-target/store";
-import type { RemoteTargetFetch } from "./remote-target/transport";
-import { RemoteTargetVault } from "./remote-target/vault";
+import { LoopbackRemoteTargetExecutor } from "../platforms/electrobun/src/remote-target-executor";
+import { RemoteTargetDesktopService } from "../platforms/electrobun/src/remote-target-rpc";
+import type { RemoteTargetCommandExecutor } from "../platforms/electrobun/src/remote-target-runner";
+import { JsonFileRemoteTargetStateStore } from "../platforms/electrobun/src/remote-target-store";
+import type { RemoteTargetFetch } from "../platforms/electrobun/src/remote-target-transport";
+import { RemoteTargetVault } from "../platforms/electrobun/src/remote-target-vault";
 import { createAndroidPlatformSecureStore } from "./security/secure-store-android";
 
 export function createMobileBrowserExecutor(
@@ -150,7 +151,7 @@ export async function createAndroidAgentExecutor(
 ): Promise<RemoteTargetCommandExecutor> {
   return new LoopbackRemoteTargetExecutor({
     apiBase: "http://127.0.0.1",
-    apiToken: process.env.ELIZA_API_TOKEN?.trim() || "",
+    apiToken: resolveAliasedEnvValue("ELIZA_API_TOKEN") ?? "",
     fetchImpl: await createAndroidAgentFetch(runtime),
   });
 }
@@ -159,7 +160,7 @@ export class MobileRemoteTargetService extends Service {
   static override serviceType = "mobile-remote-target";
   override capabilityDescription =
     "Receives explicitly paired, signed browser commands in the Android background runtime.";
-  readonly target: RemoteTargetService;
+  readonly target: RemoteTargetDesktopService;
 
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
@@ -168,7 +169,7 @@ export class MobileRemoteTargetService extends Service {
         "Android remote receiver requires an agent runtime.",
         { code: "REMOTE_RUNTIME_REQUIRED" },
       );
-    this.target = new RemoteTargetService(
+    this.target = new RemoteTargetDesktopService(
       new RemoteTargetVault(
         createAndroidPlatformSecureStore(),
         `remote-target:${runtime.agentId}`,

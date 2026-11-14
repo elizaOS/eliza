@@ -1,0 +1,33 @@
+#!/bin/sh
+# Called explicitly by mkosi.finalize.chroot; mkosi does not run update-grub.
+set -efu
+
+prefix='($root)/elizaos-recovery'
+case "${1:-}" in
+    '') ;;
+    --embedded) prefix='(memdisk)' ;;
+    *) echo "unsupported recovery menu mode: $1" >&2; exit 2 ;;
+esac
+for file in /efi/elizaos-recovery/vmlinuz /efi/elizaos-recovery/initrd; do
+    [ -s "$file" ] || { echo "missing recovery boot input: $file" >&2; exit 1; }
+done
+
+# Preserve serial-console and diagnostic settings without inheriting the normal
+# root partition or boot target. Kernel arguments here are trusted build inputs.
+cmdline=''
+for argument in ${ELIZAOS_KERNEL_CMDLINE:-$(cat /etc/kernel/cmdline)}; do
+    case "$argument" in
+        root=*|ro|rw|init=*|rdinit=*|elizaos.recovery=*|\
+        systemd.unit=*|rd.systemd.unit=*|\
+        systemd.volatile=*|rd.systemd.volatile=*|\
+        systemd.machine_id=*|rd.systemd.machine_id=*|\
+        systemd.condition_first_boot=*|rd.systemd.condition_first_boot=*) continue ;;
+    esac
+    cmdline="$cmdline $argument"
+done
+cat <<EOF
+menuentry 'elizaOS Recovery' --id elizaos-recovery --hotkey=r {
+    linux $prefix/vmlinuz root=LABEL=elizaos-recovery ro systemd.volatile=state systemd.unit=rescue.target elizaos.recovery=1$cmdline
+    initrd $prefix/initrd
+}
+EOF

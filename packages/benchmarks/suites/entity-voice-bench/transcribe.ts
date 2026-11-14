@@ -186,9 +186,9 @@ writeFileSync(
     {
       generatedAt: new Date().toISOString(),
       host: { platform: os.platform(), arch: os.arch() },
-      libPath: `~/${path.relative(os.homedir(), path.resolve(libPath)).split(path.sep).join("/")}`,
+      libPath,
       asrBundle: {
-        dir: `~/${path.relative(os.homedir(), path.resolve(bundle)).split(path.sep).join("/")}`,
+        dir: bundle,
         model: statSync(path.join(bundle, "asr", "eliza-1-asr.gguf")).size,
         mmproj: statSync(path.join(bundle, "asr", "eliza-1-asr-mmproj.gguf"))
           .size,

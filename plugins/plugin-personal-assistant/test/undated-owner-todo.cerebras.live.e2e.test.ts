@@ -49,12 +49,6 @@ const TRAJECTORY_LEDGER = {
   orderBy: ["created_at", "id"],
 } as const;
 
-const TRAJECTORY_STEP_LEDGER = {
-  schema: "public",
-  table: "trajectory_steps",
-  orderBy: ["trajectory_id", "ordinal"],
-} as const;
-
 type SqlRow = Record<string, unknown>;
 type CapturedTrajectory = {
   turnName: string;
@@ -84,22 +78,13 @@ function containsText(value: unknown, expected: string): boolean {
   return false;
 }
 
-function parseTrajectorySteps(
-  trajectoryId: string,
-  stepRows: readonly SqlRow[],
-): unknown[] {
-  return stepRows
-    .filter((step) => step.trajectory_id === trajectoryId)
-    .map((step) => {
-      const raw = step.payload;
-      const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
-      if (!parsed || typeof parsed !== "object") {
-        throw new Error(
-          `Trajectory step ${String(step.id)} has invalid payload`,
-        );
-      }
-      return parsed;
-    });
+function parseTrajectorySteps(row: SqlRow): unknown[] {
+  const raw = row.steps_json;
+  const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+  if (!Array.isArray(parsed)) {
+    throw new Error(`Trajectory ${String(row.id)} has invalid steps_json`);
+  }
+  return parsed;
 }
 
 function parsedWireRequest(call: CapturedWireCall): Record<string, unknown> {
@@ -188,14 +173,13 @@ async function waitForTurnTrajectory(
   let latestCandidateSummary: Array<Record<string, unknown>> = [];
   while (Date.now() < deadline) {
     const rows = await readOnlyRows(runtime, TRAJECTORY_LEDGER);
-    const stepRows = await readOnlyRows(runtime, TRAJECTORY_STEP_LEDGER);
     latestCandidateSummary = rows
       .filter((row) => {
         const trajectoryId = String(row.id ?? "");
         return trajectoryId.length > 0 && !priorIds.has(trajectoryId);
       })
       .map((row) => {
-        const steps = parseTrajectorySteps(String(row.id), stepRows);
+        const steps = parseTrajectorySteps(row);
         return {
           id: row.id,
           status: row.status,

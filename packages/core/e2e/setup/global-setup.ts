@@ -17,13 +17,13 @@ import {
 	type Plugin,
 	type UUID,
 } from "@elizaos/core";
-import { createAssistantPlugin } from "../../../../plugins/plugin-assistant/src/index.ts";
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "../../../host/src/contracts/service-routing.ts";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/host/protocol";
 import {
 	createOllamaModelHandlers,
 	detectInferenceProviders,
 	SQLiteDatabaseAdapter,
-} from "../../../testing/src/runtime.ts";
+} from "@elizaos/testing/runtime";
+import { createAssistantPlugin } from "../../../../plugins/plugin-assistant/src/index.ts";
 import { loadEnvFile } from "./env";
 
 const TEST_CHARACTER: Character = {

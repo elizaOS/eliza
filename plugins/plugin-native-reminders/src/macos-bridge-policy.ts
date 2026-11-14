@@ -15,8 +15,16 @@ export function appleRemindersMacosBridgeCandidates(args?: {
       path: args?.envDylibPath ?? "",
     },
     {
+      label: "packaged Apple permissions bridge",
+      path: `../../../../../../../${APPLE_REMINDERS_MACOS_BRIDGE_DYLIB_BASENAME}`,
+    },
+    {
+      label: "packaged Apple permissions bridge",
+      path: `../../../../../../${APPLE_REMINDERS_MACOS_BRIDGE_DYLIB_BASENAME}`,
+    },
+    {
       label: "local Apple permissions bridge",
-      path: `../../../../packages/app/native/macos/${APPLE_REMINDERS_MACOS_BRIDGE_DYLIB_BASENAME}`,
+      path: `../../../../packages/app/platforms/electrobun/src/${APPLE_REMINDERS_MACOS_BRIDGE_DYLIB_BASENAME}`,
     },
   ].filter((candidate) => candidate.path.trim().length > 0);
 }

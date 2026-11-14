@@ -31,7 +31,6 @@ async function resolveSearchOperationContext(runtime: IAgentRuntime) {
     new Request("https://cloud.eliza.app/api/v1/search", {
       headers: { "X-API-Key": cloudApiKey.trim() },
     }),
-    { strongCredentialCheck: true },
   );
   if (resolution.kind !== "authorized") {
     throw new Error(`Hosted Google search standing rejected: ${resolution.kind}`);

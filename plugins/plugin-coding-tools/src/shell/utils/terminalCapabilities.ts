@@ -5,7 +5,7 @@
  */
 import path from "node:path";
 import { resolveHostExecutable } from "@elizaos/host";
-import { readRuntimeExecutionModeEnv } from "@elizaos/host/protocol";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 
 export const TERMINAL_TOOL_NAMES = [
   "sh",
@@ -48,13 +48,13 @@ export interface TerminalSupport {
 
 export function isAndroidRuntime(): boolean {
   return (
-    process.env.ELIZA_PLATFORM?.trim().toLowerCase() === "android" ||
+    readAliasedEnv("ELIZA_PLATFORM")?.trim().toLowerCase() === "android" ||
     Boolean(process.env.ANDROID_ROOT || process.env.ANDROID_DATA)
   );
 }
 
 function isIosRuntime(): boolean {
-  return process.env.ELIZA_PLATFORM?.trim().toLowerCase() === "ios";
+  return readAliasedEnv("ELIZA_PLATFORM")?.trim().toLowerCase() === "ios";
 }
 
 function isTruthyEnv(value: string | undefined): boolean {
@@ -65,6 +65,17 @@ function isTruthyEnv(value: string | undefined): boolean {
 function isStoreBuild(): boolean {
   const variant = process.env.ELIZA_BUILD_VARIANT ?? "";
   return variant.trim().toLowerCase() === "store";
+}
+
+function runtimeMode(): string {
+  return (
+    process.env.ELIZA_RUNTIME_MODE ??
+    process.env.RUNTIME_MODE ??
+    process.env.LOCAL_RUNTIME_MODE ??
+    ""
+  )
+    .trim()
+    .toLowerCase();
 }
 
 export function isAospTerminalRuntime(): boolean {
@@ -193,7 +204,7 @@ export function detectTerminalSupport(): TerminalSupport {
   }
 
   if (isAndroidRuntime()) {
-    if (readRuntimeExecutionModeEnv() !== "local-yolo") {
+    if (runtimeMode() !== "local-yolo") {
       return {
         supported: false,
         reason: "not_local_yolo",

@@ -24,7 +24,7 @@ import {
   asGenerativeCacheApiError,
   getGenerativeOperationContext,
   requireGenerativeRouteCaller,
-} from "../../../../src/lib/generative-route-auth";
+} from "@/api-app/lib/generative-route-auth";
 
 const SocialPlatformSchema = z.enum([
   "twitter",

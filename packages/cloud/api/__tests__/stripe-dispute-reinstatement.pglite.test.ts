@@ -52,7 +52,6 @@ const { billingHoldService, BillingHoldActiveError } = await import(
 const { creditsService } = await import(
   "@elizaos/cloud-shared/lib/services/credits"
 );
-const { invoices } = await import("@elizaos/cloud-shared/db/schemas/invoices");
 const { processStripeEvent } = await import("../src/queue/stripe-event");
 
 const pg = () => getPgliteClientForTests();
@@ -77,7 +76,6 @@ beforeAll(async () => {
         redeemableEarningsLedger,
         referralCodes,
         referralSignups,
-        invoices,
       },
       empty.id,
     ),

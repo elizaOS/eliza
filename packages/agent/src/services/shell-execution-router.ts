@@ -121,7 +121,7 @@ async function resolveSandboxManager(
 // resolver runShell uses for dispatch. The broker singleton in
 // capability-broker.ts hardcodes `local-safe` as its default mode, which is
 // correct for cloud-side callers but wrong for host-side runShell — those
-// must follow ELIZA_RUNTIME_MODE. The
+// must follow ELIZA_RUNTIME_MODE/RUNTIME_MODE/LOCAL_RUNTIME_MODE. The
 // internal mutable holder lets the broker re-read mode on every call without
 // constructing a new CapabilityBroker per runShell invocation.
 const routerModeHolder: { current: ShellExecutionMode } = {

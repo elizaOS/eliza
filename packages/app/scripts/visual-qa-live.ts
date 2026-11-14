@@ -25,7 +25,7 @@
  * opts in with `--strict`.
  *
  * Usage:
- *   bun scripts/visual-qa-live.ts --base http://127.0.0.1:2138 [--out DIR] [--strict]
+ *   node scripts/visual-qa-live.ts --base http://127.0.0.1:2138 [--out DIR] [--strict]
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";

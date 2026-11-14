@@ -22,6 +22,7 @@ import * as childProcess from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { ElizaError, logger } from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 import { waitForHealthy } from "./steward-sidecar/health-check";
 import {
   allocateFirstFreeLoopbackPort,
@@ -351,7 +352,7 @@ export class StewardSidecar {
     }
     // Only the original product owns the historical unnamespaced database.
     const home = process.env.HOME || process.env.USERPROFILE || "";
-    const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
+    const namespace = readAliasedEnv("ELIZA_NAMESPACE") || "eliza";
     const legacy = path.join(home, ".steward", "data");
     const target = path.join(dir, "data");
     if (
@@ -810,7 +811,7 @@ export class StewardSidecar {
  */
 export function resolveDesktopStewardStateRoot(): string {
   const home = process.env.HOME || process.env.USERPROFILE || "";
-  const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
+  const namespace = readAliasedEnv("ELIZA_NAMESPACE") || "eliza";
   const xdgStateHome = process.env.XDG_STATE_HOME?.trim();
   const stateHome = xdgStateHome
     ? path.isAbsolute(xdgStateHome)
@@ -833,7 +834,8 @@ export function createDesktopStewardSidecar(
         // parseInt stops at the first non-digit ("8080junk" -> 8080), so a
         // typo silently overrode overrides?.port and DEFAULT_PORT. Require
         // the whole trimmed value to be decimal; malformed -> NaN falls
-        // through the || chain as before.
+        // through the || chain as before, mirroring parsePortPreference in
+        // packages/app/scripts/dev-platform.ts.
         const raw = (process.env.STEWARD_PORT ?? "").trim();
         return /^\+?\d+$/.test(raw) ? Number(raw) : Number.NaN;
       })() ||

@@ -51,11 +51,11 @@ import { resolveSupervisedViteCommand } from "./lib/dev-ui-vite.ts";
 import { signalSpawnedProcessTree } from "./lib/kill-process-tree.ts";
 import { resolveMacNativeEffectsDevPlan } from "./lib/macos-native-effects-dev.ts";
 import { extendNodePathEnv } from "./lib/node-path-env.ts";
-import { seedDevEnvDefaults } from "./lib/seed-dev-env-defaults.ts";
 import {
   drainSpawnedChildren,
   resolveShutdownDrainWindowMs,
 } from "./lib/shutdown-drain.ts";
+import { syncElizaEnvAliases } from "./lib/sync-eliza-env-aliases.ts";
 import { chooseElizaRuntime, resolveNodeExecPath } from "./run-node-runtime.ts";
 
 // Load worktree-specific env overrides (ports, state dir) before port resolution.
@@ -172,7 +172,7 @@ const { CAPACITOR_PLUGIN_NAMES, NATIVE_PLUGINS_ROOT } = await import(
   pathToFileURL(_capacitorPluginNamesPath).href
 );
 
-seedDevEnvDefaults();
+syncElizaEnvAliases();
 const devCloud = configureDevCloudEnvironment(
   process.argv.slice(2),
   process.env,
@@ -261,6 +261,7 @@ const HOT_RELOAD_BULK_CHANGE_LIMIT =
   Number(process.env.ELIZA_DEV_HOT_RELOAD_BULK_LIMIT) || 4;
 const DEV_TEST_MOCK_ENV_KEYS = [
   "ELIZA_MOCK_GOOGLE_BASE",
+  "ELIZA_MOCK_TWILIO_BASE",
   "ELIZA_MOCK_WHATSAPP_BASE",
   "ELIZA_MOCK_X_BASE",
   "ELIZA_MOCK_CALENDLY_BASE",
@@ -331,7 +332,8 @@ function prepareMacNativeEffectsForDev() {
       console.log(
         `  ${green(logPrefix)} ${dim("Building macOS Calendar/EventKit bridge...")}`,
       );
-      execSync(`bash ${JSON.stringify(plan.buildScript)}`, {
+      execSync("bun run build:native-effects", {
+        cwd: plan.packageDir,
         env: process.env,
         stdio: "inherit",
       });

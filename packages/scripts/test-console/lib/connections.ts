@@ -840,6 +840,12 @@ export const CONNECTIONS = [
         required: true,
       },
       {
+        key: "ELIZA_CLOUD_API_KEY",
+        label: "API key (legacy alias; optional, kept in sync)",
+        secret: true,
+        required: false,
+      },
+      {
         key: "ELIZAOS_CLOUD_BASE_URL",
         label: "Base URL (optional)",
         secret: false,

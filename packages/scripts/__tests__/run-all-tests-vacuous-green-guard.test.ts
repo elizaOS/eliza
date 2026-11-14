@@ -315,7 +315,7 @@ describe("run-all-tests --require-work vacuous-green guard", () => {
               private: true,
               type: "module",
               scripts: {
-                test: "bun ../../packages/scripts/run-with-flake-retry.ts 'never-match' -- bun ../../packages/scripts/run-with-deadline.ts 5000 -- bun scripts/run-isolated-tests.ts",
+                test: "node ../../packages/scripts/run-with-flake-retry.ts 'never-match' -- node ../../packages/scripts/run-with-deadline.ts 5000 -- node scripts/run-isolated-tests.ts",
               },
             },
             null,
@@ -372,8 +372,8 @@ describe("run-all-tests --require-work vacuous-green guard", () => {
             private: true,
             type: "module",
             scripts: {
-              test: "bun run test:mobile-workspace-entry && bun scripts/run-vitest-batches.ts",
-              "test:mobile-workspace-entry": "bun scripts/preflight.mjs",
+              test: "bun run test:mobile-workspace-entry && node scripts/run-vitest-batches.ts",
+              "test:mobile-workspace-entry": "node scripts/preflight.mjs",
             },
           }),
         );
@@ -428,7 +428,7 @@ describe("run-all-tests --require-work vacuous-green guard", () => {
               private: true,
               type: "module",
               scripts: {
-                test: "bun fail-with-no-test-text.mjs",
+                test: "node fail-with-no-test-text.mjs",
               },
             },
             null,
@@ -681,9 +681,9 @@ for (const mode of ["pass", "skip", "fail"] as const) {
             scripts: {
               test: "bun run test:first && bun run test:second",
               "test:first":
-                "bun ../scripts/run-vitest.ts run --config first.config.ts",
+                "node ../scripts/run-vitest.ts run --config first.config.ts",
               "test:second":
-                "bun ../scripts/run-vitest.ts run --config second.config.ts",
+                "node ../scripts/run-vitest.ts run --config second.config.ts",
             },
           }),
         );

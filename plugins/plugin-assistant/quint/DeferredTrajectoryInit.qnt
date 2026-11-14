@@ -1,4 +1,4 @@
-// The trajectory store's shared schema initialization for first reads and capture.
+// TrajectoriesService's shared initialize promise for first reads and capture.
 // Two callers and two initialization attempts share one legacy table migration.
 // SQL inspection, migration and publication are separate. One failure may leave
 // already-committed schema work intact; a later caller explicitly retries.

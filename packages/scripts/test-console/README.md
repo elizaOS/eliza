@@ -5,7 +5,7 @@ artifacts. It reads the same test plan as the repository runner.
 No separate build is needed. Start from the repository root:
 
 ```bash
-bun packages/scripts/test-console/server.ts
+node packages/scripts/test-console/server.ts
 ```
 
 Test from the repository root:

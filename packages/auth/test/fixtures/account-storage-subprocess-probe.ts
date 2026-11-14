@@ -4,7 +4,6 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   createIsolatedAccountStoragePolicy,
-  createRuntimeAccountStoragePolicy,
   deleteAccount,
   loadAccount,
   saveAccount,
@@ -18,12 +17,8 @@ if (!stateRoot || !resultFile) {
 }
 
 let result: Record<string, unknown>;
-const mode = process.env.ELIZA_STORAGE_PROBE_MODE;
-const runtimePersistence = mode === "runtime-write" || mode === "runtime-read";
 try {
-  const policy = runtimePersistence
-    ? createRuntimeAccountStoragePolicy(stateRoot)
-    : createIsolatedAccountStoragePolicy(stateRoot);
+  const policy = createIsolatedAccountStoragePolicy(stateRoot);
   if (process.env.ELIZA_STORAGE_PROBE_MODE === "reset-race") {
     const readyFile = process.env.ELIZA_STORAGE_PROBE_READY;
     const goFile = process.env.ELIZA_STORAGE_PROBE_GO;
@@ -43,30 +38,23 @@ try {
     }
     if (!fs.existsSync(goFile)) throw new Error("reset race probe timed out");
   }
-  if (mode !== "runtime-read")
-    saveAccount(
-      {
-        id: "child-account",
-        providerId: "openai-codex",
-        label: "Child account",
-        source: "oauth",
-        credentials: {
-          access: "access",
-          refresh: "refresh",
-          expires: Date.now() + 60_000,
-        },
-        createdAt: 1,
-        updatedAt: 1,
+  saveAccount(
+    {
+      id: "child-account",
+      providerId: "openai-codex",
+      label: "Child account",
+      source: "oauth",
+      credentials: {
+        access: "access",
+        refresh: "refresh",
+        expires: Date.now() + 60_000,
       },
-      policy,
-    );
-  if (runtimePersistence) {
-    const loaded = loadAccount("openai-codex", "child-account", policy);
-    result = {
-      ok: loaded?.credentials.access === "access",
-      owner: policy.owner,
-    };
-  } else if (process.env.ELIZA_STORAGE_PROBE_MODE === "reset-race") {
+      createdAt: 1,
+      updatedAt: 1,
+    },
+    policy,
+  );
+  if (process.env.ELIZA_STORAGE_PROBE_MODE === "reset-race") {
     result = { ok: true };
   } else {
     touchAccount("openai-codex", "child-account", policy);
@@ -83,9 +71,6 @@ try {
 } catch (error) {
   result = {
     ok: false,
-    ...(runtimePersistence && error instanceof Error
-      ? { name: error.name }
-      : {}),
     code:
       typeof error === "object" && error !== null && "code" in error
         ? String(error.code)

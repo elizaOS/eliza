@@ -1,291 +1,119 @@
 {
-	"cases": [
-		{
-			"name": "failures",
-			"main": "ApprovalService_failures",
-			"init": "init",
-			"step": "step",
-			"invariants": [
-				"TypeOK",
-				"AtMostOneCallback",
-				"ResultAgrees",
-				"SingleOwner"
-			],
-			"temporal": ["SettlesOnce", "CallerSettles", "DeadlockFree"],
-			"maxSteps": 60,
-			"samples": 1000,
-			"legacyConfiguration": {
-				"name": "ApprovalService.failures.cfg",
-				"constants": ["Selectors = {s1, s2}", "CanFail = TRUE"],
-				"specification": ["Spec"],
-				"invariants": [
-					"TypeOK",
-					"AtMostOneCallback",
-					"ResultAgrees",
-					"SingleOwner"
-				],
-				"properties": ["SettlesOnce", "CallerSettles"],
-				"checkDeadlock": true
-			},
-			"fairness": "Temporal liveness obligations explicitly imply the original per-action Fairness predicate. Step includes stuttering; nextStep preserves the original enabled relation.",
-			"deadlock": true,
-			"temporalChecks": [
-				{
-					"property": "SettlesOnce",
-					"expect": "holds",
-					"assumptions": [
-						"Checked formula in ApprovalService_failures: SettlesOnce = always(( Set(\"selected\", \"timedOut\", \"cancelled\", \"rejected\").forall(result => s.result == result implies next(s.result) == result) ).orKeep(s))",
-						"No scheduler fairness is assumed by this property."
-					]
-				},
-				{
-					"property": "CallerSettles",
-					"expect": "holds",
-					"assumptions": [
-						"Checked formula in ApprovalService_failures: CallerSettles = Fairness implies eventually(s.result != \"none\")",
-						"Model fairness predicate Fairness = and { Fire.weakFair(s), TGetTask.weakFair(s), any { TCallbackDone, TCallbackFails }.weakFair(s), TResolve.weakFair(s), TDelete.weakFair(s), Selectors.forall(i => and { SGetTask(i).weakFair(s), any { SCallbackDone(i), SCallbackFails(i) }.weakFair(s), SDelete(i).weakFair(s) }) }",
-						"The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
-					]
-				},
-				{
-					"property": "DeadlockFree",
-					"expect": "holds",
-					"assumptions": [
-						"Checked formula in ApprovalService_failures: DeadlockFree = always(enabled(nextStep))",
-						"No scheduler fairness is assumed by this property."
-					]
-				}
-			]
-		},
-		{
-			"name": "race",
-			"main": "ApprovalService_race",
-			"init": "init",
-			"step": "step",
-			"invariants": [
-				"TypeOK",
-				"AtMostOneCallback",
-				"ResultAgrees",
-				"SingleOwner"
-			],
-			"temporal": ["SettlesOnce", "CallerSettles", "DeadlockFree"],
-			"maxSteps": 60,
-			"samples": 1000,
-			"legacyConfiguration": {
-				"name": "ApprovalService.race.cfg",
-				"constants": ["Selectors = {s1, s2}", "CanFail = FALSE"],
-				"specification": ["Spec"],
-				"invariants": [
-					"TypeOK",
-					"AtMostOneCallback",
-					"ResultAgrees",
-					"SingleOwner"
-				],
-				"properties": ["SettlesOnce", "CallerSettles"],
-				"checkDeadlock": true
-			},
-			"fairness": "Temporal liveness obligations explicitly imply the original per-action Fairness predicate. Step includes stuttering; nextStep preserves the original enabled relation.",
-			"deadlock": true,
-			"temporalChecks": [
-				{
-					"property": "SettlesOnce",
-					"expect": "holds",
-					"assumptions": [
-						"Checked formula in ApprovalService_race: SettlesOnce = always(( Set(\"selected\", \"timedOut\", \"cancelled\", \"rejected\").forall(result => s.result == result implies next(s.result) == result) ).orKeep(s))",
-						"No scheduler fairness is assumed by this property."
-					]
-				},
-				{
-					"property": "CallerSettles",
-					"expect": "holds",
-					"assumptions": [
-						"Checked formula in ApprovalService_race: CallerSettles = Fairness implies eventually(s.result != \"none\")",
-						"Model fairness predicate Fairness = and { Fire.weakFair(s), TGetTask.weakFair(s), any { TCallbackDone, TCallbackFails }.weakFair(s), TResolve.weakFair(s), TDelete.weakFair(s), Selectors.forall(i => and { SGetTask(i).weakFair(s), any { SCallbackDone(i), SCallbackFails(i) }.weakFair(s), SDelete(i).weakFair(s) }) }",
-						"The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
-					]
-				},
-				{
-					"property": "DeadlockFree",
-					"expect": "holds",
-					"assumptions": [
-						"Checked formula in ApprovalService_race: DeadlockFree = always(enabled(nextStep))",
-						"No scheduler fairness is assumed by this property."
-					]
-				}
-			]
-		},
-		{
-			"name": "retirement",
-			"main": "ApprovalRetirement",
-			"init": "init",
-			"step": "step",
-			"invariants": [
-				"TypeOK",
-				"NoLatePending",
-				"RetiredIsDrained",
-				"ReplacementIsDrained"
-			],
-			"temporal": [
-				"SettlesOnce",
-				"RetiredEffectsStay",
-				"StopDrains",
-				"UnfairStopDrains"
-			],
-			"maxSteps": 35,
-			"samples": 1000,
-			"temporalChecks": [
-				{
-					"property": "SettlesOnce",
-					"expect": "holds",
-					"assumptions": [
-						"No scheduling fairness is assumed. A published caller result never changes."
-					]
-				},
-				{
-					"property": "RetiredEffectsStay",
-					"expect": "holds",
-					"assumptions": [
-						"No scheduling fairness is assumed. Old-instance task, phase and result effects cannot change after its stop completes."
-					]
-				},
-				{
-					"property": "StopDrains",
-					"expect": "holds",
-					"assumptions": [
-						"CompletionFairness weakly fairly settles each admitted storage read/write, callback, cleanup and worker deletion, and schedules the stop continuation. Completion may fail.",
-						"Callbacks do not await their own stop or unload; runtime scheduling and provider termination are assumptions, not established guarantees."
-					]
-				},
-				{
-					"property": "UnfairStopDrains",
-					"expect": "counterexample",
-					"assumptions": [
-						"No fairness is assumed. An admitted write or callback may remain pending forever, so stop need not complete."
-					]
-				}
-			]
-		},
-		{
-			"name": "persisted-callbacks",
-			"main": "ApprovalPersisted_callbacks",
-			"init": "init",
-			"step": "step",
-			"invariants": [
-				"TypeOK",
-				"AcknowledgedSelectionHasEffect",
-				"NoInventedFreeEffects",
-				"RestartCannotAcknowledgeCallback"
-			],
-			"temporal": [
-				"OrphanCannotResume",
-				"LostCallbackHasNoNewEffects",
-				"FairOutcome",
-				"UnfairOutcome"
-			],
-			"maxSteps": 30,
-			"samples": 1000,
-			"temporalChecks": [
-				{
-					"property": "OrphanCannotResume",
-					"expect": "holds",
-					"assumptions": [
-						"No fairness is assumed. A task with an unavailable required callback can remain retained or be explicitly cancelled; re-registering a worker does not restore the callback."
-					]
-				},
-				{
-					"property": "LostCallbackHasNoNewEffects",
-					"expect": "holds",
-					"assumptions": [
-						"No fairness is assumed. An orphaned task cannot retry its required callback, including a callback that completed before task deletion failed."
-					]
-				},
-				{
-					"property": "FairOutcome",
-					"expect": "holds",
-					"assumptions": [
-						"CompletionFairness weakly fairly fires a continuously enabled live deadline and settles callbacks and task deletion. Failure counts as an outcome with the task retained.",
-						"This does not assume provider success, a wall-clock bound, or timer reconstruction after runtime restart.",
-						"Each persisted finite case assumes a positive live timeout. Requests without a timeout require an external selection or cancellation and have no automatic-progress claim."
-					]
-				},
-				{
-					"property": "UnfairOutcome",
-					"expect": "counterexample",
-					"assumptions": [
-						"No fairness is assumed. An unselected live request or its admitted callback may stutter forever."
-					]
-				}
-			]
-		},
-		{
-			"name": "persisted-callback-free",
-			"main": "ApprovalPersisted_callbackFree",
-			"init": "init",
-			"step": "step",
-			"invariants": [
-				"TypeOK",
-				"AcknowledgedSelectionHasEffect",
-				"NoInventedFreeEffects",
-				"RestartCannotAcknowledgeCallback"
-			],
-			"temporal": [
-				"OrphanCannotResume",
-				"LostCallbackHasNoNewEffects",
-				"FairOutcome",
-				"UnfairOutcome"
-			],
-			"maxSteps": 30,
-			"samples": 1000,
-			"temporalChecks": [
-				{
-					"property": "OrphanCannotResume",
-					"expect": "holds",
-					"assumptions": [
-						"No fairness is assumed. A task with an unavailable required callback can remain retained or be explicitly cancelled; re-registering a worker does not restore the callback."
-					]
-				},
-				{
-					"property": "LostCallbackHasNoNewEffects",
-					"expect": "holds",
-					"assumptions": [
-						"No fairness is assumed. An orphaned task cannot retry its required callback, including a callback that completed before task deletion failed."
-					]
-				},
-				{
-					"property": "FairOutcome",
-					"expect": "holds",
-					"assumptions": [
-						"CompletionFairness weakly fairly fires a continuously enabled live deadline and settles callbacks and task deletion. Failure counts as an outcome with the task retained.",
-						"This does not assume provider success, a wall-clock bound, or timer reconstruction after runtime restart.",
-						"Each persisted finite case assumes a positive live timeout. Requests without a timeout require an external selection or cancellation and have no automatic-progress claim."
-					]
-				},
-				{
-					"property": "UnfairOutcome",
-					"expect": "counterexample",
-					"assumptions": [
-						"No fairness is assumed. An unselected live request or its admitted callback may stutter forever."
-					]
-				}
-			]
-		}
-	],
-	"sources": [
-		"packages/core/src/services/approval.ts",
-		"packages/core/src/runtime/retirement.ts",
-		"packages/core/src/runtime.ts",
-		"packages/core/src/runtime/service-lifecycle.ts",
-		"packages/core/test/approval-service-model.test.ts"
-	],
-	"conformance": "packages/core/scripts/quint-approval-conformance.mjs",
-	"bounds": "The existing race/failure cases start with one published approval and two selectors. The retirement case has one request in one instance, one creation receipt, one selecting worker or claimed timer, one stop and a replacement admission boundary, or one admitted list/worker-permission query. Callback and storage completion may succeed or fail. Persisted cases project one task requiring both callbacks (sync or async, including the coding-tools caller) or one callback-free async task, one positive live deadline, one runtime restart, and one same-name worker re-registration. Callback completion and task deletion can succeed or fail. Task reads succeed in this projection.",
-	"limitations": [
-		"Role authorization, option validation, multiple pending approvals, durable recovery of task rows and process restart are outside these projections.",
-		"Stopping an already-pending request retains its durable task row. Callback failure retains the row but removes its in-memory callback. Unavailable callbacks now fail closed. There is no durable callback retry or function reconstruction.",
-		"Retirement assumes admitted callbacks settle and do not await their own service unload or stop. Independent instances running concurrently and reentrant lifecycle calls remain separate obligations.",
-		"Creation failure is checked before a successful commit. Unknown commit acknowledgements and external database mutation are outside these projections.",
-		"Persisted callback requirements use the existing boolean metadata. Mixed callback shapes, legacy or externally changed metadata, automatic worker registration and startup reconstruction of deadline timers remain outside these two persisted projections.",
-		"Attached metadata is projected away after the implementation conformance establishes that it cannot replace source-owned task options, approval request coordinates and callback requirements.",
-		"Receipt-bearing cancelPendingApproval uses the existing pending owner and fails closed for claimed or unavailable callbacks. ChoiceApprovalCancellation models its durable delete-before-settlement and retry contract separately. Real Core conformance covers exclusive callback-free cancellation, original-deadline restoration and stop success/failure races. Legacy cancelApproval remains orphan-row cleanup, not a cancellation receipt. A real committed-delete/lost-acknowledgement case also verifies that a missing task cannot produce a successful timeout callback receipt; unknown storage acknowledgement remains outside the finite model."
-	]
+  "cases": [
+    {
+      "name": "failures",
+      "main": "ApprovalService_failures",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "AtMostOneCallback",
+        "ResultAgrees",
+        "SingleOwner"
+      ],
+      "temporal": ["SettlesOnce", "CallerSettles", "DeadlockFree"],
+      "maxSteps": 60,
+      "samples": 1000,
+      "legacyConfiguration": {
+        "name": "ApprovalService.failures.cfg",
+        "constants": ["Selectors = {s1, s2}", "CanFail = TRUE"],
+        "specification": ["Spec"],
+        "invariants": [
+          "TypeOK",
+          "AtMostOneCallback",
+          "ResultAgrees",
+          "SingleOwner"
+        ],
+        "properties": ["SettlesOnce", "CallerSettles"],
+        "checkDeadlock": true
+      },
+      "fairness": "Temporal liveness obligations explicitly imply the original per-action Fairness predicate. Step includes stuttering; nextStep preserves the original enabled relation.",
+      "deadlock": true,
+      "temporalChecks": [
+        {
+          "property": "SettlesOnce",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in ApprovalService_failures: SettlesOnce = always(( Set(\"selected\", \"timedOut\", \"cancelled\", \"rejected\").forall(result => s.result == result implies next(s.result) == result) ).orKeep(s))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        },
+        {
+          "property": "CallerSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in ApprovalService_failures: CallerSettles = Fairness implies eventually(s.result != \"none\")",
+            "Model fairness predicate Fairness = and { Fire.weakFair(s), TGetTask.weakFair(s), any { TCallbackDone, TCallbackFails }.weakFair(s), TResolve.weakFair(s), TDelete.weakFair(s), Selectors.forall(i => and { SGetTask(i).weakFair(s), any { SCallbackDone(i), SCallbackFails(i) }.weakFair(s), SDelete(i).weakFair(s) }) }",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        },
+        {
+          "property": "DeadlockFree",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in ApprovalService_failures: DeadlockFree = always(enabled(nextStep))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "race",
+      "main": "ApprovalService_race",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "AtMostOneCallback",
+        "ResultAgrees",
+        "SingleOwner"
+      ],
+      "temporal": ["SettlesOnce", "CallerSettles", "DeadlockFree"],
+      "maxSteps": 60,
+      "samples": 1000,
+      "legacyConfiguration": {
+        "name": "ApprovalService.race.cfg",
+        "constants": ["Selectors = {s1, s2}", "CanFail = FALSE"],
+        "specification": ["Spec"],
+        "invariants": [
+          "TypeOK",
+          "AtMostOneCallback",
+          "ResultAgrees",
+          "SingleOwner"
+        ],
+        "properties": ["SettlesOnce", "CallerSettles"],
+        "checkDeadlock": true
+      },
+      "fairness": "Temporal liveness obligations explicitly imply the original per-action Fairness predicate. Step includes stuttering; nextStep preserves the original enabled relation.",
+      "deadlock": true,
+      "temporalChecks": [
+        {
+          "property": "SettlesOnce",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in ApprovalService_race: SettlesOnce = always(( Set(\"selected\", \"timedOut\", \"cancelled\", \"rejected\").forall(result => s.result == result implies next(s.result) == result) ).orKeep(s))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        },
+        {
+          "property": "CallerSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in ApprovalService_race: CallerSettles = Fairness implies eventually(s.result != \"none\")",
+            "Model fairness predicate Fairness = and { Fire.weakFair(s), TGetTask.weakFair(s), any { TCallbackDone, TCallbackFails }.weakFair(s), TResolve.weakFair(s), TDelete.weakFair(s), Selectors.forall(i => and { SGetTask(i).weakFair(s), any { SCallbackDone(i), SCallbackFails(i) }.weakFair(s), SDelete(i).weakFair(s) }) }",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        },
+        {
+          "property": "DeadlockFree",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in ApprovalService_race: DeadlockFree = always(enabled(nextStep))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        }
+      ]
+    }
+  ],
+  "sources": ["packages/core/src/services/approval.ts"]
 }

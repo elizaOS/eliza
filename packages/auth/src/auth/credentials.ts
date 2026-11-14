@@ -26,6 +26,7 @@ import {
 } from "@elizaos/core";
 import { ElizaError } from "@elizaos/core/protocol";
 import type { SubscriptionCredentialSource } from "@elizaos/host/protocol";
+import { resolveAliasedEnvValue } from "@elizaos/host/protocol";
 import {
   type AccountCredentialRecord,
   type AccountDeletionPlan,
@@ -560,7 +561,7 @@ export async function getAccessToken(
 }
 function readConfiguredAnthropicSetupToken(): string | null {
   const namespace = getElizaNamespace();
-  const explicitConfig = process.env.ELIZA_CONFIG_PATH?.trim();
+  const explicitConfig = resolveAliasedEnvValue("ELIZA_CONFIG_PATH")?.trim();
   const configPath = explicitConfig
     ? resolveUserPath(explicitConfig)
     : path.join(resolveStateDir(), `${namespace}.json`);

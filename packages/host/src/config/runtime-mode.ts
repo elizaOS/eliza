@@ -106,33 +106,41 @@ export function readRuntimeExecutionModeConfig(
 export interface RuntimeExecutionModeSource {
   getSetting?: (key: string) => unknown;
 }
-const RUNTIME_EXECUTION_MODE_KEY = "ELIZA_RUNTIME_MODE";
-/** The explicit `ELIZA_RUNTIME_MODE` value in `env`, or null when unset. */
-export function readRuntimeExecutionModeEnv(
-  env: Readonly<Record<string, string | undefined>> | undefined = globalThis
-    .process?.env,
-): RuntimeExecutionMode | null {
-  return normalizeRuntimeExecutionMode(env?.[RUNTIME_EXECUTION_MODE_KEY]);
-}
+const RUNTIME_EXECUTION_MODE_SETTING_KEYS = [
+  "ELIZA_RUNTIME_MODE",
+  "RUNTIME_MODE",
+  "LOCAL_RUNTIME_MODE",
+] as const;
 /**
  * Canonical resolver for the active runtime execution mode at the
- * agent/plugin boundary. Reads `ELIZA_RUNTIME_MODE` from the runtime first,
- * then from the environment, defaulting to `local-yolo` when nothing is set.
+ * agent/plugin boundary. Reads an explicit setting from the runtime first,
+ * then falls back to the same env vars, defaulting to `local-yolo` when
+ * nothing is set.
  *
  * This is the one source of truth for `cloud | local-safe | local-yolo`
  * routing; both the agent package and the shell/coding-tools plugins import
- * it from `@elizaos/host/protocol` to avoid duplicating the resolution logic.
+ * it from `@elizaos/core` to avoid duplicating the resolution logic.
  */
 export function resolveRuntimeExecutionMode(
   source?: RuntimeExecutionModeSource | null,
 ): RuntimeExecutionMode {
-  const mode =
-    normalizeRuntimeExecutionMode(
-      source?.getSetting?.(RUNTIME_EXECUTION_MODE_KEY),
-    ) ??
-    readRuntimeExecutionModeEnv() ??
-    "local-yolo";
-  return isIosMobile() && mode === "local-yolo" ? "local-safe" : mode;
+  const clampForPlatform = (
+    mode: RuntimeExecutionMode,
+  ): RuntimeExecutionMode =>
+    isIosMobile() && mode === "local-yolo" ? "local-safe" : mode;
+  for (const key of RUNTIME_EXECUTION_MODE_SETTING_KEYS) {
+    const fromSetting = normalizeRuntimeExecutionMode(
+      source?.getSetting?.(key),
+    );
+    if (fromSetting) return clampForPlatform(fromSetting);
+  }
+  for (const key of RUNTIME_EXECUTION_MODE_SETTING_KEYS) {
+    const fromEnv = normalizeRuntimeExecutionMode(
+      globalThis.process?.env?.[key],
+    );
+    if (fromEnv) return clampForPlatform(fromEnv);
+  }
+  return clampForPlatform("local-yolo");
 }
 /** Local-only narrowing of {@link RuntimeExecutionMode} for callers that only
  * distinguish local-safe vs local-yolo. Cloud collapses to `local-yolo` here

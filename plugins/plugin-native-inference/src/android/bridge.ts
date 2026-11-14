@@ -35,14 +35,16 @@
  */
 
 import process from "node:process";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 import { startLocalAgentServer } from "./private-dispatch.ts";
 
 // ── Step 1: set Android env vars before any elizaOS module import ──────────
 
 // These match what ElizaAgentService passes as process.env; keep in sync.
-if (!process.env.ELIZA_PLATFORM?.trim()) {
+if (!readAliasedEnv("ELIZA_PLATFORM")) {
   process.env.ELIZA_PLATFORM = "android";
 }
+process.env.ELIZA_MOBILE_PLATFORM ||= "android";
 process.env.ELIZA_ANDROID_LOCAL_BACKEND ||= "1";
 process.env.ELIZA_DISABLE_DIRECT_RUN ||= "1";
 process.env.ELIZA_HEADLESS ||= "1";
@@ -134,7 +136,7 @@ function setupAndroidBridgeEnvironment(): string {
   const rawHome =
     process.env.HOME ||
     nodePath.dirname(
-      process.env.ELIZA_STATE_DIR?.trim() || "/data/local/tmp/.eliza",
+      readAliasedEnv("ELIZA_STATE_DIR") || "/data/local/tmp/.eliza",
     );
 
   let canonicalHome: string;
@@ -190,7 +192,7 @@ function setupAndroidBridgeEnvironment(): string {
   }
 
   const stateDir =
-    process.env.ELIZA_STATE_DIR?.trim() || `${canonicalHome}/.eliza`;
+    readAliasedEnv("ELIZA_STATE_DIR") || `${canonicalHome}/.eliza`;
 
   installMobileFsShim(canonicalHome);
 

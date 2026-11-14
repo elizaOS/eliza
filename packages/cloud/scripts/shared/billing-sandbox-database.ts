@@ -1,9 +1,6 @@
 /** Creates a disposable billing schema using the production billing migrations and minimal external owner tables. */
+import { readFile } from "node:fs/promises";
 import type { Client } from "pg";
-import {
-  applyBillingFixtureMigrations,
-  installSubscriptionGrantTestSchema,
-} from "../../shared/src/testing/billing-migrations.ts";
 export async function initializeBillingSandboxDatabase(db: Client) {
   await db.query(`
       CREATE TABLE IF NOT EXISTS webhook_events(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),event_id text NOT NULL UNIQUE,provider text NOT NULL,event_type text,payload_hash text NOT NULL,source_ip text,processed_at timestamp NOT NULL DEFAULT now(),event_timestamp timestamp);
@@ -14,7 +11,7 @@ export async function initializeBillingSandboxDatabase(db: Client) {
       CREATE TABLE apps(id uuid PRIMARY KEY,name text NOT NULL DEFAULT 'Independent app',app_url text NOT NULL DEFAULT 'https://app.example',allowed_origins jsonb NOT NULL DEFAULT '["https://app.example"]',organization_id uuid NOT NULL REFERENCES organizations(id),is_active boolean NOT NULL DEFAULT true,is_approved boolean NOT NULL DEFAULT true,review_status text NOT NULL DEFAULT 'approved');
       CREATE TABLE credit_transactions(id uuid PRIMARY KEY,organization_id uuid NOT NULL REFERENCES organizations(id),CONSTRAINT credit_transactions_id_org_idx UNIQUE(id,organization_id));
     `);
-  await applyBillingFixtureMigrations(db, [
+  for (const tag of [
     "0373_subscription_authority",
     "0397_subscription_checkout_contract",
     "0383_subscription_cancellation_result",
@@ -57,11 +54,13 @@ export async function initializeBillingSandboxDatabase(db: Client) {
     "0436_app_billing_paid_resume_progress",
     "0437_app_billing_deletion_checkout",
     "0439_app_billing_completed_checkout",
-    "0511_organization_plan_change_quotes",
-    "0512_organization_upgrade_dispatch",
-    "0534_subscription_allowance_invoice_authority",
-    "0541_app_pilot_redemptions",
-  ]);
-  await installSubscriptionGrantTestSchema((statement) => db.query(statement));
-  await applyBillingFixtureMigrations(db, ["0543_app_pilot_allowance"]);
+  ]) {
+    const migration = await readFile(
+      new URL(`../../shared/src/db/migrations/${tag}.sql`, import.meta.url),
+      "utf8",
+    );
+    for (const statement of migration.split("--> statement-breakpoint"))
+      if (statement.trim())
+        await db.query(statement.replaceAll('"public".', ""));
+  }
 }

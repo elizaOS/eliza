@@ -565,44 +565,6 @@ describe("Cloud speech evidence and client lifecycle", () => {
         client.end(kind === "tts" ? JSON.stringify({text:"synthetic speech"}) : "synthetic audio");
         return {client,received,finished,requestComplete,disconnected,close:async()=>{client.destroy();await new Promise<void>(resolve=>server.close(()=>resolve()));}};
     }
-    test("a real empty upstream response is rejected before audio headers are sent", async () => {
-        let audioBytes = Buffer.alloc(0);
-        const server = http.createServer((_req, res) => {
-            res.writeHead(200, { "Content-Type": "audio/mpeg" });
-            res.end(audioBytes);
-        });
-        server.listen(0, "127.0.0.1");
-        await once(server, "listening");
-        const address = server.address();
-        if (!address || typeof address === "string") throw Error("Fixture port missing");
-        vi.stubEnv("ELIZAOS_CLOUD_BASE_URL", `http://127.0.0.1:${address.port}/api/v1`);
-        globalThis.fetch = realFetch;
-        try {
-            const empty = await proxy("tts");
-            try {
-                const result = await empty.received;
-                await empty.finished;
-                expect(result.status).toBe(502);
-                expect(JSON.parse(result.body.toString())).toMatchObject({
-                    error: "Eliza Cloud TTS returned an empty audio response",
-                });
-            } finally {
-                await empty.close();
-            }
-            audioBytes = Buffer.from([73, 68, 51]);
-            const playable = await proxy("tts");
-            try {
-                const result = await playable.received;
-                await playable.finished;
-                expect(result.status).toBe(200);
-                expect(result.body).toEqual(audioBytes);
-            } finally {
-                await playable.close();
-            }
-        } finally {
-            await new Promise<void>((resolve) => server.close(() => resolve()));
-        }
-    });
     test.each(["tts", "stt"] as const)("%s client disconnect cancels an in-flight upstream without retry",async(kind)=>{
         let entered!:()=>void, rejectFetch!:(reason:unknown)=>void;const started=new Promise<void>(resolve=>{entered=resolve});let signal:AbortSignal|undefined,calls=0;
         globalThis.fetch=(async(_input,init)=>{calls++;signal=init?.signal??undefined;entered();return new Promise<Response>((_resolve,reject)=>{rejectFetch=reject;signal?.addEventListener("abort",()=>reject(signal?.reason),{once:true});});}) as typeof fetch;

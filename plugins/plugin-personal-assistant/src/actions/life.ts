@@ -5418,11 +5418,6 @@ async function runLifeOperationHandlerInner(
             }
           : params.createPlan;
       const nativeCreatePlan = parseNativeTaskCreatePlan(suppliedCreatePlan);
-      const verifyReminderIntent =
-        !deferredDefinitionDraft &&
-        (ownerSurfaceActionName === "OWNER_REMINDERS" ||
-          nativeCreatePlan?.requestKind === "reminder" ||
-          nativeCreatePlan?.requestKind === "alarm");
       const fallbackTitle = deferredDefinitionDraft?.request.title ?? null;
       let title: string | null = editingDeferredDefinitionDraft
         ? (params.title ?? fallbackTitle)
@@ -5479,12 +5474,16 @@ async function runLifeOperationHandlerInner(
         };
       }
 
-      // A current client clock grounds local-time requests. Fall back to the
-      // stored owner zone when the request has no valid client clock.
-      const requestTimeZone =
-        explicitCadenceTimeZone(
-          detailString(detailObject(message.content, "metadata"), "uiTimeZone"),
-        ) ?? (await resolveOwnerTimeZone(runtime, new Date()));
+      // Owner's stored timezone fact (travel-aware), used as the fallback zone
+      // for a conversational create when no zone was stated out loud and no
+      // more-specific candidate (explicit detail / planner / deferred draft /
+      // window policy) is present. Without this, "remind me tomorrow at 9am"
+      // resolves 9am against the HOST clock (`resolveDefaultTimeZone()` = UTC
+      // on shared-server / TZ=UTC topologies) instead of the owner's wall
+      // clock (#13509). Read once here; the store call falls back to the host
+      // zone itself when no owner fact is stored, so `ownerFactTimeZone` is
+      // always a concrete zone (never fabricated).
+      const ownerFactTimeZone = await resolveOwnerTimeZone(runtime, new Date());
 
       // Track whether cadence/title came from explicit high-confidence
       // sources so the planner only fills genuine gaps.
@@ -5499,9 +5498,9 @@ async function runLifeOperationHandlerInner(
           : deferredDefinitionDraft?.request.title) ?? params.title,
       );
 
-      // Recheck reminder intent against the owner message before accepting a
-      // planner-supplied create plan. Other surfaces only fill missing fields;
-      // confirmed deferred drafts retain their existing authority.
+      // Parameter enhancement fills gaps when structured planner input is partial.
+      // Skip when options.parameters already contain the complete
+      // definition-create shape, or when reusing a confirmed deferred draft.
       let llmPlan: Awaited<
         ReturnType<typeof extractTaskCreatePlanWithLlm>
       > | null = null;
@@ -5510,8 +5509,7 @@ async function runLifeOperationHandlerInner(
       let llmRequestKind: NativeAppleReminderLikeKind | null = null;
       if (
         (!deferredDefinitionDraft || editingDeferredDefinitionDraft) &&
-        (verifyReminderIntent ||
-          nativeCreatePlan ||
+        (nativeCreatePlan ||
           !hasCompleteNativeDefinitionCreatePlan ||
           (ownerSurfaceActionName === "OWNER_REMINDERS" &&
             explicitNoAlert === undefined &&
@@ -5519,10 +5517,10 @@ async function runLifeOperationHandlerInner(
       ) {
         try {
           llmPlan =
-            (verifyReminderIntent ? null : nativeCreatePlan) ??
+            nativeCreatePlan ??
             (await extractTaskCreatePlanWithLlm({
               runtime,
-              intent: verifyReminderIntent ? currentText : intent,
+              intent,
               state: state ?? undefined,
               message: message,
               timeZone:
@@ -5530,7 +5528,7 @@ async function runLifeOperationHandlerInner(
                   detailString(details, "timeZone") ??
                     deferredDefinitionDraft?.request.timezone ??
                     windowPolicy?.timezone,
-                ) ?? requestTimeZone,
+                ) ?? ownerFactTimeZone,
             }));
         } catch (error) {
           // error-policy:J4 Explicit create parameters remain usable without a
@@ -5539,49 +5537,17 @@ async function runLifeOperationHandlerInner(
             throw error;
           }
         }
-        // Verification may reject the action. Preserve native timing and known
-        // delivery choices while recovering an unresolved destination or alert.
-        if (
-          verifyReminderIntent &&
-          nativeCreatePlan &&
-          llmPlan?.mode === "create"
-        ) {
-          llmPlan = {
-            ...nativeCreatePlan,
-            requestKind: llmPlan.requestKind,
-            nativeProjection:
-              nativeCreatePlan.nativeProjection ?? llmPlan.nativeProjection,
-            notificationMode:
-              nativeCreatePlan.notificationMode ?? llmPlan.notificationMode,
-          };
-        }
         const plannerResponse =
           llmPlan?.mode === "respond" ? llmPlan.response : undefined;
-        if (
-          verifyReminderIntent &&
-          llmPlan?.requestKind !== "reminder" &&
-          llmPlan?.requestKind !== "alarm"
-        ) {
-          return {
-            success: false as const,
-            text: "A reminder request could not be verified from the original owner message. Use the action that matches that request. No reminder was created.",
-            data: {
-              actionName: ownerSurfaceActionName,
-              error: "OWNER_REMINDER_INTENT_MISMATCH",
-              coachingFailure: true,
-            },
-          };
-        }
         const shouldHonorPlannerResponse =
           Boolean(plannerResponse) &&
           !editingDeferredDefinitionDraft &&
-          (verifyReminderIntent ||
-            (!params.title &&
-              !explicitCadenceDetail &&
-              !detailString(details, "description") &&
-              !detailString(details, "goalId") &&
-              !detailString(details, "goalTitle") &&
-              !detailString(details, "kind")));
+          !params.title &&
+          !explicitCadenceDetail &&
+          !detailString(details, "description") &&
+          !detailString(details, "goalId") &&
+          !detailString(details, "goalTitle") &&
+          !detailString(details, "kind");
         if (shouldHonorPlannerResponse && plannerResponse) {
           const text = plannerResponse;
           return {
@@ -5626,7 +5592,7 @@ async function runLifeOperationHandlerInner(
                   ) ??
                   deferredDefinitionDraft?.request.timezone ??
                   windowPolicy?.timezone,
-              ) ?? requestTimeZone;
+              ) ?? ownerFactTimeZone;
             const relativeReminder =
               ownerSurfaceActionName === "OWNER_REMINDERS" &&
               llmPlan.cadenceKind === "once" &&
@@ -5668,7 +5634,7 @@ async function runLifeOperationHandlerInner(
             ) ??
             deferredDefinitionDraft?.request.timezone ??
             windowPolicy?.timezone,
-        ) ?? requestTimeZone;
+        ) ?? ownerFactTimeZone;
       const ownerDefinitionAction = ownerDefinitionSurface(
         ownerSurfaceActionName,
       );

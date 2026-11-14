@@ -27,7 +27,7 @@
  * native app but does not regenerate the renderer dist.
  *
  * Usage:
- *   bun scripts/ios-device-capture.ts --platform sim|device
+ *   node scripts/ios-device-capture.ts --platform sim|device
  *     [--device <udid>] [--skip-build] [--output <dir>] [--app-path <App.app>]
  *     [--boot-timeout <sec>] [--interval <sec>] [--agent-ready-timeout <sec>]
  *     [--derived-data <dir>] [--only-testing <Target/Class/test>]
@@ -655,7 +655,7 @@ async function main() {
   });
   if (args.help) {
     console.log(
-      "Usage: bun scripts/ios-device-capture.ts --platform sim|device [--device <udid>] [--skip-build] [--strict-gate] [--allow-stale-runner] [--no-retry-isolation] [--require-chat] [--xcode-signing] [--output <dir>] [--app-path <App.app>] [--boot-timeout <sec>] [--interval <sec>] [--agent-ready-timeout <sec>] [--derived-data <dir>] [--only-testing <id>] [--bundle-id <id>]",
+      "Usage: node scripts/ios-device-capture.ts --platform sim|device [--device <udid>] [--skip-build] [--strict-gate] [--allow-stale-runner] [--no-retry-isolation] [--require-chat] [--xcode-signing] [--output <dir>] [--app-path <App.app>] [--boot-timeout <sec>] [--interval <sec>] [--agent-ready-timeout <sec>] [--derived-data <dir>] [--only-testing <id>] [--bundle-id <id>]",
     );
     return;
   }

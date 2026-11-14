@@ -2768,9 +2768,7 @@ def test_enforce_required_stats_passes_for_no_llm_smoke_with_measured_outcomes(
 
 def test_preflight_reports_missing_provider_key_and_opencode_cli(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("PATH", str(tmp_path / "empty-bin"))
     cell = build_cell(
         root=_root(),
         run_root=tmp_path,

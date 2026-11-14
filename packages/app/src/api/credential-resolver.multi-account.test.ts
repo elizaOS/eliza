@@ -26,7 +26,7 @@ import {
   resetDefaultAccountPoolAfterCredentialReset,
 } from "@elizaos/auth/accounts";
 import {
-  createRuntimeAccountStoragePolicy,
+  createIsolatedAccountStoragePolicy,
   saveAccount,
 } from "@elizaos/auth/auth";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -38,8 +38,6 @@ let home: string;
 let prevHome: string | undefined;
 let prevStateDir: string | undefined;
 let prevAnthropicKey: string | undefined;
-const vaultKeyEnv = ["ELIZA_VAULT_DISABLE_KEYCHAIN", "ELIZA_VAULT_PASSPHRASE"];
-let prevVaultKeyEnv: Array<string | undefined>;
 
 /** Write a real direct-API credential record to the on-disk store. */
 function writeAccount(
@@ -61,7 +59,7 @@ function writeAccount(
       createdAt: extra.createdAt ?? Date.now(),
       updatedAt: Date.now(),
     },
-    createRuntimeAccountStoragePolicy(home),
+    createIsolatedAccountStoragePolicy(home),
   );
 }
 
@@ -80,10 +78,6 @@ beforeEach(() => {
   prevHome = process.env.ELIZA_HOME;
   prevStateDir = process.env.ELIZA_STATE_DIR;
   prevAnthropicKey = process.env.ANTHROPIC_API_KEY;
-  prevVaultKeyEnv = vaultKeyEnv.map((key) => process.env[key]);
-  // The runtime credential store reads the vault master key; inject a passphrase key.
-  process.env.ELIZA_VAULT_DISABLE_KEYCHAIN = "1";
-  process.env.ELIZA_VAULT_PASSPHRASE = "credential-resolver-multi-passphrase";
   home = mkdtempSync(path.join(tmpdir(), "cred-resolver-multi-"));
   process.env.ELIZA_HOME = home;
   process.env.ELIZA_STATE_DIR = home;
@@ -100,11 +94,6 @@ afterEach(() => {
   else process.env.ELIZA_STATE_DIR = prevStateDir;
   if (prevAnthropicKey === undefined) delete process.env.ANTHROPIC_API_KEY;
   else process.env.ANTHROPIC_API_KEY = prevAnthropicKey;
-  vaultKeyEnv.forEach((key, index) => {
-    const value = prevVaultKeyEnv[index];
-    if (value === undefined) delete process.env[key];
-    else process.env[key] = value;
-  });
   rmSync(home, { recursive: true, force: true });
 });
 

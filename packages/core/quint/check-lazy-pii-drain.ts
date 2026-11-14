@@ -9,20 +9,14 @@ import { requireVitestConformance } from "../../scripts/lib/vitest-conformance.t
 
 const root = path.resolve(import.meta.dirname, "../../..");
 const packageRoot = path.join(root, "packages/core");
-const model = path.relative(root, path.resolve(root, process.argv[2] ?? ""));
+const model = "packages/core/quint/LazyPiiDrain.qnt";
 const testFile = "packages/core/test/pii-scrub.lazy-drain.pglite.test.ts";
 const requiredTests = [
 	"retries a failed lazy drain start and retires pending requests on stop",
-	"settles a scrub item after first marker write refusal",
-	"settles a scrub item after permanent marker write refusal",
-	"settles a scrub item after committed observer rejection",
 ];
-assert(
-	[
-		"packages/core/quint/LazyPiiDrain.qnt",
-		"packages/core/quint/PiiScrubSettlement.qnt",
-	].some((file) => path.normalize(file) === model),
-	`Unexpected PII scrub model ${model}`,
+assert.equal(
+	path.resolve(root, process.argv[2] ?? model),
+	path.join(root, model),
 );
 const output = testOutputPath("quint-lazy-pii-drain");
 mkdirSync(output, { recursive: true });

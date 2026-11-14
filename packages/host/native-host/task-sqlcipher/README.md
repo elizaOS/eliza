@@ -12,7 +12,7 @@ arguments, and no ordinary SQLite fallback or migration exists.
 Build on Linux with Node 24.15.0 headers, C compiler, Perl, Make and tar:
 
 ```
-bun packages/host/native-host/task-sqlcipher/build.mjs /absolute/fresh-output /absolute/node/include/node linux-x64 /usr/bin/cc
+node packages/host/native-host/task-sqlcipher/build.mjs /absolute/fresh-output /absolute/node/include/node linux-x64 /usr/bin/cc
 ELIZA_TASK_SQLCIPHER_BUILD=/absolute/fresh-output/build.json node --test packages/host/native-host/task-sqlcipher/integration.mjs
 ELIZA_TASK_SQLCIPHER_BUILD=/absolute/fresh-output/build.json bun test --timeout 60000 ./packages/host/native-host/task-sqlcipher/integration.mjs
 ```

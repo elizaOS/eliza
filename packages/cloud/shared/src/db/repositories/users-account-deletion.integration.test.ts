@@ -9,7 +9,6 @@ import { pushSchema } from "drizzle-kit/api";
 import { asc, eq, inArray, sql } from "drizzle-orm";
 import { resolveAccountDeletionTestDatabase } from "../account-deletion-test-database";
 import { closeDatabaseConnectionsForTests, dbWrite, getPgliteClientForTests } from "../client";
-import { apiKeys } from "../schemas/api-keys";
 import { appBillingRegistrations, appSubscriberAccounts } from "../schemas/app-billing-accounts";
 import {
   appDeploymentStatusEnum,
@@ -19,8 +18,6 @@ import {
   userDatabaseStatusEnum,
 } from "../schemas/apps";
 import { organizationSubscriptionAuthorities } from "../schemas/billing-subscriptions";
-import { generations } from "../schemas/generations";
-import { jobs } from "../schemas/jobs";
 import { organizationPolicyAudit } from "../schemas/organization-policy-audit";
 import { organizationBalanceRevisionSequence, organizations } from "../schemas/organizations";
 import {
@@ -28,7 +25,6 @@ import {
   personalSharedGroupJoinChallenges,
   personalSharedGroupParticipants,
 } from "../schemas/personal-shared-groups";
-import { usageRecords } from "../schemas/usage-records";
 import { userIdentities } from "../schemas/user-identities";
 import { users } from "../schemas/users";
 import { installOrganizationPolicyTestSchema } from "./organization-policy-test-fixture";
@@ -175,10 +171,6 @@ beforeAll(async () => {
     if (TEST_DATABASE === "pglite") {
       const { apply } = await pushSchema(
         {
-          apiKeys,
-          generations,
-          jobs,
-          usageRecords,
           apps,
           appUsers,
           appDeploymentStatusEnum,

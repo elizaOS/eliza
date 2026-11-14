@@ -2,10 +2,7 @@
   "sources": [
     "packages/agent/native-host/runtime-supervisor.mjs",
     "packages/agent/native-host/private-runtime-launch.mjs",
-    "packages/agent/native-host/gateway.e2e.test.mjs",
-    "packages/agent/quint/check-native-supervisor.mjs",
-    "packages/scripts/run-with-deadline.ts",
-    "packages/scripts/lib/test-output.ts"
+    "packages/agent/native-host/gateway.e2e.test.mjs"
   ],
   "bounds": {
     "domain": "Two owner identities and one child.",

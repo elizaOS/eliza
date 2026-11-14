@@ -37,6 +37,7 @@
     "src/utils",
     "src/cli",
     "src/browser.ts",
+    "src/styles",
     "src/boot-profile.ts",
     "src/api",
     "src/index.ts",

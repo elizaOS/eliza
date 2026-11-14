@@ -12,6 +12,7 @@
 .env.*.local
 node_modules/.cache
 apps/app/android
+apps/app/electrobun
 apps/homepage
 apps/home
 apps/landing

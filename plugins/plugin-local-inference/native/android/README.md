@@ -99,20 +99,7 @@ start/stop/cancel/metrics, `transcribeLocalRecording`, `synthesizeLocal`, `play`
 `liveCaptureTranscript` events, `localSpeechStatus`/`releaseLocalSpeech`, `nativeVoiceTiming`,
 `markVoiceTurn` and `clearNativeVoiceTiming`. A live capture start with `reopen` (the voice
 assistant's automatic reopen after a busy hold) never prompts: without microphone permission it
-rejects with `permission`. The draft recording and the live capture never hold the microphone
-together: a draft waits on the capture worker for the live source to close (`liveCaptureEnded`
-with `capture-replaced`); failed cleanup refuses a replacement,
-and a live capture that the user starts finishes the open draft (`recordingStopped`; the draft
-is kept). A cancelled queued start cannot clear this draft’s automatic-reopen fence.
-Separate live and draft owners in the same process share one microphone slot. A competing
-start is refused before it opens a source. Confirmed source cleanup releases that owner's slot.
-For a spoken conversation it also provides: `startLiveCapture` with
-`startMs`/`endHangoverMs` (the VAD start run and end hangover, whole 32 ms windows) and `bargeIn`
-(a `liveCaptureBargeIn` event when speech is sustained while the streamed reply is audible; the
-bridge stops nothing itself); `synthesizeLocal` with `append` (the next sentence joins the
-utterance being spoken, in the same output, and reports `playbackSegmentStarted`);
-`localSpeechStatus` with `ttsOnly`; and `holdSpeechEngine`/`releaseSpeechEngineHold` (the idle
-timer keeps the engine loaded in the foreground). Ports a product overrides:
+rejects with `permission`. Ports a product overrides:
 
 - `residentRoute(ownerId)` / `residentTransport()`: the owner-bound transport that carries VAD
   segments to the resident agent of the owner who started a capture (`nativeAsr`). The default
@@ -127,10 +114,7 @@ admission, cancellation drain and playback with the on-device methods. The rende
 `@elizaos/voice/native-live` (packages/voice).
 
 `node --test packages/app/scripts/paradee-voice/speech-pipeline-contract.test.mjs`
-runs the host-JVM contracts and compiles the library against Android 36. Its pinned
-compile dependencies download from Maven Central into ignored test output, with byte-size
-and SHA-256 checks. `ELIZA_SPEECH_COMPILE_DEPS_DIR` selects a separate cache; an explicit
-`ELIZA_JSON_JAR` must match the same JSON pin. They are
+runs the host-JVM contracts and compiles the library against Android 36. They are
 not AudioTrack, AudioRecord, model, device-audio or latency evidence.
 
 The optional `ElizaInferencePlugin` Capacitor transport provides one process
@@ -291,7 +275,7 @@ With `spanish.enabled` (the default) it also converts and bundles the Spanish
 voice, which needs the `onnx` package; `--models-only` (desktop) never does.
 
 ```sh
-ANDROID_HOME=~/Library/Android/sdk bun packages/app/scripts/paradee-voice/build-native.ts \
+ANDROID_HOME=~/Library/Android/sdk node packages/app/scripts/paradee-voice/build-native.ts \
   --workspace /path/to/build/paradee-voice [--model-cache /path/to/models] [--python python3]
 ```
 

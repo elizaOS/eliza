@@ -22,7 +22,7 @@ import {
   asGenerativeCacheApiError,
   getGenerativeOperationContext,
   requireGenerativeRouteCaller,
-} from "../../src/lib/generative-route-auth";
+} from "@/api-app/lib/generative-route-auth";
 
 const searchRequestSchema = z.object({
   query: z.string().trim().min(1).max(2_000),

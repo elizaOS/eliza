@@ -15,7 +15,7 @@
  * logs and exits 0 (the keyless PR lane is unaffected).
  *
  * Usage:
- *   bun packages/scripts/ai-qa/review-walkthrough.ts [--run-dir reports/walkthrough/<id>]
+ *   node packages/scripts/ai-qa/review-walkthrough.ts [--run-dir reports/walkthrough/<id>]
  *     [--concurrency 4] [--strict]
  *     [--verdict-md packages/app/test/ui-smoke/walkthrough/WALKTHROUGH_VERDICTS.md]
  */

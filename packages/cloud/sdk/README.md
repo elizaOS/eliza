@@ -117,6 +117,7 @@ host message `subscriptionCode<Code>` (for example `subscriptionCodePaidPlanActi
 The parsers are in `native-host/subscription-grant.mjs`, which has no
 dependencies; `@elizaos/cloud-sdk/subscription-entitlement` re-exports them.
 
+
 Use `@elizaos/cloud-sdk/testing` for deterministic setup-session mocks. The older
 setup-session mock exports remain compatible; the client root does not load them.
 
@@ -145,6 +146,7 @@ Native account-factor transport exposes POST `/cloud/account/methods`,
 private session replacement, collision protection and cancellation. These routes
 are unavailable to service-only hosts. They do not manage Gmail consent.
 
+
 `createOrganizationSubscriptionUpgradeQuote` sends a current manager's catalog
 intent to the organization upgrade review endpoint. The returned quote separates
 due-now terms from a recurring estimate and expires after at most 60 seconds.
@@ -167,6 +169,7 @@ the existing period end. The quote expires within 60 seconds and reports no
 immediate charge plus a long-term recurring estimate. Saving it does not schedule
 a downgrade; do not show the plan as changed or scheduled after this call.
 
+
 Use `confirmOrganizationSubscriptionDowngrade` only after displaying the original
 lower-plan quote and receiving confirmation. Retain its quote/idempotency identity
 across uncertain transport outcomes. `readOrganizationSubscriptionDowngrade` is a
@@ -185,6 +188,7 @@ identity remains host-owned. The audio JSON includes `renderedSpeed` only as an
 acknowledged numeric speed (otherwise null); clients must retain their local pace
 adjustment when an older Cloud deployment omits the acknowledgement. A mismatched
 or malformed acknowledgement rejects the audio instead of applying pace twice.
+
 
 Native progressive speech uses three JSON POST routes under `/voice/tts/stream`:
 `start` accepts a stable `requestId` (16–128 ASCII letters, digits, underscores or

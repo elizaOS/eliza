@@ -59,14 +59,6 @@ public class ListeningService extends Service {
  private volatile ai.eliza.voice.NativeAsr engine;
  private AudioManager audio;
  private final Runnable reapply=this::apply;
- /** The live service. {@link Listener#refresh} asks it to converge when the service must stop. */
- private static volatile ListeningService running;
- /** The last delivered start, and whether that start came from startForegroundService. Main thread only. */
- private int lastStart;
- private boolean foregroundOwed;
-
- /** Without a live service there is nothing to stop: a start that is not delivered yet applies the policy when it arrives. */
- static void converge(){ListeningService service=running;if(service!=null)service.main.post(service.reapply);}
  /**
   * Android reports neither a channel lowered to silent/hidden nor the lock-screen notification
   * setting changing, so while the microphone is held the indicator is re-checked on a short timer;
@@ -135,7 +127,6 @@ public class ListeningService extends Service {
 
  @Override public void onCreate(){
   super.onCreate();
-  running=this;
   audio=getSystemService(AudioManager.class);
   ListenerNotifications.channels(this);
   audio.addOnModeChangedListener(getMainExecutor(),modes);
@@ -148,14 +139,12 @@ public class ListeningService extends Service {
   catch(RuntimeException unavailable){/* the periodic indicator check still applies */}
  }
 
- /** A restart by Android after a process end has a null intent. Only {@link Listener#refresh} sends an intent. */
- @Override public int onStartCommand(Intent intent,int flags,int startId){lastStart=startId;foregroundOwed=intent!=null;apply();return START_STICKY;}
+ @Override public int onStartCommand(Intent intent,int flags,int startId){apply();return START_STICKY;}
 
  @Override public IBinder onBind(Intent intent){return null;}
 
  @Override public void onDestroy(){
   destroyed=true;
-  running=null;
   main.removeCallbacks(reapply);
   main.removeCallbacks(indicatorCheck);
   main.removeCallbacks(leaseCheck);
@@ -183,19 +172,10 @@ public class ListeningService extends Service {
   leaseStopPosted.set(false);
   // Evaluated while any open AudioRecord is still marked held, so a lost lease latches before capture stops.
   ListenerPolicy.State state=Listener.state(this);
-  boolean owed=foregroundOwed;
-  foregroundOwed=false;
   if(!ListenerPolicy.foreground(state)){
    stopCapture();
-   // Android stops the process if a foreground start does not get startForeground, also when the service must stop.
-   if(owed)try{
-    startForeground(ListenerNotifications.ACTIVE_ID,ListenerNotifications.active(this,state),ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
-   }catch(RuntimeException refused){
-    Log.w(TAG,"Foreground microphone service refused while stopping: "+refused.getClass().getSimpleName());
-   }
    stopForeground(STOP_FOREGROUND_REMOVE);
-   // This call has no effect while a newer start is not delivered. That start stops the service.
-   stopSelf(lastStart);
+   stopSelf();
    ListenerNotifications.showStatus(this,state);
    return;
   }
@@ -204,7 +184,7 @@ public class ListeningService extends Service {
   }catch(RuntimeException refused){
    // Android refused the microphone service (no while-in-use exemption or permission). Never capture without it.
    Log.w(TAG,"Foreground microphone service refused: "+refused.getClass().getSimpleName());
-   stopCapture();stopSelf(lastStart);return;
+   stopCapture();stopSelf();return;
   }
   ListenerNotifications.showStatus(this,state);
   analyse=ListenerPolicy.processesAudio(state);

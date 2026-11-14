@@ -29,15 +29,15 @@
     "url": "https://github.com/elizaOS/eliza.git"
   },
   "scripts": {
-    "build": "bun ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-passwords -- bun run build:unlocked",
+    "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-passwords -- bun run build:unlocked",
     "build:unlocked": "bun run clean && tsc6 && bunx rollup -c rollup.config.mjs",
-    "clean": "bun ../../packages/scripts/rm-path-recursive.ts dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "test": "bun test --timeout=120000 ./test/client.node.mjs ./test/native-host/policy.node.mjs ./test/native-host/transfer.node.mjs"
+    "test": "node --test test/client.node.mjs test/native-host/policy.node.mjs test/native-host/transfer.node.mjs"
   },
   "capacitor": {
     "android": {
@@ -47,7 +47,7 @@
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "rollup": "^4.68.0",
+    "rollup": "^4.65.0",
     "typescript": "^6.0.3"
   },
   "peerDependencies": {

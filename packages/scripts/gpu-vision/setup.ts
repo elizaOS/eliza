@@ -12,7 +12,7 @@
  * re-running is cheap and safe.
  *
  * Usage:
- *   bun packages/scripts/gpu-vision/setup.ts [--with-vlm]
+ *   node packages/scripts/gpu-vision/setup.ts [--with-vlm]
  */
 
 import { spawnSync } from "node:child_process";

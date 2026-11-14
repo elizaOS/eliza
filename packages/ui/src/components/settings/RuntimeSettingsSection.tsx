@@ -2,12 +2,19 @@
  * Settings → Runtime section (the `runtime` section id). Shows where the agent
  * currently runs (local / remote / cloud, from `GET /api/runtime/mode` with a
  * local heuristic fallback) and points runtime switching to the canonical
- * My Runtimes section.
+ * My Runtimes section. Store builds keep the one-time desktop-state import
+ * behind Advanced because that is a migration tool, not a switcher.
  */
 
 import { Server } from "lucide-react";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface/useAgentElement";
+import {
+  inspectExistingElizaInstall,
+  migrateDesktopStateDir,
+  pickDesktopWorkspaceFolder,
+} from "../../bridge/electrobun-rpc";
+import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { isStoreBuild } from "../../build-variant";
 import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
 import { useRuntimeMode } from "../../hooks/useRuntimeMode";
@@ -19,8 +26,11 @@ import { useAppSelector } from "../../state/app-store";
 import { loadPersistedActiveServer } from "../../state/persistence";
 import { AdvancedToggle } from "./AdvancedToggle";
 import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
+import { SettingsActionButton } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
+const STORE_LOCAL_DISABLED_DOCS_URL =
+  "https://github.com/eliza-ai/eliza/blob/develop/docs/desktop/build-variants.md";
 const MY_RUNTIMES_SECTION_ID = "my-runtimes";
 
 function openSettingsSection(sectionId: string): void {
@@ -36,6 +46,8 @@ export function RuntimeSettingsSection() {
   const t = useAppSelector((s) => s.t);
   const { state: runtimeModeState } = useRuntimeMode();
   const advancedEnabled = useAdvancedSettingsEnabled();
+  const [migrationMessage, setMigrationMessage] = useState<string | null>(null);
+  const [migrationBusy, setMigrationBusy] = useState(false);
   const handleOpenMyRuntimes = useCallback(() => {
     openSettingsSection(MY_RUNTIMES_SECTION_ID);
   }, []);
@@ -64,6 +76,70 @@ export function RuntimeSettingsSection() {
 
   const storeBuild = isStoreBuild();
 
+  const handleImportDirectState = useCallback(async () => {
+    setMigrationBusy(true);
+    setMigrationMessage(null);
+    try {
+      const existing = await inspectExistingElizaInstall();
+      const picked = await pickDesktopWorkspaceFolder({
+        defaultPath: existing?.stateDir,
+        promptTitle: t("settings.runtime.importDirectStatePickerTitle", {
+          defaultValue: "Choose direct-build data folder",
+        }),
+      });
+      if (!picked || picked.canceled || !picked.path) {
+        setMigrationMessage(
+          t("settings.runtime.importDirectStateCanceled", {
+            defaultValue: "Import canceled.",
+          }),
+        );
+        return;
+      }
+      const result = await migrateDesktopStateDir(picked.path);
+      if (!result) {
+        setMigrationMessage(
+          t("settings.runtime.importDirectStateUnavailable", {
+            defaultValue: "Import is unavailable in this runtime.",
+          }),
+        );
+        return;
+      }
+      if (!result.ok) {
+        setMigrationMessage(
+          t("settings.runtime.importDirectStateFailed", {
+            defaultValue: "Import failed: {{error}}",
+            error: result.error ?? "unknown error",
+          }),
+        );
+        return;
+      }
+      if (!result.migrated) {
+        setMigrationMessage(
+          t("settings.runtime.importDirectStateSkipped", {
+            defaultValue: "Nothing was imported from that folder.",
+          }),
+        );
+        return;
+      }
+      setMigrationMessage(
+        t("settings.runtime.importDirectStateDone", {
+          defaultValue: "Imported direct-build data into this sandboxed build.",
+        }),
+      );
+    } catch (error) {
+      // error-policy:J4 import failures become a visibly distinct settings
+      // message and never fabricate a successful migration.
+      setMigrationMessage(
+        t("settings.runtime.importDirectStateFailed", {
+          defaultValue: "Import failed: {{error}}",
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    } finally {
+      setMigrationBusy(false);
+    }
+  }, [t]);
+
   return (
     <SettingsStack>
       <SettingsGroup
@@ -89,6 +165,9 @@ export function RuntimeSettingsSection() {
         />
       </SettingsGroup>
 
+      {/* The default surface is runtime status above. The one-time sandbox-import
+          migration is an expert operation, so it lives behind the shared
+          advanced toggle rather than cluttering a fresh user's view. */}
       {storeBuild ? (
         <SettingsGroup>
           <SettingsRow
@@ -103,12 +182,55 @@ export function RuntimeSettingsSection() {
           title={t("settings.runtime.sandboxGroupTitle", {
             defaultValue: "Sandbox build",
           })}
+          footer={
+            <a
+              href={STORE_LOCAL_DISABLED_DOCS_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="text-accent underline"
+            >
+              {t("settings.runtime.localDisabledStoreLink", {
+                defaultValue: "Why is local disabled?",
+              })}
+            </a>
+          }
         >
-          <SettingsRow
-            label={t("settings.runtime.sandboxNote", {
-              defaultValue: "Local agent is unavailable in this build.",
-            })}
-          />
+          {isElectrobunRuntime() ? (
+            <SettingsRow
+              label={t("settings.runtime.importDirectState", {
+                defaultValue: "Import direct-build data",
+              })}
+              description={migrationMessage ?? undefined}
+              stacked
+            >
+              <SettingsActionButton
+                agentId="runtime-import-direct-state"
+                agentLabel={t("settings.runtime.importDirectState", {
+                  defaultValue: "Import direct-build data",
+                })}
+                agentStatus={migrationBusy ? "busy" : undefined}
+                type="button"
+                variant="outline"
+                onClick={() => void handleImportDirectState()}
+                disabled={migrationBusy}
+                className="h-11 w-fit rounded-md px-4 text-sm"
+              >
+                {migrationBusy
+                  ? t("settings.runtime.importingDirectState", {
+                      defaultValue: "Importing…",
+                    })
+                  : t("settings.runtime.importDirectState", {
+                      defaultValue: "Import direct-build data",
+                    })}
+              </SettingsActionButton>
+            </SettingsRow>
+          ) : (
+            <SettingsRow
+              label={t("settings.runtime.sandboxNote", {
+                defaultValue: "Local agent is unavailable in this build.",
+              })}
+            />
+          )}
         </SettingsGroup>
       ) : null}
     </SettingsStack>

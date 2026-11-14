@@ -159,7 +159,7 @@ const RING_BUFFER_CAPACITY_DEFAULT = SAMPLE_RATE_DEFAULT * 4; // 4s
  * is bounded (a phrase ≈ one draft round of audio, not 30 words) and a
  * MTP-reject rollback drops at most one un-spoken chunk (AGENTS.md §4 —
  * "small chunk = low latency cost on rollback"). Override per bridge via
- * `maxTokensPerPhrase`. The
+ * `maxTokensPerPhrase` or `ELIZA_VOICE_MAX_TOKENS_PER_PHRASE`. The
  * `PhraseChunker` primitive keeps the AGENTS-spec 30-word default for
  * non-runtime callers.
  */
@@ -610,9 +610,9 @@ export interface EngineVoiceBridgeOptions {
 	/** Override ring buffer capacity (samples). Defaults to 4 s @ 24 kHz. */
 	ringBufferCapacity?: number;
 	/** Phrase chunker `maxTokensPerPhrase` (no-punctuation run-on cap). Defaults to
-	 *  8 (one MTP draft round). */
+	 *  `ELIZA_VOICE_MAX_TOKENS_PER_PHRASE` or 8 (one MTP draft round). */
 	maxTokensPerPhrase?: number;
-	/** Max concurrent TTS phrase dispatches. Defaults to the scheduler default. */
+	/** Max concurrent TTS phrase dispatches. Defaults to env or scheduler default. */
 	maxInFlightPhrases?: number;
 	/**
 	 * Pre-warmed phrase cache entries. Per AGENTS.md §4, a precomputed
@@ -1195,13 +1195,17 @@ export class EngineVoiceBridge {
 		const config: SchedulerConfig = {
 			chunkerConfig: {
 				maxTokensPerPhrase:
-					opts.maxTokensPerPhrase ?? PHRASE_MAX_TOKENS_DEFAULT,
+					opts.maxTokensPerPhrase ??
+					readPositiveIntEnv("ELIZA_VOICE_MAX_TOKENS_PER_PHRASE") ??
+					PHRASE_MAX_TOKENS_DEFAULT,
 			},
 			preset: schedulerPreset,
 			ringBufferCapacity:
 				opts.ringBufferCapacity ?? RING_BUFFER_CAPACITY_DEFAULT,
 			sampleRate,
-			maxInFlightPhrases: opts.maxInFlightPhrases,
+			maxInFlightPhrases:
+				opts.maxInFlightPhrases ??
+				readPositiveIntEnv("ELIZA_VOICE_MAX_IN_FLIGHT_PHRASES"),
 		};
 
 		const sinkOverride = opts.sink;
@@ -1453,13 +1457,17 @@ export class EngineVoiceBridge {
 		const config: SchedulerConfig = {
 			chunkerConfig: {
 				maxTokensPerPhrase:
-					opts.maxTokensPerPhrase ?? PHRASE_MAX_TOKENS_DEFAULT,
+					opts.maxTokensPerPhrase ??
+					readPositiveIntEnv("ELIZA_VOICE_MAX_TOKENS_PER_PHRASE") ??
+					PHRASE_MAX_TOKENS_DEFAULT,
 			},
 			preset,
 			ringBufferCapacity:
 				opts.ringBufferCapacity ?? RING_BUFFER_CAPACITY_DEFAULT,
 			sampleRate,
-			maxInFlightPhrases: opts.maxInFlightPhrases,
+			maxInFlightPhrases:
+				opts.maxInFlightPhrases ??
+				readPositiveIntEnv("ELIZA_VOICE_MAX_IN_FLIGHT_PHRASES"),
 		};
 
 		const sinkOverride = opts.sink;
@@ -2237,6 +2245,13 @@ export class EngineVoiceBridge {
 // corpus / fixture / test code can encode + decode WAV without dragging in this
 // heavy module. Re-exported here for the existing callers.
 export { decodeMonoPcm16Wav, encodeMonoPcm16Wav };
+
+function readPositiveIntEnv(name: string): number | undefined {
+	const raw = process.env[name]?.trim();
+	if (!raw) return undefined;
+	const value = Number.parseInt(raw, 10);
+	return Number.isFinite(value) && value > 0 ? value : undefined;
+}
 
 /**
  * Default lifecycle loaders derived from the bundle layout (per

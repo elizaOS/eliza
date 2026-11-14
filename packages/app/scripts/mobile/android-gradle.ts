@@ -17,10 +17,19 @@ export const ANDROID_AOSP_GRADLE_FLAG = "-PelizaAospBuild=true";
 
 export function resolveAndroidGradleCommandsForTarget(
   target,
-  { settingsGradle = "" } = {},
+  { env = process.env, settingsGradle = "" } = {},
 ) {
   const flags = [...(target.gradle.flags ?? [])];
-  const buildArgs = [...flags];
+  const buildFlags = [...flags];
+  if (
+    target.gradle.includeAospFlagFromEnv &&
+    (env.ELIZA_GRADLE_AOSP_BUILD === "true" ||
+      env.ELIZA_GRADLE_AOSP_BUILD === "1")
+  ) {
+    buildFlags.unshift(ANDROID_AOSP_GRADLE_FLAG);
+  }
+
+  const buildArgs = [...buildFlags];
   if (
     target.gradle.includeWebsiteBlockerUnitTest &&
     settingsGradle.includes(":elizaos-capacitor-websiteblocker")

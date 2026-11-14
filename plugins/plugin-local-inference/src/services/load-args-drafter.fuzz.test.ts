@@ -289,7 +289,11 @@ describe("resolveLocalInferenceLoadArgs — separate-drafter MTP resolution", ()
 
 describe("resolveLocalInferenceLoadArgs — mobile context ceiling", () => {
 	const savedEnv: Record<string, string | undefined> = {};
-	const ENV_KEYS = ["ELIZA_PLATFORM", "ELIZA_MOBILE_CONTEXT_CEILING"] as const;
+	const ENV_KEYS = [
+		"ELIZA_MOBILE_PLATFORM",
+		"ELIZA_PLATFORM",
+		"ELIZA_MOBILE_CONTEXT_CEILING",
+	] as const;
 	for (const k of ENV_KEYS) savedEnv[k] = process.env[k];
 	afterEach(() => {
 		for (const k of ENV_KEYS) {
@@ -301,7 +305,7 @@ describe("resolveLocalInferenceLoadArgs — mobile context ceiling", () => {
 	async function resolveOnMobile(
 		ceiling: string | undefined,
 	): Promise<LocalInferenceLoadArgs> {
-		process.env.ELIZA_PLATFORM = "ios";
+		process.env.ELIZA_MOBILE_PLATFORM = "ios";
 		if (ceiling === undefined) delete process.env.ELIZA_MOBILE_CONTEXT_CEILING;
 		else process.env.ELIZA_MOBILE_CONTEXT_CEILING = ceiling;
 		const bundle = makeTempBundle({ tier: "2b", hasDrafter: true });
@@ -335,6 +339,7 @@ describe("resolveLocalInferenceLoadArgs — mobile context ceiling", () => {
 	});
 
 	it("desktop (no platform marker) keeps the full requested context", async () => {
+		delete process.env.ELIZA_MOBILE_PLATFORM;
 		delete process.env.ELIZA_PLATFORM;
 		const bundle = makeTempBundle({ tier: "2b", hasDrafter: true });
 		const installed = installedModel({

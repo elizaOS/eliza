@@ -116,7 +116,6 @@ TIMEOUT_AGENT_SMOKE_S = 120
 TIMEOUT_BENCHMARK_RUN_S = 1800
 TIMEOUT_RANDOM_RUN_S = 120
 PROCESS_TERMINATION_GRACE_S = 5.0
-PROCESS_INSPECTION_TIMEOUT_S = 10.0
 
 
 # ---------------------------------------------------------------------------
@@ -447,38 +446,6 @@ def _posix_process_groups(root_pid: int) -> list[int]:
     return ordered_groups
 
 
-def _signal_posix_process_group(process_group: int, signum: int) -> None:
-    try:
-        os.killpg(process_group, signum)
-    except ProcessLookupError:
-        # error-policy:J6 a descendant may exit during timeout teardown.
-        return
-    except PermissionError as denied:
-        if sys.platform != "darwin":
-            raise
-        try:
-            result = subprocess.run(
-                ["ps", "-Ao", "pgid=,stat="],
-                capture_output=True,
-                text=True,
-                check=True,
-                timeout=PROCESS_INSPECTION_TIMEOUT_S,
-            )
-            rows = [line.split() for line in result.stdout.splitlines() if line.strip()]
-            if not rows:
-                raise ValueError("process-group inspection returned no processes")
-            live_member = False
-            for group, state in rows:
-                if int(group) == process_group and not state.startswith("Z"):
-                    live_member = True
-        except (OSError, subprocess.SubprocessError, ValueError) as inspection_error:
-            raise denied from inspection_error
-        if live_member:
-            raise
-        # error-policy:J6 Darwin may reject signals to a zombie-only group.
-        # Fresh inspection must prove no live member before ignoring EPERM.
-
-
 def _terminate_process_tree(process: subprocess.Popen[str]) -> None:
     """Terminate every process owned by a timed-out orchestrator invocation."""
 
@@ -508,7 +475,11 @@ def _terminate_process_tree(process: subprocess.Popen[str]) -> None:
     own_group = os.getpgrp()
     process_groups = [group for group in process_groups if group != own_group]
     for process_group in process_groups:
-        _signal_posix_process_group(process_group, signal.SIGTERM)
+        try:
+            os.killpg(process_group, signal.SIGTERM)
+        except ProcessLookupError:
+            # error-policy:J6 a descendant may exit during timeout teardown.
+            continue
 
     try:
         process.wait(timeout=PROCESS_TERMINATION_GRACE_S)
@@ -517,7 +488,11 @@ def _terminate_process_tree(process: subprocess.Popen[str]) -> None:
         pass
 
     for process_group in process_groups:
-        _signal_posix_process_group(process_group, signal.SIGKILL)
+        try:
+            os.killpg(process_group, signal.SIGKILL)
+        except ProcessLookupError:
+            # error-policy:J6 the process group exited during the grace period.
+            continue
     process.wait()
 
 
