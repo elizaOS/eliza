@@ -164,6 +164,24 @@ function parseRelativeDayOffset(text: string): number | null {
   return null;
 }
 
+// Preserve a year attached to the date before applying stated-date correction.
+function resolveLeadingYearModifier(
+  beforeMonth: string,
+  thisYear: number,
+): number | null {
+  const explicit = beforeMonth.match(/(?<!\p{N})(\d{4})[년年]\s*$/u);
+  if (explicit?.[1]) {
+    return Number(explicit[1]);
+  }
+  if (/(?:(?<![\p{L}\p{M}\p{N}_])내년|明年)\s*$/u.test(beforeMonth)) {
+    return thisYear + 1;
+  }
+  if (/(?:(?<![\p{L}\p{M}\p{N}_])올해|今年)\s*$/u.test(beforeMonth)) {
+    return thisYear;
+  }
+  return null;
+}
+
 export function parseExplicitLocalDate(
   value: string,
   timeZone: string,
@@ -193,7 +211,10 @@ export function parseExplicitLocalDate(
     }
     const year = monthNameMatch[3]
       ? Number(monthNameMatch[3])
-      : localToday.year;
+      : (resolveLeadingYearModifier(
+          normalized.slice(0, monthNameMatch.index),
+          localToday.year,
+        ) ?? localToday.year);
     const day = Number(monthNameMatch[2]);
     return isRealCalendarDay(year, month, day) ? { year, month, day } : null;
   }

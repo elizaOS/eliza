@@ -117,7 +117,7 @@ const creation = spawnSync(
     "--maxWorkers=1",
     "test/eliza-calendar.pglite.test.ts",
     "-t",
-    "current client clock",
+    "current client clock|past start on a stated date",
     "--reporter=json",
     `--outputFile=${creationReport}`,
   ],
@@ -130,23 +130,39 @@ assert.equal(creationResult.success, true);
 assert.equal(creationResult.numFailedTests, 0);
 assert.equal(creationResult.numFailedTestSuites, 0);
 assert.equal(creationResult.numTodoTests, 0);
-assert.equal(creationResult.numPassedTests, 1);
 const creationCases = creationResult.testResults.flatMap(
   (file) => file.assertionResults,
 );
-const clockCase = creationCases.filter(
-  (result) =>
-    result.fullName ===
-    "built-in Eliza calendar (real PGlite) creates an unqualified local-time event in the current client clock instead of the server clock",
+const statedDate = "past start on a stated date (real PGlite)";
+const requiredCreation = [
+  "built-in Eliza calendar (real PGlite) creates an unqualified local-time event in the current client clock instead of the server clock",
+  ...[
+    "creates an explicitly requested time earlier today without allowPast",
+    "still asks before creating a past start with no stated date",
+    "still asks before creating a past start with a bare weekday",
+    "stores the stated future day for Korean year",
+    "stores the stated future day for Korean next year",
+    "stores the stated future day for Chinese next year",
+    "still asks before creating a yearless date that passed earlier this year",
+    "still asks before creating an explicit current-year date that passed earlier this year",
+  ].map((name) => `${statedDate} ${name}`),
+];
+// The rest of the database suite is deliberately filtered here and has its
+// separate full-package test run.
+assert.equal(creationResult.numPassedTests, requiredCreation.length);
+assert.equal(
+  creationResult.numPendingTests,
+  creationCases.length - requiredCreation.length,
 );
-assert.equal(clockCase.length, 1);
-assert.equal(clockCase[0].status, "passed");
-assert.deepEqual(clockCase[0].failureMessages, []);
-// This command selects one clock regression. The rest of this broad database
-// suite is deliberately filtered and has its separate full-package test run.
-assert.equal(creationResult.numPendingTests, creationCases.length - 1);
-assert(
-  creationCases.every(
-    (result) => result === clockCase[0] || result.status === "skipped",
-  ),
+const ranCreation = creationCases.filter((test) => test.status !== "skipped");
+assert.deepEqual(
+  ranCreation.map((test) => test.fullName).sort(),
+  requiredCreation.sort(),
+);
+for (const test of ranCreation) {
+  assert.equal(test.status, "passed", test.fullName);
+  assert.deepEqual(test.failureMessages, []);
+}
+console.log(
+  `Nine exact Calendar creation and date cases passed. Evidence ${directory}`,
 );

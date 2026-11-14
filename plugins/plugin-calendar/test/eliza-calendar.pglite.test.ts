@@ -3454,29 +3454,71 @@ describe("past start on a stated date (real PGlite)", {
     },
   );
 
-  it("still asks before creating a yearless date that passed earlier this year", async () => {
-    // "january 5" said in October parses to this year's January 5, and the
-    // stated-date guard moves the extractor's next-year start onto it. Only the
-    // user can say which year they meant.
-    const result = await createQaLunch(
-      "00000000-0000-0000-0000-000000000913",
-      "add qa lunch on january 5 at 12pm",
-      { start: "2027-01-05T12:00:00", durationMinutes: 60 },
-      {
-        startAt: "2027-01-05T12:00:00-08:00",
-        endAt: "2027-01-05T13:00:00-08:00",
-      },
-    );
-    expect(result).toMatchObject({
-      success: false,
-      data: {
-        requiresInput: true,
-        missing: ["confirmed date"],
-        requestedStartAt: "2026-01-05T20:00:00.000Z",
-      },
-    });
-    expect(
-      (await pg.query("SELECT id FROM app_calendar.life_calendar_events")).rows,
-    ).toHaveLength(0);
-  });
+  it.each([
+    ["Korean year", "2027년 1월 5일에 qa lunch 예약해 줘", 2027],
+    ["Korean next year", "내년 1월 5일에 qa lunch 예약해 줘", 2028],
+    ["Chinese next year", "请安排明年 1月 5日的 qa lunch", 2027],
+  ])(
+    "stores the stated future day for %s",
+    async (_label, text, plannerYear) => {
+      const result = await createQaLunch(
+        "00000000-0000-0000-0000-000000000914",
+        text,
+        { start: `${plannerYear}-01-05T12:00:00`, durationMinutes: 60 },
+        {
+          startAt: `${plannerYear}-01-05T12:00:00-08:00`,
+          endAt: `${plannerYear}-01-05T13:00:00-08:00`,
+        },
+      );
+      expect(result?.success, JSON.stringify(result)).toBe(true);
+      expect(result?.data?.event).toMatchObject({
+        startAt: "2027-01-05T20:00:00.000Z",
+        endAt: "2027-01-05T21:00:00.000Z",
+        timezone: TIME_ZONE,
+      });
+      const stored = await pg.query(
+        "SELECT start_at, end_at, timezone FROM app_calendar.life_calendar_events",
+      );
+      expect(stored.rows).toEqual([
+        {
+          start_at: "2027-01-05T20:00:00.000Z",
+          end_at: "2027-01-05T21:00:00.000Z",
+          timezone: TIME_ZONE,
+        },
+      ]);
+    },
+  );
+
+  it.each([
+    ["a yearless date", "add qa lunch on january 5 at 12pm"],
+    ["an explicit current-year date", "올해 1월 5일에 qa lunch 예약해 줘"],
+  ])(
+    "still asks before creating %s that passed earlier this year",
+    async (_label, text) => {
+      // "january 5" said in October parses to this year's January 5, and the
+      // stated-date guard moves the extractor's next-year start onto it. Only the
+      // user can say which year they meant.
+      const result = await createQaLunch(
+        "00000000-0000-0000-0000-000000000913",
+        text,
+        { start: "2027-01-05T12:00:00", durationMinutes: 60 },
+        {
+          startAt: "2027-01-05T12:00:00-08:00",
+          endAt: "2027-01-05T13:00:00-08:00",
+        },
+      );
+      expect(result).toMatchObject({
+        success: false,
+        data: {
+          requiresInput: true,
+          missing: ["confirmed date"],
+          requestedStartAt: "2026-01-05T20:00:00.000Z",
+        },
+      });
+      expect(
+        (await pg.query("SELECT id FROM app_calendar.life_calendar_events"))
+          .rows,
+      ).toHaveLength(0);
+    },
+  );
 });
