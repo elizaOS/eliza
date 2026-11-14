@@ -1,6 +1,7 @@
 import ai.eliza.plugins.media.MediaBytes;
 import ai.eliza.plugins.media.OwnedMediaConfig;
 import ai.eliza.plugins.media.PhotoFilterMath;
+import ai.eliza.plugins.media.PhotoCropRect;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 
@@ -66,6 +67,23 @@ public final class OwnedMediaTest {
         () -> OwnedMediaConfig.builder("host").edits("Pictures/Edits/", "a/b"));
     rejects(IllegalStateException.class,
         () -> OwnedMediaConfig.builder("host").edits("Pictures/", "x").build());
+
+    // A chosen off-center region survives the same mapping at preview and full resolution.
+    PhotoCropRect crop = new PhotoCropRect(.1, .2, .4, .3);
+    check(java.util.Arrays.equals(crop.bounds(100, 200), new int[] {10, 40, 40, 60}));
+    check(java.util.Arrays.equals(crop.bounds(1000, 2000), new int[] {100, 400, 400, 600}));
+    check(java.util.Arrays.equals(crop.bounds(200, 100), new int[] {20, 20, 80, 30}));
+    check(java.util.Arrays.equals(new PhotoCropRect(0, 0, 1, 1).bounds(1, 1), new int[] {0, 0, 1, 1}));
+    check(java.util.Arrays.equals(new PhotoCropRect(.999, .999, .001, .001).bounds(2, 2), new int[] {1, 1, 1, 1}));
+    check(!PhotoCropRect.key(crop).equals(PhotoCropRect.key(new PhotoCropRect(.2, .2, .4, .3))));
+    check(PhotoCropRect.key(null).equals(""));
+    rejects(IllegalArgumentException.class, () -> new PhotoCropRect(Double.NaN, 0, .5, .5));
+    rejects(IllegalArgumentException.class, () -> new PhotoCropRect(0, 0, Double.POSITIVE_INFINITY, .5));
+    rejects(IllegalArgumentException.class, () -> new PhotoCropRect(-.1, 0, .5, .5));
+    rejects(IllegalArgumentException.class, () -> new PhotoCropRect(.8, 0, .3, .5));
+    rejects(IllegalArgumentException.class, () -> new PhotoCropRect(0, .8, .5, .3));
+    rejects(IllegalArgumentException.class, () -> new PhotoCropRect(0, 0, 0, .5));
+    rejects(IllegalArgumentException.class, () -> crop.bounds(0, 200));
 
     // Filters: validated names, identity for none, transparent stays transparent.
     rejects(IllegalArgumentException.class, () -> PhotoFilterMath.kernel("sepia"));

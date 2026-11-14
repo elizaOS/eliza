@@ -20,9 +20,12 @@ test("owned-media configuration, filter math and readback", (t) => {
     [
       "-d",
       classes,
-      ...["OwnedMediaConfig", "PhotoFilterMath", "MediaBytes"].map((name) =>
-        path.join(media, `${name}.java`),
-      ),
+      ...[
+        "OwnedMediaConfig",
+        "PhotoFilterMath",
+        "PhotoCropRect",
+        "MediaBytes",
+      ].map((name) => path.join(media, `${name}.java`)),
       path.join(plugin, "test/native-host/OwnedMediaTest.java"),
     ],
     { timeout: 60000 },

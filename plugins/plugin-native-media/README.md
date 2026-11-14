@@ -12,7 +12,9 @@ Owned media (items the host package published, `OWNER_PACKAGE_NAME`):
   kept captures (under `Pictures/` or `DCIM/`) and, optionally, video edit copies (under `Movies/`
   or `DCIM/`). Shared code never chooses product names or folders.
 - `OwnedPhotoEdits` – serial edit sessions over one still photo: quarter-turn rotation, centered
-  crop and filters, previewed at most 1024 px, saved as a new owned PNG copy. Each save has a UUID
+  crop and filters, previewed at most 1024 px, saved as a new owned PNG copy. Optional `cropRect`
+  selects `{x, y, width, height}` in normalized upright, rotated-image coordinates for preview,
+  Save Copy and Replace. The old boolean crop remains available for existing callers. Each save has a UUID
   operation identity, a receipt journal and a deterministic display name, so a crash between
   publish and receipt resolves to `saved` or `failed`, never a duplicate. The session aborts if
   the source changes (MediaStore generation and SHA-256 of the snapshot). Explicit Replace keeps

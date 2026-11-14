@@ -1,0 +1,25 @@
+{
+  "sources": [
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/PhotoCropRect.java",
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/OwnedPhotoEdits.java",
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/PhotosPlugin.java"
+  ],
+  "conformance": "plugins/plugin-native-media/test/native-host/owned-media.node.mjs",
+  "bounds": {
+    "domain": "One crop session, coordinates -1 through 4 and extents 0 through 5 in quarter-image units, one saved copy, changed-coordinate retries and cancellation before save.",
+    "assumptions": "The existing Photos ownership and source-freshness admission applies before saving. No fairness is assumed. A user can cancel or leave a session without saving.",
+    "limitations": "Geometry validation and saved selection identity are modeled. JVM tests exercise actual off-center and rotated-dimension pixel bounds, nonfinite input and minimum pixels. Android bitmap encoding, native write consent, concurrency and crash recovery retain their separate owning models and device checks. The model does not prove a visual crop UI."
+  },
+  "cases": [
+    {
+      "name": "normalized-crop-identity",
+      "main": "PhotoCropGeometry",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 12,
+      "samples": 1000
+    }
+  ]
+}

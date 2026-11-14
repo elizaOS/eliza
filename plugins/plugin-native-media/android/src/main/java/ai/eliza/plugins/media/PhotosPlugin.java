@@ -110,12 +110,28 @@ public abstract class PhotosPlugin extends PermittedPhotosPlugin {
     });
   }
 
+  private static PhotoCropRect cropRect(PluginCall call) {
+    Object value = call.getData().opt("cropRect");
+    if (value == null || value == org.json.JSONObject.NULL) return null;
+    if (!(value instanceof org.json.JSONObject))
+      throw new IllegalArgumentException("Choose a crop rectangle inside the photo");
+    org.json.JSONObject rect = (org.json.JSONObject) value;
+    return new PhotoCropRect(cropCoordinate(rect, "x"), cropCoordinate(rect, "y"),
+        cropCoordinate(rect, "width"), cropCoordinate(rect, "height"));
+  }
+  private static double cropCoordinate(org.json.JSONObject rect, String name) {
+    Object value = rect.opt(name);
+    if (!(value instanceof Number))
+      throw new IllegalArgumentException("Choose a crop rectangle inside the photo");
+    return ((Number) value).doubleValue();
+  }
+
   @PluginMethod
   public void previewEdit(PluginCall call) {
     submitRead(call, () -> {
       try {
         return edits.preview(call.getString("sessionId"), call.getInt("rotation", 0),
-            call.getBoolean("crop", false), call.getString("filter", "none"));
+            call.getBoolean("crop", false), call.getString("filter", "none"), cropRect(call));
       } catch (Exception e) {
         call.reject(e.getMessage() == null ? "Preview unavailable" : e.getMessage());
         return null;
@@ -136,19 +152,20 @@ public abstract class PhotosPlugin extends PermittedPhotosPlugin {
         String token = call.getString("sessionId");
         int rotation = call.getInt("rotation", 0);
         boolean crop = call.getBoolean("crop", false);
+        PhotoCropRect cropRect = cropRect(call);
         String filter = call.getString("filter", "none");
         if (!replace) {
-          call.resolve(edits.save(token, rotation, crop, filter));
+          call.resolve(edits.save(token, rotation, crop, filter, cropRect));
           return;
         }
         String[] consent = edits.replaceConsent(token);
         if (consent == null) {
-          call.resolve(replaceEdit(token, rotation, crop, filter));
+          call.resolve(replaceEdit(token, rotation, crop, filter, cropRect));
           return;
         }
         mediaReview.requestWrite(call, consent[0], consent[1], () -> {
           try {
-            call.resolve(replaceEdit(token, rotation, crop, filter));
+            call.resolve(replaceEdit(token, rotation, crop, filter, cropRect));
           } catch (Exception e) {
             call.reject(e.getMessage() == null
                 ? "Replace outcome unknown; inspect Photos before retrying" : e.getMessage());
@@ -160,9 +177,9 @@ public abstract class PhotosPlugin extends PermittedPhotosPlugin {
     });
   }
 
-  private JSObject replaceEdit(String token, int rotation, boolean crop, String filter)
-      throws Exception {
-    JSObject receipt = edits.replace(token, rotation, crop, filter);
+  private JSObject replaceEdit(String token, int rotation, boolean crop, String filter,
+      PhotoCropRect cropRect) throws Exception {
+    JSObject receipt = edits.replace(token, rotation, crop, filter, cropRect);
     // A replaced original has new bytes: open pages and read tickets of the old ones end here.
     if ("saved".equals(receipt.getString("status"))) permitted.invalidate();
     return receipt;
