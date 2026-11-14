@@ -5,6 +5,8 @@ Sources at Grace's pin are `bill-workflow.mjs`, `bill-controls.mjs`, and
 Grace adapts them in `apps/app/host/bill-helper-host.ts`. This machine is
 one task's review and outcome projection. The interactive-task kernel owns
 its browser dispatch and authorization. The provider owns actual payment.
+[Configured review history](./configuredBillReviewHistory.md) covers the
+store’s same-key replay, retained row and cross-task lookup boundary.
 
 ## Story: Review a bill before pressing the provider's payment control
 

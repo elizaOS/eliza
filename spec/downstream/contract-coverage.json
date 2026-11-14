@@ -1623,8 +1623,8 @@
         "test"
       ],
       "priority": "test-only",
-      "relatedSpec": "spec/downstream/mobileDeviceExecution.md",
-      "coverage": "related-contract"
+      "relatedSpec": "spec/downstream/deviceAttempt.md",
+      "coverage": "direct-contract"
     },
     {
       "source": "packages/contracts/src/device-reviews.ts",
@@ -3199,7 +3199,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/inbox.md",
+      "relatedSpec": "spec/downstream/alpha/inboxCache.md",
       "coverage": "related-contract"
     },
     {
@@ -3241,7 +3241,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/inbox.md",
+      "relatedSpec": "spec/downstream/alpha/inboxCache.md",
       "coverage": "related-contract"
     },
     {
@@ -3251,7 +3251,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/inbox.md",
+      "relatedSpec": "spec/downstream/alpha/inboxCache.md",
       "coverage": "related-contract"
     },
     {

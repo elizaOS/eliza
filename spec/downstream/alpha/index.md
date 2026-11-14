@@ -32,7 +32,7 @@ activation on a physical device.
 | `apps/app/src/passwords/password-manager.ts`, `MainActivity.java` | [Vault visit, native unlock, origin review and secret custody](./passwords.md) |
 | `apps/app/src/browser/files.ts`, `AlphaMailAttachments` | [Reviewed file operations and retained trash](./files.md), [verified document source reopening and read permissions](./sourceReferences.md), [native file observer custody](../mobileStorageWatch.md) |
 | `apps/app/src/prototype/browser-camera.ts` | [Selected media download and stored ZIP](./photosArchive.md) |
-| `apps/app/src/prototype/inbox-cloud-adapter.ts` | [Managed Inbox paging and cache identity](./inbox.md) |
+| `apps/app/src/prototype/inbox-cloud-adapter.ts` | [Managed Inbox paging and cache identity](./inbox.md), [saved reads, grant revocation and cache custody](./inboxCache.md) |
 | `apps/app/src/prototype/home-cards.ts`, `home-overview-cards.ts` | [Current-source Home projections](./overview.md) |
 | `apps/app/src/prototype/automations-adapter.ts`, `runtime/automations-protocol.ts` | [Automation row, cron and reminder presentations](./automationPresentation.md) |
 | `apps/app/src/browser/notifications.ts`, `workflow-notices.ts` | [Exact browser notice action and workflow receipts](./notices.md) |
@@ -66,7 +66,7 @@ refinements against the same pinned consumers:
 | --- | --- |
 | Storage and authored text | Notes decoder, exact native recording byte and orphan cleanup fixtures, multi-row Trash contention, and format/parser parity; browser legacy archive arrays, same-binding peer draft queues, and Android secure slot recovery. |
 | Files and captured sources | Archive and scan payload decoders, OCR/text-layer parity, file-system ordering, native media callbacks, and cross-bridge Android document grants and cleanup. |
-| Calendar, Inbox and Home | Provider JSON and reconciliation, recurring-series mutation parity, cache eviction across accounts, accessibility and rendered projection. |
+| Calendar, Inbox and Home | Provider JSON and reconciliation, recurring-series mutation parity, accessibility and rendered projection. |
 | Maps, browser and launcher | Provider route geometry, live-location feeds and relay expiry, device WebView cookie and storage readback, launcher order, focus and lifecycle. |
 | Notices and automation | Exact platform signal and notice owner composition, digest/archive data, and provider read projection; verify effects through the linked workflow and mobile owners. |
 

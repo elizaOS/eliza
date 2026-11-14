@@ -11,6 +11,9 @@ renderer-attempt fence. The public contract includes
 `DeviceOperationReceipt`. The proposal card displays a stored
 proposal. Approval takes its ID and current context, and execution
 uses the stored operation.
+The [renderer attempt](./deviceAttempt.md) owns the exact local guard.
+[Read completion](./readCompletion.md) owns a subsequent authorized reply
+to the original conversation.
 
 This model covers a single claim and its journaled effect. Other
 proposals have separate identities. The local journal owns

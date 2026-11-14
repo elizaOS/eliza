@@ -19,6 +19,7 @@ The examined consumer pin lists no patches in
 | Grace updater and the upstream trust AAR. | [OTA admission](./mobileOta.md) and [installation journal](./mobileInstall.md) |
 | Grace launcher network setup and Internet Settings. | [Wi-Fi discovery and approved join](./mobileWifi.md) |
 | Grace and AlphaPhone Android contact picker and Alpha contact edits. | [Address book reads and reviewed writes](./mobileContacts.md) |
+| Alpha renderer drafts and Grace native key and credential custody. | [Encrypted JSON slot admission and readback](./mobileSecureSlots.md) |
 | Alpha Android browser state, bookmarks and site clearing. | [Native browser storage](./mobileBrowserStorage.md) |
 | Android packaging, explicit bridge registration, feature and permission admission. | [Consumer build and artifact custody](./mobileBuild.md), [Native bridge composition](./mobileBridge.md), [browser handoff](./mobileBrowser.md), [Chromium binding](./mobileChromium.md), [file observer custody](./mobileStorageWatch.md), [calendar edits](./mobileCalendar.md), [photo read permission](./mobilePhotos.md), [message review](./mobileTelephony.md), and [camera receipt](./mobileDeviceCamera.md) |
 
