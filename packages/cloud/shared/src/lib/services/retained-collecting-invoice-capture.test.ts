@@ -125,8 +125,11 @@ async function run(input: {
     if (path === "/v1/account") body = { object: "account", id: "acct_owner" };
     else if (path === "/v1/invoices/in_original") body = s.invoice;
     else if (path === "/v1/payment_intents/pi_collect") body = s.payment;
-    else if (path === "/v1/charges/ch_collect") body = s.charge;
-    else if (path === "/v1/customers/cus_owner/balance_transactions")
+    else if (path === "/v1/charges/ch_collect") {
+      // Stripe omits this list unless the caller explicitly expands it.
+      const { refunds, ...charge } = s.charge;
+      body = url.searchParams.get("expand[0]") === "refunds" ? { ...charge, refunds } : charge;
+    } else if (path === "/v1/customers/cus_owner/balance_transactions")
       body = {
         object: "list",
         has_more: false,

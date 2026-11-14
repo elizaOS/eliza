@@ -3,6 +3,7 @@ import {
   CloudflareSpeechError,
   synthesizeCloudflareAudio,
 } from "@elizaos/cloud-shared/lib/providers/cloudflare-speech";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 
 /** Handles authenticated cloud text-to-speech generation, safety checks, and billing. */
 
@@ -18,7 +19,7 @@ import {
   type CreditReservation,
   InsufficientCreditsError,
 } from "@elizaos/cloud-shared/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { inferenceFundingRefusal } from "@elizaos/cloud-shared/lib/services/inference-funding-refusal";
 import {
   elevenLabsSdkErrorStatus,
   isKnownUnacceptedProviderStatus,
@@ -52,7 +53,7 @@ import {
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
   timeSpeechPhase,
-} from "@/api-app/lib/generative-route-auth";
+} from "../../../src/lib/generative-route-auth";
 import {
   CartesiaRestTtsError,
   synthesizeCartesiaBytes,
@@ -295,7 +296,7 @@ async function __hono_POST(c: AppContext) {
       providerSelection?.ok === true &&
       providerSelection.provider !== "kokoro" &&
       providerSelection.provider !== "cloudflare";
-    const { user, apiKeyId, admissionSnapshot, credential } =
+    const { user, apiKeyId, admissionSnapshot, refreshAuthEntry, credential } =
       await requireGenerativeRouteCaller(c, {
         compatibility: "raw",
         rateLimitEndpoint: "strict",
@@ -715,6 +716,7 @@ async function __hono_POST(c: AppContext) {
         apiKeyId,
         cost: billingCost,
         admissionSnapshot,
+        refreshAuthEntry,
         credential: credentialGuard.credentialForAdmission(),
         idempotencyKey: ttsIdempotencyKey ?? undefined,
         atomicProviderBoundary: true,
@@ -726,7 +728,11 @@ async function __hono_POST(c: AppContext) {
       if (error instanceof InsufficientCreditsError) {
         return Response.json(
           {
-            error: "Insufficient credits for text-to-speech",
+            // Clients parse `error.code` and `error.resetsAt`.
+            error: inferenceFundingRefusal(error, {
+              insufficientCreditsMessage:
+                "Insufficient credits for text-to-speech",
+            }),
             required: error.required,
           },
           { status: 402 },

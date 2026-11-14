@@ -5,12 +5,37 @@
       "main": "GatewayLifecycle",
       "init": "init",
       "step": "step",
-      "invariants": ["invariant"],
-      "temporal": [],
+      "invariants": ["invariant", "CleanupRequiresHttpClose"],
+      "temporal": ["FairDrainAndCleanup", "DrainEventuallySettles"],
+      "temporalChecks": [
+        {
+          "property": "FairDrainAndCleanup",
+          "expect": "holds",
+          "assumptions": [
+            "The admitted request connection eventually drains, the server eventually emits close, and each release attempt and final settlement eventually finish. Releases may fail. These continuations are weakly fair."
+          ]
+        },
+        {
+          "property": "DrainEventuallySettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. A held request, missing close event or stalled release can leave shutdown pending."
+          ]
+        }
+      ],
       "maxSteps": 60,
       "samples": 1000
     }
   ],
-  "sources": ["packages/host/native-host/gateway-lifecycle.mjs"],
-  "bounds": "Four optional returned resources, one startup and cleanup lifecycle, release at most once."
+  "sources": [
+    "packages/host/native-host/gateway-lifecycle.mjs",
+    "packages/host/native-host/gateway-lifecycle.test.mjs",
+    "packages/host/quint/check-gateway-lifecycle.mjs"
+  ],
+  "bounds": {
+    "domain": "Four optional returned resources, one startup, one connected HTTP request and one managed close owner. External close can start draining before managed close joins. Bind failure can roll back before the server listens.",
+    "conformance": "The native-host suite holds a real loopback HTTP request and starts both close paths. No resource releases while the request is held. The request writes to the task file and returns before reverse-order cleanup settles. Other cases cover startup rollback, bind failure and release errors.",
+    "gaps": "The close event abstracts the Node HTTP connection contract. Multiple requests, upgraded sockets, forced shutdown, work that outlives a disconnected client and partial acquisitions inside factories are outside the model. No wall-clock deadline is proved."
+  },
+  "conformance": "packages/host/quint/check-gateway-lifecycle.mjs"
 }

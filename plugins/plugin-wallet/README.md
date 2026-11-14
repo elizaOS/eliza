@@ -19,6 +19,10 @@ transaction ledger or a substitute for on-chain spend policies.
 `@elizaos/plugin-wallet/read` exposes read-only EVM balances, NFTs and DEX prices
 without registering routes or loading signing services. Hosts supply resolved RPC
 endpoints and provider credentials; the root barrel exports the same readers.
+Direct RPC reads return a chain error when any requested token balance or its
+decimal precision cannot be read. The reader tries the next configured endpoint
+before reporting an incomplete result. Symbol lookup failure keeps a generic
+label and never changes a known balance.
 
 ## Development
 

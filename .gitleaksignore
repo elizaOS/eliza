@@ -665,3 +665,29 @@ e4f98fb91068c971a16a71f38697518bd5bd7c5f:packages/cloud/api/internal/network/del
 
 # RFC 6455 sample WebSocket handshake nonce in a local relay test.
 991c73b88cff98527ddfcd4eedb9dfd56e8c3382:packages/cloud/scripts/admin/daemons/agent-router.test.ts:generic-api-key:319
+
+# Historical formal-model bounds prose; this finding contains no credential.
+a6d79b19b6ea9911ee79ba32a5caa73ac3492fc5:packages/agent/quint/SecurityEscapeRetirement.cases.json:generic-api-key:29
+
+# The staging restoration reintroduced the same non-secret model bounds prose.
+62556b379b7aa39694b1bb1d1b8f933928ec2f96:packages/agent/quint/SecurityEscapeRetirement.cases.json:generic-api-key:29
+
+# Reintroduced public firmware SHA-256 checksums and certificate fingerprint in the temporary Maps certification tree.
+01a62c31a0ebecde9dca47d86722bc1646a4b672:packages/os/android/pixel11pro.lock.json:generic-api-key:26
+01a62c31a0ebecde9dca47d86722bc1646a4b672:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3087
+01a62c31a0ebecde9dca47d86722bc1646a4b672:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3105
+01a62c31a0ebecde9dca47d86722bc1646a4b672:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3308
+01a62c31a0ebecde9dca47d86722bc1646a4b672:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3639
+01a62c31a0ebecde9dca47d86722bc1646a4b672:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3741
+01a62c31a0ebecde9dca47d86722bc1646a4b672:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3745
+01a62c31a0ebecde9dca47d86722bc1646a4b672:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3806
+01a62c31a0ebecde9dca47d86722bc1646a4b672:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3913
+01a62c31a0ebecde9dca47d86722bc1646a4b672:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3924
+01a62c31a0ebecde9dca47d86722bc1646a4b672:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3925
+01a62c31a0ebecde9dca47d86722bc1646a4b672:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4212
+01a62c31a0ebecde9dca47d86722bc1646a4b672:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4213
+01a62c31a0ebecde9dca47d86722bc1646a4b672:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4313
+01a62c31a0ebecde9dca47d86722bc1646a4b672:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4485
+01a62c31a0ebecde9dca47d86722bc1646a4b672:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4496
+01a62c31a0ebecde9dca47d86722bc1646a4b672:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4528
+01a62c31a0ebecde9dca47d86722bc1646a4b672:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4539

@@ -20,7 +20,7 @@ import type {
   AppEnv,
 } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
+import { requirePaidRouteStanding } from "../../../../src/lib/paid-route-standing";
 
 interface BrokerRequestBody {
   method: string;

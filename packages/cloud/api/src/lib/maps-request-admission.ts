@@ -1,18 +1,36 @@
-/** P-56 Maps admission: separate request units, no inference credit reservation/debit. */
+/** Maps plan allowance or provider-cost credit funding, with one request receipt. */
+import { createHash } from "node:crypto";
 
 import { readStewardSessionToken } from "@elizaos/cloud-shared/auth";
 import { verifyStewardTokenCached } from "@elizaos/cloud-shared/lib/auth/steward-client";
+import { isSubscriptionFundedReservation } from "@elizaos/cloud-shared/lib/services/allowance-first-credits";
+import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
 import { callMapsRequestAllowance } from "@elizaos/cloud-shared/lib/services/inference-admission-gate";
+import type { InferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
 import type { InferenceCredentialCheck } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
-import type { MapsOperation } from "@elizaos/cloud-shared/lib/services/maps/contract";
+import type {
+  MapsOperation,
+  MapsPriceObserver,
+  MapsProviderPrice,
+} from "@elizaos/cloud-shared/lib/services/maps/contract";
 import type {
   MapsAllowanceRequest,
   MapsUsageOutcome,
 } from "@elizaos/cloud-shared/lib/services/maps-request-policy";
+import {
+  admitOrganizationInference,
+  type OrganizationInferenceAdmission,
+} from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
 import { withOrganizationPolicyReadAdmission } from "@elizaos/cloud-shared/lib/services/organization-policy-admission";
+import { requireOrganizationPolicyBalance } from "@elizaos/cloud-shared/lib/services/organization-quota-policy";
 import { readOrganizationEntitlementSummary } from "@elizaos/cloud-shared/lib/services/subscription-entitlement-token";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppContext } from "@elizaos/cloud-shared/types/cloud-worker-env";
-import { requireGenerativeRouteCaller } from "./generative-route-auth";
+import {
+  getGenerativeExecutionContext,
+  requireGenerativeRouteCaller,
+  resolveInferenceCredentialAdmissionDenial,
+} from "./generative-route-auth";
 
 export class MapsAdmissionError extends Error {
   constructor(
@@ -28,6 +46,8 @@ export interface MapsCaller {
   id: string;
   organization_id: string;
   credential?: InferenceCredentialCheck;
+  apiKeyId?: string | null;
+  admissionSnapshot?: InferenceAdmissionSnapshot;
 }
 export async function authenticateMapsCaller(
   c: AppContext,
@@ -52,13 +72,21 @@ export async function authenticateMapsCaller(
         issuedAt: claims.issuedAt,
       };
   }
-  return { ...caller.user, credential };
+  return {
+    ...caller.user,
+    credential,
+    apiKeyId: caller.apiKeyId,
+    admissionSnapshot: caller.admissionSnapshot,
+  };
 }
-export type MapsCompletion = (outcome: MapsUsageOutcome) => Promise<void>;
+export type MapsCompletion = ((outcome: MapsUsageOutcome) => Promise<void>) & {
+  recordProviderPrice?: MapsPriceObserver;
+};
 export async function admitMapsRequest(
   c: AppContext,
   caller: MapsCaller,
   operation: MapsOperation,
+  quote?: () => MapsProviderPrice | undefined,
 ): Promise<MapsCompletion> {
   const namespace = c.env.INFERENCE_ADMISSION_GATES;
   if (!namespace || !caller.credential)
@@ -87,6 +115,8 @@ export async function admitMapsRequest(
   // Current policy writers do not synchronously publish every generation to the DO.
   // Keep the primary read lock through durable admission: cached generation equality
   // is not a revocation fence. This is deliberately not a cache-only latency claim.
+  let creditFunded = false;
+  let price: MapsProviderPrice | undefined;
   const request = await withOrganizationPolicyReadAdmission(
     caller.organization_id,
     undefined,
@@ -95,20 +125,44 @@ export async function admitMapsRequest(
         caller.organization_id,
         { transaction },
       );
-      if (
-        !policy.subscriptionFunded ||
-        !["active", "trialing"].includes(summary.plan.status)
-      )
+      const activePlan = ["active", "trialing"].includes(summary.plan.status);
+      if (activePlan !== policy.subscriptionFunded)
         throw new MapsAdmissionError(
-          403,
-          "subscription_required",
-          "An active Eliza subscription is required for Maps.",
+          503,
+          "maps_allowance_unconfigured",
+          "Maps funding state is temporarily unavailable.",
         );
+      creditFunded = !activePlan;
+      if (creditFunded) {
+        if (requireOrganizationPolicyBalance(policy).balanceUsd <= 0)
+          throw new MapsAdmissionError(
+            402,
+            "insufficient_credits",
+            "Add balance or choose a plan to use Maps.",
+          );
+        if (operation !== "coverage" && operation !== "viewport") {
+          price = quote?.();
+          if (
+            !price ||
+            !Number.isFinite(price.amountUsd) ||
+            price.amountUsd <= 0
+          )
+            throw new MapsAdmissionError(
+              503,
+              "maps_pricing_unavailable",
+              "Maps pricing is temporarily unavailable.",
+            );
+        }
+      }
       // Coverage and viewport copyright are metadata: entitled, never counted.
       if (operation === "coverage" || operation === "viewport") return null;
       // Inference rate overrides can change the tier without changing the subscribed plan.
-      const planKey = summary.plan.id;
-      if (planKey !== "plus_monthly" && planKey !== "pro_monthly")
+      const planKey = creditFunded ? "default" : summary.plan.id;
+      if (
+        !creditFunded &&
+        planKey !== "plus_monthly" &&
+        planKey !== "pro_monthly"
+      )
         throw new MapsAdmissionError(
           503,
           "maps_allowance_unconfigured",
@@ -131,7 +185,7 @@ export async function admitMapsRequest(
         policy: {
           ...policy.authority,
           planKey,
-          subscriptionFunded: true,
+          subscriptionFunded: !creditFunded,
         },
       };
       let response: Response;
@@ -178,7 +232,7 @@ export async function admitMapsRequest(
       return admission;
     },
   );
-  return async (outcome) => {
+  const record = async (outcome: MapsUsageOutcome) => {
     if (!request) return;
     const response = await callMapsRequestAllowance(
       namespace,
@@ -187,4 +241,125 @@ export async function admitMapsRequest(
     );
     if (!response.ok) throw new Error("Maps usage outcome was not recorded");
   };
+  let paid: OrganizationInferenceAdmission | undefined;
+  if (creditFunded && request && price) {
+    const credentialIdentity =
+      request.credential.kind === "api_key"
+        ? ["api_key", request.credential.credentialId]
+        : [
+            "steward_session",
+            request.credential.stewardUserId,
+            request.credential.issuedAt,
+          ];
+    const billingRequestId = createHash("sha256")
+      .update(
+        JSON.stringify([
+          request.organizationId,
+          credentialIdentity,
+          request.requestId,
+        ]),
+      )
+      .digest("hex");
+    try {
+      paid = await admitOrganizationInference({
+        context: {
+          organizationId: caller.organization_id,
+          userId: caller.id,
+          apiKeyId: caller.apiKeyId ?? null,
+          requestId: `maps:${billingRequestId}`,
+          provider: "google",
+          // The Cloud gateway owns this published Google SKU quote.
+          billingSource: "gateway",
+          model: `google-maps/${price.sku}`,
+          description: `Maps ${operation}`,
+          metadata: {
+            maps_operation: operation,
+            google_sku: price.sku,
+            price_version: price.priceVersion,
+          },
+        },
+        apiKeyId: caller.apiKeyId,
+        estimatedInputTokens: 0,
+        estimatedOutputTokens: 0,
+        flatCost: {
+          totalCost: price.amountUsd,
+          baseTotalCost: price.amountUsd,
+          platformMarkup: 0,
+        },
+        admissionSnapshot: caller.admissionSnapshot,
+        credential: caller.credential,
+        executionCtx: getGenerativeExecutionContext(c),
+        atomicProviderBoundary: true,
+      });
+      if (
+        paid.mode === "durable_object_subscription_funding" ||
+        isSubscriptionFundedReservation(paid.reservation)
+      ) {
+        await paid.settle(0);
+        paid = undefined;
+        throw new MapsAdmissionError(
+          409,
+          "maps_funding_changed",
+          "Your plan changed. Try the Maps request again.",
+        );
+      }
+    } catch (error) {
+      try {
+        await record("failed");
+      } catch {
+        logger.warn("[Maps] Unfunded request outcome remains unconfirmed", {
+          operation,
+        });
+      }
+      if (error instanceof InsufficientCreditsError)
+        throw new MapsAdmissionError(
+          402,
+          "insufficient_credits",
+          "Add balance or choose a plan to use Maps.",
+        );
+      const denial = resolveInferenceCredentialAdmissionDenial(error);
+      if (denial)
+        throw new MapsAdmissionError(
+          denial.status,
+          denial.code,
+          denial.message,
+        );
+      throw error;
+    }
+  }
+  let observedMicros = 0;
+  let unresolvedRequest = false;
+  let dispatchMarked: Promise<void> | undefined;
+  const complete: MapsCompletion = async (outcome) => {
+    if (paid) {
+      if (unresolvedRequest) await paid.settleUnknown();
+      else await paid.settle(observedMicros / 1_000_000);
+    }
+    await record(outcome);
+  };
+  if (paid && price) {
+    const maximum = price;
+    complete.recordProviderPrice = (observed) => {
+      const micros = Math.round(observed.amountUsd * 1_000_000);
+      if (
+        !Number.isFinite(observed.amountUsd) ||
+        observed.amountUsd < 0 ||
+        !Number.isSafeInteger(micros) ||
+        observedMicros + micros > Math.round(maximum.amountUsd * 1_000_000) ||
+        observed.priceVersion !== maximum.priceVersion
+      )
+        throw new Error("Maps provider cost exceeded its admitted quote");
+      observedMicros += micros;
+      unresolvedRequest = false;
+    };
+    complete.recordProviderPrice.beforeRequest = async () => {
+      dispatchMarked ??= paid!.markProviderDispatched?.() ?? Promise.resolve();
+      await dispatchMarked;
+      unresolvedRequest = true;
+    };
+    complete.recordProviderPrice.requestRejected = () => {
+      unresolvedRequest = false;
+    };
+  }
+  return complete;
 }

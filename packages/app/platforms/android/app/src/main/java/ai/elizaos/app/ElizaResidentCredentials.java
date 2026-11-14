@@ -44,11 +44,11 @@ final class ElizaResidentCredentials {
     /** Read-only request fence over existing lifecycle/intent state; reserves no authority. */
     static final class Observation {
         private final long intent, epoch;
-        private final ElizaAgentService.RequestObservation runtime;
+        private final ElizaCredentialRetirement.RequestObservation runtime;
         private Observation() {
             synchronized (LIFECYCLE) {
                 if (mutationEpoch != -1) throw new IllegalStateException("Credential mutation pending");
-                intent = INTENTS.current(); epoch = lifecycleEpoch; runtime = ElizaAgentService.observeRequests();
+                intent = INTENTS.current(); epoch = lifecycleEpoch; runtime = ElizaCredentialRetirement.observeRequests();
             }
         }
         boolean same(Observation other) { return other != null && intent == other.intent && epoch == other.epoch && runtime.same(other.runtime); }
@@ -93,10 +93,10 @@ final class ElizaResidentCredentials {
                 } else binding.withLocks(() -> { binding.cloud.remove(slot); return null; });
             }
             public boolean compareExchange(String slot, String expected, String value) throws Exception {
-                if (!binding.config.pendingSlot.equals(slot))
-                    throw new IllegalArgumentException("Only the pending sign-in record can be compared");
+                if (binding.credentialSlot(slot)) return binding.compareCredential(slot, expected, value);
+                if (!binding.comparableNativeSlot(slot))
+                    throw new IllegalArgumentException("Unsupported sign-in record comparison");
                 return binding.withLocks(() -> {
-                    guard.run();
                     if (!java.util.Objects.equals(binding.cloud.read(slot), expected)) return false;
                     if (value == null) binding.cloud.remove(slot);
                     else binding.cloud.write(slot, value);
@@ -146,12 +146,47 @@ final class ElizaResidentCredentials {
             return false;
         }
 
+        boolean comparableNativeSlot(String slot) {
+            if (config.pendingSlot.equals(slot)) return true;
+            for (CloudSignInEnvironment environment : config.environments())
+                if (config.receiptSlot(environment).equals(slot)
+                        || config.retiringSlot(environment).equals(slot)) return true;
+            return false;
+        }
+
+        boolean compareCredential(String slot, String expected, String replacement) throws Exception {
+            class ComparisonMismatch extends Exception {}
+            final boolean[] writing = { false };
+            try {
+                return mutate(slot, replacement, () -> {
+                    String current = read(slot);
+                    // Checked both before retirement and again at the guarded commit.
+                    // After the write, CredentialSlotMutation owns exact replacement readback.
+                    if (!writing[0] && !java.util.Objects.equals(current, expected))
+                        throw new ComparisonMismatch();
+                    return current;
+                }, () -> {
+                    writing[0] = true;
+                    if (replacement == null) cloud.remove(slot);
+                    else cloud.write(slot, replacement);
+                    return true;
+                });
+            } catch (ComparisonMismatch mismatch) {
+                return false;
+            }
+        }
+
         String read(String name) throws Exception {
             return TOKEN_KEY.equals(name) ? tokens.get(name) : cloud.read(name);
         }
 
         <T> T mutate(String name, String value, java.util.concurrent.Callable<T> write) throws Exception {
-            return CredentialSlotMutation.replace(host(), guard, () -> read(name), value, write, () -> {
+            return mutate(name, value, () -> read(name), write);
+        }
+
+        <T> T mutate(String name, String value, java.util.concurrent.Callable<String> read,
+                java.util.concurrent.Callable<T> write) throws Exception {
+            return CredentialSlotMutation.replace(host(), guard, read, value, write, () -> {
                 nativeSlots.remove(config.pendingSlot);
                 return null;
             });

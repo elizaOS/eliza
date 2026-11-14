@@ -24,7 +24,7 @@ import {
   asGenerativeCacheApiError,
   getGenerativeOperationContext,
   requireGenerativeRouteCaller,
-} from "@/api-app/lib/generative-route-auth";
+} from "../../../../../src/lib/generative-route-auth";
 
 const postSchema = z.object({
   text: z.string().max(2000).optional(),

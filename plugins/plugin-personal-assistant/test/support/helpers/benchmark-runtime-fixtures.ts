@@ -1,9 +1,13 @@
 /** Provides benchmark runtime fixtures helper utilities shared by package tests and scenario harnesses. */
 import crypto from "node:crypto";
+import fs from "node:fs";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
+import os from "node:os";
+import path from "node:path";
 import { Capacitor } from "@capacitor/core";
 import type { AgentRuntime } from "@elizaos/core";
+import { clearPasswordManagerBackendCache } from "@elizaos/plugin-browser/password-manager-bridge";
 import { FakeSubscriptionComputerUseService } from "./subscription-computer-use-fixture.ts";
 
 const MOCK_SCREENSHOT_BASE64 =
@@ -92,6 +96,81 @@ async function startFixtureServer(): Promise<{
       await new Promise<void>((resolve) => {
         server.close(() => resolve());
       });
+    },
+  };
+}
+
+const PASSWORD_MANAGER_ITEMS = [
+  {
+    id: "pm-github",
+    title: "GitHub",
+    category: "LOGIN",
+    additional_information: "benchmark-user",
+    urls: [{ href: "https://github.com/login", primary: true }],
+    tags: ["dev", "github", "code"],
+    vault: { name: "Mocked Benchmark" },
+  },
+  {
+    id: "pm-google-workspace",
+    title: "Google Workspace",
+    category: "LOGIN",
+    additional_information: "owner@example.com",
+    urls: [{ href: "https://mail.google.com", primary: true }],
+    tags: ["google", "email"],
+    vault: { name: "Mocked Benchmark" },
+  },
+  {
+    id: "pm-aws-prod",
+    title: "AWS Console",
+    category: "LOGIN",
+    additional_information: "infra@example.com",
+    urls: [{ href: "https://signin.aws.amazon.com", primary: true }],
+    tags: ["aws", "cloud"],
+    vault: { name: "Mocked Benchmark" },
+  },
+];
+
+/**
+ * Puts a fake 1Password CLI and file-backed clipboard tools first on PATH, so
+ * the password-manager action runs its real 1Password path without touching
+ * a real vault or the host clipboard.
+ */
+function installPasswordManagerFixture(): {
+  binDir: string;
+  clipboardFile: string;
+  cleanup: Cleanup;
+} {
+  const binDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "benchmark-password-manager-"),
+  );
+  const clipboardFile = path.join(binDir, "clipboard");
+  fs.writeFileSync(clipboardFile, "");
+  const op = `#!${process.execPath}
+const args = process.argv.slice(2);
+const item = args.indexOf("item");
+if (args.includes("--version")) process.stdout.write("2.30.0\\n");
+else if (args[item + 1] === "list") process.stdout.write(${JSON.stringify(JSON.stringify(PASSWORD_MANAGER_ITEMS))});
+else if (args[item + 1] === "get") process.stdout.write(args.includes("password") ? "benchmark-password\\n" : "benchmark-user\\n");
+else process.exit(1);
+`;
+  const clipboard = `#!${process.execPath}
+const fs = require("node:fs");
+const file = process.env.BENCHMARK_CLIPBOARD_FILE;
+const read = process.argv[1].endsWith("pbpaste") || process.argv[1].endsWith("wl-paste") || process.argv.includes("-out");
+if (read) process.stdout.write(fs.readFileSync(file));
+else { const chunks = []; process.stdin.on("data", (chunk) => chunks.push(chunk)); process.stdin.on("end", () => fs.writeFileSync(file, Buffer.concat(chunks))); }
+`;
+  fs.writeFileSync(path.join(binDir, "op"), op, { mode: 0o700 });
+  for (const name of ["pbcopy", "pbpaste", "xclip", "wl-copy", "wl-paste"]) {
+    fs.writeFileSync(path.join(binDir, name), clipboard, { mode: 0o700 });
+  }
+  clearPasswordManagerBackendCache();
+  return {
+    binDir,
+    clipboardFile,
+    cleanup: () => {
+      clearPasswordManagerBackendCache();
+      fs.rmSync(binDir, { recursive: true, force: true });
     },
   };
 }
@@ -283,10 +362,12 @@ function registerBenchmarkSendHandlers(runtime: AgentRuntime): void {
 export async function createBenchmarkRuntimeFixturesEnvironment(): Promise<BenchmarkRuntimeFixturesEnvironment> {
   const fixtureServer = await startFixtureServer();
   const restoreAppBlocker = installAppBlockerFixture();
+  const passwordManager = installPasswordManagerFixture();
 
   return {
     envVars: {
-      ELIZA_TEST_PASSWORD_MANAGER_BACKEND: "fixture",
+      PATH: `${passwordManager.binDir}${path.delimiter}${process.env.PATH ?? ""}`,
+      BENCHMARK_CLIPBOARD_FILE: passwordManager.clipboardFile,
       ELIZA_TEST_COMPUTERUSE_BACKEND: "fixture",
       ELIZA_DEVICE_BUS_URL: fixtureServer.baseUrl,
       ELIZA_DEVICE_BUS_TOKEN: "mock-device-bus-token",
@@ -312,6 +393,7 @@ export async function createBenchmarkRuntimeFixturesEnvironment(): Promise<Bench
     },
     async cleanup() {
       restoreAppBlocker();
+      passwordManager.cleanup();
       await fixtureServer.stop();
     },
   };

@@ -16,7 +16,9 @@ import { testOutputPath } from "../scripts/lib/test-output.ts";
 //
 // Prereqs (handled by scripts/android-e2e.ts, or run manually):
 //   1. An emulator/device is attached (ANDROID_SERIAL selects it; emulator preferred).
-//   2. The app is installed from an APK built with ELIZA_WEBVIEW_DEBUG=1.
+//   2. The app is installed from an APK built with ELIZA_WEBVIEW_DEBUG=1
+//      (build:android:cloud:debug, or a signed build:android:system for the
+//      on-device agent).
 //   3. The on-device local agent is up (mobile-local-chat-smoke bring-up) OR the
 //      app is pointed at a reachable cloud agent.
 const appDir = path.dirname(fileURLToPath(import.meta.url));

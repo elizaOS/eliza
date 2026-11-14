@@ -15,7 +15,7 @@ import { Hono } from "hono";
 import {
   getScheduledCronInvocationMetadata,
   scheduledCronInvocationId,
-} from "@/api-app/cron";
+} from "../../../src/cron";
 
 export const AGENT_BACKUP_ADMISSION_CALLER_PATH =
   "/api/v1/cron/agent-backup-admission";

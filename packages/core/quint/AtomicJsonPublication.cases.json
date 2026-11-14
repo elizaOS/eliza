@@ -1,0 +1,105 @@
+{
+	"sources": [
+		"packages/core/src/utils/atomic-json.ts",
+		"packages/core/test/atomic-json-filesystem.test.ts",
+		"packages/core/test/fixtures/atomic-json-writer.ts",
+		"packages/core/quint/check-core-concurrency.mjs",
+		"packages/scripts/lib/vitest-conformance.ts",
+		"packages/scripts/lib/test-output.ts",
+		"packages/scripts/run-vitest.ts",
+		"packages/scripts/run-with-deadline.ts",
+		"packages/core/vitest.config.ts"
+	],
+	"conformance": "packages/core/quint/check-core-concurrency.mjs",
+	"bounds": {
+		"domain": "One existing complete JSON file and two already serialized values. Each writer has a distinct exclusive sibling temporary path. Publication changes one symbolic complete snapshot at rename. Each write, rename and cleanup can fail. Process death can happen before or after publication for either independent writer.",
+		"ordering": "The serial case represents two async invocations in one process, in invocation order, to the same resolved path. The independent case represents separate processes or an async and synchronous writer with no common queue. No cross-process invocation order is promised.",
+		"filesystem": "A fulfilled local write supplies the complete serialized body. Successful same-filesystem rename publishes it atomically to readers. A modeled rename refusal has no publication effect, as in the actual incompatible-directory case. Process termination retains the current local filesystem namespace and can strand its own temporary file. No physical power-loss or storage flush guarantee is asserted.",
+		"conformance": "The actual exported writer runs against temporary local files. Two Bun processes mix async and synchronous writes while readers inspect complete content. A controlled continuation holds the real async rename to check same-path queue order. Real incompatible-directory rename failures preserve their target and later writes recover. Separate processes are killed immediately before and after real rename, then a fresh process replaces the snapshot while preserving any abandoned sibling file.",
+		"limitations": "The model starts after serialization and abstracts mkdir and exclusive creation into admission. Arbitrary paths, symlink aliases, working-directory changes, external mutation of sibling temporary files, cleanup error logging, permissions, partial write errors, remote filesystem outcomes, caller read-modify-write authorization, and automatic removal of crash leftovers are outside the implementation conformance. Modeled cleanup refusal retains the prior operation result and temporary residue; the maintained tests require successful cleanup. No generated-trace equivalence or physical storage qualification is claimed."
+	},
+	"cases": [
+		{
+			"name": "independent-writers-and-process-death",
+			"main": "AtomicJsonPublication",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"ReadersSeePublishedSnapshot",
+				"ReceiptRequiresRename",
+				"QueueRetainsOrder"
+			],
+			"temporal": [
+				"PublishedDataSurvivesCleanup",
+				"FairWritesSettle",
+				"WritesSettle"
+			],
+			"temporalChecks": [
+				{
+					"property": "PublishedDataSurvivesCleanup",
+					"expect": "holds",
+					"assumptions": [
+						"No fairness. A retired process cannot run further cleanup, and each live writer cleans only its own distinct temporary path."
+					]
+				},
+				{
+					"property": "FairWritesSettle",
+					"expect": "holds",
+					"assumptions": [
+						"Each live writer's enabled admission, filesystem response and cleanup continuation are weakly fair. Failures are allowed. Process death has an unknown caller receipt and ends that writer's work."
+					]
+				},
+				{
+					"property": "WritesSettle",
+					"expect": "counterexample",
+					"assumptions": [
+						"No fairness. An admitted or queued write can remain pending indefinitely."
+					]
+				}
+			],
+			"maxSteps": 14,
+			"samples": 1000
+		},
+		{
+			"name": "same-process-async-order-and-failure",
+			"main": "AtomicJsonPublication",
+			"init": "serialInit",
+			"step": "step",
+			"invariants": [
+				"ReadersSeePublishedSnapshot",
+				"ReceiptRequiresRename",
+				"QueueRetainsOrder"
+			],
+			"temporal": [
+				"PublishedDataSurvivesCleanup",
+				"FairWritesSettle",
+				"WritesSettle"
+			],
+			"temporalChecks": [
+				{
+					"property": "PublishedDataSurvivesCleanup",
+					"expect": "holds",
+					"assumptions": [
+						"No fairness. Both async calls share the existing non-rejecting per-target tail. Neither operation can remove a destination published by rename."
+					]
+				},
+				{
+					"property": "FairWritesSettle",
+					"expect": "holds",
+					"assumptions": [
+						"Each continuously enabled queue admission and filesystem continuation is weakly fair. A failed earlier call settles before the next call starts. Process death is excluded from this serial instance."
+					]
+				},
+				{
+					"property": "WritesSettle",
+					"expect": "counterexample",
+					"assumptions": [
+						"No fairness. A filesystem response can keep both the active write and its queued successor waiting."
+					]
+				}
+			],
+			"maxSteps": 14,
+			"samples": 1000
+		}
+	]
+}

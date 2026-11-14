@@ -134,9 +134,6 @@ export {
 } from "./documents/index";
 export type {
   TrajectoryExportOptions,
-  TrajectoryListItem,
-  TrajectoryListOptions,
-  TrajectoryListResult,
   TrajectoryStats,
   TrajectoryZipEntry,
   TrajectoryZipExportOptions,

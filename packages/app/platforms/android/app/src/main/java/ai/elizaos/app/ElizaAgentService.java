@@ -1491,11 +1491,7 @@ public class ElizaAgentService extends Service {
         String[] supported = Build.SUPPORTED_ABIS;
         if (supported != null) {
             for (String abi : supported) {
-                if (
-                    "arm64-v8a".equals(abi) ||
-                    "x86_64".equals(abi) ||
-                    "riscv64".equals(abi)
-                ) return abi;
+                if ("arm64-v8a".equals(abi) || "x86_64".equals(abi)) return abi;
             }
             if (supported.length > 0) return supported[0];
         }
@@ -2194,7 +2190,6 @@ public class ElizaAgentService extends Service {
     private String packagedMuslLoaderName(String abi) {
         if ("arm64-v8a".equals(abi)) return "libeliza_ld_musl_aarch64.so";
         if ("x86_64".equals(abi)) return "libeliza_ld_musl_x86_64.so";
-        if ("riscv64".equals(abi)) return "libeliza_ld_musl_riscv64.so";
         return null;
     }
 
@@ -2836,7 +2831,6 @@ public class ElizaAgentService extends Service {
             } catch (IOException error) {
                 Log.w(TAG, "Voice bundle directory unavailable for live ASR", error);
             }
-            agentEnv.put("ELIZA_MOBILE_PLATFORM", "android");
             agentEnv.put("ELIZA_STARTUP_TRACE_ID", ElizaStartupTrace.currentId());
             agentEnv.put("ELIZA_RUNTIME_MODE", "local-yolo");
             agentEnv.put("AGENT_COMMAND", "android-bridge");
@@ -3066,7 +3060,7 @@ public class ElizaAgentService extends Service {
                 // i.e. the arm64 GPU build — offload the model to the GPU. The
                 // aosp loader pins n_gpu_layers=0 by default, so without
                 // this a Vulkan-capable build still runs entirely on CPU. CPU-
-                // only builds (riscv64, or arm64 without the Vulkan backend) ship
+                // only builds (arm64 without the Vulkan backend) ship
                 // no libggml-vulkan.so, so they correctly stay on CPU.
                 // Skipped when delegating: the GPU offload happens in the bionic
                 // host, not the musl bun:ffi path (which can't reach Vulkan).

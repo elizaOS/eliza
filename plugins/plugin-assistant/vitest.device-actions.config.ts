@@ -20,6 +20,7 @@ export default defineConfig({
       "test/device-read-completion.test.ts",
       "test/device-read-completion-pipeline.test.ts",
       "test/notes-query.e2e.test.ts",
+      "test/canonical-notes-list-filter.e2e.test.ts",
       "test/reminder-relative-create.integration.test.ts",
       "test/workflow-owner-*.test.ts",
     ],

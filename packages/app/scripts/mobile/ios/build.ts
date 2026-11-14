@@ -59,8 +59,6 @@ export function configureIosLocalBuildDefaults() {
   setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", "local");
   setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "local");
   setDefaultProcessEnv("ELIZA_RUNTIME_MODE", "local-safe");
-  setDefaultProcessEnv("RUNTIME_MODE", "local-safe");
-  setDefaultProcessEnv("LOCAL_RUNTIME_MODE", "local-safe");
   setDefaultProcessEnv("VITE_ELIZA_RUNTIME_MODE", "local-safe");
   if (isIosAppStoreBuild()) {
     process.env.ELIZA_IOS_INCLUDE_LLAMA = "0";
@@ -88,8 +86,6 @@ export function configureIosAppStoreBuildDefaults() {
   setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", iosRuntimeMode);
   setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", iosRuntimeMode);
   setDefaultProcessEnv("ELIZA_RUNTIME_MODE", executionMode);
-  setDefaultProcessEnv("RUNTIME_MODE", executionMode);
-  setDefaultProcessEnv("LOCAL_RUNTIME_MODE", executionMode);
   setDefaultProcessEnv("VITE_ELIZA_RUNTIME_MODE", executionMode);
   process.env.ELIZA_IOS_INCLUDE_LLAMA = "0";
 }

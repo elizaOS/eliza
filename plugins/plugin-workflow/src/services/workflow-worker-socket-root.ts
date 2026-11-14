@@ -1,6 +1,5 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { resolveAppAliasedEnvValue as resolveAliasedEnvValue } from '@elizaos/host/protocol';
 import { digest, ownedDirectory, syncDirectory } from './workflow-worker-lease';
 
 /**
@@ -14,8 +13,7 @@ const SOCKET_ROOT_BYTE_LIMIT = 100 - 1 - 20 - 5;
 /** Stable across parent restarts, private to this UID and canonical home. */
 export function resolveWorkerSocketRoot(
   home: string,
-  platform: NodeJS.Platform | 'android' = resolveAliasedEnvValue('ELIZA_PLATFORM') === 'android' ||
-  process.env.ELIZA_MOBILE_PLATFORM === 'android'
+  platform: NodeJS.Platform | 'android' = process.env.ELIZA_PLATFORM?.trim() === 'android'
     ? 'android'
     : process.platform
 ): string {

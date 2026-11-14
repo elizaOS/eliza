@@ -267,7 +267,7 @@ if (
 ) {
   if (process.argv.length !== 5)
     throw new Error(
-      "Usage: node scripts/build-consumer-task-runtime.mjs OUTPUT SOURCE_ROOT REVIEWED_COMMIT",
+      "Usage: bun scripts/build-consumer-task-runtime.mjs OUTPUT SOURCE_ROOT REVIEWED_COMMIT",
     );
   console.log(
     JSON.stringify(

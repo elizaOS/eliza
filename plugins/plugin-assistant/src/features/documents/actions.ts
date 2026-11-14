@@ -21,6 +21,7 @@ import {
   buildReadSlice,
   describeUserReference,
   ElizaError,
+  extractUserText,
   getActiveRoutingContextsForTurn,
   hasRoleAccess,
   isAgentSelf,
@@ -529,9 +530,13 @@ function getOptionalPlannerString(
 ): string | undefined {
   if (typeof value !== "string" || !value.trim()) return undefined;
   const normalized = value.trim();
+  // Connector metadata and attached documents can carry a standalone 0 that
+  // the user never wrote. Check only the request after both envelope layers
+  // are removed, or a planner "0" placeholder fails as DOCUMENT_INVALID_FILTER
+  // instead of being treated as omitted.
   if (
     normalized === "0" &&
-    !/(?:^|\D)0(?:\D|$)/.test(message.content.text ?? "")
+    !/(?:^|\D)0(?:\D|$)/.test(extractUserText(unwrapUserMessageText(message)))
   ) {
     return undefined;
   }

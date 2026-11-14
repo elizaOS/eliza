@@ -1,6 +1,9 @@
 /** Types for errors.mjs. */
 export declare class NativeHostError extends Error {
-  constructor(message: string, options?: { status?: number; code?: string });
+  constructor(
+    message: string,
+    options?: { status?: number; code?: string; cause?: unknown },
+  );
   status: number | undefined;
   code: string | undefined;
 }

@@ -63,13 +63,12 @@ jobs:
     name: Android emulator bundle
     if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'android'
     runs-on: ubuntu-24.04
-    # The host-backed emulator target omits the unused embedded-agent build;
-    # this cap covers the real renderer build, APK install, and device probes.
+    # Both runs build the android-system APK, the only target that allows the
+    # host-agent cleartext route; this cap covers its build, install, and probes.
     timeout-minutes: 90
     env:
       ELIZA_MOBILE_REPO_ROOT: ${{ github.workspace }}
       ELIZA_WEBVIEW_DEBUG: "1"
-      ELIZA_BUN_RISCV64_OPTIONAL: "1"
       ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB: "1"
       # This host-backed mobile lane does not use desktop fused inference.
       ELIZA_SKIP_FUSED_INFERENCE_SETUP: "1"
@@ -98,7 +97,7 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: ${{ env.BUN_VERSION }}
-      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78
         with:
           distribution: temurin
           java-version: "21"
@@ -128,6 +127,22 @@ jobs:
           org.gradle.workers.max=2
           org.gradle.daemon=false
           EOF
+
+      # The android-system release APK installs only when signed. Generate a
+      # disposable identity so this fork-safe run needs no repository secret.
+      - name: Generate a disposable release signing key
+        run: |
+          keystore="$RUNNER_TEMP/eliza-device-e2e.jks"
+          keytool -genkeypair -keystore "$keystore" -storepass android \
+            -alias androiddebugkey -keypass android \
+            -dname "CN=Eliza Device E2E,O=elizaOS,C=US" \
+            -keyalg RSA -keysize 2048 -validity 1 -noprompt
+          {
+            echo "ELIZAOS_KEYSTORE_PATH=$keystore"
+            echo "ELIZAOS_KEYSTORE_PASSWORD=android"
+            echo "ELIZAOS_KEY_ALIAS=androiddebugkey"
+            echo "ELIZAOS_KEY_PASSWORD=android"
+          } >> "$GITHUB_ENV"
 
       # KVM enables a usable emulator on GitHub ubuntu runners.
       - name: Enable KVM
@@ -241,7 +256,7 @@ jobs:
       # ios-e2e.ts owns the whole lane — simulator boot, app build, install,
       # auth deep-link drive — inside one bundle root.
       - name: iOS device-bundle run
-        run: node packages/app/scripts/ios-e2e.ts --skip-local-chat --output "$ELIZA_DEVICE_BUNDLE_ROOT/ios"
+        run: bun packages/app/scripts/ios-e2e.ts --skip-local-chat --output "$ELIZA_DEVICE_BUNDLE_ROOT/ios"
 
       - name: Upload iOS simulator bundle
         if: always()

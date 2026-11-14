@@ -19,7 +19,7 @@
  * until then those gates stay `needs_hardware: true`.
  *
  * Usage:
- *   node packages/inference/verify/mobile_peak_rss_harness.mjs \
+ *   bun packages/inference/verify/mobile_peak_rss_harness.mjs \
  *     [--device <udid>] [--platform ios|android] [--tier 2b|4b|...] [--report PATH] [--json]
  */
 
@@ -69,7 +69,7 @@ function parseArgs(argv) {
       args.json = true;
     } else if (a === "--help" || a === "-h") {
       console.log(
-        "Usage: node mobile_peak_rss_harness.mjs [--device <udid>] [--platform ios|android] [--tier <tier>] [--report PATH] [--json]",
+        "Usage: bun mobile_peak_rss_harness.mjs [--device <udid>] [--platform ios|android] [--tier <tier>] [--report PATH] [--json]",
       );
       process.exit(0);
     }

@@ -5,6 +5,12 @@ import android.content.Context;
 
 /** Resident packaging binds credential retirement to the real service's exact stop lease. */
 final class ElizaCredentialRetirement {
+    static final class RequestObservation {
+        private final ElizaAgentService.RequestObservation runtime = ElizaAgentService.observeRequests();
+        boolean same(RequestObservation other) { return other != null && runtime.same(other.runtime); }
+        <T> T withCurrent(java.util.concurrent.Callable<T> effect) throws Exception { return runtime.withCurrent(effect); }
+    }
+    static RequestObservation observeRequests() { return new RequestObservation(); }
     static long reserve() { return ElizaAgentService.reserveCredentialShutdown(); }
     static void request(Context context, long request) { ElizaAgentService.retryCredentialShutdown(context, request); }
     static boolean stopped(Context context) throws Exception {

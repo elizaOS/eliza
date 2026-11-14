@@ -626,3 +626,74 @@ describe("EngineVoiceBridge paradeeOnly", () => {
 		).toThrow(/paradeeOnly cannot be combined/);
 	});
 });
+
+/**
+ * The real protocol thread (`serveSpeechProtocol`, which reads stdin with
+ * readline) behind the real client. Only the engine is synthetic: it answers
+ * with a WAV that has one sample for each character it received.
+ */
+describe("HostTtsClient with the real speech protocol", () => {
+	const runtime = fileURLToPath(
+		new URL("../../../../host-speech-runtime.ts", import.meta.url),
+	);
+	const worker = `
+import { isMainThread } from "node:worker_threads";
+import { serveSpeechEngine, serveSpeechProtocol } from ${JSON.stringify(runtime)};
+function wav(samples) {
+	const audio = Buffer.alloc(44 + samples * 2);
+	audio.write("RIFF");
+	audio.writeUInt32LE(audio.length - 8, 4);
+	audio.write("WAVE", 8);
+	audio.write("fmt ", 12);
+	audio.writeUInt32LE(16, 16);
+	audio.writeUInt16LE(1, 20);
+	audio.writeUInt16LE(1, 22);
+	audio.writeUInt32LE(24000, 24);
+	audio.writeUInt32LE(48000, 28);
+	audio.writeUInt16LE(2, 32);
+	audio.writeUInt16LE(16, 34);
+	audio.write("data", 36);
+	audio.writeUInt32LE(samples * 2, 40);
+	return audio.toString("base64");
+}
+if (isMainThread) {
+	await serveSpeechProtocol({
+		engineUrl: new URL(import.meta.url),
+		maxLine: 8192,
+		idleReleaseMs: 60000,
+		parse: (input) => ({ id: input.id, text: input.text }),
+		cancel: () => {},
+	});
+} else {
+	serveSpeechEngine(() => ({
+		ctx: 1n,
+		run: (request) => ({ audio: wav(request.text.length) }),
+		release() {},
+		dispose() {},
+	}));
+}
+`;
+	let dir: string | undefined;
+	let client: HostTtsClient | undefined;
+	afterEach(() => {
+		client?.dispose();
+		if (dir) rmSync(dir, { recursive: true, force: true });
+	});
+
+	it("speaks text that contains Unicode line and paragraph separators", async () => {
+		dir = mkdtempSync(path.join(os.tmpdir(), "host-tts-separators-"));
+		const workerPath = path.join(dir, "worker.mjs");
+		writeFileSync(workerPath, worker);
+		client = new HostTtsClient({
+			config: { library: "", librarySha256: "", modelDir: dir },
+			workerPath,
+			deadlineMs: 10_000,
+		});
+		const text = "Line one\u2028line two\u2029line three";
+		const audio = await client.synthesize(text, () => false);
+		expect((audio.length - 44) / 2).toBe(text.length);
+		// The same worker serves the next request.
+		const next = await client.synthesize("after", () => false);
+		expect((next.length - 44) / 2).toBe(5);
+	}, 20_000);
+});

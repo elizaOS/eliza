@@ -36,6 +36,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -118,7 +119,8 @@ public final class BrowserDownloads {
   /** Reads the open list's DownloadManager and MediaStore rows off the main thread. */
   private final ExecutorService statusReader = Executors.newSingleThreadExecutor();
   private final Map<Long, Long> received = new ConcurrentHashMap<>();
-  private final Set<Long> cancelled = ConcurrentHashMap.newKeySet();
+  private enum TransferState { FETCHING, CANCELLED, PUBLISHING }
+  private final ConcurrentMap<Long, TransferState> transfers = new ConcurrentHashMap<>();
   private AlertDialog pending, listing, notice;
   private String pendingTab;
   /** Requests each tab had dropped or refused since its last main-frame navigation. */
@@ -433,6 +435,8 @@ public final class BrowserDownloads {
         String failure = null;
         try {
           saved = publish(file, name, mime);
+        } catch (Refused unconfirmed) {
+          failure = unconfirmed.getMessage();
         } catch (Exception error) {
           failure = "The file could not be saved to Downloads. Check Android storage and try again.";
         } finally {
@@ -496,6 +500,7 @@ public final class BrowserDownloads {
       throw new IllegalStateException("Download history is full");
     // A retired row is forgotten now, not only when this fetch ends.
     persist();
+    transfers.put(id, TransferState.FETCHING);
     received.put(id, 0L);
     work(network, () -> {
       Uri saved = null;
@@ -515,7 +520,7 @@ public final class BrowserDownloads {
       boolean wasCancelled = stopped;
       handler.post(() -> {
         received.remove(id);
-        cancelled.remove(id);
+        transfers.remove(id);
         BrowserDownloadPolicy.Entry current = history.get(id);
         // Removed, cancelled or cleared while running: nothing is re-added. A finished file stays in Downloads.
         if (current == null || wasCancelled)
@@ -530,6 +535,7 @@ public final class BrowserDownloads {
     }, () -> {
       history.remove(id);
       received.remove(id);
+      transfers.remove(id);
     });
   }
 
@@ -538,7 +544,7 @@ public final class BrowserDownloads {
     for (int hop = 0;; hop++) {
       if (hop > MAX_REDIRECTS)
         throw new Refused("The site redirected the download too many times.");
-      if (cancelled.contains(id))
+      if (transfers.get(id) == TransferState.CANCELLED)
         throw new Cancelled();
       HttpURLConnection connection = (HttpURLConnection) url.openConnection();
       try {
@@ -594,28 +600,48 @@ public final class BrowserDownloads {
     Uri uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
     if (uri == null)
       throw new IllegalStateException();
-    try (OutputStream out = resolver.openOutputStream(uri)) {
-      if (out == null)
-        throw new IllegalStateException();
-      byte[] buffer = new byte[65536];
-      int count;
-      long total = 0;
-      while ((count = in.read(buffer)) != -1) {
-        if (id != 0 && cancelled.contains(id))
-          throw new Cancelled();
-        out.write(buffer, 0, count);
-        total += count;
-        if (id != 0)
-          received.put(id, total);
+    boolean attemptedPublication = false;
+    try {
+      try (OutputStream out = resolver.openOutputStream(uri)) {
+        if (out == null)
+          throw new IllegalStateException();
+        byte[] buffer = new byte[65536];
+        int count;
+        long total = 0;
+        while ((count = in.read(buffer)) != -1) {
+          if (id != 0 && transfers.get(id) == TransferState.CANCELLED)
+            throw new Cancelled();
+          out.write(buffer, 0, count);
+          total += count;
+          if (id != 0)
+            received.put(id, total);
+        }
       }
+      ContentValues done = new ContentValues();
+      done.put(MediaStore.MediaColumns.IS_PENDING, 0);
+      // Cancellation and final publication compete for this exact transfer. The provider call
+      // stays on the worker, so removing a list entry never waits for MediaStore.
+      if (id != 0 && !transfers.replace(id, TransferState.FETCHING, TransferState.PUBLISHING))
+        throw new Cancelled();
+      attemptedPublication = true;
+      if (resolver.update(uri, done, null, null) != 1)
+        throw new IllegalStateException("Pending download could not be published");
+      return uri;
     } catch (Exception failure) {
-      resolver.delete(uri, null, null);
+      boolean removed = false;
+      try {
+        // A provider can commit before reporting an error. Once update was attempted,
+        // only delete this owned row if it is still pending in that same operation.
+        removed = (attemptedPublication
+            ? resolver.delete(uri, MediaStore.MediaColumns.IS_PENDING + "=?", new String[] {"1"})
+            : resolver.delete(uri, null, null)) == 1;
+      } catch (RuntimeException cleanup) {
+        failure.addSuppressed(cleanup);
+      }
+      if (attemptedPublication && !removed)
+        throw new Refused("Could not confirm the save. Check Android Downloads before trying again.");
       throw failure;
     }
-    ContentValues done = new ContentValues();
-    done.put(MediaStore.MediaColumns.IS_PENDING, 0);
-    resolver.update(uri, done, null, null);
-    return uri;
   }
 
   /**
@@ -628,17 +654,23 @@ public final class BrowserDownloads {
       pending.dismiss();
   }
 
+  private void cancelTransfer(long id) {
+    transfers.replace(id, TransferState.FETCHING, TransferState.CANCELLED);
+  }
+
   /**
    * Removing an entry that is still being fetched by the host stops that fetch: its sign-in cookie
    * is never sent again (on a redirect hop) once the entry, its tab or its site data is gone, and
    * nothing keeps downloading where the user can no longer see or cancel it.
    */
   private boolean removeEntries(Predicate<BrowserDownloadPolicy.Entry> match) {
-    List<BrowserDownloadPolicy.Entry> removed = history.removeWhere(match);
-    for (BrowserDownloadPolicy.Entry entry : removed)
+    return !history.removeWhere(entry -> {
+      if (!match.test(entry))
+        return false;
       if (entry.id < 0 && entry.running)
-        cancelled.add(entry.id);
-    return !removed.isEmpty();
+        cancelTransfer(entry.id);
+      return true;
+    }).isEmpty();
   }
 
   /** A private tab closed: forget its in-memory entries and stop its unfinished signed-in fetches. Files already saved stay in Downloads. */
@@ -879,8 +911,8 @@ public final class BrowserDownloads {
   }
 
   /**
-   * A row's button. A transfer shown as in progress is cancelled only if it still is; one that
-   * finished meanwhile keeps its file and loses only its row.
+   * A row's button. A transfer shown as in progress is cancelled only before final publication
+   * is admitted. A transfer that has reached publication keeps any file it saves and loses its row.
    */
   private void removeFromList(long id, boolean shownActive) {
     BrowserDownloadPolicy.Entry entry = history.get(id);
@@ -891,7 +923,7 @@ public final class BrowserDownloads {
         if (id > 0 && osActive(entry))
           manager.remove(id);
         else if (id < 0 && entry.running)
-          cancelled.add(id);
+          cancelTransfer(id);
       }
       history.remove(id);
       persist();
@@ -923,7 +955,8 @@ public final class BrowserDownloads {
   public void destroy() {
     closed = true;
     dismissDialogs();
-    cancelled.addAll(received.keySet());
+    for (long id : transfers.keySet())
+      cancelTransfer(id);
     io.shutdown();
     network.shutdown();
     statusReader.shutdown();

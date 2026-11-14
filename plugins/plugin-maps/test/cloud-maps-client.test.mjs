@@ -400,6 +400,8 @@ const memory = () => {
 
 // Typed Cloud refusals become device failures; none becomes data.
 for (const [status, code, expected] of [
+  [402, "insufficient_credits", "unauthorized"],
+  [409, "maps_funding_changed", "unavailable"],
   [403, "subscription_required", "unauthorized"],
   [422, "no_route", "unsupported"],
   [422, "unsupported_region", "unsupported"],

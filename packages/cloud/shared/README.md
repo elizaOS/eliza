@@ -89,7 +89,6 @@ must use the journal-driven migration runner; loading SQL directly in a test fix
 alone does not establish deployment discovery. The scheduling ledger regression
 exercises the same canonical migration loader used by that runner.
 
-
 Renewal and missed-event recovery retain the original checkout account binding after a
 paid organization upgrade. The current price/product come from the applied upgrade's
 immutable quote and complete subsequent source revision history, not rotated environment

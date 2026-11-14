@@ -1,0 +1,61 @@
+{
+  "sources": [
+    "packages/host/native-host/research-configuration.mjs",
+    "packages/host/native-host/research-configuration.test.mjs",
+    "packages/host/native-host/research-store.mjs",
+    "packages/host/native-host/database-lease.mjs",
+    "packages/host/quint/check-research-rotation-recovery.mjs",
+    "packages/scripts/lib/test-output.ts",
+    "packages/scripts/run-with-deadline.ts"
+  ],
+  "bounds": {
+    "domain": "One initialized private configuration, one offline rotation from an old to a new key, one competing writer, role admission, two recovery files and one interruption after SQLite commit and close. The read probe abstracts acquiring, checking and releasing a fresh store under its lease.",
+    "conformance": "Real private files and Node SQLite check current-writer refusal, complete rotation, old-key refusal, retained records and audit. A child exits after closing the actual rotated store and before configuration publication. The parent confirms the stale lease refuses reopen, removes it after child exit and recovers the committed data using the retained next file. A controlled store rejection checks precommit failure cleanup.",
+    "gaps": "The finite model assumes complete recovery-file writes, a transaction with known outcome and successful lease release on ordinary settlement. It excludes partial file writes, crash during fsync, arbitrary storage or release failures, same-path external mutation, platform power-loss durability and multiple rotations after operator retirement of recovery files. It proves no automatic lease takeover or recovery deadline."
+  },
+  "conformance": "packages/host/quint/check-research-rotation-recovery.mjs",
+  "cases": [
+    {
+      "name": "offline-key-rotation-and-interrupted-publication",
+      "main": "ResearchRotationRecovery",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "CommittedKeyRemainsAvailable",
+        "PublishedKeyMatchesDatabase",
+        "SuccessRequiresPublishedKey",
+        "InterruptedLeaseRemainsOwned"
+      ],
+      "temporal": [
+        "PreviousReceiptPersists",
+        "FairRotationOwnerSettles",
+        "RotationOwnerSettles"
+      ],
+      "temporalChecks": [
+        {
+          "property": "PreviousReceiptPersists",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. The workflow never retires the previous receipt. Operator retirement is outside the instance."
+          ]
+        },
+        {
+          "property": "FairRotationOwnerSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of recovery file preparation, database settlement, configuration publication and lease release. Database settlement may fail. Process interruption retires the live owner and retains its stale lock until explicit operator action."
+          ]
+        },
+        {
+          "property": "RotationOwnerSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. A live rotation can remain pending indefinitely."
+          ]
+        }
+      ],
+      "maxSteps": 24,
+      "samples": 500
+    }
+  ]
+}

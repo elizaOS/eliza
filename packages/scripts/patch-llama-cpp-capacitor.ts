@@ -96,8 +96,6 @@ function ensureGradleMtpContract(pkgDir) {
     `// its own gradle property (\`eliza.mtp.android.libdir.<abi>\`) and env\n` +
     `// var (\`ELIZA_MTP_ANDROID_LIBDIR_<ABI>\`). For arm64-v8a the legacy\n` +
     `// unsuffixed names are still honored for backwards compatibility.\n` +
-    `// riscv64 has no Vulkan path yet (Wave 2 ships CPU-only), so only the\n` +
-    `// \`cpu\` backend is searched on that ABI.\n` +
     `def resolveElizaMtpAndroidLibDir = { String abi ->\n` +
     `    def propSuffix = abi == 'arm64-v8a' ? '' : ".\${abi}"\n` +
     `    def envSuffix = abi == 'arm64-v8a' ? '' : "_\${abi.replace('-', '_').toUpperCase()}"\n` +
@@ -109,10 +107,9 @@ function ensureGradleMtpContract(pkgDir) {
     `    def abiToken = [\n` +
     `        'arm64-v8a': 'android-arm64',\n` +
     `        'x86_64'   : 'android-x86_64',\n` +
-    `        'riscv64'  : 'android-riscv64',\n` +
     `    ][abi]\n` +
     `    if (abiToken == null) return ''\n` +
-    `    def backends = abi == 'riscv64' ? ['cpu'] : ['vulkan', 'cpu']\n` +
+    `    def backends = ['vulkan', 'cpu']\n` +
     `    def candidates = backends.collect { backend ->\n` +
     `        "\${stateDir}/local-inference/bin/mtp/\${abiToken}-\${backend}"\n` +
     `    }\n` +
@@ -170,9 +167,20 @@ function ensureGradleMtpContract(pkgDir) {
     .replace(/\bversion "3\.22\.1"/g, 'version = "3.22.1"')
     .replace(/\bndkVersion "29\.0\.13113456"/g, 'ndkVersion = "29.0.13113456"')
     .replace(/\babortOnError false/g, "abortOnError = false")
+    // Converge installs patched while riscv64 was a target to arm64-v8a only.
     .replace(
-      /abiFilters 'arm64-v8a'(?!,)/g,
-      "abiFilters 'arm64-v8a', 'riscv64'",
+      /\/\/ riscv64 has no Vulkan path yet \(Wave 2 ships CPU-only\), so only the\n\/\/ `cpu` backend is searched on that ABI\.\n/g,
+      "",
+    )
+    .replace(/\n {8}'riscv64' {2}: 'android-riscv64',/g, "")
+    .replace(
+      /def backends = abi == 'riscv64' \? \['cpu'\] : \['vulkan', 'cpu'\]/g,
+      "def backends = ['vulkan', 'cpu']",
+    )
+    .replace(/abiFilters 'arm64-v8a', 'riscv64'/g, "abiFilters 'arm64-v8a'")
+    .replace(
+      /,\n[ \t]*"-DELIZA_MTP_ANDROID_LIBDIR_RISCV64=\$\{resolveElizaMtpAndroidLibDir\('riscv64'\)\}"/g,
+      "",
     );
 
   const cmakeArgsBlock =
@@ -180,24 +188,23 @@ function ensureGradleMtpContract(pkgDir) {
     `            cmake {\n` +
     `                arguments "-DELIZA_REPO_ROOT=\${resolveElizaRepoRoot()}",\n` +
     `                    "-DELIZA_MTP_ANDROID_LIBDIR_ARM64_V8A=\${resolveElizaMtpAndroidLibDir('arm64-v8a')}",\n` +
-    `                    "-DELIZA_MTP_ANDROID_LIBDIR_RISCV64=\${resolveElizaMtpAndroidLibDir('riscv64')}",\n` +
     `                    "-DELIZA_SKIP_MTP_ANDROID_LIB=\${resolveElizaSkipMtpAndroidLib() ? 'ON' : 'OFF'}"\n` +
     `            }\n` +
     `        }`;
 
   if (!next.includes("-DELIZA_REPO_ROOT=")) {
     next = next.replace(
-      /(\n\s*ndk\s*\{\s*\n\s*abiFilters 'arm64-v8a'(?:,\s*'riscv64')?\s*\n\s*\})/,
+      /(\n\s*ndk\s*\{\s*\n\s*abiFilters 'arm64-v8a'\s*\n\s*\})/,
       `$1${cmakeArgsBlock}`,
     );
   } else if (!next.includes("-DELIZA_MTP_ANDROID_LIBDIR_ARM64_V8A=")) {
     next = next.replace(
       /"-DELIZA_MTP_ANDROID_LIBDIR=\$\{resolveElizaMtpAndroidLibDir\(\)\}",?\n\s*(?:"-DELIZA_SKIP_MTP_ANDROID_LIB=\$\{resolveElizaSkipMtpAndroidLib\(\) \? 'ON' : 'OFF'\}")?/,
-      `"-DELIZA_MTP_ANDROID_LIBDIR_ARM64_V8A=\${resolveElizaMtpAndroidLibDir('arm64-v8a')}",\n                    "-DELIZA_MTP_ANDROID_LIBDIR_RISCV64=\${resolveElizaMtpAndroidLibDir('riscv64')}",\n                    "-DELIZA_SKIP_MTP_ANDROID_LIB=\${resolveElizaSkipMtpAndroidLib() ? 'ON' : 'OFF'}"`,
+      `"-DELIZA_MTP_ANDROID_LIBDIR_ARM64_V8A=\${resolveElizaMtpAndroidLibDir('arm64-v8a')}",\n                    "-DELIZA_SKIP_MTP_ANDROID_LIB=\${resolveElizaSkipMtpAndroidLib() ? 'ON' : 'OFF'}"`,
     );
   } else if (!next.includes("-DELIZA_SKIP_MTP_ANDROID_LIB=")) {
     next = next.replace(
-      /("-DELIZA_MTP_ANDROID_LIBDIR_RISCV64=\$\{resolveElizaMtpAndroidLibDir\('riscv64'\)\}")/,
+      /("-DELIZA_MTP_ANDROID_LIBDIR_ARM64_V8A=\$\{resolveElizaMtpAndroidLibDir\('arm64-v8a'\)\}")/,
       `$1,\n                    "-DELIZA_SKIP_MTP_ANDROID_LIB=\${resolveElizaSkipMtpAndroidLib() ? 'ON' : 'OFF'}"`,
     );
   }
@@ -209,11 +216,31 @@ function ensureCmakeMtpContract(pkgDir) {
   const cmakePath = join(pkgDir, "android", "src", "main", "CMakeLists.txt");
   if (!existsSync(cmakePath)) return false;
   const current = readFileSync(cmakePath, "utf8");
-  let next = current.replace(
-    /\$\{ELIZA_REPO_ROOT\}\/packages\/native-plugins\/llama\/android\/eliza-mtp-jni\.cpp/g,
-    "$" +
-      "{ELIZA_REPO_ROOT}/packages/native/plugins/llama/android/eliza-mtp-jni.cpp",
-  );
+  const repoRootGuard =
+    "if(NOT DEFINED ELIZA_REPO_ROOT)\n" +
+    '    message(FATAL_ERROR "ELIZA_REPO_ROOT is required for the Eliza MTP Android JNI bridge")\n' +
+    "endif()\n";
+  let next = current
+    .replace(`${repoRootGuard}\n${repoRootGuard}`, repoRootGuard)
+    .replace(
+      /\$\{ELIZA_REPO_ROOT\}\/packages\/native-plugins\/llama\/android\/eliza-mtp-jni\.cpp/g,
+      "$" +
+        "{ELIZA_REPO_ROOT}/packages/native/plugins/llama/android/eliza-mtp-jni.cpp",
+    )
+    // Converge installs patched while riscv64 was a target to arm64-v8a only.
+    .replace(
+      /( {4})if\(ANDROID_ABI STREQUAL "riscv64"\)\n {8}set\(ELIZA_SMOKE_OUTPUT_NAME "llama-cpp-riscv64"\)\n {4}else\(\)\n {8}(set\(ELIZA_SMOKE_OUTPUT_NAME "llama-cpp-arm64"\)\n) {4}endif\(\)\n/g,
+      "$1$2",
+    )
+    .replace(
+      /# Per-ABI MTP lib dirs are passed by android\/build\.gradle\. Only the\n# entry for the currently-building ABI is required; the other can be empty\.\n# riscv64 is CPU-only today \(no ggml-vulkan\.so produced yet\)\.\n/g,
+      "# The arm64-v8a MTP lib dir is passed by android/build.gradle.\n",
+    )
+    .replace(
+      /elseif\(ANDROID_ABI STREQUAL "riscv64"\)\n {4}set\(ELIZA_MTP_LIBDIR "\$\{ELIZA_MTP_ANDROID_LIBDIR_RISCV64\}"\)\n {4}set\(ELIZA_OUTPUT_NAME "llama-cpp-riscv64"\)\n {4}set\(ELIZA_HAS_VULKAN FALSE\)\n/g,
+      "",
+    )
+    .replace(/\(expected arm64-v8a or riscv64\)/g, "(expected arm64-v8a)");
 
   if (
     next.includes("ELIZA_REPO_ROOT is required") &&
@@ -226,11 +253,7 @@ function ensureCmakeMtpContract(pkgDir) {
       `find_library(ANDROID_LIB android)\n` +
       `\n` +
       `if(ELIZA_SKIP_MTP_ANDROID_LIB)\n` +
-      `    if(ANDROID_ABI STREQUAL "riscv64")\n` +
-      `        set(ELIZA_SMOKE_OUTPUT_NAME "llama-cpp-riscv64")\n` +
-      `    else()\n` +
-      `        set(ELIZA_SMOKE_OUTPUT_NAME "llama-cpp-arm64")\n` +
-      `    endif()\n` +
+      `    set(ELIZA_SMOKE_OUTPUT_NAME "llama-cpp-arm64")\n` +
       `    file(WRITE "\${CMAKE_CURRENT_BINARY_DIR}/eliza-mtp-smoke.cpp" "extern \\"C\\" int eliza_mtp_smoke() { return 0; }\\n")\n` +
       `    add_library(\${ELIZA_SMOKE_OUTPUT_NAME} SHARED "\${CMAKE_CURRENT_BINARY_DIR}/eliza-mtp-smoke.cpp")\n` +
       `    target_link_libraries(\${ELIZA_SMOKE_OUTPUT_NAME} PRIVATE \${LOG_LIB} \${ANDROID_LIB})\n` +
@@ -261,10 +284,39 @@ function ensureCmakeMtpContract(pkgDir) {
   return writeIfChanged(cmakePath, current, next);
 }
 
+// Converges Java from installs patched while riscv64 was a target to arm64-v8a only.
+function ensureJavaArm64Loader(pkgDir) {
+  const javaPath = join(
+    pkgDir,
+    "android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java",
+  );
+  if (!existsSync(javaPath)) return false;
+  const current = readFileSync(javaPath, "utf8");
+  const next = current
+    .replace(
+      /\n {16}case "riscv64":\n {20}libraryName = "llama-cpp-riscv64";\n {20}break;/g,
+      "",
+    )
+    .replace(
+      /\/\/ riscv64 currently has no ggml-vulkan\.so \(Wave 2 CPU-only\); the\n {12}\/\/ preload is wrapped/g,
+      "// Each preload is wrapped",
+    )
+    .replace(
+      /if \("arm64-v8a"\.equals\(abi\) \|\| "riscv64"\.equals\(abi\)\) \{/g,
+      'if ("arm64-v8a".equals(abi)) {',
+    )
+    .replace(
+      /if \("arm64-v8a"\.equals\(abi\)\) \{\n {20}(mtpDependencies\.add\("ggml-vulkan"\);)\n {16}\}/g,
+      "$1",
+    );
+  return writeIfChanged(javaPath, current, next);
+}
+
 function repairPatchedPackage(pkgDir) {
   let changed = false;
   changed = ensureGradleMtpContract(pkgDir) || changed;
   changed = ensureCmakeMtpContract(pkgDir) || changed;
+  changed = ensureJavaArm64Loader(pkgDir) || changed;
   return changed;
 }
 
@@ -279,7 +331,9 @@ function isPatchAlreadyApplied(pkgDir) {
   }
   return (
     existsSync(gradlePath) &&
-    readFileSync(gradlePath, "utf8").includes("'arm64-v8a', 'riscv64'")
+    readFileSync(gradlePath, "utf8").includes(
+      "-DELIZA_MTP_ANDROID_LIBDIR_ARM64_V8A=",
+    )
   );
 }
 

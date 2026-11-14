@@ -11,6 +11,9 @@ import { requireVitestConformance } from "../../scripts/lib/vitest-conformance.t
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const testFile = "packages/auth/src/auth/account-storage-subprocess.test.ts";
 const requiredTests = [
+  "account storage subprocess ownership refuses a missing runtime vault key even under test process signals",
+  "account storage subprocess ownership keeps runtime credentials readable after bun test signals and process restart",
+  "account storage subprocess ownership keeps runtime credentials readable after node-test test signals and process restart",
   "account storage subprocess ownership uses explicit isolated authority under bun",
   "account storage subprocess ownership uses explicit isolated authority under node-test",
   "account storage subprocess ownership does not let an inherited global bypass authorize a symlink root",
@@ -43,6 +46,9 @@ const sources = [
   "packages/auth/src/auth/account-storage.ts",
   testFile,
   "packages/auth/test/fixtures/storage-ownership-probe.ts",
+  "packages/auth/test/fixtures/account-storage-subprocess-probe.ts",
+  "packages/auth/src/vault/master-key.ts",
+  "packages/auth/quint/AccountStorageKeyOwnership.qnt",
   "packages/auth/quint/AccountStorageLock.qnt",
   "packages/auth/quint/AccountStorageReset.qnt",
   "packages/scripts/lib/vitest-conformance.ts",

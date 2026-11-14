@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AgentRuntime, type UUID } from "@elizaos/core";
+import { AgentRuntime, type Task, type UUID } from "@elizaos/core";
 import {
   SQLiteDatabaseAdapter,
   plugin as sqlitePlugin,
@@ -22,7 +22,10 @@ import {
   registerDefaultTaskPack,
   seedRegisteredTaskPacks,
 } from "./seed-registry.js";
-import { runStandaloneSchedulingTick } from "./standalone-tick.js";
+import {
+  runStandaloneSchedulingTick,
+  STANDALONE_TICK_TASK_NAME,
+} from "./standalone-tick.js";
 import { OWNER_LOCAL_TZ } from "./trigger-tz.js";
 
 const ROUTINE_KEYS = {
@@ -86,6 +89,194 @@ it("selects durable record storage during actual runtime service startup", async
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+async function createDriverLifecycleFixture() {
+  const directory = await mkdtemp(join(tmpdir(), "scheduling-unload-sqlite-"));
+  const agentId = randomUUID() as UUID;
+  const plugin = {
+    ...schedulingPlugin,
+    schema: undefined,
+    dependencies: [sqlitePlugin.name],
+  };
+  const runtime = new AgentRuntime({
+    character: {
+      id: agentId,
+      name: "Synthetic scheduling unload runtime",
+      bio: [],
+      settings: { SQLITE_DATABASE_PATH: join(directory, "agent.sqlite") },
+    },
+    plugins: [sqlitePlugin, plugin],
+  });
+  vi.stubEnv("ELIZA_DISABLE_SCHEDULING_TICK", "1");
+  return {
+    runtime,
+    plugin,
+    async close() {
+      vi.unstubAllEnvs();
+      await runtime.stop();
+      if (runtime.adapter) await runtime.adapter.close();
+      await rm(directory, { recursive: true, force: true });
+    },
+  };
+}
+
+function gate() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((ready) => {
+    resolve = ready;
+  });
+  return { promise, resolve };
+}
+
+it.each(["received", "lost"])(
+  "drains a held driver insert with %s acknowledgement and reloads one fresh row",
+  async (acknowledgement) => {
+    const { runtime, plugin, close } = await createDriverLifecycleFixture();
+    const createEntered = gate();
+    const releaseCreate = gate();
+    const workerRemoved = gate();
+    const lostAcknowledgement = new Error("Driver insert acknowledgement lost");
+    let creation: Promise<UUID> | undefined;
+    let cleanupRead: Promise<Task[]> | undefined;
+    let removing = false;
+    const createTask = runtime.createTask.bind(runtime);
+    const unregisterTaskWorker = runtime.unregisterTaskWorker.bind(runtime);
+    const getTasks = runtime.getTasks.bind(runtime);
+    const createSpy = vi
+      .spyOn(runtime, "createTask")
+      .mockImplementation((task) => {
+        if (creation || task.name !== STANDALONE_TICK_TASK_NAME)
+          return createTask(task);
+        const write = releaseCreate.promise.then(() => createTask(task));
+        creation = write;
+        createEntered.resolve();
+        return write.then((id) => {
+          if (acknowledgement === "lost") throw lostAcknowledgement;
+          return id;
+        });
+      });
+    const reportError = vi.spyOn(runtime, "reportError");
+    const unregisterSpy = vi
+      .spyOn(runtime, "unregisterTaskWorker")
+      .mockImplementation((name) => {
+        const result = unregisterTaskWorker(name);
+        if (name === STANDALONE_TICK_TASK_NAME) {
+          removing = true;
+          workerRemoved.resolve();
+        }
+        return result;
+      });
+    const listSpy = vi
+      .spyOn(runtime, "getTasks")
+      .mockImplementation((params) => {
+        const rows = getTasks(params);
+        if (removing && params.tags?.includes("scheduling"))
+          cleanupRead ??= rows;
+        return rows;
+      });
+    let unloading: ReturnType<typeof runtime.unloadPlugin> | undefined;
+    try {
+      await runtime.initialize();
+      await createEntered.promise;
+      expect(await runtime.getTasksByName(STANDALONE_TICK_TASK_NAME)).toEqual(
+        [],
+      );
+
+      unloading = runtime.unloadPlugin(plugin.name);
+      await workerRemoved.promise;
+      // If unload started its storage read while the write was held, allow it to
+      // capture the empty snapshot before admitting the real insert.
+      await cleanupRead;
+      releaseCreate.resolve();
+      const retiredId = await creation;
+      expect(retiredId).toBeDefined();
+      expect(await unloading).not.toBeNull();
+      expect(runtime.getTaskWorker(STANDALONE_TICK_TASK_NAME)).toBeUndefined();
+      expect(await runtime.getTasksByName(STANDALONE_TICK_TASK_NAME)).toEqual(
+        [],
+      );
+      if (acknowledgement === "lost") {
+        expect(reportError).toHaveBeenCalledWith(
+          "scheduling.bootSeed",
+          lostAcknowledgement,
+          { agentId: runtime.agentId },
+        );
+      }
+
+      await runtime.registerPlugin(plugin);
+      await waitForScheduledTaskRunnerService(runtime);
+      expect(runtime.getTaskWorker(STANDALONE_TICK_TASK_NAME)).toBeDefined();
+      await vi.waitFor(async () => {
+        const rows = await runtime.getTasksByName(STANDALONE_TICK_TASK_NAME);
+        expect(rows).toHaveLength(1);
+        expect(rows[0]?.id).not.toBe(retiredId);
+      });
+    } finally {
+      releaseCreate.resolve();
+      await Promise.allSettled([creation, unloading]);
+      createSpy.mockRestore();
+      unregisterSpy.mockRestore();
+      listSpy.mockRestore();
+      reportError.mockRestore();
+      await close();
+    }
+  },
+  30_000,
+);
+
+it("refuses a deferred boot from the old worker after reload", async () => {
+  const { runtime, plugin, close } = await createDriverLifecycleFixture();
+  const markerCommitted = gate();
+  const releaseMarker = gate();
+  const setCache = runtime.setCache.bind(runtime);
+  const seed = vi
+    .spyOn(runtime, "setCache")
+    .mockImplementation(async (key, value) => {
+      const result = await setCache(key, value);
+      if (key === "eliza:scheduling:seeded-defaults:v1") {
+        markerCommitted.resolve();
+        await releaseMarker.promise;
+      }
+      return result;
+    });
+  const lookup = vi.spyOn(runtime, "getTasks");
+  const driverLookups = () =>
+    lookup.mock.calls.filter(([params]) => params.tags?.includes("scheduling"))
+      .length;
+  try {
+    await runtime.initialize();
+    await markerCommitted.promise;
+    const retiredWorker = runtime.getTaskWorker(STANDALONE_TICK_TASK_NAME);
+    expect(retiredWorker).toBeDefined();
+    expect(await runtime.unloadPlugin(plugin.name)).not.toBeNull();
+    expect(await runtime.getTasksByName(STANDALONE_TICK_TASK_NAME)).toEqual([]);
+
+    await runtime.registerPlugin(plugin);
+    await waitForScheduledTaskRunnerService(runtime);
+    const currentWorker = runtime.getTaskWorker(STANDALONE_TICK_TASK_NAME);
+    expect(currentWorker).toBeDefined();
+    expect(currentWorker).not.toBe(retiredWorker);
+    const rowsBefore = await vi.waitFor(async () => {
+      const rows = await runtime.getTasksByName(STANDALONE_TICK_TASK_NAME);
+      expect(rows).toHaveLength(1);
+      return rows;
+    });
+
+    const lookupsBefore = driverLookups();
+    releaseMarker.resolve();
+    // The seed callback continues on the next microtask before this turn.
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(driverLookups()).toBe(lookupsBefore);
+    expect(await runtime.getTasksByName(STANDALONE_TICK_TASK_NAME)).toEqual(
+      rowsBefore,
+    );
+  } finally {
+    releaseMarker.resolve();
+    seed.mockRestore();
+    lookup.mockRestore();
+    await close();
+  }
+}, 30_000);
 
 it("seeds the opt-in consumer routines disabled, alongside the fallback, once", async () => {
   const directory = await mkdtemp(

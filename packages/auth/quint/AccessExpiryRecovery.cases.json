@@ -1,0 +1,40 @@
+{
+  "sources": [
+    "packages/auth/src/sdk/auth.ts",
+    "packages/auth/test/login/sdk-session-expiry-model.browser.test.ts"
+  ],
+  "conformance": "packages/auth/quint/check-access-expiry.mjs",
+  "bounds": "One real browser LoginAuth instance, two overlapping expired-session reads, one refresh request and nine finite outcomes: living session, direct or HttpOnly-proxy recovery, explicit 401, transient 503, missing recovery credential and sign-out before a direct refresh returns. The loopback server controls the actual HTTP response; Chromium provides real cookies, localStorage and Web Locks.",
+  "limitations": [
+    "This proves SDK custody and result transitions for the finite responses. It does not prove backend JWT signing, refresh-family database transactions, cross-tab scheduling, production OAuth, or server-side revocation.",
+    "The request bound applies to overlapping reads while one refresh is pending. A later read after a transient failure may legitimately start a new refresh.",
+    "Progress requires browser dispatch and the finite server response to arrive. Fairness of read, sign-out where selected, and settlement is explicit."
+  ],
+  "cases": [
+    {
+      "name": "expired-access-keeps-recovery",
+      "main": "AccessExpiryRecovery",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "OneOverlappingRefresh",
+        "ExpiryKeepsRecovery",
+        "SignOutStaysFinal",
+        "ValidSessionOnly",
+        "TransientKeepsRecovery"
+      ],
+      "temporal": ["Finishes"],
+      "temporalChecks": [
+        {
+          "property": "Finishes",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of the selected browser read, explicit sign-out and finite HTTP settlement. Server response termination is assumed."
+          ]
+        }
+      ],
+      "maxSteps": 8,
+      "samples": 240
+    }
+  ]
+}
