@@ -4,7 +4,7 @@ The compatibility baseline is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c1
 
 ## Story: Include hidden source rows in collection and wipes
 
-As an operator, I preserve media referenced by source-only rows during collection and remove source rows during an explicit complete wipe. A partial ordinary-memory scan cannot authorize either operation.
+As an operator, I preserve media referenced by source-only rows during collection and remove source rows during an explicit complete wipe. A partial ordinary-memory scan cannot authorize either operation. Discovered by the proof: the source collection phase retains the complete ordinary ID set from the first scan.
 
 ### A sweep captures the complete ordinary and source-row input sets
 
@@ -15,12 +15,15 @@ type Sweep = { phase: SweepPhase, ordinaryRows: Set[str], sourceRows: List[Sourc
 pure val initial: Sweep = { phase: Empty, ordinaryRows: Set(), sourceRows: List(), collectedIds: Set(), collectedMedia: Set(), retainedIds: Set() }
 pure val ordinaryRowsValues = Set(Set(), Set("memory1"))
 pure val sourceRowsValues = Set(List(), List({ id: "source1", mediaRef: "media1" }, { id: "orphan", mediaRef: "media2" }))
+pure def addSourceId(ids: Set[str], row: SourceRow): Set[str] = ids.union(Set(row.id))
+pure def addSourceMedia(refs: Set[str], row: SourceRow): Set[str] = if (row.mediaRef == "") refs else refs.union(Set(row.mediaRef))
+pure def allInputIds(s: Sweep): Set[str] = s.sourceRows.foldl(s.ordinaryRows, (ids, row) => addSourceId(ids, row))
 pure def canLoad(s: Sweep, ordinaryRows: Set[str], sourceRows: List[SourceRow]): bool = s.phase == Empty
-pure def load(s: Sweep, ordinaryRows: Set[str], sourceRows: List[SourceRow]): Sweep = { ...s, ordinaryRows: ordinaryRows, sourceRows: sourceRows, retainedIds: sourceRows.foldl(ordinaryRows, (ids, row) => ids.union(Set(row.id))), phase: Ordinary }
+pure def load(s: Sweep, ordinaryRows: Set[str], sourceRows: List[SourceRow]): Sweep = { ...s, ordinaryRows: ordinaryRows, sourceRows: sourceRows, retainedIds: sourceRows.foldl(ordinaryRows, (ids, row) => addSourceId(ids, row)), phase: Ordinary }
 pure def canCollectOrdinary(s: Sweep): bool = s.phase == Ordinary
 pure def collectOrdinary(s: Sweep): Sweep = { ...s, collectedIds: s.ordinaryRows, phase: Sources }
 pure def canCollectSources(s: Sweep): bool = s.phase == Sources
-pure def collectSources(s: Sweep): Sweep = { ...s, collectedIds: s.sourceRows.foldl(s.collectedIds, (ids, row) => ids.union(Set(row.id))), collectedMedia: s.sourceRows.foldl(Set(), (refs, row) => if (row.mediaRef == "") refs else refs.union(Set(row.mediaRef))), phase: Classified }
+pure def collectSources(s: Sweep): Sweep = { ...s, collectedIds: allInputIds(s), collectedMedia: s.sourceRows.foldl(Set(), (refs, row) => addSourceMedia(refs, row)), phase: Classified }
 ```
 
 ### Only complete source collection permits a wipe
@@ -30,8 +33,8 @@ The media reference set is retained after the wipe so media cleanup can apply it
 ```quint
 pure def canWipe(s: Sweep): bool = s.phase == Classified
 pure def wipe(s: Sweep): Sweep = { ...s, retainedIds: s.retainedIds.exclude(s.collectedIds), phase: Wiped }
-pure def allInputIds(s: Sweep): Set[str] = s.sourceRows.foldl(s.ordinaryRows, (ids, row) => ids.union(Set(row.id)))
 pure def alwaysRetainedRowsComeFromInput(s: Sweep): bool = s.retainedIds.subseteq(allInputIds(s))
+pure def alwaysSourcePhaseFollowsOrdinaryScan(s: Sweep): bool = s.phase == Sources implies (s.ordinaryRows.subseteq(s.collectedIds) and s.collectedIds.subseteq(s.ordinaryRows))
 pure def alwaysClassifiedIdsCoverInput(s: Sweep): bool = (s.phase == Classified or s.phase == Wiped) implies allInputIds(s).subseteq(s.collectedIds)
 pure def alwaysSourceCollectionComplete(s: Sweep): bool = (s.phase == Classified or s.phase == Wiped) implies s.sourceRows.every(row => s.collectedIds.contains(row.id))
 pure def alwaysSourceMediaRetained(s: Sweep): bool = (s.phase == Classified or s.phase == Wiped) implies s.sourceRows.every(row => row.mediaRef == "" or s.collectedMedia.contains(row.mediaRef))

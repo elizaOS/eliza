@@ -6,6 +6,8 @@ The source is `packages/core/src/security/secret-swap.ts` at the pinned baseline
 
 As an agent, I replace known credential and contact values with stable session placeholders. Restoring handler arguments resolves known placeholders exactly and optionally rejects unresolved placeholders from this session. User-visible replies may restore personal contacts, while credential values and overlapping protected values remain redacted.
 
+Discovered by the proof: an empty session nonce has no registered entries. A new nonce can therefore never change the identity of an existing placeholder.
+
 ### Every new secret has one stable placeholder in its session
 
 ```quint
@@ -54,6 +56,7 @@ pure def appendProtectedSource(source: SecretText, entries: SecretTexts): Secret
 pure def canProtectValue(s: Secrets, source: SecretText): bool = declassifyProtectable(s, source)
 pure def protectValue(s: Secrets, source: SecretText): Secrets = { ...s, protectedValues: s.protectedValues.union(Set(source.value)), protectedTexts: if (s.protectedValues.contains(source.value)) s.protectedTexts else appendProtectedSource(source, s.protectedTexts) }
 pure def alwaysSecretMapsAreBijective(s: Secrets): bool = s.entries.every(entry => entry.nonce == s.nonce and s.entries.select(other => other.value == entry.value).length() == 1 and s.entries.select(other => other.placeholder == entry.placeholder).length() == 1)
+pure def alwaysUnstartedSessionHasNoEntries(s: Secrets): bool = s.nonce == "" implies s.entries.length() == 0
 pure def alwaysReplacementCacheComesFromValues(s: Secrets): bool = s.replacementCached.forall(value => s.entries.some(entry => entry.value == value))
 ```
 

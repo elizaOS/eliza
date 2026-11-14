@@ -33,8 +33,10 @@ pure def newest(r: AdapterRegistry, target: DeliveryTarget): int = {
   val entries = adaptersFor(r, target)
   entries.nthOr(entries.length() - 1, { objectId: 0, hasSupports: false }).objectId
 }
+pure val noResolution: AdapterResolution = { chosen: 0, failed: false }
+pure def chooseAdapter(supports: Set[int], throws: Set[int], resolved: AdapterResolution, adapter: Adapter): AdapterResolution = if (resolved.chosen != 0 or resolved.failed) resolved else if (adapter.hasSupports and throws.contains(adapter.objectId)) { chosen: 0, failed: true } else if (not(adapter.hasSupports) or supports.contains(adapter.objectId)) { chosen: adapter.objectId, failed: false } else resolved
 pure def resolveAdapter(r: AdapterRegistry, target: DeliveryTarget, supports: Set[int], throws: Set[int]): AdapterResolution = {
-  val result = adaptersFor(r, target).foldl({ chosen: 0, failed: false }, (resolved, adapter) => if (resolved.chosen != 0 or resolved.failed) resolved else if (adapter.hasSupports and throws.contains(adapter.objectId)) { chosen: 0, failed: true } else if (not(adapter.hasSupports) or supports.contains(adapter.objectId)) { chosen: adapter.objectId, failed: false } else resolved)
+  val result = adaptersFor(r, target).foldl(noResolution, (resolved, adapter) => chooseAdapter(supports, throws, resolved, adapter))
   if (result.chosen == 0 and not(result.failed)) { chosen: newest(r, target), failed: false } else result
 }
 pure def listed(r: AdapterRegistry): List[Adapter] = r.groups.foldl(List(), (entries, group) => entries.concat(group.adapters))
