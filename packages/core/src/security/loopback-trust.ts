@@ -60,12 +60,13 @@ function extractProxyClientAddressCandidates(
 		return extractForwardedForCandidates(raw);
 	}
 
-	const forwardedCandidates = raw.toLowerCase().includes("for=")
-		? extractForwardedForCandidates(raw)
-		: [];
-	if (forwardedCandidates.length > 0) return forwardedCandidates;
-
-	return raw.split(",");
+	// Judge each comma element on its own. A proxy appends the address it saw as
+	// a plain element after anything the client sent, so a `for=` element must
+	// not hide the plain elements next to it.
+	return raw.split(",").flatMap((element) => {
+		const forwardedCandidates = extractForwardedForCandidates(element);
+		return forwardedCandidates.length > 0 ? forwardedCandidates : [element];
+	});
 }
 
 function stripMatchingQuotes(value: string): string {
