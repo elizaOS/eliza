@@ -374,6 +374,39 @@ lemma finishAttempt_ensures(s: PrivacyService, ticket: int, ok: bool, retry: boo
   }
 }
 
+lemma lawDetachedCollectionPreservesSettlement_ensures(s: PrivacyService, ticket: int, ok: bool)
+  ensures (lawDetachedCollectionPreservesSettlement(s, ticket, ok) == true)
+{
+  var via := CollectFallback;
+  var job := ticketJob(s,ticket);
+  var after := driveQueue(s,via,ticket,ok);
+  if alwaysJobIdsAreUnique(s) && canDriveQueue(s,via,ticket,ok) && lateCollectionMayDispose(job,after.queue,s.queuePresent) {
+    assert job.id != "";
+    PrivacyLookup(s,job.id);
+    assert jobAt(s,job.id) == job;
+    var pos :| 0 <= pos < |s.jobs| && s.jobs[pos] == job;
+    PrivacyJobBridge(s);
+    ProofLib.FilterCountOneIffUnique((other: PiiJob) => other.id == job.id,s.jobs,(other: PiiJob) => other.id,pos);
+    assert after.jobs[pos] == job.(work := core__privacy_dispose(job.work));
+    forall i | 0 <= i < |after.jobs| && i != pos
+      ensures after.jobs[i].id != job.id
+    {
+      assert after.jobs[i].id == s.jobs[i].id;
+    }
+    var id := job.id;
+    var matches := ProofLib.Filter((other: PiiJob) => other.id == id,after.jobs);
+    ProofLib.FilterOne((other: PiiJob) => other.id == id,after.jobs,pos);
+    assert |matches| == 1;
+    assert after.jobs[pos] in after.jobs && after.jobs[pos].id == id;
+    ProofLib.FilterMember((other: PiiJob) => other.id == id,after.jobs,after.jobs[pos]);
+    assert matches[0] == after.jobs[pos];
+    assert jobAt(after,id) == after.jobs[pos];
+    var ticketPos :| 0 <= ticketPos < |s.queue.active| && s.queue.active[ticketPos].ticket == ticket && s.queue.active[ticketPos].phase.FallbackRunning?;
+    assert after.queue.active[ticketPos].ticket == ticket;
+    assert after.queue.active[ticketPos].phase.BatchItemSucceeded? || after.queue.active[ticketPos].phase.BatchItemFailed?;
+  }
+}
+
 lemma driveQueue_ensures(s: PrivacyService, queueEvent: PiiQueueEvent, ticket: int, ok: bool)
   ensures (inv(s) ==> canDriveQueue(s, queueEvent, ticket, ok) ==> alwaysPromiseIdentitiesAreValid(driveQueue(s, queueEvent, ticket, ok)))
   ensures (inv(s) ==> canDriveQueue(s, queueEvent, ticket, ok) ==> alwaysEveryJobRetainsSettlement(driveQueue(s, queueEvent, ticket, ok)))
@@ -397,6 +430,11 @@ lemma driveQueue_ensures(s: PrivacyService, queueEvent: PiiQueueEvent, ticket: i
       if queueEvent.StartAttempt? && job.id == ticketJob(s,ticket).id {
         var w := if job.key in s.markers then job.work.(marker := true,mapPersisted := true) else job.work;
         core__privacy_drain_ensures(w);
+      } else if queueEvent.CollectFallback? && job.id == ticketJob(s,ticket).id &&
+        lateCollectionMayDispose(ticketJob(s,ticket),t.queue,s.queuePresent) {
+        PrivacyAtEntry(s,job,job.id);
+        assert job == ticketJob(s,ticket);
+        core__privacy_dispose_ensures(job.work);
       }
     }
     PrivacyWorkMap(s,t);
@@ -480,34 +518,6 @@ lemma beginDisposal_ensures(s: PrivacyService, fast: bool)
     }
     PrivacyWorkMap(s,t);
     PrivacyWaiters(s,t);
-  }
-}
-
-lemma finalizeLateJob_ensures(s: PrivacyService, id: string)
-  ensures (inv(s) ==> canFinalizeLateJob(s, id) ==> alwaysPromiseIdentitiesAreValid(finalizeLateJob(s, id)))
-  ensures (inv(s) ==> canFinalizeLateJob(s, id) ==> alwaysEveryJobRetainsSettlement(finalizeLateJob(s, id)))
-  ensures (inv(s) ==> canFinalizeLateJob(s, id) ==> alwaysCommittedJobHasSharedMarker(finalizeLateJob(s, id)))
-  ensures (inv(s) ==> canFinalizeLateJob(s, id) ==> alwaysJobIdsAreUnique(finalizeLateJob(s, id)))
-  ensures (inv(s) ==> canFinalizeLateJob(s, id) ==> alwaysQueueReferencesKnownJobs(finalizeLateJob(s, id)))
-  ensures (inv(s) ==> canFinalizeLateJob(s, id) ==> stepJoiningStopKeepsIdentity(s, "finalizeLateJob", finalizeLateJob(s, id)))
-{
-  if inv(s) && canFinalizeLateJob(s, id) {
-    var t := finalizeLateJob(s, id);
-    PrivacyLookup(s,id);
-    forall i | 0 <= i < |t.jobs|
-      ensures core__privacy_alwaysAcceptedWorkIsAccounted(t.jobs[i].work) &&
-        core__privacy_alwaysCompletionRequiresPersistentMarker(t.jobs[i].work) &&
-        core__privacy_alwaysCountsAreNonnegative(t.jobs[i].work) &&
-        (t.jobs[i].work.marker ==> t.jobs[i].key in t.markers)
-    {
-      var job := s.jobs[i];
-      assert job in s.jobs;
-      if job.id == id {
-        PrivacyAtEntry(s,job,id);
-        core__privacy_dispose_ensures(job.work);
-      }
-    }
-    PrivacyWorkMap(s,t);
   }
 }
 

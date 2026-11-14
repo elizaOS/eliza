@@ -33008,10 +33008,9 @@
             "beginUrgentItem",
             "finishUrgentItem",
             "completeStop",
-            "finalizeStop",
-            "finalizeLateJob"
+            "finalizeStop"
           ],
-          "specSha256": "f0309748db2fe8b6c34ab3747931867604ef1505bb5a27d08f0f37bd99bade11"
+          "specSha256": "c92852661948eab6d07212b9add00e55a25eddf92992706b6884f841198af47d"
         },
         "associatedModels": [
           {
@@ -33046,10 +33045,9 @@
               "beginUrgentItem",
               "finishUrgentItem",
               "completeStop",
-              "finalizeStop",
-              "finalizeLateJob"
+              "finalizeStop"
             ],
-            "specSha256": "f0309748db2fe8b6c34ab3747931867604ef1505bb5a27d08f0f37bd99bade11"
+            "specSha256": "c92852661948eab6d07212b9add00e55a25eddf92992706b6884f841198af47d"
           },
           {
             "spec": "spec/core/privacy.md",
@@ -33220,10 +33218,9 @@
             "beginUrgentItem",
             "finishUrgentItem",
             "completeStop",
-            "finalizeStop",
-            "finalizeLateJob"
+            "finalizeStop"
           ],
-          "specSha256": "f0309748db2fe8b6c34ab3747931867604ef1505bb5a27d08f0f37bd99bade11"
+          "specSha256": "c92852661948eab6d07212b9add00e55a25eddf92992706b6884f841198af47d"
         },
         "associatedModels": [
           {
@@ -33258,10 +33255,9 @@
               "beginUrgentItem",
               "finishUrgentItem",
               "completeStop",
-              "finalizeStop",
-              "finalizeLateJob"
+              "finalizeStop"
             ],
-            "specSha256": "f0309748db2fe8b6c34ab3747931867604ef1505bb5a27d08f0f37bd99bade11"
+            "specSha256": "c92852661948eab6d07212b9add00e55a25eddf92992706b6884f841198af47d"
           },
           {
             "spec": "spec/core/privacy.md",
@@ -33418,10 +33414,9 @@
             "beginUrgentItem",
             "finishUrgentItem",
             "completeStop",
-            "finalizeStop",
-            "finalizeLateJob"
+            "finalizeStop"
           ],
-          "specSha256": "f0309748db2fe8b6c34ab3747931867604ef1505bb5a27d08f0f37bd99bade11"
+          "specSha256": "c92852661948eab6d07212b9add00e55a25eddf92992706b6884f841198af47d"
         },
         "associatedModels": [
           {
@@ -33456,10 +33451,9 @@
               "beginUrgentItem",
               "finishUrgentItem",
               "completeStop",
-              "finalizeStop",
-              "finalizeLateJob"
+              "finalizeStop"
             ],
-            "specSha256": "f0309748db2fe8b6c34ab3747931867604ef1505bb5a27d08f0f37bd99bade11"
+            "specSha256": "c92852661948eab6d07212b9add00e55a25eddf92992706b6884f841198af47d"
           },
           {
             "spec": "spec/core/privacy.md",
@@ -33623,10 +33617,9 @@
             "beginUrgentItem",
             "finishUrgentItem",
             "completeStop",
-            "finalizeStop",
-            "finalizeLateJob"
+            "finalizeStop"
           ],
-          "specSha256": "f0309748db2fe8b6c34ab3747931867604ef1505bb5a27d08f0f37bd99bade11"
+          "specSha256": "c92852661948eab6d07212b9add00e55a25eddf92992706b6884f841198af47d"
         },
         "associatedModels": [
           {
@@ -33661,10 +33654,9 @@
               "beginUrgentItem",
               "finishUrgentItem",
               "completeStop",
-              "finalizeStop",
-              "finalizeLateJob"
+              "finalizeStop"
             ],
-            "specSha256": "f0309748db2fe8b6c34ab3747931867604ef1505bb5a27d08f0f37bd99bade11"
+            "specSha256": "c92852661948eab6d07212b9add00e55a25eddf92992706b6884f841198af47d"
           },
           {
             "spec": "spec/core/privacy.md",

@@ -47,6 +47,8 @@ Source review correction: attempt failure is possible only before the marker is 
 
 Discovered by the proof: starting an urgent flush item and settling a processor ticket require the same queued or running job owner. A missing lookup or an already disposed local job cannot advance work. The model checks the shared marker again when a queued attempt starts. Earlier simultaneous misses may both already be active and can both finish. Terminal queue rejection records failure without inventing a committed marker. Publication becomes shared only after the exact marker acknowledgement.
 
+Discovered by simulation: late bookkeeping belongs to collection of the detached processor result, not an independent public event. An in-flight scrub retains its work during detachment. The collector disposes only after the batch records that ticket's terminal processor outcome, the job is idle, and no further fallback owns that job. Settled counts and marker evidence remain.
+
 ```quint
 pure def terminalFailure(failureCount: int, work: P::Privacy): P::Privacy = { ...work, phase: P::Idle, failed: failureCount, attempts: 0 }
 pure def canScrubbed(s: PrivacyService, id: str): bool = P::canScrubbed(jobAt(s, id).work)
@@ -77,12 +79,23 @@ pure def canDriveQueue(s: PrivacyService, queueEvent: PiiQueueEvent, ticket: int
   else if (queueEvent == ObserveFlush) ok and BQ::canObserveUrgentFlush(s.queue, ok)
   else if (queueEvent == RetryDisposal) s.stopId != 0 and not(s.startPending) and s.stopWaiters.some(waiter => waiter.id == s.stopId and not(waiter.disposalStarted) and not(waiter.done)) and BQ::canRetryDisposal(s.queue)
   else s.stopId != 0 and BQ::canFinishTaskRemoval(s.queue, ok)
+pure def lateCollectionMayDispose(job: PiiJob, queue: BQ::BatchQueue, queuePresent: bool): bool = not(queuePresent) and job.id != "" and P::canDispose(job.work) and not(queue.active.some(active => active.payload == job.id and (active.phase == BQ::NeedsFallback or active.phase == BQ::FallbackRunning)))
 pure def driveQueue(s: PrivacyService, queueEvent: PiiQueueEvent, ticket: int, ok: bool): PrivacyService = {
   val job = ticketJob(s, ticket)
   val beforeWork = if (s.markers.contains(job.key)) { ...job.work, marker: true, mapPersisted: true } else job.work
   val work = if (queueEvent == StartAttempt) P::drain(beforeWork) else job.work
   val queue = if (queueEvent == BeginDrain) BQ::beginDrain(s.queue) else if (queueEvent == ProbeSucceeded or queueEvent == ProbeFailed) BQ::finishCapabilityProbe(s.queue, queueEvent == ProbeSucceeded, false) else if (queueEvent == StartFallback) BQ::startFallback(s.queue, ticket, 0) else if (queueEvent == StartAttempt) BQ::startFallbackAttempt(s.queue, ticket) else if (queueEvent == FinishBackoff) BQ::finishFallbackBackoff(s.queue, ticket) else if (queueEvent == FinishExhaustion) BQ::finishFallbackExhaustion(s.queue, ticket, ok) else if (queueEvent == CollectFallback) BQ::collectFallback(s.queue, ticket) else if (queueEvent == FinishWork) BQ::finishBatchWork(s.queue) else if (queueEvent == ObserveWork) BQ::observeDrain(s.queue, ok) else if (queueEvent == FinishFlush) BQ::finishUrgentFlush(s.queue) else if (queueEvent == ObserveFlush) BQ::observeUrgentFlush(s.queue, ok) else if (queueEvent == RetryDisposal) BQ::retryDisposal(s.queue) else BQ::finishTaskRemoval(s.queue, ok)
-  { ...replaceJob({ ...job, work: work }, s), queue: queue, stopWaiters: if (queueEvent == RetryDisposal) markDisposalStarted(s) else s.stopWaiters }
+  val finalWork = if (queueEvent == CollectFallback and lateCollectionMayDispose(job, queue, s.queuePresent)) P::dispose(work) else work
+  { ...replaceJob({ ...job, work: finalWork }, s), queue: queue, stopWaiters: if (queueEvent == RetryDisposal) markDisposalStarted(s) else s.stopWaiters }
+}
+pure def lawDetachedCollectionPreservesSettlement(s: PrivacyService, ticket: int, ok: bool): bool = {
+  val job = ticketJob(s, ticket)
+  val after = driveQueue(s, CollectFallback, ticket, ok)
+  val finalWork = jobAt(after, job.id).work
+  val terminalProcessor = s.queue.processor.items.some(entry => entry.id == ticket and (entry.phase == B::ItemSucceeded or entry.phase == B::ItemFailed))
+  val terminalTicket = after.queue.active.some(entry => entry.ticket == ticket and (entry.phase == BQ::BatchItemSucceeded or entry.phase == BQ::BatchItemFailed))
+  (alwaysJobIdsAreUnique(s) and canDriveQueue(s, CollectFallback, ticket, ok) and lateCollectionMayDispose(job, after.queue, s.queuePresent)) implies
+    terminalProcessor and terminalTicket and finalWork.life == P::Stopped and finalWork.phase == P::Idle and finalWork.accepted == job.work.accepted and finalWork.processed == job.work.processed and finalWork.failed == job.work.failed and finalWork.marker == job.work.marker and after.markers.subseteq(s.markers) and s.markers.subseteq(after.markers)
 }
 ```
 
@@ -117,8 +130,6 @@ pure def completeStop(s: PrivacyService): PrivacyService = {
 }
 pure def canFinalizeStop(s: PrivacyService): bool = s.stopId != 0 and s.stopWaiters.some(waiter => waiter.id == s.stopId and waiter.done)
 pure def finalizeStop(s: PrivacyService): PrivacyService = { ...s, stopId: 0 }
-pure def canFinalizeLateJob(s: PrivacyService, id: str): bool = not(s.queuePresent) and jobAt(s, id).id != "" and P::canDispose(jobAt(s, id).work) and not(s.queue.active.some(active => active.payload == id and (active.phase == BQ::NeedsFallback or active.phase == BQ::FallbackRunning)))
-pure def finalizeLateJob(s: PrivacyService, id: str): PrivacyService = replaceJob({ ...jobAt(s, id), work: P::dispose(jobAt(s, id).work) }, s)
 pure def alwaysPromiseIdentitiesAreValid(s: PrivacyService): bool = s.nextPromise > 0 and s.startId >= 0 and s.startId < s.nextPromise and s.stopId >= 0 and s.stopId < s.nextPromise and (s.startPending implies s.startId > 0) and s.stopWaiters.every(waiter => waiter.id > 0 and waiter.id < s.nextPromise and s.stopWaiters.select(other => other.id == waiter.id).length() == 1)
 pure def alwaysEveryJobRetainsSettlement(s: PrivacyService): bool = s.jobs.every(job => P::alwaysAcceptedWorkIsAccounted(job.work) and P::alwaysCompletionRequiresPersistentMarker(job.work) and P::alwaysCountsAreNonnegative(job.work))
 pure def alwaysQueueReferencesKnownJobs(s: PrivacyService): bool = Q::queuedItems(s.queue.queue).every(entry => jobAt(s, entry.payload).id != "") and s.queue.active.concat(s.queue.flush).every(entry => jobAt(s, entry.payload).id != "")

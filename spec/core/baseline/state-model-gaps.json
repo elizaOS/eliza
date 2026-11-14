@@ -5353,7 +5353,7 @@
       "currentModels": [
         {
           "spec": "spec/core/privacyService.md",
-          "sha256": "fd7495544ec570d5593885cf2ec559a9431eef750154013177e79f9ec7525403",
+          "sha256": "c92852661948eab6d07212b9add00e55a25eddf92992706b6884f841198af47d",
           "definitions": [
             "emptyJob",
             "emptyBatchTicket",
@@ -5384,7 +5384,9 @@
             "canFinishAttempt",
             "finishAttempt",
             "canDriveQueue",
+            "lateCollectionMayDispose",
             "driveQueue",
+            "lawDetachedCollectionPreservesSettlement",
             "stop",
             "markDisposalStarted",
             "canBeginDisposal",
@@ -5398,8 +5400,6 @@
             "completeStop",
             "canFinalizeStop",
             "finalizeStop",
-            "canFinalizeLateJob",
-            "finalizeLateJob",
             "alwaysPromiseIdentitiesAreValid",
             "alwaysEveryJobRetainsSettlement",
             "alwaysQueueReferencesKnownJobs",
@@ -5454,8 +5454,7 @@
             "beginUrgentItem",
             "finishUrgentItem",
             "completeStop",
-            "finalizeStop",
-            "finalizeLateJob"
+            "finalizeStop"
           ]
         },
         {
@@ -5652,7 +5651,7 @@
       "status": "state-modeled",
       "resolutionEvidence": {
         "state": "Exact lazy-start and stop promise slots; captured start IDs; actual BatchQueue; per-job PII components; shared committed content/ruleset marker keys; serial urgent flush ticket.",
-        "semantics": "Initial marker reads retain captured results, so duplicate misses can coexist. BatchQueue enforces source batchSize10/maxParallel2/four attempts, while independent components retain scrub/map/marker/notification settlement. Stop closes admission, waits startup, flushes urgent work or explicitly discards, preserves late active owners, and clears only the current promise slot in finally.",
+        "semantics": "Initial marker reads retain captured results, so duplicate misses can coexist. BatchQueue enforces source batchSize10/maxParallel2/four attempts, while independent components retain scrub/map/marker/notification settlement. Stop closes admission, waits startup, flushes urgent work or explicitly discards, preserves late active owners, and clears only the current promise slot in finally. A detached queue collects the original ticket only after that processor settles; collection closes the same idle job and preserves its counts and marker evidence.",
         "properties": [
           "alwaysPromiseIdentitiesAreValid",
           "alwaysEveryJobRetainsSettlement",
@@ -5660,7 +5659,8 @@
           "alwaysCommittedJobHasSharedMarker",
           "alwaysJobIdsAreUnique",
           "stepJoiningStopKeepsIdentity",
-          "leadsToStopAttemptSettles"
+          "leadsToStopAttemptSettles",
+          "lawDetachedCollectionPreservesSettlement"
         ],
         "remaining": "Canonical content hashing, external storage/recognition results and real scheduler/Promise adapter implementation need future refinement;"
       },

@@ -4161,7 +4161,7 @@
         },
         {
           "path": "spec/core/privacyService.md",
-          "sha256": "864ace36679304966ccf73baa3c2872569bdb76b6f985f94cf6d48064ea50be8",
+          "sha256": "c92852661948eab6d07212b9add00e55a25eddf92992706b6884f841198af47d",
           "definitions": [
             "emptyJob",
             "emptyBatchTicket",
@@ -4192,7 +4192,9 @@
             "canFinishAttempt",
             "finishAttempt",
             "canDriveQueue",
+            "lateCollectionMayDispose",
             "driveQueue",
+            "lawDetachedCollectionPreservesSettlement",
             "stop",
             "markDisposalStarted",
             "canBeginDisposal",
@@ -4205,8 +4207,6 @@
             "completeStop",
             "canFinalizeStop",
             "finalizeStop",
-            "canFinalizeLateJob",
-            "finalizeLateJob",
             "alwaysPromiseIdentitiesAreValid",
             "alwaysEveryJobRetainsSettlement",
             "alwaysQueueReferencesKnownJobs",
@@ -4232,7 +4232,7 @@
           ]
         }
       ],
-      "behaviorReview": "One lazy startup/stop token, actual multi-job BatchQueue and marker ownership, cancellation and restart are composed state.",
+      "behaviorReview": "One lazy startup/stop token, actual multi-job BatchQueue and marker ownership, cancellation and restart are composed state. A detached queue collects the original ticket only after that processor settles; collection closes the same idle job and preserves its counts and marker evidence.",
       "remainingRefinementOrModelGaps": "Full I/O conformance and progress under every provider failure mode remain implementation obligations."
     },
     {
@@ -7082,7 +7082,7 @@
         },
         {
           "path": "spec/core/privacyService.md",
-          "sha256": "864ace36679304966ccf73baa3c2872569bdb76b6f985f94cf6d48064ea50be8",
+          "sha256": "c92852661948eab6d07212b9add00e55a25eddf92992706b6884f841198af47d",
           "definitions": [
             "emptyJob",
             "emptyBatchTicket",
@@ -7113,7 +7113,9 @@
             "canFinishAttempt",
             "finishAttempt",
             "canDriveQueue",
+            "lateCollectionMayDispose",
             "driveQueue",
+            "lawDetachedCollectionPreservesSettlement",
             "stop",
             "markDisposalStarted",
             "canBeginDisposal",
@@ -7126,8 +7128,6 @@
             "completeStop",
             "canFinalizeStop",
             "finalizeStop",
-            "canFinalizeLateJob",
-            "finalizeLateJob",
             "alwaysPromiseIdentitiesAreValid",
             "alwaysEveryJobRetainsSettlement",
             "alwaysQueueReferencesKnownJobs",
@@ -7153,7 +7153,7 @@
           ]
         }
       ],
-      "behaviorReview": "Source-job phases, fixed batch/retry admission, marker ownership and shutdown/late settlement are composed.",
+      "behaviorReview": "Source-job phases, fixed batch/retry admission, marker ownership and shutdown/late settlement are composed. A detached queue collects the original ticket only after that processor settles; collection closes the same idle job and preserves its counts and marker evidence.",
       "remainingRefinementOrModelGaps": "Provider I/O and normalization conformance unproved."
     },
     {
