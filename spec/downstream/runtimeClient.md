@@ -1,73 +1,169 @@
 # Runtime JSON request and account restart
 
-Grace imports `createRuntimeJsonClient`, `RuntimeRequestError`, and
-`fetchAgentTransport` in `apps/app/src/runtime-client.ts`. The producer is
-`packages/ui/src/api/runtime-json-client.ts` and `transport.ts` at its
-vendored Eliza pin. The [native bridge](./mobileRuntime.md) owns process
-and route authority. This client owns transport selection and publication
-across account epochs.
+Grace `48b43b9c` directly constructs the Eliza `7743504b`
+`createRuntimeJsonClient` from `apps/app/src/runtime-client.ts`.
+The producer is `packages/ui/src/api/runtime-json-client.ts`, with the
+fetch transport from `packages/ui/src/api/transport.ts`.
+[Resident runtime request authority](./mobileRuntime.md) owns the
+separate native service epoch. [Reply streaming](./grace/replyStreaming.md)
+owns the stream protocol carried by this client.
 
-## Story: Restart account-bound requests without sending a write twice
+## Story: Call the runtime for my current account
 
-### A native runtime owns its request once selected
+### Refresh owns the client generation before it touches the bridge
 
-Paths begin with one slash. A body selects POST, absence selects GET.
-Web requests serialize JSON and use the configured timeout. Native
-requests consult the bridge and its status. If available, they share
-startup for their generation and dispatch only after ready. An available
-bridge failure is the outcome, even before dispatch, and cannot select
-HTTP fallback. Fallback remains an injected policy for an unavailable
-bridge. A bad JSON web reply is refused. A non-2xx response carries its
-status, a string code if present and nonnegative whole retry seconds
-on 429 only. Client budgets are positive bounded integers.
-
-```quint
-type RuntimeRoute = RejectPath | ViaNative | ViaFallback | ViaWeb
-type RuntimeVerb = RuntimeGet | RuntimePost
-pure def selectRoute(validPath: bool, nativePlatform: bool, bridgeAvailable: bool): RuntimeRoute =
-  if (not(validPath)) RejectPath else if (not(nativePlatform)) ViaWeb else if (bridgeAvailable) ViaNative else ViaFallback
-pure def selectVerb(hasBody: bool): RuntimeVerb = if (hasBody) RuntimePost else RuntimeGet
-pure def retrySeconds(status: int, supplied: bool, seconds: int): int = if (status == 429 and supplied and seconds >= 0 and seconds <= 9007199254740991) seconds else -1
-pure val statusValues = Set(200, 429, 500)
-pure val secondsValues = Set(-1, 0, 30, 2147483648)
-pure def lawAvailableNativeOwnsRequest(validPath: bool): bool = validPath implies selectRoute(validPath, true, true) == ViaNative
-pure def lawOnlyRateLimitHasRetrySeconds(status: int, supplied: bool, seconds: int): bool = retrySeconds(status, supplied, seconds) >= 0 implies status == 429 and supplied and seconds >= 0 and seconds <= 9007199254740991
-```
-
-The bounded witness domain uses values that can round-trip through the trace encoder. The law applies to every integer.
-
-### Account refresh retires older callbacks before the next dispatch
-
-Refresh advances the epoch before checking for a bridge. A request waits
-on refresh for its own epoch, then checks any failure recorded there.
-A timeout or startup failure returns explicitly. A previous generation's
-late success cannot publish or clear a successor's refresh. The model
-projects a single observed request while the native refresh slot may be
-superseded. It uses explicit generation identity for completion and lets
-transport outcomes remain independent of whether a write landed.
+Every refresh advances the generation and clears its previous failure,
+even when the platform is web or the native bridge disappeared. A
+present native bridge reads status and restarts only if status reports
+availability. The refresh has its own startup deadline. The current
+refresh failure blocks later requests in that generation until another
+refresh. An older refresh can return its own failure to its caller
+without installing the failure or clearing the latest refresh.
+A request arriving during a current refresh waits on that specific
+promise. After it settles, the request still has to own its generation.
+It checks platform and bridge availability at that point.
+The model represents one held request and the latest refresh. It
+receives the first two path characters from the host to model the
+exact leading-slash check.
 
 ```quint
-type RequestStage = NoRequest | WaitingRestart | RequestInFlight | ClientResponded | ClientRetired | ClientFailed
-type RuntimeRequest = { generation: int, refreshing: bool, refreshFailed: bool, requestGeneration: int, phase: RequestStage, sent: bool }
-pure val initial: RuntimeRequest = { generation: 0, refreshing: false, refreshFailed: false, requestGeneration: 0, phase: NoRequest, sent: false }
-pure def refreshAccount(r: RuntimeRequest, hasBridge: bool): RuntimeRequest =
-  { ...r, generation: r.generation + 1, refreshing: hasBridge, refreshFailed: false, phase: if (r.phase == WaitingRestart or r.phase == RequestInFlight) ClientRetired else r.phase }
-pure def canFinishRefresh(r: RuntimeRequest, epoch: int): bool = r.refreshing and epoch == r.generation
-pure def finishRefresh(r: RuntimeRequest, epoch: int, confirmed: bool): RuntimeRequest = { ...r, refreshing: false, refreshFailed: not(confirmed), phase: if (r.phase == WaitingRestart and not(confirmed)) ClientFailed else r.phase }
-pure def canBeginRequest(r: RuntimeRequest): bool = r.phase != WaitingRestart and r.phase != RequestInFlight
-pure def beginRequest(r: RuntimeRequest): RuntimeRequest =
-  { ...r, requestGeneration: r.generation, sent: false, phase: if (r.refreshFailed) ClientFailed else WaitingRestart }
-pure def canDispatchRequest(r: RuntimeRequest): bool = r.phase == WaitingRestart and r.requestGeneration == r.generation and not(r.refreshing) and not(r.refreshFailed)
-pure def dispatchRequest(r: RuntimeRequest): RuntimeRequest = { ...r, phase: RequestInFlight, sent: true }
-pure def canCompleteRequest(r: RuntimeRequest, epoch: int): bool = r.phase == RequestInFlight and epoch == r.requestGeneration and epoch == r.generation
-pure def completeRequest(r: RuntimeRequest, epoch: int, validResponse: bool): RuntimeRequest =
-  { ...r, phase: if (validResponse) ClientResponded else ClientFailed }
-pure val epochValues = Set(0, 1, 2, 3)
-pure def alwaysCurrentRequestOwnsDispatch(r: RuntimeRequest): bool = r.generation >= 0 and r.requestGeneration >= 0 and r.requestGeneration <= r.generation and ((r.phase == WaitingRestart or r.phase == RequestInFlight) implies r.requestGeneration == r.generation) and (r.phase == RequestInFlight implies r.sent and not(r.refreshing) and not(r.refreshFailed))
-pure def alwaysRefreshFailureIsSettled(r: RuntimeRequest): bool = r.refreshFailed implies not(r.refreshing)
-pure def alwaysWaitingRequestHasNotSent(r: RuntimeRequest): bool = r.phase == WaitingRestart implies not(r.sent)
-pure def stepRefreshCannotReplay(before: RuntimeRequest, via: str, after: RuntimeRequest): bool = via == "refreshAccount" implies after.sent == before.sent and after.phase != RequestInFlight
-pure def sometimesAwaitRefresh(r: RuntimeRequest): bool = r.phase == WaitingRestart and r.refreshing
-pure def sometimesRetiredAfterSend(r: RuntimeRequest): bool = r.phase == ClientRetired and r.sent
-pure def sometimesCurrentResponse(r: RuntimeRequest): bool = r.phase == ClientResponded
+type RefreshState = NoRefresh | RefreshInProgress | RefreshBlocked
+type RefreshReply = RestartReady | RuntimeUnavailable | RefreshFailed
+type RequestPhase = ClientIdle | WaitingRefresh | CheckingNative | WaitingNativeStartup |
+  NativeDispatched | FixtureDispatched | WebDispatched | ClientSettled
+type ClientResult = NoClientResult | InvalidPath | OwnerChanged | RefreshRefused |
+  StartupRefused | TransportFailed | FixtureUnavailable | InvalidJson | RuntimeRefused | RuntimeValue
+type RuntimeClient = { epoch: int, refreshState: RefreshState, requestEpoch: int, requestPhase: RequestPhase,
+  result: ClientResult, nativePlatform: bool, bridgePresent: bool }
+pure val noRefresh: RefreshState = NoRefresh
+pure val initial: RuntimeClient = { epoch: 0, refreshState: NoRefresh, requestEpoch: 0,
+  requestPhase: ClientIdle, result: NoClientResult, nativePlatform: false, bridgePresent: false }
+pure def refreshRuntime(s: RuntimeClient, nativePlatform: bool, bridgePresent: bool): RuntimeClient =
+  { ...s, epoch: s.epoch + 1, refreshState: if (nativePlatform and bridgePresent) RefreshInProgress else noRefresh }
+pure def canObserveRefresh(s: RuntimeClient): bool = s.refreshState == RefreshInProgress
+pure def observeRefresh(s: RuntimeClient, exactRefresh: bool, refreshReply: RefreshReply): RuntimeClient =
+  if (not(exactRefresh)) s
+  else { ...s, refreshState: if (refreshReply == RefreshFailed) RefreshBlocked else noRefresh }
+type PathStart = { first: str, second: str }
+pure def pathAdmitted(pathStart: PathStart): bool = pathStart.first == "/" and pathStart.second != "/"
+pure def finishClientRequest(clientResult: ClientResult, s: RuntimeClient): RuntimeClient =
+  { ...s, requestPhase: ClientSettled, result: clientResult }
+pure def firstRequestPhase(nativePlatform: bool, bridgePresent: bool): RequestPhase =
+  if (not(nativePlatform)) WebDispatched else if (bridgePresent) CheckingNative else FixtureDispatched
+pure def canBeginClientRequest(s: RuntimeClient): bool =
+  s.requestPhase == ClientIdle or s.requestPhase == ClientSettled
+pure def beginClientRequest(s: RuntimeClient, pathStart: PathStart, nativePlatform: bool, bridgePresent: bool): RuntimeClient = {
+  val request = { ...s, nativePlatform: nativePlatform, bridgePresent: bridgePresent, requestEpoch: s.epoch }
+  if (not(pathAdmitted(pathStart))) finishClientRequest(InvalidPath, request)
+  else if (s.refreshState == RefreshBlocked) finishClientRequest(RefreshRefused, request)
+  else { ...request, result: NoClientResult,
+    requestPhase: if (s.refreshState == RefreshInProgress) WaitingRefresh else firstRequestPhase(nativePlatform, bridgePresent) }
+}
+type WaitEvidence = { exactPromiseSettled: bool, waitedPromiseFailed: bool, currentPlatformNative: bool, currentBridgePresent: bool }
+pure val normalWait: WaitEvidence = { exactPromiseSettled: true, waitedPromiseFailed: false, currentPlatformNative: true, currentBridgePresent: true }
+pure val waitEvidenceValues = Set(normalWait, { ...normalWait, exactPromiseSettled: false },
+  { ...normalWait, waitedPromiseFailed: true }, { ...normalWait, currentBridgePresent: false },
+  { ...normalWait, currentPlatformNative: false })
+pure def canReleaseRefreshWait(s: RuntimeClient, waitEvidence: WaitEvidence): bool =
+  waitEvidence.exactPromiseSettled and s.requestPhase == WaitingRefresh and
+    (s.requestEpoch != s.epoch or s.refreshState != RefreshInProgress)
+pure def releaseRefreshWait(s: RuntimeClient, waitEvidence: WaitEvidence): RuntimeClient =
+  if (waitEvidence.waitedPromiseFailed) finishClientRequest(RefreshRefused, s)
+  else if (s.requestEpoch != s.epoch) finishClientRequest(OwnerChanged, s)
+  else if (s.refreshState == RefreshBlocked) finishClientRequest(RefreshRefused, s)
+  else { ...s, nativePlatform: waitEvidence.currentPlatformNative, bridgePresent: waitEvidence.currentBridgePresent,
+    requestPhase: firstRequestPhase(waitEvidence.currentPlatformNative, waitEvidence.currentBridgePresent) }
+pure def alwaysRequestIdentityIsAllocated(s: RuntimeClient): bool =
+  s.epoch >= 0 and s.requestEpoch >= 0 and s.requestEpoch <= s.epoch
+pure val pathStartValues = Set({ first: "", second: "" }, { first: "h", second: "e" },
+  { first: "/", second: "" }, { first: "/", second: "h" }, { first: "/", second: "/" })
+pure val weight_beginClientRequest = 5
+pure val weight_observeRefresh = 4
 ```
+
+### A native bridge that reports available owns the request through settlement
+
+Without a native bridge, or after a successful status reply reporting
+unavailable, the client delegates to the host's native fallback.
+Grace's fallback is available only to the fixture build and calls a
+pinned loopback runtime. The available bridge takes sole ownership.
+Failed status, startup or bridge request does not select fallback.
+Any startup in the same generation can share its promise. Already
+running status bypasses startup. A new start is requested only for
+status other than running or starting. Starting state polls within
+the original monotonic deadline, and terminal non-running state or
+deadline rejects. A retired entry's cleanup cannot remove its
+successor. The request reducer receives the readiness observation.
+
+The web transport sends an HTTP JSON request with an abort deadline.
+An undefined body means GET, including through the native bridge.
+An explicit null means POST, as does any other supplied JSON value.
+No request is retried here. The port keeps transport rejection distinct
+from a completed response. A web response parses JSON before it checks
+its current generation. An available native request rechecks after
+status, startup and a returned response. A native fallback rejection
+maps to the host fallback error before response classification.
+
+```quint
+type NativeReading = NativeRunning | NativeStarting | NativeStopped | NativeAbsent | StatusFailed
+type TransportReading = ResponseReturned | TransportRejected | BodyInvalidJson
+type StartupPlan = UseRunning | JoinStartup | PollStartup | StartRuntime | RefuseStartup
+pure def startupPlan(statusRead: NativeReading, sameGenerationStart: bool): StartupPlan =
+  if (statusRead == NativeRunning) UseRunning
+  else if (statusRead == NativeAbsent or statusRead == StatusFailed) RefuseStartup
+  else if (sameGenerationStart) JoinStartup
+  else if (statusRead == NativeStarting) PollStartup else StartRuntime
+pure def clientMethod(bodySupplied: bool): str = if (bodySupplied) "POST" else "GET"
+pure def canObserveNativeStatus(s: RuntimeClient): bool = s.requestPhase == CheckingNative
+pure def observeNativeStatus(s: RuntimeClient, statusRead: NativeReading): RuntimeClient =
+  if (statusRead == StatusFailed) finishClientRequest(TransportFailed, s)
+  else if (s.requestEpoch != s.epoch) finishClientRequest(OwnerChanged, s)
+  else if (statusRead == NativeAbsent) { ...s, requestPhase: FixtureDispatched }
+  else if (statusRead == NativeRunning) { ...s, requestPhase: NativeDispatched }
+  else { ...s, requestPhase: WaitingNativeStartup }
+pure def canObserveNativeStartup(s: RuntimeClient): bool = s.requestPhase == WaitingNativeStartup
+pure def observeNativeStartup(s: RuntimeClient, startupSucceeded: bool): RuntimeClient =
+  if (not(startupSucceeded)) finishClientRequest(StartupRefused, s)
+  else if (s.requestEpoch != s.epoch) finishClientRequest(OwnerChanged, s)
+  else { ...s, requestPhase: NativeDispatched }
+pure def canObserveClientReply(s: RuntimeClient): bool =
+  s.requestPhase == NativeDispatched or s.requestPhase == FixtureDispatched or s.requestPhase == WebDispatched
+pure def observeClientReply(s: RuntimeClient, transportRead: TransportReading, statusCode: int): RuntimeClient =
+  if (transportRead == TransportRejected) finishClientRequest(
+    if (s.requestPhase == FixtureDispatched) FixtureUnavailable else TransportFailed, s)
+  else if (transportRead == BodyInvalidJson and s.requestPhase == WebDispatched) finishClientRequest(InvalidJson, s)
+  else if (s.requestEpoch != s.epoch) finishClientRequest(OwnerChanged, s)
+  else finishClientRequest(if (statusCode >= 200 and statusCode < 300) RuntimeValue else RuntimeRefused, s)
+pure def stepOnlyCurrentReplyPublishes(before: RuntimeClient, via: str, after: RuntimeClient): bool =
+  via == "observeClientReply" and after.result == RuntimeValue implies before.requestEpoch == before.epoch
+pure def stepNativeStartupCannotSelectFixture(before: RuntimeClient, via: str, after: RuntimeClient): bool =
+  via == "observeNativeStartup" implies after.requestPhase != FixtureDispatched
+pure def sometimesNativeDispatch(s: RuntimeClient): bool = s.requestPhase == NativeDispatched
+pure def sometimesCurrentReply(s: RuntimeClient): bool = s.result == RuntimeValue
+pure def sometimesRetiredReply(s: RuntimeClient): bool = s.result == OwnerChanged
+pure def sometimesRefreshRefusal(s: RuntimeClient): bool = s.result == RefreshRefused
+pure val statusCodeValues = Set(199, 200, 299, 300, 409, 429, 503)
+pure val weight_observeClientReply = 8
+```
+
+### Runtime refusal preserves its status and admitted retry information
+
+A non-success response becomes `RuntimeRequestError`. A string error
+or code comes from the body. A missing or nonstring error uses the
+host's request message, and a nonstring code is omitted. Only HTTP 429
+can provide retry seconds, through a numeric nonnegative safe integer.
+The bridge data, raw parsed JSON and exception causes stay at the port.
+
+```quint
+pure def retryAfterAdmitted(statusCode: int, retrySeconds: int, integerValue: bool): bool =
+  statusCode == 429 and integerValue and retrySeconds >= 0 and retrySeconds <= 9007199254740991
+pure def lawOtherStatusesHaveNoRetryAdvice(statusCode: int, retrySeconds: int, integerValue: bool): bool =
+  statusCode != 429 implies not(retryAfterAdmitted(statusCode, retrySeconds, integerValue))
+pure val retrySecondsValues = Set(-1, 0, 3)
+```
+
+Grace chooses 210 seconds for startup, 200 milliseconds between polls
+and 120 seconds for the web request. The client requires each configured budget to be a positive safe integer
+at most 2,147,483,647. The model treats timeouts, timer cleanup
+and bridge results as port observations. The source client
+does not impose the web abort deadline on the native bridge request.

@@ -777,7 +777,7 @@
         "renderer-source"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/grace/runtimeJsonClient.md",
+      "relatedSpec": "spec/downstream/runtimeClient.md",
       "coverage": "direct-contract"
     },
     {
