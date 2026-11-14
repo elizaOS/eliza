@@ -349,8 +349,9 @@ def finalize_soong(output, module, report, remaining_blueprint="", privileged=Fa
     if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_]*', module) or report.get('moduleName') != module:
         raise ValueError('Native module identity changed')
     arch = TARGETS[report['target']]['arch']
-    # prebuilt_priv_app is build/soong's own rule for files under <partition>/priv-app.
-    directory, rule = ('priv-app', 'prebuilt_priv_app') if privileged else ('app', 'prebuilt_app_native')
+    # Both fixed-directory rules come from the reviewed soong-app-native patch.
+    # AOSP reserves prebuilt_priv_app for generated rules, not Android.bp files.
+    directory, rule = ('priv-app', 'prebuilt_priv_app_native') if privileged else ('app', 'prebuilt_app_native')
     if (output / 'Android.bp').read_text() != '// The launcher is defined in Android.mk for bundled JNI installation.\n' + remaining_blueprint:
         raise ValueError('Unexpected shared launcher blueprint')
     if hashlib.sha256((output / 'Launcher.apk').read_bytes()).hexdigest() != report['apkSha256']:

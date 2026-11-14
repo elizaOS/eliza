@@ -282,8 +282,11 @@ refuses the unknown module type. Its base, build/soong `6722dd88`, is the
 `android-17.0.0_r1` revision. `native-libraries.json` then records
 `installRule: "soong-app-native"` and the patch manifest's SHA-256. The default
 (`--native-install make`) is the `Android.mk` rule above. A launcher with
-`privilegedPermissions` uses build/soong's own `prebuilt_priv_app` instead
-(`installRule: "soong-priv-app"`, no patch record).
+`privilegedPermissions` uses the same reviewed patch's fixed
+`prebuilt_priv_app_native` rule for `<partition>/priv-app/<module>/lib/<arch>`
+(`installRule: "soong-priv-app"`, with the same patch record). AOSP's
+`prebuilt_priv_app` is reserved for generated rules and cannot appear in
+these `Android.bp` files.
 
 For a downstream **system-only GSI**, set `partition: "system"` in the reviewed
 launcher descriptor. Both the nonprivileged APK and optional revocable permission

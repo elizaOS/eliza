@@ -470,10 +470,10 @@ export function readNativeLibraries(bytes: Buffer, abi: NativeAbi) {
  * installs the libraries in `<partition>/app/<module>/lib/<arch>` and keeps the presigned
  * APK unchanged; Soong's `android_app_import` installs none. The rest of the overlay
  * (grants, companions) stays in Soong. With `install: "soong"` the launcher stays an
- * `android_app_import` that `required`s one `prebuilt_app_native` per library, installed
+ * `android_app_import` that `required`s one reviewed native module per library, installed
  * at the same path (the rules stage-android-native.py's `finalize_soong` writes).
  * A launcher with reviewed privileged permissions installs in `priv-app` instead of `app`
- * (`LOCAL_PRIVILEGED_MODULE`, or build/soong's own `prebuilt_priv_app` per library).
+ * (`LOCAL_PRIVILEGED_MODULE`, or the reviewed `prebuilt_priv_app_native` per library).
  * `config.fs` gives the shared Eliza runtime's loader and Bun their executable mode
  * (the table in stage-android-native.py); every other library is 0644 as for any app.
  */
@@ -513,9 +513,12 @@ export function renderNativeOverlay(
   const nativeModules = records.map((_, i) => `${d.moduleName}_native_${i}`);
   const partitionProperty =
     partition === "product" ? "    product_specific: true,\n" : "";
-  // build/soong's prebuilt_priv_app needs no patch; prebuilt_app_native is the reviewed one.
-  const patch =
-    install === "soong" && !privileged ? soongAppNativePatch() : null;
+  // AOSP reserves prebuilt_priv_app for generated rules. Both fixed-directory
+  // native rules require the reviewed patch, including privileged launchers.
+  const nativeRule = privileged
+    ? "prebuilt_priv_app_native"
+    : "prebuilt_app_native";
+  const patch = install === "soong" ? soongAppNativePatch() : null;
   const soongBlueprint = () => {
     const launcher = main.replace(
       "    dex_preopt:",
@@ -524,11 +527,11 @@ export function renderNativeOverlay(
     if (launcher === main) throw new Error("Cannot extend the launcher module");
     return `${launcher.replace(
       "// Generated from a hash- and signer-verified downstream launcher.\n",
-      `// Generated from a hash- and signer-verified downstream launcher and its bundled ${abi} JNI.\n${privileged ? "// prebuilt_priv_app is build/soong's own rule for files under <partition>/priv-app.\n" : "// prebuilt_app_native is the reviewed build/soong patch soong-app-native; apply it first.\n"}`,
+      `// Generated from a hash- and signer-verified downstream launcher and its bundled ${abi} JNI.\n// ${nativeRule} is the reviewed build/soong patch soong-app-native; apply it first.\n`,
     )}${records
       .map(
         (r, i) =>
-          `\n${privileged ? "prebuilt_priv_app" : "prebuilt_app_native"} {\n    name: "${nativeModules[i]}",\n    src: "${r.path}",\n    filename: "${libraries[i]?.name}",\n    relative_install_path: "${d.moduleName}/lib/${target.arch}",\n${partitionProperty}}\n`,
+          `\n${nativeRule} {\n    name: "${nativeModules[i]}",\n    src: "${r.path}",\n    filename: "${libraries[i]?.name}",\n    relative_install_path: "${d.moduleName}/lib/${target.arch}",\n${partitionProperty}}\n`,
       )
       .join("")}${rest}`;
   };

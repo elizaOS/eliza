@@ -1101,19 +1101,26 @@ test("a privileged launcher's bundled JNI installs under priv-app by either rule
   assert.equal(soong.makefile, null);
   assert.equal(soong.config, make.config);
   assert.deepEqual(soong.report.libraries, make.report.libraries);
-  // build/soong's own priv-app rule: the reviewed app/ patch is not what installs these.
+  // Both fixed-directory native rules are bound to the same reviewed patch.
   assert.equal(soong.report.installRule, "soong-priv-app");
-  assert.equal(soong.report.soongPatch, undefined);
+  assert.deepEqual(soong.report.soongPatch, {
+    name: "soong-app-native",
+    manifestSha256: soongAppNativePatch().manifestSha256,
+    project: soongAppNativePatch().manifest.project,
+    revision: soongAppNativePatch().manifest.revision,
+    files: soongAppNativePatch().manifest.files,
+  });
   assert.doesNotMatch(soong.blueprint, /prebuilt_app_native/);
+  assert.doesNotMatch(soong.blueprint, /prebuilt_priv_app \{/);
   assert.equal(soong.blueprint.match(/privileged: true/g)?.length, 1);
   assert.match(
     soong.blueprint,
     /name: "AlphaPhone",\n {4}apk: "Launcher\.apk",\n {4}presigned: true,\n {4}preprocessed: true,\n {4}privileged: true,\n {4}product_specific: true,\n {4}required: \[/,
   );
   assert.deepEqual(
-    [...soong.blueprint.matchAll(/prebuilt_priv_app \{\n([^}]*)\}/g)].map(
-      (match) => match[1],
-    ),
+    [
+      ...soong.blueprint.matchAll(/prebuilt_priv_app_native \{\n([^}]*)\}/g),
+    ].map((match) => match[1]),
     libraries.map(
       (library, index) =>
         `    name: "AlphaPhone_native_${index}",\n    src: "native-arm64/${library.name}",\n    filename: "${library.name}",\n    relative_install_path: "AlphaPhone/lib/arm64",\n    product_specific: true,\n`,
