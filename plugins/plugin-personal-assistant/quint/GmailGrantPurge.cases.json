@@ -1,0 +1,38 @@
+{
+  "sources": [
+    "plugins/plugin-personal-assistant/src/lifeops/domains/google-service.ts",
+    "plugins/plugin-personal-assistant/src/lifeops/account-handoff-data-disposition.ts",
+    "plugins/plugin-personal-assistant/src/lifeops/gmail-grant-purge-model.integration.test.ts",
+    "plugins/plugin-personal-assistant/quint/check-gmail-grant-purge.mjs"
+  ],
+  "conformance": "plugins/plugin-personal-assistant/quint/check-gmail-grant-purge.mjs",
+  "bounds": "Three Google grants: the handoff's previous owner account, the replacement owner account and an agent-side account. Each starts with no local Gmail rows, a sync cursor only, or imported mail with its cursor: 27 saved states. At most two purges run: disconnecting any connected account with purgeImportedData, or the handoff from the previous to the replacement owner account that removes the previous account's imports (at most once). Between purges a connected account may sync again and a disconnected one may reconnect with the same grant id. The conformance script replays every generated sequence on a real PGlite-backed runtime: it seeds the imported Gmail messages, their inbox cache copies and the Gmail sync state of each account, runs GoogleDomain.clearGoogleGrantData for a disconnect and AccountHandoffDataDisposition.apply at the disposing_imports phase of a real handoff for the handoff, and compares each account's messages, inbox copies and sync cursor after every step. It requires all 108 pairs of saved state and first purge. Calendar cleanup, spam review items, the provider-side disconnect and the earlier handoff phases are covered by other tests, not by this model. Under weak fairness of the purge, a requested purge eventually runs. Explicit stuttering lets the purge never run, so the same claim without fairness must fail. No time bound is proved.",
+  "cases": [
+    {
+      "name": "grant-purges",
+      "main": "GmailGrantPurge",
+      "init": "init",
+      "step": "step",
+      "invariants": ["PurgedGrantEmpty", "OtherGrantsKept", "TypeOK"],
+      "temporal": ["PurgeApplied", "PurgeAppliedWithoutFairness"],
+      "maxSteps": 4,
+      "samples": 3000,
+      "temporalChecks": [
+        {
+          "property": "PurgeApplied",
+          "expect": "holds",
+          "assumptions": [
+            "A continuously enabled purge eventually runs (weak fairness). This checks that a requested purge removes the account's local Gmail rows, not how long the purge takes."
+          ]
+        },
+        {
+          "property": "PurgeAppliedWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No purge fairness is assumed. The purge may never run after the owner asks, so a temporal loop counterexample is required."
+          ]
+        }
+      ]
+    }
+  ]
+}
