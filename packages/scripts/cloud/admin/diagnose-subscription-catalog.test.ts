@@ -140,6 +140,49 @@ describe("checkout diagnostic redaction", () => {
     }
   });
 
+  test("JSON failure diagnostics expose the type without messages or values", () => {
+    for (const message of [
+      "Do not know how to serialize a BigInt",
+      "JSON.stringify cannot serialize BigInt.",
+    ]) {
+      expect(checkoutFailureDiagnostic(new TypeError(message))).toEqual({
+        name: "TypeError",
+        serialization: "bigint",
+      });
+    }
+    expect(
+      checkoutFailureDiagnostic(
+        new TypeError(
+          "Converting circular structure to JSON\nprivate account detail",
+        ),
+      ),
+    ).toEqual({ name: "TypeError", serialization: "circular" });
+    expect(
+      checkoutFailureDiagnostic(new TypeError("private account detail")),
+    ).toEqual({ name: "TypeError" });
+    const summary = checkoutTailSummary(
+      record([
+        "[SubscriptionCheckoutConfirm] Failed",
+        {
+          phase: "reconciliation",
+          name: "TypeError",
+          serialization: "bigint",
+          message: "private account detail",
+        },
+      ]),
+      checkoutUrl,
+    );
+    expect(summary.failures).toEqual([
+      {
+        kind: "checkout",
+        phase: "reconciliation",
+        name: "TypeError",
+        serialization: "bigint",
+      },
+    ]);
+    expect(JSON.stringify(summary)).not.toContain("private");
+  });
+
   test("unknown stacks and invalid positions cannot enter the tail", () => {
     for (const frame of [
       "    at /other.js:42:700",
