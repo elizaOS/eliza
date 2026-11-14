@@ -4602,11 +4602,12 @@
       "source": "packages/core/src/services/pairing.ts",
       "spec": "spec/core/pairing.md",
       "rules": [
-        "A request keeps the complete sender identity",
-        "Grant persistence must succeed before consuming a request",
-        "Only one read-check-write admission occupies the runtime at once",
+        "Each request lookup selects the exact oldest live row for the normalized code",
+        "A retained grant is captured before deletion of that request's ID",
+        "Fair I/O settlement releases each captured approval",
+        "One read-check-write admission owns the captured row and exact payload",
         "A live retained claim suppresses a reply and expired claims can rearm it",
-        "Both owner and grant-key indexes identify the same row"
+        "Both owner and grant-key indexes identify the same complete row"
       ],
       "classification": "source-reviewed-domain-model-with-explicit-boundaries",
       "sourceSha256": "8771b824286473bc5afd0193aed7db60bd69730f4adf53052fc5668ff42741a8",
@@ -5470,7 +5471,9 @@
       "spec": "spec/core/contracts.md",
       "rules": [
         "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "Required fields and discriminants survive a compatibility projection",
+        "One read-check-write admission owns the captured row and exact payload",
+        "Both owner and grant-key indexes identify the same complete row"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "a80941b5f4fdc6e323f238b2f3fef7ffdd09c56cd1297fff00751eb79e751baf",
@@ -5478,7 +5481,10 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/pairing.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/contracts.md",
+        "spec/core/pairingAdmission.md",
+        "spec/core/pairingGrants.md",
+        "spec/core/pairing.md"
       ]
     },
     {

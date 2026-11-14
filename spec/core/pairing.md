@@ -1,63 +1,148 @@
-# Pairing admission and identity
+# Pairing approval ownership
 
-The compatibility baseline is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c137517`. Sources are `packages/core/src/services/pairing.ts`, `types/pairing.ts`, PairingAdmission and PairingIdentity. Request, allowlist and reply identities use canonical agent, channel and sender tuples. Expired requests do not count as live admission. Reply suppression is bounded and does not confer authorization. This machine follows one request's durable grant and consumption. The legacy models retain the multi-sender admission cap and reply-cache eviction interleavings.
+The compatibility baseline is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c137517`. Sources are `packages/core/src/services/pairing.ts` and `types/pairing.ts`. Approval composes the [pending requests](./pairingAdmission.md) and [stored grants](./pairingGrants.md) already owned by those contracts. The [reply throttle](./pairingReplies.md) offers no authorization.
 
-## Story: Approve pairing without losing a failed request
+## Story: Approve a pairing code without losing a failed request
 
-As an owner, I grant a sender access and consume its request only after the grant is durable. A failed grant retains the code for retry. A failed consumption retains both the durable grant and the request. A retry reuses the actual stored grant identity.
+### Each request lookup selects the exact oldest live row for the normalized code
 
-### A request keeps the complete sender identity
+Each approval captures its own agent, channel and trim-and-uppercase code. A blank normalized code returns no match without a storage read. A read that throws fails the approval; a successful read chooses the first matching live row in stable creation-time order. This lookup also schedules the same best-effort expired-row cleanup as admission. Concurrent approvals can capture the same row before either grants or consumes it. JavaScript normalization and persistence codecs remain conformance boundaries.
 
 ```quint
+import pairingAdmission as R from "./pairingAdmission"
+import pairingGrants as G from "./pairingGrants"
 type Sender = { agentId: str, channel: str, senderId: str }
-pure val leftValues = Set({ agentId: "agent1", channel: "direct", senderId: "sender1" }, { agentId: "agent2", channel: "room", senderId: "sender2" })
-pure val rightValues = leftValues
 pure def sameSender(left: Sender, right: Sender): bool = left == right
 pure def lawDifferentAgentsStayIndependent(left: Sender, right: Sender): bool = left.agentId != right.agentId implies not(sameSender(left, right))
 pure def lawDifferentChannelsStayIndependent(left: Sender, right: Sender): bool = left.channel != right.channel implies not(sameSender(left, right))
 pure def lawDifferentSendersStayIndependent(left: Sender, right: Sender): bool = left.senderId != right.senderId implies not(sameSender(left, right))
-type PairingPhase = Pending | Granting | Consuming | Complete
-type Pairing = { phase: PairingPhase, requestPresent: bool, grantPresent: bool, failed: bool, accepted: bool, grantIdentity: str, reportedIdentity: str }
-pure val initial: Pairing = { phase: Pending, requestPresent: true, grantPresent: false, failed: false, accepted: false, grantIdentity: "", reportedIdentity: "" }
-pure def canApprove(s: Pairing): bool = s.phase == Pending and s.requestPresent
-pure def approve(s: Pairing): Pairing = { ...s, phase: Granting, failed: false }
+type ApprovalKey = { agent: str, channel: str, codeQuery: str }
+type ApprovalPhase = ApprovalAbsent | ApprovalReading | ApprovalGranting | ApprovalConsuming | ApprovalNoMatch | ApprovalReadFailed | ApprovalGrantFailed | ApprovalConsumeFailed | ApprovalAccepted
+type Approval = { id: int, lookup: ApprovalKey, phase: ApprovalPhase, captured: R::PendingRow, retained: G::GrantRow }
+type GrantAttempt = { grantKey: str, grantedAt: int, acknowledgement: G::GrantStatus }
+type ApprovalState = { requests: R::PairingAdmission, grants: G::PairingGrants, attempts: List[Approval], nextAttempt: int }
+pure val emptyLookup: ApprovalKey = { agent: "", channel: "", codeQuery: "" }
+pure val noAttempt: Approval = { id: 0, lookup: emptyLookup, phase: ApprovalAbsent, captured: R::emptyRow, retained: G::emptyGrant }
+pure val initial: ApprovalState = { requests: R::initial, grants: G::initial, attempts: List(), nextAttempt: 1 }
+pure def requestChannel(lookup: ApprovalKey): R::PairingScope = { agent: lookup.agent, channel: lookup.channel, sender: "" }
+pure def lookupPending(s: ApprovalState, lookup: ApprovalKey, readAt: int): R::PendingRow =
+  R::oldestPending(R::liveInChannel(s.requests.rows, requestChannel(lookup), readAt, s.requests.ttl).select(row => row.normalizedCode == lookup.codeQuery))
+pure def getAttempt(s: ApprovalState, id: int): Approval = s.attempts.select(attempt => attempt.id == id).nthOr(0, noAttempt)
+pure def replaceAttempt(attempt: Approval, s: ApprovalState): ApprovalState = { ...s, attempts: s.attempts.listMap(row => if (row.id == attempt.id) attempt else row) }
+pure def canApprove(s: ApprovalState, lookup: ApprovalKey): bool = s.requests.configured
+pure def approve(s: ApprovalState, lookup: ApprovalKey): ApprovalState = {
+  val phase = if (lookup.codeQuery == "") ApprovalNoMatch else ApprovalReading
+  { ...s, attempts: s.attempts.append({ ...noAttempt, id: s.nextAttempt, lookup: lookup, phase: phase }), nextAttempt: s.nextAttempt + 1 }
+}
+pure def canReadApproval(s: ApprovalState, id: int): bool = getAttempt(s, id).phase == ApprovalReading
+pure def readApproval(s: ApprovalState, id: int, readAt: int, success: bool): ApprovalState = {
+  val attempt = getAttempt(s, id)
+  val captured = if (success) lookupPending(s, attempt.lookup, readAt) else R::emptyRow
+  val phase = if (not(success)) ApprovalReadFailed else if (captured.id == "") ApprovalNoMatch else ApprovalGranting
+  val expired = s.requests.rows.select(row => R::sameChannel(row.scope, requestChannel(attempt.lookup)) and not(R::liveAt(readAt, s.requests.ttl, row)))
+  val requests = if (success) { ...s.requests, cleanupIds: expired.foldl(s.requests.cleanupIds, (ids, row) => R::rememberCleanup(ids, row)) } else s.requests
+  replaceAttempt({ ...attempt, phase: phase, captured: captured }, { ...s, requests: requests })
+}
 ```
 
-### Grant persistence must succeed before consuming a request
+### A retained grant is captured before deletion of that request's ID
+
+Each granting attempt proposes the deterministic key for its captured owner with that row’s metadata. It snapshots the authoritative grant returned by the canonical grant owner, even when a concurrent insert retained older data. A grant write failure, thrown read or missing readback does not issue request deletion. After successful grant acquisition, deletion targets only the captured request ID, which can never name a later request. Acknowledged deletion is idempotent when another approval or expiry cleanup already removed that ID. Success exposes the captured request and grant independently of subsequent changes to either table. A storage acknowledgement classified as failed does not remove the row in this model; ambiguous commit transport and confirmation are adapter refinement boundaries.
 
 ```quint
-pure def canGrant(s: Pairing, succeeded: bool, identity: str): bool = s.phase == Granting and (not(succeeded) or identity != "")
-pure def grant(s: Pairing, succeeded: bool, identity: str): Pairing =
-  if (succeeded) { ...s, phase: Consuming, grantPresent: true, grantIdentity: if (s.grantPresent) s.grantIdentity else identity }
-  else { ...s, phase: Pending, failed: true }
-pure val identityValues = Set("grant1", "grant2")
-pure def canConsume(s: Pairing, succeeded: bool): bool = s.phase == Consuming and s.grantPresent
-pure def consume(s: Pairing, succeeded: bool): Pairing =
-  if (succeeded) { ...s, phase: Complete, requestPresent: false, accepted: true, reportedIdentity: s.grantIdentity }
-  else { ...s, phase: Pending, failed: true }
-pure def alwaysConsumptionFollowsGrant(s: Pairing): bool = not(s.requestPresent) implies s.grantPresent
-pure def alwaysSuccessUsesStoredIdentity(s: Pairing): bool = s.accepted implies (s.grantPresent and s.reportedIdentity == s.grantIdentity and s.grantIdentity != "")
-pure def alwaysStoredGrantHasIdentity(s: Pairing): bool = s.grantPresent implies s.grantIdentity != ""
-pure def alwaysGrantFailureRetainsCode(s: Pairing): bool = not(s.grantPresent) implies s.requestPresent
-pure def stepExistingGrantIdentityIsStable(before: Pairing, after: Pairing): bool = not(before.grantPresent) or before.grantIdentity == after.grantIdentity
-pure def sometimesPairingComplete(s: Pairing): bool = s.accepted and not(s.requestPresent)
-pure def sometimesConsumptionCanRetry(s: Pairing): bool = s.phase == Pending and s.grantPresent and s.failed
+pure def writeFor(attempt: Approval, grantInput: GrantAttempt): G::GrantWrite = {
+  candidate: G::candidateFor(attempt.captured.scope, grantInput.grantKey, grantInput.grantedAt, attempt.captured.metadata),
+  ack: grantInput.acknowledgement
+}
+pure def canGrant(s: ApprovalState, id: int, grantInput: GrantAttempt): bool = {
+  val attempt = getAttempt(s, id)
+  attempt.phase == ApprovalGranting and G::canWriteGrant(s.grants, writeFor(attempt, grantInput))
+}
+pure def grant(s: ApprovalState, id: int, grantInput: GrantAttempt): ApprovalState = {
+  val attempt = getAttempt(s, id)
+  val grants = G::writeGrant(s.grants, writeFor(attempt, grantInput))
+  val succeeded = grants.status == G::GrantRetained
+  replaceAttempt({ ...attempt, phase: if (succeeded) ApprovalConsuming else ApprovalGrantFailed, retained: grants.reported }, { ...s, grants: grants })
+}
+pure def canConsume(s: ApprovalState, id: int): bool = getAttempt(s, id).phase == ApprovalConsuming
+pure def consume(s: ApprovalState, id: int, success: bool): ApprovalState = {
+  val attempt = getAttempt(s, id)
+  val requests = if (success) R::dropPending(attempt.captured.id, s.requests) else s.requests
+  replaceAttempt({ ...attempt, phase: if (success) ApprovalAccepted else ApprovalConsumeFailed }, { ...s, requests: requests })
+}
+pure def canRestoreRequest(s: ApprovalState, row: R::PendingRow): bool = R::canRestorePending(s.requests, row)
+pure def restoreRequest(s: ApprovalState, row: R::PendingRow): ApprovalState = { ...s, requests: R::restorePending(s.requests, row) }
+pure def canConfigure(s: ApprovalState): bool = R::canConfigure(s.requests)
+pure def configure(s: ApprovalState, maximum: int, ttl: int): ApprovalState = { ...s, requests: R::configure(s.requests, maximum, ttl) }
+pure def canEnqueueAdmission(s: ApprovalState, input: R::AdmissionInput): bool = R::canEnqueueAdmission(s.requests, input)
+pure def enqueueAdmission(s: ApprovalState, input: R::AdmissionInput): ApprovalState = { ...s, requests: R::enqueueAdmission(s.requests, input) }
+pure def canEnterAdmission(s: ApprovalState): bool = R::canEnterAdmission(s.requests)
+pure def enterAdmission(s: ApprovalState, enteredAt: int): ApprovalState = { ...s, requests: R::enterAdmission(s.requests, enteredAt) }
+pure def canReadPending(s: ApprovalState): bool = R::canReadPending(s.requests)
+pure def readPending(s: ApprovalState, readAt: int): ApprovalState = { ...s, requests: R::readPending(s.requests, readAt) }
+pure def canWritePending(s: ApprovalState, writeResult: R::WriteOutcome): bool = R::canWritePending(s.requests, writeResult)
+pure def writePending(s: ApprovalState, writeResult: R::WriteOutcome): ApprovalState = { ...s, requests: R::writePending(s.requests, writeResult) }
+pure def canRejectFull(s: ApprovalState): bool = R::canRejectFull(s.requests)
+pure def rejectFull(s: ApprovalState): ApprovalState = { ...s, requests: R::rejectFull(s.requests) }
+pure def canFailPendingRead(s: ApprovalState): bool = R::canReadFailed(s.requests)
+pure def failPendingRead(s: ApprovalState): ApprovalState = { ...s, requests: R::readFailed(s.requests) }
+pure def canSettleCleanup(s: ApprovalState, requestId: str): bool = R::canSettleCleanup(s.requests, requestId)
+pure def settleCleanup(s: ApprovalState, requestId: str, success: bool): ApprovalState = { ...s, requests: R::settleCleanup(s.requests, requestId, success) }
+pure def canWriteDirectGrant(s: ApprovalState, request: G::GrantWrite): bool = G::canWriteGrant(s.grants, request)
+pure def writeDirectGrant(s: ApprovalState, request: G::GrantWrite): ApprovalState = { ...s, grants: G::writeGrant(s.grants, request) }
+pure def removeGrant(s: ApprovalState, key: str): ApprovalState = { ...s, grants: G::removeGrant(s.grants, key) }
+pure def ownsCapturedRequest(phase: ApprovalPhase): bool = phase == ApprovalGranting or phase == ApprovalConsuming or phase == ApprovalGrantFailed or phase == ApprovalConsumeFailed or phase == ApprovalAccepted
+pure def ownsRetainedGrant(phase: ApprovalPhase): bool = phase == ApprovalConsuming or phase == ApprovalConsumeFailed or phase == ApprovalAccepted
+pure def alwaysRequestOwnerIsStable(s: ApprovalState): bool = s.attempts.every(attempt => ownsCapturedRequest(attempt.phase) implies attempt.captured.id != "" and s.requests.issuedIds.contains(attempt.captured.id) and R::sameChannel(attempt.captured.scope, requestChannel(attempt.lookup)) and attempt.captured.normalizedCode == attempt.lookup.codeQuery)
+pure def alwaysGrantMatchesRequest(s: ApprovalState): bool = s.attempts.every(attempt => ownsRetainedGrant(attempt.phase) implies attempt.retained.key != "" and attempt.retained.owner == attempt.captured.scope)
+pure def alwaysConsumedExactRequest(s: ApprovalState): bool = s.attempts.every(attempt => attempt.phase == ApprovalAccepted implies not(s.requests.rows.some(row => row.id == attempt.captured.id)))
+pure def stepExistingGrantIdentityIsStable(before: ApprovalState, via: str, after: ApprovalState): bool = via != "removeGrant" implies before.grants.rows.every(row => after.grants.rows.includes(row))
+pure def sometimesPairingComplete(s: ApprovalState): bool = s.attempts.some(attempt => attempt.phase == ApprovalAccepted)
+pure def sometimesConsumptionCanRetry(s: ApprovalState): bool = s.attempts.some(attempt => attempt.phase == ApprovalConsumeFailed and s.requests.rows.some(row => row.id == attempt.captured.id) and s.grants.rows.includes(attempt.retained))
+pure def sometimesConcurrentApprovalsShareCapture(s: ApprovalState): bool = s.attempts.some(left => s.attempts.some(right => left.id != right.id and left.captured.id != "" and left.captured.id == right.captured.id))
+pure val leftValues = Set({ agentId: "a1", channel: "chat", senderId: "one" }, { agentId: "a2", channel: "mail", senderId: "two" })
+pure val rightValues = leftValues
+pure val rowValues = R::rowValues
+pure val maximumValues = R::maximumValues
+pure val ttlValues = R::ttlValues
+pure val readAtValues = R::readAtValues
+pure val inputValues = R::inputValues
+pure val enteredAtValues = R::enteredAtValues
+pure val writeResultValues = R::writeResultValues
+pure val requestIdValues = R::idValues
+pure val requestValues = G::requestValues
+pure val keyValues = G::keyValues
+pure val idValues = Set(1, 2, 3, 4, 5, 6)
+pure val lookupValues = Set({ agent: "a1", channel: "chat", codeQuery: "MNPQRTUV" }, { agent: "a1", channel: "chat", codeQuery: "NPQRTUVM" }, { agent: "a1", channel: "chat", codeQuery: "" })
+pure val grantInputValues: Set[GrantAttempt] = Set({ grantKey: "grant1", grantedAt: 1, acknowledgement: G::GrantRetained }, { grantKey: "grant1", grantedAt: 2, acknowledgement: G::GrantWriteFailed }, { grantKey: "grant2", grantedAt: 2, acknowledgement: G::GrantRetained })
+pure val weight_approve = 4
+pure val weight_readApproval = 4
+pure val weight_grant = 4
+pure val weight_consume = 4
 ```
 
-### A retried request completes when storage eventually accepts both operations
+### Fair I/O settlement releases each captured approval
 
-This is the legacy conditional retry obligation. Weak fairness assumes a
-pending request is retried; strong fairness on the success branches assumes
-storage eventually acknowledges each repeatedly attempted grant and consume.
-Failures alone cannot consume the request or fabricate a grant.
+Oldest unfinished selection is a fair service abstraction: each actual approval may advance independently, and the selected action is a witness that an older unresolved await is not starved by later calls. A settled lookup, grant or delete may fail. Successful retry remains conditional on the caller making a new matching request while the code remains eligible and storage eventually accepting both operations; the service does not retry by itself.
 
 ```quint
-pure def canGrantAcknowledged(s: Pairing, identity: str): bool = canGrant(s, true, identity)
-pure def grantAcknowledged(s: Pairing, identity: str): Pairing = grant(s, true, identity)
-pure def canConsumptionAcknowledged(s: Pairing): bool = canConsume(s, true)
-pure def consumptionAcknowledged(s: Pairing): Pairing = consume(s, true)
-pure val fair_approve = "weak"
-pure val fair_grantAcknowledged = "strong"
-pure val fair_consumptionAcknowledged = "strong"
-pure def leadsToRetriedRequestConsumed(s: Pairing, later: Pairing): bool = s.requestPresent implies not(later.requestPresent)
+pure def approvalPending(phase: ApprovalPhase): bool = phase == ApprovalReading or phase == ApprovalGranting or phase == ApprovalConsuming
+pure def oldestApproval(s: ApprovalState): Approval = s.attempts.select(attempt => approvalPending(attempt.phase)).nthOr(0, noAttempt)
+pure def canAdvanceApproval(s: ApprovalState, grantInput: GrantAttempt): bool = {
+  val attempt = oldestApproval(s)
+  attempt.phase == ApprovalReading or canGrant(s, attempt.id, grantInput) or attempt.phase == ApprovalConsuming
+}
+pure def advanceApproval(s: ApprovalState, grantInput: GrantAttempt, readAt: int, success: bool): ApprovalState = {
+  val attempt = oldestApproval(s)
+  if (attempt.phase == ApprovalReading) readApproval(s, attempt.id, readAt, success)
+  else if (attempt.phase == ApprovalGranting) grant(s, attempt.id, grantInput)
+  else consume(s, attempt.id, success)
+}
+pure val fair_advanceApproval = "weak"
+pure val fair_enterAdmission = "weak"
+pure val fair_readPending = "weak"
+pure val fair_writePending = "weak"
+pure val fair_rejectFull = "weak"
+pure def leadsToQueuedAdmissionsSettle(s: ApprovalState, later: ApprovalState): bool = R::leadsToQueuedAdmissionsSettle(s.requests, later.requests) and R::leadsToAdmissionReleased(s.requests, later.requests)
+pure def leadsToOwnedApprovalsSettle(s: ApprovalState, later: ApprovalState): bool = s.attempts.every(attempt => not(approvalPending(attempt.phase)) or not(approvalPending(getAttempt(later, attempt.id).phase)))
 ```

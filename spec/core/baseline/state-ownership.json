@@ -32820,41 +32820,54 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Global admission serializes pending count and create/reuse by canonical sender; promise rejection returns idle for next caller.",
+        "representation": "Unbounded FIFO waiting tickets, one active owner after older settlement, request clock captured at serial entry preceding storage read, captured rows preserved across the await, and exact per-ticket typed receipts release the next caller even after rejection.",
         "model": {
           "spec": "spec/core/pairingAdmission.md",
           "stateType": "PairingAdmission",
           "stateFields": [
             "configured",
             "rows",
+            "issuedIds",
             "phase",
-            "active",
-            "observedCount",
+            "activeTicket",
+            "nextTicket",
+            "waiting",
+            "receipts",
+            "request",
+            "captured",
+            "prior",
             "maximum",
-            "resultKind",
-            "created"
+            "ttl",
+            "cleanupIds"
           ],
           "transitions": [
             "configure",
+            "restorePending",
+            "enqueueAdmission",
             "enterAdmission",
             "readPending",
             "writePending",
             "rejectFull",
             "readFailed",
-            "expireSender",
-            "cleanupSender"
+            "settleCleanup"
           ],
-          "specSha256": "15c9005ff6b40c2312c99843a6edf21b0c475ece955050a0b282ca33afd7afee"
+          "specSha256": "5550f51a819100ce97bb05dc23978e842244ca7b9c613a8c0db81f86bfd929da"
         },
         "mappedStateFields": [
           "configured",
           "rows",
+          "issuedIds",
           "phase",
-          "active",
-          "observedCount",
+          "activeTicket",
+          "nextTicket",
+          "waiting",
+          "receipts",
+          "request",
+          "captured",
+          "prior",
           "maximum",
-          "resultKind",
-          "created"
+          "ttl",
+          "cleanupIds"
         ],
         "unmodeledState": null
       }
