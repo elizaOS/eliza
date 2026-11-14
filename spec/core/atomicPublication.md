@@ -29,6 +29,8 @@ pure def crash(p: Publication): Publication = { ...p, phase: Crashed, receipt: U
 pure def alwaysSuccessMeansPublished(p: Publication): bool = (p.receipt == SuccessReceipt implies p.published) and (p.receipt == FailureReceipt implies not(p.published))
 pure def alwaysUnknownMeansCrashed(p: Publication): bool = p.receipt == UnknownReceipt implies p.phase == Crashed
 pure def alwaysPublicationMatchesWrite(p: Publication): bool = p.published == p.writeSucceeded
+pure def alwaysPreRenameOwnsPendingPublication(p: Publication): bool = (p.phase == Queued or p.phase == Writing or p.phase == Renaming) implies p.receipt == PendingReceipt and not(p.published)
+pure def alwaysRenameHasCompleteTemporary(p: Publication): bool = p.phase == Renaming implies p.temporary == CompleteTemporary
 pure def stepPublicationSurvivesCleanup(before: Publication, after: Publication): bool = before.published implies after.published
 pure def sometimesPublicationSucceeds(p: Publication): bool = p.receipt == SuccessReceipt
 pure def sometimesPublicationFails(p: Publication): bool = p.receipt == FailureReceipt

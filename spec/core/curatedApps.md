@@ -17,7 +17,8 @@ type CuratedApps = { definitions: List[AppDefinition], version: int, instances: 
 pure val emptyAliases: AliasTable = { keys: Set(), targets: Map() }
 pure val initial: CuratedApps = { definitions: List(), version: 0, instances: Set(), localVersions: Map(), locals: Map() }
 pure def localAt(a: CuratedApps, instance: str): AliasTable = if (a.instances.contains(instance)) a.locals.getOr(instance, emptyAliases) else emptyAliases
-pure def addDefinitionKeys(table: AliasTable, definition: AppDefinition): AliasTable = definition.keys.foldl(table, (accumulator, key) => { keys: accumulator.keys.union(Set(key)), targets: accumulator.targets.put(key, definition.slug) })
+pure def addDefinitionKey(table: AliasTable, key: str, slug: str): AliasTable = { keys: table.keys.union(Set(key)), targets: table.targets.put(key, slug) }
+pure def addDefinitionKeys(table: AliasTable, definition: AppDefinition): AliasTable = definition.keys.foldl(table, (accumulator, key) => addDefinitionKey(accumulator, key, definition.slug))
 pure def registerApp(a: CuratedApps, slug: str, matchKeys: List[str], revision: int): CuratedApps = {
   val changed = not(a.definitions.some(definition => definition.slug == slug and definition.revision == revision))
   val replacement = { slug: slug, keys: matchKeys, revision: revision }

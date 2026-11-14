@@ -37,6 +37,7 @@ pure def consume(s: Pairing, succeeded: bool): Pairing =
   else { ...s, phase: Pending, failed: true }
 pure def alwaysConsumptionFollowsGrant(s: Pairing): bool = not(s.requestPresent) implies s.grantPresent
 pure def alwaysSuccessUsesStoredIdentity(s: Pairing): bool = s.accepted implies (s.grantPresent and s.reportedIdentity == s.grantIdentity and s.grantIdentity != "")
+pure def alwaysStoredGrantHasIdentity(s: Pairing): bool = s.grantPresent implies s.grantIdentity != ""
 pure def alwaysGrantFailureRetainsCode(s: Pairing): bool = not(s.grantPresent) implies s.requestPresent
 pure def stepExistingGrantIdentityIsStable(before: Pairing, after: Pairing): bool = not(before.grantPresent) or before.grantIdentity == after.grantIdentity
 pure def sometimesPairingComplete(s: Pairing): bool = s.accepted and not(s.requestPresent)

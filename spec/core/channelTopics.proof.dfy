@@ -95,7 +95,8 @@ lemma start_ensures(t: TopicService)
       TopicChangedHead(t, start(t), TopicCallPhase.TopicRead, t.localTopics, true);
     } else {
       TopicFoldCapacity(t.localTopics, own.incoming);
-      var updated := Std.Collections.Seq.FoldLeft(refreshTopic, t.localTopics, own.incoming);
+      var f := (topics: seq<string>, topic: string) => refreshTopic(topics, topic);
+      var updated := Std.Collections.Seq.FoldLeft(f, t.localTopics, own.incoming);
       TopicChangedHead(t, start(t), TopicCallPhase.PersistingTopics, updated, false);
     }
   }
@@ -148,7 +149,10 @@ lemma TopicQueueDistinct(queue: seq<string>)
     }
   } else if forall id :: id in queue ==> |ProofLib.Filter((other: string) => other == id, queue)| == 1 {
     forall i, j | 0 <= i < |queue| && 0 <= j < |queue| && i != j ensures queue[i] != queue[j] {
-      ProofLib.FilterCountOneIffUnique((other: string) => other == queue[i], queue, key, i);
+      assert queue[i] in queue;
+      var matches := (other: string) => other == queue[i];
+      assert |ProofLib.Filter(matches, queue)| == 1;
+      ProofLib.FilterCountOneIffUnique(matches, queue, key, i);
     }
   }
 }
@@ -182,6 +186,13 @@ lemma TopicChangedHead(before: TopicService, after: TopicService, phase: TopicCa
 {
   TopicCallKeys(before);
   TopicQueueDistinct(before.queue);
+  if popped {
+    assert ProofLib.DistinctBy(after.queue, (id: string) => id) by {
+      forall i, j | 0 <= i < |after.queue| && 0 <= j < |after.queue| && i != j ensures after.queue[i] != after.queue[j] {
+        assert after.queue[i] == before.queue[i+1] && after.queue[j] == before.queue[j+1];
+      }
+    }
+  }
   TopicQueueDistinct(after.queue);
   var id := before.queue[0];
   assert ProofLib.DistinctBy(after.calls, (call: TopicCall) => call.id) by {
@@ -196,6 +207,12 @@ lemma TopicChangedHead(before: TopicService, after: TopicService, phase: TopicCa
   }
   TopicCallKeys(after);
   forall queueId | queueId in after.queue ensures exists call :: call in after.calls && call.id == queueId && !callFinished(call) {
+    assert queueId in before.queue by {
+      if popped {
+        var qi :| 0 <= qi < |after.queue| && after.queue[qi] == queueId;
+        assert before.queue[qi+1] == queueId;
+      }
+    }
     var own :| own in before.calls && own.id == queueId && !callFinished(own);
     var i :| 0 <= i < |before.calls| && before.calls[i] == own;
     if queueId == id {
@@ -254,7 +271,7 @@ lemma TopicIdentityFilter(topics: seq<string>)
 
 lemma TopicFoldCapacity(topics: seq<string>, incoming: seq<string>)
   requires |topics| <= 20
-  ensures |Std.Collections.Seq.FoldLeft(refreshTopic, topics, incoming)| <= 20
+  ensures |Std.Collections.Seq.FoldLeft((topics: seq<string>, topic: string) => refreshTopic(topics, topic), topics, incoming)| <= 20
   decreases |incoming|
 {
   reveal Std.Collections.Seq.FoldLeft();

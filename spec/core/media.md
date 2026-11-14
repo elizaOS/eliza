@@ -27,6 +27,7 @@ pure def failFetch(m: MediaFetch): MediaFetch = { ...m, phase: Failed, released:
 pure def canCancel(m: MediaFetch): bool = m.phase != Complete and m.phase != Cancelled and m.phase != Failed
 pure def cancel(m: MediaFetch): MediaFetch = { ...m, phase: Cancelled, released: true }
 pure def alwaysBoundedBytes(m: MediaFetch): bool = m.received >= 0 and m.received <= m.maximum
+pure def alwaysUnresolvedHasNoBody(m: MediaFetch): bool = m.phase == Unresolved implies m.received == 0
 pure def alwaysTerminalTransportReleased(m: MediaFetch): bool = (m.phase == Complete or m.phase == Cancelled or m.phase == Failed) implies m.released
 pure def alwaysReadingScreenedEndpoint(m: MediaFetch): bool = (m.phase == Reading or m.phase == Complete) implies m.pinned
 pure def sometimesMediaComplete(m: MediaFetch): bool = m.phase == Complete
