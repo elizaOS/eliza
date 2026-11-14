@@ -293,8 +293,8 @@
         "product-host-source"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/cloudHost.md",
-      "coverage": "related-contract"
+      "relatedSpec": "spec/downstream/grace/cloudDocumentExecution.md",
+      "coverage": "direct-contract"
     },
     {
       "source": "packages/cloud/sdk/native-host/mail-fields.mjs",
@@ -394,8 +394,8 @@
         "build-development-or-release-tool"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/cloudHost.md",
-      "coverage": "related-contract"
+      "relatedSpec": "spec/downstream/grace/cloudDocumentExecution.md",
+      "coverage": "direct-contract"
     },
     {
       "source": "packages/host/native-host/build-document-runtime.mjs",
@@ -404,8 +404,8 @@
         "build-development-or-release-tool"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/cloudHost.md",
-      "coverage": "related-contract"
+      "relatedSpec": "spec/downstream/grace/cloudDocumentExecution.md",
+      "coverage": "direct-contract"
     },
     {
       "source": "packages/host/native-host/errors.mjs",
@@ -1230,8 +1230,8 @@
         "product-host-source"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/grace/billReview.md",
-      "coverage": "related-contract"
+      "relatedSpec": "spec/downstream/grace/cloudDocumentExecution.md",
+      "coverage": "direct-contract"
     }
   ],
   "AlphaPhone": [
