@@ -18,14 +18,18 @@ pure val initial: PairingReplies = { configured: false, capacity: 4096, ttl: 360
 pure def canConfigure(s: PairingReplies, capacity: int): bool = not(s.configured) and capacity > 0
 pure def configure(s: PairingReplies, capacity: int, ttl: int): PairingReplies = { ...s, configured: true, capacity: capacity, ttl: ttl }
 pure def canClaim(s: PairingReplies): bool = s.configured
+pure def liveClaims(s: PairingReplies, now: int): List[ReplyClaim] = s.retained.select(entry => now - entry.claimedAt < s.ttl)
+pure def boundedClaims(entries: List[ReplyClaim], capacity: int): List[ReplyClaim] = if (entries.length() > 0 and entries.length() >= capacity) entries.tail() else entries
+pure def refreshedClaims(entries: List[ReplyClaim], scope: ReplyScope, now: int): List[ReplyClaim] =
+  if (entries.some(entry => entry.scope == scope)) entries.listMap(entry => if (entry.scope == scope) { scope: scope, claimedAt: now } else entry) else entries.append({ scope: scope, claimedAt: now })
 pure def claim(s: PairingReplies, scope: ReplyScope, now: int): PairingReplies = {
   val live = s.retained.some(entry => entry.scope == scope and now - entry.claimedAt < s.ttl)
-  val swept = if (s.retained.length() >= s.capacity) s.retained.select(entry => now - entry.claimedAt < s.ttl) else s.retained
-  val bounded = if (swept.length() >= s.capacity) swept.tail() else swept
-  val updated = if (bounded.some(entry => entry.scope == scope)) bounded.listMap(entry => if (entry.scope == scope) { scope: scope, claimedAt: now } else entry) else bounded.append({ scope: scope, claimedAt: now })
+  val swept = if (s.retained.length() >= s.capacity) liveClaims(s, now) else s.retained
+  val updated = refreshedClaims(boundedClaims(swept, s.capacity), scope, now)
   if (live) { ...s, accepted: false, wasLive: true } else { ...s, retained: updated, accepted: true, wasLive: false }
 }
 pure def alwaysReplyCacheBound(s: PairingReplies): bool = s.capacity > 0 and s.retained.length() <= s.capacity
+pure def alwaysUnconfiguredIsEmpty(s: PairingReplies): bool = not(s.configured) implies s.retained.length() == 0
 pure def alwaysUniqueReplyScopes(s: PairingReplies): bool = s.retained.every(entry => s.retained.select(other => other.scope == entry.scope).length() == 1)
 pure def alwaysLiveClaimSuppresses(s: PairingReplies): bool = s.wasLive implies not(s.accepted)
 pure def sometimesRepeatedReplySuppressed(s: PairingReplies): bool = s.wasLive
