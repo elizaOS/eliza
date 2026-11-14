@@ -6,7 +6,7 @@ The source is `packages/core/src/security/guarded-stream.ts` at the pinned basel
 
 ### Appending and releasing conserve every source character
 
-A cut is permitted only inside the pending sequence and outside every sensitive interval. The buffer has no truncation operation. `sourceEmitted` records original source characters released to the transformation pipeline, preserving order independently of the transformed output length.
+A cut is permitted only inside the pending sequence and outside every sensitive interval. The buffer has no truncation operation. `sourceEmitted` records original source characters released to the transformation pipeline, preserving order independently of the transformed output length. Discovered by the proof: only cancellation can move pending characters to the discarded ledger; until then, the stream has no discarded suffix.
 
 ```quint
 type SensitiveSpan = { start: int, end: int, open: bool }
@@ -21,7 +21,9 @@ pure def appendChunk(s: StreamBuffer, chunk: List[int]): StreamBuffer = { ...s, 
 pure def canClassify(s: StreamBuffer, spans: List[SensitiveSpan], maxTokenLength: int): bool = not(s.cancelled) and maxTokenLength >= 0 and spans.every(span => span.start >= 0 and span.end >= span.start and span.end <= s.pending.length())
 pure def classify(s: StreamBuffer, spans: List[SensitiveSpan], maxTokenLength: int): StreamBuffer = { ...s, spans: spans, classified: true, maxTokenLength: maxTokenLength }
 type Partition = { seen: int, prefix: List[int], suffix: List[int] }
-pure def splitChars(chars: List[int], cut: int): Partition = chars.foldl({ seen: 0, prefix: List(), suffix: List() }, (parts, char) => { seen: parts.seen + 1, prefix: if (parts.seen < cut) parts.prefix.append(char) else parts.prefix, suffix: if (parts.seen < cut) parts.suffix else parts.suffix.append(char) })
+pure val emptyPartition: Partition = { seen: 0, prefix: List(), suffix: List() }
+pure def splitChar(cut: int, parts: Partition, char: int): Partition = { seen: parts.seen + 1, prefix: if (parts.seen < cut) parts.prefix.append(char) else parts.prefix, suffix: if (parts.seen < cut) parts.suffix else parts.suffix.append(char) }
+pure def splitChars(chars: List[int], cut: int): Partition = chars.foldl(emptyPartition, (parts, char) => splitChar(cut, parts, char))
 pure def canRelease(s: StreamBuffer, cut: int): bool = not(s.cancelled) and s.classified and cut >= 0 and (cut == 0 or cut <= s.pending.length() - s.maxTokenLength) and s.spans.every(span => cut <= span.start or (not(span.open) and cut >= span.end))
 pure def release(s: StreamBuffer, cut: int): StreamBuffer = { ...s, sourceEmitted: s.sourceEmitted.concat(splitChars(s.pending, cut).prefix), pending: splitChars(s.pending, cut).suffix, spans: s.spans.select(span => span.end > cut).listMap(span => { start: span.start - cut, end: span.end - cut, open: span.open }) }
 pure def canFlush(s: StreamBuffer): bool = not(s.cancelled)
@@ -31,5 +33,6 @@ pure def alwaysEveryCharacterRetained(s: StreamBuffer): bool = s.received == s.s
 pure def alwaysTokenWindowIsValid(s: StreamBuffer): bool = s.maxTokenLength >= 0
 pure def alwaysSpansWithinBuffer(s: StreamBuffer): bool = s.spans.every(span => span.start >= 0 and span.end >= span.start and span.end <= s.pending.length())
 pure def alwaysCancelledBufferEmpty(s: StreamBuffer): bool = s.cancelled implies s.pending.length() == 0
+pure def alwaysDiscardRequiresCancellation(s: StreamBuffer): bool = not(s.cancelled) implies s.discarded.length() == 0
 pure def sometimesBufferedTail(s: StreamBuffer): bool = s.pending.length() > 0 and s.sourceEmitted.length() > 0
 ```

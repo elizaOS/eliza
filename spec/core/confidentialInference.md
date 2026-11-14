@@ -24,6 +24,7 @@ pure def policyChanges(s: Confidential): Confidential = { ...s, policyRevision: 
 ### A transport callback can authorize its attempt only once
 
 Connection evidence is validated by the trusted transport. The consumed operation latch is set before the policy and audit awaits, preserving the source's retry behavior when either later check fails.
+Discovered by the proof: the dispatch stage retains both the consumed authorization and the acknowledged dispatch audit. No transport outcome can be recorded before dispatch, and a redirected response cannot count as successful.
 
 ```quint
 pure def canBeforeDispatch(s: Confidential, evidenceValid: bool): bool = s.phase == Checking and not(s.callbackEntered)
@@ -39,6 +40,7 @@ pure def dispatch(s: Confidential): Confidential = { ...s, phase: Transporting, 
 pure def alwaysConfidentialCountersAreValid(s: Confidential): bool = s.policyRevision >= 0 and s.capturedRevision >= 0 and s.capturedRevision <= s.policyRevision and s.dispatches >= 0
 pure def alwaysDispatchHasIntentAudit(s: Confidential): bool = s.dispatched implies s.dispatchAudit
 pure def alwaysDenyRedispatchOwnsAtMostOne(s: Confidential): bool = not(s.denyRedispatch) or s.dispatches <= 1
+pure def alwaysDispatchStageRemembersAuthorization(s: Confidential): bool = (s.dispatched implies s.dispatches > 0) and ((s.phase == Checking or s.phase == Auditing or s.phase == Rechecking or s.phase == Admitted) implies not(s.dispatched)) and (s.denyRedispatch and (s.phase == Auditing or s.phase == Rechecking or s.phase == Admitted or s.dispatches > 0) implies s.operationConsumed) and (s.denyRedispatch and (s.phase == Auditing or s.phase == Rechecking or s.phase == Admitted) implies s.dispatches == 0)
 ```
 
 ### A response escapes only after its outcome audit and redirects fail closed
@@ -51,6 +53,7 @@ pure def receiveTransport(s: Confidential, success: bool, redirected: bool): Con
 pure def canRecordOutcome(s: Confidential, acknowledged: bool): bool = s.phase == RecordingOutcome
 pure def recordOutcome(s: Confidential, acknowledged: bool): Confidential = { ...s, outcomeAudit: acknowledged, phase: if (acknowledged and s.successfulResponse) Succeeded else Failed }
 pure def alwaysSuccessfulResponseHasBothAudits(s: Confidential): bool = s.phase != Succeeded or (s.dispatchAudit and s.outcomeAudit and s.dispatched and not(s.redirect))
+pure def alwaysOutcomeTracksTransport(s: Confidential): bool = ((s.phase == Transporting or s.phase == RecordingOutcome) implies s.dispatched) and (s.successfulResponse implies not(s.redirect))
 pure def stepOperationLatchNeverResets(before: Confidential, after: Confidential): bool = not(before.operationConsumed) or after.operationConsumed
 pure def sometimesConfidentialResponse(s: Confidential): bool = s.phase == Succeeded
 pure def sometimesAuditFailureRetainsConsumption(s: Confidential): bool = s.phase == Failed and s.operationConsumed and not(s.dispatchAudit)

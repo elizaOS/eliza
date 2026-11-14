@@ -8,7 +8,7 @@ A room-list request queries that room; an agent-wide list queries all rooms for 
 
 ### Query identity is published before the storage or permission await
 
-The query record names scope and current phase, while the retirement tracker is the only owner of the active promise. Room and role results are explicit trusted host observations. No result is fabricated while a query is pending or after its error. Each admitted read retains a unique positive promise identity. For a restricted task an absent world permits the direct-room case; with a world, the exact observed role must be in the allowed list.
+The query record names scope and current phase, while the retirement tracker is the only owner of the active promise. Room and role results are explicit trusted host observations. No result is fabricated while a query is pending or after its error. Each admitted read retains a unique positive promise identity. Discovered by the proof: removing a settled promise cannot retire a still-unsettled promise; the release guard names this explicitly. For a restricted task an absent world permits the direct-room case; with a world, the exact observed role must be in the allowed list.
 
 ```quint
 import approvalService as AS from "./approvalService"
@@ -55,7 +55,7 @@ pure def settleRole(s: ApprovalRetirement, workId: int, ok: bool, role: str): Ap
   val query = { ...prior, phase: phase }
   { ...s, queries: putRead(query, s), tracker: readCompletion(query, s) }
 }
-pure def canReleaseRead(s: ApprovalRetirement, workId: int): bool = R::canRemoveSettled(s.tracker, workId)
+pure def canReleaseRead(s: ApprovalRetirement, workId: int): bool = R::canRemoveSettled(s.tracker, workId) and not(s.tracker.works.some(work => work.id == workId and not(work.settled)))
 pure def releaseRead(s: ApprovalRetirement, workId: int): ApprovalRetirement = { ...s, tracker: R::removeSettled(s.tracker, workId) }
 ```
 
