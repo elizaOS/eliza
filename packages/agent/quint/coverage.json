@@ -830,14 +830,21 @@
     "sources": [
       "packages/agent/src/api/hono-mount.ts",
       "packages/agent/src/api/hono-adapter.ts",
-      "packages/agent/src/api/hono-adapter.test.ts"
+      "packages/agent/src/api/hono-adapter.test.ts",
+      "packages/agent/src/api/dispatch-route.ts",
+      "packages/agent/src/api/in-process-api.ts",
+      "packages/agent/src/api/in-process-api.test.ts",
+      "plugins/plugin-scheduling/src/routes/scheduled-tasks.ts",
+      "plugins/plugin-scheduling/src/routes/scheduled-tasks.seam.test.ts",
+      "packages/host/src/api/http-helpers.ts"
     ],
     "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One bounded request is projected through accumulated byte increments. Arbitrary byte/chunk boundaries, dynamic route caps and multi-request sequencing are outside this instance.",
       "Normal server close follows request drain and local response flush. HTTP deadlines, handler failures, peer receipt and other transport close policies are excluded.",
-      "The real HTTP test checks oversized chunked rejection followed by a valid keep-alive request. Authentication and route-selection authority remain external guards."
+      "The real HTTP test checks oversized chunked rejection followed by a valid keep-alive request. Authentication and route-selection authority remain external guards.",
+      "IPC framing covers one serialized body with zero or positive bytes and four framing modes. Fair preparation and read settle the local projection. The real scheduling service records one edit for string, object and UTF-8 Buffer requests. Native device transport and malformed explicit framing remain outside this projection."
     ]
   },
   {
