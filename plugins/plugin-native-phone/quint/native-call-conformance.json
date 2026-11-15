@@ -1,0 +1,38 @@
+[
+  {
+    "className": "ai.eliza.plugins.phone.TelecomCallPresentationTest",
+    "required": [
+      "initialsAreTheFirstAndLastWordsLetters",
+      "numberWithoutNameAndWithheldCallerHaveNoInitials",
+      "elapsedTimeGainsAnHourFieldOnlyFromOneHour",
+      "secondaryLineFollowsTheCallState",
+      "timerTicksOnTheCallsOwnSecondBoundary",
+      "aRingingCallOffersOnlyAnswerAndDecline",
+      "aLiveCallOffersEachControlOnlyWhenItCanWork",
+      "anEndedCallOffersNothing",
+      "chipsAndTogglesSayTheirState",
+      "removedCallCannotRepublishAnAlreadyQueuedStateCallback",
+      "removedCallCannotRepublishAnAlreadyQueuedDetailsCallback",
+      "destroyedOwnerCannotRepublishAnAlreadyQueuedCall",
+      "removingOneCallRetainsTheOtherCallAndItsNotification",
+      "currentCallStillPublishesItsNativeStateChange",
+      "callNotificationUsesTheHostIconAndKeepsThePlatformGlyphWithoutOne",
+      "revokedContactsPermissionFencesAnAlreadyRunningNameLookup",
+      "removedCallFencesAnAlreadyRunningNameLookup",
+      "destroyedServiceFencesAnAlreadyRunningNameLookup",
+      "cachedContactNameIsNotReusedAfterPermissionWithdrawal",
+      "currentScreenReceivesContactNameWithoutAnExternalPhotoRequest",
+      "stoppedScreenRejectsAlreadyRunningContactRead",
+      "screenRejectsContactReadAfterPermissionWithdrawal"
+    ]
+  },
+  {
+    "className": "ai.eliza.plugins.phone.TelecomCallToneTest",
+    "required": [
+      "replacementStopsOriginalAndOldDeadlineCannotStopNewCall",
+      "selectionChangeStopsOwnerEvenWithoutAnotherDigit",
+      "holdAndScreenStopReleaseToneOnce",
+      "rejectedReplacementDoesNotOwnOrRetainATone"
+    ]
+  }
+]

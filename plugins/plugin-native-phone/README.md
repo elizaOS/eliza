@@ -56,3 +56,7 @@ call-style notifications, answer/decline/end, hold, mute, audio route and DTMF),
 declares thin subclasses with its own component names, channel and title.
 `TelecomDial.originate` places calls through Telecom, which owns emergency
 routing; the system emergency dialer does not depend on the host.
+
+The call screen uses a Contacts thumbnail when read access is available, then
+initials or a person icon. Reads retire with the screen, call or number. Hosts
+can override `showHoldControl()` to omit Hold without changing Telecom support.
