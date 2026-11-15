@@ -43,6 +43,11 @@
     {
       "file": "plugins/plugin-files/test/browser-files-share.test.mjs",
       "classname": "test",
+      "name": "selected chat bytes keep the mail bound, exact content and revision fence"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-share.test.mjs",
+      "classname": "test",
       "name": "bulk share hands one actual ZIP File to Web Share with exact nested Unicode bytes and empty folders"
     },
     {
