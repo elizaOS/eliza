@@ -154,7 +154,13 @@ async function loadCheckModule(
   if (cached) return cached;
   try {
     await fs.access(absolute);
-  } catch {
+  } catch (err) {
+    // Only genuine absence means "this plugin ships no check module". An
+    // unreadable one (EACCES, ELOOP, EIO) is a broken manifest: let it reach
+    // the verdict's error field instead of caching it as missing.
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw err;
+    }
     CHECK_MODULE_CACHE.set(absolute, "missing");
     return null;
   }
