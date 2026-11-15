@@ -103,10 +103,15 @@ function lockProject(root: string): () => void {
 async function* generating(memory: Memory, specs: Spec[]): AsyncGenerator<{ spec: Spec; model: Model; error?: undefined } | { spec: Spec; model?: undefined; error: Error }> {
   const models = new Map<string, Model>();
   const typed = typecheckAll(memory, specs);
-  for (const spec of specs) {
-    const missing = spec.imports.find((i) => !models.has(i));
-    yield missing ? { spec, error: new Error(`it imports ${missing}, which is not a valid model`) }
-      : await typed.get(spec.name)!.then((ir) => ({ spec, model: generated(memory.root, spec, ir, models) })).catch((error: Error) => ({ spec, error }));
+  try {
+    for (const spec of specs) {
+      const missing = spec.imports.find((i) => !models.has(i));
+      yield missing ? { spec, error: new Error(`it imports ${missing}, which is not a valid model`) }
+        : await typed.get(spec.name)!.then((ir) => ({ spec, model: generated(memory.root, spec, ir, models) })).catch((error: Error) => ({ spec, error }));
+    }
+  } finally {
+    // A caller that stops early must not restore gen/ while a typecheck still writes into it.
+    await Promise.allSettled(typed.values());
   }
 }
 
