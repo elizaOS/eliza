@@ -4146,9 +4146,9 @@ public class ElizaAgentService extends Service {
                 return;
             }
             detachedProbeArmedForLaunchMs = launchStartedAtMs;
+            startDetachedStartupProbe(launchStartedAtMs, startupTraceId,
+                launchStartedAtMs + STARTUP_HEALTH_GRACE_MS, false);
         }
-        startDetachedStartupProbe(launchStartedAtMs, startupTraceId,
-            launchStartedAtMs + STARTUP_HEALTH_GRACE_MS, false);
     }
 
     /**
@@ -4241,7 +4241,9 @@ public class ElizaAgentService extends Service {
           } finally {
             // Only the newest probe clears the slot; an older one ending must
             // not let adoption stack a second probe beside the current one.
-            if (healthProbe == Thread.currentThread()) healthProbe = null;
+            synchronized (processLock) {
+                if (healthProbe == Thread.currentThread()) healthProbe = null;
+            }
           }
         }, "ElizaAgent-detached-startup-probe");
         probe.setDaemon(true);
@@ -5147,7 +5149,6 @@ public class ElizaAgentService extends Service {
 
     /** Restart the agent process without tearing down the service. */
     public static void restart(Context context) {
-        retireRuntimeRequests();
         Intent intent = new Intent(context, ElizaAgentService.class);
         intent.setAction(ACTION_RESTART);
         context.startService(intent);
