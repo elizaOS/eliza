@@ -1171,12 +1171,57 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.ok(!fs.existsSync(path.join(root, "gen/traces")), text);
   });
 
+  test("install creates skill links inside the checkout", () => {
+    const { packageManager, scripts } = JSON.parse(read("package.json"));
+    const hook = "pnpm:devPreinstall";
+    const root = scratch({
+      "package.json": JSON.stringify({ name: "skills", packageManager, scripts: { [hook]: scripts[hook] } }),
+      "vibestack/skill-links.ts": read("vibestack/skill-links.ts"),
+      ".claude/skills/project/SKILL.md": "Project skill\n",
+    });
+    const home = scratch({ ".agents/skills/personal/SKILL.md": "Personal skill\n" });
+    const cache = process.env.XDG_CACHE_HOME ?? process.env.LOCALAPPDATA
+      ?? path.join(os.homedir(), process.platform === "win32" ? "AppData/Local" : ".cache");
+    const env = { ...process.env, HOME: home, USERPROFILE: home, COREPACK_HOME: process.env.COREPACK_HOME ?? path.join(cache, "node/corepack") };
+    const install = () => {
+      const result = spawnSync("pnpm", ["install", "--offline", "--ignore-workspace"], { cwd: root, encoding: "utf8", env });
+      assert.ifError(result.error);
+      assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+      return `${result.stdout}\n${result.stderr}`;
+    };
+    install();
+    const agents = ["agents", "claude", "cursor", "codex", "grok", "gemini", "factory", "t3", "droid"];
+    for (const agent of agents) {
+      assert.equal(fs.realpathSync(path.join(root, `.${agent}/skills/project`)), path.join(root, ".claude/skills/project"));
+    }
+
+    const conflict = path.join(root, ".agents/skills/conflict");
+    for (const dir of [conflict, path.join(root, ".claude/skills/conflict")]) {
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, "SKILL.md"), dir);
+    }
+    const redirected = path.join(root, ".t3");
+    fs.unlinkSync(path.join(redirected, "skills"));
+    fs.rmdirSync(redirected);
+    fs.symlinkSync(home, redirected, "dir");
+    const diagnostics = install();
+    assert.ok(diagnostics.includes(conflict));
+    assert.ok(diagnostics.includes(redirected));
+    assert.equal(fs.readFileSync(path.join(conflict, "SKILL.md"), "utf8"), conflict);
+    assert.equal(fs.realpathSync(path.join(root, ".agents/skills/project")), path.join(root, ".claude/skills/project"));
+    assert.deepEqual(fs.readdirSync(home).filter((name) => name === "skills" || agents.some((agent) => name === `.${agent}`)), [".agents"]);
+    assert.equal(read(".agents/skills/personal/SKILL.md", home), "Personal skill\n");
+  });
+
   test("init exposes every skill, preserves local instructions and refreshes its marked procedure", () => {
     const root = scratch({ "AGENTS.md": "mine\n", "package.json": `{"scripts":{"check":"mine"}}` });
     const added = init(root);
     const agents = path.join(root, "AGENTS.md");
     const expected = `mine\n\n<!-- vibestack:start -->\n${read("AGENTS.md").trim()}\n<!-- vibestack:end -->\n`;
     assert.equal(fs.readFileSync(agents, "utf8"), expected);
+    const typeReference = "vibestack/reference/typereferences.md";
+    assert.ok(expected.includes(`](${typeReference})`));
+    assert.equal(read(typeReference, root), read(typeReference));
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).scripts, { check: "mine", dev: "spec studio", gen: "spec gen", accept: "spec accept", build: "vibelang", test: "vitest run" });
     assert.equal(fs.readFileSync(path.join(root, ".gitignore"), "utf8"), "gen/\n.spec-cache/\n.studio/\ndist/\n.vibe/\n");
     const skills = fs.readdirSync(path.join(project, ".claude/skills"), { withFileTypes: true })
@@ -1212,6 +1257,9 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.deepEqual(init(root), []);
     assert.equal(read(".agents/skills/sync/SKILL.md", root), "My sync instructions.\n");
     assert.equal(read(".agents/skills/design/SKILL.md", root), "My design instructions.\n");
+    fs.writeFileSync(path.join(root, typeReference), "My type reference.\n");
+    assert.deepEqual(init(root), []);
+    assert.equal(read(typeReference, root), "My type reference.\n");
     const patterns = ".claude/skills/typescript-best-practices/references/patterns.md";
     const prompt = ".claude/skills/architect/references/runner-prompt.md";
     fs.writeFileSync(path.join(root, patterns), "My TypeScript examples.\n");
@@ -1257,7 +1305,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     const scripts = { dev: "spec studio", check: "spec check", gen: "spec gen", accept: "spec accept", build: "vibelang", test: "vitest run" };
 
     const fresh = scratch({ "package.json": '{"name":"fresh"}' });
-    assert.deepEqual(init(fresh).filter((file) => !/^\.(?:claude|agents)\/skills\//.test(file)), ["SPEC.md", ".claude/settings.json", "AGENTS.md (Vibestack instructions)", "CLAUDE.md (imports AGENTS.md)",
+    assert.deepEqual(init(fresh).filter((file) => !/^\.(?:claude|agents)\/skills\//.test(file)), ["SPEC.md", "vibestack/reference/typereferences.md", ".claude/settings.json", "AGENTS.md (Vibestack instructions)", "CLAUDE.md (imports AGENTS.md)",
       "tsconfig.json", "vitest.config.ts", "spec/index.md", ".gitignore", "package.json scripts: dev, check, gen, accept, build, test",
       `package.json VibeLang toolchain: ${[...runtime, ...tooling].join(", ")} (run your package manager's install)`, "package.json packageManager: pnpm@10.24.0", "package.json engines.node: >=26", 'package.json "type": "module"']);
     assert.deepEqual(json(fresh, "tsconfig.json"), {

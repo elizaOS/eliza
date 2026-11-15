@@ -244,7 +244,7 @@ its name.
 
 Read the [`typescript-best-practices` skill](.claude/skills/typescript-best-practices/SKILL.md)
 before reading or editing `.ts` or `.tsx` files. Adapt the
-[bundled examples](.claude/skills/typescript-best-practices/references/patterns.md)
+[TypeScript type reference](vibestack/reference/typereferences.md)
 to the repository's schema library. Validate that a duration is nonnegative
 when it represents an ordered range.
 

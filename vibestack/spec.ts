@@ -452,8 +452,12 @@ export function init(root: string, warn: (message: string) => void = (message) =
       done.push(`.agents/skills/${name}`);
     }
   }
-  // AGENTS.md links to it.
   add("SPEC.md", () => fs.readFileSync(path.join(pkg, "SPEC.md"), "utf8"));
+  const referenceDir = "vibestack/reference";
+  if (["vibestack", referenceDir].every((dir) => fs.lstatSync(path.join(root, dir), { throwIfNoEntry: false })?.isDirectory() ?? true)) {
+    const file = `${referenceDir}/typereferences.md`;
+    add(file, () => fs.readFileSync(path.join(pkg, file)));
+  }
   // The repository's own guard for what the tools write; the rules about this repository's tools stay behind.
   add(".claude/settings.json", () => {
     const { permissions } = JSON.parse(fs.readFileSync(path.join(pkg, ".claude/settings.json"), "utf8")) as { permissions: { deny: string[]; ask: string[] } };
