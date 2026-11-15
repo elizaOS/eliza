@@ -8,6 +8,13 @@ dist/
 _apalache-out/
 !/vibestack/gen/
 .claude/worktrees/
+/.codex/skills
+/.cursor/skills
+/.droid/skills
+/.factory/skills
+/.gemini/skills
+/.grok/skills
+/.t3/skills
 .turbo/
 .cache/
 generated/
