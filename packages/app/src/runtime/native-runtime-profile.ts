@@ -130,7 +130,6 @@ export function nativeRuntimeRoutingPreferences(
       ...current.preferredProvider,
       TEXT_SMALL: profile.textInference,
       TEXT_LARGE: profile.textInference,
-      ...(profile.id === "cloud" ? { IMAGE_DESCRIPTION: "elizaOSCloud" } : {}),
     },
     policy: {
       ...current.policy,
@@ -138,9 +137,6 @@ export function nativeRuntimeRoutingPreferences(
       TEXT_LARGE: "manual",
       TRANSCRIPTION: profile.agentSpeech,
       TEXT_TO_SPEECH: profile.agentSpeech,
-      ...(profile.id === "cloud"
-        ? { IMAGE_DESCRIPTION: "manual" as const }
-        : {}),
     },
   };
 }
@@ -350,7 +346,6 @@ export async function applyNativeDirectRuntimeProfile(
       // Cerebras uses the OpenAI-compatible plugin's registered provider ID.
       TEXT_SMALL: "openai",
       TEXT_LARGE: "openai",
-      ...(profile.id === "cloud" ? { IMAGE_DESCRIPTION: "openai" } : {}),
     },
     policy: {
       ...current.policy,
@@ -358,9 +353,6 @@ export async function applyNativeDirectRuntimeProfile(
       TEXT_LARGE: "manual",
       TRANSCRIPTION: "local-only",
       TEXT_TO_SPEECH: "local-only",
-      ...(profile.id === "cloud"
-        ? { IMAGE_DESCRIPTION: "manual" as const }
-        : {}),
     },
   }));
 }

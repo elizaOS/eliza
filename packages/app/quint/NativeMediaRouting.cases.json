@@ -2,6 +2,7 @@
   "sources": [
     "packages/app/src/runtime/native-runtime-profile.ts",
     "packages/app/src/runtime/native-runtime-profile.test.ts",
+    "plugins/plugin-native-inference/src/model-catalog/routing-preferences.ts",
     "packages/host/src/contracts/cloud-topology.ts",
     "plugins/plugin-elizacloud/src/index.ts",
     "plugins/plugin-elizacloud/__tests__/image-native-funding.http.test.ts"
