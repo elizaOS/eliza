@@ -1581,7 +1581,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.match(read("test/drivers/index.ts", missing), /^\/\/ The driver of spec\/index\.md[\s\S]*import type \{ Driver \} from "\.\.\/\.\.\/gen\/index\.conformance\.ts";[\s\S]*\/\/ begun\n$/);
   });
 
-  test("nothing stale survives in gen/", async () => {
+  test("nothing stale survives in gen/ or hides a renamed source", async () => {
     const root = copyOfProject();
     fs.mkdirSync(path.join(root, "gen"), { recursive: true });
     for (const stale of ["renamed.ts", "renamed.effect.vibe", "index.effect.vibe.pure.d.ts"]) fs.writeFileSync(path.join(root, "gen", stale), "export const stale = true;\n");
@@ -1589,6 +1589,14 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     // tsconfig.json keeps the compiler's declaration sidecars under .vibe/declarations/.
     assert.deepEqual(fs.readdirSync(path.join(root, "gen")).filter((f) => /\.(ts|vibe)$/.test(f)).sort(),
       ["_conformance.ts", "index.conformance.ts", "index.effect.vibe", "index.ts"]);
+    const sidecar = path.join(root, ".vibe/declarations/src/app.d.vibe.ts");
+    assert.ok(fs.existsSync(sidecar) && fs.existsSync(path.join(root, ".vibe/declarations/gen/index.effect.vibe.pure.d.ts")));
+    fs.renameSync(path.join(root, "src/app.vibe"), path.join(root, "src/renamed.vibe"));
+    const renamed = await check(root);
+    const types = renamed.results.find((r) => r.stage === "types")!;
+    assert.equal(types.ok, false, renamed.results.map(show).join("\n"));
+    assert.match(types.detail, /TS2307: Cannot find module ['"][^'"]*app\.vibe['"]/);
+    assert.ok(!fs.existsSync(sidecar));
   });
 
   test("a truncated cache entry is recomputed and generated modules run in a CommonJS project", async () => {

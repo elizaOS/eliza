@@ -38,6 +38,24 @@ export const filesUnder = (root: string, dir: string) => !fs.existsSync(path.joi
   : fs.readdirSync(path.join(root, dir), { recursive: true, withFileTypes: true }).filter((e) => e.isFile() || e.isSymbolicLink())
     .map((e) => path.relative(root, path.join(e.parentPath, e.name)).split(path.sep).join("/")).sort();
 
+const sidecarSource = /^(.*?)(?:\.vibex?\.[^./]+\.d\.ts|\.d\.vibex?\.tsx?|\.d\.ts)$/;
+
+export function pruneSidecars(dir: string) {
+  const { config } = ts.readConfigFile(path.join(dir, "tsconfig.json"), ts.sys.readFile);
+  const sidecarDir = config?.vibe?.sidecarDir;
+  if (typeof sidecarDir !== "string") return;
+  const sidecars = path.resolve(dir, sidecarDir);
+  for (const mirror of ts.parseJsonConfigFileContent(config, ts.sys, dir).options.rootDirs ?? []) {
+    const within = path.relative(sidecars, mirror);
+    if (within.startsWith("..") || path.isAbsolute(within)) continue;
+    const base = path.resolve(dir, ...within.split(path.sep).filter(Boolean).map(() => ".."));
+    for (const file of filesUnder(sidecars, "")) {
+      const stem = sidecarSource.exec(file)?.[1];
+      if (stem && ![".vibe", ".vibex"].some((ext) => fs.existsSync(path.join(base, stem + ext)))) fs.rmSync(path.join(sidecars, file), { force: true });
+    }
+  }
+}
+
 /** Resolve a project folder before a command reads or writes its files. */
 export function projectRoot(directory: string, base = process.cwd()): string {
   const root = path.resolve(base, directory);
