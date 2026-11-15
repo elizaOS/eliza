@@ -9,8 +9,8 @@
         "e3b0c44298fc"
       ],
       "Domain / Order": [
-        "9d6706e1f76c",
-        "8fd81fe95a77"
+        "76131a044474",
+        "5bb45a2b93ed"
       ],
       "Domain / Unit price and order size": [
         "081d3bb6430d",
@@ -19,7 +19,7 @@
       "Domain / An order holds between no units and the most it may hold": [
         "e3b0c44298fc",
         "2aeafadf5dcb",
-        "f0eeb179cbae"
+        "b218921cd6b1"
       ],
       "## Story: Fill a draft": [
         "039c3fd8b914"
@@ -27,158 +27,158 @@
       "Story: Fill a draft / A new order is an empty draft": [
         "e3b0c44298fc",
         "fcaa192ed2cd",
-        "30c94ef58160"
+        "60786b4cd473"
       ],
       "Story: Fill a draft / Items can only be added to a draft": [
-        "afe2cb7e3509",
-        "bbff76a289bd",
-        "f0eeb179cbae"
+        "a0b2d04beef5",
+        "593158287ade",
+        "b218921cd6b1"
       ],
       "Story: Fill a draft / The amount due is always the price of the units": [
         "e3b0c44298fc",
         "f6753e36ffd0",
-        "f0eeb179cbae"
+        "b218921cd6b1"
       ],
       "## Story: Check out": [
         "ec1ea9b24d7b"
       ],
       "Story: Check out / Only a non-empty draft can be submitted": [
         "55da230b8a2a",
-        "81eafea0a569",
-        "30c94ef58160"
+        "ca0d14b52b23",
+        "60786b4cd473"
       ],
       "Story: Check out / A submitted order keeps its units and its amount due until it is a draft again": [
         "e3b0c44298fc",
         "c6f6a271260d",
-        "30c94ef58160"
+        "60786b4cd473"
       ],
       "Story: Check out / A payment never exceeds the balance": [
         "abf1ae7b00df",
-        "c737523e5ef0",
-        "30c94ef58160"
+        "a306085cf4a9",
+        "60786b4cd473"
       ],
       "Story: Check out / The amount paid is never negative and never more than is due": [
         "e3b0c44298fc",
         "350b6e741fc2",
-        "30c94ef58160"
+        "60786b4cd473"
       ],
       "Story: Check out / A pending order still has a balance": [
         "e3b0c44298fc",
         "73220ebdc580",
-        "30c94ef58160"
+        "60786b4cd473"
       ],
       "Story: Check out / A paid order is paid in full, and something was owed on it": [
         "e3b0c44298fc",
         "a3ece0b8c407",
-        "30c94ef58160"
+        "60786b4cd473"
       ],
       "Story: Check out / An order can be paid off": [
         "e3b0c44298fc",
         "f666fb37c8b5",
-        "30c94ef58160"
+        "60786b4cd473"
       ],
       "Story: Check out / An order can be partly paid": [
         "e3b0c44298fc",
         "eeab816c4ae6",
-        "30c94ef58160"
+        "60786b4cd473"
       ],
       "## Story: Cancel": [
         "90e052b70a7c"
       ],
       "Story: Cancel / A pending order can be cancelled, refunding every payment": [
         "0b65f9715334",
-        "0051487844db",
-        "30c94ef58160"
+        "c228ee78782e",
+        "60786b4cd473"
       ],
       "Story: Cancel / Drafts and cancelled orders hold no money": [
         "90667f8b44b1",
         "41c345e7be97",
-        "30c94ef58160"
+        "60786b4cd473"
       ],
       "Story: Cancel / An order can be cancelled": [
         "e3b0c44298fc",
         "26f34c17c924",
-        "30c94ef58160"
+        "60786b4cd473"
       ],
       "## Story: Change my mind": [
         "b329814c2684"
       ],
       "Story: Change my mind / Items can be removed from a draft": [
         "0b7a75a10992",
-        "23dd47516ae7",
-        "ae121eb75846"
+        "07dbfa05f538",
+        "7fec1b7d69e3"
       ],
       "Story: Change my mind / No more can be removed than the order holds": [
         "30ac180c4a4b",
         "a5d2b385360a",
-        "30c94ef58160"
+        "60786b4cd473"
       ],
       "## Story: Reopen a cancelled order": [
         "7ac79a422402"
       ],
       "Story: Reopen a cancelled order / A cancelled order can be reopened as a draft": [
         "86a9cd7b8a2e",
-        "6d3bfe1c78c5",
-        "30c94ef58160"
+        "703eaa2997ec",
+        "60786b4cd473"
       ],
       "## Story: Take back a payment": [
         "7d1cf8e4adb9"
       ],
       "Story: Take back a payment / Some or all of what was paid on a pending order can be taken back": [
         "df9450cb4332",
-        "de8ae586606b",
-        "c51e3bc1a098"
+        "78606d7faa65",
+        "6aa26db01cfb"
       ],
       "Story: Take back a payment / No more can be taken back than was paid": [
         "e855cfe01313",
         "aaa433f0c9c6",
-        "30c94ef58160"
+        "60786b4cd473"
       ],
       "## Story: Start over": [
         "be6430b332bd"
       ],
       "Story: Start over / A draft that holds items can be emptied in one go": [
         "a814f1e472b6",
-        "759f2514d278",
-        "5c50a0f73fa6"
+        "d8e50da0872c",
+        "594da490430f"
       ],
       "## Story: Put an order on hold": [
         "a2d8bb5e7b28"
       ],
       "Story: Put an order on hold / Staff can put a pending order on hold and release it again": [
-        "3145f9e5c406",
-        "9330d8df7746",
-        "30c94ef58160"
+        "0a949f418eed",
+        "093ae2757fcd",
+        "60786b4cd473"
       ],
       "Story: Put an order on hold / An order can be put on hold": [
         "e3b0c44298fc",
         "1f28cb6c4e9f",
-        "30c94ef58160"
+        "60786b4cd473"
       ],
       "Story: Put an order on hold / Nothing paid on an order on hold changes: no payment is taken and none is given back": [
         "e3b0c44298fc",
         "cb645ca40a0d",
-        "30c94ef58160"
+        "60786b4cd473"
       ],
       "Story: Put an order on hold / An order on hold is not cancelled": [
         "e3b0c44298fc",
         "2b0fc5f16b2e",
-        "30c94ef58160"
+        "60786b4cd473"
       ],
       "Story: Put an order on hold / An order on hold is released": [
         "01716ddb5ce8",
         "36eeb8f37f73",
-        "30c94ef58160"
+        "60786b4cd473"
       ],
       "Story: Put an order on hold / An order on hold still has a balance": [
         "09af2cc06426",
         "7d1822c636b8",
-        "30c94ef58160"
+        "60786b4cd473"
       ]
     }
   },
   "contracts": {
-    "src/ledger.ts": "30b6581b2559"
+    "src/ledger.ts": "5c6b5bca9fec"
   },
   "unproved": {}
 }
