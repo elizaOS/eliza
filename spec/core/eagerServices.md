@@ -90,3 +90,12 @@ pure def sometimesSecondAttemptAfterDelay(s: EagerServices): bool = s.jobs.some(
 pure def sometimesStoppedDuringBackoff(s: EagerServices): bool = s.services.stopped and s.jobs.some(j => j.phase == EagerBackoff)
 pure def sometimesFourFailuresTerminate(s: EagerServices): bool = s.jobs.some(j => j.phase == EagerDone and j.failures == 4)
 ```
+
+### Each eager acquisition uses a call identity allocated once
+
+Every acquisition an eager job makes takes the next call identity, which is never handed out again, so two waiting jobs never observe the same acquisition result and a job's recorded call was allocated before it.
+
+```quint
+pure def alwaysEagerCallIdentitiesFresh(s: EagerServices): bool =
+  s.nextCall >= 1 and s.jobs.every(j => j.callId >= 0 and j.callId < s.nextCall and (j.phase == EagerWaiting implies (j.callId > 0 and s.jobs.every(other => other.id == j.id or other.callId != j.callId))))
+```

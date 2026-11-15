@@ -69,7 +69,7 @@ attempt. The policy receipt is diagnostic evidence for that admission.
 
 ```quint
 pure val exampleScope: AdmissionScope = {agent: "agent", room: "room", message: "message", stage: "response"}
-pure val exampleModel: ProcessingInput = {kind: ModelProcessing, scope: exampleScope, requestedModel: "TEXT_LARGE", resolvedModel: "TEXT_SMALL", modality: "text", provider: "alpha", handler: 1, attempt: 1, actionName: "", egressDeclared: false, egress: List(), priorFailure: ""}
+pure val exampleModel: ProcessingInput = {kind: ModelProcessing, scope: exampleScope, requestedModel: "TEXT_LARGE", resolvedModel: "TEXT_SMALL", modality: "text", provider: "p1", handler: 1, attempt: 1, actionName: "", egressDeclared: false, egress: List(), priorFailure: ""}
 pure val exampleAction: ProcessingInput = {kind: ActionProcessing, scope: exampleScope, requestedModel: "", resolvedModel: "", modality: "", provider: "", handler: 0, attempt: 0, actionName: "WRITE", egressDeclared: true, egress: List(), priorFailure: ""}
 pure val inputValues = Set(exampleModel, { ...exampleModel, modality: "" }, { ...exampleModel, attempt: 2, priorFailure: "provider-error" }, exampleAction, { ...exampleAction, egressDeclared: false }, { ...exampleAction, egress: List("workspace") })
 pure val allowedOutput: PolicyOutput = {available: true, shapeValid: true, allow: true, receipt: "admitted", revision: "policy-1", revisionPresent: true, code: "", failure: ""}

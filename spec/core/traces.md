@@ -12,8 +12,7 @@ An active ID identifies one trace across every run. Viewing one run filters
 the same ordered collection. Updating an existing trace or its score
 signals keeps its position. A new ID is appended and a purged ID can be
 recorded again at the new end. The captured signal and composite-score inputs
-stay attached to the selected trace. Composite score calculation follows
-the [score card model](./scoreCard.md).
+stay attached to the selected trace.
 
 ```quint
 type Trace = {id: str, runId: str, createdAt: int, signals: List[str], enrichedAt: int}

@@ -1,6 +1,11 @@
 lemma dispatchHandoff_ensures(s: Navigation, id: string, handledByShell: bool, handlerNavigates: bool, pathAfterHandler: string)
   ensures (inv(s) ==> alwaysBoundedNavigationIndexes(dispatchHandoff(s, id, handledByShell, handlerNavigates, pathAfterHandler)))
   ensures (inv(s) ==> alwaysUniqueNavigationIndexes(dispatchHandoff(s, id, handledByShell, handlerNavigates, pathAfterHandler)))
+  ensures (inv(s) ==> alwaysViewClaimsNumbered(dispatchHandoff(s, id, handledByShell, handlerNavigates, pathAfterHandler)))
+  ensures (inv(s) ==> alwaysViewQueueDistinct(dispatchHandoff(s, id, handledByShell, handlerNavigates, pathAfterHandler)))
+  ensures (inv(s) ==> alwaysViewQueueBounded(dispatchHandoff(s, id, handledByShell, handlerNavigates, pathAfterHandler)))
+  ensures (inv(s) ==> alwaysViewClaimResolvedOnce(dispatchHandoff(s, id, handledByShell, handlerNavigates, pathAfterHandler)))
+  ensures (inv(s) ==> alwaysQueuedViewRequestsWait(dispatchHandoff(s, id, handledByShell, handlerNavigates, pathAfterHandler)))
 {
   if inv(s) {
     var prior := pendingAt(s, id);
@@ -14,6 +19,7 @@ lemma dispatchHandoff_ensures(s: Navigation, id: string, handledByShell: bool, h
       if handledByShell { NavigationHandle(delivered, id); }
       else if prior.id == "" { NavigationRemember(delivered, PendingHandoff(id, s.epoch, s.path)); }
     }
+    assert dispatchHandoff(s, id, handledByShell, handlerNavigates, pathAfterHandler).views == s.views;
   }
 }
 

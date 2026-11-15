@@ -165,10 +165,14 @@
     },
     {
       "source": "packages/core/src/action-names.ts",
-      "spec": "spec/core/protocols.md",
+      "spec": "spec/core/actionPlanning.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "Action names are unique in the registry",
+        "Only a registered action with valid arguments and a permitted role is invoked",
+        "Arguments are validated before invocation",
+        "A subaction stays within its parent's authority",
+        "A parent settles only after its subactions",
+        "A planned call settles once"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "d290fd9a4430e0a3086a8b1a4e6213ce0b6e1fc03a4e3e0981616b7fd66ea7c7",
@@ -181,10 +185,14 @@
     },
     {
       "source": "packages/core/src/action-parameter-value.ts",
-      "spec": "spec/core/protocols.md",
+      "spec": "spec/core/actionPlanning.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "Action names are unique in the registry",
+        "Only a registered action with valid arguments and a permitted role is invoked",
+        "Arguments are validated before invocation",
+        "A subaction stays within its parent's authority",
+        "A parent settles only after its subactions",
+        "A planned call settles once"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "c820dd6dd5a8896c25f1c93e227903ce4877c9c7080f190473e513760d5f9075",
@@ -194,12 +202,14 @@
     },
     {
       "source": "packages/core/src/actions.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/actionPlanning.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Action names are unique in the registry",
+        "Only a registered action with valid arguments and a permitted role is invoked",
+        "Arguments are validated before invocation",
+        "A subaction stays within its parent's authority",
+        "A parent settles only after its subactions",
+        "A planned call settles once"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "af07bc629dd2aa3293bab693a299ad751bfbf8dfa81a980540cc3f65327ca746",
@@ -209,12 +219,14 @@
     },
     {
       "source": "packages/core/src/actions/action-schema.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/actionPlanning.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Action names are unique in the registry",
+        "Only a registered action with valid arguments and a permitted role is invoked",
+        "Arguments are validated before invocation",
+        "A subaction stays within its parent's authority",
+        "A parent settles only after its subactions",
+        "A planned call settles once"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "eb4ebc431864bc0c3d5e92ce764d2e61f841680a993c1c39acf1da9d1cce3b69",
@@ -230,7 +242,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -245,7 +257,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -257,12 +269,14 @@
     },
     {
       "source": "packages/core/src/actions/promote-subactions.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/actionPlanning.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Action names are unique in the registry",
+        "Only a registered action with valid arguments and a permitted role is invoked",
+        "Arguments are validated before invocation",
+        "A subaction stays within its parent's authority",
+        "A parent settles only after its subactions",
+        "A planned call settles once"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "2c9f7ed7aabd09ca5409e7a9bcab44dfeb5c2ec46aa21660dbbc4e73d63faf92",
@@ -278,7 +292,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -290,12 +304,14 @@
     },
     {
       "source": "packages/core/src/actions/resolve-action-args.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/actionPlanning.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Action names are unique in the registry",
+        "Only a registered action with valid arguments and a permitted role is invoked",
+        "Arguments are validated before invocation",
+        "A subaction stays within its parent's authority",
+        "A parent settles only after its subactions",
+        "A planned call settles once"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "a370814e9e826686ae0735edae2dbca3c11a33731797565ed72b7c91ffffd9bd",
@@ -305,12 +321,14 @@
     },
     {
       "source": "packages/core/src/actions/subaction-dispatch.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/actionPlanning.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Action names are unique in the registry",
+        "Only a registered action with valid arguments and a permitted role is invoked",
+        "Arguments are validated before invocation",
+        "A subaction stays within its parent's authority",
+        "A parent settles only after its subactions",
+        "A planned call settles once"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "f495abc6b21c5d4ee3ad3c0f7cec9b5d60131eb95d3d1a400a5be9ea974c78d2",
@@ -344,12 +362,14 @@
     },
     {
       "source": "packages/core/src/actions/to-tool.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/actionPlanning.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Action names are unique in the registry",
+        "Only a registered action with valid arguments and a permitted role is invoked",
+        "Arguments are validated before invocation",
+        "A subaction stays within its parent's authority",
+        "A parent settles only after its subactions",
+        "A planned call settles once"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "cb22f8a5bead3cefd795162cfe42711b89ec79727686eb8a104ebc8781f01ac9",
@@ -362,12 +382,14 @@
     },
     {
       "source": "packages/core/src/actions/validate-tool-args.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/actionPlanning.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Action names are unique in the registry",
+        "Only a registered action with valid arguments and a permitted role is invoked",
+        "Arguments are validated before invocation",
+        "A subaction stays within its parent's authority",
+        "A parent settles only after its subactions",
+        "A planned call settles once"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "1cb66885684c94abcbdd4f0d65aea3ddfd6fcd3b5ae0dffb45262c882c41be34",
@@ -380,12 +402,14 @@
     },
     {
       "source": "packages/core/src/actions/validation.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/actionPlanning.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Action names are unique in the registry",
+        "Only a registered action with valid arguments and a permitted role is invoked",
+        "Arguments are validated before invocation",
+        "A subaction stays within its parent's authority",
+        "A parent settles only after its subactions",
+        "A planned call settles once"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "6f192e4370f2de79585b158729e1a9339f9f3cd54e07dc90e71a08251d0c9b8b",
@@ -495,12 +519,13 @@
     },
     {
       "source": "packages/core/src/capabilities/account-selection.ts",
-      "spec": "spec/core/providers.md",
+      "spec": "spec/core/capabilityRouting.md",
       "rules": [
-        "A keyed execution admits distinct callers while it remains wanted",
-        "Cancellation of the final waiter aborts its work",
-        "Cleanup never clears a newer keyed execution",
-        "Stopped and settled provider work eventually releases its callers"
+        "A request runs on at most one runner, chosen once",
+        "A request uses only a connected account the agent holds",
+        "A pinned account is honored exactly or the request fails",
+        "Without a pin the cheapest eligible account is chosen",
+        "A failed request carries a typed failure"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "96921897f4cf3876b030e61393c129cf04e4a49f3be903e4d06d395622cc7b7c",
@@ -513,12 +538,13 @@
     },
     {
       "source": "packages/core/src/capabilities/decoder.ts",
-      "spec": "spec/core/providers.md",
+      "spec": "spec/core/capabilityRouting.md",
       "rules": [
-        "A keyed execution admits distinct callers while it remains wanted",
-        "Cancellation of the final waiter aborts its work",
-        "Cleanup never clears a newer keyed execution",
-        "Stopped and settled provider work eventually releases its callers"
+        "A request runs on at most one runner, chosen once",
+        "A request uses only a connected account the agent holds",
+        "A pinned account is honored exactly or the request fails",
+        "Without a pin the cheapest eligible account is chosen",
+        "A failed request carries a typed failure"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "d70f4deb0cfb6ff66ddcb3e619bde32085feb2ae16318e299faed247fee82aad",
@@ -531,12 +557,13 @@
     },
     {
       "source": "packages/core/src/capabilities/protocol.ts",
-      "spec": "spec/core/providers.md",
+      "spec": "spec/core/capabilityRouting.md",
       "rules": [
-        "A keyed execution admits distinct callers while it remains wanted",
-        "Cancellation of the final waiter aborts its work",
-        "Cleanup never clears a newer keyed execution",
-        "Stopped and settled provider work eventually releases its callers"
+        "A request runs on at most one runner, chosen once",
+        "A request uses only a connected account the agent holds",
+        "A pinned account is honored exactly or the request fails",
+        "Without a pin the cheapest eligible account is chosen",
+        "A failed request carries a typed failure"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "b19e6897ed405c0185c83db11dda634e60f461e754fcff17347d75a17af7f953",
@@ -549,12 +576,13 @@
     },
     {
       "source": "packages/core/src/capabilities/remote-runner.ts",
-      "spec": "spec/core/providers.md",
+      "spec": "spec/core/capabilityRouting.md",
       "rules": [
-        "A keyed execution admits distinct callers while it remains wanted",
-        "Cancellation of the final waiter aborts its work",
-        "Cleanup never clears a newer keyed execution",
-        "Stopped and settled provider work eventually releases its callers"
+        "A request runs on at most one runner, chosen once",
+        "A request uses only a connected account the agent holds",
+        "A pinned account is honored exactly or the request fails",
+        "Without a pin the cheapest eligible account is chosen",
+        "A failed request carries a typed failure"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "70d1a2de5f80803c12ba14aebc53b80680ddc19f5ffcc17c1b9016e829735eab",
@@ -564,12 +592,11 @@
     },
     {
       "source": "packages/core/src/capabilities/retrieval.ts",
-      "spec": "spec/core/providers.md",
+      "spec": "spec/core/retrieval.md",
       "rules": [
-        "A keyed execution admits distinct callers while it remains wanted",
-        "Cancellation of the final waiter aborts its work",
-        "Cleanup never clears a newer keyed execution",
-        "Stopped and settled provider work eventually releases its callers"
+        "Ranking is a total order, so the same candidates always rank the same",
+        "A non-positive limit returns nothing",
+        "Nothing outside the caller's memory scope is returned"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "858a93a902edcc73d4afc00950845f998d073067d10e9cbcd9f4937fbc81c54a",
@@ -579,12 +606,13 @@
     },
     {
       "source": "packages/core/src/capabilities/router.ts",
-      "spec": "spec/core/providers.md",
+      "spec": "spec/core/capabilityRouting.md",
       "rules": [
-        "A keyed execution admits distinct callers while it remains wanted",
-        "Cancellation of the final waiter aborts its work",
-        "Cleanup never clears a newer keyed execution",
-        "Stopped and settled provider work eventually releases its callers"
+        "A request runs on at most one runner, chosen once",
+        "A request uses only a connected account the agent holds",
+        "A pinned account is honored exactly or the request fails",
+        "Without a pin the cheapest eligible account is chosen",
+        "A failed request carries a typed failure"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "c0ccf442f898170a88d11853040b5083d055c15f92cc3fedff296d11902c8fa3",
@@ -597,10 +625,13 @@
     },
     {
       "source": "packages/core/src/capability-catalog.ts",
-      "spec": "spec/core/protocols.md",
+      "spec": "spec/core/capabilityRouting.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A request runs on at most one runner, chosen once",
+        "A request uses only a connected account the agent holds",
+        "A pinned account is honored exactly or the request fails",
+        "Without a pin the cheapest eligible account is chosen",
+        "A failed request carries a typed failure"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "c7ce26b6125cec5a13d34eff31fb13198fd6870321c3be1886f9175485349234",
@@ -609,22 +640,6 @@
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
         "spec/core/protocols.md"
-      ]
-    },
-    {
-      "source": "packages/core/src/catalog/apps.ts",
-      "spec": "spec/core/catalog.md",
-      "rules": [
-        "A valid runtime registration overrides its id and invalidates cached indexes",
-        "Legacy connector authentication fills only the missing agent account"
-      ],
-      "classification": "documented-function-contracts-and-source-branches",
-      "sourceSha256": "86ebba190ef73f7c51d9f37ad6cd17422c3b3e133138df8452c2d1a5756ed5c5",
-      "sourceContractKind": "behavioral-module",
-      "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/catalog/apps.ts",
-      "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/curatedApps.md"
       ]
     },
     {
@@ -638,123 +653,6 @@
       "sourceSha256": "95d72e42894ba039f6e2c44e91ab2d98c0eea29257acc48602913843121da209",
       "sourceContractKind": "static-data",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/catalog/channel-plugin-map.json",
-      "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries."
-    },
-    {
-      "source": "packages/core/src/catalog/curated-app-definitions.json",
-      "spec": "spec/core/catalog.md",
-      "rules": [
-        "A valid runtime registration overrides its id and invalidates cached indexes",
-        "Legacy connector authentication fills only the missing agent account"
-      ],
-      "classification": "exact-declaration-or-data-contract",
-      "sourceSha256": "506a34a353b813dd5de6510fc65c5dbc8b5e2826093b0cdb65179f1e09c36d2b",
-      "sourceContractKind": "static-data",
-      "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/catalog/curated-app-definitions.json",
-      "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries."
-    },
-    {
-      "source": "packages/core/src/catalog/curated/apps/database-viewer.json",
-      "spec": "spec/core/catalog.md",
-      "rules": [
-        "A valid runtime registration overrides its id and invalidates cached indexes",
-        "Legacy connector authentication fills only the missing agent account"
-      ],
-      "classification": "exact-declaration-or-data-contract",
-      "sourceSha256": "5cb77074d5192efe31cd85103aba04608d92e8edf965ee0def4c3dd5014f1fef",
-      "sourceContractKind": "static-data",
-      "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/catalog/curated/apps/database-viewer.json",
-      "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries."
-    },
-    {
-      "source": "packages/core/src/catalog/curated/apps/log-viewer.json",
-      "spec": "spec/core/catalog.md",
-      "rules": [
-        "A valid runtime registration overrides its id and invalidates cached indexes",
-        "Legacy connector authentication fills only the missing agent account"
-      ],
-      "classification": "exact-declaration-or-data-contract",
-      "sourceSha256": "24cc1b8b6e9623edf4bfe0fb9d85e5cc7453bbdf3f4d39ca338b08243ed0635e",
-      "sourceContractKind": "static-data",
-      "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/catalog/curated/apps/log-viewer.json",
-      "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries."
-    },
-    {
-      "source": "packages/core/src/catalog/curated/apps/memory-viewer.json",
-      "spec": "spec/core/catalog.md",
-      "rules": [
-        "A valid runtime registration overrides its id and invalidates cached indexes",
-        "Legacy connector authentication fills only the missing agent account"
-      ],
-      "classification": "exact-declaration-or-data-contract",
-      "sourceSha256": "d964f3291966877d65dd637cba96d072dbb837e79799251027784031193c3f72",
-      "sourceContractKind": "static-data",
-      "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/catalog/curated/apps/memory-viewer.json",
-      "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries."
-    },
-    {
-      "source": "packages/core/src/catalog/curated/apps/plugin-viewer.json",
-      "spec": "spec/core/catalog.md",
-      "rules": [
-        "A valid runtime registration overrides its id and invalidates cached indexes",
-        "Legacy connector authentication fills only the missing agent account"
-      ],
-      "classification": "exact-declaration-or-data-contract",
-      "sourceSha256": "10ccd66a678298b6c296f7999d71118158ee8497b00a5c093faf13b6d26a3c04",
-      "sourceContractKind": "static-data",
-      "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/catalog/curated/apps/plugin-viewer.json",
-      "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries."
-    },
-    {
-      "source": "packages/core/src/catalog/curated/apps/relationship-viewer.json",
-      "spec": "spec/core/catalog.md",
-      "rules": [
-        "A valid runtime registration overrides its id and invalidates cached indexes",
-        "Legacy connector authentication fills only the missing agent account"
-      ],
-      "classification": "exact-declaration-or-data-contract",
-      "sourceSha256": "4cee45393a64aa37c5b29b477349fa820945398a1d6e9c4abfa3fc96da8b6743",
-      "sourceContractKind": "static-data",
-      "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/catalog/curated/apps/relationship-viewer.json",
-      "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries."
-    },
-    {
-      "source": "packages/core/src/catalog/curated/apps/runtime-debugger.json",
-      "spec": "spec/core/catalog.md",
-      "rules": [
-        "A valid runtime registration overrides its id and invalidates cached indexes",
-        "Legacy connector authentication fills only the missing agent account"
-      ],
-      "classification": "exact-declaration-or-data-contract",
-      "sourceSha256": "0e205deab19462c41f2524be04227ab55a3d6bbca3287c1bd0524488679a4519",
-      "sourceContractKind": "static-data",
-      "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/catalog/curated/apps/runtime-debugger.json",
-      "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries."
-    },
-    {
-      "source": "packages/core/src/catalog/curated/apps/skills-viewer.json",
-      "spec": "spec/core/catalog.md",
-      "rules": [
-        "A valid runtime registration overrides its id and invalidates cached indexes",
-        "Legacy connector authentication fills only the missing agent account"
-      ],
-      "classification": "exact-declaration-or-data-contract",
-      "sourceSha256": "e1ca6cb983bca259755038574b1db6d7da8d8adc412c8a14b15a195246ea637d",
-      "sourceContractKind": "static-data",
-      "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/catalog/curated/apps/skills-viewer.json",
-      "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries."
-    },
-    {
-      "source": "packages/core/src/catalog/curated/apps/trajectory-viewer.json",
-      "spec": "spec/core/catalog.md",
-      "rules": [
-        "A valid runtime registration overrides its id and invalidates cached indexes",
-        "Legacy connector authentication fills only the missing agent account"
-      ],
-      "classification": "exact-declaration-or-data-contract",
-      "sourceSha256": "817c4582be7bf6d58de3306514a304d2cfbceb30cc3396e618efa710743e9321",
-      "sourceContractKind": "static-data",
-      "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/catalog/curated/apps/trajectory-viewer.json",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries."
     },
     {
@@ -1304,10 +1202,11 @@
     },
     {
       "source": "packages/core/src/connector-account-catalog.ts",
-      "spec": "spec/core/protocols.md",
+      "spec": "spec/core/connectorAccounts.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "Each provider identity is one account",
+        "Removing an account revokes it and deletes its credentials",
+        "Moving to durable storage preserves every account and credential"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "e0469eeaee961947683e20e14663be63dff6d8d6be38a4a232d8e66ba84f2b55",
@@ -1320,10 +1219,11 @@
     },
     {
       "source": "packages/core/src/connectors.ts",
-      "spec": "spec/core/protocols.md",
+      "spec": "spec/core/connectorAccounts.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "Each provider identity is one account",
+        "Removing an account revokes it and deletes its credentials",
+        "Moving to durable storage preserves every account and credential"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "aa31c545c7464a84e37f62dc7e8611cdcdf74a93915ddcc2c933935198f04a01",
@@ -2208,10 +2108,11 @@
     },
     {
       "source": "packages/core/src/mobile-device-bridge-service.ts",
-      "spec": "spec/core/protocols.md",
+      "spec": "spec/core/deviceBridge.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A call is sent only to a connected device that declared its capability",
+        "Disconnecting a device fails every call still waiting on it",
+        "A call settles once"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "d54e22383e51d4357369c65837b876975232d81cf0aa2a731b9c60ce8bb77a40",
@@ -2220,24 +2121,6 @@
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
         "spec/core/protocols.md"
-      ]
-    },
-    {
-      "source": "packages/core/src/model-gateway.ts",
-      "spec": "spec/core/models.md",
-      "rules": [
-        "Admission checks the complete request without changing its source bytes",
-        "Eligible text failures advance only to registrations with remaining budget",
-        "Cancellation follows turn identity and blocks fallback",
-        "An aborted active dispatch eventually settles as cancelled"
-      ],
-      "classification": "documented-function-contracts-and-source-branches",
-      "sourceSha256": "023e6acd664a6c39222c92966c96cb46af5c74da664a91ba71e573da4a16fd14",
-      "sourceContractKind": "behavioral-module",
-      "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/model-gateway.ts",
-      "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/models.md"
       ]
     },
     {
@@ -2303,11 +2186,13 @@
     },
     {
       "source": "packages/core/src/network/ssrf.ts",
-      "spec": "spec/core/media.md",
+      "spec": "spec/core/security.md",
       "rules": [
-        "Fetching requires a screened endpoint and finishing requires complete bounded bytes",
-        "Transport host spelling preserves DNS and IP certificate semantics",
-        "Specific sniffed types win and generic containers defer to a known extension"
+        "A blocked address is never fetched",
+        "A spawned process never inherits a blocked environment key",
+        "A process-only key never comes from configuration",
+        "A secret never appears in a log line",
+        "Outbound text carrying the content envelope is blocked"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "c31dcc618240379742f9a589251c4cd4bc80cbcd3e17df55d0141a71bd0a9244",
@@ -2368,24 +2253,6 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/plugin.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries."
-    },
-    {
-      "source": "packages/core/src/prompt-optimization.ts",
-      "spec": "spec/core/models.md",
-      "rules": [
-        "Admission checks the complete request without changing its source bytes",
-        "Eligible text failures advance only to registrations with remaining budget",
-        "Cancellation follows turn identity and blocks fallback",
-        "An aborted active dispatch eventually settles as cancelled"
-      ],
-      "classification": "documented-function-contracts-and-source-branches",
-      "sourceSha256": "c40d46f3396f9cc37865fd1d8616b6e413721f0a3099eb255d830c9f85ef1564",
-      "sourceContractKind": "behavioral-module",
-      "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/prompt-optimization.ts",
-      "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/scoreCard.md"
-      ]
     },
     {
       "source": "packages/core/src/protocol.ts",
@@ -2460,12 +2327,11 @@
     },
     {
       "source": "packages/core/src/retrieval.ts",
-      "spec": "spec/core/providers.md",
+      "spec": "spec/core/retrieval.md",
       "rules": [
-        "A keyed execution admits distinct callers while it remains wanted",
-        "Cancellation of the final waiter aborts its work",
-        "Cleanup never clears a newer keyed execution",
-        "Stopped and settled provider work eventually releases its callers"
+        "Ranking is a total order, so the same candidates always rank the same",
+        "A non-positive limit returns nothing",
+        "Nothing outside the caller's memory scope is returned"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "8784f7c8efead268d0f0a4f654bebead6ecaaf5562703fe85b2abf6475d300aa",
@@ -2537,7 +2403,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2549,12 +2415,14 @@
     },
     {
       "source": "packages/core/src/runtime/action-gate.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/actionPlanning.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Action names are unique in the registry",
+        "Only a registered action with valid arguments and a permitted role is invoked",
+        "Arguments are validated before invocation",
+        "A subaction stays within its parent's authority",
+        "A parent settles only after its subactions",
+        "A planned call settles once"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "eb373c3df5747b779f11024a03e6f6a61a7d3d1f7334dd8b14d36dee370d08d0",
@@ -2570,7 +2438,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2585,7 +2453,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2600,12 +2468,14 @@
     },
     {
       "source": "packages/core/src/runtime/action-role-policy.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/actionPlanning.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Action names are unique in the registry",
+        "Only a registered action with valid arguments and a permitted role is invoked",
+        "Arguments are validated before invocation",
+        "A subaction stays within its parent's authority",
+        "A parent settles only after its subactions",
+        "A planned call settles once"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "ce1db3fd69f58e36a0eb8fa2c3e76d297f467b97610e0176145156cfe694d705",
@@ -2621,7 +2491,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2636,12 +2506,14 @@
     },
     {
       "source": "packages/core/src/runtime/action-wildcard-glob.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/actionPlanning.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Action names are unique in the registry",
+        "Only a registered action with valid arguments and a permitted role is invoked",
+        "Arguments are validated before invocation",
+        "A subaction stays within its parent's authority",
+        "A parent settles only after its subactions",
+        "A planned call settles once"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "0f0c218310bd185ba70d81007783901058bee186667b5da542179c74e3ed3c30",
@@ -2651,12 +2523,10 @@
     },
     {
       "source": "packages/core/src/runtime/active-prompt-traces.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/traces.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Recording preserves the insertion position of a replacement in its run",
+        "Expired trace progress follows the observed wall clock"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "cba59c217657a8a8107772461fc07063532e3f51103a07d2505646a5a766dced",
@@ -2669,12 +2539,14 @@
     },
     {
       "source": "packages/core/src/runtime/candidate-action-backstop.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/actionPlanning.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Action names are unique in the registry",
+        "Only a registered action with valid arguments and a permitted role is invoked",
+        "Arguments are validated before invocation",
+        "A subaction stays within its parent's authority",
+        "A parent settles only after its subactions",
+        "A planned call settles once"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "5cb914f6d6bd4eb6eb982027fc610d1671f9ac00f6e5bcdd20d59731ce082da2",
@@ -2690,7 +2562,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2705,12 +2577,12 @@
     },
     {
       "source": "packages/core/src/runtime/completion-context.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/stateComposition.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Providers compose in their declared order",
+        "A composition includes exactly the providers whose gate admits the caller",
+        "The cache key is reused exactly when the composed context is unchanged",
+        "A request never exceeds its input budget"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "0458b7967f08fb6593853a48f227982a91735df93a05228d2db355a750feece4",
@@ -2726,7 +2598,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2741,7 +2613,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2759,7 +2631,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2771,12 +2643,12 @@
     },
     {
       "source": "packages/core/src/runtime/context-gates.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/stateComposition.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Providers compose in their declared order",
+        "A composition includes exactly the providers whose gate admits the caller",
+        "The cache key is reused exactly when the composed context is unchanged",
+        "A request never exceeds its input budget"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "79ac8df6ae92ccaba2ea83338fa1c1294f0c5dafd4f2146321e295a0e97d855d",
@@ -2786,12 +2658,12 @@
     },
     {
       "source": "packages/core/src/runtime/context-hash.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/stateComposition.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Providers compose in their declared order",
+        "A composition includes exactly the providers whose gate admits the caller",
+        "The cache key is reused exactly when the composed context is unchanged",
+        "A request never exceeds its input budget"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "4c2c1c510ef39960fee50b6c31e4035e461dc03f3ed8021e866572c3deb4d510",
@@ -2801,12 +2673,12 @@
     },
     {
       "source": "packages/core/src/runtime/context-normalization.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/stateComposition.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Providers compose in their declared order",
+        "A composition includes exactly the providers whose gate admits the caller",
+        "The cache key is reused exactly when the composed context is unchanged",
+        "A request never exceeds its input budget"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "67516b9adb10d0068dde77879f25632742126f1ad1750f8a1a0ec94c1046dcc5",
@@ -2819,12 +2691,12 @@
     },
     {
       "source": "packages/core/src/runtime/context-object.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/stateComposition.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Providers compose in their declared order",
+        "A composition includes exactly the providers whose gate admits the caller",
+        "The cache key is reused exactly when the composed context is unchanged",
+        "A request never exceeds its input budget"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "07dd01f7e7509416ce76c04aa57a35484f762b708e508533b68baf4fc0889b65",
@@ -2853,12 +2725,12 @@
     },
     {
       "source": "packages/core/src/runtime/context-renderer.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/stateComposition.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Providers compose in their declared order",
+        "A composition includes exactly the providers whose gate admits the caller",
+        "The cache key is reused exactly when the composed context is unchanged",
+        "A request never exceeds its input budget"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "57e9a76a655282b63e9ff8aa79caa7a4ad73ddd0112683bf45b4a7c771d449b5",
@@ -2874,7 +2746,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2889,12 +2761,14 @@
     },
     {
       "source": "packages/core/src/runtime/direct-action-routing.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/actionPlanning.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Action names are unique in the registry",
+        "Only a registered action with valid arguments and a permitted role is invoked",
+        "Arguments are validated before invocation",
+        "A subaction stays within its parent's authority",
+        "A parent settles only after its subactions",
+        "A planned call settles once"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "a71c0eb2a09f9fec9b5ddbd376d0ec2be42379121b7f1c38643d7ae61ce86297",
@@ -2910,7 +2784,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2928,7 +2802,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2944,12 +2818,14 @@
     },
     {
       "source": "packages/core/src/runtime/execute-planned-tool-call.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/actionPlanning.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Action names are unique in the registry",
+        "Only a registered action with valid arguments and a permitted role is invoked",
+        "Arguments are validated before invocation",
+        "A subaction stays within its parent's authority",
+        "A parent settles only after its subactions",
+        "A planned call settles once"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "90ca22198bbbbb538e9e233a97f11531541393481ad8a1df4fcee566b79878c8",
@@ -2965,7 +2841,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2980,7 +2856,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2998,7 +2874,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3016,7 +2892,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3034,7 +2910,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3049,12 +2925,12 @@
     },
     {
       "source": "packages/core/src/runtime/localized-examples-provider.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/stateComposition.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Providers compose in their declared order",
+        "A composition includes exactly the providers whose gate admits the caller",
+        "The cache key is reused exactly when the composed context is unchanged",
+        "A request never exceeds its input budget"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "879b90e3ba93c8f141d2aa024189def188a8bf57a5f14a29bbc1879d5eeb9e13",
@@ -3070,7 +2946,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3104,7 +2980,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3119,12 +2995,12 @@
     },
     {
       "source": "packages/core/src/runtime/model-input-budget.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/stateComposition.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Providers compose in their declared order",
+        "A composition includes exactly the providers whose gate admits the caller",
+        "The cache key is reused exactly when the composed context is unchanged",
+        "A request never exceeds its input budget"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "2fa3b6c59d6e7f78a6a7f45733e16f22ae5023fe35a40e77bcf3ced0d4c988b8",
@@ -3137,7 +3013,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3155,7 +3031,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3173,7 +3049,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3185,12 +3061,14 @@
     },
     {
       "source": "packages/core/src/runtime/owner-tool-execution-observer.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/actionPlanning.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Action names are unique in the registry",
+        "Only a registered action with valid arguments and a permitted role is invoked",
+        "Arguments are validated before invocation",
+        "A subaction stays within its parent's authority",
+        "A parent settles only after its subactions",
+        "A planned call settles once"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "73efb27fe8646d8971ee3de14d74e7bd49ec9cc5d04b3ef7d4482a038aa12e4a",
@@ -3206,7 +3084,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3221,12 +3099,14 @@
     },
     {
       "source": "packages/core/src/runtime/planner-types.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/actionPlanning.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Action names are unique in the registry",
+        "Only a registered action with valid arguments and a permitted role is invoked",
+        "Arguments are validated before invocation",
+        "A subaction stays within its parent's authority",
+        "A parent settles only after its subactions",
+        "A planned call settles once"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "d7333e7e8e026cc9f56b022d4d9a6ba27f6ef2298c823fdfe7dffaf651453102",
@@ -3262,12 +3142,12 @@
     },
     {
       "source": "packages/core/src/runtime/provider-context.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/stateComposition.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Providers compose in their declared order",
+        "A composition includes exactly the providers whose gate admits the caller",
+        "The cache key is reused exactly when the composed context is unchanged",
+        "A request never exceeds its input budget"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "126a61c9fe28d6113e401de62d35a8be58f6e908592ca2e81c6bbbdf0675b894",
@@ -3298,12 +3178,12 @@
     },
     {
       "source": "packages/core/src/runtime/recent-errors-provider.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/stateComposition.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Providers compose in their declared order",
+        "A composition includes exactly the providers whose gate admits the caller",
+        "The cache key is reused exactly when the composed context is unchanged",
+        "A request never exceeds its input budget"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "fadbe467ddbfcbb1d8e3e18cebb2821867d2e86b3a4dbf565b24e867da4f0974",
@@ -3319,7 +3199,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3385,7 +3265,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3403,7 +3283,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3421,7 +3301,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3462,12 +3342,12 @@
     },
     {
       "source": "packages/core/src/runtime/session-provider.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/stateComposition.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Providers compose in their declared order",
+        "A composition includes exactly the providers whose gate admits the caller",
+        "The cache key is reused exactly when the composed context is unchanged",
+        "A request never exceeds its input budget"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "d77115d0f34d558e81567da444bc5abed8cd53b17e2fa07570fe3e9d32e1bc62",
@@ -3494,12 +3374,12 @@
     },
     {
       "source": "packages/core/src/runtime/state-composition.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/stateComposition.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Providers compose in their declared order",
+        "A composition includes exactly the providers whose gate admits the caller",
+        "The cache key is reused exactly when the composed context is unchanged",
+        "A request never exceeds its input budget"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "ca237b30636b17a31082a5afe704485847b41b9423ceb4c3350bff77be4b809d",
@@ -3512,12 +3392,12 @@
     },
     {
       "source": "packages/core/src/runtime/system-prompt.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/stateComposition.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Providers compose in their declared order",
+        "A composition includes exactly the providers whose gate admits the caller",
+        "The cache key is reused exactly when the composed context is unchanged",
+        "A request never exceeds its input budget"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "157735b0eff9675921ce5b84a74e3a2856ea92c25fd20f353bff7fafe396bb69",
@@ -3527,12 +3407,14 @@
     },
     {
       "source": "packages/core/src/runtime/tool-arg-aliases.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/actionPlanning.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Action names are unique in the registry",
+        "Only a registered action with valid arguments and a permitted role is invoked",
+        "Arguments are validated before invocation",
+        "A subaction stays within its parent's authority",
+        "A parent settles only after its subactions",
+        "A planned call settles once"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "76119d22fb2c12ceab324703d0a3c923a56a7de5589f7a40e837dbd6420a2867",
@@ -3545,12 +3427,15 @@
     },
     {
       "source": "packages/core/src/runtime/trace-correlation.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/trajectories.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "A trajectory starts only while persistence is enabled",
+        "Each recorded step is bound to its trajectory's run",
+        "An ended trajectory refuses later steps",
+        "A trajectory's usage totals equal the sum of its steps",
+        "A trajectory from an excluded source is never exported",
+        "Every started trajectory reaches a terminal status",
+        "Trajectory persistence follows the existing precedence order"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "266f97b86fdba76ade90388ceafb6a098a03858447d9f3b3823746dc4537adbe",
@@ -3560,12 +3445,15 @@
     },
     {
       "source": "packages/core/src/runtime/trajectory-gate.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/trajectories.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "A trajectory starts only while persistence is enabled",
+        "Each recorded step is bound to its trajectory's run",
+        "An ended trajectory refuses later steps",
+        "A trajectory's usage totals equal the sum of its steps",
+        "A trajectory from an excluded source is never exported",
+        "Every started trajectory reaches a terminal status",
+        "Trajectory persistence follows the existing precedence order"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "9100e97f6e0283bcd56592ae2946319df48c14c06c2bfc6f45fbd21622e929e7",
@@ -3578,12 +3466,15 @@
     },
     {
       "source": "packages/core/src/runtime/trajectory-provider-attribution.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/trajectories.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "A trajectory starts only while persistence is enabled",
+        "Each recorded step is bound to its trajectory's run",
+        "An ended trajectory refuses later steps",
+        "A trajectory's usage totals equal the sum of its steps",
+        "A trajectory from an excluded source is never exported",
+        "Every started trajectory reaches a terminal status",
+        "Trajectory persistence follows the existing precedence order"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "5dff7efcbc19c4d7159af1bdae6096e77cc54f7cd7831d089678d9e9b4de0e07",
@@ -3593,12 +3484,15 @@
     },
     {
       "source": "packages/core/src/runtime/trajectory-recorder.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/trajectories.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "A trajectory starts only while persistence is enabled",
+        "Each recorded step is bound to its trajectory's run",
+        "An ended trajectory refuses later steps",
+        "A trajectory's usage totals equal the sum of its steps",
+        "A trajectory from an excluded source is never exported",
+        "Every started trajectory reaches a terminal status",
+        "Trajectory persistence follows the existing precedence order"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "6b1015c2abbe19ab4dea3184d330b0dd0ea9a23a3f154e3baffee85d66c34930",
@@ -3608,12 +3502,15 @@
     },
     {
       "source": "packages/core/src/runtime/trajectory-semantic-stage-sink.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/trajectories.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "A trajectory starts only while persistence is enabled",
+        "Each recorded step is bound to its trajectory's run",
+        "An ended trajectory refuses later steps",
+        "A trajectory's usage totals equal the sum of its steps",
+        "A trajectory from an excluded source is never exported",
+        "Every started trajectory reaches a terminal status",
+        "Trajectory persistence follows the existing precedence order"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "e2af62e8ba8de10711291e8da80bcb20b70cc87dbfa879da19b7cc99d4324186",
@@ -3623,12 +3520,15 @@
     },
     {
       "source": "packages/core/src/runtime/trajectory-usage-rollup.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/trajectories.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "A trajectory starts only while persistence is enabled",
+        "Each recorded step is bound to its trajectory's run",
+        "An ended trajectory refuses later steps",
+        "A trajectory's usage totals equal the sum of its steps",
+        "A trajectory from an excluded source is never exported",
+        "Every started trajectory reaches a terminal status",
+        "Trajectory persistence follows the existing precedence order"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "1bef0005e9e98c3c53392be1d3863a04e8e6397d7d405617352304962716cddd",
@@ -3641,7 +3541,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3683,7 +3583,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3698,7 +3598,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3716,7 +3616,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3749,7 +3649,6 @@
         "Admission checks shutdown again after the asynchronous marker lookup",
         "A marker follows successful scrub and persisted pseudonym assignments",
         "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
         "Fairly settling startup and active work lets shutdown finish"
       ],
       "classification": "documented-function-contracts-and-source-branches",
@@ -3760,13 +3659,13 @@
     },
     {
       "source": "packages/core/src/security/bind-host.ts",
-      "spec": "spec/core/privacy.md",
+      "spec": "spec/core/security.md",
       "rules": [
-        "Admission checks shutdown again after the asynchronous marker lookup",
-        "A marker follows successful scrub and persisted pseudonym assignments",
-        "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
-        "Fairly settling startup and active work lets shutdown finish"
+        "A blocked address is never fetched",
+        "A spawned process never inherits a blocked environment key",
+        "A process-only key never comes from configuration",
+        "A secret never appears in a log line",
+        "Outbound text carrying the content envelope is blocked"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "49c44d7f62c57e4fd1a01076ba7d053668fd1cad0b36ad96acd846c9f29c1d8c",
@@ -3781,7 +3680,6 @@
         "Admission checks shutdown again after the asynchronous marker lookup",
         "A marker follows successful scrub and persisted pseudonym assignments",
         "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
         "Fairly settling startup and active work lets shutdown finish"
       ],
       "classification": "documented-function-contracts-and-source-branches",
@@ -3800,7 +3698,6 @@
         "Admission checks shutdown again after the asynchronous marker lookup",
         "A marker follows successful scrub and persisted pseudonym assignments",
         "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
         "Fairly settling startup and active work lets shutdown finish"
       ],
       "classification": "documented-function-contracts-and-source-branches",
@@ -3819,7 +3716,6 @@
         "Admission checks shutdown again after the asynchronous marker lookup",
         "A marker follows successful scrub and persisted pseudonym assignments",
         "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
         "Fairly settling startup and active work lets shutdown finish"
       ],
       "classification": "documented-function-contracts-and-source-branches",
@@ -3835,7 +3731,6 @@
         "Admission checks shutdown again after the asynchronous marker lookup",
         "A marker follows successful scrub and persisted pseudonym assignments",
         "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
         "Fairly settling startup and active work lets shutdown finish"
       ],
       "classification": "documented-function-contracts-and-source-branches",
@@ -3849,13 +3744,13 @@
     },
     {
       "source": "packages/core/src/security/external-content.ts",
-      "spec": "spec/core/privacy.md",
+      "spec": "spec/core/security.md",
       "rules": [
-        "Admission checks shutdown again after the asynchronous marker lookup",
-        "A marker follows successful scrub and persisted pseudonym assignments",
-        "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
-        "Fairly settling startup and active work lets shutdown finish"
+        "A blocked address is never fetched",
+        "A spawned process never inherits a blocked environment key",
+        "A process-only key never comes from configuration",
+        "A secret never appears in a log line",
+        "Outbound text carrying the content envelope is blocked"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "97eed1aa55dda191eb14ef0acff0b505b72e55202997487c4befbfd5dd86771e",
@@ -3868,13 +3763,13 @@
     },
     {
       "source": "packages/core/src/security/fragment-redaction.ts",
-      "spec": "spec/core/privacy.md",
+      "spec": "spec/core/security.md",
       "rules": [
-        "Admission checks shutdown again after the asynchronous marker lookup",
-        "A marker follows successful scrub and persisted pseudonym assignments",
-        "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
-        "Fairly settling startup and active work lets shutdown finish"
+        "A blocked address is never fetched",
+        "A spawned process never inherits a blocked environment key",
+        "A process-only key never comes from configuration",
+        "A secret never appears in a log line",
+        "Outbound text carrying the content envelope is blocked"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "1874fd04e427f98334dbf7b3e38978ace6e5c60a62ca6e58a3fc320b752804fa",
@@ -3889,7 +3784,6 @@
         "Admission checks shutdown again after the asynchronous marker lookup",
         "A marker follows successful scrub and persisted pseudonym assignments",
         "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
         "Fairly settling startup and active work lets shutdown finish"
       ],
       "classification": "documented-function-contracts-and-source-branches",
@@ -3908,7 +3802,6 @@
         "Admission checks shutdown again after the asynchronous marker lookup",
         "A marker follows successful scrub and persisted pseudonym assignments",
         "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
         "Fairly settling startup and active work lets shutdown finish"
       ],
       "classification": "documented-function-contracts-and-source-branches",
@@ -3922,13 +3815,13 @@
     },
     {
       "source": "packages/core/src/security/injection-primitives.ts",
-      "spec": "spec/core/privacy.md",
+      "spec": "spec/core/security.md",
       "rules": [
-        "Admission checks shutdown again after the asynchronous marker lookup",
-        "A marker follows successful scrub and persisted pseudonym assignments",
-        "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
-        "Fairly settling startup and active work lets shutdown finish"
+        "A blocked address is never fetched",
+        "A spawned process never inherits a blocked environment key",
+        "A process-only key never comes from configuration",
+        "A secret never appears in a log line",
+        "Outbound text carrying the content envelope is blocked"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "7bd8d3dde7406aaeada65b823ac8c9664307da5b0b82075a289bcf4941c1ca09",
@@ -3941,13 +3834,13 @@
     },
     {
       "source": "packages/core/src/security/log-redaction.ts",
-      "spec": "spec/core/privacy.md",
+      "spec": "spec/core/security.md",
       "rules": [
-        "Admission checks shutdown again after the asynchronous marker lookup",
-        "A marker follows successful scrub and persisted pseudonym assignments",
-        "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
-        "Fairly settling startup and active work lets shutdown finish"
+        "A blocked address is never fetched",
+        "A spawned process never inherits a blocked environment key",
+        "A process-only key never comes from configuration",
+        "A secret never appears in a log line",
+        "Outbound text carrying the content envelope is blocked"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "ebd28e3ef6e247aa5db272b3462a9ce78ab31917e1518ea1042e742f381af223",
@@ -3960,13 +3853,13 @@
     },
     {
       "source": "packages/core/src/security/loopback-trust.ts",
-      "spec": "spec/core/privacy.md",
+      "spec": "spec/core/security.md",
       "rules": [
-        "Admission checks shutdown again after the asynchronous marker lookup",
-        "A marker follows successful scrub and persisted pseudonym assignments",
-        "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
-        "Fairly settling startup and active work lets shutdown finish"
+        "A blocked address is never fetched",
+        "A spawned process never inherits a blocked environment key",
+        "A process-only key never comes from configuration",
+        "A secret never appears in a log line",
+        "Outbound text carrying the content envelope is blocked"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "08e5d2d6cb1d5a465631736964d7c7a4ca0bc1eb5c20c7249687c3d38a4e5eea",
@@ -3979,13 +3872,13 @@
     },
     {
       "source": "packages/core/src/security/mcp-server-config.ts",
-      "spec": "spec/core/privacy.md",
+      "spec": "spec/core/security.md",
       "rules": [
-        "Admission checks shutdown again after the asynchronous marker lookup",
-        "A marker follows successful scrub and persisted pseudonym assignments",
-        "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
-        "Fairly settling startup and active work lets shutdown finish"
+        "A blocked address is never fetched",
+        "A spawned process never inherits a blocked environment key",
+        "A process-only key never comes from configuration",
+        "A secret never appears in a log line",
+        "Outbound text carrying the content envelope is blocked"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "b0c6df47107b6118fad64e09ce2b4d02b78083e61ae55376fdb0f31e4a0a2a04",
@@ -4003,7 +3896,6 @@
         "Admission checks shutdown again after the asynchronous marker lookup",
         "A marker follows successful scrub and persisted pseudonym assignments",
         "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
         "Fairly settling startup and active work lets shutdown finish"
       ],
       "classification": "documented-function-contracts-and-source-branches",
@@ -4017,13 +3909,13 @@
     },
     {
       "source": "packages/core/src/security/outbound-envelope-guard.ts",
-      "spec": "spec/core/privacy.md",
+      "spec": "spec/core/security.md",
       "rules": [
-        "Admission checks shutdown again after the asynchronous marker lookup",
-        "A marker follows successful scrub and persisted pseudonym assignments",
-        "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
-        "Fairly settling startup and active work lets shutdown finish"
+        "A blocked address is never fetched",
+        "A spawned process never inherits a blocked environment key",
+        "A process-only key never comes from configuration",
+        "A secret never appears in a log line",
+        "Outbound text carrying the content envelope is blocked"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "fa7d4f1e9f68b0512fcb5cd7ae4f3b1aa9955542b8b588954e975d474c625f1c",
@@ -4036,13 +3928,13 @@
     },
     {
       "source": "packages/core/src/security/outbound-sanitize.ts",
-      "spec": "spec/core/privacy.md",
+      "spec": "spec/core/security.md",
       "rules": [
-        "Admission checks shutdown again after the asynchronous marker lookup",
-        "A marker follows successful scrub and persisted pseudonym assignments",
-        "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
-        "Fairly settling startup and active work lets shutdown finish"
+        "A blocked address is never fetched",
+        "A spawned process never inherits a blocked environment key",
+        "A process-only key never comes from configuration",
+        "A secret never appears in a log line",
+        "Outbound text carrying the content envelope is blocked"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "e0bb2d0cdb9e485ac2b31b34dc6e9c4250a83ca4e54176322e0d9f4f8aca0149",
@@ -4060,7 +3952,6 @@
         "Admission checks shutdown again after the asynchronous marker lookup",
         "A marker follows successful scrub and persisted pseudonym assignments",
         "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
         "Fairly settling startup and active work lets shutdown finish"
       ],
       "classification": "documented-function-contracts-and-source-branches",
@@ -4076,7 +3967,6 @@
         "Admission checks shutdown again after the asynchronous marker lookup",
         "A marker follows successful scrub and persisted pseudonym assignments",
         "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
         "Fairly settling startup and active work lets shutdown finish"
       ],
       "classification": "documented-function-contracts-and-source-branches",
@@ -4095,7 +3985,6 @@
         "Admission checks shutdown again after the asynchronous marker lookup",
         "A marker follows successful scrub and persisted pseudonym assignments",
         "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
         "Fairly settling startup and active work lets shutdown finish"
       ],
       "classification": "documented-function-contracts-and-source-branches",
@@ -4114,7 +4003,6 @@
         "Admission checks shutdown again after the asynchronous marker lookup",
         "A marker follows successful scrub and persisted pseudonym assignments",
         "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
         "Fairly settling startup and active work lets shutdown finish"
       ],
       "classification": "documented-function-contracts-and-source-branches",
@@ -4133,7 +4021,6 @@
         "Admission checks shutdown again after the asynchronous marker lookup",
         "A marker follows successful scrub and persisted pseudonym assignments",
         "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
         "Fairly settling startup and active work lets shutdown finish"
       ],
       "classification": "documented-function-contracts-and-source-branches",
@@ -4152,7 +4039,6 @@
         "Admission checks shutdown again after the asynchronous marker lookup",
         "A marker follows successful scrub and persisted pseudonym assignments",
         "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
         "Fairly settling startup and active work lets shutdown finish"
       ],
       "classification": "documented-function-contracts-and-source-branches",
@@ -4168,7 +4054,6 @@
         "Admission checks shutdown again after the asynchronous marker lookup",
         "A marker follows successful scrub and persisted pseudonym assignments",
         "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
         "Fairly settling startup and active work lets shutdown finish"
       ],
       "classification": "documented-function-contracts-and-source-branches",
@@ -4179,13 +4064,13 @@
     },
     {
       "source": "packages/core/src/security/process-env-policy.ts",
-      "spec": "spec/core/privacy.md",
+      "spec": "spec/core/security.md",
       "rules": [
-        "Admission checks shutdown again after the asynchronous marker lookup",
-        "A marker follows successful scrub and persisted pseudonym assignments",
-        "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
-        "Fairly settling startup and active work lets shutdown finish"
+        "A blocked address is never fetched",
+        "A spawned process never inherits a blocked environment key",
+        "A process-only key never comes from configuration",
+        "A secret never appears in a log line",
+        "Outbound text carrying the content envelope is blocked"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "389a1aacc7b05afb410d4abe48c101892711a323c877e33a9316ca89ca25cd07",
@@ -4203,7 +4088,6 @@
         "Admission checks shutdown again after the asynchronous marker lookup",
         "A marker follows successful scrub and persisted pseudonym assignments",
         "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
         "Fairly settling startup and active work lets shutdown finish"
       ],
       "classification": "documented-function-contracts-and-source-branches",
@@ -4217,13 +4101,13 @@
     },
     {
       "source": "packages/core/src/security/redact.ts",
-      "spec": "spec/core/privacy.md",
+      "spec": "spec/core/security.md",
       "rules": [
-        "Admission checks shutdown again after the asynchronous marker lookup",
-        "A marker follows successful scrub and persisted pseudonym assignments",
-        "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
-        "Fairly settling startup and active work lets shutdown finish"
+        "A blocked address is never fetched",
+        "A spawned process never inherits a blocked environment key",
+        "A process-only key never comes from configuration",
+        "A secret never appears in a log line",
+        "Outbound text carrying the content envelope is blocked"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "9b3cb5d296dbf19e3b6bdf38a356e5d867abde56538932005ed8ead227539cab",
@@ -4236,13 +4120,13 @@
     },
     {
       "source": "packages/core/src/security/request-token.ts",
-      "spec": "spec/core/privacy.md",
+      "spec": "spec/core/security.md",
       "rules": [
-        "Admission checks shutdown again after the asynchronous marker lookup",
-        "A marker follows successful scrub and persisted pseudonym assignments",
-        "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
-        "Fairly settling startup and active work lets shutdown finish"
+        "A blocked address is never fetched",
+        "A spawned process never inherits a blocked environment key",
+        "A process-only key never comes from configuration",
+        "A secret never appears in a log line",
+        "Outbound text carrying the content envelope is blocked"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "ab3828ff89b2a0a5b79d9680e2414097f2329e498476996f942465bb00038b6d",
@@ -4257,7 +4141,6 @@
         "Admission checks shutdown again after the asynchronous marker lookup",
         "A marker follows successful scrub and persisted pseudonym assignments",
         "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
         "Fairly settling startup and active work lets shutdown finish"
       ],
       "classification": "documented-function-contracts-and-source-branches",
@@ -4271,13 +4154,13 @@
     },
     {
       "source": "packages/core/src/security/secret-swap.bench.ts",
-      "spec": "spec/core/privacy.md",
+      "spec": "spec/core/security.md",
       "rules": [
-        "Admission checks shutdown again after the asynchronous marker lookup",
-        "A marker follows successful scrub and persisted pseudonym assignments",
-        "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
-        "Fairly settling startup and active work lets shutdown finish"
+        "A blocked address is never fetched",
+        "A spawned process never inherits a blocked environment key",
+        "A process-only key never comes from configuration",
+        "A secret never appears in a log line",
+        "Outbound text carrying the content envelope is blocked"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "eaac25f15ca7d097009b0583655be23fdac2c4225279984fe9bacf93f4452654",
@@ -4290,13 +4173,13 @@
     },
     {
       "source": "packages/core/src/security/secret-swap.ts",
-      "spec": "spec/core/privacy.md",
+      "spec": "spec/core/security.md",
       "rules": [
-        "Admission checks shutdown again after the asynchronous marker lookup",
-        "A marker follows successful scrub and persisted pseudonym assignments",
-        "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
-        "Fairly settling startup and active work lets shutdown finish"
+        "A blocked address is never fetched",
+        "A spawned process never inherits a blocked environment key",
+        "A process-only key never comes from configuration",
+        "A secret never appears in a log line",
+        "Outbound text carrying the content envelope is blocked"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "c4a1d91fcf9e5d64bd9edb579226733215f104ddf5ad76a9261bd60fd0760a99",
@@ -4309,13 +4192,13 @@
     },
     {
       "source": "packages/core/src/security/secrets.ts",
-      "spec": "spec/core/privacy.md",
+      "spec": "spec/core/security.md",
       "rules": [
-        "Admission checks shutdown again after the asynchronous marker lookup",
-        "A marker follows successful scrub and persisted pseudonym assignments",
-        "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
-        "Fairly settling startup and active work lets shutdown finish"
+        "A blocked address is never fetched",
+        "A spawned process never inherits a blocked environment key",
+        "A process-only key never comes from configuration",
+        "A secret never appears in a log line",
+        "Outbound text carrying the content envelope is blocked"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "a22b1aa01252522b5ebedfb52180584cc8e0f3ccb6cb1d4b6aa7f9b04864c746",
@@ -4328,13 +4211,13 @@
     },
     {
       "source": "packages/core/src/security/spawn-env-policy.ts",
-      "spec": "spec/core/privacy.md",
+      "spec": "spec/core/security.md",
       "rules": [
-        "Admission checks shutdown again after the asynchronous marker lookup",
-        "A marker follows successful scrub and persisted pseudonym assignments",
-        "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
-        "Fairly settling startup and active work lets shutdown finish"
+        "A blocked address is never fetched",
+        "A spawned process never inherits a blocked environment key",
+        "A process-only key never comes from configuration",
+        "A secret never appears in a log line",
+        "Outbound text carrying the content envelope is blocked"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "8c3ba01273989abe3bde396e377dc0d56b56a561214af2e022917e7f3cdbb962",
@@ -4352,7 +4235,6 @@
         "Admission checks shutdown again after the asynchronous marker lookup",
         "A marker follows successful scrub and persisted pseudonym assignments",
         "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
         "Fairly settling startup and active work lets shutdown finish"
       ],
       "classification": "documented-function-contracts-and-source-branches",
@@ -4371,7 +4253,6 @@
         "Admission checks shutdown again after the asynchronous marker lookup",
         "A marker follows successful scrub and persisted pseudonym assignments",
         "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
         "Fairly settling startup and active work lets shutdown finish"
       ],
       "classification": "documented-function-contracts-and-source-branches",
@@ -4594,22 +4475,6 @@
       ]
     },
     {
-      "source": "packages/core/src/services/optimized-prompt-resolver.ts",
-      "spec": "spec/core/services.md",
-      "rules": [
-        "Concurrent acquisition joins the original startup",
-        "An observer failure retains the running service",
-        "Late startup enters retirement without publication",
-        "A requested service stop eventually retires under fair completion",
-        "Every original startup eventually settles under fair completion"
-      ],
-      "classification": "documented-function-contracts-and-source-branches",
-      "sourceSha256": "b24a619da0cb534b11477f0f118c649bd3d5a68eea1b7d2fa9094e9841c818f7",
-      "sourceContractKind": "behavioral-module",
-      "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/services/optimized-prompt-resolver.ts",
-      "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries."
-    },
-    {
       "source": "packages/core/src/services/pairing-integration.ts",
       "spec": "spec/core/services.md",
       "rules": [
@@ -4688,13 +4553,13 @@
     },
     {
       "source": "packages/core/src/services/runtime-capability-service.ts",
-      "spec": "spec/core/services.md",
+      "spec": "spec/core/capabilityRouting.md",
       "rules": [
-        "Concurrent acquisition joins the original startup",
-        "An observer failure retains the running service",
-        "Late startup enters retirement without publication",
-        "A requested service stop eventually retires under fair completion",
-        "Every original startup eventually settles under fair completion"
+        "A request runs on at most one runner, chosen once",
+        "A request uses only a connected account the agent holds",
+        "A pinned account is honored exactly or the request fails",
+        "Without a pin the cheapest eligible account is chosen",
+        "A failed request carries a typed failure"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "69d214179c3eab384722d132dd72493599ffd5246f8f1d0f88b74a1ca4ac5672",
@@ -4750,30 +4615,16 @@
       ]
     },
     {
-      "source": "packages/core/src/services/trajectory-export.ts",
-      "spec": "spec/core/services.md",
-      "rules": [
-        "Concurrent acquisition joins the original startup",
-        "An observer failure retains the running service",
-        "Late startup enters retirement without publication",
-        "A requested service stop eventually retires under fair completion",
-        "Every original startup eventually settles under fair completion"
-      ],
-      "classification": "documented-function-contracts-and-source-branches",
-      "sourceSha256": "961d7bb9f61a018e32e638465e294b53d7f2f116db6da8206166dc103a1ed203",
-      "sourceContractKind": "behavioral-module",
-      "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/services/trajectory-export.ts",
-      "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries."
-    },
-    {
       "source": "packages/core/src/services/trajectory-json.ts",
-      "spec": "spec/core/services.md",
+      "spec": "spec/core/trajectories.md",
       "rules": [
-        "Concurrent acquisition joins the original startup",
-        "An observer failure retains the running service",
-        "Late startup enters retirement without publication",
-        "A requested service stop eventually retires under fair completion",
-        "Every original startup eventually settles under fair completion"
+        "A trajectory starts only while persistence is enabled",
+        "Each recorded step is bound to its trajectory's run",
+        "An ended trajectory refuses later steps",
+        "A trajectory's usage totals equal the sum of its steps",
+        "A trajectory from an excluded source is never exported",
+        "Every started trajectory reaches a terminal status",
+        "Trajectory persistence follows the existing precedence order"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "c0d71d5a3844a0ed9c7058936cce30c4624f613c8a29f1419071cb33b2a8813c",
@@ -4783,13 +4634,15 @@
     },
     {
       "source": "packages/core/src/services/trajectory-semantic-stage.ts",
-      "spec": "spec/core/services.md",
+      "spec": "spec/core/trajectories.md",
       "rules": [
-        "Concurrent acquisition joins the original startup",
-        "An observer failure retains the running service",
-        "Late startup enters retirement without publication",
-        "A requested service stop eventually retires under fair completion",
-        "Every original startup eventually settles under fair completion"
+        "A trajectory starts only while persistence is enabled",
+        "Each recorded step is bound to its trajectory's run",
+        "An ended trajectory refuses later steps",
+        "A trajectory's usage totals equal the sum of its steps",
+        "A trajectory from an excluded source is never exported",
+        "Every started trajectory reaches a terminal status",
+        "Trajectory persistence follows the existing precedence order"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "50f759457be5df1b0007391c158aca5e9c796acbce8609d68896686ca67bb3bd",
@@ -4802,13 +4655,15 @@
     },
     {
       "source": "packages/core/src/services/trajectory-types.ts",
-      "spec": "spec/core/services.md",
+      "spec": "spec/core/trajectories.md",
       "rules": [
-        "Concurrent acquisition joins the original startup",
-        "An observer failure retains the running service",
-        "Late startup enters retirement without publication",
-        "A requested service stop eventually retires under fair completion",
-        "Every original startup eventually settles under fair completion"
+        "A trajectory starts only while persistence is enabled",
+        "Each recorded step is bound to its trajectory's run",
+        "An ended trajectory refuses later steps",
+        "A trajectory's usage totals equal the sum of its steps",
+        "A trajectory from an excluded source is never exported",
+        "Every started trajectory reaches a terminal status",
+        "Trajectory persistence follows the existing precedence order"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "9e447969076981fc4651f33e20c08a221b8e3ef7820b381ef47e80e6e3c625dd",
@@ -5157,10 +5012,11 @@
     },
     {
       "source": "packages/core/src/types/connector-account-policy.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/connectorAccounts.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "Each provider identity is one account",
+        "Removing an account revokes it and deletes its credentials",
+        "Moving to durable storage preserves every account and credential"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "2e5bff2e7d99df34c8c48285b453b95ec9a1a5fc0fb98ff6302c778ac3e278fe",
@@ -5170,10 +5026,11 @@
     },
     {
       "source": "packages/core/src/types/connector-setup.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/connectorAccounts.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "Each provider identity is one account",
+        "Removing an account revokes it and deletes its credentials",
+        "Moving to durable storage preserves every account and credential"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "0ff9d0ec41efc7b30ed74dc52714b832970ccdee59d3981c96553bc81699ac91",
@@ -5500,7 +5357,7 @@
     },
     {
       "source": "packages/core/src/types/pairing.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/pairingAdmission.md",
       "rules": [
         "A release accounts for every required public symbol and consumer",
         "Required fields and discriminants survive a compatibility projection",
@@ -5634,10 +5491,13 @@
     },
     {
       "source": "packages/core/src/types/provider-integrations.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/capabilityRouting.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "A request runs on at most one runner, chosen once",
+        "A request uses only a connected account the agent holds",
+        "A pinned account is honored exactly or the request fails",
+        "Without a pin the cheapest eligible account is chosen",
+        "A failed request carries a typed failure"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "27c9819a1d25e045d6f3684fc8e163ae542487148051a6772fef692d435765ec",
@@ -5691,10 +5551,11 @@
     },
     {
       "source": "packages/core/src/types/search.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/retrieval.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "Ranking is a total order, so the same candidates always rank the same",
+        "A non-positive limit returns nothing",
+        "Nothing outside the caller's memory scope is returned"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "030273a0b64c916f5ea5e5a6d9d6ba913223a71ae1792c021b9f63668a1e3350",
@@ -5852,19 +5713,6 @@
       "sourceSha256": "cd286982ea2fa3dd4e420de0e7d825f48cdb9779e0654e2fdcb56e2bc9ecfbc2",
       "sourceContractKind": "type-and-import-contract",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/testing.ts",
-      "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries."
-    },
-    {
-      "source": "packages/core/src/types/trajectory-export.ts",
-      "spec": "spec/core/contracts.md",
-      "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
-      ],
-      "classification": "exact-declaration-or-data-contract",
-      "sourceSha256": "b9e040a37f09d64bffdb5dcf25f16ecc8d5ac6cfec9f2ed6a7e606701319a146",
-      "sourceContractKind": "declarative-value-or-schema",
-      "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/trajectory-export.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries."
     },
     {
@@ -6248,10 +6096,13 @@
     },
     {
       "source": "packages/core/src/utils/exec-safety.ts",
-      "spec": "spec/core/protocols.md",
+      "spec": "spec/core/security.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A blocked address is never fetched",
+        "A spawned process never inherits a blocked environment key",
+        "A process-only key never comes from configuration",
+        "A secret never appears in a log line",
+        "Outbound text carrying the content envelope is blocked"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "38b777e613855d817e98b3d1bf5b91f09250efeba6708bb85c9d48ba000eb2eb",

@@ -2646,119 +2646,6 @@
       }
     },
     {
-      "id": "packages/core/src/catalog/apps.ts#ELIZA_CURATED_APP_REGISTRY_KEY@32",
-      "line": 32,
-      "scope": "module",
-      "classification": "static-or-derived-value",
-      "declaration": "ELIZA_CURATED_APP_REGISTRY_KEY = Symbol.for( \"elizaos.curated-app-registry\", )",
-      "mutations": [],
-      "ownerSpecs": [
-        "spec/core/curatedApps.md"
-      ],
-      "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
-      "sourceClassification": "constructor-configuration-or-container",
-      "coverage": {
-        "classification": "static-or-derived-value",
-        "representation": "No persistent post-construction mutation found; exact declaration and source SHA256 preserve table/schema/configuration contents.",
-        "model": null,
-        "mappedStateFields": [],
-        "unmodeledState": null
-      }
-    },
-    {
-      "id": "packages/core/src/catalog/apps.ts#ELIZA_CURATED_APP_DEFINITION_BY_KEY@403",
-      "line": 403,
-      "scope": "module",
-      "classification": "state-projection",
-      "declaration": "ELIZA_CURATED_APP_DEFINITION_BY_KEY = new Map< string, ElizaCuratedAppDefinition >( ELIZA_CURATED_APP_DEFINITIONS.flatMap((definition) => getElizaCuratedAppMatchKeys(definition).map((key) => [key, definition]), ), )",
-      "mutations": [
-        {
-          "line": 513,
-          "target": "ELIZA_CURATED_APP_DEFINITION_BY_KEY",
-          "operation": "ELIZA_CURATED_APP_DEFINITION_BY_KEY.set(key, def)",
-          "withinFunction": "_rebuildCuratedAppLookup"
-        }
-      ],
-      "ownerSpecs": [
-        "spec/core/curatedApps.md"
-      ],
-      "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
-      "sourceClassification": "modeled-owned-state",
-      "coverage": {
-        "classification": "state-projection",
-        "representation": "Per-module alias table re-folded from shared definitions; stale old aliases intentionally remain addressable.",
-        "model": {
-          "spec": "spec/core/curatedApps.md",
-          "stateType": "CuratedApps",
-          "stateFields": [
-            "definitions",
-            "version",
-            "instances",
-            "localVersions",
-            "locals"
-          ],
-          "transitions": [
-            "registerApp",
-            "refreshLookup"
-          ],
-          "specSha256": "c9c90e017f553e9b5b16cb86e7284fbea2173c94f25294a79ed577850355b903"
-        },
-        "mappedStateFields": [
-          "definitions",
-          "version",
-          "instances",
-          "localVersions",
-          "locals"
-        ],
-        "unmodeledState": null
-      }
-    },
-    {
-      "id": "packages/core/src/catalog/apps.ts#foldedCuratedApps@502",
-      "line": 502,
-      "scope": "module",
-      "classification": "state-projection",
-      "declaration": "foldedCuratedApps: readonly ElizaCuratedAppDefinition[] = []",
-      "mutations": [
-        {
-          "line": 516,
-          "target": "foldedCuratedApps",
-          "operation": "foldedCuratedApps = [...entries]",
-          "withinFunction": "_rebuildCuratedAppLookup"
-        }
-      ],
-      "ownerSpecs": [
-        "spec/core/curatedApps.md"
-      ],
-      "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
-      "sourceClassification": "modeled-owned-state",
-      "coverage": {
-        "classification": "state-projection",
-        "representation": "Version/reference observation invalidates only the local folded view.",
-        "model": {
-          "spec": "spec/core/curatedApps.md",
-          "stateType": "CuratedApps",
-          "stateFields": [
-            "definitions",
-            "version",
-            "instances",
-            "localVersions",
-            "locals"
-          ],
-          "transitions": [
-            "registerApp",
-            "refreshLookup"
-          ],
-          "specSha256": "c9c90e017f553e9b5b16cb86e7284fbea2173c94f25294a79ed577850355b903"
-        },
-        "mappedStateFields": [
-          "version",
-          "localVersions"
-        ],
-        "unmodeledState": null
-      }
-    },
-    {
       "id": "packages/core/src/catalog/generate.ts#rootRequire@37",
       "line": 37,
       "scope": "module",
@@ -2844,26 +2731,6 @@
       "scope": "module",
       "classification": "static-or-derived-value",
       "declaration": "GENERATED_PATH = join(HERE, \"generated.json\")",
-      "mutations": [],
-      "ownerSpecs": [
-        "spec/core/catalog.md"
-      ],
-      "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
-      "sourceClassification": "constructor-configuration-or-container",
-      "coverage": {
-        "classification": "static-or-derived-value",
-        "representation": "No persistent post-construction mutation found; exact declaration and source SHA256 preserve table/schema/configuration contents.",
-        "model": null,
-        "mappedStateFields": [],
-        "unmodeledState": null
-      }
-    },
-    {
-      "id": "packages/core/src/catalog/generate.ts#CURATED_DEFS_PATH@63",
-      "line": 63,
-      "scope": "module",
-      "classification": "static-or-derived-value",
-      "declaration": "CURATED_DEFS_PATH = join(HERE, \"curated-app-definitions.json\")",
       "mutations": [],
       "ownerSpecs": [
         "spec/core/catalog.md"
@@ -10193,34 +10060,6 @@
       }
     },
     {
-      "id": "packages/core/src/model-gateway.ts#ModelGatewayStrictError.offendingVars@84",
-      "line": 84,
-      "scope": "class-field",
-      "classification": "immutable-construction-input",
-      "declaration": "readonly offendingVars: RawProviderKeyVar[];",
-      "mutations": [
-        {
-          "line": 95,
-          "target": "this.offendingVars",
-          "operation": "this.offendingVars = offendingVars",
-          "withinFunction": "constructor",
-          "ownerClass": "ModelGatewayStrictError"
-        }
-      ],
-      "ownerSpecs": [
-        "spec/core/models.md"
-      ],
-      "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
-      "sourceClassification": "constructor-configuration",
-      "coverage": {
-        "classification": "immutable-construction-input",
-        "representation": "Constructor-assigned identity/configuration or callback. Exact type and constructor copy/normalization remain in public ABI and behavior ledger; no later direct mutation found.",
-        "model": null,
-        "mappedStateFields": [],
-        "unmodeledState": null
-      }
-    },
-    {
       "id": "packages/core/src/network/fetch-guard.ts#nodePinnedFetchDefaults@133",
       "line": 133,
       "scope": "module",
@@ -10717,94 +10556,6 @@
       "coverage": {
         "classification": "derived-cache-boundary",
         "representation": "Once-per-provider fallback warning is diagnostic-only; does not alter provider selection. Identity warning set not currently formalized.",
-        "model": null,
-        "mappedStateFields": [],
-        "unmodeledState": null
-      }
-    },
-    {
-      "id": "packages/core/src/prompt-optimization.ts#DEFAULT_SIGNAL_WEIGHTS@174",
-      "line": 174,
-      "scope": "module",
-      "classification": "static-or-derived-value",
-      "declaration": "DEFAULT_SIGNAL_WEIGHTS: Record<string, number> = { \"dpe:parseSuccess\": 3.0, \"dpe:schemaValid\": 2.0, \"dpe:requiredFieldsPresent\": 2.0, \"dpe:validationCodesMatched\": 1.0, \"dpe:retriesUsed\": 1.0, \"dpe:tokenEfficiency\": 0.5, \"evaluator:*\": 1.5, \"action:actionSuccess\": 2.0, \"action:actionFailure\": 2.0, \"neuro:reaction_positive\": 1.0, \"neuro:reaction_negative\": 1.5, \"neuro:reaction_neutral\": 0.3, \"neuro:user_correction\": 2.0, \"neuro:conversation_continued\": 0.5, \"neuro:response_latency\": 0.3, \"neuro:length_appropriateness\": 0.3, \"neuro:evaluator_agreement\": 1.0, }",
-      "mutations": [],
-      "ownerSpecs": [
-        "spec/core/scoreCard.md"
-      ],
-      "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
-      "sourceClassification": "constructor-configuration-or-container",
-      "coverage": {
-        "classification": "static-or-derived-value",
-        "representation": "No persistent post-construction mutation found; exact declaration and source SHA256 preserve table/schema/configuration contents.",
-        "model": null,
-        "mappedStateFields": [],
-        "unmodeledState": null
-      }
-    },
-    {
-      "id": "packages/core/src/prompt-optimization.ts#ScoreCard._signals@46",
-      "line": 46,
-      "scope": "class-field",
-      "classification": "state-projection",
-      "declaration": "private _signals: ScoreSignal[] = [];",
-      "mutations": [
-        {
-          "line": 55,
-          "target": "this._signals",
-          "operation": "this._signals.push(signal)",
-          "withinFunction": "add",
-          "ownerClass": "ScoreCard"
-        }
-      ],
-      "ownerSpecs": [
-        "spec/core/scoreCard.md"
-      ],
-      "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
-      "sourceClassification": "modeled-owned-state",
-      "coverage": {
-        "classification": "state-projection",
-        "representation": "Appended signals retain metric/sample/weight and exceptional numeric classes; exact floating math is numeric-fixtures boundary.",
-        "model": {
-          "spec": "spec/core/scoreCard.md",
-          "stateType": "ScoreCard",
-          "stateFields": [
-            "signals"
-          ],
-          "transitions": [
-            "addSignal"
-          ],
-          "specSha256": "18bd580967803e0bd38976773e10192944eb6b50e13439f8de7ed8ed5d6ca89c"
-        },
-        "mappedStateFields": [
-          "signals"
-        ],
-        "unmodeledState": null
-      }
-    },
-    {
-      "id": "packages/core/src/prompt-optimization.ts#ScoreCard._weightOverrides@47",
-      "line": 47,
-      "scope": "class-field",
-      "classification": "immutable-construction-input",
-      "declaration": "private _weightOverrides?: Record<string, number>;",
-      "mutations": [
-        {
-          "line": 50,
-          "target": "this._weightOverrides",
-          "operation": "this._weightOverrides = weightOverrides",
-          "withinFunction": "constructor",
-          "ownerClass": "ScoreCard"
-        }
-      ],
-      "ownerSpecs": [
-        "spec/core/scoreCard.md"
-      ],
-      "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
-      "sourceClassification": "constructor-configuration",
-      "coverage": {
-        "classification": "immutable-construction-input",
-        "representation": "Constructor-assigned identity/configuration or callback. Exact type and constructor copy/normalization remain in public ABI and behavior ledger; no later direct mutation found.",
         "model": null,
         "mappedStateFields": [],
         "unmodeledState": null
@@ -49365,9 +49116,9 @@
     "A missing-model-state or partial-state-projection entry is a real remaining modeling/refinement gap; no count or owner-file assignment closes it."
   ],
   "summary": {
-    "static-or-derived-value": 559,
-    "state-projection": 361,
-    "immutable-construction-input": 148,
+    "static-or-derived-value": 556,
+    "state-projection": 358,
+    "immutable-construction-input": 146,
     "derived-cache-boundary": 20,
     "external-composition-reference": 39,
     "dynamic-scope-delegation": 6
@@ -50051,39 +49802,6 @@
       "partialState": []
     },
     {
-      "id": "catalog/apps.ts#ELIZA_CURATED_APP_REGISTRY_KEY",
-      "records": [
-        "packages/core/src/catalog/apps.ts#ELIZA_CURATED_APP_REGISTRY_KEY@32"
-      ],
-      "modelSpecs": [
-        "spec/core/curatedApps.md"
-      ],
-      "missingState": [],
-      "partialState": []
-    },
-    {
-      "id": "catalog/apps.ts#ELIZA_CURATED_APP_DEFINITION_BY_KEY",
-      "records": [
-        "packages/core/src/catalog/apps.ts#ELIZA_CURATED_APP_DEFINITION_BY_KEY@403"
-      ],
-      "modelSpecs": [
-        "spec/core/curatedApps.md"
-      ],
-      "missingState": [],
-      "partialState": []
-    },
-    {
-      "id": "catalog/apps.ts#foldedCuratedApps",
-      "records": [
-        "packages/core/src/catalog/apps.ts#foldedCuratedApps@502"
-      ],
-      "modelSpecs": [
-        "spec/core/curatedApps.md"
-      ],
-      "missingState": [],
-      "partialState": []
-    },
-    {
       "id": "catalog/generate.ts#rootRequire",
       "records": [
         "packages/core/src/catalog/generate.ts#rootRequire@37"
@@ -50131,17 +49849,6 @@
       "id": "catalog/generate.ts#GENERATED_PATH",
       "records": [
         "packages/core/src/catalog/generate.ts#GENERATED_PATH@58"
-      ],
-      "modelSpecs": [
-        "spec/core/catalog.md"
-      ],
-      "missingState": [],
-      "partialState": []
-    },
-    {
-      "id": "catalog/generate.ts#CURATED_DEFS_PATH",
-      "records": [
-        "packages/core/src/catalog/generate.ts#CURATED_DEFS_PATH@63"
       ],
       "modelSpecs": [
         "spec/core/catalog.md"
@@ -52123,17 +51830,6 @@
       "partialState": []
     },
     {
-      "id": "model-gateway.ts#ModelGatewayStrictError",
-      "records": [
-        "packages/core/src/model-gateway.ts#ModelGatewayStrictError.offendingVars@84"
-      ],
-      "modelSpecs": [
-        "spec/core/models.md"
-      ],
-      "missingState": [],
-      "partialState": []
-    },
-    {
       "id": "network/fetch-guard.ts#nodePinnedFetchDefaults",
       "records": [
         "packages/core/src/network/fetch-guard.ts#nodePinnedFetchDefaults@133"
@@ -52252,29 +51948,6 @@
       ],
       "modelSpecs": [
         "spec/core/contracts.md"
-      ],
-      "missingState": [],
-      "partialState": []
-    },
-    {
-      "id": "prompt-optimization.ts#DEFAULT_SIGNAL_WEIGHTS",
-      "records": [
-        "packages/core/src/prompt-optimization.ts#DEFAULT_SIGNAL_WEIGHTS@174"
-      ],
-      "modelSpecs": [
-        "spec/core/scoreCard.md"
-      ],
-      "missingState": [],
-      "partialState": []
-    },
-    {
-      "id": "prompt-optimization.ts#ScoreCard",
-      "records": [
-        "packages/core/src/prompt-optimization.ts#ScoreCard._signals@46",
-        "packages/core/src/prompt-optimization.ts#ScoreCard._weightOverrides@47"
-      ],
-      "modelSpecs": [
-        "spec/core/scoreCard.md"
       ],
       "missingState": [],
       "partialState": []

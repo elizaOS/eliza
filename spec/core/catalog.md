@@ -1,10 +1,11 @@
 # First-party catalog
 
-Source contracts are `catalog/{registry,loader,schema,runtime-kernel,apps,generate}.ts`. The generated JSON assets, entry schemas, app-session types, package-name parsing, connector authentication normalization, display order, search scoring and freshness policy remain public compatibility obligations.
+Source contracts are `catalog/{registry,loader,schema,runtime-kernel,generate}.ts`. The generated JSON assets, entry schemas, package-name parsing, connector authentication normalization, display order, search scoring and freshness policy remain public compatibility obligations. The catalog holds plugins and connectors only: app entries, curated app definitions and app-session or app-launch types are not part of it.
 
 ## Story: Discover and register first-party capabilities
 
-As a host or plugin, I want validated catalog entries with deterministic runtime overrides and consistent lookup indexes.
+> As a host or plugin, I want validated catalog entries with deterministic
+> runtime overrides and consistent lookup indexes.
 
 ### A valid runtime registration overrides its id and invalidates cached indexes
 

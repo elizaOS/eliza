@@ -1,6 +1,6 @@
 # PII scrub persistence and retirement
 
-The compatibility baseline is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c137517`. Sources are `packages/core/src/services/pii-scrub.ts`, `security/pii-scrub-markers.ts`, `security/pii-scrub-seam.ts`, `runtime/trajectory-gate.ts`, LazyPiiDrain and PiiScrubSettlement. The machine follows one exact content and ruleset key through a lazy queue. Different content or ruleset values require different keys. Pseudonym assignment storage is encrypted and must precede completion markers. Model and storage failures preserve quarantine and retry ownership.
+The compatibility baseline is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c137517`. Sources are `packages/core/src/services/pii-scrub.ts`, `security/pii-scrub-markers.ts`, `security/pii-scrub-seam.ts`, LazyPiiDrain and PiiScrubSettlement. The machine follows one exact content and ruleset key through a lazy queue. Different content or ruleset values require different keys. Pseudonym assignment storage is encrypted and must precede completion markers. Model and storage failures preserve quarantine and retry ownership. The service that owns this machine is [privacy service](./privacyService.md); whether trajectories persist is [trajectories](./trajectories.md); address, environment, log and outbound protections are [content and outbound security](./security.md).
 
 ## Story: Publish scrub completion only after durable privacy work
 
@@ -69,22 +69,6 @@ pure def canDispose(s: Privacy): bool = s.life == Stopping and s.startup != Star
 pure def dispose(s: Privacy): Privacy = { ...s, life: Stopped, startup: Dormant, discarded: s.discarded + s.queued, queued: 0 }
 pure def alwaysStoppedOwnsNoQueue(s: Privacy): bool = s.life != Stopped or (s.startup == Dormant and s.queued == 0 and s.phase == Idle)
 pure def sometimesShutdownDuringLookup(s: Privacy): bool = s.life == Stopped and s.checking and s.accepted == 0
-```
-
-## Story: Respect the operator's trajectory persistence setting
-
-As an operator, I can disable trajectory persistence explicitly. Hard disable wins over all other settings. Explicit nonblank logging settings override environment defaults. Protected, test and production profiles default off. Development defaults on. Blank values are represented as unspecified after normalization. User-specific consent belongs to the host's policy boundary and must be supplied before publication.
-
-### Trajectory persistence follows the existing precedence order
-
-```quint
-type LoggingChoice = Unspecified | Enabled | Disabled
-pure def trajectoryEnabled(hardDisabled: bool, explicit: LoggingChoice, protectedProfile: bool, testProfile: bool, productionProfile: bool): bool =
-  not(hardDisabled) and (if (explicit == Enabled) true else if (explicit == Disabled) false else not(protectedProfile or testProfile or productionProfile))
-pure def lawHardDisableWins(explicit: LoggingChoice, protectedProfile: bool, testProfile: bool, productionProfile: bool): bool =
-  not(trajectoryEnabled(true, explicit, protectedProfile, testProfile, productionProfile))
-pure def lawProductionRequiresOptIn(protectedProfile: bool, testProfile: bool): bool =
-  not(trajectoryEnabled(false, Unspecified, protectedProfile, testProfile, true))
 ```
 
 ### Fairly settling startup and active work lets shutdown finish

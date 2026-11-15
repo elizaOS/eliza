@@ -22,7 +22,7 @@ pure val referenceValues = Set(1, 2, 3)
 pure val ownerValues = Set(0, 1, 2)
 pure val priorityValues = Set(-1, 0, 1)
 pure val modelTypeValues = Set("TEXT_SMALL", "TEXT_LARGE", "TEXT_EMBEDDING")
-pure val providerValues = Set("alpha", "beta")
+pure val providerValues = Set("p1", "p2")
 pure val eventNameValues = Set("message", "model_registered")
 pure def canRegisterComponent(s: ExtensionRegistry, kind: ComponentKind, name: str, reference: int, owner: int, allowsOverride: bool): bool = reference > 0 and owner >= 0
 pure def registerComponent(s: ExtensionRegistry, kind: ComponentKind, name: str, reference: int, owner: int, allowsOverride: bool): ExtensionRegistry = {

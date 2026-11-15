@@ -1,6 +1,6 @@
 # Protocol value contracts
 
-The `protocol`, `schema-types`, `permissions`, `task-events`, `task-widgets`, `speech` and `view-interaction` leaves expose renderer-safe DTOs and pure functions. Their complete declarations are pinned in [the public surface](./baseline/core-public-surface.json). Core owns message, content, entity, relationship, effect, model, plugin, trigger, notification, payment, view and connector contracts. Hosts own HTTP server registration and platform-specific configuration. Effect failures retain typed tags and causes at the public Promise boundary.
+The `protocol`, `schema-types`, `permissions`, `task-events`, `task-widgets`, `speech` and `view-interaction` leaves expose renderer-safe DTOs and pure functions. Their complete declarations are pinned in [the public surface](./baseline/core-public-surface.json). Core owns message, content, entity, relationship, effect, model, plugin, trigger, notification, payment and view contracts. Connector account contracts are [connector accounts](./connectorAccounts.md), the capability catalog is [capability routing](./capabilityRouting.md) and the device bridge contract is [device bridge](./deviceBridge.md). Hosts own HTTP server registration and platform-specific configuration. Effect failures retain typed tags and causes at the public Promise boundary.
 
 ## Story: Share canonical values across hosts and plugins
 

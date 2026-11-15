@@ -41,14 +41,14 @@ pure val outputReserveValues = Set(absentLimit, badLimit, integerLimit(1), fract
 pure val limitValues = outputReserveValues
 pure val limitsValues = Set(exactLimits, diagnosticLimits, defaultLimits, {contextWindow: integerLimit(11), outputReserve: fractionalLimit})
 pure val requestInputValues = Set(
-  {provider: "alpha", model: "small", route: "text", codeUnits: admittedCodeUnits, inputCount: 1, countSource: providerTokenizer, limits: exactLimits, leaseId: 0, messageId: "turn-a"},
-  {provider: "alpha", model: "small", route: "text", codeUnits: admittedCodeUnits, inputCount: 1, countSource: providerTokenizer, limits: exactLimits, leaseId: 1, messageId: "turn-a"},
-  {provider: "alpha", model: "small", route: "text", codeUnits: admittedCodeUnits, inputCount: 1, countSource: providerTokenizer, limits: exactLimits, leaseId: 2, messageId: "turn-b"},
-  {provider: "alpha", model: "small", route: "text", codeUnits: admittedCodeUnits, inputCount: 10, countSource: providerTokenizer, limits: exactLimits, leaseId: 0, messageId: "turn-a"},
-  {provider: "beta", model: "large", route: "text", codeUnits: admittedCodeUnits, inputCount: 20, countSource: tokenizerEstimate, limits: diagnosticLimits, leaseId: 0, messageId: "turn-b"},
-  {provider: "beta", model: "large", route: "missing", codeUnits: changedCodeUnits, inputCount: 5, countSource: utf8UpperBound, limits: defaultLimits, leaseId: 0, messageId: "turn-b"},
-  {provider: "alpha", model: "small", route: "text", codeUnits: admittedCodeUnits, inputCount: 20, countSource: providerTokenizer, limits: {contextWindow: integerLimit(11), outputReserve: absentLimit}, leaseId: 0, messageId: "turn-a"},
-  {provider: "alpha", model: "small", route: "text", codeUnits: admittedCodeUnits, inputCount: 1, countSource: tokenizerEstimate, limits: {contextWindow: badLimit, outputReserve: integerLimit(1)}, leaseId: 0, messageId: "turn-a"})
+  {provider: "p1", model: "small", route: "text", codeUnits: admittedCodeUnits, inputCount: 1, countSource: providerTokenizer, limits: exactLimits, leaseId: 0, messageId: "turn-a"},
+  {provider: "p1", model: "small", route: "text", codeUnits: admittedCodeUnits, inputCount: 1, countSource: providerTokenizer, limits: exactLimits, leaseId: 1, messageId: "turn-a"},
+  {provider: "p1", model: "small", route: "text", codeUnits: admittedCodeUnits, inputCount: 1, countSource: providerTokenizer, limits: exactLimits, leaseId: 2, messageId: "turn-b"},
+  {provider: "p1", model: "small", route: "text", codeUnits: admittedCodeUnits, inputCount: 10, countSource: providerTokenizer, limits: exactLimits, leaseId: 0, messageId: "turn-a"},
+  {provider: "p2", model: "large", route: "text", codeUnits: admittedCodeUnits, inputCount: 20, countSource: tokenizerEstimate, limits: diagnosticLimits, leaseId: 0, messageId: "turn-b"},
+  {provider: "p2", model: "large", route: "missing", codeUnits: changedCodeUnits, inputCount: 5, countSource: utf8UpperBound, limits: defaultLimits, leaseId: 0, messageId: "turn-b"},
+  {provider: "p1", model: "small", route: "text", codeUnits: admittedCodeUnits, inputCount: 20, countSource: providerTokenizer, limits: {contextWindow: integerLimit(11), outputReserve: absentLimit}, leaseId: 0, messageId: "turn-a"},
+  {provider: "p1", model: "small", route: "text", codeUnits: admittedCodeUnits, inputCount: 1, countSource: tokenizerEstimate, limits: {contextWindow: badLimit, outputReserve: integerLimit(1)}, leaseId: 0, messageId: "turn-a"})
 pure val observedValues = Set(
   {codeUnits: admittedCodeUnits, inputCount: 1, countSource: providerTokenizer},
   {codeUnits: changedCodeUnits, inputCount: 1, countSource: providerTokenizer},
