@@ -15,7 +15,7 @@ import { cacheCredentials, collectGarbage } from "./cache.ts";
 import { LIB_FILE, isolatedCopies, parseProofFile, readVerdict, splice } from "./prove.ts";
 import { exec, run as tool } from "./run.ts";
 import { pendingSpecs, showPending, writeLedger } from "./review.ts";
-import { packageScripts, testInputs, testReceipt } from "./util.ts";
+import { filesUnder, packageScripts, testInputs, testReceipt } from "./util.ts";
 import { profile } from "./testing/profile.ts";
 import { canonical, check as conformanceCheck, ConformanceError, departure, replay as replayTrace } from "./conformance.ts";
 import { BUILTINS, LIST_HELPERS, OPERATORS } from "./gen/print.ts";
@@ -1179,7 +1179,13 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.equal(fs.readFileSync(agents, "utf8"), expected);
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).scripts, { check: "mine", dev: "spec studio", gen: "spec gen", accept: "spec accept", build: "vibelang", test: "vitest run" });
     assert.equal(fs.readFileSync(path.join(root, ".gitignore"), "utf8"), "gen/\n.spec-cache/\n.studio/\ndist/\n.vibe/\n");
-    const skills = fs.readdirSync(path.join(project, ".claude/skills")).sort();
+    const skills = fs.readdirSync(path.join(project, ".claude/skills"), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+    const skillFiles = filesUnder(project, ".claude/skills");
+    assert.deepEqual(filesUnder(root, ".claude/skills"), skillFiles);
+    for (const file of skillFiles) {
+      assert.deepEqual(fs.readFileSync(path.join(root, file)), fs.readFileSync(path.join(project, file)), file);
+    }
     for (const dir of [project, root]) {
       assert.deepEqual(fs.readdirSync(path.join(dir, ".agents/skills")).sort(), skills);
       for (const name of skills) {
@@ -1206,6 +1212,13 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.deepEqual(init(root), []);
     assert.equal(read(".agents/skills/sync/SKILL.md", root), "My sync instructions.\n");
     assert.equal(read(".agents/skills/design/SKILL.md", root), "My design instructions.\n");
+    const patterns = ".claude/skills/typescript-best-practices/references/patterns.md";
+    const prompt = ".claude/skills/architect/references/runner-prompt.md";
+    fs.writeFileSync(path.join(root, patterns), "My TypeScript examples.\n");
+    fs.unlinkSync(path.join(root, prompt));
+    assert.deepEqual(init(root), [prompt]);
+    assert.equal(read(".agents/skills/typescript-best-practices/references/patterns.md", root), "My TypeScript examples.\n");
+    assert.equal(read(".agents/skills/architect/references/runner-prompt.md", root), read(prompt));
     fs.writeFileSync(agents, "before\r\n<!-- vibestack:start -->\r\nold instructions\r\n<!-- vibestack:end -->\r\nafter\r\n");
     init(root);
     assert.equal(fs.readFileSync(agents, "utf8"), `before\r\n<!-- vibestack:start -->\r\n${read("AGENTS.md").trim().replace(/\r?\n/g, "\r\n")}\r\n<!-- vibestack:end -->\r\nafter\r\n`);
@@ -1234,7 +1247,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     const scripts = { dev: "spec studio", check: "spec check", gen: "spec gen", accept: "spec accept", build: "vibelang", test: "vitest run" };
 
     const fresh = scratch({ "package.json": '{"name":"fresh"}' });
-    assert.deepEqual(init(fresh), [...["design", "prove", "shell", "sync"].flatMap((name) => [`.claude/skills/${name}/SKILL.md`, `.agents/skills/${name}`]), "SPEC.md", ".claude/settings.json", "AGENTS.md (Vibestack instructions)", "CLAUDE.md (imports AGENTS.md)",
+    assert.deepEqual(init(fresh).filter((file) => !/^\.(?:claude|agents)\/skills\//.test(file)), ["SPEC.md", ".claude/settings.json", "AGENTS.md (Vibestack instructions)", "CLAUDE.md (imports AGENTS.md)",
       "tsconfig.json", "vitest.config.ts", "spec/index.md", ".gitignore", "package.json scripts: dev, check, gen, accept, build, test",
       `package.json VibeLang toolchain: ${[...runtime, ...tooling].join(", ")} (run your package manager's install)`, "package.json packageManager: pnpm@10.24.0", "package.json engines.node: >=26", 'package.json "type": "module"']);
     assert.deepEqual(json(fresh, "tsconfig.json"), {
@@ -2138,7 +2151,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
 import { scanSpec } from "./scan.ts";
 
 describe("the documents name what exists", () => {
-  const DOCS = ["AGENTS.md", "SPEC.md", "README.md", "CONTRIBUTING.md", ...fs.readdirSync(path.join(project, ".claude/skills")).map((name) => `.claude/skills/${name}/SKILL.md`)];
+  const DOCS = ["AGENTS.md", "SPEC.md", "README.md", "CONTRIBUTING.md", ...filesUnder(project, ".claude/skills").filter((file) => file.endsWith(".md"))];
   const manifest = (dir: string): Record<string, Record<string, string> | undefined> => JSON.parse(read(path.join(dir, "package.json")));
   const within = (dir: string) => fs.readdirSync(path.join(project, dir)).map((name) => `${dir}/${name}`);
 
@@ -2340,13 +2353,10 @@ assert.deepEqual(await Promise.all([undefined, "1", "2", "7", "{"].map((before) 
     assert.deepEqual(["app", "plain"].map((name) => fs.readdirSync(path.join(tree, "apps", name, "gen")).filter((f) => /\.(react\.ts|effect\.vibe)$/.test(f))), [["app.effect.vibe", "app.react.ts"], ["plain.effect.vibe"]]);
   });
 
-  test("init gives a project every skill and the repository's guard on what the tools write", () => {
+  test("init gives a project the repository's guard on what the tools write", () => {
     const json = (root: string, file: string) => JSON.parse(read(file, root));
     const fresh = scratch({});
     init(fresh);
-    const skills = fs.readdirSync(path.join(project, ".claude/skills")).sort();
-    assert.deepEqual([fs.readdirSync(path.join(fresh, ".claude/skills")).sort(), fs.readdirSync(path.join(fresh, ".agents/skills")).sort()], [skills, skills]);
-    for (const name of skills) assert.equal(read(`.agents/skills/${name}/SKILL.md`, fresh), read(`.claude/skills/${name}/SKILL.md`));
     const { permissions } = json(project, ".claude/settings.json");
     assert.deepEqual(json(fresh, ".claude/settings.json"), { permissions: { ...permissions, deny: permissions.deny.filter((rule: string) => !rule.includes("/vibestack/")) } });
     const own = scratch({ ".claude/settings.json": "{}\n" });

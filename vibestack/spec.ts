@@ -15,7 +15,7 @@ import { contracts, pending, pendingKey, pendingContracts, acceptAllReviews, pen
 import { cacheCredentials, entry, remembered, collectGarbage, toolchainFingerprint, type Memory } from "./cache.ts";
 import { generated, mirrorGen, typecheckAll, proofUnits, proofFiles, strayProofFiles } from "./units.ts";
 import { simulation, type Simulation } from "./simulate.ts";
-import { sha, indent, packageScripts, tests, VITEST_CONFIG, readSrc, codeDirs, codeDirOf, projectRoot, allDone, type Reported, type SrcFile } from "./util.ts";
+import { sha, indent, packageScripts, tests, VITEST_CONFIG, readSrc, codeDirs, codeDirOf, projectRoot, allDone, filesUnder, type Reported, type SrcFile } from "./util.ts";
 import { profile, type TestProfile } from "./testing/profile.ts";
 
 export { readSpecs, parseSpec, expandListHelpers, type Spec, type Rule, type Story } from "./parse.ts";
@@ -416,15 +416,22 @@ const VIBELANG = {
 export function init(root: string, warn: (message: string) => void = (message) => console.warn(`note: ${message}`)): string[] {
   const pkg = path.join(import.meta.dirname, "..");
   const done: string[] = [];
-  const add = (file: string, content: () => string) => {
+  const add = (file: string, content: () => string | Buffer) => {
     if (fs.lstatSync(path.join(root, file), { throwIfNoEntry: false })) return;
     fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
     fs.writeFileSync(path.join(root, file), content());
     done.push(file);
   };
-  for (const name of fs.readdirSync(path.join(pkg, ".claude/skills")).sort()) {
-    const source = `.claude/skills/${name}`;
-    add(`${source}/SKILL.md`, () => fs.readFileSync(path.join(pkg, source, "SKILL.md"), "utf8"));
+  const skillRoot = ".claude/skills";
+  const license = `${skillRoot}/LICENSE.pstack`;
+  add(license, () => fs.readFileSync(path.join(pkg, license)));
+  const skills = fs.readdirSync(path.join(pkg, skillRoot), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+  for (const name of skills) {
+    const source = `${skillRoot}/${name}`;
+    const files = filesUnder(pkg, source);
+    if (!files.includes(`${source}/SKILL.md`)) continue;
+    for (const file of files) add(file, () => fs.readFileSync(path.join(pkg, file)));
     const link = path.join(root, `.agents/skills/${name}`);
     if (!fs.lstatSync(link, { throwIfNoEntry: false })) {
       fs.mkdirSync(path.dirname(link), { recursive: true });

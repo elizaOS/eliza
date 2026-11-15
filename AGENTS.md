@@ -10,12 +10,38 @@ The spec format, naming rules and everything the tools accept are in
 [SPEC.md](SPEC.md); what a task needs beyond it is in
 [Where the rest is](#where-the-rest-is).
 
+## Working on a task
+
+- **Your first message on a task** → tell the user, in your own words, their
+  goal, the problem they are solving, and, if the task ships a change, the
+  smallest change you expect to meet it. Don't wait for confirmation. If the
+  evidence rules out the change the user asked for, show it and stop. Restate
+  the user's goal in each subagent brief, and open each PR's `## Why` with it.
+  Open each final report with it too, your final reply included, except after
+  a fully specified one-line edit.
+- **Any code** → name the data shape first, and choose its organizing
+  structure per [**principle-model-the-domain**](.claude/skills/principle-model-the-domain/SKILL.md).
+- **Code crossing a function boundary** → the
+  [**architect** skill](.claude/skills/architect/SKILL.md), parallel design
+  exploration before implementing.
+- **Just do it.** Use any available MCP tool within its permissions. Reversible
+  work and authorized external actions (team chat, ticket updates, kicking off
+  evals) proceed without asking for confirmation.
+- **Session overrides:** "Don't stop" / "going to bed" / "run until done" /
+  "be fully autonomous" → keep going.
+- **No is an acceptable answer.** Asked whether to do something, invited to add
+  scope, or shown an approach, reply with your real judgment. Decline, push
+  back, or say "this doesn't earn its place" when true. A recommendation is a
+  judgment, not a validation. Agreement is not the default, candor over
+  sycophancy.
+
 ## Loading skills
 
-The canonical skills are in `.claude/skills/`: `sync`, `shell`, `prove` and
-`design`. Claude Code discovers them there; Codex discovers the same files
-through the relative links in `.agents/skills/`. Edit the canonical files,
-and give each new skill a matching link so both clients see it.
+The canonical skill files are in `.claude/skills/`, including `sync`,
+`shell`, `prove`, `design`, `architect` and the [principles](#principles).
+Claude Code reads them there. The shared `.agents/skills/` directory has one
+relative link per skill for agents such as Codex. Edit the canonical files
+and give each new skill a matching link in `.agents/skills/`.
 
 A skill's name and description are only its discovery metadata. Before
 the work listed in [Where the rest is](#where-the-rest-is), read the matching
@@ -24,6 +50,21 @@ another client without repository skill discovery, open those files
 explicitly. Resolve repository paths from the repository root and a skill's
 relative links from its own directory. If the client cannot read repository
 files, ask for the relevant instructions before doing that work.
+
+Apply imported skills within this repository's stack, hard rules and test policy.
+
+Architect uses [`arena`](.claude/skills/arena/SKILL.md) for parallel design
+exploration and [`why`](.claude/skills/why/SKILL.md) to trace the rationale
+for existing ownership or layering when a design changes it. If the client
+cannot run Arena's runners, use its parallel subagents for at least two
+independent design sketches with the architect's
+[`runner-prompt.md`](.claude/skills/architect/references/runner-prompt.md).
+Screen and synthesize the sketches as the architect skill directs before
+implementing.
+
+Use [`benchmark-checklist`](.claude/skills/benchmark-checklist/SKILL.md)
+when measuring performance. For other referenced skills, see the
+[upstream pstack skills at the imported revision](https://github.com/cursor/plugins/tree/bf0c7cd80abdbf7fe47b634978a7d1b4071f71a7/pstack/skills).
 
 ## Who does what
 
@@ -117,6 +158,125 @@ Check each point before you write, and again after.
   touches; a full run is as quick as it can be.
 - **Passes.** The first version is a draft. Review it two or three times
   against these points.
+
+## Principles
+
+Read the leaf skill in full for any principle you apply. Each entry names when
+it applies. Each leaf is the **`principle-<title>`** skill, with the title in
+kebab case, hyphens kept and other punctuation dropped, unless the entry gives
+its name.
+
+- **Laziness Protocol.** Refactoring, sizing a diff, or tempted to add
+  abstractions, layers, or signal threading. Bias to deletion and the smallest
+  change that solves the problem.
+- **Foundational Thinking.** Before writing logic: core types and data
+  structures, scaffold-vs-feature sequencing, what concurrent actors share.
+- **Redesign from First Principles.** Integrating a new requirement into an
+  existing design. Redesign as if it had been foundational from day one.
+- **Attack the Premise.** Two or more fixes that share one premise have failed
+  the same gate. Write the premise down and test it directly before you write
+  another fix that assumes it.
+- **Subtract Before You Add.** Sequencing an addition, refactor, or rewrite.
+  Remove dead weight first, then build on the simpler base.
+- **Minimize Reader Load.** Reviewing or shaping code that's hard to trace.
+  Count layers and hidden state, collapse one-caller wrappers, shrink mutable
+  scope.
+- **Outcome-Oriented Execution.** Planned rewrites and migrations with explicit
+  phase boundaries. Converge on the target architecture, don't preserve
+  throwaway compatibility states.
+- **Experience First.** Product, UX, or feature-scope tradeoffs. Choose user
+  delight over implementation convenience.
+- **Exhaust the Design Space.** A novel interaction or architectural decision
+  with no precedent. Build 2-3 competing prototypes and compare before
+  committing.
+- **Build the Lever.** Any non-trivial work. Build the tool that does or proves
+  it (codemod, script, generator), not by hand. The tool is the artifact a
+  reviewer reruns.
+- **Model the Domain.** Writing stateful logic, or code that branches a lot or
+  repeats a shape assumption across files. Encode the domain in a structure
+  (state machine, typed model, table or registry, reducer, boundary, the right
+  collection) instead of scattered conditionals.
+- **Boundary Discipline.** Wiring validation, error handling, or framework
+  adapters. Guards at system boundaries, trust internal types, keep business
+  logic pure.
+- **Type System Discipline.** Designing types or a signature in any typed
+  language. Make illegal states unrepresentable, brand primitives, parse
+  external data at boundaries.
+- **Make Operations Idempotent.** Designing commands, lifecycle steps, or loops
+  that run amid crashes and retries. Converge to the same end state.
+- **Migrate Callers Then Delete Legacy APIs.** Introducing a new internal API
+  while old callers exist. Migrate and delete in one wave.
+- **Separate Before Serializing Shared State.** Concurrent actors might write
+  the same file, branch, key, or object. Eliminate the sharing first.
+- **Prove It Works.** After a task, before declaring done. Verify against the
+  real artifact, not a proxy or "it compiles".
+- **Fix Root Causes.** Debugging. Trace each symptom back to the first place the
+  system went wrong and fix it there. A guard is a fix only when the state it
+  handles is legitimate.
+- **Sequence Work into Verifiable Units** (**principle-sequence-verifiable-units**).
+  Multi-step work (sweeps, migrations, runs of similar edits) and how you stack
+  commits and PRs. Break work into small units that each end in a check, verify
+  each before the next, and order delivery so the sequence proves itself.
+- **Test Behavior, Not Implementation.** Writing, changing, or keeping a test.
+  Assert what the code's users can observe, so the test fails when that behavior
+  breaks and keeps passing when only the internals change.
+- **Explain the Number.** Apply before you measure, and before you trust,
+  report, or act on a number you measured (a speedup, a regression, a
+  throughput, a latency, or an eval result). Find what limits it, and rule out
+  that it measured something other than the work you think.
+- **Guard the Context Window.** Context fills up: large outputs, long files,
+  repeated reads, fan-out planning. Route bulk to subagents, keep summaries in
+  the main thread.
+- **Never Block on the Human.** Tempted to ask "should I do X?" on reversible
+  work. Proceed, present the result, let the human course-correct.
+- **Encode Lessons in Structure.** You catch yourself writing the same
+  instruction a second time. Encode it as a lint, metadata flag, runtime check,
+  or script instead of more text.
+
+## TypeScript best practices
+
+Read the [`typescript-best-practices` skill](.claude/skills/typescript-best-practices/SKILL.md)
+before reading or editing `.ts` or `.tsx` files. Adapt the
+[bundled examples](.claude/skills/typescript-best-practices/references/patterns.md)
+to the repository's schema library. Validate that a duration is nonnegative
+when it represents an ordered range.
+
+Make the compiler reject impossible states, mismatched primitives, and
+unhandled variants. Prefer defining errors and special cases out of existence
+over proliferating handlers.
+
+- **Brand semantic primitives.** Give `UserId` and `OrderId` distinct types, even
+  if each is a string underneath. Use a branded intersection in TypeScript or
+  a newtype elsewhere. Validate once at creation, then trust the type
+  downstream. Brand arguments that share a primitive type and have different
+  meanings.
+- **External data is untyped until parsed.** Parse RPC payloads, JSON, IPC
+  messages, CLI args, config files, environment variables, and database rows
+  into the typed model at each boundary. See the
+  [**boundary-discipline** principle skill](.claude/skills/principle-boundary-discipline/SKILL.md).
+- **Derive types from authoritative schemas.** When a protocol buffer, OpenAPI
+  spec, GraphQL schema, database migration, design-token file, or another file
+  owns a shape, derive the type from that source. See the
+  [**encode-lessons-in-structure** principle skill](.claude/skills/principle-encode-lessons-in-structure/SKILL.md).
+
+| Rule | Summary |
+|---|---|
+| Discriminated unions | Model variants with a `kind` literal discriminant and give each variant exactly the fields it needs. |
+| Branded types | Brand primitives with `& { readonly __brand: "X" }` to keep them distinct. Validate once at the boundary. Establish the brand with a verifying type guard such as `input is AgentId`. |
+| Constructive modeling | Build the shape so the illegal value can't be constructed. Use `[T, ...T[]]` for a non-empty list, `[T, T][]` for an even number of elements, and `start` plus a `NonNegativeDuration` type for an ordered range. |
+| Simplest total type | Keep `T[]` while every operation on it stays total. Strengthen to `NonEmpty<T>` only where the loose type forces `!`, a cast, or a "should never happen" throw. |
+| `unknown` over `any` | External data is `unknown`. |
+| Schemas before guards | Use the repository's runtime schema library and infer the type from the schema before writing a property-by-property guard. |
+| Type assertions | Use an `as` cast only after validation. |
+| Narrowing hierarchy | Prefer a discriminant switch, then `in`, then `typeof` or `instanceof`, then a user-defined type guard. A validated `as` cast is the last resort. |
+| Type guards | Verify the full claim and name the guard `isX` or `hasX`. A misleading guard hides an unsafe assertion behind a name that promises safety. |
+| Exhaustiveness | Inline `const _exhaustive: never = x;` in default arms so the compiler errors when a new variant is added. |
+| `satisfies` over `as` | Check that a value conforms to a type while retaining the inferred type of the expression. |
+| Boundary validation | Parse incoming data into a named domain type. Keep `Record<string, unknown>` and equivalent raw shapes on the input side of that parse. Trust the resulting types inside. See the **boundary-discipline** principle skill linked above. |
+| Schema-derived types | Reach for `Pick`, `Omit`, `Parameters`, `ReturnType`, `Awaited`, or `typeof` before declaring a new interface. |
+| Object args | Use named object properties to make arguments self-documenting. Positional arguments suit hot paths such as per-frame rendering, tokenizers, or parsers. |
+| Real tests | Use real framework test primitives with leak and disposal checks, and verify UI in a running build. Mock only services you can't run locally, following the rules below. |
+| Structured telemetry | Use structured logger diagnostics with enough context to debug from an ID. No `console.log` in shipped code. |
 
 ## Tests
 

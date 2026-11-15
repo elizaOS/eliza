@@ -128,9 +128,9 @@ means are in [CONTRIBUTING.md](CONTRIBUTING.md#architecture).
    what needs your review.
 5. Read what it reports, run the app, and sign off with `pnpm accept`.
 
-Agents start with [AGENTS.md](AGENTS.md). All four skills (`sync`, `shell`,
-`prove`, `design`) live in [`.claude/skills/`](.claude/skills/), with relative
-links in [`.agents/skills/`](.agents/skills/) for Codex discovery. Keep both
+Agents start with [AGENTS.md](AGENTS.md). Skills and their bundled references
+live in [`.claude/skills/`](.claude/skills/), with relative links in
+[`.agents/skills/`](.agents/skills/) for shared discovery. Keep both
 directories when copying the template. ChatGPT or another client without
 repository skill discovery must read the applicable `SKILL.md` files linked
 from AGENTS.md explicitly; it needs access to those files or their contents
@@ -272,7 +272,7 @@ pnpm check
 
 | `spec init` adds | |
 |---|---|
-| `.claude/skills/` (`sync`, `shell`, `prove`, `design`), `AGENTS.md` | the agent's procedure and its skills; existing AGENTS content is kept around a marked Vibestack section, which a later `init` refreshes |
+| `.claude/skills/`, `AGENTS.md` | the agent's procedure, skills, bundled references and license notice. Later invocations add missing files and refresh the marked Vibestack section in AGENTS.md |
 | `SPEC.md` | the spec reference |
 | `.agents/skills/` | links to the same skills in `.claude/skills/` |
 | `.claude/settings.json` | Claude Code refuses edits to `gen/`, `.spec-cache/`, `.studio/`, `spec/lock.json` and `lemmascript.json`, and asks before `pnpm accept` |
@@ -348,7 +348,7 @@ workspace.
 | `packages/design-system` | Design tokens, built into Tailwind's theme |
 | `packages/ui` | Shared React components, with generated stories |
 | `vibestack/` | The tools: generator, simulator, prover, Studio, testing and design helpers |
-| `.claude/skills/` | What agents read before each kind of work: `sync`, `shell`, `prove`, `design` |
+| `.claude/skills/` | What agents read before each kind of work, with bundled references |
 | `.agents/skills/` | Relative links to the same skills for Codex discovery |
 | [AGENTS.md](AGENTS.md), [SPEC.md](SPEC.md), [CONTRIBUTING.md](CONTRIBUTING.md#architecture) | The procedure, the spec reference, and the map |
 
