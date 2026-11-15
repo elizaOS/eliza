@@ -46,7 +46,7 @@ built on its `Machine` service: every event reaches the state through
 | `World` | the biller and the browser as a service: `bill(request)`, `page()`, `perform(delivery, effect)`; retries return the same success without repeating the action |
 | `remember(card)` | the card the person saves, sent as the Person |
 | `deliver()` | drains saved effects oldest first, acknowledging each only after the world confirms it; call it on startup to finish interrupted work |
-| `hear(said)` | what the person said, sent as the Person, and what it output carried out (a confirmation's payment); then the loop: the model's answer offered as the Agent's choice, what that choice output carried out, the page and the biller's answer sent as the World. It returns where the turn stopped and each answer that ended it, and fails with `Rejected` when the rules refuse the person |
+| `hear(said)` | first `deliver()`, then the page showing and, for a request still waiting, the biller's answer, sent as the World; what the person said, sent as the Person, and what it output carried out (a confirmation's payment); then the loop: the model's answer offered as the Agent's choice, what that choice output carried out, the page and the biller's answer sent as the World. It returns where the turn stopped and each answer that ended it, and fails with `Rejected` when the rules refuse the person |
 
 An answer of the model that is no choice the rules allow, or no answer at all,
 finishes the turn, so a turn makes at most four passes whatever the model

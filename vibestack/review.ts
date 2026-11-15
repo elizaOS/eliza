@@ -2,22 +2,22 @@ import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 import { readSpecs, isStd, bareQuint as bare, heading, type Import, type Spec, type Story, type Rule } from "./parse.ts";
-import { short, readSrc, indent, citations, type Citation } from "./util.ts";
+import { short, readSrc, indent, writeWhole, citations, type Citation } from "./util.ts";
 import { DECLASSIFY } from "./gen/secrecy.ts";
 
 /**
  * Obligations that hold in simulation but that Dafny cannot prove on its own,
  * accepted by a person: per unit, the list, and a fingerprint of the unit's
- * text and proof file when they were accepted. A list accepted for another
- * text no longer counts.
+ * Quint, without its comments, and proof file when they were accepted. A list
+ * accepted for another text no longer counts.
  */
 export interface Accepted { text: string; unproved: string[] }
-interface ReviewLock { version: 1; specs: Record<string, Lock>; contracts: Record<string, string>; unproved: Record<string, Accepted> }
+export interface ReviewLock { version: 1; specs: Record<string, Lock>; contracts: Record<string, string>; unproved: Record<string, Accepted> }
 export const ledgerFile = (root: string) => path.join(root, "spec/lock.json");
 const emptyLock = (): ReviewLock => ({ version: 1, specs: {}, contracts: {}, unproved: {} });
 
-/** One versioned ledger owns review and proof acceptance for the entire spec tree. */
-function readReviewLock(root: string): ReviewLock {
+/** One versioned ledger owns review and proof acceptance for the entire spec tree. A check reads it once and passes it on. */
+export function readReviewLock(root: string): ReviewLock {
   const file = ledgerFile(root);
   if (!fs.existsSync(file)) return emptyLock();
   const data = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -32,17 +32,7 @@ function readReviewLock(root: string): ReviewLock {
 }
 
 /** Publish all sections together; an interrupted write cannot leave half a ledger. */
-function writeReviewLock(root: string, lock: ReviewLock) {
-  const file = ledgerFile(root);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const temporary = `${file}.${process.pid}.tmp`;
-  try {
-    fs.writeFileSync(temporary, JSON.stringify(lock, null, 2) + "\n");
-    fs.renameSync(temporary, file);
-  } finally {
-    fs.rmSync(temporary, { force: true });
-  }
-}
+const writeReviewLock = (root: string, lock: ReviewLock) => writeWhole(ledgerFile(root), JSON.stringify(lock, null, 2) + "\n");
 /** Prose may be re-wrapped without becoming a different sentence. Code may not: a line break can end a comment. */
 const proseFingerprint = (prose: string) => short(prose.replace(/\s+/g, " ").trim());
 const fingerprint = (r: Rule): [string, string] => [proseFingerprint(r.prose), short(r.code.split("\n").map((l) => l.trimEnd()).join("\n").trim())];
@@ -226,8 +216,8 @@ export function acceptReviews(root: string, spec: Spec, specs: Spec[] = readSpec
 }
 
 /** Deleted specs remain reviewable until the whole snapshot is accepted. */
-export function pendingSpecs(root: string, specs: Spec[]): Pending[] {
-  return Object.keys(readReviewLock(root).specs).filter((file) => !specs.some((s) => s.file === file))
+export function pendingSpecs(root: string, specs: Spec[], lock = readReviewLock(root)): Pending[] {
+  return Object.keys(lock.specs).filter((file) => !specs.some((s) => s.file === file))
     .map((file) => ({ where: file, status: "removed or renamed" }));
 }
 
@@ -235,8 +225,7 @@ export function pendingSpecs(root: string, specs: Spec[]): Pending[] {
  * Atomically record the exact spec and source snapshot checked by accept. Every spec, std/ libraries included, is what
  * a rule's dependencies are fingerprinted against, as `pending` does; only the project's own specs are recorded.
  */
-export function acceptAllReviews(root: string, specs: Spec[], src = readSrc(root)) {
-  const lock = readReviewLock(root);
+export function acceptAllReviews(root: string, specs: Spec[], src = readSrc(root), lock = readReviewLock(root)) {
   lock.specs = Object.fromEntries(specs.filter((spec) => !isStd(spec.file)).map((spec) => [spec.file, reviewed(spec, specs)]));
   lock.contracts = contractLedger(contracts(root, src));
   writeReviewLock(root, lock);
@@ -286,8 +275,7 @@ const contractLedger = (now: ReturnType<typeof contracts>) =>
   Object.fromEntries([...now].map(([file, lines]) => [file, short(lines.join("\n"))]));
 
 /** The `//@` contracts in src/ that are new, changed or gone since `accept`. A file that loses every `//@` is gone. */
-export function pendingContracts(root: string, src = readSrc(root)): Pending[] {
-  const lock = readReviewLock(root).contracts;
+export function pendingContracts(root: string, src = readSrc(root), { contracts: lock } = readReviewLock(root)): Pending[] {
   const now = contracts(root, src);
   const ledger = contractLedger(now);
   const out: Pending[] = [];
@@ -316,33 +304,6 @@ export const moved = (todo: Pending[]): string[] => todo.flatMap(({ where, rule,
   : !story && lines ? [`    ${where} (${status})\n      ${status === "document changed" ? "its document" : "its //@ lines"}:\n${indent(lines.join("\n"), 8)}`]
   : []);
 
-export function readLedger(root: string): Record<string, Accepted | undefined> {
-  return readReviewLock(root).unproved;
-}
-export function writeLedger(root: string, ledger: Record<string, Accepted>) {
-  const lock = readReviewLock(root);
-  lock.unproved = ledger;
-  writeReviewLock(root, lock);
-}
-
-/** Upgrade existing acceptance records without accepting any changed prose, code or proof. */
-export function migrateLocks(root: string): string[] {
-  const dir = path.join(root, "spec");
-  if (!fs.existsSync(dir)) return [];
-  const files = (fs.readdirSync(dir, { recursive: true }) as string[]).filter((f) => f.endsWith(".lock.json")).sort();
-  if (!files.length) return [];
-  if (fs.existsSync(ledgerFile(root))) throw new Error("spec/lock.json and legacy ledgers both exist; resolve them before migrating");
-  const lock = emptyLock();
-  for (const file of files) {
-    const data = JSON.parse(fs.readFileSync(path.join(dir, file), "utf8"));
-    if (file === "src.lock.json") lock.contracts = data;
-    // An exception in the old list form names no text it was accepted for, so it could never count again: it is dropped.
-    else if (file === "unproved.lock.json") lock.unproved = Object.fromEntries(Object.entries(data).filter(([, value]) => !Array.isArray(value)) as [string, Accepted][]);
-    else lock.specs[`spec/${file.replace(/\.lock\.json$/, ".md").split(path.sep).join("/")}`] = data;
-  }
-  writeReviewLock(root, lock);
-  // Validate the same schema that check reads before retiring the old records.
-  try { readReviewLock(root); } catch (e) { fs.rmSync(ledgerFile(root)); throw e; }
-  for (const file of files) fs.rmSync(path.join(dir, file));
-  return files.map((f) => `spec/${f}`);
+export function writeLedger(root: string, ledger: Record<string, Accepted>, lock = readReviewLock(root)) {
+  writeReviewLock(root, { ...lock, unproved: ledger });
 }

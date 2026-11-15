@@ -143,6 +143,9 @@ supply one to replace it.
 2. Copy the lemma's header into the proof file and write a body. For a
    transition, the usual shape is
    `if inv(s) && canX(s, …) { var after := x(s, …); …facts about after… }`.
+   Where a unit has obligations not proved, `pnpm check` also writes
+   `gen/proof/<unit>/<unit>.scaffold.dfy`: each such lemma without a body
+   yet, with its exact header and a body to start from. Copy from it.
 3. Run `pnpm check`. Dafny's messages point into the `.dfy`; the log has
    them all.
 

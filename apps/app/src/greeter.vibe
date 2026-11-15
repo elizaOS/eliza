@@ -1,40 +1,19 @@
 // spec/app/index.md, "Story: Say hello"
-// The shell: the greeter of spec/app/index.md, kept in a KeyValueStore, which main.tsx makes the browser's localStorage.
-import * as KeyValueStore from "effect/persistence/KeyValueStore"
-import { type Greeter, type NotAnEvent, type Rejected, apply, decodeEvent, decodeState, initial, parseState } from "../gen/app.effect.vibe"
-import { Saved } from "./greeter.schema.ts"
+// The shell: the greeter of spec/app/index.md, kept in the KeyValueStore the program provides (main.tsx: localStorage).
+// Each input's sender is where the page read it, never what the input says.
+import { Machine, stored } from "../gen/app.effect.vibe"
 
-const KEY = "greeter"
+/** The greeter, kept under "greeter". */
+export const greeter = stored("greeter")
 
-/** The store did not take the greeter, which stays as it was. */
-export error NotSaved { cause: unknown }
-
-effect function saved() { return KeyValueStore.toSchemaStore(try KeyValueStore.KeyValueStore, Saved) }
-
-/** The stored greeter, or a new one where the store cannot be read or holds nothing the rules call a greeter. */
-export effect function load() {
-  const found = (try saved()).get(KEY) catch () => Option.none()
-  return decodeState(Option.getOrUndefined(found)) catch () => parseState(initial)!
+/** An event typed into the page; like any input, it is decoded before the rules see it. */
+export effect function typed(input: unknown) {
+  const machine = try Machine
+  return try machine.receive(input, "Typed")
 }
 
-/** The greeter as last stored, and the one way to change it. */
-export service Greetings {
-  /** The greeter now, then every later one. */
-  readonly changes: Stream.Stream<Greeter>
-  /** `input` may come from anywhere: it is decoded into an event, and the greeter it leads to is stored before it is shown. */
-  receive(input: unknown): Greeter!(NotAnEvent | Rejected | NotSaved)
+/** An event from the link the page was opened with (link.ts). */
+export effect function linked(input: unknown) {
+  const machine = try Machine
+  return try machine.receive(input, "Linked")
 }
-
-/** `Greetings` from the stored greeter, one input at a time. */
-export const stored = Layer.effect(Greetings, effect {
-  const store = try saved()
-  const held = try SubscriptionRef.make(try load())
-  return {
-    changes: Stream.map(SubscriptionRef.changes(held), (state) => parseState(state)!),
-    receive: (input) => SubscriptionRef.modifyEffect(held, effect (current) => {
-      const next = try apply(current, try decodeEvent(input))
-      try mapError(store.set(KEY, next), (cause) => new NotSaved({ cause }))
-      return [next, parseState(next)!] as const
-    })
-  }
-})

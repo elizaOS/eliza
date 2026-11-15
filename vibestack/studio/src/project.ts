@@ -7,13 +7,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { trusted } from "vibelang-runtime";
 import { acceptable, type Result } from "../../spec.ts";
-import { parseSpec, readSpecs, specFiles, specName } from "../../parse.ts";
-import { ledgerFile, pending, pendingKey, type Lock } from "../../review.ts";
-import { filesUnder, projectRoot, short } from "../../util.ts";
+import { isStd, parseSpec, readSpecs, specFiles, specName } from "../../parse.ts";
+import { ledgerFile, pending, pendingContracts, pendingKey, pendingSpecs, type Lock, type Pending } from "../../review.ts";
+import { filesUnder, packageScripts, projectRoot, short } from "../../util.ts";
 import type { Session, Verdict } from "../gen/index.ts";
+import type { Outline } from "../gen/outline.ts";
 import { manifestOf, nodesOf, type Ids, type Manifest } from "./doc.ts";
 import { outlineOf, specOrder } from "./markdown.ts";
-import type { ComponentIndex } from "./catalog.ts";
+import type { ComponentIndex } from "../../stories/emit.ts";
 
 const EXT = path.extname(import.meta.filename);
 /** The tools: vibestack/ from source, dist/ when built. */
@@ -51,7 +52,7 @@ export const manifestFile = (root: string) => path.join(root, ".studio", "manife
  * `start`, or `dev` when that is not the studio; undefined when there is none. A trusted call.
  */
 export const appScript = trusted(function appScript(root: string): string | undefined {
-  const scripts = readJson<{ scripts?: Record<string, string> }>(path.join(root, "package.json"))?.scripts ?? {};
+  const scripts = packageScripts(root);
   return scripts.start ? "start" : scripts.dev && !/\bspec(\.ts)? studio\b/.test(scripts.dev) ? "dev" : undefined;
 }, [Error]);
 
@@ -65,11 +66,10 @@ export const buildable = trusted((root: string) => buildCommand(root) !== undefi
  * root, every app under `apps/` that has a `build` script; elsewhere, the project's own `build` script. A trusted call.
  */
 export const buildCommand = trusted(function buildCommand(root: string): [string, string[]] | undefined {
-  const scripts = (dir: string) => readJson<{ scripts?: Record<string, string> }>(path.join(dir, "package.json"))?.scripts ?? {};
   const apps = path.join(root, "apps");
   const workspaceApps = fs.existsSync(path.join(root, "pnpm-workspace.yaml")) && fs.existsSync(apps)
-    && fs.readdirSync(apps).some((name) => scripts(path.join(apps, name)).build);
-  return workspaceApps ? ["pnpm", ["--filter", "./apps/*", "run", "build"]] : scripts(root).build ? ["pnpm", ["run", "build"]] : undefined;
+    && fs.readdirSync(apps).some((name) => packageScripts(path.join(apps, name)).build);
+  return workspaceApps ? ["pnpm", ["--filter", "./apps/*", "run", "build"]] : packageScripts(root).build ? ["pnpm", ["run", "build"]] : undefined;
 }, [Error]);
 
 /** The address a development server says it serves at, in a line it printed. @throws {never} */
@@ -89,7 +89,7 @@ export const specTexts = trusted(function specTexts(root: string): Record<string
 
 /** The command a person or agent runs in a project to check it: its own script if it can, else the tools of this repository. A trusted call. */
 export const checkCommand = trusted(function checkCommand(root: string): string {
-  const scripts = readJson<{ scripts?: Record<string, string> }>(path.join(root, "package.json"))?.scripts ?? {};
+  const scripts = packageScripts(root);
   const hasSpecBin = fs.existsSync(path.join(root, "node_modules/.bin/spec")) || !scripts.check?.startsWith("spec ");
   return scripts.check && hasSpecBin ? "pnpm check" : `node ${path.relative(root, SPEC)} check`;
 }, [Error]);
@@ -103,11 +103,11 @@ export function skillPath(root: string): string {
   }
 }
 
-/** The review ledger (../../review.ts, `ledgerFile`) and Studio's state belong to the tools, not the sync agent. A trusted call. */
+/** The review ledger (../../review.ts, `ledgerFile`) and Studio's state, as written: they belong to the tools, not the sync agent. A trusted call. */
 export const ownedFiles = trusted(function ownedFiles(root: string): Record<string, string> {
   const ledger = path.relative(root, ledgerFile(root));
   return Object.fromEntries([...(fs.existsSync(path.join(root, ledger)) ? [ledger] : []), ...filesUnder(root, ".studio")]
-    .map((f) => [f, short(fs.readFileSync(path.join(root, f), "utf8"))]));
+    .map((f) => [f, fs.readFileSync(path.join(root, f), "utf8")]));
 }, [Error]);
 
 /**
@@ -118,14 +118,28 @@ export function verdictOf(results: Result[]): Verdict {
   return !results.some((r) => !r.ok) ? "Green" : acceptable(results) ? "Reviewable" : "Failing";
 }
 
-/** The specs as the page shows them, with what the review ledger says of each story and rule. A trusted call. */
-export const specsOf = trusted(function specsOf(root: string) {
+/** One spec as the page shows it: its text, the hash a publish names it by, and its outline (spec/outline.md). */
+export interface SpecView { file: string; module: string; hash: string; text: string; outline: Outline }
+/** A story, rule, document, removed spec or contract of verified code (../../review.ts, `pendingContracts`) waiting for sign-off, with what there is to read of it. */
+export interface ReviewItem { where: string; file?: string; key?: string; status: string; prose?: string; quint?: string }
+const reviewItem = (p: Pending, file?: string): ReviewItem => ({
+  where: p.where, file, key: file && pendingKey(p), status: p.status + (p.note ?? ""),
+  prose: p.rule?.prose ?? p.story?.prose ?? (file ? p.lines?.join("\n") : undefined), quint: p.rule?.code ?? (file ? undefined : p.lines?.join("\n")),
+});
+
+/**
+ * The specs as the page shows them, and everything `accept` would record (../../spec.ts, the `review` stage), or the
+ * `problem` that keeps the specs from being read as one tree. A trusted call.
+ */
+export const readTree = trusted(function readTree(root: string): { specs: SpecView[]; review: ReviewItem[]; problem?: string } {
   const texts = specTexts(root);
-  const specs = readSpecs(root);
-  const locks = new Map<string, Lock>();
-  const review = Object.fromEntries(specs.map((s) => [s.file, Object.fromEntries(pending(root, s, specs, locks).map((p) => [pendingKey(p), p.status + (p.note ?? "")]))]));
-  return Object.entries(texts).sort(([a], [b]) => specOrder(a, b))
-    .map(([file, text]) => ({ file, module: specName(file), hash: short(text), text, outline: outlineOf(file, text), review: review[file] ?? {} }));
+  const specs = Object.entries(texts).sort(([a], [b]) => specOrder(a, b))
+    .map(([file, text]) => ({ file, module: specName(file), hash: short(text), text, outline: outlineOf(file, text) }));
+  try {
+    const read = specs.length ? readSpecs(root, texts).filter((s) => !isStd(s.file)) : [];
+    const locks = new Map<string, Lock>();
+    return { specs, review: [...read.flatMap((s) => pending(root, s, read, locks).map((p) => reviewItem(p, s.file))), ...[...pendingSpecs(root, read), ...pendingContracts(root)].map((p) => reviewItem(p))] };
+  } catch (e) { return { specs, review: [], problem: (e as Error).message }; }
 }, [Error]);
 
 /**
@@ -158,24 +172,30 @@ export const componentsOf = trusted(function componentsOf(root: string): Compone
   if (!found.length) return undefined;
   return {
     version: 1,
-    storybook: { url: found.find((f) => f.index.storybook.url)?.index.storybook.url },
     // A component catalogued both in the project and in its package is shown once.
     components: [...new Map(found.flatMap(({ dir, index }) => index.components.map((c) => {
       const file = path.posix.join(dir, c.source.file);
-      return [`${file}#${c.name}`, { ...c, source: { ...c.source, file } }] as const;
+      // Its model and design documents are its package's own, or else the root's (../../util.ts, `owner`).
+      const here = (doc: string) => (fs.existsSync(path.join(root, dir, doc.replace(/#.*$/, ""))) ? path.posix.join(dir, doc) : doc);
+      return [`${file}#${c.name}`, {
+        ...c, source: { ...c.source, file },
+        ...(c.model && { model: { ...c.model, spec: here(c.model.spec) } }),
+        ...(c.design && { design: c.design.map(here) }),
+      }] as const;
     }))).values()],
   };
 }, [Error]);
 
 /** A job as the page sees it: what ran, how it ended, and the last of what it printed. */
 export interface JobView { label: string; status: "running" | "passed" | "failed" | "stopped"; started: number; finished?: number; log: string[] }
-/** The last check's report, and when it finished. */
-export interface Check { ok: boolean; results: Result[]; next: string; finished: number }
+/** The last check's results as they arrive; once it finished, its whole report and when. */
+export interface Check { results: Result[]; ok?: boolean; next?: string; finished?: number }
 /** Everything the page (./page/) shows for a project, as ./server.vibe answers `GET /api/project`. */
 export interface Snapshot {
   project: { id: string; name: string; root: string };
   session: Session;
-  specs: ReturnType<typeof specsOf>;
+  specs: SpecView[];
+  review: ReviewItem[];
   problem?: string;
   manifest?: Manifest;
   prompt: string;

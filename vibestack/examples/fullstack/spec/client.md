@@ -38,20 +38,27 @@ pure val initial: Client =
 
 ### What the simulator tries
 
-Two ids, an empty and a real title, the first versions and sequence numbers,
-and a few lists the server might send.
+Five edits, the first versions and sequence numbers, a few lists the server
+might send, a few queues, and for the laws a new client and one with an edit
+queued.
 
 ```quint
-pure val idValues = Set("x", "y")
-pure val titleValues = Set("", "milk")
+pure val opValues =
+  Set(Create({ id: "x", title: "milk" }))
+    .union(Set(Create({ id: "y", title: "" })))
+    .union(Set(SetDone({ id: "x", done: true })))
+    .union(Set(Rename({ id: "x", title: "eggs" })))
+    .union(Set(Remove({ id: "x" })))
+pure val cValues =
+  Set(initial).union(Set({ ...initial, made: 2, seen: 1, pending: List({ seq: 2, op: SetDone({ id: "x", done: true }) }) }))
 pure val seqValues = Set(1, 2, 3)
 pure val versionValues = Set(0, 1, 2, 3)
 pure val todosValues =
   Set(List()).union(Set(List({ id: "x", title: "milk", done: false, deleted: false })))
     .union(Set(List({ id: "x", title: "milk", done: true, deleted: false }, { id: "y", title: "eggs", done: false, deleted: true })))
 pure val psValues =
-  Set(List()).union(Set(List({ seq: 1, op: { kind: "create", id: "x", title: "milk", done: false } })))
-    .union(Set(List({ seq: 1, op: { kind: "create", id: "x", title: "milk", done: false } }, { seq: 2, op: { kind: "remove", id: "x", title: "", done: false } })))
+  Set(List()).union(Set(List({ seq: 1, op: Create({ id: "x", title: "milk" }) })))
+    .union(Set(List({ seq: 1, op: Create({ id: "x", title: "milk" }) }, { seq: 2, op: Remove({ id: "x" }) })))
 ```
 
 ## Story: Edit the list in the browser
@@ -72,28 +79,9 @@ pure def visible(c: Client): List[Todo] = view(c).select(t => not(t.deleted))
 ### An edit the user makes is checked against what they see, numbered and queued
 
 ```quint
-pure def queue(op: Op, c: Client): Client =
+pure def canQueue(c: Client, op: Op): bool = opAllowed(view(c), op)
+pure def queue(c: Client, op: Op): Client =
   { ...c, made: c.made + 1, pending: c.pending.append({ seq: c.made + 1, op: op }) }
-
-pure def canCreate(c: Client, id: str, title: str): bool =
-  opAllowed(view(c), { kind: "create", id: id, title: title, done: false })
-pure def create(c: Client, id: str, title: str): Client =
-  queue({ kind: "create", id: id, title: title, done: false }, c)
-
-pure def canSetDone(c: Client, id: str, done: bool): bool =
-  opAllowed(view(c), { kind: "done", id: id, title: "", done: done })
-pure def setDone(c: Client, id: str, done: bool): Client =
-  queue({ kind: "done", id: id, title: "", done: done }, c)
-
-pure def canRename(c: Client, id: str, title: str): bool =
-  opAllowed(view(c), { kind: "rename", id: id, title: title, done: false })
-pure def rename(c: Client, id: str, title: str): Client =
-  queue({ kind: "rename", id: id, title: title, done: false }, c)
-
-pure def canRemove(c: Client, id: str): bool =
-  opAllowed(view(c), { kind: "remove", id: id, title: "", done: false })
-pure def remove(c: Client, id: str): Client =
-  queue({ kind: "remove", id: id, title: "", done: false }, c)
 ```
 
 ### Every queued edit was numbered here, and no two share a number
@@ -117,9 +105,9 @@ pure def alwaysTheEditCountIsNotNegative(c: Client): bool = c.made >= 0
 
 ### A tab can go offline and back online, and queue edits while offline
 
-Whether an edit is allowed never depends on being online: offline, each of
-the four edits is allowed exactly when it would be online, and it joins the
-queue of a client that stays offline.
+Whether an edit is allowed never depends on being online: offline, an edit
+is allowed exactly when it would be online, and it joins the queue of a
+client that stays offline.
 
 ```quint
 pure def canGoOffline(c: Client): bool = c.online
@@ -129,18 +117,11 @@ pure def goOnline(c: Client): Client = { ...c, online: true }
 
 pure def sometimesQueuedWhileOffline(c: Client): bool = not(c.online) and c.pending.length() >= 2
 
-pure def lawAnEditIsAllowedOfflineExactlyWhenOnline(c: Client, id: str, title: str, done: bool): bool =
-  val off = { ...c, online: false }
-  val on = { ...c, online: true }
-  and {
-    canCreate(off, id, title) iff canCreate(on, id, title),
-    canSetDone(off, id, done) iff canSetDone(on, id, done),
-    canRename(off, id, title) iff canRename(on, id, title),
-    canRemove(off, id) iff canRemove(on, id),
-  }
+pure def lawAnEditIsAllowedOfflineExactlyWhenOnline(c: Client, op: Op): bool =
+  canQueue({ ...c, online: false }, op) iff canQueue({ ...c, online: true }, op)
 
 pure def lawAnOfflineEditJoinsTheQueue(c: Client, op: Op): bool =
-  val after = queue(op, { ...c, online: false })
+  val after = queue({ ...c, online: false }, op)
   not(after.online) and after.pending.length() == c.pending.length() + 1
 ```
 
@@ -218,49 +199,4 @@ pure def sometimesCaughtUpAfterEditing(c: Client): bool =
   c.made >= 1 and c.pending.length() == 0 and c.seen >= 1
 
 pure def sometimesRefused(c: Client): bool = c.refusals >= 1
-```
-
-## Story: Other specs can rely on the client's rules
-
-> As the author of a spec that runs clients inside a larger system, I want
-> the client's state invariants stated as laws, so that my proofs can use
-> them rather than prove them again.
-
-### Queueing an edit or hearing an answer keeps the client's state invariants
-
-For these laws, the client's rules are its four state invariants: every
-queued edit carries a number from 1 to the edit count, no two share one, and
-the edit count and confirmed version are nonnegative. Step and reachability rules are checked separately. What
-is proved about imported transitions can be called when their obligations
-were proved in the same run. These laws also cover helpers such as `queue`,
-which are not transitions.
-
-```quint
-pure val cValues =
-  Set(initial).union(Set({
-    ...initial,
-    made: 2,
-    seen: 1,
-    pending: List({ seq: 2, op: { kind: "done", id: "x", title: "", done: true } }),
-  }))
-pure val opValues =
-  Set({ kind: "create", id: "y", title: "eggs", done: false })
-    .union(Set({ kind: "done", id: "x", title: "", done: true }))
-
-pure def rulesHold(c: Client): bool = and {
-  alwaysEveryQueuedEditWasNumberedHere(c),
-  alwaysQueuedEditsHaveDistinctNumbers(c),
-  alwaysTheEditCountIsNotNegative(c),
-  alwaysTheConfirmedVersionIsNotNegative(c),
-}
-
-pure def lawQueueingKeepsTheRules(c: Client, op: Op): bool =
-  rulesHold(c) implies rulesHold(queue(op, c))
-
-pure def lawAnAnswerKeepsTheRules(c: Client, seq: int, version: int, todos: List[Todo]): bool =
-  rulesHold(c) implies and {
-    rulesHold(receiveAck(c, seq, version, todos)),
-    rulesHold(receiveRefusal(c, seq, version, todos)),
-    rulesHold(receiveSnapshot(c, version, todos)),
-  }
 ```

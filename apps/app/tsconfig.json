@@ -4,7 +4,7 @@
     "allowArbitraryExtensions": true,
     "jsx": "react-jsx",
     "lib": [
-      "es2023",
+      "es2024",
       "dom",
       "dom.iterable"
     ],

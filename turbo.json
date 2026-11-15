@@ -164,6 +164,7 @@
         "!{apps,packages,vibestack/studio,vibestack/examples}/**/gen/**",
         "packages/**",
         ".claude/skills/**",
+        ".claude/settings.json",
         "AGENTS.md",
         "SPEC.md",
         "spec/**",
@@ -234,7 +235,8 @@
         "tsconfig.json",
         "*.config.js",
         "*.config.ts",
-        ".madgerc"
+        ".madgerc",
+        ".jscpd.json"
       ],
       "outputs": []
     },

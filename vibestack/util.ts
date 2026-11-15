@@ -21,6 +21,18 @@ export async function allDone<T>(promises: Promise<T>[]): Promise<T[]> {
   return settled.map((r) => (r as PromiseFulfilledResult<T>).value);
 }
 
+/** Write a file whole or not at all: to a file of its own beside it, then renamed into place. */
+export function writeWhole(file: string, text: string) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const temporary = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+  try {
+    fs.writeFileSync(temporary, text);
+    fs.renameSync(temporary, file);
+  } finally {
+    fs.rmSync(temporary, { force: true });
+  }
+}
+
 /** Files and symbolic links below a project directory, excluding directory entries. */
 export const filesUnder = (root: string, dir: string) => !fs.existsSync(path.join(root, dir)) ? []
   : fs.readdirSync(path.join(root, dir), { recursive: true, withFileTypes: true }).filter((e) => e.isFile() || e.isSymbolicLink())
@@ -36,13 +48,6 @@ export function projectRoot(directory: string, base = process.cwd()): string {
 
 /** The declarations the VibeLang compiler writes for a `.vibe` module: its output, not the package's code. */
 const SIDECAR = /\.d\.vibex?\.ts$/;
-
-/** Does this Node run `.vibe` sources (`node --import vibelang/register`)? The loader needs 22.22.3 on the 22 line, or 24.11.1 and later. */
-export function nodeRunsVibelang(version = process.versions.node): boolean {
-  const [major, minor, patch] = version.split(".").map(Number);
-  const from = (a: number, b: number) => minor > a || (minor === a && patch >= b);
-  return major === 22 ? from(22, 3) : major === 24 ? from(11, 1) : major > 24;
-}
 
 /**
  * The workspace package a spec belongs to by name, as a path from the root: `spec/<name>/…` is `apps/<name>` or
@@ -75,7 +80,8 @@ export function readSrc(root: string): SrcFile[] {
 export type Reported<S extends Result["stage"] = Result["stage"]> = [ok: boolean, stage: S, summary: string, detail?: string, where?: string];
 
 /** A directory's package.json, or nothing; one that is not JSON is refused with its path. */
-function manifest(dir: string) {
+/** A package's package.json, or nothing where it has none. */
+export function manifest(dir: string) {
   const file = path.join(dir, "package.json");
   if (!fs.existsSync(file)) return {};
   try {

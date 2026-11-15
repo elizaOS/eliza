@@ -38,6 +38,8 @@ when the spec has a sender:
 | `apply(current, event[, by])` | `step`, failing with `Rejected` where `enabled` refuses instead of leaving the state unchanged |
 | `service Machine` | the state and the one way to change it: `get()`, `send(event[, by])`, `receive(input[, by])` for an untrusted event (`decodeEvent`, then `send`), and `changes`, a `Stream` of the state, starting with the current one |
 | `machine(start = initial)` | a `Layer` that provides `Machine` in memory, applying one event at a time; `start` may be a state `decodeState` returned |
+| `machineOver(start, keep)` | an effect that makes a `Machine` from `start` which gives each new state to `keep` before it is current; `send` dies, and the state stays, where `keep` dies. A shell that keeps the state elsewhere, such as a file, supplies only how to load and `keep` it |
+| `stored(key, start = initial)` | a `Layer` that provides `Machine` kept as JSON under `key` in Effect's `KeyValueStore` (`effect/persistence/KeyValueStore`): it starts from what is stored, through `decodeState` (failing with `NotAState`, and never writing over it, where that is not a state), or from `start`; each new state is stored before it is current, and `send` dies where the store refuses it |
 
 Where transitions return `{ state, out }`, `apply`, `send` and `receive`
 return that record; `get` and `changes` give the state.
@@ -76,9 +78,12 @@ it.effect("Check out", effect () => {
 })
 ```
 
-- **`machine()` forgets when the process ends.** A shell that stores state
-  writes its own service on `apply` and the decoders, and a driver that
-  `check` compares with the spec ([SPEC.md, "Conformance"](../../../SPEC.md#conformance)):
+- **`machine()` forgets when the process ends; `stored(key)` keeps the state**
+  in the `KeyValueStore` layer the program provides (`layerFileSystem(dir)` on
+  Node, `layerStorage` in a browser, `layerMemory` in a test). Never restate
+  the state as an Effect Schema. A shell that keeps it any other way, on
+  `machineOver` or on `apply` and the decoders, needs a driver that `check`
+  compares with the spec ([SPEC.md, "Conformance"](../../../SPEC.md#conformance)):
   `check` writes one to fill in when `src/` imports `apply`.
 - **Match an event by its `type`**: `match (event.type) { when "pay": …; }`.
   The compiler does not yet check that a `match` on the event itself, or on
@@ -97,6 +102,16 @@ state and sends events through hooks over the `Machine` service, so what it
 shows is the spec's state and what it can do is what `enabled` allows: a
 control is offered exactly when its event is. It keeps in `useState` only
 what the spec does not own, such as an open menu or a draft in a text box.
+
+In a package that depends on `react`, `gen/<name>.react.ts` exports, for each
+state machine, `useMachine(runtime)` over a `ManagedRuntime` that provides
+`Machine`. It returns `{ state, cause, can(event[, by]), send(event[, by]) }`:
+`state` is undefined until the machine has published one, `cause` is what
+stopped it (such as a `stored` layer that could not read its key), `can` is
+`enabled` in that state, and `send` resolves with the `Exit` of
+`Machine.send`. Offer a control exactly when `can` holds; never hand-write a
+hook over `changes`.
+
 Style with Tailwind utilities on the project's tokens, compose shadcn/ui
 components before writing one, and follow the
 [design skill](../design/SKILL.md).

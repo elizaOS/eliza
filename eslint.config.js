@@ -11,7 +11,7 @@ import { designSystem } from "./vibestack/design/eslint.ts"
 import { parseTokens } from "./vibestack/design/tokens.ts"
 
 const stack = 'AGENTS.md, "The stack"'
-const monorepo = 'SPEC.md, "One spec tree"'
+const monorepo = 'CONTRIBUTING.md, "The monorepo"'
 const banned = ["redux", "react-redux", "zustand", "mobx", "jotai", "recoil", "valtio", "xstate", "vue", "svelte", "jest"]
 const scopes = ["reduxjs", "angular", "xstate", "vue", "sveltejs", "jest"]
 // Each workspace package's `exports` beyond its root: "@repo/design-system/theme.css".
@@ -38,7 +38,7 @@ const loose = Object.fromEntries(["no-explicit-any", "no-unsafe-argument", "no-u
 
 export default defineConfig(
   // Generated or disposable, and .claude/worktrees holds other checkouts of this repository.
-  globalIgnores(["**/gen/", "**/.vibe/", "**/dist/", "**/.cache/", "**/.spec-cache/", "**/generated/", "**/storybook-static/", "**/test/fixtures/", "vibestack/examples/", "vibestack/fixtures/", ".claude/", ".lemmascript/", ".studio/", ".turbo/", "_apalache-out/"]),
+  globalIgnores(["**/gen/", "!vibestack/gen/", "**/.vibe/", "**/dist/", "**/.cache/", "**/.spec-cache/", "**/generated/", "**/storybook-static/", "**/test/fixtures/", "vibestack/examples/", "vibestack/fixtures/", ".claude/", ".lemmascript/", ".studio/", ".turbo/", "_apalache-out/"]),
   { linterOptions: { reportUnusedDisableDirectives: "error", reportUnusedInlineConfigs: "error" } },
   js.configs.recommended,
   tseslint.configs.recommendedTypeChecked,
@@ -72,9 +72,13 @@ export default defineConfig(
       "@typescript-eslint/no-misused-promises": ["error", { checksVoidReturn: { arguments: false } }],
       // Regular expressions here match the tools' column-aligned output, where literal spaces read as the output does.
       "no-regex-spaces": "off",
+      // AGENTS.md, "Writing code": one path, so nothing is left for later or kept beside its replacement.
+      "no-warning-comments": ["error", { terms: ["todo", "fixme", "legacy", "deprecated"], location: "anywhere" }],
     },
   },
   { files: untyped, extends: [tseslint.configs.disableTypeChecked] },
+  // A ratchet at today's longest (Studio's server); a test's describe block holds its cases.
+  { ignores: ["**/test/**", "vibestack/selftest.ts"], rules: { "max-lines-per-function": ["error", { max: 250, skipBlankLines: true, skipComments: true }] } },
   {
     files: ["vibestack/**"],
     ignores: ["**/*.tsx"],
@@ -114,6 +118,13 @@ export default defineConfig(
     extends: [designSystem({ tailwind, tokens: parseTokens(JSON.parse(readFileSync(`${design}/tokens.json`, "utf8"))), entryPoint: `${import.meta.dirname}/${design}/generated/theme.css` })],
     settings: { "better-tailwindcss": { cwd: design } },
   },
-  // Spec.tsx marks a changed story with shadow-[inset_3px_0_0_var(--primary)], which no shadow token spells.
-  { files: ["vibestack/studio/src/page/**"], rules: { "better-tailwindcss/no-restricted-classes": "off" } },
+  // @repo/ui holds the form controls and dialogs every interface uses.
+  {
+    files: tsx,
+    ignores: ["packages/ui/**"],
+    rules: {
+      "no-restricted-globals": ["error", ...["alert", "confirm", "prompt"].map((name) => ({ name, message: "Use Dialog or Alert from @repo/ui." }))],
+      "no-restricted-syntax": ["error", { selector: "JSXOpeningElement[name.name=/^(input|textarea)$/]", message: "Use Input, Textarea or Checkbox from @repo/ui." }],
+    },
+  },
 )

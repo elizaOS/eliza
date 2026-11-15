@@ -1,0 +1,5 @@
+{"state":{"name":"","count":0}}
+{"event":{"type":"greet","name":"Ada"},"by":"Linked","state":{"name":"Ada","count":1},"out":[{"tag":"Hello","to":"Ada"}]}
+{"event":{"type":"greet","name":"Ada"},"by":"Linked","state":{"name":"Ada","count":1},"out":[]}
+{"event":{"type":"greet","name":""},"by":"Typed","state":{"name":"Ada","count":1},"out":[]}
+{"event":{"type":"greet","name":"Grace"},"by":"Typed","state":{"name":"Grace","count":2},"out":[{"tag":"Hello","to":"Grace"}]}

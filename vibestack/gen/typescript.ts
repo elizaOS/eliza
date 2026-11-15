@@ -6,8 +6,8 @@ import type { Json, Types } from "./types.ts";
 
 /** The names a module defines beside the spec's, and the locals of what it defines (TAKEN in gen.ts). */
 export const EMITTED = ["Event", "opaque", "inv", "enabled", "step", "parseEvent", "parseState", "parseSender", "initialHolds", "current", "event", "raw"];
-/** Prefixes reserved for runtime helpers and local bindings. */
-export const HELPERS = ["quotient", "remainder", "exact", "equal", "lookup\\d+", "snapshot", "local"];
+/** Prefixes reserved for the helpers a module may carry for itself, each named `<helper>_<module>`, and for local bindings. */
+export const HELPERS = ["quotient", "remainder", "exact", "equal", "nth", "get", "lookup\\d+", "snapshot", "local"];
 
 export interface Source {
   /** The line that opens the file, and one import line per spec this one imports. */
@@ -26,7 +26,7 @@ export interface Source {
 }
 
 export function typescript({ header, typedefs, vals, funs, sig, typeOf, doc, local: L, source }: Source, roles: Roles, types: Types, print: Printer, helper: (which: string) => string): string {
-  const { tsType, declaration, wellFormed, copy } = types;
+  const { tsType, declaration, validators, copy } = types;
   const { transitions, always, steps, laws, opaques, sender, output, refines } = roles;
   const state = roles.stateType && tsType(roles.stateType);
   // Where some transition has output, `step` returns it beside the state, and a transition without output outputs nothing.
@@ -107,6 +107,14 @@ export function typescript({ header, typedefs, vals, funs, sig, typeOf, doc, loc
   // A copy through JSON drops what JSON cannot hold; a value it cannot copy at all is not one the program accepts.
   const cloned = [`  let raw: any;`, `  try {`, `    raw = JSON.parse(JSON.stringify(x));`, `  } catch {`, `    return undefined;`, `  }`];
   const parsed = (t: Transition) => `{ ${[`type: ${JSON.stringify(t.name)}`, ...carried(t).map((p) => `${p.name}: ${copy(`raw.${p.name}`, p.type)}`)].join(", ")} }`;
+  // An event may carry more than its type names, which `parsed` drops; a state or a sender is exactly its type.
+  const carries = validators();
+  const events = transitions.map((t) => `  if (raw.type === ${JSON.stringify(t.name)}${carried(t).map((p) => ` && ${carries.test(`raw.${p.name}`, p.type)}`).join("")}) return ${parsed(t)};`);
+  const whole = (t: Json) => {
+    const exactly = validators(true);
+    const is = `  if (!(${exactly.test("raw", t)})) return undefined;`;
+    return [...exactly.lines(), is];
+  };
   if (state) out.push(
     ``,
     `/** Do the rules allow this event${sender ? `, from this sender,` : ""} in this state? */`,
@@ -133,8 +141,9 @@ export function typescript({ header, typedefs, vals, funs, sig, typeOf, doc, loc
     `//@ skip`,
     `export function ${L("parseEvent")}(x: unknown): ${L("Event")} | undefined {`,
     ...cloned,
+    ...carries.lines(),
     `  if (typeof raw !== "object" || raw === null) return undefined;`,
-    ...transitions.map((t) => `  if (raw.type === ${JSON.stringify(t.name)}${carried(t).map((p) => ` && ${wellFormed(`raw.${p.name}`, p.type)}`).join("")}) return ${parsed(t)};`),
+    ...events,
     `  return undefined;`,
     `}`,
     ``,
@@ -147,7 +156,7 @@ export function typescript({ header, typedefs, vals, funs, sig, typeOf, doc, loc
     `//@ skip`,
     `export function ${L("parseState")}(x: unknown): ${state} | undefined {`,
     ...cloned,
-    `  if (!(${wellFormed("raw", roles.stateType, 0, true)})) return undefined;`,
+    ...whole(roles.stateType),
     `  const parsed: ${state} = ${copy("raw", roles.stateType)};`,
     `  return ${L("inv")}(parsed) ? parsed : undefined;`,
     `}`,
@@ -165,7 +174,7 @@ export function typescript({ header, typedefs, vals, funs, sig, typeOf, doc, loc
     `//@ skip`,
     `export function ${L("parseSender")}(x: unknown): ${tsType(sender)} | undefined {`,
     ...cloned,
-    `  if (!(${wellFormed("raw", sender, 0, true)})) return undefined;`,
+    ...whole(sender),
     `  return ${copy("raw", sender)};`,
     `}`,
   );
@@ -198,12 +207,29 @@ export function typescript({ header, typedefs, vals, funs, sig, typeOf, doc, loc
     `    && keys.every((k) => Object.hasOwn(b, k) && ${helper("equal")}((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));`,
     `}`,
   );
+  if (print.helpers.has("nth")) out.push(
+    ``,
+    `/** An element of a list, which must hold it. */`,
+    `export function ${helper("nth")}<T>(xs: T[], i: number): T {`,
+    `  if (!(0 <= i && i < xs.length)) throw new RangeError(\`a list of \${xs.length} has no element \${i}\`);`,
+    `  return xs[i];`,
+    `}`,
+  );
+  if (print.helpers.has("get")) out.push(
+    ``,
+    `/** What a map holds for a key, which it must hold. */`,
+    `export function ${helper("get")}<K extends string | number, T>(m: Record<K, T>, key: K): T {`,
+    `  if (!(key in m)) throw new RangeError(\`a map holds nothing for \${key}\`);`,
+    `  return m[key];`,
+    `}`,
+  );
   if (print.helpers.has("quotient")) out.push(
     ``,
     `/** Whole-number division as Quint does it: towards zero. */`,
     `//@ pure`,
     `export function ${helper("quotient")}(a: number, b: number): number {`,
     `  //@ requires b !== 0`,
+    ...(print.proof ? [] : [`  if (b === 0) throw new RangeError(\`\${a} cannot be divided by zero\`);`]),
     `  return (a < 0 === b < 0 ? 1 : -1) * Math.floor(Math.abs(a) / Math.abs(b)) + 0;`,
     `}`,
   );

@@ -6,10 +6,9 @@ import { enabled as allowed, type Event as SessionEvent, type Session } from "..
 import { enabled, step, type Event as Edit, type Outline, type Rule, type Story } from "../../gen/outline.ts";
 import { bodyOf, nodeId, nodesOfOutline, specOrder, textBody, textOf, type Item } from "../markdown.ts";
 import type { Result } from "../../../spec.ts";
-import type { Snapshot } from "../project.ts";
-import type { ComponentIndex } from "../catalog.ts";
+import type { Snapshot, SpecView } from "../project.ts";
+import type { ComponentIndex } from "../../../stories/emit.ts";
 
-export type SpecView = Snapshot["specs"][number];
 /** One spec as this page holds it: the outline being edited, and what it was when loaded (`base` is its hash on disk). */
 export interface Working { file: string; base: string | null; orig: string | null; was: Outline; outline: Outline; deleted: boolean }
 /** A story or rule on the page: `<file>#<number>`, or `<file>#head` for the title. */
@@ -19,6 +18,8 @@ export const S = {
   projects: [] as { id: string; name: string }[],
   project: new URLSearchParams(location.search).get("project") ?? "",
   snap: undefined as Snapshot | undefined,
+  /** The server stopped answering; the page says so until it answers again. */
+  offline: false,
   specs: [] as Working[],
   sel: "",
   /** Which stories and rules are open, or being edited. */
@@ -26,8 +27,10 @@ export const S = {
   editing: new Set<string>(),
   /** The prose and Quint blocks of each rule being edited, while it is edited. */
   items: new Map<string, Item[]>(),
-  history: [] as string[],
+  history: [] as Working[][],
   conflicts: [] as string[],
+  /** Specs a publish found changed on disk: to be overwritten, or not, by choice. */
+  overwrite: [] as string[],
   publishing: false,
   /** The project's components (./Components.tsx), if it has a catalog, and which view the page shows. */
   components: undefined as ComponentIndex | undefined,
@@ -58,11 +61,19 @@ export function toast(text: string, action?: { label: string; run: () => void })
 // --- the working copy ------------------------------------------------------------------------------------------
 
 const working = (spec: SpecView): Working => ({ file: spec.file, base: spec.hash, orig: spec.text, was: spec.outline, outline: spec.outline, deleted: false });
+/** `work()`, done again only when `key()` is another value. */
+function once<T>(key: () => unknown, work: () => T): () => T {
+  let at: unknown = once, value: T;
+  return () => { const k = key(); if (k !== at) { at = k; value = work(); } return value; };
+}
+/** An outline's text, as it is and tidied, written once: every edit makes another outline (gen/outline.ts, `step`). */
+const written = new WeakMap<Outline, { raw: string; tidy?: string }>();
 /** The text a spec would be published as: as it was if nothing changed, tidied if something did. */
 export const publishedText = (spec: Working) => {
   if (spec.deleted) return null;
-  const text = textOf(spec.outline);
-  return text === spec.orig ? text : textOf(spec.outline, true);
+  const text = written.get(spec.outline) ?? { raw: textOf(spec.outline) };
+  written.set(spec.outline, text);
+  return text.raw === spec.orig ? text.raw : (text.tidy ??= textOf(spec.outline, true));
 };
 export const isDirty = (spec: Working) => spec.deleted || spec.orig === null || publishedText(spec) !== spec.orig;
 export const dirtySpecs = () => S.specs.filter(isDirty);
@@ -113,8 +124,10 @@ function merge(snap: Snapshot, mine: Working[]): Working[] {
 
 // --- the server ------------------------------------------------------------------------------------------------
 
+/** Which project a request is about; the server's own choice until the page knows. */
+const query = () => (S.project ? `?project=${encodeURIComponent(S.project)}` : "");
 async function api(route: string, body?: unknown) {
-  const res = await fetch(`/api/${route}?project=${encodeURIComponent(S.project)}`, body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const res = await fetch(`/api/${route}${query()}`, body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw Object.assign(new Error(json.error ?? res.statusText), { status: res.status, body: json });
   return json;
@@ -136,7 +149,7 @@ export async function refresh(published?: { specs: Map<string, { text: string | 
   });
   if (published) {
     S.specs = acknowledge(S.specs);
-    S.history = S.history.slice(published.history).map((entry) => JSON.stringify(acknowledge(JSON.parse(entry))));
+    S.history = S.history.slice(published.history).map(acknowledge);
   }
   S.snap = snap;
   S.components = components;
@@ -150,18 +163,23 @@ export function start(route: string, body: unknown = {}) {
   api(route, body).catch((e: Error) => toast(e.message));
 }
 
-/** Load the projects and the one this page shows, and follow what the server says of it. */
-export async function connect() {
-  const { projects, open } = await (await fetch("/api/projects")).json();
-  S.projects = projects;
-  S.project ||= open;
-  await refresh();
-  const events = new EventSource(`/api/events?project=${encodeURIComponent(S.project)}`);
+/** Follow what the server says of the project, loading it all again whenever the connection opens. */
+export function connect() {
+  const events = new EventSource(`/api/events${query()}`);
+  const load = async () => {
+    const { projects, open } = await (await fetch("/api/projects")).json();
+    S.projects = projects;
+    S.project ||= open;
+    await refresh();
+  };
+  events.onopen = () => { S.offline = false; load().catch((e: Error) => toast(e.message)); };
+  events.onerror = () => { S.offline = true; redraw(); };
   events.addEventListener("files", () => { refresh().catch((e: Error) => toast(e.message)); });
   events.addEventListener("job", (e) => {
+    if (!S.snap) return;
     const { session, jobs, check, app } = JSON.parse((e as MessageEvent).data);
-    const ended = S.snap!.session.job !== "Idle" && session.job === "Idle";
-    Object.assign(S.snap!, { session, jobs, check, app });
+    const ended = S.snap.session.job !== "Idle" && session.job === "Idle";
+    Object.assign(S.snap, { session, jobs, check, app });
     if (ended) refresh().catch((error: Error) => toast(error.message));
     else redraw();
   });
@@ -169,24 +187,65 @@ export async function connect() {
 
 // --- what the checks say about each story and rule ----------------------------------------------------------------
 
-/** Failing check results by the spec file and the rule key they cite. */
-export function failures() {
-  const byKey = new Map<string, string[]>();
+/** The spec a result is about, if it is about one. */
+const specOf = (r: Result) => (r.where?.startsWith("spec/") ? r.where : S.snap?.specs.find((s) => `${s.module}.ts` === r.where)?.file);
+/** Where on the page a result belongs: the rules it concerns, or else its spec. */
+export const locate = (r: Result): { file: string; key?: string } | undefined => {
+  const file = specOf(r);
+  return r.rules?.[0] ?? (file ? { file } : undefined);
+};
+/** A check's failing results that stop the work: all but review's. */
+export const failing = (results: Result[] = []) => results.filter((r) => !r.ok && r.stage !== "review" && r.stage !== "skipped");
+
+/** Failing check results by the rules they concern (`nodeId`), and by the specs they concern. */
+export const failures = once(() => S.snap?.check, () => {
+  const byKey = new Map<string, Result[]>();
   const bySpec = new Map<string, Result[]>();
-  for (const r of S.snap?.check?.results ?? []) {
-    if (r.ok || r.stage === "review" || r.stage === "skipped") continue;
-    const file = r.where?.startsWith("spec/") ? r.where : S.snap?.specs.find((s) => `${s.module}.ts` === r.where)?.file;
-    if (file) bySpec.set(file, [...(bySpec.get(file) ?? []), r]);
-    for (const m of `${r.summary}\n${r.detail}`.matchAll(/"([^"]+)" \((spec\/(?:[a-z][A-Za-z0-9]*\/)*[a-z][A-Za-z0-9]*\.md):\d+\)/g)) {
-      const id = nodeId(m[2], m[1]);
-      byKey.set(id, [...(byKey.get(id) ?? []), `${r.stage}: ${r.summary}`]);
-    }
+  const add = (map: Map<string, Result[]>, k: string, r: Result) => map.set(k, [...(map.get(k) ?? []), r]);
+  for (const r of failing(S.snap?.check?.results)) {
+    for (const { file, key } of r.rules ?? []) add(byKey, nodeId(file, key), r);
+    for (const file of new Set([...(r.rules ?? []).map((x) => x.file), specOf(r) ?? []].flat())) add(bySpec, file, r);
   }
   return { byKey, bySpec };
+});
+
+/** Show the spec a result is about and open the rule it names. */
+export function reveal(file: string, key?: string) {
+  select(file);
+  const spec = S.specs.find((s) => s.file === file);
+  const node = spec && key ? nodesOfOutline(file, spec.outline).find((n) => n.key === key) : undefined;
+  if (!node) return;
+  const id = ui(file, (node.rule ?? node.story).id);
+  S.open.add(ui(file, node.story.id));
+  S.open.add(id);
+  redraw();
+  setTimeout(() => document.querySelector(`[data-uid="${id}"]`)?.scrollIntoView({ block: "center" }), 0);
 }
-export const reviewOf = (spec: Working, key: string) => S.snap?.specs.find((s) => s.file === spec.file)?.review[key];
-/** Stories and rules waiting for review, in one spec or in all. */
-export const reviewCount = (file?: string) => (S.snap?.specs ?? []).filter((s) => !file || s.file === file).reduce((n, s) => n + Object.keys(s.review).length, 0);
+
+/** The stages of `pnpm check`, in the order it reports them (AGENTS.md, "Stages of `pnpm check`"). */
+const STAGES = ["model", "always", "sometimes", "replay", "types", "proof", "tests", "traces", "review"] as const;
+export type StageMark = "passed" | "failed" | "skipped" | "running" | "";
+/**
+ * Where each stage stands in a check, running or done: failed, passed, skipped (a skipped result names its stages
+ * before its reason), or, while it runs, the first stage that has not reported yet. `simulated` counts the proof
+ * obligations accepted as simulated only.
+ */
+export function stagesOf(results: Result[], running: boolean) {
+  const skipped = (r: Result) => (r.stage === "skipped" ? r.summary.split(/ of |: /)[0].split(/, | and /) : []);
+  let waiting = running;
+  return STAGES.map((stage) => {
+    const own = results.filter((r) => r.stage === stage);
+    const mark: StageMark = own.some((r) => !r.ok) ? "failed" : own.length ? "passed" : results.some((r) => skipped(r).includes(stage)) ? "skipped"
+      : waiting ? "running" : "";
+    if (mark === "running") waiting = false;
+    const simulated = own.reduce((n, r) => n + Number(/of which (\d+) are simulated only/.exec(r.summary)?.[1] ?? 0), 0);
+    return { stage, mark, simulated };
+  });
+}
+/** What review asks of a story or rule, if anything. */
+export const reviewOf = (spec: Working, key: string) => S.snap?.review.find((r) => r.file === spec.file && r.key === key)?.status;
+/** How much waits for sign-off in one spec. */
+export const reviewCount = (file: string) => S.snap?.review.filter((r) => r.file === file).length ?? 0;
 
 // --- edits: outline events -----------------------------------------------------------------------------------------
 
@@ -209,9 +268,9 @@ export function apply(spec: Working, ...events: Edit[]) {
   redraw();
   return true;
 }
-/** Every change but typing is undoable; typing is undone a whole edit at a time. */
+/** Every change but typing is undoable; typing is undone a whole edit at a time. A copy shares its outlines and texts, which no edit changes. */
 function remember() {
-  S.history.push(JSON.stringify(S.specs));
+  S.history.push(S.specs.map((s) => ({ ...s })));
   if (S.history.length > 50) S.history.shift();
 }
 export function change(fn: () => boolean | void, message?: string) {
@@ -223,18 +282,21 @@ export function change(fn: () => boolean | void, message?: string) {
 export function undo() {
   const was = S.history.pop();
   if (!was) return;
-  S.specs = JSON.parse(was);
+  S.specs = was;
   S.editing.clear();
   S.items.clear();
   redraw();
 }
 
-/** Focus after the next redraw, with the caret at the end of any text already there. */
+/** Focus after the next redraw, keeping an active field's selection (spec/outline.md, "A rule's heading and body can be changed"). */
 export const focusLater = (selector: string) => setTimeout(() => {
   const el = document.querySelector<HTMLInputElement>(selector);
-  el?.focus();
-  if (el && "selectionStart" in el && el.value !== undefined) el.selectionStart = el.selectionEnd = el.value.length;
+  if (!el || el === document.activeElement) return;
+  el.focus();
+  if ("selectionStart" in el && el.value !== undefined) el.selectionStart = el.selectionEnd = el.value.length;
 }, 0);
+/** Focus the line of a story or rule (./Spec.tsx, `Row`). */
+export const focusRow = (id: string) => focusLater(`[data-uid="${id}"] [data-row]`);
 
 /** Open a story or rule for editing, as one undoable change. */
 export function editNode(id: string, undoable = true) {
@@ -330,7 +392,7 @@ export function nudge(id: string, by: number) {
   const f = find(id);
   if (!f) return;
   change(() => apply(f.spec, f.rule ? { type: "moveRule", s: f.s, r: f.r!, dest: f.s, at: f.r! + by } : { type: "moveStory", s: f.s, dest: f.s + by }));
-  focusLater(`[data-uid="${id}"] > [data-row]`);
+  focusRow(id);
 }
 
 /**
@@ -389,8 +451,9 @@ export async function publish(force = false): Promise<void> {
     await api("publish", { files: dirty.map((s) => ({ file: s.file, base: s.base, text: submitted.get(s.file)!.text })), origins, force });
   } catch (e: any) {
     S.publishing = false;
-    if (e.status === 409 && e.body.conflicts && confirm(`${e.body.conflicts.join(", ")} changed on disk since you loaded it. Overwrite with your version?`)) return publish(true);
-    return toast(e.message);
+    if (e.status !== 409 || !e.body.conflicts) return toast(e.message);
+    S.overwrite = e.body.conflicts;
+    return redraw();
   }
   // spec/index.md, "Edits stay in the page until they are published or discarded"
   try { await refresh({ specs: submitted, history }); }

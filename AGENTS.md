@@ -62,7 +62,8 @@ Every project built here uses this, and nothing beside it:
 ## Where the rest is
 
 Read each before the work it covers, whether loaded as a skill or opened
-directly.
+directly. The last two are the vibestack repository's; a project that
+installed the tools has `README.md` in `node_modules/vibestack/`.
 
 | Read | Before |
 |---|---|
@@ -166,7 +167,7 @@ How `pnpm check` runs them, in its `tests` stage:
   reuse the same result. Filtered or failed runs supply no receipt; acceptance
   and nightly checks always run afresh.
 - **One configuration.** The `test` script is `vitest run`, on
-  `project({ root: import.meta.dirname })` from `vibestack/testing/vitest`, as
+  `project({ root: import.meta.dirname })` from `vibestack/testing/vitest.ts`, as
   `spec init` writes it; a package with `test/` and no `test` script gets
   both from `check`. It runs `test/**/*.test.{ts,tsx,vibe}` in Node (a test
   that needs a DOM says `// @vitest-environment happy-dom`), and
