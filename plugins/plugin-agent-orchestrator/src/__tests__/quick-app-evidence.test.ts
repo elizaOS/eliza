@@ -33,6 +33,42 @@ describe("mineCandidatePaths", () => {
     expect(mined).toContain("data/apps/echo-fade/style.css");
     expect(mined.join(" ")).not.toContain("v1.2");
   });
+
+  it.each([
+    [
+      "a period that ends the reply",
+      "I created data/apps/echo-fade/index.html.",
+    ],
+    [
+      "a period before the next sentence",
+      "Done: data/apps/echo-fade/index.html. Open it.",
+    ],
+    [
+      "a colon before a line count",
+      "Wrote data/apps/echo-fade/index.html: 120 lines",
+    ],
+    ["a semicolon", "Wrote data/apps/echo-fade/index.html; styles are inline"],
+    ["an exclamation mark", "It lives at data/apps/echo-fade/index.html!"],
+    ["a question mark", "Should I keep data/apps/echo-fade/index.html?"],
+    ["an ellipsis", "Still polishing data/apps/echo-fade/index.html..."],
+    [
+      "a period inside a parenthesis",
+      "Done (see data/apps/echo-fade/index.html.)",
+    ],
+  ])("mines a path followed by %s", (_label, text) => {
+    expect(mineCandidatePaths([text])).toEqual([
+      "data/apps/echo-fade/index.html",
+    ]);
+  });
+
+  it("does not cut a longer name or a line reference down to the file", () => {
+    expect(
+      mineCandidatePaths([
+        "Kept data/apps/echo-fade/index.html.bak as a backup",
+        "See data/apps/echo-fade/index.html:12 for the handler",
+      ]),
+    ).toEqual(["data/apps/echo-fade/index.html.bak"]);
+  });
 });
 
 describe("collectFsObservedFiles", () => {

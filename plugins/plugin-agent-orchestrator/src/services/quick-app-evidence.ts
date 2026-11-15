@@ -20,9 +20,13 @@ import type { WorkdirRouteUrlMapping } from "./task-agent-routing.js";
 
 const PROBE_TIMEOUT_MS = 5_000;
 
-/** Absolute or workdir-relative file-path tokens in worker output. */
+/** Absolute or workdir-relative file-path tokens in worker output. A token may
+ *  end a sentence ("I created data/apps/x/index.html."), so sentence
+ *  punctuation before the boundary does not belong to the path; a mark followed
+ *  by more name characters (`index.html.bak`, `index.html:12`) still does not
+ *  end it. */
 const PATH_CANDIDATE_RE =
-  /(?:^|[\s"'`(=])((?:\/|(?:[\w.-]+\/)+)[\w./-]*[\w-]\.[A-Za-z]{1,8})(?=$|[\s"'`),])/gm;
+  /(?:^|[\s"'`(=])((?:\/|(?:[\w.-]+\/)+)[\w./-]*[\w-]\.[A-Za-z]{1,8})(?=[.:;!?]*(?:$|[\s"'`),]))/gm;
 
 /** Mine candidate file paths from worker-reported text. Claims only — the
  *  caller verifies each against the real filesystem before anything counts. */
